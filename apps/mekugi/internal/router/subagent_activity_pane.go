@@ -32,6 +32,7 @@ type activityPaneEntry struct {
 }
 
 type activityPaneAgent struct {
+	thread       string // Stable host identity; caller names remain presentation labels.
 	settings     preferences.Evidence
 	settingsLive bool
 	WorkTimer    activeWorkTimer `json:",omitzero"`

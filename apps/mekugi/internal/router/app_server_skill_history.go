@@ -3,6 +3,7 @@ package router
 import (
 	json "encoding/json/v2"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -22,13 +23,21 @@ func (u *appServerUI) startSkillHistory() {
 		return
 	}
 	// One scan at a time keeps background history I/O independently bounded.
-	for _, h := range u.childHistory {
+	for thread := range u.session.threadStates {
+		h := u.childHistory(thread)
+		if h == nil {
+			continue
+		}
 		if h.skills != nil && h.skills.request != "" {
 			return
 		}
 	}
-	for _, h := range u.childHistory {
-		if h.root != u.Thread || h.skills != nil {
+	for thread := range u.session.threadStates {
+		h := u.childHistory(thread)
+		if h == nil {
+			continue
+		}
+		if h.skills != nil {
 			continue
 		}
 		h.skills = &appServerSkillHistory{cursors: make(map[string]bool)}
@@ -45,7 +54,7 @@ func (u *appServerUI) startSkillHistory() {
 func (u *appServerUI) requestSkillHistory(h *appServerChildHistory, cursor string) error {
 	// Omit turnId to scan across turns, including inherited fork items. Only
 	// opaque cursors may continue a thread-wide read; item anchors are turn-scoped.
-	params := map[string]any{"threadId": h.info.ID, "sortDirection": "desc", "limit": appServerHistoryPageSize}
+	params := map[string]any{"threadId": h.info.ID, "sortDirection": "desc", "limit": sessionpresentation.HistoryPageSize}
 	if cursor != "" {
 		params["cursor"] = cursor
 	}
@@ -61,8 +70,8 @@ func (u *appServerUI) failSkillHistory(h *appServerChildHistory, message string)
 }
 
 func (u *appServerUI) skillHistoryResponse(thread string, m appserver.Message) error {
-	h := u.childHistory[thread]
-	if h == nil || h.root != u.Thread || h.skills == nil || h.skills.request != string(m.ID) {
+	h := u.childHistory(thread)
+	if h == nil || h.skills == nil || h.skills.request != string(m.ID) {
 		return nil
 	}
 	scan := h.skills

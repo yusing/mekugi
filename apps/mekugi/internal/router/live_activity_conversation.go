@@ -29,8 +29,8 @@ func userBand(theme diffrender.Theme) string {
 }
 
 func (v *liveActivityView) conversationSpeaker() string {
-	if v.conversation && v.childrenOnly && v.only {
-		return v.selected
+	if v.conversation && v.childrenOnly && v.displayingChild() {
+		return v.displayedCaller()
 	}
 	return "Main"
 }

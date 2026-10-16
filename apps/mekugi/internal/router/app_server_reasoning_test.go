@@ -47,7 +47,7 @@ func TestAppServerPublicSummaryNotifications(t *testing.T) {
 			"id": "same-id", "type": "reasoning", "summary": []string{"**Complete**\n\nFinal public " + thread + "."}, "content": []string{"PRIVATE"}}})
 		reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t", "status": "completed"}})
 	}
-	u.agents.only, u.agents.selected = false, "/root/worker"
+	u.agents.setDisplayFilter(false, "/root/worker")
 	main = ansi.Strip(strings.Join(u.view.renderFeed(90, 40).lines, "\n"))
 	child = ansi.Strip(strings.Join(u.agents.renderFeed(90, 40).lines, "\n"))
 	if strings.Count(main, "• Complete") != 1 || strings.Count(child, "• Complete") != 1 || !strings.Contains(main, "Final public main.") || !strings.Contains(child, "Final public child.") || strings.Contains(main+child, "PRIVATE") || strings.Contains(main+child, "Public main summary") {
@@ -70,7 +70,7 @@ func TestAppServerRestorePublicSummaries(t *testing.T) {
 	u.restoreHistory(turns)
 	u.session.registerThread(appServerThreadInfo{ID: "child", AgentNickname: "worker"})
 	u.restoreActivityThread(appServerThreadInfo{ID: "child", Turns: turns})
-	u.agents.only, u.agents.selected = false, "/root/worker"
+	u.agents.setDisplayFilter(false, "/root/worker")
 	for _, view := range []*liveActivityView{u.view, u.agents} {
 		feed := view.renderFeed(90, 40)
 		got := ansi.Strip(strings.Join(feed.lines, "\n"))
@@ -220,7 +220,7 @@ func TestAppServerProviderThinking(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "t"}})
-	u.agents.only, u.agents.selected = false, "/root/worker"
+	u.agents.setDisplayFilter(false, "/root/worker")
 	feed := func() string { return ansi.Strip(strings.Join(u.agents.renderFeed(90, 40).lines, "\n")) }
 	for _, delta := range []string{"First ", "thought.\n\nSecond.\n\nThird.\n\nFourth."} {
 		reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "r1", "delta": delta})
@@ -246,7 +246,7 @@ func TestAppServerProviderThinking(t *testing.T) {
 func TestAppServerThinkingFolds(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-	u.agents.only, u.agents.selected = false, "/root/worker"
+	u.agents.setDisplayFilter(false, "/root/worker")
 	body := "**Reviewing**\n\nAlpha.\n\nBravo.\n\nCharlie.\n\nDelta."
 	for _, thread := range []string{"main", "child"} {
 		reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
@@ -307,7 +307,7 @@ func TestAppServerThinkingFromRequestStart(t *testing.T) {
 	activity.observe("child", "main", "/root/worker", true)
 	u.proxy = &mekugiProxy{activity: activity}
 	reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-	u.agents.only, u.agents.selected = false, "/root/worker"
+	u.agents.setDisplayFilter(false, "/root/worker")
 	feed := func(view *liveActivityView) string {
 		return ansi.Strip(strings.Join(view.renderFeed(90, 40).lines, "\n"))
 	}
@@ -390,7 +390,7 @@ func TestAppServerStartedSummarySettlesWithoutDelta(t *testing.T) {
 		t.Run(map[bool]string{false: "completed", true: "interrupted"}[interrupted], func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-			u.agents.only, u.agents.selected = false, "/root/worker"
+			u.agents.setDisplayFilter(false, "/root/worker")
 			for _, thread := range []string{"main", "child"} {
 				reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
 				reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{"**Checking**\n\nStarted public body."}}})
@@ -430,7 +430,7 @@ func TestUISnapshotAppServerReasoningStartsBeforeSummary(t *testing.T) {
 			u.view.clock, u.agents.clock = u.clock, u.clock
 			u.view.painter.Theme, u.agents.painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
 			reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-			u.agents.only, u.agents.selected = false, "/root/worker"
+			u.agents.setDisplayFilter(false, "/root/worker")
 			view := u.view
 			if thread == "child" {
 				view = u.agents
@@ -470,7 +470,7 @@ func TestUISnapshotAppServerReasoningLifecycle(t *testing.T) {
 				u.view.clock, u.agents.clock = u.clock, u.clock
 				u.view.painter.Theme, u.agents.painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
 				reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-				u.agents.only, u.agents.selected = false, "/root/worker"
+				u.agents.setDisplayFilter(false, "/root/worker")
 				view := u.view
 				if thread == "child" {
 					view = u.agents

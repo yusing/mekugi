@@ -35,7 +35,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	var items []nativeRosterItem
 	fold := -1
 	for _, row := range rows {
-		if !focused && row.Agent.Name != "/root" && v.agentStatus(row.Agent) == '✓' && !(v.only && row.Agent.Name == v.selected) {
+		if !focused && row.Agent.Name != "/root" && v.agentStatus(row.Agent) == '✓' && !(v.displayingChild() && row.Agent.Name == v.displayedCaller()) {
 			if fold < 0 {
 				fold = len(items)
 				items = append(items, nativeRosterItem{})
@@ -212,7 +212,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		}
 		next++
 		line = ansi.Truncate(line, width, "…")
-		if item.row.Agent.Name == v.selected && (focused || v.only) {
+		if focused && item.row.Agent.Name == v.selected || v.displayingChild() && item.row.Agent.Name == v.displayedCaller() {
 			line = v.selectRow(line, width)
 		}
 		lines = append(lines, line)

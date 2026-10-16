@@ -168,13 +168,14 @@ func TestNativeNavigationBatchFilterBinding(t *testing.T) {
 	for _, pane := range []int{3} {
 		t.Run(fmt.Sprint(pane), func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
+			appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 			u.shell.focus, u.shell.width, u.shell.height = pane, 140, 24
 			for _, wantOnly := range []bool{true, false} {
 				if err := u.shell.key('a'); err != nil {
 					t.Fatal(err)
 				}
-				if u.agents.only != wantOnly {
-					t.Fatalf("a: only=%v, want %v", u.agents.only, wantOnly)
+				if u.agents.displayingChild() != wantOnly {
+					t.Fatalf("a: only=%v, want %v", u.agents.displayingChild(), wantOnly)
 				}
 				wantHint := "a child"
 				if wantOnly {
@@ -187,7 +188,7 @@ func TestNativeNavigationBatchFilterBinding(t *testing.T) {
 				if err := u.shell.key('o'); err != nil {
 					t.Fatal(err)
 				}
-				if u.agents.only != wantOnly {
+				if u.agents.displayingChild() != wantOnly {
 					t.Fatal("retired o binding still toggles filtering")
 				}
 			}
@@ -300,9 +301,11 @@ func TestUISnapshotNativeNavigationBatchStatus(t *testing.T) {
 		for _, only := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%d/only%v", width, only), func(t *testing.T) {
 				u := newAppServerSessionTestUI(t, t.TempDir())
+				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 				u.status = "Ready"
 				u.shell.diffUnseen = true
-				u.shell.focus, u.agents.only = 3, only
+				u.shell.focus = 3
+				u.agents.setDisplayFilter(only, u.agents.selected)
 				screen := navigationBatchPaint(t, u, width, 24)
 				footer := strings.Split(screen.String(), "\n")[23]
 				uisnapshot.Assert(t, fmt.Sprintf("testdata/snapshots/native-navigation-status-%d-only%v.txt", width, only), footer+"\n")

@@ -80,7 +80,7 @@ func TestNativeCompletedBatchEditOpensBeforeSiblingCommandExits(t *testing.T) {
 				thread, view = "child", u.agents
 				u.session.registerThread(appServerThreadInfo{ID: thread, AgentNickname: "worker"})
 				u.session.metadata[thread] = ""
-				u.agents.only, u.agents.selected = true, "/root/worker"
+				u.agents.setDisplayFilter(true, "/root/worker")
 			}
 			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "batch", "status": "inProgress"}})
 			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "batch", "item": map[string]any{"id": "slow-sibling", "type": "commandExecution", "command": "sleep 30", "status": "inProgress"}})

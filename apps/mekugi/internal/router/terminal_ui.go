@@ -343,7 +343,7 @@ func (u *terminalUI) send(s string) error {
 	if s != "\x1b" && u.selectionKey(s) {
 		return nil
 	}
-	if s == "\x1b" && u.main != nil && u.main.historyLoading != nil {
+	if s == "\x1b" && u.main != nil && u.main.historyLoading() != nil {
 		return u.main.cancelOlderActivity()
 	}
 	if u.main != nil && u.focus == 0 && u.main.composerReadOnly() {
@@ -457,7 +457,7 @@ func (u *terminalUI) send(s string) error {
 				u.focus = 0
 			}
 		} else {
-			only, selected := u.agents.only, u.agents.selected
+			only, selected := u.agents.displayingChild(), u.agents.selected
 			var quit bool
 			u.agentEscape, quit = u.agents.handleRosterKey(u.agentEscape, key)
 			u.showRosterPick(only, selected)
@@ -701,7 +701,7 @@ func (u *terminalUI) mouse(s string) error {
 		} else if action == 'k' {
 			u.agents.scrollRoster(-1)
 		} else {
-			only, selected := u.agents.only, u.agents.selected
+			only, selected := u.agents.displayingChild(), u.agents.selected
 			u.agents.pointAgent(action, y-r.y+1, x-r.x+1)
 			if agent := u.agents.skillsRequest; agent != "" {
 				u.agents.skillsRequest = ""

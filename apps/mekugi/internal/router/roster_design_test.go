@@ -132,11 +132,12 @@ func TestRosterDesignCompactViewportAndWheel(t *testing.T) {
 	if v.rosterOffset != start {
 		t.Fatalf("unstable viewport: %d -> %d", start, v.rosterOffset)
 	}
-	v.only, v.following, v.unseen = true, false, 2
+	v.setDisplayFilter(true, v.selected)
+	v.following, v.unseen = false, 2
 	v.width, v.height = 42, 6
 	v.handleMouse('j', 3, 2)
-	if !v.only || v.selected != "/root/d" || v.following || v.unseen != 2 {
-		t.Fatalf("wheel changed feed/filter state: only=%v selected=%q following=%v unseen=%d", v.only, v.selected, v.following, v.unseen)
+	if !v.displayingChild() || v.selected != "/root/d" || v.following || v.unseen != 2 {
+		t.Fatalf("wheel changed feed/filter state: only=%v selected=%q following=%v unseen=%d", v.displayingChild(), v.selected, v.following, v.unseen)
 	}
 	second := strings.Join(plainLines(v.renderRosterPane(42, 6, now)), "\n")
 	if v.rosterOffset != start+1 || !strings.Contains(second, fmt.Sprintf("↑ %d more", v.rosterOffset)) {
@@ -195,10 +196,11 @@ func TestRosterStripWheelDoesNotScrollFeed(t *testing.T) {
 	v := liveActivityTestView("/root/a", "/root/b")
 	v.render(80, 6, time.Now())
 	v.feedLines, v.feedRows = 50, 3
-	v.following, v.only, v.unseen = true, false, 4
+	v.setDisplayFilter(false, v.selected)
+	v.following, v.unseen = true, 4
 	selected, offset := v.selected, v.offset
 	v.handleMouse('k', 2, 4)
-	if !v.following || v.only || v.unseen != 4 || v.offset != offset || v.selected != selected {
+	if !v.following || v.displayingChild() || v.unseen != 4 || v.offset != offset || v.selected != selected {
 		t.Fatal("strip wheel changed feed or selection")
 	}
 }
@@ -255,13 +257,13 @@ func TestNativeActivitySkipsMainInNavigationAndCounts(t *testing.T) {
 	for range 3 {
 		v.showAgent(-1)
 	}
-	if v.only || v.selected != "/root/a" {
-		t.Fatalf("stepping back reached %q (only=%v), want the unfiltered feed", v.selected, v.only)
+	if v.displayingChild() || v.selected != "/root/a" {
+		t.Fatalf("stepping back reached %q (only=%v), want the unfiltered feed", v.selected, v.displayingChild())
 	}
 	v.hits = []liveActivityHit{{row: 1, first: 1, last: 10, agent: "/root"}}
-	v.only = true
+	v.setDisplayFilter(true, v.selected)
 	v.pointAgent('\r', 1, 1)
-	if v.only || v.selected != "/root/a" {
-		t.Fatalf("clicking Main changed the remembered child to %q (only=%v)", v.selected, v.only)
+	if v.displayingChild() || v.selected != "/root/a" {
+		t.Fatalf("clicking Main changed the remembered child to %q (only=%v)", v.selected, v.displayingChild())
 	}
 }

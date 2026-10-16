@@ -8,67 +8,73 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
-const appServerHistoryPageSize = 100
-const appServerHistoryMetadataPending = -2
-
-// History belongs to this UI's stable root and child identities, not a router
-// connection. It is rebuilt on resume; neither cursors nor processes persist.
+// Protocol payloads, deferred activity content and live event buffering stay in
+// the adapter. Pagination identity and transitions live in session presentation.
 type appServerChildHistory struct {
-	root       string
+	state      *sessionpresentation.History
 	info       appServerThreadInfo
-	turn       int
-	anchor     string
-	nextCursor string
-	turnPages  int
-	seenTurns  map[string]bool
-	seenItems  map[[2]string]bool
-	cursors    map[[2]string]bool
 	itemAt     map[string]time.Time
 	placements []*restoredPlacement
-	initial    bool
-	older      bool
-	live       bool   // Live observations superseded this metadata snapshot, even after completion.
-	firstSeq   uint64 // First retained entry of the previously loaded page, including rollout slots.
-	failure    string
-	requestID  string
-	method     string
-	params     map[string]any
+	firstSeq   uint64
 	pending    []appserver.Message
 	skills     *appServerSkillHistory
 }
 
+func (u *appServerUI) childHistory(thread string) *appServerChildHistory {
+	if store := u.session.threadStates[thread]; store != nil {
+		return *u.childHistoryState.Value(store)
+	}
+	return nil
+}
+
+func (u *appServerUI) historyLoading() *appServerChildHistory {
+	return u.childHistory(u.sessionPresentation().View().Loading)
+}
+
 func (u *appServerUI) startChildHistory(info appServerThreadInfo) error {
 	r := u.restoring
-	h := &appServerChildHistory{root: u.Thread, info: info, turn: appServerHistoryMetadataPending, initial: true,
-		seenTurns: make(map[string]bool), seenItems: make(map[[2]string]bool), cursors: make(map[[2]string]bool),
+	store := u.session.threadState(info.ID)
+	h := &appServerChildHistory{state: u.presentationState.History(store), info: info,
 		itemAt: r.itemAt[info.ID], placements: r.pane[u.session.path(info.ID)]}
 	if h.itemAt == nil {
 		h.itemAt = make(map[string]time.Time)
 	}
 	delete(r.pane, u.session.path(info.ID))
 	h.info.Turns = nil
-	if u.childHistory == nil {
-		u.childHistory = make(map[string]*appServerChildHistory)
-	}
-	u.childHistory[info.ID], u.historyLoading = h, h
+	*u.childHistoryState.Value(store) = h
+	request := u.sessionPresentation().StartHistory(h.state, info.ID)
 	u.agents.MarkSkillHistoryUnknown(u.session.path(info.ID))
-	return u.requestChildHistory("thread/turns/list", map[string]any{"threadId": info.ID, "itemsView": "notLoaded", "sortDirection": "desc", "limit": appServerHistoryPageSize})
+	return u.requestChildHistory(request)
 }
 
-func (u *appServerUI) requestChildHistory(method string, params map[string]any) error {
-	h := u.historyLoading
-	h.method, h.params, h.failure = method, params, ""
+func (u *appServerUI) requestChildHistory(request sessionpresentation.PageRequest) error {
+	h := u.historyLoading()
+	method := "thread/items/list"
+	params := map[string]any{"threadId": request.Thread, "sortDirection": "desc", "limit": sessionpresentation.HistoryPageSize}
+	if request.Kind == sessionpresentation.TurnMetadata {
+		method = "thread/turns/list"
+		params["itemsView"] = "notLoaded"
+	} else {
+		params["turnId"] = request.Turn
+	}
+	if request.Anchor != "" {
+		params["cursor"] = map[string]any{"type": "item", "itemId": request.Anchor}
+	} else if request.Cursor != "" {
+		params["cursor"] = request.Cursor
+	}
 	id, err := u.requests.Send(method, params, "main", appServerRequest{label: "activity/" + method})
 	if err != nil {
 		return err
 	}
-	h.requestID = id
-	if h.initial {
-		if method == "thread/turns/list" {
-			u.status = fmt.Sprintf("Restoring Activity %d/%d · turn page %d…", u.restoring.next+1, len(u.restoring.order), h.turnPages+1)
+	h.state.BindRequest(id)
+	state := h.state.View(request.Thread)
+	if state.Initial {
+		if request.Kind == sessionpresentation.TurnMetadata {
+			u.status = fmt.Sprintf("Restoring Activity %d/%d · turn page %d…", u.restoring.next+1, len(u.restoring.order), state.TurnPages+1)
 		} else {
 			u.status = fmt.Sprintf("Restoring Activity %d/%d · recent items…", u.restoring.next+1, len(u.restoring.order))
 		}
@@ -78,11 +84,10 @@ func (u *appServerUI) requestChildHistory(method string, params map[string]any) 
 }
 
 func (u *appServerUI) childHistoryResponse(method string, m appserver.Message) error {
-	h := u.historyLoading
-	if h == nil || h.root != u.Thread || h.requestID != string(m.ID) || u.childHistory[h.info.ID] != h {
+	h := u.historyLoading()
+	if h == nil || !h.state.AcceptResponse(string(m.ID)) {
 		return nil
 	}
-	h.requestID = ""
 	if m.Error != nil {
 		return u.failChildHistory(m.Error.Message)
 	}
@@ -94,37 +99,28 @@ func (u *appServerUI) childHistoryResponse(method string, m appserver.Message) e
 		if err := json.Unmarshal(m.Result, &page); err != nil {
 			return u.failChildHistory("Invalid turn page: " + err.Error())
 		}
-		for _, turn := range page.Data {
-			if turn.ID == "" {
-				return u.failChildHistory("Turn page returned no turn identity.")
-			}
+		ids := make([]string, len(page.Data))
+		for i, turn := range page.Data {
+			ids[i] = turn.ID
 		}
-		for _, turn := range page.Data {
-			if h.seenTurns[turn.ID] {
-				continue
-			}
-			h.seenTurns[turn.ID] = true
-			turn.Items = nil // Metadata never masquerades as a complete item history.
+		decision, err := h.state.Turns(ids, page.NextCursor)
+		for _, index := range decision.Accepted {
+			turn := page.Data[index]
+			turn.Items = nil // Metadata never masquerades as complete item history.
 			h.info.Turns = append(h.info.Turns, turn)
 		}
-		h.turnPages++
-		if page.NextCursor != "" {
-			key := [2]string{"turns", page.NextCursor}
-			if h.cursors[key] {
-				return u.failChildHistory("Turn history returned a repeated pagination cursor.")
-			}
-			h.cursors[key] = true
-			if h.turnPages < 8 {
-				params := map[string]any{"threadId": h.info.ID, "itemsView": "notLoaded", "sortDirection": "desc", "limit": appServerHistoryPageSize, "cursor": page.NextCursor}
-				return u.requestChildHistory("thread/turns/list", params)
-			}
+		if err != nil {
+			return u.failChildHistory(err.Error())
+		}
+		if !decision.Complete {
+			return u.requestChildHistory(decision.Next)
+		}
+		if decision.Limited {
 			u.restoreContentNotice("Activity turn metadata is limited to eight pages; older turns and their evidence were not loaded.")
 		}
 		slices.Reverse(h.info.Turns)
-		h.turn = len(h.info.Turns) - 1
 		u.hydrateChildHistoryMetadata(h)
-		h.older = false
-		if h.turn < 0 {
+		if decision.Next.Kind == sessionpresentation.NoPage {
 			// Thread-scoped hooks need no turn or item page to be visible.
 			for _, p := range h.placements {
 				if p.entry.Kind == "hook" {
@@ -136,7 +132,7 @@ func (u *appServerUI) childHistoryResponse(method string, m appserver.Message) e
 			h.placements = slices.DeleteFunc(h.placements, func(p *restoredPlacement) bool { return p.entry.Kind == "hook" })
 			return u.finishChildHistory()
 		}
-		return u.requestChildItems(nil)
+		return u.requestChildHistory(decision.Next)
 	}
 	var page struct {
 		Data []struct {
@@ -150,61 +146,35 @@ func (u *appServerUI) childHistoryResponse(method string, m appserver.Message) e
 	if err := json.Unmarshal(m.Result, &page); err != nil {
 		return u.failChildHistory("Invalid item page: " + err.Error())
 	}
-	turn := h.info.Turns[h.turn]
-	for _, entry := range page.Data {
-		if entry.TurnID != turn.ID || entry.Item.ID == "" {
-			return u.failChildHistory("Item page returned an out-of-scope item identity.")
-		}
+	ids := make([]sessionpresentation.ItemIdentity, len(page.Data))
+	for i, entry := range page.Data {
+		ids[i] = sessionpresentation.ItemIdentity{Turn: entry.TurnID, Item: entry.Item.ID}
 	}
-	if page.NextCursor != "" {
-		key := [2]string{turn.ID, page.NextCursor}
-		if h.cursors[key] {
-			return u.failChildHistory("Item history returned a repeated pagination cursor.")
-		}
-		h.cursors[key] = true
+	decision, err := h.state.Items(ids, page.NextCursor)
+	if err != nil {
+		return u.failChildHistory(err.Error())
 	}
 	var items []appServerItem
-	for _, entry := range page.Data {
-		key := [2]string{turn.ID, entry.Item.ID}
-		if h.seenItems[key] {
-			continue
-		}
-		h.seenItems[key] = true
+	for _, index := range decision.Accepted {
+		entry := page.Data[index]
 		if at := cmp.Or(entry.CompletedAtMs, entry.StartedAtMs); at != 0 {
 			h.itemAt[entry.Item.ID] = time.UnixMilli(at)
 		}
 		items = append(items, entry.Item)
 	}
 	// Source: codex-rs/app-server-protocol/src/protocol/v2/thread.rs@de9e78e3e
-	// ThreadItemsListAnchor is exclusive and turn-scoped. Pages arrive newest
-	// first; presentation and rollout slots remain chronological.
-	slices.Reverse(items)
-	if len(page.Data) > 0 {
-		h.anchor = page.Data[len(page.Data)-1].Item.ID
-	}
-	h.nextCursor = page.NextCursor
-	turn.Items, turn.olderPage = items, h.older
-	u.renderChildHistoryPage(h, turn, page.NextCursor == "")
-	if page.NextCursor == "" {
-		h.turn--
-		h.anchor = ""
-	}
+	// Item anchors are exclusive and turn-scoped. Presentation supplies the
+	// chronological positions while the adapter retains protocol payloads.
+	turn := h.info.Turns[decision.Turn]
+	turn.Items, turn.olderPage = items, decision.Older
+	u.renderChildHistoryPage(h, turn, decision)
 	return u.finishChildHistory()
 }
 
-func (u *appServerUI) requestChildItems(cursor any) error {
-	h := u.historyLoading
-	params := map[string]any{"threadId": h.info.ID, "turnId": h.info.Turns[h.turn].ID, "sortDirection": "desc", "limit": appServerHistoryPageSize}
-	if cursor != nil {
-		params["cursor"] = cursor
-	}
-	return u.requestChildHistory("thread/items/list", params)
-}
-
 func (u *appServerUI) failChildHistory(message string) error {
-	h := u.historyLoading
-	h.failure = message
-	if h.initial {
+	h := u.historyLoading()
+	h.state.Fail(message)
+	if h.state.View(h.info.ID).Initial {
 		u.restoreHistoryNotice("Could not restore "+u.session.path(h.info.ID)+" history: "+message, false)
 		u.restoring.pane[u.session.path(h.info.ID)] = h.placements
 	} else {
@@ -214,12 +184,9 @@ func (u *appServerUI) failChildHistory(message string) error {
 }
 
 func (u *appServerUI) finishChildHistory() error {
-	h := u.historyLoading
-	u.historyLoading = nil
-	if h.initial {
-		h.initial = false
-		r := u.restoring
-		r.next++
+	h := u.historyLoading()
+	if u.sessionPresentation().FinishHistory(h.state) {
+		u.restoring.next++
 		return u.readNextRestoredChild()
 	}
 	u.updateHistoryHint()
@@ -234,18 +201,20 @@ func (u *appServerUI) finishChildHistory() error {
 }
 
 func (u *appServerUI) historyTarget() *appServerChildHistory {
-	for _, h := range u.childHistory {
-		if h.root == u.Thread && u.session.path(h.info.ID) == u.agents.selected && (h.turn != -1 || h.failure != "") {
-			return h
-		}
+	model := u.sessionPresentation()
+	if h := u.childHistory(model.PreferredHistory()); h != nil && h.state.Available() {
+		return h
+	}
+	view := model.View()
+	if view.Displayed.ID != view.Main.ID {
+		return nil
 	}
 	for _, agent := range u.session.agents {
-		if u.agents.only && agent.Name != u.agents.selected {
-			continue
-		}
-		for _, h := range u.childHistory {
-			if h.root == u.Thread && u.session.path(h.info.ID) == agent.Name && (h.turn != -1 || h.failure != "") {
-				return h
+		for thread, name := range u.session.paths {
+			if name == agent.Name {
+				if h := u.childHistory(thread); h != nil && h.state.Available() {
+					return h
+				}
 			}
 		}
 	}
@@ -257,87 +226,86 @@ func (u *appServerUI) updateHistoryHint() {
 		return
 	}
 	u.agents.historyHint = ""
-	if h := u.historyLoading; h != nil && !h.initial {
+	if h := u.historyLoading(); h != nil && !h.state.View(h.info.ID).Initial {
 		u.agents.historyHint = "Loading older · Esc cancels"
 	} else if h := u.historyTarget(); h != nil {
 		u.agents.historyHint = "Older history · Ctrl-B o load"
-		if h.failure != "" {
+		if h.state.View("").Status == sessionpresentation.Failed {
 			u.agents.historyHint = "History unavailable · Ctrl-B o retry"
 		}
 	}
 }
 
 func (u *appServerUI) loadOlderActivity() error {
-	if u.restoring != nil || u.historyLoading != nil {
+	if u.restoring != nil {
 		return nil
 	}
 	h := u.historyTarget()
 	if h == nil {
 		return nil
 	}
-	u.historyLoading, h.older = h, true
-	if h.failure != "" || h.turn == appServerHistoryMetadataPending {
-		h.older = h.anchor != ""
-		return u.requestChildHistory(h.method, h.params)
+	model := u.sessionPresentation()
+	request, err := model.LoadHistory(sessionpresentation.HistoryIntent{Version: model.View().Version, Thread: h.info.ID}, h.state)
+	if err != nil {
+		u.setNotice(err.Error(), true)
+		return nil
 	}
-	if h.nextCursor != "" {
-		if h.anchor != "" {
-			return u.requestChildItems(map[string]any{"type": "item", "itemId": h.anchor})
-		}
-		return u.requestChildItems(h.nextCursor)
+	if request.Kind == sessionpresentation.NoPage {
+		return nil
 	}
-	// Moving to the next older turn starts a new page without an anchor.
-	h.older = false
-	return u.requestChildItems(nil)
+	return u.requestChildHistory(request)
 }
 
 func (u *appServerUI) cancelOlderActivity() error {
-	h := u.historyLoading
-	if h == nil || h.initial {
+	h := u.historyLoading()
+	if h == nil || h.state.View(h.info.ID).Initial {
 		return nil
 	}
-	u.requests.Forget(h.requestID) // Cancel observation, not any host execution.
-	h.requestID = ""
+	model := u.sessionPresentation()
+	id, err := model.CancelHistory(sessionpresentation.HistoryIntent{Version: model.View().Version, Thread: h.info.ID}, h.state)
+	if err != nil {
+		u.setNotice(err.Error(), true)
+		return nil
+	}
+	u.requests.Forget(id) // Cancel observation, never host execution.
 	u.setNotice("Older child history loading cancelled", false)
 	return u.finishChildHistory()
 }
 
 func (u *appServerUI) holdOlderHistoryEvent(m appserver.Message) (bool, error) {
-	h := u.historyLoading
-	if h == nil || h.initial || m.Method == "" {
+	h := u.historyLoading()
+	if h == nil || m.Method == "" {
 		return false, nil
 	}
 	var params struct {
 		ThreadID string `json:"threadId"`
 	}
 	_ = json.Unmarshal(m.Params, &params)
-	if params.ThreadID != h.info.ID {
-		return false, nil
-	}
-	if strings.HasSuffix(m.Method, "/delta") || strings.HasSuffix(m.Method, "Delta") {
-		return true, nil // Completed items own full content, as during resume.
-	}
-	if len(h.pending) == 256 {
-		// The live event wins; discard the outstanding historical observation.
+	delta := strings.HasSuffix(m.Method, "/delta") || strings.HasSuffix(m.Method, "Delta")
+	switch h.state.BufferEvent(params.ThreadID, delta, len(h.pending)) {
+	case sessionpresentation.DiscardDelta:
+		return true, nil
+	case sessionpresentation.Buffer:
+		h.pending = append(h.pending, m)
+		return true, nil
+	case sessionpresentation.CancelRead:
 		if err := u.cancelOlderActivity(); err != nil {
 			return true, err
 		}
-		return false, nil
 	}
-	h.pending = append(h.pending, m)
-	return true, nil
+	return false, nil
 }
 
-func (u *appServerUI) renderChildHistoryPage(h *appServerChildHistory, turn appServerHistoryTurn, exhausted bool) {
+func (u *appServerUI) renderChildHistoryPage(h *appServerChildHistory, turn appServerHistoryTurn, page sessionpresentation.ItemPage) {
 	var selected, remaining []*restoredPlacement
 	for _, p := range h.placements {
-		anchored := p.turn == turn.ID && (slices.ContainsFunc(turn.Items, func(item appServerItem) bool { return item.ID == p.anchor }) || exhausted)
-		if p.turn == "" && restoredTurnFor(h.info.Turns, h.itemAt, p.at) == h.turn {
+		anchored := p.turn == turn.ID && (slices.ContainsFunc(turn.Items, func(item appServerItem) bool { return item.ID == p.anchor }) || page.Exhausted)
+		if p.turn == "" && restoredTurnFor(h.info.Turns, h.itemAt, p.at) == page.Turn {
 			oldest := historyTime(turn.StartedAt)
 			if len(turn.Items) > 0 {
 				oldest = cmp.Or(h.itemAt[turn.Items[0].ID], oldest)
 			}
-			anchored = exhausted || !oldest.IsZero() && !p.at.Before(oldest)
+			anchored = page.Exhausted || !oldest.IsZero() && !p.at.Before(oldest)
 		}
 		if anchored {
 			selected = append(selected, p)
@@ -373,7 +341,7 @@ func (u *appServerUI) renderChildHistoryPage(h *appServerChildHistory, turn appS
 			break
 		}
 	}
-	if !u.historyLoading.initial {
+	if !h.state.View(h.info.ID).Initial {
 		retained := slices.ContainsFunc(u.agents.Entries, func(entry liveActivityRecord) bool { return entry.Source.Seq == h.firstSeq })
 		u.agents.insertHistory(before, func(entry activityPaneEntry) bool {
 			return retained && entry.Seq == h.firstSeq || !retained && entry.native != nil && entry.native.thread == h.info.ID
@@ -405,7 +373,7 @@ func (u *appServerUI) renderChildHistoryPage(h *appServerChildHistory, turn appS
 
 func (u *appServerUI) hydrateChildHistoryMetadata(h *appServerChildHistory) {
 	agent := u.session.agent(u.session.path(h.info.ID))
-	if !h.live {
+	if !h.state.View(h.info.ID).Live {
 		agent.Started, agent.LastResponse = restoredAgentTimes(h.info)
 		agent.WorkTimer = restoredAgentWork(h.info)
 		agent.Turns = max(agent.Turns, uint64(len(h.info.Turns)))

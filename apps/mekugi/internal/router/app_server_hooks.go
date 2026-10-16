@@ -46,8 +46,8 @@ func (u *appServerUI) hookEvent(method string, event appServerEvent) error {
 			return err
 		}
 	}
-	if h := u.childHistory[event.ThreadID]; h != nil {
-		h.live = true
+	if h := u.childHistory(event.ThreadID); h != nil {
+		h.state.ObserveLive()
 	}
 	run := *event.Run
 	completed := method == "hook/completed"

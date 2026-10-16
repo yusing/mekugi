@@ -33,7 +33,7 @@ func TestAppServerChildMetadataWithoutThreadStarted(t *testing.T) {
 	if !strings.Contains(row, "checker") || !strings.Contains(row, "● review") || !strings.Contains(row, "go test ./...") || strings.Contains(row, "01234567") {
 		t.Fatalf("metadata roster: %s", row)
 	}
-	u.agents.only = true
+	u.agents.setDisplayFilter(true, u.agents.selected)
 	feed := ansi.Strip(strings.Join(u.agents.renderFeed(120, 30).lines, "\n"))
 	if !strings.Contains(feed, "exit 2") || strings.Contains(feed, "01234567") {
 		t.Fatalf("late rename lost retained activity: %s", feed)

@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/contracts/scope"
 
 	"github.com/yusing/mekugi/libraries/textsanitize"
@@ -167,8 +168,8 @@ type appServerUI struct {
 	panes                   *nativePreferences
 	waitRelease             func()
 	restoring               *appServerActivityRestore
-	childHistory            map[string]*appServerChildHistory
-	historyLoading          *appServerChildHistory
+	presentationState       sessionpresentation.Service
+	childHistoryState       scope.Key[*appServerChildHistory]
 }
 
 // StartAppServerUI starts the native terminal frontend without router observers.
@@ -428,6 +429,7 @@ func startAppServerUI(conversation composer.Service, activity *activitymodel.Ser
 		u.finishCommandSegments()
 		u.execTrack.detachOutputs()
 		u.session.state = scope.Store{}
+		u.session.threadStates = nil
 		u.shell.review.Close()
 		u.hideQuestions()
 		u.hideApprovals()
@@ -1275,7 +1277,7 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 // between the two, in the returned rectangle, for the live edit dock.
 func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, dockRect terminalRect) {
 	transcript := u.transcriptView()
-	readOnly := u.composerReadOnly()
+	readOnly := u.agents != nil && u.agents.displayingChild()
 	u.autoOpenApprovals()
 	u.autoOpenQuestions()
 	width, height = max(1, width), max(1, height)
@@ -1582,6 +1584,7 @@ func scrollLabel(v *liveActivityView) string {
 }
 
 func (u *appServerUI) ensureShell() {
+	u.sessionPresentation()
 	u.attachActivity()
 	u.view.conversation = true
 	u.view.painter.FileLink = u.markdownFileExists
@@ -1590,6 +1593,7 @@ func (u *appServerUI) ensureShell() {
 	}
 	if u.agents == nil {
 		u.agents = newLiveActivityView()
+		u.sessionPresentation()
 		u.attachActivity()
 	}
 	u.agents.painter.FileLink = u.markdownFileExists

@@ -49,7 +49,7 @@ func TestNativeUIExpansionFocus(t *testing.T) {
 	u.Text = "Keep this draft"
 	for _, focus := range []int{0, 2} {
 		u.shell.focus = 0
-		u.agents.only, u.agents.selected = focus == 2, "/root/worker"
+		u.agents.setDisplayFilter(focus == 2, "/root/worker")
 		view := u.view
 		if focus != 0 {
 			view = u.agents
@@ -68,7 +68,7 @@ func TestNativeUIExpansionFocus(t *testing.T) {
 	playback := uiReplayPlayback{ui: u}
 	for _, focus := range []int{0, 2} {
 		u.shell.focus = 0
-		u.agents.only, u.agents.selected = focus == 2, "/root/worker"
+		u.agents.setDisplayFilter(focus == 2, "/root/worker")
 		view := u.view
 		if focus != 0 {
 			view = u.agents

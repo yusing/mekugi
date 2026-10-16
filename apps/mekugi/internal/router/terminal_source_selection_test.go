@@ -50,7 +50,8 @@ func TestTerminalSourceSelectionDirectionsAndActions(t *testing.T) {
 						u.agents.feedLeft, u.agents.feedTop = 1, 1
 						u.agents.feedRight, u.agents.feedRows = 40, len(rows)
 						u.main.agents = u.agents
-						u.agents.only, u.agents.selected = true, "/root/worker"
+						u.main.sessionPresentation()
+						u.agents.setDisplayFilter(true, "/root/worker")
 					}
 					if x < 0 {
 						t.Fatal("no cell")
@@ -240,7 +241,7 @@ func TestTerminalSourceRenderedTables(t *testing.T) {
 				view.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: source})
 				var wire bytes.Buffer
 				if view == u.agents {
-					u.agents.only, u.agents.selected = true, "Main"
+					u.agents.setDisplayFilter(true, "Main")
 				}
 				if err := u.paint(&wire, width, 50); err != nil {
 					t.Fatal(err)
@@ -282,7 +283,7 @@ func TestTerminalSourceActivityCodeTabs(t *testing.T) {
 	u.shell.diffOpen = false
 	u.agents.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "```\n\tx := 1  \n```"})
 	var wire bytes.Buffer
-	u.agents.only, u.agents.selected = true, "Main"
+	u.agents.setDisplayFilter(true, "Main")
 	if err := u.paint(&wire, 120, 40); err != nil {
 		t.Fatal(err)
 	}

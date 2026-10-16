@@ -78,7 +78,7 @@ func TestLiveActivityViewClampOnlyModeAndPausedCount(t *testing.T) {
 	if !strings.Contains(all, "… +") || !strings.Contains(all, "  line") {
 		t.Fatalf("clamped feed = %s", all)
 	}
-	view.only = true
+	view.setDisplayFilter(true, view.selected)
 	view.follow()
 	only := plainLines(view.render(80, 40, time.Now()))
 	joined := strings.Join(only, "\n")

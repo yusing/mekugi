@@ -47,6 +47,7 @@ type appServerSession struct {
 	summaries       map[[3]string]*appServerSummaryRun // Public summaries pacing through the same frame cadence.
 	activity        *activitymodel.Service
 	state           scope.Store
+	threadStates    map[string]*scope.Store
 	cwd             string
 	waits           map[[3]string][]appServerWaitTarget // Start-time targets by thread, turn, item.
 	waitStore       *mekugiReplayStore
@@ -142,7 +143,8 @@ type appServerEvent struct {
 
 func (s *appServerSession) start(thread, cwd string) {
 	s.paths = map[string]string{thread: "/root"}
-	s.agents = []activityPaneAgent{{Name: "/root", Role: "main"}}
+	s.threadStates = nil
+	s.agents = []activityPaneAgent{{thread: thread, Name: "/root", Role: "main"}}
 	s.reasoning = make(map[[3]string]string)
 	s.thinking = make(map[[3]string]time.Time)
 	s.pendingThinking = make(map[string]pendingThinking)
@@ -179,9 +181,10 @@ func (s *appServerSession) registerThread(info appServerThreadInfo) {
 	if old := s.paths[info.ID]; old != "" {
 		s.agent(old).Name = path
 	} else {
-		s.agents = append(s.agents, activityPaneAgent{Name: path})
+		s.agents = append(s.agents, activityPaneAgent{thread: info.ID, Name: path})
 	}
 	s.paths[info.ID] = path
+	s.agent(path).thread = info.ID
 	s.agent(path).Role = cmp.Or(info.AgentRole, spawn.AgentRole, s.agent(path).Role)
 	restoreContextUsage(s.agent(path), info)
 	if agent := s.agent(path); !agent.settingsLive {
@@ -213,7 +216,7 @@ func (s *appServerSession) path(thread string) string {
 	}
 	path := appServerPlaceholder(thread)
 	s.paths[thread] = path
-	s.agents = append(s.agents, activityPaneAgent{Name: path})
+	s.agents = append(s.agents, activityPaneAgent{thread: thread, Name: path})
 	return path
 }
 
@@ -256,8 +259,8 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 		}
 	}
 	main := p.ThreadID == u.Thread
-	if h := u.childHistory[p.ThreadID]; h != nil {
-		h.live = true
+	if h := u.childHistory(p.ThreadID); h != nil {
+		h.state.ObserveLive()
 	}
 	if p.ThreadID != "" && !main {
 		if err := u.requestThreadMetadata(p.ThreadID); err != nil {

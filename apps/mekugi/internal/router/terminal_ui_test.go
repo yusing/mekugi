@@ -177,7 +177,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			view, caller := u.view, "/root"
 			if activity {
 				view, caller = u.agents, "/root/worker"
-				view.only, view.selected = true, caller
+				view.setDisplayFilter(true, caller)
 				u.shell.focus = 0
 			}
 			for i := range 80 {

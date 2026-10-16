@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/libraries/textsanitize"
@@ -39,7 +41,7 @@ type liveActivityView struct {
 	disclosure     activityui.Disclosure
 	selected       string
 	hovered        string
-	only           bool
+	display        *sessionpresentation.Model
 	hits           []liveActivityHit
 	following      bool
 	offset         int
@@ -164,10 +166,12 @@ type liveActivityRunKey struct {
 
 func newLiveActivityView() *liveActivityView {
 	v := &liveActivityView{
+		display:   new(sessionpresentation.Model),
 		Model:     new(activitypresentation.Model[activityPaneEntry, activityPaneAgent]),
 		following: true, status: "CONNECTING",
 		painter: activityui.Painter{CopySource: true, Theme: diffrender.EnvironmentTheme(os.Getenv("COLORFGBG"))},
 	}
+	v.display.Attach(sessionpresentation.Thread{ID: "/root", Caller: "/root"}, false)
 	v.painter.Clock = v.now
 	return v
 }
@@ -476,7 +480,7 @@ func (v *liveActivityView) visible(entry activityPaneEntry) bool {
 	if v.childrenOnly && entry.Agent == "/root" {
 		return false
 	}
-	return !v.only || entry.Agent == v.selected
+	return !v.displayingChild() || entry.Agent == v.displayedCaller()
 }
 
 // glyph shows only observed facts: an open provider response, a latest error
@@ -663,12 +667,10 @@ func (v *liveActivityView) pointAgent(action byte, row, column int) bool {
 				return true
 			}
 			if action == '\r' {
-				if v.childrenOnly && hit.agent == "/root" {
-					// Main's transcript has its own view and input owner.
-					v.only = false
+				if v.childrenOnly && hit.agent == "/root" || !v.childrenOnly && v.displayingChild() && v.displayedCaller() == hit.agent {
+					v.displayThread("/root")
 				} else {
-					v.only = v.childrenOnly || !v.only || v.selected != hit.agent
-					v.selected = hit.agent
+					v.displayThread(hit.agent)
 				}
 				v.rosterManual = false
 				v.hovered = ""
@@ -810,13 +812,13 @@ func (v *liveActivityView) renderHeader(rows []liveActivityRosterRow, width int,
 	left := "\x1b[1m" + v.painter.Theme.Accent() + title + terminalui.Reset
 	responding, errors := v.statusCounts(rows)
 	switch {
-	case v.feedOnly && !rosterOnly && !v.only:
+	case v.feedOnly && !rosterOnly && !v.displayingChild():
 		left += " · all"
 	case len(rows) == 0:
 		left += terminalui.Dim + " · waiting for subagent activity" + terminalui.Undim
-	case v.only && !rosterOnly:
-		index := slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.Agent.Name == v.selected })
-		left += fmt.Sprintf(" · only %s %s(%d/%d)%s", v.painter.Agent(v.selected), terminalui.Dim, index+1, len(rows), terminalui.Undim)
+	case v.displayingChild() && !rosterOnly:
+		index := slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.Agent.Name == v.displayedCaller() })
+		left += fmt.Sprintf(" · only %s %s(%d/%d)%s", v.painter.Agent(v.displayedCaller()), terminalui.Dim, index+1, len(rows), terminalui.Undim)
 	default:
 		left += fmt.Sprintf("  %d agents · %d responding", len(rows), responding)
 		if errors > 0 {
@@ -851,10 +853,10 @@ func (v *liveActivityView) renderHeader(rows []liveActivityRosterRow, width int,
 // edge is the default, so only a paused feed says so.
 func (v *liveActivityView) activityHeader(width int) string {
 	left := "\x1b[1m" + v.painter.Theme.Accent() + "Activity" + terminalui.Reset
-	if v.only {
+	if v.displayingChild() {
 		rows := v.feedAgents()
-		index := slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.Agent.Name == v.selected })
-		left += terminalui.Dim + " · only " + terminalui.Undim + v.painter.Agent(v.selected) + terminalui.Dim + fmt.Sprintf(" %d/%d", index+1, len(rows)) + terminalui.Undim
+		index := slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.Agent.Name == v.displayedCaller() })
+		left += terminalui.Dim + " · only " + terminalui.Undim + v.painter.Agent(v.displayedCaller()) + terminalui.Dim + fmt.Sprintf(" %d/%d", index+1, len(rows)) + terminalui.Undim
 	}
 	right := v.status
 	if right == "" && !v.following {
@@ -1814,7 +1816,7 @@ func maxTime(a, b time.Time) time.Time {
 
 func (v *liveActivityView) footer(width int) string {
 	mode, toggle := "ALL", "a only"
-	if v.only {
+	if v.displayingChild() {
 		mode, toggle = "ONLY", "a all"
 	}
 	keys := "n/p agent · " + toggle + " · j/k scroll · End bottom"
@@ -1848,16 +1850,16 @@ func (v *liveActivityView) showAgent(step int) {
 		return
 	}
 	index := -1
-	if v.only {
-		index = slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.Agent.Name == v.selected })
+	if v.displayingChild() {
+		index = slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.Agent.Name == v.displayedCaller() })
 	}
 	index = max(-1, min(index+step, len(rows)-1))
 	v.hovered = ""
 	v.rosterManual = false
 	if index < 0 {
-		v.only = false
+		v.displayThread("/root")
 	} else {
-		v.selected, v.only = rows[index].Agent.Name, true
+		v.displayThread(rows[index].Agent.Name)
 	}
 	v.follow()
 }
@@ -1888,7 +1890,11 @@ func (v *liveActivityView) handleRosterKey(escape string, key byte) (string, boo
 	case 'k', 'p':
 		v.showAgent(-1)
 	case 'a':
-		v.only = !v.only
+		if v.displayingChild() {
+			v.displayThread("/root")
+		} else {
+			v.displayThread(v.selected)
+		}
 		v.follow()
 	}
 	return "", false

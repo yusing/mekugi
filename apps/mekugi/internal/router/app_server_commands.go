@@ -139,7 +139,7 @@ func (u *appServerUI) clearSessionPresentation() error {
 	}
 	u.statusPanel = nil
 	u.requests.Retire("main") // Retire old-thread response correlation.
-	u.childHistory, u.historyLoading = nil, nil
+	u.session.threadStates = nil
 	if err := u.request("thread/unsubscribe", map[string]any{"threadId": u.Thread}); err != nil {
 		return err
 	}
@@ -161,6 +161,7 @@ func (u *appServerUI) clearSessionPresentation() error {
 		u.agents.painter, u.agents.mainView = painter, u.view
 		u.agents.childrenOnly, u.agents.bare = true, true
 	}
+	u.sessionPresentation()
 	u.attachActivity()
 	if u.shell != nil {
 		u.shell.selection, u.shell.output = nil, nil

@@ -75,7 +75,7 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	}
 	keys("\x022")
 	paint("native-thread-child-split")
-	if u.shell.layout.diff.w == 0 || !u.agents.only {
+	if u.shell.layout.diff.w == 0 || !u.agents.displayingChild() {
 		t.Fatal("opening Diff lost the displayed child")
 	}
 	keys("\x022")
@@ -97,7 +97,7 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	u.Turn = ""
 	click("/root")
 	frame = paint("native-thread-return-main")
-	if u.agents.only || !strings.Contains(frame, "main result") || strings.Contains(frame, "Input: Main") || u.Text != "retained draft" {
+	if u.agents.displayingChild() || !strings.Contains(frame, "main result") || strings.Contains(frame, "Input: Main") || u.Text != "retained draft" {
 		t.Fatal("returning to Main lost its transcript or draft")
 	}
 	keys("\x021\r")
@@ -111,8 +111,9 @@ func TestNativeChildReferenceReturnsToMain(t *testing.T) {
 	u := selectionTestUI("child answer")
 	u.agents = newLiveActivityView()
 	u.main.agents = u.agents
+	u.main.sessionPresentation()
 	u.main.Text = "draft "
-	u.main.agents.only, u.main.agents.selected = true, "/root/reader"
+	u.main.agents.setDisplayFilter(true, "/root/reader")
 	u.main.agents.feedLeft, u.main.agents.feedTop = 1, 1
 	u.main.agents.feedRight, u.main.agents.feedRows = 40, 1
 	selectionTestDrag(t, u, 0, 0, 4, 0)
@@ -126,7 +127,7 @@ func TestNativeChildComposerSettingsEvidence(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
 	u.model, u.reasoningEffort, u.serviceTier = "parent-model", "high", "priority"
 	u.ensureShell()
-	u.agents.only, u.agents.selected = true, "/root/reader"
+	u.agents.setDisplayFilter(true, "/root/reader")
 	caption := func() string {
 		rows, _ := u.mainFrame(120, 20, 0)
 		return ansi.Strip(rows[len(rows)-1])
@@ -150,7 +151,7 @@ func TestNativeChildComposerSettingsEvidence(t *testing.T) {
 		t.Fatalf("child tier ignored model routing: %s", got)
 	}
 	u.session.collab(appServerItem{Tool: "spawnAgent", SenderThreadID: "main", ReceiverThreadIDs: []string{"spawned"}, Model: "spawn-model", ReasoningEffort: "high"}, "spawn", u.now())
-	u.agents.selected = u.session.paths["spawned"]
+	u.agents.displayThread(u.session.paths["spawned"])
 	if got := caption(); !strings.Contains(got, "spawn-model (high)") || strings.Contains(got, "priority") {
 		t.Fatalf("spawn metadata was not scoped to the selected child: %s", got)
 	}

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	"github.com/yusing/mekugi/libraries/textsanitize"
@@ -263,19 +265,17 @@ func nativeTitle(digit int, name, detail string, focused bool) string {
 }
 
 func (u *appServerUI) transcriptCaller() string {
-	if u.composerReadOnly() {
-		return u.agents.selected
-	}
-	return "/root"
+	return u.sessionPresentation().View().Displayed.Caller
 }
 
 func (u *appServerUI) composerReadOnly() bool {
-	return u.agents != nil && u.agents.only
+	return u.sessionPresentation().View().ReadOnly != sessionpresentation.Editable
 }
 
 // transcriptView selects display state without changing the input or execution owner.
 func (u *appServerUI) transcriptView() *liveActivityView {
-	if u.agents != nil && u.agents.only && u.agents.selected != "" {
+	view := u.sessionPresentation().View()
+	if u.agents != nil && view.Displayed.ID != view.Main.ID {
 		u.agents.conversation = true
 		return u.agents
 	}
@@ -382,18 +382,18 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 				detail = strings.TrimSuffix(detail, skillLabel(set)) + activityui.Underline(skillLabel(set))
 			}
 			name := "Main"
-			if u.agents.only {
-				name, detail = "Thread", u.agents.painter.Agent(u.agents.selected)
+			if u.agents.displayingChild() {
+				name, detail = "Thread", u.agents.painter.Agent(u.agents.displayedCaller())
 			}
 			title := nativeTitle(1, name, detail, u.focus == 0)
 			// The skill count ends the title, after the frame corner and a space.
 			// A truncated title has no reliable target.
-			if set := u.main.view.ActiveSkills()["Main"]; !u.agents.only && set != nil && strings.HasSuffix(ansi.Strip(detail), skillLabel(set)) && ansi.StringWidth(title)+5 <= left.w {
+			if set := u.main.view.ActiveSkills()["Main"]; !u.agents.displayingChild() && set != nil && strings.HasSuffix(ansi.Strip(detail), skillLabel(set)) && ansi.StringWidth(title)+5 <= left.w {
 				end := left.x + 2 + ansi.StringWidth(title)
 				l.mainSkills = terminalRect{end - ansi.StringWidth(skillLabel(set)), left.y, ansi.StringWidth(skillLabel(set)), 1}
 			}
 			headerRight := u.main.mainHeaderRight(left.w, u.focus == 0)
-			if u.agents.only {
+			if u.agents.displayingChild() {
 				u.main.updateHistoryHint()
 				headerRight = strings.TrimSpace(scrollLabel(u.agents) + " " + u.agents.historyHint)
 			}
@@ -495,7 +495,7 @@ func (u *terminalUI) nativeStatus() string {
 	tab := func(digit int, name, badge string, shown bool) {
 		text := fmt.Sprintf(" %d %s", digit, name)
 		switch {
-		case (u.focus == digit-1 && digit != 3 || digit == 3 && u.focus == 3) && (digit != 1 || !u.agents.only):
+		case (u.focus == digit-1 && digit != 3 || digit == 3 && u.focus == 3) && (digit != 1 || !u.agents.displayingChild()):
 			text = "\x1b[7;1m" + text + badge + " \x1b[27;22m"
 		case shown:
 			text += badge + " "
@@ -519,14 +519,14 @@ func (u *terminalUI) nativeStatus() string {
 	if responding > 0 {
 		agentsBadge = terminalui.Amber + superscript(responding) + "\x1b[39m"
 	}
-	tab(1, "Main", "", !u.agents.only)
+	tab(1, "Main", "", !u.agents.displayingChild())
 	tab(2, "Diff", diffBadge, u.diffOpen)
 	tab(3, "Agents", agentsBadge, true)
 	if u.main != nil && u.main.interruptLocked {
 		tabs.WriteString("  " + terminalui.Amber + "Locked · /unlock" + terminalui.Reset)
 	}
 	filter := "child"
-	if u.agents.only {
+	if u.agents.displayingChild() {
 		filter = "Main"
 	}
 	var hints terminalHints
@@ -557,7 +557,7 @@ func (u *terminalUI) nativeStatus() string {
 func (u *terminalUI) selectNativePane(pane int) {
 	switch pane {
 	case 0:
-		u.agents.only = false
+		u.agents.displayThread("/root")
 		u.focus = 0
 	case 1:
 		u.diffOpen = !u.diffOpen
@@ -582,7 +582,7 @@ func superscript(n int) string {
 
 // showRosterPick switches presentation only; Main retains its composer and host identity.
 func (u *terminalUI) showRosterPick(only bool, selected string) {
-	if u.main != nil && (u.agents.only != only || u.agents.selected != selected) {
+	if u.main != nil && (u.agents.displayingChild() != only || u.agents.selected != selected) {
 		u.selection = nil
 		u.agents.runs = nil
 	}

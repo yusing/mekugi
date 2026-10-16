@@ -60,9 +60,9 @@ func TestUISnapshotNativeBatchPlacement(t *testing.T) {
 	}
 	u.shell.preview(nativeBatchPreview("child", "/root/editor", "child"), false)
 	revealNativeDock(u.shell)
-	u.agents.only, u.agents.selected = true, "/root/editor"
+	u.agents.setDisplayFilter(true, "/root/editor")
 	paint("native-batch-child-replaces-transcript", 140, 48)
-	u.agents.only = false
+	u.agents.setDisplayFilter(false, u.agents.selected)
 	u.shell.preview(nativeBatchPreview("main", "/root", "one", "two", "three"), false)
 	revealNativeDock(u.shell)
 	paint("native-batch-main-overflow", 140, 48)
@@ -73,7 +73,7 @@ func TestUISnapshotNativeBatchPlacement(t *testing.T) {
 	}
 	paint("native-batch-main-pinned", 140, 48)
 	paint("native-batch-short-summary", 80, 18)
-	u.agents.only, u.agents.selected = true, "/root/editor"
+	u.agents.setDisplayFilter(true, "/root/editor")
 	paint("native-batch-narrow-activity", 80, 28)
 	u.shell.preview(previewmodel.Preview{ID: "child", Workspace: "/workspace"}, false)
 	revealNativeDock(u.shell)
@@ -220,7 +220,7 @@ func TestNativeBatchLivePTY(t *testing.T) {
 	if !strings.Contains(frame, "MAIN_TRANSCRIPT") || strings.Contains(frame, "child_line_40") {
 		t.Fatal("batch close affected another caller or failed to restore transcript")
 	}
-	u.agents.only, u.agents.selected = true, "/root/editor"
+	u.agents.setDisplayFilter(true, "/root/editor")
 	if frame = paint(140, 48); !strings.Contains(frame, "child_line_40") {
 		t.Fatal("child preview was lost while viewing Main")
 	}

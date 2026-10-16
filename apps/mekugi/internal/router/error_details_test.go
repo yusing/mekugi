@@ -33,7 +33,7 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 			thread, view, focus := "main", u.view, 0
 			if child {
 				thread, view, focus = "child", u.agents, 0
-				u.agents.only, u.agents.selected = true, "/root/worker"
+				u.agents.setDisplayFilter(true, "/root/worker")
 				activity.observe("child", "main", "/root/worker", true)
 				u.session.registerThread(appServerThreadInfo{ID: "child", AgentNickname: "worker"})
 			}
@@ -62,7 +62,7 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 				t.Fatal("full evidence or bounded preview lost, or repeated failure duplicated")
 			}
 			if child {
-				view.only, view.selected = true, "/root/worker"
+				view.setDisplayFilter(true, "/root/worker")
 			}
 			feed := view.renderFeed(80, 40)
 			row := slices.IndexFunc(feed.snippets, func(s liveActivitySnippet) bool { return s != liveActivitySnippet{} })
@@ -147,13 +147,13 @@ func TestErrorDetailsRestoredRollout(t *testing.T) {
 
 func TestErrorDetailsKeyboardPaginationAndFiltering(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.agents.only, u.agents.selected = true, "/root/worker"
+	u.agents.setDisplayFilter(true, "/root/worker")
 	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
 		{Seq: 1, Agent: "/root/a", Kind: "error", Text: "old error"},
 		{Seq: 2, Agent: "/root/b", Kind: "error", Text: "other agent"},
 		{Seq: 3, Agent: "/root/a", Kind: "error", Text: "new error"},
 	}})
-	u.agents.only, u.agents.selected = true, "/root/a"
+	u.agents.setDisplayFilter(true, "/root/a")
 	u.shell.openErrors()
 	if u.shell.output == nil || len(u.shell.output.pages) != 2 || u.shell.output.page != 1 {
 		t.Fatal("keyboard error details lost selection or filter")
@@ -207,13 +207,13 @@ func TestErrorDetailsTerminalClick(t *testing.T) {
 			view, agent := u.view, "Main"
 			if child {
 				view, agent = u.agents, "/root/worker"
-				u.agents.only, u.agents.selected = true, "/root/worker"
+				u.agents.setDisplayFilter(true, "/root/worker")
 			}
 			full := "Failed: " + strings.Repeat("diagnostic ", 40) + "\nrejected: forced cleanup is not permitted"
 			view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: agent, Kind: "error", Text: full}}})
 			u.Text = "preserve draft"
 			if child {
-				u.agents.only, u.agents.selected = true, agent
+				u.agents.setDisplayFilter(true, agent)
 			}
 			screen := vt.NewEmulator(120, 40)
 			defer screen.Close()

@@ -129,7 +129,7 @@ func TestAppServerActiveWorkRestoresClosedSpans(t *testing.T) {
 func TestUISnapshotNativeRosterActiveWork(t *testing.T) {
 	u, at := newActiveWorkTestUI(t)
 	u.agents.painter.Theme = diffrender.DarkTheme
-	u.agents.only, u.agents.selected = false, "/root/worker"
+	u.agents.setDisplayFilter(false, "/root/worker")
 	for _, thread := range []string{"main", "child"} {
 		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "first"}})
 	}

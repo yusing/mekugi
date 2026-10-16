@@ -48,6 +48,7 @@ func (u *appServerUI) applyThreadMetadata(m appserver.Message) bool {
 
 // Late metadata changes the display name, not the identity of retained items.
 func (u *appServerUI) renameThreadActivity(old, name string) {
+	u.sessionPresentation().RenameCaller(old, name)
 	if old == name {
 		return
 	}

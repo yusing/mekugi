@@ -183,7 +183,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	for range 12 {
 		p.advance()
 	}
-	p.ui.agents.only, p.ui.agents.selected = true, "/root/explorer"
+	p.ui.agents.setDisplayFilter(true, "/root/explorer")
 	render("grok thinking", "• Thinking…")
 	p.until("explorer thought")
 	render("grok thought readable", "• Thought")
@@ -200,7 +200,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		t.Fatal("collapsed reasoning lost its complete dialog body")
 	}
 	p.until("three agents edit at once")
-	p.ui.agents.only = false
+	p.ui.agents.setDisplayFilter(false, p.ui.agents.selected)
 	p.ui.shell.liveHidden = false
 	frame := render("caller-local live previews", "LIVE ·", "3 Agents", "2 Diff ●")
 	if strings.Contains(frame, "3 Activity ─") && strings.Contains(frame, "no captured edits yet") {
@@ -307,7 +307,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		}
 	}
 	render("roster pick", "1 Thread", "tester")
-	if !shell.diffOpen || !shell.agents.only || shell.agents.selected != "/root/tester" {
+	if !shell.diffOpen || !shell.agents.displayingChild() || shell.agents.selected != "/root/tester" {
 		t.Fatal("clicking a roster agent did not show its Activity")
 	}
 }
@@ -1356,7 +1356,7 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 			view, item := u.view, "patch-main"
 			if activity {
 				view, item = u.agents, "patch-tester"
-				view.selected, view.only = "/root/tester", true
+				view.setDisplayFilter(true, "/root/tester")
 			}
 			u.shell.diffOpen = activity
 			paint := func() {

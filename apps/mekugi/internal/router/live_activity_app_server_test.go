@@ -201,7 +201,7 @@ func TestAppServerActivityReasoningSummaries(t *testing.T) {
 	if !strings.Contains(retained, "Updated public summary") || !strings.Contains(retained, "Later public summary") || strings.Contains(retained, "Main only summary") {
 		t.Fatalf("Activity lost earlier reasoning or included Main: %q", retained)
 	}
-	u.agents.only, u.agents.selected = true, "/root/reviewer"
+	u.agents.setDisplayFilter(true, "/root/reviewer")
 	detail := strings.Join(u.agents.renderFeed(80, 20).lines, "\n")
 	if !strings.Contains(detail, "Updated public summary") || strings.Contains(detail, "Reasoning summary") {
 		t.Fatal("detailed summary must remain visible, not a labelled card")
@@ -261,7 +261,7 @@ func TestAppServerActivityGroupsAgentRun(t *testing.T) {
 		{Seq: 2, Agent: "/root/reviewer", Kind: "reply", message: &activityMessage{from: "/root/reviewer", to: "/root", text: "Link checked."}, Observed: start.Add(10 * time.Second)},
 		{Seq: 3, Agent: "/root/reviewer", Kind: "text", Text: "Checking the next item.", Observed: start.Add(20 * time.Second)},
 	}, nil)
-	u.agents.only, u.agents.selected = true, "/root/reviewer"
+	u.agents.setDisplayFilter(true, "/root/reviewer")
 	var plain []string
 	for _, line := range u.agents.renderFeed(90, 40).lines {
 		plain = append(plain, strings.TrimRight(ansi.Strip(line), " "))

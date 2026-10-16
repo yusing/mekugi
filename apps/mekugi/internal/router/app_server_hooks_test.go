@@ -136,7 +136,7 @@ func TestAppServerHookOpenDialogTracksCompletion(t *testing.T) {
 
 func TestAppServerHookPagedChildWithoutTurns(t *testing.T) {
 	u, _ := newPagedHistoryUI(t)
-	h := u.historyLoading
+	h := u.historyLoading()
 	observation := history.HookObservation{Run: history.HookRun{ID: "session-start-hook", EventName: "sessionStart", Status: "completed"},
 		At: time.Unix(100, 0), Completed: true, Output: "feedback: session ready"}
 	entry := u.session.hookEntry("child", observation, false)

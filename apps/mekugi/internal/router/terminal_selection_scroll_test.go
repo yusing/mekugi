@@ -48,7 +48,7 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 				}
 			}
 			if surface == "Activity" {
-				u.agents.only, u.agents.selected = true, "Main"
+				u.agents.setDisplayFilter(true, "Main")
 			}
 			paint()
 			x, y := -1, -1

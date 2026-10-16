@@ -171,7 +171,7 @@ func TestLiveActivityRendersSpawnAssignment(t *testing.T) {
 		Seq: 1, Agent: "/root/explorer", Kind: "start", start: nativeSubagentStart(&request), Observed: now,
 		assignment: &activityAssignment{id: "task-1", from: "/root", to: "/root/explorer", text: "Inspect parser.\n\n- Preserve behavior."},
 	}}})
-	view.only, view.selected = true, "/root/explorer"
+	view.setDisplayFilter(true, "/root/explorer")
 	frame := strings.Join(plainLines(view.render(100, 20, now)), "\n")
 	for _, want := range []string{"Started", "gpt-effective", "Inspect parser.", "Preserve behavior."} {
 		if !strings.Contains(frame, want) {
@@ -299,21 +299,21 @@ func TestLiveActivityRosterPointerSelection(t *testing.T) {
 			t.Fatalf("%v: agent b has no clickable row", size)
 		}
 		view.handleMouse('h', hit.row, hit.first)
-		if view.hovered != "/root/b" || view.only {
+		if view.hovered != "/root/b" || view.displayingChild() {
 			t.Fatalf("%v: hover changed filter: %+v", size, view)
 		}
 		view.handleMouse('\r', hit.row, hit.first)
-		if !view.only || view.selected != "/root/b" || view.visible(activityPaneEntry{Agent: "/root/a"}) {
+		if !view.displayingChild() || view.selected != "/root/b" || view.visible(activityPaneEntry{Agent: "/root/a"}) {
 			t.Fatalf("%v: click did not filter b", size)
 		}
 		view.render(size[0], size[1], now)
 		view.handleMouse('\r', hit.row, hit.first)
-		if view.only || !view.visible(activityPaneEntry{Agent: "/root/a"}) {
+		if view.displayingChild() || !view.visible(activityPaneEntry{Agent: "/root/a"}) {
 			t.Fatalf("%v: second click did not restore all", size)
 		}
 		view.render(size[0], size[1], now)
 		view.handleMouse('\r', 1, 1)
-		if view.only || view.hovered != "" {
+		if view.displayingChild() || view.hovered != "" {
 			t.Fatalf("%v: header click changed filter", size)
 		}
 	}
@@ -487,7 +487,7 @@ func TestLiveActivityReviewRegressions(t *testing.T) {
 	// Narrow stacked rosters and three-row panes stay in bounds and keep the agents.
 	view := liveActivityTestView("/root/b", "/root/c")
 	for _, only := range []bool{false, true} {
-		view.only = only
+		view.setDisplayFilter(only, view.selected)
 		for width := 10; width <= 24; width++ {
 			for _, line := range view.render(width, 12, time.Now()) {
 				if ansi.StringWidth(line) > width-1 {
@@ -496,7 +496,7 @@ func TestLiveActivityReviewRegressions(t *testing.T) {
 			}
 		}
 	}
-	view.only = false
+	view.setDisplayFilter(false, view.selected)
 	if lines := plainLines(view.render(40, 3, time.Now())); len(lines) != 3 || !strings.Contains(lines[1], "b") || !strings.Contains(lines[1], "c") {
 		t.Fatalf("three-row pane = %q", lines)
 	}

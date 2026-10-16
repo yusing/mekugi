@@ -30,7 +30,8 @@ func (u *appServerUI) expireNotice(now time.Time) bool {
 
 // stateLabel is the session state followed by any composer notice.
 func (u *appServerUI) stateLabel(now time.Time) string {
-	if u.composerReadOnly() {
+	view := u.sessionPresentation().View()
+	if view.Displayed.ID != view.Main.ID {
 		return "Read-only"
 	}
 	label := u.sessionLabel(now)
@@ -75,7 +76,8 @@ func (u *appServerUI) stateLabel(now time.Time) string {
 // Composer errors stay presentation-only. Model errors retain their transcript
 // entries; both surfaces use the same preview and full error dialog.
 func (u *appServerUI) composerErrorText() string {
-	if u.composerReadOnly() {
+	view := u.sessionPresentation().View()
+	if view.Displayed.ID != view.Main.ID {
 		return ""
 	}
 	var parts []string

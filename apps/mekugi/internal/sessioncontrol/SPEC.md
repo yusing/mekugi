@@ -71,6 +71,7 @@ replay and session switching never revive it. Codex still owns compaction and
 execution. Composer command and cancellation behavior is specified in the
 [native UI contract](../../../../doc/spec/native_ui.md).
 
-Conversation presentation, composer payload construction, and feature-specific
-question/approval handling remain in router integration. This owner supplies
-admission and settlement without replacing their payload or display owners.
+[Session presentation](../sessionpresentation/SPEC.md) owns displayed-thread and
+child-history intent state. This owner issues the resulting observational reads
+without changing execution or input identity. Composer payload construction and
+feature-specific question/approval handling retain their own integration.

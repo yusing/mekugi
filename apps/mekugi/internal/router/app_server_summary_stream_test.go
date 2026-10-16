@@ -19,7 +19,7 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 			u.view.clock, u.agents.clock = u.clock, u.clock
 			u.view.painter.Theme, u.agents.painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
 			appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-			u.agents.only, u.agents.selected = false, "/root/worker"
+			u.agents.setDisplayFilter(false, "/root/worker")
 			view := u.view
 			if thread == "child" {
 				view = u.agents

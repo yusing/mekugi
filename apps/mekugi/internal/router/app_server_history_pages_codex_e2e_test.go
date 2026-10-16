@@ -218,7 +218,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	}
 	drainHistoryLoader(t, fresh)
 	fresh.startSkillHistory()
-	h := fresh.childHistory[forked.Thread.ID]
+	h := fresh.childHistory(forked.Thread.ID)
 	for h.skills.request != "" {
 		if err := fresh.message(awaitHistoryRPC(t, client, h.skills.request)); err != nil {
 			t.Fatal(err)
@@ -255,8 +255,8 @@ func awaitHistoryRPC(t *testing.T, client *appserver.Client, id string) appserve
 func drainHistoryLoader(t *testing.T, u *appServerUI) int {
 	t.Helper()
 	total := 0
-	for u.historyLoading != nil {
-		m := awaitHistoryRPC(t, u.client, u.historyLoading.requestID)
+	for u.historyLoading() != nil {
+		m := awaitHistoryRPC(t, u.client, u.historyLoading().state.RequestID())
 		total += len(m.Result)
 		if err := u.message(m); err != nil {
 			t.Fatal(err)

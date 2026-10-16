@@ -80,6 +80,7 @@ func (p *uiReplayPlayback) close() {
 	p.ui.shell.diff.close()
 	p.ui.shell.diffScreen.Close()
 	p.ui.session.state = scope.Store{}
+	p.ui.session.threadStates = nil
 }
 
 func (p *uiReplayPlayback) apply(e playback.Event) error {
