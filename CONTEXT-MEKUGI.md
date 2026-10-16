@@ -7,7 +7,7 @@ behavioral contract. UI presentation packages and router session integration are
 
 | Behavior | Authoritative area |
 | --- | --- |
-| Workspace enumeration and import-boundary validation | `apps/mekugi/cmd/workspace`; membership in `go.work` |
+| Workspace enumeration, import boundaries and generated module reference | `apps/mekugi/cmd/workspace`; membership in `go.work`, descriptors in module roots, selected composition in `apps/mekugi/internal/composition/modules.go`; `make check-generated` checks reference drift |
 | Application composition and initial executable bindings | `apps/mekugi/internal/composition`, `contracts`, `backends/codex/binding`; scripted harness in `testsupport/moduletest` |
 | Captured diff model, composition, merge and file status | `libraries/diffmodel` owns composition, grouping and alignment; `modules/changehistory/presentation` owns selected retained review; `libraries/diffrender` owns shared terminal geometry and syntax; `modules/changehistory/terminalview` paints saved changes |
 | Shared source capability and shell-header semantics | `libraries/sourceanalysis/sourcekind`, `libraries/commandanalysis/shellsyntax` |

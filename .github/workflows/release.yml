@@ -52,6 +52,9 @@ jobs:
       - name: Test offline suite
         if: matrix.platform == 'linux_amd64'
         run: make test TEST_FLAGS=-count=1
+      - name: Check generated module reference
+        if: matrix.platform == 'linux_amd64'
+        run: make check-generated
       - name: Install lint tools
         if: matrix.platform == 'linux_amd64'
         run: |

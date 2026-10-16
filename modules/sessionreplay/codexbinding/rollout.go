@@ -8,10 +8,9 @@ import (
 
 type Bindings = binding.Bindings[*playback.Service]
 
-var Codex = Bindings{Requires: []capability.Requirement{{Mechanism: capability.Rollout, Required: true}}, Register: Bind}
-
-func Bind(registrar binding.Registrar, service *playback.Service) error {
-	return registrar.Rollout(func(source binding.RolloutSource) error {
+var Codex = Bindings{
+	Requires: []capability.Requirement{{Mechanism: capability.Rollout, Required: true}},
+	Rollout: func(service *playback.Service, source binding.RolloutSource) error {
 		return service.BindSource(playback.Decoder{Read: source.Replay, Identity: source.Identity})
-	})
+	},
 }

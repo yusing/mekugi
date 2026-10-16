@@ -21,7 +21,9 @@ type testDescriptor = module.Descriptor[struct{}, *testService, binding.Bindings
 
 func descriptor(id module.ID, specs ...command.Contribution) testDescriptor {
 	definitions := make([]command.Definition[*testService], len(specs))
+	frontends := make([]command.Spec, len(specs))
 	for i, spec := range specs {
+		frontends[i] = spec.Spec
 		definitions[i] = command.Definition[*testService]{Spec: spec.Spec, ObserveRead: spec.ObserveRead}
 		if spec.Run != nil {
 			definitions[i].Run = func(_ *testService, ctx context.Context, request command.Request) (command.Output, error) {
@@ -35,14 +37,7 @@ func descriptor(id module.ID, specs ...command.Contribution) testDescriptor {
 		New: func(_ struct{}, slots module.Slots) (*testService, error) {
 			return &testService{string(id), slots.Commands}, nil
 		},
-		Bindings: binding.Bindings[*testService]{Register: func(r binding.Registrar, _ *testService) error {
-			for _, spec := range specs {
-				if err := r.Frontend(spec.Spec); err != nil {
-					return err
-				}
-			}
-			return nil
-		}},
+		Bindings: binding.Bindings[*testService]{Frontends: frontends},
 	}
 }
 func emptyDeps() struct{} { return struct{}{} }

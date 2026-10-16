@@ -10,7 +10,7 @@ type Bindings = binding.Bindings[sudo.Service]
 
 var Codex = Bindings{
 	Requires: []capability.Requirement{{Mechanism: capability.ShellApproval, Required: true}},
-	Register: func(r binding.Registrar, service sudo.Service) error {
-		return r.ShellApproval(binding.ShellApproval{Kind: binding.Sudo, NewSession: func() binding.CommandGrants { return service.NewSession() }})
+	ShellApproval: func(service sudo.Service) binding.ShellApproval {
+		return binding.ShellApproval{Kind: binding.Sudo, NewSession: func() binding.CommandGrants { return service.NewSession() }}
 	},
 }

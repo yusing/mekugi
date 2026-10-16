@@ -20,59 +20,57 @@ import (
 
 type Bindings = binding.Bindings[*query.Service]
 
-var Codex = Bindings{Requires: []capability.Requirement{{Mechanism: capability.Rollout, Required: true}}, Register: Bind}
+var Codex = Bindings{Requires: []capability.Requirement{{Mechanism: capability.Rollout, Required: true}}, Rollout: bindRollout}
 
-func Bind(registrar binding.Registrar, service *query.Service) error {
-	return registrar.Rollout(func(source binding.RolloutSource) error {
-		read := source.Inspect
-		return service.BindSource(func(ctx context.Context, path string, observe func(inspection.Event) error) (query.Rollout, error) {
-			var observer func(binding.RolloutEvent) error
-			if observe != nil {
-				observer = func(event binding.RolloutEvent) error { return observe(inspection.Event(event)) }
+func bindRollout(service *query.Service, source binding.RolloutSource) error {
+	read := source.Inspect
+	return service.BindSource(func(ctx context.Context, path string, observe func(inspection.Event) error) (query.Rollout, error) {
+		var observer func(binding.RolloutEvent) error
+		if observe != nil {
+			observer = func(event binding.RolloutEvent) error { return observe(inspection.Event(event)) }
+		}
+		decoded, err := read(ctx, path, observer)
+		if err != nil {
+			return query.Rollout{}, err
+		}
+		result := query.Rollout{ThreadID: decoded.ThreadID, Cwd: decoded.Cwd, Models: decoded.Models}
+		var origin string
+		_ = json.Unmarshal(decoded.Source, &origin, jsonv1.DefaultOptionsV1())
+		switch origin {
+		case "cli":
+			result.Origin = "interactive"
+		case "exec":
+			result.Origin = "batch"
+		}
+		if result.Origin == "" {
+			var child struct {
+				Subagent jsonv1.RawMessage `json:"subagent"`
 			}
-			decoded, err := read(ctx, path, observer)
-			if err != nil {
-				return query.Rollout{}, err
+			if json.Unmarshal(decoded.Source, &child, jsonv1.DefaultOptionsV1()) == nil && len(child.Subagent) > 0 {
+				result.Origin = "child"
 			}
-			result := query.Rollout{ThreadID: decoded.ThreadID, Cwd: decoded.Cwd, Models: decoded.Models}
-			var origin string
-			_ = json.Unmarshal(decoded.Source, &origin, jsonv1.DefaultOptionsV1())
-			switch origin {
-			case "cli":
-				result.Origin = "interactive"
-			case "exec":
-				result.Origin = "batch"
+		}
+		for _, call := range decoded.Calls {
+			tool := call.Item.Name
+			if call.Item.Namespace != "" {
+				tool = call.Item.Namespace + "." + tool
 			}
-			if result.Origin == "" {
-				var child struct {
-					Subagent jsonv1.RawMessage `json:"subagent"`
-				}
-				if json.Unmarshal(decoded.Source, &child, jsonv1.DefaultOptionsV1()) == nil && len(child.Subagent) > 0 {
-					result.Origin = "child"
+			projected := query.Call{ID: call.Item.CallID, Tool: tool, Input: sessionInspectionPayload(call.Item), Workspace: call.Workspace, Timestamp: call.Timestamp, Model: call.Model, Line: call.Line, Evidence: callEvidence{call}}
+			if len(call.Outputs) != 0 {
+				projected.HasOutput = true
+				output := call.Outputs[len(call.Outputs)-1].Output
+				if json.Unmarshal(output, &projected.Output, jsonv1.DefaultOptionsV1()) != nil {
+					projected.Output = string(output)
 				}
 			}
-			for _, call := range decoded.Calls {
-				tool := call.Item.Name
-				if call.Item.Namespace != "" {
-					tool = call.Item.Namespace + "." + tool
+			for _, output := range call.Outputs {
+				if strings.Contains(string(output.Output), "read: incomplete; next_call: mread ") {
+					projected.ReadContinuation = true
 				}
-				projected := query.Call{ID: call.Item.CallID, Tool: tool, Input: sessionInspectionPayload(call.Item), Workspace: call.Workspace, Timestamp: call.Timestamp, Model: call.Model, Line: call.Line, Evidence: callEvidence{call}}
-				if len(call.Outputs) != 0 {
-					projected.HasOutput = true
-					output := call.Outputs[len(call.Outputs)-1].Output
-					if json.Unmarshal(output, &projected.Output, jsonv1.DefaultOptionsV1()) != nil {
-						projected.Output = string(output)
-					}
-				}
-				for _, output := range call.Outputs {
-					if strings.Contains(string(output.Output), "read: incomplete; next_call: mread ") {
-						projected.ReadContinuation = true
-					}
-				}
-				result.Calls = append(result.Calls, projected)
 			}
-			return result, nil
-		})
+			result.Calls = append(result.Calls, projected)
+		}
+		return result, nil
 	})
 }
 

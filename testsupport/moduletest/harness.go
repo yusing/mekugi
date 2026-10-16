@@ -50,10 +50,8 @@ func New[D, S any, B interface {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if backend.Register != nil {
-		if err := backend.Register(script, service); err != nil {
-			t.Fatal(err)
-		}
+	if err := backend.Register(script, service); err != nil {
+		t.Fatal(err)
 	}
 	if descriptor.Stop != nil {
 		t.Cleanup(func() {

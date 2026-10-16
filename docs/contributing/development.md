@@ -21,6 +21,11 @@ that member with the workspace enabled. Local modules are released together and
 resolved by `go.work`, not unpublished version requirements or local replacements.
 See [workspace ownership](../contracts/composition.md).
 
+The [module reference](../reference/modules.md) is generated from workspace
+descriptors, binding declarations and composition. `make generate` refreshes it
+alongside the other generated assets. `make check-generated` checks the reference
+without rewriting it; CI runs the same check.
+
 Interpreter and query fixtures use Node.js/ripgrep; lint needs `golangci-lint`/`deadcode` and installs neither.
 Focus tests with `TEST_PACKAGES`/`TEST_RUN`/`TEST_FLAGS`; `-count=1` bypasses caching.
 Make builds use `-trimpath` so unchanged packages reuse the Go build cache across

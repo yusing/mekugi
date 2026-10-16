@@ -33,7 +33,7 @@ func testInspector(metrics *evidence.Service, diagnostics *capture.Service) *que
 	if err != nil {
 		panic(err)
 	}
-	if err := codexbinding.Bind(new(binding.Registry), service); err != nil {
+	if err := codexbinding.Codex.Register(new(binding.Registry), service); err != nil {
 		panic(err)
 	}
 	return service

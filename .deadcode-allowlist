@@ -21,3 +21,6 @@ github.com/yusing/mekugi/libraries/commandanalysis.ExecCommandArguments
 
 # Reserved MCP endpoint: libraries/mcptransport/SPEC.md.
 github.com/yusing/mekugi/libraries/mcptransport.Start
+
+# Workspace reference collector imports descriptors from generated Go source.
+github.com/yusing/mekugi/contracts/module.Descriptor.Reference

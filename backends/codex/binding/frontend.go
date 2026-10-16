@@ -23,12 +23,7 @@ type Binder interface {
 	Capability(capability.Mechanism) capability.Result
 }
 
-type Bindings[S any] struct {
-	Requires []capability.Requirement
-	Register func(Registrar, S) error
-}
-
-// Registry collects composition-ordered bindings without executing them.
+// Registry validates and retains composition-ordered Codex connections.
 type Registry struct {
 	guards      []ShellApproval
 	commands    []command.Spec

@@ -46,11 +46,9 @@ func TestConstructedCommandBindsServiceAndDependenciesForEarlierHost(t *testing.
 			}
 			return &service{dependency: d, value: "constructed service"}, nil
 		},
-		Start: func(_ context.Context, s *service) error { s.started = true; return nil },
-		Stop:  func(_ context.Context, s *service) error { s.started = false; return nil },
-		Bindings: binding.Bindings[*service]{Register: func(r binding.Registrar, _ *service) error {
-			return r.Frontend(spec)
-		}},
+		Start:    func(_ context.Context, s *service) error { s.started = true; return nil },
+		Stop:     func(_ context.Context, s *service) error { s.started = false; return nil },
+		Bindings: binding.Bindings[*service]{Frontends: []command.Spec{spec}},
 	}, base.Value)
 	runtime, err := c.Activate(t.Context(), new(binding.Registry))
 	if err != nil {

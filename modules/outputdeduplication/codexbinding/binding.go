@@ -10,15 +10,13 @@ type Bindings = binding.Bindings[projection.Service]
 
 var Codex = Bindings{
 	Requires: []capability.Requirement{{Mechanism: capability.InputProjection, Required: true}},
-	Register: Bind,
-}
-
-func Bind(registrar binding.Registrar, service projection.Service) error {
-	return registrar.InputProjection(binding.InputProjection{
-		Name: "outputdeduplication",
-		Prepare: func(input []byte) binding.PreparedInputProjection {
-			parts := duplicateOutputHostParts(input)
-			return func(input []byte) binding.ProjectionResult { return apply(service, input, parts) }
-		},
-	})
+	InputProjection: func(service projection.Service) binding.InputProjection {
+		return binding.InputProjection{
+			Name: "outputdeduplication",
+			Prepare: func(input []byte) binding.PreparedInputProjection {
+				parts := duplicateOutputHostParts(input)
+				return func(input []byte) binding.ProjectionResult { return apply(service, input, parts) }
+			},
+		}
+	},
 }

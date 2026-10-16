@@ -10,15 +10,13 @@ type Bindings = binding.Bindings[naming.Service]
 
 var Codex = Bindings{
 	Requires: []capability.Requirement{{Mechanism: capability.ThreadNaming, Required: true}},
-	Register: Bind,
-}
-
-func Bind(registrar binding.Registrar, service naming.Service) error {
-	return registrar.SessionNaming(binding.SessionNaming{
-		NewThread: func(name string, hasTurns bool) binding.ThreadNaming {
-			return thread{service.NewThread(name, hasTurns)}
-		},
-	})
+	SessionNaming: func(service naming.Service) binding.SessionNaming {
+		return binding.SessionNaming{
+			NewThread: func(name string, hasTurns bool) binding.ThreadNaming {
+				return thread{service.NewThread(name, hasTurns)}
+			},
+		}
+	},
 }
 
 type thread struct{ *naming.State }

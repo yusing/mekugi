@@ -10,7 +10,7 @@ type Bindings = binding.Bindings[remote.Service]
 
 var Codex = Bindings{
 	Requires: []capability.Requirement{{Mechanism: capability.ShellApproval, Required: true}},
-	Register: func(r binding.Registrar, service remote.Service) error {
-		return r.ShellApproval(binding.ShellApproval{Kind: binding.RemoteWrite, NewSession: func() binding.CommandGrants { return service.NewSession() }})
+	ShellApproval: func(service remote.Service) binding.ShellApproval {
+		return binding.ShellApproval{Kind: binding.RemoteWrite, NewSession: func() binding.CommandGrants { return service.NewSession() }}
 	},
 }

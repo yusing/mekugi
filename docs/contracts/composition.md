@@ -25,6 +25,10 @@ list before construction: unique identities and command names, dependency
 presence and order, lifecycle consistency, and required capabilities. Optional
 unavailable mechanisms remain explicit gaps.
 
+Codex bindings declare their supported connection families. The backend registers
+those declarations at activation; capability requirements remain separate from
+which connections a module declares.
+
 Typed dependency closures resolve earlier handles. Constructors assemble state
 without acquiring resources. Startup acquires invocation resources after
 construction and binding succeed; shutdown and failed startup drain in reverse
@@ -63,6 +67,19 @@ import terminal libraries, feature terminal views, the terminal adapter or the
 remaining router. Session presentation reaches the backend through session
 control; headless is independent of session presentation. Frontend hosting
 cannot depend on launch, composition or the remaining router.
+
+## Generated reference
+
+The [feature module index](../reference/modules.md) derives identity, dependencies,
+lifetime, records, contribution slots and Codex connections from the declarations.
+Workspace membership comes from `go.work`; selection comes from the application's
+composition list. An unselected module appears without being activated.
+
+Collection uses ordinary Go package initialization but never invokes module
+constructors, lifecycle functions, contribution callbacks or binding factories.
+The reference describes declarations, not installed-host capability availability
+or successful runtime activation. `make generate` updates it; `make check-generated`
+detects drift without modifying files.
 
 ## Acceptance
 

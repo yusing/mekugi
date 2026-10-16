@@ -63,7 +63,7 @@ func TestHarnessOwnsTemporaryResourceLifecycle(t *testing.T) {
 				events = append(events, "construct")
 				return &service{filepath.Join(dir, "owned-resource")}, nil
 			},
-			Bindings: binding.Bindings[*service]{Requires: []capability.Requirement{{Mechanism: capability.ExecutableFrontend, Required: true}}, Register: func(r binding.Registrar, _ *service) error { return r.Frontend(spec.Spec) }},
+			Bindings: binding.Bindings[*service]{Requires: []capability.Requirement{{Mechanism: capability.ExecutableFrontend, Required: true}}, Frontends: []command.Spec{spec.Spec}},
 			Start: func(ctx context.Context, s *service) error {
 				if ctx.Err() != nil {
 					t.Fatal(ctx.Err())

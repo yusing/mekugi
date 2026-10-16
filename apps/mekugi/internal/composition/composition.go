@@ -169,10 +169,8 @@ func (c *Composition) Add[D, S any, B interface {
 		}
 		handle.value, handle.ready = service, true
 		registrar := &moduleRegistrar{binder: binder, runtime: runtime, allowed: node.commands, registered: make(map[string]bool)}
-		if backend.Register != nil {
-			if err := backend.Register(registrar, service); err != nil {
-				return err
-			}
+		if err := backend.Register(registrar, service); err != nil {
+			return err
 		}
 		if len(registrar.registered) != len(node.commands) {
 			return errors.New("executable contributions and Codex registrations differ")
