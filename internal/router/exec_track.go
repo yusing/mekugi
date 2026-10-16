@@ -66,7 +66,7 @@ type execTrack struct {
 	segments []execTrackSegment
 	created  []segmenttransport.Message
 	terminal bool // Output stays on the terminal; only statuses are reported.
-	lossy    bool // Output reports stopped at the helper's bound.
+	lossy    bool // Complete segment output is unavailable.
 	ended    bool // Report processing stopped, including transport failure.
 	closed   bool // The helper reported that all output was sent.
 	done     bool // The shell finished its script.
@@ -114,6 +114,27 @@ func (h *execTrackHub) close() {
 	h.closed = true
 	h.mu.Unlock()
 	h.transport.Close()
+}
+
+// detachOutputs ends presentation retention without ending host reporting.
+// A later attachment must use combined host output, not mistake the remaining
+// segment bytes for complete evidence.
+func (h *execTrackHub) detachOutputs() {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, track := range h.tracks {
+		for i := range track.segments {
+			segment := &track.segments[i]
+			if segment.full != nil {
+				segment.full.Release()
+				segment.full = nil
+				track.lossy, track.dirty = true, true
+			}
+		}
+	}
 }
 
 // Match shell reports before queued presentation can exhaust the startup deadline.
