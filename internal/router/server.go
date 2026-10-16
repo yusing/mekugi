@@ -666,7 +666,6 @@ type requestFinalization struct {
 	turnID                string
 	diagnosticMessage     string
 	diagnosticError       string
-	diagnosticNotice      *criticalNotice
 	streamDiagnostics     *transportcapture.Stream
 	failurePhase          requestFailurePhase
 	upstreamStatusCode    int

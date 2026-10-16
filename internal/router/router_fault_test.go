@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	"io"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
@@ -135,6 +136,28 @@ func TestRouterTransformFaultAfterCreatedEmitsActionableTerminalFailure(t *testi
 	}
 	if len(issues.entries) != 1 || issues.entries[0].count != 1 || !strings.Contains(issues.entries[0].message, message) {
 		t.Fatalf("fault did not produce exactly one actionable notice: %+v", issues.entries)
+	}
+	if pending := issues.Pending(); len(pending) != 1 || !strings.Contains(pending[0], message) {
+		t.Fatalf("transport write acknowledged an unpainted notice: %v", pending)
+	}
+	ui, _ := newAppServerTestUI()
+	ui.thread, ui.issues = metadata.ThreadID, issues
+	if ui.applyCriticalNotices() != nil {
+		t.Fatal("request notice interrupted a retrying turn")
+	}
+	appServerTestNotify(t, ui, "turn/completed", map[string]any{"threadId": metadata.ThreadID, "turn": map[string]any{"id": metadata.TurnID, "status": "failed"}})
+	delivery := ui.applyCriticalNotices()
+	if delivery == nil || !strings.Contains(ui.notice, message) {
+		t.Fatal("host-confirmed failure lost native notice delivery")
+	}
+	ui.ensureShell()
+	defer ui.shell.diffScreen.Close()
+	if err := ui.paint(io.Discard, 100, 16); err != nil {
+		t.Fatal(err)
+	}
+	delivery.finish(true)
+	if pending := issues.Pending(); len(pending) != 0 {
+		t.Fatalf("visible terminal paint did not acknowledge notice: %v", pending)
 	}
 }
 

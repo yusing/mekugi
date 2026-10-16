@@ -546,13 +546,6 @@ func (a *requestAttempt) finish(requestErr error) error {
 		})
 		deliveryErr := codexresponses.WriteEvent(a.executor.output, payload)
 		requestErr = errors.Join(requestErr, deliveryErr)
-		if deliveryErr == nil && a.executor.issues != nil {
-			a.executor.issues.mu.Lock()
-			if notice := a.finalization.diagnosticNotice; notice != nil {
-				notice.delivered = notice.count
-			}
-			a.executor.issues.mu.Unlock()
-		}
 	}
 	fields := map[string]any{
 		"event": "request_complete", "request_id": a.debugID,

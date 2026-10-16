@@ -41,8 +41,10 @@ Cleanup planning and reclaimed-storage progress remain transcript content.
 ### Delivery and recovery
 
 The bounded queue reserves a notice for one native delivery at a time and acknowledges
-it only after a successful terminal write paints its visible surface. Composer errors
-and transcript progress acknowledge independently: a visible composer can deliver its
+it only after a successful terminal write paints its visible surface. Writing a
+protocol failure event to Codex does not acknowledge user-visible notice delivery.
+Composer errors and transcript progress acknowledge independently: a visible composer
+can deliver its
 errors while transcript progress is hidden. Failed writes, hidden or replaced composer
 feedback, covering dialogs and frozen selection leave the affected notices pending.
 Retrying restores the complete error batch without duplicating transcript progress.
