@@ -160,7 +160,7 @@ func TestAppServerWaitTargetsDurableReplay(t *testing.T) {
 	if got := restored.agents.Entries[0].Source.Text; got != "Finished waiting · alpha/nested" {
 		t.Fatalf("child replay lost targets: %q", got)
 	}
-	if restored.turn != "" {
+	if restored.Turn != "" {
 		t.Fatal("replay revived main turn")
 	}
 	for _, agent := range restored.session.agents {
@@ -225,7 +225,7 @@ func TestAppServerWaitTargetsManagedRetention(t *testing.T) {
 	store := waitTargetTestOpenStore(t)
 	create := func(thread, workspace string) (string, func()) {
 		u := newAppServerSessionTestUI(t, workspace)
-		u.thread = thread
+		u.Thread = thread
 		u.session.start(thread, workspace)
 		if err := u.openWaitStore(store); err != nil {
 			t.Fatal(err)

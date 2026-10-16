@@ -83,7 +83,14 @@ type appServerUI struct {
 	feedback noticepresentation.Model
 	history  *history.Service
 	segments *reports.Service
-	appServerLifecycle
+	sessioncontrol.Live
+	unsent, queued            []composerDraft
+	inputPayloads             map[string]composerSubmission
+	shellDraft                composerDraft
+	resumeThread, resumeCwd   string
+	resumeConfig              map[string]any
+	resumeEvidence            preferences.Evidence
+	resumePending             []appserver.Message
 	replay                    *uiReplayPlayback // Offline transport controls; nil for live sessions.
 	clock                     func() time.Time  // Optional presentation clock for offline replay.
 	backendVersion            string
@@ -340,7 +347,7 @@ func startAppServerUI(activity *activitymodel.Service, service *history.Service,
 						}
 						u.dirty = true
 					case <-tick.C:
-						if len(u.unsent) > 0 && u.unsent[0].questionCall != nil && !u.proxy.emittingToolInput(u.session.cwd, u.thread) {
+						if len(u.unsent) > 0 && u.unsent[0].questionCall != nil && !u.proxy.emittingToolInput(u.session.cwd, u.Thread) {
 							if err := u.flushInput(); err != nil {
 								return err
 							}
@@ -434,15 +441,15 @@ func startAppServerUI(activity *activitymodel.Service, service *history.Service,
 		if unsent := joinDrafts(slices.Concat(u.unsent, u.queued, []composerDraft{u.draftSnapshot()})...); unsent.text != "" {
 			fmt.Fprintln(stdout, "Unsent draft:\n"+textsanitize.Safe(unsent.text, false))
 		}
-		unknown := slices.Clone(u.steers)
-		if !u.submission.committed {
-			unknown = append(unknown, u.submission)
+		unknown := slices.Clone(u.Steers())
+		if !u.Submission().Committed {
+			unknown = append(unknown, u.Submission().ID)
 		}
 		if unknown := joinDrafts(u.steerParts(unknown)...); unknown.text != "" {
 			fmt.Fprintln(stdout, "Submission outcome unknown; not automatically resent:\n"+textsanitize.Safe(unknown.text, false))
 		}
-		if u.shellCommand.pending.text != "" {
-			fmt.Fprintln(stdout, "Shell submission outcome unknown; not automatically rerun:\n"+textsanitize.Safe(u.shellCommand.pending.text, false))
+		if u.shellDraft.text != "" {
+			fmt.Fprintln(stdout, "Shell submission outcome unknown; not automatically rerun:\n"+textsanitize.Safe(u.shellDraft.text, false))
 		}
 		if err != nil {
 			c.Diagnostics.Lock()
@@ -515,8 +522,8 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	if held, err := u.holdOlderHistoryEvent(m); held || err != nil {
 		return err
 	}
-	resuming := u.resumeThread != "" && u.resumeThread != resumePickerStartup && (u.thread == "" || u.restoring != nil)
-	if (resuming || u.replacement.target != "") && m.Method != "" {
+	resuming := u.resumeThread != "" && u.resumeThread != resumePickerStartup && (u.Thread == "" || u.restoring != nil)
+	if (resuming || u.Replacement.Target != "") && m.Method != "" {
 		if hold, keep := u.holdResumeEvent(m, resuming); hold {
 			if !keep {
 				return nil
@@ -538,7 +545,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		}
 		if method == "thread/archive" {
 			if m.Error != nil {
-				u.replacement.finish()
+				u.Replacement.Finish()
 				u.setNotice("Failed to archive current thread: "+m.Error.Message, true)
 			} else {
 				u.archived, u.quitRequested = true, true
@@ -601,7 +608,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			return nil
 		}
 		if method == "thread/compact/start" {
-			u.compactResponse(m.Error != nil)
+			u.CompactResponse(m.Error != nil)
 			if m.Error != nil {
 				u.restoreDrafts(append([]composerDraft{{text: "/compact"}}, slices.Concat(u.unsent, u.queued)...)...)
 				u.unsent, u.queued = nil, nil
@@ -611,27 +618,24 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			return nil
 		}
 		if method == "compact/interrupt" {
-			u.compaction.Acknowledge(m.Error != nil)
+			u.InterruptResponse(method, m.Error != nil)
 			if m.Error != nil {
-				u.interruption.finish()
 				u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
 				u.unsent, u.queued = nil, nil
 				u.setNotice("Could not interrupt for compaction: "+m.Error.Message, true)
 				u.status = "Ready"
-				if u.turn != "" {
+				if u.Turn != "" {
 					u.status = "Working"
 				}
 			}
 			return nil
 		}
 		if method == "steer/interrupt" {
-			u.steerInterruptAckPending = false
+			restore := u.InterruptResponse(method, m.Error != nil)
 			if m.Error != nil {
-				u.sendSteersAfterInterrupt = false
-				u.interruption.finish()
 				// The completion can precede this rejection. Do not deliver
 				// steers that were moved to the local stack in that interval.
-				if u.turn == "" {
+				if restore {
 					u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
 					u.unsent, u.queued = nil, nil
 				}
@@ -642,15 +646,15 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		if method == "approval/hooks" {
 			return u.guardHookResponse(m)
 		}
-		if method == "thread/start" && u.replacement.pending() && m.Error != nil {
-			u.replacement.finish()
+		if method == "thread/start" && u.Replacement.Pending() && m.Error != nil {
+			u.Replacement.Finish()
 			u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
 			u.unsent, u.queued = nil, nil
 			u.status = "Ready"
 			u.setNotice("Could not clear session: "+m.Error.Message, true)
 			return nil
 		}
-		if method == "thread/resume" && u.replacement.target != "" && m.Error != nil {
+		if method == "thread/resume" && u.Replacement.Target != "" && m.Error != nil {
 			return u.resumeSessionFailed(m.Error.Message)
 		}
 		if m.Error != nil {
@@ -659,8 +663,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				return errors.New(u.status)
 			}
 			if method == "turn/interrupt" {
-				u.interruption.finish()
-				u.sendSteersAfterInterrupt = false
+				u.InterruptResponse(method, true)
 			}
 			return nil
 		}
@@ -708,14 +711,17 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			if result.Thread.ID == "" {
 				return fmt.Errorf("%s returned no thread identity", method)
 			}
-			if method == "thread/resume" && result.Thread.ID != cmp.Or(u.replacement.target, u.resumeThread) {
+			if method == "thread/resume" && result.Thread.ID != cmp.Or(u.Replacement.Target, u.resumeThread) {
 				return errors.New("thread/resume returned a different thread identity")
 			}
-			if u.replacement.pending() {
+			if u.Replacement.Pending() {
 				if err := u.clearSessionPresentation(); err != nil {
 					return err
 				}
-				u.leaveThread()
+				u.LeaveThread()
+				u.inputPayloads = nil
+				u.shellDraft = composerDraft{}
+				u.resumeThread, u.resumeCwd = "", ""
 				u.releaseRetired(result.Thread.ID)
 				if method == "thread/resume" {
 					// Restoration below replays events buffered during the switch.
@@ -730,7 +736,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			if err := json.Unmarshal(m.Result, &u.statusConfig); err != nil {
 				return err
 			}
-			u.thread, u.status = result.Thread.ID, "Ready"
+			u.Thread, u.status = result.Thread.ID, "Ready"
 			u.title = result.Thread.Name
 			u.titleGenerator.register(result.Thread)
 			if u.pendingTitle != "" {
@@ -740,10 +746,10 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			u.model, u.reasoningEffort, u.serviceTier = result.Model, result.ReasoningEffort, result.ServiceTier
 			if method == "thread/resume" {
-				u.settings.restoreEffort = u.takeDefaultEffort()
+				u.Settings.RestoreEffort = u.TakeResumeEffort()
 			}
 			if method == "thread/start" {
-				u.settings.restoredEffort()
+				u.Settings.RestoredEffort()
 				if u.proxy != nil {
 					u.proxy.usage.MarkNew(result.Thread.ID)
 				}
@@ -752,7 +758,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			if err := u.request("model/list", map[string]any{"includeHidden": true}); err != nil {
 				return err
 			}
-			u.session.start(u.thread, result.Thread.Cwd)
+			u.session.start(u.Thread, result.Thread.Cwd)
 			if u.notifications != nil {
 				if err := u.request("config/read", map[string]any{"cwd": result.Thread.Cwd, "includeLayers": false}); err != nil {
 					return err
@@ -769,12 +775,12 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			u.restoreContextUsage(u.session.agent("/root"), result.Thread)
 			u.restoreUsage(result.Thread)
-			u.observeCost(u.thread, u.session.agent("/root"))
+			u.observeCost(u.Thread, u.session.agent("/root"))
 			if u.agents != nil {
 				u.agents.apply(activityPaneEvent{Kind: "agents", Agents: slices.Clone(u.session.agents)})
 			}
 			if u.proxy != nil {
-				u.proxy.activity.attachNativePane(u.thread)
+				u.proxy.activity.attachNativePane(u.Thread)
 			}
 			// Resumed history is applied once the roster is read, so Main can
 			// follow child activity in order. An active snapshot keeps its
@@ -782,17 +788,17 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			if method == "thread/resume" {
 				for _, turn := range result.Thread.Turns {
 					if turn.Status == "inProgress" {
-						u.turn, u.status, u.turnStarted = turn.ID, "Working", u.now()
+						u.Turn, u.status, u.turnStarted = turn.ID, "Working", u.now()
 						u.session.agent("/root").Responding = true
 					}
 				}
 			}
 			if u.panes != nil {
 				u.ensureShell()
-				u.paneError(u.panes.open(u.shell, result.Thread.Cwd, u.thread, method == "thread/resume"))
+				u.paneError(u.panes.open(u.shell, result.Thread.Cwd, u.Thread, method == "thread/resume"))
 			}
 			if method == "thread/resume" {
-				if u.settings.restoreEffort {
+				if u.Settings.RestoreEffort {
 					// effort:null means no change in the host RPC. Its complete
 					// collaboration-mode snapshot can express a nullable effort,
 					// without replacing the host's mode or developer instructions.
@@ -801,7 +807,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 						if u.reasoningEffort != "" {
 							return errors.New("Codex did not return the settings needed to restore default reasoning")
 						}
-						u.settings.restoredEffort()
+						u.Settings.RestoredEffort()
 					} else if settings["reasoning_effort"] != nil {
 						// Codex checkpoints resume defaults before this response.
 						// Do not let that transient effort replace saved null intent
@@ -815,7 +821,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 							return err
 						}
 					} else {
-						u.settings.restoredEffort()
+						u.Settings.RestoredEffort()
 						u.reasoningEffort = ""
 					}
 				}
@@ -871,10 +877,10 @@ func (u *appServerUI) observedEvent(method string, p appServerEvent) error {
 
 	switch method {
 	case "turn/started":
-		if p.ThreadID == u.thread {
-			u.started(p.Turn.ID)
+		if p.ThreadID == u.Thread {
+			u.Started(p.Turn.ID)
 			u.status, u.alert, u.turnStarted = "Working", false, u.now()
-			if u.interruption.beforeStart || u.compaction.InterruptTarget() != "" {
+			if u.Interruption.BeforeStart || u.Compaction.InterruptTarget() != "" {
 				return u.interruptTurn()
 			}
 		}
@@ -886,8 +892,8 @@ func (u *appServerUI) observedEvent(method string, p appServerEvent) error {
 				}
 			}
 		}
-		if p.ThreadID == u.thread && p.Turn.ID == u.turn {
-			u.completed(p.Turn.Status == "completed")
+		if p.ThreadID == u.Thread && p.Turn.ID == u.Turn {
+			u.Completed(p.Turn.Status == "completed")
 			u.endSyncQuestions(p.Turn.ID)
 			u.status, u.alert = strings.ToUpper(p.Turn.Status[:min(1, len(p.Turn.Status))])+p.Turn.Status[min(1, len(p.Turn.Status)):], p.Turn.Status == "failed"
 			if p.Turn.Status == "completed" && !u.turnStarted.IsZero() {
@@ -914,7 +920,7 @@ func (u *appServerUI) observedEvent(method string, p appServerEvent) error {
 			p.ItemID = p.Item.ID
 		}
 		// Only completion commits, so one message cannot match two identical steers.
-		if p.ThreadID == u.thread && p.Item.Type == "userMessage" && method == "item/completed" {
+		if p.ThreadID == u.Thread && p.Item.Type == "userMessage" && method == "item/completed" {
 			u.commitSteer(p.Item)
 			u.commitQuestionReplies(p.Item, p.TurnID)
 		}
@@ -926,7 +932,7 @@ func (u *appServerUI) observedEvent(method string, p appServerEvent) error {
 				return nil
 			}
 		}
-		u.view.applyAppServerItem(true, u.session.cwd, u.thread, p.ThreadID, p.TurnID, p.ItemID, method, p.Delta, p.Item)
+		u.view.applyAppServerItem(true, u.session.cwd, u.Thread, p.ThreadID, p.TurnID, p.ItemID, method, p.Delta, p.Item)
 	}
 	return nil
 }
@@ -1071,7 +1077,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 	case 22:
 		u.pasteImage()
 	case 3:
-		if u.replacement.phase == replacementArchive {
+		if u.Replacement.Archiving() {
 			u.setNotice("Archiving session…", false)
 			return false, nil
 		}
@@ -1080,7 +1086,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		if u.draft != "" {
 			u.deleteDraftRange(0, len(u.draft))
 			u.setNotice("Draft cleared · Ctrl+Z restores · Ctrl-C again quits", false)
-			if u.turn != "" || u.starting() || u.submission.text != "" {
+			if u.Turn != "" || u.Starting() || u.InputPending() {
 				u.setNotice("Draft cleared · Ctrl+Z restores · Ctrl-C again interrupts", false)
 			}
 			if u.interruptLocked {
@@ -1091,7 +1097,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		if u.cancelQueuedCompact() {
 			return false, nil
 		}
-		if u.turn != "" || u.starting() || u.submission.text != "" || u.compaction.Pending() || u.compaction.ContinuationPending() || len(u.unsent)+len(u.queued) > 0 {
+		if u.Turn != "" || u.Starting() || u.InputPending() || u.Compaction.Pending() || u.Compaction.ContinuationPending() || len(u.unsent)+len(u.queued) > 0 {
 			return false, u.keyboardInterrupt()
 		}
 		if u.interruptLocked {
@@ -1104,7 +1110,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 	case '\n':
 		u.insertDraft("\n")
 	case '\r':
-		if u.replacement.phase == replacementArchive {
+		if u.Replacement.Archiving() {
 			u.setNotice("Archiving session…", false)
 			return false, nil
 		}
@@ -1152,7 +1158,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, nil
 		}
 		if text == "/quit" {
-			if u.turn == "" && !u.starting() && u.submission.text == "" {
+			if u.Turn == "" && !u.Starting() && !u.InputPending() {
 				u.draft = ""
 				return true, nil
 			}
@@ -1166,7 +1172,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /title, /compact, /clear, /resume, /archive, /btw, /status, /session, /ps, /copy, /skills, /model, /effort, /reasoning, /tier, /live, /quit", true)
 			return false, nil
 		}
-		if text == "" || u.thread == "" || u.restoring != nil {
+		if text == "" || u.Thread == "" || u.restoring != nil {
 			return false, nil
 		}
 		// A draft that cannot be sent yet stacks with earlier unsent steers.
@@ -1185,7 +1191,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		if text == "/compact" {
 			return false, u.submitCompact(true)
 		}
-		if u.shellMode() || text == "" || strings.HasPrefix(text, "/") || u.turn == "" && !u.starting() && u.submission.text == "" {
+		if u.shellMode() || text == "" || strings.HasPrefix(text, "/") || u.Turn == "" && !u.Starting() && !u.InputPending() {
 			return u.key('\r')
 		}
 		u.queued = append(u.queued, u.takeDraft())
@@ -1528,11 +1534,11 @@ func composerBorder(open, close, left, right string, width int, color string) st
 }
 
 func (u *appServerUI) sessionAnimating() bool {
-	return u.runningProcessCount() > 0 || u.btw != nil && (u.btw.busy || u.btw.starting) || !u.alert && (u.turn != "" || u.starting() || u.submission.text != "" || u.restoring != nil || u.thread == "")
+	return u.runningProcessCount() > 0 || u.btw != nil && (u.btw.busy || u.btw.starting) || !u.alert && (u.Turn != "" || u.Starting() || u.InputPending() || u.restoring != nil || u.Thread == "")
 }
 
 func (u *appServerUI) sessionLabel(now time.Time) string {
-	if u.replacement.phase == replacementArchive {
+	if u.Replacement.Archiving() {
 		return activityui.StatusPulse("Archiving session…", now, u.view.painter.Colors) + terminalui.Reset
 	}
 	status := strings.ReplaceAll(textsanitize.Safe(u.status, false), "\n", " ")
@@ -1541,10 +1547,10 @@ func (u *appServerUI) sessionLabel(now time.Time) string {
 		return ""
 	case u.alert:
 		return terminalui.Red + "✗ " + activityui.ErrorPreview(u.status) + terminalui.Reset
-	case u.turn != "":
+	case u.Turn != "":
 		label := "\x1b[39m◐ " + activityui.StatusPulse(status, now, u.view.painter.Colors) + terminalui.Reset
 		if status == "Working" {
-			if u.shellCommand.standalone() {
+			if u.Shell.Standalone() {
 				status = "Running shell"
 			} else if u.compacting != nil {
 				status = "Compacting context"
@@ -1557,7 +1563,7 @@ func (u *appServerUI) sessionLabel(now time.Time) string {
 			label += terminalui.Dim + " " + activityui.FormatDuration(now.Sub(u.turnStarted)) + terminalui.Undim
 		}
 		return label
-	case u.starting() || u.submission.text != "" || u.restoring != nil || u.thread == "":
+	case u.Starting() || u.InputPending() || u.restoring != nil || u.Thread == "":
 		return activityui.StatusPulse(status, now, u.view.painter.Colors) + terminalui.Reset
 	}
 	// Idle states use default text; the border color would otherwise carry over.
@@ -1647,8 +1653,8 @@ func (u *appServerUI) applyObservedActivity() {
 		u.agents.apply(activityPaneEvent{Kind: "agents", Agents: slices.Clone(u.session.agents)})
 		u.dirty = true
 	}
-	entries := u.proxy.activity.takeNativeActivity(u.thread)
-	for _, start := range u.proxy.activity.takeRequestStarts(u.thread) {
+	entries := u.proxy.activity.takeNativeActivity(u.Thread)
+	for _, start := range u.proxy.activity.takeRequestStarts(u.Thread) {
 		entries = append(entries, u.session.beginThinking(start.thread, start.at)...)
 	}
 	for i := range entries {
@@ -1658,55 +1664,32 @@ func (u *appServerUI) applyObservedActivity() {
 		u.applyActivity(entries, nil)
 		u.dirty = true
 	}
-	for _, ref := range u.proxy.activity.takeUnreturned(u.thread) {
+	for _, ref := range u.proxy.activity.takeUnreturned(u.Thread) {
 		if main, activity := u.view.markUnreturned(ref.thread, ref.call), u.agents.markUnreturned(ref.thread, ref.call); main || activity {
 			u.dirty = true
 		}
 	}
 }
 
-// interruptTurn preserves the composer while interrupting the active turn.
+// interruptTurn applies the owner's composer consequence and issues at most
+// one native interruption. Host execution remains independent of presentation.
 func (u *appServerUI) interruptTurn() error {
-	turn := u.turn
-	if u.compaction.Cancel() {
-		// Restore waiting input when cancellation is admitted, even if Codex
-		// completes compaction successfully before acknowledging the interrupt.
+	intent := u.Interrupt()
+	if intent.RestoreWaiting {
 		u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
 		u.unsent, u.queued = nil, nil
-		turn = u.compaction.InterruptTarget()
-		if turn == "" {
-			if u.compaction.Starting() {
-				u.status = "Interrupting…"
-			}
-			return nil
-		}
 	}
-	if turn == "" {
-		if u.starting() || u.submission.text != "" {
-			u.interruption.deferUntilStart()
-			u.status = "Interrupting…"
-			return nil
-		}
-		u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
-		u.unsent, u.queued = nil, nil
+	if intent.Pending {
+		u.status = "Interrupting…"
+	}
+	if intent.Turn == "" {
 		return nil
 	}
-	if !u.interruption.begin(turn) {
-		return nil
-	}
-	u.endSyncQuestions(turn)
+	u.endSyncQuestions(intent.Turn)
 	u.status = "Interrupting…"
-	if u.compaction.PreservesWaitingInput() {
-		_, err := u.requests.Send("turn/interrupt", map[string]any{"threadId": u.thread, "turnId": turn}, "main", appServerRequest{label: "compact/interrupt"})
-		return err
+	_, err := u.requests.Send("turn/interrupt", map[string]any{"threadId": u.Thread, "turnId": intent.Turn}, "main", appServerRequest{label: intent.Label})
+	if err != nil && intent.Label == "steer/interrupt" {
+		u.SteerInterruptAckPending = false
 	}
-	if u.sendSteersAfterInterrupt {
-		u.steerInterruptAckPending = true
-		_, err := u.requests.Send("turn/interrupt", map[string]any{"threadId": u.thread, "turnId": turn}, "main", appServerRequest{label: "steer/interrupt"})
-		if err != nil {
-			u.steerInterruptAckPending = false
-		}
-		return err
-	}
-	return u.request("turn/interrupt", map[string]any{"threadId": u.thread, "turnId": turn})
+	return err
 }

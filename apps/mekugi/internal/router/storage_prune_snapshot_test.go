@@ -40,7 +40,7 @@ func TestUISnapshotBackgroundStorageCleanup(t *testing.T) {
 	u.issues = testCriticalErrors()
 	u.view.painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
-	u.thread, u.view.conversation = "main", true
+	u.Thread, u.view.conversation = "main", true
 	store.storageNotice = func(_, _ string, phase, message string) {
 		u.issues.cleanupNotice("", "", phase, message)
 		delivery := u.applyCriticalNotices()

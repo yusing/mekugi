@@ -37,7 +37,7 @@ func TestAppServerSettingsReasoningKeys(t *testing.T) {
 			}
 			appServerTestKeys(t, u, tt.key)
 			if tt.want == "" {
-				if w.Len() != 0 || u.settings.pending() {
+				if w.Len() != 0 || u.Settings.Pending() {
 					t.Fatal("boundary wrapped or submitted settings")
 				}
 			} else {
@@ -64,10 +64,10 @@ func TestAppServerSettingsSlashControls(t *testing.T) {
 		for _, turn := range []string{"", "active"} {
 			t.Run(tt.command+"/"+turn, func(t *testing.T) {
 				u, w := newAppServerTestUI()
-				u.turn, u.model, u.reasoningEffort, u.serviceTier = turn, "original", "low", "flex"
+				u.Turn, u.model, u.reasoningEffort, u.serviceTier = turn, "original", "low", "flex"
 				appServerTestKeys(t, u, tt.command+"\r")
 				assertAppServerSettingsRequest(t, w, "thread/settings/update", map[string]any{"threadId": "main", tt.field: tt.value})
-				if u.model != "original" || u.reasoningEffort != "low" || u.serviceTier != "flex" || u.submission.text != "" || !u.settings.pending() {
+				if u.model != "original" || u.reasoningEffort != "low" || u.serviceTier != "flex" || u.inputPayloads[u.Submission().ID].text != "" || !u.Settings.Pending() {
 					t.Fatal("command submitted conversation or changed metadata before notification")
 				}
 				appServerTestKeys(t, u, "next prompt\r")
@@ -87,11 +87,11 @@ func TestAppServerSettingsAuthoritativeLiveUpdate(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			u, w := newAppServerTestUI()
-			u.turn, u.model, u.reasoningEffort = "active", "old", "low"
+			u.Turn, u.model, u.reasoningEffort = "active", "old", "low"
 			appServerTestKeys(t, u, "/reasoning high\r")
 			assertAppServerSettingsRequest(t, w, "thread/settings/update", map[string]any{"threadId": "main", "effort": "high"})
 			appServerTestMessage(t, u, `{"id":1,"result":{}}`)
-			if !u.settings.pending() || u.reasoningEffort != "low" || w.Len() != 0 {
+			if !u.Settings.Pending() || u.reasoningEffort != "low" || w.Len() != 0 {
 				t.Fatal("enqueue acknowledgement was treated as applied settings")
 			}
 			appServerTestMessage(t, u, `{"method":"thread/settings/updated","params":{"threadId":"other","threadSettings":{"model":"foreign","effort":"high","serviceTier":"priority"}}}`)
@@ -104,10 +104,10 @@ func TestAppServerSettingsAuthoritativeLiveUpdate(t *testing.T) {
 			}
 			assertAppServerSettingsRequest(t, w, "turn/settings/update", map[string]any{"threadId": "main", "turnId": "active", "effort": "high"})
 			appServerTestMessage(t, u, tt.response)
-			if u.settings.pending() || !strings.Contains(u.feedback.Text, tt.notice) || u.reasoningEffort != "high" {
-				t.Fatalf("live result state: pending=%v effort=%s notice=%q", u.settings.pending(), u.reasoningEffort, u.feedback.Text)
+			if u.Settings.Pending() || !strings.Contains(u.feedback.Text, tt.notice) || u.reasoningEffort != "high" {
+				t.Fatalf("live result state: pending=%v effort=%s notice=%q", u.Settings.Pending(), u.reasoningEffort, u.feedback.Text)
 			}
-			if w.Len() != 0 || u.submission.text != "" {
+			if w.Len() != 0 || u.inputPayloads[u.Submission().ID].text != "" {
 				t.Fatal("live settings response submitted conversation")
 			}
 		})
@@ -117,12 +117,12 @@ func TestAppServerSettingsAuthoritativeLiveUpdate(t *testing.T) {
 func TestAppServerSettingsFinishedTargetAndThreadError(t *testing.T) {
 	t.Run("finished target", func(t *testing.T) {
 		u, w := newAppServerTestUI()
-		u.turn = "old-turn"
+		u.Turn = "old-turn"
 		appServerTestKeys(t, u, "/model next\r")
 		w.Reset()
-		u.turn = "new-turn"
+		u.Turn = "new-turn"
 		appServerTestMessage(t, u, `{"method":"thread/settings/updated","params":{"threadId":"main","threadSettings":{"model":"next","effort":null,"serviceTier":null}}}`)
-		if w.Len() != 0 || u.settings.pending() || u.model != "next" {
+		if w.Len() != 0 || u.Settings.Pending() || u.model != "next" {
 			t.Fatal("settings retargeted another turn or stayed pending")
 		}
 	})
@@ -132,7 +132,7 @@ func TestAppServerSettingsFinishedTargetAndThreadError(t *testing.T) {
 		appServerTestKeys(t, u, "/model next\r")
 		w.Reset()
 		appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"invalid model"}}`)
-		if w.Len() != 0 || u.settings.pending() || u.model != "old" || !strings.Contains(u.feedback.Text, "invalid model") {
+		if w.Len() != 0 || u.Settings.Pending() || u.model != "old" || !strings.Contains(u.feedback.Text, "invalid model") {
 			t.Fatal("thread error changed metadata, emitted live RPC, or left pending guard")
 		}
 	})
@@ -181,7 +181,7 @@ func TestAppServerSettingsReasoningWaitsForCatalog(t *testing.T) {
 func TestAppServerSettingsUnchangedDoesNotWaitForNotification(t *testing.T) {
 	for _, turn := range []string{"", "active"} {
 		u, w := newAppServerTestUI()
-		u.model, u.reasoningEffort, u.turn = "model", "high", turn
+		u.model, u.reasoningEffort, u.Turn = "model", "high", turn
 		appServerTestKeys(t, u, "/reasoning high\r")
 		if turn != "" {
 			assertAppServerSettingsRequest(t, w, "turn/settings/update", map[string]any{"threadId": "main", "turnId": "active", "effort": "high"})
@@ -189,11 +189,11 @@ func TestAppServerSettingsUnchangedDoesNotWaitForNotification(t *testing.T) {
 		} else if w.Len() != 0 {
 			t.Fatalf("no-op wrote thread update: %q", w.String())
 		}
-		if u.settings.pending() || u.draft != "" {
+		if u.Settings.Pending() || u.draft != "" {
 			t.Fatal("no-op command remains pending")
 		}
 		appServerTestKeys(t, u, "prompt\r")
-		if u.submission.text != "prompt" {
+		if u.inputPayloads[u.Submission().ID].text != "prompt" {
 			t.Fatal("no-op blocked prompt")
 		}
 	}
@@ -210,7 +210,7 @@ func TestAppServerSettingsChoicesRenderedInPicker(t *testing.T) {
 	if !strings.Contains(rendered, "first-choice") || !strings.Contains(rendered, "last-choice-that-would-not-fit") {
 		t.Fatalf("missing choices: %s", rendered)
 	}
-	if len(u.view.Entries) != 0 || len(u.inputHistory) != 0 || u.submission.text != "" {
+	if len(u.view.Entries) != 0 || len(u.inputHistory) != 0 || u.inputPayloads[u.Submission().ID].text != "" {
 		t.Fatal("local choices submitted to host")
 	}
 }
@@ -218,7 +218,7 @@ func TestAppServerSettingsChoicesRenderedInPicker(t *testing.T) {
 func TestAppServerSettingsTierAliasNoop(t *testing.T) {
 	for _, turn := range []string{"", "active"} {
 		u, w := newAppServerTestUI()
-		u.serviceTier, u.turn = "priority", turn
+		u.serviceTier, u.Turn = "priority", turn
 		appServerTestKeys(t, u, "/tier fast\r")
 		if turn != "" {
 			assertAppServerSettingsRequest(t, w, "turn/settings/update", map[string]any{"threadId": "main", "turnId": "active", "serviceTier": "fast"})
@@ -227,7 +227,7 @@ func TestAppServerSettingsTierAliasNoop(t *testing.T) {
 			t.Fatal("alias queued unchanged thread settings")
 		}
 		appServerTestKeys(t, u, "prompt\r")
-		if u.settings.pending() || u.submission.text != "prompt" {
+		if u.Settings.Pending() || u.inputPayloads[u.Submission().ID].text != "prompt" {
 			t.Fatal("alias no-op blocked prompt")
 		}
 	}
@@ -238,7 +238,7 @@ func TestAppServerSettingsPickerSelection(t *testing.T) {
 		for _, turn := range []string{"", "active"} {
 			t.Run(command+turn, func(t *testing.T) {
 				u, w := newAppServerTestUI()
-				u.model, u.reasoningEffort, u.serviceTier, u.turn = "one", "low", "priority", turn
+				u.model, u.reasoningEffort, u.serviceTier, u.Turn = "one", "low", "priority", turn
 				if err := json.Unmarshal([]byte(`[{"model":"one","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"high"}],"serviceTiers":[{"id":"priority"}]},{"model":"two"},{"model":"hidden","hidden":true}]`), &u.models); err != nil {
 					t.Fatal(err)
 				}
@@ -255,7 +255,7 @@ func TestAppServerSettingsPickerSelection(t *testing.T) {
 					field, value = "serviceTier", nil
 				}
 				assertAppServerSettingsRequest(t, w, "thread/settings/update", map[string]any{"threadId": "main", field: value})
-				if u.picker.open || u.model != "one" || u.reasoningEffort != "low" || u.serviceTier != "priority" || len(u.view.Entries) != 0 || len(u.inputHistory) != 0 || u.submission.text != "" {
+				if u.picker.open || u.model != "one" || u.reasoningEffort != "low" || u.serviceTier != "priority" || len(u.view.Entries) != 0 || len(u.inputHistory) != 0 || u.inputPayloads[u.Submission().ID].text != "" {
 					t.Fatal("selection polluted transcript or changed confirmed settings")
 				}
 			})

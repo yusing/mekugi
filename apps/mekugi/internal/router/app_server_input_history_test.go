@@ -10,10 +10,10 @@ func TestAppServerInputHistoryAcknowledgedAndDraftRestored(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	appServerTestKeys(t, u, "first\r")
 	appServerTestMessage(t, u, `{"id":1,"result":{}}`)
-	u.awaitingTurn = false
+	u.AwaitingTurn = false
 	appServerTestKeys(t, u, "second\r")
 	appServerTestMessage(t, u, `{"id":2,"result":{}}`)
-	u.awaitingTurn = false
+	u.AwaitingTurn = false
 	appServerTestKeys(t, u, "draft\x1b[D\x1b[A")
 	if u.draft != "second" {
 		t.Fatalf("newest = %q", u.draft)
@@ -74,7 +74,7 @@ func TestAppServerInputHistoryAttachmentsRemainUsable(t *testing.T) {
 func TestAppServerInputHistoryResumeAndRejectedInput(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.agents = newLiveActivityView()
-	u.session.start(u.thread, "/workspace")
+	u.session.start(u.Thread, "/workspace")
 	u.restoreHistory([]appServerHistoryTurn{{ID: "old", Status: "completed", Items: []appServerItem{{Type: "userMessage", ID: "input", Content: []byte(`[{"type":"text","text":"saved"}]`)}}}})
 	appServerTestKeys(t, u, "\x1b[A")
 	if u.draft != "saved" {

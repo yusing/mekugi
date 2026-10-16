@@ -67,7 +67,7 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	}
 	click("/root/reader")
 	frame := paint("native-thread-child-full")
-	if !strings.Contains(frame, "child result") || !strings.Contains(frame, "eta") || strings.Contains(frame, "main result") || !strings.Contains(frame, "Read-only") || u.thread != "main" {
+	if !strings.Contains(frame, "child result") || !strings.Contains(frame, "eta") || strings.Contains(frame, "main result") || !strings.Contains(frame, "Read-only") || u.Thread != "main" {
 		t.Fatalf("child view or input identity: %s", frame)
 	}
 	if !strings.Contains(frame, "child-model (low) · flex") || !strings.Contains(frame, "25K/100K • 25%") || strings.Contains(frame, "parent-model") || strings.Contains(frame, u.draft) {
@@ -86,15 +86,15 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	// Metadata discovery is independent of the composer destination.
 	w := u.client.Input.(*appServerTestInput)
 	appServerOneRequest(t, w, "thread/read", "")
-	u.turn = "active"
+	u.Turn = "active"
 	keys("/skills\r\t\x03\x07\x16\x7f\x1b[1;2A\x1b[200~pasted\x03\r\x1b[201~")
 	if err := u.shell.send("\x1b"); err != nil {
 		t.Fatal(err)
 	}
-	if u.draft != "retained draft" || u.picker.open || u.paste || u.shell.paste || u.quitRequested || u.turn != "active" || w.Len() != 0 {
+	if u.draft != "retained draft" || u.picker.open || u.paste || u.shell.paste || u.quitRequested || u.Turn != "active" || w.Len() != 0 {
 		t.Fatal("read-only composer accepted editing, paste, submission or interruption")
 	}
-	u.turn = ""
+	u.Turn = ""
 	click("/root")
 	frame = paint("native-thread-return-main")
 	if u.agents.only || !strings.Contains(frame, "main result") || strings.Contains(frame, "Input: Main") || u.draft != "retained draft" {

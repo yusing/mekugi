@@ -18,7 +18,7 @@ func TestNativeUIQueuedEscapeContinuation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.ensureShell()
-			u.turn = "active"
+			u.Turn = "active"
 			if err := u.shell.key(27); err != nil {
 				t.Fatal(err)
 			}
@@ -41,7 +41,7 @@ func TestNativeUIQueuedEscapeContinuation(t *testing.T) {
 func TestNativeUIInputDrainPreservesStandaloneEscape(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.ensureShell()
-	u.turn = "active"
+	u.Turn = "active"
 	u.draft = "keep me"
 	if err := u.shell.key(27); err != nil {
 		t.Fatal(err)
@@ -51,7 +51,7 @@ func TestNativeUIInputDrainPreservesStandaloneEscape(t *testing.T) {
 		t.Fatal(err)
 	}
 	appServerOneRequest(t, wire, "turn/interrupt", "")
-	if u.draft != "keep me" || u.interruption.target != "active" {
+	if u.draft != "keep me" || u.Interruption.Target != "active" {
 		t.Fatal("standalone Escape did not preserve interrupt behavior")
 	}
 }

@@ -18,11 +18,11 @@ func TestQuestionAnswerWaitsForToolInput(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.proxy = newManagedMekugiProxy(t)
-			u.turn = "turn"
+			u.Turn = "turn"
 			u.session.cwd = t.TempDir()
 			// Installed Codex may omit cwd in provider requests. Native thread
 			// identity must still protect the matching UI's question answer.
-			transform := &mekugiResponseTransform{proxy: u.proxy, threadID: u.thread}
+			transform := &mekugiResponseTransform{proxy: u.proxy, threadID: u.Thread}
 			defer transform.Close()
 			item := map[string]any{"id": "emitting", "type": kind, "name": "unobserved", "call_id": "call", "status": "in_progress"}
 			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": item})
@@ -43,7 +43,7 @@ func TestQuestionAnswerWaitsForToolInput(t *testing.T) {
 			if err := u.flushInput(); err != nil {
 				t.Fatal(err)
 			}
-			appServerOneRequest(t, wire, "turn/steer", u.submission.text)
+			appServerOneRequest(t, wire, "turn/steer", u.inputPayloads[u.Submission().ID].text)
 		})
 	}
 }
@@ -60,7 +60,7 @@ func TestToolInputEmissionDoesNotBlockNormalPromptsOrOtherSessions(t *testing.T)
 		t.Run(tc.name, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.proxy = newManagedMekugiProxy(t)
-			u.turn = "turn"
+			u.Turn = "turn"
 			transform := &mekugiResponseTransform{proxy: u.proxy, threadID: tc.thread, directory: tc.workspace}
 			defer transform.Close()
 			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": map[string]any{"id": "emitting", "type": "custom_tool_call"}})
@@ -70,7 +70,7 @@ func TestToolInputEmissionDoesNotBlockNormalPromptsOrOtherSessions(t *testing.T)
 				questionTestPaint(t, u, 70)
 			}
 			appServerTestKeys(t, u, "1\r")
-			appServerOneRequest(t, wire, "turn/steer", u.submission.text)
+			appServerOneRequest(t, wire, "turn/steer", u.inputPayloads[u.Submission().ID].text)
 		})
 	}
 }
@@ -101,8 +101,8 @@ func TestToolInputEmissionClearsOnItemDoneOrResponseClose(t *testing.T) {
 func TestNormalPromptBypassesDeferredQuestionAnswer(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.proxy = newManagedMekugiProxy(t)
-	u.turn = "turn"
-	transform := &mekugiResponseTransform{proxy: u.proxy, threadID: u.thread, directory: u.session.cwd}
+	u.Turn = "turn"
+	transform := &mekugiResponseTransform{proxy: u.proxy, threadID: u.Thread, directory: u.session.cwd}
 	defer transform.Close()
 	emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": map[string]any{"id": "emitting", "type": "custom_tool_call"}})
 	questionTestAsync(t, u, "question", "Who receives it?")

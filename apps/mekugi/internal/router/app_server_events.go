@@ -255,7 +255,7 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 			u.execTrack.finish(key)
 		}
 	}
-	main := p.ThreadID == u.thread
+	main := p.ThreadID == u.Thread
 	if h := u.childHistory[p.ThreadID]; h != nil {
 		h.live = true
 	}
@@ -269,7 +269,7 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 	switch method {
 	case "thread/started":
 		info := p.Thread
-		if info.ID == "" || info.ID == u.thread {
+		if info.ID == "" || info.ID == u.Thread {
 			return true, nil
 		}
 		old := s.path(info.ID)
@@ -390,7 +390,7 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 		}
 		switch item.Type {
 		case "subAgentActivity":
-			if item.AgentThreadID != "" && item.AgentThreadID != u.thread {
+			if item.AgentThreadID != "" && item.AgentThreadID != u.Thread {
 				old := s.path(item.AgentThreadID)
 				if item.AgentPath != "" {
 					s.agent(old).Name = item.AgentPath

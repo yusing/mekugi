@@ -4,7 +4,7 @@ package router
 // codex-rs/tui/src/app/event_dispatch.rs:3705:3771@ddb33e34b.
 // Codex owns stopping the turn and archiving the thread and its descendants.
 func (u *appServerUI) showArchivePicker() {
-	if u.thread == "" || u.restoring != nil || u.replacement.pending() {
+	if u.Thread == "" || u.restoring != nil || u.Replacement.Pending() {
 		u.setNotice("Wait for the session to be ready", false)
 		return
 	}
@@ -20,7 +20,7 @@ func (u *appServerUI) showArchivePicker() {
 }
 
 func (u *appServerUI) archivePrompt() string {
-	if u.turn != "" || u.starting() || u.submission.text != "" {
+	if u.Turn != "" || u.Starting() || u.InputPending() {
 		return "This will stop the current turn and archive the session."
 	}
 	return "Are you sure? This will archive the current session."
@@ -39,9 +39,9 @@ func (u *appServerUI) archivePickerKey(key string) bool {
 		confirm := p.selected == 1
 		p.modal, p.open, p.choices = "", false, nil
 		if confirm {
-			u.replacement = appServerReplacementOperation{phase: replacementArchive}
-			if err := u.request("thread/archive", map[string]any{"threadId": u.thread}); err != nil {
-				u.replacement.finish()
+			u.Replacement.Archive()
+			if err := u.request("thread/archive", map[string]any{"threadId": u.Thread}); err != nil {
+				u.Replacement.Finish()
 				u.setNotice("Failed to archive current thread: "+err.Error(), true)
 			} else {
 				u.setNotice("Archiving session…", false)

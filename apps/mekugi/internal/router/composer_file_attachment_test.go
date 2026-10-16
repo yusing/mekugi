@@ -54,7 +54,7 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 	}
 	resumed, _ := newAppServerTestUI()
 	resumed.agents = newLiveActivityView()
-	resumed.session.start(resumed.thread, cwd)
+	resumed.session.start(resumed.Thread, cwd)
 	resumed.restoreHistory([]appServerHistoryTurn{{ID: "saved", Status: "completed", Items: []appServerItem{{Type: "userMessage", ID: "saved-input", Content: content}}}})
 	if len(resumed.inputHistory) != 1 || resumed.inputHistory[0].text != draft.text {
 		t.Fatal("resume leaked attachment framing into recalled prompt")
@@ -262,7 +262,7 @@ func TestComposerFileAttachmentOversizedInputRestoresDraft(t *testing.T) {
 	if err := u.send([]composerDraft{d}, false); err != nil {
 		t.Fatal(err)
 	}
-	if w.Len() != 0 || u.draft != d.text || !u.feedback.Alert || u.starting() {
+	if w.Len() != 0 || u.draft != d.text || !u.feedback.Alert || u.Starting() {
 		t.Fatal("oversized input was sent or draft lost")
 	}
 }

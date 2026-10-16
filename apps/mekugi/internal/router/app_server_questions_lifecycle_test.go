@@ -9,13 +9,13 @@ import (
 
 func TestQuestionQueuedSteerIsNotStillActionable(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.turn = "turn"
+	u.Turn = "turn"
 	questionTestAsync(t, u, "first", "Who receives it?")
 	questionTestAsync(t, u, "second", "Who approves it?")
 	u.openQuestions()
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "3Customers only\r")
-	request := appServerOneRequest(t, wire, "turn/steer", u.submission.text)
+	request := appServerOneRequest(t, wire, "turn/steer", u.inputPayloads[u.Submission().ID].text)
 	u.hideQuestions()
 	if u.questionCount() != 1 || u.questions.calls[0].resolved || !u.questions.calls[0].sent {
 		t.Fatalf("sent answer and separate unanswered question confused: count=%d call=%+v", u.questionCount(), u.questions.calls[0])
@@ -48,12 +48,12 @@ func TestQuestionQueuedSteerIsNotStillActionable(t *testing.T) {
 
 func TestQuestionRejectedQueuedSteerReopensDockWithDraft(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.turn = "turn"
+	u.Turn = "turn"
 	questionTestAsync(t, u, "pending", "Who receives it?")
 	u.openQuestions()
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "3Customers only\r")
-	request := appServerOneRequest(t, wire, "turn/steer", u.submission.text)
+	request := appServerOneRequest(t, wire, "turn/steer", u.inputPayloads[u.Submission().ID].text)
 	if u.questionCount() != 0 || len(u.questionRows(80, 10)) != 0 {
 		t.Fatal("queued answer still required action")
 	}
@@ -145,14 +145,14 @@ func TestQuestionQueuedBatchDropsExternallyResolvedReplies(t *testing.T) {
 	for _, externalCount := range []int{1, 2} {
 		t.Run(string(rune('0'+externalCount)), func(t *testing.T) {
 			u, input := newAppServerTestUI()
-			u.turn = "turn"
+			u.Turn = "turn"
 			questionTestAsync(t, u, "queued", "Who receives it?", "Who approves it?")
-			u.awaitingTurn = true // Another pending turn/start prevents flushing.
+			u.AwaitingTurn = true // Another pending turn/start prevents flushing.
 			u.openQuestions()
 			questionTestPaint(t, u, 70)
 			appServerTestKeys(t, u, "1\r1\r")
 			questionTestSync(t, u, "blocking", false)
-			u.awaitingTurn = false
+			u.AwaitingTurn = false
 			if strings.Contains(input.String(), "turn/steer") {
 				t.Fatal("question batch escaped while sync request blocked turn")
 			}
@@ -178,12 +178,12 @@ func TestQuestionAnswerOnlyAppearsUnderAsked(t *testing.T) {
 	for _, turn := range []string{"", "turn"} {
 		t.Run("active="+turn, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.turn = turn
+			u.Turn = turn
 			questionTestAsync(t, u, "echo", "Who receives it?")
 			u.openQuestions()
 			questionTestPaint(t, u, 70)
 			appServerTestKeys(t, u, "2\r")
-			reply, id := u.submission.text, u.submission.id
+			reply, id := u.inputPayloads[u.Submission().ID].text, u.Submission().ID
 			if len(questionReplies(reply)) != 1 {
 				t.Fatal("reply not submitted")
 			}
@@ -210,14 +210,14 @@ func TestQuestionAnswerOnlyAppearsUnderAsked(t *testing.T) {
 
 func TestQuestionNewPromptSupersedesUnsentAnswer(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.turn = "turn"
-	u.awaitingTurn = true
+	u.Turn = "turn"
+	u.AwaitingTurn = true
 	questionTestAsync(t, u, "pending-start", "Who receives it?")
 	u.openQuestions()
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "3Local draft\r")
 	lifecycleUserMessage(t, u, "ordinary-new-turn", "new-prompt", "Do something else")
-	u.awaitingTurn = false
+	u.AwaitingTurn = false
 	if err := u.flushInput(); err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +229,7 @@ func TestQuestionNewPromptSupersedesUnsentAnswer(t *testing.T) {
 func TestQuestionRecordPreservesLiteralNotePrefix(t *testing.T) {
 	for _, sync := range []bool{false, true} {
 		u, _ := newAppServerTestUI()
-		u.turn = "turn"
+		u.Turn = "turn"
 		literal := "user_note: preserve this literal"
 		if sync {
 			questionTestMessage(t, u, "literal", "item/tool/requestUserInput", map[string]any{"threadId": "main", "turnId": "turn", "itemId": "literal", "questions": []any{map[string]any{
@@ -245,7 +245,7 @@ func TestQuestionRecordPreservesLiteralNotePrefix(t *testing.T) {
 			questionTestMessage(t, u, nil, "serverRequest/resolved", map[string]any{"threadId": "main", "requestId": "literal"})
 		} else {
 			appServerTestKeys(t, u, "3"+literal+"\r")
-			lifecycleUserMessage(t, u, "turn", "reply", u.submission.text)
+			lifecycleUserMessage(t, u, "turn", "reply", u.inputPayloads[u.Submission().ID].text)
 		}
 		entry := u.view.Entries[0].Source
 		if got := entry.native.questions[0].Answer; got != literal {
@@ -264,7 +264,7 @@ func TestQuestionReplyBecomesMainReplyAnchor(t *testing.T) {
 		t.Run(map[bool]string{false: "live", true: "resume"}[replay], func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.view.conversation = true
-			u.turn = "turn"
+			u.Turn = "turn"
 			content := func(text string) []byte {
 				data, err := json.Marshal([]map[string]string{{"type": "text", "text": text}})
 				if err != nil {
@@ -334,7 +334,7 @@ func TestQuestionReplyLinkSkipsContinuationHeading(t *testing.T) {
 func TestSyncQuestionReplyBecomesMainAnchor(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.conversation = true
-	u.turn = "turn"
+	u.Turn = "turn"
 	lifecycleUserMessage(t, u, "turn", "prompt", "Original task")
 	questionTestSync(t, u, "sync", false)
 	questionTestPaint(t, u, 70)

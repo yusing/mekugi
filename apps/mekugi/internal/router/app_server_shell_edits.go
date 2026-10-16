@@ -38,19 +38,19 @@ func (u *appServerUI) captureShellEdit(command string) *appServerShellEdit {
 		ctx = u.ctx
 	}
 	t := &mekugiResponseTransform{ctx: ctx, proxy: u.proxy, directory: u.session.cwd,
-		threadID: u.thread, shellThreadID: u.thread, shellTurnID: u.turn}
+		threadID: u.Thread, shellThreadID: u.Thread, shellTurnID: u.Turn}
 	input := commandanalysis.Command{Command: command, Workdir: u.session.cwd, Shell: u.shellEdits.shell}
 	observation, observed := t.snapshotExecObservation(captureExecObservation([]commandanalysis.Command{input}, false, false, t.execCaptureEnvironment(nil)))
 	if !observed {
 		return nil
 	}
 	call := "shell:" + rand.Text()
-	u.restoreDiffThread(appServerThreadInfo{ID: u.thread, Cwd: u.session.cwd}, true)
+	u.restoreDiffThread(appServerThreadInfo{ID: u.Thread, Cwd: u.session.cwd}, true)
 	t.openExecWindow(call, observation, nil)
 	u.proxy.execWindows.setSession(call, call)
-	return &appServerShellEdit{ctx: ctx, call: call, workspace: u.session.cwd, thread: u.thread,
+	return &appServerShellEdit{ctx: ctx, call: call, workspace: u.session.cwd, thread: u.Thread,
 		history: mekugiHistory{ToolName: nativeExecCommandToolName, ExecObservation: observation,
-			ExecutingThread: u.thread, Caller: u.session.path(u.thread)}}
+			ExecutingThread: u.Thread, Caller: u.session.path(u.Thread)}}
 }
 
 func (u *appServerUI) discardShellEdit(edit *appServerShellEdit) {

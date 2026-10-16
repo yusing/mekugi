@@ -66,7 +66,7 @@ func TestNativeQuestionSyncAnswerEncoding(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u, input := newAppServerTestUI()
-			u.turn = "turn"
+			u.Turn = "turn"
 			questionTestSync(t, u, "sync-request", false)
 			if !strings.Contains(questionTestPaint(t, u, 24), "Which release scope?") {
 				t.Fatal("narrow dock lost question text")
@@ -81,7 +81,7 @@ func TestNativeQuestionSyncAnswerEncoding(t *testing.T) {
 
 func TestNativeQuestionResolvedAndInterrupt(t *testing.T) {
 	u, input := newAppServerTestUI()
-	u.turn = "turn"
+	u.Turn = "turn"
 	questionTestSync(t, u, "stale", false)
 	questionTestPaint(t, u, 60)
 	questionTestMessage(t, u, nil, "serverRequest/resolved", map[string]any{"threadId": "main", "requestId": "stale"})
@@ -103,7 +103,7 @@ func TestNativeQuestionResolvedAndInterrupt(t *testing.T) {
 func TestNativeQuestionAsyncBatchAndExternalCommit(t *testing.T) {
 	u, input := newAppServerTestUI()
 	u.session.start("main", t.TempDir())
-	u.turn = "turn"
+	u.Turn = "turn"
 	questionTestAsync(t, u, "async-item", "Who receives it?", "Who approves it?")
 	if u.questions.active == nil || u.questionCount() != 2 {
 		t.Fatal("async question did not open or was lost")
@@ -122,7 +122,7 @@ func TestNativeQuestionAsyncBatchAndExternalCommit(t *testing.T) {
 	}
 	// A second client may commit a reply without any local submission.
 	v, _ := newAppServerTestUI()
-	v.turn = "turn"
+	v.Turn = "turn"
 	questionTestAsync(t, v, "external-item", "Which audience?")
 	id, _ := json.Marshal([]any{"request_user_input_async", "external-item", 0})
 	envelope, _ := json.Marshal([]nativeQuestionReply{{Answer: "Customers", Question: "Which audience?", QuestionItemID: string(id)}})
@@ -136,7 +136,7 @@ func TestNativeQuestionAsyncBatchAndExternalCommit(t *testing.T) {
 
 func TestNativeQuestionParkedEditorMidTypingAndSecret(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.turn = "turn"
+	u.Turn = "turn"
 	appServerTestKeys(t, u, "draft")
 	questionTestSync(t, u, "midtyping", false)
 	if u.questions.active != nil {
@@ -164,7 +164,7 @@ func TestNativeQuestionParkedEditorMidTypingAndSecret(t *testing.T) {
 		t.Fatal("unsent answer not saved to input history")
 	}
 	v, _ := newAppServerTestUI()
-	v.turn = "turn"
+	v.Turn = "turn"
 	questionTestSync(t, v, "secret", true)
 	questionTestPaint(t, v, 60)
 	appServerTestKeys(t, v, "3secret")
@@ -177,7 +177,7 @@ func TestNativeQuestionParkedEditorMidTypingAndSecret(t *testing.T) {
 func TestNativeQuestionSupersedeBannerAndRejectedSend(t *testing.T) {
 	t.Run("rejected send", func(t *testing.T) {
 		u, input := newAppServerTestUI()
-		u.turn = "turn"
+		u.Turn = "turn"
 		u.draft = "kept main draft"
 		questionTestAsync(t, u, "pending", "Who receives it?")
 		u.openQuestions()
@@ -259,7 +259,7 @@ func TestNativeQuestionResumeOnlyUnanswered(t *testing.T) {
 
 func TestNativeQuestionGapsQueueAndLiteralAnswers(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.turn = "turn"
+	u.Turn = "turn"
 	questionTestAsync(t, u, "gaps", "First?", "Last?")
 	u.openQuestions()
 	questionTestPaint(t, u, 60)
@@ -273,7 +273,7 @@ func TestNativeQuestionGapsQueueAndLiteralAnswers(t *testing.T) {
 	}
 
 	v, wire := newAppServerTestUI()
-	v.turn = "turn"
+	v.Turn = "turn"
 	appServerTestKeys(t, v, "main draft")
 	questionTestSync(t, v, "queue", false)
 	appServerTestKeys(t, v, "\r")
@@ -290,14 +290,14 @@ func TestNativeQuestionGapsQueueAndLiteralAnswers(t *testing.T) {
 
 func TestNativeQuestionBeforePaintAndSecretFrame(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.turn = "turn"
+	u.Turn = "turn"
 	questionTestSync(t, u, "unpainted", false)
 	appServerTestKeys(t, u, "7")
 	if u.draft != "7" || u.questions.active != nil || w.Len() != 0 {
 		t.Fatal("buffered key reached unseen dock")
 	}
 	v, _ := newAppServerTestUI()
-	v.turn = "turn"
+	v.Turn = "turn"
 	questionTestSync(t, v, "secret-frame", true)
 	questionTestPaint(t, v, 60)
 	appServerTestKeys(t, v, "3SECRET-ANSWER")
@@ -308,7 +308,7 @@ func TestNativeQuestionBeforePaintAndSecretFrame(t *testing.T) {
 
 func TestNativeQuestionsOpenNextCallWithoutShortcut(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.turn = "turn"
+	u.Turn = "turn"
 	questionTestAsync(t, u, "first", "First question?")
 	questionTestAsync(t, u, "second", "Second question?")
 	if u.questions.active == nil || u.questions.active.item != "first" {
@@ -329,7 +329,7 @@ func TestNativeQuestionsOpenNextCallWithoutShortcut(t *testing.T) {
 
 func TestNativeQuestionsWaitForEmptyComposerAndRespectHide(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.turn = "turn"
+	u.Turn = "turn"
 	appServerTestKeys(t, u, "draft")
 	questionTestAsync(t, u, "pending", "Pending question?")
 	questionTestPaint(t, u, 70)

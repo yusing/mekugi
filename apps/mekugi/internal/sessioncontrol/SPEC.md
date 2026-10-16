@@ -1,6 +1,7 @@
 # Session control
 
-The application owns app-server request issuance and response correlation here.
+The application owns app-server request issuance, response correlation and live
+Main operation control here.
 Codex owns request identities, transport, execution, permissions, and process
 lifetime. Live presentation supplies intent and consumes correlated results;
 it does not issue operations directly through the backend client.
@@ -15,6 +16,42 @@ Confirmed session replacement retires Main's correlation scope. Rejected
 replacement leaves it intact. Independent side-conversation cleanup and title
 saves retain their owners across Main's replacement. Forgetting observation
 never cancels host work or claims completion.
+
+Live control owns thread/turn identity, submission admission and settlement,
+interruption, native shell, settings operations, and session replacement.
+Admission derives from these operation records, not displayed status, elapsed
+time, or activity items. Request acknowledgement, committed user input, and host
+turn completion remain separate observations.
+
+The composer retains draft queues, attachments, question callbacks, input history,
+and provisional transcript rows. Sent payloads remain indexed by submission
+identity while control retains an outstanding acknowledgement or commitment.
+Control returns synchronous restoration or requeue decisions naming those
+identities; it never stores composer payloads or invokes presentation callbacks.
+The adapter resolves text matching only when a host user message omits its client
+identity. Acknowledgement and completion races retain submission order, and
+committed input is never restored or resent. Explicit Escape delivery waits for
+both interruption acknowledgement and turn completion, plus any unresolved steer
+acknowledgement, before making uncommitted input eligible for a new turn.
+Ordinary cancellation restores it instead. Deferred cancellation uses the
+eventual host turn identity, and repeated interruption does not issue another
+request for that turn.
+
+Native shell acknowledgement settles submission, not execution. Standalone shell
+execution gates model input until completion; shell execution admitted during a
+model turn remains Codex-owned within that turn. The composer retains a rejected
+shell payload separately from later prose input.
+
+Settings intent remains pending until the appropriate authoritative host update.
+A thread update may be forwarded to the same active turn that received the intent,
+never a replacement turn. Nullable-reasoning restoration remains gated after a
+failed request until confirmed or explicitly repaired. Applied values and recovery
+evidence belong to [session preferences](../../../../modules/sessionpreferences/SPEC.md).
+
+Confirmed replacement retires source operations together while preserving queued
+composer input and the target's restoration intent. Rejected replacement leaves
+source operations intact. Resume metadata, configuration, preference evidence and
+buffered history remain adapter inputs; replay cannot revive live resources.
 
 Manual compaction has one live workflow owner, separate from displayed progress.
 Its queued intent accompanies composer payloads, while acknowledgement, matching
@@ -34,6 +71,6 @@ replay and session switching never revive it. Codex still owns compaction and
 execution. Composer command and cancellation behavior is specified in the
 [native UI contract](../../../../doc/spec/native_ui.md).
 
-Submission, steering, shell, settings, and conversation presentation still live
-in the router integration. Their extraction is incomplete; the request ledger
-does not substitute for their lifecycle records or payload owners.
+Conversation presentation, composer payload construction, and feature-specific
+question/approval handling remain in router integration. This owner supplies
+admission and settlement without replacing their payload or display owners.

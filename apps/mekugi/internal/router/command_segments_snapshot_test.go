@@ -22,7 +22,7 @@ func TestUISnapshotCommandSegmentRetentionNotice(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.view.painter.Theme = diffrender.DarkTheme
 			u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
-			u.thread = "main"
+			u.Thread = "main"
 			u.view.conversation = true
 			u.commandSegmentPending = 1
 			u.commandSegmentRetained(commandSegmentWrite{key: [3]string{"main", "turn", "command"}, err: tc.err})

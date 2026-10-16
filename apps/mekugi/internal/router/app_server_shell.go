@@ -45,10 +45,10 @@ func (u *appServerUI) submitShell() error {
 		u.setNotice("Type a shell command after !", false)
 		return nil
 	}
-	if u.thread == "" || u.restoring != nil {
+	if u.Thread == "" || u.restoring != nil {
 		return nil
 	}
-	if !u.acceptsShell() {
+	if !u.AcceptsShell() {
 		u.setNotice("Waiting for the pending request · press Enter again when ready", false)
 		return nil
 	}
@@ -59,19 +59,22 @@ func (u *appServerUI) submitShell() error {
 	u.discardShellEdit(u.shellEdits.pending)
 	u.shellEdits.pending = nil
 	edit := u.captureShellEdit(command)
-	if err := u.request("thread/shellCommand", map[string]any{"threadId": u.thread, "command": command}); err != nil {
+	if err := u.request("thread/shellCommand", map[string]any{"threadId": u.Thread, "command": command}); err != nil {
 		u.discardShellEdit(edit)
 		return err // Keep the draft when transport submission fails.
 	}
 	u.shellEdits.pending = edit
-	u.shellCommand.begin(u.takeDraft(), u.turn)
+	u.shellDraft = u.takeDraft()
+	u.Shell.Begin(u.Turn)
 	u.setNotice("Shell command submitted", false)
 	u.view.follow()
 	return nil
 }
 
 func (u *appServerUI) shellResponse(failure *appserver.Error) {
-	draft := u.shellCommand.acknowledge(failure != nil, u.turn)
+	draft := u.shellDraft
+	u.shellDraft = composerDraft{}
+	u.Shell.Acknowledge(failure != nil, u.Turn)
 	if failure != nil {
 		u.discardShellEdit(u.shellEdits.pending)
 		u.shellEdits.pending = nil
@@ -92,7 +95,7 @@ func (u *appServerUI) shellResponse(failure *appserver.Error) {
 func (u *appServerUI) observeShellItem(thread string, item appServerItem) {
 	// Called only for starts: an older auxiliary command can complete while a
 	// newer shell request is still awaiting its execution identity.
-	if thread == u.thread && item.Type == "commandExecution" && item.Source == "userShell" {
-		u.shellCommand.identified()
+	if thread == u.Thread && item.Type == "commandExecution" && item.Source == "userShell" {
+		u.Shell.Identified()
 	}
 }

@@ -74,7 +74,7 @@ func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing
 		}
 		// Switching sessions and releasing live buffers must not change the pending
 		// report's evidence or ownership. Hold beyond the former one-second limit.
-		u.session.cwd, u.thread = t.TempDir(), "other"
+		u.session.cwd, u.Thread = t.TempDir(), "other"
 		first.Release()
 		second.Release()
 		time.Sleep(1100 * time.Millisecond)
@@ -155,7 +155,7 @@ func TestCommandSegmentsPendingRetentionIsBoundedAndCanceled(t *testing.T) {
 func TestCommandSegmentsRetentionErrorsStayWithOriginalThreadAndCause(t *testing.T) {
 	t.Parallel()
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.thread = "other"
+	u.Thread = "other"
 	u.view.conversation = true
 	first := errors.New("open replay record: permission denied; complete underlying cause")
 	second := errors.New("sync replay directory: no space left on device; different underlying cause")
@@ -166,7 +166,7 @@ func TestCommandSegmentsRetentionErrorsStayWithOriginalThreadAndCause(t *testing
 	if delivery := u.applyCriticalNotices(); delivery != nil || len(u.view.Entries) != 0 {
 		t.Fatal("switched thread borrowed another thread's retention errors")
 	}
-	u.thread = "main"
+	u.Thread = "main"
 	delivery := u.applyCriticalNotices()
 
 	if delivery == nil || len(u.view.Entries) != 0 || !u.feedback.Alert {
@@ -240,7 +240,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 				restored.restoreActivityThread(appServerThreadInfo{ID: target, Cwd: workspace, Turns: turns})
 				view = restored.agents
 			} else {
-				restored.thread = target
+				restored.Thread = target
 				restored.restoreHistory(turns)
 			}
 			var entry activityPaneEntry

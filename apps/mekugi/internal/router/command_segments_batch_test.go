@@ -84,7 +84,7 @@ func TestCommandSegmentsBatchMixedCandidates(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(store.directory, legacycall.Name(workspace, reports.ID(turn.ID, corrupt.ID), false)), []byte("broken"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, segments: testReports(), ctx: t.Context(), thread: "unrelated-current-thread", proxy: &mekugiProxy{replayStore: store}}
+	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, segments: testReports(), ctx: t.Context(), Thread: "unrelated-current-thread", proxy: &mekugiProxy{replayStore: store}}
 	got := u.prepareCommandSegments("fork", workspace, turn)
 	catalog, err := store.publication.ReadCatalog(history.SessionName("fork"))
 	if err != nil {
@@ -99,7 +99,7 @@ func TestCommandSegmentsBatchMixedCandidates(t *testing.T) {
 			t.Errorf("%s: durable ownership = %v, want %v", item.ID, catalog.Files[name], valid[item.ID])
 		}
 	}
-	if _, err := store.publication.ReadCatalog(history.SessionName(u.thread)); !os.IsNotExist(err) {
+	if _, err := store.publication.ReadCatalog(history.SessionName(u.Thread)); !os.IsNotExist(err) {
 		t.Fatalf("adopted records under the current UI thread instead of the supplied stable thread: %v", err)
 	}
 	if got := u.prepareCommandSegments("other", filepath.Join(workspace, "other"), turn); len(got) != 0 {
@@ -161,7 +161,7 @@ func TestCommandSegmentsBatchForkOwnershipSurvivesParentExpiry(t *testing.T) {
 			u.ctx = t.Context()
 			view := u.view
 			if consumer == "main" {
-				u.thread = "fork"
+				u.Thread = "fork"
 				u.restoreHistory([]appServerHistoryTurn{turn})
 			} else {
 				u.session.path("fork")

@@ -128,7 +128,7 @@ func TestAppServerWorkingShimmers(t *testing.T) {
 	if a == b || strings.TrimSuffix(ansi.Strip(a), " 0s") != strings.TrimSuffix(ansi.Strip(b), " 500ms") || !strings.Contains(ansi.Strip(a), "Working") {
 		t.Fatalf("no text-preserving shimmer: %q %q", a, b)
 	}
-	u.turn = ""
+	u.Turn = ""
 	if u.sessionLabel(u.turnStarted) != u.sessionLabel(u.turnStarted.Add(500*time.Millisecond)) {
 		t.Fatal("idle label animates")
 	}
@@ -181,15 +181,16 @@ func TestAppServerPendingStatusPulses(t *testing.T) {
 		t.Run(status, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.status = status
-			u.thread = ""
+			u.Thread = ""
 			if status == "Sending…" {
-				u.thread, u.submission.text = "main", "hello"
+				u.Thread = "main"
+				u.Submit("pending", "")
 			}
 			if status == "Interrupting…" {
-				u.thread, u.turn = "main", "turn"
+				u.Thread, u.Turn = "main", "turn"
 			}
 			if strings.HasPrefix(status, "Restoring") {
-				u.thread = "main"
+				u.Thread = "main"
 				if err := u.restorePaneContent(appServerThreadInfo{ID: "main"}); err != nil {
 					t.Fatal(err)
 				}
@@ -204,7 +205,8 @@ func TestAppServerPendingStatusPulses(t *testing.T) {
 				t.Fatal("alert animates")
 			}
 			u.restoring = nil
-			u.alert, u.thread, u.turn, u.submission.text, u.status = false, "main", "", "", "Ready"
+			u.LeaveThread()
+			u.alert, u.Thread, u.status = false, "main", "Ready"
 			if u.sessionAnimating() || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
 				t.Fatal("idle animates")
 			}

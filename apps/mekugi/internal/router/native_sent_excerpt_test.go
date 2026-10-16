@@ -15,10 +15,10 @@ import (
 
 func TestNativeSentMessagesBecomeExcerptsOutOfView(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.turn = "main-turn"
+	u.Turn = "main-turn"
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 	collab := func(id, tool, prompt string) {
-		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": u.turn, "item": map[string]any{"id": id, "type": "collabAgentToolCall",
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": u.Turn, "item": map[string]any{"id": id, "type": "collabAgentToolCall",
 			"tool": tool, "status": "completed", "senderThreadId": "main", "receiverThreadIds": []string{"child"}, "prompt": prompt}})
 	}
 	long := func(label string) string {
@@ -38,7 +38,7 @@ func TestNativeSentMessagesBecomeExcerptsOutOfView(t *testing.T) {
 		t.Fatalf("messages in view were shortened:\n%s", main)
 	}
 	for i := range 30 {
-		u.view.applyAppServerItem(true, "", "main", "main", u.turn, fmt.Sprint("note-", i), "item/completed", "", appServerItem{Type: "agentMessage", Text: fmt.Sprint("Main note ", i, ".")})
+		u.view.applyAppServerItem(true, "", "main", "main", u.Turn, fmt.Sprint("note-", i), "item/completed", "", appServerItem{Type: "agentMessage", Text: fmt.Sprint("Main note ", i, ".")})
 	}
 	paint() // Scrolls both messages above the viewport.
 	main := paint()

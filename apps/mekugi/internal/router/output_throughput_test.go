@@ -164,12 +164,12 @@ func (w *throughputSlowWriter) Write(payload []byte) (int, error) {
 func TestOutputThroughputUIRefreshRetainsPreviousRound(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		u, _ := newAppServerTestUI()
-		u.session.start(u.thread, "")
+		u.session.start(u.Thread, "")
 		u.ensureShell()
 		usage := newTestUsage(t)
 
 		u.proxy = &mekugiProxy{usage: usage}
-		first := usage.Observation(u.thread, u.thread, "gpt-6-sol", "")
+		first := usage.Observation(u.Thread, u.Thread, "gpt-6-sol", "")
 		first.Begin()
 		time.Sleep(time.Second)
 		first.Observe(inference.Usage{TotalsKnown: true, OutputTokens: 30})
@@ -177,7 +177,7 @@ func TestOutputThroughputUIRefreshRetainsPreviousRound(t *testing.T) {
 		if outputThroughputLabel(u.session.agent("/root").OutputThroughput) != "30.0 tok/s" {
 			t.Fatal("main did not refresh")
 		}
-		next := usage.Observation(u.thread, u.thread, "gpt-6-sol", "")
+		next := usage.Observation(u.Thread, u.Thread, "gpt-6-sol", "")
 		next.Begin()
 		u.applyObservedActivity()
 		if got := outputThroughputLabel(u.session.agent("/root").OutputThroughput); got != "30.0 tok/s" {
@@ -192,12 +192,12 @@ func TestUISnapshotOutputThroughputStreamingRetainsMeasuredRate(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				proxy := newManagedMekugiProxy(t)
 				u, _ := newAppServerTestUI()
-				u.thread, u.proxy = "thread-1", proxy
-				u.session.start(u.thread, "")
+				u.Thread, u.proxy = "thread-1", proxy
+				u.session.start(u.Thread, "")
 				u.ensureShell()
 				var previous inference.OutputThroughput
 				if prior {
-					observation := proxy.usage.Observation(u.thread, "", "gpt-6.1-sol", "")
+					observation := proxy.usage.Observation(u.Thread, "", "gpt-6.1-sol", "")
 					observation.Begin()
 					// Actual reported response: 620 of 883 output tokens were hidden reasoning.
 					time.Sleep(20125689348 * time.Nanosecond)
@@ -254,7 +254,7 @@ func TestUISnapshotOutputThroughputStreamingRetainsMeasuredRate(t *testing.T) {
 				_ = w.Close()
 				<-done
 				u.applyObservedActivity()
-				requireRoundThroughput(t, proxy.usage, u.thread, 40, true)
+				requireRoundThroughput(t, proxy.usage, u.Thread, 40, true)
 				if root.OutputThroughput.OutputTokens != 130 || out.Code != http.StatusOK {
 					t.Fatalf("terminal measurement or delivery changed: %+v, %d", root.OutputThroughput, out.Code)
 				}
@@ -271,7 +271,7 @@ func TestUISnapshotOutputThroughputComposerAndRoster(t *testing.T) {
 	for _, width := range []int{36, 80, 140} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.session.start(u.thread, "")
+			u.session.start(u.Thread, "")
 			u.ensureShell()
 			u.view.painter.Theme = diffrender.DarkTheme
 			root := u.session.agent("/root")

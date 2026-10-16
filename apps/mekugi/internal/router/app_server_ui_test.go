@@ -84,7 +84,7 @@ func (*appServerTestInput) Close() error { return nil }
 func newAppServerTestUI() (*appServerUI, *appServerTestInput) {
 	w := new(appServerTestInput)
 	client := &appserver.Client{Input: w}
-	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, issues: testCriticalErrors(), history: testHistory(), client: client, view: newLiveActivityView(), requests: sessioncontrol.NewRequests[appServerRequest](appServerTestTransport{client, w}), thread: "main"}
+	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, issues: testCriticalErrors(), history: testHistory(), client: client, view: newLiveActivityView(), requests: sessioncontrol.NewRequests[appServerRequest](appServerTestTransport{client, w}), Thread: "main"}
 	u.approvals.initGuards(testGuards())
 	u.view.painter.FileLink = u.markdownFileExists
 	return u, w
@@ -149,7 +149,7 @@ func TestAppServerCtrlCClearsDraftThenInterruptsOrQuits(t *testing.T) {
 		t.Fatalf("idle Ctrl-C quit=%v err=%v", quit, err)
 	}
 	u, w = newAppServerTestUI()
-	u.turn = "turn"
+	u.Turn = "turn"
 	appServerTestKeys(t, u, "steer\x03")
 	if u.draft != "" || w.Len() != 0 || !strings.Contains(u.feedback.Text, "Ctrl-C again interrupts") {
 		t.Fatalf("draft not cleared before interrupt: %q sent=%q", u.draft, w.String())
@@ -158,7 +158,7 @@ func TestAppServerCtrlCClearsDraftThenInterruptsOrQuits(t *testing.T) {
 		t.Fatalf("active Ctrl-C quit=%v err=%v sent=%q", quit, err, w.String())
 	}
 	u, w = newAppServerTestUI()
-	u.awaitingTurn = true
+	u.AwaitingTurn = true
 	if quit, err := u.key(3); quit || err != nil || w.Len() != 0 {
 		t.Fatalf("starting Ctrl-C quit=%v err=%v", quit, err)
 	}
@@ -166,7 +166,7 @@ func TestAppServerCtrlCClearsDraftThenInterruptsOrQuits(t *testing.T) {
 
 func TestAppServerComposerNoticeKeepsTurnStateAndClearsOnEdit(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.turn, u.status = "turn", "Working"
+	u.Turn, u.status = "turn", "Working"
 	appServerTestKeys(t, u, "/nope\r")
 	label := ansi.Strip(u.stateLabel(time.Now()))
 	if !strings.Contains(label, "Working") || !strings.Contains(label, "Unknown command /nope") {
@@ -251,7 +251,7 @@ func TestAppServerUIImmediateInputEcho(t *testing.T) {
 		}
 		if rejected {
 			appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"rejected"}}`)
-			if len(u.view.Entries) != 0 || u.draft != "你好 first message" || u.starting() {
+			if len(u.view.Entries) != 0 || u.draft != "你好 first message" || u.Starting() {
 				t.Fatal("rejection retained a false user message or lost the draft")
 			}
 			continue
@@ -287,7 +287,7 @@ func TestAppServerUIStartAndRejectedSteer(t *testing.T) {
 		t.Fatalf("wrong start: %+v", start)
 	}
 	appServerTestMessage(t, u, `{"id":1,"result":{"turn":{"id":"turn-1"}}}`)
-	if !u.starting() || u.draft != "" {
+	if !u.Starting() || u.draft != "" {
 		t.Fatal("response must clear accepted draft but retain start guard until notification")
 	}
 	appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"turn-1"}}}`)
@@ -309,7 +309,7 @@ func TestAppServerUIStartAndRejectedSteer(t *testing.T) {
 	}
 	w.Reset()
 	appServerTestMessage(t, u, `{"id":2,"error":{"code":-1,"message":"turn changed"}}`)
-	if u.draft != "steer me" || u.turn != "turn-1" || w.Len() != 0 {
+	if u.draft != "steer me" || u.Turn != "turn-1" || w.Len() != 0 {
 		t.Fatal("rejected steer lost draft or silently started a new turn")
 	}
 }
@@ -321,7 +321,7 @@ func TestAppServerUINotificationBeforeResponseAndItems(t *testing.T) {
 	appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"t"}}}`)
 	u.draft = "next draft"
 	appServerTestMessage(t, u, `{"id":1,"result":{"turn":{"id":"t"}}}`)
-	if u.turn != "t" || u.draft != "next draft" {
+	if u.Turn != "t" || u.draft != "next draft" {
 		t.Fatal("late response reset active identity or newer draft")
 	}
 	for _, wire := range []string{
@@ -340,7 +340,7 @@ func TestAppServerUINotificationBeforeResponseAndItems(t *testing.T) {
 		t.Fatalf("completion or cross-thread collision: %+v", u.view.Entries)
 	}
 	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"child","turn":{"id":"t","status":"completed"}}}`)
-	if u.turn != "t" {
+	if u.Turn != "t" {
 		t.Fatal("child completion cleared main turn")
 	}
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"main","turnId":"t","item":{"id":"r","type":"reasoning","text":"PRIVATE_REASONING"}}}`)
@@ -353,7 +353,7 @@ func TestAppServerUINotificationBeforeResponseAndItems(t *testing.T) {
 		t.Fatalf("unexpected visible content: %q", frame.String())
 	}
 	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"t","status":"completed"}}}`)
-	if u.turn != "" || !strings.HasPrefix(u.status, "Completed in ") {
+	if u.Turn != "" || !strings.HasPrefix(u.status, "Completed in ") {
 		t.Fatal("main completion not applied")
 	}
 }
@@ -372,11 +372,11 @@ func TestAppServerSteerStatusAcknowledgement(t *testing.T) {
 		before := u.status
 		appServerTestMessage(t, u, `{"id":1,"result":{"turnId":"t"}}`)
 		if completed {
-			if u.status != before || u.turn != "" {
+			if u.status != before || u.Turn != "" {
 				t.Fatal("late acknowledgement revived completed turn")
 			}
-		} else if u.status != "Working" || u.turn != "t" || u.submission.text != "" {
-			t.Fatalf("steer stayed pending: status=%s turn=%s submitted=%s", u.status, u.turn, u.submission.text)
+		} else if u.status != "Working" || u.Turn != "t" || u.inputPayloads[u.Submission().ID].text != "" {
+			t.Fatalf("steer stayed pending: status=%s turn=%s submitted=%s", u.status, u.Turn, u.inputPayloads[u.Submission().ID].text)
 		}
 	}
 }
@@ -413,7 +413,7 @@ func TestNativeUIEscapeInterruptPreservesDraft(t *testing.T) {
 		u.ensureShell()
 		u.draft = "unfinished draft"
 		if active {
-			u.turn = "turn"
+			u.Turn = "turn"
 		}
 		if err := u.shell.key(27); err != nil {
 			t.Fatal(err)
@@ -427,7 +427,7 @@ func TestNativeUIEscapeInterruptPreservesDraft(t *testing.T) {
 		}
 		if active {
 			appServerOneRequest(t, w, "turn/interrupt", "")
-			if u.interruption.target != "turn" {
+			if u.Interruption.Target != "turn" {
 				t.Fatal("turn not interrupting")
 			}
 		} else if w.Len() != 0 {

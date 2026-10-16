@@ -22,7 +22,7 @@ func TestComposerPastePausedTranscriptThenReference(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
-	u.turn = "active"
+	u.Turn = "active"
 	u.view.following = false
 	composerShellKeys(t, u, "\x1b[200~'"+image+"'\x1b[201~")
 	if u.paste || u.shell.paste || len(u.images) != 1 || u.draft != "[Image 1] " || u.view.following {

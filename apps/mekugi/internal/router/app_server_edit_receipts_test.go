@@ -329,15 +329,15 @@ func TestCodeModeCellEditReceipt(t *testing.T) {
 	}
 	item := appServerItem{ID: "edit-exec", Type: "commandExecution", Command: edit, ExitCode: new(0)}
 	live := newAppServerSessionTestUI(t, workspace)
-	live.thread = "thread-1"
-	live.session.start(live.thread, workspace)
+	live.Thread = "thread-1"
+	live.session.start(live.Thread, workspace)
 	live.shell.diff.data = snapshot
 	appServerTestNotify(t, live, "item/completed", map[string]any{"threadId": "thread-1", "turnId": "turn", "item": item})
 	live.applyCapturedEdits()
 	assertCapturedCommand(t, live.view, "thread-1", "edit-exec", "Edit", 0)
 	restored := newAppServerSessionTestUI(t, workspace)
-	restored.thread = "thread-1"
-	restored.session.start(restored.thread, workspace)
+	restored.Thread = "thread-1"
+	restored.session.start(restored.Thread, workspace)
 	restored.shell.diff.data = snapshot
 	restored.restoreHistory([]appServerHistoryTurn{{ID: "turn", Status: "completed", Items: []appServerItem{item}}})
 	assertCapturedCommand(t, restored.view, "thread-1", "edit-exec", "Edit", 0)

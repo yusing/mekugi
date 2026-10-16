@@ -17,7 +17,7 @@ func TestUISnapshotNativeMainRepliesStayInTranscript(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
 			u.clock = func() time.Time { return now }
-			u.turn, u.status, u.model = "active", "Working", "snapshot-model"
+			u.Turn, u.status, u.model = "active", "Working", "snapshot-model"
 			u.view.painter.Theme = diffrender.DarkTheme
 			entries := []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Main reply stays in the transcript.", Observed: now}}
 			for i := range 20 {
@@ -60,7 +60,7 @@ func TestNativeMainTranscriptScrollingAndTurnEnd(t *testing.T) {
 			}
 			appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t", "status": status}})
 			u.mainFrame(80, 24, 0)
-			if u.view.feedTop != 1 || u.turn != "" {
+			if u.view.feedTop != 1 || u.Turn != "" {
 				t.Fatal("turn end changed transcript geometry or retained an active turn")
 			}
 		})

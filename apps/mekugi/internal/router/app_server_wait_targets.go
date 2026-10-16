@@ -38,7 +38,7 @@ func (u *appServerUI) openWaitStore(store *mekugiReplayStore) error {
 			return err
 		}
 	}
-	ctx, release, err := store.beginSession(ctx, u.thread, "")
+	ctx, release, err := store.beginSession(ctx, u.Thread, "")
 	if err != nil {
 		return err
 	}

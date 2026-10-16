@@ -426,7 +426,7 @@ func (u *terminalUI) send(s string) error {
 		return nil
 	}
 	if s == "\x1b" && u.focus == 0 && u.main != nil && !u.main.paste {
-		if u.main.turn != "" || u.main.starting() || u.main.submission.text != "" || len(u.main.unsent)+len(u.main.queued) > 0 {
+		if u.main.Turn != "" || u.main.Starting() || u.main.InputPending() || len(u.main.unsent)+len(u.main.queued) > 0 {
 			return u.main.keyboardEscape()
 		}
 		return nil

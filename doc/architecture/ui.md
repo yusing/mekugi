@@ -40,8 +40,9 @@ observation capacity must remain visible and bounded without terminating unrelat
   framing, bounded diagnostics, initialization, and shutdown. It does not import the
   router or terminal UI and does not interpret model responses.
 - Application [session control](../../apps/mekugi/internal/sessioncontrol/SPEC.md)
-  owns live request issuance and correlation. Presentation supplies intent and
-  receives the result belonging to that request.
+  owns live request issuance, correlation and Main operation lifecycles.
+  Presentation supplies intent and applies identity-bound settlement decisions;
+  the composer retains queued and sent payloads.
 
 The router integrates the native session, composer, pane navigation and app-server
 event reconciliation with Activity's feed and roster models. It adapts authenticated activity,
@@ -69,14 +70,6 @@ before handoff; the native client never executes model-requested tools.
 claims and attached feedback. Terminal integration owns rendering, actual display
 receipts, desktop signals and lifecycle titles.
 
-Live host operations have one lifecycle owner, separate from presentation status,
-elapsed time, and activity items. Input admission derives from pending submission,
-compaction, interruption, shell, replacement, and settings records, not displayed
-labels. Each record distinguishes RPC acknowledgement from the host observations
-that settle it. Confirmed session replacement retires the source operations as a
-unit while retaining queued composer input and the target's resume intent;
-rejected replacement leaves the source lifecycle intact.
-
 [Session preferences](../../modules/sessionpreferences/SPEC.md) owns applied and
 recovery evidence, resume selection and persistence. The terminal adapter owns
 layout validation and application. Host start/resume results and matching
@@ -92,11 +85,6 @@ To restore nullable reasoning, the client copies the returned collaboration mode
 changes only reasoning effort to null, and submits `thread/settings/update`:
 the RPC's plain `effort:null` means no change. Input and snapshot replacement stay
 gated until the authoritative notification arrives. No user configuration is written.
-
-Application [session control](../../apps/mekugi/internal/sessioncontrol/SPEC.md)
-owns the manual-compaction workflow. The composer retains queued payloads and
-restores waiting input when that owner admits cancellation; presentation does not
-derive completion or continuation from displayed status.
 
 Dependencies point from router integration into feature presentation and shared
 libraries. Rendering introduces no second capturer, history store or transcript.

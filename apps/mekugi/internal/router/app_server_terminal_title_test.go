@@ -95,7 +95,7 @@ func TestAppServerTerminalTitleUnsupportedRequests(t *testing.T) {
 func TestAppServerTerminalTitleQueuedQuestionAnswerIsNotActionRequired(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/work/project")
 	out := notificationTestOutput(t, u)
-	u.turn = "turn"
+	u.Turn = "turn"
 	now := time.Unix(0, 0)
 	questionTestAsync(t, u, "async", "Which option?")
 	out.Reset()

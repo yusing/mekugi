@@ -75,7 +75,7 @@ func TestAppServerGuardHookIgnoresStaleThreadResponse(t *testing.T) {
 	old := appServerOneRequest(t, wire, "hooks/list", "")
 	// Thread switching owns pending-input removal. The outstanding host request
 	// can still arrive after the selected thread and workspace change.
-	u.thread, u.session.cwd, u.unsent, u.queued = "new", "/new", nil, nil
+	u.Thread, u.session.cwd, u.unsent, u.queued = "new", "/new", nil, nil
 	appServerTestKeys(t, u, "new input\r")
 	if wire.Len() != 0 {
 		t.Fatalf("overlapping hook check: %q", wire.String())

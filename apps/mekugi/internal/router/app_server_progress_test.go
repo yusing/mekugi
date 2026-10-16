@@ -77,7 +77,7 @@ func TestAppServerProgressWaitAndReplay(t *testing.T) {
 	history := []appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{wait, {ID: "c", Type: "contextCompaction"}}}}
 	v := newAppServerSessionTestUI(t, t.TempDir())
 	v.restoreHistory(history)
-	if len(v.view.Entries) != 2 || v.compacting != nil || v.turn != "" {
+	if len(v.view.Entries) != 2 || v.compacting != nil || v.Turn != "" {
 		t.Fatalf("restored events revived work or went missing: %+v", v.view.Entries)
 	}
 	v.session.registerThread(appServerThreadInfo{ID: "child"})

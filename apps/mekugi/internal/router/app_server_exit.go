@@ -35,15 +35,15 @@ func (u *appServerUI) writeExitSummary(w io.Writer, color bool) error {
 		return command
 	}
 	if u.archived {
-		fmt.Fprintf(&text, "Session archived: %s\n", textsanitize.Safe(u.thread, false))
-	} else if u.thread != "" {
+		fmt.Fprintf(&text, "Session archived: %s\n", textsanitize.Safe(u.Thread, false))
+	} else if u.Thread != "" {
 		argv := slices.Clone(u.resumeArgv)
 		if len(argv) == 0 {
 			argv = []string{"mekugi", "codex", "--yolo"}
 		}
-		command := commandLine(append(argv, "resume", u.thread))
+		command := commandLine(append(argv, "resume", u.Thread))
 		fmt.Fprintf(&text, "To continue this session, run:\n  %s\n", command)
-		replay := []string{argv[0], "replay-session", "--session", u.thread}
+		replay := []string{argv[0], "replay-session", "--session", u.Thread}
 		if u.replayDebugDirectory != "" {
 			replay = append(replay, "--debug-dir", u.replayDebugDirectory)
 		}

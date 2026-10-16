@@ -153,7 +153,7 @@ func TestAppServerSettingsCatalogNativeCodex(t *testing.T) {
 	if err := u.request("initialize", nil); err != nil {
 		t.Fatal(err)
 	}
-	for u.thread == "" || u.modelsLoading {
+	for u.Thread == "" || u.modelsLoading {
 		select {
 		case message := <-client.Messages:
 			if err := u.message(message); err != nil {

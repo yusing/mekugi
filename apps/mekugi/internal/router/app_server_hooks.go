@@ -41,7 +41,7 @@ func (u *appServerUI) hookEvent(method string, event appServerEvent) error {
 		return fmt.Errorf("%s: missing hook thread or run identity", method)
 	}
 	s := &u.session
-	if event.ThreadID != u.thread {
+	if event.ThreadID != u.Thread {
 		if err := u.requestThreadMetadata(event.ThreadID); err != nil {
 			return err
 		}
@@ -53,7 +53,7 @@ func (u *appServerUI) hookEvent(method string, event appServerEvent) error {
 	completed := method == "hook/completed"
 	var previousOutput *activitymodel.Output
 	view := u.agents
-	if event.ThreadID == u.thread {
+	if event.ThreadID == u.Thread {
 		view = u.view
 	}
 	// Use the existing item reconciliation to ignore duplicate starts and late

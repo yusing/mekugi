@@ -204,7 +204,7 @@ func TestAppServerAnchoredHistoryTurnPagesAndIsolation(t *testing.T) {
 	if err := u.clearSessionPresentation(); err != nil {
 		t.Fatal(err)
 	}
-	u.thread = "other"
+	u.Thread = "other"
 	u.session.start("other", u.session.cwd)
 	restoreContentReply(t, u, 6, map[string]any{"data": []any{historyItem("first", "foreign history", 101000)}})
 	if len(u.agents.Entries) != 0 || u.historyLoading != nil || u.childHistory != nil {

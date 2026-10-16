@@ -140,7 +140,7 @@ func TestRunningProcessesRestoredAndSwitched(t *testing.T) {
 	appServerTestKeys(t, u, "/ps\r")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"fresh","cwd":"/workspace"}}}`, r.ID))
 	processNotify(t, u, "main", "late", "sleep 200", "inProgress")
-	if u.thread != "fresh" || u.runningProcessCount() != 0 || u.shell.output != nil {
+	if u.Thread != "fresh" || u.runningProcessCount() != 0 || u.shell.output != nil {
 		t.Fatal("switch retained old commands, their dialog, or admitted late old events")
 	}
 }
@@ -150,7 +150,7 @@ func TestRunningProcessesInteraction(t *testing.T) {
 	for i := range 20 {
 		processNotify(t, u, "main", fmt.Sprint(i), fmt.Sprintf("sleep %d", i+1), "inProgress")
 	}
-	u.turn, u.status = "active", "Working"
+	u.Turn, u.status = "active", "Working"
 	wire := u.client.Input.(*appServerTestInput)
 	wire.Reset()
 	for _, closeKey := range []string{"\x1b", "q", "\x03"} {
@@ -171,7 +171,7 @@ func TestRunningProcessesInteraction(t *testing.T) {
 		if err := u.shell.send(closeKey); err != nil {
 			t.Fatal(err)
 		}
-		if u.shell.output != nil || u.turn != "active" || u.runningProcessCount() != 20 || wire.Len() != 0 || u.draft != "" {
+		if u.shell.output != nil || u.Turn != "active" || u.runningProcessCount() != 20 || wire.Len() != 0 || u.draft != "" {
 			t.Fatalf("dialog changed work or sent a model request: %s", wire.String())
 		}
 	}

@@ -13,7 +13,7 @@ import (
 
 func TestAppServerResumeStartup(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.thread, u.resumeThread = "", "saved"
+	u.Thread, u.resumeThread = "", "saved"
 	u.resumeConfig = map[string]any{"model": "override", "model_provider": "routed"}
 	u.agents = newLiveActivityView()
 	appServerTestRequest(t, u, "0", "initialize")
@@ -50,7 +50,7 @@ func TestAppServerResumeStartup(t *testing.T) {
 	appServerTestMessage(t, u, `{"id":3,"result":{"data":[],"nextCursor":null}}`)
 	appServerTestMessage(t, u, `{"id":4,"result":{"data":[],"nextCursor":null}}`)
 	appServerTestMessage(t, u, `{"id":5,"result":{"data":[],"nextCursor":null}}`)
-	if u.thread != "saved" || u.status != "Ready" || u.model != "model" || u.reasoningEffort != "high" || len(u.view.Entries) != 2 || u.view.Entries[0].Source.Text != "Saved question" || u.view.Entries[1].Source.Text != "Saved answer" {
+	if u.Thread != "saved" || u.status != "Ready" || u.model != "model" || u.reasoningEffort != "high" || len(u.view.Entries) != 2 || u.view.Entries[0].Source.Text != "Saved question" || u.view.Entries[1].Source.Text != "Saved answer" {
 		t.Fatalf("resume state: %+v, entries=%+v", u, u.view.Entries)
 	}
 	if got := contextWindowLabel(*u.session.agent("/root")); got != "120K/400K • 30%" {
@@ -72,13 +72,13 @@ func TestAppServerResumeStartup(t *testing.T) {
 func TestAppServerResumeRejectsFailureAndWrongIdentity(t *testing.T) {
 	for _, wire := range []string{`{"id":1,"error":{"code":-1,"message":"missing thread"}}`, `{"id":1,"result":{"thread":{"id":"other"}}}`, `{"id":1,"result":{"thread":{}}}`} {
 		u, w := newAppServerTestUI()
-		u.thread, u.resumeThread = "", "saved"
+		u.Thread, u.resumeThread = "", "saved"
 		appServerTestRequest(t, u, "1", "thread/resume")
 		var m appserver.Message
 		if err := json.Unmarshal([]byte(wire), &m); err != nil {
 			t.Fatal(err)
 		}
-		if err := u.message(m); err == nil || u.thread != "" || w.Len() != 0 {
+		if err := u.message(m); err == nil || u.Thread != "" || w.Len() != 0 {
 			t.Fatalf("resume must fail without creating another thread: %v", err)
 		}
 	}
@@ -91,7 +91,7 @@ func TestAppServerResumeHistoryDoesNotReviveEffects(t *testing.T) {
 		{ID: "edit", Type: "fileChange", Changes: []appServerFileChange{{Path: "a.go", Diff: "+changed"}}},
 		{ID: "spawn", Type: "collabAgentToolCall", Tool: "spawnAgent", ReceiverThreadIDs: []string{"child"}},
 	}}})
-	if u.turn != "" || len(u.session.agents) != 1 || u.session.agents[0].Responding || len(u.view.Entries) != 2 || u.view.blocks(0)[0].ExitCode != 2 {
+	if u.Turn != "" || len(u.session.agents) != 1 || u.session.agents[0].Responding || len(u.view.Entries) != 2 || u.view.blocks(0)[0].ExitCode != 2 {
 		t.Fatalf("history revived lifecycle or lost tools: %+v", u.session)
 	}
 	if !u.shell.openActivityEdit(u.view, u.view.Entries[1].Source.Seq, "a.go") {
@@ -99,7 +99,7 @@ func TestAppServerResumeHistoryDoesNotReviveEffects(t *testing.T) {
 	}
 	u.shell.outputKey("\x1b")
 	u.restoreHistory([]appServerHistoryTurn{{ID: "active", Status: "inProgress", Items: []appServerItem{{ID: "partial", Type: "agentMessage", Text: "Partial"}}}})
-	if u.turn != "active" || !u.session.agents[0].Responding {
+	if u.Turn != "active" || !u.session.agents[0].Responding {
 		t.Fatal("active snapshot did not restore steer/interrupt target")
 	}
 	appServerTestMessage(t, u, `{"method":"item/agentMessage/delta","params":{"threadId":"main","turnId":"active","itemId":"partial","delta":" answer"}}`)
@@ -110,7 +110,7 @@ func TestAppServerResumeHistoryDoesNotReviveEffects(t *testing.T) {
 
 func TestAppServerResumePendingBound(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.thread, u.resumeThread = "", "saved"
+	u.Thread, u.resumeThread = "", "saved"
 	m := appserver.Message{Method: "thread/started", Params: jsontext.Value(`{}`)}
 	for range 256 {
 		if err := u.message(m); err != nil {
@@ -131,7 +131,7 @@ func TestAppServerResumeConfig(t *testing.T) {
 
 func TestAppServerResumeLastStartup(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.thread, u.resumeThread, u.resumeCwd = "", "--last", "/workspace"
+	u.Thread, u.resumeThread, u.resumeCwd = "", "--last", "/workspace"
 	u.resumeConfig = map[string]any{"model": "override", "model_provider": "routed"}
 	appServerTestRequest(t, u, "0", "initialize")
 	appServerTestMessage(t, u, `{"id":0,"result":{}}`)
@@ -165,7 +165,7 @@ func TestAppServerResumeLastStartup(t *testing.T) {
 	if err := json.Unmarshal(bytes.TrimSpace(w.Bytes()), &request); err != nil {
 		t.Fatal(err)
 	}
-	if request.Method != "thread/resume" || request.Params["threadId"] != "latest" || request.Params["modelProvider"] != "routed" || request.Params["config"].(map[string]any)["model"] != "override" || u.resumeThread != "latest" || u.thread != "" {
+	if request.Method != "thread/resume" || request.Params["threadId"] != "latest" || request.Params["modelProvider"] != "routed" || request.Params["config"].(map[string]any)["model"] != "override" || u.resumeThread != "latest" || u.Thread != "" {
 		t.Fatalf("resolved resume request: %+v", request)
 	}
 }
@@ -178,13 +178,13 @@ func TestAppServerResumeLastFailure(t *testing.T) {
 		`{"id":1,"result":{"data":"invalid"}}`,
 	} {
 		u, w := newAppServerTestUI()
-		u.thread, u.resumeThread, u.resumeCwd = "", "--last", "/workspace"
+		u.Thread, u.resumeThread, u.resumeCwd = "", "--last", "/workspace"
 		appServerTestRequest(t, u, "1", "thread/list")
 		var m appserver.Message
 		if err := json.Unmarshal([]byte(wire), &m); err != nil {
 			t.Fatal(err)
 		}
-		if err := u.message(m); err == nil || w.Len() != 0 || u.thread != "" {
+		if err := u.message(m); err == nil || w.Len() != 0 || u.Thread != "" {
 			t.Fatalf("lookup failure started a conversation: %v, %s", err, w.Bytes())
 		}
 	}

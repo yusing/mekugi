@@ -42,7 +42,7 @@ type appServerChildHistory struct {
 
 func (u *appServerUI) startChildHistory(info appServerThreadInfo) error {
 	r := u.restoring
-	h := &appServerChildHistory{root: u.thread, info: info, turn: appServerHistoryMetadataPending, initial: true,
+	h := &appServerChildHistory{root: u.Thread, info: info, turn: appServerHistoryMetadataPending, initial: true,
 		seenTurns: make(map[string]bool), seenItems: make(map[[2]string]bool), cursors: make(map[[2]string]bool),
 		itemAt: r.itemAt[info.ID], placements: r.pane[u.session.path(info.ID)]}
 	if h.itemAt == nil {
@@ -79,7 +79,7 @@ func (u *appServerUI) requestChildHistory(method string, params map[string]any) 
 
 func (u *appServerUI) childHistoryResponse(method string, m appserver.Message) error {
 	h := u.historyLoading
-	if h == nil || h.root != u.thread || h.requestID != string(m.ID) || u.childHistory[h.info.ID] != h {
+	if h == nil || h.root != u.Thread || h.requestID != string(m.ID) || u.childHistory[h.info.ID] != h {
 		return nil
 	}
 	h.requestID = ""
@@ -235,7 +235,7 @@ func (u *appServerUI) finishChildHistory() error {
 
 func (u *appServerUI) historyTarget() *appServerChildHistory {
 	for _, h := range u.childHistory {
-		if h.root == u.thread && u.session.path(h.info.ID) == u.agents.selected && (h.turn != -1 || h.failure != "") {
+		if h.root == u.Thread && u.session.path(h.info.ID) == u.agents.selected && (h.turn != -1 || h.failure != "") {
 			return h
 		}
 	}
@@ -244,7 +244,7 @@ func (u *appServerUI) historyTarget() *appServerChildHistory {
 			continue
 		}
 		for _, h := range u.childHistory {
-			if h.root == u.thread && u.session.path(h.info.ID) == agent.Name && (h.turn != -1 || h.failure != "") {
+			if h.root == u.Thread && u.session.path(h.info.ID) == agent.Name && (h.turn != -1 || h.failure != "") {
 				return h
 			}
 		}

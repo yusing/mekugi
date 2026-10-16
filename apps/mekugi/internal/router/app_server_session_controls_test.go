@@ -16,8 +16,8 @@ func TestAppServerCompactIdleAndLifecycle(t *testing.T) {
 			u, w := newAppServerTestUI()
 			appServerTestKeys(t, u, "/compact\r")
 			r := appServerOneRequest(t, w, "thread/compact/start", "")
-			if !u.compaction.AcknowledgementPending() || !u.starting() || u.submission.text != "" || len(u.view.Entries) != 0 {
-				t.Fatalf("compact treated as conversation input: pending=%v starting=%v entries=%+v", u.compaction.AcknowledgementPending(), u.starting(), u.view.Entries)
+			if !u.Compaction.AcknowledgementPending() || !u.Starting() || u.inputPayloads[u.Submission().ID].text != "" || len(u.view.Entries) != 0 {
+				t.Fatalf("compact treated as conversation input: pending=%v starting=%v entries=%+v", u.Compaction.AcknowledgementPending(), u.Starting(), u.view.Entries)
 			}
 			if beforeAck {
 				appServerTestTurn(t, u, "compact-turn")
@@ -28,8 +28,8 @@ func TestAppServerCompactIdleAndLifecycle(t *testing.T) {
 				appServerTestTurn(t, u, "compact-turn")
 				appServerTestTurnEnd(t, u, "compact-turn", "completed")
 			}
-			if u.compaction.AcknowledgementPending() || u.starting() || u.draft != "" || len(appServerTurnRequests(t, w)) != 0 {
-				t.Fatalf("compact lifecycle not settled: pending=%v starting=%v draft=%q", u.compaction.AcknowledgementPending(), u.starting(), u.draft)
+			if u.Compaction.AcknowledgementPending() || u.Starting() || u.draft != "" || len(appServerTurnRequests(t, w)) != 0 {
+				t.Fatalf("compact lifecycle not settled: pending=%v starting=%v draft=%q", u.Compaction.AcknowledgementPending(), u.Starting(), u.draft)
 			}
 		})
 	}
@@ -40,7 +40,7 @@ func TestAppServerCompactBusyQueuesAheadOfLaterText(t *testing.T) {
 	appServerTestTurn(t, u, "work")
 	appServerTestKeys(t, u, "/compact\t")
 	appServerTestKeys(t, u, "after compact\r")
-	if got := appServerTurnRequests(t, w); len(got) != 0 || len(u.unsent) != 2 || u.turn != "work" {
+	if got := appServerTurnRequests(t, w); len(got) != 0 || len(u.unsent) != 2 || u.Turn != "work" {
 		t.Fatalf("busy compact replaced turn or sent text: requests=%+v unsent=%+v", got, u.unsent)
 	}
 	appServerTestTurnEnd(t, u, "work", "completed")
@@ -62,7 +62,7 @@ func TestAppServerCompactFailureRestoresCommand(t *testing.T) {
 	appServerTestKeys(t, u, "/compact\r")
 	r := appServerOneRequest(t, w, "thread/compact/start", "")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, r.ID))
-	if u.draft != "/compact" || u.compaction.AcknowledgementPending() || u.starting() || !strings.Contains(u.feedback.Text, "rejected") || len(u.view.Entries) != 0 {
+	if u.draft != "/compact" || u.Compaction.AcknowledgementPending() || u.Starting() || !strings.Contains(u.feedback.Text, "rejected") || len(u.view.Entries) != 0 {
 		t.Fatalf("failed compact not restored: draft=%q notice=%q entries=%+v", u.draft, u.feedback.Text, u.view.Entries)
 	}
 }
@@ -71,7 +71,7 @@ func TestAppServerClearBusyRejected(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestTurn(t, u, "busy")
 	appServerTestKeys(t, u, "/clear\r")
-	if w.Len() != 0 || u.replacement.pending() || u.turn != "busy" || !strings.Contains(u.feedback.Text, "disabled") {
+	if w.Len() != 0 || u.Replacement.Pending() || u.Turn != "busy" || !strings.Contains(u.feedback.Text, "disabled") {
 		t.Fatalf("busy clear was accepted: request=%q notice=%q", w.String(), u.feedback.Text)
 	}
 }
@@ -83,8 +83,8 @@ func TestAppServerClearWaitsForCompactAcknowledgement(t *testing.T) {
 	appServerTestTurn(t, u, "compact-turn")
 	appServerTestTurnEnd(t, u, "compact-turn", "completed")
 	appServerTestKeys(t, u, "/clear\r")
-	if w.Len() != 0 || u.replacement.pending() || !u.compaction.AcknowledgementPending() || strings.TrimSpace(u.draft) != "/clear" {
-		t.Fatalf("clear overtook compact acknowledgement: wire=%q clearing=%v compact=%v draft=%q", w.String(), u.replacement.pending(), u.compaction.AcknowledgementPending(), u.draft)
+	if w.Len() != 0 || u.Replacement.Pending() || !u.Compaction.AcknowledgementPending() || strings.TrimSpace(u.draft) != "/clear" {
+		t.Fatalf("clear overtook compact acknowledgement: wire=%q clearing=%v compact=%v draft=%q", w.String(), u.Replacement.Pending(), u.Compaction.AcknowledgementPending(), u.draft)
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID))
 	appServerTestKeys(t, u, "\r")
@@ -116,21 +116,21 @@ func TestAppServerClearStartsFreshThreadAndRetiresOldEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	w.Reset()
-	if req.Method != "thread/start" || req.Params.SessionStartSource != "clear" || req.Params.Model != "chosen" || req.Params.ServiceTier != "priority" || req.Params.Config.Effort != "high" || !u.replacement.pending() || len(u.view.Entries) == 0 {
-		t.Fatalf("clear request/state: %+v clearing=%v entries=%+v", req, u.replacement.pending(), u.view.Entries)
+	if req.Method != "thread/start" || req.Params.SessionStartSource != "clear" || req.Params.Model != "chosen" || req.Params.ServiceTier != "priority" || req.Params.Config.Effort != "high" || !u.Replacement.Pending() || len(u.view.Entries) == 0 {
+		t.Fatalf("clear request/state: %+v clearing=%v entries=%+v", req, u.Replacement.Pending(), u.view.Entries)
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"fresh","cwd":"/tmp"},"model":"chosen","reasoningEffort":"high","serviceTier":"priority"}}`, req.ID))
 	requests := appServerTurnRequests(t, w)
 	if len(requests) != 2 || requests[0].Method != "thread/unsubscribe" || requests[1].Method != "model/list" {
 		t.Fatalf("clear follow-up requests: %+v", requests)
 	}
-	if u.thread != "fresh" || u.replacement.pending() || len(u.view.Entries) != 0 {
-		t.Fatalf("old presentation retained: thread=%q entries=%+v", u.thread, u.view.Entries)
+	if u.Thread != "fresh" || u.Replacement.Pending() || len(u.view.Entries) != 0 {
+		t.Fatalf("old presentation retained: thread=%q entries=%+v", u.Thread, u.view.Entries)
 	}
 	appServerTestUserMessage(t, u, "late-old", "", "late old transcript")
 	appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"late-turn"}}}`)
-	if len(u.view.Entries) != 0 || u.turn != "" {
-		t.Fatalf("retired events repopulated session: %+v turn=%q", u.view.Entries, u.turn)
+	if len(u.view.Entries) != 0 || u.Turn != "" {
+		t.Fatalf("retired events repopulated session: %+v turn=%q", u.view.Entries, u.Turn)
 	}
 	var frame bytes.Buffer
 	if err := u.paint(&frame, 80, 20); err != nil {
@@ -149,8 +149,8 @@ func TestAppServerClearFailureKeepsTranscript(t *testing.T) {
 	appServerTestKeys(t, u, "/clear\r")
 	r := appServerOneRequest(t, w, "thread/start", "")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"unavailable"}}`, r.ID))
-	if u.thread != "main" || u.replacement.pending() || len(u.view.Entries) != 1 || u.view.Entries[0].Source.Text != "keep this" || !strings.Contains(u.feedback.Text, "unavailable") {
-		t.Fatalf("failed clear discarded state: thread=%q entries=%+v notice=%q", u.thread, u.view.Entries, u.feedback.Text)
+	if u.Thread != "main" || u.Replacement.Pending() || len(u.view.Entries) != 1 || u.view.Entries[0].Source.Text != "keep this" || !strings.Contains(u.feedback.Text, "unavailable") {
+		t.Fatalf("failed clear discarded state: thread=%q entries=%+v notice=%q", u.Thread, u.view.Entries, u.feedback.Text)
 	}
 }
 
@@ -172,8 +172,8 @@ func TestAppServerClearKeepsThreadCommandsUntilNewSessionReady(t *testing.T) {
 			appServerTestKeys(t, u, "/clear\r")
 			r := appServerOneRequest(t, w, "thread/start", "")
 			appServerTestKeys(t, u, command+"\r")
-			if strings.TrimSpace(u.draft) != command || u.settings.pending() || u.shellCommand.pending.text != "" || u.btw != nil || len(appServerTurnRequests(t, w)) != 0 {
-				t.Fatalf("command escaped while clearing: draft=%q settings=%v shell=%q btw=%+v", u.draft, u.settings.pending(), u.shellCommand.pending.text, u.btw)
+			if strings.TrimSpace(u.draft) != command || u.Settings.Pending() || u.shellDraft.text != "" || u.btw != nil || len(appServerTurnRequests(t, w)) != 0 {
+				t.Fatalf("command escaped while clearing: draft=%q settings=%v shell=%q btw=%+v", u.draft, u.Settings.Pending(), u.shellDraft.text, u.btw)
 			}
 			if accepted, err := u.updateSettings(map[string]any{"effort": "high"}); err != nil || accepted || w.Len() != 0 {
 				t.Fatalf("shortcut bypassed clear gate: accepted=%v err=%v wire=%s", accepted, err, w.String())
@@ -182,8 +182,8 @@ func TestAppServerClearKeepsThreadCommandsUntilNewSessionReady(t *testing.T) {
 			appServerTurnRequests(t, w)
 			appServerTestMessage(t, u, `{"method":"thread/settings/updated","params":{"threadId":"main","threadSettings":{"model":"stale"}}}`)
 			appServerTestTurn(t, u, "old-shell-turn")
-			if strings.TrimSpace(u.draft) != command || u.turn != "" || u.settings.pending() || u.shellCommand.pending.text != "" {
-				t.Fatalf("old lifecycle affected fresh session: draft=%q turn=%q", u.draft, u.turn)
+			if strings.TrimSpace(u.draft) != command || u.Turn != "" || u.Settings.Pending() || u.shellDraft.text != "" {
+				t.Fatalf("old lifecycle affected fresh session: draft=%q turn=%q", u.draft, u.Turn)
 			}
 			appServerTestKeys(t, u, "\x03fresh prompt\r")
 			appServerOneRequest(t, w, "turn/start", "fresh prompt")

@@ -153,14 +153,14 @@ func TestFailureStorageNoticeReachesOwningNativeRootBeforeShutdown(t *testing.T)
 	issues.persistFailure(failure)
 
 	other, _ := newAppServerTestUI()
-	other.thread = "unrelated-root"
+	other.Thread = "unrelated-root"
 	other.issues = issues
 	if delivery := other.applyCriticalNotices(); delivery != nil || len(other.view.Entries) != 0 {
 		t.Fatal("another root claimed the storage notice")
 	}
 
 	owner, _ := newAppServerTestUI()
-	owner.thread = failure.threadID
+	owner.Thread = failure.threadID
 	owner.issues = issues
 	owner.view.conversation = true
 	delivery := owner.applyCriticalNotices()
@@ -183,7 +183,7 @@ func TestNativeCriticalNoticeComposerVisibility(t *testing.T) {
 		t.Run(state, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.issues = testCriticalErrors()
-			queueCritical(u.issues, u.thread)
+			queueCritical(u.issues, u.Thread)
 			delivery := u.applyCriticalNotices()
 			u.ensureShell()
 			defer u.shell.diffScreen.Close()
@@ -243,7 +243,7 @@ func TestNativeCleanupNoticeTranscriptReplacement(t *testing.T) {
 			if err := u.clearSessionPresentation(); err != nil {
 				t.Fatal(err)
 			}
-			u.thread = "replacement"
+			u.Thread = "replacement"
 			retry := u.applyCriticalNotices()
 			if delivered {
 				if retry != nil || len(u.view.Entries) != 0 {

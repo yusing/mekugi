@@ -328,22 +328,22 @@ func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 	}
 	p.until("main streams its patch")
 	keys("also check Unsubscribe\r")
-	if p.ui.submission.text != "" || p.ui.turn == "" || !slices.ContainsFunc(p.ui.view.Entries, func(e liveActivityRecord) bool {
+	if p.ui.inputPayloads[p.ui.Submission().ID].text != "" || p.ui.Turn == "" || !slices.ContainsFunc(p.ui.view.Entries, func(e liveActivityRecord) bool {
 		return e.Source.Agent == "You" && e.Source.Text == "also check Unsubscribe"
 	}) {
-		t.Fatalf("steer not accepted: submitted=%q turn=%q", p.ui.submission.text, p.ui.turn)
+		t.Fatalf("steer not accepted: submitted=%q turn=%q", p.ui.inputPayloads[p.ui.Submission().ID].text, p.ui.Turn)
 	}
 	keys("queued follow-up\t")
 	if len(p.ui.queued) != 1 || p.ui.draft != "" {
 		t.Fatal("Tab did not queue during playback")
 	}
 	keys("scratch\x03")
-	if p.ui.draft != "" || p.ui.turn == "" || p.ui.quitRequested {
+	if p.ui.draft != "" || p.ui.Turn == "" || p.ui.quitRequested {
 		t.Fatal("first Ctrl-C did not only clear the draft")
 	}
 	keys("\x03")
-	if p.ui.turn != "" || p.ui.status != "Interrupted" || p.advance() || len(p.active) != 0 {
-		t.Fatalf("interrupt left playback running: turn=%q status=%q active=%v", p.ui.turn, p.ui.status, p.active)
+	if p.ui.Turn != "" || p.ui.status != "Interrupted" || p.advance() || len(p.active) != 0 {
+		t.Fatalf("interrupt left playback running: turn=%q status=%q active=%v", p.ui.Turn, p.ui.status, p.active)
 	}
 	if p.ui.draft != "queued follow-up" || len(p.ui.queued) != 0 {
 		t.Fatalf("interrupt did not return queued input: %q", p.ui.draft)
@@ -389,7 +389,7 @@ func TestNativeUIPreviewSessionControlsRendered(t *testing.T) {
 	}
 	p.until("main streams its patch")
 	keys("/compact\t")
-	if p.ui.turn == "" || len(p.ui.unsent) != 1 || p.ui.unsent[0].text != "/compact" {
+	if p.ui.Turn == "" || len(p.ui.unsent) != 1 || p.ui.unsent[0].text != "/compact" {
 		t.Fatal("busy compact was not queued locally")
 	}
 	if frame := render(); !strings.Contains(frame, "/compact") {
@@ -398,18 +398,18 @@ func TestNativeUIPreviewSessionControlsRendered(t *testing.T) {
 	p.until("done")
 	p.serve()
 	p.ui.shell.animating(time.Now().Add(nativeDockMinimum + time.Second))
-	if p.ui.turn != "" || p.ui.compaction.AcknowledgementPending() || !strings.Contains(render(), "Context compacted") {
+	if p.ui.Turn != "" || p.ui.Compaction.AcknowledgementPending() || !strings.Contains(render(), "Context compacted") {
 		t.Fatal("queued compaction did not complete visibly")
 	}
 	keys("/clear\r")
-	if p.ui.thread != "preview-clear-1" || len(p.ui.view.Entries) != 0 {
-		t.Fatalf("clear did not open empty thread: thread=%q entries=%+v", p.ui.thread, p.ui.view.Entries)
+	if p.ui.Thread != "preview-clear-1" || len(p.ui.view.Entries) != 0 {
+		t.Fatalf("clear did not open empty thread: thread=%q entries=%+v", p.ui.Thread, p.ui.view.Entries)
 	}
 	if frame := render(); strings.Contains(frame, "Context compacted") || strings.Contains(frame, "old transcript") {
 		t.Fatalf("clear retained previous presentation:\n%s", frame)
 	}
 	keys("fresh prompt\r")
-	if p.ui.thread != "preview-clear-1" || !strings.Contains(render(), "I heard: fresh prompt") {
+	if p.ui.Thread != "preview-clear-1" || !strings.Contains(render(), "I heard: fresh prompt") {
 		t.Fatal("fresh thread did not answer the next composer prompt")
 	}
 }
@@ -1203,7 +1203,7 @@ func (p *nativePreview) reply(id jsontext.Value, result any) {
 }
 
 func (p *nativePreview) userMessage(turn, clientID string, content any) {
-	p.notify("item/completed", map[string]any{"threadId": p.ui.thread, "turnId": turn, "item": map[string]any{
+	p.notify("item/completed", map[string]any{"threadId": p.ui.Thread, "turnId": turn, "item": map[string]any{
 		"id": fmt.Sprintf("preview-user-%d-%d", p.message, len(p.ui.view.Entries)), "type": "userMessage", "clientId": clientID, "content": content,
 	}})
 }

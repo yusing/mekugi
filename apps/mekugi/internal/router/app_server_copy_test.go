@@ -52,7 +52,7 @@ func TestAppServerCopyPicker(t *testing.T) {
 	u.view.applyAppServerItem(true, "", "main", "main", "old", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Answer.\n\n```sh\nprintf '界'  \n```\n"})
 	u.view.applyAppServerItem(true, "", "main", "child", "t", "child", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Not this"})
 	u.view.applyAppServerItem(true, "", "main", "main", "new", "stream", "item/agentMessage/delta", "Partial", appServerItem{})
-	u.turn = "new"
+	u.Turn = "new"
 	appServerTestKeys(t, u, "/cop\r")
 	if u.picker.modal != "copy" || u.draft != "" || len(u.picker.choices) != 2 {
 		t.Fatalf("picker=%+v draft=%q", u.picker, u.draft)
@@ -67,7 +67,7 @@ func TestAppServerCopyPicker(t *testing.T) {
 	}
 	appServerTestKeys(t, u, "\x1b[B\r")
 	want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("printf '界'  \n")) + "\x07"
-	if u.shell.clipboard != want || u.picker.open || u.turn != "new" || wire.Len() != 0 {
+	if u.shell.clipboard != want || u.picker.open || u.Turn != "new" || wire.Len() != 0 {
 		t.Fatalf("clipboard=%q picker=%+v wire=%s", u.shell.clipboard, u.picker, wire.Bytes())
 	}
 	if u.feedback.Alert || u.feedback.Text != "Copy sent to terminal clipboard" {
@@ -101,7 +101,7 @@ func TestAppServerCopyEmptyCancelAndRestore(t *testing.T) {
 	if u.picker.open || u.shell.clipboard != "" || u.draft != "" {
 		t.Fatal("cancel copied or reopened")
 	}
-	u.thread = "different"
+	u.Thread = "different"
 	appServerTestKeys(t, u, "/copy\r")
 	if u.feedback.Text != "No agent response to copy" {
 		t.Fatal("borrowed another thread's response")
@@ -112,7 +112,7 @@ func TestTerminalClipboardSharedSelection(t *testing.T) {
 	for _, key := range []byte{'c', 3} {
 		u, wire := newAppServerTestUI()
 		u.ensureShell()
-		u.turn = "active"
+		u.Turn = "active"
 		u.shell.selection = &terminalSelection{rect: terminalRect{w: 9, h: 1}, rows: []string{"same text"}, startX: 0, startY: 0, endX: 9, endY: 0}
 		if err := u.shell.key(key); err != nil {
 			t.Fatal(err)
@@ -121,7 +121,7 @@ func TestTerminalClipboardSharedSelection(t *testing.T) {
 		u.shell.clipboard = ""
 		u.view.applyAppServerItem(true, "", "main", "main", "t", "a", "item/completed", "", appServerItem{Type: "agentMessage", Text: "same text"})
 		appServerTestKeys(t, u, "/copy\r\r")
-		if selected == "" || u.shell.clipboard != selected || u.turn != "active" || wire.Len() != 0 {
+		if selected == "" || u.shell.clipboard != selected || u.Turn != "active" || wire.Len() != 0 {
 			t.Fatalf("key=%d selected=%q copy=%q wire=%s", key, selected, u.shell.clipboard, wire.Bytes())
 		}
 	}

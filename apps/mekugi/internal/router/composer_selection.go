@@ -38,7 +38,7 @@ func (u *appServerUI) insertSelection(description, text, source string) {
 		return
 	}
 	label := composerSelectionPrefix + description + "]"
-	pending := slices.Concat(u.submission.parts, u.unsent, u.queued, u.steerParts(u.steers))
+	pending := slices.Concat(u.inputPayloads[u.Submission().ID].parts, u.unsent, u.queued, u.steerParts(u.Steers()))
 	for _, call := range u.questions.calls {
 		for _, question := range call.questions {
 			pending = append(pending, question.editor.snapshot.composerDraft)

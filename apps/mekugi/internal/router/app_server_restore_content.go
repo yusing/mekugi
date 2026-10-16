@@ -64,7 +64,7 @@ func (u *appServerUI) restoreList(cursor string) error {
 		return u.readRestoredChildren()
 	}
 	params := map[string]any{
-		"ancestorThreadId": u.thread, "modelProviders": []string{},
+		"ancestorThreadId": u.Thread, "modelProviders": []string{},
 		"sourceKinds": []string{"subAgentThreadSpawn"}, "limit": 100,
 		"archived": u.restoring.archived,
 	}
@@ -115,7 +115,7 @@ func (u *appServerUI) restoreActivityResponse(method string, m appserver.Message
 			return u.readRestoredChildren()
 		}
 		for _, info := range result.Data {
-			if info.ID == "" || info.ID == u.thread || r.threads[info.ID].ID != "" {
+			if info.ID == "" || info.ID == u.Thread || r.threads[info.ID].ID != "" {
 				continue
 			}
 			if len(r.order) == appServerRestoreThreadLimit {
@@ -171,7 +171,7 @@ func (u *appServerUI) readRestoredChildren() error {
 	for _, turn := range r.root.Turns {
 		for _, item := range turn.Items {
 			if item.Type == "collabAgentToolCall" {
-				item.SenderThreadID = u.thread
+				item.SenderThreadID = u.Thread
 				entries := u.restoredCollab(item, historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt, r.root.UpdatedAt)))
 				u.applyRestoredActivity(entries)
 				for _, entry := range entries {
@@ -276,7 +276,7 @@ func (u *appServerUI) finishRestoredContent() error {
 	u.restoring = nil
 	u.updateHistoryHint()
 	u.status = "Ready"
-	if u.turn != "" {
+	if u.Turn != "" {
 		u.status = "Working"
 	}
 	return u.replayResumePending()

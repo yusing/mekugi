@@ -93,15 +93,15 @@ func TestAppServerStatusLocalAndAccountRefresh(t *testing.T) {
 	u.session.start("main", "/workspace")
 	u.agents = newLiveActivityView()
 	u.model, u.reasoningEffort, u.serviceTier = "gpt-6-sol", "high", "priority"
-	u.turn, u.status = "active", "Working"
+	u.Turn, u.status = "active", "Working"
 	u.statusConfig.Provider = "openai"
 	u.statusConfig.Approval = jsontext.Value(`"never"`)
 	u.statusConfig.Sandbox.Type = "danger-full-access"
 	u.statusConfig.Instructions = []string{"/workspace/AGENTS.md"}
 	appServerTestNotify(t, u, "thread/tokenUsage/updated", map[string]any{"threadId": "main", "tokenUsage": map[string]any{"total": map[string]any{"inputTokens": 1200, "outputTokens": 30}, "last": map[string]any{"totalTokens": 1000}, "modelContextWindow": 4000}})
 	appServerTestKeys(t, u, "/status\r")
-	if len(u.view.Entries) != 0 || u.draft != "" || u.turn != "active" || u.status != "Working" {
-		t.Fatalf("status altered session: draft=%q turn=%q status=%q entries=%d", u.draft, u.turn, u.status, len(u.view.Entries))
+	if len(u.view.Entries) != 0 || u.draft != "" || u.Turn != "active" || u.status != "Working" {
+		t.Fatalf("status altered session: draft=%q turn=%q status=%q entries=%d", u.draft, u.Turn, u.status, len(u.view.Entries))
 	}
 	for _, want := range []string{"Model: gpt-6-sol", "Reasoning: high", "Service tier: priority", "Directory: /workspace", "Approvals: never", "Sandbox: danger-full-access", "Agents.md: /workspace/AGENTS.md", "75% left", "Loading account"} {
 		if !strings.Contains(statusReportText(u.statusPanel), want) {
@@ -192,7 +192,7 @@ func TestAppServerStatusPanelCloseScrollAndLateResponse(t *testing.T) {
 	for _, closeKey := range []string{"\x1b", "\r", "q", "\x03"} {
 		t.Run(closeKey, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
-			u.turn, u.status = "active", "Working"
+			u.Turn, u.status = "active", "Working"
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Existing transcript"}}})
 			shell := &terminalUI{main: u, layout: terminalLayout{codex: terminalRect{0, 0, 60, 12}}}
 			appServerTestKeys(t, u, "/status\r")
@@ -228,7 +228,7 @@ func TestAppServerStatusPanelCloseScrollAndLateResponse(t *testing.T) {
 			if err := shell.send(closeKey); err != nil {
 				t.Fatal(err)
 			}
-			if u.statusPanel != nil || u.turn != "active" || u.status != "Working" || len(u.view.Entries) != 1 || u.view.Entries[0].Source.Text != "Existing transcript" {
+			if u.statusPanel != nil || u.Turn != "active" || u.status != "Working" || len(u.view.Entries) != 1 || u.view.Entries[0].Source.Text != "Existing transcript" {
 				t.Fatal("closing changed turn or transcript")
 			}
 			// A response to a closed panel must not fetch limits or resurrect UI.
@@ -386,7 +386,7 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 		t.Run(fmt.Sprintf("key=%d", action), func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.model = "gpt-6-sol"
-			u.turn = "active"
+			u.Turn = "active"
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Hidden transcript must not be selected"}}})
 			appServerTestKeys(t, u, "/status\r")
 			screen := vt.NewEmulator(160, 48)
@@ -430,7 +430,7 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 				t.Fatal(err)
 			}
 			want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("gpt-6-sol")) + "\x07"
-			if u.shell.clipboard != want || u.statusPanel == nil || u.turn != "active" || u.shell.selection != nil {
+			if u.shell.clipboard != want || u.statusPanel == nil || u.Turn != "active" || u.shell.selection != nil {
 				t.Fatal("copy failed or dismissed/interrupted status")
 			}
 			if err := u.paint(screen, 160, 48); err != nil {

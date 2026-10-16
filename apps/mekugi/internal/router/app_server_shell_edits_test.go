@@ -36,13 +36,13 @@ func startShellEditTestCommand(t *testing.T, u *appServerUI, command, item strin
 		t.Fatal(err)
 	}
 	edit := u.shellEdits.pending
-	if u.turn == "" {
+	if u.Turn == "" {
 		appServerTestTurn(t, u, "shell-turn")
 	}
-	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": u.thread, "turnId": u.turn,
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": u.Thread, "turnId": u.Turn,
 		"item": appServerItem{ID: item, Type: "commandExecution", Source: "userShell", Command: command, Status: "inProgress"}})
 	u.shellResponse(nil)
-	if edit != nil && u.shellEdits.running[[2]string{u.thread, item}] != edit {
+	if edit != nil && u.shellEdits.running[[2]string{u.Thread, item}] != edit {
 		t.Fatalf("shell start was not matched: pending=%+v running=%+v notice=%s", u.shellEdits.pending, u.shellEdits.running, u.feedback.Text)
 	}
 	return edit
@@ -54,9 +54,9 @@ func completeShellEditTestCommand(t *testing.T, u *appServerUI, item string, exi
 	if exit != 0 {
 		status = "failed"
 	}
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": u.thread, "turnId": u.turn,
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": u.Thread, "turnId": u.Turn,
 		"item": appServerItem{ID: item, Type: "commandExecution", Source: "userShell", Status: status, ExitCode: &exit}})
-	if u.shellCommand.standalone() {
+	if u.Shell.Standalone() {
 		appServerTestTurnEnd(t, u, "shell-turn", "completed")
 	}
 }
@@ -100,7 +100,7 @@ func TestAppServerShellEditsRevertApplyReplay(t *testing.T) {
 		if err != nil || !strings.Contains(text, "mchanges "+mutation+" "+id) {
 			t.Fatalf("shell change history: %q, %v", text, err)
 		}
-		data, err := fresh.liveDiffSnapshot(ctx, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {u.thread: true, "stock-thread": true}}})
+		data, err := fresh.liveDiffSnapshot(ctx, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {u.Thread: true, "stock-thread": true}}})
 		if err != nil || len(data.order) != index+2 {
 			t.Fatalf("Changes history: %+v, %v", data, err)
 		}
@@ -120,17 +120,17 @@ func TestAppServerShellEditsFailedWriterAndNoEffect(t *testing.T) {
 		edit := startShellEditTestCommand(t, u, command, command)
 		cmd := exec.Command(u.shellEdits.shell, "-c", command)
 		cmd.Dir = u.session.cwd
-		cmd.Env = append(mchangesSliceInvocation(u.session.cwd, u.thread).environment, "SHELL_EDIT_TARGET=saved.txt")
+		cmd.Env = append(mchangesSliceInvocation(u.session.cwd, u.Thread).environment, "SHELL_EDIT_TARGET=saved.txt")
 		err := cmd.Run()
 		exit := 0
 		if err != nil {
 			exit = err.(*exec.ExitError).ExitCode()
 		}
 		// Presentation may discard an old thread's completion after a switch.
-		u.retiredThreads = map[string]string{u.thread: u.thread}
+		u.retiredThreads = map[string]string{u.Thread: u.Thread}
 		completeShellEditTestCommand(t, u, command, exit)
 		u.retiredThreads = nil
-		if u.turn != "model" {
+		if u.Turn != "model" {
 			t.Fatal("shell completion ended the model turn")
 		}
 		if u.feedback.Alert {

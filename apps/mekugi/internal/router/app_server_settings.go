@@ -49,11 +49,11 @@ func (u *appServerUI) effortChoices() []string {
 // intent, never synthetic Responses items or writes to the user's config file.
 // Source: codex-rs/app-server-protocol/src/protocol/v2/{thread,turn}.rs
 func (u *appServerUI) updateSettings(change map[string]any) (bool, error) {
-	if u.thread == "" || u.restoring != nil || u.starting() || u.replacement.pending() {
+	if u.restoring != nil || !u.AcceptsSettings() {
 		u.setNotice("Wait for the thread or turn to finish starting", true)
 		return false, nil
 	}
-	if u.settings.pending() {
+	if u.Settings.Pending() {
 		u.setNotice("Settings update pending", false)
 		return false, nil
 	}
@@ -74,14 +74,14 @@ func (u *appServerUI) updateSettings(change map[string]any) (bool, error) {
 			unchanged = unchanged && (value == u.serviceTier || value == "fast" && u.serviceTier == "priority" || value == nil && (u.serviceTier == "" || u.serviceTier == "default"))
 		}
 	}
-	params := map[string]any{"threadId": u.thread}
+	params := map[string]any{"threadId": u.Thread}
 	maps.Copy(params, change)
 	// Codex suppresses unchanged thread/settings/updated notifications. A no-op
 	// needs no thread update, but can still repair a previously rejected live one.
 	if unchanged {
-		if u.turn == "" {
-			if _, explicit := change["effort"]; explicit && u.settings.restoreEffort {
-				u.settings.restoredEffort()
+		if u.Turn == "" {
+			if _, explicit := change["effort"]; explicit && u.Settings.RestoreEffort {
+				u.Settings.RestoredEffort()
 				u.retainAppliedSettings()
 			}
 			u.setNotice("Settings unchanged", false)
@@ -91,21 +91,21 @@ func (u *appServerUI) updateSettings(change map[string]any) (bool, error) {
 			}
 			return true, nil
 		}
-		params["turnId"] = u.turn
+		params["turnId"] = u.Turn
 		if err := u.request("turn/settings/update", params); err != nil {
 			return false, err
 		}
 		if _, explicit := change["serviceTier"]; explicit {
 			u.chooseServiceTier()
 		}
-		u.settings.beginLive()
+		u.Settings.BeginLive()
 		u.setNotice("Updating active turn…", false)
 		return true, nil
 	}
 	if err := u.request("thread/settings/update", params); err != nil {
 		return false, err
 	}
-	u.settings.begin(change, u.turn)
+	u.Settings.Begin(change, u.Turn)
 	u.setNotice("Updating settings…", false)
 	return true, nil
 }
@@ -149,7 +149,7 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 	if command != "/model" && command != "/reasoning" && command != "/effort" && command != "/tier" && command != "/live" {
 		return false, nil
 	}
-	if u.replacement.pending() {
+	if u.Replacement.Pending() {
 		u.setNotice("Wait for the new session · draft kept", false)
 		return true, nil
 	}
@@ -198,7 +198,7 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 		u.setNotice("Use "+command+" or "+command+" VALUE", true)
 		return true, nil
 	}
-	if u.settings.pending() {
+	if u.Settings.Pending() {
 		u.setNotice("Settings update pending", false)
 		return true, nil
 	}
@@ -263,8 +263,8 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 	}
 	if method == "thread/settings/update" || method == "turn/settings/update" {
 		if m.Error != nil {
-			u.settings.finish()
-			if u.settings.restoreEffort {
+			u.Settings.Finish()
+			if u.Settings.RestoreEffort {
 				u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
 				u.unsent, u.queued = nil, nil
 				u.setNotice("Could not restore default reasoning: "+m.Error.Message+" · choose /effort VALUE or restart resume", true)
@@ -281,7 +281,7 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 			if err := json.Unmarshal(m.Result, &result); err != nil {
 				return true, err
 			}
-			u.settings.finish()
+			u.Settings.Finish()
 			switch result.Status {
 			case "applied":
 				u.setNotice("Settings saved · live update published for subsequent steps", false)
@@ -313,7 +313,7 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 	if err := json.Unmarshal(m.Params, &event); err != nil {
 		return true, fmt.Errorf("thread settings: %w", err)
 	}
-	if event.ThreadID != u.thread {
+	if event.ThreadID != u.Thread {
 		if u.session.paths != nil && event.ThreadID != "" {
 			agent := u.session.agent(u.session.path(event.ThreadID))
 			agent.settings = preferences.Evidence{Model: event.Settings.Model, Effort: event.Settings.Effort, Tier: event.Settings.ServiceTier, TierKnown: true}
@@ -334,28 +334,27 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 		u.session.cwd = event.Settings.Cwd
 	}
 	u.model, u.reasoningEffort, u.serviceTier = event.Settings.Model, event.Settings.Effort, event.Settings.ServiceTier
-	if _, explicit := u.settings.change["serviceTier"]; explicit {
+	if _, explicit := u.Settings.Change["serviceTier"]; explicit {
 		u.chooseServiceTier()
 	}
-	if _, explicit := u.settings.change["effort"]; explicit || u.reasoningEffort == "" {
-		u.settings.restoredEffort()
+	if _, explicit := u.Settings.Change["effort"]; explicit || u.reasoningEffort == "" {
+		u.Settings.RestoredEffort()
 	}
 	u.retainAppliedSettings()
-	if !u.settings.pending() || u.settings.change == nil {
+	change, target := u.Settings.Confirmed(u.Turn)
+	if change == nil {
 		return true, nil
 	}
-	change := u.settings.takeChange()
-	if u.settings.turn != "" && u.settings.turn == u.turn {
-		change["threadId"], change["turnId"] = u.thread, u.settings.turn
+	if target != "" {
+		change["threadId"], change["turnId"] = u.Thread, target
 		if err := u.request("turn/settings/update", change); err != nil {
 			return true, err
 		}
-		u.settings.beginLive()
+		u.Settings.BeginLive()
 		u.setNotice("Settings saved · updating active turn…", false)
 	} else {
-		u.settings.finish()
 		u.setNotice("Settings saved for next turn", false)
-		if u.settings.restoreEffort {
+		if u.Settings.RestoreEffort {
 			u.setNotice("Default reasoning still needs restoration · choose /effort VALUE or restart resume", true)
 		}
 	}
@@ -400,7 +399,7 @@ func (u *appServerUI) showSettingsPicker(command string, choices []string) {
 }
 
 func (u *appServerUI) selectedServiceTier() string {
-	tier, _ := u.serviceTiers.choice(u.model, u.thread)
+	tier, _ := u.serviceTiers.choice(u.model, u.Thread)
 	return tier
 }
 
@@ -412,7 +411,7 @@ func (u *appServerUI) chooseServiceTier() {
 	if tier == "" {
 		tier = "default"
 	}
-	u.serviceTiers.choices.Store([2]string{u.thread, serviceTierModel(u.model)}, tier)
+	u.serviceTiers.choices.Store([2]string{u.Thread, serviceTierModel(u.model)}, tier)
 }
 
 func (u *appServerUI) settingsPickerKey(key string) bool {

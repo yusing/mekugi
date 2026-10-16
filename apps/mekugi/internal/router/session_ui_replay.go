@@ -60,7 +60,7 @@ func (p *uiReplayPlayback) reset() {
 	// The real message/projector/render path, but no app-server process, router,
 	// replay store, filesystem observers, input submission, or notification sink.
 	client := &appserver.Client{Input: replayDiscard{io.Discard}}
-	u := &appServerUI{session: appServerSession{activity: p.activity}, ctx: p.ctx, client: client, view: newLiveActivityView(), agents: newLiveActivityView(), thread: p.Source.Thread, status: "Replay", requests: sessioncontrol.NewRequests[appServerRequest](client), clock: func() time.Time { return p.At }, replay: p}
+	u := &appServerUI{session: appServerSession{activity: p.activity}, ctx: p.ctx, client: client, view: newLiveActivityView(), agents: newLiveActivityView(), Thread: p.Source.Thread, status: "Replay", requests: sessioncontrol.NewRequests[appServerRequest](client), clock: func() time.Time { return p.At }, replay: p}
 	u.view.clock, u.agents.clock = u.clock, u.clock
 	u.session.start(p.Source.Thread, p.Source.Cwd)
 	for id := range p.Source.Threads {

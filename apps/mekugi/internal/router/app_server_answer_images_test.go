@@ -29,7 +29,7 @@ func answerImageFixture(t *testing.T) string {
 func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.session.start("main", t.TempDir())
-	u.turn = "turn"
+	u.Turn = "turn"
 	appServerTestKeys(t, u, "main draft")
 	questionTestAsync(t, u, "photos", "First image?", "Second image?")
 	u.openQuestions()
@@ -76,7 +76,7 @@ func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 	if !ok || len(frames) != 2 || !strings.HasSuffix(frames[0], "\nfirst quote") || !strings.HasSuffix(frames[1], "\nsecond quote") {
 		t.Fatalf("answer selections lost: %q", frames)
 	}
-	content, err := json.Marshal(u.submission.input())
+	content, err := json.Marshal(u.inputPayloads[u.Submission().ID].input())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 	if !ok || len(questionReplies(text)) != 2 || len(spans) != 0 {
 		t.Fatalf("reply images created a user band: %q %+v", text, spans)
 	}
-	questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{"id": "reply", "type": "userMessage", "clientUserMessageId": u.submission.id, "content": u.submission.input()}})
+	questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{"id": "reply", "type": "userMessage", "clientUserMessageId": u.Submission().ID, "content": u.inputPayloads[u.Submission().ID].input()}})
 	for _, q := range u.questions.calls[0].questions {
 		if q.outcome != "answered" {
 			t.Fatalf("image answer not committed: %+v", q)
@@ -97,7 +97,7 @@ func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 
 func TestQuestionSyncImageSendsHostOwnedCompanion(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.turn = "turn"
+	u.Turn = "turn"
 	questionTestSync(t, u, "image-sync", false)
 	questionTestPaint(t, u, 70)
 	path := answerImageFixture(t)
@@ -118,7 +118,7 @@ func TestQuestionSyncImageSendsHostOwnedCompanion(t *testing.T) {
 func TestQuestionImageLifetimeAcrossNavigationAndRetry(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.session.start("main", t.TempDir())
-	u.turn = "turn"
+	u.Turn = "turn"
 	questionTestAsync(t, u, "retained", "First?", "Second?")
 	questionTestPaint(t, u, 70)
 	path := answerImageFixture(t)
@@ -153,7 +153,7 @@ func TestQuestionImageLifetimeAcrossNavigationAndRetry(t *testing.T) {
 
 func TestQuestionSkippedImageIsReclaimed(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.turn = "turn"
+	u.Turn = "turn"
 	questionTestAsync(t, u, "skip", "Image?")
 	questionTestPaint(t, u, 70)
 	path := answerImageFixture(t)

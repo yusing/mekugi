@@ -155,8 +155,8 @@ func TestSkillAttachmentLookupFailureStillSendsText(t *testing.T) {
 	}
 	appServerTestMessage(t, u, `{"id":`+strconv.Itoa(requests[0].ID)+`,"error":{"code":-1,"message":"catalog unavailable"}}`)
 	requests = pickerRequests(t, wire)
-	if len(requests) != 2 || requests[1].Method != "turn/start" || len(u.submission.skills) != 0 || u.submission.text != "use $review please" {
-		t.Fatalf("lookup failure blocked ordinary delivery: %+v %+v", requests, u.submission)
+	if len(requests) != 2 || requests[1].Method != "turn/start" || len(u.inputPayloads[u.Submission().ID].skills) != 0 || u.inputPayloads[u.Submission().ID].text != "use $review please" {
+		t.Fatalf("lookup failure blocked ordinary delivery: %+v %+v", requests, u.inputPayloads[u.Submission().ID])
 	}
 	if !u.feedback.Alert || !strings.Contains(u.feedback.Text, "Skill attachment unavailable") {
 		t.Fatalf("lookup failure was silent: %q", u.feedback.Text)
@@ -182,8 +182,8 @@ func TestSkillAttachmentFailureIndependentOfForegroundPicker(t *testing.T) {
 			starts++
 		}
 	}
-	if starts != 1 || fileID == 0 || u.submission.text != "use $review please" || len(u.submission.skills) != 0 {
-		t.Fatalf("foreground picker stranded fallback: %+v %+v", requests, u.submission)
+	if starts != 1 || fileID == 0 || u.inputPayloads[u.Submission().ID].text != "use $review please" || len(u.inputPayloads[u.Submission().ID].skills) != 0 {
+		t.Fatalf("foreground picker stranded fallback: %+v %+v", requests, u.inputPayloads[u.Submission().ID])
 	}
 	if !u.feedback.Alert || !strings.Contains(u.feedback.Text, "catalog unavailable") {
 		t.Fatalf("foreground picker hid catalog failure: %q", u.feedback.Text)
@@ -218,8 +218,8 @@ func TestSkillAttachmentQueuedLookupIndependentOfForegroundPicker(t *testing.T) 
 		t.Fatalf("active file picker prevented background skill lookup: %+v", requests)
 	}
 	pickerReply(t, u, catalog.ID, `{"data":[{"cwd":"/work","skills":[{"name":"review","path":"/work/review/SKILL.md","enabled":true}]}]}`)
-	if u.submission.text != "use $review please" || len(u.submission.skills) != 1 || u.draft != "@foo" {
-		t.Fatalf("queued skill lost catalog or foreground draft: %+v %q", u.submission, u.draft)
+	if u.inputPayloads[u.Submission().ID].text != "use $review please" || len(u.inputPayloads[u.Submission().ID].skills) != 1 || u.draft != "@foo" {
+		t.Fatalf("queued skill lost catalog or foreground draft: %+v %q", u.inputPayloads[u.Submission().ID], u.draft)
 	}
 }
 
@@ -232,8 +232,8 @@ func TestSkillAttachmentPartialCatalogFailureKeepsAvailableSkillsVisible(t *test
 		t.Fatalf("unexpected catalog request: %+v", requests)
 	}
 	pickerReply(t, u, requests[0].ID, `{"data":[{"cwd":"/work","skills":[{"name":"review","path":"/work/review/SKILL.md","enabled":true}],"errors":[{"message":"broken skill manifest"}]}]}`)
-	if u.submission.text != "use $review and $broken please" || len(u.submission.skills) != 1 || u.submission.skills[0].name != "review" {
-		t.Fatalf("partial catalog failure lost text or available attachment: %+v", u.submission)
+	if u.inputPayloads[u.Submission().ID].text != "use $review and $broken please" || len(u.inputPayloads[u.Submission().ID].skills) != 1 || u.inputPayloads[u.Submission().ID].skills[0].name != "review" {
+		t.Fatalf("partial catalog failure lost text or available attachment: %+v", u.inputPayloads[u.Submission().ID])
 	}
 	if !u.feedback.Alert || !strings.Contains(u.feedback.Text, "Skill catalog incomplete") || !strings.Contains(u.feedback.Text, "broken skill manifest") {
 		t.Fatalf("partial catalog failure was hidden: %q", u.feedback.Text)

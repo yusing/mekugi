@@ -16,7 +16,7 @@ func TestAppServerReplacementRetiresOnlyMainRequests(t *testing.T) {
 	clear := btwTestRequest(t, wire, "thread/start", "")
 	btwTestReply(t, u, clear, `{"thread":{"id":"fresh","cwd":"/tmp","name":"Fresh title"}}`)
 	appServerDrainRequests[btwTestRPC](t, wire)
-	if u.thread != "fresh" || u.btw != nil || u.statusPanel != nil {
+	if u.Thread != "fresh" || u.btw != nil || u.statusPanel != nil {
 		t.Fatal("confirmed replacement retained old presentation")
 	}
 
@@ -33,7 +33,7 @@ func TestAppServerReplacementRetiresOnlyMainRequests(t *testing.T) {
 	unload := btwTestRequest(t, wire, "thread/unsubscribe", "old-side")
 	btwTestReply(t, u, unload, `{}`)
 	btwTestReply(t, u, side, `{"thread":{"id":"duplicate-side"}}`)
-	if wire.Len() != 0 || u.btw != nil || u.thread != "fresh" {
+	if wire.Len() != 0 || u.btw != nil || u.Thread != "fresh" {
 		t.Fatalf("duplicate response revived side work: %s", wire.String())
 	}
 }

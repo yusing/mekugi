@@ -29,7 +29,7 @@ func (u *appServerUI) requestResume(thread string) error {
 
 func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 	fail := func(message string) error {
-		if u.replacement.target != "" {
+		if u.Replacement.Target != "" {
 			return u.resumeSessionFailed(message)
 		}
 		return fmt.Errorf("read resume settings: %s", message)
@@ -43,7 +43,7 @@ func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 	if err := json.Unmarshal(m.Result, &result); err != nil {
 		return fail(err.Error())
 	}
-	thread := cmp.Or(u.replacement.target, u.resumeThread)
+	thread := cmp.Or(u.Replacement.Target, u.resumeThread)
 	if result.Thread.ID != thread {
 		return fail("thread/read returned a different thread identity")
 	}
@@ -71,7 +71,7 @@ func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 		u.setNotice(u.resumeNotice, true)
 	}
 	params := u.threadPermissions(map[string]any{"threadId": thread, "config": config, "modelProvider": config["model_provider"]})
-	u.resumePendingEffort = false
+	u.ResumeEffort = false
 	for field, value := range saved {
 		if _, explicit := config[field]; explicit {
 			continue
@@ -79,7 +79,7 @@ func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 		if field == "model_reasoning_effort" && value == nil {
 			// TOML config cannot express null. Clear via the host settings API
 			// before any resumed input is accepted instead.
-			u.resumePendingEffort = true
+			u.ResumeEffort = true
 		} else {
 			config[field] = value
 		}
@@ -120,14 +120,15 @@ func (u *appServerUI) holdResumeEvent(m appserver.Message, resuming bool) (hold,
 	if !resuming && (thread == "" || u.session.paths[thread] != "" || u.session.paths[p.Thread.ParentThreadID] != "") {
 		return false, false
 	}
-	root := cmp.Or(u.replacement.target, u.resumeThread)
+	root := cmp.Or(u.Replacement.Target, u.resumeThread)
 	delta := strings.HasSuffix(m.Method, "/delta") || strings.HasSuffix(m.Method, "Delta")
 	return true, !delta || thread == "" || thread == root
 }
 
 // replayResumePending delivers events buffered while a thread was pending.
 func (u *appServerUI) replayResumePending() error {
-	pending := u.takeEvents()
+	pending := u.resumePending
+	u.resumePending = nil
 	for _, event := range pending {
 		if err := u.message(event); err != nil {
 			return err
@@ -224,7 +225,7 @@ func (u *appServerUI) restoreMainHistory(turns []appServerHistoryTurn, placement
 		}
 	}
 	for index, turn := range turns {
-		u.restoredSegments = u.prepareCommandSegments(u.thread, u.session.cwd, turn)
+		u.restoredSegments = u.prepareCommandSegments(u.Thread, u.session.cwd, turn)
 		slots := placeRestored(turn, itemAt, byTurn[index])
 		u.applyRestoredMain(slots[0])
 		for i, item := range turn.Items {
@@ -248,14 +249,14 @@ func (u *appServerUI) restoreMainHistory(turns []appServerHistoryTurn, placement
 				Observed: historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt))}}})
 		}
 		if turn.Status == "inProgress" {
-			u.turn, u.status, u.turnStarted = turn.ID, "Working", time.Now()
+			u.Turn, u.status, u.turnStarted = turn.ID, "Working", time.Now()
 		}
 	}
 	root := u.session.agent("/root")
 	root.Started, root.LastResponse = restoredAgentTimes(appServerThreadInfo{Turns: turns})
 	root.WorkTimer = restoredAgentWork(appServerThreadInfo{Turns: turns})
 	root.Turns = uint64(len(turns))
-	root.Responding = u.turn != ""
+	root.Responding = u.Turn != ""
 	// Keep future activity sequence numbers ahead of the hydrated transcript.
 	u.session.seq = max(u.session.seq, u.view.LastSeq)
 	u.applyActivity(nil, u.session.agents)
@@ -275,13 +276,13 @@ func (u *appServerUI) applyRestoredMain(placements []*restoredPlacement) {
 }
 
 func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServerItem) {
-	if u.observeQuestionItem(u.thread, turn.ID, item, true) {
+	if u.observeQuestionItem(u.Thread, turn.ID, item, true) {
 		return
 	}
 	if item.Type == "userMessage" {
 		u.commitQuestionReplies(item, turn.ID)
 	}
-	item = u.waitItem(item, u.thread, turn.ID, item.ID, false)
+	item = u.waitItem(item, u.Thread, turn.ID, item.ID, false)
 	if item.Type == "userMessage" {
 		var content []composerUserContent
 		if json.Unmarshal(item.Content, &content) == nil {
@@ -317,7 +318,7 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 		if text, wait, _ := appServerProgress(item, method); text != "" {
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
 				Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "progress", Text: text, Observed: time.Now(),
-				native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method, wait: wait},
+				native: &liveActivityNativeItem{thread: u.Thread, turn: turn.ID, item: item.ID, phase: method, wait: wait},
 			}}})
 		}
 		return
@@ -325,7 +326,7 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 	switch item.Type {
 	case "imageView":
 		entry := activityPaneEntry{Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "tool", Text: "View " + commentaryCode(pathdisplay.ForWorkspace(u.session.cwd, item.Path)), CallID: item.ID, Observed: time.Now(),
-			native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method, searchResults: appServerSearchResults(item)}}
+			native: &liveActivityNativeItem{thread: u.Thread, turn: turn.ID, item: item.ID, phase: method, searchResults: appServerSearchResults(item)}}
 		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 	case "commandExecution", "fileChange", "webSearch":
 		text := appServerToolText(item, u.session.cwd)
@@ -333,7 +334,7 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 			text = appServerEditText(item, u.session.cwd)
 		}
 		entry := activityPaneEntry{Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "tool", Text: text, CallID: item.ID, Observed: time.Now(),
-			native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method, command: item.Command, commandCwd: appServerCommandDirectory(item, u.session.cwd), status: item.Status, duration: appServerDuration(item), searchResults: appServerSearchResults(item), workdir: appServerCommandWorkdir(item, u.session.cwd)}}
+			native: &liveActivityNativeItem{thread: u.Thread, turn: turn.ID, item: item.ID, phase: method, command: item.Command, commandCwd: appServerCommandDirectory(item, u.session.cwd), status: item.Status, duration: appServerDuration(item), searchResults: appServerSearchResults(item), workdir: appServerCommandWorkdir(item, u.session.cwd)}}
 		if item.Type == "fileChange" {
 			entry.native.editPages = appServerEditPages(item, u.session.cwd, method)
 		}
@@ -347,7 +348,7 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{exit}})
 		}
 	default:
-		u.view.applyAppServerItem(false, u.session.cwd, u.thread, u.thread, turn.ID, item.ID, method, "", item)
+		u.view.applyAppServerItem(false, u.session.cwd, u.Thread, u.Thread, turn.ID, item.ID, method, "", item)
 	}
 }
 

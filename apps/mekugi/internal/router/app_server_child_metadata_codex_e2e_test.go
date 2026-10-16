@@ -69,15 +69,15 @@ func TestAppServerChildMetadataNativeCodexE2E(t *testing.T) {
 				t.Fatalf("app-server %s: %v", m.Method, err)
 			}
 			u.flushStreamOutput()
-			if u.thread != "" && !started {
+			if u.Thread != "" && !started {
 				started = true
-				if err := u.request("turn/start", map[string]any{"threadId": u.thread, "input": appserver.Input("Spawn the assigned child.")}); err != nil {
+				if err := u.request("turn/start", map[string]any{"threadId": u.Thread, "input": appserver.Input("Spawn the assigned child.")}); err != nil {
 					t.Fatal(err)
 				}
 			}
 			for thread, path := range u.session.paths {
 				requestID, observed := u.session.metadata[thread]
-				if thread == u.thread || path != "/root/metadata_probe" || !observed || requestID != "" {
+				if thread == u.Thread || path != "/root/metadata_probe" || !observed || requestID != "" {
 					continue
 				}
 				agent := u.session.agent(path)

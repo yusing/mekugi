@@ -33,9 +33,9 @@ func TestLiveActivityAttachmentOutcomes(t *testing.T) {
 	item := appServerItem{Type: "userMessage", Content: content, ID: "input"}
 	u, _ := newAppServerTestUI()
 	for _, method := range []string{"item/started", "item/completed", "item/completed"} {
-		u.view.applyAppServerItem(true, cwd, u.thread, u.thread, "turn", item.ID, method, "", item)
+		u.view.applyAppServerItem(true, cwd, u.Thread, u.Thread, "turn", item.ID, method, "", item)
 	}
-	u.view.applyAppServerItem(true, cwd, u.thread, u.thread, "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Agent response"})
+	u.view.applyAppServerItem(true, cwd, u.Thread, u.Thread, "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Agent response"})
 	if len(u.view.Entries) != 3 || u.view.Entries[1].Source.Kind != "attachments" {
 		t.Fatalf("missing, duplicated, or reordered receipts: %+v", u.view.Entries)
 	}
@@ -63,7 +63,7 @@ func TestLiveActivityAttachmentOutcomes(t *testing.T) {
 	}
 	resumed, _ := newAppServerTestUI()
 	resumed.agents = newLiveActivityView()
-	resumed.session.start(resumed.thread, cwd)
+	resumed.session.start(resumed.Thread, cwd)
 	resumed.restoreHistory([]appServerHistoryTurn{{ID: "turn", Status: "completed", Items: []appServerItem{item}}})
 	if len(resumed.view.Entries) != 2 || resumed.view.blocks(1)[0].Verb != "Attached" || resumed.view.blocks(1)[1].Verb != "Attach failed" || resumed.view.blocks(1)[0].Path != "attached.txt" || resumed.view.blocks(1)[1].Path != "missing.txt" {
 		t.Fatal("resume did not preserve submitted outcomes")
@@ -202,7 +202,7 @@ func TestLiveActivityAttachmentDialogs(t *testing.T) {
 				}
 				resumed, _ := newAppServerTestUI()
 				resumed.agents = newLiveActivityView()
-				resumed.session.start(resumed.thread, "/workspace")
+				resumed.session.start(resumed.Thread, "/workspace")
 				resumed.restoreHistory([]appServerHistoryTurn{{ID: "turn", Status: "completed", Items: []appServerItem{item}}})
 				page := resumed.view.painter.DialogPage(resumed.view.blocks(1)[0], 80)
 				if page.Text != textsanitize.Safe(body, false) {

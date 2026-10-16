@@ -16,7 +16,7 @@ import (
 func TestNativeUISessionLiveToggle(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.modelsLoading = true
-	u.settings.beginLive()
+	u.Settings.BeginLive()
 	appServerTestKeys(t, u, "/live\r")
 	defer u.shell.diffScreen.Close()
 	if !u.shell.liveHidden || u.picker.open || u.draft != "" || wire.Len() != 0 {

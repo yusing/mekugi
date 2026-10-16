@@ -82,9 +82,9 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 				t.Fatalf("app-server %s: %v", m.Method, err)
 			}
 			u.applyObservedActivity()
-			if u.thread != "" && !started {
+			if u.Thread != "" && !started {
 				started = true
-				if err := u.request("turn/start", map[string]any{"threadId": u.thread, "input": appserver.Input("Spawn the assigned child and wait for its report.")}); err != nil {
+				if err := u.request("turn/start", map[string]any{"threadId": u.Thread, "input": appserver.Input("Spawn the assigned child and wait for its report.")}); err != nil {
 					t.Fatal(err)
 				}
 			}

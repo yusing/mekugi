@@ -42,7 +42,7 @@ var nativeCommands = []composerChoice{
 // Compact uses its native RPC after acknowledged interruption, never a
 // turn/steer text payload. Tab can explicitly queue it instead.
 func (u *appServerUI) sessionCommand(command string) error {
-	if u.thread == "" || u.restoring != nil || u.replacement.pending() {
+	if u.Thread == "" || u.restoring != nil || u.Replacement.Pending() {
 		u.setNotice("Wait for the session to be ready", false)
 		return nil
 	}
@@ -54,7 +54,7 @@ func (u *appServerUI) sessionCommand(command string) error {
 		return nil
 	}
 	u.takeDraft()
-	u.replacement.clear()
+	u.Replacement.Clear()
 	u.status = "Starting new session…"
 	params := u.threadPermissions(map[string]any{"sessionStartSource": "clear"})
 	if u.session.cwd != "" {
@@ -73,27 +73,27 @@ func (u *appServerUI) sessionCommand(command string) error {
 		params["serviceTier"] = u.serviceTier
 	}
 	if err := u.request("thread/start", params); err != nil {
-		u.replacement.finish()
+		u.Replacement.Finish()
 		return err
 	}
 	return nil
 }
 
 func (u *appServerUI) submitCompact(queue bool) error {
-	if u.thread == "" || u.restoring != nil || u.replacement.pending() {
+	if u.Thread == "" || u.restoring != nil || u.Replacement.Pending() {
 		u.setNotice("Wait for the session to be ready", false)
 		return nil
 	}
 	draft := u.takeDraft()
 	draft.text = "/compact"
-	draft.compact = sessioncontrol.CompactIntent{WaitForIdle: queue, Continue: u.turn != "" || u.starting()}
+	draft.compact = sessioncontrol.CompactIntent{WaitForIdle: queue, Continue: u.Turn != "" || u.Starting()}
 	u.unsent = append(u.unsent, draft)
 	return u.flushInput()
 }
 
 // sessionBusy reports work that leaving the current thread would strand.
 func (u *appServerUI) sessionBusy() bool {
-	return u.busy()
+	return u.Busy(len(u.unsent)+len(u.queued) > 0)
 }
 
 // A queued compact is a local action, not Main's running turn. Return waiting
@@ -101,7 +101,7 @@ func (u *appServerUI) sessionBusy() bool {
 func (u *appServerUI) cancelQueuedCompact() bool {
 	isCompact := func(d composerDraft) bool { return d.text == "/compact" }
 	hasQueued := slices.ContainsFunc(u.unsent, isCompact) || slices.ContainsFunc(u.queued, isCompact)
-	cancelled, interruptionIssued := u.compaction.CancelQueued(hasQueued)
+	cancelled, interruptionIssued := u.Compaction.CancelQueued(hasQueued)
 	if !cancelled {
 		return false
 	}
@@ -128,9 +128,9 @@ func (u *appServerUI) clearSessionPresentation() error {
 	if u.retiredThreads == nil {
 		u.retiredThreads = make(map[string]string)
 	}
-	u.retiredThreads[u.thread] = u.thread
+	u.retiredThreads[u.Thread] = u.Thread
 	for thread := range u.session.paths {
-		u.retiredThreads[thread] = u.thread
+		u.retiredThreads[thread] = u.Thread
 	}
 	u.hideQuestions()
 	u.questions = nativeQuestionDock{calls: slices.DeleteFunc(slices.Clone(u.questions.calls), func(c *nativeQuestionCall) bool { return c.sudo == nil || c.resolved })}
@@ -140,7 +140,7 @@ func (u *appServerUI) clearSessionPresentation() error {
 	u.statusPanel = nil
 	u.requests.Retire("main") // Retire old-thread response correlation.
 	u.childHistory, u.historyLoading = nil, nil
-	if err := u.request("thread/unsubscribe", map[string]any{"threadId": u.thread}); err != nil {
+	if err := u.request("thread/unsubscribe", map[string]any{"threadId": u.Thread}); err != nil {
 		return err
 	}
 	u.picker = composerPicker{}

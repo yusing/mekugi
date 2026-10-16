@@ -47,10 +47,10 @@ func TestManagedSkillAttachmentContentsAndIdentity(t *testing.T) {
 	appServerTestKeys(t, u, "\x1b[200~use $review then $review please\x1b[201~\r")
 	// The manager owns this name even when Codex knows a same-named file.
 	replyManagedCatalog(t, u, w, `[{"name":"review","path":"/stale/SKILL.md","enabled":true}]`)
-	if len(u.submission.skills) != 2 || u.submission.skills[0].path != "" {
-		t.Fatalf("managed identity lost: %+v", u.submission)
+	if len(u.inputPayloads[u.Submission().ID].skills) != 2 || u.inputPayloads[u.Submission().ID].skills[0].path != "" {
+		t.Fatalf("managed identity lost: %+v", u.inputPayloads[u.Submission().ID])
 	}
-	input := u.submission.input()
+	input := u.inputPayloads[u.Submission().ID].input()
 	if len(input) != 2 || input[1]["type"] != "text" {
 		t.Fatalf("instructions missing or duplicated: %+v", input)
 	}
@@ -77,7 +77,7 @@ func TestManagedSkillQueuedSnapshotAndNativeManagement(t *testing.T) {
 	appServerTestKeys(t, u, "$rev")
 	replyManagedCatalog(t, u, w, `[]`)
 	appServerTestKeys(t, u, "\x03")
-	u.turn = "running"
+	u.Turn = "running"
 	appServerTestKeys(t, u, "\x1b[200~use $review please\x1b[201~\t")
 	if len(u.queued) != 1 || len(u.queued[0].attachments) != 1 {
 		t.Fatalf("queue did not snapshot: %+v", u.queued)
@@ -85,11 +85,11 @@ func TestManagedSkillQueuedSnapshotAndNativeManagement(t *testing.T) {
 	if err := os.Remove(filepath.Join(strings.TrimPrefix(u.skillEnvironment[0], "PATH="), "skills-mgr")); err != nil {
 		t.Fatal(err)
 	}
-	u.turn = ""
+	u.Turn = ""
 	if err := u.flushInput(); err != nil {
 		t.Fatal(err)
 	}
-	frames, _ := attachments.Decode(u.submission.attachments[0])
+	frames, _ := attachments.Decode(u.inputPayloads[u.Submission().ID].attachments[0])
 	if len(frames) != 1 || !strings.HasSuffix(frames[0], managedSkillInstructions) {
 		t.Fatalf("queue reopened source: %+v", frames)
 	}
@@ -104,12 +104,12 @@ func TestManagedSkillReadFailureIsExplicit(t *testing.T) {
 	testManagedSkills(t, u, `if [ "$1" = list ]; then printf '%s' '<skills><skill name="review"/></skills>'; else exit 1; fi`)
 	appServerTestKeys(t, u, "\x1b[200~use $review please\x1b[201~\r")
 	replyManagedCatalog(t, u, w, `[]`)
-	content, err := json.Marshal(u.submission.input())
+	content, err := json.Marshal(u.inputPayloads[u.Submission().ID].input())
 	if err != nil {
 		t.Fatal(err)
 	}
 	blocks := appServerAttachmentBlocks(u.session.cwd, content)
-	if u.submission.text != "use $review please" || len(blocks) != 1 || blocks[0].Verb != "Attach failed" || !strings.Contains(blocks[0].Label, "review") {
+	if u.inputPayloads[u.Submission().ID].text != "use $review please" || len(blocks) != 1 || blocks[0].Verb != "Attach failed" || !strings.Contains(blocks[0].Label, "review") {
 		t.Fatalf("failed skill lost prompt or receipt: %+v", blocks)
 	}
 }
@@ -119,8 +119,8 @@ func TestManagedSkillSourceFailuresRemainIndependent(t *testing.T) {
 	appServerTestKeys(t, u, "\x1b[200~use $review please\x1b[201~\r")
 	requests := pickerRequests(t, w)
 	appServerTestMessage(t, u, `{"id":`+strconv.Itoa(requests[0].ID)+`,"error":{"code":-1,"message":"native catalog unavailable"}}`)
-	if len(u.submission.attachments) != 1 || !u.feedback.Alert || !strings.Contains(u.feedback.Text, "native catalog unavailable") {
-		t.Fatalf("native failure discarded managed source: %+v %q", u.submission, u.feedback.Text)
+	if len(u.inputPayloads[u.Submission().ID].attachments) != 1 || !u.feedback.Alert || !strings.Contains(u.feedback.Text, "native catalog unavailable") {
+		t.Fatalf("native failure discarded managed source: %+v %q", u.inputPayloads[u.Submission().ID], u.feedback.Text)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()

@@ -223,11 +223,11 @@ func TestServiceTierPickerSelectionUpdatesEffectiveTier(t *testing.T) {
 			appServerTestKeys(t, u, "/tier\r"+tc.keys)
 			if tc.initial != tc.applied {
 				assertAppServerSettingsRequest(t, input, "thread/settings/update", map[string]any{"threadId": "main", "serviceTier": tc.want})
-				if u.picker.open || !u.settings.pending() || u.serviceTier != tc.initial {
+				if u.picker.open || !u.Settings.Pending() || u.serviceTier != tc.initial {
 					t.Fatal("selection replaced host settings before confirmation")
 				}
 				appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "main", "threadSettings": map[string]any{"model": "gpt-6.1-sol", "effort": "high", "serviceTier": tc.want}})
-			} else if input.Len() != 0 || u.settings.pending() {
+			} else if input.Len() != 0 || u.Settings.Pending() {
 				t.Fatal("unchanged host value waited for a notification")
 			}
 			want := tc.applied
@@ -241,7 +241,7 @@ func TestServiceTierPickerSelectionUpdatesEffectiveTier(t *testing.T) {
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
 			executor := requestExecutor{provider: provider, output: &bytes.Buffer{}, serviceTiers: u.serviceTiers}
 			headers := serverMetadataHeaders(t, "turn", nil)
-			headers.Set(codexresponses.ThreadIDHeader, u.thread)
+			headers.Set(codexresponses.ThreadIDHeader, u.Thread)
 			if err := executor.execute(t.Context(), t.Context(), request, headers, "tier"); err != nil {
 				t.Fatal(err)
 			}

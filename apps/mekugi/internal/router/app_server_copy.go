@@ -18,7 +18,7 @@ func (u *appServerUI) showCopyPicker() {
 	var response string
 	for _, entry := range slices.Backward(u.view.Entries) {
 		n := entry.Source.native
-		if n == nil || n.thread != u.thread || entry.Source.Agent != "Main" {
+		if n == nil || n.thread != u.Thread || entry.Source.Agent != "Main" {
 			continue
 		}
 		if entry.Source.Kind == "text" && n.phase == "item/completed" {

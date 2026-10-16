@@ -22,7 +22,7 @@ func (u *appServerUI) titleCommand(text string) bool {
 		u.setNotice("Usage: /title <title>", false)
 		return true
 	}
-	if u.replacement.pending() {
+	if u.Replacement.Pending() {
 		u.setNotice("Wait for the session to be ready", false)
 		return true
 	}
@@ -34,17 +34,17 @@ func (u *appServerUI) titleCommand(text string) bool {
 
 func (u *appServerUI) renameSessionTitle(name string) {
 	u.dirty = true
-	if u.thread == "" {
+	if u.Thread == "" {
 		u.pendingTitle = name
 		return
 	}
 	if u.titleRenames == nil {
 		u.titleRenames = make(map[string]string)
 	}
-	u.titleRenames[u.thread] = name
+	u.titleRenames[u.Thread] = name
 	// Stop naming before persistence, including a result already in flight.
-	u.titleGenerator.nameChanged(u.thread, name)
-	u.flushTitleRename(u.thread)
+	u.titleGenerator.nameChanged(u.Thread, name)
+	u.flushTitleRename(u.Thread)
 }
 
 func (u *appServerUI) flushTitleRename(thread string) {
@@ -86,7 +86,7 @@ func (u *appServerUI) sessionTitleMessage(m appserver.Message, update *sessionTi
 			delete(u.titleRenames, update.thread)
 		}
 		if m.Error != nil {
-			if update.thread == u.thread && u.titleRenames[update.thread] == "" {
+			if update.thread == u.Thread && u.titleRenames[update.thread] == "" {
 				u.setNotice("Session title could not be saved: "+m.Error.Message, false)
 				u.dirty = true
 			}
@@ -116,7 +116,7 @@ func (u *appServerUI) confirmSessionTitle(thread, name string) {
 	if u.titleGenerator != nil {
 		u.titleGenerator.nameChanged(thread, name)
 	}
-	if thread == u.thread {
+	if thread == u.Thread {
 		u.title, u.dirty = name, true
 	}
 }
@@ -124,9 +124,9 @@ func (u *appServerUI) confirmSessionTitle(thread, name string) {
 func (u *appServerUI) mainHeaderRight(width int, focused bool) string {
 	scroll := scrollLabel(u.view)
 	name := u.title
-	if u.thread == "" && u.pendingTitle != "" {
+	if u.Thread == "" && u.pendingTitle != "" {
 		name = u.pendingTitle
-	} else if pending := u.titleRenames[u.thread]; pending != "" {
+	} else if pending := u.titleRenames[u.Thread]; pending != "" {
 		name = pending
 	}
 	title := strings.Join(strings.Fields(pickerText(name)), " ")

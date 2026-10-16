@@ -465,11 +465,11 @@ func TestSessionTitleFailedManualRenameSurvivesResume(t *testing.T) {
 		t.Fatal("manual save failure was not reported")
 	}
 	// Detach the original view, then resume its still-unnamed completed turn.
-	u.replacement.clear()
+	u.Replacement.Clear()
 	appServerTestRequest(t, u, "100", "thread/start")
 	appServerTestMessage(t, u, `{"id":100,"result":{"thread":{"id":"other"}}}`)
 	_ = resumeTestRequests(t, wire)
-	u.replacement.resume("main")
+	u.Replacement.Resume("main")
 	appServerTestRequest(t, u, "101", "thread/resume")
 	appServerTestMessage(t, u, `{"id":101,"result":{"thread":{"id":"main","turns":[{"id":"first","status":"completed","items":[]}]}}}`)
 	_ = resumeTestRequests(t, wire)

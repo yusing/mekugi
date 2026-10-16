@@ -29,7 +29,7 @@ func TestUISnapshotNativeResumeSettingsUnavailable(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.view.painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
-	u.thread, u.resumeThread = "", "saved"
+	u.Thread, u.resumeThread = "", "saved"
 	if err := u.requestResume("saved"); err != nil {
 		t.Fatal(err)
 	}
@@ -48,8 +48,8 @@ func TestUISnapshotNativeResumeSwitchSettingsUnavailable(t *testing.T) {
 	resume := resumeTestPrepared(t, u, w)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"model":"default-model","thread":{"id":"saved","cwd":"/work","turns":[]}}}`, resume.ID))
 	resumeTestSettle(t, u, w)
-	if u.thread != "saved" || u.replacement.pending() || !strings.Contains(u.feedback.Text, "Saved model settings unavailable") {
-		t.Fatalf("completed resume lost fallback notice: thread=%q clearing=%v notice=%q", u.thread, u.replacement.pending(), u.feedback.Text)
+	if u.Thread != "saved" || u.Replacement.Pending() || !strings.Contains(u.feedback.Text, "Saved model settings unavailable") {
+		t.Fatalf("completed resume lost fallback notice: thread=%q clearing=%v notice=%q", u.Thread, u.Replacement.Pending(), u.feedback.Text)
 	}
 	rows, _ := u.mainFrame(100, 12, 0)
 	assertNativeUISnapshot(t, "native-resume-switch-settings-unavailable", rows)
@@ -60,7 +60,7 @@ func TestAppServerResumeSettingsOverridesPerField(t *testing.T) {
 	for _, field := range []string{"", "model", "model_reasoning_effort", "service_tier"} {
 		t.Run("override="+field, func(t *testing.T) {
 			u, w := newAppServerTestUI()
-			u.thread, u.resumeThread = "", info.ID
+			u.Thread, u.resumeThread = "", info.ID
 			u.resumeConfig = map[string]any{"model_provider": "routed"}
 			if field != "" {
 				u.resumeConfig[field] = "explicit"
@@ -110,7 +110,7 @@ func TestAppServerResumeSettingsOverridesPerField(t *testing.T) {
 func TestAppServerResumeSettingsNullIntent(t *testing.T) {
 	info := resumeSettingsRollout(t, `{"type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"model":"saved-model"}}}`, "")
 	u, w := newAppServerTestUI()
-	u.thread, u.resumeThread = "", info.ID
+	u.Thread, u.resumeThread = "", info.ID
 	if err := u.requestResume(info.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestAppServerResumeSettingsNullIntent(t *testing.T) {
 	if tier, present := request.Params["serviceTier"]; !present || tier != nil {
 		t.Fatalf("saved default tier not forwarded: %#v", request.Params)
 	}
-	if _, present := config["model_reasoning_effort"]; present || !u.resumePendingEffort {
+	if _, present := config["model_reasoning_effort"]; present || !u.ResumeEffort {
 		t.Fatalf("unset effort did not use nullable host settings path: %#v", config)
 	}
 }
@@ -135,7 +135,7 @@ func TestAppServerResumeClearsSavedReasoningDefault(t *testing.T) {
 	for _, effort := range []string{"", "high"} {
 		t.Run("launch="+effort, func(t *testing.T) {
 			u, w := newAppServerTestUI()
-			u.thread, u.resumeThread, u.resumePendingEffort = "", "saved", true
+			u.Thread, u.resumeThread, u.ResumeEffort = "", "saved", true
 			u.agents = newLiveActivityView()
 			appServerTestRequest(t, u, "1", "thread/resume")
 			savedEffort := "null"
@@ -156,12 +156,12 @@ func TestAppServerResumeClearsSavedReasoningDefault(t *testing.T) {
 				}
 			}
 			if effort == "" {
-				if update != nil || u.settings.pending() {
+				if update != nil || u.Settings.Pending() {
 					t.Fatal("unchanged null reasoning waited for a suppressed event")
 				}
 				return
 			}
-			if update == nil || !u.settings.pending() {
+			if update == nil || !u.Settings.Pending() {
 				t.Fatal("did not clear saved default through Codex")
 			}
 			wantMode := map[string]any{"mode": "plan", "settings": map[string]any{"model": "saved", "reasoning_effort": nil, "developer_instructions": "host instructions"}}
@@ -179,11 +179,11 @@ func TestAppServerResumeClearsSavedReasoningDefault(t *testing.T) {
 				t.Fatal("submitted before reasoning restored")
 			}
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, update.ID))
-			if !u.settings.pending() {
+			if !u.Settings.Pending() {
 				t.Fatal("acknowledgement claimed settings applied")
 			}
 			appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "saved", "threadSettings": map[string]any{"model": "saved", "effort": nil, "serviceTier": nil}})
-			if u.settings.pending() || u.reasoningEffort != "" {
+			if u.Settings.Pending() || u.reasoningEffort != "" {
 				t.Fatal("saved default did not apply")
 			}
 		})
@@ -195,9 +195,9 @@ func TestAppServerResumeSettingsPreflightFailure(t *testing.T) {
 		for _, switching := range []bool{false, true} {
 			u, w := newAppServerTestUI()
 			if switching {
-				u.replacement.resume("saved")
+				u.Replacement.Resume("saved")
 			} else {
-				u.thread, u.resumeThread = "", "saved"
+				u.Thread, u.resumeThread = "", "saved"
 			}
 			if err := u.requestResume("saved"); err != nil {
 				t.Fatal(err)
@@ -208,8 +208,8 @@ func TestAppServerResumeSettingsPreflightFailure(t *testing.T) {
 				t.Fatal(err)
 			}
 			err := u.message(m)
-			if (!switching && err == nil) || (switching && (err != nil || u.thread != "main" || u.replacement.pending())) || w.Len() != 0 {
-				t.Fatalf("preflight failure: switching=%v err=%v thread=%q wire=%s", switching, err, u.thread, w.Bytes())
+			if (!switching && err == nil) || (switching && (err != nil || u.Thread != "main" || u.Replacement.Pending())) || w.Len() != 0 {
+				t.Fatalf("preflight failure: switching=%v err=%v thread=%q wire=%s", switching, err, u.Thread, w.Bytes())
 			}
 		}
 	}
@@ -220,7 +220,7 @@ func TestAppServerResumeSwitchReasoningIsolation(t *testing.T) {
 		for _, sourceGate := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/sourceGate=%v", result, sourceGate), func(t *testing.T) {
 				u, w := newResumeSessionTestUI(t)
-				u.settings.restoreEffort = sourceGate
+				u.Settings.RestoreEffort = sourceGate
 				info := resumeSettingsRollout(t, `{"type":"turn_context","payload":{"model":"saved","effort":null}}`, "")
 				appServerTestKeys(t, u, "/resume saved\r")
 				read := resumeTestOne(t, w, "thread/read")
@@ -236,13 +236,13 @@ func TestAppServerResumeSwitchReasoningIsolation(t *testing.T) {
 					for _, request := range resumeTestRequests(t, w) {
 						correction = correction || request.Method == "thread/settings/update"
 					}
-					if u.thread != "saved" || !u.settings.restoreEffort || !u.settings.pending() || !correction {
+					if u.Thread != "saved" || !u.Settings.RestoreEffort || !u.Settings.Pending() || !correction {
 						t.Fatal("source notification released target default restoration")
 					}
 					return
 				}
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"cannot resume"}}`, resume.ID))
-				if u.thread != "main" || u.settings.restoreEffort != sourceGate || u.resumePendingEffort {
+				if u.Thread != "main" || u.Settings.RestoreEffort != sourceGate || u.ResumeEffort {
 					t.Fatal("target restoration state leaked into source session")
 				}
 				appServerTestKeys(t, u, "continue original\r")

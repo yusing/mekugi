@@ -24,11 +24,11 @@ func TestUISnapshotNativeGroupedSkills(t *testing.T) {
 			var items []appServerItem
 			for i, command := range []string{"skills-mgr get mekugi-owners", "skills-mgr get deliver-vertical-slice", "cat CONTEXT-TESTS.md"} {
 				item := appServerItem{ID: fmt.Sprint(i), Type: "commandExecution", Command: command, ExitCode: new(0), DurationMS: new(int64(40 + i)), AggregatedOutput: new(fmt.Sprintf("# Guide %d\nUse this guide.\n", i))}
-				appServerTestNotify(t, u, "item/started", map[string]any{"threadId": u.thread, "turnId": "turn", "item": item})
+				appServerTestNotify(t, u, "item/started", map[string]any{"threadId": u.Thread, "turnId": "turn", "item": item})
 				if i == 1 && strings.Count(ansi.Strip(strings.Join(view.renderFeed(60, 40).lines, "\n")), "Skill") != 2 {
 					t.Fatal("running skill merged")
 				}
-				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": u.thread, "turnId": "turn", "item": item})
+				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": u.Thread, "turnId": "turn", "item": item})
 				items = append(items, item)
 			}
 			for _, restored := range []bool{false, true} {

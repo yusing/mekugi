@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 )
 
@@ -149,9 +151,9 @@ func TestComposerEscapeExpeditesAttachments(t *testing.T) {
 	if len(requests) != 1 || requests[0].Method != "turn/start" {
 		t.Fatalf("requests=%+v", requests)
 	}
-	input := u.submission.input()
-	if input[0]["path"] != "first.png" || input[2]["path"] != "second.png" || len(u.submission.selections) != 1 || u.submission.selections[0].text != "exact quote" || u.submission.text != "[Image 1][Selected message] \n[Image 2]" {
-		t.Fatalf("expedite corrupted attachments: %+v draft=%+v", input, u.submission.composerDraft)
+	input := u.inputPayloads[u.Submission().ID].input()
+	if input[0]["path"] != "first.png" || input[2]["path"] != "second.png" || len(u.inputPayloads[u.Submission().ID].selections) != 1 || u.inputPayloads[u.Submission().ID].selections[0].text != "exact quote" || u.inputPayloads[u.Submission().ID].text != "[Image 1][Selected message] \n[Image 2]" {
+		t.Fatalf("expedite corrupted attachments: %+v draft=%+v", input, u.inputPayloads[u.Submission().ID].composerDraft)
 	}
 }
 
@@ -204,8 +206,8 @@ func TestComposerEscapeContextPrecedesSteerDelivery(t *testing.T) {
 				u.interruptLocked = true
 			}
 			composerShellEscape(t, u)
-			if wire.Len() != 0 || len(u.steers) != 1 {
-				t.Fatalf("contextual Escape touched steer: wire=%s steers=%+v", wire.String(), u.steers)
+			if wire.Len() != 0 || len(u.Steers()) != 1 {
+				t.Fatalf("contextual Escape touched steer: wire=%s steers=%+v", wire.String(), u.Steers())
 			}
 		})
 	}
@@ -216,7 +218,7 @@ func TestComposerEscapeExpeditesOnlyLocallyWaitingSteer(t *testing.T) {
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
 	appServerTestTurn(t, u, "t")
-	u.settings.beginLive()
+	u.Settings.BeginLive()
 	appServerTestKeys(t, u, "first\rdraft")
 	if wire.Len() != 0 {
 		t.Fatal("settings did not hold input")
@@ -228,7 +230,7 @@ func TestComposerEscapeExpeditesOnlyLocallyWaitingSteer(t *testing.T) {
 	if wire.Len() != 0 {
 		t.Fatal("Escape bypassed pending settings")
 	}
-	u.settings = appServerSettingsOperation{}
+	u.Settings = sessioncontrol.Settings{}
 	if err := u.flushInput(); err != nil {
 		t.Fatal(err)
 	}

@@ -141,7 +141,7 @@ func TestRouterTransformFaultAfterCreatedEmitsActionableTerminalFailure(t *testi
 		t.Fatalf("transport write acknowledged an unpainted notice: %v", pending)
 	}
 	ui, _ := newAppServerTestUI()
-	ui.thread, ui.issues = metadata.ThreadID, issues
+	ui.Thread, ui.issues = metadata.ThreadID, issues
 	if ui.applyCriticalNotices() != nil {
 		t.Fatal("request notice interrupted a retrying turn")
 	}

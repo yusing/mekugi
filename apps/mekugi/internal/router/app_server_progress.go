@@ -83,7 +83,7 @@ func appServerWaitProgress(item appServerItem, method string) *activityui.Block 
 // Compaction is scoped to the active Main turn and exact item. A completion for
 // another item, or activity from a child, cannot clear or replace it.
 func (u *appServerUI) observeProgress(method string, p appServerEvent) {
-	if p.ThreadID != u.thread {
+	if p.ThreadID != u.Thread {
 		return
 	}
 	switch method {
@@ -91,7 +91,7 @@ func (u *appServerUI) observeProgress(method string, p appServerEvent) {
 		u.compacting = nil
 		u.polling = nil
 	case "turn/completed":
-		if p.Turn.ID == u.turn {
+		if p.Turn.ID == u.Turn {
 			u.compacting = nil
 			u.polling = nil
 		}
@@ -99,7 +99,7 @@ func (u *appServerUI) observeProgress(method string, p appServerEvent) {
 		// Source: codex-rs/tui/src/chatwidget/command_lifecycle.rs:76:128@1cc7e236.
 		// Empty stdin is a poll, not an ordinary input write. It changes the
 		// composer only, so repeated polls never flood the transcript.
-		if p.TurnID == u.turn && u.turn != "" && p.ProcessID != "" {
+		if p.TurnID == u.Turn && u.Turn != "" && p.ProcessID != "" {
 			key := [2]string{p.TurnID, p.ProcessID}
 			if p.Stdin == "" {
 				u.polling = &key
@@ -108,11 +108,11 @@ func (u *appServerUI) observeProgress(method string, p appServerEvent) {
 			}
 		}
 	case "item/agentMessage/delta", "item/reasoning/summaryTextDelta":
-		if p.TurnID == u.turn {
+		if p.TurnID == u.Turn {
 			u.polling = nil
 		}
 	case "item/started", "item/completed":
-		if p.TurnID != u.turn || u.turn == "" {
+		if p.TurnID != u.Turn || u.Turn == "" {
 			return
 		}
 		if p.Item.Type != "contextCompaction" {

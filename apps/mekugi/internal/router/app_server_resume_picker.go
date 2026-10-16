@@ -77,7 +77,7 @@ func (u *appServerUI) resumeCommand(text string) error {
 		u.setNotice("Use /resume or /resume THREAD_ID", true)
 		return nil
 	}
-	if u.thread == "" || u.restoring != nil || u.replacement.pending() {
+	if u.Thread == "" || u.restoring != nil || u.Replacement.Pending() {
 		u.setNotice("Wait for the session to be ready", false)
 		return nil
 	}
@@ -204,13 +204,13 @@ func (u *appServerUI) closeResumePicker() {
 // resumeSession switches this UI to a saved thread. The old presentation
 // stays usable until Codex confirms the new thread, as for /clear.
 func (u *appServerUI) resumeSession(id string) error {
-	if id == u.thread {
+	if id == u.Thread {
 		u.setNotice("Already viewing this session", false)
 		return nil
 	}
-	u.replacement.resume(id)
+	u.Replacement.Resume(id)
 	if err := u.requestResume(id); err != nil {
-		u.replacement.finish()
+		u.Replacement.Finish()
 		return err
 	}
 	return nil
@@ -220,8 +220,8 @@ func (u *appServerUI) resumeSession(id string) error {
 // Input typed for the new session returns to the composer rather than
 // reaching the old thread.
 func (u *appServerUI) resumeSessionFailed(message string) error {
-	u.replacement.finish()
-	u.resumePendingEffort = false
+	u.Replacement.Finish()
+	u.ResumeEffort = false
 	u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
 	u.unsent, u.queued = nil, nil
 	u.status = "Ready"
@@ -442,7 +442,7 @@ func (u *appServerUI) resumePickerFrame(width, height int) []string {
 		if title == "" {
 			title = "(no message yet)"
 		}
-		if row.id == u.thread {
+		if row.id == u.Thread {
 			title += dim + " · current" + reset
 		}
 		prefix := "  "

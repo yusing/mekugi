@@ -53,7 +53,7 @@ type appServerStatusConfig struct {
 }
 
 func (u *appServerUI) displayServiceTier() string {
-	return effectiveServiceTier(u.model, u.serviceTier, u.serviceTiers, u.thread)
+	return effectiveServiceTier(u.model, u.serviceTier, u.serviceTiers, u.Thread)
 }
 
 func (u *appServerUI) showStatus() error {
@@ -70,7 +70,7 @@ func (u *appServerUI) showStatus() error {
 	add("Model provider", u.statusConfig.Provider)
 	group = "Session"
 	add("Directory", u.session.cwd)
-	add("Session", u.thread)
+	add("Session", u.Thread)
 	var approval string
 	if len(u.statusConfig.Approval) != 0 {
 		if json.Unmarshal(u.statusConfig.Approval, &approval) != nil {

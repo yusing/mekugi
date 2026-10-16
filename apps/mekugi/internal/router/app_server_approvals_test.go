@@ -65,7 +65,7 @@ func approvalTestTranscript(t *testing.T, u *appServerUI) string {
 
 func TestNativeApprovalCommandReturnsTheOfferedDecision(t *testing.T) {
 	u, input := newAppServerTestUI()
-	u.turn = "turn"
+	u.Turn = "turn"
 	approvalTestCommand(t, u, 7, map[string]any{
 		"reason": "needs the remote",
 		"availableDecisions": []any{"accept", "acceptForSession",
@@ -101,7 +101,7 @@ func TestNativeApprovalCommandReturnsTheOfferedDecision(t *testing.T) {
 // and cancel.
 func TestNativeApprovalCommandDefaultDecisions(t *testing.T) {
 	u, input := newAppServerTestUI()
-	u.turn = "turn"
+	u.Turn = "turn"
 	approvalTestCommand(t, u, "default", map[string]any{"proposedExecpolicyAmendment": []string{"git", "push"}})
 	if len(approvalTestChoices(u)) != 3 {
 		t.Fatalf("choices = %q", approvalTestChoices(u))
@@ -115,7 +115,7 @@ func TestNativeApprovalCommandDefaultDecisions(t *testing.T) {
 
 func TestNativeApprovalTerminalInput(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.turn = "turn"
+	u.Turn = "turn"
 	approvalTestCommand(t, u, 12, map[string]any{"kind": "writeStdin", "command": "write_stdin --session-id 7 'y\n'"})
 	if a := u.approvals.pending[0]; a.title != "Send input to terminal 7?" || a.subject != `Input: "y\n"` {
 		t.Fatalf("stdin approval = %q %q", a.title, a.subject)
@@ -125,7 +125,7 @@ func TestNativeApprovalTerminalInput(t *testing.T) {
 func TestNativeApprovalFileChangeAndPermissions(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/work")
 	input := u.client.Input.(*appServerTestInput)
-	u.turn = "turn"
+	u.Turn = "turn"
 	questionTestMessage(t, u, nil, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{
 		"id": "patch", "type": "fileChange", "changes": []any{map[string]any{"path": "/work/a.go", "kind": map[string]any{"type": "update"}, "diff": ""}},
 	}})
@@ -160,7 +160,7 @@ func TestNativeApprovalFileChangeAndPermissions(t *testing.T) {
 
 func TestNativeApprovalEndsWhenResolvedElsewhere(t *testing.T) {
 	u, input := newAppServerTestUI()
-	u.turn = "turn"
+	u.Turn = "turn"
 	approvalTestCommand(t, u, "stale", nil)
 	approvalTestCommand(t, u, "ended", nil)
 	if !strings.Contains(ansi.Strip(questionTestPaint(t, u, 80)), "1 of 2") {
@@ -183,7 +183,7 @@ func TestNativeApprovalEndsWhenResolvedElsewhere(t *testing.T) {
 // draft, and reopening shows it again.
 func TestNativeApprovalWaitsForAnEmptyComposer(t *testing.T) {
 	u, input := newAppServerTestUI()
-	u.turn = "turn"
+	u.Turn = "turn"
 	appServerTestKeys(t, u, "draft")
 	approvalTestCommand(t, u, 11, nil)
 	if u.approvals.open {
@@ -374,7 +374,7 @@ func TestNativeApprovalDenialProjectsFeedbackInSameTurn(t *testing.T) {
 		thread, decision := tc[0], tc[1]
 		t.Run(thread+"/"+decision, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
-			u.turn = "turn"
+			u.Turn = "turn"
 			approvalTestCommand(t, u, 7, map[string]any{"threadId": thread, "availableDecisions": []string{"accept", decision}})
 			questionTestPaint(t, u, 80)
 			appServerTestKeys(t, u, "wait for review\r")
@@ -403,7 +403,7 @@ func TestNativeApprovalDenialProjectsFeedbackInSameTurn(t *testing.T) {
 func TestNativeApprovalQuestionEditorOwnership(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.session.start("main", t.TempDir())
-	u.turn = "turn"
+	u.Turn = "turn"
 	approvalTestCommand(t, u, 7, nil)
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "wait for review")
@@ -545,7 +545,7 @@ func TestUISnapshotNativeApprovalDock(t *testing.T) {
 			u.view.painter.Theme = diffrender.DarkTheme
 			u.status, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 			u.session.start("main", "/workspace")
-			u.turn = "turn"
+			u.Turn = "turn"
 			tc.setup(t, u)
 			rows, _ := u.mainFrame(tc.width, 20, 0)
 			assertNativeUISnapshot(t, "native-"+tc.name, rows)
@@ -572,7 +572,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 			u.clock = func() time.Time { return time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC) }
 			u.view.clock, u.agents.clock = u.clock, u.clock
 			u.view.painter.Theme, u.agents.painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
-			u.turn = "turn"
+			u.Turn = "turn"
 			thread, view := "main", u.view
 			if tc.child {
 				u.session.registerThread(appServerThreadInfo{ID: "child", AgentNickname: "worker"})

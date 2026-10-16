@@ -95,7 +95,7 @@ func TestSudoUnlockDialog(t *testing.T) {
 				result <- execTrackRun{stdout: string(out), code: code}
 			}()
 			u, input := newAppServerTestUI()
-			u.turn = "turn"
+			u.Turn = "turn"
 			for i, keys := range tc.keys {
 				var request *vcsApproval
 				select {
@@ -146,7 +146,7 @@ func TestUISnapshotSudoDialogs(t *testing.T) {
 	u.view.painter.Theme = diffrender.DarkTheme
 	u.status, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 	u.session.start("main", "/workspace")
-	u.turn = "turn"
+	u.Turn = "turn"
 	u.addGuardApproval(&vcsApproval{kind: "sudo", thread: "main", cwd: "/workspace", argv: []string{"sudo", "apt", "update"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})})
 	rows, _ := u.mainFrame(80, 20, 0)
 	assertNativeUISnapshot(t, "native-sudo-approval", rows)
@@ -188,7 +188,7 @@ func TestSudoSecretEditorAndSessionSwitch(t *testing.T) {
 		t.Fatal(err)
 	}
 	input.Reset()
-	u.thread, u.turn = "new-thread", ""
+	u.Thread, u.Turn = "new-thread", ""
 	appServerTestKeys(t, u, "new task\r")
 	if !strings.Contains(input.String(), "turn/start") {
 		t.Fatal("old-session password blocked new-session input")

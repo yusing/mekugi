@@ -18,7 +18,7 @@ type appServerSkillHistory struct {
 }
 
 func (u *appServerUI) startSkillHistory() {
-	if u.restoring != nil || u.replacement.target != "" {
+	if u.restoring != nil || u.Replacement.Target != "" {
 		return
 	}
 	// One scan at a time keeps background history I/O independently bounded.
@@ -28,7 +28,7 @@ func (u *appServerUI) startSkillHistory() {
 		}
 	}
 	for _, h := range u.childHistory {
-		if h.root != u.thread || h.skills != nil {
+		if h.root != u.Thread || h.skills != nil {
 			continue
 		}
 		h.skills = &appServerSkillHistory{cursors: make(map[string]bool)}
@@ -62,7 +62,7 @@ func (u *appServerUI) failSkillHistory(h *appServerChildHistory, message string)
 
 func (u *appServerUI) skillHistoryResponse(thread string, m appserver.Message) error {
 	h := u.childHistory[thread]
-	if h == nil || h.root != u.thread || h.skills == nil || h.skills.request != string(m.ID) {
+	if h == nil || h.root != u.Thread || h.skills == nil || h.skills.request != string(m.ID) {
 		return nil
 	}
 	scan := h.skills

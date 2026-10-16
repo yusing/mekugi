@@ -84,7 +84,7 @@ func TestNativeControlsTerminalFrames(t *testing.T) {
 	if err := u.shell.key(3); err != nil {
 		t.Fatal(err)
 	}
-	if frame := paint(); !strings.Contains(frame, "Queued compaction cancelled") || !strings.Contains(frame, "❯ /compact") || wire.Len() != 0 || u.turn != "work" {
+	if frame := paint(); !strings.Contains(frame, "Queued compaction cancelled") || !strings.Contains(frame, "❯ /compact") || wire.Len() != 0 || u.Turn != "work" {
 		t.Fatalf("compact cancellation lost its draft or interrupted Main: wire=%q\n%s", wire.String(), frame)
 	}
 	appServerTestTurnEnd(t, u, "work", "completed")

@@ -16,9 +16,9 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 			u.ensureShell()
 			switch state {
 			case "running":
-				u.turn = "active"
+				u.Turn = "active"
 			case "starting":
-				u.awaitingTurn = true
+				u.AwaitingTurn = true
 			case "queued":
 				u.queued = []composerDraft{{text: "next"}}
 			}
@@ -33,7 +33,7 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 			if err := u.shell.send("\x1b"); err != nil {
 				t.Fatal(err)
 			}
-			if wire.Len() != 0 || u.interruption.beforeStart || u.interruption.target != "" || !strings.Contains(u.feedback.Text, "/unlock") {
+			if wire.Len() != 0 || u.Interruption.BeforeStart || u.Interruption.Target != "" || !strings.Contains(u.feedback.Text, "/unlock") {
 				t.Fatalf("locked cancellation reached host: %s %+v", wire.Bytes(), u)
 			}
 			if state == "queued" && len(u.queued) != 1 {
@@ -47,7 +47,7 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 			if err != nil || u.interruptLocked {
 				t.Fatal("unlock did not restore keyboard handling")
 			}
-			if state == "running" && !strings.Contains(wire.String(), "turn/interrupt") || state == "starting" && !u.interruption.beforeStart || state == "idle" && !quit || state == "queued" && (len(u.queued) != 0 || u.draft != "next") {
+			if state == "running" && !strings.Contains(wire.String(), "turn/interrupt") || state == "starting" && !u.Interruption.BeforeStart || state == "idle" && !quit || state == "queued" && (len(u.queued) != 0 || u.draft != "next") {
 				t.Fatalf("unlocked handling did not resume: quit=%v draft=%q wire=%s", quit, u.draft, wire.String())
 			}
 		})
@@ -57,7 +57,7 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 func TestNativeControlsLockedDraftAndContextualEscape(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.ensureShell()
-	u.turn, u.interruptLocked = "active", true
+	u.Turn, u.interruptLocked = "active", true
 	appServerTestKeys(t, u, "draft\x03")
 	if u.draft != "" {
 		t.Fatal("lock broke draft clearing")

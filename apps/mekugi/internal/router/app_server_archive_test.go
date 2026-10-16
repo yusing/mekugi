@@ -17,7 +17,7 @@ func TestUISnapshotAppServerArchive(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			if running {
-				u.turn = "turn"
+				u.Turn = "turn"
 			}
 			appServerTestKeys(t, u, "/arch\r")
 			if u.picker.modal != "archive" || u.picker.selected != 0 || wire.Len() != 0 {
@@ -35,7 +35,7 @@ func TestUISnapshotAppServerArchive(t *testing.T) {
 			u.queued = []composerDraft{{text: "pending follow-up"}}
 			appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"turn","status":"completed"}}}`)
 			appServerTestKeys(t, u, "/resume other\r\x03")
-			if wire.Len() == 0 || len(pickerRequests(t, wire)) != 1 || u.acceptsInput() || u.acceptsShell() {
+			if wire.Len() == 0 || len(pickerRequests(t, wire)) != 1 || u.AcceptsInput() || u.AcceptsShell() {
 				t.Fatal("archive admitted input or a session switch before acknowledgement")
 			}
 			appServerTestMessage(t, u, `{"id":1,"result":{}}`)
@@ -62,7 +62,7 @@ func TestAppServerArchiveCancelAndUnavailable(t *testing.T) {
 		}
 		u.pickerKey(cancel)
 		u.refreshPicker()
-		if wire.Len() != 0 || u.picker.open || u.replacement.pending() || u.quitRequested || u.draft != "" {
+		if wire.Len() != 0 || u.picker.open || u.Replacement.Pending() || u.quitRequested || u.draft != "" {
 			t.Fatalf("cancel %q archived, left confirmation open or accepted hidden paste: %q", cancel, u.draft)
 		}
 	}
@@ -70,11 +70,11 @@ func TestAppServerArchiveCancelAndUnavailable(t *testing.T) {
 		u, wire := newAppServerTestUI()
 		switch state {
 		case "startup":
-			u.thread = ""
+			u.Thread = ""
 		case "restoring":
 			u.restoring = new(appServerActivityRestore)
 		case "replacement":
-			u.replacement.clear()
+			u.Replacement.Clear()
 		}
 		appServerTestKeys(t, u, "/archive\r")
 		if wire.Len() != 0 || u.picker.modal == "archive" || !strings.Contains(u.feedback.Text, "ready") {
@@ -87,7 +87,7 @@ func TestAppServerArchiveFailureRetry(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	appServerTestKeys(t, u, "/archive\r\x1b[B\r")
 	appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"archive unavailable"}}`)
-	if u.quitRequested || u.archived || u.replacement.pending() || !u.feedback.Alert || !strings.Contains(u.feedback.Text, "archive unavailable") {
+	if u.quitRequested || u.archived || u.Replacement.Pending() || !u.feedback.Alert || !strings.Contains(u.feedback.Text, "archive unavailable") {
 		t.Fatalf("archive failure lost session or feedback: %q", u.feedback.Text)
 	}
 	appServerTestKeys(t, u, "/archive\r\x1b[B\r")

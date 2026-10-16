@@ -129,7 +129,7 @@ func TestAppServerNotificationQuestions(t *testing.T) {
 		t.Run(fmt.Sprintf("async=%v", async), func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			out := notificationTestOutput(t, u)
-			u.turn = "turn"
+			u.Turn = "turn"
 			want := "\x1b]9;Input requested\a"
 			for range 2 {
 				if async {
@@ -217,7 +217,7 @@ func TestAppServerNotificationOutputFailureNonfatal(t *testing.T) {
 	appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"turn"}}}`)
 	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"turn","status":"completed"}}}`)
 	u.notify("agent-turn-complete", "again")
-	if u.turn != "" || !strings.HasPrefix(u.status, "Completed") || failing.calls != 1 || u.feedback.Text == "" {
-		t.Fatalf("output failure disrupted completion: turn=%q status=%q calls=%d notice=%q", u.turn, u.status, failing.calls, u.feedback.Text)
+	if u.Turn != "" || !strings.HasPrefix(u.status, "Completed") || failing.calls != 1 || u.feedback.Text == "" {
+		t.Fatalf("output failure disrupted completion: turn=%q status=%q calls=%d notice=%q", u.Turn, u.status, failing.calls, u.feedback.Text)
 	}
 }

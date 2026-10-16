@@ -51,8 +51,8 @@ func TestAppServerCompactQueuedContinuesOnceAfterAckAndTurn(t *testing.T) {
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"continued"}}}`, start.ID))
 			appServerTestTurnEnd(t, u, "compact-turn", "completed")
 			appServerTestTurnEnd(t, u, "continued", "completed")
-			if w.Len() != 0 || u.compaction.ContinuationPending() || u.compaction.AcknowledgementPending() || u.compaction.Active() {
-				t.Fatalf("duplicate completion restarted task: wire=%q pending=%v", w.String(), u.compaction.ContinuationPending())
+			if w.Len() != 0 || u.Compaction.ContinuationPending() || u.Compaction.AcknowledgementPending() || u.Compaction.Active() {
+				t.Fatalf("duplicate completion restarted task: wire=%q pending=%v", w.String(), u.Compaction.ContinuationPending())
 			}
 		})
 	}
@@ -114,7 +114,7 @@ func TestAppServerCompactQueuedFailedOrInterruptedDoesNotContinue(t *testing.T) 
 				if beforeAck {
 					appServerTestMessage(t, u, ack)
 				}
-				if w.Len() != 0 || u.compaction.ContinuationPending() {
+				if w.Len() != 0 || u.Compaction.ContinuationPending() {
 					t.Fatalf("%s compaction continued: %s", status, w.String())
 				}
 				appServerTestKeys(t, u, "/compact\r")
@@ -136,7 +136,7 @@ func TestAppServerCompactQueuedRejectedAfterCompletionDoesNotContinue(t *testing
 	appServerTestTurn(t, u, "compact-turn")
 	appServerTestTurnEnd(t, u, "compact-turn", "completed")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, r.ID))
-	if w.Len() != 0 || u.draft != "/compact" || u.compaction.ContinuationPending() {
+	if w.Len() != 0 || u.draft != "/compact" || u.Compaction.ContinuationPending() {
 		t.Fatalf("RPC rejection continued or lost command: wire=%q draft=%q", w.String(), u.draft)
 	}
 	appServerTestKeys(t, u, "\r")
@@ -158,8 +158,8 @@ func TestAppServerCompactQueuedCancelBeforeRunPreservesMain(t *testing.T) {
 			appServerTestKeys(t, u, "/compact\t")
 			appServerTestKeys(t, u, "after compact\r")
 			appServerTestKeys(t, u, "next turn\t\x03")
-			if w.Len() != 0 || u.turn != "work" || u.interruption.target != "" || u.interruption.beforeStart || u.draft != "/compact\nafter compact\nnext turn" || u.compaction.ContinuationPending() || len(u.unsent)+len(u.queued) != 0 {
-				t.Fatalf("queued cancellation touched Main or lost input: wire=%q draft=%q turn=%q", w.String(), u.draft, u.turn)
+			if w.Len() != 0 || u.Turn != "work" || u.Interruption.Target != "" || u.Interruption.BeforeStart || u.draft != "/compact\nafter compact\nnext turn" || u.Compaction.ContinuationPending() || len(u.unsent)+len(u.queued) != 0 {
+				t.Fatalf("queued cancellation touched Main or lost input: wire=%q draft=%q turn=%q", w.String(), u.draft, u.Turn)
 			}
 			appServerTestTurnEnd(t, u, "work", "completed")
 			if w.Len() != 0 {
@@ -174,12 +174,12 @@ func TestAppServerCompactQueuedCancelPreservesStartingMain(t *testing.T) {
 	appServerTestKeys(t, u, "task\r")
 	start := appServerOneRequest(t, w, "turn/start", "task")
 	appServerTestKeys(t, u, "/compact\t\x03")
-	if w.Len() != 0 || !u.starting() || u.interruption.beforeStart || u.submission.text != "task" || u.draft != "/compact" {
+	if w.Len() != 0 || !u.Starting() || u.Interruption.BeforeStart || u.inputPayloads[u.Submission().ID].text != "task" || u.draft != "/compact" {
 		t.Fatalf("compact cancellation cancelled the pending Main start: wire=%q draft=%q", w.String(), u.draft)
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"work"}}}`, start.ID))
 	appServerTestTurn(t, u, "work")
-	if w.Len() != 0 || u.turn != "work" {
+	if w.Len() != 0 || u.Turn != "work" {
 		t.Fatalf("compact cancellation interrupted newly started Main: %s", w.String())
 	}
 }
@@ -190,7 +190,7 @@ func TestAppServerCompactQueuedCancelPreservesInFlightSteer(t *testing.T) {
 	appServerTestKeys(t, u, "steer\r")
 	steer := appServerOneRequest(t, w, "turn/steer", "steer")
 	appServerTestKeys(t, u, "waiting steer\r/compact\t\x03")
-	if w.Len() != 0 || u.interruption.target != "" || u.submission.text != "steer" || u.draft != "waiting steer\n/compact" {
+	if w.Len() != 0 || u.Interruption.Target != "" || u.inputPayloads[u.Submission().ID].text != "steer" || u.draft != "waiting steer\n/compact" {
 		t.Fatalf("compact cancellation touched the in-flight steer: wire=%q draft=%q", w.String(), u.draft)
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"work"}}`, steer.ID))
@@ -214,7 +214,7 @@ func TestAppServerCompactCancelThenNormalMainInterrupt(t *testing.T) {
 	}
 	appServerTestKeys(t, u, "\x03")
 	appServerOneRequest(t, w, "turn/interrupt", "")
-	if u.interruption.target != "work" {
+	if u.Interruption.Target != "work" {
 		t.Fatal("normal Main interruption was not preserved")
 	}
 }
@@ -226,13 +226,13 @@ func TestAppServerCompactCancelCompletionBeforeAckDoesNotQuitOrContinue(t *testi
 	appServerTestTurnEnd(t, u, "compact-turn", "completed")
 	appServerTestKeys(t, u, "\x03")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID))
-	if w.Len() != 0 || u.compaction.ContinuationPending() || u.interruption.beforeStart {
+	if w.Len() != 0 || u.Compaction.ContinuationPending() || u.Interruption.BeforeStart {
 		t.Fatalf("completion racing cancellation continued task: %s", w.String())
 	}
 	appServerTestKeys(t, u, "new task\r")
 	appServerOneRequest(t, w, "turn/start", "new task")
 	appServerTestTurn(t, u, "new-work")
-	if w.Len() != 0 || u.interruption.target != "" {
+	if w.Len() != 0 || u.Interruption.Target != "" {
 		t.Fatal("old compaction cancellation interrupted the new Main turn")
 	}
 }
@@ -265,7 +265,7 @@ func TestAppServerCompactQueuedInterruptBeforeCompactStartsCancelsContinuation(t
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, interrupt.ID))
 	// A host completion racing the interrupt must not revive continuation.
 	appServerTestTurnEnd(t, u, "compact-turn", "completed")
-	if w.Len() != 0 || u.compaction.ContinuationPending() {
+	if w.Len() != 0 || u.Compaction.ContinuationPending() {
 		t.Fatalf("cancelled compaction continued: %s", w.String())
 	}
 }
@@ -280,7 +280,7 @@ func TestAppServerCompactQueuedInterruptDuringCompactionCancelsContinuation(t *t
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, interrupt.ID))
 	appServerTestTurnEnd(t, u, "compact-turn", "completed")
 	appServerTestTurnEnd(t, u, "compact-turn", "completed")
-	if w.Len() != 0 || u.compaction.ContinuationPending() {
+	if w.Len() != 0 || u.Compaction.ContinuationPending() {
 		t.Fatalf("interrupt racing compaction completion restarted task: %s", w.String())
 	}
 }
@@ -300,7 +300,7 @@ func TestAppServerCompactCancelRestoresWaitingInputDespiteSuccessfulCompletion(t
 				appServerTestTurnEnd(t, u, "compact-turn", "completed")
 			}
 			appServerTestKeys(t, u, "waiting enter\rwaiting tab\t\x03")
-			if u.draft != "waiting enter\nwaiting tab" || len(u.unsent)+len(u.queued) != 0 || u.compaction.ContinuationPending() {
+			if u.draft != "waiting enter\nwaiting tab" || len(u.unsent)+len(u.queued) != 0 || u.Compaction.ContinuationPending() {
 				t.Fatalf("cancellation did not restore waiting input: draft=%q unsent=%+v queued=%+v", u.draft, u.unsent, u.queued)
 			}
 			if phase != "running" {
@@ -320,7 +320,7 @@ func TestAppServerCompactCancelRestoresWaitingInputDespiteSuccessfulCompletion(t
 			appServerTestKeys(t, u, "\r")
 			appServerOneRequest(t, w, "turn/start", "waiting enter\nwaiting tab")
 			appServerTestTurn(t, u, "retry")
-			if w.Len() != 0 || u.interruption.target != "" {
+			if w.Len() != 0 || u.Interruption.Target != "" {
 				t.Fatal("compaction cancellation interrupted the retried input")
 			}
 		})
@@ -330,7 +330,7 @@ func TestAppServerCompactCancelRestoresWaitingInputDespiteSuccessfulCompletion(t
 func TestUISnapshotNativeCompactQueuedContinuation(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.proxy = &mekugiProxy{}
-	u.session.start(u.thread, "")
+	u.session.start(u.Thread, "")
 	u.agents = newLiveActivityView()
 	u.view.painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
@@ -441,7 +441,7 @@ func TestAppServerCompactSteerInterruptRejected(t *testing.T) {
 				appServerTestTurnEnd(t, u, "work", "completed")
 			}
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, interrupt.ID))
-			if w.Len() != 0 || u.draft != "/compact\nwaiting" || u.compaction.Pending() || u.compaction.PreservesWaitingInput() {
+			if w.Len() != 0 || u.draft != "/compact\nwaiting" || u.Compaction.Pending() || u.Compaction.PreservesWaitingInput() {
 				t.Fatalf("rejected interruption compacted or lost input: wire=%q draft=%q", w.String(), u.draft)
 			}
 			appServerTestTurnEnd(t, u, "work", "completed")
@@ -470,7 +470,7 @@ func TestAppServerCompactSteerCancelDuringInterrupt(t *testing.T) {
 				appServerTestMessage(t, u, ack)
 				appServerTestTurnEnd(t, u, "work", "interrupted")
 			}
-			if w.Len() != 0 || u.compaction.Pending() || u.compaction.ContinuationPending() || u.compaction.PreservesWaitingInput() {
+			if w.Len() != 0 || u.Compaction.Pending() || u.Compaction.ContinuationPending() || u.Compaction.PreservesWaitingInput() {
 				t.Fatalf("cancelled compaction dispatched: %s", w.String())
 			}
 		})
@@ -522,11 +522,11 @@ func TestAppServerCompactSteerEditCancelsIntent(t *testing.T) {
 	interrupt := appServerOneRequest(t, w, "turn/interrupt", "")
 	appServerTestKeys(t, u, "\x1b[1;3A")
 	appServerTestTurnEnd(t, u, "work", "interrupted")
-	if !u.compaction.Pending() || u.compaction.PreservesWaitingInput() {
+	if !u.Compaction.Pending() || u.Compaction.PreservesWaitingInput() {
 		t.Fatal("editing cleared acknowledgement gate or retained compact intent")
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, interrupt.ID))
-	if w.Len() != 0 || u.draft != "/compact" || u.compaction.Pending() {
+	if w.Len() != 0 || u.draft != "/compact" || u.Compaction.Pending() {
 		t.Fatalf("edited command dispatched or lost: wire=%q draft=%q", w.String(), u.draft)
 	}
 }

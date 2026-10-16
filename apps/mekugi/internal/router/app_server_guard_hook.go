@@ -18,14 +18,14 @@ type approvalHookCheck struct {
 
 func (u *appServerUI) checkGuardHook() (bool, error) {
 	check := &u.guardHookCheck
-	if check.hash == "" || u.turn != "" {
+	if check.hash == "" || u.Turn != "" {
 		return true, nil
 	}
-	if check.readyThread == u.thread {
+	if check.readyThread == u.Thread {
 		return true, nil
 	}
 	if check.pendingThread == "" {
-		check.pendingThread = u.thread
+		check.pendingThread = u.Thread
 		u.status = "Checking approval guard…"
 		if _, err := u.requests.Send("hooks/list", map[string]any{"cwds": []string{u.session.cwd}}, "main", appServerRequest{label: "approval/hooks"}); err != nil {
 			check.pendingThread = ""
@@ -38,7 +38,7 @@ func (u *appServerUI) checkGuardHook() (bool, error) {
 func (u *appServerUI) guardHookResponse(message appserver.Message) error {
 	thread := u.guardHookCheck.pendingThread
 	u.guardHookCheck.pendingThread = ""
-	if thread != u.thread {
+	if thread != u.Thread {
 		return u.flushInput()
 	}
 	var err error

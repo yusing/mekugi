@@ -29,7 +29,7 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.ensureShell()
 			defer u.shell.diffScreen.Close()
-			u.turn, u.status, u.draft = "active", "Working", "keep draft"
+			u.Turn, u.status, u.draft = "active", "Working", "keep draft"
 			switch tc.kind {
 			case "command":
 				u.draft = "/unknown"
@@ -45,7 +45,7 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 			case "host":
 				appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"active","status":"failed","error":{"message":"provider failed\nFull diagnostics"}}}}`)
 			}
-			full, draft, turn, sent := u.composerErrorText(), u.draft, u.turn, wire.String()
+			full, draft, turn, sent := u.composerErrorText(), u.draft, u.Turn, wire.String()
 			screen := vt.NewEmulator(tc.width+2, 16)
 			defer screen.Close()
 			if err := u.paint(screen, tc.width+2, 16); err != nil {
@@ -71,7 +71,7 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 			}
 			u.shell.outputKey("q")
 			click(u.noticeDismiss)
-			if u.composerErrorText() != "" || u.draft != draft || u.turn != turn || wire.String() != sent || len(u.view.Entries) != 0 {
+			if u.composerErrorText() != "" || u.draft != draft || u.Turn != turn || wire.String() != sent || len(u.view.Entries) != 0 {
 				t.Fatal("dismissal changed draft, host state, wire, or transcript")
 			}
 		})

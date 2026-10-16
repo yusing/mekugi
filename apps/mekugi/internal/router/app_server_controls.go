@@ -26,7 +26,7 @@ func (u *appServerUI) keyboardInterrupt() error {
 		u.lockNotice()
 		return nil
 	}
-	u.sendSteersAfterInterrupt = false
+	u.SendSteersAfterInterrupt = false
 	return u.interruptTurn()
 }
 
@@ -39,17 +39,12 @@ func (u *appServerUI) keyboardEscape() error {
 	}
 	// Completion can arrive before either acknowledgement. A repeated Escape
 	// must not restore the waiting input or interrupt its replacement turn.
-	if u.sendSteersAfterInterrupt || u.steerInterruptAckPending {
+	if !u.PrepareEscape(len(u.unsent) > 0 && u.unsent[0].text != "/compact") {
 		return nil
-	}
-	if u.turn != "" && u.interruption.target == "" && !u.compaction.Pending() {
-		u.sendSteersAfterInterrupt = len(u.steers) > 0 ||
-			u.submission.turn != "" && !u.submission.committed ||
-			len(u.unsent) > 0 && u.unsent[0].text != "/compact"
 	}
 	err := u.interruptTurn()
 	if err != nil {
-		u.sendSteersAfterInterrupt = false
+		u.SendSteersAfterInterrupt = false
 	}
 	return err
 }

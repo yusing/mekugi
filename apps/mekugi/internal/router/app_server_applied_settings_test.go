@@ -16,7 +16,7 @@ import (
 func appliedSettingsTestUI(t *testing.T, workspace, thread string) (*appServerUI, *appServerTestInput) {
 	t.Helper()
 	u := newAppServerSessionTestUI(t, workspace)
-	u.thread = thread
+	u.Thread = thread
 	u.session.start(thread, workspace)
 	u.panes = testPanePreferences()
 	if err := u.panes.open(u.shell, workspace, thread, false); err != nil {
@@ -27,7 +27,7 @@ func appliedSettingsTestUI(t *testing.T, workspace, thread string) (*appServerUI
 
 func appliedSettingsTestNotify(t *testing.T, u *appServerUI, model, effort, tier string) {
 	t.Helper()
-	appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": u.thread, "threadSettings": map[string]any{"model": model, "effort": effort, "serviceTier": tier}})
+	appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": u.Thread, "threadSettings": map[string]any{"model": model, "effort": effort, "serviceTier": tier}})
 }
 
 func appliedSettingsTestResume(t *testing.T, u *appServerUI, w *appServerTestInput, info appServerThreadInfo) map[string]any {
@@ -62,7 +62,7 @@ func TestAppServerAppliedSettingsFreshOwnerResumeBeforeFirstTurn(t *testing.T) {
 			if defaults {
 				appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "saved", "threadSettings": map[string]any{"model": "saved-model", "effort": nil, "serviceTier": nil}})
 			}
-			if u.turn != "" {
+			if u.Turn != "" {
 				t.Fatal("test unexpectedly started a turn")
 			}
 			// No live writer, parent, rollout, or previous UI is needed for recovery.
@@ -75,8 +75,8 @@ func TestAppServerAppliedSettingsFreshOwnerResumeBeforeFirstTurn(t *testing.T) {
 				delete(wantConfig, "model_reasoning_effort")
 				wantTier = nil
 			}
-			if !reflect.DeepEqual(params["config"], wantConfig) || params["serviceTier"] != wantTier || fresh.resumePendingEffort != defaults {
-				t.Fatalf("recovered params=%#v clearEffort=%v", params, fresh.resumePendingEffort)
+			if !reflect.DeepEqual(params["config"], wantConfig) || params["serviceTier"] != wantTier || fresh.ResumeEffort != defaults {
+				t.Fatalf("recovered params=%#v clearEffort=%v", params, fresh.ResumeEffort)
 			}
 		})
 	}
@@ -150,7 +150,7 @@ func TestAppServerAppliedSettingsPendingFailedAndForeignDoNotPersist(t *testing.
 			if err != nil || string(before) != string(after) {
 				t.Fatalf("non-authoritative event changed retained settings: %s %v", message, err)
 			}
-			if name == "failed" && u.settings.pending() {
+			if name == "failed" && u.Settings.Pending() {
 				t.Fatal("rejected request was not settled")
 			}
 		})
@@ -160,7 +160,7 @@ func TestAppServerAppliedSettingsPendingFailedAndForeignDoNotPersist(t *testing.
 func TestAppServerAppliedSettingsStartResultPersists(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	u, _ := appliedSettingsTestUI(t, "/workspace", "old")
-	u.settings.restoreEffort = true // A new thread must not inherit a failed resume gate.
+	u.Settings.RestoreEffort = true // A new thread must not inherit a failed resume gate.
 	appServerTestRequest(t, u, "1", "thread/start")
 	appServerTestMessage(t, u, `{"id":1,"result":{"model":"started","reasoningEffort":null,"serviceTier":null,"thread":{"id":"new","cwd":"/workspace"}}}`)
 	state, err := testPanePreferences().read("/workspace", "new")
@@ -191,7 +191,7 @@ func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T)
 				}
 			}
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%s,"result":{"model":"saved-model","reasoningEffort":"high","serviceTier":null,"collaborationMode":{"mode":"default","settings":{"model":"saved-model","reasoning_effort":"high","developer_instructions":null}},"thread":{"id":"saved","cwd":"/workspace"}}}`, resumeID))
-			if !u.settings.pending() {
+			if !u.Settings.Pending() {
 				t.Fatal("did not wait for default restoration")
 			}
 			after, err := u.panes.read("/workspace", "saved")
@@ -213,13 +213,13 @@ func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T)
 			}
 			if effort == "" {
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, correctionID))
-				if !u.settings.restoreEffort || w.Len() != 0 {
+				if !u.Settings.RestoreEffort || w.Len() != 0 {
 					t.Fatal("enqueue acknowledgement claimed restoration success")
 				}
 				appliedSettingsTestNotify(t, u, "saved-model", "", "")
 			} else {
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, correctionID))
-				if u.draft != "held" || !u.settings.restoreEffort || u.settings.pending() || w.Len() != 0 {
+				if u.draft != "held" || !u.Settings.RestoreEffort || u.Settings.Pending() || w.Len() != 0 {
 					t.Fatal("rejected restoration ran input or lost its recovery draft")
 				}
 				if err := u.flushInput(); err != nil || w.Len() != 0 {
@@ -233,7 +233,7 @@ func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T)
 				info.Cwd = "/workspace"
 				fresh, writer := appliedSettingsTestUI(t, "/workspace", "other")
 				params := appliedSettingsTestResume(t, fresh, writer, info)
-				if !fresh.resumePendingEffort || !reflect.DeepEqual(params["config"], map[string]any{"model": "saved-model"}) {
+				if !fresh.ResumeEffort || !reflect.DeepEqual(params["config"], map[string]any{"model": "saved-model"}) {
 					t.Fatal("fresh retry promoted transient resume defaults over saved null intent")
 				}
 				if _, err := u.updateSettings(map[string]any{"effort": effort}); err != nil {
@@ -250,7 +250,7 @@ func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T)
 			}
 			appServerOneRequest(t, w, "turn/start", "held")
 			state, err := testPanePreferences().read("/workspace", "saved")
-			if err != nil || state.Settings.Model != "saved-model" || state.Settings.Effort != effort || state.Settings.Tier != "" || !state.ResumeObserved.IsZero() || state.ResumeEvidence.Model != "" || u.settings.pending() || u.settings.restoreEffort {
+			if err != nil || state.Settings.Model != "saved-model" || state.Settings.Effort != effort || state.Settings.Tier != "" || !state.ResumeObserved.IsZero() || state.ResumeEvidence.Model != "" || u.Settings.Pending() || u.Settings.RestoreEffort {
 				t.Fatalf("confirmed defaults not retained: %+v %v", state, err)
 			}
 		})
@@ -292,7 +292,7 @@ func TestAppServerAppliedSettingsRejectedRestoreRetainsSelectedEvidence(t *testi
 			fresh, writer := appliedSettingsTestUI(t, "/workspace", "fresh")
 			params := appliedSettingsTestResume(t, fresh, writer, info)
 			tier, tierKnown := params["serviceTier"]
-			if !fresh.resumePendingEffort || !reflect.DeepEqual(params["config"], map[string]any{"model": "selected"}) || tierKnown != (source != "legacy-no-tier") || tierKnown && tier != "flex" {
+			if !fresh.ResumeEffort || !reflect.DeepEqual(params["config"], map[string]any{"model": "selected"}) || tierKnown != (source != "legacy-no-tier") || tierKnown && tier != "flex" {
 				t.Fatalf("fresh retry lost selected evidence: %#v", params)
 			}
 		})
@@ -384,8 +384,8 @@ func TestUISnapshotNativeResumeReasoningRejected(t *testing.T) {
 	u.view.painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	u.status, u.model, u.reasoningEffort = "Ready", "saved-model", "high"
-	u.settings.restoreEffort = true
-	u.settings.beginLive()
+	u.Settings.RestoreEffort = true
+	u.Settings.BeginLive()
 	appServerTestRequest(t, u, "1", "thread/settings/update")
 	appServerTestKeys(t, u, "held input\r")
 	appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"host rejected update"}}`)

@@ -84,7 +84,7 @@ func (u *appServerUI) currentQuestion() *nativeQuestion {
 func (u *appServerUI) questionCount() int {
 	n := 0
 	for _, c := range u.questions.calls {
-		if (c.thread != u.thread && c.sudo == nil) || c.resolved || c.sent {
+		if (c.thread != u.Thread && c.sudo == nil) || c.resolved || c.sent {
 			continue
 		}
 		for _, q := range c.questions {
@@ -97,7 +97,7 @@ func (u *appServerUI) questionCount() int {
 }
 func (u *appServerUI) waitingQuestion() bool {
 	for _, c := range u.questions.calls {
-		if c.thread == u.thread && (len(c.request) > 0 || c.sudo != nil) && !c.resolved {
+		if c.thread == u.Thread && (len(c.request) > 0 || c.sudo != nil) && !c.resolved {
 			return true
 		}
 	}
@@ -178,7 +178,7 @@ func (u *appServerUI) moveQuestion(step int) {
 	u.loadQuestionEditor(u.currentQuestion().editor)
 }
 func (u *appServerUI) addQuestions(c *nativeQuestionCall, replay bool) {
-	if c.thread != u.thread || len(c.questions) == 0 {
+	if c.thread != u.Thread || len(c.questions) == 0 {
 		return
 	}
 	for _, old := range u.questions.calls {
@@ -711,7 +711,7 @@ func (u *appServerUI) commitQuestionReplies(item appServerItem, turn string) {
 			continue
 		}
 		for _, c := range u.questions.calls {
-			if c.thread != u.thread || c.item != itemID || len(c.request) > 0 || index < 0 || index >= len(c.questions) {
+			if c.thread != u.Thread || c.item != itemID || len(c.request) > 0 || index < 0 || index >= len(c.questions) {
 				continue
 			}
 			q := &c.questions[index]
@@ -808,7 +808,7 @@ func (u *appServerUI) renderQuestionRecord(c *nativeQuestionCall) {
 	if len(c.questions) == 1 {
 		label = strings.Replace(label, "questions", "question", 1)
 	}
-	if len(c.request) == 0 && !c.resolved && u.turn == "" {
+	if len(c.request) == 0 && !c.resolved && u.Turn == "" {
 		label += " · answer starts a new turn"
 	}
 	text := label + "\n" + strings.Join(body, "\n\n")
@@ -833,7 +833,7 @@ func (u *appServerUI) questionRows(width, height int) []string {
 	accent, dim, reset := p.Theme.Accent(), terminalui.Dim, terminalui.Reset
 	if d.active == nil {
 		label := accent + "? " + reset + fmt.Sprintf("main asks %d questions", u.questionCount()) + dim + " · " + reset + accent + "ctrl+b q" + reset + dim + " answer" + reset
-		if u.turn == "" && u.draft != "" {
+		if u.Turn == "" && u.draft != "" {
 			label = dim + fmt.Sprintf("enter starts a new turn · dismisses %d questions", u.questionCount()) + reset
 		}
 		return []string{ansi.Truncate(label, width, "…")}
