@@ -8,7 +8,9 @@ import (
 	json "encoding/json/v2"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,6 +26,22 @@ func TestAutoWrapProcess(t *testing.T) {
 		return
 	}
 	if os.Args[3] == "router" {
+		if os.Getenv("MEKUGI_AUTO_WRAP_PROVIDER_FAILURE") == "1" {
+			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				fmt.Fprint(w, `{"error":{"message":"provider detail \u001b]52;c;Y2xpcA==\u0007\u001b]0;title\u0007\u001b[2J\u001b[31m測試\u001b[0m\nretry later"}}`)
+			}))
+			defer provider.Close()
+			transport := http.DefaultTransport.(*http.Transport).Clone()
+			transport.Proxy = nil
+			// Keep the real provider decoder but route every TLS dial to this
+			// plaintext fixture. No production endpoint or credential is used.
+			transport.DialTLSContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
+				return new(net.Dialer).DialContext(ctx, "tcp", provider.Listener.Addr().String())
+			}
+			http.DefaultTransport = transport
+		}
 		var args []string
 		if os.Getenv("MEKUGI_AUTO_WRAP_TERMINAL") == "1" {
 			args = []string{"--yolo"}
@@ -131,6 +149,12 @@ func TestAutoWrapProcess(t *testing.T) {
 	request.Header.Set("x-codex-turn-metadata", string(metadata))
 	request.Header.Set("thread-id", "auto-wrap")
 	request.Header.Set("session-id", "auto-wrap")
+	expected := "Authorization"
+	if os.Getenv("MEKUGI_AUTO_WRAP_PROVIDER_FAILURE") == "1" {
+		request.Header.Set("Authorization", "Bearer fixture")
+		request.Header.Set("ChatGPT-Account-ID", "fixture")
+		expected = "provider detail"
+	}
 	client := &http.Client{Timeout: 10 * time.Second}
 	response, err := client.Do(request)
 	if err != nil {
@@ -138,9 +162,9 @@ func TestAutoWrapProcess(t *testing.T) {
 	}
 	data, _ := io.ReadAll(response.Body)
 	response.Body.Close()
-	// Deliberately omit authentication: preparation succeeds, forwarding fails
-	// locally, and this fixture never contacts an upstream provider.
-	if !bytes.Contains(data, []byte("Authorization")) {
+	// Forwarding fails either at local authentication or at the local provider
+	// fixture. Both paths leave an undelivered notice for launcher recovery.
+	if !bytes.Contains(data, []byte(expected)) {
 		t.Fatalf("request did not reach forwarding: %s", data)
 	}
 	// Keep the fake child alive long enough for the integrated terminal's first
@@ -174,6 +198,10 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 			herdrMarker := filepath.Join(dir, "herdr-invoked")
 			rpcMarker := filepath.Join(dir, "app-server-rpc")
 			t.Setenv("MEKUGI_AUTO_WRAP_PROCESS", "1")
+			t.Setenv("MEKUGI_AUTO_WRAP_PROVIDER_FAILURE", "0")
+			if !test.terminal {
+				t.Setenv("MEKUGI_AUTO_WRAP_PROVIDER_FAILURE", "1")
+			}
 			t.Setenv("MEKUGI_AUTO_WRAP_TERMINAL", "0")
 			t.Setenv("MEKUGI_AUTO_WRAP_FAILURE", "0")
 			if test.failure {
@@ -280,6 +308,14 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 				t.Fatalf("redirected wrapper unexpectedly rendered the integrated UI: %q", output)
 			} else if _, statErr := os.Stat(rpcMarker); !os.IsNotExist(statErr) {
 				t.Fatalf("redirected wrapper unexpectedly started app-server: %v", statErr)
+			}
+			if !test.terminal {
+				if bytes.ContainsAny(output, "\x1b\x07") {
+					t.Fatalf("launcher emitted provider terminal controls: %q", output)
+				}
+				if !bytes.Contains(output, []byte("provider detail 測試\nretry later")) {
+					t.Fatalf("launcher lost readable provider details: %q", output)
+				}
 			}
 		})
 	}
