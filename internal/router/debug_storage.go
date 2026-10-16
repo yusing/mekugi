@@ -1,9 +1,13 @@
 package router
 
-import "path/filepath"
+import (
+	"path/filepath"
+
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+)
 
 func debugStorageDirectory() (string, error) {
-	base, err := mekugiStateDirectory()
+	base, err := history.StateDirectory()
 	if err != nil {
 		return "", err
 	}

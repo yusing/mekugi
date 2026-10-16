@@ -1,6 +1,9 @@
 package router
 
-import "github.com/yusing/mekugi/backends/codex/appserver"
+import (
+	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+)
 
 // appServerLifecycle owns live host operations, not rendered status or replayed
 // activity. RPC acknowledgement, turn identity and committed input are separate
@@ -82,7 +85,7 @@ type appServerResumeOperation struct {
 	resumeCwd           string
 	resumeConfig        map[string]any
 	resumePendingEffort bool
-	resumeEvidence      nativeResumeEvidence
+	resumeEvidence      preferences.Evidence
 	resumePending       []appserver.Message
 }
 

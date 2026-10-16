@@ -18,7 +18,7 @@ func appliedSettingsTestUI(t *testing.T, workspace, thread string) (*appServerUI
 	u := newAppServerSessionTestUI(t, workspace)
 	u.thread = thread
 	u.session.start(thread, workspace)
-	u.panes = new(nativePanePersistence)
+	u.panes = testPanePreferences()
 	if err := u.panes.open(u.shell, workspace, thread, false); err != nil {
 		t.Fatal(err)
 	}
@@ -111,13 +111,13 @@ func TestAppServerAppliedSettingsIsolationAndReadKeepsWriter(t *testing.T) {
 	appliedSettingsTestNotify(t, u, "saved-model", "high", "priority")
 	live, _ := appliedSettingsTestUI(t, "/workspace", "live")
 	appliedSettingsTestNotify(t, live, "live-model", "low", "flex")
-	path := live.panes.path
+	path := testPanePath(t, live.panes)
 	state, err := live.panes.read("/workspace", "saved")
-	if err != nil || state.Settings.Model != "saved-model" || live.panes.path != path || live.panes.settings.Model != "live-model" {
+	if err != nil || state.Settings.Model != "saved-model" || testPanePath(t, live.panes) != path {
 		t.Fatalf("read redirected live writer: state=%+v owner=%+v err=%v", state, live.panes, err)
 	}
 	appliedSettingsTestNotify(t, live, "live-next", "medium", "")
-	state, err = new(nativePanePersistence).read("/workspace", "saved")
+	state, err = testPanePreferences().read("/workspace", "saved")
 	if err != nil || state.Settings.Model != "saved-model" {
 		t.Fatalf("live save overwrote another thread: %+v %v", state, err)
 	}
@@ -139,14 +139,14 @@ func TestAppServerAppliedSettingsPendingFailedAndForeignDoNotPersist(t *testing.
 			t.Setenv("XDG_STATE_HOME", t.TempDir())
 			u, w := appliedSettingsTestUI(t, "/workspace", "main")
 			appliedSettingsTestNotify(t, u, "original", "low", "flex")
-			before, err := os.ReadFile(u.panes.path)
+			before, err := os.ReadFile(testPanePath(t, u.panes))
 			if err != nil {
 				t.Fatal(err)
 			}
 			appServerTestKeys(t, u, "/tier priority\r")
 			w.Reset()
 			appServerTestMessage(t, u, message)
-			after, err := os.ReadFile(u.panes.path)
+			after, err := os.ReadFile(testPanePath(t, u.panes))
 			if err != nil || string(before) != string(after) {
 				t.Fatalf("non-authoritative event changed retained settings: %s %v", message, err)
 			}
@@ -163,7 +163,7 @@ func TestAppServerAppliedSettingsStartResultPersists(t *testing.T) {
 	u.settings.restoreEffort = true // A new thread must not inherit a failed resume gate.
 	u.requests["1"] = "thread/start"
 	appServerTestMessage(t, u, `{"id":1,"result":{"model":"started","reasoningEffort":null,"serviceTier":null,"thread":{"id":"new","cwd":"/workspace"}}}`)
-	state, err := new(nativePanePersistence).read("/workspace", "new")
+	state, err := testPanePreferences().read("/workspace", "new")
 	if err != nil || state.Settings.Model != "started" || state.Settings.Effort != "" || state.Settings.Tier != "" || state.Settings.Observed.IsZero() {
 		t.Fatalf("host-confirmed initial defaults not retained: %+v %v", state, err)
 	}
@@ -248,7 +248,7 @@ func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T)
 				appServerTestKeys(t, u, "\r")
 			}
 			appServerOneRequest(t, w, "turn/start", "held")
-			state, err := new(nativePanePersistence).read("/workspace", "saved")
+			state, err := testPanePreferences().read("/workspace", "saved")
 			if err != nil || state.Settings.Model != "saved-model" || state.Settings.Effort != effort || state.Settings.Tier != "" || !state.ResumeObserved.IsZero() || state.ResumeEvidence.Model != "" || u.settings.pending() || u.settings.restoreEffort {
 				t.Fatalf("confirmed defaults not retained: %+v %v", state, err)
 			}
@@ -302,10 +302,10 @@ func TestAppServerAppliedSettingsStorageFailurePreservesHostResult(t *testing.T)
 	u, _ := appliedSettingsTestUI(t, "/workspace", "saved")
 	// A file where the existing preference directory belongs makes the real
 	// atomic save fail, without permission assumptions or a storage seam.
-	if err := os.MkdirAll(filepath.Dir(filepath.Dir(u.panes.path)), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(filepath.Dir(testPanePath(t, u.panes))), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Dir(u.panes.path), []byte("not a directory"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Dir(testPanePath(t, u.panes)), []byte("not a directory"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	appliedSettingsTestNotify(t, u, "applied", "high", "priority")
@@ -341,15 +341,15 @@ func TestAppServerAppliedSettingsMalformedAndLayoutOnly(t *testing.T) {
 		t.Run(body, func(t *testing.T) {
 			t.Setenv("XDG_STATE_HOME", t.TempDir())
 			u, _ := appliedSettingsTestUI(t, "/workspace", "saved")
-			if err := os.MkdirAll(filepath.Dir(u.panes.path), 0700); err != nil {
+			if err := os.MkdirAll(filepath.Dir(testPanePath(t, u.panes)), 0700); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(u.panes.path, []byte(body), 0600); err != nil {
+			if err := os.WriteFile(testPanePath(t, u.panes), []byte(body), 0600); err != nil {
 				t.Fatal(err)
 			}
 			fresh, w := appliedSettingsTestUI(t, "/workspace", "other")
 			params := appliedSettingsTestResume(t, fresh, w, appServerThreadInfo{ID: "saved", Cwd: "/workspace"})
-			if !reflect.DeepEqual(params["config"], map[string]any{}) || fresh.panes.settings.Model != "" {
+			if !reflect.DeepEqual(params["config"], map[string]any{}) {
 				t.Fatalf("invalid or absent settings applied: %#v", params)
 			}
 			if body == "{" {

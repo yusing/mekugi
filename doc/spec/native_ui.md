@@ -131,25 +131,16 @@ item identity. Historical tools are display-only: they do not recreate live
 edit previews, processes or delivery receipts. Subsequent input
 starts a turn on the same thread; an active snapshot retains its steer/interrupt
 target. Resume keeps the returned workspace. Startup and in-session resume restore
-the last saved model, reasoning
-effort and service tier, including changes before the first turn and idle changes
-after the last turn. Successfully applied settings survive a fresh router/process
-through workspace/thread-scoped preferences; an explicit default/null selection
-is saved intent, not missing evidence. Failed or pending changes cannot replace
-the saved settings, and a branch or another workspace cannot borrow them.
-Restoration requires a host-resumable thread; retaining preferences cannot create
-host session history for a conversation that has not had its first turn.
-Explicit invocation flags take precedence independently for each named setting;
-the routing provider remains invocation-local. Missing retained settings leave
-Codex defaults in effect, with a notice when no saved model settings are available.
-When preferences and host history both exist, newer host settings take precedence.
-Missing tier evidence retains Codex's tier default. Preference-storage failures
-are visible in Main’s composer without blocking the applied host setting. Restoration
-must finish before accepting resumed input and cannot modify user configuration
-or replay a turn. Rejected default-reasoning restoration returns waiting input
-to the composer without submitting it; successful restoration or an explicit
-reasoning selection releases the gate. The [UI boundary](../architecture/ui.md)
-owns settings evidence and the host RPC boundary. Main hydrates the full resume
+applied model, reasoning effort and service tier through
+[session preferences](../../modules/sessionpreferences/SPEC.md). Restoration
+requires a host-resumable thread; preferences cannot create host session history.
+The routing provider remains invocation-local. Missing settings leave Codex defaults
+in effect and show a composer notice. Storage failures are visible without blocking
+an applied host setting. Restoration finishes before resumed input is accepted.
+Rejected default-reasoning restoration returns waiting input to the composer;
+successful restoration or an explicit reasoning selection releases the gate.
+The [UI boundary](../architecture/ui.md) owns host RPC integration.
+Main hydrates the full resume
 history in memory; its paginated hydration remains unfinished.
 
 Resume also restores the Agents roster and child transcripts from Codex's observational
@@ -196,22 +187,13 @@ Paginated children use bounded item counts per page, not byte-size bounds;
 a single large item can still require a large in-memory frame. No additional
 model requests or execution occur merely to restore pane content.
 
-Native pane preferences persist separately from replay/correctness records under
-`$XDG_STATE_HOME/mekugi/ui` (or `~/.local/state/mekugi/ui`), keyed by workspace
-and Codex thread identity. Successful resume restores the Main/right-column
-split, Diff visibility, keyboard focus, and diff navigator width.
-Geometry is clamped by the current terminal layout; new threads and other
-workspaces never borrow these preferences. Roster height remains automatically
-fitted. Scroll positions, filters, selections, drafts and transient live docks
-are not persisted in this increment.
-
-Preference writes coalesce interaction bursts and flush pending changes on
-orderly exit or cancellation. Files are private, atomically replaced, versioned
-and read only from regular files, bounded to 4 KiB. A named pipe cannot wait for
-a writer during preference restoration. Missing state uses defaults. Invalid/unavailable
-state reports a presentation notice but cannot fail resume, submit a prompt or
-change execution. Simultaneous clients for the same workspace/thread use the
-last completed preference write; no process resources are restored.
+Successful resume restores the Main/right-column split, Diff visibility, keyboard
+focus, interrupt-key lock and diff navigator width from
+[session preferences](../../modules/sessionpreferences/SPEC.md). Geometry is clamped
+by the current terminal layout. Roster height remains automatically fitted. Scroll
+positions, filters, selections, drafts and transient live docks are not persisted.
+The terminal adapter owns these fields; the preference module owns identity,
+publication, debounce, flush and failure behavior.
 
 `/side` is deferred; server requests the client cannot answer, such as MCP
 elicitations, stay visibly blocked and are never auto-approved. Not in scope: Codex's TUI, PTY emulation

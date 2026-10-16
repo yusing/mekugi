@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/yusing/mekugi/contracts/diagnosticsection"
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 
@@ -226,6 +228,7 @@ func (r *moduleRegistrar) ShellApproval(guard binding.ShellApproval) error {
 }
 
 type Runtime struct {
+	Preferences          *preferences.Service
 	Diagnostics          *diagnostic.Service
 	Inspection           *query.Service
 	TransportDiagnostics *transportcapture.Service

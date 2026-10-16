@@ -38,6 +38,9 @@ and [OpenCode](../../providers/opencode/SPEC.md) providers own upstream exchange
 and body lifetime mechanics. Codex request shaping and response framing belong
 to the [backend adapter](../../backends/codex/responses/SPEC.md).
 
+[Session preferences](../../modules/sessionpreferences/SPEC.md) owns applied settings,
+resume evidence and renderer-keyed persistence.
+
 ## Inventory
 
 - [`CTR-WORKSPACE-001`](workspace.md): workspace membership, composition, and extraction boundaries

@@ -38,6 +38,9 @@ Module-owned contracts live with their implementation:
 [Session naming](../../modules/sessionnaming/SPEC.md) owns optional automatic title
 policy; the native UI contract owns manual name-save interaction and rendering.
 
+[Session preferences](../../modules/sessionpreferences/SPEC.md) owns applied settings,
+resume evidence and renderer-keyed persistence.
+
 ## Inventory
 
 - [`REQ-CONTEXT-RESET-001`](../../modules/contextreset/SPEC.md): retained inactive instruction-file loading

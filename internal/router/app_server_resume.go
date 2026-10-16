@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 
 	"github.com/BurntSushi/toml"
@@ -51,34 +53,18 @@ func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 	if config == nil {
 		config = make(map[string]any)
 	}
-	var retained nativeAppliedSettings
-	var recovery nativeResumeEvidence
-	var newerThan time.Time
+	var retained preferences.Snapshot
 	if u.panes != nil {
 		state, err := u.panes.read(result.Thread.Cwd, thread)
 		if err != nil {
 			u.paneError(err)
 		} else {
-			retained = state.Settings
-			newerThan = retained.Observed
-			if state.ResumeEvidence.Model != "" && state.ResumeObserved.After(newerThan) {
-				recovery = state.ResumeEvidence
-				newerThan = state.ResumeObserved
-			}
+			retained = state.Snapshot
 		}
 	}
-	saved := retained.config()
-	if recovery.Model != "" {
-		saved = recovery.config()
-	}
-	if saved == nil {
-		saved = make(map[string]any)
-	}
-	maps.Copy(saved, rollout.ResumeSettings(result.Thread.ID, result.Thread.Path, newerThan))
-	u.resumeEvidence.Model, _ = saved["model"].(string)
-	u.resumeEvidence.Effort, _ = saved["model_reasoning_effort"].(string)
-	u.resumeEvidence.Tier, _ = saved["service_tier"].(string)
-	_, u.resumeEvidence.TierKnown = saved["service_tier"]
+	evidence, newerThan := retained.ResumeBaseline()
+	u.resumeEvidence = evidence.WithNewer(resumeSettingsEvidence(rollout.ResumeSettings(result.Thread.ID, result.Thread.Path, newerThan)))
+	saved := resumeSettingsConfig(u.resumeEvidence)
 	u.resumeNotice = ""
 	if len(saved) == 0 {
 		u.resumeNotice = "Saved model settings unavailable; using Codex defaults and explicit flags"
@@ -363,4 +349,30 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 	default:
 		u.view.applyAppServerItem(false, u.session.cwd, u.thread, u.thread, turn.ID, item.ID, method, "", item)
 	}
+}
+
+func resumeSettingsEvidence(config map[string]any) preferences.Evidence {
+	var evidence preferences.Evidence
+	evidence.Model, _ = config["model"].(string)
+	evidence.Effort, _ = config["model_reasoning_effort"].(string)
+	evidence.Tier, _ = config["service_tier"].(string)
+	_, evidence.TierKnown = config["service_tier"]
+	return evidence
+}
+
+func resumeSettingsConfig(s preferences.Evidence) map[string]any {
+	if s.Model == "" {
+		return nil
+	}
+	config := map[string]any{"model": s.Model, "model_reasoning_effort": nil}
+	if s.Effort != "" {
+		config["model_reasoning_effort"] = s.Effort
+	}
+	if s.TierKnown {
+		config["service_tier"] = nil
+		if s.Tier != "" {
+			config["service_tier"] = s.Tier
+		}
+	}
+	return config
 }

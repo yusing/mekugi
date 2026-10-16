@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -91,22 +90,8 @@ func durableHistory(h mekugiHistory) mekugiHistory {
 	return h
 }
 
-func mekugiStateDirectory() (string, error) {
-	base := os.Getenv("XDG_STATE_HOME")
-	if base == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		base = filepath.Join(home, ".local", "state")
-	}
-	if !filepath.IsAbs(base) {
-		return "", errors.New("XDG_STATE_HOME must be absolute")
-	}
-	return filepath.Join(base, "mekugi"), nil
-}
 func defaultMekugiReplayDirectory() (string, error) {
-	base, err := mekugiStateDirectory()
+	base, err := history.StateDirectory()
 	if err != nil {
 		return "", err
 	}
