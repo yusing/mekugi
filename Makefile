@@ -79,7 +79,7 @@ test-host:
 	$(MAKE) --no-print-directory test TEST_PACKAGES=./apps/mekugi/internal/router TEST_RUN="$$pattern" TEST_FLAGS='-tags=codex_e2e -count=1 -v'
 
 lint: workspace-check
-	env -u BASH_ENV $(WORKSPACE) run $(RTK) golangci-lint run @workspace
+	env -u BASH_ENV $(WORKSPACE) run golangci-lint run @workspace
 	@set -e; findings="$$(env -u BASH_ENV $(WORKSPACE) run deadcode -f='{{range .Funcs}}{{printf "%s.%s\n" $$.Path .Name}}{{end}}' @workspace)"; \
 	findings="$$(printf '%s\n' "$$findings" | awk 'NR == FNR { allowed[$$0] = 1; next } /^github.com\/yusing\/mekugi\/testsupport\// { next } NF && !($$0 in allowed)' .deadcode-allowlist -)"; \
 	if [ -n "$$findings" ]; then printf '%s\n' "$$findings"; exit 1; fi
