@@ -553,7 +553,7 @@ func (r *appServerCommandRun) roll() bool {
 // commandDone is a completed command's entry with its output, and a failure's
 // exit with the host's combined output tail.
 func (s *appServerSession) commandDone(entry activityPaneEntry, item appServerItem, now time.Time) []activityPaneEntry {
-	appServerSucceededOutput(&entry, item, now)
+	appServerCommandOutput(&entry, item, now)
 	done := []activityPaneEntry{entry}
 	if item.ExitCode != nil && *item.ExitCode != 0 {
 		exit := activityPaneEntry{Seq: s.next(), Agent: entry.Agent, Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: entry.CallID, Observed: now}
@@ -810,14 +810,17 @@ func (s *appServerSession) retainOutput(native *liveActivityNativeItem, item app
 	native.output.Finish(item.AggregatedOutput, item.ExitCode)
 }
 
-// appServerSucceededOutput keeps a successful command's output tail on its
-// entry, open from settled until its agent's next event; a zero settled time
-// starts it collapsed. Failures carry their tail on the exit entry instead.
-func appServerSucceededOutput(entry *activityPaneEntry, item appServerItem, settled time.Time) {
-	if item.Type != "commandExecution" || item.ExitCode == nil || *item.ExitCode != 0 {
+// appServerCommandOutput keeps aggregate output even when the host reports no
+// exit. Known failures carry their tail on the separate exit entry. Only confirmed
+// success opens the settlement window or starts restored output collapsed.
+func appServerCommandOutput(entry *activityPaneEntry, item appServerItem, settled time.Time) {
+	if item.Type != "commandExecution" || item.ExitCode != nil && *item.ExitCode != 0 {
 		return
 	}
 	entry.outputTail, entry.outputOmit = appServerOutputTail(item.AggregatedOutput)
+	if item.ExitCode == nil {
+		return
+	}
 	entry.native.settled, entry.native.collapsed = settled, settled.IsZero()
 	entry.native.changes, entry.native.commit = commandOutputRows(item)
 }
