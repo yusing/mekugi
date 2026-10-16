@@ -8,6 +8,41 @@ invocation, interprets lifecycle facts, and owns session presentation and intent
 The [Responses adapter](responses/SPEC.md) owns model-path adaptation; executable
 frontend and input-projection registrations use the binding package.
 
+## Execution authority
+
+Codex owns stock `apply_patch`, `exec_command`, JavaScript `exec`, permissions,
+sandboxing, processes, yielded sessions and `write_stdin` continuation. Mekugi
+preserves nested tool names, schemas, arguments and host results. Observation,
+presentation and replay never execute a call again, serialize independent
+`Promise.allSettled` calls, or impose a minimum wait duration.
+
+The application admits the JavaScript execution interface before inference;
+catalogs exposing top-level `apply_patch` or `exec_command` instead are unsupported.
+[Launch](../../apps/mekugi/internal/launch/SPEC.md#host-integration) owns the
+invocation-local settings. The native shell hook is the narrow exception to
+unchanged command text: composed guard and sh-tracking instrumentation can return
+`PreToolUse.updatedInput`, preserving tool identity, other arguments, selected
+shell, host results and process authority. Bash tracking uses shell startup.
+[Shell instrumentation](../../libraries/shellinstrumentation/SPEC.md) owns the
+shared rewrite and recognition rules.
+
+[Output deduplication](../../modules/outputdeduplication/SPEC.md) changes only
+eligible model-input text after original-output consumers finish. Separate
+[change notices](../../docs/contracts/change-evidence.md#delivery-and-presentation)
+require retained evidence. Neither replaces host output or grants execution authority.
+[Executable frontends](../../apps/mekugi/internal/frontends/SPEC.md) and
+[bounded commands](../../modules/boundedcommand/SPEC.md) run under the same host.
+
+Native command approvals preserve the host's offered session, command-prefix and
+permission scopes. The UI uses native decline for command denial, leaving the
+original tool rejection intact and allowing the turn to continue. Optional denial
+feedback joins only the matching thread, turn and tool's provider continuation;
+it adds no synthetic exit code, steering or new turn. File-change and permission
+choices remain unchanged. Passthrough preserves host decisions without typed
+denial reasons. [Approval presentation](../../doc/spec/native_ui.md#approvals)
+owns dock interaction and draft preservation; module guard denials remain separate
+shell-command failures.
+
 ## Process transport and lifetime
 
 The app-server client launches the supplied command and owns its stdio connection
@@ -104,6 +139,14 @@ recognizer. Recognition requires the exact annotation envelope and expected host
 handle, so unrelated text remains intact. The application chooses advice from the
 active tool catalog and tracks request-local provenance; the backend decoder never
 resumes a process or chooses a next call. Offline findings remain query policy.
+
+The application's bounded, incremental native-trace reader correlates executing
+thread, outer call and source, `exec` cell, and individual native tool results. Printed results
+cannot substitute for this provenance. Missing, ambiguous, unsupported or corrupt
+trace evidence cannot confirm success. Shell success requires terminal exit zero;
+completed dispatch and a yielded process remain unfinished. Matched receipts are
+retained with captured changes, independently of the temporary trace. Older
+observation-only captures remain reviewable without acquiring confirmed status.
 
 ## Guidance projection
 

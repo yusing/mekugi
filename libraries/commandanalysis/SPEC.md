@@ -52,6 +52,13 @@ writer-window lifetime and retained evidence remain application/feature owners.
 Bindings share path derivation with literal preview evaluation without making
 predicted content an observed execution result.
 
+Providers never execute interpreter source, a writer stage or a remote request,
+or invoke configured hooks, preprocessors, filters or monitors. Missing tools and
+query timeouts reduce coverage without replacing the stock result. Filesystem-
+dependent destinations, such as copying into an existing directory, resolve when
+the consumer captures scope, including every candidate an earlier statement could
+select. Recognized literal paths never erase separate dynamic-source coverage.
+
 ## Ownership and acceptance
 
 Shell syntax, wrapper operands, incomplete-stream parsing and literal directory

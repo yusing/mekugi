@@ -7,7 +7,7 @@ its component tests. The caller supplies an SDK server with its registrations;
 the transport owns connections, not handler policy or Codex configuration.
 Normal application startup creates no MCP endpoint and
 registers no MCP tool. Shell instrumentation uses the synchronous command hook
-specified in [execution](../../doc/spec/execution.md#req-execution-003--guard-remote-vcs-writes).
+specified in [native shell hooks](../../backends/codex/SPEC.md#native-shell-hooks).
 
 An explicit transport invocation owns its private endpoint and connections.
 Once connected, the stdio bridge owns its supplied stdin/stdout files, relays

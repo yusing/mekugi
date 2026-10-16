@@ -56,6 +56,19 @@ Launch rejects resume, unsupported CLI options, and passthrough mode; explicit
 
 ## Host integration
 
+Mekugi launches require the stock JavaScript `exec` interface. Final invocation
+overrides enable `features.code_mode` and `features.code_mode_only`, including
+normalizing conflicting caller feature toggles without changing prompt operands
+after `--`. Unsupported execution catalogs fail before inference under the
+[backend authority contract](../../../../backends/codex/SPEC.md#execution-authority).
+
+Wrapped launches enable Codex's native rollout trace in a private, session-scoped
+temporary directory. The recorder includes prompts and responses and has no
+tool-only filter or storage cap. Session cleanup removes the directory; abrupt
+process termination may leave temporary files. The override never changes user
+configuration. [Execution evidence](../../../../backends/codex/SPEC.md#execution-evidence)
+owns receipt interpretation and its independence from this temporary source.
+
 In a Herdr-managed terminal, launch sets invocation-local `HERDR_AGENT=codex`
 before starting session integration. It invokes no Herdr commands or pane APIs.
 
@@ -70,6 +83,15 @@ available. The [shell guard](../../../../modules/remotewriteapproval/SPEC.md)
 installs only composed VCS/sudo registrations; conflicting hooks are warned about
 and replaced for this invocation. Optional command tracking preserves caller hooks
 when guarding is disabled. The host owns execution and permissions.
+
+Approval and command-report channels have independent lifetimes. Guarded startup
+fails closed if the approval channel cannot start; report acquisition or attachment
+failure leaves approvals available and command output combined. Closing report
+tracking never grants, cancels or completes a pending approval. The native hook's
+invocation trust identity includes its status message: `Applying shell guard`
+when guarding is enabled, otherwise `Tracking shell segments`. With guarding off,
+explicit caller `PreToolUse` conflicts preserve caller settings and leave sh
+untracked; Bash keeps its independent startup path.
 
 The `--deduplicate-output` flag defaults to true and controls only the
 [model-input projection](../../../../modules/outputdeduplication/SPEC.md).

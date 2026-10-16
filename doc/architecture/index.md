@@ -4,7 +4,7 @@ pjdoc:
   kind: architecture
   scope: root
   status: draft
-  revision: "54"
+  revision: "55"
   files:
     - ../../docs/contracts/provider-routing.md
     - ../../docs/contracts/composition.md
@@ -12,7 +12,8 @@ pjdoc:
     - activity.md
     - ../../docs/contracts/record-publication.md
     - ../../apps/mekugi/internal/frontends/SPEC.md
-    - execution.md
+    - ../../backends/codex/SPEC.md
+    - ../../libraries/shellinstrumentation/SPEC.md
     - ../../modules/transportdiagnostics/SPEC.md
 ---
 # Mekugi architecture ownership
@@ -51,5 +52,6 @@ resume evidence and renderer-keyed persistence.
 - [`CTR-USAGE-001`](../../modules/usage/SPEC.md): provider accounting ownership
 - [Retained publication](../../docs/contracts/record-publication.md): filesystem authority, cross-owner publication, and continuity
 - [`CTR-PLUGIN-001`](../../apps/mekugi/internal/frontends/SPEC.md): authenticated executable catalog
-- [`CTR-EXECUTION-001`](execution.md): host-owned editing and process lifecycle
+- [Codex backend](../../backends/codex/SPEC.md): host execution, protocol, and evidence decoding
+- [Shell instrumentation](../../libraries/shellinstrumentation/SPEC.md): shared guard/tracking source and exact recognition
 - [Transport diagnostics](../../modules/transportdiagnostics/SPEC.md): capture-owned transport metrics

@@ -27,7 +27,7 @@ acceptance cases, not a blanket request to implement every listed concern.
 - **Host execution:** stock tools, permissions, agents, and continuations remain Codex-owned.
   Observation/display must not replay effects, replace results, or change exact tool input/identity.
   Startup cancellation belongs to the wrapper only until Codex takes the terminal. Keep overrides
-  invocation-local and user configuration untouched. See [execution](doc/spec/execution.md),
+  invocation-local and user configuration untouched. See [execution](backends/codex/SPEC.md#execution-authority),
   [frontends](apps/mekugi/internal/frontends/SPEC.md), [MCP](libraries/mcptransport/SPEC.md),
   [headless](apps/mekugi/internal/headless/SPEC.md), and [launch](apps/mekugi/internal/launch/SPEC.md).
 - **Change evidence:** `mchanges` owns retained edit evidence. Preserve ordinary editing/LiveDiff,

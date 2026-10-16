@@ -100,8 +100,9 @@ remains with [symbol query](../../../../modules/symbolquery/SPEC.md).
 
 Completed evidence remains readable after restart under session-history retention.
 Replay validates retained facts without starting old workers, rerunning effects,
-or restoring processes, live grants, or continuation handles. Host effects and
-change evidence remain with the [execution boundary](../../../../doc/architecture/execution.md).
+or restoring processes, live grants, or continuation handles.
+[Host execution](../../../../backends/codex/SPEC.md#execution-authority) and
+[change evidence](../../../../docs/contracts/change-evidence.md) retain separate owners.
 
 ## Acceptance
 

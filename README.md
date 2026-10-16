@@ -28,7 +28,7 @@ sessions, and patch review. No fork, no config edits, no daemon.
   and the UI stay intact. Transcript suffixes mark repeated output; `/session`
   shows occurrences and estimated saved tokens. Disable with
   `--deduplicate-output=false`;
-  see the [projection contract](doc/spec/execution.md#duplicate-output-projection).
+  see the [projection contract](modules/outputdeduplication/SPEC.md).
 - **Session continuity.** Retained change evidence and output remain available across
   resume and forks, subject to [storage retention](#replay-storage).
 
@@ -192,14 +192,14 @@ hooks at turn admission block with an explanation. Read-only commands run withou
 
 Coverage is incomplete for runtime-computed commands, `eval`, scripts/sourced files, and
 arbitrary programs invoking VCS internally. See [guard
-limits](doc/spec/execution.md#req-execution-003--guard-remote-vcs-writes).
+limits](modules/remotewriteapproval/SPEC.md).
 
 Interactive sudo commands also ask for approval, even with cached credentials or
 passwordless sudo. If authentication is needed afterward, a separate secret password
 dialog keeps the answer out of model input and retained history. The shared
 `--shell-guard` toggle controls both sudo and remote-write approval and grants no
 sandbox permissions. See
-[sudo support and limits](doc/spec/execution.md#req-execution-004--unlock-sudo-through-the-native-dialog).
+[sudo support and limits](modules/sudoapproval/SPEC.md).
 
 ### Headless execution
 
@@ -289,7 +289,7 @@ are labeled combined. Host-omitted text cannot be recovered. Left/Right switches
 `/` searches, `n`/`N` moves matches, `y` copies, Esc/`q` closes. Select text to copy portions.
 Local links read current UTF-8 files up to 8 MiB; relative paths use the workspace,
 `:line` scrolls, reopening rereads. See [dialog controls](modules/activity/CONTRACT.md)
-and [command tracking](doc/spec/execution.md).
+and [command tracking](modules/commandsegments/SPEC.md).
 
 ## Recoverable output and change review
 

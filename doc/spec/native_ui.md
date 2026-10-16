@@ -59,7 +59,7 @@ indicator is separated from its label and retains the selected tab highlight.
 terminal launches. Without `--yolo`, Codex's configured approval and sandbox
 policy applies and the native client answers Codex approvals (see Approvals).
 The independent VCS guard follows
-[REQ-EXECUTION-003](execution.md#req-execution-003--guard-remote-vcs-writes).
+[remote-write approval](../../modules/remotewriteapproval/SPEC.md).
 `--yolo` passes `approval_policy="never"` and
 `sandbox_mode="danger-full-access"`, and thread requests repeat them.
 Mekugi never silently changes the user's configuration or
@@ -1369,7 +1369,7 @@ provider envelope, then answers and resolves a sync request with
 Without `--yolo`, the client answers `item/commandExecution/requestApproval`,
 `item/fileChange/requestApproval` and `item/permissions/requestApproval` from any
 thread. It also answers remote writes held by the
-[VCS guard](execution.md#req-execution-003--guard-remote-vcs-writes). Approvals
+[VCS guard](../../modules/remotewriteapproval/SPEC.md). Approvals
 share the question dock's position above the composer and take precedence over
 it: opening one hides the question dock, and a pending question opens after the
 last approval ends. The oldest approval shows first; the header names a child
@@ -1387,21 +1387,21 @@ and session grants of the requested profile, or an empty grant. Responses
 retain the original request ID and offered approval scopes. In the UI,
 command denial uses native decline to continue without running the command,
 with optional user feedback in the matching provider continuation as specified
-in [execution](execution.md#req-execution-001--preserve-codexs-execution-authority).
+in [native execution authority](../../backends/codex/SPEC.md#execution-authority).
 Edit and permission decisions remain unchanged. Passthrough retains original
 host decisions without typed denial reasons. A request with no choice the client
 can label stays visibly blocked.
 
 Guarded sudo and VCS commands offer approval once, approval for the exact command
 and workdir for this UI session, or denial. The matching scope and lifetime are
-defined by [execution](execution.md#req-execution-003--guard-remote-vcs-writes),
+defined by [remote-write approval](../../modules/remotewriteapproval/SPEC.md),
 separately from Codex's session or command-prefix grants.
 
 Sudo password entry is separate: only a native authentication request opens the
 shared secret question editor, including on password retries. Skipping that answer denies
 authentication. The password is masked and excluded from history and answer
 records. Cached or passwordless execution still asks command approval;
-[execution](execution.md#req-execution-004--unlock-sudo-through-the-native-dialog)
+[sudo approval](../../modules/sudoapproval/SPEC.md)
 owns the supported invocation modes.
 
 The dock shows the title, the command or summary, the directory when it is not

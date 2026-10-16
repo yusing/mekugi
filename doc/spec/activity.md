@@ -18,7 +18,7 @@ reconstruct a parallel activity lifecycle from request history.
 
 Nested JavaScript tool activity follows the host's event stream. Independent
 `Promise.allSettled` calls remain parallel; presentation cannot serialize their
-execution. Static source recognition used for [execution previews](execution.md)
+execution. Static source recognition used for [execution previews](../../modules/livepreview/SPEC.md)
 and [change capture](../../docs/contracts/change-evidence.md) remains separate from native activity delivery.
 The host emits no item for an `exec` cell itself. When a new cell result carries
 the host's `Script failed` header, the router adds one error row to that agent's

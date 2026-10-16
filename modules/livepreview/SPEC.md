@@ -91,6 +91,9 @@ syntax; complete statements inside open blocks can appear independently.
 Delimiters inside strings do not release partial statements. Open object, array,
 and call literals remain one unit. Unknown formats use complete lines. Final
 input releases an unterminated or malformed tail without implying success.
+Completed input publishes its authoritative full source and completion state
+together, so coalescing cannot leave a truncated final frame. Interrupted input
+never fabricates a final script.
 Patch representation omits carriage returns and missing-final-newline differences;
 a path that cannot be expressed in a patch header has no projected card.
 

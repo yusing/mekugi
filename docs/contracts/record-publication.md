@@ -2,7 +2,7 @@
 
 ## Authority and continuity
 
-[Stock execution](../../doc/architecture/execution.md) remains Codex-owned.
+[Stock execution](../../backends/codex/SPEC.md#execution-authority) remains Codex-owned.
 Observation resolves filesystem operands from selected request metadata, never
 the application's cwd. Relative operands require that selected directory.
 Workspace selection does not establish read authorization: evidence reads and

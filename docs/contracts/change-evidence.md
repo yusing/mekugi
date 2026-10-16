@@ -99,7 +99,9 @@ loses snapshot comparison because its window spans unrelated work.
 ## Evidence and attribution
 
 Reads and capture holds are bounded. Unreadable targets retain incomplete
-evidence. Binary content retains sizes and hashes; symlinks retain link targets.
+evidence. Expired pre-execution reads remain unavailable and cannot later become
+before-state; forwarding never waits beyond its capture bound. Binary content
+retains sizes and hashes; symlinks retain link targets.
 Review reads a link's target name, while a write through it can read the pointed-to
 file. Identical nonempty additions/deletions may form moves; copies may retain
 their source. Text captures include up to ten unchanged rows on each side, shared

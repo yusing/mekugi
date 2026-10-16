@@ -78,7 +78,7 @@ Stock `apply_patch` and `exec_command` remain Codex-owned. The router uses
 selected workspace metadata only for bounded observation and durable review
 scope, not to authorize or execute a patch. See the
 [retained authority](../docs/contracts/record-publication.md) and
-[stock execution](spec/execution.md) contracts.
+[stock execution](../backends/codex/SPEC.md#execution-authority) contracts.
 
 ### Interpret end-to-end evidence
 

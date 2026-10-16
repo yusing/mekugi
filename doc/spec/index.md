@@ -4,7 +4,7 @@ pjdoc:
   kind: spec
   scope: root
   status: draft
-  revision: "74"
+  revision: "75"
   files:
     - ../../providers/grok/SPEC.md
     - ../../providers/opencode/SPEC.md
@@ -25,7 +25,8 @@ pjdoc:
     - ../../modules/livepreview/SPEC.md
     - ../../docs/contracts/change-evidence.md
     - ../../modules/changehistory/SPEC.md
-    - execution.md
+    - ../../backends/codex/SPEC.md
+    - ../../modules/commandsegments/SPEC.md
 ---
 # Mekugi interface contracts
 
@@ -73,8 +74,8 @@ resume evidence and renderer-keyed persistence.
 - [Live preview](../../modules/livepreview/SPEC.md): provisional source changes, scope and bounded live publication
 - [`REQ-CHANGES-001`](../../docs/contracts/change-evidence.md): observed stock effects, capture coverage and publication
 - [Change history](../../modules/changehistory/SPEC.md): durable review, frozen reads, recovery, apply and revert
-- [`REQ-EXECUTION-001`](execution.md): stock editing, execution, and executable frontends
-- [`REQ-EXECUTION-002`](execution.md): Bash and Linux dash-backed sh command timing and per-segment list tracking
-- [`REQ-EXECUTION-003`](../../modules/remotewriteapproval/SPEC.md): approval guard for remote VCS writes
-- [`REQ-EXECUTION-004`](../../modules/sudoapproval/SPEC.md): sudo command approval and secret password entry
+- [Codex execution authority](../../backends/codex/SPEC.md#execution-authority): stock editing, execution and native approval outcomes
+- [Command segments](../../modules/commandsegments/SPEC.md): shell timing, per-segment output and retained reports
+- [Remote-write approval](../../modules/remotewriteapproval/SPEC.md): approval guard for remote VCS writes
+- [Sudo approval](../../modules/sudoapproval/SPEC.md): sudo command approval and secret password entry
 - [Agent guidance](../../modules/agentguidance/SPEC.md): caller-preserving additive tool guidance
