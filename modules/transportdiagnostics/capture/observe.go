@@ -89,9 +89,9 @@ func observeResponseJSON(payload []byte, record *captureRecord) {
 				}
 				switch strings.ToLower(name) {
 				case "x-request-id":
-					record.ProviderResponse.RequestID = safeProviderIdentifier(value)
+					record.ProviderResponse.RequestID = safeDiagnosticIdentifier(value)
 				case "openai-model":
-					record.ProviderResponse.HeaderModel = safeProviderIdentifier(value)
+					record.ProviderResponse.HeaderModel = safeDiagnosticIdentifier(value)
 				}
 			}
 		}
@@ -137,12 +137,19 @@ func observeResponseEnvelope(payload []byte, record *captureRecord) (string, boo
 	if record.Boundary == "provider" && record.ProviderResponse != nil && len(response.Model) != 0 {
 		var model string
 		_ = json.Unmarshal(response.Model, &model, jsonv1.DefaultOptionsV1())
-		record.ProviderResponse.Model = safeProviderIdentifier(model)
+		record.ProviderResponse.Model = safeDiagnosticIdentifier(model)
 	}
-	if response.Status != "" {
+	if responseevents.TerminalStatus(response.Status) || slices.Contains([]string{"queued", "in_progress", "error", "steered", "interrupted"}, response.Status) {
 		record.ResponseStatus = response.Status
 	}
 	return response.Status, true
+}
+
+func safeDiagnosticIdentifier(value string) string {
+	if responseevents.SafeDiagnosticIdentity(value) {
+		return value
+	}
+	return ""
 }
 
 func requestToolNames(tools []jsonv1.RawMessage) []string {
@@ -160,6 +167,7 @@ func requestToolNames(tools []jsonv1.RawMessage) []string {
 		if tool.Name == "" {
 			tool.Name = tool.Function.Name
 		}
+		tool.Name = safeDiagnosticIdentifier(tool.Name)
 		if tool.Name != "" && !slices.Contains(names, tool.Name) {
 			names = append(names, tool.Name)
 		}

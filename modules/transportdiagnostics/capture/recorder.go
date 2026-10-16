@@ -287,10 +287,10 @@ func (r *Recorder) beginRequest(header http.Header) *requestState {
 		captureID:       randomCaptureID(),
 		recorder:        r,
 		clientTurnState: r.turnStateFingerprint(header.Get("x-codex-turn-state")),
-		requestID:       header.Get("x-client-request-id"),
-		sessionID:       cmp.Or(header.Get("session-id"), header.Get("Session_id")),
-		threadID:        header.Get("thread-id"),
-		subagent:        header.Get("x-openai-subagent"),
+		requestID:       safeDiagnosticIdentifier(header.Get("x-client-request-id")),
+		sessionID:       safeDiagnosticIdentifier(cmp.Or(header.Get("session-id"), header.Get("Session_id"))),
+		threadID:        safeDiagnosticIdentifier(header.Get("thread-id")),
+		subagent:        safeDiagnosticIdentifier(header.Get("x-openai-subagent")),
 	}
 	r.mu.Lock()
 	r.requestSequence++
@@ -412,7 +412,7 @@ func (r *Recorder) recordExchange(state *requestState, boundary string, attempt 
 		if err := json.Unmarshal(requestBody, &requestEnvelope, jsonv1.DefaultOptionsV1()); err != nil {
 			record.CaptureError = "invalid request JSON"
 		} else {
-			record.RequestModel = requestEnvelope.Model
+			record.RequestModel = safeDiagnosticIdentifier(requestEnvelope.Model)
 			if boundary == "codex" && requestEnvelope.Generate != nil && !*requestEnvelope.Generate {
 				record.ProviderExpected = new(false)
 			}

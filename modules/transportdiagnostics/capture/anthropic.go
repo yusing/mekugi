@@ -37,7 +37,7 @@ func observeAnthropicResponse(payload []byte, record *captureRecord) {
 		switch event.Type {
 		case "message_start":
 			if record.ProviderResponse != nil {
-				record.ProviderResponse.Model = safeProviderIdentifier(event.Message.Model)
+				record.ProviderResponse.Model = safeDiagnosticIdentifier(event.Message.Model)
 			}
 		case "content_block_start":
 			if blocks[event.Index] {

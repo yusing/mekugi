@@ -20,23 +20,10 @@ type providerResponseEvidence struct {
 	CachedTokens      *uint64 `json:"cached_tokens,omitempty"`
 }
 
-// Identifiers are bounded ASCII tokens, not arbitrary provider strings.
-func safeProviderIdentifier(value string) string {
-	if len(value) == 0 || len(value) > 256 {
-		return ""
-	}
-	for _, c := range value {
-		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_' || c == '.' || c == ':' || c == '/') {
-			return ""
-		}
-	}
-	return value
-}
-
 func providerHeaderEvidence(header http.Header) providerResponseEvidence {
 	return providerResponseEvidence{
-		RequestID:         safeProviderIdentifier(header.Get("x-request-id")),
-		HeaderModel:       safeProviderIdentifier(header.Get("openai-model")),
+		RequestID:         safeDiagnosticIdentifier(header.Get("x-request-id")),
+		HeaderModel:       safeDiagnosticIdentifier(header.Get("openai-model")),
 		CachedTokensState: "unavailable",
 	}
 }
@@ -46,7 +33,7 @@ func providerServiceTier(raw []byte) string {
 	if json.Unmarshal(raw, &tier) != nil {
 		return ""
 	}
-	return safeProviderIdentifier(tier)
+	return safeDiagnosticIdentifier(tier)
 }
 
 func (record *captureRecord) observeProviderEvidence(payload []byte) {
