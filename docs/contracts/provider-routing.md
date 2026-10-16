@@ -26,10 +26,10 @@ Replay maps bridge-produced calls back to their provider-visible identity;
 historical calls with nonempty encryption markers retain their native namespace
 and metadata. Ordinary and additional-tool catalogs follow the same rule.
 
-When this namespace is exposed, its complete pinned dispatch instruction uses it
-in top-level and developer text, including multipart content. Caller wording,
-fenced examples and user messages remain unchanged. The reserved OpenAI schema is
-not modified in place. Readable new assignments support native Activity display;
+Guidance in the projected namespace names its dispatch surface. Top-level
+instructions, developer content and user messages remain unchanged, including
+multipart content and fenced examples. The reserved OpenAI schema is not
+modified in place. Readable new assignments support native Activity display;
 encrypted message bodies remain unavailable. Passthrough, prewarm and auxiliary
 turns without a third-party provider retain their existing behavior.
 
