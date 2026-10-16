@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -37,15 +36,12 @@ func TestCodexMekugiGrammarE2E(t *testing.T) {
 	gitPath := requireExecutable(t, "git")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
-	var requestSequence atomic.Uint64
 	server := httptest.NewServer(responsesHandler(
 		t.Context(),
 		10*time.Minute,
 		newProviderClient(codexBaseURL, nil),
 		nil,
 		newManagedMekugiProxy(t),
-		nil, nil,
-		&requestSequence,
 	))
 	defer server.Close()
 

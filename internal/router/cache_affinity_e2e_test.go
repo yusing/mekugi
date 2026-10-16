@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -139,15 +138,12 @@ func TestCodexCacheAffinityE2E(t *testing.T) {
 	transport := &cacheAffinityE2ETransport{delegate: upstreamTransport}
 
 	httpClient := &http.Client{Transport: transport}
-	var requestSequence atomic.Uint64
 	handler := responsesHandler(
 		t.Context(),
 		10*time.Minute,
 		newProviderClient(codexBaseURL, httpClient),
 		nil,
 		newManagedMekugiProxy(t),
-		nil, nil,
-		&requestSequence,
 	)
 	var (
 		inboundMu      sync.Mutex
