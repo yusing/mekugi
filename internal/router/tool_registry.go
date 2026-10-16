@@ -117,7 +117,7 @@ func buildToolRegistryAt(
 		Tools:           slices.Clone(contributions),
 	}
 	if debug, _ := ctx.Value(debugContextKey{}).(*debugOutput); debug != nil {
-		manifest.AXReadOutput = debug.axReadPath
+		manifest.AXReadOutput = debug.ReadLogPath()
 	}
 	registryID, err := toolRegistryIdentity(manifest)
 	if err != nil {

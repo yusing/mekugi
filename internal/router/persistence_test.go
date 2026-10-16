@@ -2,11 +2,12 @@ package router
 
 import (
 	"bytes"
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 
 	"github.com/yusing/mekugi/libraries/persistence"
 )
@@ -93,21 +94,13 @@ func TestPersistenceDebugStorageLocation(t *testing.T) {
 	if err != nil || root != filepath.Join(os.Getenv("XDG_STATE_HOME"), "mekugi", "debug") {
 		t.Fatalf("debug root = %q, %v", root, err)
 	}
-	directory, release, err := createDebugBundle()
+	bundle, err := testDiagnostics(nil, nil).OpenBundle(diagnostic.BundleOptions{Root: root})
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := release(); err != nil {
-			t.Error(err)
-		}
-	})
-	if filepath.Dir(directory) != root {
-		t.Fatalf("bundle outside state root: %s", directory)
-	}
-	info, err := os.Stat(directory)
-	if err != nil || info.Mode().Perm() != 0700 {
-		t.Fatalf("bundle permissions: %v, %v", info, err)
+	t.Cleanup(func() { _ = bundle.Close() })
+	if filepath.Dir(filepath.Dir(bundle.Paths()[0])) != root {
+		t.Fatal("bundle outside selected root")
 	}
 	t.Setenv("XDG_STATE_HOME", "")
 	home, err := os.UserHomeDir()
@@ -117,87 +110,6 @@ func TestPersistenceDebugStorageLocation(t *testing.T) {
 	root, err = debugStorageDirectory()
 	if err != nil || root != filepath.Join(home, ".local", "state", "mekugi", "debug") {
 		t.Fatalf("default debug root = %q, %v", root, err)
-	}
-}
-
-func TestPersistenceDebugRetentionRespectsOwnershipAndLease(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	now := time.Now()
-	old := now.Add(-14*24*time.Hour - time.Second)
-	makeBundle := func() (string, func() error) {
-		t.Helper()
-		directory, release, err := createDebugBundle()
-		if err != nil {
-			t.Fatal(err)
-		}
-		return directory, release
-	}
-	age := func(directory string, stamp time.Time) {
-		t.Helper()
-		if err := os.Chtimes(filepath.Join(directory, debugBundleLease), stamp, stamp); err != nil {
-			t.Fatal(err)
-		}
-	}
-	aged, release := makeBundle()
-	if err := release(); err != nil {
-		t.Fatal(err)
-	}
-	age(aged, old)
-	custom := filepath.Join(t.TempDir(), "capture.jsonl")
-	if err := os.WriteFile(custom, []byte("keep capture"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(custom, filepath.Join(aged, "capture.jsonl")); err != nil {
-		t.Fatal(err)
-	}
-	active, releaseActive := makeBundle()
-	defer func() {
-		if err := releaseActive(); err != nil {
-			t.Error(err)
-		}
-	}()
-	age(active, old)
-	fresh, releaseFresh := makeBundle()
-	if err := releaseFresh(); err != nil {
-		t.Fatal(err)
-	}
-	boundary, releaseBoundary := makeBundle()
-	if err := releaseBoundary(); err != nil {
-		t.Fatal(err)
-	}
-	age(boundary, now.Add(-14*24*time.Hour))
-	root := filepath.Dir(aged)
-	unmarked := filepath.Join(root, "mekugi-debug-unmarked")
-	if err := os.Mkdir(unmarked, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chtimes(unmarked, old, old); err != nil {
-		t.Fatal(err)
-	}
-	linkedMarker := filepath.Join(root, "mekugi-debug-linked-marker")
-	if err := os.Mkdir(linkedMarker, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(custom, filepath.Join(linkedMarker, debugBundleLease)); err != nil {
-		t.Fatal(err)
-	}
-	linkedBundle := filepath.Join(root, "mekugi-debug-linked-bundle")
-	if err := os.Symlink(active, linkedBundle); err != nil {
-		t.Fatal(err)
-	}
-	if err := cleanupDebugBundles(t.Context(), now); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(aged); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("aged owned bundle retained: %v", err)
-	}
-	for _, path := range []string{active, fresh, boundary, unmarked, linkedMarker, linkedBundle} {
-		if _, err := os.Lstat(path); err != nil {
-			t.Errorf("protected bundle removed: %s: %v", path, err)
-		}
-	}
-	if data, err := os.ReadFile(custom); err != nil || string(data) != "keep capture" {
-		t.Fatalf("custom capture changed: %q, %v", data, err)
 	}
 }
 

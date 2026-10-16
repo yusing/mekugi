@@ -81,7 +81,7 @@ current source and contracts explain intended behavior, not historical execution
 live under `$CODEX_HOME/sessions`, defaulting to `~/.codex/sessions`. Locate an exact session ID
 with a filename glob using `rg --files --hidden --no-ignore` in that directory, then verify
 `session_meta` identity and workspace. Do not count child sessions or inherited fork history as
-independent user sessions. The logical inspection interface is in `modules/sessioninspection/SPEC.md` (logical queries), `doc/spec/session.md` (debug/failure diagnosis).
+independent user sessions. The logical inspection interface is in `modules/sessioninspection/SPEC.md` (logical queries), `modules/diagnostics/SPEC.md` (debug/failure diagnosis).
 
 - `mekugi inspect-session --session /absolute/path/to/rollout.jsonl` reads call identities and
   outcomes without running recorded operations. Select private text only when needed.

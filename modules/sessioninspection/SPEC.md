@@ -9,7 +9,7 @@ Explain recorded host calls and their retained outcomes without executing them.
 The module owns single-rollout queries, retained-evidence joins, corpus filtering
 and static friction findings. The application exposes `inspect-session --session`
 and `inspect-sessions`; the Codex binding supplies decoded rollout facts.
-[Diagnostic inspection](../../doc/spec/session.md) owns debug-bundle and
+[Diagnostic inspection](../diagnostics/SPEC.md) owns debug-bundle and
 failure-reference queries. Neither inspection path starts a backend or changes stored state.
 
 ## Behavior

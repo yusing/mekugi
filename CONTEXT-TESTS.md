@@ -66,6 +66,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Per-thread provider accounting, pricing and retained throughput | `./modules/usage/... ./contracts/inference ./backends/codex/responses`, plus router `ThreadUsage`, `TokenUsage`, `TokenCost`, `OutputThroughput`, `Roster` and naming consumers |
 | Transport capture and stream diagnostics | `./modules/transportdiagnostics/...`, plus router HTTP/WebSocket, stream failure, debug, metrics, corpus and replay consumers |
 | Offline call and corpus inspection | `./modules/sessioninspection/...`, plus router logical-session, corpus, optional-contributor and debug consumers |
+| Debug bundles, private failure records and offline diagnosis | `./modules/diagnostics/...`, plus router debug, critical-notice, failure, optional-contributor and retention consumers |
 | Agent-experience evidence | `./modules/agentmetrics/...`, plus router compiled-reader, inspection and debug consumers |
 | Semantic symbol queries | `./modules/symbolquery/...`, plus router symbol/activity/AX and recovery consumers |
 | Structural inspection | `./modules/sourceoutline/... ./libraries/sourceanalysis/...`, then authenticated router frontend/recovery tests |

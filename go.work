@@ -23,6 +23,7 @@ use (
 	./modules/changehistory
 	./modules/commandsegments
 	./modules/contextreset
+	./modules/diagnostics
 	./modules/fileread
 	./modules/outputdeduplication
 	./modules/outputrecovery

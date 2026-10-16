@@ -23,7 +23,7 @@ count substitutes for executed-read evidence.
 
 Each invocation records a random identity, thread ID, reader name, UTC start
 and finish, monotonic duration, success, an allowlisted failure class on
-failure, and an optional observed exit code. Direct frontends do not invent a
+failure, and an optional observed exit code. Executable frontends do not invent a
 logical shell-call identity. Missing thread identity stays unattributed.
 Loops count each actual invocation; skipped branches and literal examples
 count none. Other programs' internal reads are outside coverage.

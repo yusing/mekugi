@@ -2,32 +2,12 @@ package router
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
-	"fmt"
-	"io"
-	"os"
-	"path/filepath"
-	"slices"
 	"time"
 
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
+	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 )
-
-// Failure records retain the actual error for post-session diagnosis.
-type failureRecord struct {
-	Version   int                 `json:"version"`
-	Time      time.Time           `json:"time"`
-	Thread    string              `json:"thread"`
-	Phase     requestFailurePhase `json:"phase"`
-	Code      string              `json:"code"`
-	Reference string              `json:"reference"`
-	Error     string              `json:"error,omitempty"`
-	Stream    jsontext.Value      `json:"stream,omitempty"`
-}
 
 func (c *CriticalErrors) persistFailure(f *requestFinalization) {
 	if c == nil || f.diagnosticReference == "" {
@@ -35,11 +15,11 @@ func (c *CriticalErrors) persistFailure(f *requestFinalization) {
 	}
 	c.mu.Lock()
 	store := c.failureStore
-	enabled := c.persistFailures || store != nil
+	limits := c.failureLimits
 	writes := c.writes
-	service := c.history
+	service := c.diagnostics
 	c.mu.Unlock()
-	if !enabled {
+	if service == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -47,13 +27,9 @@ func (c *CriticalErrors) persistFailure(f *requestFinalization) {
 	if store == nil {
 		directory, err := defaultMekugiReplayDirectory()
 		if err == nil {
-			store, err = openReplayStore(ctx, service, directory)
+			store, err = service.OpenFailures(ctx, directory)
 		}
 		if err == nil {
-			store.writes = writes
-			store.storageNotice = func(session, thread, phase, message string) {
-				c.addThreadNotice(session, thread, "storage_cleanup_"+phase, message)
-			}
 			c.mu.Lock()
 			c.failureStore = store
 			c.mu.Unlock()
@@ -63,69 +39,17 @@ func (c *CriticalErrors) persistFailure(f *requestFinalization) {
 	if store == nil {
 		err = errors.New("failure storage unavailable")
 	} else {
-		record := failureRecord{Version: 1, Time: time.Now().UTC(), Thread: f.threadID,
-			Phase: f.failurePhase, Code: f.diagnosticCode, Reference: f.diagnosticReference,
+		record := diagnostic.Failure{Version: 1, Time: time.Now().UTC(), Thread: f.threadID,
+			Phase: string(f.failurePhase), Code: f.diagnosticCode, Reference: f.diagnosticReference,
 			Error: f.diagnosticError}
 		if f.streamDiagnostics != nil {
 			record.Stream, err = json.Marshal(f.streamDiagnostics.Snapshot())
 		}
 		if err == nil {
-			err = store.appendFailure(ctx, record)
+			err = service.RetainFailure(ctx, store, writes, limits, record)
 		}
 	}
 	if err != nil {
 		c.addThreadNotice(f.sessionID, f.threadID, "failure_storage", "Mekugi could not retain the failure reference. Relaunch with --debug to capture a future failure.")
 	}
-}
-
-func (s *mekugiReplayStore) appendFailure(ctx context.Context, record failureRecord) error {
-	copy := *s
-	copy.session = storageSessionIdentity{Thread: record.Thread}
-	if copy.session.Thread == "" {
-		copy.session.Thread = "router-failures"
-	}
-	data, err := json.Marshal(record)
-	if err != nil {
-		return err
-	}
-	name := fmt.Sprintf("failure-%x.json", sha256.Sum256([]byte(rand.Text())))
-	return copy.locked(ctx, func(copy *mekugiReplayStore) error { return copy.writeManagedFile(name, "failure-pending-", data) })
-}
-
-func inspectFailures(ctx context.Context, directory, reference string, output io.Writer) error {
-	entries, err := os.ReadDir(directory)
-	if errors.Is(err, os.ErrNotExist) {
-		entries, err = nil, nil
-	}
-	if err != nil {
-		return err
-	}
-	records := []failureRecord{}
-	for _, entry := range entries {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if !hashedRecordName(entry.Name(), "failure-") {
-			continue
-		}
-		data, err := history.ReadRecord(filepath.Join(directory, entry.Name()))
-		if errors.Is(err, os.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		var record failureRecord
-		if err := json.Unmarshal(data, &record); err != nil || record.Version != 1 || record.Time.IsZero() || record.Reference == "" {
-			return errors.New("invalid retained failure record")
-		}
-		if reference == "" || reference == record.Reference {
-			records = append(records, record)
-		}
-	}
-	if reference != "" && len(records) == 0 {
-		return fmt.Errorf("failure reference %q not found (it may have expired)", reference)
-	}
-	slices.SortFunc(records, func(a, b failureRecord) int { return a.Time.Compare(b.Time) })
-	return json.MarshalEncode(jsontext.NewEncoder(output), records)
 }

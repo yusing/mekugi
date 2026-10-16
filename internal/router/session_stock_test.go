@@ -25,8 +25,7 @@ func TestSessionInspectionCanceledEmptySource(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	var stdout, stderr bytes.Buffer
-	code := RunSessionInspection(testInspector(nil, nil), nil, nil, ctx,
-		[]string{"--session", path, "--replay-dir", t.TempDir()}, &stdout, &stderr)
+	code := RunSessionInspection(testInspector(nil, nil), testDiagnostics(nil, nil), ctx, []string{"--session", path, "--replay-dir", t.TempDir()}, &stdout, &stderr)
 	if code != 1 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "context canceled") {
 		t.Fatalf("canceled inspection: code=%d stdout=%q stderr=%q", code, &stdout, &stderr)
 	}
@@ -86,7 +85,7 @@ func TestSessionInspectionReadsObservedStockPatchOutcome(t *testing.T) {
 		stockRolloutItem(map[string]any{"type": "custom_tool_call_output", "call_id": "patch-call", "output": "Success. Added observed.txt."}),
 	)
 	var out, diagnostic bytes.Buffer
-	status := RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), new(evidence.Service), new(transportcapture.Service), t.Context(), []string{"--session", rollout, "--replay-dir", replay, "--field", "all", "--ax"}, &out, &diagnostic)
+	status := RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), t.Context(), []string{"--session", rollout, "--replay-dir", replay, "--field", "all", "--ax"}, &out, &diagnostic)
 	if status != 0 {
 		t.Fatalf("inspection failed: %s", diagnostic.String())
 	}

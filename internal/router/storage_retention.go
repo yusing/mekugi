@@ -11,7 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
+
 	"github.com/yusing/mekugi/libraries/legacycall"
+	"github.com/yusing/mekugi/libraries/persistence"
 
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
@@ -307,17 +310,37 @@ func (s *mekugiReplayStore) lockStorageSnapshot(ctx context.Context) (func(), er
 
 // Age-based cleanup is router maintenance, not part of any request's replay
 // view. An unrelated catalog must not prevent a new thread from starting.
-func runStorageRetention(ctx context.Context, store func() *mekugiReplayStore, notice func(error)) {
+type retentionScope struct {
+	store  *history.Store
+	writes *persistence.Counter
+	limits history.Limits
+	thread string
+	notice func(string, string)
+}
+
+func (s *mekugiReplayStore) retentionScope(ctx context.Context) retentionScope {
+	s = s.scoped(ctx)
+	return retentionScope{store: s.publication, writes: s.writes, limits: s.retentionLimits(), thread: s.session.Thread, notice: func(phase, message string) {
+		if s.storageNotice != nil {
+			s.storageNotice("", "", phase, message)
+		}
+	}}
+}
+func runStorageRetention(ctx context.Context, diagnostics *diagnostic.Service, store func() retentionScope, notice func(error)) {
 	var debugSweep, sessionSweep time.Time
 	cleanup := func() {
-		if time.Since(debugSweep) >= time.Hour {
+		if diagnostics != nil && time.Since(debugSweep) >= time.Hour {
 			debugSweep = time.Now()
-			if err := cleanupDebugBundles(ctx, debugSweep); err != nil && ctx.Err() == nil && notice != nil {
+			root, err := debugStorageDirectory()
+			if err == nil {
+				err = diagnostics.CleanupBundles(ctx, root, debugSweep)
+			}
+			if err != nil && ctx.Err() == nil && notice != nil {
 				notice(fmt.Errorf("debug bundle cleanup: %w", err))
 			}
 		}
 		s := store()
-		if s == nil {
+		if s.store == nil {
 			return
 		}
 		var err error
@@ -325,9 +348,9 @@ func runStorageRetention(ctx context.Context, store func() *mekugiReplayStore, n
 			// Bound full age replanning when publications invalidate ownership.
 			// Pressure still gets the worker's one-second response interval.
 			var pressure bool
-			err = s.locked(ctx, func(s *mekugiReplayStore) error {
+			err = s.store.Transaction(ctx, s.writes, func(tx *history.Transaction) error {
 				var err error
-				pressure, err = s.transaction.PendingCleanup()
+				pressure, err = tx.PendingCleanup()
 				return err
 			})
 			if err == nil && !pressure {
@@ -336,7 +359,7 @@ func runStorageRetention(ctx context.Context, store func() *mekugiReplayStore, n
 		}
 		if err == nil {
 			sessionSweep = time.Now()
-			err = s.cleanupSessions(ctx)
+			err = s.store.Cleanup(ctx, s.writes, s.limits, s.thread, s.notice)
 		}
 		if err != nil && ctx.Err() == nil && notice != nil {
 			notice(fmt.Errorf("session cleanup: %w", err))

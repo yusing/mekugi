@@ -141,7 +141,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		fmt.Fprintf(os.Stderr, "  mekugi inspect-session --debug-dir %s --field diagnostic\n", commandargs.Quote(directory))
 	}()
 	go func() {
-		routerDone <- router.RunSession(frontends.History, frontends.Recovery, frontends.Segments, frontends.Changes, frontends.Usage, frontends.AgentMetrics, frontends.TransportDiagnostics, frontends.Inspection, ctx, frontends.Commands, frontends.InputProjections, frontends.Guidance, frontends.Naming, frontends.Guards, options, issues, func(session router.Session) {
+		routerDone <- router.RunSession(frontends.History, frontends.Recovery, frontends.Segments, frontends.Changes, frontends.Usage, frontends.AgentMetrics, frontends.TransportDiagnostics, frontends.Diagnostics, ctx, frontends.Commands, frontends.InputProjections, frontends.Guidance, frontends.Naming, frontends.Guards, options, issues, func(session router.Session) {
 			ready <- session
 		}, func(paths []string) { debugPaths = paths })
 	}()

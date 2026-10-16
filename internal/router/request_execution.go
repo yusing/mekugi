@@ -275,11 +275,13 @@ func (a *requestAttempt) prepareWire() error {
 		if err != nil {
 			return webSocketProtocolError(err)
 		}
-		a.debug.event(map[string]any{
-			"event": "provider_history_reconciliation", "request_id": a.debugID,
-			"reason": reason, "reused_input_items": a.request.CachedInput,
-			"duration_us": time.Since(started).Microseconds(),
-		})
+		if a.debug != nil {
+			a.debug.Event(map[string]any{
+				"event": "provider_history_reconciliation", "request_id": a.debugID,
+				"reason": reason, "reused_input_items": a.request.CachedInput,
+				"duration_us": time.Since(started).Microseconds(),
+			})
+		}
 	}
 	nativeWire, err := a.request.IncrementalBody(nativeBody, !isChatCompletionsModel(a.request.Model()))
 	if err != nil {
@@ -580,6 +582,8 @@ func (a *requestAttempt) finish(requestErr error) error {
 		fields["diagnostic_code"] = a.finalization.diagnosticCode
 		fields["error"] = a.finalization.diagnosticError
 	}
-	a.debug.event(fields)
+	if a.debug != nil {
+		a.debug.Event(fields)
+	}
 	return requestErr
 }

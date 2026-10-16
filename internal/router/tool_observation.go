@@ -24,5 +24,5 @@ func (trace toolObservationTrace) toolCall(callID, tool string) {
 			fields[key] = value
 		}
 	}
-	trace.debug.event(fields)
+	trace.debug.Event(fields)
 }

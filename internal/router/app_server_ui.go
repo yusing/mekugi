@@ -173,7 +173,6 @@ type appServerUI struct {
 func StartAppServerUI(service *history.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
 	faint, _ := terminalui.SupportsFaint(ctx, "auto")
 	issues := NewCriticalErrors()
-	issues.history = service
 	return startAppServerUI(service, nil, ctx, cmd, stdin, stdout, nil, issues, resumeThread, faint, nil, nil, resumeArgv, "", nil, approvals)
 }
 

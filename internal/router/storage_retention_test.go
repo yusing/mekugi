@@ -22,7 +22,7 @@ import (
 )
 
 func (s *mekugiReplayStore) runRetentionSweeps(ctx context.Context, notice func(error)) {
-	runStorageRetention(ctx, func() *mekugiReplayStore { return s }, notice)
+	runStorageRetention(ctx, testDiagnostics(nil, nil), func() retentionScope { return s.retentionScope(ctx) }, notice)
 }
 
 func retentionTestSession(t *testing.T, store *mekugiReplayStore, thread string, age time.Duration) (context.Context, func()) {
@@ -772,7 +772,7 @@ func TestBackgroundRetentionReportsDebugCleanupFailure(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 	var reported error
-	runStorageRetention(ctx, func() *mekugiReplayStore { return nil }, func(err error) {
+	runStorageRetention(ctx, testDiagnostics(nil, nil), func() retentionScope { return retentionScope{} }, func(err error) {
 		reported = err
 		cancel()
 	})

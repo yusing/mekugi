@@ -12,10 +12,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/commandargs"
 
-	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
-
 	"github.com/yusing/mekugi/internal/router"
-	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -91,7 +88,7 @@ func TestUISnapshotDebugHandoffAfterCodexExit(t *testing.T) {
 				t.Fatalf("diagnostic handoff is not a session inspection command: %q", resolved)
 			}
 			var diagnosticErrors bytes.Buffer
-			if code := router.RunSessionInspection(testComposition(t).Inspection, new(evidence.Service), new(transportcapture.Service), t.Context(), argv[1:], io.Discard, &diagnosticErrors); code != 0 {
+			if code := router.RunSessionInspection(testComposition(t).Inspection, testComposition(t).Diagnostics, t.Context(), argv[1:], io.Discard, &diagnosticErrors); code != 0 {
 				t.Fatalf("printed diagnostic command failed: %d: %s", code, &diagnosticErrors)
 			}
 			normalized := strings.ReplaceAll(after, commandargs.Quote(argv[2]), "'/tmp/mekugi-debug-session'")

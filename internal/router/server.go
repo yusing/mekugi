@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yusing/mekugi/modules/sessioninspection/query"
+	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 
@@ -77,7 +77,7 @@ type Session struct {
 
 // RunSession owns the private router for one wrapped Codex process.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func RunSession(service *history.Service, recovered *recovery.Service, segments *segmentservice.Service, changes changes.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, inspector *query.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, guards []binding.ShellApproval, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
+func RunSession(service *history.Service, recovered *recovery.Service, segments *segmentservice.Service, changes changes.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, guards []binding.ShellApproval, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
 	if diagnostics == nil && options.captureOutput != "" {
 		return errors.New("transport diagnostics are unavailable")
 	}
@@ -98,11 +98,11 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 	}
 	openCode := config.Providers
 	if agentMetrics != nil {
-		if err := validateAXOutputAliases(os.Getenv(evidence.AXReadOutputEnvironment), options.captureOutput); err != nil {
+		if err := evidence.ValidateOutputAliases(os.Getenv(evidence.AXReadOutputEnvironment), options.captureOutput); err != nil {
 			return err
 		}
 	}
-	debug, err := openDebugOutput(inspector, agentMetrics, diagnostics, options.debug, options.captureOutput)
+	debug, err := openDebugOutput(diagnosis, options.debug, options.captureOutput)
 	if err != nil {
 		return err
 	}
@@ -112,13 +112,13 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 	var mekugiCalls *mekugiProxy
 	defer func() {
 		if debug != nil {
-			debug.event(map[string]any{"event": "router_stop", "failed": runErr != nil, "storage_writes": debug.writes.Snapshot()})
-			runErr = errors.Join(runErr, debug.close())
+			debug.Event(map[string]any{"event": "router_stop", "failed": runErr != nil, "storage_writes": debug.Writes().Snapshot()})
+			runErr = errors.Join(runErr, debug.Close())
 		}
 		if artifacts != nil {
 			var paths []string
 			if debug != nil {
-				paths = append(paths, debug.paths...)
+				paths = append(paths, debug.Paths()...)
 			}
 			if len(paths) != 0 {
 				artifacts(paths)
@@ -127,11 +127,11 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 	}()
 	var writes *persistence.Counter
 	if debug != nil {
-		writes = debug.writes
+		writes = debug.Writes()
 	}
 	capturePath := options.captureOutput
 	if debug != nil {
-		capturePath = debug.capturePath
+		capturePath = debug.CapturePath()
 	}
 	var capture *transportcapture.Recorder
 	if diagnostics != nil {
@@ -142,7 +142,7 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 	}
 	var metricsFile *os.File
 	if debug != nil && capture != nil {
-		metricsFile, err = os.OpenFile(debug.metricsPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+		metricsFile, err = os.OpenFile(debug.MetricsPath(), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 		if err != nil {
 			return errors.Join(fmt.Errorf("open metrics output: %w", err), capture.Close())
 		}
@@ -216,8 +216,7 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 	defer cancelTitles()
 	provider.titleGenerator = newSessionNaming(titleCtx, provider, naming)
 	if issues != nil {
-		issues.persistFailures = true
-		issues.history = service
+		issues.diagnostics = diagnosis
 		issues.writes = writes
 	}
 	if options.mode == "mekugi" {
@@ -276,7 +275,8 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 			mekugiCalls.notice("", thread, "usage_storage", "Provider usage could not be retained or restored: "+err.Error())
 		})
 		if issues != nil {
-			issues.failureStore = replayStore
+			issues.failureStore = replayStore.publication
+			issues.failureLimits = replayStore.retentionLimits()
 		}
 		defer func() {
 			runErr = errors.Join(runErr, mekugiCalls.Close())
@@ -298,13 +298,13 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 		retentionDone := make(chan struct{})
 		go func() {
 			defer close(retentionDone)
-			runStorageRetention(retentionCtx, func() *mekugiReplayStore {
+			runStorageRetention(retentionCtx, diagnosis, func() retentionScope {
 				if mekugiCalls != nil {
-					return mekugiCalls.replayStore
+					return mekugiCalls.replayStore.retentionScope(retentionCtx)
 				}
 				issues.mu.Lock()
 				defer issues.mu.Unlock()
-				return issues.failureStore
+				return retentionScope{store: issues.failureStore, writes: issues.writes, limits: issues.failureLimits, notice: func(phase, message string) { issues.addThreadNotice("", "", "storage_cleanup_"+phase, message) }}
 			}, func(err error) {
 				issues.addNotice("", "storage_cleanup_failure", fmt.Sprintf("Mekugi could not complete background storage cleanup: %v. Session requests continue unless storage reaches its limit.", err))
 			})
@@ -394,7 +394,7 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 			}
 			debugDirectory := ""
 			if debug != nil {
-				debugDirectory = filepath.Dir(debug.paths[0])
+				debugDirectory = filepath.Dir(debug.Paths()[0])
 			}
 			return startAppServerUI(service, segments.Reports, ctx, cmd, stdin, stdout, mekugiCalls, issues, resumeThread, faint, provider.serviceTiers, capture, resumeArgv, debugDirectory, provider.titleGenerator, approvals)
 		}
@@ -402,7 +402,7 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 			session.NativeTraceDirectory = mekugiCalls.nativeTrace.directory
 		}
 		if debug != nil {
-			session.AXReadOutput = debug.axReadPath
+			session.AXReadOutput = debug.ReadLogPath()
 		}
 		ready(session)
 	}
@@ -450,14 +450,16 @@ func modelsHandler(provider *providerClient, issues *CriticalErrors) http.Handle
 					observation: requestObservation{outcome: requestOutcomeFailed}}
 				issues.record(finalization, failure)
 				issues.persistFailure(finalization)
-				debug.event(map[string]any{
-					"event": "models_request_failure", "request_id": requestID,
-					"session_id": finalization.sessionID, "thread_id": codexThreadID(request.Header),
-					"upstream_status": upstreamStatus, "downstream_status": tracked.statusCode,
-					"diagnostic_code":      finalization.diagnosticCode,
-					"diagnostic_reference": finalization.diagnosticReference,
-					"error":                finalization.diagnosticError,
-				})
+				if debug != nil {
+					debug.Event(map[string]any{
+						"event": "models_request_failure", "request_id": requestID,
+						"session_id": finalization.sessionID, "thread_id": codexThreadID(request.Header),
+						"upstream_status": upstreamStatus, "downstream_status": tracked.statusCode,
+						"diagnostic_code":      finalization.diagnosticCode,
+						"diagnostic_reference": finalization.diagnosticReference,
+						"error":                finalization.diagnosticError,
+					})
+				}
 			}
 		}()
 

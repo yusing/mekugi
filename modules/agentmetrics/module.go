@@ -1,6 +1,7 @@
 package agentmetrics
 
 import (
+	"github.com/yusing/mekugi/contracts/diagnosticsection"
 	"github.com/yusing/mekugi/contracts/inspection"
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
@@ -9,5 +10,5 @@ import (
 var Module = module.Descriptor[Deps, *evidence.Service, module.NoBindings]{
 	ID: "agentmetrics", Summary: "Measure reader invocations, observed edits and recorded host completion",
 	Lifetime: module.Stateless, New: newService,
-	Contributes: module.Contributions[*evidence.Service]{Inspection: []inspection.Definition[*evidence.Service]{{NewAX: func(service *evidence.Service) inspection.AXCollector { return service.NewInspection(nil) }}}},
+	Contributes: module.Contributions[*evidence.Service]{DiagnosticSections: []diagnosticsection.Definition[*evidence.Service]{{PrepareReads: (*evidence.Service).PrepareDiagnosticReads, ReadSnapshot: (*evidence.Service).DiagnosticReads}}, Inspection: []inspection.Definition[*evidence.Service]{{NewAX: func(service *evidence.Service) inspection.AXCollector { return service.NewInspection(nil) }}}},
 }

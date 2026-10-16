@@ -148,8 +148,7 @@ func TestFailureStorageNoticeReachesOwningNativeRootBeforeShutdown(t *testing.T)
 	}
 	t.Setenv("XDG_STATE_HOME", stateHome)
 	issues := NewCriticalErrors()
-	issues.persistFailures = true
-	issues.history = testHistory()
+	issues.diagnostics = testDiagnostics(nil, nil)
 	failure := failureStoreTestFinalization("native-storage-failure")
 	issues.persistFailure(failure)
 

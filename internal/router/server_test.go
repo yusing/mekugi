@@ -1009,12 +1009,8 @@ func TestModelsHandlerReportsCompleteForwardFailure(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 	request.Header = codexAuthHeaders()
 	request.Header.Set(sessionIDHeader, "models-session")
-	debugLog, err := os.CreateTemp(t.TempDir(), "router-*.jsonl")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer debugLog.Close()
-	request = request.WithContext(context.WithValue(request.Context(), debugContextKey{}, &debugOutput{log: debugLog}))
+	debug := diagnosticDebugOutput(t)
+	request = request.WithContext(context.WithValue(request.Context(), debugContextKey{}, debug))
 	recorder := httptest.NewRecorder()
 
 	modelsHandler(newProviderClient(testProviderBaseURL, httpClient), issues)(recorder, request)
@@ -1028,7 +1024,7 @@ func TestModelsHandlerReportsCompleteForwardFailure(t *testing.T) {
 	if !strings.Contains(recorder.Body.String(), secret) {
 		t.Fatalf("incomplete HTTP diagnostic: %s", recorder.Body.String())
 	}
-	raw, err := os.ReadFile(debugLog.Name())
+	raw, err := os.ReadFile(debug.Paths()[0])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1039,7 +1035,7 @@ func TestModelsHandlerReportsCompleteForwardFailure(t *testing.T) {
 		Error               string `json:"error"`
 		SessionID           string `json:"session_id"`
 	}
-	if err := json.Unmarshal(raw, &event); err != nil {
+	if err := json.Unmarshal(bytes.Split(bytes.TrimSpace(raw), []byte("\n"))[1], &event); err != nil {
 		t.Fatal(err)
 	}
 	if event.Event != "models_request_failure" || event.DiagnosticCode != "models_upstream_connection_reset" ||
@@ -1085,18 +1081,11 @@ func TestInferenceHTTPRejectionRetainsCompleteError(t *testing.T) {
 				t.Fatal(err)
 			}
 			issues := NewCriticalErrors()
-			issues.failureStore = store
-			log, err := os.CreateTemp(t.TempDir(), "router-*.jsonl")
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer log.Close()
-			dump, err := os.CreateTemp(t.TempDir(), "instructions-*.jsonl")
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer dump.Close()
-			ctx := context.WithValue(t.Context(), debugContextKey{}, &debugOutput{log: log, dump: dump})
+			issues.failureStore = store.publication
+			issues.failureLimits = store.retentionLimits()
+			issues.diagnostics = testDiagnostics(nil, nil)
+			debug := diagnosticDebugOutput(t)
+			ctx := context.WithValue(t.Context(), debugContextKey{}, debug)
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: &http.Response{
 				StatusCode: http.StatusBadRequest,
 				Header:     http.Header{"Content-Type": {"application/json"}},
@@ -1110,15 +1099,11 @@ func TestInferenceHTTPRejectionRetainsCompleteError(t *testing.T) {
 			if output.String() != body || len(issues.Pending()) != 1 || !strings.Contains(issues.Pending()[0], body) {
 				t.Fatal("HTTP rejection body missing from delivery or notice")
 			}
-			var retained bytes.Buffer
-			if err := inspectFailures(t.Context(), directory, "", &retained); err != nil {
-				t.Fatal(err)
-			}
-			var records []failureRecord
-			if err := json.Unmarshal(retained.Bytes(), &records); err != nil || len(records) != 1 || !strings.Contains(records[0].Error, body) {
+			records, err := testDiagnostics(nil, nil).ReadFailures(t.Context(), directory, "")
+			if err != nil || len(records) != 1 || !strings.Contains(records[0].Error, body) {
 				t.Fatal("HTTP rejection body missing from durable failure record")
 			}
-			logged, err := os.ReadFile(log.Name())
+			logged, err := os.ReadFile(debug.Paths()[0])
 			if err != nil {
 				t.Fatal(err)
 			}

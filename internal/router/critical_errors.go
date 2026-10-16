@@ -15,6 +15,8 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
@@ -30,15 +32,15 @@ import (
 // but no request snapshots or operational event history. It outlives router shutdown so
 // the launcher can report notices that could not reach Codex.
 type CriticalErrors struct {
-	history         *history.Service
-	writes          *persistence.Counter
-	mu              sync.Mutex
-	entries         []*criticalNotice
-	turnOutcomes    []criticalTurnOutcome
-	overflow        uint64
-	diagnosticSalt  string
-	failureStore    *mekugiReplayStore
-	persistFailures bool
+	diagnostics    *diagnostic.Service
+	failureLimits  history.Limits
+	writes         *persistence.Counter
+	mu             sync.Mutex
+	entries        []*criticalNotice
+	turnOutcomes   []criticalTurnOutcome
+	overflow       uint64
+	diagnosticSalt string
+	failureStore   *history.Store
 }
 
 type criticalNotice struct {

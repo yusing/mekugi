@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	diagnosticstore "github.com/yusing/mekugi/modules/diagnostics/diagnostic"
+
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
 	"github.com/yusing/mekugi/backends/codex/shellhook"
@@ -222,7 +224,9 @@ func TestRouterTransformFaultNativeCodexE2E(t *testing.T) {
 	}
 	proxy.replayStore = store
 	issues := NewCriticalErrors()
-	issues.failureStore = store
+	issues.failureStore = store.publication
+	issues.failureLimits = store.retentionLimits()
+	issues.diagnostics = testDiagnostics(nil, nil)
 	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, issues, proxy))
 	defer server.Close()
 
@@ -264,17 +268,17 @@ func TestRouterTransformFaultNativeCodexE2E(t *testing.T) {
 		t.Fatalf("reopen failure store after native Codex exits: %v", err)
 	}
 	var inspected, diagnostic bytes.Buffer
-	status := RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), new(evidence.Service), new(transportcapture.Service), t.Context(), []string{
+	status := RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), t.Context(), []string{
 		"--failures", "--replay-dir", replayDirectory, reference,
 	}, &inspected, &diagnostic)
 	if status != 0 {
 		t.Fatalf("post-run failure lookup status=%d stderr=%q", status, diagnostic.String())
 	}
-	var records []failureRecord
+	var records []diagnosticstore.Failure
 	if err := json.Unmarshal(inspected.Bytes(), &records); err != nil {
 		t.Fatalf("failure lookup output is invalid: %s: %v", inspected.String(), err)
 	}
-	if len(records) != 1 || records[0].Reference != reference || records[0].Phase != requestFailureTransform || records[0].Code != "mekugi_sse" {
+	if len(records) != 1 || records[0].Reference != reference || records[0].Phase != string(requestFailureTransform) || records[0].Code != "mekugi_sse" {
 		t.Fatalf("post-run lookup did not resolve the sanitized transform failure: %+v", records)
 	}
 }
@@ -287,7 +291,9 @@ func TestRecoveredStreamDoesNotLeaveHeadlessNoticeNativeCodexE2E(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	issues.failureStore = store
+	issues.failureStore = store.publication
+	issues.failureLimits = store.retentionLimits()
+	issues.diagnostics = testDiagnostics(nil, nil)
 	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, issues, proxy))
 	defer server.Close()
 	codex, err := exec.LookPath("codex")
@@ -315,14 +321,11 @@ func TestRecoveredStreamDoesNotLeaveHeadlessNoticeNativeCodexE2E(t *testing.T) {
 	if requests != 2 || len(issues.Pending()) != 0 || !strings.Contains(output.String(), "Recovered after a retry.") {
 		t.Fatalf("recovery requests=%d pending=%v\n%s", requests, issues.Pending(), output.String())
 	}
-	output.Reset()
-	if err := inspectFailures(ctx, store.directory, "", &output); err != nil {
-		t.Fatal(err)
-	}
-	var records []failureRecord
-	if err := json.Unmarshal(output.Bytes(), &records); err != nil || len(records) != 1 {
+	records, err := testDiagnostics(nil, nil).ReadFailures(ctx, store.directory, "")
+	if err != nil || len(records) != 1 {
 		t.Fatalf("recovered attempt diagnostics: records=%v err=%v", records, err)
 	}
+
 }
 
 func TestRetryablePrestream5xxStillRetriesInNativeCodexE2E(t *testing.T) {

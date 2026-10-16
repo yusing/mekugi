@@ -18,8 +18,8 @@ accounting belongs to [usage](../usage/SPEC.md), local projection estimates to
 [output deduplication](../outputdeduplication/SPEC.md#local-savings-estimates), and
 reader/edit evidence to [agent metrics](../agentmetrics/SPEC.md).
 
-The application owns debug bundles and the existing HTTP listener. Its metrics
-endpoint and [session dialog](../../doc/spec/native_ui.md#session-metrics) consume
+[Diagnostics](../diagnostics/SPEC.md) owns debug bundles; the application owns
+the existing HTTP listener. Its metrics endpoint and [session dialog](../../doc/spec/native_ui.md#session-metrics) consume
 the same detached snapshot. Rendering and exports do not maintain alternate
 counters or calculations. Observation adds no listener, network hop or private
 correlation header.

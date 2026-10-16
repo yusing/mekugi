@@ -3,6 +3,8 @@ package composition
 import (
 	"context"
 
+	"github.com/yusing/mekugi/modules/diagnostics"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/internal/router"
 	"github.com/yusing/mekugi/modules/agentguidance"
@@ -28,7 +30,7 @@ import (
 // frontend host. Host observation records remain application contributions.
 func Frontends(ctx context.Context, liveReports bool) (*Runtime, error) {
 	c := Composition{LegacyRecordKinds: router.RetainedRecordKinds()}
-	diagnostics := c.Add(transportdiagnostics.Module, func() transportdiagnostics.Deps { return transportdiagnostics.Deps{} })
+	transport := c.Add(transportdiagnostics.Module, func() transportdiagnostics.Deps { return transportdiagnostics.Deps{} })
 	metrics := c.Add(agentmetrics.Module, func() agentmetrics.Deps { return agentmetrics.Deps{} })
 	history := c.Add(sessionhistory.Module, func() sessionhistory.Deps { return sessionhistory.Deps{} })
 	usage := c.Add(usage.Module, func() usage.Deps { return usage.Deps{History: history.Value()} })
@@ -45,13 +47,17 @@ func Frontends(ctx context.Context, liveReports bool) (*Runtime, error) {
 	c.Add(remotewriteapproval.Module, func() remotewriteapproval.Deps { return remotewriteapproval.Deps{} })
 	c.Add(sudoapproval.Module, func() sudoapproval.Deps { return sudoapproval.Deps{} })
 	inspection := c.Add(sessioninspection.Module, func() sessioninspection.Deps { return sessioninspection.Deps{} })
+	diagnosis := c.Add(diagnostics.Module, func() diagnostics.Deps {
+		return diagnostics.Deps{History: history.Value(), Inspection: inspection.Value()}
+	})
 	binder := new(binding.Registry)
 	runtime, err := c.Activate(ctx, binder)
 	if err != nil {
 		return nil, err
 	}
 	runtime.Inspection = inspection.Value()
-	runtime.TransportDiagnostics = diagnostics.Value()
+	runtime.TransportDiagnostics = transport.Value()
+	runtime.Diagnostics = diagnosis.Value()
 	runtime.AgentMetrics = metrics.Value()
 	runtime.Usage = usage.Value()
 	runtime.Changes = changes.Value()

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"encoding/json/jsontext"
 	"io"
 	"maps"
 	"net/http"
@@ -14,33 +13,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessioninspection/query"
+
+	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
+
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 )
-
-func readDebugInstructionRows(ctx context.Context, path string) ([][]byte, error) {
-	var decoder debugInstructionDecoder
-	var rows [][]byte
-	var decodeErr error
-	err := readDebugInspectionFile(ctx, path, true, func(_ int, row map[string]jsontext.Value) {
-		if decodeErr != nil {
-			return
-		}
-		decodeErr = decoder.resolve(row)
-		if decodeErr == nil {
-			var data []byte
-			data, decodeErr = json.Marshal(row)
-			rows = append(rows, data)
-		}
-	})
-	if err != nil {
-		return nil, err
-	}
-	return rows, decodeErr
-}
 
 func TestDebugSessionArtifacts(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
@@ -120,22 +102,18 @@ func TestDebugCustomCaptureBundleSupportsReplay(t *testing.T) {
 	}
 }
 
-func TestDebugInstructionSelectionAndWriteFailure(t *testing.T) {
+func TestDebugInstructionSelection(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
 	flags := newRouterFlags(io.Discard)
 	flags.debug = true
-	d, err := openDebugOutput(testInspector(new(evidence.Service), new(transportcapture.Service)), new(evidence.Service), new(transportcapture.Service), flags.debug, flags.captureOutput)
+	d, err := openDebugOutput(testDiagnostics(new(evidence.Service), new(transportcapture.Service)), flags.debug, flags.captureOutput)
 	if err != nil {
 		t.Fatal(err)
 	}
 	body := []byte(`{"model":"test","instructions":"exact\n  text\t","input":[{"role":"developer","content":[{"type":"input_text","text":"inherited"}]},{"type":"additional_tools","tools":[{"name":"shell","description":"exact tool"}]},{"role":"user","content":"excluded user"},{"type":"custom_tool_call","input":"excluded script"}]}`)
 	headers := http.Header{"Authorization": {"excluded credential"}, "X-Client-Request-Id": {"client-1"}}
 	d.instructions(body, body, headers, "session-1", "request-1", 1)
-	dump, _ := os.ReadFile(d.paths[3])
-	rows, err := readDebugInstructionRows(t.Context(), d.paths[3])
-	if err != nil || len(rows) != 1 {
-		t.Fatalf("instruction records: %d, %v", len(rows), err)
-	}
+	dump, _ := os.ReadFile(d.Paths()[3])
 	var got struct {
 		Instructions   string            `json:"instructions"`
 		Developers     []json.RawMessage `json:"developer_messages"`
@@ -144,7 +122,7 @@ func TestDebugInstructionSelectionAndWriteFailure(t *testing.T) {
 		Scope          string            `json:"scope"`
 		WireDevelopers []json.RawMessage `json:"wire_developer_messages"`
 	}
-	if err := json.Unmarshal(rows[0], &got); err != nil || got.Instructions != "exact\n  text\t" || len(got.Developers) != 1 || len(got.Additional) != 1 || got.Cached != 1 {
+	if err := json.Unmarshal(dump, &got); err != nil || got.Instructions != "exact\n  text\t" || len(got.Developers) != 1 || len(got.Additional) != 1 || got.Cached != 1 {
 		t.Fatalf("instruction selection: %+v, %v", got, err)
 	}
 	if bytes.Contains(dump, []byte("excluded")) {
@@ -153,14 +131,8 @@ func TestDebugInstructionSelectionAndWriteFailure(t *testing.T) {
 	if got.Scope != "projected_responses_request" || !responses.SameJSONValue(responses.MustMarshalJSON(got.WireDevelopers), responses.MustMarshalJSON(got.Developers)) {
 		t.Fatal("dump does not distinguish projection from wire instructions")
 	}
-	// Post-startup write failure is retained for shutdown, not returned into
-	// request execution or printed over the active Codex terminal.
-	if err := d.dump.Close(); err != nil {
+	if err := d.Close(); err != nil {
 		t.Fatal(err)
-	}
-	d.instructions(body, body, headers, "session-1", "request-2", 0)
-	if err := d.close(); err == nil {
-		t.Fatal("debug write failure was lost")
 	}
 }
 
@@ -193,13 +165,13 @@ func TestDebugWebSocketInheritedInstructions(t *testing.T) {
 	t.Parallel()
 	flags := newRouterFlags(io.Discard)
 	flags.debug = true
-	d, err := openDebugOutput(testInspector(new(evidence.Service), new(transportcapture.Service)), new(evidence.Service), new(transportcapture.Service), flags.debug, flags.captureOutput)
+	d, err := openDebugOutput(testDiagnostics(new(evidence.Service), new(transportcapture.Service)), flags.debug, flags.captureOutput)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// The plugin proxy fixture is shared until TestMain exits, so do not put
 	// its directory under this test's temporary TMPDIR.
-	t.Cleanup(func() { _ = d.close(); _ = os.RemoveAll(filepath.Dir(d.paths[0])) })
+	t.Cleanup(func() { _ = d.Close(); _ = os.RemoveAll(filepath.Dir(d.Paths()[0])) })
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	var firstDevelopers []json.RawMessage
@@ -229,27 +201,45 @@ func TestDebugWebSocketInheritedInstructions(t *testing.T) {
 			} else if len(input) != 1 || responses.StringField(request, "previous_response_id") != "first" {
 				t.Error("continuation did not use upstream cached input")
 			}
-			lines, err := readDebugInstructionRows(ctx, d.paths[3])
+			data, err := os.ReadFile(d.Paths()[3])
 			if err != nil {
 				t.Error(err)
 				return
 			}
+			lines := bytes.Split(bytes.TrimSpace(data), []byte("\n"))
 			var record struct {
-				Instructions   json.RawMessage   `json:"instructions"`
-				Developers     []json.RawMessage `json:"developer_messages"`
-				Cached         int               `json:"cached_input_items"`
-				WireDevelopers []json.RawMessage `json:"wire_developer_messages"`
-				WireAdditional []json.RawMessage `json:"wire_additional_tools"`
-				WireParent     string            `json:"wire_previous_response_id"`
-				ProjectedBytes int               `json:"projected_input_bytes"`
-				WireBytes      int               `json:"wire_input_bytes"`
+				RequestID      string `json:"request_id"`
+				Cached         int    `json:"cached_input_items"`
+				WireParent     string `json:"wire_previous_response_id"`
+				ProjectedBytes int    `json:"projected_input_bytes"`
+				WireBytes      int    `json:"wire_input_bytes"`
 			}
 			if err := json.Unmarshal(lines[len(lines)-1], &record); err != nil {
 				t.Error(err)
 				return
 			}
-			if !responses.SameJSONValue(record.Instructions, request["instructions"]) || len(record.Developers) == 0 || !responses.SameJSONValue(responses.MustMarshalJSON(record.Developers), responses.MustMarshalJSON(firstDevelopers)) {
-				t.Errorf("dump lost exact final or inherited instructions: top-level equal=%v, dump developer count=%d, wire count=%d", responses.SameJSONValue(record.Instructions, request["instructions"]), len(record.Developers), len(firstDevelopers))
+			report, failures := testDiagnostics(nil, nil).InspectBundle(ctx, diagnostic.InspectOptions{Directory: filepath.Dir(d.Paths()[3]), RequestID: record.RequestID, Field: "all", Limit: 50, TextBytes: 65536})
+			for _, failure := range failures {
+				if failure.Path == d.Paths()[3] {
+					t.Error(failure.Err)
+					return
+				}
+			}
+			var text map[string]query.Text
+			for _, entry := range report.Evidence {
+				if entry.Source == "instructions.jsonl" {
+					text = entry.Text
+				}
+			}
+			var developers, wireDevelopers, wireAdditional []json.RawMessage
+			for key, target := range map[string]*[]json.RawMessage{"developer_messages": &developers, "wire_developer_messages": &wireDevelopers, "wire_additional_tools": &wireAdditional} {
+				if err := json.Unmarshal([]byte(text[key].Text), target); err != nil {
+					t.Error(err)
+					return
+				}
+			}
+			if text["instructions"].Text != responses.StringField(request, "instructions") || len(developers) == 0 || !responses.SameJSONValue(responses.MustMarshalJSON(developers), responses.MustMarshalJSON(firstDevelopers)) {
+				t.Error("dump lost exact final or inherited instructions")
 			}
 			if record.WireBytes != len(request["input"]) || record.ProjectedBytes < record.WireBytes || (id == "second" && record.ProjectedBytes == record.WireBytes) {
 				t.Errorf("incorrect projected/wire byte evidence: %d/%d", record.ProjectedBytes, record.WireBytes)
@@ -257,7 +247,7 @@ func TestDebugWebSocketInheritedInstructions(t *testing.T) {
 			if id == "second" && record.Cached == 0 {
 				t.Error("dump lost cached-prefix provenance")
 			}
-			if id == "second" && (len(record.WireDevelopers) != 0 || len(record.WireAdditional) != 0 || record.WireParent != "first") {
+			if id == "second" && (len(wireDevelopers) != 0 || len(wireAdditional) != 0 || record.WireParent != "first") {
 				t.Error("dump claims cached instructions were sent on continuation")
 			}
 			if err := providerSocketWrite(ctx, conn, socketEvent("response.created", id)); err != nil {
