@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
@@ -93,7 +95,7 @@ func TestAppServerHookRetentionFailureKeepsLiveOutput(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	store := waitTargetTestOpenStore(t)
 	waitTargetTestStore(t, u, store)
-	if err := os.Mkdir(filepath.Join(store.directory, hookObservationsName(u.session.cwd, "main")), 0700); err != nil {
+	if err := os.Mkdir(filepath.Join(store.directory, history.HookObservationsName(u.session.cwd, "main")), 0700); err != nil {
 		t.Fatal(err)
 	}
 	appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.session.cwd, "failed")})
@@ -135,7 +137,7 @@ func TestAppServerHookOpenDialogTracksCompletion(t *testing.T) {
 func TestAppServerHookPagedChildWithoutTurns(t *testing.T) {
 	u, _ := newPagedHistoryUI(t)
 	h := u.historyLoading
-	observation := retainedHookObservation{Run: appServerHookRun{ID: "session-start-hook", EventName: "sessionStart", Status: "completed"},
+	observation := history.HookObservation{Run: history.HookRun{ID: "session-start-hook", EventName: "sessionStart", Status: "completed"},
 		At: time.Unix(100, 0), Completed: true, Output: "feedback: session ready"}
 	entry := u.session.hookEntry("child", observation, false)
 	h.placements = append(h.placements, &restoredPlacement{entry: entry, at: observation.At})
@@ -187,18 +189,18 @@ func TestHookObservationRestartResumeAndReplay(t *testing.T) {
 	if activityui.RowVerb(fresh.view.entries[1].blocks[0]) != "Hook Run" || !strings.Contains(fresh.view.entries[1].Text, "outcome unknown") {
 		t.Fatal("unfinished restored hook claims completion")
 	}
-	foreign, err := reopened.readHookObservations("/other", "main")
+	foreign, err := reopened.publication.ReadHookObservations("/other", "main")
 	if err != nil || len(foreign.Runs) != 0 {
 		t.Fatal("workspace scope leaked hook observations")
 	}
 	rollout := replayTestWrite(t, t.TempDir(), "rollout-main.jsonl", replayTestMeta("main"))
-	source, err := readSessionUIReplay(testHistory(), new(transportcapture.Service), t.Context(), rollout, "", 1)
+	source, err := replayReadTest(t, new(transportcapture.Service), t.Context(), rollout, "", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	playback := newUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
 	t.Cleanup(playback.close)
-	if err := playback.advance(playback.until); err != nil {
+	if err := playback.advance(playback.Until); err != nil {
 		t.Fatal(err)
 	}
 	if len(playback.ui.view.entries) != 2 || playback.ui.session.waitStore != nil || playback.ui.view.entries[1].blocks[0].Running {
@@ -212,13 +214,13 @@ func TestHookObservationRestartResumeAndReplay(t *testing.T) {
 		t.Fatal("a fresh host completion could not settle a restored unknown hook")
 	}
 	// Corrupt optional hook history is disclosed without losing the host replay.
-	if err := os.WriteFile(filepath.Join(directory, hookObservationsName(u.session.cwd, "main")), []byte("invalid"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(directory, history.HookObservationsName(u.session.cwd, "main")), []byte("invalid"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	rollout = replayTestWrite(t, t.TempDir(), "rollout-main.jsonl", replayTestMeta("main"),
 		replayTestRecord("event_msg", replayTestEpoch, map[string]any{"type": "task_started", "turn_id": "t"}),
 		replayTestRecord("event_msg", replayTestEpoch+3000, map[string]any{"type": "task_complete", "turn_id": "t"}))
-	source, err = readSessionUIReplay(testHistory(), new(transportcapture.Service), t.Context(), rollout, "", 1)
+	source, err = replayReadTest(t, new(transportcapture.Service), t.Context(), rollout, "", 1)
 	if err != nil || len(source.HookUnavailable) != 1 || len(source.Events) != 2 {
 		t.Fatalf("invalid hook history blocked host replay or hid the gap: %v, %+v", err, source)
 	}
@@ -263,17 +265,17 @@ func TestHookObservationMovesReleasedStatusLine(t *testing.T) {
 	store := waitTargetTestOpenStore(t)
 	waitTargetTestStore(t, u, store)
 	// Observations retained before status messages were kept with the run.
-	released := retainedHookObservations{Version: 1, Workspace: u.session.cwd, Thread: "main", Runs: []retainedHookObservation{{
-		Run: appServerHookRun{ID: "generated", EventName: "preToolUse", HandlerType: "command", SourcePath: filepath.Join(u.session.cwd, "hooks.json"), Status: "completed"},
+	released := history.HookObservations{Version: 1, Workspace: u.session.cwd, Thread: "main", Runs: []history.HookObservation{{
+		Run: history.HookRun{ID: "generated", EventName: "preToolUse", HandlerType: "command", SourcePath: filepath.Join(u.session.cwd, "hooks.json"), Status: "completed"},
 		At:  time.Unix(1000, 0), Output: "status: Checking for generated Go files\nfeedback: none found", Completed: true}}}
 	data, err := json.Marshal(released)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(store.directory, hookObservationsName(u.session.cwd, "main")), data, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(store.directory, history.HookObservationsName(u.session.cwd, "main")), data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	r, err := store.readHookObservations(u.session.cwd, "main")
+	r, err := store.publication.ReadHookObservations(u.session.cwd, "main")
 	if err != nil {
 		t.Fatal(err)
 	}

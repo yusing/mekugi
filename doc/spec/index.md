@@ -19,7 +19,7 @@ pjdoc:
     - ../../modules/agentmetrics/SPEC.md
     - ../../modules/sessioninspection/SPEC.md
     - ../../modules/diagnostics/SPEC.md
-    - session_replay.md
+    - ../../modules/sessionreplay/SPEC.md
     - ../../modules/transportdiagnostics/SPEC.md
     - changes.md
     - execution.md
@@ -64,7 +64,7 @@ resume evidence and renderer-keyed persistence.
 - [Agent metrics](../../modules/agentmetrics/SPEC.md): runtime reads and evidence-backed AX reporting
 - [Session inspection](../../modules/sessioninspection/SPEC.md): offline logical calls and corpus findings
 - [Diagnostics](../../modules/diagnostics/SPEC.md): debug bundles and failure references
-- [`REQ-SESSION-REPLAY-001`](session_replay.md): timed offline UI replay and profiling
+- [Session replay](../../modules/sessionreplay/SPEC.md): timed offline UI replay and profiling
 - [Transport diagnostics](../../modules/transportdiagnostics/SPEC.md): in-process captured Responses metrics
 - [`REQ-CHANGES-001`](changes.md): observed stock edits and command effects, durable change IDs, and bounded review reads
 - [`REQ-EXECUTION-001`](execution.md): stock editing, execution, and executable frontends

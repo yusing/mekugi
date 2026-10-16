@@ -19,7 +19,7 @@ import (
 )
 
 func testHistory() *history.Service {
-	service, err := history.NewService(append(append(append(append(append(RetainedRecordKinds(), diagnostic.Failures), accounting.RecordKinds()...), changehistory.Module.Contributes.RecordKinds...), recovery.RecordKinds()...), reports.RecordKinds()...))
+	service, err := history.NewService(append(append(append(append(append(RetainedRecordKinds(), diagnostic.Failures, history.HookRecord), accounting.RecordKinds()...), changehistory.Module.Contributes.RecordKinds...), recovery.RecordKinds()...), reports.RecordKinds()...))
 	if err != nil {
 		panic(err)
 	}

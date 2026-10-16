@@ -36,6 +36,7 @@ use (
 	./modules/sessionhistory
 	./modules/sessioninspection
 	./modules/sessionnaming
+	./modules/sessionreplay
 	./modules/sessionpreferences
 	./modules/sourceoutline
 	./modules/sudoapproval

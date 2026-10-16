@@ -2,6 +2,7 @@ package sessionhistory
 
 import (
 	"github.com/yusing/mekugi/contracts/module"
+	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
@@ -12,5 +13,6 @@ var Module = module.Descriptor[Deps, *history.Service, module.NoBindings]{
 	Summary:      "Own retained session publication, namespaces, allocation, leases, and retention",
 	Lifetime:     module.Invocation,
 	HostsRecords: true,
+	Contributes:  module.Contributions[*history.Service]{RecordKinds: []recordkind.Spec{history.HookRecord}},
 	New:          newService,
 }

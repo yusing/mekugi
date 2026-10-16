@@ -28,15 +28,15 @@ func TestSessionUIReplaySpeedPresetRoundTrips(t *testing.T) {
 	if err := p.advance(4500 * time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
-	p.paused = true
-	position, at, next := p.position, p.at, p.next
+	p.Paused = true
+	position, at, next := p.Position, p.At, p.Next
 	press := func(key byte, want float64) {
 		t.Helper()
 		quit, err := p.key(key)
-		if err != nil || quit || p.speed != want {
-			t.Fatalf("key %q: speed=%v want=%v quit=%v error=%v", key, p.speed, want, quit, err)
+		if err != nil || quit || p.Speed != want {
+			t.Fatalf("key %q: speed=%v want=%v quit=%v error=%v", key, p.Speed, want, quit, err)
 		}
-		if p.position != position || !p.at.Equal(at) || p.next != next || !p.paused || !p.ui.now().Equal(at) {
+		if p.Position != position || !p.At.Equal(at) || p.Next != next || !p.Paused || !p.ui.now().Equal(at) {
 			t.Fatal("speed control changed recorded clock, event cursor, or pause state")
 		}
 	}
@@ -75,9 +75,9 @@ func TestSessionUIReplayArbitrarySpeedUsesDirectionalPreset(t *testing.T) {
 			key  byte
 			want float64
 		}{{'-', tc.slower}, {'+', tc.faster}} {
-			p.speed = tc.speed
-			if quit, err := p.key(direction.key); err != nil || quit || p.speed != direction.want {
-				t.Fatalf("speed=%v key=%q: got=%v want=%v quit=%v error=%v", tc.speed, direction.key, p.speed, direction.want, quit, err)
+			p.Speed = tc.speed
+			if quit, err := p.key(direction.key); err != nil || quit || p.Speed != direction.want {
+				t.Fatalf("speed=%v key=%q: got=%v want=%v quit=%v error=%v", tc.speed, direction.key, p.Speed, direction.want, quit, err)
 			}
 		}
 	}
@@ -88,7 +88,7 @@ func TestUISnapshotSessionUIReplayFractionalSpeed(t *testing.T) {
 	if err := p.advance(8 * time.Second); err != nil {
 		t.Fatal(err)
 	}
-	p.speed, p.paused = 0.125, true
+	p.Speed, p.Paused = 0.125, true
 	uisnapshot.Assert(t, "testdata/snapshots/session-ui-replay-fractional-speed.txt", replayPlaybackTestPaint(t, p, 120, 28))
 }
 
@@ -116,7 +116,7 @@ func TestSessionUIReplayInputReportsDoNotBecomeControls(t *testing.T) {
 			var input uiReplayInput
 			t.Cleanup(input.close)
 			p := replayPlaybackTestNew(t)
-			p.paused = true
+			p.Paused = true
 			var actions []byte
 			// Each byte is a separate consume call, covering reports split
 			// at every read boundary without letting ESC reach playback.key.
@@ -136,7 +136,7 @@ func TestSessionUIReplayInputReportsDoNotBecomeControls(t *testing.T) {
 			if !reflect.DeepEqual(actions, want) || input.escapeC != nil {
 				t.Fatalf("actions=%v want=%v escape timeout still armed=%v", actions, want, input.escapeC != nil)
 			}
-			if p.speed != 1 || !p.paused || p.position != 0 {
+			if p.Speed != 1 || !p.Paused || p.Position != 0 {
 				t.Fatal("terminal report payload changed playback state")
 			}
 			if got := input.consume('+'); got != '+' {
@@ -199,8 +199,8 @@ func TestSessionUIReplayControlsAccountForElapsedTime(t *testing.T) {
 		if quit, err := p.control(event.key, event.elapsed); err != nil || quit {
 			t.Fatalf("control %q: quit=%v error=%v", event.key, quit, err)
 		}
-		if p.position != event.want || !p.at.Equal(p.source.Start.Add(event.want)) {
-			t.Fatalf("control %q lost recorded time: position=%v want=%v", event.key, p.position, event.want)
+		if p.Position != event.want || !p.At.Equal(p.Source.Start.Add(event.want)) {
+			t.Fatalf("control %q lost recorded time: position=%v want=%v", event.key, p.Position, event.want)
 		}
 	}
 }
@@ -235,15 +235,15 @@ func TestSessionUIReplayPaneControlsAndBackwardSeek(t *testing.T) {
 				}
 			}
 			assertPane()
-			if p.position != 12020*time.Millisecond || p.speed != 1 || p.paused || p.prefix {
-				t.Fatalf("switch lost elapsed time or changed controls: position=%v speed=%v paused=%v prefix=%v", p.position, p.speed, p.paused, p.prefix)
+			if p.Position != 12020*time.Millisecond || p.Speed != 1 || p.Paused || p.prefix {
+				t.Fatalf("switch lost elapsed time or changed controls: position=%v speed=%v paused=%v prefix=%v", p.Position, p.Speed, p.Paused, p.prefix)
 			}
-			p.paused = true
+			p.Paused = true
 			previous := p.ui
 			if quit, err := p.key('['); err != nil || quit {
 				t.Fatalf("backward seek: quit=%v error=%v", quit, err)
 			}
-			if p.ui == previous || p.position != 2020*time.Millisecond || !p.paused {
+			if p.ui == previous || p.Position != 2020*time.Millisecond || !p.Paused {
 				t.Fatal("backward seek did not rebuild at the paused earlier position")
 			}
 			assertPane()
@@ -258,18 +258,18 @@ func TestSessionUIReplayPanePrefixConsumesInvalidControls(t *testing.T) {
 			if err := p.seek(12 * time.Second); err != nil {
 				t.Fatal(err)
 			}
-			p.paused = true
-			position, at, next, offset := p.position, p.at, p.next, p.ui.view.offset
+			p.Paused = true
+			position, at, next, offset := p.Position, p.At, p.Next, p.ui.view.offset
 			for _, key := range []byte{2, invalid} {
 				if quit, err := p.key(key); err != nil || quit {
 					t.Fatalf("key %q: quit=%v error=%v", key, quit, err)
 				}
 			}
-			if p.prefix || p.ui.shell.focus != 0 || p.speed != 1 || !p.paused || p.position != position || !p.at.Equal(at) || p.next != next || p.ui.view.offset != offset {
+			if p.prefix || p.ui.shell.focus != 0 || p.Speed != 1 || !p.Paused || p.Position != position || !p.At.Equal(at) || p.Next != next || p.ui.view.offset != offset {
 				t.Fatal("invalid pane suffix changed playback or kept the prefix armed")
 			}
-			if quit, err := p.key('+'); err != nil || quit || p.speed != 2 {
-				t.Fatalf("ordinary control after invalid suffix: speed=%v quit=%v error=%v", p.speed, quit, err)
+			if quit, err := p.key('+'); err != nil || quit || p.Speed != 2 {
+				t.Fatalf("ordinary control after invalid suffix: speed=%v quit=%v error=%v", p.Speed, quit, err)
 			}
 		})
 	}
@@ -277,7 +277,7 @@ func TestSessionUIReplayPanePrefixConsumesInvalidControls(t *testing.T) {
 
 func TestSessionUIReplayBarePaneDigitsAreInert(t *testing.T) {
 	p := replayPlaybackTestNew(t)
-	p.paused = true
+	p.Paused = true
 	for _, key := range []byte{2, '3'} {
 		if quit, err := p.key(key); err != nil || quit {
 			t.Fatalf("select Agents: quit=%v error=%v", quit, err)
@@ -287,7 +287,7 @@ func TestSessionUIReplayBarePaneDigitsAreInert(t *testing.T) {
 		if quit, err := p.control(digit, time.Second); err != nil || quit {
 			t.Fatalf("bare digit %q: quit=%v error=%v", digit, quit, err)
 		}
-		if p.ui.shell.focus != 3 || p.position != 0 || p.speed != 1 || !p.paused || p.prefix {
+		if p.ui.shell.focus != 3 || p.Position != 0 || p.Speed != 1 || !p.Paused || p.prefix {
 			t.Fatalf("bare digit %q changed the selected pane or playback", digit)
 		}
 	}
@@ -371,7 +371,7 @@ func TestSessionUIReplayPTYWheelSpeedQuitAndRestore(t *testing.T) {
 			done := make(chan int, 1)
 			finished := false
 			go func() {
-				done <- RunSessionUIReplay(new(activitymodel.Service), testHistory(), new(transportcapture.Service), ctx, []string{"--session", "root", "--from", "1s"}, slave, slave, stderr)
+				done <- RunSessionUIReplay(new(activitymodel.Service), replayTestService(t, new(transportcapture.Service)), ctx, []string{"--session", "root", "--from", "1s"}, slave, slave, stderr)
 			}()
 			defer func() {
 				cancel()

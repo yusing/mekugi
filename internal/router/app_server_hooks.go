@@ -6,36 +6,21 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
-// Source: codex-rs/app-server-protocol/src/protocol/v2/hook.rs HookRunSummary.
-type appServerHookRun struct {
-	ID            string `json:"id"`
-	EventName     string `json:"eventName"`
-	HandlerType   string `json:"handlerType"`
-	ExecutionMode string `json:"executionMode"`
-	SourcePath    string `json:"sourcePath"`
-	Status        string `json:"status"`
-	StatusMessage string `json:"statusMessage"`
-	StartedAt     int64  `json:"startedAt"` // Host epoch seconds, not milliseconds.
-	CompletedAt   *int64 `json:"completedAt"`
-	DurationMS    *int64 `json:"durationMs"`
-	Entries       []struct {
-		Kind string `json:"kind"`
-		Text string `json:"text"`
-	} `json:"entries"`
-}
-
 // Codex's synthetic path for the invocation's -c layer, which holds Mekugi's
 // own hooks and any hook flags the user passes.
 // Source: codex-rs/hooks/src/engine/discovery.rs synthetic_layer_path.
 const builtinHookSource = "/<session-flags>/config.toml"
 
-func hookOutput(run appServerHookRun) (string, bool) {
+func hookOutput(run appserver.HookRun) (string, bool) {
 	var output activitymodel.Output
 	hasError := false
 	for _, entry := range run.Entries {
@@ -82,7 +67,7 @@ func (u *appServerUI) hookEvent(method string, event appServerEvent) error {
 		}
 	}
 	output, hasError := hookOutput(run)
-	observation := retainedHookObservation{Turn: event.TurnID, Run: run, At: u.now(), Output: output, HasError: hasError, Completed: completed}
+	observation := history.HookObservation{Turn: event.TurnID, Run: history.HookRun(run), At: u.now(), Output: output, HasError: hasError, Completed: completed}
 	observation.Run.Entries = nil
 	if u.replay == nil {
 		if err := s.retainHook(event.ThreadID, observation); err != nil {
@@ -98,7 +83,7 @@ func (u *appServerUI) hookEvent(method string, event appServerEvent) error {
 	return nil
 }
 
-func (s *appServerSession) hookEntry(thread string, observation retainedHookObservation, live bool) activityPaneEntry {
+func (s *appServerSession) hookEntry(thread string, observation history.HookObservation, live bool) activityPaneEntry {
 	run := observation.Run
 	hook := &activityui.HookDetails{HandlerType: run.HandlerType, ExecutionMode: run.ExecutionMode,
 		Status: run.Status, HasError: observation.HasError}

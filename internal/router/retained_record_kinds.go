@@ -20,7 +20,7 @@ func RetainedRecordKinds() []recordkind.Spec {
 		}},
 		{ID: "snapshot", Match: legacycall.ValidSnapshotName},
 	}
-	for _, prefix := range []string{"commentary-", "wait-", "hooks-"} {
+	for _, prefix := range []string{"commentary-", "wait-"} {
 		kind := recordkind.Spec{ID: strings.TrimSuffix(prefix, "-"), Match: func(name string) bool {
 			return hashedRecordName(name, prefix)
 		}}

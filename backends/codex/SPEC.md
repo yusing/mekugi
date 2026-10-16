@@ -171,7 +171,16 @@ Discovery can read only a supplied file's first metadata record using the same
 file and line bounds. This identifies a candidate; it does not validate the
 remaining rollout or certify that discovery found every matching source.
 
-An optional observer receives decoded command and task/turn events. Without it,
+The replay consumer receives decoded item and turn observations separately from
+logical-call inspection. Replay files are regular JSONL at most 64 MiB, with
+records below 16 MiB. Known items require identity, turn and valid epoch-millisecond
+start/completion endpoints; malformed records report their source and line.
+Unknown variants remain coverage counts. Copied ancestor metadata, item ownership
+and thread-settings boundaries determine inherited turn ownership. Private/raw
+reasoning is omitted; public summaries and opaque user-content blocks retain their
+meaning. Decoding supplies no synthetic events, wall clock or rendering policy.
+
+An optional inspection observer receives decoded command and task/turn events. Without it,
 event-specific payloads are not interpreted. Persisted execution endpoints take
 precedence over envelope recording time; absent or null endpoints remain unknown.
 The consumer owns metric identity validation, pairing and completeness. Observer

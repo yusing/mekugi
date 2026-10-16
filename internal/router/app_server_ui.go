@@ -849,26 +849,28 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	if handled, err := u.settingsMessage("", m); handled || err != nil {
 		return err
 	}
-	if handled, err := u.sessionEvent(m); handled || err != nil {
-		return err
-	}
 	switch m.Method {
-	case "turn/started", "turn/completed", "item/started", "item/completed", "item/agentMessage/delta":
+	case "thread/started", "thread/status/changed", "thread/tokenUsage/updated", "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded",
+		"turn/started", "turn/completed", "item/started", "item/completed", "item/agentMessage/delta", "item/commandExecution/terminalInteraction",
+		"item/commandExecution/outputDelta", "hook/started", "hook/completed":
 	default:
 		return nil
 	}
-	var p struct {
-		ThreadID string        `json:"threadId"`
-		TurnID   string        `json:"turnId"`
-		ItemID   string        `json:"itemId"`
-		Delta    string        `json:"delta"`
-		Item     appServerItem `json:"item"`
-		Turn     appServerTurn `json:"turn"`
-	}
+	var p appServerEvent
 	if err := json.Unmarshal(m.Params, &p); err != nil {
 		return fmt.Errorf("%s: %w", m.Method, err)
 	}
-	switch m.Method {
+	return u.observedEvent(m.Method, p)
+}
+
+// observedEvent applies already decoded facts. Offline replay shares presentation
+// without traversing live request, approval, input, or notification admission.
+func (u *appServerUI) observedEvent(method string, p appServerEvent) error {
+	if handled, err := u.sessionEvent(method, p); handled || err != nil {
+		return err
+	}
+
+	switch method {
 	case "turn/started":
 		if p.ThreadID == u.thread {
 			u.started(p.Turn.ID)
@@ -906,14 +908,14 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 		}
 	case "item/started", "item/completed", "item/agentMessage/delta":
-		if m.Method == "item/started" {
+		if method == "item/started" {
 			u.observeShellItem(p.ThreadID, p.Item)
 		}
 		if p.ItemID == "" {
 			p.ItemID = p.Item.ID
 		}
 		// Only completion commits, so one message cannot match two identical steers.
-		if p.ThreadID == u.thread && p.Item.Type == "userMessage" && m.Method == "item/completed" {
+		if p.ThreadID == u.thread && p.Item.Type == "userMessage" && method == "item/completed" {
 			u.commitSteer(p.Item)
 			u.commitQuestionReplies(p.Item, p.TurnID)
 		}
@@ -921,11 +923,11 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			return nil
 		}
 		for _, c := range u.questions.calls {
-			if c.thread == p.ThreadID && c.item == p.ItemID && len(c.request) == 0 && m.Method == "item/agentMessage/delta" {
+			if c.thread == p.ThreadID && c.item == p.ItemID && len(c.request) == 0 && method == "item/agentMessage/delta" {
 				return nil
 			}
 		}
-		u.view.applyAppServerItem(true, u.session.cwd, u.thread, p.ThreadID, p.TurnID, p.ItemID, m.Method, p.Delta, p.Item)
+		u.view.applyAppServerItem(true, u.session.cwd, u.thread, p.ThreadID, p.TurnID, p.ItemID, method, p.Delta, p.Item)
 	}
 	return nil
 }

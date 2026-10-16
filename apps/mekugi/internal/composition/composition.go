@@ -25,12 +25,14 @@ import (
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/contracts/reference"
+	"github.com/yusing/mekugi/contracts/replaytiming"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/commandsegments/segments"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/sessioninspection/query"
+	"github.com/yusing/mekugi/modules/sessionreplay/playback"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 )
 
@@ -50,6 +52,7 @@ func (h *Handle[S]) Value() S {
 }
 
 type entry struct {
+	replayTiming []replaytiming.Reader
 	diagnostics  []diagnosticsection.Contribution
 	inspection   []inspection.Contribution
 	id           module.ID
@@ -100,6 +103,15 @@ func (c *Composition) Add[D, S any, B interface {
 		}
 		node.commands = append(node.commands, contribution)
 	}
+	for _, definition := range descriptor.Contributes.ReplayTiming {
+		var read replaytiming.Reader
+		if definition.Read != nil {
+			read = func(ctx context.Context, path string, threads map[string]bool, observe func(replaytiming.Interval) error) error {
+				return definition.Read(handle.Value(), ctx, path, threads, observe)
+			}
+		}
+		node.replayTiming = append(node.replayTiming, read)
+	}
 	for _, definition := range descriptor.Contributes.Inspection {
 		var contribution inspection.Contribution
 		if definition.NewAX != nil {
@@ -129,6 +141,9 @@ func (c *Composition) Add[D, S any, B interface {
 	node.construct = func(slots module.Slots, binder binding.Binder, runtime *Runtime) error {
 		if !descriptor.HostsDiagnosticSections {
 			slots.DiagnosticSections = nil
+		}
+		if !descriptor.HostsReplayTiming {
+			slots.ReplayTiming = nil
 		}
 		if !descriptor.HostsInspection {
 			slots.Inspection = nil
@@ -232,6 +247,7 @@ func (r *moduleRegistrar) ShellApproval(guard binding.ShellApproval) error {
 }
 
 type Runtime struct {
+	Replay               *playback.Service
 	Activity             *feed.Service
 	Notifications        *notice.Service
 	Preferences          *preferences.Service
@@ -275,6 +291,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 	runtime := new(Runtime)
 	records := slices.Clone(c.LegacyRecordKinds)
 	var inspections []inspection.Contribution
+	var replayTiming []replaytiming.Reader
 	var diagnostics []diagnosticsection.Contribution
 	var references []reference.Resolver
 	var guidance []guidance.Section
@@ -293,6 +310,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 		references = append(references, node.references...)
 		guidance = append(guidance, node.guidance...)
 		inspections = append(inspections, node.inspection...)
+		replayTiming = append(replayTiming, node.replayTiming...)
 		diagnostics = append(diagnostics, node.diagnostics...)
 	}
 	for i, node := range c.entries {
@@ -347,7 +365,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 		return nil, err
 	}
 	for _, node := range c.entries {
-		if err := node.construct(module.Slots{DiagnosticSections: slices.Clone(diagnostics), Inspection: slices.Clone(inspections), Commands: slices.Clone(runtime.Commands), RecordKinds: slices.Clone(records), References: slices.Clone(references), Guidance: slices.Clone(guidance)}, binder, runtime); err != nil {
+		if err := node.construct(module.Slots{ReplayTiming: slices.Clone(replayTiming), DiagnosticSections: slices.Clone(diagnostics), Inspection: slices.Clone(inspections), Commands: slices.Clone(runtime.Commands), RecordKinds: slices.Clone(records), References: slices.Clone(references), Guidance: slices.Clone(guidance)}, binder, runtime); err != nil {
 			return nil, fmt.Errorf("construct %s: %w", node.id, err)
 		}
 	}
@@ -366,6 +384,6 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 	return runtime, nil
 }
 
-func (r *moduleRegistrar) Rollout(attach func(binding.RolloutReader) error) error {
+func (r *moduleRegistrar) Rollout(attach func(binding.RolloutSource) error) error {
 	return r.binder.Rollout(attach)
 }

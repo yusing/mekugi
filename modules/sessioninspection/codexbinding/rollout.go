@@ -23,7 +23,8 @@ type Bindings = binding.Bindings[*query.Service]
 var Codex = Bindings{Requires: []capability.Requirement{{Mechanism: capability.Rollout, Required: true}}, Register: Bind}
 
 func Bind(registrar binding.Registrar, service *query.Service) error {
-	return registrar.Rollout(func(read binding.RolloutReader) error {
+	return registrar.Rollout(func(source binding.RolloutSource) error {
+		read := source.Inspect
 		return service.BindSource(func(ctx context.Context, path string, observe func(inspection.Event) error) (query.Rollout, error) {
 			var observer func(binding.RolloutEvent) error
 			if observe != nil {

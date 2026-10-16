@@ -133,6 +133,17 @@ logical requests nor provider usage and are not counted twice. Explicit local
 expectation still means a provider was expected. Any actual traffic remains
 measured. Reconciliation excludes only explicitly provider-free exchanges.
 
+### Replay timing
+
+An optional replay-timing contribution reads provider-boundary records only for
+selected loaded threads. Each interval ends at `captured_at` and begins that time
+minus `duration_ms`; missing timestamps, negative durations and durations over
+24 hours fail. The regular input is at most 64 MiB, with records below 16 MiB.
+This read preserves historical timing records without requiring newer usage or
+capture-identity fields, and does not infer provider usage from duration.
+Cancellation, malformed input and consumer errors propagate without a partial
+success claim. It opens no recorder and makes no provider requests.
+
 ## Lifecycle
 
 The composed service is invocation-scoped and resource-free. Live launch opens

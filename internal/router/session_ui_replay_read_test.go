@@ -12,6 +12,9 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/contracts/observation"
+	"github.com/yusing/mekugi/modules/sessionreplay/playback"
+
 	"github.com/yusing/mekugi/libraries/commandargs"
 
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
@@ -80,7 +83,7 @@ func TestSessionUIReplayNormalizesItemsAndRecordedTiming(t *testing.T) {
 		replayTestItem("root", "turn", replayTestEpoch+18000, replayTestEpoch+19000, map[string]any{"type": "FutureItem", "id": "unknown"}),
 	)
 	path := replayTestWrite(t, dir, "root.jsonl", records...)
-	r, err := readSessionUIReplay(testHistory(), new(transportcapture.Service), t.Context(), path, "", 17)
+	r, err := replayReadTest(t, new(transportcapture.Service), t.Context(), path, "", 17)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,37 +93,37 @@ func TestSessionUIReplayNormalizesItemsAndRecordedTiming(t *testing.T) {
 	if !r.Start.Equal(time.UnixMilli(replayTestEpoch)) || !r.End.Equal(time.UnixMilli(replayTestEpoch+20000)) {
 		t.Fatalf("recorded bounds changed: %v to %v", r.Start, r.End)
 	}
-	completed := make(map[string]appServerItem)
-	started := make(map[string]appServerItem)
+	completed := make(map[string]observation.Item)
+	started := make(map[string]observation.Item)
 	for j, event := range r.Events {
 		if j > 0 && event.At.Before(r.Events[j-1].At) {
 			t.Fatal("events are not chronological")
 		}
-		if event.Params.ThreadID != "root" || event.Params.TurnID != "turn" {
+		if event.ThreadID != "root" || event.TurnID != "turn" {
 			t.Fatalf("lost event identity: %+v", event)
 		}
-		switch event.Method {
+		switch event.Kind {
 		case "item/completed", "item/started":
-			index := slices.IndexFunc(items, func(item map[string]any) bool { return item["id"] == event.Params.ItemID })
+			index := slices.IndexFunc(items, func(item map[string]any) bool { return item["id"] == event.ItemID })
 			if index < 0 {
 				t.Fatalf("unexpected item: %+v", event)
 			}
 			at := replayTestEpoch + int64(index+1)*1000
-			if event.Method == "item/completed" {
+			if event.Kind == "item/completed" {
 				at += 500
-				completed[event.Params.ItemID] = event.Params.Item
+				completed[event.ItemID] = event.Item
 			} else {
-				started[event.Params.ItemID] = event.Params.Item
+				started[event.ItemID] = event.Item
 			}
 			if !event.At.Equal(time.UnixMilli(at)) {
-				t.Fatalf("%s %s timing = %v, want %v", event.Method, event.Params.ItemID, event.At, time.UnixMilli(at))
+				t.Fatalf("%s %s timing = %v, want %v", event.Kind, event.ItemID, event.At, time.UnixMilli(at))
 			}
 		case "turn/started":
-			if event.Params.Turn.ID != "turn" || event.Params.Turn.Status != "inProgress" {
+			if event.TurnID != "turn" || event.TurnStatus != "inProgress" {
 				t.Fatalf("bad turn start: %+v", event)
 			}
 		case "turn/completed":
-			if event.Params.Turn.ID != "turn" || event.Params.Turn.Status != "completed" {
+			if event.TurnID != "turn" || event.TurnStatus != "completed" {
 				t.Fatalf("bad turn completion: %+v", event)
 			}
 		}
@@ -172,7 +175,7 @@ func TestSessionUIReplayDiscoversSiblingThreadsAndFiltersProviders(t *testing.T)
 		map[string]any{"boundary": "provider", "thread_id": "unrelated", "captured_at": time.UnixMilli(replayTestEpoch + 9000), "duration_ms": 200},
 		map[string]any{"boundary": "command", "thread_id": "root", "captured_at": time.UnixMilli(replayTestEpoch + 9000), "duration_ms": 200},
 	)
-	r, err := readSessionUIReplay(testHistory(), new(transportcapture.Service), t.Context(), root, debugDir, 3)
+	r, err := replayReadTest(t, new(transportcapture.Service), t.Context(), root, debugDir, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,8 +190,8 @@ func TestSessionUIReplayDiscoversSiblingThreadsAndFiltersProviders(t *testing.T)
 		if j > 0 && event.At.Before(r.Events[j-1].At) {
 			t.Fatal("merged thread/provider events are not chronological")
 		}
-		if strings.HasPrefix(event.Method, "replay/provider") {
-			key := event.Params.ThreadID + ":" + event.Method
+		if strings.HasPrefix(string(event.Kind), "replay/provider") {
+			key := event.ThreadID + ":" + string(event.Kind)
 			got[key] = append(got[key], event.At.UnixMilli()-replayTestEpoch)
 		}
 	}
@@ -211,7 +214,7 @@ func TestSessionUIReplayVerifiesChildMetadata(t *testing.T) {
 					replayTestItem(id, "child-turn", replayTestEpoch+2200, replayTestEpoch+2800,
 						map[string]any{"type": "AgentMessage", "id": "answer", "text": "retained response"}))
 			}
-			source, err := readSessionUIReplay(testHistory(), nil, t.Context(), root, "", 1)
+			source, err := replayReadTest(t, nil, t.Context(), root, "", 1)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -224,7 +227,7 @@ func TestSessionUIReplayVerifiesChildMetadata(t *testing.T) {
 				t.Fatalf("unavailable child was not disclosed: missing=%v items=%d", source.Missing, source.Items)
 			}
 			for _, event := range source.Events {
-				if event.Params.ThreadID != "root" && (!unique || event.Params.ThreadID != "child") {
+				if event.ThreadID != "root" && (!unique || event.ThreadID != "child") {
 					t.Fatalf("unverified child event was replayed: %+v", event)
 				}
 			}
@@ -249,7 +252,7 @@ func TestSessionUIReplayRejectsInvalidEvidence(t *testing.T) {
 			record := replayTestItem("root", "turn", replayTestEpoch, replayTestEpoch+100, map[string]any{"type": "ContextCompaction", "id": "item"})
 			tc.mutate(record["payload"].(map[string]any))
 			path := replayTestWrite(t, t.TempDir(), "root.jsonl", replayTestMeta("root"), record)
-			if _, err := readSessionUIReplay(testHistory(), new(transportcapture.Service), t.Context(), path, "", 1); err == nil || !strings.Contains(err.Error(), path+":2:") {
+			if _, err := replayReadTest(t, new(transportcapture.Service), t.Context(), path, "", 1); err == nil || !strings.Contains(err.Error(), path+":2:") {
 				t.Fatalf("invalid evidence lacks source-qualified error: %v", err)
 			}
 		})
@@ -273,7 +276,7 @@ func TestSessionUIReplayRejectsInvalidEvidence(t *testing.T) {
 			if writeErr != nil || closeErr != nil {
 				t.Fatalf("fixture write: %v, close: %v", writeErr, closeErr)
 			}
-			if _, err := readSessionUIReplay(testHistory(), new(transportcapture.Service), t.Context(), path, "", 1); err == nil || !strings.Contains(err.Error(), path+":2:") {
+			if _, err := replayReadTest(t, new(transportcapture.Service), t.Context(), path, "", 1); err == nil || !strings.Contains(err.Error(), path+":2:") {
 				t.Fatalf("invalid evidence lacks source-qualified error: %v", err)
 			}
 		})
@@ -291,9 +294,9 @@ func TestSessionUIReplaySimulatedDeltasPreserveUTF8AndSeed(t *testing.T) {
 		replayTestItem("root", "turn", start, end, map[string]any{"type": "Reasoning", "id": "reasoning", "summary_text": summaries}),
 		replayTestItem("root", "turn", start, end, map[string]any{"type": "CommandExecution", "id": "output", "command": []string{"echo", "not executed"}, "aggregated_output": output}),
 	)
-	read := func(seed uint64) *sessionUIReplay {
+	read := func(seed uint64) *playback.Source {
 		t.Helper()
-		r, err := readSessionUIReplay(testHistory(), new(transportcapture.Service), t.Context(), path, "", seed)
+		r, err := replayReadTest(t, new(transportcapture.Service), t.Context(), path, "", seed)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -305,10 +308,10 @@ func TestSessionUIReplaySimulatedDeltasPreserveUTF8AndSeed(t *testing.T) {
 	}
 	texts := make(map[string]string)
 	counts := make(map[string]int)
-	cadence := func(events []uiReplayEvent) []time.Time {
+	cadence := func(events []playback.Event) []time.Time {
 		var times []time.Time
 		for _, event := range events {
-			if strings.HasSuffix(event.Method, "Delta") || strings.HasSuffix(event.Method, "/delta") {
+			if strings.HasSuffix(string(event.Kind), "Delta") || strings.HasSuffix(string(event.Kind), "/delta") {
 				times = append(times, event.At)
 			}
 		}
@@ -319,17 +322,17 @@ func TestSessionUIReplaySimulatedDeltasPreserveUTF8AndSeed(t *testing.T) {
 	}
 	methods := map[string]string{"message": "item/agentMessage/delta", "reasoning": "item/reasoning/summaryTextDelta", "output": "item/commandExecution/outputDelta"}
 	for _, event := range r.Events {
-		if event.Method != methods[event.Params.ItemID] {
+		if string(event.Kind) != methods[event.ItemID] {
 			continue
 		}
-		if !event.At.After(time.UnixMilli(start)) || !event.At.Before(time.UnixMilli(end)) || !utf8.ValidString(event.Params.Delta) || event.Params.Delta == "" {
+		if !event.At.After(time.UnixMilli(start)) || !event.At.Before(time.UnixMilli(end)) || !utf8.ValidString(event.Delta) || event.Delta == "" {
 			t.Fatalf("delta violates recorded bounds or UTF8: %+v", event)
 		}
-		if event.Params.ThreadID != "root" || event.Params.TurnID != "turn" {
+		if event.ThreadID != "root" || event.TurnID != "turn" {
 			t.Fatalf("delta identity lost: %+v", event)
 		}
-		texts[event.Params.ItemID] += event.Params.Delta
-		counts[event.Params.ItemID]++
+		texts[event.ItemID] += event.Delta
+		counts[event.ItemID]++
 	}
 	want := map[string]string{"message": message, "reasoning": strings.Join(summaries, "\n\n"), "output": output}
 	if !reflect.DeepEqual(texts, want) {
@@ -357,7 +360,7 @@ func TestSessionUIReplayChildInheritedHistoryDoesNotDuplicateAncestor(t *testing
 		replayTestItem("child", "child-turn", replayTestEpoch+2100, replayTestEpoch+2900, map[string]any{"type": "AgentMessage", "id": "answer", "content": []map[string]any{{"text": "child response"}}}),
 		replayTestRecord("event_msg", replayTestEpoch+3000, map[string]any{"type": "task_complete", "turn_id": "child-turn"}),
 	)
-	r, err := readSessionUIReplay(testHistory(), new(transportcapture.Service), t.Context(), root, "", 1)
+	r, err := replayReadTest(t, new(transportcapture.Service), t.Context(), root, "", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -366,8 +369,8 @@ func TestSessionUIReplayChildInheritedHistoryDoesNotDuplicateAncestor(t *testing
 	}
 	counts := make(map[string]int)
 	for _, event := range r.Events {
-		if event.Method == "turn/started" || event.Method == "turn/completed" || event.Method == "item/completed" {
-			counts[event.Params.ThreadID+":"+event.Params.TurnID+":"+event.Method]++
+		if event.Kind == "turn/started" || event.Kind == "turn/completed" || event.Kind == "item/completed" {
+			counts[event.ThreadID+":"+event.TurnID+":"+string(event.Kind)]++
 		}
 	}
 	want := map[string]int{

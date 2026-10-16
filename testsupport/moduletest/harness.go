@@ -17,6 +17,7 @@ import (
 
 type Scripted struct {
 	ReadRollout          binding.RolloutReader
+	ReplaySource         binding.RolloutSource
 	RolloutRegistrations int
 	binding.Registry
 	Capabilities map[capability.Mechanism]capability.Result
@@ -78,17 +79,19 @@ func BindCommand[S any](definition command.Definition[S], service S) command.Con
 	}
 }
 
-func (s *Scripted) Rollout(attach func(binding.RolloutReader) error) error {
+func (s *Scripted) Rollout(attach func(binding.RolloutSource) error) error {
 	if attach == nil {
 		return errors.New("missing rollout consumer")
 	}
 	s.RolloutRegistrations++
-	return attach(func(ctx context.Context, path string, observe func(binding.RolloutEvent) error) (binding.Rollout, error) {
+	source := s.ReplaySource
+	source.Inspect = func(ctx context.Context, path string, observe func(binding.RolloutEvent) error) (binding.Rollout, error) {
 		if s.ReadRollout == nil {
 			return binding.Rollout{}, errors.New("rollout read is not scripted")
 		}
 		return s.ReadRollout(ctx, path, observe)
-	})
+	}
+	return attach(source)
 }
 
 func BindInspection[S any](definition inspection.Definition[S], service S) inspection.Contribution {

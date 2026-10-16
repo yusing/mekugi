@@ -8,6 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/observation"
+	"github.com/yusing/mekugi/modules/sessionreplay/playback"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -30,7 +33,7 @@ func TestSessionUIReplayRetainsQuestionAnswerWait(t *testing.T) {
 		}),
 		replayTestRecord("event_msg", replayTestEpoch+10000, map[string]any{"type": "task_complete", "turn_id": "turn"}),
 	)
-	source, err := readSessionUIReplay(testHistory(), new(transportcapture.Service), t.Context(), path, "", 1)
+	source, err := replayReadTest(t, new(transportcapture.Service), t.Context(), path, "", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +67,7 @@ func TestSessionUIReplayReasoningUsesRecordedItemStart(t *testing.T) {
 		}),
 		replayTestRecord("event_msg", replayTestEpoch+4000, map[string]any{"type": "task_complete", "turn_id": "turn"}),
 	)
-	source, err := readSessionUIReplay(testHistory(), new(transportcapture.Service), t.Context(), path, "", 1)
+	source, err := replayReadTest(t, new(transportcapture.Service), t.Context(), path, "", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +100,7 @@ func TestSessionUIReplayRustAgentStatusShapesReachFinalWaitDisplay(t *testing.T)
 			"sender_thread_id": "root", "agents_states": states,
 		}),
 	)
-	source, err := readSessionUIReplay(testHistory(), new(transportcapture.Service), t.Context(), path, "", 1)
+	source, err := replayReadTest(t, new(transportcapture.Service), t.Context(), path, "", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,10 +108,10 @@ func TestSessionUIReplayRustAgentStatusShapesReachFinalWaitDisplay(t *testing.T)
 		"running-agent": "running", "initializing-agent": "pendingInit", "interrupted-agent": "interrupted",
 		"shutdown-agent": "shutdown", "missing-agent": "notFound", "completed-agent": "completed", "errored-agent": "errored",
 	}
-	var normalized map[string]appServerAgentState
+	var normalized map[string]observation.AgentState
 	for _, event := range source.Events {
-		if event.Method == "item/completed" {
-			normalized = event.Params.Item.AgentsStates
+		if event.Kind == "item/completed" {
+			normalized = event.Item.AgentsStates
 		}
 	}
 	if len(normalized) != len(want) {
@@ -121,7 +124,7 @@ func TestSessionUIReplayRustAgentStatusShapesReachFinalWaitDisplay(t *testing.T)
 	}
 	p := newUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
 	t.Cleanup(p.close)
-	if err := p.advance(p.until); err != nil {
+	if err := p.advance(p.Until); err != nil {
 		t.Fatal(err)
 	}
 	replayPlaybackTestPaint(t, p, 120, 28)
@@ -159,7 +162,7 @@ func TestSessionUIReplayDirectForkSkipsCopiedAncestorEvents(t *testing.T) {
 		replayTestItem("fork", "fork-turn", replayTestEpoch+4500, replayTestEpoch+5500, map[string]any{"type": "AgentMessage", "id": "fork-answer", "content": []map[string]any{{"text": "fork answer"}}}),
 		replayTestRecord("event_msg", replayTestEpoch+6000, map[string]any{"type": "task_complete", "turn_id": "fork-turn"}),
 	)
-	source, err := readSessionUIReplay(testHistory(), new(transportcapture.Service), t.Context(), path, "", 1)
+	source, err := replayReadTest(t, new(transportcapture.Service), t.Context(), path, "", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,11 +171,11 @@ func TestSessionUIReplayDirectForkSkipsCopiedAncestorEvents(t *testing.T) {
 	}
 	counts := make(map[string]int)
 	for _, event := range source.Events {
-		if event.Params.ThreadID != "fork" || event.Params.TurnID != "fork-turn" || event.Params.ItemID == "ancestor-answer" {
+		if event.ThreadID != "fork" || event.TurnID != "fork-turn" || event.ItemID == "ancestor-answer" {
 			t.Fatalf("copied ancestor event misattributed to fork: %+v", event)
 		}
-		if event.Method == "turn/started" || event.Method == "turn/completed" || event.Method == "item/completed" {
-			counts[event.Method]++
+		if event.Kind == "turn/started" || event.Kind == "turn/completed" || event.Kind == "item/completed" {
+			counts[string(event.Kind)]++
 		}
 	}
 	if !reflect.DeepEqual(counts, map[string]int{"turn/started": 1, "turn/completed": 1, "item/completed": 1}) {
@@ -189,7 +192,7 @@ func TestSessionUIReplayItemlessForkTurnUsesSettingsBoundary(t *testing.T) {
 		replayTestRecord("event_msg", replayTestEpoch+3000, map[string]any{"type": "task_started", "turn_id": "local"}),
 		replayTestRecord("event_msg", replayTestEpoch+7000, map[string]any{"type": "turn_aborted", "turn_id": "local"}),
 	)
-	source, err := readSessionUIReplay(testHistory(), new(transportcapture.Service), t.Context(), path, "", 1)
+	source, err := replayReadTest(t, new(transportcapture.Service), t.Context(), path, "", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +200,7 @@ func TestSessionUIReplayItemlessForkTurnUsesSettingsBoundary(t *testing.T) {
 		t.Fatalf("itemless local interval lost: %+v", source)
 	}
 	for _, event := range source.Events {
-		if event.Params.ThreadID != "fork" || event.Params.Turn.ID != "local" {
+		if event.ThreadID != "fork" || event.TurnID != "local" {
 			t.Fatalf("incorrect turn owner: %+v", event)
 		}
 	}
@@ -209,7 +212,7 @@ func TestSessionUIReplayItemlessForkTurnUsesSettingsBoundary(t *testing.T) {
 	if p.ui.turn != "local" {
 		t.Fatal("local wait interval was omitted")
 	}
-	if err := p.advance(p.until); err != nil {
+	if err := p.advance(p.Until); err != nil {
 		t.Fatal(err)
 	}
 	if p.ui.turn != "" || p.ui.status != "Interrupted" {
@@ -225,14 +228,14 @@ func TestSessionUIReplayEndPaintSettlesQueuedCommandOutput(t *testing.T) {
 		lines = append(lines, fmt.Sprintf("captured-line-%03d", j))
 	}
 	output := strings.Join(lines, "\n") + "\n"
-	command := appServerItem{ID: "command", Type: "commandExecution", Command: "slow-command", Status: "inProgress"}
+	command := observation.Item{ID: "command", Type: "commandExecution", Command: "slow-command", Status: "inProgress"}
 	completed := command
 	completed.Status, completed.ExitCode, completed.DurationMS, completed.AggregatedOutput = "completed", new(0), new(int64(1000)), &output
 	end := start.Add(time.Second)
-	source := &sessionUIReplay{Thread: "root", Cwd: "/workspace/replay", Start: start, End: end, Threads: map[string]string{"root": "/root"}, Events: []uiReplayEvent{
-		{At: start, Method: "item/started", Params: appServerEvent{ThreadID: "root", TurnID: "turn", ItemID: command.ID, Item: command}},
-		{At: start.Add(500 * time.Millisecond), Method: "item/commandExecution/outputDelta", Params: appServerEvent{ThreadID: "root", TurnID: "turn", ItemID: command.ID, Delta: output}},
-		{At: end, Method: "item/completed", Params: appServerEvent{ThreadID: "root", TurnID: "turn", ItemID: command.ID, Item: completed}},
+	source := &playback.Source{Thread: "root", Cwd: "/workspace/replay", Start: start, End: end, Threads: map[string]string{"root": "/root"}, Events: []playback.Event{
+		{Event: observation.Event{At: start, Kind: "item/started", ThreadID: "root", TurnID: "turn", ItemID: command.ID, Item: command}},
+		{Event: observation.Event{At: start.Add(500 * time.Millisecond), Kind: "item/commandExecution/outputDelta", ThreadID: "root", TurnID: "turn", ItemID: command.ID, Delta: output}},
+		{Event: observation.Event{At: end, Kind: "item/completed", ThreadID: "root", TurnID: "turn", ItemID: command.ID, Item: completed}},
 	}}
 	p := newUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
 	t.Cleanup(p.close)
@@ -245,10 +248,10 @@ func TestSessionUIReplayEndPaintSettlesQueuedCommandOutput(t *testing.T) {
 	if run == nil || run.dirty || run.output.Pending() == 0 {
 		t.Fatal("regression requires painted output with a remaining backlog")
 	}
-	if err := p.advance(p.until); err != nil {
+	if err := p.advance(p.Until); err != nil {
 		t.Fatal(err)
 	}
-	p.paused = true
+	p.Paused = true
 	first := ansi.Strip(replayPlaybackTestPaint(t, p, 120, 28))
 	if len(p.ui.session.commands) != 0 {
 		t.Fatal("session-end frame leaves recorded completed command running")
@@ -266,7 +269,7 @@ func TestSessionUIReplayEndPaintSettlesQueuedCommandOutput(t *testing.T) {
 		t.Fatalf("session-end repaint lost final retained output: tail=%q\n%s", tail, first)
 	}
 	second := ansi.Strip(replayPlaybackTestPaint(t, p, 120, 28))
-	if first != second || !p.at.Equal(end) || p.position != p.until {
+	if first != second || !p.At.Equal(end) || p.Position != p.Until {
 		t.Fatal("paused final frame continues rolling output or changes recorded clock")
 	}
 }

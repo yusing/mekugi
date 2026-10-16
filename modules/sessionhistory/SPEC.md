@@ -74,8 +74,12 @@ None. Codex execution remains outside this module.
 
 ## Records
 
-Session catalogs, durable namespace identity, and allocation high-water marks
-belong here. Other owners supply their record kinds, dependency inspection, and
+Session catalogs, durable namespace identity, allocation high-water marks and
+published host-hook facts belong here. Hook records bind exact workspace and
+thread identity, preserve recorded output/outcomes, and disclose dropped earlier
+observations. Read-only attachment neither creates storage nor revives unfinished
+hooks. The retained codec preserves published records; the live hook schema
+belongs to the Codex backend. Other owners supply their record kinds, dependency inspection, and
 prepared semantic retirement updates. Existing retained paths and encodings are
 preserved during extraction. Extracted features may introduce their own record
 kinds for new facts while retaining their historical readers; session history

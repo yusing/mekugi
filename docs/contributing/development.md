@@ -79,7 +79,7 @@ previews. Missing evidence is reported; private content may appear on screen. `p
 pauses, `+`/`-` changes speed, `[`/`]` seeks, `r` restarts, `q` quits. Use `--from 5m
 --until 6m` for intervals or `--headless --width 160 --height 48 --seed 1 --speed 1` for
 repeatable timing; headless excludes terminal backpressure. See
-[replay](../../doc/spec/session_replay.md).
+[replay](../../modules/sessionreplay/SPEC.md).
 
 ## Profile live sessions and replay
 

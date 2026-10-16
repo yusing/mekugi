@@ -123,17 +123,16 @@ type appServerEvent struct {
 	Status struct {
 		Type string `json:"type"`
 	} `json:"status"`
-	ThreadID        string                   `json:"threadId"`
-	TurnID          string                   `json:"turnId"`
-	ItemID          string                   `json:"itemId"`
-	Delta           string                   `json:"delta"`
-	ProcessID       string                   `json:"processId"`
-	Stdin           string                   `json:"stdin"`
-	Item            appServerItem            `json:"item"`
-	Run             *appServerHookRun        `json:"run,omitempty"`
-	HookObservation *retainedHookObservation `json:"-"` // Offline presentation, never a host field.
-	Thread          appServerThreadInfo      `json:"thread"`
-	TokenUsage      struct {
+	ThreadID   string              `json:"threadId"`
+	TurnID     string              `json:"turnId"`
+	ItemID     string              `json:"itemId"`
+	Delta      string              `json:"delta"`
+	ProcessID  string              `json:"processId"`
+	Stdin      string              `json:"stdin"`
+	Item       appServerItem       `json:"item"`
+	Run        *appserver.HookRun  `json:"run,omitempty"`
+	Thread     appServerThreadInfo `json:"thread"`
+	TokenUsage struct {
 		Total              appServerTokenUsage  `json:"total"`
 		Last               *appServerTokenUsage `json:"last"`
 		ModelContextWindow uint64               `json:"modelContextWindow"`
@@ -229,40 +228,29 @@ func (s *appServerSession) next() uint64 {
 
 // sessionEvent handles what the session adapter owns. Main-thread turn
 // lifecycle and Main's own messages continue to the transcript handler.
-func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
+func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error) {
 	s := &u.session
 	if s.paths == nil {
 		return false, nil
 	}
-	switch m.Method {
-	case "thread/started", "thread/status/changed", "thread/tokenUsage/updated", "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded",
-		"turn/started", "turn/completed", "item/started", "item/completed", "item/agentMessage/delta", "item/commandExecution/terminalInteraction",
-		"item/commandExecution/outputDelta", "hook/started", "hook/completed":
-	default:
-		return false, nil
+	if method == "hook/started" || method == "hook/completed" {
+		return true, u.hookEvent(method, p)
 	}
-	var p appServerEvent
-	if err := json.Unmarshal(m.Params, &p); err != nil {
-		return true, fmt.Errorf("%s: %w", m.Method, err)
-	}
-	if m.Method == "hook/started" || m.Method == "hook/completed" {
-		return true, u.hookEvent(m.Method, p)
-	}
-	u.observeProgress(m.Method, p)
-	if m.Method == "item/started" {
+	u.observeProgress(method, p)
+	if method == "item/started" {
 		u.observeShellItem(p.ThreadID, p.Item)
 	}
 	if p.Item.Type == "commandExecution" {
 		// Every command is offered for matching, including ones Activity hides,
 		// so their shells never wait for an item that will not arrive.
 		key := [3]string{p.ThreadID, p.TurnID, cmp.Or(p.ItemID, p.Item.ID)}
-		if m.Method == "item/completed" {
+		if method == "item/completed" {
 			u.execTrack.completed(key)
 		}
 		switch {
-		case m.Method == "item/started":
+		case method == "item/started":
 			u.execTrack.start(key, p.Item.Command)
-		case m.Method == "item/completed" && (u.session.commands[key] == nil || !u.execTrack.tracking(key)):
+		case method == "item/completed" && (u.session.commands[key] == nil || !u.execTrack.tracking(key)):
 			// Only a command Activity presents holds its report until it ends.
 			u.execTrack.finish(key)
 		}
@@ -278,7 +266,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 	}
 	var entries []activityPaneEntry
 	now := u.now()
-	switch m.Method {
+	switch method {
 	case "thread/started":
 		info := p.Thread
 		if info.ID == "" || info.ID == u.thread {
@@ -368,7 +356,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 			}
 		}
 		text := s.reasoning[key]
-		if m.Method == "item/reasoning/summaryPartAdded" {
+		if method == "item/reasoning/summaryPartAdded" {
 			if text != "" {
 				s.reasoning[key] = text + "\n\n"
 			}
@@ -382,10 +370,10 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 	case "item/started", "item/completed", "item/agentMessage/delta":
 		item := p.Item
 		id := cmp.Or(p.ItemID, item.ID)
-		item = u.waitItem(item, p.ThreadID, p.TurnID, id, m.Method == "item/started")
-		native := &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: id, phase: m.Method, live: true, command: item.Command, status: item.Status, duration: appServerDuration(item), workdir: appServerCommandWorkdir(item, s.cwd)}
+		item = u.waitItem(item, p.ThreadID, p.TurnID, id, method == "item/started")
+		native := &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: id, phase: method, live: true, command: item.Command, status: item.Status, duration: appServerDuration(item), workdir: appServerCommandWorkdir(item, s.cwd)}
 		agent := s.path(p.ThreadID)
-		if m.Method != "item/completed" && item.Type != "reasoning" && item.Type != "userMessage" {
+		if method != "item/completed" && item.Type != "reasoning" && item.Type != "userMessage" {
 			// Other output started first: that request streamed no reasoning.
 			// A completion can be the previous request's command, notified late.
 			// Applied now: the item's own handling may return without applying.
@@ -393,7 +381,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 				u.applyActivity(dropped, nil)
 			}
 		}
-		if text, wait, handled := appServerProgress(item, m.Method); handled {
+		if text, wait, handled := appServerProgress(item, method); handled {
 			if text != "" {
 				native.wait = wait
 				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "progress", Text: text, Observed: now, native: native})
@@ -416,10 +404,10 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		case "reasoning":
 			key := [3]string{p.ThreadID, p.TurnID, id}
 			text := strings.Join(item.Summary, "\n\n")
-			if m.Method == "item/started" {
+			if method == "item/started" {
 				s.startThinking(key, native, now)
 			}
-			if m.Method == "item/completed" {
+			if method == "item/completed" {
 				if pending, ok := s.pendingThinking[p.ThreadID]; ok && s.thinking[key].IsZero() && strings.TrimSpace(text) != "" {
 					// A summary delivered only at completion still takes over the block.
 					delete(s.pendingThinking, p.ThreadID)
@@ -435,7 +423,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 					}
 				}
 			}
-			if m.Method == "item/completed" && strings.TrimSpace(text) == "" {
+			if method == "item/completed" && strings.TrimSpace(text) == "" {
 				// A raw-only item had no public summary. Remove its waiting
 				// header rather than retaining an empty Thinking or Thought.
 				native.phase = "discarded"
@@ -443,7 +431,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 			// Empty starts still establish item identity for late-delta rejection.
 			// Their absence from the visible transcript is independent of that state.
 			s.reasoning[key] = text
-			if m.Method == "item/completed" || strings.TrimSpace(text) != "" || native.replaces != "" {
+			if method == "item/completed" || strings.TrimSpace(text) != "" || native.replaces != "" {
 				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "reasoning", Text: text, CallID: id, Observed: now, native: native})
 			}
 		case "commandExecution", "webSearch":
@@ -460,7 +448,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 			native.searchResults = appServerSearchResults(item)
 			entry := activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: appServerToolText(item, s.cwd), CallID: id, Observed: now, native: native}
 			key := [3]string{p.ThreadID, p.TurnID, id}
-			if m.Method != "item/completed" {
+			if method != "item/completed" {
 				if item.Type == "commandExecution" {
 					native.running, native.commandStarted = true, now
 					if run := s.commands[key]; run == nil {
@@ -503,11 +491,11 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 			entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: "View " + commentaryCode(pathdisplay.ForWorkspace(s.cwd, item.Path)), CallID: id, Observed: now, native: native})
 		case "fileChange":
 			if len(item.Changes) > 0 {
-				native.editPages = appServerEditPages(item, s.cwd, m.Method)
+				native.editPages = appServerEditPages(item, s.cwd, method)
 				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: appServerEditText(item, s.cwd), CallID: id, Observed: now, native: native})
 			}
 		case "collabAgentToolCall":
-			if m.Method == "item/completed" && (item.Status == "" || item.Status == "completed") {
+			if method == "item/completed" && (item.Status == "" || item.Status == "completed") {
 				if item.Tool == "spawnAgent" && u.proxy != nil {
 					for _, child := range item.ReceiverThreadIDs {
 						u.proxy.usage.MarkNew(child)
@@ -522,7 +510,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 			if main {
 				return false, nil // Main's messages belong to the transcript handler.
 			}
-			if m.Method != "item/completed" || strings.TrimSpace(item.Text) == "" {
+			if method != "item/completed" || strings.TrimSpace(item.Text) == "" {
 				return true, nil
 			}
 			native.phase = "message" // A later answer promotion may replace it.
@@ -543,7 +531,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 	}
 	u.applyActivity(u.queueSummaries(entries), slices.Clone(s.agents))
 	// Main's turn lifecycle also drives the composer state.
-	return !main || !strings.HasPrefix(m.Method, "turn/"), nil
+	return !main || !strings.HasPrefix(method, "turn/"), nil
 }
 
 // roll reveals one frame's share of pending output, or all of an instant

@@ -10,7 +10,7 @@ import (
 )
 
 type Registrar interface {
-	Rollout(func(RolloutReader) error) error
+	Rollout(func(RolloutSource) error) error
 	Frontend(command.Spec) error
 	InputProjection(InputProjection) error
 	Guidance(Guidance) error

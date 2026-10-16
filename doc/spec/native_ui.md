@@ -17,6 +17,35 @@ Operation-row formatting and feed controls are specified by
 [native activity presentation](../../modules/activity/CONTRACT.md); shared classification belongs to
 [activity observation](activity.md), and router cost totals to [usage reporting](../../modules/usage/SPEC.md).
 
+### Offline playback
+
+[Session replay](../../modules/sessionreplay/SPEC.md) supplies read-only scheduled
+observations and semantic controls. The terminal adapter uses the ordinary
+presentation caches and bounded output retention, with a playback bar that always
+identifies simulated streaming. It starts no host connection or input admission.
+
+Interactive playback requires terminal stdin/stdout and restores raw mode, mouse
+reporting and the alternate screen on exit. `p` or Space pauses; `+`/`-` changes
+speed; `[`/`]` seeks; `r` restarts. `Ctrl-B` followed by 1–3 selects Main, toggles
+Diff or selects Agents; `Ctrl-E` uses the focused pane's ordinary disclosure
+controls. Output dialogs retain their navigation and close controls. Outside a
+dialog, Escape or `q` quits; Ctrl+C always quits. Wheel reports scroll Main;
+fragmented or unsupported mouse/navigation reports cannot become playback commands.
+No presentation control submits host intent.
+
+`--headless` paints to a discard sink using `--width` and `--height`, defaulting
+to 160 by 48, bounded to 20–1000 columns and 8–500 rows. It emits no terminal bytes
+and returns a JSON timing summary on stdout. Loading, coverage and progress use
+stderr. Frame timings include pacing, layout and writes; write time is also
+measured separately. Headless timing excludes terminal backpressure. Accelerated
+playback changes batching without changing recorded event times and cannot
+establish original wall-time latency. Compare identical inputs, seed, speed and
+dimensions, using 1.0x for representative latency.
+
+Rendered-output snapshots cover running, paused, completed, fractional-speed and
+narrow states. The shared [diagnostic-build profiling listener](router.md#performance-profiling)
+is opt-in; replay creates no automatic profile files.
+
 ### UI
 
 Main starts at full width. Diff toggles the auxiliary column open and closed.

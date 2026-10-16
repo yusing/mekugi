@@ -42,7 +42,7 @@ func TestActivityAbsenceKeepsHostOutput(t *testing.T) {
 func TestActivityAbsenceKeepsOfflineReplay(t *testing.T) {
 	p := newUIReplayPlayback(nil, t.Context(), replayPlaybackTestSource(), 1)
 	defer p.close()
-	if err := p.seek(p.until); err != nil {
+	if err := p.seek(p.Until); err != nil {
 		t.Fatal(err)
 	}
 	if frame := replayPlaybackTestPaint(t, p, 120, 28); !strings.Contains(frame, "Repaint diagnosis complete") {

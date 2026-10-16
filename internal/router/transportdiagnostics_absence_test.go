@@ -148,12 +148,12 @@ func TestTransportDiagnosticsAbsentOfflineConsumers(t *testing.T) {
 	)
 	debug := t.TempDir()
 	writeDebugInspectionFixture(t, filepath.Join(debug, "capture.jsonl"), "invalid stale capture")
-	replayed, err := readSessionUIReplay(testHistory(), nil, t.Context(), rollout, debug, 1)
+	replayed, err := replayReadTest(t, nil, t.Context(), rollout, debug, 1)
 	if err != nil || replayed.Items != 1 || replayed.Providers != 0 {
 		t.Fatalf("replay=%+v error=%v", replayed, err)
 	}
 	for _, event := range replayed.Events {
-		if strings.HasPrefix(event.Method, "replay/provider") {
+		if strings.HasPrefix(string(event.Kind), "replay/provider") {
 			t.Fatalf("absent transport replayed provider evidence: %+v", event)
 		}
 	}

@@ -96,7 +96,7 @@ func TestDebugCustomCaptureBundleSupportsReplay(t *testing.T) {
 		replayTestItem("root", "turn", replayTestEpoch+1, replayTestEpoch+2, map[string]any{
 			"type": "AgentMessage", "id": "answer", "content": []map[string]any{{"text": "Replay complete."}},
 		}))
-	replay, err := readSessionUIReplay(testHistory(), new(transportcapture.Service), t.Context(), rollout, debugDir, 1)
+	replay, err := replayReadTest(t, new(transportcapture.Service), t.Context(), rollout, debugDir, 1)
 	if err != nil || replay == nil || replay.Providers != 1 {
 		t.Fatalf("custom capture replay: %v, error=%v", replay, err)
 	}

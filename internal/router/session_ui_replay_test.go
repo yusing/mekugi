@@ -6,6 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/observation"
+	"github.com/yusing/mekugi/modules/sessionreplay/playback"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -15,33 +18,33 @@ import (
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
-func replayPlaybackTestSource() *sessionUIReplay {
+func replayPlaybackTestSource() *playback.Source {
 	start := time.Date(2026, 9, 30, 8, 0, 0, 0, time.Local)
-	event := func(second int, method string, item appServerItem, delta string) uiReplayEvent {
-		return uiReplayEvent{At: start.Add(time.Duration(second) * time.Second), Method: method, Params: appServerEvent{ThreadID: "root", TurnID: "turn", ItemID: item.ID, Item: item, Delta: delta}}
+	event := func(second int, method string, item observation.Item, delta string) playback.Event {
+		return playback.Event{Event: observation.Event{At: start.Add(time.Duration(second) * time.Second), Kind: observation.Kind(method), ThreadID: "root", TurnID: "turn", ItemID: item.ID, Item: item, Delta: delta}}
 	}
-	command := appServerItem{ID: "command", Type: "commandExecution", Command: "sleep 1; printf 'captured output'", Cwd: "/workspace/replay", Status: "inProgress"}
+	command := observation.Item{ID: "command", Type: "commandExecution", Command: "sleep 1; printf 'captured output'", Cwd: "/workspace/replay", Status: "inProgress"}
 	completed := command
 	completed.Status, completed.ExitCode, completed.DurationMS = "completed", new(0), new(int64(2000))
 	completed.AggregatedOutput = new("captured output\n")
-	message := appServerItem{ID: "answer", Type: "agentMessage", Phase: "final_answer"}
+	message := observation.Item{ID: "answer", Type: "agentMessage", Phase: "final_answer"}
 	answer := message
 	answer.Text = "Repaint diagnosis complete."
-	events := []uiReplayEvent{
-		{At: start, Method: "turn/started", Params: appServerEvent{ThreadID: "root", TurnID: "turn", Turn: appServerTurn{ID: "turn", Status: "inProgress"}}},
-		event(1, "replay/providerStarted", appServerItem{}, ""),
-		event(2, "item/reasoning/summaryTextDelta", appServerItem{ID: "reasoning", Type: "reasoning"}, "Inspecting repaint timing."),
-		event(3, "item/completed", appServerItem{ID: "reasoning", Type: "reasoning", Summary: []string{"Inspecting repaint timing."}}, ""),
-		event(3, "replay/providerCompleted", appServerItem{}, ""),
+	events := []playback.Event{
+		{Event: observation.Event{At: start, Kind: "turn/started", ThreadID: "root", TurnID: "turn", TurnStatus: "inProgress"}},
+		event(1, "replay/providerStarted", observation.Item{}, ""),
+		event(2, "item/reasoning/summaryTextDelta", observation.Item{ID: "reasoning", Type: "reasoning"}, "Inspecting repaint timing."),
+		event(3, "item/completed", observation.Item{ID: "reasoning", Type: "reasoning", Summary: []string{"Inspecting repaint timing."}}, ""),
+		event(3, "replay/providerCompleted", observation.Item{}, ""),
 		event(4, "item/started", command, ""),
 		event(5, "item/commandExecution/outputDelta", command, "captured output\n"),
 		event(6, "item/completed", completed, ""),
 		event(7, "item/started", message, ""),
 		event(8, "item/agentMessage/delta", message, "Repaint diagnosis "),
 		event(9, "item/completed", answer, ""),
-		{At: start.Add(10 * time.Second), Method: "turn/completed", Params: appServerEvent{ThreadID: "root", TurnID: "turn", Turn: appServerTurn{ID: "turn", Status: "completed"}}},
+		{Event: observation.Event{At: start.Add(10 * time.Second), Kind: "turn/completed", ThreadID: "root", TurnID: "turn", TurnStatus: "completed"}},
 	}
-	return &sessionUIReplay{Thread: "root", Cwd: "/workspace/replay", Start: start, End: start.Add(20 * time.Second), Threads: map[string]string{"root": "/root"}, Events: events, Items: 3, Providers: 1}
+	return &playback.Source{Thread: "root", Cwd: "/workspace/replay", Start: start, End: start.Add(20 * time.Second), Threads: map[string]string{"root": "/root"}, Events: events, Items: 3, Providers: 1}
 }
 
 func replayPlaybackTestNew(t *testing.T) *uiReplayPlayback {
@@ -71,21 +74,21 @@ func TestSessionUIReplayPlaybackUsesRecordedClockAndSeekReset(t *testing.T) {
 	if err := p.advance(4500 * time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
-	wantNow := p.source.Start.Add(4500 * time.Millisecond)
-	if !p.at.Equal(wantNow) || !p.ui.now().Equal(wantNow) || !p.ui.view.clock().Equal(wantNow) || !p.ui.agents.clock().Equal(wantNow) {
+	wantNow := p.Source.Start.Add(4500 * time.Millisecond)
+	if !p.At.Equal(wantNow) || !p.ui.now().Equal(wantNow) || !p.ui.view.clock().Equal(wantNow) || !p.ui.agents.clock().Equal(wantNow) {
 		t.Fatal("presentation clocks are not tied to recorded position")
 	}
 	command := p.ui.session.commands[[3]string{"root", "turn", "command"}]
-	if command == nil || !command.entry.Observed.Equal(p.source.Start.Add(4*time.Second)) || !command.entry.native.commandStarted.Equal(p.source.Start.Add(4*time.Second)) {
+	if command == nil || !command.entry.Observed.Equal(p.Source.Start.Add(4*time.Second)) || !command.entry.native.commandStarted.Equal(p.Source.Start.Add(4*time.Second)) {
 		t.Fatalf("command start used playback wall time: %+v", command)
 	}
-	if quit, err := p.key(' '); err != nil || quit || !p.paused {
-		t.Fatalf("pause: quit=%v error=%v paused=%v", quit, err, p.paused)
+	if quit, err := p.key(' '); err != nil || quit || !p.Paused {
+		t.Fatalf("pause: quit=%v error=%v paused=%v", quit, err, p.Paused)
 	}
-	next := p.next
+	next := p.Next
 	replayPlaybackTestPaint(t, p, 120, 28)
 	replayPlaybackTestPaint(t, p, 120, 28)
-	if p.position != 4500*time.Millisecond || p.next != next || !p.ui.now().Equal(wantNow) {
+	if p.Position != 4500*time.Millisecond || p.Next != next || !p.ui.now().Equal(wantNow) {
 		t.Fatal("painting while paused advanced recorded time")
 	}
 	if err := p.advance(12 * time.Second); err != nil {
@@ -100,8 +103,8 @@ func TestSessionUIReplayPlaybackUsesRecordedClockAndSeekReset(t *testing.T) {
 	if p.activity.Outputs(&p.ui.session.state) == outputs {
 		t.Fatal("backward seek reused activity state")
 	}
-	if p.ui == oldUI || len(p.ui.session.commands) != 0 || p.ui.turn != "turn" || !p.at.Equal(p.source.Start.Add(2*time.Second)) {
-		t.Fatalf("seek did not rebuild earlier state: position=%v commands=%d", p.position, len(p.ui.session.commands))
+	if p.ui == oldUI || len(p.ui.session.commands) != 0 || p.ui.turn != "turn" || !p.At.Equal(p.Source.Start.Add(2*time.Second)) {
+		t.Fatalf("seek did not rebuild earlier state: position=%v commands=%d", p.Position, len(p.ui.session.commands))
 	}
 	if p.ui.session.reasoning[[3]string{"root", "turn", "reasoning"}] != "Inspecting repaint timing." {
 		t.Fatal("seek did not replay earlier reasoning")
@@ -117,8 +120,8 @@ func TestSessionUIReplayPlaybackUsesRecordedClockAndSeekReset(t *testing.T) {
 			t.Fatalf("replay key %q: quit=%v error=%v", key, quit, err)
 		}
 	}
-	if p.paused || p.position != p.from || p.ui.draft != "" || outgoing.Len() != 0 {
-		t.Fatalf("replay controls leaked into live composer/transport: paused=%v position=%v draft=%q writes=%d", p.paused, p.position, p.ui.draft, outgoing.Len())
+	if p.Paused || p.Position != p.From || p.ui.draft != "" || outgoing.Len() != 0 {
+		t.Fatalf("replay controls leaked into live composer/transport: paused=%v position=%v draft=%q writes=%d", p.Paused, p.Position, p.ui.draft, outgoing.Len())
 	}
 	if p.ui.proxy != nil || p.ui.execTrack != nil || p.ui.session.waitStore != nil {
 		t.Fatal("offline playback constructed live execution dependencies")
@@ -157,8 +160,8 @@ func TestSessionUIReplayPlaybackShowsOnlyArrivedContent(t *testing.T) {
 func TestSessionUIReplayPlaybackControlsClampAndPreserveClock(t *testing.T) {
 	t.Parallel()
 	p := replayPlaybackTestNew(t)
-	p.from = 2 * time.Second
-	if err := p.advance(p.from); err != nil {
+	p.From = 2 * time.Second
+	if err := p.advance(p.From); err != nil {
 		t.Fatal(err)
 	}
 	for _, key := range []byte{'+', '+', '-'} {
@@ -166,32 +169,32 @@ func TestSessionUIReplayPlaybackControlsClampAndPreserveClock(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if p.speed != 2 || p.position != p.from || !p.at.Equal(p.source.Start.Add(p.from)) {
+	if p.Speed != 2 || p.Position != p.From || !p.At.Equal(p.Source.Start.Add(p.From)) {
 		t.Fatal("speed changes rewrote recorded position")
 	}
 	for range 12 {
 		p.key('+')
 	}
-	if p.speed != 100 {
-		t.Fatalf("speed upper limit = %v", p.speed)
+	if p.Speed != 100 {
+		t.Fatalf("speed upper limit = %v", p.Speed)
 	}
 	for range 20 {
 		p.key('-')
 	}
-	if p.speed != 0.1 {
-		t.Fatalf("speed lower limit = %v", p.speed)
+	if p.Speed != 0.1 {
+		t.Fatalf("speed lower limit = %v", p.Speed)
 	}
-	if _, err := p.key(']'); err != nil || p.position != 12*time.Second {
-		t.Fatalf("forward seek: position=%v error=%v", p.position, err)
+	if _, err := p.key(']'); err != nil || p.Position != 12*time.Second {
+		t.Fatalf("forward seek: position=%v error=%v", p.Position, err)
 	}
-	if _, err := p.key(']'); err != nil || p.position != p.until {
-		t.Fatalf("forward seek limit: position=%v error=%v", p.position, err)
+	if _, err := p.key(']'); err != nil || p.Position != p.Until {
+		t.Fatalf("forward seek limit: position=%v error=%v", p.Position, err)
 	}
-	if _, err := p.key('['); err != nil || p.position != 10*time.Second {
-		t.Fatalf("backward seek: position=%v error=%v", p.position, err)
+	if _, err := p.key('['); err != nil || p.Position != 10*time.Second {
+		t.Fatalf("backward seek: position=%v error=%v", p.Position, err)
 	}
-	if _, err := p.key('['); err != nil || p.position != p.from {
-		t.Fatalf("backward seek start limit: position=%v error=%v", p.position, err)
+	if _, err := p.key('['); err != nil || p.Position != p.From {
+		t.Fatalf("backward seek start limit: position=%v error=%v", p.Position, err)
 	}
 	for _, key := range []byte{'q', 3, 27} {
 		if quit, err := p.key(key); err != nil || !quit {
@@ -212,7 +215,7 @@ func TestSessionUIReplayBatchElapsedUsesRecordedClock(t *testing.T) {
 		{4500 * time.Millisecond, "500ms"},
 	} {
 		move := p.advance
-		if tc.position < p.position {
+		if tc.position < p.Position {
 			move = p.seek
 		}
 		if err := move(tc.position); err != nil {
@@ -241,7 +244,7 @@ func TestUISnapshotSessionUIReplay(t *testing.T) {
 			if err := p.advance(tc.position); err != nil {
 				t.Fatal(err)
 			}
-			p.paused = tc.paused
+			p.Paused = tc.paused
 			uisnapshot.Assert(t, "testdata/snapshots/session-ui-replay-"+tc.name+".txt", replayPlaybackTestPaint(t, p, 120, 28))
 		})
 	}
@@ -250,7 +253,7 @@ func TestUISnapshotSessionUIReplay(t *testing.T) {
 		if err := p.advance(8 * time.Second); err != nil {
 			t.Fatal(err)
 		}
-		p.paused = true
+		p.Paused = true
 		uisnapshot.Assert(t, "testdata/snapshots/session-ui-replay-narrow-paused-bar.txt", p.bar(42)+"\n")
 	})
 }

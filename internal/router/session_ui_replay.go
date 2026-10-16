@@ -18,9 +18,8 @@ import (
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
-	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
-
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
+	"github.com/yusing/mekugi/contracts/observation"
+	"github.com/yusing/mekugi/modules/sessionreplay/playback"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
@@ -30,27 +29,22 @@ import (
 )
 
 type uiReplayPlayback struct {
-	activity              *activitymodel.Service
-	paintedAt             time.Time
-	source                *sessionUIReplay
-	ui                    *appServerUI
-	at                    time.Time
-	position, from, until time.Duration
-	speed                 float64
-	paused                bool
-	prefix                bool
-	next                  int
-	frames                []time.Duration
-	writeTime             time.Duration
-	ctx                   context.Context
+	*playback.Player
+	activity  *activitymodel.Service
+	paintedAt time.Time
+	ui        *appServerUI
+	prefix    bool
+	frames    []time.Duration
+	writeTime time.Duration
+	ctx       context.Context
 }
 
 type replayDiscard struct{ io.Writer }
 
 func (replayDiscard) Close() error { return nil }
 
-func newUIReplayPlayback(activity *activitymodel.Service, ctx context.Context, source *sessionUIReplay, speed float64) *uiReplayPlayback {
-	p := &uiReplayPlayback{activity: activity, source: source, ctx: ctx, speed: speed, until: source.End.Sub(source.Start)}
+func newUIReplayPlayback(activity *activitymodel.Service, ctx context.Context, source *playback.Source, speed float64) *uiReplayPlayback {
+	p := &uiReplayPlayback{activity: activity, ctx: ctx, Player: playback.NewPlayer(source, speed)}
 	p.reset()
 	return p
 }
@@ -61,15 +55,14 @@ func (p *uiReplayPlayback) reset() {
 		previous = p.ui.shell
 		p.close()
 	}
-	p.at, p.next = p.source.Start, 0
-	p.position, p.paintedAt = 0, time.Time{}
+	p.paintedAt = time.Time{}
 	// The real message/projector/render path, but no app-server process, router,
 	// replay store, filesystem observers, input submission, or notification sink.
-	u := &appServerUI{session: appServerSession{activity: p.activity}, ctx: p.ctx, client: &appserver.Client{Input: replayDiscard{io.Discard}}, view: newLiveActivityView(), agents: newLiveActivityView(), thread: p.source.Thread, status: "Replay", requests: make(map[string]string), clock: func() time.Time { return p.at }, replay: p}
+	u := &appServerUI{session: appServerSession{activity: p.activity}, ctx: p.ctx, client: &appserver.Client{Input: replayDiscard{io.Discard}}, view: newLiveActivityView(), agents: newLiveActivityView(), thread: p.Source.Thread, status: "Replay", requests: make(map[string]string), clock: func() time.Time { return p.At }, replay: p}
 	u.view.clock, u.agents.clock = u.clock, u.clock
-	u.session.start(p.source.Thread, p.source.Cwd)
-	for id := range p.source.Threads {
-		if id != p.source.Thread {
+	u.session.start(p.Source.Thread, p.Source.Cwd)
+	for id := range p.Source.Threads {
+		if id != p.Source.Thread {
 			u.session.metadata[id] = ""
 		}
 	}
@@ -87,47 +80,41 @@ func (p *uiReplayPlayback) close() {
 	p.ui.session.state = scope.Store{}
 }
 
+func (p *uiReplayPlayback) apply(e playback.Event) error {
+	if id := e.ThreadID; id != "" && id != p.Source.Thread && p.ui.session.paths[id] == "" {
+		p.ui.session.registerThread(appServerThreadInfo{ID: id, AgentNickname: strings.TrimPrefix(p.Source.Threads[id], "/root/")})
+	}
+	switch {
+	case e.Hook != nil:
+		entry := p.ui.session.hookEntry(e.ThreadID, *e.Hook, false)
+		entry.Seq = p.ui.session.next()
+		p.ui.applyActivity([]activityPaneEntry{entry}, nil)
+	case e.Kind == observation.ProviderStarted:
+		p.ui.applyActivity(p.ui.session.beginThinking(e.ThreadID, e.At), nil)
+	case e.Kind == observation.ProviderCompleted:
+	default:
+		return p.ui.observedEvent(string(e.Kind), replayPresentationEvent(e.Event))
+	}
+	return nil
+}
 func (p *uiReplayPlayback) advance(position time.Duration) error {
-	position = max(0, min(position, p.until))
-	if position < p.position {
-		p.reset()
+	if err := p.Player.Advance(p.ctx, position, p.reset, p.apply); err != nil {
+		return err
 	}
-	p.position = position
-	target := p.source.Start.Add(position)
-	for p.next < len(p.source.Events) && !p.source.Events[p.next].At.After(target) {
-		if err := p.ctx.Err(); err != nil {
-			return err
-		}
-		e := p.source.Events[p.next]
-		if id := e.Params.ThreadID; id != "" && id != p.source.Thread && p.ui.session.paths[id] == "" {
-			p.ui.session.registerThread(appServerThreadInfo{ID: id, AgentNickname: strings.TrimPrefix(p.source.Threads[id], "/root/")})
-		}
-		p.at = e.At
-		p.next++
-		switch e.Method {
-		case "replay/hook":
-			entry := p.ui.session.hookEntry(e.Params.ThreadID, *e.Params.HookObservation, false)
-			entry.Seq = p.ui.session.next()
-			p.ui.applyActivity([]activityPaneEntry{entry}, nil)
-		case "replay/providerStarted":
-			p.ui.applyActivity(p.ui.session.beginThinking(e.Params.ThreadID, e.At), nil)
-		case "replay/providerCompleted":
-			// Retain this boundary in ordering and duration without duplicating state.
-		default:
-			params, err := json.Marshal(&e.Params)
-			if err != nil {
-				return err
-			}
-			if err = p.ui.message(appserver.Message{Method: e.Method, Params: params}); err != nil {
-				return err
-			}
-		}
-	}
-	p.at = target
-	if position == p.until {
+	if p.Position == p.Until {
 		p.settleCompleted()
 	}
-
+	p.ui.dirty = true
+	return nil
+}
+func (p *uiReplayPlayback) step(elapsed time.Duration, intent playback.Intent) error {
+	sought, err := p.Player.Step(p.ctx, elapsed, intent, p.reset, p.apply)
+	if err != nil {
+		return err
+	}
+	if sought || p.Position == p.Until {
+		p.settleCompleted()
+	}
 	p.ui.dirty = true
 	return nil
 }
@@ -161,15 +148,15 @@ func (p *uiReplayPlayback) settleCompleted() {
 func (p *uiReplayPlayback) paint(out io.Writer, width, height int) error {
 	start := time.Now()
 	u := p.ui
-	if !p.at.Equal(p.paintedAt) {
+	if !p.At.Equal(p.paintedAt) {
 		u.flushStreamOutput()
-		settleActivity(p.at, u.view, u.agents)
-		u.view.pace(p.at)
-		u.agents.pace(p.at)
-		p.paintedAt = p.at
+		settleActivity(p.At, u.view, u.agents)
+		u.view.pace(p.At)
+		u.agents.pace(p.At)
+		p.paintedAt = p.At
 	}
-	u.view.expireFlash(p.at)
-	u.agents.expireFlash(p.at)
+	u.view.expireFlash(p.At)
+	u.agents.expireFlash(p.At)
 	w := &replayTimedWriter{Writer: out}
 	err := u.paint(w, width, height)
 	p.writeTime += w.elapsed
@@ -191,23 +178,23 @@ func (w *replayTimedWriter) Write(b []byte) (int, error) {
 
 func (p *uiReplayPlayback) bar(width int) string {
 	state := "▶"
-	if p.paused {
+	if p.Paused {
 		state = "Ⅱ"
 	}
-	if p.position >= p.until {
+	if p.Position >= p.Until {
 		state = "■"
 	}
-	speed := strconv.FormatFloat(p.speed, 'f', -1, 64)
+	speed := strconv.FormatFloat(p.Speed, 'f', -1, 64)
 	if !strings.Contains(speed, ".") {
 		speed += ".0"
 	}
-	label := fmt.Sprintf(" %s Replay · simulated · %sx · %s/%s", state, speed, replayTime(p.position), replayTime(p.until))
+	label := fmt.Sprintf(" %s Replay · simulated · %sx · %s/%s", state, speed, replayTime(p.Position), replayTime(p.Until))
 	hint := "  ^B 1-3 · p pause · +/- speed · [/] seek · r restart · q quit"
 	remaining := width - ansi.StringWidth(label) - ansi.StringWidth(hint) - 3
 	if remaining >= 6 {
 		filled := 0
-		if p.until > 0 {
-			filled = int(float64(remaining) * float64(p.position) / float64(p.until))
+		if p.Until > 0 {
+			filled = int(float64(remaining) * float64(p.Position) / float64(p.Until))
 		}
 		label += " " + strings.Repeat("━", min(remaining, filled)) + strings.Repeat("─", max(0, remaining-filled))
 	}
@@ -259,18 +246,17 @@ func (p *uiReplayPlayback) key(key byte) (bool, error) {
 	case 2:
 		p.prefix = true
 	case ' ', 'p':
-		p.paused = !p.paused
+		return false, p.step(0, playback.TogglePause)
 	case '+', '=':
-		p.speed = replaySpeedStep(p.speed, true)
+		return false, p.step(0, playback.Faster)
 	case '-':
-		p.speed = replaySpeedStep(p.speed, false)
+		return false, p.step(0, playback.Slower)
 	case '[':
-		return false, p.seek(max(p.from, p.position-10*time.Second))
+		return false, p.step(0, playback.SeekBackward)
 	case ']':
-		return false, p.seek(min(p.until, p.position+10*time.Second))
+		return false, p.step(0, playback.SeekForward)
 	case 'r':
-		p.paused = false
-		return false, p.seek(p.from)
+		return false, p.step(0, playback.Restart)
 	case 'k':
 		p.ui.transcriptView().scrollKey('b')
 	case 'j':
@@ -284,37 +270,15 @@ func (p *uiReplayPlayback) key(key byte) (bool, error) {
 // Charge elapsed wall time at the previous speed and pause state before a
 // control changes them. Scrolling must not discard time between paint ticks.
 func (p *uiReplayPlayback) control(key byte, elapsed time.Duration) (bool, error) {
-	if !p.paused {
-		if err := p.advance(p.position + time.Duration(float64(elapsed)*p.speed)); err != nil {
-			return false, err
-		}
+	if err := p.step(elapsed, playback.Tick); err != nil {
+		return false, err
 	}
 	return p.key(key)
 }
 
-// A shared ladder avoids drifting off 1x after either speed limit is reached.
-// Arbitrary --speed values move to the next preset in the requested direction.
-func replaySpeedStep(speed float64, faster bool) float64 {
-	steps := [...]float64{0.1, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64, 100}
-	if faster {
-		for _, step := range steps {
-			if step > speed {
-				return step
-			}
-		}
-		return steps[len(steps)-1]
-	}
-	for i := len(steps) - 1; i >= 0; i-- {
-		if steps[i] < speed {
-			return steps[i]
-		}
-	}
-	return steps[0]
-}
-
 // RunSessionUIReplay is an offline entry point. It shares the native presenter,
 // but constructs no host, upstream connection, execution capability, or store.
-func RunSessionUIReplay(activity *activitymodel.Service, service *history.Service, diagnostics *transportcapture.Service, ctx context.Context, args []string, stdin, stdout, stderr *os.File) (code int) {
+func RunSessionUIReplay(activity *activitymodel.Service, service *playback.Service, ctx context.Context, args []string, stdin, stdout, stderr *os.File) (code int) {
 	f := flag.NewFlagSet("replay-session", flag.ContinueOnError)
 	f.SetOutput(stderr)
 	session := f.String("session", "", "Codex session ID (required; searches CODEX_HOME or ~/.codex)")
@@ -356,19 +320,16 @@ func RunSessionUIReplay(activity *activitymodel.Service, service *history.Servic
 	if len(paths) != 1 {
 		return fail(fmt.Errorf("session %q has multiple rollouts in Codex sessions or archived_sessions", *session))
 	}
-	source, err := readSessionUIReplay(service, diagnostics, ctx, paths[0], *debug, *seed)
+	directory, _ := defaultMekugiReplayDirectory()
+	source, err := service.Read(ctx, playback.ReadOptions{Path: paths[0], HistoryDirectory: directory, DebugDirectory: *debug, Seed: *seed})
 	if err != nil {
 		return fail(err)
 	}
 	duration := source.End.Sub(source.Start)
-	if duration > 24*time.Hour {
-		return fail(errors.New("replay exceeds 24 hours"))
-	}
-	if *until == 0 {
-		*until = duration
-	}
-	if *from >= *until || *until > duration {
-		return fail(errors.New("require 0 <= from < until <= session duration"))
+	p := newUIReplayPlayback(activity, ctx, source, *speed)
+	defer p.close()
+	if err = p.Bounds(*from, *until); err != nil {
+		return fail(err)
 	}
 	fmt.Fprintf(stderr, "Replay: %s · %d items · %d events · %d provider calls · %s · %.1fx\nStreaming is simulated (seed %d); no recorded input, resize or live-diff stream.\n", source.Thread, source.Items, len(source.Events), source.Providers, activityui.FormatDuration(duration), *speed, *seed)
 	if len(source.Missing) > 0 || len(source.Unsupported) > 0 {
@@ -377,9 +338,6 @@ func RunSessionUIReplay(activity *activitymodel.Service, service *history.Servic
 	for _, failure := range source.HookUnavailable {
 		fmt.Fprintf(stderr, "Coverage: hook history unavailable (%s).\n", failure)
 	}
-	p := newUIReplayPlayback(activity, ctx, source, *speed)
-	defer p.close()
-	p.from, p.until = *from, *until
 	if err = p.seek(*from); err != nil {
 		return fail(err)
 	}
@@ -447,27 +405,27 @@ func RunSessionUIReplay(activity *activitymodel.Service, service *history.Servic
 				}
 			case <-tick.C:
 				now := time.Now()
-				if !p.paused {
-					if err := p.advance(p.position + time.Duration(float64(now.Sub(last))*p.speed)); err != nil {
+				if !p.Paused {
+					if err := p.step(now.Sub(last), playback.Tick); err != nil {
 						return err
 					}
 				}
 				last = now
-				if p.paused {
+				if p.Paused {
 					continue
 				}
 				if err := paint(); err != nil {
 					return err
 				}
 				if *headless && now.Sub(progress) >= 5*time.Second {
-					fmt.Fprintf(stderr, "Replay %s/%s · %d/%d events · %d frames\n", replayTime(p.position), replayTime(p.until), p.next, len(source.Events), len(p.frames))
+					fmt.Fprintf(stderr, "Replay %s/%s · %d/%d events · %d frames\n", replayTime(p.Position), replayTime(p.Until), p.Next, len(source.Events), len(p.frames))
 					progress = now
 				}
-				if p.position >= p.until {
+				if p.Position >= p.Until {
 					if *headless {
 						return nil
 					}
-					p.paused = true
+					p.Paused = true
 				}
 			}
 		}
@@ -502,7 +460,7 @@ func RunSessionUIReplay(activity *activitymodel.Service, service *history.Servic
 		P99       float64 `json:"frame_p99_ms"`
 		Max       float64 `json:"frame_max_ms"`
 		Writes    float64 `json:"write_ms"`
-	}{source.Thread, p.speed, *seed, true, p.next, len(p.frames), elapsed.Seconds(), p.position.Seconds(), quantile(.5), quantile(.95), quantile(.99), quantile(1), float64(p.writeTime) / float64(time.Millisecond)}
+	}{source.Thread, p.Speed, *seed, true, p.Next, len(p.frames), elapsed.Seconds(), p.Position.Seconds(), quantile(.5), quantile(.95), quantile(.99), quantile(1), float64(p.writeTime) / float64(time.Millisecond)}
 	if err = json.MarshalWrite(stdout, &summary); err != nil {
 		return fail(err)
 	}

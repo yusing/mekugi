@@ -271,7 +271,7 @@ and the `pprof` build tag, plus its sibling executor, without installing or repl
 the normal command. Existing launch arguments, worker dispatch, and hooks retain
 their behavior. The default build starts no profiling listener.
 
-Live router sessions and [offline replay](session_replay.md) share one profiling
+Live router sessions and [offline replay](../../modules/sessionreplay/SPEC.md) share one profiling
 lifetime. Each diagnostic invocation binds a separate OS-assigned IPv4 loopback
 port and prints `mekugi-pprof: http://127.0.0.1:PORT/debug/pprof/` to stderr before
 UI handoff. Workers and hooks do not start profiling listeners. Completion cancels
