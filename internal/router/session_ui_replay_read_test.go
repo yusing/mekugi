@@ -12,9 +12,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+	"github.com/yusing/mekugi/libraries/commandargs"
 
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 const replayTestEpoch int64 = 1700000000000
@@ -56,7 +56,7 @@ func TestSessionUIReplayNormalizesItemsAndRecordedTiming(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	sentinel := filepath.Join(dir, "must-not-exist")
-	command := "touch " + shellsyntax.QuoteArgument(sentinel)
+	command := "touch " + commandargs.QuoteArgument(sentinel)
 	items := []map[string]any{
 		{"type": "UserMessage", "id": "user", "content": []map[string]any{{"type": "text", "text": "question"}}},
 		{"type": "AgentMessage", "id": "message", "content": []map[string]any{{"type": "text", "text": "hello "}, {"type": "text", "text": "世界"}}, "phase": "final_answer"},

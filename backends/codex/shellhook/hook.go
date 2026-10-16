@@ -13,9 +13,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+	"github.com/yusing/mekugi/libraries/commandargs"
 
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 )
 
 const Key = "/<session-flags>/config.toml:pre_tool_use:0:0"
@@ -49,13 +49,13 @@ func Config(helper, directory, sudoDirectory, tracker string, prior Invocation, 
 	}
 	arguments := []string{helper, Flag, directory, sudoDirectory, tracker}
 	for i := range arguments {
-		arguments[i] = shellsyntax.Quote(arguments[i])
+		arguments[i] = commandargs.Quote(arguments[i])
 	}
 	// The host may continue after an ordinary nonzero hook exit. A surviving
 	// adapter translates helper launch/process failure into its blocking form.
 	// Use sh explicitly so the selected hook shell need not parse POSIX control flow.
 	adapter := "if " + strings.Join(arguments, " ") + "; then :; else printf '%s\\n' 'mekugi: approval guard hook failed; command blocked' >&2; exit 2; fi"
-	command := "/bin/sh -c " + shellsyntax.Quote(adapter)
+	command := "/bin/sh -c " + commandargs.Quote(adapter)
 	identity := map[string]any{
 		"event_name": "pre_tool_use", "matcher": "^Bash$",
 		"hooks": []map[string]any{{"type": "command", "command": command, "timeout": 5, "async": false, "statusMessage": status}},

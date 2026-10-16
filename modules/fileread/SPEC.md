@@ -11,9 +11,9 @@ multi-source output. Recovery storage belongs to the frontend host.
 
 ## Behavior
 
-### REQ-READ-001: Authenticated raw-row reader
+### Authenticated raw-row reader
 
-In Mekugi mode, `mcat` is a session-private executable on the wrapped Codex
+`mcat` is a session-private executable on the wrapped Codex
 `PATH`. Stock `tools.exec_command` owns its execution. The router authenticates
 the executable against the pinned tool snapshot, but does not expose `mcat` as a
 model-visible custom tool or intercept it as a private shell command. The
@@ -92,21 +92,6 @@ or `--max-tokens`, preserves source order, and never cuts a row or skips an
 oversized final row to expose earlier content. Tail scans still validate the
 complete file. Multi-file reads reject `-n` and `--tail`.
 
-Acceptance:
-
-1. Whole-file, range, head, and tail reads emit raw UTF-8 logical rows with the
-   newline behavior above and no line prefixes.
-2. Quoted, absolute, relative, option-like, and range-like paths keep their
-   documented process meanings.
-3. Token and line limits retain only complete rows; `mread` reconstructs omitted
-   rows after source changes and router restart.
-4. Streaming storage is bounded, cancellation-aware, and validates the complete
-   source. Invalid UTF-8 outside the displayed selection still fails.
-5. Router startup validates `mcat` in the immutable snapshot and installs one
-   session-private frontend. No alternate reader name is installed.
-6. Stock execution preserves cwd, environment, argv, stdout, stderr, status,
-   pipes, and redirections without shell-source transformation.
-
 ### Coordinated multi-file reads
 
 For 2–16 reads, the same executable frontend composes one coordinated result.
@@ -141,8 +126,10 @@ router restart; invalid and empty files have distinct manifest states.
 ## Lifecycle
 
 Stateless. Each invocation scans its sources once. Shared-budget redistribution
-and final framing use the captured rows. Argument parsing is also available to
-activity and retained-source consumers without executing a read.
+and final framing use the captured rows. The shared argument grammar supplies
+normalized selections to the reader, activity display and offline inspection
+without reading file content. Its existing-file disambiguation still observes
+filesystem metadata.
 
 ## Codex connection
 
@@ -167,8 +154,11 @@ is explicit. Neither recovery nor observation failure reruns the producer.
 
 ## Acceptance
 
-The raw-reader cases above run against the module without a host or store.
-Authenticated integration additionally covers shared-budget framing, source-order
-recovery after source removal, publication failure, process streams, and read
-observations. Actual reference widths participate in the final token ceiling;
+Module acceptance covers selection, newline and numbering behavior, complete-file
+UTF-8 validation, bounded cancellation-aware reads and independent source failures
+without a host or store. Shared grammar tests cover quoting, option boundaries,
+normalized ranges and correction diagnostics. Authenticated acceptance verifies
+the pinned executable, unchanged stock streams and process semantics, read
+observations, shared-budget framing, publication failure and source-order recovery
+after source removal or restart. Actual reference widths participate in admission;
 framing may turn a complete source into a retained incomplete source.

@@ -7,12 +7,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/commandargs"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/yusing/mekugi/internal/execscope"
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
@@ -147,7 +148,7 @@ func TestGitApplyRenameProviderCapturesSourcePath(t *testing.T) {
 	}
 	runExecVCSTestGit(t, repo, "reset", "--hard", "HEAD")
 
-	command := "git apply " + shellsyntax.QuoteArgument(patchPath)
+	command := "git apply " + commandargs.QuoteArgument(patchPath)
 	observation := captureExecVCSTestCommand(t, repo, command)
 	assertCapturedExecVCSTestFile(t, observation, filepath.Join(repo, "old-name.txt"), original)
 	assertExecVCSTestFileContent(t, filepath.Join(repo, "old-name.txt"), original)
@@ -176,7 +177,7 @@ func TestGitProviderQueriesDisableConfiguredFSMonitor(t *testing.T) {
 	repo := newExecVCSTestRepo(t, map[string]string{"tracked.txt": "committed\n"})
 	marker := filepath.Join(t.TempDir(), "fsmonitor-ran")
 	hook := filepath.Join(t.TempDir(), "fsmonitor-hook")
-	hookText := "#!/bin/sh\nprintf 'ran\\n' >> " + shellsyntax.QuoteArgument(marker) + "\nprintf 'test-token\\0'\n"
+	hookText := "#!/bin/sh\nprintf 'ran\\n' >> " + commandargs.QuoteArgument(marker) + "\nprintf 'test-token\\0'\n"
 	if err := os.WriteFile(hook, []byte(hookText), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +205,7 @@ func TestGitProviderSkipsWorktreeQueryWhenCleanFilterConfigured(t *testing.T) {
 	})
 	marker := filepath.Join(t.TempDir(), "clean-filter-ran")
 	filter := filepath.Join(t.TempDir(), "clean-filter")
-	filterText := "#!/bin/sh\nprintf 'ran\\n' >> " + shellsyntax.QuoteArgument(marker) + "\ncat\n"
+	filterText := "#!/bin/sh\nprintf 'ran\\n' >> " + commandargs.QuoteArgument(marker) + "\ncat\n"
 	if err := os.WriteFile(filter, []byte(filterText), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +343,7 @@ func TestVCSReadSiblingKeepsUnnamedInterpreterEdit(t *testing.T) {
 	workspace := newExecVCSTestRepo(t, map[string]string{"authored.txt": "before\n"})
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
-	command := "git -c core.fsmonitor=false status --short; python3 -c " + shellsyntax.QuoteArgument("from pathlib import Path; name='authored'; name += '.txt'; Path(name).write_text('after\\n')")
+	command := "git -c core.fsmonitor=false status --short; python3 -c " + commandargs.QuoteArgument("from pathlib import Path; name='authored'; name += '.txt'; Path(name).write_text('after\\n')")
 	history, ctx := runSnapshotExec(t, proxy, workspace, "vcs-read", command, func() { writeTestFile(t, filepath.Join(workspace, "authored.txt"), "after\n") })
 	list, err := proxy.replayStore.changes.Read(ctx, proxy.replayStore.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{history.ChangeID}, View: "list"})
 	if err != nil || list != history.ChangeID+" +1 -1\n" {

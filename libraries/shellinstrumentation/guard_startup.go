@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandargs"
 )
 
 // RealEnvironment names the variable a path function sets for the guard: the
@@ -56,11 +56,11 @@ func KnownPaths(pathList string, tools []string) []string {
 func Functions(guardDirectory string, known, tools []string) string {
 	var list strings.Builder
 	for _, path := range known {
-		list.WriteString(" " + shellsyntax.Quote(path))
+		list.WriteString(" " + commandargs.Quote(path))
 	}
 	// The value is shell source for eval, carried as data through the outer
 	// expansion so runtime-directory characters cannot become shell code.
-	guard := shellsyntax.Quote(shellsyntax.Quote(guardDirectory))
+	guard := commandargs.Quote(commandargs.Quote(guardDirectory))
 	// Function names cannot be quoted, so paths outside a plain character set
 	// are left unguarded rather than defined unsafely.
 	define := `eval "$__mekugi_p() { ` + RealEnvironment + `=$__mekugi_p $__mekugi_guard/${__mekugi_p##*/} \"\$@\"; }" 2>/dev/null`
@@ -75,7 +75,7 @@ func Functions(guardDirectory string, known, tools []string) string {
     for __mekugi_t in ` + strings.Join(tools, " ") + `; do __mekugi_ps+=("$__mekugi_d/$__mekugi_t"); done
   done
   for __mekugi_p in "${__mekugi_ps[@]}"; do
-    [ "${__mekugi_p%/*}" = ` + shellsyntax.Quote(guardDirectory) + ` ] && continue
+    [ "${__mekugi_p%/*}" = ` + commandargs.Quote(guardDirectory) + ` ] && continue
     case $__mekugi_p in *[!A-Za-z0-9_./+@-]*) continue ;; esac
     [ -f "$__mekugi_p" ] && [ -x "$__mekugi_p" ] || continue
     declare -F "$__mekugi_p" >/dev/null && continue

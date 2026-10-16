@@ -7,16 +7,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/commandargs"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 
 	"github.com/yusing/mekugi/internal/execscope"
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 )
 
 func TestExecGitScopeRejectsRevisionOptionInjection(t *testing.T) {
 	root := newExecVCSTestRepo(t, map[string]string{"tracked": "old\n"})
 	marker := filepath.Join(root, "query-output")
-	plan := execscope.Classify(execscope.Input{Command: "git restore --source=" + shellsyntax.QuoteArgument("--output="+marker) + " -- tracked", Directory: root, Shell: "bash", Deadline: time.Now().Add(execscope.Budget)})
+	plan := execscope.Classify(execscope.Input{Command: "git restore --source=" + commandargs.QuoteArgument("--output="+marker) + " -- tracked", Directory: root, Shell: "bash", Deadline: time.Now().Add(execscope.Budget)})
 	if !strings.Contains(plan.Reason, "query option") {
 		t.Fatalf("unsafe revision accepted: %+v", plan)
 	}

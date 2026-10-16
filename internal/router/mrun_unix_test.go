@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandargs"
 )
 
 func TestMRunCodexGroupTermination(t *testing.T) {
@@ -165,8 +165,8 @@ func TestShellRunnerClosedInspectionPipes(t *testing.T) {
 	// The frontend's own outcome is SIGPIPE status 141 without a broken-pipe
 	// diagnostic; default and errexit handling of that status is Bash's.
 	for name, command := range map[string]string{
-		"mcat_lines":  "mcat -n 20000 --max-tokens 15500 " + shellsyntax.QuoteArgument(linePath),
-		"mcat_tokens": "mcat --max-tokens 15500 " + shellsyntax.QuoteArgument(tokenPath),
+		"mcat_lines":  "mcat -n 20000 --max-tokens 15500 " + commandargs.QuoteArgument(linePath),
+		"mcat_tokens": "mcat --max-tokens 15500 " + commandargs.QuoteArgument(tokenPath),
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

@@ -8,7 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandargs"
+
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
@@ -624,14 +625,14 @@ func (s *execSourceScope) subprocess(args []*sitter.Node) {
 		command = value
 		// execFile/spawn use a separate argv array rather than shell text.
 		if len(args) > 1 && (args[1].Kind() == "array" || args[1].Kind() == "list") {
-			command = shellsyntax.QuoteArgument(value)
+			command = commandargs.QuoteArgument(value)
 			for i := range args[1].NamedChildCount() {
 				part, ok := s.literal(args[1].NamedChild(uint(i)))
 				if !ok {
 					s.result.open = true
 					return
 				}
-				command += " " + shellsyntax.QuoteArgument(part)
+				command += " " + commandargs.QuoteArgument(part)
 			}
 		}
 	} else if args[0].Kind() == "list" || args[0].Kind() == "array" || args[0].Kind() == "tuple" {
@@ -641,7 +642,7 @@ func (s *execSourceScope) subprocess(args []*sitter.Node) {
 				s.result.open = true
 				return
 			}
-			command += " " + shellsyntax.QuoteArgument(part)
+			command += " " + commandargs.QuoteArgument(part)
 		}
 	} else {
 		s.result.open = true

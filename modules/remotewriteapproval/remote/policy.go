@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/commandargs"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"mvdan.cc/sh/v3/syntax"
@@ -310,7 +312,7 @@ func quote(word string) string {
 	if word == shellsyntax.Dynamic {
 		return `"$1"`
 	}
-	return shellsyntax.Quote(word)
+	return commandargs.Quote(word)
 }
 
 func hgWrites(args []string) bool {

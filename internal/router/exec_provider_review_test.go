@@ -7,10 +7,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/commandargs"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 
 	"github.com/yusing/mekugi/internal/execscope"
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 )
 
 func execProviderReviewMarker(t *testing.T) string {
@@ -18,7 +19,7 @@ func execProviderReviewMarker(t *testing.T) string {
 	bin := t.TempDir()
 	marker := filepath.Join(bin, "invoked")
 	program := filepath.Join(bin, "marker")
-	script := "#!/bin/sh\nprintf 'invoked\\n' >> " + shellsyntax.QuoteArgument(marker) + "\n"
+	script := "#!/bin/sh\nprintf 'invoked\\n' >> " + commandargs.QuoteArgument(marker) + "\n"
 	if err := os.WriteFile(program, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}

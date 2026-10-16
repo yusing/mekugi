@@ -15,7 +15,8 @@ import (
 	"syscall"
 	"unicode/utf8"
 
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandargs"
+
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
@@ -750,7 +751,7 @@ func (m *changeMutation) report(options changeReadOptions, history []changeCaptu
 		if len(options.paths) != 0 {
 			undo = append(undo, "--")
 			for _, path := range options.paths {
-				undo = append(undo, shellsyntax.QuoteArgument(path))
+				undo = append(undo, commandargs.QuoteArgument(path))
 			}
 		}
 		summary = "undo: " + strings.Join(undo, " ") + "\n"

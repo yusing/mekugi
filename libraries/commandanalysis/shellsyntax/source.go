@@ -6,11 +6,6 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
-// Quote preserves a literal shell argument, including empty strings.
-func Quote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
-}
-
 // StatementSource prints a statement that owns a noncontiguous heredoc body.
 // Other statements keep the caller's source slice and separator policy.
 func StatementSource(stmt *syntax.Stmt, fallback string) string {

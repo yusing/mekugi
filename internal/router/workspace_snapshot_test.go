@@ -11,12 +11,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/commandargs"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/yusing/mekugi/internal/execscope"
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -407,7 +408,7 @@ func TestWorkspaceSnapshotVCSChangesStayOutOfAuthoredTotals(t *testing.T) {
 			// Global options force snapshot coverage, outside the Git scope provider.
 			command := "git -c core.fsmonitor=false cherry-pick incoming"
 			if mixed {
-				command = "env -u BASH_ENV rtk proxy git switch incoming; python3 -c " + shellsyntax.QuoteArgument("from pathlib import Path; Path('authored.txt').write_text('after\\n')")
+				command = "env -u BASH_ENV rtk proxy git switch incoming; python3 -c " + commandargs.QuoteArgument("from pathlib import Path; Path('authored.txt').write_text('after\\n')")
 			}
 			history, ctx := runSnapshotExec(t, proxy, workspace, "vcs", command, func() {
 				if mixed {

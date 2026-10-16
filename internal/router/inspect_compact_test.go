@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandargs"
 )
 
 func inspectCompactInvocation(directory string) shellWorkerTestInvocation {
@@ -32,7 +32,7 @@ func inspectCommand(paths []string, maxTokens int, jsonOutput bool) string {
 	}
 	for _, source := range paths {
 		command.WriteByte(' ')
-		command.WriteString(shellsyntax.QuoteArgument(source))
+		command.WriteString(commandargs.QuoteArgument(source))
 	}
 	return command.String()
 }

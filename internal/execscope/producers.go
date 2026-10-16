@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/commandargs"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 
@@ -167,10 +169,10 @@ func (w *execShellWalker) addProducerWriter(input execProviderInput, writer []st
 			if replacement != "" {
 				word = strings.ReplaceAll(word, replacement, path)
 			}
-			words = append(words, shellsyntax.QuoteArgument(word))
+			words = append(words, commandargs.QuoteArgument(word))
 		}
 		if replacement == "" {
-			words = append(words, shellsyntax.QuoteArgument(path))
+			words = append(words, commandargs.QuoteArgument(path))
 		}
 		plan := classifyExecShellSource(strings.Join(words, " "), input.cwd, "bash", input.deadline, input.depth+1, input.changes, input.authoredOnly)
 		w.plan.Scope = append(w.plan.Scope, plan.Scope...)

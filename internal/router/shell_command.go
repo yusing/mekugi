@@ -3,15 +3,15 @@ package router
 import (
 	"strings"
 
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandargs"
 )
 
 func shellCommandString(executable string, arguments []string) string {
 	var command strings.Builder
-	command.WriteString(shellsyntax.QuoteArgument(executable))
+	command.WriteString(commandargs.QuoteArgument(executable))
 	for _, argument := range arguments {
 		command.WriteByte(' ')
-		command.WriteString(shellsyntax.QuoteArgument(argument))
+		command.WriteString(commandargs.QuoteArgument(argument))
 	}
 	return command.String()
 }

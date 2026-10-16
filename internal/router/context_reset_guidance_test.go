@@ -12,7 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandargs"
+
 	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 	"github.com/yusing/mekugi/modules/contextreset/codexbinding"
 	"github.com/yusing/mekugi/modules/contextreset/guidance"
@@ -80,7 +81,7 @@ func TestResetGuidanceLocalSkillIdentity(t *testing.T) {
 	skill := guidance.Skill{Name: "audit", Path: path}
 	selected := "<skill>\n<name>audit</name>\n<path>" + path + "</path>\nOutdated attached procedure.\n</skill>"
 	selection := resetGuidanceTestItem(t, map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": selected}}})
-	call := resetGuidanceTestCall(t, "skill-read", "cat "+shellsyntax.QuoteArgument(path))
+	call := resetGuidanceTestCall(t, "skill-read", "cat "+commandargs.QuoteArgument(path))
 	output := resetGuidanceTestOutput(t, "skill-read")
 	for _, tc := range []struct {
 		name     string
@@ -93,7 +94,7 @@ func TestResetGuidanceLocalSkillIdentity(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := collectResetGuidance(t, tc.items, "", workspace, nil, tc.retained)
-			if got == nil || !slices.Equal(got.Skills, []guidance.Skill{skill}) || !slices.Equal(got.FirstReadOrder, []string{"skill:audit\x00" + path}) || !slices.Equal(got.Commands, []string{"cat " + shellsyntax.QuoteArgument(path)}) {
+			if got == nil || !slices.Equal(got.Skills, []guidance.Skill{skill}) || !slices.Equal(got.FirstReadOrder, []string{"skill:audit\x00" + path}) || !slices.Equal(got.Commands, []string{"cat " + commandargs.QuoteArgument(path)}) {
 				t.Fatalf("local skill identity = %+v", got)
 			}
 			if !strings.Contains(got.Text, "Current audit procedure.") || strings.Contains(got.Text, "Outdated attached procedure.") {
@@ -122,7 +123,7 @@ func TestResetGuidanceSkillAdmissionAndBudget(t *testing.T) {
 				resetGuidanceTestFile(t, path, tc.body)
 			}
 			skill := guidance.Skill{Name: "audit", Path: path}
-			items := []map[string]jsonv1.RawMessage{resetGuidanceTestCall(t, "read", "cat "+shellsyntax.QuoteArgument(path)), resetGuidanceTestOutput(t, "read")}
+			items := []map[string]jsonv1.RawMessage{resetGuidanceTestCall(t, "read", "cat "+commandargs.QuoteArgument(path)), resetGuidanceTestOutput(t, "read")}
 			got := collectResetGuidance(t, items, "", workspace, nil, map[string][]guidance.Skill{"read": {skill}})
 			if got == nil || len(got.Skills) != 0 || len(got.Commands) != 0 || got.Name != "" || got.Tool != "" || !strings.Contains(got.Text, tc.notice) {
 				t.Fatalf("rejected skill advertised as admitted: %+v", got)
