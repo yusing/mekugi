@@ -1,15 +1,17 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	json "encoding/json/v2"
 	"strings"
 	"time"
 	"unicode/utf8"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -417,29 +419,29 @@ func (u *appServerUI) btwRows(width, height int) []string {
 	status := diffrender.Safe(b.status, false)
 	if (b.busy || b.starting) && b.status == "Answering" && !b.alert && !b.started.IsZero() {
 		elapsed := max(time.Duration(0), u.now().Sub(b.started))
-		status = activityui.ReasoningShimmer("Answering", elapsed, u.view.painter.Colors) + activityui.Dim + " · " + activityui.FormatDuration(elapsed) + activityui.Reset
+		status = activityui.ReasoningShimmer("Answering", elapsed, u.view.painter.Colors) + terminalui.Dim + " · " + activityui.FormatDuration(elapsed) + terminalui.Reset
 	}
 	label := " /btw · " + status
-	rows := []string{ansi.Truncate(color+"╭─"+label+activityui.Reset, width, "…")}
+	rows := []string{ansi.Truncate(color+"╭─"+label+terminalui.Reset, width, "…")}
 	inner := max(1, width-2)
-	question := activityui.Wrap(diffrender.Safe(b.question, false), inner, true)
+	question := terminalui.Wrap(diffrender.Safe(b.question, false), inner, true)
 	for _, row := range question[:min(2, len(question))] {
-		rows = append(rows, ansi.Truncate(color+"│ "+activityui.Reset+row, width, "…"))
+		rows = append(rows, ansi.Truncate(color+"│ "+terminalui.Reset+row, width, "…"))
 	}
 	if b.attachmentNotice != "" {
-		rows = append(rows, ansi.Truncate(activityui.Red+"│ "+diffrender.Safe(b.attachmentNotice, false)+activityui.Reset, width, "…"))
+		rows = append(rows, ansi.Truncate(activityui.Red+"│ "+diffrender.Safe(b.attachmentNotice, false)+terminalui.Reset, width, "…"))
 	}
 	var answer []string
 	for index, item := range b.answer {
 		u.view.painter.CopyScope = uint64(index + 1)
-		answer = append(answer, u.view.painter.Markdown(item.text, inner)...)
+		answer = append(answer, u.view.painter.Markdown(item.text, inner, false)...)
 	}
 	b.copyAnswer = answer
 	b.rows = max(0, height-len(rows)-1)
 	b.scroll = min(b.scroll, max(0, len(answer)-b.rows))
 	end := len(answer) - b.scroll
 	for _, row := range answer[max(0, end-b.rows):end] {
-		rows = append(rows, ansi.Truncate(color+"│ "+activityui.Reset+row, width, ""))
+		rows = append(rows, ansi.Truncate(color+"│ "+terminalui.Reset+row, width, ""))
 	}
 	hint := "╰─ /btw follow-up · Esc close"
 	if b.status == btwCompactionRequired {
@@ -451,6 +453,6 @@ func (u *appServerUI) btwRows(width, height int) []string {
 	if b.truncated {
 		hint = "╰─ Display truncated · Esc close"
 	}
-	rows = append(rows, ansi.Truncate(activityui.Dim+hint+activityui.Reset, width, "…"))
+	rows = append(rows, ansi.Truncate(terminalui.Dim+hint+terminalui.Reset, width, "…"))
 	return rows[:min(len(rows), height)]
 }

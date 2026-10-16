@@ -656,12 +656,12 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme diffre
 // title follows the agents roster: a state glyph, then what the card shows.
 // Edits use the file navigator's status letter and live line counts.
 func (p *PreviewView) Title(workspace string, theme diffrender.Theme, width int) string {
-	glyph := activityui.Amber + "◐" + activityui.Reset
+	glyph := activityui.Amber + "◐" + terminalui.Reset
 	var label string
 	reason, unavailable := strings.CutPrefix(p.Current.Status, PreviewUnavailable)
 	switch {
 	case unavailable:
-		glyph, label = activityui.Red+"!"+activityui.Reset, diffrender.Safe(reason, false)
+		glyph, label = activityui.Red+"!"+terminalui.Reset, diffrender.Safe(reason, false)
 	case len(p.Current.Files) > 0:
 		file := p.Current.Files[p.file]
 		path := file.AfterPath
@@ -689,7 +689,7 @@ func (p *PreviewView) Title(workspace string, theme diffrender.Theme, width int)
 		// Input completion keeps predictions provisional. Running observations
 		// can finish when the projected file effect is seen, independently of
 		// command success; neither case earns a success checkmark.
-		glyph = activityui.Dim + "○" + activityui.Reset
+		glyph = terminalui.Dim + "○" + terminalui.Reset
 		if p.Current.Status == PreviewRunning {
 			label += " " + diffrender.Subtle + "· observed" + diffrender.SubtleReset
 		} else {

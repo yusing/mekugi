@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+	"github.com/yusing/mekugi/libraries/terminalui"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"mvdan.cc/sh/v3/syntax"
@@ -112,7 +112,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		}
 	}()
 	text := diffrender.Safe(entry.Text, false)
-	source := activityui.MarkdownSource(entry.Text)
+	source := terminalui.MarkdownSource(entry.Text)
 	switch entry.Kind {
 	case "hook":
 		n := entry.native

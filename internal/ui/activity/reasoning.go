@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
 // Source: codex-rs/tui/src/chatwidget/streaming.rs:9:24@86be5320 latest_summary_line.
@@ -113,7 +114,7 @@ func reasoningFor(text, elapsed string) string {
 // Markdown's combined style resets. Reapply only these attributes, preserving
 // inline colors, hyperlinks, and the remaining Markdown styles.
 func reasoningRow(row string) string {
-	const style = Dim + "\x1b[3m"
+	const style = terminalui.Dim + "\x1b[3m"
 	var out strings.Builder
 	out.WriteString(style)
 	var state byte
@@ -128,7 +129,7 @@ func reasoningRow(row string) string {
 			out.WriteString(style)
 		}
 	}
-	out.WriteString(Reset)
+	out.WriteString(terminalui.Reset)
 	return out.String()
 }
 
@@ -149,7 +150,7 @@ func (p *Painter) reasoningContent(block Block, width int) (rows []string, short
 	if body == "" {
 		return nil, false, false
 	}
-	rows = p.markdown(body, max(1, width-2), true)
+	rows = p.Markdown(body, max(1, width-2), true)
 	titleOnly = body == strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(block.Body), "<!-- -->"))
 	return rows, len(rows) == 1 && (block.Label == "" || titleOnly), titleOnly
 }

@@ -3,16 +3,19 @@ package router
 import (
 	"cmp"
 	"encoding/json/jsontext"
+
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	json "encoding/json/v2"
 	"fmt"
 	"slices"
 	"strings"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -826,7 +829,7 @@ func (u *appServerUI) questionRows(width, height int) []string {
 		return nil
 	}
 	p := &u.view.painter
-	accent, dim, reset := p.Theme.Accent(), activityui.Dim, activityui.Reset
+	accent, dim, reset := p.Theme.Accent(), terminalui.Dim, terminalui.Reset
 	if d.active == nil {
 		label := accent + "? " + reset + fmt.Sprintf("main asks %d questions", u.questionCount()) + dim + " · " + reset + accent + "ctrl+b q" + reset + dim + " answer" + reset
 		if u.turn == "" && u.draft != "" {
@@ -949,7 +952,7 @@ func (u *appServerUI) mainTitleDetail() string {
 	if set := u.view.activeSkills()["Main"]; set != nil {
 		details = append(details, set.label())
 	}
-	return strings.Join(slices.DeleteFunc(details, func(detail string) bool { return detail == "" }), activityui.Dim+" · "+activityui.Undim)
+	return strings.Join(slices.DeleteFunc(details, func(detail string) bool { return detail == "" }), terminalui.Dim+" · "+terminalui.Undim)
 }
 
 func (u *appServerUI) questionBadge() string {

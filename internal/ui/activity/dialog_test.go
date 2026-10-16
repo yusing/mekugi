@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -24,7 +24,7 @@ func TestUISnapshotDialogSurfaceStyles(t *testing.T) {
 		for _, fallback := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/fallback=%v", tc.name, fallback), func(t *testing.T) {
 				p := Painter{Theme: tc.theme}
-				frame := DialogFrame{Page: DialogPage{Title: "Title", Detail: Dim + "metadata" + Undim}, Rows: []string{
+				frame := DialogFrame{Page: DialogPage{Title: "Title", Detail: terminalui.Dim + "metadata" + terminalui.Undim}, Rows: []string{
 					"A\x1b[0mB\x1b[mC\x1b[39;49mD",
 					"\x1b[31mR\x1b[48;2;1;2;3mF\x1b[49mS",
 				}, Footer: "esc close"}
@@ -130,7 +130,7 @@ func TestDialogWrappedRowsMatchesWrap(t *testing.T) {
 	for _, text := range []string{"", "abc def  ghi", "界界ab", "e\u0301👩‍💻text", "\x1b[31mcolored text\x1b[0m", "\x1b]8;;https://example.com\x1b\\linked text\x1b]8;;\x1b\\"} {
 		for _, width := range []int{1, 2, 5, 20} {
 			t.Run(fmt.Sprintf("%q/%d", text, width), func(t *testing.T) {
-				if got, want := wrappedRows(text, width), len(Wrap(text, width, true)); got != want {
+				if got, want := wrappedRows(text, width), len(terminalui.Wrap(text, width, true)); got != want {
 					t.Fatalf("rows=%d want %d", got, want)
 				}
 			})
@@ -252,7 +252,7 @@ func TestDialogSearchTitleAndResultSyntax(t *testing.T) {
 
 func TestBackdropFadesColorsAndKeepsCursorMoves(t *testing.T) {
 	row := "\x1b[1G\x1b[0m\x1b[38;2;1;2;3mSearch\x1b[0m\x1b[12G\x1b[48;2;22;42;29m+ added\x1b[0m"
-	if got, want := Backdrop(row), Dim+"\x1b[1GSearch\x1b[12G+ added"; got != want {
+	if got, want := Backdrop(row), terminalui.Dim+"\x1b[1GSearch\x1b[12G+ added"; got != want {
 		t.Fatalf("Backdrop = %q, want %q", got, want)
 	}
 }

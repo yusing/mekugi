@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
 // The agents pane parses the router's own commentary grammar back into parts
@@ -340,7 +341,7 @@ var editStatPattern = regexp.MustCompile(`^(?: ·)? \+(\d+) [-−](\d+)((?: · [
 
 // EditPath returns the unshortened target of an edit row, when known.
 func EditPath(block Block) string {
-	path, _, _ := liveActivityCodeSpan(block.Label, 0)
+	path, _, _ := terminalui.CodeSpan(block.Label, 0)
 	return path
 }
 
@@ -348,13 +349,13 @@ var directoryDeletionPattern = regexp.MustCompile(`^ • [0-9]+ files?(?: · .*)
 
 // DirectoryDeletion reports a captured directory removal summary.
 func (b Block) DirectoryDeletion() bool {
-	_, end, ok := liveActivityCodeSpan(b.Label, 0)
+	_, end, ok := terminalui.CodeSpan(b.Label, 0)
 	return b.Verb == "Delete" && ok && directoryDeletionPattern.MatchString(b.Label[end:])
 }
 
 // EditStat reads a file row label as a path, line counts, and a trailing status.
 func EditStat(label string) (path string, added, removed int, tail string, ok bool) {
-	path, end, ok := liveActivityCodeSpan(label, 0)
+	path, end, ok := terminalui.CodeSpan(label, 0)
 	if !ok {
 		return "", 0, 0, "", false
 	}
@@ -376,26 +377,6 @@ type Read struct {
 // Read previews append line spans as space-separated N:M pairs.
 var liveActivityReadRange = regexp.MustCompile(`^(.+?) (\d+:\d+(?: \d+:\d+)*)$`)
 
-// liveActivityCodeSpan reads one Markdown code span starting at i.
-func liveActivityCodeSpan(s string, i int) (string, int, bool) {
-	if i >= len(s) || s[i] != '`' {
-		return "", i, false
-	}
-	run := 1
-	for i+run < len(s) && s[i+run] == '`' {
-		run++
-	}
-	end := strings.Index(s[i+run:], strings.Repeat("`", run))
-	if end < 0 {
-		return "", i, false
-	}
-	code := s[i+run : i+run+end]
-	if len(code) > 1 && code[0] == ' ' && code[len(code)-1] == ' ' {
-		code = code[1 : len(code)-1]
-	}
-	return code, i + run + end + run, true
-}
-
 // Paragraphs splits operations at blank lines outside fences.
 func Paragraphs(text string) []string {
 	var paragraphs, current []string
@@ -410,7 +391,7 @@ func Paragraphs(text string) []string {
 		switch {
 		case fence != "":
 			current = append(current, line)
-			if closesFence(line, fence) {
+			if terminalui.ClosesFence(line, fence) {
 				fence = ""
 			}
 			continue
@@ -418,7 +399,7 @@ func Paragraphs(text string) []string {
 			flush()
 			continue
 		}
-		if delimiter, ok := FenceDelimiter(line); ok {
+		if delimiter, ok := terminalui.FenceDelimiter(line); ok {
 			fence = delimiter
 		}
 		current = append(current, line)
@@ -449,13 +430,13 @@ func ParseOperation(paragraph string) Block {
 	block := Block{Kind: "op", Verb: strings.TrimSuffix(strings.TrimSpace(label[:cut]), ":"), Label: strings.TrimSpace(label[cut:]), Timeouts: timeouts}
 	if rest := lines[1:]; len(rest) > 0 {
 		joined := strings.Join(rest, "\n")
-		if delimiter, ok := FenceDelimiter(rest[0]); ok {
+		if delimiter, ok := terminalui.FenceDelimiter(rest[0]); ok {
 			body := rest[1:]
-			if n := len(body); n > 0 && closesFence(body[n-1], delimiter) {
+			if n := len(body); n > 0 && terminalui.ClosesFence(body[n-1], delimiter) {
 				body = body[:n-1]
 			}
 			block.Fenced, block.Lang, block.Code = true, strings.TrimSpace(rest[0][len(delimiter):]), strings.Join(body, "\n")
-		} else if code, end, ok := liveActivityCodeSpan(joined, 0); ok && end == len(joined) {
+		} else if code, end, ok := terminalui.CodeSpan(joined, 0); ok && end == len(joined) {
 			block.Code = code
 		} else {
 			block.Body = joined
@@ -480,7 +461,7 @@ func ParseOperation(paragraph string) Block {
 func parseLiveActivityReads(label string) ([]Read, bool) {
 	var reads []Read
 	for i := 0; i < len(label); {
-		code, end, ok := liveActivityCodeSpan(label, i)
+		code, end, ok := terminalui.CodeSpan(label, i)
 		if !ok {
 			return nil, false
 		}

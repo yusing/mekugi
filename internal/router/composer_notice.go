@@ -5,11 +5,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffrender"
-
+	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/modules/notifications/notice"
 
-	"github.com/charmbracelet/x/ansi"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -48,27 +48,27 @@ func (u *appServerUI) stateLabel(now time.Time) string {
 		}
 	}
 	if u.shellMode() {
-		label = activityui.Red + "Shell Mode" + activityui.Reset + " · " + label
+		label = activityui.Red + "Shell Mode" + terminalui.Reset + " · " + label
 	}
 	if count := u.runningProcessCount(); count > 0 {
 		if label != "" {
-			label += activityui.Dim + " · " + activityui.Undim
+			label += terminalui.Dim + " · " + terminalui.Undim
 		}
-		label += activityui.StatusPulse(fmt.Sprintf("%d running processes", count), now, u.view.painter.Colors) + activityui.Reset
+		label += activityui.StatusPulse(fmt.Sprintf("%d running processes", count), now, u.view.painter.Colors) + terminalui.Reset
 	}
 	notice := strings.ReplaceAll(diffrender.Safe(u.feedback.Text, false), "\n", " ")
 	switch {
 	case notice == "":
 		return label
 	case u.feedback.Alert:
-		notice = activityui.Red + "✗ " + activityui.ErrorPreview(u.feedback.Text) + activityui.Reset
+		notice = activityui.Red + "✗ " + activityui.ErrorPreview(u.feedback.Text) + terminalui.Reset
 	default:
-		notice = "\x1b[39m" + notice + activityui.Reset
+		notice = "\x1b[39m" + notice + terminalui.Reset
 	}
 	if label == "" {
 		return notice
 	}
-	return label + activityui.Dim + " · " + activityui.Undim + notice
+	return label + terminalui.Dim + " · " + terminalui.Undim + notice
 }
 
 // Composer errors stay presentation-only. Model errors retain their transcript
@@ -98,7 +98,7 @@ func (u *appServerUI) composerNoticeBorder(width, row int, color string) string 
 	// In compact panes the error takes precedence over the session caption.
 	plain := ansi.Strip(label)
 	if mark := strings.Index(plain, "✗ "); mark >= 0 && ansi.StringWidth(plain[:mark])+4 > room {
-		label = activityui.Red + "✗ " + activityui.ErrorPreview(full) + activityui.Reset
+		label = activityui.Red + "✗ " + activityui.ErrorPreview(full) + terminalui.Reset
 	}
 	details := activityui.ErrorHasDetails(activityui.Block{Body: full})
 	if details && !strings.HasSuffix(ansi.Strip(label), "…") {
@@ -110,7 +110,7 @@ func (u *appServerUI) composerNoticeBorder(width, row int, color string) string 
 		u.noticeDetails = terminalRect{3, row, ansi.StringWidth(label), 1}
 	}
 	u.noticeDismiss = terminalRect{width - 6, row, 3, 1}
-	return composerBorder("╭", "╮", label, activityui.Green+"[✓]"+activityui.Reset, width, color)
+	return composerBorder("╭", "╮", label, activityui.Green+"[✓]"+terminalui.Reset, width, color)
 }
 
 func (u *appServerUI) composerNoticeMouse(button, x, y int, release bool) bool {

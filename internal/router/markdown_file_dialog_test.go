@@ -82,7 +82,7 @@ func TestUISnapshotMarkdownFileLinkExistence(t *testing.T) {
 		"Web: [remote](https://example.com)."
 	for _, view := range []*liveActivityView{u.view, u.agents} {
 		view.painter.Theme = diffrender.TerminalTheme
-		rows := view.painter.Markdown(text, 72)
+		rows := view.painter.Markdown(text, 72, false)
 		uisnapshot.AssertTerminal(t, "testdata/snapshots/markdown-file-link-existence.txt", append(rows, "plain after links"), 72)
 	}
 	u.session.cwd = ""

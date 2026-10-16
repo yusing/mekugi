@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -46,7 +48,7 @@ func (v *liveActivityView) activityEventItem(index, width, clip int, flash uint6
 func (v *liveActivityView) clipEvent(run *liveActivityRun, entry activityPaneEntry, clip int) {
 	if clip > 0 && len(run.lines) > clip+1 {
 		snippet := liveActivitySnippet{run: entry.Seq, block: 0}
-		gutter := activityui.Gutter(entry.Agent, v.painter.Theme) + "│" + activityui.Reset + " "
+		gutter := activityui.Gutter(entry.Agent, v.painter.Theme) + "│" + terminalui.Reset + " "
 		if v.conversation && entry.Agent == "Main" && entry.Kind == "text" {
 			gutter = mainGutter(&v.painter)
 		}

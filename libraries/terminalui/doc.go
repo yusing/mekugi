@@ -1,3 +1,3 @@
-// Package terminalui provides terminal input, scrolling, and raw-mode lifecycle
-// primitives independently of router state and pane composition.
+// Package terminalui provides Markdown painting, source-copy fragments, terminal
+// input, scrolling, and raw-mode lifecycle independently of feature state.
 package terminalui

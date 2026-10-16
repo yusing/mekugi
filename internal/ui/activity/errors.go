@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
 // ErrorPreview bounds inline diagnostics independently of the full dialog body.
@@ -30,7 +31,7 @@ func ErrorHasDetails(block Block) bool {
 
 // ErrorRows adds a dialog hint only when the preview omits retained content.
 func ErrorRows(block Block, width int) []string {
-	rows := Wrap(Red+ErrorPreview(block.Body)+Reset, width, false)
+	rows := terminalui.Wrap(Red+ErrorPreview(block.Body)+terminalui.Reset, width, false)
 	if !ErrorHasDetails(block) {
 		return rows
 	}
@@ -38,5 +39,5 @@ func ErrorRows(block Block, width int) []string {
 	if block.Hovered {
 		hint = Underline(hint)
 	}
-	return append(rows, Wrap(Dim+hint+Undim, width, false)...)
+	return append(rows, terminalui.Wrap(terminalui.Dim+hint+terminalui.Undim, width, false)...)
 }

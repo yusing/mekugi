@@ -1,5 +1,6 @@
-package activity
+package terminalui
 
+// Source: internal/ui/activity/markdown_table.go:1:261@[b5ba67e3] shared source presentation.
 import (
 	"strings"
 
@@ -75,7 +76,7 @@ func markdownTableCells(line string) ([]string, bool) {
 			trailing = false
 			continue
 		}
-		if _, end, ok := liveActivityCodeSpan(line, i); ok {
+		if _, end, ok := CodeSpan(line, i); ok {
 			cell.WriteString(strings.ReplaceAll(line[i:end], `\|`, "|"))
 			i = end
 			trailing = false
@@ -120,7 +121,7 @@ func (p *Painter) markdownTable(table markdownTable, width int) []string {
 			styled[r][c] = p.Inline(cell)
 			if copies != nil {
 				f := copyInline(cell)
-				f.ID = copyID(cell, identity+uint64(r*n+c))
+				f.ID = CopyID(cell, identity+uint64(r*n+c))
 				f.Table, f.Row, f.Cell, f.Align = identity, r, c, alignment
 				f.Hard = false
 				copies[r][c] = f

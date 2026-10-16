@@ -7,9 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/diffmodel"
-
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
@@ -60,12 +61,12 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 			partial = true
 		}
 	}
-	detail := activityui.Dim + fmt.Sprintf("%d", len(rows)) + activityui.Undim
+	detail := terminalui.Dim + fmt.Sprintf("%d", len(rows)) + terminalui.Undim
 	if responding > 0 {
-		detail += activityui.Dim + " · " + activityui.Undim + activityui.Amber + fmt.Sprintf("%d working", responding) + activityui.Reset
+		detail += terminalui.Dim + " · " + terminalui.Undim + activityui.Amber + fmt.Sprintf("%d working", responding) + terminalui.Reset
 	}
 	if errors > 0 {
-		detail += activityui.Dim + " · " + activityui.Undim + activityui.Red + fmt.Sprintf("%d error", errors) + activityui.Reset
+		detail += terminalui.Dim + " · " + terminalui.Undim + activityui.Red + fmt.Sprintf("%d error", errors) + terminalui.Reset
 	}
 	var totals []string
 	if v.netCounts != nil {
@@ -84,7 +85,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	}
 	right := ""
 	if len(totals) > 0 {
-		right = activityui.Dim + strings.Join(totals, " · ") + activityui.Undim
+		right = terminalui.Dim + strings.Join(totals, " · ") + terminalui.Undim
 	}
 	lines := []string{nativeRule("─", "─", "─", nativeTitle(3, "Agents", detail, focused), right, width, nativeBorder(focused))}
 
@@ -100,7 +101,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		if len(roles) > 0 {
 			var labels []string
 			for _, role := range roles {
-				labels = append(labels, v.roleColor(role)+"●"+activityui.Reset+" "+role)
+				labels = append(labels, v.roleColor(role)+"●"+terminalui.Reset+" "+role)
 			}
 			// Keep the selected role discoverable when the full legend cannot fit.
 			if ansi.StringWidth(" Roles: "+strings.Join(labels, "  ")) > width {
@@ -146,9 +147,9 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		if item.finished != nil {
 			var names []string
 			for _, row := range item.finished {
-				names = append(names, activityui.Color(row.agent.Name)+activityui.AgentDisplayName(row.agent.Name)+activityui.Reset)
+				names = append(names, activityui.Color(row.agent.Name)+activityui.AgentDisplayName(row.agent.Name)+terminalui.Reset)
 			}
-			line := " " + activityui.Green + "✓" + activityui.Reset + " " + activityui.Dim + fmt.Sprintf("%d finished · ", len(item.finished)) + activityui.Undim + strings.Join(names, activityui.Dim+", "+activityui.Undim)
+			line := " " + activityui.Green + "✓" + terminalui.Reset + " " + terminalui.Dim + fmt.Sprintf("%d finished · ", len(item.finished)) + terminalui.Undim + strings.Join(names, terminalui.Dim+", "+terminalui.Undim)
 			laid = append(laid, agentLine{finishedLine: ansi.Truncate(line, width, "…")})
 			continue
 		}
@@ -161,7 +162,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		if color == "" {
 			color = "\x1b[1m" + v.painter.Theme.Accent()
 		}
-		name := activityui.DimColor(row.agent.Name) + tree[:split] + activityui.Undim + color + v.hoverName(tree[split:], row.agent.Name) + activityui.Reset
+		name := activityui.DimColor(row.agent.Name) + tree[:split] + terminalui.Undim + color + v.hoverName(tree[split:], row.agent.Name) + terminalui.Reset
 		gap := "  "
 		if focused {
 			gap += strings.Repeat(" ", max(0, nameWidth-ansi.StringWidth(tree)))
@@ -203,7 +204,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 			if v.skillsHover == item.row.agent.Name {
 				styled = activityui.Underline(styled)
 			}
-			line += "  " + activityui.Dim + styled + activityui.Undim
+			line += "  " + terminalui.Dim + styled + terminalui.Undim
 			v.hits = append(v.hits, liveActivityHit{row: len(lines) + 1, first: stateEnd - ansi.StringWidth(label) + 1, last: stateEnd, agent: item.row.agent.Name, skills: true})
 		}
 		if next < len(metrics) {
@@ -218,7 +219,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		v.hits = append(v.hits, liveActivityHit{row: len(lines), first: 1, last: width, agent: item.row.agent.Name})
 	}
 	if hidden := len(items) - end; hidden > 0 {
-		lines = append(lines, ansi.Truncate(activityui.Dim+fmt.Sprintf("   +%d more · ^B 3 shows all", hidden)+activityui.Undim, width, "…"))
+		lines = append(lines, ansi.Truncate(terminalui.Dim+fmt.Sprintf("   +%d more · ^B 3 shows all", hidden)+terminalui.Undim, width, "…"))
 	}
 	if legend != "" {
 		lines = append(lines, legend)
@@ -401,7 +402,7 @@ func nativeRosterColumns(rows [][nativeMetricParts]string, room int) []string {
 				b.WriteString(rosterAlign(row[c.first], widths[c.first]) + c.separator + liveActivityPad(row[c.second], widths[c.second]))
 			}
 		}
-		lines[r] = activityui.Dim + b.String() + activityui.Undim
+		lines[r] = terminalui.Dim + b.String() + terminalui.Undim
 	}
 	return lines
 }
@@ -434,13 +435,13 @@ func (v *liveActivityView) nativeGlyph(agent activityPaneAgent) string {
 	}
 	switch v.agentStatus(agent) {
 	case '◐':
-		return color + "◐" + activityui.Reset
+		return color + "◐" + terminalui.Reset
 	case '!':
-		return activityui.Red + "!" + activityui.Reset
+		return activityui.Red + "!" + terminalui.Reset
 	case '✓':
-		return activityui.Green + "✓" + activityui.Reset
+		return activityui.Green + "✓" + terminalui.Reset
 	}
-	return color + "●" + activityui.Reset
+	return color + "●" + terminalui.Reset
 }
 
 // agentState preserves lifecycle states when idle, and shares the detailed
@@ -460,11 +461,11 @@ func (v *liveActivityView) agentState(agent activityPaneAgent, width int, now ti
 	}
 	switch {
 	case kind == "error":
-		return activityui.Red + "error" + activityui.Reset
+		return activityui.Red + "error" + terminalui.Reset
 	case !agent.Responding && agent.Final:
-		return activityui.Dim + "done" + activityui.Undim
+		return terminalui.Dim + "done" + terminalui.Undim
 	case !agent.Responding:
-		return activityui.Dim + "idle" + activityui.Undim
+		return terminalui.Dim + "idle" + terminalui.Undim
 	case len(blocks) == 0:
 		return "working"
 	}

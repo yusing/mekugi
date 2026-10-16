@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
 // ChangeRow is one row of a change history read, such as `mchanges --list`
@@ -76,7 +77,7 @@ func changeRows(rows []ChangeRow, padding string, width int) []string {
 			case row.Code != "":
 				verb, cells = statusCode(row.Code), ansi.StringWidth(row.Code)
 			case row.Verb != "":
-				verb = color + "\x1b[1m" + row.Verb + Reset
+				verb = color + "\x1b[1m" + row.Verb + terminalui.Reset
 			}
 			line += verb + strings.Repeat(" ", max(0, verbs-cells))
 		}
@@ -94,10 +95,10 @@ func changeRows(rows []ChangeRow, padding string, width int) []string {
 				line += strings.Repeat(" ", counts-len(plain)+1) + bar
 			}
 			if row.Note != "" {
-				line += " " + Dim + row.Note + Undim
+				line += " " + terminalui.Dim + row.Note + terminalui.Undim
 			}
 		case row.Note != "":
-			line += gap + Dim + row.Note + Undim
+			line += gap + terminalui.Dim + row.Note + terminalui.Undim
 		}
 		lines = append(lines, padding+ansi.Truncate(strings.TrimRight(line, " "), width, "…"))
 	}
@@ -110,7 +111,7 @@ func changeRows(rows []ChangeRow, padding string, width int) []string {
 			parts = append(parts, Hash+footer.Label+"\x1b[39m")
 		}
 		if footer.Note != "" {
-			parts = append(parts, Dim+footer.Note+Undim)
+			parts = append(parts, terminalui.Dim+footer.Note+terminalui.Undim)
 		}
 		if plain := editCounts(footer.Added, footer.Removed); plain != "" {
 			parts = append(parts, countText(plain))
@@ -172,7 +173,7 @@ func (r ChangeRow) label(width int) string {
 		return r.Label
 	case r.From != "":
 		from := fitPath(r.From, (width-3)/2)
-		return Path(from) + Dim + " → " + Undim + Path(fitPath(r.Label, width-3-ansi.StringWidth(from)))
+		return Path(from) + terminalui.Dim + " → " + terminalui.Undim + Path(fitPath(r.Label, width-3-ansi.StringWidth(from)))
 	}
 	return Path(fitPath(r.Label, width))
 }

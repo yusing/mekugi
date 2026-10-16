@@ -9,10 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
@@ -184,17 +185,17 @@ func nativeRule(open, close, fill, left, right string, width int, color string) 
 		if label == "" {
 			return ""
 		}
-		return " \x1b[39m" + label + activityui.Reset + color + " "
+		return " \x1b[39m" + label + terminalui.Reset + color + " "
 	}
 	l, r := segment(left), segment(right)
 	if ansi.StringWidth(l)+ansi.StringWidth(r)+1 > inner {
 		r = ""
 	}
 	if ansi.StringWidth(l)+1 > inner {
-		l = ansi.Truncate(l, max(0, inner-2), "…") + activityui.Reset + color + " "
+		l = ansi.Truncate(l, max(0, inner-2), "…") + terminalui.Reset + color + " "
 	}
 	gap := max(0, inner-ansi.StringWidth(l)-ansi.StringWidth(r))
-	return color + open + l + strings.Repeat(fill, gap) + r + close + activityui.Reset
+	return color + open + l + strings.Repeat(fill, gap) + r + close + terminalui.Reset
 }
 
 // nativeBox frames a pane. rules replace whole rows, borders included, so a
@@ -214,9 +215,9 @@ func nativeBox(width, height int, title, right string, focused bool, body []stri
 		if row < len(body) {
 			text = ansi.Truncate(body[row], width-2, "")
 		}
-		lines = append(lines, color+"│"+activityui.Reset+text+strings.Repeat(" ", max(0, width-2-ansi.StringWidth(text)))+color+"│"+activityui.Reset)
+		lines = append(lines, color+"│"+terminalui.Reset+text+strings.Repeat(" ", max(0, width-2-ansi.StringWidth(text)))+color+"│"+terminalui.Reset)
 	}
-	return append(lines, color+"└"+strings.Repeat("─", width-2)+"┘"+activityui.Reset)
+	return append(lines, color+"└"+strings.Repeat("─", width-2)+"┘"+terminalui.Reset)
 }
 
 // nativeTitle labels a pane with its Ctrl-B digit.
@@ -225,10 +226,10 @@ func nativeTitle(digit int, name, detail string, focused bool) string {
 	if focused {
 		label = nativeBorder(true) + "\x1b[1m" + label + "\x1b[22m"
 	} else {
-		label = activityui.Dim + label + activityui.Undim
+		label = terminalui.Dim + label + terminalui.Undim
 	}
 	if detail != "" {
-		label += activityui.Dim + " · " + activityui.Undim + detail
+		label += terminalui.Dim + " · " + terminalui.Undim + detail
 	}
 	return label
 }
@@ -420,9 +421,9 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	}
 	rows[height-1] += "\x1b[1G\x1b[0m" + ansi.Truncate(u.nativeStatus(), width, "")
 	u.layout = l
-	copyRows := make([][]activityui.CopySpan, len(rows))
+	copyRows := make([][]terminalui.CopySpan, len(rows))
 	for y := range rows {
-		rows[y], copyRows[y] = activityui.ExtractCopy(rows[y])
+		rows[y], copyRows[y] = terminalui.ExtractCopy(rows[y])
 	}
 	u.paintSelection(rows)
 	var b strings.Builder
@@ -471,7 +472,7 @@ func (u *terminalUI) nativeStatus() string {
 		case shown:
 			text += badge + " "
 		default:
-			text = activityui.Dim + text + activityui.Undim + badge + " "
+			text = terminalui.Dim + text + terminalui.Undim + badge + " "
 		}
 		left := ansi.StringWidth(tabs.String())
 		pane := digit - 1
@@ -494,7 +495,7 @@ func (u *terminalUI) nativeStatus() string {
 	tab(2, "Diff", diffBadge, u.diffOpen)
 	tab(3, "Agents", agentsBadge, true)
 	if u.main != nil && u.main.interruptLocked {
-		tabs.WriteString("  " + activityui.Amber + "Locked · /unlock" + activityui.Reset)
+		tabs.WriteString("  " + activityui.Amber + "Locked · /unlock" + terminalui.Reset)
 	}
 	filter := "child"
 	if u.agents.only {

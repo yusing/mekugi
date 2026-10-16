@@ -7,12 +7,13 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/rivo/uniseg"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
@@ -20,7 +21,7 @@ import (
 type terminalSelection struct {
 	rect                       terminalRect
 	rows                       []string
-	copySource                 [][]activityui.CopySpan
+	copySource                 [][]terminalui.CopySpan
 	contentLeft                []int // Optional per-row start after numbered gutters.
 	startX, startY, endX, endY int
 	dragging, moved            bool
@@ -48,9 +49,9 @@ func (s *terminalSelection) document(lines []string, top, fixed int) {
 	top = max(0, top)
 	lines = append(slices.Clone(lines), make([]string, max(0, top+s.rect.h-len(lines)))...)
 	rows := make([]string, s.rect.y+len(lines))
-	copySource := make([][]activityui.CopySpan, len(rows))
+	copySource := make([][]terminalui.CopySpan, len(rows))
 	for i, line := range lines {
-		rows[s.rect.y+i], copySource[s.rect.y+i] = activityui.ExtractCopy(strings.Repeat(" ", s.rect.x) + line)
+		rows[s.rect.y+i], copySource[s.rect.y+i] = terminalui.ExtractCopy(strings.Repeat(" ", s.rect.x) + line)
 	}
 	s.top, s.fixed = top, fixed
 	for y := s.rect.y; y < s.rect.y+s.rect.h && y < len(s.rows); y++ {
@@ -425,11 +426,11 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 			// Short output needs numbered diff headings too, while Markdown bodies
 			// retain their existing rendered-text selection.
 			s.rows = make([]string, len(d.body))
-			s.copySource = make([][]activityui.CopySpan, len(d.body))
+			s.copySource = make([][]terminalui.CopySpan, len(d.body))
 			for i, row := range d.body {
 				s.rows[i] = row
 				if i < len(d.indents) && d.indents[i] > 0 {
-					s.rows[i], s.copySource[i] = activityui.ExtractCopy(row)
+					s.rows[i], s.copySource[i] = terminalui.ExtractCopy(row)
 				}
 			}
 		}
@@ -682,11 +683,11 @@ func (u *terminalUI) paintSelection(rows []string) {
 // ordinary selection behavior, but never supply table contents or code fill.
 func (s *terminalSelection) text() string {
 	_, first, _, last := s.ordered()
-	var parts []activityui.CopyFragment
+	var parts []terminalui.CopyFragment
 	var out []string
 	flush := func() {
 		if len(parts) > 0 {
-			out = append(out, activityui.CopyText(parts))
+			out = append(out, terminalui.CopyText(parts))
 			parts = nil
 		}
 	}

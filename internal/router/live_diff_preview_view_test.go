@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
 
 	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
@@ -403,7 +403,7 @@ func TestLiveDiffPreviewTitleShowsFileStatusAndCounts(t *testing.T) {
 	pane.Update(diffview.Preview{ID: "one", Workspace: "/workspace", Thread: "thread", Status: diffview.PreviewEdit, Files: []diffmodel.ReviewFile{modified}})
 	pane.Update(diffview.Preview{ID: "one"})
 	lines, err := pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, 120, 8)
-	if err != nil || !strings.Contains(lines[0], activityui.Dim+"○") ||
+	if err != nil || !strings.Contains(lines[0], terminalui.Dim+"○") ||
 		!strings.Contains(lines[0], diffrender.DarkTheme.Foreground(chroma.GenericInserted)+"+2") {
 		t.Fatalf("completed header lost its glyph or count colors: %v %q", err, lines[0])
 	}

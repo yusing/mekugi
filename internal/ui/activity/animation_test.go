@@ -7,16 +7,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 func TestCodexReasoningShimmerSweep(t *testing.T) {
 	const text = "Checking the answer target"
 	colors := regexp.MustCompile(`\x1b\[38;2;(\d+);(\d+);(\d+)m`)
-	palettes := []activityui.Colors{
+	palettes := []terminalui.Colors{
 		{Foreground: diffrender.RGB{R: 220, G: 214, B: 200}, Background: diffrender.RGB{R: 24, G: 22, B: 30}, HasForeground: true, HasBackground: true},
 		{Foreground: diffrender.RGB{R: 30, G: 40, B: 50}, Background: diffrender.RGB{R: 250, G: 248, B: 240}, HasForeground: true, HasBackground: true},
 	}
@@ -59,14 +60,14 @@ func TestCodexReasoningShimmerSweep(t *testing.T) {
 
 func TestReasoningShimmerWithoutReportedPalette(t *testing.T) {
 	const text = "Checking the answer target"
-	frame := activityui.ReasoningShimmer(text, 500*time.Millisecond, activityui.Colors{})
+	frame := activityui.ReasoningShimmer(text, 500*time.Millisecond, terminalui.Colors{})
 	if ansi.Strip(frame) != text || !strings.HasSuffix(frame, "\x1b[39m") {
 		t.Fatalf("fallback changed text or leaked styling: %q", frame)
 	}
 	colors := regexp.MustCompile(`\x1b\[38;2;\d+;\d+;\d+m`)
 	levels := map[string]bool{}
 	for i := range 31 {
-		frame = activityui.ReasoningShimmer(text, time.Duration(i)*33*time.Millisecond, activityui.Colors{})
+		frame = activityui.ReasoningShimmer(text, time.Duration(i)*33*time.Millisecond, terminalui.Colors{})
 		for _, color := range colors.FindAllString(frame, -1) {
 			levels[color] = true
 		}
@@ -78,7 +79,7 @@ func TestReasoningShimmerWithoutReportedPalette(t *testing.T) {
 }
 
 func TestStatusPulseReportedPalette(t *testing.T) {
-	for _, palette := range []activityui.Colors{
+	for _, palette := range []terminalui.Colors{
 		{Foreground: diffrender.RGB{R: 220, G: 220, B: 220}, Background: diffrender.RGB{R: 20, G: 20, B: 20}, HasForeground: true, HasBackground: true},
 		{Foreground: diffrender.RGB{R: 20, G: 20, B: 20}, Background: diffrender.RGB{R: 220, G: 220, B: 220}, HasForeground: true, HasBackground: true},
 	} {
@@ -102,7 +103,7 @@ func TestStatusPulseContinuousFallback(t *testing.T) {
 	start := time.Unix(0, 0)
 	levels := map[string]bool{}
 	for i := range 31 {
-		frame := activityui.StatusPulse("Sending…", start.Add(time.Duration(i)*33*time.Millisecond), activityui.Colors{})
+		frame := activityui.StatusPulse("Sending…", start.Add(time.Duration(i)*33*time.Millisecond), terminalui.Colors{})
 		if ansi.Strip(frame) != "Sending…" {
 			t.Fatal("pulse changed text")
 		}

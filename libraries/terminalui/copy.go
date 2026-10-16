@@ -1,5 +1,6 @@
-package activity
+package terminalui
 
+// Source: internal/ui/activity/copy.go:1:508@[b5ba67e3] shared source presentation.
 import (
 	"encoding/base64"
 	json "encoding/json/v2"
@@ -23,7 +24,7 @@ import (
 // clipping, pinned copies and frozen selection snapshots without a global store.
 const copyEnvelope = "\x1b]777;mekugi-copy;"
 
-func copyID(text string, scope uint64) uint64 {
+func CopyID(text string, scope uint64) uint64 {
 	h := fnv.New64a()
 	h.Write(strconv.AppendUint(nil, scope, 10))
 	h.Write([]byte{0})
@@ -66,7 +67,7 @@ func copyInline(source string) CopyFragment {
 	bold := -1
 	for i := 0; i < len(source); {
 		if source[i] == '[' {
-			if label, target, end, ok := liveActivityLink(source[i:]); ok {
+			if label, target, end, ok := markdownLink(source[i:]); ok {
 				start := text.Len()
 				text.WriteString(label)
 				if strings.ContainsAny(target, " \t\n()") {
@@ -77,7 +78,7 @@ func copyInline(source string) CopyFragment {
 				continue
 			}
 		}
-		if code, end, ok := liveActivityCodeSpan(source, i); ok {
+		if code, end, ok := CodeSpan(source, i); ok {
 			start := text.Len()
 			text.WriteString(code)
 			f.Styles = append(f.Styles, copyStyle{start, text.Len(), "`", "`", start + 1})

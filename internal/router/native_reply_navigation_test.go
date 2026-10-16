@@ -11,6 +11,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -154,7 +156,7 @@ func TestLiveActivitySkillNamesBold(t *testing.T) {
 			t.Fatalf("skill command misclassified: %q", classified)
 		}
 		rendered := strings.Join(v.painter.Block(block, 120), "\n")
-		if !strings.Contains(rendered, "\x1b[1mgolang-best-practices"+activityui.Undim) || !strings.Contains(ansi.Strip(rendered), operand) {
+		if !strings.Contains(rendered, "\x1b[1mgolang-best-practices"+terminalui.Undim) || !strings.Contains(ansi.Strip(rendered), operand) {
 			t.Fatalf("skill name not bold or operand changed: %q", rendered)
 		}
 	}

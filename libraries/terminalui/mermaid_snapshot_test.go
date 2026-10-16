@@ -1,4 +1,4 @@
-package activity
+package terminalui
 
 import (
 	"strings"
@@ -37,7 +37,7 @@ Codex --> Permissions["Permissions and patch review"]`, 80},
 				text = "```mermaid\n" + text + "\n```"
 			}
 			p := Painter{Theme: diffrender.DarkTheme}
-			uisnapshot.Assert(t, "testdata/snapshots/mermaid_"+tc.name+".txt", strings.Join(p.Markdown(text, tc.width), "\n")+"\n")
+			uisnapshot.Assert(t, "testdata/snapshots/mermaid_"+tc.name+".txt", strings.Join(p.Markdown(text, tc.width, false), "\n")+"\n")
 		})
 	}
 }

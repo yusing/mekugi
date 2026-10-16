@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -99,7 +101,7 @@ func TestRosterDesignSeparateHeaderTreeAndMetrics(t *testing.T) {
 		t.Errorf("strip hover styling = %q", hovered)
 	}
 	table := v.metricTable(rows[:2], now)
-	if metric := table[1]; strings.Contains(metric, "explorer") || !strings.Contains(metric, activityui.Dim+"T+"+activityui.Undim+"1") || strings.Contains(metric, "n/a") {
+	if metric := table[1]; strings.Contains(metric, "explorer") || !strings.Contains(metric, terminalui.Dim+"T+"+terminalui.Undim+"1") || strings.Contains(metric, "n/a") {
 		t.Errorf("metric style = %q", metric)
 	}
 	if strings.Contains(table[0], "root-role") {

@@ -703,15 +703,12 @@ foreground colors.
 Composer selection excludes its prompt and borders;
 Diff selection covers only the source column, excluding the file navigator, gutters,
 and line numbers, and keeps each row's `+`, `-`, or space marker. Dialog selections
-copy visible text. Other Markdown selections reconstruct only selected source
-fragments, balancing inline formatting and
-preserving code indentation, trailing whitespace, blank code rows, and hard breaks.
-Soft wraps rejoin logical lines rather than inserting display newlines. Selected
-table cells reconstruct Markdown independently of grid wrapping or narrow record
-layouts; unselected cells remain empty, with a structural header and delimiter
-when needed. Reconstructed tables retain their source blockquote nesting, without
-copying the visible quote bars. A single selected cell without a selected separator
-copies just its content. Forward and reverse drags use the same source ranges; wide graphemes
+copy visible text. Other Markdown selections use
+[source-aware reconstruction](../../libraries/terminalui/SPEC.md), preserving
+selected formatting and code whitespace while excluding decorative rows and gutters.
+Unselected table cells remain empty, with a structural header and delimiter when
+needed; a single selected cell without a selected separator copies just its content.
+Forward and reverse drags use the same source ranges; wide graphemes
 are never split. Pinned replies use the same annotations as transcript content.
 A press in the Diff still reaches the pane, so clicks keep their meaning.
 Reference inserts a concise mention at the composer caret without submitting:

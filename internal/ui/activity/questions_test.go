@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -43,9 +43,9 @@ func TestUISnapshotQuestionMarkdown(t *testing.T) {
 		p := Painter{Theme: theme, CopySource: true}
 		answer := "> **Recommended next step:** check `host`.\n\n[Selected message] **This?**\n\n- Keep state\n\n```go\ncheck()\n```"
 		rows := p.Block(Block{Kind: "op", Verb: "Asked", Label: "1 question · answered", Questions: []Question{{Text: "Proceed?", Answer: answer, State: "answered"}}}, 42)
-		var parts []CopyFragment
+		var parts []terminalui.CopyFragment
 		for i, row := range rows {
-			plain, spans := ExtractCopy(row)
+			plain, spans := terminalui.ExtractCopy(row)
 			rows[i] = plain
 			for _, span := range spans {
 				if part, ok := span.Clip(0, 42); ok {
@@ -53,7 +53,8 @@ func TestUISnapshotQuestionMarkdown(t *testing.T) {
 				}
 			}
 		}
-		if got, want := CopyText(parts), selectedMarkdown(t, answer, 38); got != want {
+		want := "**Recommended next step:** check `host`.\n\n[Selected message] **This?**\n\n- Keep state\n\ncheck()"
+		if got := terminalui.CopyText(parts); got != want {
 			t.Fatalf("answer copy = %q, want %q", got, want)
 		}
 		uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/question_markdown_%d.txt", theme), append(rows, "plain after answer"), 42)

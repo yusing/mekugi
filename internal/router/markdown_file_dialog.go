@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
@@ -85,7 +86,7 @@ func (u *terminalUI) openMarkdownFile(view *liveActivityView, target string) boo
 	if format, _ := sourcekind.Classify(path); err == nil && format.Kind == "markdown" {
 		rendered := block
 		rendered.Body, rendered.Tail = content, nil
-		rendered.Detail = activityui.Dim + fmt.Sprintf("%d lines", len(block.Tail)) + activityui.Undim
+		rendered.Detail = terminalui.Dim + fmt.Sprintf("%d lines", len(block.Tail)) + terminalui.Undim
 		pages = []activityui.Block{rendered, block}
 	}
 	u.openBlocks(view, pages)
