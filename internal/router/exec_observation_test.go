@@ -219,7 +219,14 @@ func TestExecObservationBoundsEncodedCapture(t *testing.T) {
 	// the bound.
 	writeTestFile(t, filepath.Join(workspace, "page.html"), strings.Repeat("\x01", 2<<20))
 	writeTestFile(t, filepath.Join(workspace, "small"), "kept\n")
-	observation := observeTestCommand(t, workspace, "touch page.html small")
+	// Exercise encoded-size admission independently of the forwarding deadline.
+	// Race instrumentation can make this deliberately large fixture exceed it.
+	observation, observed := captureExecObservationWithin([]commandanalysis.Command{{
+		Command: "touch page.html small", Workdir: workspace, Shell: "bash",
+	}}, false, false, execCaptureEnv{})
+	if !observed || observation == nil || len(observation.Files) != 2 {
+		t.Fatalf("named files were not captured: %+v", observation)
+	}
 	if size := len(responses.MustMarshalJSON(observation)); size > maxExecObservationBytes {
 		t.Fatalf("encoded capture is %d bytes", size)
 	}
@@ -232,7 +239,7 @@ func TestExecObservationBoundsEncodedCapture(t *testing.T) {
 		}
 	}
 	if reviews, complete, _, _ := reconcileExecObservation(*observation, execReconcileEnv{}); !complete || len(reviews) != 0 {
-		t.Fatalf("unchanged files were reported: %+v", reviews)
+		t.Fatalf("unchanged-file reconciliation: complete=%t reviews=%+v", complete, reviews)
 	}
 }
 
