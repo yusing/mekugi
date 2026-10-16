@@ -496,6 +496,75 @@ func TestAppServerThinkingFromRequestStart(t *testing.T) {
 	}
 }
 
+func TestAppServerDuplicateSummaryCompletionKeepsNextThinking(t *testing.T) {
+	for _, state := range []string{"main/painted", "child/painted", "main/draining", "child/draining"} {
+		for _, completion := range []struct{ name, text string }{{"refresh", "Updated summary."}, {"empty", ""}} {
+			t.Run(state+"/"+completion.name, func(t *testing.T) {
+				thread, reveal, _ := strings.Cut(state, "/")
+				u, at := newActiveWorkTestUI(t)
+				activity := newSubagentActivity()
+				activity.attachNativePane("main")
+				activity.observe("child", "main", "/root/worker", true)
+				u.proxy = &mekugiProxy{activity: activity}
+				u.agents.setDisplayFilter(false, "/root/worker")
+				view := u.view
+				if thread == "child" {
+					view = u.agents
+				}
+				start := func() {
+					activity.beginResponse(thread, true)
+					activity.starts[len(activity.starts)-1].at = *at
+					u.applyObservedActivity()
+				}
+				complete := func(id, text string) {
+					reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": appServerItem{ID: id, Type: "reasoning", Summary: []string{text}}})
+				}
+				reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
+				start()
+				*at = at.Add(3 * time.Second)
+				completedAt := *at
+				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": appServerItem{ID: "first", Type: "reasoning", Summary: []string{"Original summary."}}})
+				if reveal == "painted" {
+					rollCommandOutput(u)
+					if got := view.Entries[0].Source; got.native.thought != 3*time.Second {
+						t.Fatalf("completion-only summary lost provider timing: %+v", got.native)
+					}
+				}
+				*at = at.Add(2 * time.Second)
+				start()
+				*at = at.Add(time.Second)
+				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": appServerItem{ID: "first", Type: "reasoning", Summary: []string{completion.text}}})
+				if got := view.Entries[0].Source; reveal == "painted" && (got.native.phase != "item/completed" || got.Text != "Original summary.") {
+					t.Errorf("duplicate completion replayed a finished summary: phase=%s text=%q", got.native.phase, got.Text)
+				}
+				rollCommandOutput(u)
+				paintedAt := completedAt
+				if reveal == "draining" {
+					paintedAt = *at
+				}
+				want := completion.text
+				if want == "" {
+					want = "Original summary."
+				}
+				if got := view.Entries[0].Source; got.Text != want || got.native.thought != 3*time.Second || got.Observed != completedAt || got.completed != paintedAt {
+					t.Errorf("refreshed completion lost content or original timing: text=%q thought=%v observed=%v completed=%v", got.Text, got.native.thought, got.Observed, got.completed)
+				}
+				if got := ansi.Strip(strings.Join(view.RenderFeed(90, 40).Lines, "\n")); !strings.Contains(got, strings.TrimSuffix(want, ".")) || !strings.Contains(got, "Thinking") {
+					t.Fatalf("duplicate completion removed next provider thinking: %q", got)
+				}
+				*at = at.Add(4 * time.Second)
+				complete("next", "Next summary.")
+				if len(view.Entries) != 2 || view.Entries[1].Source.native.item != "next" || view.Entries[1].Source.native.thought != 5*time.Second {
+					t.Fatalf("next completion lost provider correlation: %+v", view.Entries)
+				}
+				if got := ansi.Strip(strings.Join(view.RenderFeed(90, 40).Lines, "\n")); strings.Contains(got, "Thinking") || !strings.Contains(got, "Next summary") {
+					t.Fatalf("next completion left orphan thinking: %q", got)
+				}
+			})
+		}
+	}
+}
+
 func TestAppServerStartedSummarySettlesWithoutDelta(t *testing.T) {
 	for _, interrupted := range []bool{false, true} {
 		t.Run(map[bool]string{false: "completed", true: "interrupted"}[interrupted], func(t *testing.T) {

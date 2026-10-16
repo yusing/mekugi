@@ -94,6 +94,16 @@ func (v *activityAdapter) apply(event activityPaneEvent) bool {
 						previous.Source.native.thread == entry.native.thread && previous.Source.native.item == entry.native.replaces
 					if replaced || previous.Source.CallID == entry.CallID &&
 						(previous.Source.native == nil && entry.native == nil || previous.Source.native != nil && entry.native != nil && previous.Source.native.sameItem(entry.native)) {
+						if previous.Source.native != nil && previous.Source.native.phase == "item/completed" {
+							// Refresh authoritative text without replaying a completed
+							// item's animation or replacing its observed timing.
+							if entry.native.phase != "item/completed" {
+								updated = true
+								break
+							}
+							entry.native.thought, entry.completed = previous.Source.native.thought, previous.Source.completed
+							entry.Observed = previous.Source.Observed
+						}
 						entry.Seq = previous.Source.Seq
 						if replaced || activityui.ReasoningSummaryHeader(previous.Source.Text) == activityui.ReasoningSummaryHeader(entry.Text) {
 							entry.Observed = previous.Source.Observed

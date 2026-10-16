@@ -45,7 +45,10 @@ func (s *ReasoningStream) Queue(updates []observation.TextUpdate) []observation.
 			s.runs[key] = run
 		}
 		if run.done != nil {
-			continue
+			if entry.Phase != "item/completed" {
+				continue
+			}
+			entry.Thought, entry.Observed = run.done.Thought, run.done.Observed
 		}
 		previous := run.entry.Text
 		if !strings.HasPrefix(entry.Text, previous) {

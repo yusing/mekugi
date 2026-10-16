@@ -188,12 +188,10 @@ func (t *turnState) item(e observation.TextEvent, main, completed bool, thread *
 		if !completed {
 			t.start(&u, e.At, thread)
 		} else {
-			if p := thread.pending; p.item != "" && t.thinking[id].IsZero() && strings.TrimSpace(u.Text) != "" {
+			_, seen := t.reasoning[id]
+			if p := thread.pending; !seen && p.item != "" && strings.TrimSpace(u.Text) != "" {
 				thread.pending = pending{}
-				if _, active := t.thinking[id]; !active {
-					thread.thinking++
-				}
-				t.thinking[id], u.Replaces = p.at, p.item
+				u.Thought, u.Replaces = e.At.Sub(p.at), p.item
 			}
 			if at, ok := t.thinking[id]; ok {
 				delete(t.thinking, id)
@@ -202,6 +200,9 @@ func (t *turnState) item(e observation.TextEvent, main, completed bool, thread *
 				if strings.TrimSpace(u.Text) == "" {
 					u.Text = t.reasoning[id]
 				}
+			} else if strings.TrimSpace(u.Text) == "" {
+				t.reasoning[id] = ""
+				return nil
 			}
 			if strings.TrimSpace(u.Text) == "" {
 				u.Phase = "discarded"
