@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/yusing/mekugi/libraries/persistence"
 )
 
 // Source: internal/router/mekugi_store.go:123:201@[ff834f05] record identity and read
@@ -51,7 +53,7 @@ func Read(directory, workspace, callID string, commentary bool, limit int) (Reco
 	if !info.Mode().IsRegular() || info.Size() > int64(limit) {
 		return Record{}, false, errors.New("invalid replay record file")
 	}
-	f, err := openRetained(name, limit)
+	f, err := persistence.OpenRetained(name, limit)
 	if err != nil {
 		return Record{}, false, err
 	}

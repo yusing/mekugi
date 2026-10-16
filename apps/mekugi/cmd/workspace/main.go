@@ -191,6 +191,7 @@ func allowedImport(directory, pkg, imported string) error {
 			return nil
 		}
 		allowed := map[string][]string{
+			"legacycall":           {"persistence"},
 			"commandanalysis":      {"sourceanalysis", "commandargs"},
 			"shellinstrumentation": {"commandanalysis", "commandargs"},
 			"outputbudget":         {"sourceanalysis"},

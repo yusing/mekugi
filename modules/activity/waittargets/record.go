@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/contracts/recordkind"
+	"github.com/yusing/mekugi/libraries/persistence"
 )
 
 const maxBytes = 64 << 10
@@ -53,7 +54,7 @@ func Read(path string) ([]Target, bool, error) {
 	if !info.Mode().IsRegular() {
 		return nil, false, errors.New("wait targets are not a regular file")
 	}
-	f, err := os.Open(path)
+	f, err := persistence.OpenRetained(path, maxBytes)
 	if err != nil {
 		return nil, false, err
 	}

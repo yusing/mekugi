@@ -38,8 +38,7 @@ Session history receives record-kind recognition, dependency enumeration,
 retention budgets and semantic retirement policy. Record meaning stays with its
 feature owner. Composition supplies the constructed history service to live
 sessions, frontend workers and offline readers; backend-neutral descriptors need
-no Codex binding. Unextracted record kinds remain explicit application
-contributions.
+no Codex binding.
 
 The application owns each attachment's memory store. Modules use private typed
 keys, initialize entries on first use and cannot read another module's entries.

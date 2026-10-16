@@ -1,4 +1,5 @@
-// Package persistence owns application-write accounting and atomic publication.
+// Package persistence owns retained-file admission, application-write accounting
+// and atomic publication.
 // It leaves flushing to the kernel; successful publication is not a power-loss guarantee.
 package persistence
 

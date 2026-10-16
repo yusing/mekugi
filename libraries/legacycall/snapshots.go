@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/yusing/mekugi/libraries/persistence"
 )
 
 // Source: internal/router/replay_snapshots.go:21:285@[ff834f05] snapshot decoding
@@ -94,7 +96,7 @@ func SnapshotData(directory, name string, limit int) ([]byte, bool, error) {
 	if !info.Mode().IsRegular() || info.Size() > int64(limit) {
 		return nil, false, errors.New("invalid snapshot file")
 	}
-	f, err := openRetained(path, limit)
+	f, err := persistence.OpenRetained(path, limit)
 	if err != nil {
 		return nil, false, err
 	}
