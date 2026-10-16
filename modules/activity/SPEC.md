@@ -85,14 +85,11 @@ program invocations retain program source rather than becoming skill reads.
 The same content values can carry authored messages and reasoning supplied by host
 adapters. Their kind does not establish host execution state.
 
-The parser owns no feed, grouping across invocations or terminal state. Presentation
-values enrich parsed content with observed timing, outcomes, identities, questions,
-hook facts and bounded output tails. Terminal disclosure selects eligible adjacent
-operations; neutral grouping joins their values and keeps flat original membership.
-Read merging, reasoning compaction, batch flattening and stage folding preserve
-those identities for dialogs and cross-pane navigation.
-Source values contain no styles, geometry, callbacks or live handles. Shared fence
-and inline-code recognition belongs to `sourceanalysis`.
+Parsing supplies renderer-neutral source values. Presentation combines them with
+observed timing, outcomes, identities, questions, hooks and bounded output. Grouping
+preserves source identities for dialogs and cross-pane navigation under the
+[presentation contract](CONTRACT.md#operation-rows). Shared fence and inline-code
+recognition belongs to `sourceanalysis`.
 
 Activity owns literal Git, SVN and change-read source recognition and interpretation
 of their observed output into neutral change rows. Application adapters remove
@@ -208,10 +205,8 @@ continued work. Resume may restore recorded names but cannot infer old targets
 from today's roster or revive waits. Storage failures report a notice without
 blocking live display.
 
-One feed record owns each source, its neutral values and its revision through
-replacement, mutation, removal and history reordering. Publication sequence and
-display order are independent. Feed retention keeps the newest 2,000 records while
-protecting live invocations.
+Feeds retain the newest 2,000 records while protecting live invocations.
+Reordering preserves source identity independently of publication order.
 
 The model derives canonical roster order, observed status, latest activity and
 active skills. Missing parents promote their children without reordering siblings.
@@ -230,15 +225,10 @@ provider usage or revive replayed processes.
 The [presentation contract](CONTRACT.md) defines terminal behavior and the boundary
 between retained observations, terminal state and application navigation.
 
-Retained streams stay with their invocation or segment. Feed publications carry
-bounded tails and scoped output identities rather than whole retained snapshots.
-Visible feed syntax preserves source headers using bounded retained context.
-Ordinary collapsed or offscreen output does not materialize full snapshots;
-expanded content and dialogs can read full retained output. An open dialog retains
-its flat original pages, so feed aging does not invalidate them. It refreshes from
-unpaced source records before
-visible feed reveal and follows newly observed segments. Release falls back to the
-bounded tail without reviving discarded bytes or inventing a successful exit.
+Retained streams stay with their invocation or segment. The presentation contract
+owns [output disclosure and release fallback](CONTRACT.md#command-state-output-and-timing)
+and [dialog lifetime](CONTRACT.md#content-dialog); display pacing never delays
+access to completed evidence.
 
 ## Failure and absence
 

@@ -18,20 +18,24 @@ history lives in its thread store; replacement drops these stores rather than
 retaining an independent thread registry. A highlighted roster row is not the
 displayed thread. Metadata can rename a caller without changing its identity.
 
-Paginated history opens at the newest turn's recent items. An older-page intent
-uses the last retained item as an exclusive anchor when available, or the opaque
-continuation cursor for an empty page. Pages deduplicate turn and item identities
-and reject repeated cursors or foreign items. Already-loaded content survives
-failure and remains retryable. Deferred evidence joins its original item when
-that page arrives. Older pages cannot replace newer live metadata or promote old
-commentary to a final answer. Archived children use the same observation flow.
+## History
+
+Child history opens at the newest turn's recent items. Older pages continue after
+the last retained item, or use the host cursor after an empty page. Pages
+deduplicate turn and item identities and reject repeated cursors or foreign items.
+Deferred evidence joins its original item when that page arrives, preserving
+Activity's entry, output and navigation identities. Older pages cannot replace
+newer live metadata or promote old commentary to a final answer. Archived children
+use the same observation flow.
 
 Only one child-history read is active at a time. Other threads continue normally.
 Cancellation retires that observation and releases buffered live events without
 interrupting the child. Saturated buffering gives live observations precedence.
 Late responses cannot revive a cancelled read or cross an attachment boundary.
-History state distinguishes intentionally unloaded content, loading, failure and
-exhaustion; the renderer supplies the corresponding controls and labels.
+History distinguishes intentionally unloaded content, loading, failure and
+exhaustion. Failed reads preserve loaded content and remain retryable; the renderer
+supplies controls and labels for these states. Reading history never resumes a
+child or revives commands, previews or delivery receipts.
 
 Acceptance includes a non-terminal consumer of display, admission, paging,
 retry, cancellation and replay values, plus live-adapter history reconciliation
@@ -40,20 +44,15 @@ coverage.
 
 ## Codex history binding
 
-Codex owns lineage, including inherited fork items and archived descendants.
-Fresh resume rediscovers history instead of reviving continuation handles.
-Paginated children use a metadata-only `thread/read`, then descending
-`thread/turns/list` with `itemsView: "notLoaded"` and 100 turns per page, bounded
-to eight pages. Turn identity, status, failure and second-resolution timing come
-from metadata rather than item text. Legacy children retain full `thread/read`
-restoration because Codex's item-list API does not support their rollout history.
-
-Descending `thread/items/list` reads contain at most 100 items from one child and
-turn, with optional millisecond timestamps. Item anchors translate to the
-exclusive `{type: "item", itemId: ...}` cursor with that same nonempty `turnId`.
-An opaque cursor continues an empty page; a null continuation ends the turn.
-Errors never trigger an unbounded fallback. Page limits bound item counts rather
-than bytes, so one large item can still require a large frame.
+Codex supplies lineage, including inherited fork items and archived descendants.
+Fresh resume rediscovers history instead of reviving continuation handles. Child
+discovery is bounded to 128 descendants and eight list pages, with a partial-history
+notice at the limit. Paginated children read at most eight pages of 100 turns,
+then at most 100 items from one turn per page. Turn identity, status, failure and
+timing come from host metadata rather than item text. Legacy children require full
+history reads because Codex's item-list API does not support their rollouts.
+Errors never trigger an unbounded fallback. Limits bound item counts rather than
+bytes, so one large item can still require a large frame.
 
 Active skills reconstruct from event history without another durable store;
 their display contract is [Activity's loaded-skill presentation](../../../../modules/activity/CONTRACT.md#agents-roster-and-navigation).
@@ -61,13 +60,7 @@ Skill scans remain independent of lazy transcript pages. Descending thread-wide
 item reads include inherited history and stop at the latest completed
 compaction. One bounded scan runs at a time; incomplete or failed scans leave
 counts unknown with a notice. Live resets override historical scans and session
-replacement retires correlation. Observation neither resumes a child nor invokes
-a model.
-
-Pending rollout placements stay with their child until the corresponding item
-or turn loads. Activity's stable entry IDs retain output and Main links across
-older-page insertion. [Activity retention](../../../../modules/activity/SPEC.md)
-keeps live commands until completion; displaying history never revives them.
+replacement retires correlation.
 
 ## Resume and switching
 
@@ -100,25 +93,22 @@ stored per thread.
 Main hydrates host messages and command/edit items after child histories, retaining
 their original placement and reconciling buffered items by identity. Failed turns
 retain a visible error; an active snapshot retains its steer/interrupt target.
-Historical tools never recreate processes, previews or delivery receipts. Main
-currently reads full host resume history before trimming to its retained transcript
-window; paginated Main hydration remains unfinished. Descendant streaming deltas
-are omitted during restoration; completed items provide their content.
+Main reads full host resume history before trimming to its retained transcript
+window. Descendant streaming deltas are omitted during restoration; completed
+items provide their content.
 
-Roster restoration includes archived descendants but never resumes children or
-treats historical unfinished turns as live work. Only completed collaboration
-items claim delivered assignments/messages. The host-selected rollout supplements
-missing cell failures and received task/message bodies, after identity validation,
+Roster restoration never treats historical unfinished turns as live work. Only
+completed collaboration items claim delivered assignments/messages. The
+host-selected rollout supplements missing cell failures and received task/message
+bodies, after identity validation,
 within its last 64 MiB. Evidence retains its item/time placement and deduplicates
-against later live requests. Unloaded-item evidence waits for its page.
+against later live requests under the [history contract](#history).
 
-Child discovery is bounded to 128 descendants and eight list pages, with a partial
-history notice at the limit. Restoration reports progress and preserves typed
-input as an unsent draft; `/quit` or Ctrl-C on an empty draft can exit. Missing
+Restoration reports progress and preserves typed input as an unsent draft;
+`/quit` or Ctrl-C on an empty draft can exit. Missing
 child history remains incomplete without blocking the parent. Ctrl-B o loads one
 older page for the selected child, or the first eligible child while Main is shown.
-Escape cancels that observational read without interrupting the child. History
-labels distinguish unloaded content from failure, and retry retains loaded content.
+Escape cancels that observational read without interrupting the child.
 
 Saved Diff restores only durable changes for the root and discovered descendants
 in their workspaces before new input. Later observations join only admitted lineage,

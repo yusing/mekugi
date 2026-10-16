@@ -116,19 +116,16 @@ Session catalogs, durable namespace identity, allocation high-water marks and
 published host facts belong here. Retained calls, their historical snapshot
 dependencies and generated-commentary provenance use the shared frozen
 [historical codec](../../libraries/legacycall), preserving identity and encoding.
-Commentary keeps its independent budget. Application adapters retain request-local
-translation and publication integration; the historical schema is not extended
-for new feature records.
+Commentary keeps its independent budget. New feature records use their owner's
+codec rather than extending the historical mixed envelopes. Cross-owner ordering
+follows the [publication contract](../../docs/contracts/record-publication.md#cross-owner-publication).
 
-Hook records bind exact workspace and thread identity, preserve recorded
-output/outcomes, and disclose dropped earlier
-observations. Read-only attachment neither creates storage nor revives unfinished
-hooks. The retained codec preserves published records; the live hook schema
-belongs to the Codex backend. Other owners supply their record kinds, dependency inspection, and
-prepared semantic retirement updates. Existing retained paths and encodings are
-preserved during extraction. Extracted features may introduce their own record
-kinds for new facts while retaining their historical readers; session history
-does not migrate or reinterpret existing feature records.
+Hook records bind exact workspace and thread identity, preserve recorded output
+and outcomes, and disclose dropped earlier observations. Read-only attachment
+neither creates storage nor revives unfinished hooks. The live hook schema belongs
+to the Codex backend. Feature owners supply record kinds, dependency inspection
+and semantic retirement updates. Existing retained paths and encodings stay
+readable; session history does not reinterpret feature records.
 
 ## Failure
 

@@ -227,8 +227,9 @@ hash in the proven command directory. It runs independently of UI input, at most
 two reads at once, bounded to two seconds and 4 MiB. Pending, unavailable or
 unreadable objects leave output-observed created/deleted/moved files without counts.
 Consecutive `-C` options resolve in order. A prior non-VCS shell segment invalidates
-the initial directory, so enrichment then requires an absolute `-C`, also on replay.
-Output naming no commit claims none.
+the initial directory, so enrichment then requires an absolute `-C`. Offline replay
+uses [retained output only](SPEC.md#source-interpretation). Output naming no commit
+claims none.
 
 Successful history-list/summary and version-control output uses grouped change
 rows with shared counts and bars. History reads describe retained changes, not new
@@ -386,14 +387,11 @@ Live output is visibly marked. Live pages follow until scrolled away; End or
 returning to bottom resumes.
 Narrative pages refresh from their source while preserving navigation. `/` starts
 case-insensitive substring search, Enter finds and n/N advances. `y` copies current
-retained output, or source when no output exists. Drag selection excludes gutters,
-numbers and frame padding and freezes content while streams continue. Off-screen
-selection survives scrolling. Search, resize or page change clears selection.
-Selection pauses follow; its visible complete footer hints offer Reference (r/R),
-Copy (Ctrl-C, c/C, y) and Clear (Esc). Reference closes the dialog and inserts one
-undoable token at the composer caret, including active question answers. Copy and
-Clear leave it open; Esc clears before closing. There is no drag-selection hint.
-Feed aging does not invalidate an open page.
+retained output, or source when no output exists. The terminal's
+[shared selection controls](../../apps/mekugi/internal/terminalsession/SPEC.md#selection-and-source-copy)
+govern frozen content, scrolling, Reference/Copy/Clear and dismissal. Reference
+uses [Conversation's attachment pipeline](../conversation/SPEC.md#attachment-snapshots),
+including active question answers. Feed aging does not invalidate an open page.
 
 Inline diagnostics use a bounded first-line preview. Elided errors open full
 retained literal text, including restored JavaScript failures. A complete

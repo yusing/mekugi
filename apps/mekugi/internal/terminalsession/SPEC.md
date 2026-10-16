@@ -167,7 +167,7 @@ foreground colors.
 Composer selection excludes its prompt and borders;
 Diff selection covers only the source column, excluding the file navigator, gutters,
 and line numbers, and keeps each row's `+`, `-`, or space marker. Dialog selections
-copy visible text. Other Markdown selections use
+copy visible text without gutters, line numbers or frame padding. Other Markdown selections use
 [source-aware reconstruction](../../../../libraries/terminalui/SPEC.md), preserving
 selected formatting and code whitespace while excluding decorative rows and gutters.
 Unselected table cells remain empty, with a structural header and delimiter when
@@ -177,7 +177,9 @@ are never split. Pinned replies use the same annotations as transcript content.
 A press in the Diff still reaches the pane, so clicks keep their meaning.
 
 Reference from a dialog closes it and focuses the composer. Copy and Clear keep
-the dialog open; `y` is also a dialog selection-copy shortcut.
+the dialog open; `y` is also a dialog selection-copy shortcut. Escape clears a
+selection before closing the dialog. Selecting live dialog content pauses follow;
+search and page changes dismiss that selection.
 Copy requests the terminal clipboard via OSC 52, and Clear leaves the draft intact.
 Main, child transcripts, saved Diff, side-answer and dialog selections retain a frozen document,
 including off-screen rows, until the selection is dismissed. Mouse-wheel scrolling
