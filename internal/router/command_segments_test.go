@@ -11,7 +11,7 @@ import (
 	"testing/synctest"
 	"time"
 
-	activitymodel "github.com/yusing/mekugi/internal/activity"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/gofrs/flock"
@@ -44,7 +44,7 @@ func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing
 		u := newAppServerSessionTestUI(t, workspace)
 		u.proxy = &mekugiProxy{replayStore: store}
 		key := [3]string{"main", "turn", "command"}
-		first, second := u.session.outputs.New(), u.session.outputs.New()
+		first, second := u.session.activity.Outputs(&u.session.state).New(), u.session.activity.Outputs(&u.session.state).New()
 		first.Finish(new("first\n"), new(0))
 		second.Finish(new("second\n"), new(0))
 		u.execTrack = &execTrackHub{tracks: map[[3]string]*execTrack{key: {done: true, closed: true, ended: true, segments: []execTrackSegment{
@@ -318,7 +318,7 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 			u.proxy = &mekugiProxy{replayStore: store}
 			item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc 'echo one; false'", AggregatedOutput: new("one\n"), ExitCode: new(1)}
 			entry := activityPaneEntry{Seq: 1, Text: "Run `echo one`\n\nRun `false`", native: &liveActivityNativeItem{thread: "main", turn: "t", item: item.ID, command: item.Command}}
-			first, second := u.session.outputs.New(), u.session.outputs.New()
+			first, second := u.session.activity.Outputs(&u.session.state).New(), u.session.activity.Outputs(&u.session.state).New()
 			if mode == "truncated" {
 				first.Write(strings.Repeat("line\n", activitymodel.OutputBytes/5))
 			} else if mode == "long-line" {
@@ -407,7 +407,7 @@ func TestCommandSegmentsRestoreRichChangeRows(t *testing.T) {
 	listing := "amber1..amber5 +343 -658\namber6 +158 -81\n"
 	item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc 'echo before; mchanges --list'", ExitCode: new(0), AggregatedOutput: new("before\n" + listing)}
 	entry := activityPaneEntry{native: &liveActivityNativeItem{thread: "main", turn: "t", item: item.ID}}
-	first, second := u.session.outputs.New(), u.session.outputs.New()
+	first, second := u.session.activity.Outputs(&u.session.state).New(), u.session.activity.Outputs(&u.session.state).New()
 	first.Finish(new("before"), new(0))
 	second.Finish(&listing, new(0))
 	u.retainCommandSegments(entry, item, execTrackView{complete: true, output: true, segments: []commandSegment{{output: first}, {output: second}}})

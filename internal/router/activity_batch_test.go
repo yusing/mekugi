@@ -240,7 +240,7 @@ func TestActivityBatchRestoresVCSRows(t *testing.T) {
 	output := "2\t1\ta.go\n"
 	item := appServerItem{ID: "vcs", Type: "commandExecution", Command: "bash -lc 'echo before; git diff --numstat'", ExitCode: new(0), AggregatedOutput: new("before\n" + output)}
 	entry := activityPaneEntry{native: &liveActivityNativeItem{thread: "main", turn: "t", item: item.ID}}
-	first, second := u.session.outputs.New(), u.session.outputs.New()
+	first, second := u.session.activity.Outputs(&u.session.state).New(), u.session.activity.Outputs(&u.session.state).New()
 	first.Finish(new("before\n"), new(0))
 	second.Finish(&output, new(0))
 	u.retainCommandSegments(entry, item, execTrackView{complete: true, output: true, segments: []commandSegment{{output: first}, {output: second, raw: output}}})

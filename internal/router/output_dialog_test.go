@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	activitymodel "github.com/yusing/mekugi/internal/activity"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
 
@@ -93,7 +93,7 @@ func TestOutputDialogWheelAndOutsideClickIsolation(t *testing.T) {
 		output.Write(fmt.Sprintf("line %02d\n", i))
 	}
 	u := dialogForOutput(output)
-	u.main = &appServerUI{view: newLiveActivityView()}
+	u.main = &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: newLiveActivityView()}
 	drawOutputDialog(u)
 	feedOffset := u.main.view.offset
 	u.outputMouse(64, 0, 0, false)
@@ -115,7 +115,7 @@ func TestOutputDialogSearchAndCopyRetainedText(t *testing.T) {
 	output.Write("alpha\nneedle one\nbeta\nneedle two\n")
 	output.Finish(nil, new(0))
 	u := dialogForOutput(output)
-	u.main = &appServerUI{view: newLiveActivityView()}
+	u.main = &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: newLiveActivityView()}
 	drawOutputDialog(u)
 	u.outputKey("/")
 	for _, key := range []string{"n", "e", "e", "d", "l", "e", "\r"} {
@@ -377,7 +377,7 @@ func TestOutputDialogTerminalKeyDecoderOwnsPrefixAndPaging(t *testing.T) {
 		output.Write(fmt.Sprintf("row %02d\n", i))
 	}
 	u := dialogForOutput(output)
-	u.main = &appServerUI{view: newLiveActivityView()}
+	u.main = &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: newLiveActivityView()}
 	drawOutputDialog(u)
 	u.focus = 0
 	for _, key := range []byte{2, '3'} {

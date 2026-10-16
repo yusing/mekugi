@@ -126,8 +126,10 @@ func (u *appServerUI) restoreCommandSegments(entry *activityPaneEntry, item appS
 	for _, part := range record.Parts {
 		segment := commandSegment{timing: segmenttransport.Timing(part.Timing), source: part.Source, text: execSegmentTextInDirectory(part.Source, cwd), skipped: part.Skipped, exit: part.Exit}
 		if separate && !part.Skipped {
-			segment.output = u.session.outputs.New()
-			segment.output.Finish(part.Output, &part.Exit)
+			if outputs := u.session.activity.Outputs(&u.session.state); outputs != nil {
+				segment.output = outputs.New()
+				segment.output.Finish(part.Output, &part.Exit)
+			}
 			segment.tail, segment.omit = appServerOutputTail(part.Output)
 			if part.Exit == 0 {
 				segment.changes, segment.commit = commandOutputRows(appServerItem{Command: part.Source, Cwd: vcsSegmentCwd(item.Cwd, entry.native.segments), AggregatedOutput: part.Output})

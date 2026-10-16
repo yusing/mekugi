@@ -22,7 +22,7 @@ func TestExecTrackSessionReplacementDropsRetainedChildOutput(t *testing.T) {
 	report.Observe(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0})
 	report.Observe(segmenttransport.Message{Type: segmenttransport.Output, Index: 0, Data: "first\n"})
 	u.flushStreamOutput()
-	before, _ := hub.view(key, false, execSegmentText, &u.session.outputs)
+	before, _ := hub.view(key, false, execSegmentText, u.session.activity.Outputs(&u.session.state))
 	if len(before.segments) != 1 || before.segments[0].output == nil || !slices.Equal(before.segments[0].output.View().Lines, []string{"first"}) {
 		t.Fatalf("child output was not retained before replacement: %+v", before)
 	}
@@ -47,7 +47,7 @@ func TestExecTrackSessionReplacementDropsRetainedChildOutput(t *testing.T) {
 	report.Observe(segmenttransport.Message{Type: segmenttransport.Done, Code: new(3)})
 	report.Observe(segmenttransport.Message{Type: segmenttransport.Closed})
 	report.End()
-	after, _ := hub.view(key, true, execSegmentText, &u.session.outputs)
+	after, _ := hub.view(key, true, execSegmentText, u.session.activity.Outputs(&u.session.state))
 	if after.output || !after.complete || after.code != 3 || len(after.segments) != 2 {
 		t.Fatalf("detached report lost outcomes or claimed complete output: %+v", after)
 	}

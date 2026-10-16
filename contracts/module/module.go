@@ -19,9 +19,10 @@ type Lifetime string
 type NoBindings struct{}
 
 const (
-	Stateless     Lifetime = "stateless"
-	Invocation    Lifetime = "invocation"
-	HostOperation Lifetime = "host-operation"
+	Stateless       Lifetime = "stateless"
+	Invocation      Lifetime = "invocation"
+	AttachedSession Lifetime = "attached-session"
+	HostOperation   Lifetime = "host-operation"
 )
 
 // Slots contains the contribution families implemented by the current binder.

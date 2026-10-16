@@ -9,8 +9,8 @@ import (
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/charmbracelet/x/ansi"
-	activitymodel "github.com/yusing/mekugi/internal/activity"
 	"github.com/yusing/mekugi/libraries/diffrender"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 

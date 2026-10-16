@@ -8,11 +8,11 @@ import (
 	"strconv"
 	"strings"
 
-	activitymodel "github.com/yusing/mekugi/internal/activity"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	"github.com/yusing/mekugi/modules/symbolquery/query"
 	"mvdan.cc/sh/v3/syntax"
 )

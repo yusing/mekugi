@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+
 	"github.com/yusing/mekugi/libraries/terminalui"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -19,7 +21,7 @@ import (
 
 func TestUISnapshotNativeFaintLabelForeground(t *testing.T) {
 	const width = 40
-	u := &appServerUI{model: "model", view: newLiveActivityView()}
+	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, model: "model", view: newLiveActivityView()}
 	frame, _ := u.mainFrame(width, 3, 0)
 	rows := []string{
 		nativeRule("┌", "┐", "─", nativeTitle(2, "Diff", "", false), terminalui.Dim+"metadata"+terminalui.Undim, width, nativeBorder(false)),
@@ -40,7 +42,7 @@ func TestUISnapshotNativeFaintLabelForeground(t *testing.T) {
 
 func TestNativeUISubtleForeground(t *testing.T) {
 	p := activityui.Painter{}
-	u := &appServerUI{model: "x", view: newLiveActivityView()}
+	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, model: "x", view: newLiveActivityView()}
 	frame, _ := u.mainFrame(40, 3, 0)
 	v := newLiveActivityView()
 	metrics := nativeRosterColumns([][nativeMetricParts]string{nativeRosterMetricParts(v, activityPaneAgent{Name: "/root/a", ContextKnown: true, ContextTokens: 1000, ContextWindow: 4000, InputTokens: 2000, OutputTokens: 1000}, time.Now())}, 200)[0]

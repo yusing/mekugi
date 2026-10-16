@@ -1,4 +1,4 @@
-package activity
+package feed
 
 // Source: internal/ui/activity/output_line.go@[11705e68]
 import (

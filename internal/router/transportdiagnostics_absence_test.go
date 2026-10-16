@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
@@ -36,7 +38,7 @@ func TestTransportDiagnosticsAbsentDebugSession(t *testing.T) {
 	defer usage.Close()
 	var paths []string
 	ready := false
-	err = RunSession(history, testPreferences(), testRecovery(), &segmentservice.Service{Reports: testReports()}, testChanges(), usage, new(evidence.Service), nil, testDiagnostics(new(evidence.Service), nil), ctx, testCommands(), testInputProjections(), testGuidance(), testNaming(), testGuards(), options, nil, func(session Session) {
+	err = RunSession(new(activitymodel.Service), history, testPreferences(), testRecovery(), &segmentservice.Service{Reports: testReports()}, testChanges(), usage, new(evidence.Service), nil, testDiagnostics(new(evidence.Service), nil), ctx, testCommands(), testInputProjections(), testGuidance(), testNaming(), testGuards(), options, nil, func(session Session) {
 		defer cancel()
 		ready = true
 		if session.AXReadOutput == "" {
@@ -93,7 +95,7 @@ func TestTransportDiagnosticsAbsentRejectsCaptureOutput(t *testing.T) {
 				t.Fatal(err)
 			}
 			// Capability rejection precedes session resources and mutable outputs.
-			err = RunSession(nil, nil, nil, nil, nil, nil, nil, nil, nil, t.Context(), nil, nil, nil, nil, nil, options, nil, func(Session) { t.Error("unavailable capture reached readiness") }, func([]string) { t.Error("unavailable capture created debug artifacts") })
+			err = RunSession(new(activitymodel.Service), nil, nil, nil, nil, nil, nil, nil, nil, nil, t.Context(), nil, nil, nil, nil, nil, options, nil, func(Session) { t.Error("unavailable capture reached readiness") }, func([]string) { t.Error("unavailable capture created debug artifacts") })
 			if err == nil || !strings.Contains(err.Error(), "transport diagnostics are unavailable") {
 				t.Fatalf("capture capability error = %v", err)
 			}

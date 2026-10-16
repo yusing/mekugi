@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -29,7 +31,7 @@ func TestAppServerBatchFailureDoesNotFailEachOperation(t *testing.T) {
 				view = u.agents
 			}
 			finishPacing(u.view, u.agents)
-			got := mainFeed(&appServerUI{view: view}, 140)
+			got := mainFeed(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: view}, 140)
 			if mode == "resume" {
 				feed := view.renderFeed(140, 10)
 				if !strings.Contains(got, "1 failed command") || !u.shell.openOutput(view, feed.snippets[0]) || len(u.shell.output.pages) != 1 {

@@ -3,6 +3,8 @@ package router
 import (
 	"bytes"
 
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+
 	"github.com/yusing/mekugi/libraries/terminalui"
 
 	json "encoding/json/v2"
@@ -20,7 +22,7 @@ func (*appServerTestInput) Close() error { return nil }
 
 func newAppServerTestUI() (*appServerUI, *appServerTestInput) {
 	w := new(appServerTestInput)
-	u := &appServerUI{issues: testCriticalErrors(), history: testHistory(), client: &appserver.Client{Input: w}, view: newLiveActivityView(), requests: make(map[string]string), thread: "main"}
+	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, issues: testCriticalErrors(), history: testHistory(), client: &appserver.Client{Input: w}, view: newLiveActivityView(), requests: make(map[string]string), thread: "main"}
 	u.approvals.initGuards(testGuards())
 	u.view.painter.FileLink = u.markdownFileExists
 	return u, w

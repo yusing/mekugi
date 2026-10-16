@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
-	activitymodel "github.com/yusing/mekugi/internal/activity"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 )
 
 func TestOutputTailStreamsBoundedTail(t *testing.T) {

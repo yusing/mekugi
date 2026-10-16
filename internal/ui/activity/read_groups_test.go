@@ -3,7 +3,7 @@ package activity
 import (
 	"testing"
 
-	activitymodel "github.com/yusing/mekugi/internal/activity"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 )
 
 func TestMergeReadGroupsRetainsIndependentFirstMembers(t *testing.T) {

@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	activitymodel "github.com/yusing/mekugi/internal/activity"
 	"github.com/yusing/mekugi/libraries/diffrender"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"

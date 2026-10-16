@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
@@ -202,5 +204,5 @@ func testRunSession(service *history.Service, recovered *recovery.Service, ctx c
 		return err
 	}
 	defer usage.Close()
-	return RunSession(service, testPreferences(), recovered, &segmentservice.Service{Reports: testReports()}, testChanges(), usage, new(evidence.Service), new(transportcapture.Service), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), ctx, commands, testInputProjections(), testGuidance(), testNaming(), testGuards(), options, issues, ready, artifacts)
+	return RunSession(new(activitymodel.Service), service, testPreferences(), recovered, &segmentservice.Service{Reports: testReports()}, testChanges(), usage, new(evidence.Service), new(transportcapture.Service), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), ctx, commands, testInputProjections(), testGuidance(), testNaming(), testGuards(), options, issues, ready, artifacts)
 }

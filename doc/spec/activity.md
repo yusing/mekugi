@@ -208,7 +208,7 @@ do not supply a completed-diff navigation fallback.
 
 Native MCP items retain server/tool identity; other tool items use their typed
 host identity and available arguments. Unknown calls remain visible without claiming
-an inferred operation. [Parsed operations](../../internal/activity/SPEC.md) interpret
+an inferred operation. [Parsed operations](../../modules/activity/SPEC.md) interpret
 the classified text without execution or terminal state.
 [Native activity presentation](activity_display.md) owns grouping,
 clipping, and agent headings. Source item identity deduplicates live and restored

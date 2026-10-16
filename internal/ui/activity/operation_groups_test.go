@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
-	activitymodel "github.com/yusing/mekugi/internal/activity"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )

@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/charmbracelet/x/ansi"
@@ -44,7 +46,7 @@ func replayPlaybackTestSource() *sessionUIReplay {
 
 func replayPlaybackTestNew(t *testing.T) *uiReplayPlayback {
 	t.Helper()
-	p := newUIReplayPlayback(t.Context(), replayPlaybackTestSource(), 1)
+	p := newUIReplayPlayback(new(activitymodel.Service), t.Context(), replayPlaybackTestSource(), 1)
 	t.Cleanup(p.close)
 	p.ui.view.painter.Theme, p.ui.agents.painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
 	return p
@@ -91,8 +93,12 @@ func TestSessionUIReplayPlaybackUsesRecordedClockAndSeekReset(t *testing.T) {
 	}
 	replayPlaybackTestPaint(t, p, 120, 28)
 	oldUI := p.ui
+	outputs := p.activity.Outputs(&p.ui.session.state)
 	if err := p.advance(2 * time.Second); err != nil {
 		t.Fatal(err)
+	}
+	if p.activity.Outputs(&p.ui.session.state) == outputs {
+		t.Fatal("backward seek reused activity state")
 	}
 	if p.ui == oldUI || len(p.ui.session.commands) != 0 || p.ui.turn != "turn" || !p.at.Equal(p.source.Start.Add(2*time.Second)) {
 		t.Fatalf("seek did not rebuild earlier state: position=%v commands=%d", p.position, len(p.ui.session.commands))

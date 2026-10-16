@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 	segmentservice "github.com/yusing/mekugi/modules/commandsegments/segments"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
@@ -84,7 +86,7 @@ func runDiagnosticsAbsentSession(t *testing.T, ctx context.Context, args []strin
 		t.Fatal(err)
 	}
 	defer usage.Close()
-	return RunSession(history, testPreferences(), testRecovery(), &segmentservice.Service{Reports: testReports()}, testChanges(), usage,
+	return RunSession(new(activitymodel.Service), history, testPreferences(), testRecovery(), &segmentservice.Service{Reports: testReports()}, testChanges(), usage,
 		new(evidence.Service), new(transportcapture.Service), nil, ctx,
 		testCommands(), testInputProjections(), testGuidance(), testNaming(), testGuards(), options, testCriticalErrors(), ready,
 		func(paths []string) { t.Errorf("absent diagnostics published artifacts: %v", paths) })

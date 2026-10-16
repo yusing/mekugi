@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	activitymodel "github.com/yusing/mekugi/internal/activity"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
@@ -88,6 +88,9 @@ type outputDialogKey struct {
 	body                 string
 	approval             string
 	live                 bool
+	tail                 string
+	omitted, exit        int
+	running, exited      bool
 }
 
 // Outside a narrow terminal, the dialog takes at most this share of each
@@ -214,7 +217,7 @@ func (v *liveActivityView) commandOutputPages(source uint64) []activityui.Block 
 					return append(append(rows, ""), v.painter.Markdown(pages[0].Body, width, false)...)
 				}
 			}
-			setCommandTiming(pages, entry.activityPaneEntry)
+			setCommandFacts(pages, entry.activityPaneEntry)
 			pages[0].Approval = entry.native.approval
 			return pages
 		}
@@ -225,7 +228,7 @@ func (v *liveActivityView) commandOutputPages(source uint64) []activityui.Block 
 				pages = append(pages, block)
 			}
 		}
-		setCommandTiming(pages, entry.activityPaneEntry)
+		setCommandFacts(pages, entry.activityPaneEntry)
 		if len(pages) > 0 {
 			pages[0].Approval = entry.native.approval
 		}
@@ -364,11 +367,17 @@ func (d *outputDialog) refreshPages() {
 						current := entry.blocks[0]
 						current.Source = origin.Source
 						origin = current
-					} else if origin.Verb == "Run" && entry.native != nil {
+					} else if (origin.Kind == "op" || origin.Kind == "reads") && entry.native != nil {
 						timed := []activityui.Block{origin}
-						setCommandTiming(timed, entry.activityPaneEntry)
+						setCommandFacts(timed, entry.activityPaneEntry)
 						origin = timed[0]
 						origin.Running = entry.native.running
+						if origin.Output == nil && len(entry.blocks) > 0 {
+							// Compound output pages were rebuilt above. A single
+							// operation follows the projected record, including
+							// output attached by a separate host-exit observation.
+							origin.Tail, origin.TailOmitted = entry.blocks[0].Tail, entry.blocks[0].TailOmitted
+						}
 					} else if origin.Kind != "op" && origin.Kind != "reads" {
 						if origin.Kind != "summary" && len(d.view.entries[index].blocks) == 1 || origin.Kind == "summary" && origin.Section < len(d.view.entries[index].blocks) {
 							section := 0
@@ -421,6 +430,9 @@ func (d *outputDialog) layout(width int) {
 	key := outputDialogKey{page: d.page, width: width, output: block.Output, theme: d.view.painter.Theme, body: block.Body, approval: block.Approval, live: block.Live}
 	if block.Output != nil {
 		key.version = block.Output.Version()
+	} else {
+		key.tail, key.omitted = strings.Join(block.Tail, "\n"), block.TailOmitted
+		key.running, key.exited, key.exit = block.Running, block.Exited, block.ExitCode
 	}
 	if key == d.laidKey && d.starts != nil {
 		d.laid.Title = d.view.painter.DialogPageTitle(block, d.view.now(), width)

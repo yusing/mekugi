@@ -15,6 +15,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/scope"
+
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/yusing/mekugi/modules/notifications/notice"
@@ -173,14 +177,14 @@ type appServerUI struct {
 // StartAppServerUI starts the native terminal frontend without router observers.
 // Codex app-server owns execution; the launcher
 // still owns routing, environment, invocation-local configuration and cancellation.
-func StartAppServerUI(service *history.Service, prefs *preferences.Service, notices *notice.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
+func StartAppServerUI(activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, notices *notice.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
 	faint, _ := terminalui.SupportsFaint(ctx, "auto")
 	issues := NewCriticalErrors(notices)
-	return startAppServerUI(service, prefs, nil, ctx, cmd, stdin, stdout, nil, issues, resumeThread, faint, nil, nil, resumeArgv, "", nil, approvals)
+	return startAppServerUI(activity, service, prefs, nil, ctx, cmd, stdin, stdout, nil, issues, resumeThread, faint, nil, nil, resumeArgv, "", nil, approvals)
 }
 
 // Codex approval policy and the invocation-local Shell guard are independent.
-func startAppServerUI(service *history.Service, prefs *preferences.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *serviceTierSettings, capture *transportcapture.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, approvals bool) (func() error, error) {
+func startAppServerUI(activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *serviceTierSettings, capture *transportcapture.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, approvals bool) (func() error, error) {
 	guardHash := ""
 	for _, entry := range cmd.Environ() {
 		if hash, ok := strings.CutPrefix(entry, shellhook.Environment+"="); ok {
@@ -209,7 +213,7 @@ func startAppServerUI(service *history.Service, prefs *preferences.Service, segm
 	if err != nil {
 		return nil, err
 	}
-	u := &appServerUI{history: service, segments: segments, client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, issues: issues, requests: make(map[string]string), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
+	u := &appServerUI{session: appServerSession{activity: activity}, history: service, segments: segments, client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, issues: issues, requests: make(map[string]string), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
 	u.guardHookCheck.hash = guardHash
 	if generator != nil {
 		u.titleGenerator = generator
@@ -433,6 +437,7 @@ func startAppServerUI(service *history.Service, prefs *preferences.Service, segm
 		}
 		u.finishCommandSegments()
 		u.execTrack.detachOutputs()
+		u.session.state = scope.Store{}
 		u.hideQuestions()
 		u.hideApprovals()
 		if unsent := joinDrafts(slices.Concat(u.unsent, u.queued, []composerDraft{u.draftSnapshot()})...); unsent.text != "" {

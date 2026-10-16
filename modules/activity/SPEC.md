@@ -1,4 +1,4 @@
-# Activity content and retained output
+# Activity
 
 ## Purpose and scope
 
@@ -53,13 +53,31 @@ or release. Consumers can use the output version to avoid rebuilding unchanged
 views. Restored output comes from retained host aggregates or validated segment
 reports, never reconstructed unrecorded streams.
 
-The application owns one retention lifetime per attached session and serializes
-mutation. Session replacement drops it with the associated feeds and dialogs;
+## Lifecycle and integration
+
+The composed activity service keeps its output state in the application's attached
+session store. Main and children share that state; separate attachments and offline
+replay resets receive distinct stores. Confirmed replacement retires the old store;
+a failed replacement keeps it. The application serializes access. Replacement
+drops output state with the associated feeds and dialogs;
 feed trimming alone does not invalidate an open dialog's output. Detached command
 reports retain timing and outcomes, but discarded segment output remains
 unavailable. Returning to those commands uses the host's combined output.
 Terminal pacing, selection and fallback to a released output's display tail remain
 consumer-owned.
+
+## Records and Codex connection
+
+This owner stores no durable records and registers no Codex mechanism. The current
+application adapter supplies host output and outcomes; restored content comes from
+host history and command-segment records. Feed assembly, roster state, dialog
+membership and terminal painting remain with their current application consumers.
+
+## Failure and absence
+
+Output bounds disclose truncation or release. Omitting the composition entry stops
+attached output retention; host execution, command outcomes and bounded display
+tails continue. Retention does not introduce a second transcript or execution path.
 
 ## Acceptance
 

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/yusing/mekugi/modules/activity/feed"
+
 	"github.com/yusing/mekugi/modules/notifications/notice"
 
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
@@ -230,6 +232,7 @@ func (r *moduleRegistrar) ShellApproval(guard binding.ShellApproval) error {
 }
 
 type Runtime struct {
+	Activity             *feed.Service
 	Notifications        *notice.Service
 	Preferences          *preferences.Service
 	Diagnostics          *diagnostic.Service
@@ -304,7 +307,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 				failures = append(failures, fmt.Errorf("%s requires %s before it", node.id, required))
 			}
 		}
-		if node.lifetime != module.Stateless && node.lifetime != module.Invocation && node.lifetime != module.HostOperation {
+		if node.lifetime != module.Stateless && node.lifetime != module.Invocation && node.lifetime != module.HostOperation && node.lifetime != module.AttachedSession {
 			failures = append(failures, fmt.Errorf("%s: unsupported lifetime %q", node.id, node.lifetime))
 		}
 		if (node.start == nil) != (node.stop == nil) || len(node.resources) != 0 && node.start == nil || node.lifetime != module.Invocation && (node.start != nil || len(node.resources) != 0) {

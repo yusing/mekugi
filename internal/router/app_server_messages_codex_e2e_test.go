@@ -5,6 +5,8 @@ package router
 import (
 	"context"
 
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -59,7 +61,7 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	u := &appServerUI{history: testHistory(), client: client, proxy: proxy, view: newLiveActivityView(), agents: newLiveActivityView(), requests: make(map[string]string), ctx: ctx}
+	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, history: testHistory(), client: client, proxy: proxy, view: newLiveActivityView(), agents: newLiveActivityView(), requests: make(map[string]string), ctx: ctx}
 	u.ensureShell()
 	defer u.shell.diff.close()
 	defer u.shell.diffScreen.Close()

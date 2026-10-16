@@ -8,9 +8,9 @@ import (
 
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
-	activitymodel "github.com/yusing/mekugi/internal/activity"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	"github.com/yusing/mekugi/libraries/terminalui"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"mvdan.cc/sh/v3/syntax"
@@ -23,9 +23,9 @@ func appServerDuration(item appServerItem) time.Duration {
 	return time.Duration(*item.DurationMS) * time.Millisecond
 }
 
-// The host duration supports a single command or an explicitly combined output
-// view, never individual rows reconstructed from a command list.
-func setCommandTiming(blocks []activityui.Block, entry activityPaneEntry) {
+// Host timing and exit facts describe a single command or explicitly combined
+// output, never individual rows reconstructed from a command list.
+func setCommandFacts(blocks []activityui.Block, entry activityPaneEntry) {
 	if entry.native == nil {
 		return
 	}
@@ -34,6 +34,9 @@ func setCommandTiming(blocks []activityui.Block, entry activityPaneEntry) {
 		block := &blocks[i]
 		if (block.Kind != "op" && block.Kind != "reads") || block.Skipped || compound && !block.BatchExit {
 			continue
+		}
+		if entry.native.exit != nil {
+			block.ExitCode, block.Exited = *entry.native.exit, true
 		}
 		block.Duration, block.Started, block.Ended = entry.native.duration, entry.native.commandStarted, entry.native.commandEnded
 		block.NotificationTiming = true
@@ -97,7 +100,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 				}
 			}
 		}
-		setCommandTiming(blocks, entry)
+		setCommandFacts(blocks, entry)
 		if entry.native != nil && len(blocks) > 0 {
 			setApprovalBlocks(blocks, entry.native.approval)
 		}
@@ -291,7 +294,7 @@ func commandExitBlocks(blocks []activityui.Block, code int, tail []string, omitt
 		}
 		last = batch
 	}
-	blocks[last].ExitCode = code
+	blocks[last].ExitCode, blocks[last].Exited = code, true
 	blocks[last].Tail, blocks[last].TailOmitted, blocks[last].Output = tail, omitted, output
 	blocks[last].Collapsed = false
 	return blocks
@@ -372,6 +375,7 @@ func commandSegmentBlocks(entry activityPaneEntry, dialog bool) []activityui.Blo
 		}
 		last := &operations[len(operations)-1]
 		last.ExitCode, last.Segment = segment.exit, true
+		last.Exited = !segment.running && !segment.skipped
 		if !segment.skipped {
 			last.Started, last.Ended = segment.timing.Started, segment.timing.Ended
 			last.Duration = time.Duration(segment.timing.ElapsedNS)
