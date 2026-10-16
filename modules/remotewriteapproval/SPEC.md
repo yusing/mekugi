@@ -94,8 +94,9 @@ failure, unlike the native tool rejection of a Codex command approval.
 Writes are:
 
 - Git: `push`, `send-pack` and `send-email` unless the last dry-run option
-  enables a dry run, `subtree push`, `svn dcommit`, `p4 submit`, and `lfs push`,
-  `lock` and `unlock`. Git global options are skipped. Another subcommand outside
+  enables a dry run. For `push`, option values and refspecs after `--`
+  cannot supply help or dry-run options. Also guarded: `subtree push`, `svn dcommit`,
+  `p4 submit`, and `lfs push`, `lock` and `unlock`. Git global options are skipped. Another subcommand outside
   the known read and local-write set resolves through the real tool's
   `alias.NAME` with the same global options; a shell alias's script is classified
   with its arguments, and a non-alias, which is an external command that may push

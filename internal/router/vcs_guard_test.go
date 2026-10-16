@@ -393,3 +393,42 @@ func TestVCSGuardClosesPendingApproval(t *testing.T) {
 		}
 	}
 }
+
+func TestVCSGuardPushOptionOperands(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		arguments string
+		write     bool
+	}{
+		{"-- origin --dry-run", true},
+		{"-- origin --help", true},
+		{"-o --dry-run origin main", true},
+		{"--push-opt --help origin main", true},
+		{"-vo --dry-run origin main", true},
+		{"--repo --help main", true},
+		{"-vn --no-dry-ru origin HEAD:refs/heads/probe", true},
+		{"--dry-run -o --no-dry-run origin main", false},
+		{"origin main --dry-run", false},
+	} {
+		t.Run(tc.arguments, func(t *testing.T) {
+			shell := newVCSGuardShell(t)
+			asked := shell.answer(t, false)
+			run := runExecTrackShell(t, shell.env, "git push "+tc.arguments)
+			if tc.write {
+				if run.code != 1 || run.stderr != "mekugi: remote write denied: denied in test\n" || len(shell.invoked(t)) != 0 {
+					t.Fatalf("write avoided approval: %+v", run)
+				}
+				select {
+				case argv := <-asked:
+					if !slices.Equal(argv, append([]string{"git", "push"}, strings.Fields(tc.arguments)...)) {
+						t.Fatalf("approval changed arguments: %q", argv)
+					}
+				default:
+					t.Fatal("write did not request approval")
+				}
+			} else if run.code != 0 || len(asked) != 0 || len(shell.invoked(t)) != 1 {
+				t.Fatalf("actual dry-run did not retain native execution: %+v", run)
+			}
+		})
+	}
+}

@@ -133,6 +133,54 @@ func dryRun(args []string) bool {
 	return dry
 }
 
+// Push permits interspersed options. Consume value operands before interpreting
+// help or dry-run, including -o clusters and Git's long-option abbreviations.
+func gitPushWrites(args []string) bool {
+	dry := false
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			break
+		}
+		if strings.HasPrefix(arg, "--") {
+			name, _, attached := strings.Cut(arg, "=")
+			if attached {
+				continue
+			}
+			switch name {
+			case "--help":
+				return false
+			case "--dry-run":
+				dry = true
+			default:
+				if strings.HasPrefix("--no-dry-run", name) {
+					dry = false
+				} else if slices.ContainsFunc([]string{"--push-option", "--repo", "--receive-pack", "--exec", "--recurse-submodules"}, func(option string) bool { return strings.HasPrefix(option, name) }) {
+					i++
+				}
+			}
+			continue
+		}
+		if !strings.HasPrefix(arg, "-") {
+			continue
+		}
+		for j := 1; j < len(arg); j++ {
+			switch arg[j] {
+			case 'h':
+				return false
+			case 'n':
+				dry = true
+			case 'o':
+				if j == len(arg)-1 {
+					i++
+				}
+				j = len(arg)
+			}
+		}
+	}
+	return !dry
+}
+
 func gitWrites(args []string, lookup Lookup, depth int) bool {
 	globals, command, rest := commandanalysis.GitInvocation(args)
 	if command == "" {
@@ -141,11 +189,14 @@ func gitWrites(args []string, lookup Lookup, depth int) bool {
 	if command == shellsyntax.Dynamic {
 		return true
 	}
+	if command == "push" {
+		return gitPushWrites(rest)
+	}
 	if commandanalysis.HasHelpFlag(rest) && command != "submodule" && command != "rebase" && command != "bisect" {
 		return false
 	}
 	switch command {
-	case "push", "send-email", "send-pack":
+	case "send-email", "send-pack":
 		return !dryRun(rest)
 	case "subtree":
 		return slices.Contains(rest, "push") || slices.Contains(rest, shellsyntax.Dynamic)
