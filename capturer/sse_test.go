@@ -4,8 +4,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-
-	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 )
 
 func TestSSEDataPreservesFieldsAcrossFraming(t *testing.T) {
@@ -31,11 +29,7 @@ func TestSSEDataPreservesFieldsAcrossFraming(t *testing.T) {
 	}
 }
 
-func TestSSEObservationAndMeasurementUseIdenticalFraming(t *testing.T) {
-	codec, err := tokenizer.New()
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestSSEObservationPreservesFraming(t *testing.T) {
 	for _, test := range []struct {
 		name   string
 		stream string
@@ -58,9 +52,8 @@ func TestSSEObservationAndMeasurementUseIdenticalFraming(t *testing.T) {
 			}
 			var baseline captureRecord
 			observer([]byte(test.stream), "text/event-stream", &baseline)
-			wantTokens, err := contentTokens([]byte(test.stream), codec)
-			if err != nil || wantTokens == 0 || baseline.ResponseStatus != "completed" {
-				t.Fatalf("invalid test baseline: tokens=%d status=%q err=%v", wantTokens, baseline.ResponseStatus, err)
+			if baseline.ResponseStatus != "completed" {
+				t.Fatalf("invalid baseline status=%q", baseline.ResponseStatus)
 			}
 			for _, ending := range []string{"\n", "\r\n", "\r"} {
 				for _, bom := range []string{"", "\xef\xbb\xbf"} {
@@ -68,9 +61,8 @@ func TestSSEObservationAndMeasurementUseIdenticalFraming(t *testing.T) {
 					for _, contentType := range []string{"text/event-stream", ""} {
 						var record captureRecord
 						observer(payload, contentType, &record)
-						tokens, err := contentTokens(payload, codec)
-						if err != nil || tokens != wantTokens || record.ResponseStatus != "completed" || record.CaptureError != "" {
-							t.Fatalf("ending=%q BOM=%q type=%q: tokens=%d want=%d status=%q error=%q err=%v", ending, bom, contentType, tokens, wantTokens, record.ResponseStatus, record.CaptureError, err)
+						if record.ResponseStatus != "completed" || record.CaptureError != "" {
+							t.Fatalf("ending=%q BOM=%q type=%q: status=%q error=%q", ending, bom, contentType, record.ResponseStatus, record.CaptureError)
 						}
 					}
 				}

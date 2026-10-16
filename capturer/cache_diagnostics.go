@@ -67,7 +67,7 @@ func (r *Recorder) fingerprint(domain string, value any) string {
 func normalizeFingerprintNumbers(value any) any {
 	switch value := value.(type) {
 	case json.Number:
-		return json.Number(normalizedNumber(string(value)))
+		return json.Number(responseevents.CanonicalNumber(string(value)))
 	case map[string]any:
 		for key, item := range value {
 			value[key] = normalizeFingerprintNumbers(item)

@@ -18,7 +18,7 @@ import (
 // This is the last request projection. All evidence consumers must have already
 // read the original host output. Its index belongs only to this input view.
 func apply(service projection.Service, input []byte, hostParts map[string][]int) (result binding.ProjectionResult) {
-	summary := &binding.ProjectionReceipt{}
+	summary := &binding.ProjectionReceipt{TokensMeasured: true}
 	result = binding.ProjectionResult{Input: input, Receipt: summary}
 	var items []jsonv1.RawMessage
 	if json.Unmarshal(input, &items) != nil {
@@ -108,6 +108,7 @@ func apply(service projection.Service, input []byte, hostParts map[string][]int)
 	}
 	if changed {
 		result.Input = responses.MustMarshalJSON(items)
+		summary.SavedTokens, summary.TokensMeasured = projection.EstimateSavings(input, result.Input)
 	}
 	return result
 }

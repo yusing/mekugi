@@ -12,14 +12,11 @@ func TestOutputDeduplicationMetrics(t *testing.T) {
 	}
 	defer r.Close()
 	ctx := context.WithValue(t.Context(), captureKey{}, &requestState{recorder: r})
-	before, after := []byte(`["one two three four five six seven eight nine ten"]`), []byte(`["repeated"]`)
-	a, _ := contentTokens(before, r.codec)
-	b, _ := contentTokens(after, r.codec)
-	ObserveOutputDeduplication(ctx, before, after, 2)
+	ObserveOutputDeduplication(ctx, 2, -3, true)
 	first := r.Snapshot()
-	ObserveOutputDeduplication(ctx, before, after, 2)
+	ObserveOutputDeduplication(ctx, 2, 7, false)
 	second := r.Snapshot().OutputDeduplication
-	if first.OutputDeduplication.Occurrences != 2 || second.Occurrences != 4 || second.Projections != 2 || second.SavedTokens != int64(2*(a-b)) {
+	if first.OutputDeduplication.Occurrences != 2 || second.Occurrences != 4 || second.Projections != 2 || second.SavedTokens != -3 || second.Unmeasured != 1 {
 		t.Fatalf("metrics: %+v / %+v", first.OutputDeduplication, second)
 	}
 }
