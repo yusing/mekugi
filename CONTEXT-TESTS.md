@@ -18,7 +18,8 @@ make test TEST_PACKAGES='./backends/codex/appserver ./apps/mekugi/internal/route
 
 The default is `@workspace`, expanded from the explicit members in `go.work`.
 Focused selections also include the shared snapshot harness in
-`testsupport/uisnapshot`. Root `./...` alone excludes nested modules.
+`testsupport/uisnapshot`. The repository root has no Go module; use workspace
+recipes or explicit member package paths.
 Unchanged successful tests can use Go's test cache; use
 `TEST_FLAGS='-count=1'` for a fresh run, `TEST_FLAGS='-count=3 -shuffle=on'` for
 repeat/isolation checks, or `TEST_FLAGS=-race` when checking concurrency. The recipe

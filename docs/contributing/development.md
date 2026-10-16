@@ -14,7 +14,8 @@ make lint
 ```
 
 The build, test, lint, generation, and snapshot recipes enumerate the explicit
-`go.work` members; root `go test ./...` omits nested modules. `make build-binaries`
+`go.work` members. The repository root has no Go module; use these recipes or
+explicit member package paths for root-level Go commands. `make build-binaries`
 writes both executables to `bin/` without installing them. Run member tests from
 that member with the workspace enabled. Local modules are released together and
 resolved by `go.work`, not unpublished version requirements or local replacements.

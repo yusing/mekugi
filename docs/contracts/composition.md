@@ -7,6 +7,10 @@ snapshot and release recipes enumerate its members explicitly. Members resolve
 through that workspace and ship as one product; independent releases and
 standalone `GOWORK=off` builds are unsupported.
 
+Every Go package belongs to an explicit application, backend, contract, library,
+module, provider or test-support member. The repository root owns workspace
+coordination and has no Go module or shared implementation package.
+
 The application builds both executables and composes the selected feature
 descriptors. Its remaining integration lives in `apps/mekugi/internal/router`,
 with one implementation and retained store for each responsibility. Executable

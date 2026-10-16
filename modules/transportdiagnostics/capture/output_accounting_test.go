@@ -5,8 +5,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/yusing/mekugi/internal/commentaryid"
 )
 
 func TestGeneratedCommentaryChangesTransportButNotUsage(t *testing.T) {
@@ -18,7 +16,7 @@ func TestGeneratedCommentaryChangesTransportButNotUsage(t *testing.T) {
 	item := `{"type":"function_call","id":"tool","call_id":"call","name":"wait","arguments":"{}"}`
 	stream := "data: " + fmt.Sprintf(`{"type":"response.output_item.done","output_index":0,"item":%s}`, item) + "\n\n"
 	terminal := `data: {"type":"response.completed","response":{"status":"completed","output":[]}}` + "\n\n"
-	synthetic := fmt.Sprintf(`{"type":"message","id":%q,"content":[{"type":"output_text","text":%q}]}`, commentaryid.SubagentPrefix+"usage", strings.Repeat("router telemetry ", 100))
+	synthetic := fmt.Sprintf(`{"type":"message","id":"msg_mekugi_subagent_commentary_usage","content":[{"type":"output_text","text":%q}]}`, strings.Repeat("router telemetry ", 100))
 	clientTerminal := `data: {"type":"response.completed","response":{"status":"completed","output":[` + synthetic + "]}}\n\n"
 	for _, boundary := range []string{"provider", "codex"} {
 		body := stream + terminal

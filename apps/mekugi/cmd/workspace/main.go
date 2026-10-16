@@ -78,10 +78,7 @@ func workspaceMembers() ([]member, error) {
 				break
 			}
 		}
-		want := prefix
-		if directory != "." {
-			want += "/" + filepath.ToSlash(directory)
-		}
+		want := prefix + "/" + filepath.ToSlash(directory)
 		if path != want {
 			return nil, fmt.Errorf("%s: module path %q, want %q", directory, path, want)
 		}
@@ -98,11 +95,7 @@ func expand(args []string, members []member) []string {
 			continue
 		}
 		for _, m := range members {
-			pattern := "./..."
-			if m.directory != "." {
-				pattern = "./" + filepath.ToSlash(m.directory) + "/..."
-			}
-			result = append(result, pattern)
+			result = append(result, "./"+filepath.ToSlash(m.directory)+"/...")
 		}
 	}
 	return result
@@ -184,8 +177,8 @@ func allowedImport(directory, pkg, imported string) error {
 		}
 		return nil
 	}
-	if owner == "." || strings.HasPrefix(owner, "apps/") || strings.HasPrefix(owner, "testsupport/") {
-		return nil // Root is the explicitly retained migration source until retirement.
+	if strings.HasPrefix(owner, "apps/") || strings.HasPrefix(owner, "testsupport/") {
+		return nil
 	}
 	if owner == "contracts" {
 		if local && target != "contracts" && !strings.HasPrefix(target, "contracts/") {

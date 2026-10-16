@@ -4,8 +4,6 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"strings"
-
-	"github.com/yusing/mekugi/internal/commentaryid"
 )
 
 func qualifiedToolName(namespace, name string) string {
@@ -17,7 +15,7 @@ func qualifiedToolName(namespace, name string) string {
 
 func commentaryMessageID(seed string) string {
 	digest := sha256.Sum256([]byte(seed))
-	return fmt.Sprintf("%s%x", commentaryid.OperationPrefix, digest[:12])
+	return fmt.Sprintf("msg_mekugi_commentary_%x", digest[:12])
 }
 
 func (p *mekugiProxy) commentaryMessageIDs(sessionID string) map[string]struct{} {

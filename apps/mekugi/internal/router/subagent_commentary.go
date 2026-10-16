@@ -7,18 +7,15 @@ import (
 	"strings"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/internal/commentaryid"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 // Source: openai/codex codex-rs/protocol/src/protocol.rs.
 // Inter-agent message shapes visible at the Responses boundary.
 
-const subagentCommentaryMessagePrefix = commentaryid.SubagentPrefix
-
 func subagentCommentaryMessageID(seed string) string {
 	digest := sha256.Sum256([]byte(seed))
-	return fmt.Sprintf("%s%x", subagentCommentaryMessagePrefix, digest[:12])
+	return fmt.Sprintf("msg_mekugi_subagent_commentary_%x", digest[:12])
 }
 
 // Start metadata and any readable assignment come from the child's actual

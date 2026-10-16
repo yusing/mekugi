@@ -37,6 +37,9 @@ jobs:
       - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.work
+          cache-dependency-path: |
+            go.work.sum
+            **/go.sum
       - uses: actions/setup-node@v7.0.0
         if: matrix.platform == 'linux_amd64'
         with:

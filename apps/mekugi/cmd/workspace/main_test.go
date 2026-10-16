@@ -40,15 +40,21 @@ func workspaceFixture(t *testing.T, uses []string, modules map[string]string) {
 }
 
 func TestWorkspaceMembersExplicit(t *testing.T) {
-	workspaceFixture(t, []string{".", "./libraries/first"}, map[string]string{
-		".":                  prefix,
+	workspaceFixture(t, []string{"./apps/mekugi", "./libraries/first"}, map[string]string{
+		"apps/mekugi":        prefix + "/apps/mekugi",
 		"libraries/first":    `"` + prefix + `/libraries/first"`,
 		"libraries/unlisted": prefix + "/libraries/unlisted",
 	})
 	got, err := workspaceMembers()
-	want := []member{{".", prefix}, {"libraries/first", prefix + "/libraries/first"}}
+	want := []member{{"apps/mekugi", prefix + "/apps/mekugi"}, {"libraries/first", prefix + "/libraries/first"}}
 	if err != nil || !slices.Equal(got, want) {
 		t.Fatalf("members=%v error=%v, want %v", got, err, want)
+	}
+	for _, m := range want {
+		writeWorkspaceSource(t, filepath.Join(m.directory, "fixture.go"), "package fixture\n")
+	}
+	if err := run([]string{"run", "go", "list", "@workspace"}); err != nil {
+		t.Fatalf("list workspace packages: %v", err)
 	}
 }
 
@@ -75,14 +81,14 @@ func TestWorkspaceMembersRejectInvalid(t *testing.T) {
 }
 
 func TestExpandWorkspaceArguments(t *testing.T) {
-	members := []member{{".", prefix}, {"libraries/first", prefix + "/libraries/first"}}
+	members := []member{{"apps/mekugi", prefix + "/apps/mekugi"}, {"libraries/first", prefix + "/libraries/first"}}
 	for _, tt := range []struct {
 		name    string
 		args    []string
 		members []member
 		want    []string
 	}{
-		{"repeated marker", []string{"test", "-args=two words", "@workspace", "literal@workspace", "@workspace", "tail"}, members, []string{"test", "-args=two words", "./...", "./libraries/first/...", "literal@workspace", "./...", "./libraries/first/...", "tail"}},
+		{"repeated marker", []string{"test", "-args=two words", "@workspace", "literal@workspace", "@workspace", "tail"}, members, []string{"test", "-args=two words", "./apps/mekugi/...", "./libraries/first/...", "literal@workspace", "./apps/mekugi/...", "./libraries/first/...", "tail"}},
 		{"empty members", []string{"before", "@workspace", "after"}, nil, []string{"before", "after"}},
 		{"no marker", []string{"two words"}, members, []string{"two words"}},
 	} {
@@ -97,7 +103,7 @@ func TestExpandWorkspaceArguments(t *testing.T) {
 }
 
 func TestWorkspaceRunErrors(t *testing.T) {
-	workspaceFixture(t, []string{"."}, map[string]string{".": prefix})
+	workspaceFixture(t, []string{"./apps/mekugi"}, map[string]string{"apps/mekugi": prefix + "/apps/mekugi"})
 	for _, args := range [][]string{nil, {"unknown"}, {"run"}, {"run", filepath.Join(t.TempDir(), "missing-command")}} {
 		if err := run(args); err == nil {
 			t.Fatalf("run(%q) succeeded", args)
