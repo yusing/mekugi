@@ -4,7 +4,7 @@ pjdoc:
   kind: spec
   scope: root
   status: draft
-  revision: "76"
+  revision: "77"
   files:
     - ../../providers/grok/SPEC.md
     - ../../providers/opencode/SPEC.md
@@ -12,6 +12,7 @@ pjdoc:
     - ../../apps/mekugi/internal/launch/SPEC.md
     - ../../apps/mekugi/internal/headless/SPEC.md
     - native_ui.md
+    - ../../apps/mekugi/internal/terminalsession/SPEC.md
     - ../../docs/contracts/responses-transport.md
     - ../../modules/notifications/SPEC.md
     - ../../modules/activity/SPEC.md
@@ -52,6 +53,7 @@ resume evidence and renderer-keyed persistence.
 - [Invocation launch](../../apps/mekugi/internal/launch/SPEC.md): command selection and session-scoped Codex lifecycle
 - [Headless client](../../apps/mekugi/internal/headless/SPEC.md): single-prompt JSONL automation and host outcomes
 - [`REQ-NATIVE-UI-001`](native_ui.md): UI presentation and client behavior
+- [Terminal session](../../apps/mekugi/internal/terminalsession/SPEC.md): input, panes, source selection, clipboard and renderer preferences
 - [`REQ-TRANSPORT-001`](../../docs/contracts/responses-transport.md): Responses admission, transport, catalog and auxiliary integration
 - [OpenAI provider](../../providers/openai/SPEC.md): credential validation, model exchange, HTTP and WebSocket transport
 - [Provider routing](../../docs/contracts/provider-routing.md): native-agent continuity and cross-provider isolation

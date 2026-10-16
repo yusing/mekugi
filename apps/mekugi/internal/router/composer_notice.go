@@ -5,10 +5,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/textsanitize"
-
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/terminalui"
+	"github.com/yusing/mekugi/libraries/textsanitize"
 	"github.com/yusing/mekugi/modules/notifications/notice"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -17,14 +17,14 @@ import (
 // Successful feedback is transient; actionable errors remain until editing.
 func (u *appServerUI) setNotice(text string, alert bool) {
 	u.feedback.Set(text, alert, u.now())
-	u.noticeDetails, u.noticeDismiss = terminalRect{}, terminalRect{}
+	u.noticeDetails, u.noticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
 }
 
 func (u *appServerUI) expireNotice(now time.Time) bool {
 	if !u.feedback.Expire(now) {
 		return false
 	}
-	u.noticeDetails, u.noticeDismiss = terminalRect{}, terminalRect{}
+	u.noticeDetails, u.noticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
 	return true
 }
 
@@ -110,14 +110,14 @@ func (u *appServerUI) composerNoticeBorder(width, row int, color string) string 
 	clipped := ansi.StringWidth(label) > room
 	label = ansi.Truncate(label, room, "…")
 	if clipped || details {
-		u.noticeDetails = terminalRect{3, row, ansi.StringWidth(label), 1}
+		u.noticeDetails = terminalsession.Rect{3, row, ansi.StringWidth(label), 1}
 	}
-	u.noticeDismiss = terminalRect{width - 6, row, 3, 1}
+	u.noticeDismiss = terminalsession.Rect{width - 6, row, 3, 1}
 	return composerBorder("╭", "╮", label, terminalui.Green+"[✓]"+terminalui.Reset, width, color)
 }
 
 func (u *appServerUI) composerNoticeMouse(button, x, y int, release bool) bool {
-	details, dismiss := u.noticeDetails.contains(x, y), u.noticeDismiss.contains(x, y)
+	details, dismiss := u.noticeDetails.Contains(x, y), u.noticeDismiss.Contains(x, y)
 	if (!details && !dismiss) || u.composerErrorText() == "" {
 		return false
 	}
@@ -151,7 +151,7 @@ func (d *nativeCriticalNoticeDelivery) finish(success bool) {
 	}
 	u := d.ui
 	visible := success && (u.shell == nil || u.shell.output == nil && u.shell.selection == nil)
-	d.errors.Finish(visible && u.feedback.Text == d.composerText && u.noticeDismiss.w > 0)
+	d.errors.Finish(visible && u.feedback.Text == d.composerText && u.noticeDismiss.W > 0)
 	d.progress.Finish(visible && u.mainContentPainted)
 }
 
@@ -170,7 +170,7 @@ func (u *appServerUI) applyCriticalNotices() *nativeCriticalNoticeDelivery {
 	}
 	if len(claim.Errors.Messages) > 0 {
 		delivery.composerText = u.feedback.Text
-		u.noticeDetails, u.noticeDismiss = terminalRect{}, terminalRect{}
+		u.noticeDetails, u.noticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
 	}
 	u.dirty = true
 	return delivery

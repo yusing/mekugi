@@ -15,7 +15,7 @@ type openFileEditor struct{ path string }
 func (*openFileEditor) Error() string { return "open file editor" }
 
 func (u *appServerUI) openSelectedFileEditor(path string, stdin, stdout *os.File) {
-	u.shell.paintedRows = nil
+	u.shell.frame.Rows = nil
 	if !filepath.IsAbs(path) {
 		u.setNotice("Open editor: file has no absolute workspace path", true)
 		return

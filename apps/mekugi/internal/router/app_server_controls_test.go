@@ -80,13 +80,13 @@ func TestNativeControlsPanePersistence(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	u := newAppServerSessionTestUI(t, "/workspace")
 	u.interruptLocked = true
-	u.shell.diffOpen = true
-	u.shell.focus = 1
+	u.shell.DiffOpen = true
+	u.shell.Focus = 1
 	p := testPanePreferences()
 	if err := p.open(u.shell, "/workspace", "main", false); err != nil {
 		t.Fatal(err)
 	}
-	u.shell.split = 60
+	u.shell.Split = 60
 	if err := p.save(u.shell, time.Now(), true); err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestNativeControlsPanePersistence(t *testing.T) {
 	if err := p.open(resumed.shell, "/workspace", "main", true); err != nil {
 		t.Fatal(err)
 	}
-	if !resumed.interruptLocked || !resumed.shell.diffOpen || resumed.shell.focus != 1 {
+	if !resumed.interruptLocked || !resumed.shell.DiffOpen || resumed.shell.Focus != 1 {
 		t.Fatal("resume lost preferences or revived live child state")
 	}
 	var frame bytes.Buffer

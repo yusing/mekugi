@@ -5,12 +5,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/yusing/mekugi/libraries/textsanitize"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
+	"github.com/yusing/mekugi/libraries/textsanitize"
 )
 
 // Source: codex-rs/tui/src/bottom_pane/{picker_rows,skill_popup,
@@ -55,12 +55,12 @@ func (u *appServerUI) skillsModalFrame(width, height int) []string {
 	ph := min(height, u.pickerHeight(width))
 	frame := make([]string, height)
 	u.mainContentPainted = false
-	u.composerRect = terminalRect{}
+	u.composerRect = terminalsession.Rect{}
 	if height > ph {
 		copy(frame, u.transcriptView().render(width, height-ph, u.now()))
 	}
 	copy(frame[height-ph:], u.renderPicker(width, ph))
-	u.picker.rect = terminalRect{0, height - ph, width, ph}
+	u.picker.rect = terminalsession.Rect{0, height - ph, width, ph}
 	return frame
 }
 

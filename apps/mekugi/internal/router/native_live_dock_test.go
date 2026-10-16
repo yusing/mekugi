@@ -44,7 +44,7 @@ func TestNativeUIRunningChildRemovalReleasesDock(t *testing.T) {
 	if err := u.paint(screen, 120, 40); err != nil {
 		t.Fatal(err)
 	}
-	if u.shell.layout.live.h != 0 || strings.Contains(screen.String(), "LIVE ·") {
+	if u.shell.layout.Live.H != 0 || strings.Contains(screen.String(), "LIVE ·") {
 		t.Fatalf("removed child still occupies dock space:\n%s", screen.String())
 	}
 }

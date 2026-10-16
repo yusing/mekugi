@@ -36,9 +36,12 @@ observation capacity must remain visible and bounded without terminating unrelat
 - [Diff rendering](../../libraries/diffrender/SPEC.md) owns shared syntax, themes,
   row decoration and wrapping. [Text sanitization](../../libraries/textsanitize/SPEC.md)
   supplies common control removal for content and rendering.
-- [Terminal presentation](../../libraries/terminalui/SPEC.md) owns raw-mode lifetime,
-  input decoding, scrolling, Markdown/Mermaid painting and source-copy fragments.
-  Feature adapters retain pane composition, focus and follow policy.
+- [Terminal primitives](../../libraries/terminalui/SPEC.md) own raw-mode lifetime,
+  shared scrolling, Markdown/Mermaid painting and source-copy fragments.
+  [Terminal session](../../apps/mekugi/internal/terminalsession/SPEC.md) owns attached
+  input decoding, pane geometry and focus, frozen source selection, clipboard
+  delivery, frame publication and terminal preference validation. Feature views
+  retain their content painting, navigation and follow policy.
 - Router-native `/session` presentation consumes a detached capturer snapshot.
   It owns only view, scroll and retained-exchange selection, never a metric store.
 - [The Codex backend](../../backends/codex/SPEC.md) owns newline-delimited stdio RPC and the launched Codex process:
@@ -52,17 +55,11 @@ observation capacity must remain visible and bounded without terminating unrelat
 The router integrates the native session, composer, pane navigation and app-server
 event reconciliation with Activity's feed and roster models. It adapts authenticated activity,
 scoped replay/change observations and accounting into display
-values. Shared Markdown annotations travel with rendered fragments through wrapping,
-record layouts, gutters and viewport clipping. The router resolves them against the
-composed visible frame and removes their private transport before terminal delivery.
-A selection snapshots those annotations with its rows. A scrollable selection
-retains the full rendered document and keeps its own
-viewport, so later streaming cannot change selected or newly exposed source rows.
-The snapshot retains Markdown annotations, original click targets, pinned agent headings,
-and saved Diff gutters and change attribution. Main and child transcripts, saved Diff,
-side-answer docks and output dialogs share the selection mouse and scroll model;
-the caller retains composition and dismissal policy. Output dialogs defer live
-content refresh while their selection is active. Atomic submitted tokens consume the same bound composer
+values. Terminal composition supplies source annotations and stable hit targets to the
+[renderer-owned selection lifecycle](../../apps/mekugi/internal/terminalsession/SPEC.md#selection-and-source-copy).
+The application binds its semantic source actions to feature targets and editor
+attachments; the selection owner holds no live feature or backend object.
+Atomic submitted tokens consume the same bound composer
 spans through Codex text elements, rather than recognizing lookalike prompt text.
 The application retains backend stream decoding, paced worker scheduling and
 observed-effect joins. Its saved-review join admits selected scope and delivers

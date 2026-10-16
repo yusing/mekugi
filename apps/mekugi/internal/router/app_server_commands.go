@@ -1,15 +1,18 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	json "encoding/json/v2"
 	"slices"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/contracts/scope"
 
-	"github.com/yusing/mekugi/backends/codex/appserver"
 	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
+
 	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
 )
 
@@ -155,7 +158,7 @@ func (u *appServerUI) clearSessionPresentation() error {
 	u.exitUsage = appServerTokenUsage{}
 	u.alert = false
 	u.feedback = noticepresentation.Model{}
-	u.noticeDetails, u.noticeDismiss = terminalRect{}, terminalRect{}
+	u.noticeDetails, u.noticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
 	u.execTrack.detachOutputs()
 	u.session.state = scope.Store{}
 	painter := u.view.painter
@@ -171,7 +174,8 @@ func (u *appServerUI) clearSessionPresentation() error {
 	u.attachActivity()
 	if u.shell != nil {
 		u.shell.selection, u.shell.output = nil, nil
-		u.shell.focus, u.shell.drag = 0, 0
+		u.shell.Focus = 0
+		u.shell.StopDrag()
 	}
 	return nil
 }

@@ -40,7 +40,7 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 			u.main.session.cwd = workspace
 			u.selectionMouse(0, 1, 0, false)
 			u.selectionMouse(0, 1, 0, true)
-			if u.output == nil || u.clipboard != "" || u.selection != nil {
+			if u.output == nil || u.frame.Clipboard != "" || u.selection != nil {
 				t.Fatal("file click did not open a clean dialog")
 			}
 			u.width, u.height = 80, 18
@@ -55,13 +55,13 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 				return // Copy and drag share one path after destination resolution.
 			}
 			u.outputKey("y")
-			if u.clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte(content))+"\x07" {
+			if u.frame.Clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte(content))+"\x07" {
 				t.Fatal("whole-file copy changed source or trailing newlines")
 			}
 			u = selectionTestUI(row)
 			u.main.session.cwd = workspace
 			selectionTestDrag(t, u, 0, 0, 5, 0)
-			if u.output != nil || u.clipboard != "" || u.selection.text() != "source" {
+			if u.output != nil || u.frame.Clipboard != "" || u.selection.Text() != "source" {
 				t.Fatal("drag activated the file link")
 			}
 		})
@@ -110,7 +110,7 @@ func TestMarkdownFileDialogSanitizesDisplayKeepsSourceCopy(t *testing.T) {
 			t.Fatal("file emitted a clipboard control in the rendered frame")
 		}
 		u.outputKey("y")
-		if u.clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte(content))+"\x07" {
+		if u.frame.Clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte(content))+"\x07" {
 			t.Fatal("explicit source copy changed original bytes")
 		}
 	}
@@ -133,7 +133,7 @@ func TestMarkdownFileDialogViews(t *testing.T) {
 	drawOutputDialog(u)
 	x, y := outputSelectionPoint(t, u, "bold")
 	outputSelectionDrag(u, x, y, x+3, y)
-	if u.selection == nil || u.selection.text() != "**bold**" {
+	if u.selection == nil || u.selection.Text() != "**bold**" {
 		t.Fatal("rendered selection lost Markdown source formatting")
 	}
 	u.outputKey("\x1b") // Clear the selection.
@@ -142,7 +142,7 @@ func TestMarkdownFileDialogViews(t *testing.T) {
 	u.outputKey("\r")
 	markdownTop := u.output.top
 	tab := u.output.tabs[1]
-	u.outputMouse(0, u.output.rect.x+2+tab.from, u.output.rect.y+2, false)
+	u.outputMouse(0, u.output.rect.X+2+tab.from, u.output.rect.Y+2, false)
 	drawOutputDialog(u)
 	if u.output.page != 1 || u.output.top == 0 || u.output.query != "" {
 		t.Fatal("File tab did not reveal the source location with separate search state")
@@ -150,7 +150,7 @@ func TestMarkdownFileDialogViews(t *testing.T) {
 	for _, key := range []string{"y", "\x1b[D", "y"} {
 		u.outputKey(key)
 		drawOutputDialog(u)
-		if key == "y" && u.clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte(content))+"\x07" {
+		if key == "y" && u.frame.Clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte(content))+"\x07" {
 			t.Fatal("view copy changed source bytes")
 		}
 	}
@@ -199,7 +199,7 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 	x, y := outputSelectionPoint(t, u, "remote")
 	u.outputMouse(0, x, y, false)
 	u.outputMouse(0, x, y, true)
-	if u.output != before || u.clipboard != "" {
+	if u.output != before || u.frame.Clipboard != "" {
 		t.Fatal("non-file dialog link behavior changed")
 	}
 	x, y = outputSelectionPoint(t, u, "sample.go:1")
@@ -211,7 +211,7 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 	drawOutputDialog(u)
 	x, y = outputSelectionPoint(t, u, "sample.go")
 	outputSelectionDrag(u, x, y, x+8, y)
-	if u.selection == nil || u.selection.text() != "sample.go" {
+	if u.selection == nil || u.selection.Text() != "sample.go" {
 		t.Fatal("displayed path is not selectable")
 	}
 	for _, target := range []string{"missing.go", "sample.go:0", "sample.go:2-1", "sample.go:1-", workspace, "file://remote" + workspace + "/sample.go", "https://example.com", "#section"} {
@@ -271,7 +271,7 @@ func TestUISnapshotMarkdownFileDialog(t *testing.T) {
 					t.Fatal("read error literal content changed")
 				}
 				u.outputKey("y")
-				if u.clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte("file is not UTF-8 text"))+"\x07" {
+				if u.frame.Clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte("file is not UTF-8 text"))+"\x07" {
 					t.Fatal("read error is not copyable")
 				}
 			}

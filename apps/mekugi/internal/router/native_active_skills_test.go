@@ -46,7 +46,7 @@ func TestUISnapshotLoadedSkillsRestoreClickAndReset(t *testing.T) {
 			for range liveActivityFeedLimit {
 				view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.session.next(), Agent: owner, Kind: "text", Text: "note"}}})
 			}
-			u.shell.focus = 3
+			u.shell.Focus = 3
 			screen := vt.NewEmulator(120, 28)
 			defer screen.Close()
 			if err := u.paint(screen, 120, 28); err != nil {

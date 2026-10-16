@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 )
@@ -15,8 +16,8 @@ import (
 func (u *appServerUI) statusPanelFrame(width, height int) []string {
 	p := u.statusPanel
 	u.mainContentPainted = false
-	u.composerRect = terminalRect{}
-	p.rect = terminalRect{}
+	u.composerRect = terminalsession.Rect{}
+	p.rect = terminalsession.Rect{}
 	frame := make([]string, height)
 	if width < 1 || height < 1 {
 		return frame
@@ -161,9 +162,9 @@ func (u *appServerUI) statusPanelFrame(width, height int) []string {
 	if boxed {
 		start++
 	}
-	p.rect = terminalRect{x + 1, start, contentWidth, p.rows}
+	p.rect = terminalsession.Rect{x + 1, start, contentWidth, p.rows}
 	if boxed {
-		p.rect.x = x + 3
+		p.rect.X = x + 3
 	}
 	visible := lines[p.top:min(len(lines), p.top+p.rows)]
 	labelWidth := 0

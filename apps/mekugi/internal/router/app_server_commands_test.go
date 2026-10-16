@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 )
 
 func TestComposerCommandCatalog(t *testing.T) {
@@ -86,7 +87,7 @@ func TestComposerCommandMouseSelection(t *testing.T) {
 	u.shell = shell
 	appServerTestKeys(t, u, "/sk")
 	u.renderPicker(80, 4)
-	u.picker.rect = terminalRect{0, 0, 80, 4}
+	u.picker.rect = terminalsession.Rect{0, 0, 80, 4}
 	if err := shell.mouse("\x1b[<0;2;2M"); err != nil {
 		t.Fatal(err)
 	}

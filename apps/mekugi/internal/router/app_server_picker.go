@@ -11,9 +11,9 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/yusing/mekugi/modules/conversation/composer"
-
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
 // Source: codex-rs/tui/src/bottom_pane/chat_composer.rs:2094:2250,2744:2805
@@ -54,7 +54,7 @@ type composerPicker struct {
 	toggleID, togglePath string
 	top                  int
 	rowStart, rowCount   int
-	rect                 terminalRect
+	rect                 terminalsession.Rect
 	target, dismissed    composerTarget
 	open                 bool
 	choices              []composerChoice
@@ -525,5 +525,5 @@ func (u *appServerUI) pickerKey(key string) bool {
 }
 
 func (u *appServerUI) pickerVisible() bool {
-	return !u.composerReadOnly() && u.picker.open && (u.shell == nil || u.shell.focus == 0)
+	return !u.composerReadOnly() && u.picker.open && (u.shell == nil || u.shell.Focus == 0)
 }

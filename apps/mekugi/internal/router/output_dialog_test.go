@@ -134,7 +134,7 @@ func TestOutputDialogSearchAndCopyRetainedText(t *testing.T) {
 		t.Fatal("previous search did not return")
 	}
 	u.outputKey("y")
-	if u.clipboard == "" || !strings.Contains(u.clipboard, "\x1b]52;c;") {
+	if u.frame.Clipboard == "" || !strings.Contains(u.frame.Clipboard, "\x1b]52;c;") {
 		t.Fatal("copy did not send retained output to terminal clipboard")
 	}
 	u.outputKey("q")
@@ -278,10 +278,10 @@ func TestUISnapshotOutputDialogVTOverlayWideAndNarrow(t *testing.T) {
 			}
 			uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/native-output-dialog-%d.txt", width), strings.Split(screen.Render(), "\n"), width)
 			if width < outputDialogFullWidth {
-				if u.output.rect.x != 0 || u.output.rect.y != 0 || u.output.rect.w != width || u.output.rect.h != height {
+				if u.output.rect.X != 0 || u.output.rect.Y != 0 || u.output.rect.W != width || u.output.rect.H != height {
 					t.Fatalf("narrow dialog did not take screen width: %+v", u.output.rect)
 				}
-			} else if u.output.rect.w > int(float64(width)*outputDialogShare) || u.output.rect.x <= 0 {
+			} else if u.output.rect.W > int(float64(width)*outputDialogShare) || u.output.rect.X <= 0 {
 				t.Fatalf("wide dialog exceeded frame limit: %+v", u.output.rect)
 			}
 		})
@@ -380,13 +380,13 @@ func TestOutputDialogTerminalKeyDecoderOwnsPrefixAndPaging(t *testing.T) {
 	u := dialogForOutput(output)
 	u.main = &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: newLiveActivityView()}
 	drawOutputDialog(u)
-	u.focus = 0
+	u.Focus = 0
 	for _, key := range []byte{2, '3'} {
 		if err := u.key(key); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if u.focus != 0 || u.prefix {
+	if u.Focus != 0 || u.prefix {
 		t.Fatal("modal Ctrl+B pane number changed background pane")
 	}
 	for _, seq := range []string{"\x02\x1b[5~", "\x02\x1b[6~"} {
@@ -453,7 +453,7 @@ func TestOutputDialogCommandTabs(t *testing.T) {
 		t.Fatalf("read tab missing syntax or text: %+v", u.output.laid)
 	}
 	tab := u.output.tabs[1]
-	u.outputMouse(0, u.output.rect.x+2+tab.from, u.output.rect.y+2, false)
+	u.outputMouse(0, u.output.rect.X+2+tab.from, u.output.rect.Y+2, false)
 	drawOutputDialog(u)
 	if u.output.page != 1 || u.output.laid.Text != "main.go:12:return 42" {
 		t.Fatalf("tab click did not select command: %+v", u.output.laid)
@@ -549,7 +549,7 @@ func TestOutputDialogTabsKeepNavigationState(t *testing.T) {
 	u.outputKey("/")
 	u.outputKey("first")
 	tab := u.output.tabs[1]
-	u.outputMouse(0, u.output.rect.x+2+tab.from, u.output.rect.y+2, false)
+	u.outputMouse(0, u.output.rect.X+2+tab.from, u.output.rect.Y+2, false)
 	drawOutputDialog(u)
 	if u.output.top != 0 || u.output.typing || u.output.draft != "" {
 		t.Fatal("new tab borrowed navigation state")
@@ -572,7 +572,7 @@ func TestSharedDialogCloseButton(t *testing.T) {
 		if !strings.Contains(frame, activityui.DialogClose) {
 			t.Fatalf("width %d: no close button: %s", width, frame)
 		}
-		u.outputMouse(0, d.rect.x+d.rect.w-6, d.rect.y, false)
+		u.outputMouse(0, d.rect.X+d.rect.W-6, d.rect.Y, false)
 		if u.output != nil {
 			t.Fatalf("width %d: close button did not dismiss", width)
 		}

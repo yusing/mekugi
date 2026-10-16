@@ -1,25 +1,14 @@
 package router
 
 import (
-	"encoding/json/jsontext"
-	json "encoding/json/v2"
-	"errors"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
-// The terminal owns its schema; the preference module keeps it opaque.
-type nativePaneState struct {
-	Focus            int  `json:"focus"`
-	Split            int  `json:"split"`
-	DiffOpen         bool `json:"diffOpen"`
-	InterruptLocked  bool `json:"interruptLocked,omitzero"`
-	NavigatorColumns int  `json:"navigatorColumns"`
-}
-
-func (u *terminalUI) paneState() nativePaneState {
-	state := nativePaneState{Focus: u.focus, Split: u.split, DiffOpen: u.diffOpen, NavigatorColumns: u.diff.navigation.Columns}
+func (u *terminalUI) paneState() terminalsession.Preferences {
+	state := terminalsession.Preferences{Focus: u.Focus, Split: u.Split, DiffOpen: u.DiffOpen, NavigatorColumns: u.diff.navigation.Columns}
 	if u.main != nil {
 		state.InterruptLocked = u.main.interruptLocked
 	}
@@ -29,26 +18,12 @@ func (u *terminalUI) paneState() nativePaneState {
 type nativePreferences struct {
 	service    *preferences.Service
 	attachment *preferences.Attachment
-	layout     nativePaneState
-	encoded    jsontext.Value
-}
-
-// Cache only terminal encoding, so unchanged frames do not marshal JSON.
-func (p *nativePreferences) presentation(u *terminalUI) (jsontext.Value, error) {
-	state := u.paneState()
-	if p.encoded == nil || state != p.layout {
-		encoded, err := json.Marshal(&state)
-		if err != nil {
-			return nil, err
-		}
-		p.layout, p.encoded = state, encoded
-	}
-	return p.encoded, nil
+	encoding   terminalsession.PreferenceEncoder
 }
 
 type nativePreferenceSnapshot struct {
 	preferences.Snapshot
-	layout nativePaneState
+	layout terminalsession.Preferences
 }
 
 func (p *nativePreferences) read(workspace, thread string) (nativePreferenceSnapshot, error) {
@@ -60,19 +35,16 @@ func (p *nativePreferences) read(workspace, thread string) (nativePreferenceSnap
 	if state.Presentation == nil {
 		return result, nil
 	}
-	if err := json.Unmarshal(state.Presentation, &result.layout); err != nil {
+	result.layout, err = terminalsession.ReadPreferences(state.Presentation)
+	if err != nil {
 		return nativePreferenceSnapshot{}, err
-	}
-	layout := result.layout
-	if layout.Focus < 0 || layout.Focus > 3 || layout.Split < 0 || layout.Split > 10000 || layout.NavigatorColumns < 0 || layout.NavigatorColumns > 10000 || layout.Focus == 1 && !layout.DiffOpen || layout.Focus == 2 && layout.DiffOpen {
-		return nativePreferenceSnapshot{}, errors.New("invalid or unsupported pane state")
 	}
 	return result, nil
 }
 
 func (p *nativePreferences) open(u *terminalUI, workspace, thread string, resume bool) error {
 	p.attachment = nil
-	initial, err := p.presentation(u)
+	initial, err := p.encoding.Encode(u.paneState())
 	if err != nil {
 		return err
 	}
@@ -85,13 +57,10 @@ func (p *nativePreferences) open(u *terminalUI, workspace, thread string, resume
 		return err
 	}
 	layout := state.layout
-	u.focus, u.split, u.diffOpen = layout.Focus, layout.Split, layout.DiffOpen
-	if u.focus == 2 || u.focus == 1 && !u.diffOpen {
-		u.focus = 0
-	}
+	u.Panes.Restore(layout)
 	u.main.interruptLocked = layout.InterruptLocked
 	u.diff.navigation.Columns = layout.NavigatorColumns
-	state.Presentation, err = p.presentation(u)
+	state.Presentation, err = p.encoding.Encode(u.paneState())
 	if err != nil {
 		return err
 	}
@@ -103,7 +72,7 @@ func (p *nativePreferences) save(u *terminalUI, now time.Time, flush bool) error
 	if p == nil || p.attachment == nil {
 		return nil
 	}
-	state, err := p.presentation(u)
+	state, err := p.encoding.Encode(u.paneState())
 	if err != nil {
 		return err
 	}

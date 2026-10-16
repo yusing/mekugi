@@ -15,7 +15,7 @@ import (
 func composerShellEscape(t *testing.T, u *appServerUI) {
 	t.Helper()
 	composerShellKeys(t, u, "\x1b")
-	u.shell.sequenceAt = time.Now().Add(-time.Second)
+	ageTerminalEscape(u.shell)
 	if err := u.shell.flushEscape(); err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +199,7 @@ func TestComposerEscapeContextPrecedesSteerDelivery(t *testing.T) {
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"t"}}`, steer.ID))
 			switch context {
 			case "selection":
-				u.shell.selection = &terminalSelection{moved: true}
+				u.shell.selection = &terminalSelection{Selection: selectedTerminalText("selected")}
 			case "scrollback":
 				u.view.following = false
 			case "picker":

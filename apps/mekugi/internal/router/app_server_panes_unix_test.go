@@ -48,7 +48,7 @@ func TestNativePaneStateRejectsFIFOWithoutWaiting(t *testing.T) {
 		}
 		t.Fatal("preference restoration waited for a FIFO writer")
 	}
-	if ui.shell.focus != 0 || ui.shell.split != 0 {
+	if ui.shell.Focus != 0 || ui.shell.Split != 0 {
 		t.Fatal("invalid preference changed layout")
 	}
 }

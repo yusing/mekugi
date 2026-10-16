@@ -5,7 +5,6 @@ import (
 	"io"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestNativeUIQueuedEscapeContinuation(t *testing.T) {
@@ -23,7 +22,7 @@ func TestNativeUIQueuedEscapeContinuation(t *testing.T) {
 				t.Fatal(err)
 			}
 			// The UI stalled after consuming ESC; the suffix is already queued.
-			u.shell.sequenceAt = time.Now().Add(-time.Second)
+			ageTerminalEscape(u.shell)
 			keys := make(chan byte, len(tc.suffix))
 			for _, key := range []byte(tc.suffix) {
 				keys <- key
@@ -31,8 +30,8 @@ func TestNativeUIQueuedEscapeContinuation(t *testing.T) {
 			if err := u.drainKeys(keys); err != nil {
 				t.Fatal(err)
 			}
-			if u.Text != tc.want || wire.Len() != 0 || u.shell.paste || u.paste {
-				t.Fatalf("draft=%q want=%q wire=%q paste=%v/%v", u.Text, tc.want, wire.String(), u.shell.paste, u.paste)
+			if u.Text != tc.want || wire.Len() != 0 || u.shell.input.Pasting() || u.paste {
+				t.Fatalf("draft=%q want=%q wire=%q paste=%v/%v", u.Text, tc.want, wire.String(), u.shell.input.Pasting(), u.paste)
 			}
 		})
 	}
@@ -46,7 +45,7 @@ func TestNativeUIInputDrainPreservesStandaloneEscape(t *testing.T) {
 	if err := u.shell.key(27); err != nil {
 		t.Fatal(err)
 	}
-	u.shell.sequenceAt = time.Now().Add(-time.Second)
+	ageTerminalEscape(u.shell)
 	if err := u.drainKeys(make(chan byte, 64)); err != nil {
 		t.Fatal(err)
 	}
@@ -69,10 +68,10 @@ func TestNativeUIInputDrainBoundedAndClosed(t *testing.T) {
 	if err := u.drainKeys(keys); err != nil {
 		t.Fatal(err)
 	}
-	if len(keys) != 2 || u.shell.sequence != "\x1b" {
+	if len(keys) != 2 || !u.shell.input.Pending() {
 		t.Fatal("input budget did not preserve pending sequence")
 	}
-	u.shell.sequenceAt = time.Now().Add(-time.Second)
+	ageTerminalEscape(u.shell)
 	if err := u.drainKeys(keys); err != nil {
 		t.Fatal(err)
 	}

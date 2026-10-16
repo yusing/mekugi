@@ -1,4 +1,4 @@
-package router
+package terminalsession
 
 import (
 	"time"
@@ -7,24 +7,25 @@ import (
 )
 
 const (
-	replayUp byte = 0x82 + iota
-	replayDown
-	replayRight
-	replayLeft
-	replayPageUp
-	replayPageDown
-	replayHome
-	replayEnd
+	ReplayUp byte = 0x82 + iota
+	ReplayDown
+	ReplayRight
+	ReplayLeft
+	ReplayPageUp
+	ReplayPageDown
+	ReplayHome
+	ReplayEnd
 )
 
 var replayNavigation = map[byte]string{
-	replayUp: "\x1b[A", replayDown: "\x1b[B", replayRight: "\x1b[C", replayLeft: "\x1b[D",
-	replayPageUp: "\x1b[5~", replayPageDown: "\x1b[6~", replayHome: "\x1b[H", replayEnd: "\x1b[F",
+	ReplayUp: "\x1b[A", ReplayDown: "\x1b[B", ReplayRight: "\x1b[C", ReplayLeft: "\x1b[D",
+	ReplayPageUp: "\x1b[5~", ReplayPageDown: "\x1b[6~", ReplayHome: "\x1b[H", ReplayEnd: "\x1b[F",
 }
 
-// Decode terminal reports before interpreting playback controls. State persists
+// ReplayInput decodes terminal reports before interpreting playback controls. State persists
 // across reads, so fragmented mouse or navigation sequences cannot quit replay.
-type uiReplayInput struct {
+// Source: apps/mekugi/internal/router/session_ui_replay_input.go:25:101@70e7ce50 uiReplayInput
+type ReplayInput struct {
 	escape  string
 	mouse   terminalui.Mouse
 	x10     int
@@ -32,13 +33,13 @@ type uiReplayInput struct {
 	escapeC <-chan time.Time
 }
 
-func (in *uiReplayInput) close() {
+func (in *ReplayInput) Close() {
 	if in.timer != nil {
 		in.timer.Stop()
 	}
 }
 
-func (in *uiReplayInput) consume(key byte) byte {
+func (in *ReplayInput) Consume(key byte) byte {
 	if key == 3 {
 		return key // Cancellation must still work after an incomplete report.
 	}
@@ -99,3 +100,13 @@ func (in *uiReplayInput) consume(key byte) byte {
 	}
 	return 0
 }
+
+// EscapeReady is armed only while a standalone Escape remains ambiguous.
+func (in *ReplayInput) EscapeReady() <-chan time.Time { return in.escapeC }
+
+// ExpireEscape acknowledges the timeout before the application dismisses a
+// dialog or exits playback. It never creates an application effect itself.
+func (in *ReplayInput) ExpireEscape() { in.escape, in.escapeC = "", nil }
+
+// ReplayNavigation returns the ordinary pane key for a decoded navigation action.
+func ReplayNavigation(key byte) string { return replayNavigation[key] }

@@ -97,8 +97,8 @@ func TestLiveActivityMainQuestionBranchLink(t *testing.T) {
 	clicked := false
 	for row, target := range v.feedQuestions {
 		if target == 1 {
-			x := u.shell.layout.codex.x + v.feedLeft + 2
-			y := u.shell.layout.codex.y + v.feedTop + row
+			x := u.shell.layout.Main.X + v.feedLeft + 2
+			y := u.shell.layout.Main.Y + v.feedTop + row
 			if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", x, y)); err != nil {
 				t.Fatal(err)
 			}
@@ -148,7 +148,7 @@ func TestAppServerMainRosterSummary(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
 	u.status = "Working"
-	u.shell.focus = 3 // Narrow layout displays only the roster, not Main.
+	u.shell.Focus = 3 // Narrow layout displays only the roster, not Main.
 	if err := u.paint(&bytes.Buffer{}, 80, 40); err != nil {
 		t.Fatal(err)
 	}

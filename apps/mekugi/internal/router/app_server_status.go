@@ -3,6 +3,9 @@ package router
 import (
 	"cmp"
 	"encoding/json/jsontext"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	json "encoding/json/v2"
 	"fmt"
 	"maps"
@@ -22,7 +25,7 @@ type appServerStatusReport struct {
 	groups    []string
 	controls  string
 	metrics   *sessionMetricsPanel
-	rect      terminalRect // Selectable body, relative to Main.
+	rect      terminalsession.Rect // Selectable body, relative to Main.
 	fields    []statusField
 	top, rows int
 	body      []statusField

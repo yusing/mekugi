@@ -19,7 +19,7 @@ func (u *appServerUI) openComposerEditor(stdin, stdout *os.File) {
 	// Leaving the alternate screen discards its contents. The next paint must
 	// restore every row, including unchanged panes and failed editor launches.
 	if u.shell != nil {
-		u.shell.paintedRows = nil
+		u.shell.frame.Rows = nil
 	}
 	file, err := os.CreateTemp("", "mekugi-draft-*.txt")
 	if err != nil {

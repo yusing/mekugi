@@ -10,18 +10,19 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-
-	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
-
-	"github.com/yusing/mekugi/libraries/textsanitize"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/libraries/terminalui"
-	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	"github.com/yusing/mekugi/libraries/textsanitize"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	"github.com/yusing/mekugi/libraries/pathdisplay"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+
 	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 )
 
@@ -29,9 +30,6 @@ import (
 const (
 	nativeDockMinimum = 1500 * time.Millisecond // Settling interval before a completed call retires.
 	nativeDockReveal  = 300 * time.Millisecond  // Short edits never replace the transcript just to disappear.
-	nativeRosterRows  = 4                       // Unfocused roster rows.
-	nativeRosterShare = 0.4                     // Focused roster share of the screen.
-	nativeFramedRows  = 8                       // Below this, panes drop their frames.
 )
 
 type nativePendingPreview struct {
@@ -170,7 +168,7 @@ func (u *terminalUI) applyDiff(ctx context.Context, event reviewEvent) {
 			clear(u.livePending)
 		}
 	case "change":
-		u.diffUnseen = u.diffUnseen || !u.diffOpen
+		u.diffUnseen = u.diffUnseen || !u.DiffOpen
 	}
 	if u.diffFailure != "" {
 		return
@@ -288,7 +286,7 @@ func (u *appServerUI) transcriptView() *liveActivityView {
 func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	width, height := max(1, u.width), max(1, u.height)
 	now := u.main.now()
-	u.agents.feedOnly, u.agents.focused = true, u.focus == 3
+	u.agents.feedOnly, u.agents.focused = true, u.Focus == 3
 	u.liveDock.Motion.Enabled = true
 	u.liveDock.Motion.Canvas = u.diff.theme.Canvas()
 	if u.diff.backgrounded {
@@ -301,50 +299,19 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		u.agents.lineCounts = u.diff.callerCounts
 		u.agents.netCounts = u.diff.netCounts
 	}
-	roster := u.agents.nativeRoster(width, u.rosterLimit(height), now, u.focus == 3)
-	if height-1-len(roster) < nativeFramedRows {
-		roster = nil // A short terminal keeps its rows for Main.
-	}
-	padding := 0
-	if len(roster) > 0 && height-1-len(roster)-1 >= nativeFramedRows {
-		padding = 1
-	}
-	top := max(0, height-1-len(roster)-padding)
-	framed := top >= nativeFramedRows
-	l := terminalLayout{vertical: -1, horizontal: -1, rosterHorizontal: -1}
-	if len(roster) > 0 {
-		l.rosterHorizontal = top
-		l.roster = terminalRect{0, top, width, len(roster)}
-	}
-	var left, right terminalRect
-	wide := u.diffOpen && width >= 100 && top >= 12
-	switch {
-	case wide:
-		split := u.split
-		if split == 0 {
-			split = width / 2
-		}
-		split = min(max(40, split), width-40)
-		left, right = terminalRect{0, 0, split, top}, terminalRect{split, 0, width - split, top}
-		l.vertical = split
-	case !u.diffOpen || u.focus != 1:
-		left = terminalRect{0, 0, width, top}
-	default:
-		right = terminalRect{0, 0, width, top}
-	}
+	roster := u.agents.nativeRoster(width, u.Panes.RosterLimit(height), now, u.Focus == 3)
+	l, left, right, framed, rosterRows := u.Panes.Geometry(width, height, len(roster))
+	roster = roster[:rosterRows]
 	rows := make([]string, height)
-	draw := func(r terminalRect, lines []string) {
+	draw := func(r terminalsession.Rect, lines []string) {
 		for i, line := range lines {
-			if y := r.y + i; y >= 0 && y < len(rows) && i < r.h {
-				rows[y] += fmt.Sprintf("\x1b[%dG\x1b[0m%s\x1b[0m", r.x+1, line)
+			if y := r.Y + i; y >= 0 && y < len(rows) && i < r.H {
+				rows[y] += fmt.Sprintf("\x1b[%dG\x1b[0m%s\x1b[0m", r.X+1, line)
 			}
 		}
 	}
-	if left.w >= 4 && left.h >= 1 {
-		iw, ih := left.w-2, left.h-2
-		if !framed {
-			iw, ih = left.w, left.h
-		}
+	if left.W >= 4 && left.H >= 1 {
+		iw, ih := l.Main.W, l.Main.H
 		dockRows := 0
 		if mainEdit && !u.main.keybindings && !u.main.picker.open {
 			dockRows = ih
@@ -352,7 +319,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		rosterHits := u.agents.hits
 		body, dockRect := u.main.mainFrame(iw, ih, dockRows)
 		u.agents.hits = rosterHits
-		dockAt, dockRows := dockRect.y, dockRect.h
+		dockAt, dockRows := dockRect.Y, dockRect.H
 		rules := map[int]string{}
 		if dockRows > 0 && dockAt+dockRows <= len(body) {
 			dock, err := u.liveDock.RenderBatch(ctx, caller, u.main.session.cwd, u.diff.theme, iw, dockRows, 15)
@@ -367,16 +334,14 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			}
 		}
 		if dockRows > 0 {
-			l.live = terminalRect{left.x + 1, left.y + 1 + dockAt, iw, dockRows}
+			l.Live = terminalsession.Rect{left.X + 1, left.Y + 1 + dockAt, iw, dockRows}
 			if !framed {
-				l.live = terminalRect{left.x, left.y + dockAt, iw, dockRows}
+				l.Live = terminalsession.Rect{left.X, left.Y + dockAt, iw, dockRows}
 			}
 		}
 		if !framed {
-			l.codex = left
 			draw(left, body)
 		} else {
-			l.codex = terminalRect{left.x + 1, left.y + 1, iw, ih}
 			detail := u.main.mainTitleDetail()
 			if set := u.main.view.ActiveSkills()["Main"]; set != nil && u.main.view.skillsHover == "Main" {
 				detail = strings.TrimSuffix(detail, skillLabel(set)) + activityui.Underline(skillLabel(set))
@@ -385,34 +350,27 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			if u.agents.displayingChild() {
 				name, detail = "Thread", u.agents.painter.Agent(u.agents.displayedCaller())
 			}
-			title := nativeTitle(1, name, detail, u.focus == 0)
+			title := nativeTitle(1, name, detail, u.Focus == 0)
 			// The skill count ends the title, after the frame corner and a space.
 			// A truncated title has no reliable target.
-			if set := u.main.view.ActiveSkills()["Main"]; !u.agents.displayingChild() && set != nil && strings.HasSuffix(ansi.Strip(detail), skillLabel(set)) && ansi.StringWidth(title)+5 <= left.w {
-				end := left.x + 2 + ansi.StringWidth(title)
-				l.mainSkills = terminalRect{end - ansi.StringWidth(skillLabel(set)), left.y, ansi.StringWidth(skillLabel(set)), 1}
+			if set := u.main.view.ActiveSkills()["Main"]; !u.agents.displayingChild() && set != nil && strings.HasSuffix(ansi.Strip(detail), skillLabel(set)) && ansi.StringWidth(title)+5 <= left.W {
+				end := left.X + 2 + ansi.StringWidth(title)
+				l.MainSkills = terminalsession.Rect{end - ansi.StringWidth(skillLabel(set)), left.Y, ansi.StringWidth(skillLabel(set)), 1}
 			}
-			headerRight := u.main.mainHeaderRight(left.w, u.focus == 0)
+			headerRight := u.main.mainHeaderRight(left.W, u.Focus == 0)
 			if u.agents.displayingChild() {
 				u.main.updateHistoryHint()
 				headerRight = strings.TrimSpace(scrollLabel(u.agents) + " " + u.agents.historyHint)
 			}
-			draw(left, nativeBox(left.w, left.h, title, headerRight, u.focus == 0, body, rules))
+			draw(left, nativeBox(left.W, left.H, title, headerRight, u.Focus == 0, body, rules))
 		}
 	}
-	if right.w >= 4 && right.h >= 1 {
-		inset := 0
-		if framed {
-			inset = 1
-		}
-		iw, ih := right.w-2*inset, right.h-2*inset
-		content := ih
-		contentY := right.y + inset
-		focused := u.focus == 1
+	if right.W >= 4 && right.H >= 1 {
+		iw, content := l.Diff.W, l.Diff.H
+		focused := u.Focus == 1
 		var body []string
 		var title, label string
 		diffRows := content
-		l.diff = terminalRect{right.x + inset, contentY, iw, diffRows}
 		if u.diffScreen.Emulator == nil {
 			u.diffScreen.Emulator = vt.NewEmulator(iw, max(1, diffRows))
 			u.diff.dirty = true
@@ -432,17 +390,17 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			body = strings.Split(u.diffScreen.Render(), "\n")
 		}
 		summary, state := u.diff.nativeTitle()
-		title, label = nativeTitle(2, "Diff", "saved · "+summary, u.focus == 1), state
+		title, label = nativeTitle(2, "Diff", "saved · "+summary, u.Focus == 1), state
 		u.diffUnseen = false
 		body = append(body[:min(len(body), content)], make([]string, max(0, content-len(body)))...)
 		if framed {
-			draw(right, nativeBox(right.w, right.h, title, label, focused, body, nil))
+			draw(right, nativeBox(right.W, right.H, title, label, focused, body, nil))
 		} else {
 			draw(right, body)
 		}
 	}
 	if len(roster) > 0 {
-		draw(l.roster, roster)
+		draw(l.Roster, roster)
 	}
 	if u.output != nil {
 		u.paintOutput(rows[:height-1], width, height-1)
@@ -454,40 +412,12 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		rows[y], copyRows[y] = terminalui.ExtractCopy(rows[y])
 	}
 	u.paintSelection(rows)
-	var b strings.Builder
-	b.WriteString(u.clipboard)
-	b.WriteString("\x1b[?2026h\x1b[?25l\x1b[0m")
-	for row, line := range rows {
-		if u.paintedWidth == u.width && len(u.paintedRows) == len(rows) && line == u.paintedRows[row] {
-			continue
-		}
-		fmt.Fprintf(&b, "\x1b[%d;1H\x1b[2K%s", row+1, line)
-	}
-	b.WriteString("\x1b[?2026l")
-	frame := b.String()
-	if !u.faint {
-		frame = terminalui.FaintFallback(frame)
-	}
-	_, err := io.WriteString(out, frame)
-	if err == nil {
-		u.clipboard = ""
-		u.paintedRows, u.paintedWidth = rows, u.width
-		u.paintedCopy = copyRows
-	}
-	return err
-}
-
-// rosterLimit fits the roster to its rows, within a few rows unless focused.
-func (u *terminalUI) rosterLimit(height int) int {
-	if u.focus == 3 {
-		return max(nativeRosterRows, int(float64(height)*nativeRosterShare))
-	}
-	return nativeRosterRows
+	return u.frame.Write(out, rows, copyRows, u.width, u.faint)
 }
 
 // nativeStatus shows view selectors and only the focused view's keys.
 func (u *terminalUI) nativeStatus() string {
-	u.paneTabs = [4]terminalRect{}
+	u.paneTabs = [4]terminalsession.Rect{}
 	if u.main != nil && u.main.replay != nil {
 		return u.main.replay.bar(u.width)
 	}
@@ -495,7 +425,7 @@ func (u *terminalUI) nativeStatus() string {
 	tab := func(digit int, name, badge string, shown bool) {
 		text := fmt.Sprintf(" %d %s", digit, name)
 		switch {
-		case (u.focus == digit-1 && digit != 3 || digit == 3 && u.focus == 3) && (digit != 1 || !u.agents.displayingChild()):
+		case (u.Focus == digit-1 && digit != 3 || digit == 3 && u.Focus == 3) && (digit != 1 || !u.agents.displayingChild()):
 			text = "\x1b[7;1m" + text + badge + " \x1b[27;22m"
 		case shown:
 			text += badge + " "
@@ -507,7 +437,7 @@ func (u *terminalUI) nativeStatus() string {
 		if digit == 3 {
 			pane = 3
 		}
-		u.paneTabs[pane] = terminalRect{left, u.height - 1, max(0, min(ansi.StringWidth(text), u.width-left)), 1}
+		u.paneTabs[pane] = terminalsession.Rect{left, u.height - 1, max(0, min(ansi.StringWidth(text), u.width-left)), 1}
 		tabs.WriteString(text)
 	}
 	diffBadge := ""
@@ -520,7 +450,7 @@ func (u *terminalUI) nativeStatus() string {
 		agentsBadge = terminalui.Amber + superscript(responding) + "\x1b[39m"
 	}
 	tab(1, "Main", "", !u.agents.displayingChild())
-	tab(2, "Diff", diffBadge, u.diffOpen)
+	tab(2, "Diff", diffBadge, u.DiffOpen)
 	tab(3, "Agents", agentsBadge, true)
 	if u.main != nil && u.main.interruptLocked {
 		tabs.WriteString("  " + terminalui.Amber + "Locked · /unlock" + terminalui.Reset)
@@ -534,19 +464,19 @@ func (u *terminalUI) nativeStatus() string {
 	case u.prefix:
 		hints = terminalHints{{"ctrl+b 1-3", "select", 0}, {"2", "toggle diff", 0}, {"o", "older child history", 0}, {"e", "next live", 0}, {"←→", "resize", 0}, {"PgUp/PgDn", "history", 0}}
 		return tabs.String() + "  " + hints.render()
-	case u.focus == 1:
+	case u.Focus == 1:
 		hints = terminalHints{{"s", "files", 0}, {"tab", "changes", 0}, {"[ ]", "hunks", 0}, {"a", "caller", 0}, {"?", "help", 0}}
 		if u.diff.back.kind != 0 {
 			hints = append(terminalHints{{"esc", "back", 0}}, hints...)
 		}
-	case u.focus == 3:
+	case u.Focus == 3:
 		hints = terminalHints{{"j/k", "agent", 0}, {"a", filter, 0}, {"esc", "back", 0}}
 	}
 	if u.liveDock.Live() > 1 {
 		hints = append(hints, terminalHint{"^B e", "next live", 0})
 	}
 	hints = append(hints, terminalHint{"^B 1-3", "views", 0})
-	if u.focus == 0 {
+	if u.Focus == 0 {
 		expansion := u.main.transcriptView().expansion
 		hints = append(hints, terminalHint{"^E", [3]string{"expand events", "expand all", "default"}[expansion], 0})
 	}
@@ -555,19 +485,10 @@ func (u *terminalUI) nativeStatus() string {
 
 // selectNativePane gives status-bar clicks and Ctrl-B digits the same action.
 func (u *terminalUI) selectNativePane(pane int) {
-	switch pane {
-	case 0:
+	if pane == 0 {
 		u.agents.displayThread("/root")
-		u.focus = 0
-	case 1:
-		u.diffOpen = !u.diffOpen
-		u.focus = 0
-		if u.diffOpen {
-			u.focus = 1
-		}
-	case 3:
-		u.focus = 3
 	}
+	u.Panes.Select(pane)
 	u.selection = nil
 }
 
@@ -590,9 +511,8 @@ func (u *terminalUI) showRosterPick(only bool, selected string) {
 
 // flushEscape sends a lone Esc once no sequence followed it.
 func (u *terminalUI) flushEscape() error {
-	if u.sequence != "\x1b" || time.Since(u.sequenceAt) < 40*time.Millisecond {
+	if !u.input.Escape(time.Now()) {
 		return nil
 	}
-	u.sequence = ""
 	return u.send("\x1b")
 }

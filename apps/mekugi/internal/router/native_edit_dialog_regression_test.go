@@ -76,8 +76,8 @@ func TestNativeEditDialogRegressionActionsCopyAndSyntax(t *testing.T) {
 					t.Fatalf("plain bytes changed: code %q, copy %q, want %q", block.Code, u.output.laid.Text, wantText)
 				}
 				u.outputKey("y")
-				if want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(wantText)) + "\x07"; u.clipboard != want {
-					t.Fatalf("clipboard bytes changed: %q", u.clipboard)
+				if want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(wantText)) + "\x07"; u.frame.Clipboard != want {
+					t.Fatalf("clipboard bytes changed: %q", u.frame.Clipboard)
 				}
 				var renderer diffrender.Renderer
 				for _, side := range []struct {

@@ -12,7 +12,7 @@ func TestNativeReplyDialogPreservesScrolledDiff(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	c := liveDiffChangesController(t, 120, 28, []presentation.Chunk{liveDiffCapture("a", "a.go", 1, "", liveDiffLinesFile("a", 80), presentation.Origin{Change: "amber1", Caller: "/root"})})
 	u.shell.diff = c
-	u.shell.diffOpen, u.shell.focus = true, 1
+	u.shell.DiffOpen, u.shell.Focus = true, 1
 
 	key := c.view.Files[0].Key()
 	c.view.Scroll[key] = 12
@@ -30,7 +30,7 @@ func TestNativeReplyDialogPreservesScrolledDiff(t *testing.T) {
 	if seq == 0 || !u.shell.openActivityReply(seq) || u.shell.output == nil {
 		t.Fatal("reply did not open dialog")
 	}
-	if !u.shell.diffOpen || u.shell.focus != 1 || c.view.Scroll[key] != 12 {
+	if !u.shell.DiffOpen || u.shell.Focus != 1 || c.view.Scroll[key] != 12 {
 		t.Fatal("opening reply changed underlying diff navigation")
 	}
 	if err := u.paint(&bytes.Buffer{}, 120, 28); err != nil {
@@ -40,7 +40,7 @@ func TestNativeReplyDialogPreservesScrolledDiff(t *testing.T) {
 		t.Fatal("dialog lost selected reply")
 	}
 	u.shell.outputKey("\x1b")
-	if u.shell.output != nil || !u.shell.diffOpen || u.shell.focus != 1 || c.view.Scroll[key] != 12 {
+	if u.shell.output != nil || !u.shell.DiffOpen || u.shell.Focus != 1 || c.view.Scroll[key] != 12 {
 		t.Fatal("dismissing reply changed underlying diff")
 	}
 }

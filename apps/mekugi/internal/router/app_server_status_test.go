@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/libraries/diffrender"
 )
 
 func TestUISnapshotAppServerStatusResetCredits(t *testing.T) {
@@ -194,7 +194,7 @@ func TestAppServerStatusPanelCloseScrollAndLateResponse(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.Turn, u.status = "active", "Working"
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Existing transcript"}}})
-			shell := &terminalUI{main: u, layout: terminalLayout{codex: terminalRect{0, 0, 60, 12}}}
+			shell := &terminalUI{main: u, layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 60, 12}}}
 			appServerTestKeys(t, u, "/status\r")
 			u.statusPanel.body = nil
 			for range 40 {
@@ -258,7 +258,7 @@ func TestAppServerStatusTerminalPasteCanClose(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if u.statusPanel == nil || u.Text != "" || shell.paste {
+	if u.statusPanel == nil || u.Text != "" || shell.input.Pasting() {
 		t.Fatal("paste affected panel or composer")
 	}
 	if err := shell.key('q'); err != nil {
@@ -352,10 +352,10 @@ func TestAppServerStatusPanelVisual(t *testing.T) {
 			t.Fatalf("compositor lost %q:\n%s", want, rendered)
 		}
 	}
-	r := u.shell.layout.codex
+	r := u.shell.layout.Main
 	var panel []string
-	for _, row := range strings.Split(rendered, "\n")[r.y : r.y+r.h] {
-		panel = append(panel, ansi.Cut(row, r.x, r.x+r.w))
+	for _, row := range strings.Split(rendered, "\n")[r.Y : r.Y+r.H] {
+		panel = append(panel, ansi.Cut(row, r.X, r.X+r.W))
 	}
 	t.Log("Rendered Main pane:\n" + strings.Join(panel, "\n"))
 	saved := u.statusPanel
@@ -415,7 +415,7 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 						}
 					}
 				}
-				if u.shell.selection == nil || u.shell.selection.text() != "gpt-6-sol" {
+				if u.shell.selection == nil || u.shell.selection.Text() != "gpt-6-sol" {
 					t.Fatalf("wrong status selection: %+v", u.shell.selection)
 				}
 			}
@@ -430,7 +430,7 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 				t.Fatal(err)
 			}
 			want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("gpt-6-sol")) + "\x07"
-			if u.shell.clipboard != want || u.statusPanel == nil || u.Turn != "active" || u.shell.selection != nil {
+			if u.shell.frame.Clipboard != want || u.statusPanel == nil || u.Turn != "active" || u.shell.selection != nil {
 				t.Fatal("copy failed or dismissed/interrupted status")
 			}
 			if err := u.paint(screen, 160, 48); err != nil {

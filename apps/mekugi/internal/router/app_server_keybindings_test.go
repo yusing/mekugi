@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
@@ -31,7 +30,7 @@ func TestNativeUIKeybindings(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.ensureShell()
-			u.Text, u.shell.focus = tc.draft, tc.focus
+			u.Text, u.shell.Focus = tc.draft, tc.focus
 			for _, key := range []byte(tc.input) {
 				if err := u.shell.key(key); err != nil {
 					t.Fatal(err)
@@ -75,7 +74,7 @@ func TestNativeUIKeybindingsPaintAndEscape(t *testing.T) {
 	if err := u.shell.key(27); err != nil {
 		t.Fatal(err)
 	}
-	u.shell.sequenceAt = time.Now().Add(-time.Second)
+	ageTerminalEscape(u.shell)
 	if err := u.shell.flushEscape(); err != nil {
 		t.Fatal(err)
 	}

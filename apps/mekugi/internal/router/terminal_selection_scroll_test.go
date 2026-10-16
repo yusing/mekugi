@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
 )
 
@@ -17,7 +18,7 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.ensureShell()
 			t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
-			u.shell.diffOpen = false
+			u.shell.DiffOpen = false
 			var lines []string
 			for i := range 60 {
 				lines = append(lines, fmt.Sprintf("row %02d", i))
@@ -52,7 +53,7 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 			}
 			paint()
 			x, y := -1, -1
-			for row, spans := range u.shell.paintedCopy {
+			for row, spans := range u.shell.frame.Copy {
 				for _, span := range spans {
 					if span.Text == "row 59" {
 						x, y = span.Column+5, row
@@ -74,14 +75,14 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 			}
 			mouse(0, x, y, false)
 			s := u.shell.selection
-			if s == nil || s.screenRows == 0 {
+			if s == nil || s.ScreenRows() == 0 {
 				t.Fatal("selection did not retain off-screen source")
 			}
 			// Arrivals must not replace even off-screen source while selecting.
 			if surface == "btw" {
 				u.btw.answer[0].text = "replacement"
 			}
-			for attempts := 0; s.top > 0 && attempts < 30; attempts++ {
+			for attempts := 0; s.Top() > 0 && attempts < 30; attempts++ {
 				mouse(64, x, y, false)
 				paint()
 			}
@@ -90,8 +91,8 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 			}
 			// Finish at the first source cell, above the original viewport.
 			firstX, firstY := -1, -1
-			for row := s.rect.y; row < s.rect.y+s.rect.h; row++ {
-				for _, span := range s.copySource[s.documentY(row)] {
+			for row := s.Rect.Y; row < s.Rect.Y+s.Rect.H; row++ {
+				for _, span := range s.CopySource[s.DocumentY(row)] {
 					if span.Text == "row 00" {
 						firstX, firstY = span.Column, row
 					}
@@ -110,18 +111,18 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 				}
 				want = strings.Join(blocks, "\n\n")
 			}
-			if got := s.text(); got != want {
+			if got := s.Text(); got != want {
 				t.Fatalf("copied off-screen source = %q, want %q", got, want)
 			}
 			// Completed selection can scroll without changing its source range.
 			if err := u.shell.send("\x1b[6~"); err != nil {
 				t.Fatal(err)
 			}
-			if u.shell.selection != s || s.top == 0 || s.text() != want {
+			if u.shell.selection != s || s.Top() == 0 || s.Text() != want {
 				t.Fatal("page scrolling lost completed selection")
 			}
 			u.shell.selectionAction('c')
-			if want := base64.StdEncoding.EncodeToString([]byte(want)); !strings.Contains(u.shell.clipboard, want) {
+			if want := base64.StdEncoding.EncodeToString([]byte(want)); !strings.Contains(u.shell.frame.Clipboard, want) {
 				t.Fatal("clipboard did not include the whole selection")
 			}
 		})
@@ -138,18 +139,18 @@ func TestOutputSelectionScrollBeyondViewport(t *testing.T) {
 	u.outputMouse(0, x+5, y, false)
 	s := u.selection
 	output.Write("new arrival\n")
-	for attempts := 0; s.top > 0 && attempts < 30; attempts++ {
+	for attempts := 0; s.Top() > 0 && attempts < 30; attempts++ {
 		u.outputMouse(64, x, y, false)
 		drawOutputDialog(u)
 	}
 	x, y = outputSelectionPoint(t, u, "row 00")
 	u.outputMouse(32, x, y, false)
 	u.outputMouse(0, x, y, true)
-	if got, want := s.text(), strings.Join(lines, "\n"); got != want {
+	if got, want := s.Text(), strings.Join(lines, "\n"); got != want {
 		t.Fatalf("dialog copied = %q, want %q", got, want)
 	}
 	u.outputKey("\x1b[6~")
-	if u.selection != s || s.top == 0 || u.output.follow {
+	if u.selection != s || s.Top() == 0 || u.output.follow {
 		t.Fatal("dialog page scroll lost frozen selection")
 	}
 	u.outputKey("\x1b")
@@ -172,19 +173,19 @@ func TestDiffSelectionScrollFromEOFAndRestart(t *testing.T) {
 	c.stdout, c.dirty = screen, true
 	c.frame(t)
 	u := selectionTestUI(strings.Split(screen.Render(), "\n")...)
-	u.width, u.paintedWidth = width, width
-	u.layout = terminalLayout{diff: terminalRect{0, 0, width, height}}
+	u.width, u.frame.Width = width, width
+	u.layout = terminalsession.Layout{Diff: terminalsession.Rect{0, 0, width, height}}
 	u.diff = c
 	u.selectionMouse(0, width-2, c.sourceY+1, false)
 	s := u.selection
-	if s == nil || s.top != c.offset {
+	if s == nil || s.Top() != c.offset {
 		t.Fatal("EOF offset was not preserved")
 	}
 	u.selectionMouse(64, width-2, c.sourceY+1, false)
-	s.scrollKey("\x1b[H")
+	s.ScrollKey("\x1b[H")
 	first := -1
-	for row := s.rect.y; row < s.rect.y+s.rect.h; row++ {
-		if strings.Contains(ansi.Strip(s.rows[s.documentY(row)]), "a.go_line_00") {
+	for row := s.Rect.Y; row < s.Rect.Y+s.Rect.H; row++ {
+		if strings.Contains(ansi.Strip(s.Rows[s.DocumentY(row)]), "a.go_line_00") {
 			first = row
 			break
 		}
@@ -198,7 +199,7 @@ func TestDiffSelectionScrollFromEOFAndRestart(t *testing.T) {
 	for i := range 40 {
 		want = append(want, fmt.Sprintf("+a.go_line_%02d", i))
 	}
-	if got := s.text(); got != strings.Join(want, "\n") {
+	if got := s.Text(); got != strings.Join(want, "\n") {
 		t.Fatalf("EOF selection lost source rows: %q", got)
 	}
 	if description, _ := s.mentionDescription(); description != "diff hunk @amber1:1-40" {
@@ -207,7 +208,7 @@ func TestDiffSelectionScrollFromEOFAndRestart(t *testing.T) {
 	u.selectionMouse(0, c.sourceX, first, false)
 	u.selectionMouse(32, width-2, first+1, false)
 	u.selectionMouse(0, width-2, first+1, true)
-	if got := u.selection.text(); got != strings.Join(want[:2], "\n") {
+	if got := u.selection.Text(); got != strings.Join(want[:2], "\n") {
 		t.Fatalf("restart selected underlying viewport: %q", got)
 	}
 }
@@ -235,17 +236,17 @@ func TestSelectionScrolledClickUsesDocumentTarget(t *testing.T) {
 	if err := u.paint(&strings.Builder{}, 120, 30); err != nil {
 		t.Fatal(err)
 	}
-	r := u.shell.layout.codex
-	x, y := r.x+u.agents.feedLeft, r.y+u.agents.feedTop
+	r := u.shell.layout.Main
+	x, y := r.X+u.agents.feedLeft, r.Y+u.agents.feedTop
 	selectionTestDrag(t, u.shell, x, y, x+1, y)
 	s := u.shell.selection
-	if !s.scrollKey("\x1b[H") {
+	if !s.ScrollKey("\x1b[H") {
 		t.Fatal("Home did not scroll frozen selection")
 	}
 	y = -1
-	for row := s.rect.y; row < s.rect.y+s.rect.h; row++ {
-		at := s.documentY(row) - s.rect.y
-		if at < len(s.questions) && (s.questions[at] != 0 || s.snippets[at] != (liveActivitySnippet{})) && strings.Contains(ansi.Strip(s.rows[s.documentY(row)]), "prompt 00") {
+	for row := s.Rect.Y; row < s.Rect.Y+s.Rect.H; row++ {
+		at := s.DocumentY(row) - s.Rect.Y
+		if at < len(s.questions) && (s.questions[at] != 0 || s.snippets[at] != (liveActivitySnippet{})) && strings.Contains(ansi.Strip(s.Rows[s.DocumentY(row)]), "prompt 00") {
 			y = row
 			break
 		}
@@ -271,12 +272,12 @@ func TestOutputSelectionEdgeDragScrolls(t *testing.T) {
 	x, y := outputSelectionPoint(t, u, "row 00")
 	u.outputMouse(0, x, y, false)
 	s := u.selection
-	bottom := u.output.rect.y + u.output.chrome() - 1 + u.output.rows
+	bottom := u.output.rect.Y + u.output.chrome() - 1 + u.output.rows
 	for range 50 {
-		u.outputMouse(32, u.output.rect.x+u.output.rect.w-3, bottom, false)
+		u.outputMouse(32, u.output.rect.X+u.output.rect.W-3, bottom, false)
 	}
-	u.outputMouse(0, u.output.rect.x+u.output.rect.w-3, bottom, true)
-	if got := s.text(); got != strings.Join(lines, "\n") {
+	u.outputMouse(0, u.output.rect.X+u.output.rect.W-3, bottom, true)
+	if got := s.Text(); got != strings.Join(lines, "\n") {
 		t.Fatalf("edge drag did not select off-screen text: %q", got)
 	}
 }

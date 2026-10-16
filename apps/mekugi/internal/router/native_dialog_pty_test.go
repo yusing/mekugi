@@ -94,7 +94,7 @@ func TestNativeDialogPTYCloseAndResize(t *testing.T) {
 	}
 	rect := u.shell.output.rect
 	for _, end := range []string{"M", "m"} {
-		if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", rect.x+rect.w-5, rect.y+1, end)); err != nil {
+		if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", rect.X+rect.W-5, rect.Y+1, end)); err != nil {
 			t.Fatal(err)
 		}
 	}

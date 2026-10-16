@@ -44,7 +44,7 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 
 	u := newAppServerSessionTestUI(t, workspace)
 	u.agents.Agents = []activityPaneAgent{{Name: "/root"}, {Name: "/root/worker"}}
-	u.shell.focus = 3
+	u.shell.Focus = 3
 	u.shell.diff.store = store
 	scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}}
 	refresh := func() {

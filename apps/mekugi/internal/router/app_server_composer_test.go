@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
@@ -95,7 +97,7 @@ func TestAppServerComposerObservedModelCaption(t *testing.T) {
 func TestAppServerComposerCaretFollowsFocusAndWrap(t *testing.T) {
 	for _, focus := range []int{0, 1} {
 		u, _ := newAppServerTestUI()
-		u.shell = &terminalUI{focus: focus}
+		u.shell = &terminalUI{Panes: terminalsession.Panes{Focus: focus}}
 		u.Text = "12345678901" // Fills the 11-column input, placing its caret on the next row.
 		screen := vt.NewEmulator(16, 8)
 		t.Cleanup(func() { screen.Close() })

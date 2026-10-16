@@ -58,8 +58,8 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 		if target != seq {
 			continue
 		}
-		x := u.shell.layout.codex.x + u.view.feedLeft + 1
-		y := u.shell.layout.codex.y + u.view.feedTop + row
+		x := u.shell.layout.Main.X + u.view.feedLeft + 1
+		y := u.shell.layout.Main.Y + u.view.feedTop + row
 		if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", x, y)); err != nil {
 			t.Fatal(err)
 		}
@@ -69,12 +69,12 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 		clicked = true
 		break
 	}
-	if !clicked || u.shell.output == nil || u.shell.diffOpen {
-		t.Fatalf("reply link did not open modal: clicked=%v seq=%d links=%v diff=%v", clicked, seq, u.view.feedQuestions, u.shell.diffOpen)
+	if !clicked || u.shell.output == nil || u.shell.DiffOpen {
+		t.Fatalf("reply link did not open modal: clicked=%v seq=%d links=%v diff=%v", clicked, seq, u.view.feedQuestions, u.shell.DiffOpen)
 	}
 	screen := vt.NewEmulator(120, 28)
 	defer screen.Close()
-	u.shell.paintedRows = nil
+	u.shell.frame.Rows = nil
 	master, slave, err := pty.Open()
 	if err != nil {
 		t.Fatal(err)

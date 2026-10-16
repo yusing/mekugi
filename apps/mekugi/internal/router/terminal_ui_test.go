@@ -114,7 +114,7 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 					u, _ := newAppServerTestUI()
 					u.ensureShell()
 					defer u.shell.diffScreen.Close()
-					u.shell.diffOpen = saved
+					u.shell.DiffOpen = saved
 
 					if child {
 						u.agents.Agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
@@ -130,11 +130,11 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 					assertCollapsed := func() {
 						t.Helper()
 						paint()
-						content := u.shell.layout.codex
+						content := u.shell.layout.Main
 						if saved {
-							content = u.shell.layout.diff
+							content = u.shell.layout.Diff
 						}
-						if u.shell.layout.live.h != 0 || content.y != 1 || content.h != u.shell.layout.codex.h || strings.Contains(screen.String(), "LIVE") || strings.Contains(screen.String(), "3 Live") {
+						if u.shell.layout.Live.H != 0 || content.Y != 1 || content.H != u.shell.layout.Main.H || strings.Contains(screen.String(), "LIVE") || strings.Contains(screen.String(), "3 Live") {
 							t.Fatalf("empty Live area did not collapse: %+v\n%s", u.shell.layout, screen.String())
 						}
 					}
@@ -178,7 +178,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			if activity {
 				view, caller = u.agents, "/root/worker"
 				view.setDisplayFilter(true, caller)
-				u.shell.focus = 0
+				u.shell.Focus = 0
 			}
 			for i := range 80 {
 				text := "transcript row"
@@ -209,7 +209,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			revealNativeDock(u.shell)
 			assertLiveFollow := func(frame string) {
 				t.Helper()
-				body := strings.Join(strings.Split(frame, "\n")[:u.shell.layout.roster.y], "\n")
+				body := strings.Join(strings.Split(frame, "\n")[:u.shell.layout.Roster.Y], "\n")
 				if !view.following || strings.Contains(body, "LATEST_TRANSCRIPT") {
 					t.Fatalf("live replacement lost follow or retained transcript:\n%s", frame)
 				}
@@ -217,12 +217,12 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			assertLiveFollow(paint(120, 40))
 			u.agents.Agents[0].Responding = false
 			assertLiveFollow(paint(120, 40))
-			u.shell.diffOpen = true
+			u.shell.DiffOpen = true
 			paint(120, 40)
 			if !view.following {
 				t.Fatal("opening Diff paused transcript")
 			}
-			u.shell.diffOpen = false
+			u.shell.DiffOpen = false
 			assertLiveFollow(paint(140, 32))
 			u.shell.preview(previewmodel.Preview{ID: "edit", Workspace: workspace}, false)
 			revealNativeDock(u.shell)
@@ -254,7 +254,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			if err := u.shell.key(27); err != nil {
 				t.Fatal(err)
 			}
-			u.shell.sequenceAt = time.Now().Add(-time.Second)
+			ageTerminalEscape(u.shell)
 			if err := u.shell.flushEscape(); err != nil {
 				t.Fatal(err)
 			}

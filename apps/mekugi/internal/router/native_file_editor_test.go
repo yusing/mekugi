@@ -18,7 +18,7 @@ func TestNativeFileEditorSelectionAndFilter(t *testing.T) {
 	c.files = []presentation.File{navigationFile("src/selected.go"), navigationFile("other.go")}
 	c.navigation.Rebuild(c.files, "")
 	c.navigation.Focused = true
-	u.shell.focus = 1
+	u.shell.Focus = 1
 	// The folder cursor must not open the previously selected diff file.
 	if err := u.shell.key('e'); err != nil {
 		t.Fatal(err)
@@ -32,7 +32,7 @@ func TestNativeFileEditorSelectionAndFilter(t *testing.T) {
 	if err := u.shell.key('e'); err != nil || c.navigation.Query != "e" {
 		t.Fatalf("filter input: %q %v", c.navigation.Query, err)
 	}
-	u.shell.focus = 0
+	u.shell.Focus = 0
 	if err := u.shell.key('e'); err != nil || u.Text != "e" {
 		t.Fatalf("composer input: %q %v", u.Text, err)
 	}

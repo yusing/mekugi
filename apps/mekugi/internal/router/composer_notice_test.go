@@ -6,18 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/modules/conversation/composer"
-
-	"github.com/yusing/mekugi/libraries/terminalui"
-
-	"github.com/yusing/mekugi/libraries/textsanitize"
-
-	"github.com/yusing/mekugi/libraries/diffrender"
-
-	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+	"github.com/yusing/mekugi/libraries/terminalui"
+	"github.com/yusing/mekugi/libraries/textsanitize"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
 func TestComposerErrorClickAndDismiss(t *testing.T) {
@@ -53,12 +49,12 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 			if err := u.paint(screen, tc.width+2, 16); err != nil {
 				t.Fatal(err)
 			}
-			click := func(rect terminalRect) {
+			click := func(rect terminalsession.Rect) {
 				t.Helper()
-				if rect.w == 0 {
+				if rect.W == 0 {
 					t.Fatal("missing error control")
 				}
-				x, y := rect.x+u.shell.layout.codex.x+1, rect.y+u.shell.layout.codex.y+1
+				x, y := rect.X+u.shell.layout.Main.X+1, rect.Y+u.shell.layout.Main.Y+1
 				if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", x, y)); err != nil {
 					t.Fatal(err)
 				}
@@ -90,7 +86,7 @@ func TestUISnapshotComposerError(t *testing.T) {
 			u.setNotice("File contents omitted: setup.sh (attachment budget exceeded).\nThe attachment result names the missing content.", true)
 			rows, _ := u.mainFrame(width, 8, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("composer-error-%d", width), rows)
-			if !strings.Contains(rows[u.noticeDismiss.y], terminalui.Green) || !strings.Contains(ansi.Strip(rows[u.noticeDismiss.y]), "[✓]") {
+			if !strings.Contains(rows[u.noticeDismiss.Y], terminalui.Green) || !strings.Contains(ansi.Strip(rows[u.noticeDismiss.Y]), "[✓]") {
 				t.Fatal("dismiss check is missing its shared success color")
 			}
 		})
@@ -100,7 +96,7 @@ func TestUISnapshotComposerError(t *testing.T) {
 	u.mainFrame(80, 8, 0)
 	u.setNotice("done", false)
 	u.mainFrame(80, 8, 0)
-	if u.noticeDetails.w != 0 || u.noticeDismiss.w != 0 {
+	if u.noticeDetails.W != 0 || u.noticeDismiss.W != 0 {
 		t.Fatal("stale error controls survived feedback")
 	}
 }

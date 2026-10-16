@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
@@ -172,7 +171,7 @@ func TestComposerPickerEscapeViaShellAndFrameBounds(t *testing.T) {
 	if err := u.shell.key(27); err != nil {
 		t.Fatal(err)
 	}
-	u.shell.sequenceAt = time.Now().Add(-time.Second)
+	ageTerminalEscape(u.shell)
 	if err := u.shell.flushEscape(); err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +281,7 @@ func TestComposerPickerFailureRecoveryAndRendering(t *testing.T) {
 	pickerReply(t, u, requests[1].ID, `{"files":[{"root":"/work","path":"some/deep/path/ab.go"}]}`)
 	for _, size := range [][2]int{{1, 1}, {12, 5}, {80, 24}} {
 		frame, dock := u.mainFrame(size[0], size[1], 5)
-		if dock.h != 0 || len(frame) != size[1] {
+		if dock.H != 0 || len(frame) != size[1] {
 			t.Fatalf("bad picker geometry %v: dock=%+v rows=%d", size, dock, len(frame))
 		}
 		for _, line := range frame {

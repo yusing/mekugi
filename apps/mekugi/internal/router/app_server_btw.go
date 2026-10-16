@@ -1,8 +1,10 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 
 	json "encoding/json/v2"
@@ -28,7 +30,7 @@ type appServerBTW struct {
 	attachmentNotice               string
 	scroll, rows                   int
 	started                        time.Time
-	rect                           terminalRect
+	rect                           terminalsession.Rect
 	copyAnswer                     []string // Full rendered answer for shared scrolling selection.
 }
 

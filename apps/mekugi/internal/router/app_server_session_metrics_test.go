@@ -49,8 +49,8 @@ func TestSessionMetricsWrappedDirectoryCopy(t *testing.T) {
 		}
 		selectionTestDrag(t, u.shell, x1, y1, x2, y2)
 		u.shell.selectionAction('c')
-		if want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(path)) + "\x07"; u.shell.clipboard != want {
-			t.Fatalf("wrapped directory copy = %q, want %q", u.shell.clipboard, want)
+		if want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(path)) + "\x07"; u.shell.frame.Clipboard != want {
+			t.Fatalf("wrapped directory copy = %q, want %q", u.shell.frame.Clipboard, want)
 		}
 	}
 }

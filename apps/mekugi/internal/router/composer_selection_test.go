@@ -3,11 +3,12 @@ package router
 import (
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/binding"
-	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
-	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
@@ -106,7 +107,7 @@ func TestComposerSelectionOverBudgetIsExplicit(t *testing.T) {
 func TestTerminalUIDiffSelectionMentionsChangeLines(t *testing.T) {
 	rows := []string{"  a.go +2 -1", "  42│+new", "  43│-old", "  44│ ctx", "  9│+other"}
 	u := selectionTestUI(rows...)
-	u.layout = terminalLayout{diff: terminalRect{0, 0, 40, len(rows)}}
+	u.layout = terminalsession.Layout{Diff: terminalsession.Rect{0, 0, 40, len(rows)}}
 	u.diff = &liveDiffTerminalController{workspace: "/w", painted: []diffrender.LineSource{
 		{Path: "/w/a.go", Content: 2},
 		{Change: "amber1", Path: "/w/a.go", Line: 42, Content: 5},
@@ -130,7 +131,7 @@ func TestTerminalUIDiffSelectionMentionsChangeLines(t *testing.T) {
 		if !u.selectionMouse(32, 39, tt.y2, false) || !u.selectionMouse(0, 39, tt.y2, true) || u.selection == nil {
 			t.Fatal("diff drag was not selected")
 		}
-		if got := u.selection.text(); got != tt.text {
+		if got := u.selection.Text(); got != tt.text {
 			t.Fatalf("diff selection text = %q, want %q", got, tt.text)
 		}
 		if description, source := u.selection.mentionDescription(); description != tt.description || source != tt.source {
@@ -170,8 +171,8 @@ func TestTerminalUIDiffSelectionUsesRenderedPane(t *testing.T) {
 			t.Fatalf("width %d: source column %d row %d", width, c.sourceX, c.sourceY)
 		}
 		u := selectionTestUI(rows...)
-		u.width, u.paintedWidth = width, width
-		u.layout = terminalLayout{diff: terminalRect{0, 0, width, 16}}
+		u.width, u.frame.Width = width, width
+		u.layout = terminalsession.Layout{Diff: terminalsession.Rect{0, 0, width, 16}}
 		u.diff = c
 		if c.sourceY > 0 && u.diffSelection(c.sourceX, 0) != nil {
 			t.Fatal("stacked navigator was selectable")
@@ -184,7 +185,7 @@ func TestTerminalUIDiffSelectionUsesRenderedPane(t *testing.T) {
 		if description != "diff hunk @amber1:3-5" || source != "a.go" {
 			t.Fatalf("mention = %q from %q", description, source)
 		}
-		if got, want := u.selection.text(), "+a.go_line_02\n+a.go_line_03\n+a.go_line_04"; got != want {
+		if got, want := u.selection.Text(), "+a.go_line_02\n+a.go_line_03\n+a.go_line_04"; got != want {
 			t.Fatalf("selected = %q, want %q", got, want)
 		}
 	}
@@ -273,7 +274,7 @@ func TestComposerSelectionReviewEdges(t *testing.T) {
 
 func TestTerminalUIDiffSelectionEdges(t *testing.T) {
 	u := selectionTestUI("  1│-a", "  2│-b", "  7│+c", "  8│ d")
-	u.layout = terminalLayout{diff: terminalRect{0, 0, 40, 4}}
+	u.layout = terminalsession.Layout{Diff: terminalsession.Rect{0, 0, 40, 4}}
 	u.diff = &liveDiffTerminalController{sourceY: 1, painted: []diffrender.LineSource{
 		{},
 		{Change: "amber1", Line: 2, Deleted: true, Content: 4},

@@ -71,14 +71,14 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 			}
 			assertErrorDialog(t, u.shell, textsanitize.Safe(full, false))
 			u.shell.outputKey("q")
-			u.shell.focus = focus
+			u.shell.Focus = focus
 			u.Text = "keep the user's draft"
 			for _, key := range []byte{2, '!'} {
 				if err := u.shell.key(key); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if u.Text != "keep the user's draft" || u.shell.focus != focus || u.shell.output == nil {
+			if u.Text != "keep the user's draft" || u.shell.Focus != focus || u.shell.output == nil {
 				t.Fatal("keyboard detail navigation modified composer or failed to open")
 			}
 			assertErrorDialog(t, u.shell, textsanitize.Safe(full, false))
@@ -100,7 +100,7 @@ func assertErrorDialog(t *testing.T, u *terminalUI, full string) {
 	}
 	u.outputKey("y")
 	want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(full)) + "\x07"
-	if u.clipboard != want {
+	if u.frame.Clipboard != want {
 		t.Fatal("whole-error copy dropped retained evidence")
 	}
 }
@@ -224,11 +224,11 @@ func TestErrorDetailsTerminalClick(t *testing.T) {
 			if row < 0 {
 				t.Fatal("painted error lacks pointer target")
 			}
-			pane := u.shell.layout.codex
+			pane := u.shell.layout.Main
 			if child {
-				pane = u.shell.layout.codex
+				pane = u.shell.layout.Main
 			}
-			x, y := pane.x+view.feedLeft, pane.y+view.feedTop+row
+			x, y := pane.X+view.feedLeft, pane.Y+view.feedTop+row
 			offset, following := view.offset, view.following
 			for _, suffix := range []string{"M", "m"} {
 				if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", x, y, suffix)); err != nil {

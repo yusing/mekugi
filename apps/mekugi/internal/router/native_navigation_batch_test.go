@@ -20,7 +20,7 @@ import (
 func navigationBatchPaint(t *testing.T, u *appServerUI, width, height int) *vt.Emulator {
 	t.Helper()
 	var frame bytes.Buffer
-	u.shell.paintedRows = nil
+	u.shell.frame.Rows = nil
 	if err := u.paint(&frame, width, height); err != nil {
 		t.Fatal(err)
 	}
@@ -65,23 +65,23 @@ func TestNativeNavigationBatchStatusClicks(t *testing.T) {
 				left := ansi.StringWidth(footer[:start])
 				right := min(width, left+ansi.StringWidth(marker))
 				for x := left; x < right; x++ {
-					u.shell.focus = (target.pane + 1) % 4
-					u.shell.diffOpen = false
+					u.shell.Focus = (target.pane + 1) % 4
+					u.shell.DiffOpen = false
 					u.shell.prefix = true
 					navigationBatchMouse(t, u.shell, 0, x, 23, false)
-					if u.shell.focus != target.pane || u.shell.prefix {
-						t.Fatalf("selector %q at cell %d: focus=%d prefix=%v, footer=%q", target.prefix, x, u.shell.focus, u.shell.prefix, footer)
+					if u.shell.Focus != target.pane || u.shell.prefix {
+						t.Fatalf("selector %q at cell %d: focus=%d prefix=%v, footer=%q", target.prefix, x, u.shell.Focus, u.shell.prefix, footer)
 					}
-					if target.pane == 1 && !u.shell.diffOpen || target.pane == 2 && u.shell.diffOpen {
+					if target.pane == 1 && !u.shell.DiffOpen || target.pane == 2 && u.shell.DiffOpen {
 						t.Fatalf("selector %q did not open its pane", target.prefix)
 					}
 				}
 			}
 			// Releases and right clicks must not switch panes.
-			u.shell.focus = 3
+			u.shell.Focus = 3
 			navigationBatchMouse(t, u.shell, 0, 2, 23, true)
 			navigationBatchMouse(t, u.shell, 2, 2, 23, false)
-			if u.shell.focus != 3 {
+			if u.shell.Focus != 3 {
 				t.Fatal("non-left-press status event switched panes")
 			}
 		})
@@ -111,9 +111,9 @@ func TestNativeNavigationBatchDiffBadgeCells(t *testing.T) {
 	if screen.CellAt(dot, 23).Style.Fg != color.CellAt(0, 0).Style.Fg {
 		t.Fatal("diff badge lost its amber indicator color")
 	}
-	u.shell.focus = 0
+	u.shell.Focus = 0
 	navigationBatchMouse(t, u.shell, 0, dot, 23, false)
-	if u.shell.focus != 1 {
+	if u.shell.Focus != 1 {
 		t.Fatal("clicking the diff indicator did not open Diff")
 	}
 	agents := strings.Index(footer, "3 Agents¹")
@@ -122,44 +122,44 @@ func TestNativeNavigationBatchDiffBadgeCells(t *testing.T) {
 	}
 	count := ansi.StringWidth(footer[:agents] + "3 Agents")
 	navigationBatchMouse(t, u.shell, 0, count, 23, false)
-	if u.shell.focus != 3 {
+	if u.shell.Focus != 3 {
 		t.Fatal("clicking the responding count did not focus Agents")
 	}
 }
 
 func TestNativeNavigationBatchModalPrecedence(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.shell.focus = 3
+	u.shell.Focus = 3
 	u.shell.openBlocks(u.view, []activityui.Block{{Kind: "op", Verb: "Read", Path: "file.go", Body: "dialog body"}})
 	navigationBatchPaint(t, u, 120, 24)
 	// The status row is outside the modal. Its click dismisses the modal,
 	// but must not also activate the underlying Main selector.
 	navigationBatchMouse(t, u.shell, 0, 2, 23, false)
-	if u.shell.output != nil || u.shell.focus != 3 {
-		t.Fatalf("status click leaked through modal: output=%v focus=%d", u.shell.output != nil, u.shell.focus)
+	if u.shell.output != nil || u.shell.Focus != 3 {
+		t.Fatalf("status click leaked through modal: output=%v focus=%d", u.shell.output != nil, u.shell.Focus)
 	}
 }
 
 func TestNativeNavigationBatchSelectorReleaseEndsDividerDrag(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.shell.diffOpen = true
+	u.shell.DiffOpen = true
 	navigationBatchPaint(t, u, 120, 24)
-	divider := u.shell.layout.vertical
+	divider := u.shell.layout.Vertical
 	if divider <= 0 {
 		t.Fatal("fixture needs a vertical divider")
 	}
 	navigationBatchMouse(t, u.shell, 0, divider, 2, false)
-	if u.shell.drag == 0 {
+	if !u.shell.Dragging() {
 		t.Fatal("divider press did not start resizing")
 	}
-	focus := u.shell.focus
+	focus := u.shell.Focus
 	navigationBatchMouse(t, u.shell, 0, 2, 23, true)
-	if u.shell.drag != 0 || u.shell.focus != focus {
+	if u.shell.Dragging() || u.shell.Focus != focus {
 		t.Fatal("release over a selector must end resizing without switching panes")
 	}
-	split := u.shell.split
+	split := u.shell.Split
 	navigationBatchMouse(t, u.shell, 35, divider+5, 2, false)
-	if u.shell.split != split {
+	if u.shell.Split != split {
 		t.Fatal("unpressed pointer movement continued resizing after release")
 	}
 }
@@ -169,7 +169,7 @@ func TestNativeNavigationBatchFilterBinding(t *testing.T) {
 		t.Run(fmt.Sprint(pane), func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-			u.shell.focus, u.shell.width, u.shell.height = pane, 140, 24
+			u.shell.Focus, u.shell.width, u.shell.height = pane, 140, 24
 			for _, wantOnly := range []bool{true, false} {
 				if err := u.shell.key('a'); err != nil {
 					t.Fatal(err)
@@ -238,7 +238,7 @@ func TestNativeNavigationBatchDialogPathTabs(t *testing.T) {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			u := navigationBatchDialog()
 			frame := navigationBatchDialogFrame(t, u, width)
-			row := strings.Split(frame, "\n")[u.output.rect.y+2]
+			row := strings.Split(frame, "\n")[u.output.rect.Y+2]
 			tabs := append([]outputTab(nil), u.output.tabs...)
 			for _, tab := range tabs {
 				block := u.output.pages[tab.page]
@@ -258,7 +258,7 @@ func TestNativeNavigationBatchDialogPathTabs(t *testing.T) {
 					t.Fatalf("page %d label missing: %q", tab.page, row)
 				}
 				x := ansi.StringWidth(row[:index]) + ansi.StringWidth(prefix)
-				navigationBatchMouse(t, u, 0, x, u.output.rect.y+2, false)
+				navigationBatchMouse(t, u, 0, x, u.output.rect.Y+2, false)
 				if u.output.page != tab.page {
 					t.Fatalf("rendered tab selected page %d, want %d", u.output.page, tab.page)
 				}
@@ -304,7 +304,7 @@ func TestUISnapshotNativeNavigationBatchStatus(t *testing.T) {
 				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 				u.status = "Ready"
 				u.shell.diffUnseen = true
-				u.shell.focus = 3
+				u.shell.Focus = 3
 				u.agents.setDisplayFilter(only, u.agents.selected)
 				screen := navigationBatchPaint(t, u, width, 24)
 				footer := strings.Split(screen.String(), "\n")[23]

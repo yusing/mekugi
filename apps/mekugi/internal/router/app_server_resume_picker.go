@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/terminalui"
 
 	json "encoding/json/v2"
@@ -13,8 +14,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/yusing/mekugi/libraries/pathdisplay"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
@@ -320,7 +321,7 @@ func resumePickerAge(now time.Time, updated int64) string {
 func (u *appServerUI) resumePickerFrame(width, height int) []string {
 	p := u.resumePicker
 	u.mainContentPainted = false
-	u.composerRect = terminalRect{}
+	u.composerRect = terminalsession.Rect{}
 	frame := make([]string, height)
 	put := func(y int, text string) {
 		if y >= 0 && y < height {

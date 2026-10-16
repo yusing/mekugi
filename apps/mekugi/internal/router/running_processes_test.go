@@ -164,7 +164,7 @@ func TestRunningProcessesInteraction(t *testing.T) {
 			t.Fatalf("Right did not select the next process: %s", got)
 		}
 		tab := d.tabs[len(d.tabs)-1]
-		u.shell.outputMouse(0, d.rect.x+2+tab.from, d.rect.y+2, false)
+		u.shell.outputMouse(0, d.rect.X+2+tab.from, d.rect.Y+2, false)
 		if d.page != tab.page {
 			t.Fatal("tab click did not select its process")
 		}

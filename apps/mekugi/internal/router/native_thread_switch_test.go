@@ -47,16 +47,16 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 		}
 	}
 	paint("native-thread-main-full")
-	if u.shell.layout.codex.w != 138 || u.shell.layout.vertical != -1 {
+	if u.shell.layout.Main.W != 138 || u.shell.layout.Vertical != -1 {
 		t.Fatalf("initial geometry: %+v", u.shell.layout)
 	}
 	click := func(agent string) {
 		t.Helper()
 		for _, hit := range u.agents.hits {
 			if hit.agent == agent && !hit.skills {
-				r := u.shell.layout.roster
+				r := u.shell.layout.Roster
 				for _, suffix := range []string{"M", "m"} {
-					if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", r.x+hit.first, r.y+hit.row, suffix)); err != nil {
+					if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", r.X+hit.first, r.Y+hit.row, suffix)); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -75,12 +75,12 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	}
 	keys("\x022")
 	paint("native-thread-child-split")
-	if u.shell.layout.diff.w == 0 || !u.agents.displayingChild() {
+	if u.shell.layout.Diff.W == 0 || !u.agents.displayingChild() {
 		t.Fatal("opening Diff lost the displayed child")
 	}
 	keys("\x022")
 	paint("native-thread-child-unsplit")
-	if u.shell.layout.codex.w != 138 || u.shell.layout.diff.w != 0 || u.shell.focus != 0 {
+	if u.shell.layout.Main.W != 138 || u.shell.layout.Diff.W != 0 || u.shell.Focus != 0 {
 		t.Fatal("closing Diff did not reclaim its width")
 	}
 	// Metadata discovery is independent of the composer destination.
@@ -91,7 +91,7 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	if err := u.shell.send("\x1b"); err != nil {
 		t.Fatal(err)
 	}
-	if u.Text != "retained draft" || u.picker.open || u.paste || u.shell.paste || u.quitRequested || u.Turn != "active" || w.Len() != 0 {
+	if u.Text != "retained draft" || u.picker.open || u.paste || u.shell.input.Pasting() || u.quitRequested || u.Turn != "active" || w.Len() != 0 {
 		t.Fatal("read-only composer accepted editing, paste, submission or interruption")
 	}
 	u.Turn = ""
@@ -118,7 +118,7 @@ func TestNativeChildReferenceReturnsToMain(t *testing.T) {
 	u.main.agents.feedRight, u.main.agents.feedRows = 40, 1
 	selectionTestDrag(t, u, 0, 0, 4, 0)
 	u.selectionAction('r')
-	if u.main.composerReadOnly() || !strings.HasPrefix(u.main.Text, "draft ") || len(u.main.Selections) != 1 || u.focus != 0 {
+	if u.main.composerReadOnly() || !strings.HasPrefix(u.main.Text, "draft ") || len(u.main.Selections) != 1 || u.Focus != 0 {
 		t.Fatal("child reference did not return to the preserved Main draft")
 	}
 }
@@ -171,7 +171,7 @@ func TestUISnapshotNativeTinyDiffToggle(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertNativeUISnapshot(t, "native-thread-tiny-diff", strings.Split(screen.String(), "\n"))
-	if u.shell.layout.diff.h == 0 || !strings.Contains(screen.String(), "CONNECTING") {
+	if u.shell.layout.Diff.H == 0 || !strings.Contains(screen.String(), "CONNECTING") {
 		t.Fatal("opening Diff left a short terminal blank")
 	}
 	for _, key := range []byte("\x022") {
@@ -182,7 +182,7 @@ func TestUISnapshotNativeTinyDiffToggle(t *testing.T) {
 	if err := u.paint(screen, 80, 6); err != nil {
 		t.Fatal(err)
 	}
-	if u.shell.layout.codex.w != 80 || u.shell.layout.diff.h != 0 {
+	if u.shell.layout.Main.W != 80 || u.shell.layout.Diff.H != 0 {
 		t.Fatal("closing Diff did not restore the short transcript")
 	}
 }

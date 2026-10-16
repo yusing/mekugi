@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/modules/conversation/prompt"
@@ -24,16 +26,16 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/contracts/scope"
-
 	"github.com/yusing/mekugi/libraries/textsanitize"
-	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-	"github.com/yusing/mekugi/modules/notifications/notice"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/shellhook"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	"github.com/yusing/mekugi/modules/notifications/notice"
+
 	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
@@ -146,12 +148,12 @@ type appServerUI struct {
 	exitUsage               appServerTokenUsage
 	resumeArgv              []string
 	replayDebugDirectory    string
-	compacting              *[2]string   // Main turn and compaction item.
-	polling                 *[2]string   // Main turn and polled process.
-	alert                   bool         // The status reports a failure or blocked request.
-	noticeDetails           terminalRect // Truncated composer error, relative to Main.
-	noticeDismiss           terminalRect // Check button, relative to Main.
-	turnStarted             time.Time    // Shown as elapsed time while a turn runs.
+	compacting              *[2]string           // Main turn and compaction item.
+	polling                 *[2]string           // Main turn and polled process.
+	alert                   bool                 // The status reports a failure or blocked request.
+	noticeDetails           terminalsession.Rect // Truncated composer error, relative to Main.
+	noticeDismiss           terminalsession.Rect // Check button, relative to Main.
+	turnStarted             time.Time            // Shown as elapsed time while a turn runs.
 	model, reasoningEffort  string
 	serviceTier             string
 	serviceTiers            *serviceTierSettings // Invocation defaults and confirmed thread/model choices.
@@ -161,7 +163,7 @@ type appServerUI struct {
 	settingsChoices         string
 	requests                *sessioncontrol.Requests[appServerRequest]
 	retiredThreads          map[string]string
-	composerRect            terminalRect // Visible draft text, relative to Main.
+	composerRect            terminalsession.Rect // Visible draft text, relative to Main.
 	composerWidth           int
 	cursorColumn            *int
 	ownedImages             map[string]bool
@@ -988,7 +990,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		u.escape = ""
 	}
 	if u.escape == "" {
-		if u.currentQuestion() == nil && !u.approvals.Open && key == '?' && u.Text == "" && (u.shell == nil || u.shell.focus == 0) {
+		if u.currentQuestion() == nil && !u.approvals.Open && key == '?' && u.Text == "" && (u.shell == nil || u.shell.Focus == 0) {
 			u.keybindings = !u.keybindings
 			return false, nil
 		}
@@ -1281,23 +1283,23 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 // mainFrame is the transcript above a boxed composer. The top border carries
 // the session state; the bottom border the model. dock rows are left blank
 // between the two, in the returned rectangle, for the live edit dock.
-func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, dockRect terminalRect) {
+func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, dockRect terminalsession.Rect) {
 	transcript := u.transcriptView()
 	readOnly := u.agents != nil && u.agents.displayingChild()
 	u.autoOpenApprovals()
 	u.autoOpenQuestions()
 	width, height = max(1, width), max(1, height)
-	u.picker.rect = terminalRect{}
-	u.noticeDetails, u.noticeDismiss = terminalRect{}, terminalRect{}
-	u.questions.rect = terminalRect{}
+	u.picker.rect = terminalsession.Rect{}
+	u.noticeDetails, u.noticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
+	u.questions.rect = terminalsession.Rect{}
 	if !readOnly && u.statusPanel != nil {
-		return u.statusPanelFrame(width, height), terminalRect{}
+		return u.statusPanelFrame(width, height), terminalsession.Rect{}
 	}
 	if !readOnly && u.resumePicker != nil {
-		return u.resumePickerFrame(width, height), terminalRect{}
+		return u.resumePickerFrame(width, height), terminalsession.Rect{}
 	}
 	if u.pickerVisible() && u.picker.modal != "" {
-		return u.skillsModalFrame(width, height), terminalRect{}
+		return u.skillsModalFrame(width, height), terminalsession.Rect{}
 	}
 	boxed := width >= 12 && height >= 3
 	borderRows, inset := 0, min(2, width-1)
@@ -1330,12 +1332,12 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		height--
 		defer func() {
 			frameRows = append([]string{ansi.Truncate(u.welcome(), max(1, width), "…")}, frameRows...)
-			dockRect.y++
-			u.composerRect.y++
-			u.noticeDetails.y++
-			u.noticeDismiss.y++
-			if u.btw != nil && u.btw.rect.h > 0 {
-				u.btw.rect.y++
+			dockRect.Y++
+			u.composerRect.Y++
+			u.noticeDetails.Y++
+			u.noticeDismiss.Y++
+			if u.btw != nil && u.btw.rect.H > 0 {
+				u.btw.rect.Y++
 			}
 			transcript.feedTop++
 		}()
@@ -1395,7 +1397,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		for row := range frame {
 			frame[row] = terminalui.AttachCopy(frame[row], transcript.copyRows[row])
 		}
-		if !readOnly && u.keybindings && (u.shell == nil || u.shell.focus == 0) {
+		if !readOnly && u.keybindings && (u.shell == nil || u.shell.Focus == 0) {
 			u.mainContentPainted = false
 			frame = renderNativeKeybindings(width, room)
 		}
@@ -1403,7 +1405,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 			u.mainContentPainted = false
 			popupHeight := min(room, u.pickerHeight(width))
 			popup := u.renderPicker(width, popupHeight)
-			u.picker.rect = terminalRect{0, len(frame) - popupHeight, width, popupHeight}
+			u.picker.rect = terminalsession.Rect{0, len(frame) - popupHeight, width, popupHeight}
 			copy(frame[len(frame)-popupHeight:], popup)
 		}
 	}
@@ -1411,10 +1413,10 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	frame = append(frame, make([]string, dock)...)
 	frame = append(frame, pending...)
 	if u.btw != nil {
-		u.btw.rect = terminalRect{2, len(frame) + 1, max(0, width-2), max(0, len(btwRows)-2)}
+		u.btw.rect = terminalsession.Rect{2, len(frame) + 1, max(0, width-2), max(0, len(btwRows)-2)}
 	}
 	frame = append(frame, btwRows...)
-	u.questions.rect = terminalRect{0, len(frame), width, len(questionRows)}
+	u.questions.rect = terminalsession.Rect{0, len(frame), width, len(questionRows)}
 	frame = append(frame, questionRows...)
 	frame = append(frame, approvalRows...)
 	frame = append(frame, make([]string, gap)...)
@@ -1435,7 +1437,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		border = terminalui.Red
 	}
 	const inputColor = "\x1b[39m"
-	focused := !readOnly && (u.shell == nil || u.shell.focus == 0)
+	focused := !readOnly && (u.shell == nil || u.shell.Focus == 0)
 	if boxed {
 		frame = append(frame, u.composerNoticeBorder(width, len(frame), border))
 	}
@@ -1443,7 +1445,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	if boxed {
 		textX += 2
 	}
-	u.composerRect = terminalRect{textX, len(frame), textWidth, len(draft)}
+	u.composerRect = terminalsession.Rect{textX, len(frame), textWidth, len(draft)}
 	for i, line := range draft {
 		prefix := strings.Repeat(" ", min(2, inset))
 		if i == 0 && inset >= 2 {
@@ -1508,7 +1510,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		caption = terminalui.Dim + ansi.Truncate(caption, max(0, width-7), "…") + terminalui.Reset
 		frame = append(frame, composerBorder("╰", "╯", "", caption, width, border))
 	}
-	return frame, terminalRect{0, dockAt, width, dock}
+	return frame, terminalsession.Rect{0, dockAt, width, dock}
 }
 
 // composerBorder embeds optional left and right labels in a box edge. The
@@ -1616,10 +1618,10 @@ func (u *appServerUI) ensureShell() {
 		review = newSavedReview(u.ctx, nil)
 	}
 	u.agents.bare = true
-	shell := &terminalUI{main: u, agents: u.agents, review: review, diffScreen: new(nativeDiffScreen)}
+	shell := &terminalUI{main: u, agents: u.agents, review: review, diffScreen: new(terminalsession.DiffScreen)}
 	shell.diff = newLiveDiffTerminalController(store, "", os.Stdout)
 	shell.diff.stdout = shell.diffScreen
-	shell.diff.size = func() (int, int, error) { return max(1, shell.layout.diff.w), max(3, shell.layout.diff.h), nil }
+	shell.diff.size = func() (int, int, error) { return max(1, shell.layout.Diff.W), max(3, shell.layout.Diff.H), nil }
 	u.shell = shell
 }
 

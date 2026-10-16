@@ -10,12 +10,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -27,8 +31,7 @@ func selectionTestUI(rows ...string) *terminalUI {
 	main.view.feedRight, main.view.feedRows = 40, len(rows)
 	painted := append([]string(nil), rows...)
 	painted = append(painted, "")
-	return &terminalUI{main: main, width: 40, height: len(painted), paintedWidth: 40,
-		paintedRows: painted, layout: terminalLayout{codex: terminalRect{0, 0, 40, len(rows)}}}
+	return &terminalUI{main: main, width: 40, height: len(painted), frame: terminalsession.Frame{Width: 40, Rows: painted}, layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 40, len(rows)}}}
 }
 
 func selectionTestDrag(t *testing.T, u *terminalUI, x1, y1, x2, y2 int) {
@@ -36,7 +39,7 @@ func selectionTestDrag(t *testing.T, u *terminalUI, x1, y1, x2, y2 int) {
 	if !u.selectionMouse(0, x1, y1, false) || !u.selectionMouse(32, x2, y2, false) || !u.selectionMouse(0, x2, y2, true) {
 		t.Fatal("selection did not consume drag and release")
 	}
-	if u.selection == nil || u.selection.dragging || !u.selection.moved {
+	if u.selection == nil || u.selection.Dragging() || !u.selection.Moved() {
 		t.Fatal("release did not retain a completed selection")
 	}
 }
@@ -57,7 +60,7 @@ func TestTerminalSelectionSyntaxColors(t *testing.T) {
 					x, y = outputSelectionPoint(t, u, source)
 				}
 				paint := func() *vt.Emulator {
-					rows := slices.Clone(u.paintedRows)
+					rows := slices.Clone(u.frame.Rows)
 					if dialog {
 						rows = make([]string, u.height)
 						u.paintOutput(rows, u.width, u.height)
@@ -84,7 +87,7 @@ func TestTerminalSelectionSyntaxColors(t *testing.T) {
 						t.Fatalf("selection changed syntax or lost fill at %d: before=%+v after=%+v", at, old, got)
 					}
 				}
-				if before.CellAt(x+len(source)+1, y).Style != after.CellAt(x+len(source)+1, y).Style || u.selection.text() != source {
+				if before.CellAt(x+len(source)+1, y).Style != after.CellAt(x+len(source)+1, y).Style || u.selection.Text() != source {
 					t.Fatal("selection changed adjacent styles or copied text")
 				}
 				if dialog {
@@ -106,8 +109,8 @@ func TestTerminalSelectionComposerCaretStyles(t *testing.T) {
 		main, _ := newAppServerTestUI()
 		main.Text, main.CursorBack = "abcdef", back
 		frame, _ := main.mainFrame(40, 12, 0)
-		u := &terminalUI{main: main, width: 40, height: len(frame), paintedWidth: 40, paintedRows: frame, layout: terminalLayout{codex: terminalRect{0, 0, 40, len(frame)}}}
-		x, y := main.composerRect.x, main.composerRect.y
+		u := &terminalUI{main: main, width: 40, height: len(frame), frame: terminalsession.Frame{Width: 40, Rows: frame}, layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 40, len(frame)}}}
+		x, y := main.composerRect.X, main.composerRect.Y
 		selectionTestDrag(t, u, x, y, x+5, y)
 		u.paintSelection(frame)
 		screen := vt.NewEmulator(40, len(frame))
@@ -144,10 +147,10 @@ func TestTerminalUISelectionDragText(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			u := selectionTestUI(tt.rows...)
 			selectionTestDrag(t, u, tt.x1, tt.y1, tt.x2, tt.y2)
-			if got := u.selection.text(); got != tt.want {
+			if got := u.selection.Text(); got != tt.want {
 				t.Fatalf("selected text = %q, want %q", got, tt.want)
 			}
-			rows := append([]string(nil), u.paintedRows...)
+			rows := append([]string(nil), u.frame.Rows...)
 			u.paintSelection(rows)
 			for _, label := range []string{"reference", "copy", "clear"} {
 				if !strings.Contains(rows[len(rows)-1], label) {
@@ -168,17 +171,17 @@ func TestTerminalUISelectionSkipsFrames(t *testing.T) {
 		"│ ╰──────────────────────╯",
 	)
 	selectionTestDrag(t, u, 0, 1, 39, 5)
-	if got, want := u.selection.text(), "The native preview\nrenders here.\n\n  indented code"; got != want {
+	if got, want := u.selection.Text(), "The native preview\nrenders here.\n\n  indented code"; got != want {
 		t.Fatalf("selected text = %q, want %q", got, want)
 	}
 	for y, want := range map[int][2]int{0: {0, 0}, 1: {4, 22}, 2: {4, 17}, 3: {0, 0}, 4: {4, 19}, 5: {0, 0}} {
-		if left, right := u.selection.bounds(y); left != want[0] || right != want[1] {
+		if left, right := u.selection.Bounds(y); left != want[0] || right != want[1] {
 			t.Fatalf("row %d highlights [%d,%d), want %v", y, left, right, want)
 		}
 	}
 	// A drag that starts on the frame begins at the text beside it.
 	selectionTestDrag(t, u, 0, 0, 6, 1)
-	if got := u.selection.text(); got != "✓ answer\nThe" {
+	if got := u.selection.Text(); got != "✓ answer\nThe" {
 		t.Fatalf("frame-started selection = %q", got)
 	}
 }
@@ -201,7 +204,7 @@ func TestTerminalUISelectionActions(t *testing.T) {
 				} else {
 					selectionTestDrag(t, u, 0, 0, 4, 0)
 				}
-				u.main.Text, u.main.CursorBack, u.focus = "before after", len("after"), 2
+				u.main.Text, u.main.CursorBack, u.Focus = "before after", len("after"), 2
 				if key == "question" {
 					u.main.questions.Active = &prompt.Call{Questions: []prompt.Question{{}}}
 				}
@@ -210,8 +213,8 @@ func TestTerminalUISelectionActions(t *testing.T) {
 				if strings.Contains(key, "click") || key == "separator" {
 					x, y := map[string]int{"reference click": 1, "copy click": 15, "clear click": 28, "separator": 12}[key], u.height-1
 					if dialog {
-						x += u.output.rect.x + 3
-						y = u.output.rect.y + u.output.rect.h - 1
+						x += u.output.rect.X + 3
+						y = u.output.rect.Y + u.output.rect.H - 1
 					}
 					if err := u.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", x+1, y+1)); err != nil {
 						t.Fatal(err)
@@ -225,7 +228,7 @@ func TestTerminalUISelectionActions(t *testing.T) {
 						t.Fatal(err)
 					}
 					if action == "\x1b" {
-						u.sequenceAt = time.Now().Add(-time.Second)
+						ageTerminalEscape(u)
 						if err := u.flushEscape(); err != nil {
 							t.Fatal(err)
 						}
@@ -246,8 +249,8 @@ func TestTerminalUISelectionActions(t *testing.T) {
 					if len(u.main.Selections) != 1 || u.main.Selections[0].Text != "hello" {
 						t.Fatal("reference lost quote")
 					}
-					if u.main.Text != want || u.focus != 0 {
-						t.Fatalf("reference draft=%q focus=%d", u.main.Text, u.focus)
+					if u.main.Text != want || u.Focus != 0 {
+						t.Fatalf("reference draft=%q focus=%d", u.main.Text, u.Focus)
 					}
 					u.main.undoDraft(false)
 					if u.main.Text != "before after" || u.main.CursorBack != len("after") {
@@ -258,7 +261,7 @@ func TestTerminalUISelectionActions(t *testing.T) {
 					if action != "\x1b" {
 						want = "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("hello")) + "\x07"
 					}
-					if u.clipboard != want || u.main.Text != "before after" || u.focus != 2 {
+					if u.frame.Clipboard != want || u.main.Text != "before after" || u.Focus != 2 {
 						t.Fatal("copy/clear changed draft, focus or clipboard")
 					}
 				}
@@ -279,13 +282,13 @@ func TestTerminalUISelectionLinkClickVersusDrag(t *testing.T) {
 				t.Fatal("link click unhandled")
 			}
 			want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(tt.want)) + "\x07"
-			if u.selection != nil || u.clipboard != want {
-				t.Fatalf("click: selection=%v clipboard=%q", u.selection, u.clipboard)
+			if u.selection != nil || u.frame.Clipboard != want {
+				t.Fatalf("click: selection=%v clipboard=%q", u.selection, u.frame.Clipboard)
 			}
 			u = selectionTestUI(row)
 			selectionTestDrag(t, u, 0, 0, 3, 0)
-			if u.clipboard != "" || u.selection.text() != "docs" {
-				t.Fatalf("drag copied link or lost text: clipboard=%q text=%q", u.clipboard, u.selection.text())
+			if u.frame.Clipboard != "" || u.selection.Text() != "docs" {
+				t.Fatalf("drag copied link or lost text: clipboard=%q text=%q", u.frame.Clipboard, u.selection.Text())
 			}
 		})
 	}
@@ -295,7 +298,7 @@ func TestTerminalUISelectionResizeClears(t *testing.T) {
 	for _, width := range []bool{false, true} {
 		u := selectionTestUI("hello world")
 		selectionTestDrag(t, u, 0, 0, 4, 0)
-		rows := append([]string(nil), u.paintedRows...)
+		rows := append([]string(nil), u.frame.Rows...)
 		if width {
 			u.width++
 		} else {
@@ -311,20 +314,20 @@ func TestTerminalUISelectionResizeClears(t *testing.T) {
 func TestTerminalUISelectionReplacementKeepsCleanLinks(t *testing.T) {
 	u := selectionTestUI("\x1b]8;;https://example.com\x1b\\report\x1b]8;;\x1b\\ other")
 	selectionTestDrag(t, u, 0, 0, 5, 0)
-	u.paintSelection(u.paintedRows)
+	u.paintSelection(u.frame.Rows)
 	u.selectionMouse(0, 2, 0, false)
 	u.selectionMouse(0, 2, 0, true)
 	want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("https://example.com")) + "\x07"
-	if u.clipboard != want {
-		t.Fatalf("reselected link lost its target: %q", u.clipboard)
+	if u.frame.Clipboard != want {
+		t.Fatalf("reselected link lost its target: %q", u.frame.Clipboard)
 	}
 
 	u = selectionTestUI("first second")
 	selectionTestDrag(t, u, 0, 0, 4, 0)
-	u.paintSelection(u.paintedRows)
+	u.paintSelection(u.frame.Rows)
 	selectionTestDrag(t, u, 6, 0, 11, 0)
-	if strings.Contains(u.selection.rows[0], "\x1b[7m") || u.selection.text() != "second" {
-		t.Fatalf("replacement inherited old highlight: %q", u.selection.rows[0])
+	if strings.Contains(u.selection.Rows[0], "\x1b[7m") || u.selection.Text() != "second" {
+		t.Fatalf("replacement inherited old highlight: %q", u.selection.Rows[0])
 	}
 }
 
@@ -348,7 +351,7 @@ func TestTerminalUISelectionKeepsPressedHitTarget(t *testing.T) {
 		// A streaming repaint replaces viewport hit maps before button release.
 		u.main.view.feedQuestions = []uint64{2}
 		u.main.view.feedSnippets = []liveActivitySnippet{next}
-		u.paintSelection(u.paintedRows)
+		u.paintSelection(u.frame.Rows)
 		u.selectionMouse(0, 0, 0, true)
 		if question {
 			if u.output == nil || !strings.Contains(fmt.Sprint(u.output.pages), "First target") || strings.Contains(fmt.Sprint(u.output.pages), "Advanced target") {
@@ -372,7 +375,7 @@ func TestTerminalUISelectionRenderedClipboard(t *testing.T) {
 		if activity {
 			view = u.agents
 			u.agents.Agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
-			u.shell.diffOpen = false
+			u.shell.DiffOpen = false
 
 		}
 		view.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "hello [report](https://example.com/report)"})
@@ -453,10 +456,10 @@ func TestTerminalUISelectionComposer(t *testing.T) {
 			t.Fatal(err)
 		}
 		r := u.composerRect
-		r.x += u.shell.layout.codex.x
-		r.y += u.shell.layout.codex.y
-		selectionTestDrag(t, u.shell, r.x, r.y, r.x+3, r.y)
-		if got := u.shell.selection.text(); got != "你好" {
+		r.X += u.shell.layout.Main.X
+		r.Y += u.shell.layout.Main.Y
+		selectionTestDrag(t, u.shell, r.X, r.Y, r.X+3, r.Y)
+		if got := u.shell.selection.Text(); got != "你好" {
 			t.Fatalf("size %v: selected %q", size, got)
 		}
 		if err := u.shell.key(3); err != nil {
@@ -466,8 +469,8 @@ func TestTerminalUISelectionComposer(t *testing.T) {
 			t.Fatal("copy changed draft or quit")
 		}
 		want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("你好")) + "\x07"
-		if u.shell.clipboard != want {
-			t.Fatalf("clipboard %q", u.shell.clipboard)
+		if u.shell.frame.Clipboard != want {
+			t.Fatalf("clipboard %q", u.shell.frame.Clipboard)
 		}
 	}
 }
@@ -504,15 +507,28 @@ func TestTerminalUISelectionComposerReplacesTranscript(t *testing.T) {
 	u.insertDraft("first\nsecond\nthird\nfourth\nfifth")
 	paint()
 	r := u.composerRect
-	r.x += u.shell.layout.codex.x
-	r.y += u.shell.layout.codex.y
-	selectionTestDrag(t, u.shell, r.x, r.y, r.x+5, r.y+1)
-	if got := u.shell.selection.text(); got != "first\nsecond" {
+	r.X += u.shell.layout.Main.X
+	r.Y += u.shell.layout.Main.Y
+	selectionTestDrag(t, u.shell, r.X, r.Y, r.X+5, r.Y+1)
+	if got := u.shell.selection.Text(); got != "first\nsecond" {
 		t.Fatalf("selected %q", got)
 	}
-	u.shell.selectionMouse(0, r.x, r.y, false)
-	u.shell.selectionMouse(0, r.x, r.y, true)
+	u.shell.selectionMouse(0, r.X, r.Y, false)
+	u.shell.selectionMouse(0, r.X, r.Y, true)
 	if u.view.flashQuestion != 0 {
 		t.Fatal("composer click activated stale transcript question")
 	}
+}
+
+// Build the selected snapshot through the same drag lifecycle as real pointer input.
+func selectedTerminalText(text string) *terminalsession.Selection {
+	width := ansi.StringWidth(text)
+	selected := terminalsession.NewSelection(terminalsession.Surface{Rect: terminalsession.Rect{W: width, H: 1}, Rows: []string{text}}, 0, 0)
+	selected.Move(width-1, 0, true)
+	return selected
+}
+
+func ageTerminalEscape(u *terminalUI) {
+	u.input = terminalsession.Decoder{}
+	u.input.Feed(27, time.Now().Add(-time.Second))
 }

@@ -62,13 +62,13 @@ func TestAppServerCopyPicker(t *testing.T) {
 		t.Fatalf("frame=%s", frame)
 	}
 	appServerTestKeys(t, u, "\x1b[200~pasted\rtext\x1b[201~")
-	if u.Text != "" || u.shell.clipboard != "" || u.picker.modal != "copy" {
+	if u.Text != "" || u.shell.frame.Clipboard != "" || u.picker.modal != "copy" {
 		t.Fatal("paste changed draft or copied a choice")
 	}
 	appServerTestKeys(t, u, "\x1b[B\r")
 	want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("printf '界'  \n")) + "\x07"
-	if u.shell.clipboard != want || u.picker.open || u.Turn != "new" || wire.Len() != 0 {
-		t.Fatalf("clipboard=%q picker=%+v wire=%s", u.shell.clipboard, u.picker, wire.Bytes())
+	if u.shell.frame.Clipboard != want || u.picker.open || u.Turn != "new" || wire.Len() != 0 {
+		t.Fatalf("clipboard=%q picker=%+v wire=%s", u.shell.frame.Clipboard, u.picker, wire.Bytes())
 	}
 	if u.feedback.Alert || u.feedback.Text != "Copy sent to terminal clipboard" {
 		t.Fatalf("feedback=%q", u.feedback.Text)
@@ -78,7 +78,7 @@ func TestAppServerCopyPicker(t *testing.T) {
 	if err := u.paint(screen, 100, 30); err != nil {
 		t.Fatal(err)
 	}
-	if u.shell.clipboard != "" {
+	if u.shell.frame.Clipboard != "" {
 		t.Fatal("clipboard request not consumed by paint")
 	}
 }
@@ -87,7 +87,7 @@ func TestAppServerCopyEmptyCancelAndRestore(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.ensureShell()
 	appServerTestKeys(t, u, "/copy\r")
-	if u.feedback.Text != "No agent response to copy" || u.shell.clipboard != "" || wire.Len() != 0 {
+	if u.feedback.Text != "No agent response to copy" || u.shell.frame.Clipboard != "" || wire.Len() != 0 {
 		t.Fatalf("empty notice=%q wire=%s", u.feedback.Text, wire.Bytes())
 	}
 	u.session.start("main", "")
@@ -98,7 +98,7 @@ func TestAppServerCopyEmptyCancelAndRestore(t *testing.T) {
 	}
 	u.pickerKey("\x1b")
 	u.refreshPicker()
-	if u.picker.open || u.shell.clipboard != "" || u.Text != "" {
+	if u.picker.open || u.shell.frame.Clipboard != "" || u.Text != "" {
 		t.Fatal("cancel copied or reopened")
 	}
 	u.Thread = "different"
@@ -113,16 +113,16 @@ func TestTerminalClipboardSharedSelection(t *testing.T) {
 		u, wire := newAppServerTestUI()
 		u.ensureShell()
 		u.Turn = "active"
-		u.shell.selection = &terminalSelection{rect: terminalRect{w: 9, h: 1}, rows: []string{"same text"}, startX: 0, startY: 0, endX: 9, endY: 0}
+		u.shell.selection = &terminalSelection{Selection: selectedTerminalText("same text")}
 		if err := u.shell.key(key); err != nil {
 			t.Fatal(err)
 		}
-		selected := u.shell.clipboard
-		u.shell.clipboard = ""
+		selected := u.shell.frame.Clipboard
+		u.shell.frame.Clipboard = ""
 		u.view.applyAppServerItem(true, "", "main", "main", "t", "a", "item/completed", "", appServerItem{Type: "agentMessage", Text: "same text"})
 		appServerTestKeys(t, u, "/copy\r\r")
-		if selected == "" || u.shell.clipboard != selected || u.Turn != "active" || wire.Len() != 0 {
-			t.Fatalf("key=%d selected=%q copy=%q wire=%s", key, selected, u.shell.clipboard, wire.Bytes())
+		if selected == "" || u.shell.frame.Clipboard != selected || u.Turn != "active" || wire.Len() != 0 {
+			t.Fatalf("key=%d selected=%q copy=%q wire=%s", key, selected, u.shell.frame.Clipboard, wire.Bytes())
 		}
 	}
 }

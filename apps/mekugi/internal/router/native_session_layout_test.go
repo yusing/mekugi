@@ -121,12 +121,12 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			appServerTestKeys(t, u, "/live\r")
 			u.agents.setDisplayFilter(caller != "/root", u.agents.selected)
 			frame := paint()
-			if strings.Contains(frame, "VISIBLE_EDIT") || u.shell.layout.live.h != 0 || len(u.shell.liveDock.Order) != 1 {
+			if strings.Contains(frame, "VISIBLE_EDIT") || u.shell.layout.Live.H != 0 || len(u.shell.liveDock.Order) != 1 {
 				t.Fatal("hidden dock lost state or reserved space")
 			}
 			lines := strings.Split(frame, "\n")
-			r := u.shell.layout.roster
-			if r.h == 0 || !strings.Contains(lines[r.y-1], "┘") || strings.TrimSpace(lines[r.y+r.h]) != "" {
+			r := u.shell.layout.Roster
+			if r.H == 0 || !strings.Contains(lines[r.Y-1], "┘") || strings.TrimSpace(lines[r.Y+r.H]) != "" {
 				t.Fatalf("roster must immediately follow the pane border with padding only below:\n%s", frame)
 			}
 			u.agents.setDisplayFilter(false, u.agents.selected)
@@ -152,7 +152,7 @@ func TestNativeUIComposerGap(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.Text = "draft"
 	rows, _ := u.mainFrame(80, 24, 0)
-	border := u.composerRect.y - 1
+	border := u.composerRect.Y - 1
 	if len(rows) != 24 || strings.TrimSpace(ansi.Strip(rows[border-1])) != "" {
 		t.Fatalf("composer not separated: %q", rows)
 	}

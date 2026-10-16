@@ -30,7 +30,7 @@ func outputSelectionPoint(t *testing.T, u *terminalUI, text string) (int, int) {
 	for y, row := range u.output.body {
 		plain := ansi.Strip(row)
 		if i := strings.Index(plain, text); i >= 0 {
-			return u.output.rect.x + 2 + ansi.StringWidth(plain[:i]), u.output.rect.y + u.output.chrome() - 1 + y
+			return u.output.rect.X + 2 + ansi.StringWidth(plain[:i]), u.output.rect.Y + u.output.chrome() - 1 + y
 		}
 	}
 	t.Fatalf("text %q absent from dialog body", text)
@@ -50,7 +50,7 @@ func TestOutputDialogMouseSelectionText(t *testing.T) {
 			_, y1 := outputSelectionPoint(t, u, "alpha")
 			_, y2 := outputSelectionPoint(t, u, "gamma")
 			// Start in the numbered gutter and finish in right padding, neither is text.
-			x1, x2 := u.output.rect.x+2, u.output.rect.x+u.output.rect.w-3
+			x1, x2 := u.output.rect.X+2, u.output.rect.X+u.output.rect.W-3
 			if reverse {
 				x1, x2, y1, y2 = x2, x1, y2, y1
 			}
@@ -64,7 +64,7 @@ func TestOutputDialogMouseSelectionText(t *testing.T) {
 			if u.selection == nil {
 				t.Fatal("drag did not retain selection")
 			}
-			if got := u.selection.text(); got != "alpha─\n███\ngamma" {
+			if got := u.selection.Text(); got != "alpha─\n███\ngamma" {
 				t.Fatalf("selected = %q", got)
 			}
 		})
@@ -80,7 +80,7 @@ func TestOutputDialogSelectionPendingDrag(t *testing.T) {
 		if err := u.key(key); err != nil {
 			t.Fatal(err)
 		}
-		if u.output == nil || u.selection != selected || !selected.dragging || u.clipboard != "" || u.main.Text != "" {
+		if u.output == nil || u.selection != selected || !selected.Dragging() || u.frame.Clipboard != "" || u.main.Text != "" {
 			t.Fatalf("key %d acted before drag completion", key)
 		}
 	}
@@ -106,7 +106,7 @@ func TestOutputDialogSelectionIgnoresUnhandledWheelEvents(t *testing.T) {
 		if err := u.mouse(fmt.Sprintf("\x1b[<%d;%d;%d%s", event.button, x+1, y+1, end)); err != nil {
 			t.Fatal(err)
 		}
-		if u.output == nil || u.selection != selected || selected.text() != "alpha" {
+		if u.output == nil || u.selection != selected || selected.Text() != "alpha" {
 			t.Fatalf("unhandled wheel event %+v changed selection", event)
 		}
 	}
@@ -122,7 +122,7 @@ func TestOutputDialogMouseSelectionFreezesLiveSnapshot(t *testing.T) {
 	}
 	u.outputMouse(32, x+7, y, false)
 	u.outputMouse(0, x+7, y, true)
-	if u.output.follow || u.selection.text() != "original" {
+	if u.output.follow || u.selection.Text() != "original" {
 		t.Fatal("drag did not pause and preserve original text")
 	}
 	final := "replacement aggregate\n"
@@ -185,8 +185,8 @@ func TestOutputDialogSkillMarkdownSearchSelectionAndCopy(t *testing.T) {
 		t.Fatalf("skill Markdown not rendered in dialog: %q", frame)
 	}
 	u.outputKey("y")
-	if want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(source)) + "\x07"; u.clipboard != want {
-		t.Fatalf("whole-page copy changed source: %q", u.clipboard)
+	if want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(source)) + "\x07"; u.frame.Clipboard != want {
+		t.Fatalf("whole-page copy changed source: %q", u.frame.Clipboard)
 	}
 	u.outputKey("/")
 	for _, key := range []string{"c", "a", "r", "e", "f", "u", "l", "\r"} {
@@ -198,12 +198,12 @@ func TestOutputDialogSkillMarkdownSearchSelectionAndCopy(t *testing.T) {
 	drawOutputDialog(u)
 	x, y := outputSelectionPoint(t, u, "careful steps")
 	outputSelectionDrag(u, x, y, x+len("careful steps")-1, y)
-	if u.selection == nil || u.selection.text() != "careful steps" {
+	if u.selection == nil || u.selection.Text() != "careful steps" {
 		t.Fatal("selection did not match rendered skill text")
 	}
 	u.outputKey("y")
-	if want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("careful steps")) + "\x07"; u.clipboard != want {
-		t.Fatalf("selection copy changed visible text: %q", u.clipboard)
+	if want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("careful steps")) + "\x07"; u.frame.Clipboard != want {
+		t.Fatalf("selection copy changed visible text: %q", u.frame.Clipboard)
 	}
 }
 
@@ -248,10 +248,10 @@ func TestOutputDialogSelectionFooterClippedHints(t *testing.T) {
 			outputSelectionDrag(u, x, y, x+4, y)
 			u.paintOutput(rows, tt.width, len(rows))
 			selection := u.selection
-			u.outputMouse(0, u.output.rect.x+3+tt.at, u.output.rect.y+u.output.rect.h-1, false)
+			u.outputMouse(0, u.output.rect.X+3+tt.at, u.output.rect.Y+u.output.rect.H-1, false)
 			switch tt.action {
 			case 0:
-				if u.output == nil || u.selection != selection || u.clipboard != "" || u.main.Text != "" {
+				if u.output == nil || u.selection != selection || u.frame.Clipboard != "" || u.main.Text != "" {
 					t.Fatal("clipped hint executed a selection action")
 				}
 			case 'r':
@@ -259,11 +259,11 @@ func TestOutputDialogSelectionFooterClippedHints(t *testing.T) {
 					t.Fatal("fully visible Reference hint did not insert the selected text")
 				}
 			case 'c':
-				if u.output == nil || u.selection != nil || u.clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte("alpha"))+"\x07" {
+				if u.output == nil || u.selection != nil || u.frame.Clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte("alpha"))+"\x07" {
 					t.Fatal("fully visible Copy hint did not copy the selected text")
 				}
 			case 27:
-				if u.output == nil || u.selection != nil || u.clipboard != "" || u.main.Text != "" {
+				if u.output == nil || u.selection != nil || u.frame.Clipboard != "" || u.main.Text != "" {
 					t.Fatal("fully visible Clear hint did not clear only the selection")
 				}
 			}

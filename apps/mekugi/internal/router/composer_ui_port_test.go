@@ -101,11 +101,11 @@ func TestComposerPasteBoundariesAndImages(t *testing.T) {
 			}
 		}
 		feed("\x1b[200~" + payload + "\x1b[201~")
-		if u.paste || u.shell.paste || u.escape != "" || u.Text != "plain" {
-			t.Fatalf("opaque paste=%q states=%v/%v escape=%q", u.Text, u.paste, u.shell.paste, u.escape)
+		if u.paste || u.shell.input.Pasting() || u.escape != "" || u.Text != "plain" {
+			t.Fatalf("opaque paste=%q states=%v/%v escape=%q", u.Text, u.paste, u.shell.input.Pasting(), u.escape)
 		}
 		feed("\x1b[200~'" + image + "'\x1b[201~typed")
-		if u.Text != "plain"+"[Image 1] typed" || len(u.Images) != 1 || u.paste || u.shell.paste {
+		if u.Text != "plain"+"[Image 1] typed" || len(u.Images) != 1 || u.paste || u.shell.input.Pasting() {
 			t.Fatalf("next paste stuck: %q %+v", u.Text, u.Images)
 		}
 		feed("\x1b[200~'" + image + "'\x1b[201~")
@@ -148,8 +148,8 @@ func TestComposerImagePastePTYLifecycle(t *testing.T) {
 						return err
 					}
 					if b == '!' && !u.paste {
-						if u.shell.paste || len(u.Images) != 2 || u.Text != "[Image 1] [Image 2] editable!" {
-							return fmt.Errorf("paste lifecycle: %q images=%d state=%v/%v", u.Text, len(u.Images), u.paste, u.shell.paste)
+						if u.shell.input.Pasting() || len(u.Images) != 2 || u.Text != "[Image 1] [Image 2] editable!" {
+							return fmt.Errorf("paste lifecycle: %q images=%d state=%v/%v", u.Text, len(u.Images), u.paste, u.shell.input.Pasting())
 						}
 						var frame bytes.Buffer
 						if err := u.paint(&frame, 80, 20); err != nil {

@@ -196,7 +196,7 @@ func TestAppServerSessionDocksSharedPreviewsByCaller(t *testing.T) {
 		t.Fatal("child preview missing from shared dock")
 	}
 	u.shell.applyDiff(t.Context(), reviewEvent{Kind: "turn", TurnRevision: 1, Status: "completed"})
-	if u.shell.diffOpen {
+	if u.shell.DiffOpen {
 		t.Fatal("completed turn opened saved diff")
 	}
 }

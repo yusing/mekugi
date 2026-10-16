@@ -100,7 +100,7 @@ func testAppServerEditorTerminalHandoff(t *testing.T, selectedFile bool) {
 		c.navigation.Rebuild(c.files, dir)
 		c.navigation.Cursor = navigationEntryIndex(c.navigation.Entries, "f:"+path)
 		c.navigation.Focused = true
-		u.shell.focus, u.shell.diffOpen = 1, true
+		u.shell.Focus, u.shell.DiffOpen = 1, true
 	}
 	done := make(chan error, 1)
 	go func() {
@@ -207,8 +207,8 @@ func testAppServerEditorTerminalHandoff(t *testing.T, selectedFile bool) {
 	}
 	if selectedFile {
 		data, err := os.ReadFile(path)
-		if err != nil || string(data) != "edited from terminal" || u.Text != "original" || u.shell.focus != 1 || !u.shell.diff.navigation.Focused {
-			t.Fatalf("file=%q draft=%q focus=%d error=%v", data, u.Text, u.shell.focus, err)
+		if err != nil || string(data) != "edited from terminal" || u.Text != "original" || u.shell.Focus != 1 || !u.shell.diff.navigation.Focused {
+			t.Fatalf("file=%q draft=%q focus=%d error=%v", data, u.Text, u.shell.Focus, err)
 		}
 	} else if u.Text != "edited from terminalx" {
 		t.Fatalf("draft=%q", u.Text)

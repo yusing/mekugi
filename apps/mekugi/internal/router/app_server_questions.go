@@ -7,11 +7,10 @@ import (
 
 	"encoding/json/jsontext"
 
-	"github.com/yusing/mekugi/modules/conversation/composer"
-
-	"github.com/yusing/mekugi/libraries/textsanitize"
-
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/terminalui"
+	"github.com/yusing/mekugi/libraries/textsanitize"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	"fmt"
 	"slices"
@@ -45,7 +44,7 @@ type nativeQuestionDock struct {
 	prompt.Questions
 	handles map[*prompt.Call]*nativeQuestionCall
 	layout  map[*prompt.Question]*questionLayout
-	rect    terminalRect
+	rect    terminalsession.Rect
 	painted bool
 }
 
@@ -129,7 +128,7 @@ func (u *appServerUI) composerVacant() bool {
 	if u.Text != "" || len(u.Images) > 0 || len(u.Files) > 0 || len(u.Skills) > 0 || len(u.Selections) > 0 || u.paste || u.escape != "" || u.pickerVisible() || u.keybindings || u.statusPanel != nil || u.resumePicker != nil || u.approvals.Open {
 		return false
 	}
-	return u.shell == nil || u.shell.focus == 0 && !u.shell.paste && u.shell.sequence == ""
+	return u.shell == nil || u.shell.Focus == 0 && !u.shell.input.Pasting() && !u.shell.input.Pending()
 }
 func (u *appServerUI) openQuestionCall(c *nativeQuestionCall) {
 	if u.questions.Active != nil {
@@ -149,7 +148,7 @@ func (u *appServerUI) focusPrompt() {
 	u.picker.open, u.keybindings = false, false
 	u.cancelPickerScan()
 	if u.shell != nil {
-		u.shell.focus = 0
+		u.shell.Focus = 0
 		u.shell.selection = nil
 	}
 }
@@ -744,7 +743,7 @@ func (u *appServerUI) mainTitleDetail() string {
 }
 
 func (u *appServerUI) questionBadge() string {
-	if u.shell != nil && u.shell.focus != 0 {
+	if u.shell != nil && u.shell.Focus != 0 {
 		if n := u.questionCount(); n > 0 {
 			return fmt.Sprintf("?%d", n)
 		}

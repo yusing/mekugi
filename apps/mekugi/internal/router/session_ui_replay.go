@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/contracts/scope"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
@@ -70,8 +72,8 @@ func (p *uiReplayPlayback) reset() {
 	}
 	u.ensureShell()
 	if previous != nil {
-		u.shell.focus = previous.focus
-		u.shell.diffOpen = previous.diffOpen
+		u.shell.Focus = previous.Focus
+		u.shell.DiffOpen = previous.DiffOpen
 	}
 	p.ui = u
 }
@@ -217,7 +219,7 @@ func replayTime(d time.Duration) string {
 func (p *uiReplayPlayback) key(key byte) (bool, error) {
 	shell := p.ui.shell
 	if key != 3 && shell.output != nil && (shell.output.typing || !strings.ContainsRune("p+-=[]r", rune(key))) {
-		navigation := replayNavigation[key]
+		navigation := terminalsession.ReplayNavigation(key)
 		if navigation == "" {
 			navigation = string(key)
 		}
@@ -355,8 +357,8 @@ func RunSessionUIReplay(activity *activitymodel.Service, service *playback.Servi
 	}()
 	started := time.Now()
 	run := func(keys <-chan byte, out io.Writer) error {
-		var input uiReplayInput
-		defer input.close()
+		var input terminalsession.ReplayInput
+		defer input.Close()
 		tick := time.NewTicker(33 * time.Millisecond)
 		defer tick.Stop()
 		last, progress := time.Now(), time.Now()
@@ -378,9 +380,9 @@ func RunSessionUIReplay(activity *activitymodel.Service, service *playback.Servi
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
-			case <-input.escapeC:
+			case <-input.EscapeReady():
 				// Only a standalone Escape quits; CSI/SS3/mouse reports do not.
-				input.escape, input.escapeC = "", nil
+				input.ExpireEscape()
 				if p.ui.shell.output != nil {
 					p.ui.shell.outputKey("\x1b")
 					if err := paint(); err != nil {
@@ -393,7 +395,7 @@ func RunSessionUIReplay(activity *activitymodel.Service, service *playback.Servi
 				if !ok {
 					return io.EOF
 				}
-				key = input.consume(key)
+				key = input.Consume(key)
 				if key == 0 {
 					continue
 				}

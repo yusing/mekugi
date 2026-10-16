@@ -59,7 +59,7 @@ func replayPlaybackTestPaint(t *testing.T, p *uiReplayPlayback, width, height in
 	t.Helper()
 	screen := vt.NewEmulator(width, height)
 	defer screen.Close()
-	p.ui.shell.paintedRows = nil
+	p.ui.shell.frame.Rows = nil
 	if err := p.paint(screen, width, height); err != nil {
 		t.Fatal(err)
 	}

@@ -47,10 +47,10 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	before := u.feedback.Text
 
 	rect := u.noticeDetails
-	if rect.w == 0 {
+	if rect.W == 0 {
 		t.Fatal("router batch has no details target")
 	}
-	if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", rect.x+u.shell.layout.codex.x+1, rect.y+u.shell.layout.codex.y+1)); err != nil {
+	if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", rect.X+u.shell.layout.Main.X+1, rect.Y+u.shell.layout.Main.Y+1)); err != nil {
 		t.Fatal(err)
 	}
 	if u.shell.output == nil {
@@ -279,7 +279,7 @@ func TestNativeCriticalNoticeMixedBatchDismissal(t *testing.T) {
 	if pending := u.issues.Notices.Pending(); len(pending) != 1 || !strings.Contains(pending[0], "cleanup progress") {
 		t.Fatalf("mixed batch acknowledged the wrong surface: %v", pending)
 	}
-	u.composerNoticeMouse(0, u.noticeDismiss.x, u.noticeDismiss.y, false)
+	u.composerNoticeMouse(0, u.noticeDismiss.X, u.noticeDismiss.Y, false)
 	retry := u.applyCriticalNotices()
 	if u.feedback.Text != "" || len(u.view.Entries) != 1 {
 		t.Fatal("dismissed error returned or progress duplicated")

@@ -48,12 +48,9 @@ is opt-in; replay creates no automatic profile files.
 
 ### UI
 
-Main starts at full width. Diff toggles the auxiliary column open and closed.
-Pane preferences retain visibility and focus; transient selection and expansion remain local to the active frontend.
-The bottom pane selectors are clickable and perform the same selection as
-`Ctrl-B` followed by the pane digit. Only visible selector cells are active;
-open dialogs and selection actions retain pointer precedence. The unread Diff
-indicator is separated from its label and retains the selected tab highlight.
+The [terminal session](../../apps/mekugi/internal/terminalsession/SPEC.md) owns
+pane layout, input decoding, source selection, clipboard delivery and terminal
+preferences. Feature behavior and host interaction follow the contracts below.
 
 `mekugi codex` uses the native client of `codex app-server` for interactive
 terminal launches. Without `--yolo`, Codex's configured approval and sandbox
@@ -217,13 +214,8 @@ Paginated children use bounded item counts per page, not byte-size bounds;
 a single large item can still require a large in-memory frame. No additional
 model requests or execution occur merely to restore pane content.
 
-Successful resume restores the Main/right-column split, Diff visibility, keyboard
-focus, interrupt-key lock and diff navigator width from
-[session preferences](../../modules/sessionpreferences/SPEC.md). Geometry is clamped
-by the current terminal layout. Roster height remains automatically fitted. Scroll
-positions, filters, selections, drafts and transient live docks are not persisted.
-The terminal adapter owns these fields; the preference module owns identity,
-publication, debounce, flush and failure behavior.
+Resume restores [terminal preferences](../../apps/mekugi/internal/terminalsession/SPEC.md#preferences)
+through the session-preference owner, independently of applied host settings.
 
 `/side` is deferred; server requests the client cannot answer, such as MCP
 elicitations, stay visibly blocked and are never auto-approved. Not in scope: Codex's TUI, PTY emulation
@@ -548,9 +540,8 @@ the Markdown; fenced code blocks and blockquotes are individually selectable.
 Bounded previews never truncate clipboard content. Streaming fragments and other
 threads do not replace the last completed response. Enter copies; Escape cancels;
 an empty history reports that there is no response to copy. Copying remains
-available during a turn without interrupting it. The picker, selection Copy
-(`c` or Ctrl-C), and link copying share terminal clipboard delivery and feedback.
-Delivery uses OSC 52 and reports a request sent, not confirmed clipboard access.
+available during a turn without interrupting it. The picker, selection Copy and link copying use the
+[terminal clipboard lifecycle](../../apps/mekugi/internal/terminalsession/SPEC.md#selection-and-source-copy).
 
 ### Side questions
 
@@ -714,24 +705,9 @@ The enable/disable management view remains Codex-owned: managed catalog entries
 are selectable references, but are never sent to `skills/config/write` with an
 invented path. Their selection is configured through `skills-mgr`.
 
-Dragging across text in the displayed transcript, the composer, a side-question dock, the
-saved Diff, or a shared content dialog selects the visible text and offers
-Reference (r/R), Copy (Ctrl+C, also c/C), and Clear (Escape) in the status bar or
-dialog footer. Selection actions and the existing pane shortcut bar share bold key
-labels and bullet separators. Only complete, visible action hints accept clicks.
-Text selection uses an opaque, theme-aware background and preserves syntax
-foreground colors.
-Composer selection excludes its prompt and borders;
-Diff selection covers only the source column, excluding the file navigator, gutters,
-and line numbers, and keeps each row's `+`, `-`, or space marker. Dialog selections
-copy visible text. Other Markdown selections use
-[source-aware reconstruction](../../libraries/terminalui/SPEC.md), preserving
-selected formatting and code whitespace while excluding decorative rows and gutters.
-Unselected table cells remain empty, with a structural header and delimiter when
-needed; a single selected cell without a selected separator copies just its content.
-Forward and reverse drags use the same source ranges; wide graphemes
-are never split. Pinned replies use the same annotations as transcript content.
-A press in the Diff still reaches the pane, so clicks keep their meaning.
+[Terminal source selection](../../apps/mekugi/internal/terminalsession/SPEC.md#selection-and-source-copy)
+provides shared drag, scroll, Copy, Clear and Reference actions across the displayed
+transcript, composer, saved Diff and content dialogs.
 Reference inserts a concise mention at the composer caret without submitting:
 `[Selected message]` from Main or a child transcript,
 `[Selected text]` from the composer, `[Selected side answer]` from the side-question
@@ -749,24 +725,6 @@ as a styled transcript token through its text element. After resume, recalled
 input rebinds a mention to its submitted quote when its label occurs once.
 Selected text travels through the composer's shared quoted-attachment pipeline,
 including question answers. The UI reports oversized selections and omissions.
-Reference from a dialog closes it and focuses the composer. Copy and Clear keep
-the dialog open; `y` is also a dialog selection-copy shortcut.
-Copy requests the terminal clipboard via OSC 52, and Clear leaves the draft intact.
-Main, child transcripts, saved Diff, side-answer and dialog selections retain a frozen document,
-including off-screen rows, until the selection is dismissed. Mouse-wheel scrolling
-during a held drag extends the range through that document; dragging above or
-below its scrollable viewport scrolls one row per motion event. Up/Down,
-PgUp/PgDn and Home/End scroll an active scrollable selection without clearing it.
-Scrolling after releasing the drag leaves the selected range unchanged. Newly
-exposed rows retain source-aware Markdown copying and their original click targets;
-saved Diff rows retain their gutters and change attribution. Static selections
-retain their existing dismissal behavior. Resizing or resuming editing dismisses
-the selection. Recognized Markdown file links in Main, child transcripts, and shared
-dialogs open local source with the path, content, and read errors copyable, as
-specified by [activity display](../../modules/activity/CONTRACT.md). HTTP(S) links still copy
-their destinations in Main and child transcripts; clicking them inside a dialog still
-does nothing. Missing local file destinations are not clickable.
-Clipboard availability is controlled by the user's terminal.
 Arrow keys move the insertion caret across graphemes and displayed
 rows. At the first/last displayed row, Up/Down recalls older/newer submitted
 input using the conversation composer’s local history.

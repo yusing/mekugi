@@ -162,7 +162,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		t.Helper()
 		screen := vt.NewEmulator(160, 48)
 		defer screen.Close()
-		p.ui.shell.paintedRows = nil // A new screen needs every row.
+		p.ui.shell.frame.Rows = nil // A new screen needs every row.
 		rollCommandOutput(p.ui)
 		finishPacing(p.ui.view, p.ui.agents)
 		if err := p.ui.paint(screen, 160, 48); err != nil {
@@ -263,7 +263,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		}
 	}
 	render("saved diff", "2 Diff · saved · 5 files", "broker.go", "launch.go", "broker_race_test.go", "Unsubscribe")
-	if !p.ui.shell.diffOpen || p.ui.shell.diffUnseen {
+	if !p.ui.shell.DiffOpen || p.ui.shell.diffUnseen {
 		t.Fatal("opening the saved diff did not clear its badge")
 	}
 	// The narrow pane's stacked list switches to changes and takes focus
@@ -294,7 +294,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		}
 	}
 	render("focused roster", "3 Agents")
-	if !p.ui.shell.diffOpen {
+	if !p.ui.shell.DiffOpen {
 		t.Fatal("focusing the roster closed the saved diff")
 	}
 	shell := p.ui.shell
@@ -302,14 +302,14 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	if index < 0 {
 		t.Fatal("the focused roster has no tester row")
 	}
-	hit, roster := shell.agents.hits[index], shell.layout.roster
-	for _, key := range []byte(fmt.Sprintf("\x1b[<0;%d;%dM", roster.x+hit.first, roster.y+hit.row)) {
+	hit, roster := shell.agents.hits[index], shell.layout.Roster
+	for _, key := range []byte(fmt.Sprintf("\x1b[<0;%d;%dM", roster.X+hit.first, roster.Y+hit.row)) {
 		if err := shell.key(key); err != nil {
 			t.Fatal(err)
 		}
 	}
 	render("roster pick", "1 Thread", "tester")
-	if !shell.diffOpen || !shell.agents.displayingChild() || shell.agents.selected != "/root/tester" {
+	if !shell.DiffOpen || !shell.agents.displayingChild() || shell.agents.selected != "/root/tester" {
 		t.Fatal("clicking a roster agent did not show its Activity")
 	}
 }
@@ -382,7 +382,7 @@ func TestNativeUIPreviewSessionControlsRendered(t *testing.T) {
 		t.Helper()
 		screen := vt.NewEmulator(100, 28)
 		defer screen.Close()
-		p.ui.shell.paintedRows = nil
+		p.ui.shell.frame.Rows = nil
 		finishPacing(p.ui.view, p.ui.agents)
 		if err := p.ui.paint(screen, 100, 28); err != nil {
 			t.Fatal(err)
@@ -505,7 +505,7 @@ func newNativePreview(t *testing.T) *nativePreview {
 	u.shell.diff = newLiveDiffTerminalController(store, workspace, os.Stdout)
 	u.shell.diff.stdout = u.shell.diffScreen
 	u.shell.diff.size = func() (int, int, error) {
-		return max(1, u.shell.layout.diff.w), max(3, u.shell.layout.diff.h), nil
+		return max(1, u.shell.layout.Diff.W), max(3, u.shell.layout.Diff.H), nil
 	}
 	u.session.start("main", workspace)
 	p := &nativePreview{t: t, ui: u, input: input, store: store, usage: usage, workspace: workspace, delay: "0", active: make(map[string]string), assignments: make(map[string]string), models: map[string]string{"t-explorer": nativePreviewGrokModel}}
@@ -1236,7 +1236,7 @@ func TestNativeDiffNavigatorPointerMovesAndBack(t *testing.T) {
 		t.Helper()
 		screen := vt.NewEmulator(160, 48)
 		defer screen.Close()
-		shell.paintedRows = nil
+		shell.frame.Rows = nil
 		if err := p.ui.paint(screen, 160, 48); err != nil {
 			t.Fatal(err)
 		}
@@ -1250,8 +1250,8 @@ func TestNativeDiffNavigatorPointerMovesAndBack(t *testing.T) {
 		t.Fatalf("a single-file change does not name its file:\n%s", frame)
 	}
 	// The pointer underlines the row it rests on.
-	r := shell.layout.diff
-	keys(fmt.Sprintf("\x1b[<35;%d;%dM", r.x+3, r.y+3+single-l.Top))
+	r := shell.layout.Diff
+	keys(fmt.Sprintf("\x1b[<35;%d;%dM", r.X+3, r.Y+3+single-l.Top))
 	if l.Hover != single+1 {
 		t.Fatalf("hover = %d, want row %d", l.Hover, single)
 	}
@@ -1360,7 +1360,7 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 				view, item = u.agents, "patch-tester"
 				view.setDisplayFilter(true, "/root/tester")
 			}
-			u.shell.diffOpen = activity
+			u.shell.DiffOpen = activity
 			paint := func() {
 				t.Helper()
 				if err := u.paint(io.Discard, 160, 160); err != nil {
@@ -1381,16 +1381,16 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 			if row < 0 {
 				t.Fatalf("preview edit has no click target: %v", view.feedSnippets)
 			}
-			rect := u.shell.layout.codex
+			rect := u.shell.layout.Main
 			if activity {
-				rect = u.shell.layout.codex
+				rect = u.shell.layout.Main
 			}
-			x, y := rect.x+view.feedLeft+1, rect.y+view.feedTop+row
+			x, y := rect.X+view.feedLeft+1, rect.Y+view.feedTop+row
 			if err := u.shell.mouse(fmt.Sprintf("\x1b[<35;%d;%dM", x, y)); err != nil {
 				t.Fatal(err)
 			}
 			paint()
-			if !strings.Contains(u.shell.paintedRows[y-1], "\x1b[4m") {
+			if !strings.Contains(u.shell.frame.Rows[y-1], "\x1b[4m") {
 				t.Fatal("edit has no hover underline")
 			}
 			for _, ending := range []string{"M", "m"} {
@@ -1398,7 +1398,7 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if u.shell.output == nil || u.shell.diffOpen != activity {
+			if u.shell.output == nil || u.shell.DiffOpen != activity {
 				t.Fatal("preview edit did not open dialog over prior panes")
 			}
 			paint()
@@ -1419,11 +1419,11 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 			if err := u.shell.key(27); err != nil {
 				t.Fatal(err)
 			}
-			u.shell.sequenceAt = time.Now().Add(-time.Second)
+			ageTerminalEscape(u.shell)
 			if err := u.shell.flushEscape(); err != nil {
 				t.Fatal(err)
 			}
-			if u.shell.output != nil || u.shell.diffOpen != activity {
+			if u.shell.output != nil || u.shell.DiffOpen != activity {
 				t.Fatal("Escape did not dismiss dialog while preserving panes")
 			}
 

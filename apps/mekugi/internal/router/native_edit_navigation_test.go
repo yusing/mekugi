@@ -40,7 +40,7 @@ func TestNativeEditClickOpensExactCapturedDiffDialog(t *testing.T) {
 					path = "file20.go"
 				}
 				u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "Edit `" + path + "` +1 -1 · apply_patch", native: &liveActivityNativeItem{thread: "main", item: "earlier"}}, {Seq: 2, Agent: "Main", Kind: "tool", Text: "Edit `file20.go` +1 -1 · apply_patch", native: &liveActivityNativeItem{thread: "main", item: "call"}}}})
-				u.shell.diffOpen, u.shell.focus = true, 1
+				u.shell.DiffOpen, u.shell.Focus = true, 1
 				c.filterCaller("/root")
 				c.navigation.Changes.Query = "amber1"
 				c.navigation.ChangesTab = true
@@ -52,7 +52,7 @@ func TestNativeEditClickOpensExactCapturedDiffDialog(t *testing.T) {
 				if !u.shell.openActivityEdit(u.view, 2, "file20.go") || u.shell.output == nil {
 					t.Fatal("edit did not open dialog")
 				}
-				if !u.shell.diffOpen || u.shell.focus != 1 || c.navigation.Changes.Query != "amber1" || c.navigation.Changes.Target.Change != "amber1" {
+				if !u.shell.DiffOpen || u.shell.Focus != 1 || c.navigation.Changes.Query != "amber1" || c.navigation.Changes.Target.Change != "amber1" {
 					t.Fatal("edit dialog changed live diff navigation")
 				}
 				if err := u.paint(&bytes.Buffer{}, 120, 28); err != nil {

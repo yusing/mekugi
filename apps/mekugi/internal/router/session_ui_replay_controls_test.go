@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
@@ -107,21 +109,21 @@ func TestSessionUIReplayInputReportsDoNotBecomeControls(t *testing.T) {
 		{"missing-coordinate", "\x1b[<64;10M", 0},
 		{"zero-coordinate", "\x1b[<64;0;5M", 0},
 		{"overlong", "\x1b[<" + strings.Repeat("1", 60) + ";10;5M", 0},
-		{"arrow", "\x1b[A", replayUp},
+		{"arrow", "\x1b[A", terminalsession.ReplayUp},
 		{"modified-arrow", "\x1b[1;5A", 0},
 		{"ss3", "\x1bOP", 0},
 		{"x10-control-payload", "\x1b[Mq+-", 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			var input uiReplayInput
-			t.Cleanup(input.close)
+			var input terminalsession.ReplayInput
+			t.Cleanup(input.Close)
 			p := replayPlaybackTestNew(t)
 			p.Paused = true
 			var actions []byte
 			// Each byte is a separate consume call, covering reports split
 			// at every read boundary without letting ESC reach playback.key.
 			for i := range len(tc.report) {
-				key := input.consume(tc.report[i])
+				key := input.Consume(tc.report[i])
 				if key != 0 {
 					actions = append(actions, key)
 					if quit, err := p.key(key); err != nil || quit {
@@ -133,13 +135,13 @@ func TestSessionUIReplayInputReportsDoNotBecomeControls(t *testing.T) {
 			if tc.want != 0 {
 				want = []byte{tc.want}
 			}
-			if !reflect.DeepEqual(actions, want) || input.escapeC != nil {
-				t.Fatalf("actions=%v want=%v escape timeout still armed=%v", actions, want, input.escapeC != nil)
+			if !reflect.DeepEqual(actions, want) || input.EscapeReady() != nil {
+				t.Fatalf("actions=%v want=%v escape timeout still armed=%v", actions, want, input.EscapeReady() != nil)
 			}
 			if p.Speed != 1 || !p.Paused || p.Position != 0 {
 				t.Fatal("terminal report payload changed playback state")
 			}
-			if got := input.consume('+'); got != '+' {
+			if got := input.Consume('+'); got != '+' {
 				t.Fatalf("ordinary input after report = %q", got)
 			}
 		})
@@ -147,14 +149,14 @@ func TestSessionUIReplayInputReportsDoNotBecomeControls(t *testing.T) {
 }
 
 func TestSessionUIReplayInputBareEscapeTimeout(t *testing.T) {
-	var input uiReplayInput
-	defer input.close()
+	var input terminalsession.ReplayInput
+	defer input.Close()
 	started := time.Now()
-	if got := input.consume(27); got != 0 || input.escapeC == nil {
-		t.Fatalf("bare Escape dispatched before disambiguation: key=%d timer=%v", got, input.escapeC)
+	if got := input.Consume(27); got != 0 || input.EscapeReady() == nil {
+		t.Fatalf("bare Escape dispatched before disambiguation: key=%d timer=%v", got, input.EscapeReady())
 	}
 	select {
-	case <-input.escapeC:
+	case <-input.EscapeReady():
 		if elapsed := time.Since(started); elapsed < 40*time.Millisecond {
 			t.Fatalf("Escape expired before 40ms: %v", elapsed)
 		}
@@ -165,17 +167,17 @@ func TestSessionUIReplayInputBareEscapeTimeout(t *testing.T) {
 
 func TestSessionUIReplayInputInterruptedReportCanQuit(t *testing.T) {
 	for _, partial := range []string{"\x1b[", "\x1b[<64;", "\x1b[Mq"} {
-		var input uiReplayInput
+		var input terminalsession.ReplayInput
 		for i := range len(partial) {
-			input.consume(partial[i])
+			input.Consume(partial[i])
 		}
-		if got := input.consume(3); got != 3 {
+		if got := input.Consume(3); got != 3 {
 			t.Fatalf("Ctrl+C swallowed by incomplete %q", partial)
 		}
-		if got := input.consume(27); got != 0 || input.escapeC == nil || input.mouse.Active || input.x10 != 0 {
+		if got := input.Consume(27); got != 0 || input.EscapeReady() == nil {
 			t.Fatalf("Escape did not recover incomplete %q", partial)
 		}
-		input.close()
+		input.Close()
 	}
 }
 
@@ -220,18 +222,18 @@ func TestSessionUIReplayPaneControlsAndBackwardSeek(t *testing.T) {
 			if err := p.seek(12 * time.Second); err != nil {
 				t.Fatal(err)
 			}
-			var input uiReplayInput
-			t.Cleanup(input.close)
+			var input terminalsession.ReplayInput
+			t.Cleanup(input.Close)
 			for _, key := range []byte{2, tc.digit} {
-				if quit, err := p.control(input.consume(key), 10*time.Millisecond); err != nil || quit {
+				if quit, err := p.control(input.Consume(key), 10*time.Millisecond); err != nil || quit {
 					t.Fatalf("pane input %q: quit=%v error=%v", key, quit, err)
 				}
 			}
 			assertPane := func() {
 				t.Helper()
 				shell := p.ui.shell
-				if shell.focus != map[byte]int{'1': 0, '2': 1, '3': 3}[tc.digit] || shell.diffOpen != tc.diff {
-					t.Fatalf("pane=%s: focus=%d diff=%v", tc.name, shell.focus, shell.diffOpen)
+				if shell.Focus != map[byte]int{'1': 0, '2': 1, '3': 3}[tc.digit] || shell.DiffOpen != tc.diff {
+					t.Fatalf("pane=%s: focus=%d diff=%v", tc.name, shell.Focus, shell.DiffOpen)
 				}
 			}
 			assertPane()
@@ -265,7 +267,7 @@ func TestSessionUIReplayPanePrefixConsumesInvalidControls(t *testing.T) {
 					t.Fatalf("key %q: quit=%v error=%v", key, quit, err)
 				}
 			}
-			if p.prefix || p.ui.shell.focus != 0 || p.Speed != 1 || !p.Paused || p.Position != position || !p.At.Equal(at) || p.Next != next || p.ui.view.offset != offset {
+			if p.prefix || p.ui.shell.Focus != 0 || p.Speed != 1 || !p.Paused || p.Position != position || !p.At.Equal(at) || p.Next != next || p.ui.view.offset != offset {
 				t.Fatal("invalid pane suffix changed playback or kept the prefix armed")
 			}
 			if quit, err := p.key('+'); err != nil || quit || p.Speed != 2 {
@@ -287,7 +289,7 @@ func TestSessionUIReplayBarePaneDigitsAreInert(t *testing.T) {
 		if quit, err := p.control(digit, time.Second); err != nil || quit {
 			t.Fatalf("bare digit %q: quit=%v error=%v", digit, quit, err)
 		}
-		if p.ui.shell.focus != 3 || p.Position != 0 || p.Speed != 1 || !p.Paused || p.prefix {
+		if p.ui.shell.Focus != 3 || p.Position != 0 || p.Speed != 1 || !p.Paused || p.prefix {
 			t.Fatalf("bare digit %q changed the selected pane or playback", digit)
 		}
 	}

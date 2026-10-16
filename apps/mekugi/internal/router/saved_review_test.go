@@ -160,7 +160,7 @@ func TestSavedReviewWithoutLivePreview(t *testing.T) {
 		t.Fatalf("restored saved Diff: %v", got)
 	}
 	u.shell.selectNativePane(1)
-	if !u.shell.diffOpen {
+	if !u.shell.DiffOpen {
 		t.Fatal("saved Diff is not accessible")
 	}
 

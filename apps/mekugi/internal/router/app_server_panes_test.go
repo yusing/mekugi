@@ -23,7 +23,7 @@ func TestNativePaneStateResumeAndIsolation(t *testing.T) {
 	if err := p.open(u.shell, "/workspace", "thread", false); err != nil {
 		t.Fatal(err)
 	}
-	u.shell.focus, u.shell.split, u.shell.diffOpen = 1, 67, true
+	u.shell.Focus, u.shell.Split, u.shell.DiffOpen = 1, 67, true
 	u.shell.diff.navigation.Columns = 22
 	u.Text = "unsent private text"
 	u.view.offset = 99
@@ -67,7 +67,7 @@ func TestNativePaneStateResumeAndIsolation(t *testing.T) {
 			if err := restored.paint(&frame, 120, 35); err != nil {
 				t.Fatal(err)
 			}
-			if restored.shell.layout.vertical != 67 || restored.shell.layout.diff.w == 0 {
+			if restored.shell.layout.Vertical != 67 || restored.shell.layout.Diff.W == 0 {
 				t.Fatalf("restored layout not rendered: %+v", restored.shell.layout)
 			}
 			if !strings.Contains(ansi.Strip(restored.shell.nativeStatus()), "s files") {
@@ -76,16 +76,16 @@ func TestNativePaneStateResumeAndIsolation(t *testing.T) {
 			if err := restored.paint(&frame, 45, 14); err != nil {
 				t.Fatal(err)
 			}
-			if restored.shell.layout.diff.w == 0 || restored.shell.layout.codex.w != 0 {
+			if restored.shell.layout.Diff.W == 0 || restored.shell.layout.Main.W != 0 {
 				t.Fatal("narrow screen did not retain focused pane")
 			}
 			if err := restored.paint(&frame, 100, 35); err != nil {
 				t.Fatal(err)
 			}
-			if restored.shell.layout.vertical != 60 {
+			if restored.shell.layout.Vertical != 60 {
 				t.Fatal("restored split not clamped to current terminal")
 			}
-		} else if restored.shell.focus != 0 || restored.shell.diffOpen || restored.shell.split != 0 {
+		} else if restored.shell.Focus != 0 || restored.shell.DiffOpen || restored.shell.Split != 0 {
 			t.Fatalf("pane state leaked: %+v", tc)
 		}
 	}
@@ -99,14 +99,14 @@ func TestNativePaneStateDebounceAndExit(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now()
-	u.shell.split = 60
+	u.shell.Split = 60
 	if err := p.save(u.shell, now, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(testPanePath(t, p)); !os.IsNotExist(err) {
 		t.Fatalf("saved before debounce: %v", err)
 	}
-	u.shell.split = 63
+	u.shell.Split = 63
 	if err := p.save(u.shell, now.Add(200*time.Millisecond), false); err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestNativePaneStateDebounceAndExit(t *testing.T) {
 	if err != nil || !os.SameFile(before, after) {
 		t.Fatal("unchanged state rewritten")
 	}
-	u.shell.focus = 3
+	u.shell.Focus = 3
 	if err := p.save(u.shell, now.Add(time.Second), true); err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestNativePaneStateDebounceAndExit(t *testing.T) {
 	if err := testPanePreferences().open(restored.shell, "/workspace", "thread", true); err != nil {
 		t.Fatal(err)
 	}
-	if restored.shell.focus != 3 || restored.shell.split != 63 {
+	if restored.shell.Focus != 3 || restored.shell.Split != 63 {
 		t.Fatal("exit did not flush final state")
 	}
 }
@@ -158,7 +158,7 @@ func TestNativePaneStateInvalidAndUnavailable(t *testing.T) {
 			t.Fatal(err)
 		}
 		err := p.open(u.shell, "/workspace", "thread", true)
-		if err == nil || u.shell.focus != 0 || u.shell.split != 0 {
+		if err == nil || u.shell.Focus != 0 || u.shell.Split != 0 {
 			t.Fatalf("invalid state applied: %s %v", body, err)
 		}
 		u.paneError(err)
@@ -174,7 +174,7 @@ func TestNativePaneStateInvalidAndUnavailable(t *testing.T) {
 	if err := p.open(u.shell, "/workspace", "thread", false); err != nil {
 		t.Fatal(err)
 	}
-	u.shell.split = 60
+	u.shell.Split = 60
 	if err := p.save(u.shell, time.Now(), true); err == nil {
 		t.Fatal("lost persistence failure")
 	}

@@ -418,7 +418,7 @@ func TestNativeUIEscapeInterruptPreservesDraft(t *testing.T) {
 		if err := u.shell.key(27); err != nil {
 			t.Fatal(err)
 		}
-		u.shell.sequenceAt = time.Now().Add(-time.Second)
+		ageTerminalEscape(u.shell)
 		if err := u.shell.flushEscape(); err != nil {
 			t.Fatal(err)
 		}

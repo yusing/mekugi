@@ -6,7 +6,7 @@ import activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 // dialog, newest first on opening. Left/Right reaches earlier retained errors.
 func (u *terminalUI) openErrors() {
 	var view *liveActivityView
-	switch u.focus {
+	switch u.Focus {
 	case 0:
 		if u.main != nil {
 			view = u.main.transcriptView()

@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -44,7 +46,7 @@ func TestTerminalSourceSelectionDirectionsAndActions(t *testing.T) {
 						}
 					}
 					u := selectionTestUI(rows...)
-					u.paintedCopy = append(meta, nil)
+					u.frame.Copy = append(meta, nil)
 					if activity {
 						u.agents = newLiveActivityView()
 						u.agents.feedLeft, u.agents.feedTop = 1, 1
@@ -61,14 +63,14 @@ func TestTerminalSourceSelectionDirectionsAndActions(t *testing.T) {
 						a, b = b, a
 					}
 					selectionTestDrag(t, u, a, y, b, y)
-					if got := u.selection.text(); got != tc.want {
+					if got := u.selection.Text(); got != tc.want {
 						t.Fatalf("selected=%q", got)
 					}
-					u.selectionAction(action)
+					u.selectionAction(terminalsession.SelectionIntent(action))
 					if action == 'c' {
 						want := base64.StdEncoding.EncodeToString([]byte(tc.want))
-						if !strings.Contains(u.clipboard, want) {
-							t.Fatal(u.clipboard)
+						if !strings.Contains(u.frame.Clipboard, want) {
+							t.Fatal(u.frame.Clipboard)
 						}
 					} else if len(u.main.Selections) != 1 || u.main.Selections[0].Text != tc.want {
 						t.Fatalf("reference=%+v", u.main.Selections)
@@ -88,12 +90,12 @@ func TestTerminalSourceSelectionCodeLiteralDecoration(t *testing.T) {
 		rows[i], meta[i] = terminalui.ExtractCopy(row)
 	}
 	u := selectionTestUI(rows...)
-	u.paintedCopy = append(meta, nil)
+	u.frame.Copy = append(meta, nil)
 	selectionTestDrag(t, u, 0, 0, 39, len(rows)-1)
-	if got := u.selection.text(); got != "│ literal  \n\n\n  tail" {
+	if got := u.selection.Text(); got != "│ literal  \n\n\n  tail" {
 		t.Fatalf("copy=%q", got)
 	}
-	left, _ := u.selection.bounds(0)
+	left, _ := u.selection.Bounds(0)
 	if left != 1 {
 		t.Fatalf("literal code gutter stripped: %d", left)
 	}
@@ -112,12 +114,12 @@ func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 		t.Fatal("private source transport escaped")
 	}
 	rect := u.btw.rect
-	rect.x += u.shell.layout.codex.x
-	rect.y += u.shell.layout.codex.y
+	rect.X += u.shell.layout.Main.X
+	rect.Y += u.shell.layout.Main.Y
 	y := -1
 	x := -1
-	for row := rect.y; row < rect.y+rect.h; row++ {
-		for _, span := range u.shell.paintedCopy[row] {
+	for row := rect.Y; row < rect.Y+rect.H; row++ {
+		for _, span := range u.shell.frame.Copy[row] {
 			if span.Text == "side answer" {
 				x, y = span.Column, row
 				break
@@ -129,7 +131,7 @@ func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 		t.Fatalf("no dock: %+v", rect)
 	}
 	selectionTestDrag(t, u.shell, x, y, x+10, y)
-	if got := u.shell.selection.text(); got != "**side answer**" {
+	if got := u.shell.selection.Text(); got != "**side answer**" {
 		t.Fatalf("btw copied=%q", got)
 	}
 	if err := u.shell.send("\x1b"); err != nil {
@@ -142,7 +144,7 @@ func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 	if err := u.shell.key(3); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(u.shell.clipboard, base64.StdEncoding.EncodeToString([]byte("**side answer**"))) {
+	if !strings.Contains(u.shell.frame.Clipboard, base64.StdEncoding.EncodeToString([]byte("**side answer**"))) {
 		t.Fatal("btw clipboard missing")
 	}
 	if u.btw == nil || u.shell.selection != nil {
@@ -153,7 +155,7 @@ func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 	if err := u.shell.key('r'); err != nil {
 		t.Fatal(err)
 	}
-	if u.btw == nil || u.shell.selection != nil || u.shell.focus != 0 || u.Text != "before [Selected side answer] after" || len(u.Selections) != 1 || u.Selections[0].Text != "**side answer**" {
+	if u.btw == nil || u.shell.selection != nil || u.shell.Focus != 0 || u.Text != "before [Selected side answer] after" || len(u.Selections) != 1 || u.Selections[0].Text != "**side answer**" {
 		t.Fatalf("btw reference: draft=%q selections=%+v dock=%v", u.Text, u.Selections, u.btw != nil)
 	}
 }
@@ -200,7 +202,7 @@ func TestTerminalSourceScrolledMainReply(t *testing.T) {
 		t.Fatal(err)
 	}
 	x, y := -1, -1
-	for row, spans := range u.shell.paintedCopy {
+	for row, spans := range u.shell.frame.Copy {
 		for _, s := range spans {
 			if s.Text == "original reply" {
 				x, y = s.Column, row
@@ -214,8 +216,8 @@ func TestTerminalSourceScrolledMainReply(t *testing.T) {
 	if y < 0 {
 		t.Fatalf("no original reply source: %s", screen.String())
 	}
-	selectionTestDrag(t, u.shell, u.shell.layout.codex.x, y-1, x+13, y)
-	if got := u.shell.selection.text(); got != "**original reply**" {
+	selectionTestDrag(t, u.shell, u.shell.layout.Main.X, y-1, x+13, y)
+	if got := u.shell.selection.Text(); got != "**original reply**" {
 		t.Fatalf("original reply copy=%q", got)
 	}
 }
@@ -236,7 +238,7 @@ func TestTerminalSourceRenderedTables(t *testing.T) {
 				if activity {
 					view = u.agents
 					u.agents.Agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
-					u.shell.diffOpen = false
+					u.shell.DiffOpen = false
 				}
 				view.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: source})
 				var wire bytes.Buffer
@@ -247,7 +249,7 @@ func TestTerminalSourceRenderedTables(t *testing.T) {
 					t.Fatal(err)
 				}
 				first, last, left, right := -1, -1, 0, 0
-				for y, spans := range u.shell.paintedCopy {
+				for y, spans := range u.shell.frame.Copy {
 					for _, span := range spans {
 						if span.Table != 0 {
 							if first < 0 {
@@ -267,7 +269,7 @@ func TestTerminalSourceRenderedTables(t *testing.T) {
 				}
 				selectionTestDrag(t, u.shell, ax, ay, bx, by)
 				expected := want
-				if got := u.shell.selection.text(); got != expected {
+				if got := u.shell.selection.Text(); got != expected {
 					t.Fatalf("activity=%v width=%d reverse=%v: %q want %q", activity, width, reverse, got, expected)
 				}
 			}
@@ -280,18 +282,18 @@ func TestTerminalSourceActivityCodeTabs(t *testing.T) {
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
 	u.agents.Agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
-	u.shell.diffOpen = false
+	u.shell.DiffOpen = false
 	u.agents.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "```\n\tx := 1  \n```"})
 	var wire bytes.Buffer
 	u.agents.setDisplayFilter(true, "Main")
 	if err := u.paint(&wire, 120, 40); err != nil {
 		t.Fatal(err)
 	}
-	for y, spans := range u.shell.paintedCopy {
+	for y, spans := range u.shell.frame.Copy {
 		for _, span := range spans {
 			if span.Code {
 				selectionTestDrag(t, u.shell, span.Column, y, span.Column+span.Width-1, y)
-				if got := u.shell.selection.text(); got != "\tx := 1  " {
+				if got := u.shell.selection.Text(); got != "\tx := 1  " {
 					t.Fatalf("activity source code=%q", got)
 				}
 				return

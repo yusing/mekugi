@@ -48,7 +48,7 @@ func TestNativeUIExpansionFocus(t *testing.T) {
 	u.ensureShell()
 	u.Text = "Keep this draft"
 	for _, focus := range []int{0, 2} {
-		u.shell.focus = 0
+		u.shell.Focus = 0
 		u.agents.setDisplayFilter(focus == 2, "/root/worker")
 		view := u.view
 		if focus != 0 {
@@ -58,7 +58,7 @@ func TestNativeUIExpansionFocus(t *testing.T) {
 		if err := u.shell.key(5); err != nil {
 			t.Fatal(err)
 		}
-		if u.Text != "Keep this draft" || u.shell.focus != 0 || view.expansion != (before+1)%3 {
+		if u.Text != "Keep this draft" || u.shell.Focus != 0 || view.expansion != (before+1)%3 {
 			t.Fatal("Ctrl+E changed the draft, focus or wrong pane")
 		}
 		if !strings.Contains(ansi.Strip(u.shell.nativeStatus()), "^B 1-3 views") {
@@ -67,7 +67,7 @@ func TestNativeUIExpansionFocus(t *testing.T) {
 	}
 	playback := uiReplayPlayback{ui: u}
 	for _, focus := range []int{0, 2} {
-		u.shell.focus = 0
+		u.shell.Focus = 0
 		u.agents.setDisplayFilter(focus == 2, "/root/worker")
 		view := u.view
 		if focus != 0 {

@@ -8,16 +8,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
-
-	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-
-	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	"github.com/yusing/mekugi/libraries/terminalui"
+	"github.com/yusing/mekugi/libraries/textsanitize"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
@@ -39,7 +39,7 @@ type outputDialog struct {
 	top       int  // First body row shown.
 	follow    bool // Live output keeps its latest rows in view.
 	rows      int  // Body rows in the last frame.
-	rect      terminalRect
+	rect      terminalsession.Rect
 	body      []string // Last visible body, used as the drag snapshot.
 	indents   []int
 	tabs      []outputTab
@@ -653,15 +653,15 @@ func (u *terminalUI) outputMouse(button, x, y int, release bool) {
 	case 65:
 		d.scroll(outputDialogWheelRows)
 	case 0:
-		if d.tabbed() && y == d.rect.y+2 {
+		if d.tabbed() && y == d.rect.Y+2 {
 			for _, tab := range d.tabs {
-				if x-d.rect.x-2 >= tab.from && x-d.rect.x-2 < tab.to {
+				if x-d.rect.X-2 >= tab.from && x-d.rect.X-2 < tab.to {
 					d.showPage(tab.page)
 					return
 				}
 			}
 		}
-		if !d.rect.contains(x, y) || y == d.rect.y && x >= d.rect.x+d.rect.w-activityui.DialogCloseWidth-3 && x < d.rect.x+d.rect.w-3 {
+		if !d.rect.Contains(x, y) || y == d.rect.Y && x >= d.rect.X+d.rect.W-activityui.DialogCloseWidth-3 && x < d.rect.X+d.rect.W-3 {
 			u.output = nil
 		}
 	}
@@ -677,10 +677,10 @@ func (u *terminalUI) paintOutput(rows []string, width, height int) {
 		w, h = int(float64(width)*outputDialogShare), int(float64(height)*outputDialogShare)
 	}
 	if w < 12 || h < d.chrome()+1 {
-		d.rect, u.selection = terminalRect{}, nil
+		d.rect, u.selection = terminalsession.Rect{}, nil
 		return
 	}
-	if u.selection != nil && (d.rect.w != w || d.rect.h > h) {
+	if u.selection != nil && (d.rect.W != w || d.rect.H > h) {
 		u.selection = nil
 	}
 	if u.selection == nil {
@@ -689,7 +689,7 @@ func (u *terminalUI) paintOutput(rows []string, width, height int) {
 	if width >= outputDialogFullWidth {
 		h = min(h, max(d.chrome()+3, d.chrome()+d.total()))
 	}
-	if u.selection != nil && d.rect != (terminalRect{(width - w) / 2, (height - h) / 2, w, h}) {
+	if u.selection != nil && d.rect != (terminalsession.Rect{(width - w) / 2, (height - h) / 2, w, h}) {
 		u.selection = nil
 	}
 	d.rows = h - d.chrome()
@@ -740,7 +740,7 @@ func (u *terminalUI) paintOutput(rows []string, width, height int) {
 	if selected := u.selection; selected != nil {
 		body = slices.Clone(body)
 		for i := range body {
-			body[i] = selected.row(selected.documentY(i), d.view.painter.Theme)
+			body[i] = selected.Row(selected.DocumentY(i), d.view.painter.Theme)
 		}
 	}
 	frame := activityui.DialogFrame{Tabs: d.tabRow(w - 4), Page: d.laid, Paused: d.laid.Live && !d.follow, Rows: body, GutterStyles: gutterStyles, Top: d.top, Total: d.total(), Footer: d.footer(w)}
@@ -751,7 +751,7 @@ func (u *terminalUI) paintOutput(rows []string, width, height int) {
 		frame.Position = fmt.Sprintf("%d / %d", d.page+1, len(d.pages))
 	}
 	x, y := (width-w)/2, (height-h)/2
-	d.rect = terminalRect{x, y, w, h}
+	d.rect = terminalsession.Rect{x, y, w, h}
 	for i := range rows {
 		rows[i] = activityui.Backdrop(rows[i])
 	}

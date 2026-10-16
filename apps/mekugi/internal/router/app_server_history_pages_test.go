@@ -128,7 +128,7 @@ func TestAppServerAnchoredHistoryErrorsAndCancellation(t *testing.T) {
 			case "cursor":
 				restoreContentReply(t, u, 5, map[string]any{"data": []any{historyItem("first", "leak", 101000)}, "nextCursor": "older"})
 			case "cancel":
-				u.shell.focus = 0
+				u.shell.Focus = 0
 				u.agents.setDisplayFilter(true, "/root/worker")
 				u.agents.following = false
 				if err := u.shell.send("\x1b"); err != nil {
@@ -190,7 +190,7 @@ func TestAppServerAnchoredHistoryTurnPagesAndIsolation(t *testing.T) {
 	if u.session.agent("/root/worker").Turns != 2 || u.session.agent("/root/worker").Final {
 		t.Fatal("duplicate turns or interrupted status lost")
 	}
-	u.shell.focus = 0
+	u.shell.Focus = 0
 	u.agents.setDisplayFilter(true, "/root/worker")
 	if err := u.shell.key(2); err != nil {
 		t.Fatal(err)
@@ -219,7 +219,7 @@ func TestUISnapshotNativeAnchoredHistory(t *testing.T) {
 			historyTurnsReply(t, u)
 			restoreContentReply(t, u, 4, map[string]any{"data": []any{historyItem("last", "Latest retained answer", 109000)}, "nextCursor": "older"})
 
-			u.shell.focus = 0
+			u.shell.Focus = 0
 			u.agents.setDisplayFilter(true, "/root/worker")
 			if state != "partial" {
 				if err := u.loadOlderActivity(); err != nil {
@@ -248,7 +248,7 @@ func TestUISnapshotNativeAnchoredHistory(t *testing.T) {
 			if err := u.shell.paintNative(t.Context(), io.Discard); err != nil {
 				t.Fatal(err)
 			}
-			uisnapshot.Assert(t, "testdata/snapshots/native-anchored-history-"+state+".txt", strings.Join(u.shell.paintedRows, "\n")+"\n")
+			uisnapshot.Assert(t, "testdata/snapshots/native-anchored-history-"+state+".txt", strings.Join(u.shell.frame.Rows, "\n")+"\n")
 		})
 	}
 }
