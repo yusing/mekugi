@@ -241,7 +241,7 @@ func TestTerminalSourceRenderedTables(t *testing.T) {
 					u.agents.Agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
 					u.shell.DiffOpen = false
 				}
-				view.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: source})
+				applyTranscriptFixture(view, true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: source})
 				var wire bytes.Buffer
 				if view == u.agents {
 					u.agents.setDisplayFilter(true, "Main")
@@ -284,7 +284,7 @@ func TestTerminalSourceActivityCodeTabs(t *testing.T) {
 	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
 	u.agents.Agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
 	u.shell.DiffOpen = false
-	u.agents.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "```\n\tx := 1  \n```"})
+	applyTranscriptFixture(u.agents, true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "```\n\tx := 1  \n```"})
 	var wire bytes.Buffer
 	u.agents.setDisplayFilter(true, "Main")
 	if err := u.paint(&wire, 120, 40); err != nil {

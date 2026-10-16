@@ -12,6 +12,7 @@ import (
 // service during registration; reference collection never invokes them.
 type Bindings[S any] struct {
 	Requires        []capability.Requirement
+	Observation     func(S) Observation
 	Frontends       []command.Spec
 	Rollout         func(S, RolloutSource) error
 	InputProjection func(S) InputProjection
@@ -51,6 +52,11 @@ func (b Bindings[S]) Register(r Registrar, service S) error {
 			return err
 		}
 	}
+	if b.Observation != nil {
+		if err := r.Observation(b.Observation(service)); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -66,6 +72,7 @@ func (b Bindings[S]) Reference() module.BindingReference {
 		{capability.GuidanceProjection, b.Guidance != nil},
 		{capability.ThreadNaming, b.SessionNaming != nil},
 		{capability.ShellApproval, b.ShellApproval != nil},
+		{capability.Observation, b.Observation != nil},
 	} {
 		if connection.declared {
 			r.Mechanisms = append(r.Mechanisms, connection.mechanism)

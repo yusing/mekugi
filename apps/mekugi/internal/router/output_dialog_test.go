@@ -583,7 +583,7 @@ func TestCommandDurationRestoresAndStopsInDialog(t *testing.T) {
 	v := newActivityAdapter()
 	duration := int64(70000)
 	item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "echo ok", DurationMS: &duration, Status: "completed"}
-	v.applyAppServerItem(true, "/w", "main", "main", "turn", "cmd", "item/completed", "", item)
+	applyTranscriptFixture(v, true, "/w", "main", "main", "turn", "cmd", "item/completed", "", item)
 	b := v.blocks(0)[0]
 	if b.Duration != 70*time.Second || b.Running {
 		t.Fatalf("restored timing %+v", b)

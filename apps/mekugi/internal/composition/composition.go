@@ -233,6 +233,14 @@ func (r *moduleRegistrar) SessionNaming(naming binding.SessionNaming) error {
 	return nil
 }
 
+func (r *moduleRegistrar) Observation(observation binding.Observation) error {
+	if err := r.binder.Observation(observation); err != nil {
+		return err
+	}
+	r.runtime.Observation = &observation
+	return nil
+}
+
 type Gap struct {
 	Module    module.ID
 	Mechanism capability.Mechanism
@@ -261,6 +269,7 @@ type Runtime struct {
 	Usage                *accounting.Service
 	Guards               []binding.ShellApproval
 	Naming               *binding.SessionNaming
+	Observation          *binding.Observation
 	Guidance             *binding.Guidance
 	InputProjections     []binding.InputProjection
 	Changes              *changecapture.Service

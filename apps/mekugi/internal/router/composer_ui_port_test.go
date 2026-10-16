@@ -58,7 +58,7 @@ func TestSubmittedAttachmentHostSchema(t *testing.T) {
 		if restore {
 			u.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
 		} else {
-			u.view.applyAppServerItem(true, u.session.cwd, "main", "main", "t", "input", "item/completed", "", item)
+			applyTranscriptFixture(u.view, true, u.session.cwd, "main", "main", "t", "input", "item/completed", "", item)
 		}
 		if !reflect.DeepEqual(u.view.Entries[0].Source.native.spans, want) {
 			t.Fatalf("restore=%v spans=%+v", restore, u.view.Entries[0].Source.native.spans)

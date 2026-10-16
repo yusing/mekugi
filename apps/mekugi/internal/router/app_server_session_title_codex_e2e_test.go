@@ -136,7 +136,7 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 		if err := pty.Setsize(outer, &pty.Winsize{Cols: 160, Rows: 30}); err != nil {
 			t.Fatal(err)
 		}
-		wait, err := startAppServerUI(new(conversationmodel.Service), new(activitymodel.Service), testHistory(), testPreferences(), testReports(), runCtx, command(runCtx), inner, inner, nil, nil, resume, true, nil, nil, nil, "", naming, false)
+		wait, err := startAppServerUI(new(conversationmodel.Service), new(activitymodel.Service), testHistory(), testPreferences(), testReports(), runCtx, command(runCtx), inner, inner, nil, nil, resume, true, nil, nil, nil, "", naming, nil, false)
 		if err != nil {
 			t.Fatal(err)
 		}

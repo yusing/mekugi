@@ -91,10 +91,4 @@ func (u *appServerUI) renameThreadActivity(old, name string) {
 		view.Runs = nil
 		view.RenameRetiredSkills(old, name)
 	}
-	for thread, entry := range u.session.messages {
-		if entry.Agent == old {
-			entry.Agent = name
-			u.session.messages[thread] = entry
-		}
-	}
 }

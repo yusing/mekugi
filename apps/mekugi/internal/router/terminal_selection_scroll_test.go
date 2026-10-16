@@ -38,10 +38,10 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 			} else {
 				if surface == "Activity" {
 					for i := 0; i < len(lines); i += 4 {
-						view.applyAppServerItem(true, "", "main", "main", "turn", fmt.Sprint(i), "item/completed", "", appServerItem{Type: "agentMessage", Text: "```\n" + strings.Join(lines[i:i+4], "\n") + "\n```"})
+						applyTranscriptFixture(view, true, "", "main", "main", "turn", fmt.Sprint(i), "item/completed", "", appServerItem{Type: "agentMessage", Text: "```\n" + strings.Join(lines[i:i+4], "\n") + "\n```"})
 					}
 				} else {
-					view.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: text})
+					applyTranscriptFixture(view, true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: text})
 				}
 			}
 			screen := vt.NewEmulator(120, 30)

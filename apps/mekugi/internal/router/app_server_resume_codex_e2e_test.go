@@ -259,7 +259,7 @@ func startAppResumeTerminalWithProxy(t *testing.T, newCommand func(context.Conte
 	if len(capture) > 0 {
 		recorder = capture[0]
 	}
-	wait, err := startAppServerUI(new(conversationmodel.Service), new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, newCommand(ctx), inner, inner, proxy, nil, resumeThread, true, nil, recorder, nil, "", nil, false)
+	wait, err := startAppServerUI(new(conversationmodel.Service), new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, newCommand(ctx), inner, inner, proxy, nil, resumeThread, true, nil, recorder, nil, "", nil, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}

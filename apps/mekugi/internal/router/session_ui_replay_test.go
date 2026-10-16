@@ -106,7 +106,7 @@ func TestSessionUIReplayPlaybackUsesRecordedClockAndSeekReset(t *testing.T) {
 	if p.ui == oldUI || len(p.ui.session.commands) != 0 || p.ui.Turn != "turn" || !p.At.Equal(p.Source.Start.Add(2*time.Second)) {
 		t.Fatalf("seek did not rebuild earlier state: position=%v commands=%d", p.Position, len(p.ui.session.commands))
 	}
-	if p.ui.session.reasoning[[3]string{"root", "turn", "reasoning"}] != "Inspecting repaint timing." {
+	if !strings.Contains(replayPlaybackTestPaint(t, p, 120, 28), "Inspecting repaint timing.") {
 		t.Fatal("seek did not replay earlier reasoning")
 	}
 	for _, entry := range p.ui.view.Entries {

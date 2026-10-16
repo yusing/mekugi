@@ -378,7 +378,7 @@ func TestTerminalUISelectionRenderedClipboard(t *testing.T) {
 			u.shell.DiffOpen = false
 
 		}
-		view.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "hello [report](https://example.com/report)"})
+		applyTranscriptFixture(view, true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "hello [report](https://example.com/report)"})
 		if activity {
 			u.agents.setDisplayFilter(true, "Main")
 		}

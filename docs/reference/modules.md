@@ -16,7 +16,8 @@ Own host-operation feeds, roster derivation and retained output
 - Requires: none.
 - Contributes: `record-kinds`.
 - Records: `wait`.
-- Codex connections: none.
+- Codex connections: `observation`.
+- Capabilities: `observation` (required).
 
 ## [agentguidance](../../modules/agentguidance/SPEC.md)
 

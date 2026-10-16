@@ -11,6 +11,7 @@ import (
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	activitybinding "github.com/yusing/mekugi/modules/activity/codexbinding"
 
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 
@@ -28,6 +29,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
@@ -140,6 +142,7 @@ type appServerUI struct {
 	pendingEditReceipts     []*capturedActivityEdit // Observed edits can precede their host Activity item.
 	issues                  *CriticalErrors
 	shell                   *terminalUI
+	summaryStream           activityui.ReasoningStream
 	session                 appServerSession
 	ctx                     context.Context
 	quitRequested           bool
@@ -188,11 +191,12 @@ type appServerUI struct {
 func StartAppServerUI(conversation *conversationmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, notices *notice.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
 	faint, _ := terminalui.SupportsFaint(ctx, "auto")
 	issues := NewCriticalErrors(notices)
-	return startAppServerUI(conversation, activity, service, prefs, nil, ctx, cmd, stdin, stdout, nil, issues, resumeThread, faint, nil, nil, resumeArgv, "", nil, approvals)
+	observations := activitybinding.Codex.Observation(activity)
+	return startAppServerUI(conversation, activity, service, prefs, nil, ctx, cmd, stdin, stdout, nil, issues, resumeThread, faint, nil, nil, resumeArgv, "", nil, &observations, approvals)
 }
 
 // Codex approval policy and the invocation-local Shell guard are independent.
-func startAppServerUI(conversation *conversationmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *serviceTierSettings, capture *transportcapture.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, approvals bool) (func() error, error) {
+func startAppServerUI(conversation *conversationmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *serviceTierSettings, capture *transportcapture.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, observations *binding.Observation, approvals bool) (func() error, error) {
 	guardHash := ""
 	for _, entry := range cmd.Environ() {
 		if hash, ok := strings.CutPrefix(entry, shellhook.Environment+"="); ok {
@@ -221,7 +225,7 @@ func startAppServerUI(conversation *conversationmodel.Service, activity *activit
 	if err != nil {
 		return nil, err
 	}
-	u := &appServerUI{conversationState: conversation, session: appServerSession{activity: activity}, history: service, segments: segments, client: c, view: newActivityAdapter(), agents: newActivityAdapter(), proxy: proxy, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
+	u := &appServerUI{conversationState: conversation, session: appServerSession{activity: activity, observations: observations}, history: service, segments: segments, client: c, view: newActivityAdapter(), agents: newActivityAdapter(), proxy: proxy, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
 	u.attachActivity()
 	u.guardHookCheck.hash = guardHash
 	if generator != nil {
@@ -761,6 +765,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				return err
 			}
 			u.session.start(u.Thread, result.Thread.Cwd)
+			u.summaryStream = activityui.ReasoningStream{}
 			if u.notifications != nil {
 				if err := u.request("config/read", map[string]any{"cwd": result.Thread.Cwd, "includeLayers": false}); err != nil {
 					return err
@@ -867,11 +872,12 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	if err := json.Unmarshal(m.Params, &p); err != nil {
 		return fmt.Errorf("%s: %w", m.Method, err)
 	}
+	p.text = observation.TextEvent{At: u.now(), Kind: observation.Kind(m.Method), Delta: p.Delta, Item: transcriptItem(p.Item, p.ThreadID, p.TurnID, p.ItemID)}
 	return u.observedEvent(m.Method, p)
 }
 
-// observedEvent applies already decoded facts. Offline replay shares presentation
-// without traversing live request, approval, input, or notification admission.
+// observedEvent retains application lifecycle and control handling for decoded
+// host facts. Offline transcript observations bypass it through their reducer.
 func (u *appServerUI) observedEvent(method string, p appServerEvent) error {
 	if handled, err := u.sessionEvent(method, p); handled || err != nil {
 		return err
@@ -934,7 +940,13 @@ func (u *appServerUI) observedEvent(method string, p appServerEvent) error {
 				return nil
 			}
 		}
-		u.view.applyAppServerItem(true, u.session.cwd, u.Thread, p.ThreadID, p.TurnID, p.ItemID, method, p.Delta, p.Item)
+		for _, update := range u.session.transcript.Observe(p.text, true) {
+			if update.Kind == "reasoning" {
+				u.applyActivity(u.transcriptUpdates([]observation.TextUpdate{update}, true), nil)
+				continue
+			}
+			u.view.applyTranscript(update, p.Item.Content, u.session.cwd, u.Thread, p.Item.Type == "userMessage")
+		}
 	}
 	return nil
 }
@@ -1660,7 +1672,7 @@ func (u *appServerUI) applyObservedActivity() {
 	}
 	entries := u.proxy.activity.takeNativeActivity(u.Thread)
 	for _, start := range u.proxy.activity.takeRequestStarts(u.Thread) {
-		entries = append(entries, u.session.beginThinking(start.thread, start.at)...)
+		entries = append(entries, u.transcriptUpdates(u.session.transcript.ProviderStarted(start.thread, start.at), false)...)
 	}
 	for i := range entries {
 		entries[i].Seq = u.session.next()

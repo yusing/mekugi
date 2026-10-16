@@ -5,6 +5,7 @@ import (
 	json "encoding/json/v2"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -165,7 +166,7 @@ func TestNativeQuestionAsyncBatchAndExternalCommit(t *testing.T) {
 	if u.activeQuestionCall() == nil || u.questionCount() != 2 {
 		t.Fatal("async question did not open or was lost")
 	}
-	if u.session.finals["main"] {
+	if slices.ContainsFunc(u.view.Entries, func(entry liveActivityRecord) bool { return entry.Source.Kind == "final" }) {
 		t.Fatal("async question entered final-answer bookkeeping")
 	}
 	u.openQuestions()

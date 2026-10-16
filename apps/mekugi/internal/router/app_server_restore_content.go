@@ -3,13 +3,14 @@ package router
 import (
 	"cmp"
 
+	"github.com/yusing/mekugi/contracts/observation"
+
 	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 
 	json "encoding/json/v2"
 	"fmt"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
@@ -389,14 +390,14 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 		}
 		slots := placeRestored(turn, itemAt, byTurn[index])
 		place(slots[0])
-		lastMessage := -1
+		text := historicalTranscript(turn.Items, info.ID, turn.ID, false, turn.Status == "completed" && !turn.olderPage, observed)
 		for i, item := range turn.Items {
 			first := len(entries)
 			at, ok := itemAt[item.ID]
 			if !ok {
 				at = observed
 			}
-			u.restoreActivityItem(info, turn, item, name, at, &entries, &lastMessage)
+			u.restoreActivityItem(info, turn, item, name, at, &entries, text)
 			for range entries[first:] {
 				times = append(times, at)
 			}
@@ -404,9 +405,6 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 		}
 		agent = s.agent(name)
 		agent.Final = turn.Status == "completed"
-		if agent.Final && lastMessage >= 0 && !turn.olderPage {
-			entries[lastMessage].Kind = "final"
-		}
 		if !turn.olderPage && (turn.Status == "failed" || turn.Status == "interrupted" || turn.Status == "inProgress") {
 			text := "Recorded turn: " + turn.Status + " (history only)"
 			if turn.Error != nil {
@@ -428,8 +426,15 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 	}
 }
 
-func (u *appServerUI) restoreActivityItem(info appServerThreadInfo, turn appServerHistoryTurn, item appServerItem, name string, observed time.Time, entries *[]activityPaneEntry, lastMessage *int) {
+func (u *appServerUI) restoreActivityItem(info appServerThreadInfo, turn appServerHistoryTurn, item appServerItem, name string, observed time.Time, entries *[]activityPaneEntry, text map[string]observation.TextUpdate) {
 	s := &u.session
+	if update, ok := text[item.ID]; ok {
+		update.Sequence, update.Observed = s.next(), observed
+		entry := transcriptEntry(update, name)
+		entry.CallID = item.ID
+		*entries = append(*entries, entry)
+		return
+	}
 	entry := activityPaneEntry{Seq: s.next(), Agent: name, Observed: observed, CallID: item.ID,
 		native: &liveActivityNativeItem{thread: info.ID, turn: turn.ID, item: item.ID, phase: "item/completed", status: item.Status, searchResults: appServerSearchResults(item)}}
 	progressPhase := appServerHistoryProgressPhase(item, turn.Status)
@@ -448,11 +453,6 @@ func (u *appServerUI) restoreActivityItem(info appServerThreadInfo, turn appServ
 		if blocks := appServerAttachmentBlocks(info.Cwd, item.Content); len(blocks) > 0 {
 			entry.Kind, entry.native.item = "attachments", item.ID+"/attachments"
 			entry.native.attachments = blocks
-			*entries = append(*entries, entry)
-		}
-	case "reasoning":
-		entry.Kind, entry.Text = "reasoning", strings.Join(item.Summary, "\n\n")
-		if strings.TrimSpace(entry.Text) != "" {
 			*entries = append(*entries, entry)
 		}
 	case "imageView":
@@ -476,16 +476,6 @@ func (u *appServerUI) restoreActivityItem(info appServerThreadInfo, turn appServ
 			exit.outputTail, exit.outputOmit = appServerOutputTail(item.AggregatedOutput)
 			*entries = append(*entries, exit)
 		}
-	case "agentMessage":
-		if item.Delivery == "async" && len(item.Questions) > 0 {
-			return
-		}
-		entry.Kind, entry.Text = "text", item.Text
-		if item.Phase == "final_answer" || item.Phase == "finalAnswer" {
-			entry.Kind = "final"
-		}
-		*lastMessage = len(*entries)
-		*entries = append(*entries, entry)
 	case "collabAgentToolCall":
 		*entries = append(*entries, u.restoredCollab(item, observed)...)
 	}

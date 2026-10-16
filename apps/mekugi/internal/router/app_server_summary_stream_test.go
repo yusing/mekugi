@@ -47,7 +47,7 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 			}
 			at = at.Add(2 * time.Second)
 			notify("item/completed", map[string]any{"item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{body}}})
-			if run := u.session.summaries[[3]string{thread, "t", "r"}]; run == nil || run.done == nil {
+			if !view.blocks(0)[0].Live {
 				t.Fatal("completion was not held behind the summary backlog")
 			}
 			u.flushStreamOutput()
@@ -57,7 +57,7 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 			if view.blocks(0)[0].Collapsed || view.blocks(0)[1].Collapsed || settleActivity(at.Add(time.Minute), view) {
 				t.Fatal("latest completed reasoning did not stay open")
 			}
-			if len(u.session.summaries) != 0 || len(view.blocks(0)) != 2 || view.blocks(0)[0].Live || view.blocks(0)[1].Live || view.blocks(0)[0].Thought != 0 || view.blocks(0)[1].Thought != 2*time.Second {
+			if len(view.blocks(0)) != 2 || view.blocks(0)[0].Live || view.blocks(0)[1].Live || view.blocks(0)[0].Thought != 0 || view.blocks(0)[1].Thought != 2*time.Second {
 				t.Fatalf("section completion or item duration lost: %+v", view.Entries)
 			}
 			// The compact row retains one dialog page per original section.
@@ -88,7 +88,7 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 			}
 			notify("item/reasoning/summaryTextDelta", map[string]any{"itemId": "r", "delta": "Late text."})
 			rollCommandOutput(u)
-			if len(u.session.thinking) != 0 || len(u.session.summaries) != 0 || len(view.blocks(0)) != 2 {
+			if len(view.blocks(0)) != 2 {
 				t.Fatal("late delta reopened completed reasoning")
 			}
 		})
@@ -108,14 +108,14 @@ func TestAppServerEmptyReasoningStartsDoNotCreateRows(t *testing.T) {
 		}
 		appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t", "status": "interrupted"}})
 		u.flushStreamOutput()
-		if len(u.session.thinking) != 0 || len(u.session.summaries) != 0 {
+		if len(u.view.Entries) != 0 || len(u.agents.Entries) != 0 {
 			t.Fatal("empty reasoning left live state behind")
 		}
 		for _, id := range []string{"raw-one", "raw-two"} {
 			appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": id, "delta": "Late public summary."})
 		}
 		u.flushStreamOutput()
-		if len(u.session.thinking) != 0 || len(u.session.summaries) != 0 || len(u.view.Entries) != 0 || len(u.agents.Entries) != 0 {
+		if len(u.view.Entries) != 0 || len(u.agents.Entries) != 0 {
 			t.Fatal("late delta reopened interrupted empty reasoning")
 		}
 	}

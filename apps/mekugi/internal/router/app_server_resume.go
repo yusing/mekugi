@@ -357,7 +357,10 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{exit}})
 		}
 	default:
-		u.view.applyAppServerItem(false, u.session.cwd, u.Thread, u.Thread, turn.ID, item.ID, method, "", item)
+		if update, ok := historicalTranscript([]appServerItem{item}, u.Thread, turn.ID, true, false, u.now())[item.ID]; ok {
+			update.Phase = method
+			u.view.applyTranscript(update, item.Content, u.session.cwd, u.Thread, item.Type == "userMessage")
+		}
 	}
 }
 

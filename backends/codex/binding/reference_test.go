@@ -9,6 +9,8 @@ import (
 	"github.com/yusing/mekugi/contracts/capability"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/module"
+	"github.com/yusing/mekugi/contracts/observation"
+	"github.com/yusing/mekugi/contracts/scope"
 )
 
 func TestBindingsReference(t *testing.T) {
@@ -20,12 +22,13 @@ func TestBindingsReference(t *testing.T) {
 		Guidance:        func(struct{}) Guidance { panic("Guidance executed") },
 		SessionNaming:   func(struct{}) SessionNaming { panic("SessionNaming executed") },
 		ShellApproval:   func(struct{}) ShellApproval { panic("ShellApproval executed") },
+		Observation:     func(struct{}) Observation { panic("Observation executed") },
 	}
 	want := module.BindingReference{
 		Requires: []capability.Requirement{{Mechanism: capability.Rollout, Required: true}},
 		Mechanisms: []capability.Mechanism{
 			capability.ExecutableFrontend, capability.Rollout, capability.InputProjection,
-			capability.GuidanceProjection, capability.ThreadNaming, capability.ShellApproval,
+			capability.GuidanceProjection, capability.ThreadNaming, capability.ShellApproval, capability.Observation,
 		},
 	}
 	got := bindings.Reference()
@@ -55,6 +58,7 @@ func TestBindingsReference(t *testing.T) {
 		{name: "projection", bindings: Bindings[struct{}]{InputProjection: bindings.InputProjection}, want: module.BindingReference{Mechanisms: []capability.Mechanism{capability.InputProjection}}},
 		{name: "guidance", bindings: Bindings[struct{}]{Guidance: bindings.Guidance}, want: module.BindingReference{Mechanisms: []capability.Mechanism{capability.GuidanceProjection}}},
 		{name: "naming", bindings: Bindings[struct{}]{SessionNaming: bindings.SessionNaming}, want: module.BindingReference{Mechanisms: []capability.Mechanism{capability.ThreadNaming}}},
+		{name: "observation", bindings: Bindings[struct{}]{Observation: bindings.Observation}, want: module.BindingReference{Mechanisms: []capability.Mechanism{capability.Observation}}},
 		{name: "approval", bindings: Bindings[struct{}]{ShellApproval: bindings.ShellApproval}, want: module.BindingReference{Mechanisms: []capability.Mechanism{capability.ShellApproval}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -68,7 +72,7 @@ func TestBindingsReference(t *testing.T) {
 func TestBindingsRegister(t *testing.T) {
 	wantCalls := []capability.Mechanism{
 		capability.ExecutableFrontend, capability.ExecutableFrontend, capability.Rollout,
-		capability.InputProjection, capability.GuidanceProjection, capability.ThreadNaming, capability.ShellApproval,
+		capability.InputProjection, capability.GuidanceProjection, capability.ThreadNaming, capability.ShellApproval, capability.Observation,
 	}
 	for failAt := 0; failAt <= len(wantCalls); failAt++ {
 		name := "success"
@@ -106,6 +110,10 @@ func TestBindingsRegister(t *testing.T) {
 				SessionNaming: func(got *int) SessionNaming {
 					checkService(got, capability.ThreadNaming)
 					return SessionNaming{NewThread: func(string, bool) ThreadNaming { return nil }}
+				},
+				Observation: func(got *int) Observation {
+					checkService(got, capability.Observation)
+					return Observation{NewTranscript: func(*scope.Store) observation.Transcript { return nil }}
 				},
 				ShellApproval: func(got *int) ShellApproval {
 					checkService(got, capability.ShellApproval)
@@ -224,3 +232,5 @@ func (r *referenceRegistrar) ShellApproval(approval ShellApproval) error {
 	r.approval = approval
 	return r.record(capability.ShellApproval)
 }
+
+func (r *referenceRegistrar) Observation(Observation) error { return r.record(capability.Observation) }

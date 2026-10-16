@@ -85,6 +85,7 @@ func newAppServerTestUI() (*appServerUI, *appServerTestInput) {
 	w := new(appServerTestInput)
 	client := &appserver.Client{Input: w}
 	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, issues: testCriticalErrors(), history: testHistory(), client: client, view: newActivityAdapter(), requests: sessioncontrol.NewRequests[appServerRequest](appServerTestTransport{client, w}), Thread: "main"}
+	u.session.transcript = u.session.activity.Transcript(&u.session.state)
 	u.approvals.initGuards(testGuards())
 	u.view.Painter.FileLink = u.markdownFileExists
 	return u, w
@@ -343,6 +344,7 @@ func TestAppServerUINotificationBeforeResponseAndItems(t *testing.T) {
 	if u.Turn != "t" {
 		t.Fatal("child completion cleared main turn")
 	}
+	u.agents = newActivityAdapter() // Public-reasoning projection has both feed consumers.
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"main","turnId":"t","item":{"id":"r","type":"reasoning","text":"PRIVATE_REASONING"}}}`)
 	appServerTestMessage(t, u, `{"method":"item/reasoning/textDelta","params":{"threadId":"main","turnId":"t","itemId":"r","delta":"PRIVATE_REASONING"}}`)
 	var frame bytes.Buffer

@@ -18,6 +18,7 @@ import (
 
 	"github.com/yusing/mekugi/contracts/scope"
 
+	activitybinding "github.com/yusing/mekugi/modules/activity/codexbinding"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/yusing/mekugi/contracts/observation"
@@ -63,7 +64,8 @@ func (p *uiReplayPlayback) reset() {
 	// The real message/projector/render path, but no app-server process, router,
 	// replay store, filesystem observers, input submission, or notification sink.
 	client := &appserver.Client{Input: replayDiscard{io.Discard}}
-	u := &appServerUI{session: appServerSession{activity: p.activity}, ctx: p.ctx, client: client, view: newActivityAdapter(), agents: newActivityAdapter(), Thread: p.Source.Thread, status: "Replay", requests: sessioncontrol.NewRequests[appServerRequest](client), clock: func() time.Time { return p.At }, replay: p}
+	observations := activitybinding.Codex.Observation(p.activity)
+	u := &appServerUI{session: appServerSession{activity: p.activity, observations: &observations}, ctx: p.ctx, client: client, view: newActivityAdapter(), agents: newActivityAdapter(), Thread: p.Source.Thread, status: "Replay", requests: sessioncontrol.NewRequests[appServerRequest](client), clock: func() time.Time { return p.At }, replay: p}
 	u.view.Clock, u.agents.Clock = u.clock, u.clock
 	u.session.start(p.Source.Thread, p.Source.Cwd)
 	for id := range p.Source.Threads {
@@ -97,9 +99,12 @@ func (p *uiReplayPlayback) apply(e playback.Event) error {
 		entry.Seq = p.ui.session.next()
 		p.ui.applyActivity([]activityPaneEntry{entry}, nil)
 	case e.Kind == observation.ProviderStarted:
-		p.ui.applyActivity(p.ui.session.beginThinking(e.ThreadID, e.At), nil)
+		p.ui.applyActivity(p.ui.transcriptUpdates(p.ui.session.transcript.ProviderStarted(e.ThreadID, e.At), false), nil)
 	case e.Kind == observation.ProviderCompleted:
 	default:
+		if p.ui.replayTranscript(e.Event) {
+			return nil
+		}
 		return p.ui.observedEvent(string(e.Kind), replayPresentationEvent(e.Event))
 	}
 	return nil
@@ -137,12 +142,7 @@ func (p *uiReplayPlayback) seek(position time.Duration) error {
 }
 
 func (p *uiReplayPlayback) settleCompleted() {
-	for _, run := range p.ui.session.summaries {
-		if run.done != nil {
-			run.output.Flush()
-			run.dirty = true
-		}
-	}
+	p.ui.summaryStream.FinishCompleted()
 	for _, run := range p.ui.session.commands {
 		if run.done != nil {
 			run.output.Flush()

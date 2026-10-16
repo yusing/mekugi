@@ -16,7 +16,9 @@ import (
 
 	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 
+	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/contracts/scope"
+	"github.com/yusing/mekugi/modules/activity/transcript"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
@@ -28,6 +30,7 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/rollout"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -37,26 +40,20 @@ import (
 // session into the roster and Activity entries. Captured edits and previews
 // retain the shared router owners, as does cost.
 type appServerSession struct {
-	seq       uint64
-	paths     map[string]string // Thread → canonical agent path.
-	agents    []activityPaneAgent
-	reasoning map[[3]string]string    // Summary text by thread, turn, item.
-	thinking  map[[3]string]time.Time // Start of reasoning still streaming.
-	// Thread → thinking block shown from its provider request's start, before
-	// any reasoning item exists; the first reasoning item takes it over.
-	pendingThinking map[string]pendingThinking
-	messages        map[string]activityPaneEntry
-	finals          map[string]bool                    // The thread's current turn already sent its answer.
-	metadata        map[string]string                  // Child thread → pending metadata request ID; empty when settled.
-	commands        map[[3]string]*appServerCommandRun // Live commands by thread, turn, item.
-	summaries       map[[3]string]*appServerSummaryRun // Public summaries pacing through the same frame cadence.
-	activity        *activitymodel.Service
-	state           scope.Store
-	threadStates    map[string]*scope.Store
-	cwd             string
-	waits           map[[3]string][]waittargets.Target // Start-time targets by thread, turn, item.
-	waitStore       *mekugiReplayStore
-	waitContext     context.Context
+	seq          uint64
+	paths        map[string]string // Thread → canonical agent path.
+	agents       []activityPaneAgent
+	transcript   observation.Transcript
+	observations *binding.Observation
+	metadata     map[string]string                  // Child thread → pending metadata request ID; empty when settled.
+	commands     map[[3]string]*appServerCommandRun // Live commands by thread, turn, item.
+	activity     *activitymodel.Service
+	state        scope.Store
+	threadStates map[string]*scope.Store
+	cwd          string
+	waits        map[[3]string][]waittargets.Target // Start-time targets by thread, turn, item.
+	waitStore    *mekugiReplayStore
+	waitContext  context.Context
 
 	compactionRollout appServerThreadInfo // Host-selected Main rollout, without its history.
 }
@@ -126,6 +123,7 @@ type appServerTurn struct {
 }
 
 type appServerEvent struct {
+	text   observation.TextEvent `json:"-"`
 	Status struct {
 		Type string `json:"type"`
 	} `json:"status"`
@@ -150,14 +148,12 @@ func (s *appServerSession) start(thread, cwd string) {
 	s.paths = map[string]string{thread: "/root"}
 	s.threadStates = nil
 	s.agents = []activityPaneAgent{{thread: thread, Name: "/root", Role: "main"}}
-	s.reasoning = make(map[[3]string]string)
-	s.thinking = make(map[[3]string]time.Time)
-	s.pendingThinking = make(map[string]pendingThinking)
-	s.messages = make(map[string]activityPaneEntry)
-	s.finals = make(map[string]bool)
+	s.transcript = new(transcript.State)
+	if s.observations != nil {
+		s.transcript = s.observations.NewTranscript(&s.state)
+	}
 	s.metadata = make(map[string]string)
 	s.commands = make(map[[3]string]*appServerCommandRun)
-	s.summaries = make(map[[3]string]*appServerSummaryRun)
 	s.waits = make(map[[3]string][]waittargets.Target)
 	s.waitStore, s.waitContext = nil, nil
 	s.cwd = cwd
@@ -321,8 +317,7 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 			agent.Started = now
 		}
 		agent.Turns++
-		s.finals[p.ThreadID] = false
-		delete(s.messages, p.ThreadID)
+		s.transcript.TurnStarted(p.ThreadID)
 	case "turn/completed":
 		u.endTurnPreviews(p.ThreadID, p.Turn.ID)
 		entries = append(entries, u.endTurnWaits(p.ThreadID, p.Turn.ID, now)...)
@@ -331,22 +326,13 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 				delete(s.waits, key)
 			}
 		}
-		entries = append(entries, s.endThinking(p.ThreadID, now)...)
+		entries = append(entries, u.transcriptUpdates(s.transcript.TurnCompleted(p.ThreadID, p.Turn.ID, p.Turn.Status, now), true)...)
 		agent := s.agent(s.path(p.ThreadID))
 		agent.WorkTimer.update(false, now)
 		agent.Responding, agent.LastResponse = false, now
 		agent.Final = p.Turn.Status == "completed"
 		u.observeCost(p.ThreadID, agent)
-		// A child whose provider omits the answer phase still finishes with
-		// its last message; Main shows it as the child's answer.
-		if last, ok := s.messages[p.ThreadID]; ok && !main && !s.finals[p.ThreadID] && p.Turn.Status == "completed" && last.native.turn == p.Turn.ID {
-			last.Seq, last.Kind = s.next(), "final"
-			native := *last.native
-			native.phase = "item/completed"
-			last.native = &native
-			entries = append(entries, last)
-		}
-		delete(s.messages, p.ThreadID)
+
 	case "item/commandExecution/outputDelta":
 		// Bounded as it arrives; the next frame shows it, so bursts cost one render.
 		if run := s.commands[[3]string{p.ThreadID, p.TurnID, p.ItemID}]; run != nil && run.done == nil {
@@ -357,24 +343,8 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 			run.dirty = true
 		}
 	case "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded":
-		key := [3]string{p.ThreadID, p.TurnID, p.ItemID}
-		if _, seen := s.reasoning[key]; seen {
-			if _, streaming := s.thinking[key]; !streaming {
-				break // Late summary updates cannot reopen a completed item.
-			}
-		}
-		text := s.reasoning[key]
-		if method == "item/reasoning/summaryPartAdded" {
-			if text != "" {
-				s.reasoning[key] = text + "\n\n"
-			}
-			break
-		}
-		text += p.Delta
-		s.reasoning[key] = text
-		native := &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: p.ItemID, phase: "summary", live: true}
-		s.startThinking(key, native, now)
-		entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: s.path(p.ThreadID), Kind: "reasoning", Text: text, CallID: p.ItemID, Observed: now, native: native})
+		entries = append(entries, u.transcriptUpdates(u.session.transcript.Observe(p.text, main), true)...)
+
 	case "item/started", "item/completed", "item/agentMessage/delta":
 		item := p.Item
 		id := cmp.Or(p.ItemID, item.ID)
@@ -382,13 +352,11 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 		native := &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: id, phase: method, live: true, command: item.Command, status: item.Status, duration: appServerDuration(item), workdir: appServerCommandWorkdir(item, s.cwd)}
 		agent := s.path(p.ThreadID)
 		if method != "item/completed" && item.Type != "reasoning" && item.Type != "userMessage" {
-			// Other output started first: that request streamed no reasoning.
-			// A completion can be the previous request's command, notified late.
-			// Applied now: the item's own handling may return without applying.
-			if dropped := s.dropThinking(p.ThreadID); len(dropped) != 0 {
+			if dropped := u.transcriptUpdates(s.transcript.OtherItemStarted(p.ThreadID), false); len(dropped) != 0 {
 				u.applyActivity(dropped, nil)
 			}
 		}
+
 		if text, wait, handled := appServerProgress(item, method); handled {
 			if text != "" {
 				native.wait = wait
@@ -410,38 +378,8 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 				}
 			}
 		case "reasoning":
-			key := [3]string{p.ThreadID, p.TurnID, id}
-			text := strings.Join(item.Summary, "\n\n")
-			if method == "item/started" {
-				s.startThinking(key, native, now)
-			}
-			if method == "item/completed" {
-				if pending, ok := s.pendingThinking[p.ThreadID]; ok && s.thinking[key].IsZero() && strings.TrimSpace(text) != "" {
-					// A summary delivered only at completion still takes over the block.
-					delete(s.pendingThinking, p.ThreadID)
-					s.thinking[key], native.replaces = pending.at, pending.item
-				}
-				if started, ok := s.thinking[key]; ok {
-					delete(s.thinking, key)
-					native.thought = now.Sub(started)
-					// A route whose history cannot replay it completes the
-					// streamed text without a summary.
-					if strings.TrimSpace(text) == "" {
-						text = s.reasoning[key]
-					}
-				}
-			}
-			if method == "item/completed" && strings.TrimSpace(text) == "" {
-				// A raw-only item had no public summary. Remove its waiting
-				// header rather than retaining an empty Thinking or Thought.
-				native.phase = "discarded"
-			}
-			// Empty starts still establish item identity for late-delta rejection.
-			// Their absence from the visible transcript is independent of that state.
-			s.reasoning[key] = text
-			if method == "item/completed" || strings.TrimSpace(text) != "" || native.replaces != "" {
-				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "reasoning", Text: text, CallID: id, Observed: now, native: native})
-			}
+			entries = append(entries, u.transcriptUpdates(u.session.transcript.Observe(p.text, main), true)...)
+
 		case "commandExecution", "webSearch":
 			if item.Type == "commandExecution" && u.proxy != nil {
 				if ms, known := u.proxy.nativeTrace.CommandTimeout(p.ThreadID, id); known {
@@ -512,24 +450,11 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 				entries = append(entries, s.collab(item, id, now)...)
 			}
 		case "agentMessage":
-			if item.Delivery == "async" && len(item.Questions) > 0 {
-				return !main, nil
-			}
 			if main {
-				return false, nil // Main's messages belong to the transcript handler.
+				return false, nil
 			}
-			if method != "item/completed" || strings.TrimSpace(item.Text) == "" {
-				return true, nil
-			}
-			native.phase = "message" // A later answer promotion may replace it.
-			entry := activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "text", Text: item.Text, Observed: now, native: native}
-			if item.Phase == "final_answer" || item.Phase == "finalAnswer" {
-				entry.Kind = "final"
-				native.phase = "item/completed"
-				s.finals[p.ThreadID] = true
-			}
-			s.messages[p.ThreadID] = entry
-			entries = append(entries, entry)
+			entries = append(entries, u.transcriptUpdates(u.session.transcript.Observe(p.text, false), true)...)
+
 		default:
 			if main {
 				return false, nil // Main's messages belong to the transcript handler.
@@ -537,7 +462,7 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 			return true, nil
 		}
 	}
-	u.applyActivity(u.queueSummaries(entries), slices.Clone(s.agents))
+	u.applyActivity(entries, slices.Clone(s.agents))
 	// Main's turn lifecycle also drives the composer state.
 	return !main || !strings.HasPrefix(method, "turn/"), nil
 }
@@ -562,78 +487,6 @@ func (s *appServerSession) commandDone(entry activityPaneEntry, item appServerIt
 		done = append(done, exit)
 	}
 	return done
-}
-
-type pendingThinking struct {
-	item string // Placeholder item ID, never a host item.
-	at   time.Time
-}
-
-// beginThinking shows a thinking block from a provider request's start, as
-// grok-build does, so the wait for the first reasoning delta is not silent.
-// Reasoning still streaming for the thread keeps its own block.
-func (s *appServerSession) beginThinking(thread string, at time.Time) []activityPaneEntry {
-	if s.pendingThinking == nil {
-		return nil
-	}
-	for key := range s.thinking {
-		if key[0] == thread {
-			return nil
-		}
-	}
-	entries := s.dropThinking(thread)
-	item := "thinking:" + strconv.FormatUint(s.next(), 10)
-	s.pendingThinking[thread] = pendingThinking{item: item, at: at}
-	return append(entries, activityPaneEntry{Seq: s.next(), Agent: s.path(thread), Kind: "reasoning", CallID: item, Observed: at,
-		native: &liveActivityNativeItem{thread: thread, item: item, phase: "summary", live: true}})
-}
-
-// dropThinking removes a request's thinking block no reasoning took over,
-// as grok-build removes an empty block rather than showing "Thought".
-func (s *appServerSession) dropThinking(thread string) []activityPaneEntry {
-	pending, ok := s.pendingThinking[thread]
-	if !ok {
-		return nil
-	}
-	delete(s.pendingThinking, thread)
-	return []activityPaneEntry{{Seq: s.next(), Agent: s.path(thread), Kind: "reasoning", CallID: pending.item,
-		native: &liveActivityNativeItem{thread: thread, item: pending.item, phase: "discarded"}}}
-}
-
-// startThinking tracks the item start, falling back to the first public summary
-// when no start was observed, and takes over the request's pending block at most once.
-func (s *appServerSession) startThinking(key [3]string, native *liveActivityNativeItem, now time.Time) {
-	if _, ok := s.thinking[key]; ok {
-		return
-	}
-	s.thinking[key] = now
-	if pending, ok := s.pendingThinking[key[0]]; ok {
-		delete(s.pendingThinking, key[0])
-		s.thinking[key], native.replaces = pending.at, pending.item
-	}
-}
-
-// endThinking completes reasoning a finished turn never completed, such as
-// after an interrupt, so it stops presenting as streaming.
-func (s *appServerSession) endThinking(thread string, now time.Time) []activityPaneEntry {
-	entries := s.dropThinking(thread)
-	var keys [][3]string
-	for key := range s.thinking {
-		if key[0] == thread {
-			keys = append(keys, key)
-		}
-	}
-	slices.SortFunc(keys, func(a, b [3]string) int { return cmp.Compare(a[1]+"\x00"+a[2], b[1]+"\x00"+b[2]) })
-	for _, key := range keys {
-		text, phase := s.reasoning[key], "item/completed"
-		if strings.TrimSpace(text) == "" {
-			phase = "discarded"
-		}
-		entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: s.path(thread), Kind: "reasoning", Text: text, CallID: key[2], Observed: now,
-			native: &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2], phase: phase, thought: now.Sub(s.thinking[key]), live: true}})
-		delete(s.thinking, key)
-	}
-	return entries
 }
 
 // flushStreamOutput rolls public summaries and re-sends each live command whose output changed since

@@ -214,5 +214,5 @@ func testRunSession(service *history.Service, recovered *recovery.Service, ctx c
 		return err
 	}
 	defer captured.Stop(context.Background())
-	return RunSession(new(conversationmodel.Service), new(previewmodel.Service), new(activitymodel.Service), service, testPreferences(), recovered, &segmentservice.Service{Reports: testReports()}, captured, usage, new(evidence.Service), new(transportcapture.Service), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), ctx, commands, testInputProjections(), testGuidance(), testNaming(), testGuards(), options, issues, ready, artifacts)
+	return RunSession(new(conversationmodel.Service), new(previewmodel.Service), new(activitymodel.Service), service, testPreferences(), recovered, &segmentservice.Service{Reports: testReports()}, captured, usage, new(evidence.Service), new(transportcapture.Service), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), ctx, commands, testInputProjections(), testGuidance(), testNaming(), nil, testGuards(), options, issues, ready, artifacts)
 }

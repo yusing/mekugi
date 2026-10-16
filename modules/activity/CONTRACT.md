@@ -13,8 +13,9 @@ dialog interaction. `presentation` owns the retained
 feed records, roster derivation, neutral values and canonical group membership;
 `terminalview` owns transcript and roster state, disclosure, pacing, geometry,
 painting and navigation targets. Application adapters supply typed observations,
-host reconciliation and detached displayed-thread admission without retaining a
-second transcript. Display intents carry their admission version; detail and edit
+host reconciliation and detached displayed-thread admission; the
+[module specification](SPEC.md#transcript-observations) owns transcript interpretation.
+Display intents carry their admission version; detail and edit
 targets preserve source identity, and skill intents name their agent. Application
 owners resolve host identities and retain output handles. Group members retain
 entry, operation and reasoning-section identity through read merges, reasoning compaction, batch

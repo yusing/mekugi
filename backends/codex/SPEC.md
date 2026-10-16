@@ -63,6 +63,19 @@ closes input and allows Codex three seconds to drain before forced termination;
 the caller receives shutdown and process errors. A process and live RPC handle
 are never restored from retained evidence.
 
+## Transcript observations
+
+The observation binding projects message and public-summary lifecycle facts into
+backend-neutral values that distinguish item completion, text deltas and
+summary-part boundaries. Values retain thread, turn and item identities and
+the supplied observation time, without an RPC handle or execution authority.
+Private reasoning is excluded. Original messages remain available unchanged for
+control correlation, question/approval handling and diagnostics.
+
+Live notifications, retained items and simulated playback share these values.
+The consuming owner decides historical admission and presentation; projection does
+not settle input, notify the desktop or issue host requests.
+
 ## Native shell hooks
 
 The backend owns the native PreToolUse schema, command-hook registration and

@@ -20,7 +20,7 @@ func TestConversationJoinsConsecutiveUserMessagesInTurn(t *testing.T) {
 	v := newActivityAdapter()
 	v.Conversation = true
 	user := func(turn, id, text string) {
-		v.applyAppServerItem(true, "", "main", "main", turn, id, "item/completed", "", appServerItem{
+		applyTranscriptFixture(v, true, "", "main", "main", turn, id, "item/completed", "", appServerItem{
 			Type: "userMessage", Content: []byte(fmt.Sprintf(`[{"type":"text","text":%q}]`, text)),
 		})
 	}
@@ -55,19 +55,19 @@ func TestConversationJoinsConsecutiveUserMessagesInTurn(t *testing.T) {
 
 func TestLiveActivityNativeItemsShareStateAndRendering(t *testing.T) {
 	v := newActivityAdapter()
-	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/agentMessage/delta", "partial", appServerItem{})
+	applyTranscriptFixture(v, true, "", "root", "root", "turn", "answer", "item/agentMessage/delta", "partial", appServerItem{})
 	first := v.Entries[0].Source.Seq
-	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/started", "", appServerItem{Type: "agentMessage"})
+	applyTranscriptFixture(v, true, "", "root", "root", "turn", "answer", "item/started", "", appServerItem{Type: "agentMessage"})
 	if v.Entries[0].Source.Text != "partial" {
 		t.Fatal("late start erased streamed activity")
 	}
-	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "complete"})
-	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/agentMessage/delta", "late", appServerItem{})
+	applyTranscriptFixture(v, true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "complete"})
+	applyTranscriptFixture(v, true, "", "root", "root", "turn", "answer", "item/agentMessage/delta", "late", appServerItem{})
 	if len(v.Entries) != 1 || v.Entries[0].Source.Text != "complete" || v.Entries[0].Source.Seq != first || v.blocks(0)[0].Body != "complete" {
 		t.Fatal("activity identity/update diverged")
 	}
-	v.applyAppServerItem(true, "", "root", "child", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "child"})
-	v.applyAppServerItem(true, "", "root", "root", "turn", "cmd", "item/completed", "", appServerItem{Type: "commandExecution", Command: "printf ok", Status: "completed"})
+	applyTranscriptFixture(v, true, "", "root", "child", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "child"})
+	applyTranscriptFixture(v, true, "", "root", "root", "turn", "cmd", "item/completed", "", appServerItem{Type: "commandExecution", Command: "printf ok", Status: "completed"})
 	if len(v.Entries) != 3 || v.Entries[1].Source.Agent != "Thread child" || v.blocks(2)[0].Verb != "Run" || v.blocks(2)[0].Code != "printf ok" {
 		t.Fatal("native items did not enter shared activity blocks")
 	}
@@ -90,7 +90,7 @@ func TestLiveActivityMainQuestionBranchLink(t *testing.T) {
 	question := "The original request"
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "You", Kind: "text", Text: question, Observed: time.Now(), native: &liveActivityNativeItem{thread: "root", turn: "turn", item: "prompt"}}}})
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 2, Agent: "Main", Kind: "text", Text: strings.Repeat("Working through the request.\n", 20)}}})
-	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "The answer"})
+	applyTranscriptFixture(v, true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "The answer"})
 	if err := u.paint(&bytes.Buffer{}, 120, 24); err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestLiveActivityMainQuestionBranchLink(t *testing.T) {
 	// Editing an answer after the same prompt is submitted again must retain
 	// its original target, not jump to the newer identical question.
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: v.LastSeq + 1, Agent: "You", Kind: "text", Text: question}}})
-	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Edited answer"})
+	applyTranscriptFixture(v, true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Edited answer"})
 	for _, record := range v.Entries {
 		if record.Source.native != nil && record.Source.native.item == "answer" && record.Source.native.question != 1 {
 			t.Fatal("answer edit changed its original question link")
@@ -156,11 +156,11 @@ func TestAppServerMainRosterSummary(t *testing.T) {
 	if got, _ := u.agents.testCurrent(root, time.Now()); ansi.Strip(got) != "Working" {
 		t.Fatalf("Main status missing: %q", got)
 	}
-	u.view.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/agentMessage/delta", "Checking the roster", appServerItem{})
+	applyTranscriptFixture(u.view, true, "", "main", "main", "turn", "answer", "item/agentMessage/delta", "Checking the roster", appServerItem{})
 	if got, _ := u.agents.testCurrent(root, time.Now()); ansi.Strip(got) != "Checking the roster" {
 		t.Fatalf("Main streaming summary missing: %q", got)
 	}
-	u.view.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Roster fixed"})
+	applyTranscriptFixture(u.view, true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Roster fixed"})
 	if got, _ := u.agents.testCurrent(root, time.Now()); ansi.Strip(got) != "Roster fixed" {
 		t.Fatalf("Main completed summary stale: %q", got)
 	}
@@ -327,9 +327,9 @@ func TestLiveActivityQuestionLinksKeepIndividualPrompts(t *testing.T) {
 		{Seq: 1, Agent: "You", Kind: "text", Text: strings.Repeat("Long original prompt\n", 30)},
 		{Seq: 2, Agent: "You", Kind: "text", Text: "Steering prompt", native: &liveActivityNativeItem{thread: "root", turn: "turn", item: "steer"}},
 	}})
-	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/agentMessage/delta", "Live answer", appServerItem{})
+	applyTranscriptFixture(v, true, "", "root", "root", "turn", "answer", "item/agentMessage/delta", "Live answer", appServerItem{})
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: v.LastSeq + 1, Agent: "You", Kind: "text", Text: "Steering prompt"}}})
-	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Final answer body"})
+	applyTranscriptFixture(v, true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Final answer body"})
 	v.Render(80, 12, time.Now())
 	if v.QuestionRows[1] == v.QuestionRows[2] {
 		t.Fatal("consecutive user entries share a navigation target")
@@ -363,7 +363,7 @@ func TestLiveActivityQuestionLinksKeepIndividualPrompts(t *testing.T) {
 func TestLiveActivityConversationKeepsFullTextAndViewport(t *testing.T) {
 	v := newActivityAdapter()
 	text := strings.Repeat("visible line\n", 30) + "END_OF_ANSWER"
-	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: text})
+	applyTranscriptFixture(v, true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: text})
 	compact := v.RenderFeed(80, 9)
 	v.Conversation = true
 	full := v.RenderFeed(80, 9)
@@ -380,7 +380,7 @@ func TestLiveActivityConversationKeepsFullTextAndViewport(t *testing.T) {
 		t.Fatal("Main did not pause the activity viewport")
 	}
 	offset := v.Offset
-	v.applyAppServerItem(true, "", "root", "root", "turn", "next", "item/completed", "", appServerItem{Type: "agentMessage", Text: "new answer"})
+	applyTranscriptFixture(v, true, "", "root", "root", "turn", "next", "item/completed", "", appServerItem{Type: "agentMessage", Text: "new answer"})
 	if err := u.paint(&bytes.Buffer{}, 80, 15); err != nil {
 		t.Fatal(err)
 	}
@@ -391,7 +391,7 @@ func TestLiveActivityConversationKeepsFullTextAndViewport(t *testing.T) {
 
 func TestLiveActivityMainShortTerminalKeepsNewestLine(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.view.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "earlier paragraph\n\nLATEST_VISIBLE_LINE"})
+	applyTranscriptFixture(u.view, true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "earlier paragraph\n\nLATEST_VISIBLE_LINE"})
 	var frame bytes.Buffer
 	if err := u.paint(&frame, 80, 6); err != nil {
 		t.Fatal(err)
@@ -405,7 +405,7 @@ func TestAppServerMainDoesNotPinItemFirstRow(t *testing.T) {
 	v := newActivityAdapter()
 	v.Conversation, v.FeedOnly = true, true
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "You", Kind: "text", Text: "Question?", Observed: time.Now()}}})
-	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: strings.Repeat("answer row\n\n", 20)})
+	applyTranscriptFixture(v, true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: strings.Repeat("answer row\n\n", 20)})
 	v.Render(60, 60, time.Now())
 	v.Offset, v.Following = 6, false
 	lines := v.Render(60, 8, time.Now())

@@ -38,7 +38,7 @@ func TestNativeSentMessagesBecomeExcerptsOutOfView(t *testing.T) {
 		t.Fatalf("messages in view were shortened:\n%s", main)
 	}
 	for i := range 30 {
-		u.view.applyAppServerItem(true, "", "main", "main", u.Turn, fmt.Sprint("note-", i), "item/completed", "", appServerItem{Type: "agentMessage", Text: fmt.Sprint("Main note ", i, ".")})
+		applyTranscriptFixture(u.view, true, "", "main", "main", u.Turn, fmt.Sprint("note-", i), "item/completed", "", appServerItem{Type: "agentMessage", Text: fmt.Sprint("Main note ", i, ".")})
 	}
 	paint() // Scrolls both messages above the viewport.
 	main := paint()

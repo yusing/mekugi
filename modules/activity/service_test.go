@@ -15,7 +15,7 @@ func TestServiceAttachmentOutputs(t *testing.T) {
 	if activity.Module.Lifetime != module.AttachedSession {
 		t.Fatal("activity must follow the attached session lifetime")
 	}
-	service := moduletest.New(t, activity.Module, activity.Deps{}, module.Slots{}, nil)
+	service := moduletest.New(t, activity.Module, activity.Deps{}, module.Slots{}, new(moduletest.Scripted))
 	var mainAttachment, separateAttachment scope.Store
 	mainOutputs := service.Outputs(&mainAttachment)
 	mainOutput := mainOutputs.New()

@@ -79,8 +79,10 @@ callbacks. No module goroutine, live timer or store lease is started or restored
 ## Codex connection
 
 The required Rollout binding supplies decoded observations and source-identity
-verification. An unbound or incomplete source fails explicitly. Reads never start
-Codex or convert observations back into RPC JSON for presentation.
+verification. An unbound or incomplete source fails explicitly. Replayed facts
+drive read-only presentation without starting Codex, settling live input or issuing
+control requests. Messages and public reasoning share
+[Activity's interpretation](../activity/SPEC.md#transcript-observations).
 
 ## Records
 

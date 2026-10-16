@@ -27,7 +27,7 @@ func (s *Scripted) Capability(mechanism capability.Mechanism) capability.Result 
 	if result, ok := s.Capabilities[mechanism]; ok {
 		return result
 	}
-	if mechanism == capability.Rollout || mechanism == capability.ExecutableFrontend || mechanism == capability.InputProjection || mechanism == capability.GuidanceProjection || mechanism == capability.ThreadNaming || mechanism == capability.ShellApproval {
+	if mechanism == capability.Observation || mechanism == capability.Rollout || mechanism == capability.ExecutableFrontend || mechanism == capability.InputProjection || mechanism == capability.GuidanceProjection || mechanism == capability.ThreadNaming || mechanism == capability.ShellApproval {
 		return capability.Result{State: capability.Available, Reason: "scripted binding registration"}
 	}
 	return capability.Result{State: capability.Unknown, Reason: "not scripted"}

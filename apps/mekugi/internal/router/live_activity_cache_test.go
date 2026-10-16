@@ -133,11 +133,11 @@ func TestLiveActivityCacheMainUpdateRemainsFresh(t *testing.T) {
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 	v.Clock = func() time.Time { return now }
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "You", Kind: "text", Text: "Explain the result", Observed: now}}})
-	v.applyAppServerItem(true, "", "main", "main", "turn", "reply", "item/agentMessage/delta", "Initial explanation", appServerItem{})
+	applyTranscriptFixture(v, true, "", "main", "main", "turn", "reply", "item/agentMessage/delta", "Initial explanation", appServerItem{})
 	v.RenderFeed(90, 24)
 	stableKey, stable := liveActivityCacheRun(t, v, 1)
 	changedKey, _ := liveActivityCacheRun(t, v, 2)
-	v.applyAppServerItem(true, "", "main", "main", "turn", "reply", "item/agentMessage/delta", " with a continuation", appServerItem{})
+	applyTranscriptFixture(v, true, "", "main", "main", "turn", "reply", "item/agentMessage/delta", " with a continuation", appServerItem{})
 	if _, present := v.Runs[changedKey]; present {
 		t.Fatal("Main update retained its stale run")
 	}

@@ -10,6 +10,7 @@ import (
 )
 
 type Registrar interface {
+	Observation(Observation) error
 	Rollout(func(RolloutSource) error) error
 	Frontend(command.Spec) error
 	InputProjection(InputProjection) error
@@ -25,14 +26,18 @@ type Binder interface {
 
 // Registry validates and retains composition-ordered Codex connections.
 type Registry struct {
-	guards      []ShellApproval
-	commands    []command.Spec
-	projections []InputProjection
-	guidance    *Guidance
-	naming      *SessionNaming
+	observations *Observation
+	guards       []ShellApproval
+	commands     []command.Spec
+	projections  []InputProjection
+	guidance     *Guidance
+	naming       *SessionNaming
 }
 
 func (r *Registry) Capability(mechanism capability.Mechanism) capability.Result {
+	if mechanism == capability.Observation {
+		return capability.Result{State: capability.Available, Reason: "public transcript and reasoning observations"}
+	}
 	if mechanism == capability.Rollout {
 		return capability.Result{State: capability.Available, Reason: "bounded offline rollout reader"}
 	}

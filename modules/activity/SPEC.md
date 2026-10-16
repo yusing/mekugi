@@ -108,6 +108,20 @@ and shutdown retire it without blocking input. Pending or failed reads preserve 
 original output evidence. Offline replay interprets retained output without starting
 Git or inheriting live enrichment caches. Rendering and disclosure remain terminal-owned.
 
+### Transcript observations
+
+Main and child messages and public reasoning share one interpretation across live
+observations, restored history and simulated replay. The application supplies
+[Conversation's](../conversation/SPEC.md) user-text, attachment and question-reply
+interpretation and retains input settlement. Activity correlates transcript facts
+within the attachment, without keeping another transcript.
+
+Historical projection preserves item identity and order without replacing live
+state or promoting older-page commentary. The [presentation contract](CONTRACT.md#authored-content)
+owns child-answer selection, public-summary disclosure and terminal pacing;
+[replay](../sessionreplay/SPEC.md#recorded-clock-and-synthetic-streaming) owns seek
+and reset behavior.
+
 ### Edit evidence
 
 Statically scoped `sed -i`, `cat` redirections, `rm`, `mv`, and supported Python or
@@ -180,9 +194,11 @@ consumer-owned.
 Activity owns immutable start-time wait-target snapshots and their retained codec.
 The application binds proven workspace, caller, turn and item identity;
 [session history](../sessionhistory/SPEC.md) supplies publication, ordinary retention
-and active leases. Activity registers no Codex mechanism. Its adapter supplies
-original typed observations; other restored observations come from host history
-and command-segment records.
+and active leases. The Codex observation binding supplies typed transcript and
+public-reasoning facts. Application adapters retain host admission and enrich
+those facts without changing original control or diagnostic messages. Execution,
+edit and hook observations retain their existing application adapters; restored
+evidence also comes from host history and command-segment records.
 
 Explicit wait targets and reported states remain authoritative. When receivers
 are absent at start, the application snapshots currently running descendants and
