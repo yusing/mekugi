@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/inference"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/providers/openai"
 )
@@ -28,7 +30,7 @@ type cacheAffinityE2ETransport struct {
 	delegate http.RoundTripper
 
 	mu              sync.Mutex
-	usages          []tokenCounts
+	usages          []inference.Usage
 	promptCacheKeys []string
 	headers         []http.Header
 }
@@ -72,20 +74,20 @@ func (t *cacheAffinityE2ETransport) RoundTrip(request *http.Request) (*http.Resp
 }
 
 func (t *cacheAffinityE2ETransport) recordResponse(body []byte) {
-	var usage tokenCounts
+	var usage inference.Usage
 	var found bool
 	for _, line := range strings.Split(string(body), "\n") {
 		payload, ok := strings.CutPrefix(line, "data:")
 		if !ok {
 			continue
 		}
-		if counts, ok := usageFromResponsePayload([]byte(strings.TrimSpace(payload)), true); ok {
+		if counts, ok := codexresponses.UsageFromPayload([]byte(strings.TrimSpace(payload)), true); ok {
 			usage = counts
 			found = true
 		}
 	}
 	if !found {
-		if counts, ok := usageFromResponsePayload(body, false); ok {
+		if counts, ok := codexresponses.UsageFromPayload(body, false); ok {
 			usage = counts
 			found = true
 		}
@@ -97,10 +99,10 @@ func (t *cacheAffinityE2ETransport) recordResponse(body []byte) {
 	}
 }
 
-func (t *cacheAffinityE2ETransport) snapshot() ([]tokenCounts, []string, []http.Header) {
+func (t *cacheAffinityE2ETransport) snapshot() ([]inference.Usage, []string, []http.Header) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return append([]tokenCounts(nil), t.usages...),
+	return append([]inference.Usage(nil), t.usages...),
 		append([]string(nil), t.promptCacheKeys...),
 		append([]http.Header(nil), t.headers...)
 }

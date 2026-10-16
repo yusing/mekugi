@@ -1,4 +1,4 @@
-package router
+package accounting
 
 import (
 	"context"
@@ -10,15 +10,18 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/contracts/inference"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 // Hold the actual managed-store lock, not a usage-specific test seam. Release
 // runs before usage-owner cleanup even when a responsiveness assertion fails.
-func holdUsageStoreLock(t *testing.T, store *mekugiReplayStore) func() {
+func holdUsageStoreLock(t *testing.T, store *usageTestStore) func() {
 	t.Helper()
 	locked, release, done := make(chan struct{}), make(chan struct{}), make(chan error, 1)
 	go func() {
-		done <- store.locked(context.Background(), func(store *mekugiReplayStore) error {
+		done <- store.publication.Transaction(context.Background(), nil, func(_ *history.Transaction) error {
 			close(locked)
 			<-release
 			return nil
@@ -63,7 +66,7 @@ func requireUsageOperationPrompt(t *testing.T, operation func()) {
 	}
 }
 
-func flushUsageForTest(t *testing.T, usage *threadUsage) {
+func flushUsageForTest(t *testing.T, usage *Service) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
@@ -75,28 +78,28 @@ func flushUsageForTest(t *testing.T, usage *threadUsage) {
 func TestThreadUsageAsyncConsumersIgnoreStoreContention(t *testing.T) {
 	directory := t.TempDir()
 	store := usageStoreFixture(t, directory)
-	seed := storedUsageFixture(store)
-	seed.markNew("retained")
-	seed.observation("retained", "retained", "gpt-6-sol", "").observe(tokenCounts{InputTokens: 10, UncachedInputTokens: 10, OutputTokens: 1})
-	seed.close()
+	seed := storedUsageFixture(t, store)
+	seed.MarkNew("retained")
+	seed.Observation("retained", "retained", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 10, UncachedInputTokens: 10, OutputTokens: 1})
+	seed.Close()
 
-	u := storedUsageFixture(store)
-	t.Cleanup(u.close)
+	u := storedUsageFixture(t, store)
+
 	var notices atomic.Int64
 	u.notice = func(string, error) { notices.Add(1) }
 	unlock := holdUsageStoreLock(t, store)
 	// An uncached retained identity must be readable even while another managed
 	// writer owns store.lock. Snapshot consumers also remain live.
-	requireUsageOperationPrompt(t, func() { u.restore("retained", true) })
-	requireUsageOperationPrompt(t, func() { u.snapshot("retained") })
+	requireUsageOperationPrompt(t, func() { u.Restore("retained", true) })
+	requireUsageOperationPrompt(t, func() { u.Snapshot("retained") })
 	requireStoredUsage(t, u, "retained", 10, 1, 1, .00003)
-	u.markNew("live")
+	u.MarkNew("live")
 	requireUsageOperationPrompt(t, func() {
-		u.observation("live", "live", "gpt-6-sol", "").observe(tokenCounts{InputTokens: 20, UncachedInputTokens: 20, OutputTokens: 2})
+		u.Observation("live", "live", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 20, UncachedInputTokens: 20, OutputTokens: 2})
 	})
-	requireUsageOperationPrompt(t, func() { u.snapshot("live") })
+	requireUsageOperationPrompt(t, func() { u.Snapshot("live") })
 	report := requireStoredUsage(t, u, "live", 20, 2, 1, .00006)
-	if report.priorUnknown {
+	if report.PriorUnknown {
 		t.Fatal("normal lock contention erased a proven new baseline")
 	}
 	if _, err := os.Stat(filepath.Join(store.directory, threadUsageName("live"))); !errors.Is(err, os.ErrNotExist) {
@@ -110,9 +113,9 @@ func TestThreadUsageAsyncConsumersIgnoreStoreContention(t *testing.T) {
 	if notices.Load() != 0 {
 		t.Fatalf("ordinary contention emitted %d failure notices", notices.Load())
 	}
-	u.close()
-	restarted := storedUsageFixture(usageStoreFixture(t, directory))
-	t.Cleanup(restarted.close)
+	u.Close()
+	restarted := storedUsageFixture(t, usageStoreFixture(t, directory))
+
 	requireStoredUsage(t, restarted, "live", 20, 2, 1, .00006)
 	requireStoredUsage(t, restarted, "retained", 10, 1, 1, .00003)
 }
@@ -120,10 +123,10 @@ func TestThreadUsageAsyncConsumersIgnoreStoreContention(t *testing.T) {
 func TestThreadUsageAsyncConcurrentOwnersPreservePricedDeltas(t *testing.T) {
 	directory := t.TempDir()
 	store := usageStoreFixture(t, directory)
-	owners := []*threadUsage{storedUsageFixture(store), storedUsageFixture(store)}
+	owners := []*Service{storedUsageFixture(t, store), storedUsageFixture(t, store)}
 	for _, owner := range owners {
-		t.Cleanup(owner.close)
-		owner.markNew("shared")
+
+		owner.MarkNew("shared")
 	}
 	unlock := holdUsageStoreLock(t, store)
 	var workers sync.WaitGroup
@@ -134,14 +137,14 @@ func TestThreadUsageAsyncConcurrentOwnersPreservePricedDeltas(t *testing.T) {
 				model, tier = "grok:grok-4.6", ""
 			}
 			for range 20 {
-				observation := owner.observation("shared", "shared", model, tier)
-				observation.reasoning = "high"
-				counts := tokenCounts{InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 10_000}
-				observation.observe(counts)
-				observation.observe(counts)
-				observation.finish()
+				observation := owner.Observation("shared", "shared", model, tier)
+				observation.Reasoning = "high"
+				counts := inference.Usage{InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 10_000}
+				observation.Observe(counts)
+				observation.Observe(counts)
+				observation.Finish()
 			}
-			owner.observation("shared", "shared", model, tier).finish()
+			owner.Observation("shared", "shared", model, tier).Finish()
 		})
 	}
 	requireUsageOperationPrompt(t, workers.Wait)
@@ -151,7 +154,7 @@ func TestThreadUsageAsyncConcurrentOwnersPreservePricedDeltas(t *testing.T) {
 			cost = 5.2
 		}
 		report := requireStoredUsage(t, owner, "shared", 2_000_000, 200_000, 21, cost)
-		if report.missingUsage != 1 {
+		if report.MissingUsage != 1 {
 			t.Fatalf("owner %d lost missing terminal usage: %+v", index, report)
 		}
 	}
@@ -160,12 +163,12 @@ func TestThreadUsageAsyncConcurrentOwnersPreservePricedDeltas(t *testing.T) {
 		flushUsageForTest(t, owner)
 		// A second drain must not replay the already-applied queued deltas.
 		flushUsageForTest(t, owner)
-		owner.close()
+		owner.Close()
 	}
-	restarted := storedUsageFixture(usageStoreFixture(t, directory))
-	t.Cleanup(restarted.close)
+	restarted := storedUsageFixture(t, usageStoreFixture(t, directory))
+
 	report := requireStoredUsage(t, restarted, "shared", 4_000_000, 400_000, 42, 17.2)
-	if report.missingUsage != 2 || !strings.Contains(report.model, "gpt-6-sol high [fast]") || !strings.Contains(report.model, "grok:grok-4.6 high") {
+	if report.MissingUsage != 2 || !strings.Contains(report.Model, "gpt-6-sol high [fast]") || !strings.Contains(report.Model, "grok:grok-4.6 high") {
 		t.Fatalf("coalescing lost response-specific labels or usage gaps: %+v", report)
 	}
 }
@@ -173,11 +176,11 @@ func TestThreadUsageAsyncConcurrentOwnersPreservePricedDeltas(t *testing.T) {
 func TestThreadUsageAsyncFlushCancellationOnlyCancelsWait(t *testing.T) {
 	directory := t.TempDir()
 	store := usageStoreFixture(t, directory)
-	u := storedUsageFixture(store)
-	t.Cleanup(u.close)
+	u := storedUsageFixture(t, store)
+
 	unlock := holdUsageStoreLock(t, store)
 	requireUsageOperationPrompt(t, func() {
-		u.observation("child", "child", "gpt-6-sol", "").observe(tokenCounts{InputTokens: 10, UncachedInputTokens: 10, OutputTokens: 1})
+		u.Observation("child", "child", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 10, UncachedInputTokens: 10, OutputTokens: 1})
 	})
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -200,28 +203,28 @@ func TestThreadUsageAsyncFlushCancellationOnlyCancelsWait(t *testing.T) {
 	// Neither the earlier pending delta nor subsequent accounting belongs to
 	// the cancelled caller's lifetime.
 	requireUsageOperationPrompt(t, func() {
-		u.observation("child", "child", "gpt-6-sol", "").observe(tokenCounts{InputTokens: 20, UncachedInputTokens: 20, OutputTokens: 2})
+		u.Observation("child", "child", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 20, UncachedInputTokens: 20, OutputTokens: 2})
 	})
 	requireStoredUsage(t, u, "child", 30, 3, 2, .00009)
 	unlock()
 	flushUsageForTest(t, u)
-	restarted := storedUsageFixture(usageStoreFixture(t, directory))
-	t.Cleanup(restarted.close)
+	restarted := storedUsageFixture(t, usageStoreFixture(t, directory))
+
 	requireStoredUsage(t, restarted, "child", 30, 3, 2, .00009)
 }
 
 func TestThreadUsageAsyncCloseDrainsBlockedWrites(t *testing.T) {
 	directory := t.TempDir()
 	store := usageStoreFixture(t, directory)
-	u := storedUsageFixture(store)
-	t.Cleanup(u.close)
+	u := storedUsageFixture(t, store)
+
 	unlock := holdUsageStoreLock(t, store)
 	requireUsageOperationPrompt(t, func() {
-		u.observation("child", "child", "gpt-6-sol", "").observe(tokenCounts{InputTokens: 10, UncachedInputTokens: 10, OutputTokens: 1})
+		u.Observation("child", "child", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 10, UncachedInputTokens: 10, OutputTokens: 1})
 	})
 	done := make(chan struct{})
 	go func() {
-		u.close()
+		u.Close()
 		close(done)
 	}()
 	select {
@@ -235,7 +238,7 @@ func TestThreadUsageAsyncCloseDrainsBlockedWrites(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("close did not drain after storage became available")
 	}
-	restarted := storedUsageFixture(usageStoreFixture(t, directory))
-	t.Cleanup(restarted.close)
+	restarted := storedUsageFixture(t, usageStoreFixture(t, directory))
+
 	requireStoredUsage(t, restarted, "child", 10, 1, 1, .00003)
 }

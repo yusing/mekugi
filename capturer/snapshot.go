@@ -7,21 +7,23 @@ import (
 	"net/http"
 	"slices"
 
+	"github.com/yusing/mekugi/contracts/inference"
+
 	"github.com/yusing/mekugi/libraries/persistence"
 )
 
 type usageMetrics struct {
-	OutputThroughput    OutputThroughput `json:"output_throughput,omitzero"`
-	CompleteAttempts    uint64           `json:"complete_attempts"`
-	IncompleteAttempts  uint64           `json:"incomplete_attempts"`
-	UnknownAttempts     uint64           `json:"unknown_attempts"`
-	MissingAttempts     uint64           `json:"missing_attempts"`
-	InputTokens         uint64           `json:"input_tokens"`
-	CachedInputTokens   uint64           `json:"cached_input_tokens"`
-	UncachedInputTokens uint64           `json:"uncached_input_tokens"`
-	OutputTokens        uint64           `json:"output_tokens"`
-	ReasoningTokens     uint64           `json:"reasoning_tokens"`
-	ProviderAttempts    uint64           `json:"provider_attempts"`
+	OutputThroughput    inference.OutputThroughput `json:"output_throughput,omitzero"`
+	CompleteAttempts    uint64                     `json:"complete_attempts"`
+	IncompleteAttempts  uint64                     `json:"incomplete_attempts"`
+	UnknownAttempts     uint64                     `json:"unknown_attempts"`
+	MissingAttempts     uint64                     `json:"missing_attempts"`
+	InputTokens         uint64                     `json:"input_tokens"`
+	CachedInputTokens   uint64                     `json:"cached_input_tokens"`
+	UncachedInputTokens uint64                     `json:"uncached_input_tokens"`
+	OutputTokens        uint64                     `json:"output_tokens"`
+	ReasoningTokens     uint64                     `json:"reasoning_tokens"`
+	ProviderAttempts    uint64                     `json:"provider_attempts"`
 }
 
 type requestTotals struct {

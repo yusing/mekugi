@@ -21,7 +21,7 @@ provider response or create model turns.
 There is no legacy response projection or inline activity fallback. Main activity
 comes from app-server.
 
-The roster consumes canonical [per-thread usage](usage.md), not a second accounting
+The roster consumes canonical [per-thread usage](../../modules/usage/SPEC.md), not a second accounting
 store. Its final edit total consumes the shared saved-review composition, not a sum
 of caller activity counters. Caller counters remain a per-agent cumulative
 presentation; they are not an outcome-accounting store. Presentation cannot

@@ -1,4 +1,6 @@
-package router
+package accounting
+
+// Source: internal/router/thread_usage_store.go@47bcdd8e retained priced totals.
 
 import (
 	"context"
@@ -11,6 +13,8 @@ import (
 	"slices"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/inference"
+
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
@@ -20,20 +24,20 @@ import (
 type threadUsageRecord struct {
 	Version                              int
 	Thread                               string
-	Counts                               tokenCounts
+	Counts                               inference.Usage
 	UncachedCost, CachedCost, OutputCost float64
 	CostKnown, Complete, PriorUnknown    bool
 	MissingUsage, Roundtrips             uint64
 	Models                               []string
-	RoundOutput                          providerRoundOutput
+	RoundOutput                          RoundOutput
 }
 
 func threadUsageName(thread string) string {
 	return fmt.Sprintf("usage-%x.json", sha256.Sum256([]byte(thread)))
 }
 
-func readThreadUsage(store *mekugiReplayStore, thread string) (*threadUsageTotal, error) {
-	data, err := history.ReadRecord(filepath.Join(store.directory, threadUsageName(thread)))
+func readThreadUsage(store *history.Store, thread string) (*threadUsageTotal, error) {
+	data, err := history.ReadRecord(filepath.Join(store.Directory(), threadUsageName(thread)))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
@@ -48,23 +52,30 @@ func readThreadUsage(store *mekugiReplayStore, thread string) (*threadUsageTotal
 		r.UncachedCost < 0 || r.CachedCost < 0 || r.OutputCost < 0 {
 		return nil, errors.New("invalid provider usage record")
 	}
-	return &threadUsageTotal{counts: r.Counts, cost: tokenCost{uncachedInput: r.UncachedCost, cachedInput: r.CachedCost, output: r.OutputCost, known: r.CostKnown},
+	return &threadUsageTotal{counts: r.Counts, cost: Cost{UncachedInput: r.UncachedCost, CachedInput: r.CachedCost, Output: r.OutputCost, Known: r.CostKnown},
 		complete: r.Complete, priorUnknown: r.PriorUnknown, missingUsage: r.MissingUsage, roundtrips: r.Roundtrips, models: r.Models, roundOutput: r.RoundOutput}, nil
 }
 
-func writeThreadUsage(store *mekugiReplayStore, thread string, total *threadUsageTotal) error {
+func writeThreadUsage(tx *history.Transaction, limits history.Limits, thread string, total *threadUsageTotal) error {
 	r := threadUsageRecord{Version: 1, Thread: thread, Counts: total.counts,
-		UncachedCost: total.cost.uncachedInput, CachedCost: total.cost.cachedInput, OutputCost: total.cost.output, CostKnown: total.cost.known,
+		UncachedCost: total.cost.UncachedInput, CachedCost: total.cost.CachedInput, OutputCost: total.cost.Output, CostKnown: total.cost.Known,
 		Complete: total.complete, PriorUnknown: total.priorUnknown, MissingUsage: total.missingUsage, Roundtrips: total.roundtrips, Models: total.models, RoundOutput: total.roundOutput}
 	data, err := json.Marshal(&r)
 	if err != nil {
 		return err
 	}
-	return store.writeManagedFile(threadUsageName(thread), "usage-pending-", data)
+	name := threadUsageName(thread)
+	if err := tx.Retain(thread, limits, name); err != nil {
+		return err
+	}
+	if err := tx.Admit(limits, name, int64(len(data))); err != nil {
+		return err
+	}
+	return tx.Write(name, "usage-pending-", data)
 }
 
 func newThreadUsageTotal() *threadUsageTotal {
-	return &threadUsageTotal{complete: true, cost: tokenCost{known: true}}
+	return &threadUsageTotal{complete: true, cost: Cost{Known: true}}
 }
 
 type threadUsageWrite struct {
@@ -72,7 +83,7 @@ type threadUsageWrite struct {
 	delta    *threadUsageTotal
 }
 
-func (u *threadUsage) storageFailure(thread string, err error) {
+func (u *Service) storageFailure(thread string, err error) {
 	if u.storageFailed == nil {
 		u.storageFailed = make(map[string]bool)
 	}
@@ -89,7 +100,7 @@ func (u *threadUsage) storageFailure(thread string, err error) {
 // Atomic publication makes a single record safe to read without store.lock.
 // Absence, including concurrent retirement, is an unknown prior window rather
 // than a new lifetime. Cache it so UI refreshes do no further disk I/O.
-func (u *threadUsage) loadLocked(thread string) {
+func (u *Service) loadLocked(thread string) {
 	if _, loaded := u.threads[thread]; loaded || u.store == nil || thread == "" {
 		return
 	}
@@ -157,7 +168,7 @@ func mergeThreadUsageTotal(total, delta *threadUsageTotal) {
 	total.cost.add(delta.cost)
 }
 
-func (u *threadUsage) updateLocked(thread string, delta *threadUsageTotal) {
+func (u *Service) updateLocked(thread string, delta *threadUsageTotal) {
 	u.loadLocked(thread)
 	total := u.threads[thread]
 	if total == nil {
@@ -184,23 +195,22 @@ func (u *threadUsage) updateLocked(thread string, delta *threadUsageTotal) {
 		u.pending[thread] = &threadUsageWrite{baseline: baseline, delta: delta}
 	}
 	if u.writerDone == nil {
-		ctx, cancel := context.WithCancel(context.Background())
-		u.writerCancel, u.writerDone = cancel, make(chan struct{})
-		go u.runWriter(ctx)
+		u.writerDone = make(chan struct{})
+		go u.runWriter(u.writerCtx)
 	}
 	if !u.writing {
 		u.changedLocked()
 	}
 }
 
-func (u *threadUsage) changedLocked() {
+func (u *Service) changedLocked() {
 	close(u.changed)
 	u.changed = make(chan struct{})
 }
 
 // flush waits for managed publication without holding the accounting mutex.
 // Canceling a waiter does not cancel or discard the writer's pending facts.
-func (u *threadUsage) flush(ctx context.Context) error {
+func (u *Service) flush(ctx context.Context) error {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	for len(u.pending) != 0 || u.writing {
@@ -217,7 +227,7 @@ func (u *threadUsage) flush(ctx context.Context) error {
 	return nil
 }
 
-func (u *threadUsage) runWriter(ctx context.Context) {
+func (u *Service) runWriter(ctx context.Context) {
 	defer close(u.writerDone)
 	// Collect bursts before taking the store lock. Pending state remains one delta
 	// per thread; flush and shutdown still wait for publication of all observations.
@@ -284,11 +294,10 @@ func (u *threadUsage) runWriter(ctx context.Context) {
 
 // Only this background writer waits on the publication lock. Normal contention
 // is not a storage failure and cannot stall provider delivery or roster reads.
-func (u *threadUsage) persist(ctx context.Context, thread string, write *threadUsageWrite) (*threadUsageTotal, error) {
-	store := *u.store
-	store.session = storageSessionIdentity{Thread: thread, Namespace: thread}
+func (u *Service) persist(ctx context.Context, thread string, write *threadUsageWrite) (*threadUsageTotal, error) {
+	store := u.store
 	var retained *threadUsageTotal
-	err := store.locked(ctx, func(store *mekugiReplayStore) error {
+	err := store.Transaction(ctx, u.writes, func(tx *history.Transaction) error {
 		var err error
 		retained, err = readThreadUsage(store, thread)
 		if err != nil {
@@ -300,7 +309,7 @@ func (u *threadUsage) persist(ctx context.Context, thread string, write *threadU
 			retained = &write.baseline
 		}
 		mergeThreadUsageTotal(retained, write.delta)
-		return writeThreadUsage(store, thread, retained)
+		return writeThreadUsage(tx, u.limits, thread, retained)
 	})
 	return retained, err
 }
@@ -308,7 +317,7 @@ func (u *threadUsage) persist(ctx context.Context, thread string, write *threadU
 // Only an observed native creation, not absent history or a new routing session,
 // proves a fresh lifetime baseline. Late evidence is deliberately conservative:
 // it must not clear an uncertainty already attached to observed consumption.
-func (u *threadUsage) markNew(thread string) {
+func (u *Service) MarkNew(thread string) {
 	if u == nil || thread == "" {
 		return
 	}
@@ -325,7 +334,7 @@ func (u *threadUsage) markNew(thread string) {
 
 // A legacy/restored thread without retained accounting has an unknown earlier
 // window, not zero consumption. Never copy a fork source or host context totals.
-func (u *threadUsage) restore(thread string, history bool) {
+func (u *Service) Restore(thread string, history bool) {
 	if u == nil || thread == "" {
 		return
 	}

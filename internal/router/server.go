@@ -17,7 +17,10 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/modules/usage/accounting"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/httptransport"
@@ -28,7 +31,6 @@ import (
 	"github.com/yusing/mekugi/providers/openai"
 	"github.com/yusing/mekugi/providers/opencode"
 
-	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	segmentservice "github.com/yusing/mekugi/modules/commandsegments/segments"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -71,7 +73,7 @@ type Session struct {
 
 // RunSession owns the private router for one wrapped Codex process.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func RunSession(service *history.Service, recovered *recovery.Service, segments *segmentservice.Service, changes changes.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, guards []binding.ShellApproval, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
+func RunSession(service *history.Service, recovered *recovery.Service, segments *segmentservice.Service, changes changes.Service, usage *accounting.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, guards []binding.ShellApproval, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
 	if options.mode == "" {
 		return errors.New("session configuration has not been parsed")
 	}
@@ -229,7 +231,7 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 		if !options.duplicateOutput {
 			projections = nil
 		}
-		mekugiCalls = newMekugiProxy(registry, projections)
+		mekugiCalls = newMekugiProxy(registry, projections, usage)
 		if provider.titleGenerator != nil {
 			provider.titleGenerator.usage = mekugiCalls.usage
 		}
@@ -250,10 +252,9 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 		replayStore.liveDiff = mekugiCalls.autoLiveDiff.events.publish
 		defer stopLiveDiff()
 		mekugiCalls.replayStore = replayStore
-		mekugiCalls.usage.store = replayStore
-		mekugiCalls.usage.notice = func(thread string, err error) {
+		mekugiCalls.usage.Configure(replayStore.directory, replayStore.writes, replayStore.retentionLimits(), func(thread string, err error) {
 			mekugiCalls.notice("", thread, "usage_storage", "Provider usage could not be retained or restored: "+err.Error())
-		}
+		})
 		if issues != nil {
 			issues.failureStore = replayStore
 		}

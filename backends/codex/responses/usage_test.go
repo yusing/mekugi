@@ -1,9 +1,12 @@
-package router
+package responses
 
 import (
 	"encoding/json"
 	"fmt"
 	"testing"
+
+	"github.com/yusing/mekugi/contracts/inference"
+	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 func TestUsageEvidencePresence(t *testing.T) {
@@ -39,7 +42,7 @@ func TestUsageEvidencePresence(t *testing.T) {
 					if stream {
 						payload = map[string]any{"type": "response.completed", "response": payload}
 					}
-					counts, observed := usageFromResponsePayload(mustTestJSON(t, payload), stream)
+					counts, observed := UsageFromPayload(responseevents.MustMarshalJSON(payload), stream)
 					wantObserved := state == "present" || state == "missing" || state == "null" || field == "cache_write_tokens"
 					wantIncomplete := state == "null" || state == "missing" && field != "cache_write_tokens" || field == "cache_write_tokens" && state != "present" && state != "missing"
 					if observed != wantObserved || observed && counts.Incomplete != wantIncomplete {
@@ -56,16 +59,16 @@ func TestUsageNullAndNonterminalAreNotObserved(t *testing.T) {
 		for _, stream := range []bool{false, true} {
 			payload := []byte(raw)
 			if stream {
-				payload = mustTestJSON(t, map[string]any{"type": "response.completed", "response": json.RawMessage(raw)})
+				payload = responseevents.MustMarshalJSON(map[string]any{"type": "response.completed", "response": json.RawMessage(raw)})
 			}
-			if got, ok := usageFromResponsePayload(payload, stream); ok {
+			if got, ok := UsageFromPayload(payload, stream); ok {
 				t.Fatalf("observed absent usage: %s %+v", payload, got)
 			}
 		}
 	}
 	for _, kind := range []string{"response.created", "response.in_progress"} {
-		payload := mustTestJSON(t, map[string]any{"type": kind, "response": map[string]any{"usage": map[string]any{"input_tokens": 100}}})
-		if got, ok := usageFromResponsePayload(payload, true); ok {
+		payload := responseevents.MustMarshalJSON(map[string]any{"type": kind, "response": map[string]any{"usage": map[string]any{"input_tokens": 100}}})
+		if got, ok := UsageFromPayload(payload, true); ok {
 			t.Fatalf("observed nonterminal usage: %+v", got)
 		}
 	}
@@ -73,12 +76,12 @@ func TestUsageNullAndNonterminalAreNotObserved(t *testing.T) {
 
 func TestUsageCacheWrites(t *testing.T) {
 	for _, writes := range []uint64{0, 4, 5} {
-		payload := mustTestJSON(t, map[string]any{"usage": map[string]any{
+		payload := responseevents.MustMarshalJSON(map[string]any{"usage": map[string]any{
 			"input_tokens": 10, "input_tokens_details": map[string]any{"cached_tokens": 6, "cache_write_tokens": writes},
 			"output_tokens": 4, "output_tokens_details": map[string]any{"reasoning_tokens": 3},
 		}})
-		got, ok := usageFromResponsePayload(payload, false)
-		want := tokenCounts{TotalsKnown: true, InputTokens: 10, UncachedInputTokens: 4, CacheWriteTokens: writes, OutputTokens: 4, ReasoningTokens: 3, Inconsistent: writes > 4}
+		got, ok := UsageFromPayload(payload, false)
+		want := inference.Usage{TotalsKnown: true, InputTokens: 10, UncachedInputTokens: 4, CacheWriteTokens: writes, OutputTokens: 4, ReasoningTokens: 3, Inconsistent: writes > 4}
 		if !ok || got != want {
 			t.Fatalf("counts=%+v valid=%t want=%+v", got, ok, want)
 		}

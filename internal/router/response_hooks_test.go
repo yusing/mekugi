@@ -6,12 +6,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/contracts/inference"
+
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 func TestResponseHooksProviderUsage(t *testing.T) {
-	var observed []tokenCounts
-	hooks := &responseHooks{onUsage: func(counts tokenCounts) { observed = append(observed, counts) }}
+	var observed []inference.Usage
+	hooks := &responseHooks{onUsage: func(counts inference.Usage) { observed = append(observed, counts) }}
 	for _, payload := range []string{
 		`{"type":"response.output_item.done","item":{"type":"function_call"}}`,
 		`{"type":"response.completed","response":{"output":[],"usage":{"input_tokens":2,"output_tokens":1}}}`,
@@ -37,7 +39,7 @@ func BenchmarkProviderObservation(b *testing.B) {
 	const wire = "data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"function_call\"}}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"output\":[],\"usage\":{\"input_tokens\":100,\"output_tokens\":10}}}\n\n"
 	b.ReportAllocs()
 	for b.Loop() {
-		hooks := &responseHooks{onUsage: func(tokenCounts) {}}
+		hooks := &responseHooks{onUsage: func(inference.Usage) {}}
 		if _, err := copySSETransformed(io.Discard, strings.NewReader(wire), nil, hooks); err != nil {
 			b.Fatal(err)
 		}

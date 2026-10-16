@@ -1,4 +1,4 @@
-package capturer
+package inference
 
 // OutputThroughput pairs authoritative output tokens with the elapsed provider
 // request time for exactly the same measured requests. Zero duration is absent

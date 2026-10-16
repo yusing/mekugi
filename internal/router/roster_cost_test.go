@@ -4,6 +4,8 @@ import (
 	"math"
 	"testing"
 
+	"github.com/yusing/mekugi/contracts/inference"
+
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -11,16 +13,16 @@ func TestNativeRosterCostMatchesCanonicalUsage(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.proxy = proxy
-	counts := tokenCounts{InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 10_000, TotalsKnown: true}
-	proxy.usage.observation("child", "", "gpt-6-sol", "").observe(counts)
-	report, observed := proxy.usage.snapshot("child")
+	counts := inference.Usage{InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 10_000, TotalsKnown: true}
+	proxy.usage.Observation("child", "", "gpt-6-sol", "").Observe(counts)
+	report, observed := proxy.usage.Snapshot("child")
 	if !observed {
 		t.Fatal("canonical child usage missing")
 	}
 	agent := activityPaneAgent{Name: "/root/child", Turns: 1, InputTokens: counts.InputTokens, OutputTokens: counts.OutputTokens}
 	u.observeCost("child", &agent)
 	if !agent.CostKnown || agent.CostPartial || math.Abs(agent.Cost-.3) > 1e-10 ||
-		agent.Cost != report.cost.cachedInput+report.cost.uncachedInput+report.cost.output ||
+		agent.Cost != report.Cost.CachedInput+report.Cost.UncachedInput+report.Cost.Output ||
 		agent.InputTokens != counts.InputTokens || agent.OutputTokens != counts.OutputTokens {
 		t.Fatalf("native agent = %+v, report = %+v", agent, report)
 	}
@@ -38,13 +40,13 @@ func TestNativeRosterUsageGapShowsLowerBoundCost(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.proxy = proxy
-	counts := tokenCounts{InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 10_000, TotalsKnown: true}
+	counts := inference.Usage{InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 10_000, TotalsKnown: true}
 	for _, complete := range []bool{true, false, true} {
-		observation := proxy.usage.observation("child", "", "gpt-6-sol", "")
+		observation := proxy.usage.Observation("child", "", "gpt-6-sol", "")
 		if complete {
-			observation.observe(counts)
+			observation.Observe(counts)
 		} else {
-			observation.finish()
+			observation.Finish()
 		}
 	}
 	agent := activityPaneAgent{Name: "/root/child", Turns: 3, InputTokens: 200_000}
@@ -66,7 +68,7 @@ func TestNativeRosterUnknownAndMissingUsageDoNotClaimCost(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.proxy = proxy
-	proxy.usage.observation("child", "", "unpriced-model", "").observe(tokenCounts{InputTokens: 10, UncachedInputTokens: 10, OutputTokens: 1, TotalsKnown: true})
+	proxy.usage.Observation("child", "", "unpriced-model", "").Observe(inference.Usage{InputTokens: 10, UncachedInputTokens: 10, OutputTokens: 1, TotalsKnown: true})
 	for _, thread := range []string{"child", "root"} {
 		agent := activityPaneAgent{}
 		u.observeCost(thread, &agent)

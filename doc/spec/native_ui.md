@@ -15,7 +15,7 @@ presentation only, not conversation history.
 
 Operation-row formatting and feed controls are specified by
 [native activity presentation](activity_display.md); shared classification belongs to
-[activity observation](activity.md), and router cost totals to [usage reporting](usage.md).
+[activity observation](activity.md), and router cost totals to [usage reporting](../../modules/usage/SPEC.md).
 
 ### UI
 
@@ -974,7 +974,8 @@ visibly pending, never auto-approved.
 
 Agents includes Main and its children; selecting a row chooses the displayed transcript.
 Main's context usage and output rate appear only in the composer, not its roster row.
-Child-agent roster rows retain output rates under the [metrics contract](metrics.md).
+Child-agent roster rows retain output rates under the
+[usage contract](../../modules/usage/SPEC.md#output-throughput).
 The composer and child-agent roster rows show `used/window • percent%` from the latest
 Codex `tokenUsage.last.totalTokens` and `modelContextWindow`, independently of
 cumulative usage totals. Before the first usage report, show `0%` used, equivalent

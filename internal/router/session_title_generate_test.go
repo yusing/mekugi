@@ -298,17 +298,17 @@ func TestSessionTitleUsageAccounting(t *testing.T) {
 				response := strings.TrimSuffix(generatedTitleResponse, "}") + `,"usage":{"input_tokens":100,"input_tokens_details":{"cached_tokens":0},"output_tokens":20,"output_tokens_details":{"reasoning_tokens":0}}}`
 				return serverHTTPResponse(response), nil
 			}))
-			g.usage = newThreadUsage()
+			g.usage = newTestUsage(t)
 			_, _ = runNamingOperation(t.Context(), g, "main", "Question")
-			report, ok := g.usage.snapshot("main")
-			if !ok || !strings.Contains(report.model, "gpt-6-luna medium") {
+			report, ok := g.usage.Snapshot("main")
+			if !ok || !strings.Contains(report.Model, "gpt-6-luna medium") {
 				t.Fatalf("missing naming accounting: %+v", report)
 			}
 			if transportFailure {
-				if report.missingUsage != 1 {
+				if report.MissingUsage != 1 {
 					t.Fatal("transport failure incorrectly claimed complete usage")
 				}
-			} else if report.InputTokens != 100 || report.OutputTokens != 20 || report.missingUsage != 0 {
+			} else if report.InputTokens != 100 || report.OutputTokens != 20 || report.MissingUsage != 0 {
 				t.Fatalf("title usage = %+v", report)
 			}
 		})
@@ -339,7 +339,7 @@ func TestSessionTitleSkipsWithoutCodexAccess(t *testing.T) {
 					provider = nil
 				}
 				g := newTestSessionNaming(t.Context(), provider)
-				g.usage = newThreadUsage()
+				g.usage = newTestUsage(t)
 				g.register(appServerThreadInfo{ID: "main"})
 				g.observeInput("main", responses.MustMarshalJSON("First request"))
 				g.completed("main", tc.headers)
@@ -349,7 +349,7 @@ func TestSessionTitleSkipsWithoutCodexAccess(t *testing.T) {
 				if calls.Load() != 0 || len(g.updates) != 0 {
 					t.Fatal("skipped naming called a provider or emitted a title update")
 				}
-				if _, observed := g.usage.snapshot("main"); observed {
+				if _, observed := g.usage.Snapshot("main"); observed {
 					t.Fatal("skipped naming fabricated usage")
 				}
 			})

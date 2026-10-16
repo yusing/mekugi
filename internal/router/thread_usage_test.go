@@ -3,97 +3,35 @@ package router
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
-	"strings"
-	"sync"
 	"testing"
+
+	"github.com/yusing/mekugi/contracts/inference"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
-func TestThreadUsageConcurrentObservationsAndDuplicateTerminals(t *testing.T) {
-	totals := newThreadUsage()
-	var workers sync.WaitGroup
-	for i := range 8 {
-		workers.Go(func() {
-			thread := fmt.Sprint(i)
-			for range 100 {
-				observation := totals.observation(thread, "", "gpt-5.5", "")
-				var duplicates sync.WaitGroup
-				for range 3 {
-					duplicates.Go(func() {
-						observation.observe(tokenCounts{InputTokens: 10, UncachedInputTokens: 4, OutputTokens: 3, ReasoningTokens: 2})
-					})
-				}
-				duplicates.Wait()
-			}
-		})
-	}
-	workers.Wait()
-	for i := range 8 {
-		got, valid := totals.snapshot(fmt.Sprint(i))
-		if !valid || got.tokenCounts != (tokenCounts{InputTokens: 1000, UncachedInputTokens: 400, OutputTokens: 300, ReasoningTokens: 200}) {
-			t.Fatalf("thread %d: counts=%+v valid=%v", i, got, valid)
-		}
-	}
-}
-func TestThreadUsageHasNoLifetimeThreadLimitAndHandlesOverflow(t *testing.T) {
-	totals := newThreadUsage()
-	for i := range 256 {
-		totals.observation(fmt.Sprint(i), "", "gpt-5.5", "").observe(tokenCounts{InputTokens: 1})
-	}
-	totals.observation("excess", "", "gpt-5.5", "").observe(tokenCounts{InputTokens: 100})
-	if got, valid := totals.snapshot("excess"); !valid || got.InputTokens != 100 {
-		t.Fatal("lifetime thread count disabled usage reporting")
-	}
-	totals.observation("0", "", "gpt-5.5", "").observe(tokenCounts{InputTokens: 2})
-	if got, valid := totals.snapshot("0"); !valid || got.InputTokens != 3 {
-		t.Fatal("capacity lost or stopped an existing total", got, valid)
-	}
-	totals.observation("1", "", "gpt-5.5", "").observe(tokenCounts{InputTokens: ^uint64(0)})
-	if _, valid := totals.snapshot("1"); valid || totals.threads["1"].counts.InputTokens != 1 {
-		t.Fatal("overflow published or replaced the retained total")
-	}
-	totals.observation("1", "", "gpt-5.5", "").observe(tokenCounts{InputTokens: 1})
-	if _, valid := totals.snapshot("1"); valid {
-		t.Fatal("overflowed thread resumed with an incomplete total")
-	}
-	totals.close()
-	totals.observation("0", "", "gpt-5.5", "").observe(tokenCounts{InputTokens: 1})
-	if _, valid := totals.snapshot("0"); valid || len(totals.threads) != 0 {
-		t.Fatal("closed accumulator retained or admitted usage")
-	}
-	for _, thread := range []string{"", strings.Repeat("x", maxActivityMetadataBytes+1)} {
-		fresh := newThreadUsage()
-		fresh.observation(thread, "", "gpt-5.5", "").observe(tokenCounts{InputTokens: 1})
-		if len(fresh.threads) != 0 {
-			t.Fatal("unbounded identity admitted")
-		}
-	}
-}
-
 func TestThreadUsageSurvivesRoundTripsAndSessionRemapping(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	first, _ := prepareActivityTest(t, proxy, "session-a", "root-thread", "", "/root", nil)
-	first.observeResponseUsage(tokenCounts{InputTokens: 10, UncachedInputTokens: 4, OutputTokens: 3, ReasoningTokens: 2})
-	first.observeResponseUsage(tokenCounts{InputTokens: 10, UncachedInputTokens: 4, OutputTokens: 3, ReasoningTokens: 2})
+	first.observeResponseUsage(inference.Usage{InputTokens: 10, UncachedInputTokens: 4, OutputTokens: 3, ReasoningTokens: 2})
+	first.observeResponseUsage(inference.Usage{InputTokens: 10, UncachedInputTokens: 4, OutputTokens: 3, ReasoningTokens: 2})
 	first.Close()
 	child, _ := prepareActivityTest(t, proxy, "session-a", "child-thread", "root-thread", "/root/child", nil)
-	child.observeResponseUsage(tokenCounts{InputTokens: 500})
+	child.observeResponseUsage(inference.Usage{InputTokens: 500})
 	next, _ := prepareActivityTest(t, proxy, "session-remapped", "root-thread", "", "/root", nil)
-	second := tokenCounts{InputTokens: 20, UncachedInputTokens: 5, OutputTokens: 7, ReasoningTokens: 6}
+	second := inference.Usage{InputTokens: 20, UncachedInputTokens: 5, OutputTokens: 7, ReasoningTokens: 6}
 	next.observeResponseUsage(second)
-	got, valid := proxy.usage.snapshot(next.usageTracker.thread)
-	if !valid || got.tokenCounts != (tokenCounts{InputTokens: 30, UncachedInputTokens: 9, OutputTokens: 10, ReasoningTokens: 8}) {
+	got, valid := proxy.usage.Snapshot("root-thread")
+	if !valid || got.Usage != (inference.Usage{InputTokens: 30, UncachedInputTokens: 9, OutputTokens: 10, ReasoningTokens: 8}) {
 		t.Fatal("root lifetime counts changed across round trips", got, valid)
 	}
 
-	if got, valid := proxy.usage.snapshot(child.usageTracker.thread); !valid || got.InputTokens != 500 {
+	if got, valid := proxy.usage.Snapshot("child-thread"); !valid || got.InputTokens != 500 {
 		t.Fatal("root and child totals mixed", got, valid)
 	}
 	next.Close()
-	later, _ := prepareActivityTest(t, proxy, "later-session", "root-thread", "", "/root", nil)
-	if laterCounts, valid := proxy.usage.snapshot(later.usageTracker.thread); !valid || laterCounts != got {
+	_, _ = prepareActivityTest(t, proxy, "later-session", "root-thread", "", "/root", nil)
+	if laterCounts, valid := proxy.usage.Snapshot("root-thread"); !valid || laterCounts != got {
 		t.Fatal("completed response lifetime reset totals", laterCounts, valid)
 	}
 }
@@ -101,7 +39,7 @@ func TestThreadUsageSurvivesRoundTripsAndSessionRemapping(t *testing.T) {
 func TestThreadUsageIncludesCompactionWithoutRewritingIt(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	first, _ := prepareActivityTest(t, proxy, "before", "root-thread", "", "/root", nil)
-	first.observeResponseUsage(tokenCounts{InputTokens: 10, UncachedInputTokens: 4, OutputTokens: 3, ReasoningTokens: 2})
+	first.observeResponseUsage(inference.Usage{InputTokens: 10, UncachedInputTokens: 4, OutputTokens: 3, ReasoningTokens: 2})
 	first.Close()
 	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 		"model": "gpt-test", "input": []any{map[string]any{"type": "message", "role": "user", "content": "compact this"}},
@@ -133,43 +71,12 @@ func TestThreadUsageIncludesCompactionWithoutRewritingIt(t *testing.T) {
 		t.Fatal("compaction usage accounting rewrote provider output", output.String())
 	}
 	next, _ := prepareActivityTest(t, proxy, "after-remap", "root-thread", "", "/root", nil)
-	next.observeResponseUsage(tokenCounts{InputTokens: 1, UncachedInputTokens: 1})
-	if got, valid := proxy.usage.snapshot(next.usageTracker.thread); !valid || got.tokenCounts != (tokenCounts{InputTokens: 23, UncachedInputTokens: 12, OutputTokens: 10, ReasoningTokens: 5}) {
+	next.observeResponseUsage(inference.Usage{InputTokens: 1, UncachedInputTokens: 1})
+	if got, valid := proxy.usage.Snapshot("root-thread"); !valid || got.Usage != (inference.Usage{InputTokens: 23, UncachedInputTokens: 12, OutputTokens: 10, ReasoningTokens: 5}) {
 		t.Fatal("compaction tokens missing from lifetime total", got, valid)
 	}
 	var forwarded map[string]json.RawMessage
 	if len(provider.forwarded) != 1 || json.Unmarshal(provider.forwarded[0], &forwarded) != nil || !bytes.Equal(forwarded["input"], request.Fields["input"]) {
 		t.Fatal("compaction request changed")
-	}
-}
-
-func TestThreadUsageFastModelLabel(t *testing.T) {
-	for _, tc := range []struct {
-		name, requested, served, want string
-	}{
-		{"fast", "fast", "", "gpt-5.6-sol [fast]"},
-		{"priority", "priority", "", "gpt-5.6-sol [fast]"},
-		{"served priority", "", "priority", "gpt-5.6-sol [fast]"},
-		{"downgraded", "fast", "default", "gpt-5.6-sol"},
-		{"standard", "", "", "gpt-5.6-sol"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			usage := newThreadUsage()
-			counts := tokenCounts{InputTokens: 100, UncachedInputTokens: 50, OutputTokens: 10, ServiceTier: tc.served}
-			usage.observation("root", "", "gpt-5.6-sol", tc.requested).observe(counts)
-			report, ok := usage.snapshot("root")
-			if !ok || report.model != tc.want || !report.cost.known {
-				t.Fatalf("report = %+v, ok=%v", report, ok)
-			}
-		})
-	}
-	usage := newThreadUsage()
-	counts := tokenCounts{InputTokens: 100, UncachedInputTokens: 50, OutputTokens: 10}
-	for _, tier := range []string{"fast", "priority", "default"} {
-		usage.observation("root", "", "gpt-5.6-sol", tier).observe(counts)
-	}
-	report, ok := usage.snapshot("root")
-	if !ok || report.model != "gpt-5.6-sol [fast], gpt-5.6-sol" {
-		t.Fatalf("mixed-tier labels = %q, ok=%v", report.model, ok)
 	}
 }

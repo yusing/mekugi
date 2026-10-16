@@ -503,7 +503,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 			if m.Method == "item/completed" && (item.Status == "" || item.Status == "completed") {
 				if item.Tool == "spawnAgent" && u.proxy != nil {
 					for _, child := range item.ReceiverThreadIDs {
-						u.proxy.usage.markNew(child)
+						u.proxy.usage.MarkNew(child)
 					}
 				}
 				entries = append(entries, s.collab(item, id, now)...)
@@ -725,21 +725,21 @@ func (u *appServerUI) observeCost(thread string, agent *activityPaneAgent) {
 	if u.proxy == nil || u.proxy.usage == nil {
 		return
 	}
-	report, observed := u.proxy.usage.snapshot(thread)
-	agent.Roundtrips = report.roundtrips
-	agent.OutputThroughput = report.roundOutput.Throughput
+	report, observed := u.proxy.usage.Snapshot(thread)
+	agent.Roundtrips = report.Roundtrips
+	agent.OutputThroughput = report.RoundOutput.Throughput
 	agent.InputTokens, agent.OutputTokens = report.InputTokens, report.OutputTokens
-	agent.TokensKnown = observed && agent.Roundtrips > report.missingUsage
-	agent.Cost = report.cost.cachedInput + report.cost.uncachedInput + report.cost.output
-	agent.CostKnown = agent.TokensKnown && report.cost.known
-	agent.CostPartial = report.missingUsage != 0 || report.priorUnknown
+	agent.TokensKnown = observed && agent.Roundtrips > report.MissingUsage
+	agent.Cost = report.Cost.CachedInput + report.Cost.UncachedInput + report.Cost.Output
+	agent.CostKnown = agent.TokensKnown && report.Cost.Known
+	agent.CostPartial = report.MissingUsage != 0 || report.PriorUnknown
 	agent.UsagePartial = agent.CostPartial
-	agent.RoundtripsPartial = report.priorUnknown
+	agent.RoundtripsPartial = report.PriorUnknown
 }
 
 func (u *appServerUI) restoreUsage(info appServerThreadInfo) {
 	if u.proxy != nil && u.proxy.usage != nil {
-		u.proxy.usage.restore(info.ID, len(info.Turns) > 0)
+		u.proxy.usage.Restore(info.ID, len(info.Turns) > 0)
 	}
 }
 

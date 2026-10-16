@@ -3,6 +3,9 @@ package router
 import (
 	"cmp"
 	"encoding/json/jsontext"
+
+	"github.com/yusing/mekugi/modules/usage/accounting"
+
 	json "encoding/json/v2"
 	"fmt"
 	"io"
@@ -16,15 +19,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/pathdisplay"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/contracts/inference"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"golang.org/x/term"
 )
@@ -415,7 +421,7 @@ type nativePreview struct {
 	ui          *appServerUI
 	input       *appServerTestInput
 	store       *mekugiReplayStore
-	usage       *threadUsage
+	usage       *accounting.Service
 	workspace   string
 	message     int
 	calls       int
@@ -480,7 +486,7 @@ func newNativePreview(t *testing.T) *nativePreview {
 			t.Fatal(err)
 		}
 	}
-	usage := newThreadUsage()
+	usage := newTestUsage(t)
 	u.proxy = newManagedMekugiProxy(t)
 	u.proxy.usage = usage
 	u.proxy.activity.observe("main", "", "/root", false)
@@ -862,7 +868,7 @@ func (p *nativePreview) grokThink(thread, reasoning string) {
 // usage reports a thread's cumulative tokens to app-server and to the
 // router's accounting, which prices them.
 func (p *nativePreview) tokens(thread string, input, output uint64) {
-	p.usage.observation(thread, thread, "gpt-6-luna", "").observe(tokenCounts{InputTokens: input, UncachedInputTokens: input, OutputTokens: output})
+	p.usage.Observation(thread, thread, "gpt-6-luna", "").Observe(inference.Usage{InputTokens: input, UncachedInputTokens: input, OutputTokens: output})
 	p.notify("thread/tokenUsage/updated", map[string]any{"threadId": thread, "turnId": p.active[thread], "tokenUsage": map[string]any{
 		"last": map[string]any{"totalTokens": input/4 + output}, "modelContextWindow": 200000,
 		"total": map[string]any{"inputTokens": input, "outputTokens": output, "totalTokens": input + output}}})

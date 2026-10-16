@@ -1,4 +1,4 @@
-// Package inference describes auxiliary model exchanges without agent control.
+// Package inference describes model exchanges and measured usage without agent control.
 package inference
 
 import "context"

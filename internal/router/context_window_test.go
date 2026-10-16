@@ -8,13 +8,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/inference"
+
 	"github.com/charmbracelet/x/ansi"
 )
 
 func TestAppServerContextWindow(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.proxy = &mekugiProxy{usage: newThreadUsage()}
-	u.proxy.usage.observation("main", "main", "gpt-6-sol", "").observe(tokenCounts{InputTokens: 900000, UncachedInputTokens: 900000, OutputTokens: 50000})
+	u.proxy = &mekugiProxy{usage: newTestUsage(t)}
+	u.proxy.usage.Observation("main", "main", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 900000, UncachedInputTokens: 900000, OutputTokens: 50000})
 	notify := func(thread string, used, window uint64) {
 		appServerTestNotify(t, u, "thread/tokenUsage/updated", map[string]any{
 			"threadId": thread, "tokenUsage": map[string]any{

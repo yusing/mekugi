@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/inference"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/capturer"
@@ -257,7 +259,7 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 				m.snapshot.StorageWrites = &persistence.Snapshot{Bytes: 12345, Scope: new(persistence.Counter).Snapshot().Scope}
 			}
 			if tc.throughput == "absent" {
-				m.snapshot.Usage.OutputThroughput = capturer.OutputThroughput{}
+				m.snapshot.Usage.OutputThroughput = inference.OutputThroughput{}
 			}
 			if tc.throughput == "zero" {
 				m.snapshot.Usage.OutputThroughput.OutputTokens = 0

@@ -107,6 +107,15 @@ output share the connection's conservative 64 MiB budget; reconstructed requests
 are limited to 32 MiB. An overflowing native terminal replacement preserves the
 previous retained output and budget. No history is evicted to make a request fit.
 
+## Provider usage decoding
+
+Terminal JSON and stream payloads decode into neutral provider usage facts.
+Absent, null, malformed and contradictory categories stay distinguishable;
+reported zero totals remain known. Only terminal stream events supply usage.
+An absent service tier permits request-tier fallback; unsupported or malformed
+provider tiers remain unknown. Accounting and reference pricing belong to the
+[usage module](../../../modules/usage/SPEC.md).
+
 ## Ownership and acceptance
 
 Each translated request owns its immutable tool mapping and stream state. The

@@ -5,6 +5,9 @@ import (
 	json "encoding/json/v2"
 	"time"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/contracts/inference"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -14,7 +17,7 @@ type responseHooks struct {
 	onProviderFailure   func([]byte, bool)
 	upstreamStatus      int
 	streamDiagnostics   *streamDiagnostics
-	onUsage             func(tokenCounts)
+	onUsage             func(inference.Usage)
 	receivedAt          time.Time // Body read time, before buffered events are transformed.
 	deliveredResponseID string
 	deliveredTerminal   bool
@@ -34,7 +37,7 @@ func (h *responseHooks) Observe(payload []byte, stream bool) {
 		h.onProviderFailure(payload, stream)
 	}
 	if h.onUsage != nil {
-		if usage, ok := usageFromResponsePayload(payload, stream); ok {
+		if usage, ok := codexresponses.UsageFromPayload(payload, stream); ok {
 			h.onUsage(usage)
 		}
 	}

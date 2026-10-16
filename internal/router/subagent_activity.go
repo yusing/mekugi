@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusing/mekugi/modules/usage/accounting"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -38,7 +40,7 @@ type subagentActivity struct {
 	// awaiting the UI's note that the model never saw their output.
 	unreturned []activityToolRef
 	// usage is the canonical per-thread accounting the roster displays.
-	usage *threadUsage
+	usage *accounting.Service
 	// restored counts messages that resumed history already shows. A later
 	// full-history request carries them again under this router's new
 	// identities; each count absorbs one such repeat.

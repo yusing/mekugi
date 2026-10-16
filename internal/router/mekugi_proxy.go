@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 
+	"github.com/yusing/mekugi/contracts/inference"
+	"github.com/yusing/mekugi/modules/usage/accounting"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
 	jsonv1 "encoding/json"
@@ -26,7 +29,7 @@ const applyPatchToolName = "apply_patch"
 type mekugiProxy struct {
 	registry         *toolRegistry
 	inputProjections []binding.InputProjection
-	usage            *threadUsage
+	usage            *accounting.Service
 	autoLiveDiff     *autoLiveDiff
 	activity         *subagentActivity
 	guard            *shellApprovalServer
@@ -53,12 +56,12 @@ type mekugiProxy struct {
 	closed             bool
 }
 
-func newMekugiProxy(registry *toolRegistry, projections []binding.InputProjection) *mekugiProxy {
+func newMekugiProxy(registry *toolRegistry, projections []binding.InputProjection, usage *accounting.Service) *mekugiProxy {
 	if registry == nil {
 		return nil
 	}
 	activity := newSubagentActivity()
-	activity.usage = newThreadUsage()
+	activity.usage = usage
 	proxy := &mekugiProxy{
 		registry:         registry,
 		inputProjections: slices.Clone(projections),
@@ -97,7 +100,6 @@ func (p *mekugiProxy) Close() error {
 	clear(p.sessions)
 	clear(p.activeSessions)
 	p.historyBytes = 0
-	p.usage.close()
 	p.activity.close()
 	return cleanupErr
 }
@@ -143,7 +145,7 @@ type mekugiResponseTransform struct {
 	liveDiffCompletionReady bool
 	storageCompletionReady  bool
 	storageToolHandoff      bool
-	usageTracker            *threadUsageObservation
+	usageTracker            *accounting.Observation
 	finalAnswer             finalAnswerStream
 	usageObserved           bool
 
@@ -174,11 +176,11 @@ func (t *mekugiResponseTransform) Close() {
 }
 
 // observeResponseUsage records provider-authoritative token usage for this response.
-func (t *mekugiResponseTransform) observeResponseUsage(counts tokenCounts) {
+func (t *mekugiResponseTransform) observeResponseUsage(counts inference.Usage) {
 	if t.usageObserved {
 		return
 	}
-	t.usageTracker.observe(counts)
+	t.usageTracker.Observe(counts)
 	t.usageObserved = true
 	if t.proxy != nil && t.threadID != "" {
 		t.proxy.activity.syncUsage(t.threadID)
@@ -426,11 +428,13 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 		commentaryAuthor:          metadata.commentaryAuthor(),
 		subagentTurn:              metadata.SubagentKind != "",
 		activityResponding:        activityThreadID != "",
-		usageTracker:              p.usage.observation(threadID, metadata.ThreadID, request.Model(), usageServiceTier(request.Fields["service_tier"])),
+		usageTracker:              p.usage.Observation(threadID, metadata.ThreadID, request.Model(), codexresponses.UsageServiceTier(request.Fields["service_tier"])),
 		codeModeToolName:          codeModeToolName,
 		sessionShell:              requestSessionShell(request.Fields["input"]),
 	}
-	transform.usageTracker.reasoning = request.ReasoningEffort()
+	if transform.usageTracker != nil {
+		transform.usageTracker.Reasoning = request.ReasoningEffort()
+	}
 	p.observeCodeModeFailures(activityThreadID, codeModeToolName, request, visible)
 	// Continuation advice is appended to the output the model will see.
 	projectExecutionContinuations(request, tools, codeModeToolName, visible)

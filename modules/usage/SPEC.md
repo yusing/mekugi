@@ -1,13 +1,24 @@
 # Provider usage accounting
 
-## REQ-USAGE-001 — Per-thread accounting and reference costs
+## Purpose
+
+Own provider-authoritative per-thread usage, reference cost and output throughput.
+
+## Scope
+
+Usage is auxiliary to execution. Provider admission and byte-receipt timing remain
+with the application; raw Responses decoding belongs to the Codex backend. Host
+context counts, transport diagnostics and launch-wide capture aggregates retain
+separate owners. No usage message or Markdown export is added to the conversation.
+
+## Behavior
 
 ### Accounting and incomplete evidence
 
 JSON and streaming responses use the same cumulative provider-authoritative per-thread
 counts. The native roster consumes these totals without adding usage messages to the
 conversation. Main completion and wrapper exit do not write Markdown usage files.
-Thread accounting remains separate from capture-owned [metrics](metrics.md);
+Thread accounting remains separate from capture-owned [capture metrics](../../doc/spec/metrics.md);
 compaction and routing-session changes do not reset totals. Repeated terminal observations
 within one request count once. Retained totals survive router shutdown and restore
 idle completed agents as well as resumed requests, without a lifetime thread-count
@@ -35,9 +46,6 @@ shared publication lock. Pending observations MUST remain available in live tota
 and MUST be retained once ordinary contention clears, without repeating provider
 requests or counting a response twice. Graceful shutdown MUST attempt to drain
 pending publication; cancellation of a waiting caller MUST NOT discard observations.
-Storage failure leaves live observations available with a notice; only successfully
-retained observations are recoverable after restart. An abrupt stop or exhausted
-shutdown wait can leave pending observations unretained.
 
 ### Reference pricing
 
@@ -73,9 +81,57 @@ input cost. An omitted cache-write field is zero for older providers; explicit n
 invalid, or contradictory evidence is not known zero. Unknown model/service-tier pricing
 or inconsistent usage makes the affected thread's cost unavailable, without hiding known
 token counts or presenting a partial cost as complete. Display behavior belongs to
-[activity display](activity_display.md).
+[activity display](../../doc/spec/activity_display.md).
 
-Acceptance:
+### Output throughput
+
+A sample pairs provider-authoritative output tokens, including reasoning, with
+the duration from request forwarding to receipt of its terminal usage bytes.
+Local preparation, transformation, capture and downstream delivery after receipt
+are excluded; transport buffering and backpressure before receipt remain included.
+This is observed request throughput, not provider-only generation speed.
+
+Missing or inconsistent totals, absent timing and nonpositive durations produce
+no measurement. Reported zero output with positive timing is a measured zero.
+The latest-started request determines display ordering. A late older result cannot
+replace it; the last valid rate remains available while a newer request streams
+or lacks a valid sample. Before the first valid sample, throughput is absent.
+Only paired measurements restore by stable thread identity, without reviving a
+stopwatch. Renderer placement belongs to the activity and native UI contracts.
+
+## Lifecycle
+
+One invocation owner accumulates observations and coalesces pending publication
+by thread. Its background writer waits for shared publication independently of
+response delivery and roster reads. Shutdown stops admission, attempts to drain
+pending observations within five seconds, then cancels and joins the writer.
+
+## Codex connection
+
+The application supplies provider usage decoded by the backend and explicit
+native creation/restoration facts. App-server context totals never substitute
+for provider accounting. Provider-specific price selection stays with the
+provider adapter; supplied pricing is pinned to the completed exchange.
+
+## Records
+
+Version-1 usage records retain their existing hashed thread names and field
+encoding. They contain already-priced totals, observed models, missing-response
+counts, prior-window uncertainty and the current paired throughput sample.
+The session-history publication boundary retains each record under its own
+thread before exposing it. Concurrent writers merge priced deltas rather than
+reprice historical usage or overwrite peers with a stale live total. An ambiguous
+publication failure cannot replay the same delta.
+Retirement can reclaim inactive records. A live owner preserves consumption it
+still knows when republishing after retirement. Forks never inherit consumption.
+
+## Failure
+
+Storage failure preserves live observations with a notice and unknown prior
+coverage. Only successfully retained facts are recoverable after restart;
+exhausted shutdown or abrupt termination can leave pending observations unretained.
+
+## Acceptance
 
 1. Main and child completion preserve usage accounting and response delivery without
    writing Markdown usage files or adding usage commentary. Provider answer events

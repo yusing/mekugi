@@ -14,13 +14,13 @@ import (
 	"testing"
 	"time"
 
-	segmentservice "github.com/yusing/mekugi/modules/commandsegments/segments"
-
-	"github.com/yusing/mekugi/contracts/command"
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
+	"github.com/yusing/mekugi/modules/usage/accounting"
 
 	"github.com/yusing/mekugi/capturer"
+	"github.com/yusing/mekugi/contracts/command"
+	segmentservice "github.com/yusing/mekugi/modules/commandsegments/segments"
+	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 func TestRunSessionUsesBoundPortAndClosesListener(t *testing.T) {
@@ -194,5 +194,10 @@ func testRunSession(service *history.Service, recovered *recovery.Service, ctx c
 	if err != nil {
 		return err
 	}
-	return RunSession(service, recovered, &segmentservice.Service{Reports: testReports()}, testChanges(), ctx, commands, testInputProjections(), testGuidance(), testNaming(), testGuards(), options, issues, ready, artifacts)
+	usage := accounting.New(service)
+	if err := usage.Start(ctx); err != nil {
+		return err
+	}
+	defer usage.Close()
+	return RunSession(service, recovered, &segmentservice.Service{Reports: testReports()}, testChanges(), usage, ctx, commands, testInputProjections(), testGuidance(), testNaming(), testGuards(), options, issues, ready, artifacts)
 }

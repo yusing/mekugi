@@ -4,7 +4,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/yusing/mekugi/capturer"
+	"github.com/yusing/mekugi/contracts/inference"
 )
 
 // The only activity frontend is the UI.
@@ -45,12 +45,12 @@ type activityPaneAgent struct {
 	CostKnown   bool    `json:",omitzero"`
 	CostPartial bool    `json:",omitzero"`
 	// Cumulative provider-reported tokens for the agent's responses.
-	InputTokens       uint64                    `json:",omitzero"`
-	OutputTokens      uint64                    `json:",omitzero"`
-	OutputThroughput  capturer.OutputThroughput `json:",omitzero"`
-	TokensKnown       bool                      `json:",omitzero"`
-	UsagePartial      bool                      `json:",omitzero"`
-	RoundtripsPartial bool                      `json:",omitzero"`
+	InputTokens       uint64                     `json:",omitzero"`
+	OutputTokens      uint64                     `json:",omitzero"`
+	OutputThroughput  inference.OutputThroughput `json:",omitzero"`
+	TokensKnown       bool                       `json:",omitzero"`
+	UsagePartial      bool                       `json:",omitzero"`
+	RoundtripsPartial bool                       `json:",omitzero"`
 	// Latest host-reported context, not cumulative provider usage.
 	ContextTokens uint64 `json:",omitzero"`
 	ContextWindow uint64 `json:",omitzero"`

@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/modules/usage/accounting"
 )
 
 type sessionTitleUpdate struct{ thread, name string }
@@ -15,7 +16,7 @@ type sessionTitleUpdate struct{ thread, name string }
 type sessionNaming struct {
 	ctx          context.Context
 	provider     responseProvider
-	usage        *threadUsage
+	usage        *accounting.Service
 	registration *binding.SessionNaming
 	updates      chan sessionTitleUpdate
 	mu           sync.Mutex
