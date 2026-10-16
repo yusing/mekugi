@@ -52,10 +52,9 @@ background transition, or eviction. The live broker's lifetime cancels polling
 on shutdown. Polling reads only the retained scope and publishes provisional
 cards; the result reconciler remains the sole command-evidence owner.
 
-The compiled frontend catalog owns one immutable authenticated snapshot and the private
-PATH directory. Its frontend workers implement bounded readers and output
-retention inside Codex-started processes; they do not own Codex command
-sessions or continuation handles. Each frontend runs its native implementation under the same worker authentication.
+The [frontend host](../../apps/mekugi/internal/frontends/SPEC.md) owns authenticated
+catalogs, private PATH exposure, worker dispatch, and recovery delivery. Codex
+retains command sessions and continuation handles.
 
 Shell instrumentation lives in `libraries/shellinstrumentation`. The native hook,
 launcher, helper, capture observer and display projection share its rewrite and

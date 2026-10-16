@@ -144,7 +144,7 @@ func TestMChangesDeliveryWorkerPrepublicationFailureAndCancellation(t *testing.T
 	for _, canceled := range []bool{false, true} {
 		t.Run(fmt.Sprintf("canceled=%t", canceled), func(t *testing.T) {
 			f, id, want := deliveryMutationFixture(t)
-			t.Setenv(codexThreadIDEnvironment, f.thread)
+			t.Setenv("CODEX_THREAD_ID", f.thread)
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			var plan *faultChangeDelivery
@@ -171,7 +171,7 @@ func TestMChangesDeliveryWorkerPrepublicationFailureAndCancellation(t *testing.T
 				return output, nil
 			}
 			var out, diag bytes.Buffer
-			handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), commands, ctx, f.registry.frontends["mchanges"],
+			handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), commands, ctx, f.registry.Frontends["mchanges"],
 				[]string{"revert", "--workspace", f.workspace, id, "--max-tokens", "12"}, nil, &out, &diag)
 			if !handled || calls != 1 || plan == nil {
 				t.Fatalf("worker did not execute exactly once: handled=%t calls=%d", handled, calls)

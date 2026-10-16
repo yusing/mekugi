@@ -1,4 +1,5 @@
-package router
+// Source: apps/mekugi/internal/router/tool_registry.go:1:249@[7b6d9ccc]
+package frontends
 
 import (
 	"context"
@@ -14,34 +15,40 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/command"
-	"github.com/yusing/mekugi/internal/runtimepath"
 )
 
 const (
-	toolPluginManifestFilename = "workers.json"
+	manifestFilename = "workers.json"
 )
 
-func buildToolRegistry(ctx context.Context, commands []command.Contribution, guidance *binding.Guidance) (*toolRegistry, error) {
+// Config supplies the compiled commands and invocation-owned publication paths.
+// An empty RuntimeDirectory uses MEKUGI_RUNTIME_DIR or the OS temporary directory.
+type Config struct {
+	Commands         []command.Contribution
+	Guidance         *binding.Guidance
+	RuntimeDirectory string
+	ReplayDirectory  string
+	AXReadOutput     string
+}
+
+// New authenticates and publishes one private executable catalog before exposing
+// its PATH entries. Close removes only this invocation's resources.
+func New(ctx context.Context, config Config) (*Registry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	runtimeDirectory, err := runtimepath.Directory()
-	if err != nil {
-		return nil, fmt.Errorf("locate tool runtime directory: %w", err)
+	runtimeDirectory := config.RuntimeDirectory
+	if runtimeDirectory == "" {
+		runtimeDirectory = os.Getenv("MEKUGI_RUNTIME_DIR")
+		if runtimeDirectory == "" {
+			runtimeDirectory = os.TempDir()
+		}
 	}
-	replayDirectory, err := defaultMekugiReplayDirectory()
-	if err != nil {
-		return nil, err
+	if !filepath.IsAbs(runtimeDirectory) {
+		return nil, errors.New("locate tool runtime directory: MEKUGI_RUNTIME_DIR must be an absolute path")
 	}
-	return buildToolRegistryAt(ctx, commands, guidance, runtimeDirectory, replayDirectory)
-}
-
-func buildToolRegistryAt(
-	ctx context.Context,
-	commands []command.Contribution,
-	guidance *binding.Guidance,
-	runtimeDirectory, replayDirectory string,
-) (*toolRegistry, error) {
+	runtimeDirectory = filepath.Clean(runtimeDirectory)
+	commands, guidance := config.Commands, config.Guidance
 	if err := os.MkdirAll(runtimeDirectory, 0o700); err != nil {
 		return nil, fmt.Errorf("create tool runtime directory: %w", err)
 	}
@@ -51,17 +58,17 @@ func buildToolRegistryAt(
 	}
 	wrappers := make(map[string]string)
 	frontends := make(map[string]string)
-	fail := func(cause error) (*toolRegistry, error) {
+	fail := func(cause error) (*Registry, error) {
 		return nil, errors.Join(
 			cause,
 			removeWorkerFrontendSymlinks(frontends, wrappers),
 			os.RemoveAll(snapshotDirectory),
 		)
 	}
-	if err := pinRunningToolWorker(snapshotDirectory); err != nil {
+	if err := pinRunningExecutable(filepath.Join(snapshotDirectory, workerExecutableFilename)); err != nil {
 		return fail(err)
 	}
-	var contributions []toolContribution
+	var contributions []catalogEntry
 	var validationErrors []error
 	for _, spec := range commands {
 		if err := spec.Validate(); err != nil {
@@ -78,12 +85,12 @@ func buildToolRegistryAt(
 			validationErrors = append(validationErrors, err)
 			continue
 		}
-		contributions = append(contributions, toolContribution{
+		contributions = append(contributions, catalogEntry{
 			Name: spec.Name, Specification: encoded,
 			NativeExecutor: spec.Name, Executable: true,
 		})
 	}
-	byName := make(map[string]toolContribution, len(contributions))
+	byName := make(map[string]catalogEntry, len(contributions))
 	for _, contribution := range contributions {
 		if execute, _ := frontendExecutor(contribution, commands); execute == nil {
 			validationErrors = append(validationErrors, fmt.Errorf("native executor %q is unavailable", contribution.NativeExecutor))
@@ -110,16 +117,14 @@ func buildToolRegistryAt(
 	}
 
 	guidanceHash := sha256.Sum256([]byte(frontendGuidance))
-	manifest := toolWorkerManifest{
-		ReplayDirectory: replayDirectory,
+	manifest := workerManifest{
+		ReplayDirectory: config.ReplayDirectory,
+		AXReadOutput:    config.AXReadOutput,
 		Version:         2,
 		GuidanceSHA256:  hex.EncodeToString(guidanceHash[:]),
 		Tools:           slices.Clone(contributions),
 	}
-	if debug, _ := ctx.Value(debugContextKey{}).(*debugOutput); debug != nil {
-		manifest.AXReadOutput = debug.ReadLogPath()
-	}
-	registryID, err := toolRegistryIdentity(manifest)
+	registryID, err := registryIdentity(manifest)
 	if err != nil {
 		return fail(err)
 	}
@@ -129,7 +134,7 @@ func buildToolRegistryAt(
 		return fail(fmt.Errorf("authenticate tool registry snapshot: %w", err))
 	}
 	snapshotDirectory = authenticatedDirectory
-	executable := filepath.Join(snapshotDirectory, toolWorkerExecutableFilename)
+	executable := filepath.Join(snapshotDirectory, workerExecutableFilename)
 	if err := os.WriteFile(filepath.Join(snapshotDirectory, "frontend_guidance.md"), []byte(frontendGuidance), 0o600); err != nil {
 		return fail(fmt.Errorf("write generated frontend guidance: %w", err))
 	}
@@ -150,18 +155,23 @@ func buildToolRegistryAt(
 	if len(validationErrors) != 0 {
 		return fail(errors.Join(validationErrors...))
 	}
-	return &toolRegistry{
+	registry := &Registry{
 		SnapshotDir:       snapshotDirectory,
-		frontendDirectory: filepath.Join(snapshotDirectory, "bin"),
+		ReplayDirectory:   config.ReplayDirectory,
+		FrontendDirectory: filepath.Join(snapshotDirectory, "bin"),
 		ordered:           contributions,
-		frontendGuidance:  frontendGuidance,
-		guidance:          guidance,
+		FrontendGuidance:  frontendGuidance,
+		Guidance:          guidance,
 		wrappers:          wrappers,
-		frontends:         frontends,
-	}, nil
+		Frontends:         frontends,
+	}
+	if err := registry.installFrontends(); err != nil {
+		return nil, errors.Join(err, registry.Close())
+	}
+	return registry, nil
 }
 
-func validateToolContribution(contribution toolContribution) error {
+func validateToolContribution(contribution catalogEntry) error {
 	var specification struct {
 		Type        string            `json:"type"`
 		Name        string            `json:"name"`
@@ -179,7 +189,7 @@ func validateToolContribution(contribution toolContribution) error {
 	return nil
 }
 
-func toolRegistryIdentity(manifest toolWorkerManifest) (string, error) {
+func registryIdentity(manifest workerManifest) (string, error) {
 	manifest.RegistryID = ""
 	encoded, err := jsonv1.Marshal(manifest)
 	if err != nil {
@@ -189,31 +199,28 @@ func toolRegistryIdentity(manifest toolWorkerManifest) (string, error) {
 	return hex.EncodeToString(digest[:]), nil
 }
 
-func writeToolWorkerManifest(directory string, manifest toolWorkerManifest) error {
+func writeToolWorkerManifest(directory string, manifest workerManifest) error {
 	encoded, err := jsonv1.Marshal(manifest)
 	if err != nil {
 		return fmt.Errorf("encode tool worker manifest: %w", err)
 	}
-	path := filepath.Join(directory, toolPluginManifestFilename)
+	path := filepath.Join(directory, manifestFilename)
 	if err := os.WriteFile(path, encoded, 0o600); err != nil {
 		return fmt.Errorf("write tool worker manifest: %w", err)
 	}
 	return nil
 }
 
-func (registry *toolRegistry) installFrontends() error {
-	if registry == nil {
-		return errors.New("tool registry is unavailable")
-	}
+func (registry *Registry) installFrontends() error {
 	if len(registry.wrappers) == 0 {
 		return nil
 	}
-	if err := os.MkdirAll(registry.frontendDirectory, 0o700); err != nil {
+	if err := os.MkdirAll(registry.FrontendDirectory, 0o700); err != nil {
 		return fmt.Errorf("create session tool frontends: %w", err)
 	}
 	fail := func(cause error) error {
-		cleanupErr := removeWorkerFrontendSymlinks(registry.frontends, registry.wrappers)
-		clear(registry.frontends)
+		cleanupErr := removeWorkerFrontendSymlinks(registry.Frontends, registry.wrappers)
+		clear(registry.Frontends)
 		return errors.Join(cause, cleanupErr)
 	}
 	for _, contribution := range registry.ordered {
@@ -223,24 +230,24 @@ func (registry *toolRegistry) installFrontends() error {
 		}
 		frontend, err := ensureWorkerSymlinkInDirectory(
 			wrapper,
-			registry.frontendDirectory,
+			registry.FrontendDirectory,
 			contribution.Name,
 		)
 		if err != nil {
 			return fail(err)
 		}
-		registry.frontends[contribution.Name] = frontend
+		registry.Frontends[contribution.Name] = frontend
 	}
 	return nil
 }
 
-func (registry *toolRegistry) Close() error {
+func (registry *Registry) Close() error {
 	if registry == nil {
 		return nil
 	}
 	registry.closeOnce.Do(func() {
 		registry.closeErr = errors.Join(
-			removeWorkerFrontendSymlinks(registry.frontends, registry.wrappers),
+			removeWorkerFrontendSymlinks(registry.Frontends, registry.wrappers),
 			os.RemoveAll(registry.SnapshotDir),
 		)
 

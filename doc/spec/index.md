@@ -16,7 +16,7 @@ pjdoc:
     - ../../modules/notifications/SPEC.md
     - activity.md
     - ../../modules/activity/CONTRACT.md
-    - plugin.md
+    - ../../apps/mekugi/internal/frontends/SPEC.md
     - ../../modules/agentmetrics/SPEC.md
     - ../../modules/sessioninspection/SPEC.md
     - ../../modules/diagnostics/SPEC.md
@@ -63,7 +63,7 @@ resume evidence and renderer-keyed persistence.
 - [Managed continuation](../../modules/outputrecovery/SPEC.md): retained-output paging
 - [`REQ-SYMBOL-001`](../../modules/symbolquery/SPEC.md): routed semantic symbol lookup with raw source rows
 - [`REQ-INSPECT-001`](../../modules/sourceoutline/SPEC.md): executable structural file inspection with numeric spans
-- [`REQ-PLUGIN-001`](plugin.md): authenticated compiled executable tools
+- [`REQ-PLUGIN-001`](../../apps/mekugi/internal/frontends/SPEC.md): authenticated compiled executable tools
 - [Agent metrics](../../modules/agentmetrics/SPEC.md): runtime reads and evidence-backed AX reporting
 - [Session inspection](../../modules/sessioninspection/SPEC.md): offline logical calls and corpus findings
 - [Diagnostics](../../modules/diagnostics/SPEC.md): debug bundles and failure references

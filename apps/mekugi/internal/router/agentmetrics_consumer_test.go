@@ -42,7 +42,7 @@ func TestAgentMetricsReaderEvidenceFailurePreservesExecution(t *testing.T) {
 					log = directory // A directory cannot accept an evidence append.
 				}
 				t.Setenv(evidence.AXReadOutputEnvironment, log)
-				t.Setenv(codexThreadIDEnvironment, "reader-failure")
+				t.Setenv("CODEX_THREAD_ID", "reader-failure")
 				commands := slices.Clone(testCommands())
 				var original command.Output
 				calls := 0
@@ -65,7 +65,7 @@ func TestAgentMetricsReaderEvidenceFailurePreservesExecution(t *testing.T) {
 					}
 				}
 				var stdout, stderr bytes.Buffer
-				handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), commands, t.Context(), registry.frontends["inspect_file"], []string{path}, nil, &stdout, &stderr)
+				handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), commands, t.Context(), registry.Frontends["inspect_file"], []string{path}, nil, &stdout, &stderr)
 				if !handled || calls != 1 || status != original.ExitCode || stdout.String() != original.Stdout {
 					t.Fatalf("handled=%t calls=%d status=%d original=%+v stdout=%q stderr=%q", handled, calls, status, original, stdout.String(), stderr.String())
 				}
@@ -100,9 +100,6 @@ func TestAgentMetricsReaderAuthenticatedDestinationPrecedesEnvironment(t *testin
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = registry.Close() })
-	if err := registry.installFrontends(); err != nil {
-		t.Fatal(err)
-	}
 	writeDebugInspectionFixture(t, filepath.Join(directory, "sample.go"), "package p\nfunc Item() {}\n")
 	const thread = "authenticated-metrics-destination"
 	invocation := newShellWorkerTestInvocation(directory, "CODEX_THREAD_ID="+thread, evidence.AXReadOutputEnvironment+"="+conflicting)

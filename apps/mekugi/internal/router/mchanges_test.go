@@ -20,11 +20,8 @@ import (
 func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
-	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, toolPluginManifestFilename))
-	if err != nil {
-		t.Fatal(err)
-	}
-	directory := manifest.ReplayDirectory
+	replayDirectory := registry.ReplayDirectory
+	directory := replayDirectory
 	store, err := openMekugiReplayStore(directory)
 	if err != nil {
 		t.Fatal(err)
@@ -66,7 +63,7 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 		"mchanges --list", nil, invocation); status != 0 || stderr != "" || stdout != ownID+" pending\n" {
 		t.Fatalf("own pending change not discoverable: %q, %q, %d", stdout, stderr, status)
 	}
-	frontend, ok := registry.frontends["mchanges"]
+	frontend, ok := registry.Frontends["mchanges"]
 	if !ok {
 		t.Fatal("mchanges frontend is unavailable")
 	}

@@ -2,12 +2,13 @@ package router
 
 import (
 	"context"
-	json "encoding/json/v2"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
@@ -15,7 +16,7 @@ import (
 )
 
 type mchangesSliceFixture struct {
-	registry   *toolRegistry
+	registry   *frontends.Registry
 	store      *mekugiReplayStore
 	ctx        context.Context
 	workspace  string
@@ -27,11 +28,8 @@ func newMChangesSliceFixture(t *testing.T, thread string) *mchangesSliceFixture 
 	t.Helper()
 	registry := sharedProxyTestRegistry(t)
 	thread = uniqueTestThread(thread)
-	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, toolPluginManifestFilename))
-	if err != nil {
-		t.Fatal(err)
-	}
-	store, err := openMekugiReplayStore(manifest.ReplayDirectory)
+	replayDirectory := registry.ReplayDirectory
+	store, err := openMekugiReplayStore(replayDirectory)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,24 +176,7 @@ func TestMChangesHistoryReportsSavedEffectsWithoutCommandResult(t *testing.T) {
 func TestMChangesSlicesUsageArgumentsAndWorkspaceErrors(t *testing.T) {
 	t.Parallel()
 	f := newMChangesSliceFixture(t, "slice-arguments")
-	manifest, err := readToolWorkerManifest(filepath.Join(f.registry.SnapshotDir, toolPluginManifestFilename))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var description string
-	for _, contribution := range manifest.Tools {
-		if contribution.Name != "mchanges" {
-			continue
-		}
-		var definition struct {
-			Description string `json:"description"`
-		}
-		if err := json.Unmarshal(contribution.Specification, &definition); err != nil {
-			t.Fatal(err)
-		}
-		description = definition.Description
-		break
-	}
+	description := f.registry.FrontendGuidance
 	_, usageErr := testChanges().Parse([]string{"--invalid"}, f.workspace)
 	agentUsage := strings.Replace(strings.TrimPrefix(usageErr.Error(), "unknown option --invalid; "), "--summary|--history|--net", "--summary|--net", 1)
 	if !strings.Contains(description, "Usage: `"+agentUsage+"`") {

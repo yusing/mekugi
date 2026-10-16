@@ -3,23 +3,21 @@ package router
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 
 	"github.com/yusing/mekugi/contracts/command"
 
 	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 )
 
-func mreadQualitySession(t *testing.T, registry *toolRegistry, thread string) (*mekugiReplayStore, context.Context) {
+func mreadQualitySession(t *testing.T, registry *frontends.Registry, thread string) (*mekugiReplayStore, context.Context) {
 	t.Helper()
-	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, toolPluginManifestFilename))
-	if err != nil {
-		t.Fatal(err)
-	}
-	store, err := openMekugiReplayStore(manifest.ReplayDirectory)
+	replayDirectory := registry.ReplayDirectory
+	store, err := openMekugiReplayStore(replayDirectory)
 	if err != nil {
 		t.Fatal(err)
 	}

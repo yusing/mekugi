@@ -15,7 +15,6 @@ import (
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 
-	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
@@ -66,27 +65,6 @@ func TestAgentMetricsAbsentDebugSession(t *testing.T) {
 	}
 	if data, err := os.ReadFile(axPath); err != nil || string(data) != existing {
 		t.Fatalf("configured AX evidence changed: %q, %v", data, err)
-	}
-}
-
-func TestAgentMetricsAbsentAuthenticatedReader(t *testing.T) {
-	registry := sharedProxyTestRegistry(t)
-	axPath := filepath.Join(t.TempDir(), "reads.jsonl")
-	t.Setenv(evidence.AXReadOutputEnvironment, axPath)
-	invocation, err := RecognizeToolWorker(registry.frontends["mcat"])
-	if err != nil || invocation == nil {
-		t.Fatalf("recognize reader: %v", err)
-	}
-	source := filepath.Join(t.TempDir(), "source.txt")
-	writeDebugInspectionFixture(t, source, "reader still works\n")
-	var stdout, stderr bytes.Buffer
-	code := runAuthenticatedToolWorker(testHistory(), testRecovery(), nil, testCommands(), command.HostProcessGroup,
-		t.Context(), invocation.directory, invocation.name, []string{source}, nil, &stdout, &stderr)
-	if code != 0 || stdout.String() != "reader still works\n" || stderr.Len() != 0 {
-		t.Fatalf("reader code=%d stdout=%q stderr=%q", code, &stdout, &stderr)
-	}
-	if _, err := os.Stat(axPath); !os.IsNotExist(err) {
-		t.Fatalf("reader created ambient AX log: %v", err)
 	}
 }
 

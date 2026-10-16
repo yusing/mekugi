@@ -71,8 +71,8 @@ func recoveryCursor(t *testing.T, store *mekugiReplayStore, ctx context.Context,
 	}
 	return strings.Fields(next)[0]
 }
-func executeRecovery(ctx context.Context, manifest toolWorkerManifest, args []string) command.Output {
-	output, err := testRecovery().Execute(ctx, command.Request{Args: args, Scope: retainedScope(ctx, manifest.ReplayDirectory)})
+func executeRecovery(ctx context.Context, replayDirectory string, args []string) command.Output {
+	output, err := testRecovery().Execute(ctx, command.Request{Args: args, Scope: retainedScope(ctx, replayDirectory)})
 	if err != nil {
 		panic(err)
 	}

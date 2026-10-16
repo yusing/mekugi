@@ -1,4 +1,4 @@
-package router
+package frontends
 
 import (
 	"bytes"
@@ -11,10 +11,10 @@ import (
 )
 
 func TestToolRegistryExposesOnlyExecutableFrontends(t *testing.T) {
-	registry := sharedProxyTestRegistry(t)
+	registry := sharedTestRegistry(t)
 	want := []string{"inspect_file", "mcat", "mchanges", "mread", "mrun", "msymbol"}
 	var got []string
-	for name := range registry.frontends {
+	for name := range registry.Frontends {
 		got = append(got, name)
 	}
 	slices.Sort(got)
@@ -36,7 +36,7 @@ func TestToolRegistryExposesOnlyExecutableFrontends(t *testing.T) {
 
 func TestNativeFrontendAuthenticatesCatalogWithoutExternalRuntime(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
-	registry, err := buildToolRegistryForTest(t, t.Context())
+	registry, err := buildRegistryForTest(t, t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,16 +45,13 @@ func TestNativeFrontendAuthenticatesCatalogWithoutExternalRuntime(t *testing.T) 
 			t.Error(err)
 		}
 	})
-	if err := registry.installFrontends(); err != nil {
-		t.Fatal(err)
-	}
 	source := filepath.Join(t.TempDir(), "source.txt")
 	if err := os.WriteFile(source, []byte("native contents\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	run := func() (string, string, error) {
-		command := exec.CommandContext(t.Context(), registry.frontends["mcat"], source)
-		command.Env = append(os.Environ(), routerTestWorkerEnvironment+"=1", "CODEX_THREAD_ID=")
+		command := exec.CommandContext(t.Context(), registry.Frontends["mcat"], source)
+		command.Env = append(os.Environ(), testWorkerEnvironment+"=1", "CODEX_THREAD_ID=")
 		var stdout, stderr bytes.Buffer
 		command.Stdout, command.Stderr = &stdout, &stderr
 		err := command.Run()
@@ -63,7 +60,7 @@ func TestNativeFrontendAuthenticatesCatalogWithoutExternalRuntime(t *testing.T) 
 	if stdout, stderr, err := run(); err != nil || stdout != "native contents\n" || stderr != "" {
 		t.Fatalf("native frontend: stdout %q stderr %q error %v", stdout, stderr, err)
 	}
-	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, toolPluginManifestFilename))
+	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, manifestFilename))
 	if err != nil {
 		t.Fatal(err)
 	}

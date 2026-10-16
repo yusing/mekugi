@@ -28,7 +28,7 @@ acceptance cases, not a blanket request to implement every listed concern.
   Observation/display must not replay effects, replace results, or change exact tool input/identity.
   Startup cancellation belongs to the wrapper only until Codex takes the terminal. Keep overrides
   invocation-local and user configuration untouched. See [execution](doc/spec/execution.md),
-  [frontends](doc/spec/plugin.md), [MCP](libraries/mcptransport/SPEC.md), and [launch](apps/mekugi/internal/launch/SPEC.md).
+  [frontends](apps/mekugi/internal/frontends/SPEC.md), [MCP](libraries/mcptransport/SPEC.md), and [launch](apps/mekugi/internal/launch/SPEC.md).
 - **Change evidence:** `mchanges` owns retained edit evidence. Preserve ordinary editing/LiveDiff,
   including ignored known targets. Preview is provisional. Source recognition must not gate
   observed effects. Keep segment completion, observed file changes, and terminal host completion
@@ -44,7 +44,7 @@ acceptance cases, not a blanket request to implement every listed concern.
   [activity identity](doc/architecture/activity.md).
 - **Continuity:** preserve existing behavior for affected forks, side threads, switching, and
   fresh resume. Restore inherited authorization from durable records/visible history, never live
-  parents; replay cannot revive processes or handles. See [replay](doc/spec/plugin.md),
+  parents; replay cannot revive processes or handles. See [replay](apps/mekugi/internal/frontends/SPEC.md),
   [changes](doc/spec/changes.md), and [guide](modules/agentguidance/SPEC.md).
 - **Read boundaries:** independent multi-target reads attempt all targets, preserve successful
   stdout and target-qualified stderr, and fail nonzero if any target fails. Mutation dependencies
@@ -58,7 +58,7 @@ acceptance cases, not a blanket request to implement every listed concern.
   capturers rather than duplicate policy in adapters. Validate registry exposure at its owner.
   Frontend guidance belongs to the authenticated registry; preserve caller base policy except
   declared omissions/conflicts. See
-  [plugin boundary](doc/architecture/plugin.md) and [guide](modules/agentguidance/SPEC.md).
+  [plugin boundary](apps/mekugi/internal/frontends/SPEC.md) and [guide](modules/agentguidance/SPEC.md).
 - **Responsiveness:** slow storage or unresolved observations for one owner must not stall
   unrelated input, cancellation, or lifecycle delivery. See [UI ownership](doc/architecture/ui.md).
 - **Auxiliary behavior:** progress, capture, and diagnostics remain non-invasive and independently

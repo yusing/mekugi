@@ -11,6 +11,9 @@ import (
 	"slices"
 	"syscall"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+	"github.com/yusing/mekugi/contracts/command"
+
 	"github.com/yusing/mekugi/libraries/mcptransport"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
@@ -22,7 +25,7 @@ import (
 func Run() (exitCode int) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	worker, err := router.RecognizeToolWorker(os.Args[0])
+	worker, err := frontends.Recognize(os.Args[0])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -43,13 +46,13 @@ func Run() (exitCode int) {
 		operation = os.Args[1]
 	}
 	if worker != nil || slices.Contains([]string{"inspect-sessions", "replay-session", "inspect-session", "inspect-storage"}, operation) {
-		frontends, err := composition.Frontends(ctx, false)
+		runtime, err := composition.Frontends(ctx, false)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "mekugi:", err)
 			return 1
 		}
 		defer func() {
-			if err := frontends.Close(context.WithoutCancel(ctx)); err != nil {
+			if err := runtime.Close(context.WithoutCancel(ctx)); err != nil {
 				fmt.Fprintln(os.Stderr, "mekugi:", err)
 				if exitCode == 0 {
 					exitCode = 1
@@ -57,17 +60,17 @@ func Run() (exitCode int) {
 			}
 		}()
 		if worker != nil {
-			return worker.Run(frontends.History, frontends.Recovery, frontends.AgentMetrics, frontends.Commands, ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
+			return worker.Run(runtime.History, runtime.Recovery, runtime.AgentMetrics, runtime.Commands, command.DedicatedHostProcess, ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
 		}
 		switch operation {
 		case "inspect-sessions":
-			return router.RunSessionCorpusInspection(frontends.Inspection, ctx, os.Args[2:], os.Stdout, os.Stderr)
+			return router.RunSessionCorpusInspection(runtime.Inspection, ctx, os.Args[2:], os.Stdout, os.Stderr)
 		case "replay-session":
-			return router.RunSessionUIReplay(frontends.Activity, frontends.Replay, ctx, os.Args[2:], os.Stdin, os.Stdout, os.Stderr)
+			return router.RunSessionUIReplay(runtime.Activity, runtime.Replay, ctx, os.Args[2:], os.Stdin, os.Stdout, os.Stderr)
 		case "inspect-session":
-			return router.RunSessionInspection(frontends.Inspection, frontends.Diagnostics, ctx, os.Args[2:], os.Stdout, os.Stderr)
+			return router.RunSessionInspection(runtime.Inspection, runtime.Diagnostics, ctx, os.Args[2:], os.Stdout, os.Stderr)
 		case "inspect-storage":
-			return router.RunStorageInspection(frontends.History, frontends.Segments.Reports, ctx, os.Args[2:], os.Stdout, os.Stderr)
+			return router.RunStorageInspection(runtime.History, runtime.Segments.Reports, ctx, os.Args[2:], os.Stdout, os.Stderr)
 		}
 	}
 	routerArgs, command, err := router.SplitCommand(os.Args[1:])

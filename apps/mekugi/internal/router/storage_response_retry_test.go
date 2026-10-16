@@ -126,11 +126,7 @@ func TestReplayStorageDefaultIsFourGiB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	worker, err := workerReplayStore(toolWorkerManifest{history: testHistory(), recovery: testRecovery(), ReplayDirectory: store.directory})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, candidate := range []*mekugiReplayStore{store, worker, testReplayStore(mekugiReplayStore{})} {
+	for _, candidate := range []*mekugiReplayStore{store, testReplayStore(mekugiReplayStore{})} {
 		// The reported failure needed only 170 bytes over the old 1 GiB cap.
 		// Admission checks sizes, so no large payload allocation is needed.
 		_, limit := candidate.publication.Usage(candidate.retentionLimits(), nil, "", (1<<30)+170)

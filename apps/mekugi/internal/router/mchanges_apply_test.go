@@ -364,11 +364,8 @@ func TestMChangesRevertKeepsMoveSourceWhenDestinationFails(t *testing.T) {
 func TestMChangesFrontendRevertsWorkspace(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
-	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, toolPluginManifestFilename))
-	if err != nil {
-		t.Fatal(err)
-	}
-	store, err := openMekugiReplayStore(manifest.ReplayDirectory)
+	replayDirectory := registry.ReplayDirectory
+	store, err := openMekugiReplayStore(replayDirectory)
 	if err != nil {
 		t.Fatal(err)
 	}

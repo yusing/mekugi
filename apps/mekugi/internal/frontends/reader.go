@@ -1,4 +1,5 @@
-package router
+// Source: apps/mekugi/internal/router/frontend_reader.go:1:73@[7b6d9ccc]
+package frontends
 
 import (
 	"context"
@@ -18,14 +19,18 @@ const codexThreadIDEnvironment = "CODEX_THREAD_ID"
 // executable-frontend invocation. Codex remains the process owner.
 func executeFrontendReader(
 	ctx context.Context,
-	manifest toolWorkerManifest,
+	metrics *evidence.Service,
+	axReadOutput string,
 	name string,
 	request command.Request,
 	run func(context.Context, command.Request) (command.Output, error),
 ) (execution command.Output, err error) {
-	finish := beginFrontendRead(manifest, name)
+	finish := beginFrontendRead(metrics, axReadOutput, name)
 	defer func() {
-		class := frontendExecutionFailure(execution, err)
+		class := execution.FailureClass
+		if err != nil {
+			class = "execution_error"
+		}
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			class = "deadline_exceeded"
 		} else if ctx.Err() != nil {
@@ -37,20 +42,12 @@ func executeFrontendReader(
 	return run(ctx, request)
 }
 
-func frontendExecutionFailure(execution command.Output, err error) string {
-	if err != nil {
-		return "execution_error"
-	}
-	return execution.FailureClass
-}
-
 // beginFrontendRead owns AX setup and publication, not reader outcome policy.
-func beginFrontendRead(manifest toolWorkerManifest, name string) func(*command.Output, error, bool, string) {
-	log := manifest.AXReadOutput
+func beginFrontendRead(metrics *evidence.Service, log, name string) func(*command.Output, error, bool, string) {
 	if log == "" {
 		log = os.Getenv(evidence.AXReadOutputEnvironment)
 	}
-	observation, observeErr := manifest.agentMetrics.StartRead(
+	observation, observeErr := metrics.StartRead(
 		log,
 		os.Getenv(codexThreadIDEnvironment),
 		name,

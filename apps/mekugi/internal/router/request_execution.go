@@ -175,7 +175,7 @@ func (a *requestAttempt) prepare() error {
 	}
 
 	if a.executor.mekugiCalls != nil {
-		if guidance := a.executor.mekugiCalls.registry.guidance; guidance != nil {
+		if guidance := a.executor.mekugiCalls.registry.Guidance; guidance != nil {
 			if err := projectRequestInstructions(&a.request, guidance.BeforePreparation); err != nil {
 				return err
 			}
@@ -253,7 +253,7 @@ func (a *requestAttempt) prepareWire() error {
 	attachmentsProjected := projectFileAttachments(&a.request)
 	// Match attachment sources before compact skill rewriting drops native paths.
 	if a.executor.mekugiCalls != nil {
-		if guidance := a.executor.mekugiCalls.registry.guidance; guidance != nil {
+		if guidance := a.executor.mekugiCalls.registry.Guidance; guidance != nil {
 			if err := projectRequestInstructions(&a.request, func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
 				return guidance.AfterAttachments(input, a.executor.mekugiCalls.skillsManager)
 			}); err != nil {

@@ -61,7 +61,7 @@ their logical row position. Results contain no raw excerpts, bodies, fields, com
 JSON scalar values, or source text.
 
 The complete successful stdout, including its final LF, is at most 65,536 UTF-8 bytes and
-uses the shared [reader token ceiling](../../doc/spec/plugin.md#output-and-recovery). Options may precede or follow the path.
+uses the shared [reader token ceiling](../../apps/mekugi/internal/frontends/SPEC.md#output-and-recovery). Options may precede or follow the path.
 When necessary, compact output emits a complete row prefix, exits nonzero, and
 retains the rest for `mread`. Single-file JSON returns
 `truncation: {"reason":"output_bytes"|"output_tokens","after_entries":N}`.
@@ -119,7 +119,7 @@ success or cause the command to rerun.
    line counting, content detection, or command-level truncation.
 4. Frontend authentication, model visibility, replay, and passthrough isolation follow
    [REQ-READ-001](../fileread/SPEC.md). Instruction and executable-frontend behavior remain owned by
-   `REQ-GUIDE-001` and `REQ-PLUGIN-001`.
+   `REQ-GUIDE-001` and [REQ-PLUGIN-001](../../apps/mekugi/internal/frontends/SPEC.md).
 
 5. Absolute, parent-relative, and symlink paths outside the current directory work
    when host permissions allow; non-regular files still fail.

@@ -94,7 +94,6 @@ provider response. The
 is a model-input-only exception: it runs after all evidence consumers and leaves
 the original request input, host result, rollout, replay evidence, and UI intact.
 Caller-owned base instructions pass through except for
-explicit omission blocks and pinned inherited conflicts. XML-framed session-helper guidance is
-embedded from a checked-in standalone Markdown file generated from tool-source descriptions and
-an out-of-router template. Guidance remains call-local and is stored with the
-pinned catalog snapshot.
+explicit omission blocks and pinned inherited conflicts. Session-helper guidance is owned by
+[agent guidance](../../modules/agentguidance/SPEC.md); authenticated snapshot
+publication is owned by the [frontend host](../../apps/mekugi/internal/frontends/SPEC.md).

@@ -23,14 +23,8 @@ func TestRetainInputPreservesAllCombinedRecoveryHandles(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	if err := registry.installFrontends(); err != nil {
-		t.Fatal(err)
-	}
-	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, toolPluginManifestFilename))
-	if err != nil {
-		t.Fatal(err)
-	}
-	store, err := openMekugiReplayStore(manifest.ReplayDirectory)
+	replayDirectory := registry.ReplayDirectory
+	store, err := openMekugiReplayStore(replayDirectory)
 	if err != nil {
 		t.Fatal(err)
 	}

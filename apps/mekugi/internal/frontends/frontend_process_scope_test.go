@@ -1,4 +1,4 @@
-package router
+package frontends
 
 import (
 	"bytes"
@@ -11,7 +11,7 @@ import (
 
 func TestAuthenticatedCompiledFrontendProcessScope(t *testing.T) {
 	t.Parallel()
-	registry := sharedProxyTestRegistry(t)
+	registry := sharedTestRegistry(t)
 	for _, tc := range []struct {
 		name  string
 		owned bool
@@ -40,7 +40,7 @@ func TestAuthenticatedCompiledFrontendProcessScope(t *testing.T) {
 			if tc.owned {
 				run = runOwnedToolPluginWorker
 			}
-			handled, status := run(testHistory(), testRecovery(), commands, t.Context(), registry.frontends["msymbol"], nil, nil, &stdout, &stderr)
+			handled, status := run(testHistory(), testRecovery(), commands, t.Context(), registry.Frontends["msymbol"], nil, nil, &stdout, &stderr)
 			if !handled || status != 0 || calls != 1 || scope != tc.want || stdout.String() != "scope observed\n" || stderr.Len() != 0 {
 				t.Fatalf("handled=%t status=%d calls=%d scope=%v want=%v stdout=%q stderr=%q", handled, status, calls, scope, tc.want, stdout.String(), stderr.String())
 			}

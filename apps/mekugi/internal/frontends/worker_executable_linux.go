@@ -1,4 +1,5 @@
-package router
+// Source: apps/mekugi/internal/router/worker_executable_linux.go:1:8@[7b6d9ccc]
+package frontends
 
 import "os"
 

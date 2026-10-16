@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
 	"github.com/yusing/mekugi/libraries/httptransport"
@@ -470,7 +472,7 @@ func TestMekugiPrewarmRequiresExplicitNonGeneratingRequest(t *testing.T) {
 			if generate != "" {
 				request.Fields["generate"] = json.RawMessage(generate)
 			}
-			proxy := &mekugiProxy{registry: &toolRegistry{guidance: testGuidance()}}
+			proxy := &mekugiProxy{registry: &frontends.Registry{Guidance: testGuidance()}}
 			if err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "prewarm", nil), "session", &webSocketExchange{}, io.Discard, nil, proxy); err == nil {
 				t.Fatal("generating prewarm bypassed turn validation")
 			}
@@ -485,7 +487,7 @@ func TestResponsesHTTPPrewarmCannotBypassPreparation(t *testing.T) {
 	request.Header.Set(codexresponses.ThreadIDHeader, "prewarm-thread")
 	provider := &serverFakeProvider{}
 	recorder := httptest.NewRecorder()
-	responsesHandler(t.Context(), time.Minute, provider, nil, &mekugiProxy{registry: &toolRegistry{guidance: testGuidance()}})(recorder, request)
+	responsesHandler(t.Context(), time.Minute, provider, nil, &mekugiProxy{registry: &frontends.Registry{Guidance: testGuidance()}})(recorder, request)
 	if len(provider.forwarded) != 0 {
 		t.Fatal("HTTP prewarm reached a potentially generating provider")
 	}

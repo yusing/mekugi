@@ -48,6 +48,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Codex app-server RPC transport and process lifecycle | `./backends/codex/appserver` and `./apps/mekugi/internal/router -run AppServer` |
 | Rollout evidence and offline source decoding | `./backends/codex/rollout`, plus router context, resume-settings, restored-Activity, session-inspection, corpus and optional-AX consumers |
 | Offline reconstruction, scheduling and playback | `./modules/sessionreplay/... ./backends/codex/rollout`, plus router `SessionUIReplay`, hook and optional-transport consumers |
+| Authenticated catalog, pinned workers, dispatch and recovery delivery | `./apps/mekugi/internal/frontends`, plus launch `WorkerArguments` and affected router integration |
 | Router behavior | `./apps/mekugi/internal/router` |
 | Bounded notices, feedback and recovery | `./modules/notifications/...`, plus router `Critical`, `Notice`, `Notification`, request-fault, cleanup and title consumers |
 | Applied settings and renderer preferences | `./modules/sessionpreferences/...`, plus router `NativePaneState`, `AppliedSettings`, resume, controls and settings consumers |
@@ -75,12 +76,12 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Debug bundles, private failure records and offline diagnosis | `./modules/diagnostics/...`, plus router debug, critical-notice, failure, optional-contributor and retention consumers |
 | Agent-experience evidence | `./modules/agentmetrics/...`, plus router compiled-reader, inspection and debug consumers |
 | Semantic symbol queries | `./modules/symbolquery/...`, plus router symbol/activity/AX and recovery consumers |
-| Structural inspection | `./modules/sourceoutline/... ./libraries/sourceanalysis/...`, then authenticated router frontend/recovery tests |
-| Raw source reading | `./modules/fileread/...`, then router read/recovery/AX and activity consumers |
+| Structural inspection | `./modules/sourceoutline/... ./libraries/sourceanalysis/... ./apps/mekugi/internal/frontends`, then router integration |
+| Raw source reading | `./modules/fileread/... ./apps/mekugi/internal/frontends`, then router read/recovery/AX and activity consumers |
 | Retained changes, frozen selections, and mutation | `./modules/changehistory/...`, plus router `MChanges`, `Changes`, retention/fork/recovery, and live-view consumers |
-| Retained paging | `./modules/outputrecovery/...`, then router mread/storage/fork integration |
+| Retained paging | `./modules/outputrecovery/... ./apps/mekugi/internal/frontends`, then router mread/storage/fork integration |
 | Shared command options and output admission | `./libraries/commandargs/... ./libraries/outputbudget/...`, plus affected frontend integration |
-| Bounded commands | `./modules/boundedcommand/...`, plus `./apps/mekugi/internal/router -run MRun` for authenticated delivery and process lifecycle |
+| Bounded commands | `./modules/boundedcommand/... ./apps/mekugi/internal/frontends`, plus `./apps/mekugi/internal/router -run MRun` for authenticated delivery and process lifecycle |
 | Invocation launch and process dispatch | `./apps/mekugi/internal/launch`, plus executable build |
 | Native frontend host acceptance | `-tags codex_e2e ./apps/mekugi/internal/router -run '^TestNativeToolFrontendCodexE2E$'` (installed Codex, local mock provider) |
 | Native mrun continuation acceptance | `-tags codex_e2e ./apps/mekugi/internal/router -run '^TestMRunNativeCodexYieldAndWriteStdinE2E$'` (installed Codex, local mock provider) |
@@ -119,7 +120,7 @@ its Codex binding owns the shared layout and instruction projection. Check the
 actual authenticated snapshot and prepared-request projection after prose changes:
 
 ```sh
-make test TEST_PACKAGES='./modules/agentguidance/... ./apps/mekugi/internal/router ./apps/mekugi/internal/composition' TEST_RUN='Guidance|Instruction|ConflictRewrite|Prewarm|ComposedFrontendCatalog'
+make test TEST_PACKAGES='./modules/agentguidance/... ./apps/mekugi/internal/frontends ./apps/mekugi/internal/router ./apps/mekugi/internal/composition' TEST_RUN='Guidance|Instruction|ConflictRewrite|Prewarm|ComposedFrontendCatalog'
 ```
 
 ## Static checks

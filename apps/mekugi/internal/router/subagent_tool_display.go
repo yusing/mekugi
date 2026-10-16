@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 )
 
@@ -32,7 +34,7 @@ func toolActivityShellSource(script string) string {
 		if !filepath.IsAbs(directory) || !shellinstrumentation.IsGuardDirectory(directory) {
 			return false
 		}
-		_, ok := toolRegistryIDFromDirectory(filepath.Dir(directory))
+		_, ok := frontends.RegistryIDFromDirectory(filepath.Dir(directory))
 		return ok
 	})
 }

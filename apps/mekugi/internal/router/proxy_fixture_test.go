@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 
 	"github.com/yusing/mekugi/modules/changehistory/changes"
@@ -35,7 +37,7 @@ import (
 
 type proxyRegistryFixture struct {
 	once      sync.Once
-	registry  *toolRegistry
+	registry  *frontends.Registry
 	directory string
 	err       error
 }
@@ -55,24 +57,27 @@ func uniqueTestThread(prefix string) string {
 }
 
 // Ordinary proxy tests borrow the real, immutable built-in frontend catalog.
-func sharedProxyTestRegistry(t *testing.T) *toolRegistry {
+func sharedProxyTestRegistry(t *testing.T) *frontends.Registry {
 	t.Helper()
 	return proxyTestFixture.get(t)
 }
 func buildToolRegistryForTest(
 	t *testing.T,
 	ctx context.Context,
-) (*toolRegistry, error) {
+) (*frontends.Registry, error) {
 	t.Helper()
 	directory := t.TempDir()
 	if _, err := openMekugiReplayStore(filepath.Join(directory, "replay")); err != nil {
 		return nil, err
 	}
-	return buildToolRegistryAt(ctx, testCommands(), testGuidance(),
-		filepath.Join(directory, "runtime"), filepath.Join(directory, "replay"))
+	var axReadOutput string
+	if debug, _ := ctx.Value(debugContextKey{}).(*debugOutput); debug != nil {
+		axReadOutput = debug.ReadLogPath()
+	}
+	return frontends.New(ctx, frontends.Config{Commands: testCommands(), Guidance: testGuidance(), RuntimeDirectory: filepath.Join(directory, "runtime"), ReplayDirectory: filepath.Join(directory, "replay"), AXReadOutput: axReadOutput})
 }
 
-func (fixture *proxyRegistryFixture) get(t *testing.T) *toolRegistry {
+func (fixture *proxyRegistryFixture) get(t *testing.T) *frontends.Registry {
 	t.Helper()
 	fixture.once.Do(func() {
 		fixture.directory, fixture.err = os.MkdirTemp("", "mekugi-proxy-tests-")
@@ -82,14 +87,7 @@ func (fixture *proxyRegistryFixture) get(t *testing.T) *toolRegistry {
 		if _, fixture.err = openMekugiReplayStore(filepath.Join(fixture.directory, "replay")); fixture.err != nil {
 			return
 		}
-		fixture.registry, fixture.err = buildToolRegistryAt(
-			t.Context(), testCommands(), testGuidance(),
-			filepath.Join(fixture.directory, "runtime"),
-			filepath.Join(fixture.directory, "replay"),
-		)
-		if fixture.err == nil {
-			fixture.err = fixture.registry.installFrontends()
-		}
+		fixture.registry, fixture.err = frontends.New(t.Context(), frontends.Config{Commands: testCommands(), Guidance: testGuidance(), RuntimeDirectory: filepath.Join(fixture.directory, "runtime"), ReplayDirectory: filepath.Join(fixture.directory, "replay")})
 	})
 	if fixture.err != nil {
 		t.Fatal(fixture.err)
@@ -97,7 +95,7 @@ func (fixture *proxyRegistryFixture) get(t *testing.T) *toolRegistry {
 	return fixture.registry
 }
 
-func newProxyWithSharedTestRegistry(t *testing.T, registry *toolRegistry) *mekugiProxy {
+func newProxyWithSharedTestRegistry(t *testing.T, registry *frontends.Registry) *mekugiProxy {
 	t.Helper()
 	proxy := newMekugiProxy(registry, nil, newTestUsage(t))
 	t.Cleanup(func() {
@@ -194,7 +192,7 @@ func runToolPluginWorkerInHostProcess(service *history.Service, recovered *recov
 }
 
 func runToolPluginWorker(service *history.Service, recovered *recovery.Service, commands []command.Contribution, processScope command.ProcessScope, ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
-	invocation, err := RecognizeToolWorker(argv0)
+	invocation, err := frontends.Recognize(argv0)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return true, 1
@@ -202,11 +200,11 @@ func runToolPluginWorker(service *history.Service, recovered *recovery.Service, 
 	if invocation == nil {
 		return false, 0
 	}
-	return true, runAuthenticatedToolWorker(service, recovered, new(evidence.Service), commands, processScope, ctx, invocation.directory, invocation.name, args, stdin, stdout, stderr)
+	return true, invocation.Run(service, recovered, new(evidence.Service), commands, processScope, ctx, args, stdin, stdout, stderr)
 }
 
 func runOwnedToolPluginWorker(service *history.Service, recovered *recovery.Service, commands []command.Contribution, ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
-	invocation, err := RecognizeToolWorker(argv0)
+	invocation, err := frontends.Recognize(argv0)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return true, 1
@@ -214,5 +212,5 @@ func runOwnedToolPluginWorker(service *history.Service, recovered *recovery.Serv
 	if invocation == nil {
 		return false, 0
 	}
-	return true, invocation.Run(service, recovered, new(evidence.Service), commands, ctx, args, stdin, stdout, stderr)
+	return true, invocation.Run(service, recovered, new(evidence.Service), commands, command.DedicatedHostProcess, ctx, args, stdin, stdout, stderr)
 }

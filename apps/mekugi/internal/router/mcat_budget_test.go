@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 )
@@ -230,12 +232,12 @@ func checkMCatLimitedRange(t *testing.T, stdout, stderr string, budget, rowCount
 	return shownStart, shownEnd, match[3]
 }
 
-func recoverMCatRows(t *testing.T, registry *toolRegistry, invocation shellWorkerTestInvocation, firstPage, reference string) string {
+func recoverMCatRows(t *testing.T, registry *frontends.Registry, invocation shellWorkerTestInvocation, firstPage, reference string) string {
 	t.Helper()
 	return firstPage + mreadMCatRows(t, registry, invocation, reference, strings.Count(firstPage, "\n")+1)
 }
 
-func mreadMCatRows(t *testing.T, registry *toolRegistry, invocation shellWorkerTestInvocation, reference string, nextRow int) string {
+func mreadMCatRows(t *testing.T, registry *frontends.Registry, invocation shellWorkerTestInvocation, reference string, nextRow int) string {
 	t.Helper()
 	var recovered strings.Builder
 	rowLabel := regexp.MustCompile(`^\[rows ([0-9]+):([0-9]+)\]$`)

@@ -20,9 +20,9 @@ session-private `PATH`:
 msymbol [--max-tokens N] [--workspace ROOT] (def|refs) PATH [LINE] SYMBOL [N]
 ```
 
-The [authenticated frontend contract](../../doc/spec/plugin.md) owns execution,
+The [authenticated frontend contract](../../apps/mekugi/internal/frontends/SPEC.md) owns execution,
 caller authority, pinned identity, and stream delivery. Output uses the
-[shared reader token options](../../doc/spec/plugin.md#output-and-recovery). Reader options and
+[shared reader token options](../../apps/mekugi/internal/frontends/SPEC.md#output-and-recovery). Reader options and
 `--workspace ROOT` may surround the query operands.
 
 The canonical workspace defaults to the host process working directory. An optional

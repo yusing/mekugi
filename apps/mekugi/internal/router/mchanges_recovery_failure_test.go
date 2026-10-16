@@ -20,7 +20,7 @@ func TestMChangesRecoveryPublicationFailurePreservesOutput(t *testing.T) {
 	for _, mode := range []string{"paged", "partial", "mutation"} {
 		t.Run(mode, func(t *testing.T) {
 			f := newMChangesSliceFixture(t, "recovery-publication-"+mode)
-			t.Setenv(codexThreadIDEnvironment, f.thread)
+			t.Setenv("CODEX_THREAD_ID", f.thread)
 			id := f.reserve(t, f.thread, "change")
 			var files []diffmodel.ReviewFile
 			for i := 0; i < 20; i++ {
@@ -50,7 +50,7 @@ func TestMChangesRecoveryPublicationFailurePreservesOutput(t *testing.T) {
 			}
 			run := func(args []string) (string, string, int) {
 				var out, diag bytes.Buffer
-				handled, status := runToolPluginWorkerInHostProcess(testHistory(), faultRecovery, testCommands(), t.Context(), f.registry.frontends["mchanges"], args, nil, &out, &diag)
+				handled, status := runToolPluginWorkerInHostProcess(testHistory(), faultRecovery, testCommands(), t.Context(), f.registry.Frontends["mchanges"], args, nil, &out, &diag)
 				if !handled {
 					t.Fatal("worker not recognized")
 				}

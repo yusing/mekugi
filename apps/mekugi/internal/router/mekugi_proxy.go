@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+
 	"github.com/yusing/mekugi/contracts/inference"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 
@@ -28,7 +30,7 @@ import (
 const applyPatchToolName = "apply_patch"
 
 type mekugiProxy struct {
-	registry         *toolRegistry
+	registry         *frontends.Registry
 	inputProjections []binding.InputProjection
 	usage            *accounting.Service
 	review           *savedReview
@@ -57,7 +59,7 @@ type mekugiProxy struct {
 	closed             bool
 }
 
-func newMekugiProxy(registry *toolRegistry, projections []binding.InputProjection, usage *accounting.Service) *mekugiProxy {
+func newMekugiProxy(registry *frontends.Registry, projections []binding.InputProjection, usage *accounting.Service) *mekugiProxy {
 	if registry == nil {
 		return nil
 	}
@@ -308,7 +310,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 	// handshake may not yet carry the instruction or tool catalog of a turn.
 	if prewarm {
 		tools := codexresponses.DecodeToolCatalog(request.Fields)
-		execution, err := prepareStockExecution(request.Fields, tools, p.registry.frontendGuidance, p.registry.guidance)
+		execution, err := prepareStockExecution(request.Fields, tools, p.registry.FrontendGuidance, p.registry.Guidance)
 		if err != nil {
 			return nil, err
 		}
@@ -316,8 +318,8 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 			return nil, nil
 		}
 	}
-	if p.registry.guidance != nil {
-		if err := projectRequestInstructions(request, p.registry.guidance.ForExecution); err != nil {
+	if p.registry.Guidance != nil {
+		if err := projectRequestInstructions(request, p.registry.Guidance.ForExecution); err != nil {
 			return nil, err
 		}
 	}
@@ -340,7 +342,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 	originalTools = bytes.Clone(originalTools)
 	originalToolChoice, originalToolChoicePresent := request.Fields["tool_choice"]
 	originalToolChoice = bytes.Clone(originalToolChoice)
-	execution, err := prepareStockExecution(request.Fields, tools, p.registry.frontendGuidance, p.registry.guidance)
+	execution, err := prepareStockExecution(request.Fields, tools, p.registry.FrontendGuidance, p.registry.Guidance)
 	if err != nil {
 		return nil, err
 	}

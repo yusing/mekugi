@@ -1,6 +1,7 @@
 //go:build !linux
 
-package router
+// Source: apps/mekugi/internal/router/worker_executable_other.go:1:13@[7b6d9ccc]
+package frontends
 
 import "os"
 

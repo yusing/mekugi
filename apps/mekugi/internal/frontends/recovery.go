@@ -1,11 +1,9 @@
-package router
+// Source: apps/mekugi/internal/router/frontend_recovery.go:35:85@[7b6d9ccc]
+package frontends
 
 import (
 	"context"
 	"errors"
-	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/yusing/mekugi/contracts/command"
@@ -13,30 +11,11 @@ import (
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 )
 
-func retainedScope(ctx context.Context, directory string) scope.Retained {
-	identity, _ := ctx.Value(storageSessionKey{}).(storageSessionIdentity)
-	return scope.Retained{Directory: directory, Namespace: identity.Namespace, Thread: identity.Thread}
-}
-func (s *mekugiReplayStore) recoverySession(ctx context.Context) (*recovery.Session, error) {
-	s = s.scoped(ctx)
-	return s.recovery.Attach(scope.Retained{Directory: s.directory, Namespace: s.session.Namespace, Thread: s.session.Thread}, s.retentionLimits(), s.writes)
-}
-func workerReplayStore(manifest toolWorkerManifest) (*mekugiReplayStore, error) {
-	if manifest.ReplayDirectory == "" {
-		return nil, errors.New("read recovery storage is unavailable")
-	}
-	info, err := os.Lstat(filepath.Join(manifest.ReplayDirectory, "store.lock"))
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, errors.New("read recovery storage is missing or invalid")
-	}
-	return &mekugiReplayStore{publication: manifest.history.Attach(manifest.ReplayDirectory), recovery: manifest.recovery, directory: manifest.ReplayDirectory, maxBytes: defaultReplayStorageBytes, maxCommentaryBytes: 16 << 20, storageNotice: func(_, _, _ string, message string) { _, _ = fmt.Fprintln(os.Stderr, message) }}, nil
-}
-
-func retainExecutionOutput(ctx context.Context, manifest toolWorkerManifest, execution command.Output) (command.Output, error) {
+func retainExecutionOutput(ctx context.Context, service *recovery.Service, selected scope.Retained, execution command.Output) (command.Output, error) {
 	if execution.OmittedOutput == nil && execution.Delivery == nil {
 		return execution, nil
 	}
-	store, err := manifest.recovery.Attach(retainedScope(ctx, manifest.ReplayDirectory), recovery.DefaultLimits(), nil)
+	store, err := service.Attach(selected, recovery.DefaultLimits(), nil)
 	if err != nil {
 		return execution, err
 	}
@@ -65,7 +44,7 @@ func retainExecutionOutput(ctx context.Context, manifest toolWorkerManifest, exe
 				_, err = store.PublishAt(ctx, id, output.OmittedOutput, output.ExitCode)
 			}
 			if err != nil {
-				return prepared.Unreferenced, storagePublicationError(err)
+				return prepared.Unreferenced, err
 			}
 		}
 		return prepared.Referenced, nil

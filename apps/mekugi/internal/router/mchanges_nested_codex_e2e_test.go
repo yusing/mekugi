@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+
 	"github.com/yusing/mekugi/libraries/legacycall"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -202,18 +204,12 @@ func TestMChangesNestedNativeCodexE2E(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	if err := registry.installFrontends(); err != nil {
-		t.Fatal(err)
-	}
-	frontend, ok := registry.frontends["mchanges"]
+	frontend, ok := registry.Frontends["mchanges"]
 	if !ok {
 		t.Fatal("mchanges executable frontend is unavailable")
 	}
-	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, toolPluginManifestFilename))
-	if err != nil {
-		t.Fatal(err)
-	}
-	store, err := openMekugiReplayStore(manifest.ReplayDirectory)
+	replayDirectory := registry.ReplayDirectory
+	store, err := openMekugiReplayStore(replayDirectory)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +232,7 @@ func TestMChangesNestedNativeCodexE2E(t *testing.T) {
 	successThread := runMChangesNestedCodexCell(t, codex, registry, store, workspace, successProvider)
 	// The helper has removed native traces. A fresh store must still expose
 	// the host receipts, including to a reviewer in the shared namespace.
-	store, err = openMekugiReplayStore(manifest.ReplayDirectory)
+	store, err = openMekugiReplayStore(replayDirectory)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -470,7 +466,7 @@ type mchangesNestedShellResult struct {
 	status         int
 }
 
-func runMChangesNestedShell(t *testing.T, registry *toolRegistry, workspace, thread, script string) mchangesNestedShellResult {
+func runMChangesNestedShell(t *testing.T, registry *frontends.Registry, workspace, thread, script string) mchangesNestedShellResult {
 	t.Helper()
 	invocation := newShellWorkerTestInvocation(workspace,
 		"XDG_STATE_HOME="+t.TempDir(), "MEKUGI_RUNTIME_DIR="+t.TempDir(),
@@ -506,7 +502,7 @@ func mchangesThreadIDs(t *testing.T, store *mekugiReplayStore, workspace, thread
 func runMChangesNestedCodexCell(
 	t *testing.T,
 	codex string,
-	registry *toolRegistry,
+	registry *frontends.Registry,
 	store *mekugiReplayStore,
 	workspace string,
 	provider *mchangesNestedCodexProvider,

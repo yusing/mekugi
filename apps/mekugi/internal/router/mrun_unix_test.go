@@ -30,7 +30,7 @@ func TestMRunCodexGroupTermination(t *testing.T) {
 	directory := t.TempDir()
 	child := exec.Command(os.Args[0], "-test.run=^TestMRunCodexGroupTermination$")
 	child.Dir = directory
-	child.Env = append(os.Environ(), "MEKUGI_MRUN_GROUP_HELPER=1", "MEKUGI_MRUN_GROUP_FRONTEND="+registry.frontends["mrun"])
+	child.Env = append(os.Environ(), "MEKUGI_MRUN_GROUP_HELPER=1", "MEKUGI_MRUN_GROUP_FRONTEND="+registry.Frontends["mrun"])
 	child.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	child.Stderr = os.Stderr
 	if err := child.Start(); err != nil {
@@ -80,7 +80,7 @@ func TestMRunFormattingPreservesBackgroundCommand(t *testing.T) {
 	directory := t.TempDir()
 	child := exec.Command(os.Args[0], "-test.run=^TestMRunFormattingPreservesBackgroundCommand$")
 	child.Dir = directory
-	child.Env = append(os.Environ(), "MEKUGI_MRUN_FORMAT_HELPER=1", "MEKUGI_MRUN_FORMAT_FRONTEND="+registry.frontends["mrun"])
+	child.Env = append(os.Environ(), "MEKUGI_MRUN_FORMAT_HELPER=1", "MEKUGI_MRUN_FORMAT_FRONTEND="+registry.Frontends["mrun"])
 	if output, err := child.CombinedOutput(); err != nil {
 		t.Fatalf("mrun frontend: %v: %s", err, output)
 	}
@@ -120,7 +120,7 @@ func testMRunCancellation(t *testing.T, arguments []string) {
 	defer cancel()
 	finished := make(chan int, 1)
 	go func() {
-		_, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), testCommands(), ctx, registry.frontends["mrun"],
+		_, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), testCommands(), ctx, registry.Frontends["mrun"],
 			arguments,
 			nil, io.Discard, io.Discard)
 		finished <- status

@@ -50,17 +50,9 @@ choices remain unchanged. Passthrough preserves the original host decisions
 and does not offer typed denial reasons. Dock editing and
 draft preservation are specified under [native UI approvals](native_ui.md#approvals).
 
-The wrapped Codex `PATH` includes only this session's authenticated executable
-frontends. `mcat`, `mrun`, `mread`, `mchanges`, `msymbol`, and `inspect_file`
-are invoked through stock `exec_command`. The pinned
-snapshot and worker authenticate each frontend; a frontend does not install a
-global command or create a second process-continuation authority.
-The wrapper restores that private PATH after Bash login startup without changing
-Codex's login-shell setting or user configuration. Executable frontend children
-stay in the stock command's process group so Codex cancellation can terminate
-them rather than leaving detached descendants. A dedicated Linux frontend also
-reaps resolver orphans after an explicit cleanup result; on other platforms,
-those descendants remain in the stock group until the command ends.
+The [frontend host](../../apps/mekugi/internal/frontends/SPEC.md) owns authenticated
+executable exposure, worker identity, private PATH, and worker cleanup under
+Codex's execution authority.
 
 A streaming `apply_patch` argument, including a decoded JavaScript string literal,
 produces a provisional live diff as patch text arrives, without waiting for the
@@ -137,8 +129,9 @@ Acceptance:
 5. Stock `cat`, interpreter previews, command labels, PTY/yield behavior, and
    `write_stdin` continuation remain available through the stock path. Wait
    arguments pass through without router-imposed floors.
-6. Configured and built-in frontends use one authenticated snapshot and the
-   Codex-owned executor, with no alternate tool carrier or MCP layer.
+6. Executable frontends retain the Codex-owned executor, with no alternate tool
+   carrier or MCP layer; the [frontend host](../../apps/mekugi/internal/frontends/SPEC.md)
+   owns catalog and worker acceptance.
 7. Native command denial preserves the host tool rejection and delivers optional
    user feedback only to the matching provider continuation, without a synthetic
    exit code, steering or a new turn. Host-offered approval scopes, file-change

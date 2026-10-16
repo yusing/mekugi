@@ -1,18 +1,14 @@
-package router
+// Source: apps/mekugi/internal/router/worker_executable.go:1:51@[7b6d9ccc]
+package frontends
 
 import (
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 )
 
-const toolWorkerExecutableFilename = ".mekugi-worker"
-
-func pinRunningToolWorker(directory string) error {
-	return pinRunningExecutable(filepath.Join(directory, toolWorkerExecutableFilename))
-}
+const workerExecutableFilename = ".mekugi-worker"
 
 func pinRunningExecutable(target string) (err error) {
 	source, err := openRunningExecutable()

@@ -182,7 +182,7 @@ func TestCompletedCodeModeCallInputChangeHasSafeDiagnostic(t *testing.T) {
 }
 
 func TestPrepareStockExecutionPreservesCodeModeAndNativeTools(t *testing.T) {
-	guide := newManagedMekugiProxy(t).registry.frontendGuidance
+	guide := newManagedMekugiProxy(t).registry.FrontendGuidance
 	t.Run("exec", func(t *testing.T) {
 		fields := map[string]json.RawMessage{
 			"tools": responses.MustMarshalJSON([]any{map[string]any{
@@ -226,7 +226,7 @@ func TestPrepareStockExecutionPreservesCodeModeAndNativeTools(t *testing.T) {
 }
 
 func TestStockExecutionNamespacesUseOneInterface(t *testing.T) {
-	guide := newManagedMekugiProxy(t).registry.frontendGuidance
+	guide := newManagedMekugiProxy(t).registry.FrontendGuidance
 	for _, additional := range []bool{false, true} {
 		for _, name := range []string{"exec", "exec_command", "apply_patch"} {
 			kind := "custom"
@@ -260,7 +260,7 @@ func TestStockExecutionNamespacesUseOneInterface(t *testing.T) {
 }
 
 func TestStockExecutionAllowsHostSelectedToolSubset(t *testing.T) {
-	guide := newManagedMekugiProxy(t).registry.frontendGuidance
+	guide := newManagedMekugiProxy(t).registry.FrontendGuidance
 	for _, tools := range [][]any{
 		{map[string]any{"type": "function", "name": "collaboration.wait_agent"}},
 	} {

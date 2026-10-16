@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+
 	"github.com/yusing/mekugi/libraries/commandargs"
 )
 
@@ -73,7 +75,7 @@ type inspectRecovery struct {
 
 func recoverInspectAfterRemovingSources(
 	t *testing.T,
-	registry *toolRegistry,
+	registry *frontends.Registry,
 	directory string,
 	paths []string,
 	budget int,

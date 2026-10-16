@@ -1,4 +1,5 @@
-package router
+// Source: apps/mekugi/internal/router/tool_plugin_worker.go:1:273@[7b6d9ccc]
+package frontends
 
 import (
 	"bytes"
@@ -18,18 +19,17 @@ import (
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 
 	"github.com/yusing/mekugi/contracts/command"
-	"github.com/yusing/mekugi/contracts/scope"
 
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
-// WorkerInvocation identifies a pinned frontend executable, before its selected
+// Invocation identifies a pinned frontend executable, before its selected
 // command is authenticated against the composed catalog.
-type WorkerInvocation struct{ directory, name string }
+type Invocation struct{ directory, name string }
 
-// RecognizeToolWorker distinguishes private frontend invocations from ordinary
+// Recognize distinguishes private frontend invocations from ordinary
 // launches. A nil invocation and nil error means the executable is not a worker.
-func RecognizeToolWorker(argv0 string) (*WorkerInvocation, error) {
+func Recognize(argv0 string) (*Invocation, error) {
 	invokedName := filepath.Base(argv0)
 	candidate := argv0
 	if invokedName == candidate {
@@ -47,7 +47,7 @@ func RecognizeToolWorker(argv0 string) (*WorkerInvocation, error) {
 	if err != nil || info.Mode()&os.ModeSymlink == 0 {
 		return nil, nil
 	}
-	fail := func(err error) (*WorkerInvocation, error) { return nil, fmt.Errorf("%s: %w", invokedName, err) }
+	fail := func(err error) (*Invocation, error) { return nil, fmt.Errorf("%s: %w", invokedName, err) }
 
 	executable, err := openRunningExecutable()
 	if err != nil {
@@ -61,12 +61,12 @@ func RecognizeToolWorker(argv0 string) (*WorkerInvocation, error) {
 
 	wrapper := candidate
 	directory := filepath.Dir(wrapper)
-	_, snapshotWrapper := toolRegistryIDFromDirectory(directory)
+	_, snapshotWrapper := RegistryIDFromDirectory(directory)
 	if !snapshotWrapper {
 		if filepath.Base(directory) != "bin" {
 			return nil, nil
 		}
-		if _, authenticated := toolRegistryIDFromDirectory(filepath.Dir(directory)); !authenticated {
+		if _, authenticated := RegistryIDFromDirectory(filepath.Dir(directory)); !authenticated {
 			return nil, nil
 		}
 		target, readErr := os.Readlink(candidate)
@@ -82,7 +82,7 @@ func RecognizeToolWorker(argv0 string) (*WorkerInvocation, error) {
 		}
 		wrapperInfo, wrapperErr := os.Lstat(wrapper)
 		directory = filepath.Dir(wrapper)
-		_, snapshotWrapper = toolRegistryIDFromDirectory(directory)
+		_, snapshotWrapper = RegistryIDFromDirectory(directory)
 		if wrapperErr != nil || wrapperInfo.Mode()&os.ModeSymlink == 0 || !snapshotWrapper {
 			return fail(errors.New("tool frontend does not target an authenticated snapshot wrapper"))
 		}
@@ -99,41 +99,34 @@ func RecognizeToolWorker(argv0 string) (*WorkerInvocation, error) {
 		return fail(errors.New("tool wrapper does not target the running mekugi executable"))
 	}
 
-	return &WorkerInvocation{directory: directory, name: filepath.Base(wrapper)}, nil
+	return &Invocation{directory: directory, name: filepath.Base(wrapper)}, nil
 }
 
-// Run dispatches an authenticated frontend in its dedicated host process.
-func (invocation *WorkerInvocation) Run(service *history.Service, recovered *recovery.Service, agentMetrics *evidence.Service, commands []command.Contribution, ctx context.Context, args []string, stdin *os.File, stdout, stderr io.Writer) int {
-	return runAuthenticatedToolWorker(service, recovered, agentMetrics, commands, command.DedicatedHostProcess, ctx, invocation.directory, invocation.name, args, stdin, stdout, stderr)
-}
-
-func runAuthenticatedToolWorker(service *history.Service, recovered *recovery.Service, agentMetrics *evidence.Service, commands []command.Contribution, processScope command.ProcessScope,
-	ctx context.Context,
-	directory, name string,
-	args []string,
-	stdin *os.File,
-	stdout, stderr io.Writer,
+// Run authenticates and dispatches the selected command under the caller's
+// process ownership. Only a dedicated host worker may claim DedicatedHostProcess.
+func (invocation *Invocation) Run(service *history.Service, recovered *recovery.Service, agentMetrics *evidence.Service, commands []command.Contribution, processScope command.ProcessScope,
+	ctx context.Context, args []string, stdin *os.File, stdout, stderr io.Writer,
 ) int {
+	directory, name := invocation.directory, invocation.name
 	fail := func(err error) int {
 		_, _ = fmt.Fprintf(stderr, "%s: %v\n", name, err)
 		return 1
 	}
-	expectedRegistryID, authenticated := toolRegistryIDFromDirectory(directory)
+	expectedRegistryID, authenticated := RegistryIDFromDirectory(directory)
 	if !authenticated {
 		return fail(errors.New("tool worker snapshot is not authenticated"))
 	}
-	manifest, err := readToolWorkerManifest(filepath.Join(directory, toolPluginManifestFilename))
+	manifest, err := readToolWorkerManifest(filepath.Join(directory, manifestFilename))
 	if err != nil {
 		return fail(err)
 	}
-	manifest.history, manifest.recovery, manifest.agentMetrics = service, recovered, agentMetrics
 	if manifest.Version != 2 {
 		return fail(errors.New("tool worker manifest is inconsistent"))
 	}
 	if manifest.RegistryID != expectedRegistryID {
 		return fail(errors.New("tool worker registry identity mismatch"))
 	}
-	identity, err := toolRegistryIdentity(manifest)
+	identity, err := registryIdentity(manifest)
 	if err != nil {
 		return fail(err)
 	}
@@ -141,7 +134,7 @@ func runAuthenticatedToolWorker(service *history.Service, recovered *recovery.Se
 		return fail(errors.New("tool worker registry identity mismatch"))
 	}
 
-	var contribution *toolContribution
+	var contribution *catalogEntry
 	for index := range manifest.Tools {
 		if manifest.Tools[index].Name == name {
 			if contribution != nil {
@@ -157,30 +150,22 @@ func runAuthenticatedToolWorker(service *history.Service, recovered *recovery.Se
 		return fail(err)
 	}
 
-	if manifest.ReplayDirectory != "" {
-		store, err := workerReplayStore(manifest)
-		if err != nil {
-			return fail(err)
-		}
-		store.storageNotice = func(_, _, _ string, message string) { _, _ = fmt.Fprintln(stderr, message) }
-		var release func()
-		ctx, release, err = store.beginSession(ctx, os.Getenv("CODEX_THREAD_ID"), "")
-		if err != nil {
-			return fail(err)
-		}
-		defer release()
+	selected, release, err := beginSession(ctx, service, manifest.ReplayDirectory, os.Getenv("CODEX_THREAD_ID"))
+	if err != nil {
+		return fail(err)
 	}
+	defer release()
 	execute, observeRead := frontendExecutor(*contribution, commands)
 	if execute == nil {
 		return fail(fmt.Errorf("native executor %q is unavailable", contribution.NativeExecutor))
 	}
 	run := func(ctx context.Context, request command.Request) (command.Output, error) {
-		execution, err := execute(ctx, manifest, request)
+		execution, err := execute(ctx, request)
 		if err != nil {
 			return execution, err
 		}
 		plan := execution.Delivery
-		execution, err = retainExecutionOutput(ctx, manifest, execution)
+		execution, err = retainExecutionOutput(ctx, recovered, selected, execution)
 		if ctx.Err() != nil {
 			return command.Output{}, ctx.Err()
 		}
@@ -201,12 +186,11 @@ func runAuthenticatedToolWorker(service *history.Service, recovered *recovery.Se
 		}
 		return execution, nil
 	}
-	retainedIdentity, _ := ctx.Value(storageSessionKey{}).(storageSessionIdentity)
 	request := command.Request{Args: args, Stdin: stdin, ProcessScope: processScope,
-		Scope: scope.Retained{Directory: manifest.ReplayDirectory, Namespace: retainedIdentity.Namespace, Thread: retainedIdentity.Thread}}
+		Scope: selected}
 	var execution command.Output
 	if observeRead && agentMetrics != nil {
-		execution, err = executeFrontendReader(ctx, manifest, name, request, run)
+		execution, err = executeFrontendReader(ctx, agentMetrics, manifest.AXReadOutput, name, request, run)
 	} else {
 		execution, err = run(ctx, request)
 	}
@@ -227,18 +211,18 @@ func runAuthenticatedToolWorker(service *history.Service, recovered *recovery.Se
 
 // frontendExecutor is the retained dispatch owner used both before catalog
 // publication and when an authenticated worker executes a selected command.
-func frontendExecutor(contribution toolContribution, commands []command.Contribution) (func(context.Context, toolWorkerManifest, command.Request) (command.Output, error), bool) {
+func frontendExecutor(contribution catalogEntry, commands []command.Contribution) (func(context.Context, command.Request) (command.Output, error), bool) {
 	for _, compiled := range commands {
 		if compiled.Name == contribution.NativeExecutor && compiled.Run != nil {
-			return func(ctx context.Context, manifest toolWorkerManifest, request command.Request) (command.Output, error) {
-				return compiled.Run(ctx, request)
-			}, compiled.ObserveRead
+			return compiled.Run, compiled.ObserveRead
 		}
 	}
 	return nil, false
 }
 
-func toolRegistryIDFromDirectory(directory string) (string, bool) {
+// RegistryIDFromDirectory recognizes the snapshot naming format. Manifest and
+// executable authentication remain mandatory before dispatch.
+func RegistryIDFromDirectory(directory string) (string, bool) {
 	base := filepath.Base(directory)
 	if !strings.HasPrefix(base, "mekugi-tools-") {
 		return "", false
@@ -251,23 +235,23 @@ func toolRegistryIDFromDirectory(directory string) (string, bool) {
 	return registryID, err == nil && len(decoded) == 32
 }
 
-func readToolWorkerManifest(path string) (manifest toolWorkerManifest, err error) {
+func readToolWorkerManifest(path string) (manifest workerManifest, err error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return toolWorkerManifest{}, fmt.Errorf("open tool worker manifest: %w", err)
+		return workerManifest{}, fmt.Errorf("open tool worker manifest: %w", err)
 	}
 	defer func() { err = errors.Join(err, file.Close()) }()
 	content, err := io.ReadAll(file)
 	if err != nil {
-		return toolWorkerManifest{}, fmt.Errorf("read tool worker manifest: %w", err)
+		return workerManifest{}, fmt.Errorf("read tool worker manifest: %w", err)
 	}
 	decoder := json.NewDecoder(bytes.NewReader(content))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&manifest); err != nil {
-		return toolWorkerManifest{}, fmt.Errorf("decode tool worker manifest: %w", err)
+		return workerManifest{}, fmt.Errorf("decode tool worker manifest: %w", err)
 	}
 	if decoder.Decode(&struct{}{}) != io.EOF {
-		return toolWorkerManifest{}, errors.New("tool worker manifest contains trailing data")
+		return workerManifest{}, errors.New("tool worker manifest contains trailing data")
 	}
 	return manifest, nil
 }

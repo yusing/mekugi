@@ -11,7 +11,7 @@ import (
 
 func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
 	registry := newManagedMekugiProxy(t).registry
-	guide := registry.frontendGuidance
+	guide := registry.FrontendGuidance
 	checkStableRefresh := func(t *testing.T, fields map[string]jsonv1.RawMessage) {
 		t.Helper()
 		before := responses.MustMarshalJSON(fields)

@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
@@ -226,24 +228,22 @@ func RunSession(live *previewmodel.Service, activity *activitymodel.Service, ser
 		issues.writes = writes
 	}
 	if options.mode == "mekugi" {
-		registry, err := buildToolRegistry(ctx, commands, guidance)
-		if err != nil {
-			return fmt.Errorf("initialize tool registry: %w", err)
-		}
-		if err := registry.installFrontends(); err != nil {
-			return errors.Join(
-				fmt.Errorf("initialize configured tool frontends: %w", err),
-				registry.Close(),
-			)
-		}
-		defer func() {
-			runErr = errors.Join(runErr, registry.Close())
-		}()
-		frontendDirectory = registry.frontendDirectory
 		replayDirectory, err := defaultMekugiReplayDirectory()
 		if err != nil {
 			return fmt.Errorf("initialize replay storage: %w", err)
 		}
+		var axReadOutput string
+		if debug != nil {
+			axReadOutput = debug.ReadLogPath()
+		}
+		registry, err := frontends.New(ctx, frontends.Config{Commands: commands, Guidance: guidance, ReplayDirectory: replayDirectory, AXReadOutput: axReadOutput})
+		if err != nil {
+			return fmt.Errorf("initialize tool registry: %w", err)
+		}
+		defer func() {
+			runErr = errors.Join(runErr, registry.Close())
+		}()
+		frontendDirectory = registry.FrontendDirectory
 		replayStore, err := openReplayStore(ctx, service, replayDirectory)
 		if replayStore != nil {
 			replayStore.recovery, replayStore.changes = recovered, changes

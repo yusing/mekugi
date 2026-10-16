@@ -11,7 +11,7 @@ The application builds both executables and composes the selected feature
 descriptors. Its remaining integration lives in `apps/mekugi/internal/router`,
 with one implementation and retained store for each responsibility. Executable
 commands come from descriptor contributions; the application authenticates,
-pins and dispatches that catalog under the [frontend contract](../../doc/architecture/plugin.md).
+pins and dispatches that catalog under the [frontend contract](../../apps/mekugi/internal/frontends/SPEC.md).
 
 ## Construction and lifetime
 

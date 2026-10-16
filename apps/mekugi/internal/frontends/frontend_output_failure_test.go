@@ -1,4 +1,4 @@
-package router
+package frontends
 
 import (
 	"bytes"
@@ -10,6 +10,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/contracts/scope"
+	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
+
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 
 	"github.com/yusing/mekugi/contracts/command"
@@ -17,7 +20,7 @@ import (
 )
 
 func TestFrontendRecoveryFailurePreservesAdmittedOutput(t *testing.T) {
-	registry := sharedProxyTestRegistry(t)
+	registry := sharedTestRegistry(t)
 	// The raw omissions fit, but JSON escaping exceeds the encoded-record bound.
 	omitted := strings.Repeat("\x01", 6<<20) + "\n"
 	for _, originalStatus := range []int{0, 23} {
@@ -33,7 +36,7 @@ func TestFrontendRecoveryFailurePreservesAdmittedOutput(t *testing.T) {
 				}
 			}
 			var stdout, stderr bytes.Buffer
-			handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), commands, t.Context(), registry.frontends["mrun"], nil, nil, &stdout, &stderr)
+			handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), commands, t.Context(), registry.Frontends["mrun"], nil, nil, &stdout, &stderr)
 			wantStatus := originalStatus
 			if wantStatus == 0 {
 				wantStatus = 1
@@ -49,7 +52,7 @@ func TestFrontendRecoveryFailurePreservesAdmittedOutput(t *testing.T) {
 }
 
 func TestFrontendBundleRecoveryFailurePreservesBodiesAndReadEvidence(t *testing.T) {
-	registry := sharedProxyTestRegistry(t)
+	registry := sharedTestRegistry(t)
 	directory := t.TempDir()
 	path := filepath.Join(directory, "rows")
 	const body = "admitted source row\n"
@@ -63,7 +66,7 @@ func TestFrontendBundleRecoveryFailurePreservesBodiesAndReadEvidence(t *testing.
 	t.Setenv(codexThreadIDEnvironment, thread)
 	t.Setenv(evidence.AXReadOutputEnvironment, log)
 	var stdout, stderr bytes.Buffer
-	handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), testCommands(), t.Context(), registry.frontends["mcat"],
+	handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), testCommands(), t.Context(), registry.Frontends["mcat"],
 		[]string{"--max-tokens", "2000", path, filepath.Join(directory, "missing")}, nil, &stdout, &stderr)
 	if !handled || status != 1 || !strings.Contains(stdout.String(), body) || !strings.Contains(stdout.String(), "status=failed") {
 		t.Fatalf("handled=%t status=%d stdout=%q stderr=%q", handled, status, stdout.String(), stderr.String())
@@ -71,7 +74,13 @@ func TestFrontendBundleRecoveryFailurePreservesBodiesAndReadEvidence(t *testing.
 	if !strings.Contains(stderr.String(), "ENOENT") || !strings.Contains(stderr.String(), "mcat: recovery unavailable:") || !strings.Contains(stderr.String(), "encoded read record") || strings.Contains(stdout.String()+stderr.String(), "next_call") {
 		t.Fatalf("publication failure lost diagnostics or exposed reference: %q", stderr.String())
 	}
-	assertMCatOutputWithinBudget(t, 2000, stdout.String(), "")
+	codec, err := tokenizer.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count, err := codec.Count(stdout.String()); err != nil || count > 2000 {
+		t.Fatalf("mcat output uses %d tokens, budget=2000 err=%v", count, err)
+	}
 	reads, err := new(evidence.Service).ReadReads(t.Context(), log, thread)
 	if err != nil || reads.Started != 1 || reads.Completed != 1 || reads.Failed != 1 || reads.Succeeded != 0 {
 		t.Fatalf("read evidence=%+v err=%v", reads, err)
@@ -79,7 +88,7 @@ func TestFrontendBundleRecoveryFailurePreservesBodiesAndReadEvidence(t *testing.
 }
 
 func TestFrontendBundleCanceledBeforePublication(t *testing.T) {
-	registry := sharedProxyTestRegistry(t)
+	registry := sharedTestRegistry(t)
 	directory := t.TempDir()
 	path := filepath.Join(directory, "rows")
 	if err := os.WriteFile(path, []byte(strings.Repeat("admitted source row alpha beta gamma\n", 500)), 0600); err != nil {
@@ -102,7 +111,7 @@ func TestFrontendBundleCanceledBeforePublication(t *testing.T) {
 		}
 	}
 	var stdout, stderr bytes.Buffer
-	handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), commands, ctx, registry.frontends["mcat"], []string{"--max-tokens", "1000", path, path}, nil, &stdout, &stderr)
+	handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), commands, ctx, registry.Frontends["mcat"], []string{"--max-tokens", "1000", path, path}, nil, &stdout, &stderr)
 	if !handled || status != 1 || !strings.Contains(stderr.String(), "context canceled") {
 		t.Fatalf("handled=%t status=%d stderr=%q", handled, status, stderr.String())
 	}
@@ -124,7 +133,7 @@ func TestFrontendCompleteBundlesNeedNoRecoveryStore(t *testing.T) {
 		if err != nil || output.Delivery != nil || output.OmittedOutput != nil {
 			t.Fatalf("output=%+v err=%v", output, err)
 		}
-		got, err := retainExecutionOutput(t.Context(), toolWorkerManifest{}, output)
+		got, err := retainExecutionOutput(t.Context(), nil, scope.Retained{}, output)
 		if err != nil || got != output {
 			t.Fatalf("complete bundle needed a recovery store: output=%+v err=%v", got, err)
 		}

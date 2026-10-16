@@ -19,11 +19,8 @@ func (s *mekugiReplayStore) putShellOutput(ctx context.Context, stdout, stderr s
 func TestShellOutputReadPagesAndRestart(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
-	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, toolPluginManifestFilename))
-	if err != nil {
-		t.Fatal(err)
-	}
-	store, err := openMekugiReplayStore(manifest.ReplayDirectory)
+	replayDirectory := registry.ReplayDirectory
+	store, err := openMekugiReplayStore(replayDirectory)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,11 +252,8 @@ func TestOutlineRecoveryCapacityPreservesCurrentOutput(t *testing.T) {
 func TestMReadKeepsValidTargetsAroundMissingHandle(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
-	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, toolPluginManifestFilename))
-	if err != nil {
-		t.Fatal(err)
-	}
-	store, err := openMekugiReplayStore(manifest.ReplayDirectory)
+	replayDirectory := registry.ReplayDirectory
+	store, err := openMekugiReplayStore(replayDirectory)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +265,7 @@ func TestMReadKeepsValidTargetsAroundMissingHandle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := executeRecovery(t.Context(), manifest, []string{first, "amber999999", last})
+	result := executeRecovery(t.Context(), replayDirectory, []string{first, "amber999999", last})
 	if result.ExitCode != 1 || !strings.Contains(result.Stdout, "first-success") || !strings.Contains(result.Stdout, "last-success") || !strings.Contains(result.Stderr, "amber999999") {
 		t.Fatalf("mixed read: %+v", result)
 	}

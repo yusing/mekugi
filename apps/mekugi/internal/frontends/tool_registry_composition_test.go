@@ -1,4 +1,4 @@
-package router
+package frontends
 
 import (
 	"os"
@@ -16,7 +16,7 @@ func TestComposedFrontendCatalogReachesAuthenticatedRegistry(t *testing.T) {
 	for _, commands := range [][]command.Contribution{nil, all[:1], all} {
 		t.Run(strconv.Itoa(len(commands)), func(t *testing.T) {
 			directory := t.TempDir()
-			registry, err := buildToolRegistryAt(t.Context(), commands, testGuidance(), filepath.Join(directory, "runtime"), filepath.Join(directory, "replay"))
+			registry, err := New(t.Context(), Config{Commands: commands, Guidance: testGuidance(), RuntimeDirectory: filepath.Join(directory, "runtime"), ReplayDirectory: filepath.Join(directory, "replay")})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -30,11 +30,11 @@ func TestComposedFrontendCatalogReachesAuthenticatedRegistry(t *testing.T) {
 			}
 			for _, spec := range all {
 				selected := slices.ContainsFunc(commands, func(c command.Contribution) bool { return c.Spec == spec.Spec })
-				if strings.Contains(registry.frontendGuidance, "<tool name=\""+spec.Name+"\">") != selected {
+				if strings.Contains(registry.FrontendGuidance, "<tool name=\""+spec.Name+"\">") != selected {
 					t.Fatalf("%s guidance does not match selection", spec.Name)
 				}
 			}
-			if len(commands) == 0 && registry.frontendGuidance != "" {
+			if len(commands) == 0 && registry.FrontendGuidance != "" {
 				t.Fatal("empty catalog projects guidance")
 			}
 
@@ -47,7 +47,7 @@ func TestComposedCatalogRejectsInvalidExposure(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			directory := t.TempDir()
 			runtime := filepath.Join(directory, "runtime")
-			registry, err := buildToolRegistryAt(t.Context(), []command.Contribution{{Spec: command.Spec{Name: name, Description: "unavailable frontend"}}}, testGuidance(), runtime, filepath.Join(directory, "replay"))
+			registry, err := New(t.Context(), Config{Commands: []command.Contribution{{Spec: command.Spec{Name: name, Description: "unavailable frontend"}}}, Guidance: testGuidance(), RuntimeDirectory: runtime, ReplayDirectory: filepath.Join(directory, "replay")})
 			if err == nil {
 				_ = registry.Close()
 				t.Fatal("published invalid frontend")

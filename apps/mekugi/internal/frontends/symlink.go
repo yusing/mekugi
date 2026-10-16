@@ -1,4 +1,5 @@
-package router
+// Source: apps/mekugi/internal/router/tool_wrapper.go:1:64@[7b6d9ccc]
+package frontends
 
 import (
 	"errors"

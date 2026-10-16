@@ -16,7 +16,7 @@ import (
 
 func TestMRunFrontendPreservesHostStdinContinuation(t *testing.T) {
 	registry := sharedProxyTestRegistry(t)
-	frontend, ok := registry.frontends["mrun"]
+	frontend, ok := registry.Frontends["mrun"]
 	if !ok {
 		t.Fatal("mrun session frontend is unavailable")
 	}
@@ -244,7 +244,7 @@ func TestShellRunnerMRunLines(t *testing.T) {
 	t.Run("line-only default", func(t *testing.T) {
 		t.Parallel()
 		var stdout, stderr bytes.Buffer
-		handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), testCommands(), t.Context(), registry.frontends["mrun"],
+		handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), testCommands(), t.Context(), registry.Frontends["mrun"],
 			[]string{"-n", "1", "--", "sh", "-c", `head -c 200000 /dev/zero | tr "\000" a`},
 			nil, &stdout, &stderr)
 		if !handled || status != 0 || stdout.Len() != 0 {
@@ -258,7 +258,7 @@ func TestShellRunnerMRunLines(t *testing.T) {
 		var recovered bytes.Buffer
 		for pageIndex := range 20 {
 			var page, diagnostic bytes.Buffer
-			handled, status = runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), testCommands(), t.Context(), registry.frontends["mread"],
+			handled, status = runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), testCommands(), t.Context(), registry.Frontends["mread"],
 				[]string{reference, "--max-tokens", "15500"}, nil, &page, &diagnostic)
 			if !handled || status != 0 && status != 1 || strings.Trim(page.String(), "a") != "" {
 				t.Fatalf("mrun recovery page %d: handled %t, bytes %d, stderr %q, status %d",

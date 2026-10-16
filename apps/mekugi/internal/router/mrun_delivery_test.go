@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+
 	"github.com/yusing/mekugi/libraries/commandargs"
 
 	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
@@ -158,7 +160,7 @@ func mrunOversizedLFRow(t *testing.T, word string) (string, int) {
 	}
 }
 
-func mrunRecoverDeliveryStream(t *testing.T, registry *toolRegistry, invocation shellWorkerTestInvocation, id, stream string) string {
+func mrunRecoverDeliveryStream(t *testing.T, registry *frontends.Registry, invocation shellWorkerTestInvocation, id, stream string) string {
 	t.Helper()
 	var recovered strings.Builder
 	pages := 0

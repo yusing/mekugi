@@ -371,7 +371,7 @@ readable while their [storage](#replay-storage) is retained.
   With `skills-mgr`, managed selections attach instructions and the stock catalog is
   disabled for the session. See [guidance](modules/agentguidance/SPEC.md).
 - **Recovery:** see [resets](#context-reset-and-recovery) and [storage](#replay-storage).
-- **Frontend commands:** [compiled helpers](doc/spec/plugin.md) run through stock
+- **Frontend commands:** [compiled helpers](apps/mekugi/internal/frontends/SPEC.md) run through stock
   execution. JavaScript plugin loading has been removed; existing plugin files
   are left untouched.
 - **Environment:** router/executor must share paths/runtime directory; `MEKUGI_RUNTIME_DIR`

@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
@@ -146,7 +148,7 @@ func newShellWorkerTestInvocation(directory string, environment ...string) shell
 
 func runShellWorkerTest(
 	t *testing.T,
-	registry *toolRegistry,
+	registry *frontends.Registry,
 	interpreter string,
 	interpreterArguments []string,
 	script string,
@@ -166,7 +168,7 @@ func runShellWorkerTest(
 		directory = invocations[0].directory
 		environment = append(slices.Clone(invocations[0].environment), routerTestWorkerEnvironment+"=1")
 	}
-	environment = prependToolFrontendPath(environment, registry.frontendDirectory)
+	environment = prependToolFrontendPath(environment, registry.FrontendDirectory)
 	arguments := append(append([]string{}, interpreterArguments...), "-c", script)
 	command := exec.CommandContext(t.Context(), execTrackShellExecutable(t, interpreter), arguments...)
 	command.Dir, command.Env, command.Stdin = directory, environment, stdin

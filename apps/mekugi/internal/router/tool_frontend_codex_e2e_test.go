@@ -183,10 +183,7 @@ func TestNativeToolFrontendCodexE2E(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	if err := registry.installFrontends(); err != nil {
-		t.Fatal(err)
-	}
-	frontend, ok := registry.frontends["mrun"]
+	frontend, ok := registry.Frontends["mrun"]
 	if !ok {
 		t.Fatal("native mrun frontend is unavailable")
 	}
@@ -241,10 +238,7 @@ func TestMRunNativeCodexYieldAndWriteStdinE2E(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	if err := registry.installFrontends(); err != nil {
-		t.Fatal(err)
-	}
-	frontend, ok := registry.frontends["mrun"]
+	frontend, ok := registry.Frontends["mrun"]
 	if !ok {
 		t.Fatal("mrun session frontend is unavailable")
 	}
