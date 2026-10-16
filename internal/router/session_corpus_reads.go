@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/yusing/mekugi/backends/codex/rollout"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/libraries/commandargs"
@@ -15,7 +17,7 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
-func corpusReadSelectionsForCall(call sessionInspectionCall) []corpusReadSelection {
+func corpusReadSelectionsForCall(call rollout.Call) []corpusReadSelection {
 	readCommand := func(input string) []corpusReadSelection {
 		var arguments struct {
 			Command string `json:"cmd"`
@@ -25,13 +27,13 @@ func corpusReadSelectionsForCall(call sessionInspectionCall) []corpusReadSelecti
 		}
 		return corpusReadSelections(arguments.Command)
 	}
-	if call.item.Name == "exec_command" {
-		return readCommand(call.item.Arguments)
+	if call.Item.Name == "exec_command" {
+		return readCommand(call.Item.Arguments)
 	}
-	if call.item.Name != "exec" {
+	if call.Item.Name != "exec" {
 		return nil
 	}
-	calls, ok := binding.ExecutionCalls(call.item.Input, false)
+	calls, ok := binding.ExecutionCalls(call.Item.Input, false)
 	if !ok {
 		return nil
 	}

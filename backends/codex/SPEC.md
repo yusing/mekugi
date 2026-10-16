@@ -2,7 +2,7 @@
 
 ## Purpose and ownership
 
-Own Codex process transport and host-selected rollout evidence. Codex remains the
+Own Codex process transport and rollout decoding. Codex remains the
 execution, permission, agent, and session authority. The application chooses an
 invocation, interprets lifecycle facts, and owns session presentation and intent.
 The [Responses adapter](responses/SPEC.md) owns model-path adaptation; executable
@@ -121,7 +121,9 @@ Manual name-save control and host-title presentation remain application-owned.
 
 ## Retained rollout evidence
 
-The rollout reader accepts an absolute path supplied for an identified host
+### Host-selected context and settings
+
+The host-selected reader accepts an absolute path supplied for an identified host
 thread. Only a regular file whose initial session metadata names that thread is
 evidence. Named pipes are rejected without waiting for a writer. Metadata reads
 are bounded to 64 KiB. Invalid, missing, or mismatched evidence remains unavailable.
@@ -137,12 +139,36 @@ invocation/preference precedence, and gates resumed input on host confirmation.
 It projects restored Activity with its own 64 MiB reading policy over the same
 identity-validated opener. Rollout reads cannot resume a thread or replay effects.
 
+### Supplied offline rollouts
+
+Logical inspection reads the caller-selected regular UTF-8 JSONL file without
+starting Codex, scanning other sessions or writing state. Files are at most
+64 MiB, lines below 32 MiB and logical calls limited to 10,000. Malformed,
+conflicting or oversized input fails before a complete source is returned.
+Historical JSON decoding semantics remain compatible with retained rollouts.
+
+Calls and output-only identities retain first-observed order, original line and
+time, preceding workspace/model, tool identity and every recorded output.
+Identical repeated calls coalesce; conflicting inputs, call workspaces or thread
+identities fail. Missing call IDs are invalid. Unknown record kinds are ignored.
+Workspace canonicalization, retained-record matching and query results belong to
+the inspection consumer.
+
+An optional observer receives decoded command and task/turn events. Without it,
+event-specific payloads are not interpreted. Persisted execution endpoints take
+precedence over envelope recording time; absent or null endpoints remain unknown.
+The consumer owns metric identity validation, pairing and completeness. Observer
+failure stops the read without claiming a complete source.
+
 ## Acceptance
 
 Process tests cover large and partial frames, original RPC IDs, ordered bursts,
 observation-before-queue delivery, paused-consumer close, EOF shutdown, and forced
 cleanup. Rollout tests cover identity, complete-record and byte bounds, newest
-settings, nullable defaults, and context evidence. Static-source tests cover
+settings, nullable defaults, and context evidence. Supplied-rollout acceptance
+covers logical call ordering, original metadata, conflicting identities, command
+endpoints, optional event observation and source bounds. Query consumers cover
+retained-record matching and whole-rollout AX reporting. Static-source tests cover
 literal argument preservation, transparent result projection and rejection of
 opaque or effectful wrappers; preview and continuation consumers retain their
 separate acceptance. Native session tests cover live

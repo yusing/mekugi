@@ -65,13 +65,11 @@ usable for archived replay lookup. Missing metadata yields `workspace_unavailabl
 guess from the inspector's cwd or a scan of other workspaces. Relative metadata requires
 an explicit override. Returned calls identify their selected workspace.
 
-The result is `mekugi.session.v1` JSON. It enumerates tool calls and output-only call
-identities in first-observed order from `response_item` records, not by scanning all
-stored calls. Repeated identical call identities coalesce; conflicting payloads or call workspaces fail.
+The result is `mekugi.session.v1` JSON over the ordered logical calls supplied by
+the [Codex rollout decoder](../../backends/codex/SPEC.md#supplied-offline-rollouts),
+including output-only identities. It does not enumerate unrelated stored calls.
 Replay lookup is workspace-and-call scoped. Matched observed calls must agree with retained identity; corrupt or
 incompatible records fail rather than guessing. Missing records expose native call identity and unavailable outcomes.
-Tool calls and outputs require their host call IDs. An output with no call ID
-fails rather than deriving execution identity from a message ID.
 
 Each call exposes original tool identity, observed outcome, and text byte counts. `--field` selects `script`,
 `report`, `diagnostic`, `output`, or `all`; text is omitted by default.
@@ -101,9 +99,8 @@ correctness.
 
 `--call-id` filters before pagination. `--offset` and `--limit` (default 50, 1–500)
 bound returned calls with `total_calls` and optional `next_offset`. Missing matches
-return an empty page. Input must be regular UTF-8 JSONL, at most 64 MiB with lines
-below 32 MiB and at most 10000 logical calls. Unsupported record kinds are ignored.
-Malformed or oversized input fails before emitting a result. Exit status is 0 for
+return an empty page. The backend owns rollout bounds and identity validation;
+invalid sources fail before a result is emitted. Exit status is 0 for
 success/help, 2 for invalid options, and 1 for read, validation, or output failure.
 
 Inspection is local evidence, not request-visible recovery ancestry. A rollout may

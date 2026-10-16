@@ -45,7 +45,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Captured diff model, composition, merge and status | `./libraries/diffmodel/...`, plus affected router and terminal consumers |
 | Activity rendering, diff navigation/previews, terminal input, or session metrics dialog | `./internal/ui/...`, plus affected router integration tests |
 | Codex app-server RPC transport and process lifecycle | `./backends/codex/appserver` and `./internal/router -run AppServer` |
-| Host-selected rollout evidence | `./backends/codex/rollout`, plus router context, resume-settings, and restored-Activity consumers |
+| Rollout evidence and offline source decoding | `./backends/codex/rollout`, plus router context, resume-settings, restored-Activity, session-inspection, corpus and optional-AX consumers |
 | Router behavior | `./internal/router` |
 | Session publication, namespaces, leases, and retention | `./modules/sessionhistory/...`, plus affected router persistence/fork/recovery integration |
 | Command-segment report transport and retained reports | `./modules/commandsegments/...`, plus router `ExecTrack`, `CommandSegments`, `StorageInspection`, timing and restored-activity consumers |

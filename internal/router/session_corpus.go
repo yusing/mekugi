@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/rollout"
+
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -156,11 +158,17 @@ func RunSessionCorpusInspection(service *history.Service, agentMetrics *evidence
 		}
 		result.Scanned++
 		var observations sessionAXInput
-		calls, err := readSessionInspection(ctx, path, &observations, agentMetrics != nil)
+		var observer func(rollout.InspectionEvent) error
+		if agentMetrics != nil {
+			observer = observations.observe
+		}
+		decoded, err := rollout.Inspect(ctx, path, observer)
 		if err != nil {
 			result.Unavailable = append(result.Unavailable, corpusUnavailable{path, err.Error()})
 			continue
 		}
+		observations.InspectionMetadata = decoded.InspectionMetadata
+		calls := decoded.Calls
 		classification := classifyCorpusSession(observations)
 		if *class != "all" && *class != classification {
 			result.Excluded["classification"]++
@@ -236,36 +244,36 @@ func classifyCorpusSession(observation sessionAXInput) string {
 	return "unknown"
 }
 
-func inspectCorpusSession(ctx context.Context, path string, calls []sessionInspectionCall, observation sessionAXInput, store *mekugiReplayStore, since, until time.Time, model string, limit int) (corpusSession, error) {
+func inspectCorpusSession(ctx context.Context, path string, calls []rollout.Call, observation sessionAXInput, store *mekugiReplayStore, since, until time.Time, model string, limit int) (corpusSession, error) {
 	session := corpusSession{Path: path, ThreadID: observation.ThreadID, Models: observation.Models, Findings: []corpusFinding{},
 		ProviderUsage: transportcapture.UsageInspection{State: "unavailable"}}
 	var findings []corpusFinding
-	var previous *sessionInspectionCall
+	var previous *rollout.Call
 	var previousReads []corpusReadSelection
 	for _, call := range calls {
 		if err := ctx.Err(); err != nil {
 			return session, err
 		}
-		at, err := time.Parse(time.RFC3339Nano, call.timestamp)
+		at, err := time.Parse(time.RFC3339Nano, call.Timestamp)
 		if err != nil {
 			session.MissingTimestamps++
 			previous = nil
 			continue
 		}
-		modelOK, _ := filepath.Match(model, call.model)
+		modelOK, _ := filepath.Match(model, call.Model)
 		if at.Before(since) || !at.Before(until) || !modelOK {
 			previous = nil
 			continue
 		}
 		session.SelectedCalls++
-		root, err := canonicalInspectionWorkspace(call.workspace)
+		root, err := canonicalInspectionWorkspace(call.Workspace)
 		if err != nil {
 			return session, err
 		}
 		var record replayRecord
 		found := false
 		if root != "" {
-			record, found, err = store.read(root, call.item.CallID, false)
+			record, found, err = store.read(root, call.Item.CallID, false)
 			if err != nil {
 				return session, err
 			}
@@ -279,14 +287,14 @@ func inspectCorpusSession(ctx context.Context, path string, calls []sessionInspe
 		} else {
 			session.UnavailableCalls++
 		}
-		ref := corpusCallRef{call.item.CallID, call.line, call.timestamp}
+		ref := corpusCallRef{call.Item.CallID, call.Line, call.Timestamp}
 		if inspectionEmptyPoll(call, record.History, found) {
 			findings = append(findings, corpusFinding{Kind: "empty_poll", Calls: []corpusCallRef{ref}, CallCount: 1})
 		}
 		reads := corpusReadSelectionsForCall(call)
-		if previous != nil && previous.workspace == call.workspace && corpusReadOverlap(previousReads, reads) {
+		if previous != nil && previous.Workspace == call.Workspace && corpusReadOverlap(previousReads, reads) {
 			findings = append(findings, corpusFinding{Kind: "truncation_reread", Candidate: true, CallCount: 2,
-				Calls: []corpusCallRef{{previous.item.CallID, previous.line, previous.timestamp}, ref}})
+				Calls: []corpusCallRef{{previous.Item.CallID, previous.Line, previous.Timestamp}, ref}})
 		}
 		previous = nil
 		if len(reads) > 0 && inspectionHasReadContinuation(call) {
@@ -305,19 +313,19 @@ func inspectCorpusSession(ctx context.Context, path string, calls []sessionInspe
 	return session, nil
 }
 
-func inspectionEmptyPoll(call sessionInspectionCall, history mekugiHistory, found bool) bool {
-	if len(call.outputs) == 0 {
+func inspectionEmptyPoll(call rollout.Call, history mekugiHistory, found bool) bool {
+	if len(call.Outputs) == 0 {
 		return false
 	}
 	var item map[string]json.RawMessage
-	if json.Unmarshal(responses.MustMarshalJSON(call.item), &item) != nil {
+	if json.Unmarshal(responses.MustMarshalJSON(call.Item), &item) != nil {
 		return false
 	}
 	if !inspectionEmptyInput(item, history, found) {
 		return false
 	}
 	classified := executionCallFor(item, history, found, "exec")
-	texts := executionOutputTexts(call.outputs[len(call.outputs)-1].Output)
+	texts := executionOutputTexts(call.Outputs[len(call.Outputs)-1].Output)
 	if len(texts) == 0 {
 		return false
 	}
@@ -396,8 +404,8 @@ func inspectionEmptyOutput(call executionCall, texts []string, notice executionC
 	return found
 }
 
-func inspectionHasReadContinuation(call sessionInspectionCall) bool {
-	for _, output := range call.outputs {
+func inspectionHasReadContinuation(call rollout.Call) bool {
+	for _, output := range call.Outputs {
 		if strings.Contains(string(output.Output), "read: incomplete; next_call: mread ") {
 			return true
 		}
