@@ -206,7 +206,8 @@ func testRunSession(service *history.Service, recovered *recovery.Service, ctx c
 		return err
 	}
 	defer usage.Close()
-	captured, err := newTestCapture(ctx, "")
+	// Dependency setup must not consume the RunSession cancellation under test.
+	captured, err := newTestCapture(context.WithoutCancel(ctx), "")
 	if err != nil {
 		return err
 	}
