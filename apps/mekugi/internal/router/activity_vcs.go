@@ -75,8 +75,24 @@ func (u *appServerUI) startCommitReads() {
 						}
 					}
 					record.Source.native = &updated
+					complete := func(value *activitypresentation.Value) {
+						observed := native.commit
+						if segment := value.Operation - 1; value.Segment && value.Output != 1 && segment >= 0 && segment < len(native.segments) && native.segments[segment].commit.Hash != "" {
+							observed = native.segments[segment].commit
+						}
+						// An abbreviated hash can name different commits in different
+						// repositories. Match the owning operation's full key first.
+						if observed == key {
+							value.Changes = activitypresentation.CommitChanges(value.Changes, key, files)
+						}
+					}
 					for j := range record.Values {
-						record.Values[j].Changes = activitypresentation.CommitChanges(record.Values[j].Changes, key, files)
+						value := &record.Values[j]
+						complete(value)
+						value.Members = slices.Clone(value.Members)
+						for k := range value.Members {
+							complete(&value.Members[k])
+						}
 					}
 				})
 				u.dirty = true
