@@ -10,6 +10,7 @@ import (
 
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/module"
+	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/changehistory"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
@@ -17,6 +18,11 @@ import (
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 )
+
+func retainedScope(ctx context.Context, directory string) scope.Retained {
+	identity, _ := ctx.Value(storageSessionKey{}).(storageSessionIdentity)
+	return scope.Retained{Directory: directory, Namespace: identity.Namespace, Thread: identity.Thread}
+}
 
 func testHistory() *history.Service {
 	service, err := history.NewService(append(append(append(append(append(RetainedRecordKinds(), diagnostic.Failures, history.HookRecord), accounting.RecordKinds()...), changehistory.Module.Contributes.RecordKinds...), recovery.RecordKinds()...), reports.RecordKinds()...))
