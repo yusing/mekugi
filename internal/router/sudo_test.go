@@ -337,6 +337,32 @@ func main() { fmt.Println(os.Args[0]) }
 	}
 }
 
+func TestGuardShellArgv0DoesNotSelectSudo(t *testing.T) {
+	t.Parallel()
+	helper, err := execTrackHelper()
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory := t.TempDir()
+	// A dispatch regression must reach this harmless fake, never host sudo.
+	if err := os.WriteFile(filepath.Join(directory, "sudo"), []byte("#!/bin/sh\nprintf WRONG_DISPATCH\nexit 47\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, argv0 := range []string{"sudo", sudoask.Askpass} {
+		t.Run(argv0, func(t *testing.T) {
+			script := "exec -a " + quoteShellWord(argv0) + " " + quoteShellWord(execTrackShellExecutable(t, "sh")) + ` -c 'printf "shell:%s" "$0"; exit 23'`
+			rewritten, err := shellinstrumentation.RewriteCommands(script, helper, filepath.Join(directory, "vcs-guard"), "", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			run := runShell(t, []string{"PATH=" + directory + ":" + execTrackPath()}, "bash", "-c", rewritten)
+			if run.code != 23 || run.stdout != "shell:"+argv0 || run.stderr != "" {
+				t.Fatalf("instrumented shell = %+v; want original shell with argv0 %q", run, argv0)
+			}
+		})
+	}
+}
+
 func TestSudoNestedShellPreservesGuardResources(t *testing.T) {
 	for _, tc := range []struct {
 		name               string

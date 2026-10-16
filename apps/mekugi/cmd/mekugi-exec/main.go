@@ -56,12 +56,6 @@ func main() {
 		reportCreatedPath(os.Args[2])
 		return
 	}
-	if filepath.Base(os.Args[0]) == sudoask.Askpass {
-		os.Exit(sudoPassword())
-	}
-	if filepath.Base(os.Args[0]) == "sudo" {
-		os.Exit(sudoCommand("", "sudo", os.Args[0], false, os.Args[1:]))
-	}
 	if len(os.Args) >= 4 && strings.TrimSuffix(os.Args[1], "-default") == "--sudo-command" {
 		if os.Args[3] == shellinstrumentation.ItemFlag && len(os.Args) >= 6 {
 			os.Setenv(shellinstrumentation.ItemEnvironment, os.Args[4])
@@ -106,6 +100,14 @@ func main() {
 			explicit = target
 		}
 		os.Exit(guardCommand(os.Args[2], name, explicit, argv0, defaultPath, os.Args[4:]))
+	}
+	// Explicit instrumentation selects the operation; exec -a may give its
+	// eventual target the same argument zero as a different helper.
+	if filepath.Base(os.Args[0]) == sudoask.Askpass {
+		os.Exit(sudoPassword())
+	}
+	if filepath.Base(os.Args[0]) == "sudo" {
+		os.Exit(sudoCommand("", "sudo", os.Args[0], false, os.Args[1:]))
 	}
 	if name := filepath.Base(os.Args[0]); slices.Contains(commandanalysis.VCSTools, name) {
 		os.Exit(guard(name, os.Args[1:]))

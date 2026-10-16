@@ -387,7 +387,8 @@ expanded directory paths such as `"$tools/git"` are recognized by their tool-nam
 suffix. Nested `sh`, `bash`, `dash` and `ksh` command-string invocations
 are instrumented after their `-c` payload expands. Bare tool and shell names
 retain shell-function lookup and use the command-local PATH; `command -p`
-retains its default-path lookup.
+retains its default-path lookup. A caller-selected argument zero is forwarded
+to the requested executable without selecting a different guard operation.
 
 The enabled guard requires Mekugi mode, the installed `mekugi-exec` sibling,
 Codex's native command-hook support and the approval channel. Before each new
