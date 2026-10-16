@@ -1,6 +1,9 @@
 package router
 
-import "github.com/yusing/mekugi/contracts/observation"
+import (
+	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/contracts/observation"
+)
 
 // replayPresentationEvent adapts decoded read-only values to the existing
 // presentation owner. It never serializes them back into a host RPC envelope.
@@ -12,7 +15,7 @@ func replayPresentationEvent(e observation.Event) appServerEvent {
 		SenderThreadID: i.SenderThreadID, ReceiverThreadIDs: i.ReceiverThreadIDs, DurationMS: i.DurationMS,
 		Summary: i.Summary, Content: i.Content, AggregatedOutput: i.AggregatedOutput, ExitCode: i.ExitCode}
 	for _, question := range i.Questions {
-		item.Questions = append(item.Questions, nativeQuestion{ID: question.ID, Header: question.Header, Question: question.Question, Title: question.Title, IsSecret: question.IsSecret, Options: question.Options})
+		item.Questions = append(item.Questions, binding.Question{ID: question.ID, Header: question.Header, Question: question.Question, Title: question.Title, IsSecret: question.IsSecret, Options: question.Options})
 	}
 	for _, change := range i.Changes {
 		projected := appServerFileChange{Path: change.Path, Diff: change.Diff}

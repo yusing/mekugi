@@ -73,5 +73,9 @@ execution. Composer command and cancellation behavior is specified in the
 
 [Session presentation](../sessionpresentation/SPEC.md) owns displayed-thread and
 child-history intent state. This owner issues the resulting observational reads
-without changing execution or input identity. Composer payload construction and
-feature-specific question/approval handling retain their own integration.
+without changing execution or input identity.
+
+[Conversation](../../../../modules/conversation/SPEC.md) owns composer payloads and
+question/approval presentation models. The application adapter maps observations and
+semantic decisions to this owner's admission, response, and settlement operations;
+rendering and live request handles remain outside those models.

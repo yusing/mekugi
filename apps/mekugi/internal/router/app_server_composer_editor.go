@@ -71,8 +71,8 @@ func (u *appServerUI) runEditor(path string, stdin, stdout *os.File) error {
 func (u *appServerUI) applyEditorDraft(text string) error {
 	defer u.refreshPicker()
 	u.Run = composer.NoRun
-	if q := u.currentQuestion(); q != nil && !q.note {
-		q.selected = len(q.choices)
+	if q := u.currentQuestion(); q != nil && !q.Note {
+		q.Selected = len(q.Choices)
 	}
 	if text == u.Text {
 		return nil

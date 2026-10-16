@@ -16,13 +16,17 @@ func (u *appServerUI) insertSelection(description, text, source string) {
 		return
 	}
 	pending := slices.Concat(u.inputPayloads[u.Submission().ID].parts, u.unsent, u.queued, u.steerParts(u.Steers()))
-	for _, call := range u.questions.calls {
-		for _, question := range call.questions {
-			pending = append(pending, composerDraft{Draft: question.editor.Snapshot.Draft})
+	for _, call := range u.questionCalls() {
+		for i, question := range call.Questions {
+			draft := question.Editor.Snapshot.Draft
+			if question.IsSecret {
+				draft = call.secrets[i].Snapshot.Draft
+			}
+			pending = append(pending, composerDraft{Draft: draft})
 		}
 	}
 	if u.currentQuestion() != nil {
-		pending = append(pending, composerDraft{Draft: u.questions.parked.Snapshot.Draft})
+		pending = append(pending, composerDraft{Draft: u.promptEditor.Parked.Snapshot.Draft})
 	}
 	if err := u.Editor.InsertSelection(description, text, source, draftValues(pending)); err != nil {
 		u.setNotice(err.Error(), true)
@@ -32,9 +36,6 @@ func (u *appServerUI) insertSelection(description, text, source string) {
 	u.cursorColumn = nil
 	u.pruneDraftImages()
 	if q := u.currentQuestion(); q != nil {
-		if !q.note {
-			q.selected = len(q.choices)
-		}
-		q.done, q.skipped = false, false
+		q.Edit(!q.Note)
 	}
 }

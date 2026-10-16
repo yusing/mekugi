@@ -1,7 +1,10 @@
 package router
 
 import (
-	"cmp"
+	"github.com/yusing/mekugi/backends/codex/binding"
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
+	"github.com/yusing/mekugi/modules/conversation/prompt"
+
 	"encoding/json/jsontext"
 
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -10,7 +13,6 @@ import (
 
 	"github.com/yusing/mekugi/libraries/terminalui"
 
-	json "encoding/json/v2"
 	"fmt"
 	"slices"
 	"strings"
@@ -22,50 +24,78 @@ import (
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
-type nativeQuestionOption struct {
-	Label       string `json:"label"`
-	Description string `json:"description"`
-}
-type nativeQuestion struct {
-	ID                     string         `json:"id"`
-	Header                 string         `json:"header"`
-	Question               string         `json:"question"`
-	Title                  string         `json:"title"`
-	IsSecret               bool           `json:"isSecret"`
-	Options                jsontext.Value `json:"options"`
-	choices                []nativeQuestionOption
-	editor                 questionEditor
-	selected, top, textTop int
-	note, done, skipped    bool
-	answer                 []string
-	outcome                string
-}
 type nativeQuestionCall struct {
-	thread, turn, item string
-	request            jsontext.Value
-	questions          []nativeQuestion
-	sent, resolved     bool
-	submissionID       string
-	sudo               *vcsApproval // Local askpass request; never sent to Codex or retained.
+	prompt.Call
+	request jsontext.Value
+	sudo    *vcsApproval
+	// Secret state remains invocation-local and is never part of a neutral view.
+	secrets       map[int]questionEditor
+	secretAnswers map[int][]string
 }
 
-// A parked editor includes the navigation and undo state, not just its text.
 type questionEditor struct {
 	composer.State
 	column *int
 }
+type questionLayout struct {
+	column       *int
+	top, textTop int
+}
 type nativeQuestionDock struct {
-	inputTurns map[string]bool
-	calls      []*nativeQuestionCall
-	active     *nativeQuestionCall
-	index      int
-	parked     questionEditor
-	confirm    bool
-	rect       terminalRect
-	autoOpen   bool
-	painted    bool
+	prompt.Questions
+	handles map[*prompt.Call]*nativeQuestionCall
+	layout  map[*prompt.Question]*questionLayout
+	rect    terminalRect
+	painted bool
 }
 
+func (u *appServerUI) questionCalls() []*nativeQuestionCall {
+	calls := make([]*nativeQuestionCall, 0, len(u.questions.Calls))
+	for _, c := range u.questions.Calls {
+		calls = append(calls, u.questions.handles[c])
+	}
+	return calls
+}
+func (u *appServerUI) activeQuestionCall() *nativeQuestionCall {
+	return u.questions.handles[u.questions.Active]
+}
+func (u *appServerUI) questionLayout(q *prompt.Question) *questionLayout {
+	if u.questions.layout == nil {
+		u.questions.layout = make(map[*prompt.Question]*questionLayout)
+	}
+	if u.questions.layout[q] == nil {
+		u.questions.layout[q] = &questionLayout{}
+	}
+	return u.questions.layout[q]
+}
+func (u *appServerUI) parkQuestion(q *prompt.Question) {
+	e := u.saveQuestionEditor()
+	if q.IsSecret {
+		c := u.activeQuestionCall()
+		if c.secrets == nil {
+			c.secrets = make(map[int]questionEditor)
+		}
+		c.secrets[u.questions.Index] = e
+	} else {
+		q.Editor = e.State
+		u.questionLayout(q).column = e.column
+	}
+}
+func (u *appServerUI) resumeQuestion(q *prompt.Question) {
+	if q.IsSecret {
+		u.loadQuestionEditor(u.activeQuestionCall().secrets[u.questions.Index])
+		return
+	}
+	u.loadQuestionEditor(questionEditor{q.Editor, u.questionLayout(q).column})
+}
+func (u *appServerUI) discardQuestionEditors(c *nativeQuestionCall) {
+	clear(c.secrets)
+	clear(c.secretAnswers)
+	for i := range c.Questions {
+		c.Questions[i].Editor = composer.State{}
+		delete(u.questions.layout, &c.Questions[i])
+	}
+}
 func (u *appServerUI) saveQuestionEditor() questionEditor {
 	return questionEditor{u.Editor.Park(), u.cursorColumn}
 }
@@ -73,57 +103,19 @@ func (u *appServerUI) loadQuestionEditor(e questionEditor) {
 	u.Editor.Resume(e.State)
 	u.cursorColumn = e.column
 }
-func (u *appServerUI) currentQuestion() *nativeQuestion {
-	d := &u.questions
-	if d.active == nil {
-		return nil
-	}
-	return &d.active.questions[d.index]
-}
-func (u *appServerUI) questionCount() int {
-	n := 0
-	for _, c := range u.questions.calls {
-		if (c.thread != u.Thread && c.sudo == nil) || c.resolved || c.sent {
-			continue
-		}
-		for _, q := range c.questions {
-			if q.outcome == "" {
-				n++
-			}
-		}
-	}
-	return n
-}
-func (u *appServerUI) waitingQuestion() bool {
-	for _, c := range u.questions.calls {
-		if c.thread == u.Thread && (len(c.request) > 0 || c.sudo != nil) && !c.resolved {
-			return true
-		}
-	}
-	return false
-}
+func (u *appServerUI) currentQuestion() *prompt.Question { return u.questions.Current() }
+func (u *appServerUI) questionCount() int                { return u.questions.Count(u.Thread) }
+func (u *appServerUI) waitingQuestion() bool             { return u.questions.Waiting(u.Thread) }
 func (u *appServerUI) openQuestions() {
-	if u.questions.active != nil {
-		return
-	}
-	for _, c := range u.questions.calls {
-		if (len(c.request) > 0 || c.sudo != nil) && !c.resolved && !c.sent {
-			u.openQuestionCall(c)
-			return
-		}
-	}
-	for _, c := range u.questions.calls {
-		if !c.resolved && !c.sent {
-			u.openQuestionCall(c)
-			return
-		}
+	if c := u.questions.Next(); c != nil {
+		u.openQuestionCall(u.questions.handles[c])
 	}
 }
 
 // Only an empty, idle composer yields to pending live questions. Explicitly
 // hiding the dock and history restoration leave manual reopening available.
 func (u *appServerUI) autoOpenQuestions() {
-	if u.questions.autoOpen && u.questions.active == nil && u.composerVacant() {
+	if u.questions.ShouldOpen(u.composerVacant()) {
 		u.openQuestions()
 	}
 }
@@ -134,26 +126,26 @@ func (u *appServerUI) composerVacant() bool {
 	if u.composerReadOnly() {
 		return false
 	}
-	if u.Text != "" || len(u.Images) > 0 || len(u.Files) > 0 || len(u.Skills) > 0 || len(u.Selections) > 0 || u.paste || u.escape != "" || u.pickerVisible() || u.keybindings || u.statusPanel != nil || u.resumePicker != nil || u.approvals.open {
+	if u.Text != "" || len(u.Images) > 0 || len(u.Files) > 0 || len(u.Skills) > 0 || len(u.Selections) > 0 || u.paste || u.escape != "" || u.pickerVisible() || u.keybindings || u.statusPanel != nil || u.resumePicker != nil || u.approvals.Open {
 		return false
 	}
 	return u.shell == nil || u.shell.focus == 0 && !u.shell.paste && u.shell.sequence == ""
 }
 func (u *appServerUI) openQuestionCall(c *nativeQuestionCall) {
-	if u.questions.active != nil {
+	if u.questions.Active != nil {
 		return
 	}
 	u.hideApprovals()
 	u.questions.painted = false
-	u.questions.parked = u.saveQuestionEditor()
-	u.questions.active, u.questions.index, u.questions.confirm = c, 0, false
-	for i := range c.questions {
-		if c.questions[i].outcome == "" {
-			u.questions.index = i
-			break
-		}
+	u.promptColumn = u.cursorColumn
+	u.promptEditor.Open(&u.Editor, composer.State{})
+	if !u.questions.Open(&c.Call) {
+		return
 	}
-	u.loadQuestionEditor(u.currentQuestion().editor)
+	u.resumeQuestion(u.currentQuestion())
+	u.focusPrompt()
+}
+func (u *appServerUI) focusPrompt() {
 	u.picker.open, u.keybindings = false, false
 	u.cancelPickerScan()
 	if u.shell != nil {
@@ -163,49 +155,27 @@ func (u *appServerUI) openQuestionCall(c *nativeQuestionCall) {
 }
 func (u *appServerUI) hideQuestions() {
 	if q := u.currentQuestion(); q != nil {
-		q.editor = u.saveQuestionEditor()
-		u.loadQuestionEditor(u.questions.parked)
-		u.questions.active = nil
-		u.questions.confirm = false
+		u.parkQuestion(q)
+		u.promptEditor.Close(&u.Editor)
+		u.cursorColumn = u.promptColumn
+		u.questions.Hide()
 	}
 }
 func (u *appServerUI) moveQuestion(step int) {
-	c := u.questions.active
-	u.currentQuestion().editor = u.saveQuestionEditor()
-	u.questions.index = (u.questions.index + step + len(c.questions)) % len(c.questions)
-	u.questions.confirm = false
-	u.loadQuestionEditor(u.currentQuestion().editor)
+	u.parkQuestion(u.currentQuestion())
+	u.questions.Move(step)
+	u.resumeQuestion(u.currentQuestion())
 }
 func (u *appServerUI) addQuestions(c *nativeQuestionCall, replay bool) {
-	if c.thread != u.Thread || len(c.questions) == 0 {
+	if c.Thread != u.Thread && !c.Local || !u.questions.Add(&c.Call, replay) {
 		return
 	}
-	for _, old := range u.questions.calls {
-		if old.thread == c.thread && ((len(c.request) > 0 && string(old.request) == string(c.request)) || (len(c.request) == 0 && len(old.request) == 0 && old.item == c.item)) {
-			return
-		}
+	if u.questions.handles == nil {
+		u.questions.handles = make(map[*prompt.Call]*nativeQuestionCall)
 	}
-	for i := range c.questions {
-		q := &c.questions[i]
-		if len(c.request) > 0 {
-			_ = json.Unmarshal(q.Options, &q.choices)
-		} else {
-			var labels []string
-			_ = json.Unmarshal(q.Options, &labels)
-			for _, label := range labels {
-				q.choices = append(q.choices, nativeQuestionOption{Label: label})
-			}
-		}
-		q.Question = cmp.Or(q.Question, q.Title)
-		q.Header = cmp.Or(q.Header, strings.Split(q.Question, "\n")[0])
-	}
-	if u.questions.inputTurns == nil {
-		u.questions.inputTurns = make(map[string]bool)
-	}
-	u.questions.inputTurns[c.turn] = true
-	u.questions.calls = append(u.questions.calls, c)
-	if !replay {
-		if len(c.request) > 0 {
+	u.questions.handles[&c.Call] = c
+	if !replay && !c.Local {
+		if c.Sync {
 			u.notify("plan-mode-prompt", "Input requested")
 		} else {
 			u.notify("async-question", "Question pending")
@@ -213,34 +183,26 @@ func (u *appServerUI) addQuestions(c *nativeQuestionCall, replay bool) {
 	}
 	u.renderQuestionRecord(c)
 	if !replay {
-		u.questions.autoOpen = true
 		u.autoOpenQuestions()
 	}
 }
+
 func (u *appServerUI) questionMessage(m appserver.Message) (bool, error) {
 	if m.Method == "item/tool/requestUserInput" && len(m.ID) > 0 {
-		var p struct {
-			ThreadID  string           `json:"threadId"`
-			TurnID    string           `json:"turnId"`
-			ItemID    string           `json:"itemId"`
-			Questions []nativeQuestion `json:"questions"`
-		}
-		if err := json.Unmarshal(m.Params, &p); err != nil {
+		p, err := binding.DecodeQuestionRequest(m.Params)
+		if err != nil {
 			return true, err
 		}
-		u.addQuestions(&nativeQuestionCall{thread: p.ThreadID, turn: p.TurnID, item: p.ItemID, request: slices.Clone(m.ID), questions: p.Questions}, false)
+		u.addQuestions(&nativeQuestionCall{Call: conversationbinding.Questions(p.ThreadID, p.TurnID, p.ItemID, m.ID, p.Questions), request: slices.Clone(m.ID)}, false)
 		return true, nil
 	}
 	if m.Method == "serverRequest/resolved" {
-		var p struct {
-			ThreadID  string         `json:"threadId"`
-			RequestID jsontext.Value `json:"requestId"`
-		}
-		if err := json.Unmarshal(m.Params, &p); err != nil {
+		p, err := binding.DecodeResolvedRequest(m.Params)
+		if err != nil {
 			return true, err
 		}
-		for _, c := range u.questions.calls {
-			if c.thread == p.ThreadID && string(c.request) == string(p.RequestID) {
+		for _, c := range u.questionCalls() {
+			if c.Thread == p.ThreadID && string(c.request) == string(p.RequestID) {
 				u.resolveQuestionCall(c, "answered elsewhere")
 			}
 		}
@@ -252,53 +214,38 @@ func (u *appServerUI) observeQuestionItem(thread, turn string, item appServerIte
 	if item.Type != "agentMessage" || item.Delivery != "async" || len(item.Questions) == 0 {
 		return false
 	}
-	u.addQuestions(&nativeQuestionCall{thread: thread, turn: turn, item: item.ID, questions: item.Questions}, replay)
+	u.addQuestions(&nativeQuestionCall{Call: conversationbinding.Questions(thread, turn, item.ID, nil, item.Questions)}, replay)
 	return true
 }
-func (u *appServerUI) saveUnsentAnswer(q *nativeQuestion) {
-	if !q.IsSecret && q.editor.Snapshot.Text != "" {
-		u.rememberInput(composerDraft{Draft: q.editor.Snapshot.Draft})
+
+func (u *appServerUI) saveUnsentAnswer(d composer.Draft) {
+	if d.Text != "" {
+		u.rememberInput(composerDraft{Draft: d})
 		u.setNotice("unsent answer saved to input history", false)
 	}
-	q.editor = questionEditor{}
 }
 func (u *appServerUI) resolveQuestionCall(c *nativeQuestionCall, outcome string) {
-	if c.resolved {
+	if c.Resolved {
 		return
 	}
-	if u.questions.active == c {
+	if u.activeQuestionCall() == c {
 		u.hideQuestions()
 	}
-	for i := range c.questions {
-		q := &c.questions[i]
-		if q.outcome == "" {
-			q.outcome = outcome
-			if len(c.request) > 0 && c.sent {
-				if q.skipped || !q.done {
-					q.outcome = "skipped"
-				} else {
-					q.outcome = "answered"
-				}
-			} else {
-				u.saveUnsentAnswer(q)
-			}
-			q.editor = questionEditor{}
-		}
+	for _, d := range c.Resolve(outcome) {
+		u.saveUnsentAnswer(d)
 	}
-	c.resolved = true
+	u.discardQuestionEditors(c)
 	if c.sudo != nil {
-		if !c.sent && !c.sudo.finished() {
+		if !c.Sent && !c.sudo.finished() {
 			c.sudo.reply <- shellapproval.Reply{Reason: "sudo authentication canceled"}
-			u.recordApproval(&nativeApproval{thread: c.thread, turn: c.turn, item: c.sudo.item}, "Denied: sudo authentication canceled")
+			u.recordApproval(&nativeApproval{Approval: prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.sudo.item}}, "Denied: sudo authentication canceled")
 		}
-		for i := range c.questions {
-			c.questions[i].answer = nil
-		}
-		u.questions.calls = slices.DeleteFunc(u.questions.calls, func(call *nativeQuestionCall) bool { return call == c })
+		u.questions.Remove(&c.Call)
+		delete(u.questions.handles, &c.Call)
 		return
 	}
 	u.renderQuestionRecord(c)
-	if len(c.request) > 0 && c.sent {
+	if c.Sync && c.Sent {
 		u.recordSyncQuestionAnswer(c)
 	}
 }
@@ -307,20 +254,15 @@ func (u *appServerUI) resolveQuestionCall(c *nativeQuestionCall, outcome string)
 // response as the same hidden chronological anchor used by async answers.
 func (u *appServerUI) recordSyncQuestionAnswer(c *nativeQuestionCall) {
 	var answers []string
-	for _, q := range c.questions {
-		if q.outcome != "answered" {
+	for _, q := range c.Questions {
+		if q.Outcome != "answered" {
 			continue
 		}
 		if q.IsSecret {
 			answers = append(answers, "•••")
 			continue
 		}
-		for i, answer := range q.answer {
-			if i > 0 || q.selected == len(q.choices) {
-				answer = strings.TrimPrefix(answer, "user_note: ")
-			}
-			answers = append(answers, answer)
-		}
+		answers = append(answers, q.Answer...)
 	}
 	if len(answers) == 0 {
 		return
@@ -329,15 +271,15 @@ func (u *appServerUI) recordSyncQuestionAnswer(c *nativeQuestionCall) {
 		if v == nil {
 			continue
 		}
-		native := &liveActivityNativeItem{thread: c.thread, turn: c.turn, item: "question-answer/" + string(c.request), phase: "item/completed"}
+		native := &liveActivityNativeItem{thread: c.Thread, turn: c.Turn, item: "question-answer/" + string(c.request), phase: "item/completed"}
 		for _, previous := range slices.Backward(v.Entries) {
-			if previous.Source.native == nil || previous.Source.native.thread != c.thread {
+			if previous.Source.native == nil || previous.Source.native.thread != c.Thread {
 				continue
 			}
 			if previous.Source.Kind == "question" && previous.Source.native.item == "question/"+string(c.request) {
 				native.question = previous.Source.Seq
 			}
-			if native.replySource == "" && previous.Source.Agent == "You" && previous.Source.native.turn == c.turn {
+			if native.replySource == "" && previous.Source.Agent == "You" && previous.Source.native.turn == c.Turn {
 				native.replySource = previous.Source.Text
 			}
 		}
@@ -345,15 +287,15 @@ func (u *appServerUI) recordSyncQuestionAnswer(c *nativeQuestionCall) {
 	}
 }
 func (u *appServerUI) endSyncQuestions(turn string) {
-	for _, c := range slices.Clone(u.questions.calls) {
-		if c.turn == turn && (len(c.request) > 0 || c.sudo != nil) {
+	for _, c := range slices.Clone(u.questionCalls()) {
+		if c.Turn == turn && (len(c.request) > 0 || c.sudo != nil) {
 			u.resolveQuestionCall(c, "interrupted")
 		}
 	}
 }
 func (u *appServerUI) supersedeQuestions(turn string) {
-	for _, c := range u.questions.calls {
-		if c.sudo == nil && len(c.request) == 0 && c.turn != turn && (!c.sent || c.submissionID == "") {
+	for _, c := range u.questionCalls() {
+		if c.sudo == nil && len(c.request) == 0 && c.Turn != turn && (!c.Sent || c.SubmissionID == "") {
 			u.resolveQuestionCall(c, "superseded")
 		}
 	}
@@ -364,22 +306,22 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 	if q == nil {
 		return false, nil
 	}
-	c := u.questions.active
-	if u.questions.confirm {
+	c := u.activeQuestionCall()
+	if u.questions.Confirm {
 		if key == "\r" {
 			return true, u.submitQuestions()
 		}
 		if key == "\x1b" {
-			u.questions.confirm = false
+			u.questions.Confirm = false
 			return true, nil
 		}
 	}
 	switch key {
 	case "\x1b":
-		if q.note {
-			q.note = false
+		if q.Note {
+			q.Note = false
 		} else {
-			u.questions.autoOpen = false
+			u.questions.AutoOpen = false
 			u.hideQuestions()
 		}
 	case "\x1b[A", "\x10", "\x1b[B", "\x0e":
@@ -387,102 +329,74 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 		if key == "\x1b[A" || key == "\x10" {
 			step = -1
 		}
-		q.selected = (q.selected + step + len(q.choices) + 1) % (len(q.choices) + 1)
-		q.done = false
+		q.Choose((q.Selected + step + len(q.Choices) + 1) % (len(q.Choices) + 1))
 	case "\x1b[D":
-		if q.note || q.selected == len(q.choices) {
+		if q.Note || q.Selected == len(q.Choices) {
 			u.moveDraft(key)
 		} else {
 			u.moveQuestion(-1)
 		}
 	case "\x1b[C":
-		if q.note || q.selected == len(q.choices) {
+		if q.Note || q.Selected == len(q.Choices) {
 			u.moveDraft(key)
 		} else {
 			u.moveQuestion(1)
 		}
 	case "\x1b[5~":
-		q.textTop = max(0, q.textTop-1)
+		u.questionLayout(q).textTop = max(0, u.questionLayout(q).textTop-1)
 	case "\x1b[6~":
-		q.textTop++
+		u.questionLayout(q).textTop++
 	case "\t":
-		if len(c.request) > 0 && q.selected < len(q.choices) {
-			q.note = true
+		if len(c.request) > 0 && q.Selected < len(q.Choices) {
+			q.Note = true
 		}
 	case "\x16":
-		if !q.note {
-			q.selected = len(q.choices)
-		}
-		q.done, q.skipped = false, false
+		q.Edit(!q.Note)
 		u.pasteImage()
 	case "\r", "\x1d":
-		q.editor = u.saveQuestionEditor()
-		q.skipped = key == "\x1d"
-		q.done = true
-		q.answer = nil
-		if !q.skipped {
-			if q.selected < len(q.choices) {
-				q.answer = []string{q.choices[q.selected].Label}
-				if len(c.request) > 0 && u.Text != "" {
-					q.answer = append(q.answer, "user_note: "+u.Text)
-				}
-			} else if u.Text != "" {
-				answer := u.Text
-				if len(c.request) > 0 {
-					answer = "user_note: " + answer
-				}
-				q.answer = []string{answer}
-			} else {
-				q.done = false
+		u.parkQuestion(q)
+		if q.IsSecret {
+			answer := *q
+			if !answer.Complete(u.Text, c.Sync, key == "\x1d") {
 				return true, nil
 			}
-		}
-		for j := 1; u.questions.index+j < len(c.questions); j++ {
-			next := u.questions.index + j
-			if !c.questions[next].done && c.questions[next].outcome == "" {
-				u.moveQuestion(j)
-				return true, nil
+			q.Done, q.Skipped = answer.Done, answer.Skipped
+			if c.secretAnswers == nil {
+				c.secretAnswers = make(map[int][]string)
 			}
+			c.secretAnswers[u.questions.Index] = answer.Answer
+		} else if !q.Complete(u.Text, c.Sync, key == "\x1d") {
+			return true, nil
 		}
-		gaps := 0
-		for _, question := range c.questions {
-			if question.outcome == "" && (question.skipped || !question.done) {
-				gaps++
-			}
-		}
-		if gaps > 0 {
-			u.questions.confirm = true
-		} else {
+		if step, submit := u.questions.Advance(); step != 0 {
+			u.moveQuestion(step)
+		} else if submit {
 			return true, u.submitQuestions()
 		}
+
 	default:
-		if c.sudo == nil && len(key) == 1 && key[0] >= '1' && key[0] <= '9' && !q.note && u.Text == "" {
+		if c.sudo == nil && len(key) == 1 && key[0] >= '1' && key[0] <= '9' && !q.Note && u.Text == "" {
 			selected := int(key[0] - '1')
-			if selected <= len(q.choices) {
-				q.selected = selected
-				q.done = false
+			if selected <= len(q.Choices) {
+				q.Choose(selected)
 				return true, nil
 			}
 		}
-		if len(key) == 1 && key[0] >= 32 && key[0] != 127 && !q.note {
-			q.selected = len(q.choices)
-		}
 		if len(key) == 1 {
-			q.done = false
-			q.skipped = false
+			q.Edit(key[0] >= 32 && key[0] != 127 && !q.Note)
 		}
 		return false, nil
 	}
 	return true, nil
 }
 func (u *appServerUI) submitQuestions() error {
-	c := u.questions.active
-	if c == nil || c.resolved || c.sent {
+	c := u.activeQuestionCall()
+	if c == nil || c.Resolved || c.Sent {
 		return nil
 	}
 	defer func() {
 		u.pruneDraftImages()
-		u.questions.autoOpen = true
+		u.questions.AutoOpen = true
 		u.autoOpenQuestions()
 	}()
 	if c.sudo != nil {
@@ -490,24 +404,17 @@ func (u *appServerUI) submitQuestions() error {
 	}
 	attached := questionAnswerAttachments(c)
 	if len(c.request) > 0 {
-		answers := make(map[string]map[string][]string)
-		for _, q := range c.questions {
-			if q.done && !q.skipped {
-				answers[q.ID] = map[string][]string{"answers": q.answer}
-			}
-		}
-		if err := u.requests.Respond(c.request, map[string]any{"answers": answers}); err != nil {
+		if err := u.requests.Respond(c.request, conversationbinding.QuestionResponse(&c.Call, c.secretAnswers)); err != nil {
 			return err
 		}
-		c.sent = true
 		u.hideQuestions()
-		for i := range c.questions {
-			c.questions[i].editor = questionEditor{}
-		}
+		c.Submitted()
+		clear(c.secrets)
+		clear(c.secretAnswers)
 		u.renderQuestionRecord(c)
 		if len(attached.AnswerImages) > 0 || len(attached.Attachments) > 0 {
-			d := attached
-			d.Text, d.questionCall, d.InHistory = "Attachments accompanying answers to "+c.item+":\n", c, true
+			d := composerDraft{Draft: attached}
+			d.Text, d.questionCall, d.InHistory = "Attachments accompanying answers to "+c.Item+":\n", c, true
 			d.AnswerImages = nil
 			for i, path := range attached.AnswerImages {
 				label := fmt.Sprintf("[Image %d]", i+1)
@@ -520,53 +427,38 @@ func (u *appServerUI) submitQuestions() error {
 		}
 		return nil
 	}
-	var replies []nativeQuestionReply
-	for i := range c.questions {
-		q := &c.questions[i]
-		if q.outcome != "" {
-			continue
-		}
-		if q.skipped || !q.done {
-			q.outcome = "skipped"
-			continue
-		}
-		id, _ := json.Marshal([]any{"request_user_input_async", c.item, i})
-		replies = append(replies, nativeQuestionReply{Answer: strings.Join(q.answer, "\n"), Question: q.Question, QuestionItemID: string(id)})
-	}
+	reply := conversationbinding.QuestionReplies(&c.Call)
 	u.hideQuestions()
-	for i := range c.questions {
-		if c.questions[i].outcome == "skipped" {
-			c.questions[i].editor = questionEditor{}
-		}
-	}
-	c.sent = true
-	if len(replies) == 0 {
-		c.resolved = true
+	c.Submitted()
+	if reply == "" {
+		c.Resolved = true
 		u.renderQuestionRecord(c)
 		return nil
 	}
-	data, _ := json.Marshal(replies)
-	attached.Text, attached.questionCall, attached.InHistory = questionReplyStart+string(data)+questionReplyEnd, c, true
-	u.unsent = append(u.unsent, attached)
+	attached.Text, attached.InHistory = reply, true
+	u.unsent = append(u.unsent, composerDraft{Draft: attached, questionCall: c})
 	u.renderQuestionRecord(c)
 	return u.flushInput()
 }
 
 // Answers use composer attachment snapshots. Keep the async reply envelope
 // intact while the host processes accompanying images and quoted selections.
-func questionAnswerAttachments(c *nativeQuestionCall) composerDraft {
+func questionAnswerAttachments(c *nativeQuestionCall) composer.Draft {
 	var paths []string
-	var drafts []composerDraft
-	for i := range c.questions {
-		q := &c.questions[i]
-		if !q.done || q.skipped || q.outcome != "" {
+	var drafts []composer.Draft
+	for i := range c.Questions {
+		q := &c.Questions[i]
+		if !q.Done || q.Skipped || q.Outcome != "" {
 			continue
 		}
-		d := q.editor.Snapshot.Draft
-		if len(d.Images) == 0 && len(c.request) == 0 && q.selected < len(q.choices) {
+		d := q.Editor.Snapshot.Draft
+		if q.IsSecret {
+			d = c.secrets[i].Snapshot.Draft
+		}
+		if len(d.Images) == 0 && !c.Sync && q.Selected < len(q.Choices) {
 			continue // Async option-only replies do not submit the parked free text.
 		}
-		drafts = append(drafts, composerDraft{Draft: d})
+		drafts = append(drafts, d)
 		if len(d.Images) == 0 {
 			continue
 		}
@@ -578,80 +470,19 @@ func questionAnswerAttachments(c *nativeQuestionCall) composerDraft {
 		for _, image := range d.Images {
 			paths = append(paths, image.Path)
 		}
-		q.answer = []string{text}
-		if q.selected < len(q.choices) {
-			q.answer = []string{q.choices[q.selected].Label, "user_note: " + text}
-		} else if len(c.request) > 0 {
-			q.answer[0] = "user_note: " + text
+		answer := []string{text}
+		if q.Selected < len(q.Choices) {
+			answer = []string{q.Choices[q.Selected].Label, text}
+		}
+		if q.IsSecret {
+			c.secretAnswers[i] = answer
+		} else {
+			q.Answer = answer
 		}
 	}
-	attached := joinDrafts(drafts...)
+	attached := composer.Join(drafts...)
 	attached.SnapshotFiles("") // Answer editors bind selections, not files.
-	return composerDraft{AnswerImages: paths, Attachments: attached.Attachments, AttachmentNotice: attached.AttachmentNotice}
-}
-
-const questionReplyStart = "<send_user_message_question_reply>"
-const questionReplyEnd = "</send_user_message_question_reply>"
-
-type nativeQuestionReply struct {
-	Answer         string `json:"answer"`
-	Question       string `json:"question"`
-	QuestionItemID string `json:"questionItemId"`
-}
-
-// Match the whole stock payload, never an envelope quoted inside a prompt.
-func questionReplies(text string) []nativeQuestionReply {
-	text = strings.TrimSpace(text)
-	if strings.HasPrefix(text, "# Context from my IDE setup:\n") {
-		_, request, ok := strings.CutLast(text, "\n## My request for Codex:\n")
-		if !ok {
-			return nil
-		}
-		text = strings.TrimSpace(request)
-	}
-	body, ok := strings.CutPrefix(text, questionReplyStart)
-	if !ok {
-		return nil
-	}
-	body, ok = strings.CutSuffix(body, questionReplyEnd)
-	if !ok {
-		return nil
-	}
-	type wireReply struct {
-		Answer   *string `json:"answer"`
-		Question *string `json:"question"`
-		ID       *string `json:"questionItemId"`
-	}
-	var wire []wireReply
-	if strings.HasPrefix(strings.TrimSpace(body), "{") {
-		var one wireReply
-		if json.Unmarshal([]byte(body), &one) != nil {
-			return nil
-		}
-		wire = []wireReply{one}
-	} else if json.Unmarshal([]byte(body), &wire) != nil {
-		return nil
-	}
-	var replies []nativeQuestionReply
-	for _, r := range wire {
-		if r.Answer == nil || r.Question == nil || r.ID == nil {
-			return nil
-		}
-		replies = append(replies, nativeQuestionReply{*r.Answer, *r.Question, *r.ID})
-	}
-	return replies
-}
-func questionReplyIdentity(reply nativeQuestionReply) (string, int, bool) {
-	var id []jsontext.Value
-	if json.Unmarshal([]byte(reply.QuestionItemID), &id) != nil || len(id) != 3 {
-		return "", 0, false
-	}
-	var tool, item string
-	var index int
-	if json.Unmarshal(id[0], &tool) != nil || tool != "request_user_input_async" || json.Unmarshal(id[1], &item) != nil || json.Unmarshal(id[2], &index) != nil || index < 0 {
-		return "", 0, false
-	}
-	return item, index, true
+	return composer.Draft{AnswerImages: paths, Attachments: attached.Attachments, AttachmentNotice: attached.AttachmentNotice}
 }
 
 // Already-transmitted input belongs to Codex. Only local unsent batches can
@@ -668,36 +499,23 @@ func pendingQuestionReplies(parts []composerDraft) []composerDraft {
 			pending = append(pending, part) // Sync attachments follow the completed tool response.
 			continue
 		}
-		if c.resolved {
+		if c.Resolved {
 			continue
 		}
 		attached := questionAnswerAttachments(c)
 		part.AnswerImages, part.Attachments, part.AttachmentNotice = attached.AnswerImages, attached.Attachments, attached.AttachmentNotice
-		var replies []nativeQuestionReply
-		for _, r := range questionReplies(part.Text) {
-			item, index, ok := questionReplyIdentity(r)
-			if ok && item == c.item && index < len(c.questions) && c.questions[index].outcome == "" {
-				r.Answer = strings.Join(c.questions[index].answer, "\n")
-				replies = append(replies, r)
-			}
-		}
-		if len(replies) == 0 {
+		part.Text = conversationbinding.PendingQuestionReply(&c.Call, part.Text)
+		if part.Text == "" {
 			continue
 		}
-		data, _ := json.Marshal(replies)
-		part.Text = questionReplyStart + string(data) + questionReplyEnd
 		pending = append(pending, part)
 	}
 	return pending
 }
 func (u *appServerUI) commitQuestionReplies(item appServerItem, turn string) {
 	text, _, _ := appServerUserText(item.Content)
-	replies := questionReplies(text)
-	if u.questions.inputTurns == nil {
-		u.questions.inputTurns = make(map[string]bool)
-	}
-	first := !u.questions.inputTurns[turn]
-	u.questions.inputTurns[turn] = true
+	replies := binding.QuestionReplies(text)
+	first := u.questions.InputTurn(turn)
 	if len(replies) == 0 {
 		if first {
 			u.supersedeQuestions(turn)
@@ -705,37 +523,26 @@ func (u *appServerUI) commitQuestionReplies(item appServerItem, turn string) {
 		return
 	}
 	for _, r := range replies {
-		itemID, index, ok := questionReplyIdentity(r)
+		itemID, index, ok := binding.QuestionReplyIdentity(r)
 		if !ok {
 			continue
 		}
-		for _, c := range u.questions.calls {
-			if c.thread != u.Thread || c.item != itemID || len(c.request) > 0 || index < 0 || index >= len(c.questions) {
+		for _, c := range u.questionCalls() {
+			if c.Thread != u.Thread || c.Item != itemID || len(c.request) > 0 || index < 0 || index >= len(c.Questions) {
 				continue
 			}
-			q := &c.questions[index]
-			if q.outcome != "" {
+			q := &c.Questions[index]
+			if q.Outcome != "" {
 				continue
 			}
-			wasOpen := u.questions.active == c
+			wasOpen := u.activeQuestionCall() == c
 			if wasOpen {
 				u.hideQuestions()
 			}
-			outcome := "answered elsewhere"
-			if c.submissionID != "" && (item.ClientID == c.submissionID || item.ClientID == "" && r.Answer == strings.Join(q.answer, "\n")) {
-				outcome = "answered"
-			} else {
-				q.done = false
-				u.saveUnsentAnswer(q)
+			if discarded, changed := c.Commit(index, item.ClientID, r.Answer); changed {
+				u.saveUnsentAnswer(discarded)
 			}
-			q.outcome, q.answer = outcome, []string{r.Answer}
-			q.editor = questionEditor{}
-			c.resolved = true
-			for _, other := range c.questions {
-				if other.outcome == "" {
-					c.resolved = false
-				}
-			}
+
 			u.renderQuestionRecord(c)
 		}
 	}
@@ -748,9 +555,7 @@ func (u *appServerUI) rejectQuestionParts(parts []composerDraft) []composerDraft
 			ordinary = append(ordinary, p)
 			continue
 		}
-		if !c.resolved {
-			c.sent = false
-			c.submissionID = ""
+		if c.Reject() {
 			u.renderQuestionRecord(c)
 		}
 	}
@@ -763,38 +568,20 @@ func (u *appServerUI) renderQuestionRecord(c *nativeQuestionCall) {
 	states := []string{}
 	var body []string
 	var records []activityui.Question
-	for _, q := range c.questions {
-		state := q.outcome
-		if state == "" {
-			if c.sent {
-				state = "sending"
-			} else if len(c.request) > 0 {
-				state = "waiting"
-			} else {
-				state = "open"
-			}
-		}
+	for _, q := range c.View().Questions {
+		state := q.State
 		if !slices.Contains(states, state) {
 			states = append(states, state)
 		}
-		record := activityui.Question{Text: q.Question, State: state}
-		line := q.Question
-		if len(q.answer) > 0 && q.outcome != "" && !q.IsSecret {
-			answers := slices.Clone(q.answer)
-			for i, answer := range answers {
-				if note, ok := strings.CutPrefix(answer, "user_note: "); ok && len(c.request) > 0 && (i > 0 || q.selected == len(q.choices)) {
-					if len(answers) == 1 {
-						answers[i] = "Other:\n\n" + note
-					} else {
-						answers[i] = note
-					}
-				}
-			}
+		record := activityui.Question{Text: q.Text, State: state}
+		line := q.Text
+		if len(q.Answer) > 0 {
+			answers := q.Answer
 			record.Answer = strings.Join(answers, "\n\n")
 			line += "\n└ " + record.Answer
-		} else if q.outcome == "" && len(q.choices) > 0 {
+		} else if q.Pending && len(q.Choices) > 0 {
 			labels := []string{}
-			for _, o := range q.choices {
+			for _, o := range q.Choices {
 				labels = append(labels, o.Label)
 			}
 			record.Options = strings.Join(labels, " · ")
@@ -803,15 +590,15 @@ func (u *appServerUI) renderQuestionRecord(c *nativeQuestionCall) {
 		body = append(body, line)
 		records = append(records, record)
 	}
-	label := fmt.Sprintf("%d questions · %s", len(c.questions), strings.Join(states, ", "))
-	if len(c.questions) == 1 {
+	label := fmt.Sprintf("%d questions · %s", len(c.Questions), strings.Join(states, ", "))
+	if len(c.Questions) == 1 {
 		label = strings.Replace(label, "questions", "question", 1)
 	}
-	if len(c.request) == 0 && !c.resolved && u.Turn == "" {
+	if len(c.request) == 0 && !c.Resolved && u.Turn == "" {
 		label += " · answer starts a new turn"
 	}
 	text := label + "\n" + strings.Join(body, "\n\n")
-	id := c.item
+	id := c.Item
 	if len(c.request) > 0 {
 		id = "question/" + string(c.request)
 	}
@@ -819,7 +606,7 @@ func (u *appServerUI) renderQuestionRecord(c *nativeQuestionCall) {
 		if v == nil {
 			continue
 		}
-		entry := activityPaneEntry{Seq: v.LastSeq + 1, Agent: "Main", Kind: "question", Text: text, Observed: u.now(), native: &liveActivityNativeItem{thread: c.thread, turn: c.turn, item: id, phase: "question", questions: records}}
+		entry := activityPaneEntry{Seq: v.LastSeq + 1, Agent: "Main", Kind: "question", Text: text, Observed: u.now(), native: &liveActivityNativeItem{thread: c.Thread, turn: c.Turn, item: id, phase: "question", questions: records}}
 		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 	}
 }
@@ -830,23 +617,26 @@ func (u *appServerUI) questionRows(width, height int) []string {
 	}
 	p := &u.view.painter
 	accent, dim, reset := p.Theme.Accent(), terminalui.Dim, terminalui.Reset
-	if d.active == nil {
+	if u.activeQuestionCall() == nil {
 		label := accent + "? " + reset + fmt.Sprintf("main asks %d questions", u.questionCount()) + dim + " · " + reset + accent + "ctrl+b q" + reset + dim + " answer" + reset
 		if u.Turn == "" && u.Text != "" {
 			label = dim + fmt.Sprintf("enter starts a new turn · dismisses %d questions", u.questionCount()) + reset
 		}
 		return []string{ansi.Truncate(label, width, "…")}
 	}
-	q, c := u.currentQuestion(), d.active
+	q, c := u.currentQuestion(), u.activeQuestionCall()
+	view := c.View()
+	question := view.Questions[d.Index]
+	layout := u.questionLayout(q)
 	padding := min(2, max(0, (width-20)/2))
 	inner := max(1, width-2*padding)
 	state := "open"
-	if len(c.request) > 0 || c.sudo != nil {
+	if view.Sync || view.Local {
 		state = "waiting"
 	}
-	head := fmt.Sprintf("? %d of %d", d.index+1, len(c.questions))
-	if q.Header != q.Question && ansi.StringWidth(head)+ansi.StringWidth(q.Header)+len(state)+6 <= inner {
-		head += " · " + pickerText(q.Header)
+	head := fmt.Sprintf("? %d of %d", d.Index+1, len(view.Questions))
+	if question.Header != question.Text && ansi.StringWidth(head)+ansi.StringWidth(question.Header)+len(state)+6 <= inner {
+		head += " · " + pickerText(question.Header)
 	}
 	gap := inner - ansi.StringWidth(head) - len(state)
 	header := accent + "\x1b[1m" + head + reset
@@ -857,18 +647,18 @@ func (u *appServerUI) questionRows(width, height int) []string {
 	if height >= 10 {
 		rows = append(rows, "")
 	}
-	keys := [][2]string{{fmt.Sprintf("1–%d", min(9, len(q.choices)+1)), "choose"}, {"type", "answer"}}
-	if c.sudo != nil {
+	keys := [][2]string{{fmt.Sprintf("1–%d", min(9, len(question.Choices)+1)), "choose"}, {"type", "answer"}}
+	if view.Local {
 		keys = [][2]string{{"type", "password"}, {"enter", "submit"}}
 	}
 	arrows := "question"
-	if q.note || q.selected == len(q.choices) {
+	if question.Note || question.Selected == len(question.Choices) {
 		arrows = "move"
 	}
-	if len(c.request) > 0 {
+	if view.Sync {
 		keys = append(keys, [2]string{"tab", "note"})
 	}
-	if len(c.questions) > 1 {
+	if len(view.Questions) > 1 {
 		keys = append(keys, [2]string{"enter", "next"}, [2]string{"←/→", arrows})
 	}
 	keys = append(keys, [2]string{"ctrl+]", "skip"}, [2]string{"esc", "hide"})
@@ -882,44 +672,39 @@ func (u *appServerUI) questionRows(width, height int) []string {
 	foot := hints(keys)
 	if len(foot) > max(2, height/3) {
 		compact := [][2]string{{"↑↓", "pick"}}
-		if len(c.questions) > 1 {
+		if len(view.Questions) > 1 {
 			compact = append(compact, [2]string{"↵", "next"}, [2]string{"←→", arrows})
 		}
 		foot = hints(append(compact, [2]string{"^]", "skip"}, [2]string{"esc", "hide"}))
 	}
-	if d.confirm {
-		gaps := 0
-		for _, question := range c.questions {
-			if question.outcome == "" && (question.skipped || !question.done) {
-				gaps++
-			}
-		}
+	if d.Confirm {
+		gaps := c.Gaps()
 		foot = pickerWrap(accent+fmt.Sprintf("Submit with %d unanswered?", gaps)+reset+" · "+accent+"enter"+reset+dim+" submit · "+reset+accent+"esc"+reset+dim+" back"+reset, inner)
 	}
-	text := pickerWrap(textsanitize.Safe(q.Question, false), inner)
+	text := pickerWrap(textsanitize.Safe(question.Text, false), inner)
 	textRoom := max(1, height-len(rows)-len(foot)-5)
-	q.textTop = min(q.textTop, max(0, len(text)-textRoom))
-	rows = append(rows, text[q.textTop:min(len(text), q.textTop+textRoom)]...)
+	layout.textTop = min(layout.textTop, max(0, len(text)-textRoom))
+	rows = append(rows, text[layout.textTop:min(len(text), layout.textTop+textRoom)]...)
 	if len(text) > textRoom {
 		rows = append(rows, dim+ansi.Truncate("pgup/pgdn question text", inner, "")+reset)
 	}
 	if height >= 10 {
 		rows = append(rows, "")
 	}
-	options := append(slices.Clone(q.choices), nativeQuestionOption{Label: "Other", Description: "Type your answer"})
+	options := append(slices.Clone(question.Choices), prompt.Option{Label: "Other", Description: "Type your answer"})
 	count := min(8, len(options), max(1, height-len(rows)-len(foot)-2))
-	q.top = min(q.selected, min(q.top, max(0, len(options)-count)))
-	if q.selected >= q.top+count {
-		q.top = q.selected - count + 1
+	layout.top = min(question.Selected, min(layout.top, max(0, len(options)-count)))
+	if question.Selected >= layout.top+count {
+		layout.top = question.Selected - count + 1
 	}
 	columns := 0
-	for _, o := range options[q.top:min(len(options), q.top+count)] {
+	for _, o := range options[layout.top:min(len(options), layout.top+count)] {
 		columns = max(columns, ansi.StringWidth(pickerText(o.Label)))
 	}
-	for i := q.top; i < min(len(options), q.top+count); i++ {
+	for i := layout.top; i < min(len(options), layout.top+count); i++ {
 		o := options[i]
 		prefix := "  "
-		if i == q.selected {
+		if i == question.Selected {
 			prefix = "› "
 		}
 		line := fmt.Sprintf("%s%d. %s", prefix, i+1, pickerText(o.Label))
@@ -927,13 +712,13 @@ func (u *appServerUI) questionRows(width, height int) []string {
 			line += strings.Repeat(" ", max(0, columns-ansi.StringWidth(pickerText(o.Label)))+2) + dim + pickerText(o.Description) + reset
 		}
 		line = ansi.Truncate(line, inner, "…")
-		if i == q.selected {
+		if i == question.Selected {
 			line = u.pickerSelection() + ansi.Strip(line) + strings.Repeat(" ", max(0, inner-ansi.StringWidth(line))) + reset
 		}
 		rows = append(rows, line)
 	}
 	if count < len(options) {
-		rows = append(rows, dim+ansi.Truncate(fmt.Sprintf("option %d/%d", q.selected+1, len(options)), inner, "")+reset)
+		rows = append(rows, dim+ansi.Truncate(fmt.Sprintf("option %d/%d", question.Selected+1, len(options)), inner, "")+reset)
 	}
 	if len(rows)+len(foot) < height {
 		rows = append(rows, "")

@@ -3,6 +3,8 @@ package router
 import (
 	"os"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
@@ -15,7 +17,7 @@ type composerDraft struct {
 }
 
 func (u *appServerUI) rememberInput(draft composerDraft) {
-	if draft.questionCall == nil && len(questionReplies(draft.Text)) == 0 {
+	if draft.questionCall == nil && len(binding.QuestionReplies(draft.Text)) == 0 {
 		u.Editor.Remember(draft.Draft)
 	}
 }
@@ -52,18 +54,21 @@ func (u *appServerUI) pruneDraftImages() {
 		}
 	}
 	stacks := [][]composer.Undo{u.UndoDrafts, u.RedoDrafts}
-	for _, call := range u.questions.calls {
-		for _, question := range call.questions {
-			e := question.editor
+	for _, call := range u.questionCalls() {
+		for _, e := range call.secrets {
+			stacks = append(stacks, e.UndoDrafts, e.RedoDrafts, []composer.Undo{e.Snapshot})
+		}
+		for _, question := range call.Questions {
+			e := question.Editor
 			stacks = append(stacks, e.UndoDrafts, e.RedoDrafts, []composer.Undo{e.Snapshot})
 		}
 	}
-	if u.questions.active != nil {
-		e := u.questions.parked
+	if u.activeQuestionCall() != nil {
+		e := u.promptEditor.Parked
 		stacks = append(stacks, e.UndoDrafts, e.RedoDrafts, []composer.Undo{e.Snapshot})
 	}
-	if u.approvals.open && u.approvals.pending[0].denialChoice() >= 0 {
-		e := u.approvals.parked
+	if u.approvals.Open && u.pendingApprovals()[0].DenialChoice() >= 0 {
+		e := u.promptEditor.Parked
 		stacks = append(stacks, e.UndoDrafts, e.RedoDrafts, []composer.Undo{e.Snapshot})
 	}
 	for _, stack := range stacks {

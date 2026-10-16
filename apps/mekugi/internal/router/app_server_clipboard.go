@@ -47,10 +47,7 @@ func (u *appServerUI) finishPaste() {
 	text := string(u.pasted)
 	u.pasted = nil
 	if q := u.currentQuestion(); q != nil {
-		if !q.note {
-			q.selected = len(q.choices)
-		}
-		q.done, q.skipped = false, false
+		q.Edit(!q.Note)
 	}
 	path, ok := pastedImagePath(text)
 	if !ok {
@@ -213,9 +210,9 @@ func (u *appServerUI) pasteByte(key byte) {
 	// Normalize terminal line endings only after finding the exact boundary.
 	u.pasted = pasteText(u.pasted)
 	switch {
-	case u.approvals.open:
-		if a := u.approvals.pending[0]; a.denialChoice() >= 0 && len(u.pasted) > 0 {
-			a.selected = a.denialChoice()
+	case u.approvals.Open:
+		if a := u.pendingApprovals()[0]; a.DenialChoice() >= 0 && len(u.pasted) > 0 {
+			a.Selected = a.DenialChoice()
 			u.insertDraft(string(u.pasted))
 			u.Run = composer.NoRun
 		}

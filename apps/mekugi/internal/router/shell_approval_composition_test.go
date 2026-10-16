@@ -80,13 +80,13 @@ func TestShellApprovalCompositionSocket(t *testing.T) {
 						}
 						u.addGuardApproval(pending)
 						if request.kind == "sudo-password" {
-							if len(u.questions.calls) != 1 || len(u.approvals.pending) != 0 {
+							if len(u.questionCalls()) != 1 || len(u.pendingApprovals()) != 0 {
 								t.Fatal("sudo password did not reach its secret-entry UI")
 							}
 							questionTestPaint(t, u, 80)
 							appServerTestKeys(t, u, "fixture-password\r")
 						} else {
-							if len(u.approvals.pending) != 1 || len(u.questions.calls) != 0 {
+							if len(u.pendingApprovals()) != 1 || len(u.questionCalls()) != 0 {
 								t.Fatal("selected command did not reach approval UI")
 							}
 							questionTestPaint(t, u, 80)
@@ -107,7 +107,7 @@ func TestShellApprovalCompositionSocket(t *testing.T) {
 						default:
 							t.Fatal("inactive UI request was not denied")
 						}
-						if len(u.approvals.pending) != 0 || len(u.questions.calls) != 0 {
+						if len(u.pendingApprovals()) != 0 || len(u.questionCalls()) != 0 {
 							t.Fatal("inactive kind opened a prompt")
 						}
 						return
@@ -148,7 +148,7 @@ func TestShellApprovalCompositionGrantIsolation(t *testing.T) {
 			}
 			repeated := compositionApproval(kind)
 			u.addGuardApproval(repeated)
-			if len(repeated.reply) != 1 || !(<-repeated.reply).OK || len(u.approvals.pending) != 0 {
+			if len(repeated.reply) != 1 || !(<-repeated.reply).OK || len(u.pendingApprovals()) != 0 {
 				t.Fatal("selected module did not reuse its own grant")
 			}
 			otherKind := "sudo"
@@ -157,13 +157,13 @@ func TestShellApprovalCompositionGrantIsolation(t *testing.T) {
 			}
 			other := compositionApproval(otherKind)
 			u.addGuardApproval(other)
-			if len(other.reply) != 0 || len(u.approvals.pending) != 1 {
+			if len(other.reply) != 0 || len(u.pendingApprovals()) != 1 {
 				t.Fatal("session grant crossed module kinds for the same command identity")
 			}
 			fresh, _ := newAppServerTestUI()
 			newSession := compositionApproval(kind)
 			fresh.addGuardApproval(newSession)
-			if len(newSession.reply) != 0 || len(fresh.approvals.pending) != 1 {
+			if len(newSession.reply) != 0 || len(fresh.pendingApprovals()) != 1 {
 				t.Fatal("session grant crossed fresh UI instances")
 			}
 		})

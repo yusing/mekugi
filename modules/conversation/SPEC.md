@@ -1,9 +1,9 @@
-# Conversation composition
+# Conversation
 
 ## Purpose
 
-Own editable conversation drafts and their attachment identity independently of
-terminal rendering and host request lifecycles.
+Own editable drafts, question and approval presentation, and their semantic
+transitions independently of rendering and host request lifecycles.
 
 ## Scope
 
@@ -11,8 +11,9 @@ The composer API owns text, byte-based caret position, atomic attachment tokens,
 undo/redo, local input history, external-editor reconciliation, and draft joining.
 Main, question answers, approval reasons, queued input, and side questions use the
 same values. Terminal geometry, key decoding, clipboard acquisition, focus, and
-process launching remain renderer responsibilities. The application retains host
-question identities, compaction intent, submission ordering, and secret admission.
+process launching remain renderer responsibilities. The application retains live request handles, compaction intent, submission ordering,
+and secret admission. The Codex binding maps protocol identities and answer formats
+to neutral question and approval records.
 
 ## Behavior
 
@@ -42,6 +43,68 @@ Question and approval editors park text, caret, undo/redo and history navigation
 without merging answer text into Main. The application excludes secret answers and
 question-reply envelopes from ordinary input history and decides when discarded
 non-secret answers are saved. Main and answer drafts do not survive process restart.
+
+### Questions and approvals
+
+Main-thread questions and approvals belong to one attached session. Their records have
+stable identities and detached view values. Displaying a child transcript does not
+transfer Main input ownership. Restored questions use the same identities and
+resolution rules without opening an editor or issuing a request.
+
+Questions prefer waiting synchronous requests before asynchronous calls. Approvals
+are ordered oldest first and take precedence when explicitly opened. Opening either
+prompt parks Main's complete editor; hiding, answering, or switching prompts restores
+it without merging answer text. Every non-secret answer and denial reason retains
+its own editor across navigation and hide/reopen. Only an empty, idle Main composer
+can yield automatically. Explicit hiding suppresses automatic reopening until a new
+request arrives. Rendering readiness, focus, scroll, and keys belong to the renderer.
+
+Each question offers its named options and free text. Synchronous options can carry
+a note. Answering advances to the next unanswered question; submitting with skipped
+or incomplete questions requires confirmation. Sending removes a call from actionable
+counts but does not claim delivery. Async calls remain open across turn end. An
+ordinary prompt committed in a new turn supersedes older open calls; steering does
+not. A matching committed reply resolves only its question. Rejection restores
+answerability and the parked drafts. External resolution, interruption, or
+supersession saves discarded non-secret drafts to local input history; secrets are
+discarded. Reply envelopes never become ordinary history or duplicate message bands.
+
+Synchronous calls receive one response with the original host identity. Options,
+notes, free text, and skipped questions retain Codex's answer semantics; an
+all-skipped call still sends an empty response. Hidden synchronous requests keep
+ordinary input queued instead of steering. Async
+answers stay batched by call and are committed by thread, item, and question index.
+Images and selected-text snapshots accompany the answers through the composer.
+Images are numbered across the batch, survive rejection, and remain host-owned after
+submission. Sync attachments follow the completed response as a companion input.
+Queued replies can be reconciled before dispatch; transmitted input stays host-owned.
+Answers steer during an active turn, start a turn when idle, or queue until input
+admission permits delivery. They wait for a tool's generated input to complete,
+without waiting for execution to finish; ordinary prompts retain instant interruption
+and can pass deferred answers. Pending progress distinguishes queued or sending input
+from committed delivery. Questions never count as final answers or complete turns.
+
+Approvals from Main and child threads retain host order and scopes. Commands offer
+the host's supplied decisions, or accept, a proposed command-prefix amendment, and
+cancel when no list is supplied. Network wording follows the requested host scope.
+Edits offer once/session approval or cancel and name the matching live item paths.
+Permissions offer turn, strict-review turn, session, or an empty grant. Terminal
+input requests name the running terminal and quote the proposed input.
+Unknown choices leave an unanswerable request visibly blocked. Supported command
+denial can carry a reason and continues the turn under the
+[backend execution contract](../../backends/codex/SPEC.md#execution-authority);
+proxy-free handling preserves the
+host decision. External resolution and turn end clear pending approvals without
+claiming approval or denial. Approval facts decorate the associated host item rather
+than create another transcript event. Auto-review facts use their exact target item.
+
+[Remote-write](../remotewriteapproval/SPEC.md) and
+[sudo](../sudoapproval/SPEC.md) policy, grants, and expiry remain in their approval
+owners.
+Local authentication requests share the secret editor; their answers never enter
+neutral draft state, views, answer records, or durable history. Skipping denies
+authentication, and retries use a new live authentication request. Live handles, sockets, response
+payloads, and secrets stay in adapters. No view or replay fact can revive them.
 
 ### Attachment snapshots
 
@@ -100,7 +163,7 @@ host-owned. Terminal painting consumes bound byte spans; source text remains unc
 
 ## Records
 
-The composer writes no durable records. Submitted attachment envelopes are retained
+Conversation writes no durable records. Submitted attachment envelopes are retained
 by the host with the user input; local edit history remains attachment-lifetime state.
 
 ## Failure
@@ -112,6 +175,7 @@ successful attachments. A rejected host submission preserves its editable payloa
 ## Acceptance
 
 Neutral tests cover mixed-token edits, grapheme boundaries, undo/history isolation,
-external-editor reconciliation, and joining. Router acceptance exercises the same owner
+external-editor reconciliation, joining, question commitment/rejection, approval
+choice mapping, detached views, and secret exclusion. Router acceptance exercises the same owner
 through terminal input, queue restoration, question and approval editors, side questions,
 attachment submission and replay. Terminal snapshots remain renderer-owned.

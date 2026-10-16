@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
@@ -67,7 +69,7 @@ func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 		t.Fatalf("wrong answer input: %+v", request)
 	}
 	input := request.Params.Input
-	replies := questionReplies(input[0].Text)
+	replies := binding.QuestionReplies(input[0].Text)
 	if len(replies) != 2 || replies[0].Answer != "[Image 1] [Selected message] " || replies[1].Answer != "[Image 2] [Selected message 2] " {
 		t.Fatalf("wrong image identity: %+v", replies)
 	}
@@ -83,12 +85,12 @@ func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	text, spans, ok := appServerUserText(content)
-	if !ok || len(questionReplies(text)) != 2 || len(spans) != 0 {
+	if !ok || len(binding.QuestionReplies(text)) != 2 || len(spans) != 0 {
 		t.Fatalf("reply images created a user band: %q %+v", text, spans)
 	}
 	questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{"id": "reply", "type": "userMessage", "clientUserMessageId": u.Submission().ID, "content": conversationbinding.Input(u.inputPayloads[u.Submission().ID].Draft)}})
-	for _, q := range u.questions.calls[0].questions {
-		if q.outcome != "answered" {
+	for _, q := range u.questionCalls()[0].Questions {
+		if q.Outcome != "answered" {
 			t.Fatalf("image answer not committed: %+v", q)
 		}
 	}
@@ -163,5 +165,32 @@ func TestQuestionSkippedImageIsReclaimed(t *testing.T) {
 	appServerTestKeys(t, u, "\x1d\r")
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("skipped generated image retained: %v", err)
+	}
+}
+
+func TestQuestionSecretDraftKeepsImageWithoutExposingModelState(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	u.Turn = "turn"
+	questionTestSync(t, u, "secret-image", true)
+	questionTestPaint(t, u, 70)
+	path := answerImageFixture(t)
+	u.attachImage(path)
+	u.hideQuestions()
+	u.pruneDraftImages()
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal("parked secret image reclaimed", err)
+	}
+	call := u.questionCalls()[0]
+	if call.Questions[0].Editor.Snapshot.Text != "" || len(call.Questions[0].Answer) != 0 || len(call.View().Questions[0].Answer) != 0 {
+		t.Fatal("secret draft exposed through model")
+	}
+	u.openQuestions()
+	questionTestPaint(t, u, 70)
+	appServerTestKeys(t, u, "\r")
+	if !strings.Contains(wire.String(), "user_note: [Image 1]") || len(u.unsent) != 1 || len(u.unsent[0].Images) != 1 {
+		t.Fatal("secret answer image companion lost")
+	}
+	if len(call.secrets) != 0 || len(call.secretAnswers) != 0 || len(call.Questions[0].Answer) != 0 {
+		t.Fatal("submitted secret retained")
 	}
 }

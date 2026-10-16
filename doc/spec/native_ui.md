@@ -57,7 +57,8 @@ indicator is separated from its label and retains the selected tab highlight.
 
 `mekugi codex` uses the native client of `codex app-server` for interactive
 terminal launches. Without `--yolo`, Codex's configured approval and sandbox
-policy applies and the native client answers Codex approvals (see Approvals).
+policy applies and the native client answers Codex approvals
+(see [Questions and approvals](#questions-and-approvals)).
 The independent VCS guard follows
 [remote-write approval](../../modules/remotewriteapproval/SPEC.md).
 `--yolo` passes `approval_policy="never"` and
@@ -1240,14 +1241,17 @@ Disabling desktop notifications does not disable lifecycle titles. Configuration
 or notification-output failures report a notice without stopping host work.
 Redirected/noninteractive execution retains Codex's own behavior.
 
-### User-input questions
+### Questions and approvals
 
-Root-thread questions use a shared dock above the composer, hiding the live-edit
-dock. `request_user_input` arrives as `item/tool/requestUserInput`; unexpected
-server requests retain the visibly blocked fallback. Async questions arrive as
-`agentMessage` items with `delivery: "async"` and `questions`, not as server
-requests. They never become final-answer cards or final-answer
-bookkeeping and do not complete a turn.
+[Conversation](../../modules/conversation/SPEC.md#questions-and-approvals) owns
+prompt ordering, answer and approval lifecycle, editor parking, and replay behavior.
+The terminal adapter renders both prompts above the composer, hiding live edits.
+Clicking a pending banner or Ctrl+B Q opens approvals before questions. Main's title
+shows `?N` while another pane has focus. Question input says `answering`, adds
+`note` while editing an option note, and adds `turn waiting` for synchronous or
+local authentication requests. It adds `draft kept` when Main's parked text is
+nonempty. Approval input says `approving · turn waiting`, without the parked-draft
+suffix. Until the dock has been painted, keys cannot answer it.
 
 The dock shows question position, header, pending state (`waiting` for sync,
 `open` for async), full wrapped question text, numbered options and descriptions,
@@ -1271,138 +1275,13 @@ Ctrl-] skips. A submission with gaps requires the inline confirmation
 then hides the dock while retaining drafts; with it hidden, Escape retains its
 usual interrupt behavior. Ctrl-C retains clear/interrupt/quit behavior.
 
-Live sync and async questions open directly when Main's composer is empty and
-not pasting, showing a picker, or holding attachments. Otherwise a one-row banner
-appears and editing continues; clearing the composer opens the pending question.
-Submitting a call opens the next pending call when the restored composer is empty.
-Explicitly hiding the dock keeps it hidden until reopened or a new question arrives.
-Keystrokes received before the dock is painted do
-not select or submit an answer. Clicking the banner or Ctrl+B Q opens the dock;
-Session help lists the key. Main's title shows `?N` while another pane has focus.
-Alt+Up and Shift+Left retain their queued-input editing meaning.
-
-Opening the dock parks the whole main editor: text, caret, undo/redo, history
-position, file/skill tokens, images and Shell Mode. Hiding or submitting restores
-it unchanged. The frame says `draft kept` when the parked draft is non-empty.
-Each question has its own editor across navigation and hide/reopen. Answer text
-never merges into the main draft. Answer editors accept literal text, Unicode,
-paste, undo and Ctrl-G, but disable completion and Shell Mode. Ctrl-V and a
-bracketed paste containing one image path reuse the main composer's highlighted,
-atomic `[Image N]` attachments, editing, undo and host-owned image processing.
-Reference inserts an atomic selected-text token into the answer or active option note.
-Image files remain available across question navigation, hide/reopen and rejected
-submissions. Secret answers are masked with `•` and
-never enter input history. If resolution, interruption or supersession discards
-an unsent non-secret answer draft, it is saved to local input history with
-`unsent answer saved to input history`, not inserted into the main draft. Secret
-drafts are discarded. Neither main nor answer drafts survive router restart.
-
-Synchronous requests are keyed by thread and JSON-RPC request ID. Exactly one
-response is sent, preserving the original ID. Attached answers retain their
-image and selected-text references in that text-only response and queue a companion
-ordinary composer message with the matching images and quoted attachments after
-the request resolves.
-Codex emits the same image frames as for main-composer attachments.
-Its `answers` object maps question
-IDs to `{answers: [string]}`: an option sends `[label]`; a note sends
-`[label, "user_note: …"]`; Other sends `["user_note: …"]`; skipped questions
-are omitted. All-skipped sends `{answers: {}}`. Resolution notifications,
-turn completion and interruption close the request, and stale responses are
-never sent. While the dock is hidden and a sync request waits, Enter queues the
-main draft instead of steering it. The open composer says
-`answering · turn waiting`.
-
-Async answers are batched per tool call, in a single ordinary user-input envelope.
-Selected text accompanies the reply through the shared attachment envelope.
-Images accompany the complete text envelope as stock local-image inputs, with
-labels numbered across the answered questions; image bytes and framing remain
-Codex-owned:
-
-```text
-<send_user_message_question_reply>[{"answer":"…","question":"…","questionItemId":"[\"request_user_input_async\",\"ITEM_ID\",0]"}]</send_user_message_question_reply>
-```
-
-The existing submission path steers during an active turn, starts a turn when
-idle, or queues until input is accepted. Answers wait while a tool call's input
-is being generated, including file edits and JavaScript source, so instant
-interrupt cannot cut that input short. They become sendable when the input is
-complete, without waiting for a running command to finish. Ordinary prompts
-retain instant interruption and can pass deferred answers. Different calls are
-never merged into one envelope; skipped questions send nothing. Reply envelopes do not enter prompt
-history or create duplicate user-message bands. Answers appear only beneath their
-Asked record; pending-input previews show question submission progress without
-transport framing or repeated answers. Between submission and committed user-message observation the card reads
-`sending`. Submitted answers no longer count as actionable questions: their dock,
-answer badge, and Action Required title clear immediately, even while steering
-remains queued. Pending-input progress remains visible until the host commits
-the reply; dismissal does not claim delivery. Other unanswered questions remain
-actionable. Rejection reopens the question with its draft, without changing the
-main editor. A committed reply from any client resolves the matching
-`(threadId, itemId, index)`; replay uses the same identities and never resends.
-
-Async questions remain open across turn end, noting that an answer starts a new
-turn. An ordinary prompt committed in a new turn supersedes older open questions;
-a steer does not. Before sending a new-turn draft, the banner says
-`enter starts a new turn · dismisses N questions`. Resume reconstructs unmatched
-questions from history, subject to that supersession rule, without taking focus.
-
 Main groups adjacent question records without repeated Main headings. The dock
 uses padded question and option rows, an accented position header, right-aligned
 state when space permits, theme-aware selection, and subdued hints with accented
-keys. Main and child transcripts use the shared `Asked` operation with full question text and
-observed answers. Pending records say `waiting` or `open`; observed outcomes are
-`answered`, `skipped`, `interrupted`, `superseded`, or `answered elsewhere`.
-Answers sit directly under their questions with a distinct reply marker and
-shared Markdown rendering, including source-aware selection and copy. Observed
-completion states use a light/dark-aware success color.
-Secrets are excluded from these answer records. External-editor access is
-disabled for secret answers. The scripted native preview
-includes an async question and a sync question. In-process acceptance covers
-encoding, batching, stale IDs, interruption, focus/draft isolation, secret masking
-and history exclusion, external commits, rejection, replay and supersession.
-Installed-Codex PTY acceptance answers an async question mid-turn and checks one
-provider envelope, then answers and resolves a sync request with
-`default_mode_request_user_input` enabled.
-
-### Approvals
-
-Without `--yolo`, the client answers `item/commandExecution/requestApproval`,
-`item/fileChange/requestApproval` and `item/permissions/requestApproval` from any
-thread. It also answers remote writes held by the
-[VCS guard](../../modules/remotewriteapproval/SPEC.md). Approvals
-share the question dock's position above the composer and take precedence over
-it: opening one hides the question dock, and a pending question opens after the
-last approval ends. The oldest approval shows first; the header names a child
-agent's path and `1 of N` when more wait.
-
-Choices follow the stock TUI approval overlay
-(`codex-rs/tui/src/bottom_pane/approval_overlay.rs` @7135b303d). Command requests
-offer the request's `availableDecisions` in order, or else accept, the proposed
-exec-policy amendment and cancel; network requests use the host wording, and
-unrecognized decisions are omitted. A `writeStdin` request asks to send its
-quoted input to the named terminal. Edit requests offer accept,
-`acceptForSession` and cancel, naming the paths of the matching live
-`fileChange` item. Permission requests offer turn, turn with strict auto review,
-and session grants of the requested profile, or an empty grant. Responses
-retain the original request ID and offered approval scopes. In the UI,
-command denial uses native decline to continue without running the command,
-with optional user feedback in the matching provider continuation as specified
-in [native execution authority](../../backends/codex/SPEC.md#execution-authority).
-Edit and permission decisions remain unchanged. Passthrough retains original
-host decisions without typed denial reasons. A request with no choice the client
-can label stays visibly blocked.
-
-Guarded sudo and VCS commands offer approval once, approval for the exact command
-and workdir for this UI session, or denial. The matching scope and lifetime are
-defined by [remote-write approval](../../modules/remotewriteapproval/SPEC.md),
-separately from Codex's session or command-prefix grants.
-
-Sudo password entry is separate: only a native authentication request opens the
-shared secret question editor, including on password retries. Skipping that answer denies
-authentication. The password is masked and excluded from history and answer
-records. Cached or passwordless execution still asks command approval;
-[sudo approval](../../modules/sudoapproval/SPEC.md)
-owns the supported invocation modes.
+keys. Main and child transcripts use the shared `Asked` operation with full question
+text and observed answers. Answers sit beneath their questions with a distinct
+reply marker and shared Markdown, source-aware selection, and copy. Observed
+completion uses a light/dark-aware success color.
 
 The dock shows the title, the command or summary, the directory when it is not
 the workspace root, the reason, and numbered choices; it occupies at most half of
@@ -1412,30 +1291,27 @@ Enter confirms. Escape hides the dock without answering; with it hidden, Escape
 keeps its usual interrupt behavior. For supported command denials, typing or
 pasting selects denial and edits an optional reason in the composer; Enter
 confirms the selected choice. Digits select choices while the reason is empty.
-Opening parks the complete main editor, including attachments; hiding or
-answering restores it. Each approval retains its reason editor across hide/reopen
-and question-dock switching, without merging the reason into the main draft.
-Opening a question hides approvals, and opening approvals hides questions.
 Other approval types ignore text and pastes rather than edit the draft.
-Ctrl-C keeps its clear/interrupt/quit meaning and Ctrl-B its pane commands. The dock
-opens by itself under the same empty-composer rule as questions; otherwise a
-one-row banner, `! N approvals pending · ctrl+b q review`, waits, and Ctrl+B Q
-opens approvals before questions. Keystrokes received before the dock is painted
-do not answer it. The open composer says `approving · turn waiting`.
 
-Approval state appears beside the associated native item, without an extra
-`Approval` event or Session row. A request shows yellow `Pending Approval` until
-it settles. A VCS guard state updates its existing host command row; the dialog retains the
-guarded command with the decision. Compound invocations show their state on the
-aggregate shell-batch row, not an unrelated classified subcommand. `Approved` is
-green; `Denied` and `Auto Denied` are red, independently of execution success.
-Command dialogs show the decision and its full scope or reason. External resolution and a turn ending
-before an answer clear the pending state. Their dialog details show `Resolved
-elsewhere` or `Turn ended before an answer`, without claiming approval or denial.
-A guarded write the user did not answer ends as `Auto Denied: no answer within
-5 minutes`, or `Withdrawn: the command
-stopped` when its command exited first; an answer chosen after either is not
-sent. Codex auto-review notifications update their exact target item: pending
-review shows `Pending Approval`, approval shows `Approved`, and denial or review
-timeout shows `Auto Denied`. A review with no target item does not assign its
-decision to an unrelated command. Headless runs still require `--yolo`.
+
+Answer editors support the shared literal text, Unicode, paste, undo, attachments,
+selected-text references, and Ctrl-G controls while disabling completion and Shell
+Mode. Secret entry is masked and excludes external editing. Ctrl-C retains
+clear/interrupt/quit behavior, Ctrl-B retains pane commands, and hidden prompts leave
+Escape's interrupt behavior unchanged. Alt+Up and Shift+Left retain queued-input
+editing. Word-navigation keys move within answers rather than switch questions.
+
+Pending banners preserve Main editing until an explicit open or an idle automatic
+open. The question banner warns when a new-turn draft will dismiss older questions.
+Approval banners show `! N approvals pending · ctrl+b q review`. Terminal snapshots and in-process acceptance cover painting, focus,
+key decoding, editor isolation, and secret masking. Installed-host acceptance owns
+live response delivery, independently of renderer and replay checks.
+
+Approval state appears beside its associated host item, without a separate Approval
+event or Session row. `Pending Approval` is yellow, `Approved` is green, and `Denied`
+or `Auto Denied` is red, independently of execution success. Command dialogs retain
+the full decision scope or denial reason. Guard decisions update the matching host
+command row; compound commands show their state on the aggregate shell-batch row,
+not on an unrelated classified subcommand. External resolution and a turn ending
+before an answer show `Resolved elsewhere` or `Turn ended before an answer` without
+claiming approval or denial.

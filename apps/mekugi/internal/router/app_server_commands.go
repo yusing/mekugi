@@ -133,7 +133,13 @@ func (u *appServerUI) clearSessionPresentation() error {
 		u.retiredThreads[thread] = u.Thread
 	}
 	u.hideQuestions()
-	u.questions = nativeQuestionDock{calls: slices.DeleteFunc(slices.Clone(u.questions.calls), func(c *nativeQuestionCall) bool { return c.sudo == nil || c.resolved })}
+	retainedQuestions := u.questionCalls()
+	u.questions = nativeQuestionDock{}
+	for _, c := range retainedQuestions {
+		if c.sudo != nil && !c.Resolved {
+			u.addQuestions(c, true)
+		}
+	}
 	if u.notifications != nil {
 		clear(u.notifications.blocked)
 	}

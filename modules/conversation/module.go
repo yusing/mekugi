@@ -6,6 +6,6 @@ import (
 )
 
 var Module = module.Descriptor[Deps, composer.Service, module.NoBindings]{
-	ID: "conversation", Summary: "Own editable conversation drafts and attachment identity",
+	ID: "conversation", Summary: "Own conversation drafts, questions, and approval presentation",
 	Lifetime: module.AttachedSession, New: newService,
 }

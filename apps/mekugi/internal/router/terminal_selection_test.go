@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/conversation/prompt"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
@@ -201,7 +203,7 @@ func TestTerminalUISelectionActions(t *testing.T) {
 				}
 				u.main.Text, u.main.CursorBack, u.focus = "before after", len("after"), 2
 				if key == "question" {
-					u.main.questions.active = &nativeQuestionCall{questions: []nativeQuestion{{}}}
+					u.main.questions.Active = &prompt.Call{Questions: []prompt.Question{{}}}
 				}
 				selected := u.selection
 				action := key

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
@@ -82,19 +84,20 @@ func (u *appServerUI) takeDraft() composerDraft {
 // restoreDrafts returns input to the composer ahead of the current draft.
 func (u *appServerUI) restoreDrafts(parts ...composerDraft) {
 	parts = u.rejectQuestionParts(parts)
-	if u.approvals.open && u.approvals.pending[0].denialChoice() >= 0 {
+	if u.approvals.Open && u.pendingApprovals()[0].DenialChoice() >= 0 {
 		u.hideApprovals()
 		u.restoreDrafts(parts...)
 		u.openApprovals()
 		return
 	}
-	if u.questions.active != nil {
-		c, index := u.questions.active, u.questions.index
+	if u.activeQuestionCall() != nil {
+		c, index := u.activeQuestionCall(), u.questions.Index
 		u.hideQuestions()
 		u.restoreDrafts(parts...)
-		u.questions.parked = u.saveQuestionEditor()
-		u.questions.active, u.questions.index = c, index
-		u.loadQuestionEditor(u.currentQuestion().editor)
+		u.promptColumn = u.cursorColumn
+		u.promptEditor.Open(&u.Editor, composer.State{})
+		u.questions.Active, u.questions.Index = &c.Call, index
+		u.resumeQuestion(u.currentQuestion())
 		return
 	}
 	if len(parts) == 0 {
@@ -213,7 +216,7 @@ func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 		if tier := u.selectedServiceTier(); tier != "" {
 			params["serviceTier"] = tier
 		}
-		if len(questionReplies(s.Text)) == 0 {
+		if len(binding.QuestionReplies(s.Text)) == 0 {
 			s.seq = u.view.LastSeq + 1
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: s.seq, Agent: "You", Kind: "text", Text: s.Text, Observed: u.now(),
 				native: &liveActivityNativeItem{thread: u.Thread, item: fmt.Sprintf("input/%d", s.seq), phase: "input/pending", spans: s.composerDraft.displaySpans()}}}})
@@ -247,7 +250,7 @@ func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 	}
 	for _, part := range parts {
 		if part.questionCall != nil {
-			part.questionCall.submissionID = id
+			part.questionCall.SubmissionID = id
 		}
 	}
 	return nil
@@ -369,7 +372,7 @@ func (u *appServerUI) pendingInputPreview(width int) []string {
 		var texts []string
 		for _, part := range parts {
 			text := part.Text
-			if replies := questionReplies(text); len(replies) > 0 {
+			if replies := binding.QuestionReplies(text); len(replies) > 0 {
 				text = fmt.Sprintf("Answering %d question(s)", len(replies))
 			}
 			texts = append(texts, text)

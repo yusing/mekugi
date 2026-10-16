@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
@@ -17,7 +19,7 @@ import (
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
-func questionReplyText(replies []nativeQuestionReply) string {
+func questionReplyText(replies []binding.QuestionReply) string {
 	answers := make([]string, 0, len(replies))
 	for _, reply := range replies {
 		answers = append(answers, reply.Answer)
@@ -117,13 +119,13 @@ func (v *liveActivityView) applyAppServerItem(live bool, cwd, main, thread, turn
 			if entry.Text, entry.native.spans, ok = appServerUserText(item.Content); !ok {
 				return
 			}
-			if replies := questionReplies(entry.Text); len(replies) > 0 {
+			if replies := binding.QuestionReplies(entry.Text); len(replies) > 0 {
 				// Keep a chronological reply anchor without duplicating the
 				// answer already displayed under Asked.
 				entry.Kind = "question_reply"
 				entry.native.replySource = entry.Text
 				for _, reply := range replies {
-					questionID, _, ok := questionReplyIdentity(reply)
+					questionID, _, ok := binding.QuestionReplyIdentity(reply)
 					if ok && entry.native.question == 0 {
 						for _, question := range v.Entries {
 							if question.Source.Kind == "question" && question.Source.native != nil && question.Source.native.thread == thread && question.Source.native.item == questionID {
@@ -189,7 +191,7 @@ func appServerUserText(content jsontext.Value) (string, []activityui.TextSpan, b
 			}
 			text += content.Text
 		} else if content.Type == "image" || content.Type == "localImage" {
-			if len(questionReplies(text)) > 0 {
+			if len(binding.QuestionReplies(text)) > 0 {
 				continue // Reply images belong to Asked, not another user-message band.
 			}
 			start := len(text)

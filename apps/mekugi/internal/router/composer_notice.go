@@ -35,17 +35,17 @@ func (u *appServerUI) stateLabel(now time.Time) string {
 		return "Read-only"
 	}
 	label := u.sessionLabel(now)
-	if u.approvals.open {
+	if u.approvals.Open {
 		label = "approving · turn waiting"
-	} else if u.questions.active != nil {
+	} else if u.activeQuestionCall() != nil {
 		label = "answering"
-		if u.currentQuestion().note {
+		if u.currentQuestion().Note {
 			label += " · note"
 		}
-		if len(u.questions.active.request) > 0 || u.questions.active.sudo != nil {
+		if len(u.activeQuestionCall().request) > 0 || u.activeQuestionCall().sudo != nil {
 			label += " · turn waiting"
 		}
-		if u.questions.parked.Snapshot.Text != "" {
+		if u.promptEditor.Parked.Snapshot.Text != "" {
 			label += " · draft kept"
 		}
 	}

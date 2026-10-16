@@ -11,7 +11,7 @@ import (
 )
 
 func (u *appServerUI) shellMode() bool {
-	return u.currentQuestion() == nil && !u.approvals.open && strings.HasPrefix(u.Text, "!")
+	return u.currentQuestion() == nil && !u.approvals.Open && strings.HasPrefix(u.Text, "!")
 }
 
 // Paint complete logical lines before cutting them to the existing draft layout.

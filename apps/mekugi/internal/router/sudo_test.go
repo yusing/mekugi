@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/conversation/prompt"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
@@ -131,7 +133,7 @@ func TestSudoUnlockDialog(t *testing.T) {
 			case <-time.After(10 * time.Second):
 				t.Fatal("sudo did not complete")
 			}
-			if input.Len() != 0 || len(u.unsent) != 0 || len(u.InputHistory) != 0 || u.questions.active != nil {
+			if input.Len() != 0 || len(u.unsent) != 0 || len(u.InputHistory) != 0 || u.activeQuestionCall() != nil {
 				t.Fatal("local sudo answer escaped into host input or history")
 			}
 			if strings.Contains(approvalTestTranscript(t, u), "1234-secret") {
@@ -166,7 +168,7 @@ func TestSudoPasswordWithdrawal(t *testing.T) {
 	appServerTestKeys(t, u, "private-draft")
 	request.outcome = "withdrawn"
 	close(request.done)
-	if !u.expireApprovals() || u.questions.active != nil || len(u.InputHistory) != 0 || len(u.questions.calls) != 0 {
+	if !u.expireApprovals() || u.activeQuestionCall() != nil || len(u.InputHistory) != 0 || len(u.questionCalls()) != 0 {
 		t.Fatal("withdrawal retained a secret draft")
 	}
 	if len(request.reply) != 0 {
@@ -177,7 +179,7 @@ func TestSudoPasswordWithdrawal(t *testing.T) {
 func TestSudoSecretEditorAndSessionSwitch(t *testing.T) {
 	u, input := newAppServerTestUI()
 	request := &vcsApproval{kind: "sudo-password", thread: "main", argv: []string{"sudo", "id"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})}
-	u.openSudoPassword(&nativeApproval{thread: "main", turn: "old-turn", subject: "sudo id", guard: request})
+	u.openSudoPassword(&nativeApproval{Approval: prompt.Approval{Thread: "main", Turn: "old-turn", Subject: "sudo id"}, guard: request})
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "fixture-secret")
 	if _, err := u.key(7); err != nil || u.Text != "fixture-secret" {

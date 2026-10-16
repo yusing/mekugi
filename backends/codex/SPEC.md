@@ -39,9 +39,10 @@ original tool rejection intact and allowing the turn to continue. Optional denia
 feedback joins only the matching thread, turn and tool's provider continuation;
 it adds no synthetic exit code, steering or new turn. File-change and permission
 choices remain unchanged. Passthrough preserves host decisions without typed
-denial reasons. [Approval presentation](../../doc/spec/native_ui.md#approvals)
-owns dock interaction and draft preservation; module guard denials remain separate
-shell-command failures.
+denial reasons. [Conversation](../../modules/conversation/SPEC.md#questions-and-approvals) owns
+prompt lifecycle and draft preservation; the
+[terminal UI](../../doc/spec/native_ui.md#questions-and-approvals) owns dock
+interaction. Module guard denials remain separate shell-command failures.
 
 ## Process transport and lifetime
 

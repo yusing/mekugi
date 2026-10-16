@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
@@ -1458,7 +1460,7 @@ func TestNativeUIPreviewQuestions(t *testing.T) {
 		}
 	}
 	frame := ansi.Strip(strings.Join(rows, "\n"))
-	if strings.Count(frame, "Who should receive the release update?") != 1 || strings.Count(frame, "Which release scope?") != 1 || strings.Contains(frame, questionReplyStart) {
+	if strings.Count(frame, "Who should receive the release update?") != 1 || strings.Count(frame, "Which release scope?") != 1 || strings.Contains(frame, binding.QuestionReplyStart) {
 		t.Fatalf("duplicate or leaked answer records:\n%s", frame)
 	}
 	t.Logf("answered records:\n%s", frame)

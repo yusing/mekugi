@@ -5,6 +5,10 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
+	"github.com/yusing/mekugi/modules/conversation/prompt"
+
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	json "encoding/json/v2"
@@ -46,7 +50,7 @@ import (
 type appServerItem struct {
 	DurationMS       *int64                    `json:"durationMs"`
 	Delivery         string                    `json:"delivery"`
-	Questions        []nativeQuestion          `json:"questions"`
+	Questions        []binding.Question        `json:"questions"`
 	ID               string                    `json:"id"`
 	ClientID         string                    `json:"clientId"` // userMessage: the submission's clientUserMessageId.
 	Type             string                    `json:"type"`
@@ -106,6 +110,8 @@ type appServerUI struct {
 	btw                     *appServerBTW
 	btwThreads              map[string]*appServerBTW
 	notifications           *nativeNotifications
+	promptEditor            prompt.Editor
+	promptColumn            *int
 	questions               nativeQuestionDock
 	approvals               nativeApprovalDock
 	approvalMode            bool // Codex's configured policy applies, not --yolo's.
@@ -901,8 +907,8 @@ func (u *appServerUI) observedEvent(method string, p appServerEvent) error {
 			if p.Turn.Status == "completed" && u.questionCount() == 0 {
 				u.notify("agent-turn-complete", "Agent turn complete")
 			}
-			for _, c := range u.questions.calls {
-				if !c.resolved {
+			for _, c := range u.questionCalls() {
+				if !c.Resolved {
 					u.renderQuestionRecord(c)
 				}
 			}
@@ -922,8 +928,8 @@ func (u *appServerUI) observedEvent(method string, p appServerEvent) error {
 		if u.observeQuestionItem(p.ThreadID, p.TurnID, p.Item, false) {
 			return nil
 		}
-		for _, c := range u.questions.calls {
-			if c.thread == p.ThreadID && c.item == p.ItemID && len(c.request) == 0 && method == "item/agentMessage/delta" {
+		for _, c := range u.questionCalls() {
+			if c.Thread == p.ThreadID && c.Item == p.ItemID && len(c.request) == 0 && method == "item/agentMessage/delta" {
 				return nil
 			}
 		}
@@ -940,10 +946,10 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		u.pasteByte(key)
 		return false, nil
 	}
-	if u.questions.active != nil && !u.questions.painted {
+	if u.activeQuestionCall() != nil && !u.questions.painted {
 		u.hideQuestions()
 	}
-	if u.approvals.open && !u.approvals.painted {
+	if u.approvals.Open && !u.approvals.painted {
 		u.hideApprovals()
 	}
 	if u.escape == "" && key != 27 {
@@ -982,7 +988,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		u.escape = ""
 	}
 	if u.escape == "" {
-		if u.currentQuestion() == nil && !u.approvals.open && key == '?' && u.Text == "" && (u.shell == nil || u.shell.focus == 0) {
+		if u.currentQuestion() == nil && !u.approvals.Open && key == '?' && u.Text == "" && (u.shell == nil || u.shell.focus == 0) {
 			u.keybindings = !u.keybindings
 			return false, nil
 		}
@@ -1412,10 +1418,10 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	frame = append(frame, questionRows...)
 	frame = append(frame, approvalRows...)
 	frame = append(frame, make([]string, gap)...)
-	if !readOnly && u.questions.active != nil {
+	if !readOnly && u.activeQuestionCall() != nil {
 		u.questions.painted = true
 	}
-	if !readOnly && u.approvals.open {
+	if !readOnly && u.approvals.Open {
 		u.approvals.painted = true
 	}
 	// Visual reference: Grok CLI PromptStyle / PromptWidget::draw, source
@@ -1423,7 +1429,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	// @be7ce6e8cffe46d20bef9834b211616082ee866b. Keep continuation rows aligned.
 	// Colors: xai-grok-pager-render/src/theme/oscura.rs, same revision.
 	border := "\x1b[38;2;52;48;72m"
-	if !readOnly && (u.currentQuestion() != nil || u.approvals.open) {
+	if !readOnly && (u.currentQuestion() != nil || u.approvals.Open) {
 		border = u.view.painter.Theme.Accent()
 	} else if !readOnly && u.shellMode() {
 		border = terminalui.Red

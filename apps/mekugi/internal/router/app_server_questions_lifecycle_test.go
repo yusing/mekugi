@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/backends/codex/binding"
 )
 
 func TestQuestionQueuedSteerIsNotStillActionable(t *testing.T) {
@@ -17,31 +19,31 @@ func TestQuestionQueuedSteerIsNotStillActionable(t *testing.T) {
 	appServerTestKeys(t, u, "3Customers only\r")
 	request := appServerOneRequest(t, wire, "turn/steer", u.inputPayloads[u.Submission().ID].Text)
 	u.hideQuestions()
-	if u.questionCount() != 1 || u.questions.calls[0].resolved || !u.questions.calls[0].sent {
-		t.Fatalf("sent answer and separate unanswered question confused: count=%d call=%+v", u.questionCount(), u.questions.calls[0])
+	if u.questionCount() != 1 || u.questionCalls()[0].Resolved || !u.questionCalls()[0].Sent {
+		t.Fatalf("sent answer and separate unanswered question confused: count=%d call=%+v", u.questionCount(), u.questionCalls()[0])
 	}
 	if rows := strings.Join(u.questionRows(80, 10), "\n"); !strings.Contains(rows, "main asks 1 questions") || strings.Contains(rows, "main asks 2 questions") {
 		t.Fatalf("question dock counted the sent answer: %q", rows)
 	}
 	preview := strings.Join(u.pendingInputPreview(80), "\n")
-	if !strings.Contains(preview, "Steering after the next tool call") || !strings.Contains(preview, "Answering 1 question(s)") || strings.Contains(preview, questionReplyStart) {
+	if !strings.Contains(preview, "Steering after the next tool call") || !strings.Contains(preview, "Answering 1 question(s)") || strings.Contains(preview, binding.QuestionReplyStart) {
 		t.Fatalf("queued answer was not shown truthfully: %q", preview)
 	}
 	// RPC acceptance is not a committed user message. The answer remains in-flight.
 	questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{
 		"id": "other-answer", "type": "userMessage", "content": []any{map[string]any{"type": "text", "text": lifecycleReply(t, "second", 0, "Who approves it?", "Internal")}},
 	}})
-	if u.questionCount() != 0 || len(u.questionRows(80, 10)) != 0 || u.questions.calls[0].resolved {
+	if u.questionCount() != 0 || len(u.questionRows(80, 10)) != 0 || u.questionCalls()[0].Resolved {
 		t.Fatal("sent answer remained actionable after the other question was answered")
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"turn"}}`, request.ID))
-	if u.questions.calls[0].resolved || !strings.Contains(strings.Join(u.pendingInputPreview(80), "\n"), "Answering 1 question(s)") {
+	if u.questionCalls()[0].Resolved || !strings.Contains(strings.Join(u.pendingInputPreview(80), "\n"), "Answering 1 question(s)") {
 		t.Fatal("steer acknowledgment incorrectly completed or hid the uncommitted answer")
 	}
 	questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{
 		"id": "answer", "clientId": request.Params.ClientUserMessageID, "type": "userMessage", "content": []any{map[string]any{"type": "text", "text": request.text()}},
 	}})
-	if !u.questions.calls[0].resolved || strings.Contains(strings.Join(u.pendingInputPreview(80), "\n"), "Answering 1 question(s)") {
+	if !u.questionCalls()[0].Resolved || strings.Contains(strings.Join(u.pendingInputPreview(80), "\n"), "Answering 1 question(s)") {
 		t.Fatal("committed answer was not settled")
 	}
 }
@@ -58,7 +60,7 @@ func TestQuestionRejectedQueuedSteerReopensDockWithDraft(t *testing.T) {
 		t.Fatal("queued answer still required action")
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, request.ID))
-	if u.questionCount() != 1 || u.questions.calls[0].sent || u.questions.calls[0].resolved {
+	if u.questionCount() != 1 || u.questionCalls()[0].Sent || u.questionCalls()[0].Resolved {
 		t.Fatal("rejected answer did not become actionable again")
 	}
 	u.hideQuestions()
@@ -78,11 +80,11 @@ func lifecycleReply(t *testing.T, item string, index int, question, answer strin
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := json.Marshal([]nativeQuestionReply{{QuestionItemID: string(id), Question: question, Answer: answer}})
+	data, err := json.Marshal([]binding.QuestionReply{{QuestionItemID: string(id), Question: question, Answer: answer}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return questionReplyStart + string(data) + questionReplyEnd
+	return binding.QuestionReplyStart + string(data) + binding.QuestionReplyEnd
 }
 
 func lifecycleUserMessage(t *testing.T, u *appServerUI, turn, item, text string) {
@@ -95,17 +97,17 @@ func lifecycleUserMessage(t *testing.T, u *appServerUI, turn, item, text string)
 func TestQuestionReplyEnvelopeMustBeWholePrompt(t *testing.T) {
 	reply := lifecycleReply(t, "item", 0, "Who receives it?", "Customers")
 	for _, valid := range []string{reply, " \n" + reply + "\n ", "# Context from my IDE setup:\neditor state\n## My request for Codex:\n" + reply} {
-		if got := questionReplies(valid); len(got) != 1 || got[0].Answer != "Customers" {
+		if got := binding.QuestionReplies(valid); len(got) != 1 || got[0].Answer != "Customers" {
 			t.Fatalf("complete envelope not recognized: %q => %#v", valid, got)
 		}
 	}
 	for _, ordinary := range []string{"quoted " + reply, reply + " trailing request", "> " + reply, "`" + reply + "`"} {
-		if got := questionReplies(ordinary); len(got) != 0 {
+		if got := binding.QuestionReplies(ordinary); len(got) != 0 {
 			t.Fatalf("ordinary prompt became a reply: %q => %#v", ordinary, got)
 		}
 	}
 	single := strings.Replace(strings.Replace(reply, "[{", "{", 1), "}]", "}", 1)
-	if got := questionReplies(single); len(got) != 1 || got[0].Answer != "Customers" {
+	if got := binding.QuestionReplies(single); len(got) != 1 || got[0].Answer != "Customers" {
 		t.Fatalf("single-object stock reply not recognized: %#v", got)
 	}
 }
@@ -116,7 +118,7 @@ func TestQuestionAsyncRemainingSurvivesReplyTurnSteerAndReplay(t *testing.T) {
 	reply := lifecycleReply(t, "two", 0, "Who receives it?", "Customers")
 	lifecycleUserMessage(t, u, "answer-turn", "reply", reply)
 	lifecycleUserMessage(t, u, "answer-turn", "steer", "ordinary same-turn steer")
-	if u.questionCount() != 1 || u.questions.calls[0].questions[1].outcome != "" {
+	if u.questionCount() != 1 || u.questionCalls()[0].Questions[1].Outcome != "" {
 		t.Fatal("steer in reply turn superseded remaining question")
 	}
 	// Replay is history-only. It must recover the remaining open question without resending.
@@ -157,7 +159,7 @@ func TestQuestionQueuedBatchDropsExternallyResolvedReplies(t *testing.T) {
 				t.Fatal("question batch escaped while sync request blocked turn")
 			}
 			preview := strings.Join(u.pendingInputPreview(80), "\n")
-			if strings.Contains(preview, questionReplyStart) || !strings.Contains(preview, "Answering 2 question(s)") {
+			if strings.Contains(preview, binding.QuestionReplyStart) || !strings.Contains(preview, "Answering 2 question(s)") {
 				t.Fatalf("pending preview exposed reply framing or omitted batch: %q", preview)
 			}
 			for index := range externalCount {
@@ -184,7 +186,7 @@ func TestQuestionAnswerOnlyAppearsUnderAsked(t *testing.T) {
 			questionTestPaint(t, u, 70)
 			appServerTestKeys(t, u, "2\r")
 			reply, id := u.inputPayloads[u.Submission().ID].Text, u.Submission().ID
-			if len(questionReplies(reply)) != 1 {
+			if len(binding.QuestionReplies(reply)) != 1 {
 				t.Fatal("reply not submitted")
 			}
 			for _, entry := range u.view.Entries {
@@ -221,7 +223,7 @@ func TestQuestionNewPromptSupersedesUnsentAnswer(t *testing.T) {
 	if err := u.flushInput(); err != nil {
 		t.Fatal(err)
 	}
-	if w.Len() != 0 || u.questions.calls[0].questions[0].outcome != "superseded" {
+	if w.Len() != 0 || u.questionCalls()[0].Questions[0].Outcome != "superseded" {
 		t.Fatal("superseded local answer was sent or claimed answered")
 	}
 }
@@ -274,7 +276,7 @@ func TestQuestionReplyBecomesMainReplyAnchor(t *testing.T) {
 			}
 			items := []appServerItem{
 				{ID: "prompt", Type: "userMessage", Content: content("Original task")},
-				{ID: "ask", Type: "agentMessage", Delivery: "async", Questions: []nativeQuestion{{Title: "Which audience?"}}},
+				{ID: "ask", Type: "agentMessage", Delivery: "async", Questions: []binding.Question{{Title: "Which audience?"}}},
 				{ID: "reply", Type: "userMessage", Content: content(lifecycleReply(t, "ask", 0, "Which audience?", "Customers"))},
 				{ID: "ack", Type: "agentMessage", Text: "I will notify them."},
 			}
@@ -298,7 +300,7 @@ func TestQuestionReplyBecomesMainReplyAnchor(t *testing.T) {
 				t.Fatalf("reply not bound to answer: reply=%+v ack=%+v", reply, ack)
 			}
 			frame := mainFeed(u, 100)
-			if !strings.Contains(frame, "re: your answer") || strings.Contains(frame, "re: your message") || strings.Contains(frame, questionReplyStart) {
+			if !strings.Contains(frame, "re: your answer") || strings.Contains(frame, "re: your message") || strings.Contains(frame, binding.QuestionReplyStart) {
 				t.Fatalf("incorrect reply context:\n%s", frame)
 			}
 			if _, ok := u.view.questionRows[reply.Seq]; !ok {

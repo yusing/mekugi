@@ -43,7 +43,7 @@ func TestAppServerTerminalTitleLifecycle(t *testing.T) {
 	if out.Len() != 0 || u.notifications.lastTitle != "Mekugi [ ! ] Action Required project" {
 		t.Fatal("completion cleared a pending async question")
 	}
-	u.resolveQuestionCall(u.questions.calls[len(u.questions.calls)-1], "answered")
+	u.resolveQuestionCall(u.questionCalls()[len(u.questionCalls())-1], "answered")
 	title("Mekugi project")
 	out.Reset()
 	u.clearTerminalTitle()
@@ -106,7 +106,7 @@ func TestAppServerTerminalTitleQueuedQuestionAnswerIsNotActionRequired(t *testin
 	u.openQuestions()
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "1\r")
-	if u.questionCount() != 0 || u.questions.calls[0].resolved || !u.questions.calls[0].sent {
+	if u.questionCount() != 0 || u.questionCalls()[0].Resolved || !u.questionCalls()[0].Sent {
 		t.Fatal("queued answer was marked resolved or still actionable")
 	}
 	if rows := u.questionRows(80, 10); len(rows) != 0 {

@@ -146,7 +146,7 @@ func (u *appServerUI) refreshPicker() {
 			}
 		}
 	}
-	if u.currentQuestion() != nil || u.approvals.open {
+	if u.currentQuestion() != nil || u.approvals.Open {
 		u.picker.open = false
 		return
 	}
