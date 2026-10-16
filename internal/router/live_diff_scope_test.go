@@ -13,10 +13,11 @@ import (
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
 // Exercise the same snapshot path used by the event-stream consumer.
-func (s *mekugiReplayStore) liveDiffSnapshotFiles(ctx context.Context, scope liveDiffScope) ([]livediff.File, error) {
+func (s *mekugiReplayStore) liveDiffSnapshotFiles(ctx context.Context, scope previewmodel.Scope) ([]livediff.File, error) {
 	data, err := s.liveDiffSnapshot(ctx, scope)
 	if err != nil {
 		return nil, err
@@ -49,7 +50,7 @@ func TestLiveDiffSessionScopeStreamsAndWorkspaces(t *testing.T) {
 		t.Helper()
 		// A fresh reader has no in-memory ancestry or routing cache.
 		reader := testReplayStore(mekugiReplayStore{directory: store.directory})
-		files, err := reader.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: workspaces})
+		files, err := reader.liveDiffSnapshotFiles(t.Context(), previewmodel.Scope{Workspaces: workspaces})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -81,7 +82,7 @@ func TestLiveDiffSessionCrossWorkspaceOverlap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	scope := liveDiffScope{Workspaces: map[string]map[string]bool{first: {"root": true}, second: {"child": true}}}
+	scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{first: {"root": true}, second: {"child": true}}}
 	path := filepath.Join(t.TempDir(), "notes.txt")
 	liveDiffScopeCapture(t, store, first, "root", "same-call-id", path, "original", "first")
 	view := livediff.View{Scroll: make(map[string]int)}
@@ -135,7 +136,7 @@ func TestLiveDiffFreshSnapshotComposesCrossStreamCaptures(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	files, err := store.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
+	files, err := store.liveDiffSnapshotFiles(t.Context(), previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: nil}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +165,7 @@ func TestLiveDiffSessionTerminalEmptyEditsAndExit(t *testing.T) {
 		t.Fatal(err)
 	}
 	liveDiffScopeCapture(t, store, workspace, "other", "old", filepath.Join(workspace, "unrelated.go"), "old", "new")
-	connection, broker, stopBroker := liveDiffTestBroker(t, store, liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"current": true}}})
+	connection, broker, stopBroker := liveDiffTestBroker(t, store, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"current": true}}})
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestLiveDiffTerminalProcess$")
@@ -215,7 +216,7 @@ func TestLiveDiffSessionTerminalEmptyEditsAndExit(t *testing.T) {
 	second := t.TempDir()
 	childPath := filepath.Join(second, "child.txt")
 	liveDiffScopeCapture(t, store, second, "child", "child-first", childPath, "child-original", "child-created")
-	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"current": true}, second: {"child": true}}})
+	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"current": true}, second: {"child": true}}})
 	wait("+child-created")
 	liveDiffScopeCapture(t, store, second, "child", "child-next", childPath, "child-created", "child-updated")
 	wait("+child-updated")

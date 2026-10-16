@@ -11,7 +11,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 
-	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 )
 
 func execProducerCommand(t *testing.T, name string) string {

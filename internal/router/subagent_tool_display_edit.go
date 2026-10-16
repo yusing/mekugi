@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 
@@ -110,7 +110,7 @@ func toolActivityEditStatement(script string, statement *syntax.Stmt) (string, b
 		// projection so its dialog retains the original command and output.
 		return "", false
 	}
-	suffix := " · " + shellInterpreterName(command) + " (requested)"
+	suffix := " · " + shellsyntax.InterpreterIdentity(command) + " (requested)"
 	var displays []string
 	seen := make(map[string]bool)
 	for _, scope := range result.Scope {

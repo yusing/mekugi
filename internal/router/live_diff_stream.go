@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-func validateLiveDiffEvent(event liveDiffEvent) error {
+func validateLiveDiffEvent(event reviewEvent) error {
 	switch event.Kind {
 	case "scope":
 		if event.Scope == nil || event.Scope.Workspaces == nil {

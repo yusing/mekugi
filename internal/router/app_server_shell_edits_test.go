@@ -7,12 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/libraries/legacycall"
-
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/legacycall"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
 func newShellEditTestUI(t *testing.T) *appServerUI {
@@ -99,7 +98,7 @@ func TestAppServerShellEditsRevertApplyReplay(t *testing.T) {
 		if err != nil || !strings.Contains(text, "mchanges "+mutation+" "+id) {
 			t.Fatalf("shell change history: %q, %v", text, err)
 		}
-		data, err := fresh.liveDiffSnapshot(ctx, liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {u.thread: true, "stock-thread": true}}})
+		data, err := fresh.liveDiffSnapshot(ctx, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {u.thread: true, "stock-thread": true}}})
 		if err != nil || len(data.order) != index+2 {
 			t.Fatalf("Changes history: %+v, %v", data, err)
 		}

@@ -6,13 +6,15 @@ import (
 	"testing"
 	"time"
 
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
-func batchTestPreview(id, caller string, paths ...string) Preview {
-	preview := Preview{ID: id, Workspace: "/workspace", Caller: caller, Status: PreviewEdit}
+func batchTestPreview(id, caller string, paths ...string) previewmodel.Preview {
+	preview := previewmodel.Preview{ID: id, Workspace: "/workspace", Caller: caller, Status: previewmodel.PreviewEdit}
 	for _, path := range paths {
 		path = "/workspace/" + path
 		preview.Files = append(preview.Files, diffmodel.RenderReviewFile(path, path,
@@ -129,7 +131,7 @@ func TestNativeBatchRetainsCompletedCall(t *testing.T) {
 		t.Fatal("retained call missing from per-file batch")
 	}
 	// A withdrawal removes only its call and projected file, including retained completions.
-	pane.Update(Preview{ID: "first", Workspace: "/workspace"})
+	pane.Update(previewmodel.Preview{ID: "first", Workspace: "/workspace"})
 	batchTestRender(t, &pane, 31)
 	if !slices.Equal(pane.Order, []string{"second"}) || len(pane.batches["/root"].files) != 1 {
 		t.Fatal("withdrawal left retained call or removed unrelated call")
@@ -155,7 +157,7 @@ func TestNativeBatchRetainsSequentialFilesInOneCall(t *testing.T) {
 	if !first.Complete || !batch.files[previewFileKey{"exec", "/workspace/src/b.go"}].Complete {
 		t.Fatal("completion did not settle all projected files in the call")
 	}
-	pane.Update(Preview{ID: "exec", Workspace: "/workspace"})
+	pane.Update(previewmodel.Preview{ID: "exec", Workspace: "/workspace"})
 	if rows := batchTestRender(t, &pane, 31); len(rows) != 0 || len(batch.files) != 0 || len(batch.order) != 0 {
 		t.Fatal("explicit withdrawal retained a sequential file projection")
 	}

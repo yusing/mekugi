@@ -356,9 +356,9 @@ without claiming exclusive attribution or successful command completion.
 A recognized literal edit finishes its live card once the observed files match
 the projected edit. A following test in the same shell command keeps its own
 running status, not the edit's dock; test-only work opens no edit card.
-Router previews of nested command and patch edits dock the same
-way. All docks use the shared router preview owner, including its pre-execution
-source snapshots; app-server file-change notifications never reconstruct patches
+Nested command and patch previews dock the same way. All docks consume the
+[live-preview module](../../modules/livepreview/SPEC.md), including its retained
+pre-execution source baselines; app-server file-change notifications never reconstruct patches
 or re-read already edited files. A completed input stream remains explicitly
 labelled as a preview, never a green success check; host item status and captured
 effects establish the outcome. A new

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/yusing/mekugi/modules/livepreview/preview"
+
 	"github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/yusing/mekugi/modules/notifications/notice"
@@ -248,6 +250,7 @@ func (r *moduleRegistrar) ShellApproval(guard binding.ShellApproval) error {
 
 type Runtime struct {
 	Replay               *playback.Service
+	LivePreview          *preview.Service
 	Activity             *feed.Service
 	Notifications        *notice.Service
 	Preferences          *preferences.Service

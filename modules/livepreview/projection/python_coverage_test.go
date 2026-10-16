@@ -1,6 +1,7 @@
-package router
+package projection
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -207,9 +208,9 @@ func TestLiveDiffPythonCoverageArrivingAugmentedAssignment(t *testing.T) {
 			directory := t.TempDir()
 			before := map[string]string{"target.txt": "old\n"}
 			writeTestFile(t, filepath.Join(directory, "target.txt"), before["target.txt"])
-			worker := liveDiffPreviewWorker{ctx: t.Context()}
+			worker := struct{ ctx context.Context }{ctx: t.Context()}
 			prefix := "python3 - <<'PY'\n" + script
-			files, recognized, err := worker.projectShell(prefix, directory, false)
+			files, _, recognized, err := Shell(worker.ctx, prefix, directory, false)
 			if err != nil || recognized || len(files) != 0 {
 				t.Fatalf("arriving += invented a write: files=%+v recognized=%v err=%v", files, recognized, err)
 			}
@@ -217,7 +218,7 @@ func TestLiveDiffPythonCoverageArrivingAugmentedAssignment(t *testing.T) {
 			if strings.Contains(script, "append('''") {
 				completion = "''')\n"
 			}
-			files, recognized, err = worker.projectShell(prefix+completion+"open('target.txt', 'w').write(s)\nPY\n", directory, true)
+			files, _, recognized, err = Shell(worker.ctx, prefix+completion+"open('target.txt', 'w').write(s)\nPY\n", directory, true)
 			if err != nil || !recognized {
 				t.Fatalf("completed += prediction: files=%+v recognized=%v err=%v", files, recognized, err)
 			}

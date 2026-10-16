@@ -31,9 +31,10 @@ func TestAppServerShellNativeCodex(t *testing.T) {
 	f := newMChangesSliceFixture(t, "shell-native")
 	proxy := newProxyWithSharedTestRegistry(t, f.registry)
 	proxy.replayStore = f.store
-	auto, stop := newAutoLiveDiff(t.Context())
-	defer stop()
-	proxy.autoLiveDiff, f.store.liveDiff = auto, auto.events.publish
+	auto := newLivePreview(t.Context())
+	defer auto.Close()
+	f.store.liveDiff = testReview(auto).Publish
+	proxy.review = testReview(auto)
 	target := filepath.Join(t.TempDir(), "shell-edit.txt")
 	startup := filepath.Join(t.TempDir(), "frontends.bash")
 	writeTestFile(t, startup, "export PATH="+quoteShellWord(f.registry.frontendDirectory)+":\"$PATH\"\n")
@@ -50,13 +51,11 @@ func TestAppServerShellNativeCodex(t *testing.T) {
 		awaitFrame(func(frame string) bool {
 			return strings.Contains(frame, "shell-edit.txt") && strings.Contains(frame, "+1")
 		})
-		auto.mu.Lock()
-		workspace := auto.workspace
+		workspace := testReview(auto).Workspace()
 		thread := ""
-		for id := range auto.scope.Workspaces[workspace] {
+		for id := range testReview(auto).Scope().Workspaces[workspace] {
 			thread = id
 		}
-		auto.mu.Unlock()
 		ctx, release, err := f.store.beginSession(t.Context(), thread, "")
 		if err != nil {
 			t.Fatal(err)

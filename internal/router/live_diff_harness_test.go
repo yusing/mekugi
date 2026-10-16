@@ -82,7 +82,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 	}
 	return terminalui.WithRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1000;1006h\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1000;1006l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
 		streamCtx, cancelStream := context.WithCancel(ctx)
-		events := make(chan liveDiffEvent, 32)
+		events := make(chan reviewEvent, 32)
 		streamDone := make(chan struct{})
 		go func() { defer close(streamDone); liveDiffStream(streamCtx, connection, events) }()
 		defer func() { cancelStream(); <-streamDone }()
@@ -97,7 +97,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 
 func (c *liveDiffTerminalController) run(
 	ctx context.Context,
-	events <-chan liveDiffEvent,
+	events <-chan reviewEvent,
 	keys <-chan byte,
 	resizes <-chan os.Signal,
 ) error {

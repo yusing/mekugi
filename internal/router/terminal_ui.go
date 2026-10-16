@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	terminalui "github.com/yusing/mekugi/libraries/terminalui"
 )
 
@@ -26,7 +26,7 @@ type terminalUI struct {
 	diff                                           *liveDiffTerminalController
 	agents                                         *liveActivityView
 	main                                           *appServerUI
-	auto                                           *autoLiveDiff
+	review                                         *savedReview
 	width, height, split, horizontal, rosterHeight int
 	focus, drag                                    int // 0 transcript/composer, 1 diff, 3 roster; drag 1 main, 2 auxiliary, 3 files, 4 roster
 	diffOpen                                       bool

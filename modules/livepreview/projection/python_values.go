@@ -1,4 +1,6 @@
-package router
+package projection
+
+// Source: internal/router/live_diff_python_values.go:1:402@3e523196, provisional source evaluation.
 
 import (
 	"context"
@@ -118,7 +120,7 @@ func (s *previewSourceScope) pythonLiteralList(ctx context.Context, node *sitter
 		for _, value := range values {
 			text, ok := s.pythonString(ctx, value, state, depth+1)
 			bytes += len(text)
-			if !ok || bytes > liveDiffPreviewFileLimit {
+			if !ok || bytes > FileLimit {
 				return nil, false
 			}
 			item.values = append(item.values, text)
@@ -178,7 +180,7 @@ func (s *previewSourceScope) pythonDictionary(ctx context.Context, node *sitter.
 			}
 			pairs = append(pairs, item)
 		}
-		if bytes > liveDiffPreviewFileLimit {
+		if bytes > FileLimit {
 			return nil, false
 		}
 	}
@@ -207,7 +209,7 @@ func (s *previewSourceScope) pythonRepeat(ctx context.Context, node *sitter.Node
 		return liveDiffPythonText{}, false
 	}
 	count = max(count, 0)
-	if len(value.content) != 0 && count > liveDiffPreviewFileLimit/len(value.content) {
+	if len(value.content) != 0 && count > FileLimit/len(value.content) {
 		return liveDiffPythonText{}, false
 	}
 	if value.content == "" {
@@ -289,7 +291,7 @@ func (s *previewSourceScope) pythonTextTransform(ctx context.Context, method str
 			if len(parts) != 0 {
 				bytes += len(value.content)
 			}
-			if bytes > liveDiffPreviewFileLimit {
+			if bytes > FileLimit {
 				return liveDiffPythonText{}, false
 			}
 			parts = append(parts, item.values[0])

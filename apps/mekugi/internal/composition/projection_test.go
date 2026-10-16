@@ -19,16 +19,18 @@ import (
 	"github.com/yusing/mekugi/modules/outputdeduplication"
 )
 
-func TestFrontendsRunSessionInputProjection(t *testing.T) {
+func TestFrontendsRunSessionLivePreviewInputProjection(t *testing.T) {
 	for _, tc := range []struct {
 		name            string
 		flags           []string
 		projected       bool
 		withoutGuidance bool
+		withoutPreview  bool
 	}{
 		{name: "default", projected: true},
 		{name: "launch opt-out", flags: []string{"--deduplicate-output=false"}},
 		{name: "guidance absent", projected: true, withoutGuidance: true},
+		{name: "preview absent", projected: true, withoutPreview: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, key := range []string{"XDG_STATE_HOME", "XDG_CONFIG_HOME", "CODEX_HOME", "MEKUGI_RUNTIME_DIR"} {
@@ -50,6 +52,12 @@ func TestFrontendsRunSessionInputProjection(t *testing.T) {
 			}
 			if runtime.Guidance == nil {
 				t.Fatal("composed guidance is missing")
+			}
+			if runtime.LivePreview == nil {
+				t.Fatal("composed preview handle is missing")
+			}
+			if tc.withoutPreview {
+				runtime.LivePreview = nil
 			}
 			if tc.withoutGuidance {
 				runtime.Guidance = nil
@@ -92,7 +100,7 @@ func TestFrontendsRunSessionInputProjection(t *testing.T) {
 			done := make(chan error, 1)
 			go func() {
 				defer close(done)
-				done <- router.RunSession(runtime.Activity, runtime.History, runtime.Preferences, runtime.Recovery, runtime.Segments, runtime.Changes, runtime.Usage, runtime.AgentMetrics, runtime.TransportDiagnostics, runtime.Diagnostics, ctx, runtime.Commands, runtime.InputProjections, runtime.Guidance, runtime.Naming, runtime.Guards, options, router.NewCriticalErrors(runtime.Notifications), func(session router.Session) { ready <- session }, nil)
+				done <- router.RunSession(runtime.LivePreview, runtime.Activity, runtime.History, runtime.Preferences, runtime.Recovery, runtime.Segments, runtime.Changes, runtime.Usage, runtime.AgentMetrics, runtime.TransportDiagnostics, runtime.Diagnostics, ctx, runtime.Commands, runtime.InputProjections, runtime.Guidance, runtime.Naming, runtime.Guards, options, router.NewCriticalErrors(runtime.Notifications), func(session router.Session) { ready <- session }, nil)
 			}()
 			defer func() {
 				cancel()

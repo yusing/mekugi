@@ -2,6 +2,9 @@ package router
 
 import (
 	"bytes"
+
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+
 	json "encoding/json/v2"
 	"fmt"
 	"path/filepath"
@@ -195,17 +198,17 @@ func TestAppServerRestoreDiffScopeBeforeNewTurn(t *testing.T) {
 	} {
 		liveDiffScopeCapture(t, store, edit.workspace, edit.thread, edit.call, edit.path, "before", "after")
 	}
-	auto, stop := newAutoLiveDiff(t.Context())
-	defer stop()
-	auto.enable()
+	auto := newLivePreview(t.Context())
+	defer auto.Close()
+	auto.Enable()
 	u := newAppServerSessionTestUI(t, workspace)
-	u.shell.auto = auto
-	sub := auto.events.subscribe()
+	u.shell.review = testReview(auto)
+	sub := testReview(auto).Subscribe()
 	u.restoreDiffThread(appServerThreadInfo{ID: "main", Cwd: workspace}, true)
 	u.restoreDiffThread(appServerThreadInfo{ID: "child", Cwd: workspace}, false)
-	var lastScope *liveDiffScope
-	for len(sub.events) > 0 {
-		event := <-sub.events
+	var lastScope *previewmodel.Scope
+	for len(sub.Events()) > 0 {
+		event := <-sub.Events()
 		if event.Kind == "scope" {
 			lastScope = event.Scope
 		}
@@ -214,7 +217,7 @@ func TestAppServerRestoreDiffScopeBeforeNewTurn(t *testing.T) {
 		t.Fatalf("native broker missed restored scope: %+v", lastScope)
 	}
 	reader := testReplayStore(mekugiReplayStore{directory: store.directory})
-	files, err := reader.liveDiffSnapshotFiles(t.Context(), auto.scope)
+	files, err := reader.liveDiffSnapshotFiles(t.Context(), testReview(auto).Scope())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,11 +269,12 @@ func TestAppServerRestoreWaitsForDurableDiffBeforeInput(t *testing.T) {
 			liveDiffScopeCapture(t, store, workspace, "main", "edit", filepath.Join(workspace, "restored.go"), "before", "after")
 			u := newAppServerSessionTestUI(t, workspace)
 			w := u.client.Input.(*appServerTestInput)
-			auto, stop := newAutoLiveDiff(t.Context())
-			defer stop()
-			auto.enable()
-			u.shell.auto, u.shell.diff.store = auto, store
-			sub := auto.events.subscribe()
+			auto := newLivePreview(t.Context())
+			defer auto.Close()
+			auto.Enable()
+			u.shell.diff.store = store
+			u.shell.review = testReview(auto)
+			sub := testReview(auto).Subscribe()
 			if err := u.restorePaneContent(appServerThreadInfo{ID: "main", Cwd: workspace}); err != nil {
 				t.Fatal(err)
 			}
@@ -282,15 +286,15 @@ func TestAppServerRestoreWaitsForDurableDiffBeforeInput(t *testing.T) {
 				t.Fatal("input unlocked before the Diff controller consumed the restored scope")
 			}
 			if viaPreviews {
-				for _, event := range auto.events.takePreviews(sub) {
+				for _, event := range testReview(auto).TakePreviews(sub) {
 					u.shell.applyDiff(t.Context(), event)
 				}
 				if err := u.finishRestoredContent(); err != nil {
 					t.Fatal(err)
 				}
 			} else {
-				for len(sub.events) > 0 {
-					u.shell.applyDiff(t.Context(), <-sub.events)
+				for len(sub.Events()) > 0 {
+					u.shell.applyDiff(t.Context(), <-sub.Events())
 					if err := u.finishRestoredContent(); err != nil {
 						t.Fatal(err)
 					}

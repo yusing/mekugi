@@ -1,4 +1,4 @@
-package router
+package projection
 
 import (
 	"context"
@@ -15,7 +15,7 @@ func TestLiveDiffPythonExpansionRuntime(t *testing.T) {
 	python, pythonErr := exec.LookPath("python3")
 	// Use an actual source baseline, but execute only the fixed scripts below,
 	// never commands discovered in source, history, or a corpus.
-	source, err := os.ReadFile("live_diff_python_values.go")
+	source, err := os.ReadFile("python_values.go")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,8 +285,8 @@ func TestLiveDiffPythonExpansionRuntime(t *testing.T) {
 					writeTestFile(t, filepath.Join(directory, name), text)
 				}
 			}
-			worker := liveDiffPreviewWorker{ctx: t.Context()}
-			files, recognized, err := worker.projectShell("python3 - <<'PY'\n"+tc.script+"PY\n", previewDirectory, true)
+			worker := struct{ ctx context.Context }{ctx: t.Context()}
+			files, _, recognized, err := Shell(worker.ctx, "python3 - <<'PY'\n"+tc.script+"PY\n", previewDirectory, true)
 			if err != nil || !recognized {
 				t.Fatalf("completed preview recognized=%v err=%v files=%+v", recognized, err, files)
 			}

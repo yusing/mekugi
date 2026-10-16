@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/yusing/mekugi/modules/activity"
+	"github.com/yusing/mekugi/modules/livepreview"
 
 	"github.com/yusing/mekugi/modules/notifications"
 
@@ -37,6 +38,7 @@ import (
 // frontend host. Host observation records remain application contributions.
 func Frontends(ctx context.Context, liveReports bool) (*Runtime, error) {
 	c := Composition{LegacyRecordKinds: router.RetainedRecordKinds()}
+	live := c.Add(livepreview.Module, func() livepreview.Deps { return livepreview.Deps{} })
 	activity := c.Add(activity.Module, func() activity.Deps { return activity.Deps{} })
 	notifications := c.Add(notifications.Module, func() notifications.Deps { return notifications.Deps{} })
 	transport := c.Add(transportdiagnostics.Module, func() transportdiagnostics.Deps { return transportdiagnostics.Deps{} })
@@ -77,6 +79,7 @@ func Frontends(ctx context.Context, liveReports bool) (*Runtime, error) {
 	runtime.Preferences = prefs.Value()
 	runtime.Notifications = notifications.Value()
 	runtime.Activity = activity.Value()
+	runtime.LivePreview = live.Value()
 	runtime.Recovery = recovery.Value()
 	runtime.Segments = segments.Value()
 	return runtime, nil

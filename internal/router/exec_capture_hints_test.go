@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 )
 
 // Tests and generators have no derived write scope: their effects are window

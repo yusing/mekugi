@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json/jsontext"
+
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -17,24 +18,23 @@ import (
 
 	"github.com/yusing/mekugi/contracts/scope"
 
-	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-
 	"github.com/yusing/mekugi/libraries/textsanitize"
-
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	"github.com/yusing/mekugi/modules/notifications/notice"
-	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
-
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
-
-	"github.com/yusing/mekugi/backends/codex/shellhook"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/backends/codex/shellhook"
+	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	terminalui "github.com/yusing/mekugi/libraries/terminalui"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	"golang.org/x/term"
 )
@@ -264,16 +264,17 @@ func startAppServerUI(activity *activitymodel.Service, service *history.Service,
 		for {
 			err = terminalui.WithRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1003;1004;1006;2004h\x1b]10;?\x1b\\\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1003;1004;1006;2004l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
 				defer u.clearTerminalTitle()
-				var sub *liveDiffSubscriber
-				var diffEvents <-chan liveDiffEvent
-				var diffGap, diffReady, autoChanged <-chan struct{}
-				if u.shell.auto != nil {
-					auto := u.shell.auto
-					auto.enable()
-					defer auto.enabled.Store(false)
-					sub = auto.events.subscribe()
-					defer func() { auto.events.unsubscribe(sub) }()
-					diffEvents, diffGap, diffReady, autoChanged = sub.events, sub.gap, sub.previewReady, auto.changed
+				review := u.shell.review
+				review.Preview().Enable()
+				defer func() { review.Preview().Disable() }()
+				sub := review.Subscribe()
+				defer func() { review.Unsubscribe(sub) }()
+				diffEvents, diffGap, diffReady, previewGap := sub.Events(), sub.Gap(), sub.Ready(), sub.PreviewGap()
+				autoChanged := review.Changed()
+				resubscribe := func() {
+					sub = review.Subscribe()
+					diffEvents, diffGap, diffReady, previewGap = sub.Events(), sub.Gap(), sub.Ready(), sub.PreviewGap()
+					u.dirty = true
 				}
 				tick := time.NewTicker(33 * time.Millisecond)
 				defer tick.Stop()
@@ -284,16 +285,14 @@ func startAppServerUI(activity *activitymodel.Service, service *history.Service,
 					case <-ctx.Done():
 						return ctx.Err()
 					case <-autoChanged:
-						u.shell.auto.mu.Lock()
-						u.shell.diff.workspace = u.shell.auto.workspace
-						u.shell.auto.mu.Unlock()
+						u.shell.diff.workspace = review.Workspace()
 						u.dirty = true
 					case <-diffGap:
-						sub = u.shell.auto.events.subscribe()
-						diffEvents, diffGap, diffReady = sub.events, sub.gap, sub.previewReady
-						u.dirty = true
+						resubscribe()
+					case <-previewGap:
+						resubscribe()
 					case <-diffReady:
-						for _, event := range u.shell.auto.events.takePreviews(sub) {
+						for _, event := range review.TakePreviews(sub) {
 							u.shell.applyDiff(ctx, event)
 						}
 						if err := u.finishRestoredContent(); err != nil {
@@ -435,6 +434,7 @@ func startAppServerUI(activity *activitymodel.Service, service *history.Service,
 		u.finishCommandSegments()
 		u.execTrack.detachOutputs()
 		u.session.state = scope.Store{}
+		u.shell.review.Close()
 		u.hideQuestions()
 		u.hideApprovals()
 		if unsent := joinDrafts(slices.Concat(u.unsent, u.queued, []composerDraft{u.draftSnapshot()})...); unsent.text != "" {
@@ -1596,13 +1596,16 @@ func (u *appServerUI) ensureShell() {
 	u.agents.status = "" // Fed by app-server directly, never by a collector connection.
 	u.agents.mainView = u.view
 	var store *mekugiReplayStore
-	var auto *autoLiveDiff
+	var review *savedReview
 	if u.proxy != nil {
 		store = u.proxy.replayStore
-		auto = u.proxy.autoLiveDiff
+		review = u.proxy.review
+	}
+	if review == nil {
+		review = newSavedReview(u.ctx, nil)
 	}
 	u.agents.bare = true
-	shell := &terminalUI{main: u, agents: u.agents, auto: auto, diffScreen: new(nativeDiffScreen)}
+	shell := &terminalUI{main: u, agents: u.agents, review: review, diffScreen: new(nativeDiffScreen)}
 	shell.diff = newLiveDiffTerminalController(store, "", os.Stdout)
 	shell.diff.native, shell.diff.diffMode = true, true
 	shell.diff.stdout = shell.diffScreen

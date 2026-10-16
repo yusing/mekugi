@@ -12,7 +12,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/diffrender"
 
-	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"

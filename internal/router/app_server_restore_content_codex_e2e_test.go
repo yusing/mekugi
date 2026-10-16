@@ -76,9 +76,10 @@ func TestAppServerRestoreChildContentNativeCodex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	auto, stopAuto := newAutoLiveDiff(t.Context())
-	defer stopAuto()
-	restoredProxy.autoLiveDiff = auto
+	auto := newLivePreview(t.Context())
+	defer auto.Close()
+
+	restoredProxy.review = testReview(auto)
 	second := startAppResumeTerminalWithProxy(t, newCommand, root, restoredProxy)
 	second.await("Ready") // Restoration is complete before accepting new input.
 	second.send("\x024")  // Focus the restored Agents roster.

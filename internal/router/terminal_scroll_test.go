@@ -6,10 +6,11 @@ import (
 	"strings"
 	"testing"
 
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 func TestScrollableDiffKeys(t *testing.T) {
@@ -94,7 +95,7 @@ func TestLiveDiffStreamWheelPauseSurvivesUpdates(t *testing.T) {
 	defer controller.close()
 	controller.scope.Workspaces = map[string]map[string]bool{"/workspace": {"thread": true}}
 	preview := terminalScrollStreamPreview(30)
-	if _, err := controller.applyEvent(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview}); err != nil {
+	if _, err := controller.applyEvent(t.Context(), reviewEvent{Kind: "preview", Preview: &preview}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := controller.previewPane.Render(t.Context(), "/workspace", diffrender.TerminalTheme, 70, 12); err != nil {
@@ -110,7 +111,7 @@ func TestLiveDiffStreamWheelPauseSurvivesUpdates(t *testing.T) {
 	}
 
 	preview = terminalScrollStreamPreview(40)
-	if _, err := controller.applyEvent(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview}); err != nil {
+	if _, err := controller.applyEvent(t.Context(), reviewEvent{Kind: "preview", Preview: &preview}); err != nil {
 		t.Fatal(err)
 	}
 	lines, err := controller.previewPane.Render(t.Context(), "/workspace", diffrender.TerminalTheme, 70, 12)
@@ -145,12 +146,12 @@ func newTerminalScrollTestController(offset int) *liveDiffTerminalController {
 	return controller
 }
 
-func terminalScrollStreamPreview(rows int) diffview.Preview {
+func terminalScrollStreamPreview(rows int) previewmodel.Preview {
 	var input strings.Builder
 	for row := 1; row <= rows; row++ {
 		fmt.Fprintf(&input, "+stream_%04d\n", row)
 	}
-	return diffview.Preview{
+	return previewmodel.Preview{
 		ID: "scroll-stream", Workspace: "/workspace", Thread: "thread", Input: input.String(),
 	}
 }

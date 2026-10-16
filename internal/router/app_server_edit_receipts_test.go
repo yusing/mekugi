@@ -1,11 +1,14 @@
 package router
 
 import (
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	jsonv1 "encoding/json"
@@ -65,7 +68,7 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 	}
 	// A fresh replay store proves that the UI needs only durable evidence.
 	store = testReplayStore(mekugiReplayStore{directory: store.directory})
-	scope := liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}}
+	scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}}
 	snapshot, err := store.liveDiffSnapshot(t.Context(), scope)
 	if err != nil {
 		t.Fatal(err)
@@ -320,7 +323,7 @@ func TestCodeModeCellEditReceipt(t *testing.T) {
 	}
 
 	store := testReplayStore(mekugiReplayStore{directory: proxy.replayStore.directory})
-	snapshot, err := store.liveDiffSnapshot(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"thread-1": true}}})
+	snapshot, err := store.liveDiffSnapshot(t.Context(), previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"thread-1": true}}})
 	if err != nil {
 		t.Fatal(err)
 	}

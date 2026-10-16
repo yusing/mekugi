@@ -1,4 +1,6 @@
-package router
+package projection
+
+// Source: internal/router/live_diff_interpreter.go:1:1629@3e523196, provisional source evaluation.
 
 import (
 	"cmp"
@@ -14,7 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 
 	"github.com/pmezard/go-difflib/difflib"
@@ -365,7 +367,7 @@ func liveDiffInterpreterSource(ctx context.Context, input previewInterpreterInpu
 			}
 			target, recognized := scan.literalWrite(ctx, function, args, &state, arriving)
 			if recognized {
-				if !filepath.IsAbs(target.path) || len(target.content) > liveDiffPreviewFileLimit || !utf8.ValidString(target.content) {
+				if !filepath.IsAbs(target.path) || len(target.content) > FileLimit || !utf8.ValidString(target.content) {
 					failure = errors.New("literal preview has unsupported writes")
 					return
 				}
@@ -499,7 +501,7 @@ func liveDiffInterpreterSource(ctx context.Context, input previewInterpreterInpu
 	if err != nil {
 		return nil, true, nil
 	}
-	files, err := stockPatchReviewPreview(baseline, "", patch, !partial)
+	files, err := Patch(baseline, "", patch, !partial, ReadFile)
 	if err != nil {
 		return nil, true, nil
 	}
@@ -542,7 +544,7 @@ func liveDiffPredictedPatch(ctx context.Context, writes []liveDiffPredictedWrite
 	patch.WriteString("*** Begin Patch\n")
 	open := false
 	baseline := &liveDiffSources{capturedOnly: true, files: make(map[liveDiffSourceKey]liveDiffSource)}
-	projector := reflect.ValueOf(readNativePatchFile).Pointer()
+	projector := reflect.ValueOf(ReadFile).Pointer()
 	for _, write := range writes {
 		if err := ctx.Err(); err != nil {
 			return "", nil, err
@@ -550,7 +552,7 @@ func liveDiffPredictedPatch(ctx context.Context, writes []liveDiffPredictedWrite
 		if strings.ContainsAny(write.path, "\r\n") {
 			return "", nil, errors.New("predicted path cannot be expressed as a patch")
 		}
-		before, exists, err := liveDiffSourceRead(ctx, write.path, liveDiffPreviewFile)
+		before, exists, err := liveDiffSourceRead(ctx, write.path, ReadFile)
 		if err != nil {
 			return "", nil, err
 		}
@@ -1162,7 +1164,7 @@ type liveDiffPythonLoopItem struct {
 }
 
 func liveDiffPythonConcat(left, right liveDiffPythonText, arriving bool) (liveDiffPythonText, bool) {
-	if len(left.content)+len(right.content) > liveDiffPreviewFileLimit {
+	if len(left.content)+len(right.content) > FileLimit {
 		return liveDiffPythonText{}, false
 	}
 	joined := liveDiffPythonText{content: left.content + right.content}
@@ -1469,7 +1471,7 @@ func (s *previewSourceScope) previewPythonText(ctx context.Context, node *sitter
 		return s.previewPythonText(ctx, node.NamedChild(0), state, arriving, depth+1)
 	}
 	if content, ok := s.pythonTextLiteral(node); ok {
-		return liveDiffPythonText{content: content}, len(content) <= liveDiffPreviewFileLimit
+		return liveDiffPythonText{content: content}, len(content) <= FileLimit
 	}
 	switch node.Kind() {
 	case "subscript":
@@ -1577,7 +1579,7 @@ func (s *previewSourceScope) previewPythonText(ctx context.Context, node *sitter
 		content, exists := state.written[path]
 		var err error
 		if !exists {
-			content, exists, err = liveDiffSourceRead(ctx, path, liveDiffPreviewFile)
+			content, exists, err = liveDiffSourceRead(ctx, path, ReadFile)
 		}
 		if newline == nil {
 			content = strings.ReplaceAll(strings.ReplaceAll(content, "\r\n", "\n"), "\r", "\n")
@@ -1614,7 +1616,7 @@ func (s *previewSourceScope) previewPythonText(ctx context.Context, node *sitter
 	if count >= 0 {
 		matches = min(matches, count)
 	}
-	if growth := len(next) - len(old); growth > 0 && matches > (liveDiffPreviewFileLimit-len(before))/growth {
+	if growth := len(next) - len(old); growth > 0 && matches > (FileLimit-len(before))/growth {
 		return liveDiffPythonText{}, false
 	}
 	value.content = strings.Replace(before, old, next, count)

@@ -11,13 +11,16 @@ import (
 	"testing"
 	"time"
 
-	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
-	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+
 	segmentservice "github.com/yusing/mekugi/modules/commandsegments/segments"
+
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
 
@@ -42,7 +45,7 @@ func TestShellApprovalStartupSurvivesReportFailure(t *testing.T) {
 					t.Fatal(err)
 				}
 				ready := false
-				err = RunSession(new(activitymodel.Service), testHistory(), testPreferences(), testRecovery(), segments, testChanges(), newTestUsage(t), new(evidence.Service), new(transportcapture.Service), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), ctx, testCommands(), testInputProjections(), testGuidance(), testNaming(), testGuards(), options, testCriticalErrors(), func(session Session) {
+				err = RunSession(new(previewmodel.Service), new(activitymodel.Service), testHistory(), testPreferences(), testRecovery(), segments, testChanges(), newTestUsage(t), new(evidence.Service), new(transportcapture.Service), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), ctx, testCommands(), testInputProjections(), testGuidance(), testNaming(), testGuards(), options, testCriticalErrors(), func(session Session) {
 					ready = true
 					defer cancel()
 					// Stop at backend launch, after the production approval startup boundary.

@@ -6,7 +6,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 
-	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 )
 
 // Legacy schema, decoded only when reading retained pre-redesign records.

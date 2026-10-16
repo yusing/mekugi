@@ -1,6 +1,7 @@
-package router
+package projection
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -196,8 +197,8 @@ func TestLiveDiffInterpreterWriteCommonAgentEditForms(t *testing.T) {
 				// Literal `cd` steps select the directory of later steps.
 				path = filepath.Join(directory, "sub", "demo.go")
 				writeTestFile(t, path, before)
-				w := liveDiffPreviewWorker{ctx: t.Context()}
-				files, recognized, err = w.projectShell("set -e\nX=1\ncd sub && python3 - <<'PY'\ns = open('demo.go').read()\nopen('demo.go', 'w').write(s.replace('old', 'renamed'))\nPY\n", directory, true)
+				w := struct{ ctx context.Context }{ctx: t.Context()}
+				files, _, recognized, err = Shell(w.ctx, "set -e\nX=1\ncd sub && python3 - <<'PY'\ns = open('demo.go').read()\nopen('demo.go', 'w').write(s.replace('old', 'renamed'))\nPY\n", directory, true)
 			} else {
 				files, recognized, err = liveDiffInterpreterWrite(t.Context(), mustShellStatement(t, "python3 - <<'PY'\n"+tc.script+"PY\n"), directory, false)
 			}
@@ -251,7 +252,7 @@ func TestLiveDiffPredictedPatchProjectsPredictedContent(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			files, err := stockPatchReviewPreview(baseline, "", patch, true)
+			files, err := Patch(baseline, "", patch, true, ReadFile)
 			if err != nil || len(files) != 1 {
 				t.Fatalf("projection of\n%s= %+v, %v", patch, files, err)
 			}
@@ -283,7 +284,7 @@ func TestLiveDiffPredictedPatchStopsAtArrivingTip(t *testing.T) {
 	if err != nil || strings.Contains(patch, "*** End Patch") || strings.Contains(patch, "tail") {
 		t.Fatalf("arriving patch = %q, %v", patch, err)
 	}
-	files, err := stockPatchReviewPreview(baseline, "", patch, false)
+	files, err := Patch(baseline, "", patch, false, ReadFile)
 	if err != nil || len(files) != 1 {
 		t.Fatalf("arriving projection = %+v, %v", files, err)
 	}
@@ -299,9 +300,9 @@ func TestLiveDiffInterpreterHelperStreamsArrivingReplacement(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "demo.go")
 	writeTestFile(t, path, "package demo\n\nfunc old() {}\n\nfunc tail() {}\n")
-	w := liveDiffPreviewWorker{ctx: t.Context()}
+	w := struct{ ctx context.Context }{ctx: t.Context()}
 	prefix := "python3 - <<'PY'\ns = open('demo.go').read()\ndef rep(a, b):\n    global s\n    s = s.replace(a, b)\n    open('demo.go', 'w').write(s)\nrep('func old() {}', '''func renamed() {\n\tprepare()\n"
-	files, recognized, err := w.projectShell(prefix, directory, false)
+	files, _, recognized, err := Shell(w.ctx, prefix, directory, false)
 	if err != nil || !recognized || len(files) != 1 || files[0].AfterPath != path {
 		t.Fatalf("arriving helper write = %+v, %t, %v", files, recognized, err)
 	}
@@ -320,8 +321,8 @@ func TestLiveDiffInterpreterArrivingHelperKeepsEveryWrite(t *testing.T) {
 			directory := t.TempDir()
 			writeTestFile(t, filepath.Join(directory, "a.txt"), "a b\n")
 			writeTestFile(t, filepath.Join(directory, "b.txt"), "a b\n")
-			w := liveDiffPreviewWorker{ctx: t.Context()}
-			files, recognized, err := w.projectShell("python3 - <<'PY'\ndef f(a):\n"+body+"f('''line1\nline2\n", directory, false)
+			w := struct{ ctx context.Context }{ctx: t.Context()}
+			files, _, recognized, err := Shell(w.ctx, "python3 - <<'PY'\ndef f(a):\n"+body+"f('''line1\nline2\n", directory, false)
 			if err != nil || !recognized || len(files) != 2 {
 				t.Fatalf("arriving helper writes = %+v, %t, %v", files, recognized, err)
 			}

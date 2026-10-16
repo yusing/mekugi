@@ -9,32 +9,28 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/commandanalysis"
-
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-
-	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/modules/livepreview/projection"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
-	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
-func waitExecScopePreview(t *testing.T, broker *liveDiffBroker, match func(diffview.Preview) bool) diffview.Preview {
+func waitExecScopePreview(t *testing.T, broker *previewmodel.Session, match func(previewmodel.Preview) bool) previewmodel.Preview {
 	t.Helper()
 	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		broker.mu.Lock()
-		for _, preview := range broker.previews {
+		for _, preview := range broker.Current() {
 			if match(preview) {
-				broker.mu.Unlock()
 				return preview
 			}
 		}
-		broker.mu.Unlock()
 		select {
 		case <-timer.C:
 			t.Fatal("timed out waiting for exec scope preview")
@@ -43,16 +39,14 @@ func waitExecScopePreview(t *testing.T, broker *liveDiffBroker, match func(diffv
 	}
 }
 
-func waitExecScopePreviewGone(t *testing.T, broker *liveDiffBroker, id string) {
+func waitExecScopePreviewGone(t *testing.T, broker *previewmodel.Session, id string) {
 	t.Helper()
 	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		broker.mu.Lock()
-		_, exists := broker.previewLocked(id)
-		broker.mu.Unlock()
+		_, exists := currentLivePreview(broker, id)
 		if !exists {
 			return
 		}
@@ -87,7 +81,7 @@ func TestExecWatchWithoutCapturedPathsDoesNotCrowdStreamingInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
+	connection, broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{
 		Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
 	})
 	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
@@ -98,17 +92,15 @@ func TestExecWatchWithoutCapturedPathsDoesNotCrowdStreamingInput(t *testing.T) {
 		registry.open(&execWindow{ref: ref, roots: []string{workspace}, thread: "thread"})
 		registry.preview(ref, execObservation{Class: execscope.Opaque.String(), Reason: "unresolved command"}, broker, workspace, "thread", "same-caller", nil)
 	}
-	broker.publishPreview(diffview.Preview{ID: "script", Workspace: workspace, Thread: "thread", Caller: "same-caller",
-		Status: diffview.PreviewEdit, Input: "cat /tmp/example\n"}, false)
+	broker.Update(previewmodel.Preview{ID: "script", Workspace: workspace, Thread: "thread", Caller: "same-caller",
+		Status: previewmodel.PreviewEdit, Input: "cat /tmp/example\n"}, false)
 	frame := ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "cat /tmp/example") })
 	plain := ansi.Strip(frame)
 	if strings.Count(plain, "same-caller ·") != 1 || strings.Contains(plain, "No scoped changes") ||
 		strings.Contains(plain, "other writes unknown") || !strings.Contains(plain, "cat /tmp/example") {
 		t.Fatalf("empty exec watches crowded streaming input: %s", plain)
 	}
-	broker.mu.Lock()
-	active := len(broker.previews)
-	broker.mu.Unlock()
+	active := len(broker.Current())
 	if active != 1 {
 		t.Fatalf("empty exec watches occupied %d preview slots, want only the script", active)
 	}
@@ -147,12 +139,12 @@ func TestLiveDiffStreamableAdmissionPreservesCapture(t *testing.T) {
 					t.Fatal("ordinary capture was lost")
 				}
 				worker := liveDiffPreviewWorker{ctx: t.Context()}
-				files, _, err := worker.projectShell(command, workspace, true)
+				files, _, _, err := projection.Shell(worker.ctx, command, workspace, true)
 				if err != nil || len(files) != 0 {
 					t.Fatalf("non-content input projected live files: %+v, %v", files, err)
 				}
-				broker := newLiveDiffBroker(t.Context())
-				broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
+				broker := newLivePreview(t.Context())
+				setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
 				registry := &execWindowRegistry{}
 				window := &execWindow{ref: "admission", thread: "main", roots: []string{workspace}}
 				registry.open(window)
@@ -162,7 +154,7 @@ func TestLiveDiffStreamableAdmissionPreservesCapture(t *testing.T) {
 				}
 				if mixed {
 					writeTestFile(t, filepath.Join(workspace, "authored.go"), "package arriving\n")
-					preview := waitExecScopePreview(t, broker, func(p diffview.Preview) bool { return len(p.Files) > 0 })
+					preview := waitExecScopePreview(t, broker, func(p previewmodel.Preview) bool { return len(p.Files) > 0 })
 					if len(preview.Files) != 1 || filepath.Base(preview.Files[0].AfterPath) != "authored.go" {
 						t.Fatalf("unrelated effects entered the card: %+v", preview)
 					}
@@ -197,7 +189,7 @@ func TestExecRunningPreviewExcludesVCSScope(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{Workspaces: map[string]map[string]bool{repo: {"thread": true}}})
+			_, broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{Workspaces: map[string]map[string]bool{repo: {"thread": true}}})
 			registry := &execWindowRegistry{}
 			window := &execWindow{ref: "vcs", roots: []string{repo}, thread: "thread"}
 			registry.open(window)
@@ -250,7 +242,7 @@ func TestExecRunningPreviewShowsAuthoredScopeAndCancelsWithoutEvidence(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
+	connection, broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{
 		Workspaces: map[string]map[string]bool{repo: {"thread": true}},
 	})
 	registry := &execWindowRegistry{}
@@ -281,8 +273,8 @@ func TestExecRunningPreviewShowsAuthoredScopeAndCancelsWithoutEvidence(t *testin
 		strings.Contains(plainRunning, "restored.txt") || strings.Contains(plainRunning, "will restore") {
 		t.Fatalf("running preview escaped its captured scope or lost its qualification: %s", plainRunning)
 	}
-	preview := waitExecScopePreview(t, broker, func(preview diffview.Preview) bool {
-		return preview.ID == "running:call-1" && preview.Status == diffview.PreviewRunning && len(preview.Files) == 1
+	preview := waitExecScopePreview(t, broker, func(preview previewmodel.Preview) bool {
+		return preview.ID == "running:call-1" && preview.Status == previewmodel.PreviewRunning && len(preview.Files) == 1
 	})
 	if preview.Workspace != repo || preview.Thread != "thread" {
 		t.Fatalf("active observation lost caller scope: %+v", preview)
@@ -306,7 +298,7 @@ func TestExecRunningPreviewShowsAuthoredScopeAndCancelsWithoutEvidence(t *testin
 	if _, found, err := store.lookup(t.Context(), repo, "call-1"); err != nil || found {
 		t.Fatalf("display-only running observation persisted change evidence: found=%v err=%v", found, err)
 	}
-	files, err := store.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{repo: {"thread": true}}})
+	files, err := store.liveDiffSnapshotFiles(t.Context(), previewmodel.Scope{Workspaces: map[string]map[string]bool{repo: {"thread": true}}})
 	if err != nil || len(files) != 0 {
 		t.Fatalf("display-only running observation entered durable live history: files=%+v err=%v", files, err)
 	}
@@ -322,7 +314,7 @@ func TestExecRunningPreviewRegistryBoundsBackgroundAndShutdown(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
+		_, broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{
 			Workspaces: map[string]map[string]bool{repo: {"thread": true}},
 		})
 		registry := &execWindowRegistry{}
@@ -336,14 +328,12 @@ func TestExecRunningPreviewRegistryBoundsBackgroundAndShutdown(t *testing.T) {
 		}
 		writeTestFile(t, tracked, "observed bytes\n")
 		for _, ref := range refs[:16] {
-			waitExecScopePreview(t, broker, func(preview diffview.Preview) bool {
+			waitExecScopePreview(t, broker, func(preview previewmodel.Preview) bool {
 				return preview.ID == "running:"+ref
 			})
 		}
-		broker.mu.Lock()
-		count := len(broker.previews)
-		_, overflow := broker.previewLocked("running:" + refs[16])
-		broker.mu.Unlock()
+		count := len(broker.Current())
+		_, overflow := currentLivePreview(broker, "running:"+refs[16])
 		if count != 16 || overflow {
 			t.Fatalf("running preview registry exceeded its display bound: count=%d overflow=%v", count, overflow)
 		}
@@ -361,15 +351,15 @@ func TestExecRunningPreviewRegistryBoundsBackgroundAndShutdown(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, broker, stopBroker := liveDiffTestBroker(t, store, liveDiffScope{
+			_, broker, stopBroker := liveDiffTestBroker(t, store, previewmodel.Scope{
 				Workspaces: map[string]map[string]bool{repo: {"thread": true}},
 			})
 			registry := &execWindowRegistry{}
 			registry.open(&execWindow{ref: "lifecycle", roots: []string{repo}, thread: "thread", turn: "old-turn", session: "session:42"})
 			registry.preview("lifecycle", *observation, broker, repo, "thread", "lifecycle-test", nil)
 			writeTestFile(t, tracked, "observed bytes\n")
-			waitExecScopePreview(t, broker, func(preview diffview.Preview) bool {
-				return preview.ID == "running:lifecycle" && preview.Status == diffview.PreviewRunning
+			waitExecScopePreview(t, broker, func(preview previewmodel.Preview) bool {
+				return preview.ID == "running:lifecycle" && preview.Status == previewmodel.PreviewRunning
 			})
 
 			if lifecycle == "background" {
@@ -382,9 +372,7 @@ func TestExecRunningPreviewRegistryBoundsBackgroundAndShutdown(t *testing.T) {
 			if err := os.WriteFile(tracked, []byte("after cancellation\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			broker.mu.Lock()
-			_, exists := broker.previewLocked("running:lifecycle")
-			broker.mu.Unlock()
+			_, exists := currentLivePreview(broker, "running:lifecycle")
 			if exists {
 				t.Fatalf("%s lifecycle kept publishing a running preview", lifecycle)
 			}

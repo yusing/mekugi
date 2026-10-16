@@ -1,4 +1,4 @@
-package router
+package projection
 
 import (
 	"bufio"
@@ -26,7 +26,7 @@ import (
 // predicts, and why the rest stop. It reads local session logs, so it runs
 // only when MEKUGI_PYTHON_CORPUS is set:
 //
-//	MEKUGI_PYTHON_CORPUS=1 go test ./internal/router -run PythonCorpus -v
+//	MEKUGI_PYTHON_CORPUS=1 go test ./modules/livepreview/projection -run PythonCorpus -v
 //
 // MEKUGI_PYTHON_CORPUS_ROOTS (path-list separated) overrides the default
 // ~/.claude/projects and ~/.codex/sessions; MEKUGI_PYTHON_CORPUS_REPORT names
@@ -349,7 +349,7 @@ func pythonCorpusOutcome(ctx context.Context, command pythonCorpusCommand) (stri
 		}
 	}
 	sources := &liveDiffSources{capturedOnly: true, files: make(map[liveDiffSourceKey]liveDiffSource)}
-	reader := reflect.ValueOf(liveDiffPreviewFile).Pointer()
+	reader := reflect.ValueOf(ReadFile).Pointer()
 	for _, literal := range literals {
 		if !pythonCorpusPath.MatchString(literal) || !strings.ContainsAny(literal, "./") || strings.HasPrefix(literal, "~") {
 			continue
@@ -365,8 +365,8 @@ func pythonCorpusOutcome(ctx context.Context, command pythonCorpusCommand) (stri
 	project := func(program string, final bool) ([]string, error) {
 		var failure error
 		frame := context.WithValue(context.WithValue(ctx, liveDiffSourcesContext{}, sources), liveDiffFailureContext{}, &failure)
-		worker := liveDiffPreviewWorker{ctx: frame}
-		files, _, err := worker.projectShell(program, command.directory, final)
+		worker := struct{ ctx context.Context }{ctx: frame}
+		files, _, _, err := Shell(worker.ctx, program, command.directory, final)
 		var paths []string
 		for _, file := range files {
 			if file.Incomplete == "" && file.Diff != "" {

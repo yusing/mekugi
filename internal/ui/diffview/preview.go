@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -70,11 +72,11 @@ type PreviewMotion struct {
 
 // Each call owns its source window, syntax cache, and completion state.
 type PreviewView struct {
-	Current   Preview
+	Current   previewmodel.Preview
 	Complete  bool
 	displayed bool
 	digits    int // Line-number width only grows, so the source never shifts sideways.
-	Rendered  Preview
+	Rendered  previewmodel.Preview
 	Focus     int
 	Paused    bool
 	ScrollRow int
@@ -93,7 +95,7 @@ type PreviewRow struct {
 	Text   string
 }
 
-func (p *PreviewPane) Update(preview Preview) {
+func (p *PreviewPane) Update(preview previewmodel.Preview) {
 	if !p.Retain && len(preview.Files) > 0 {
 		files := make([]diffmodel.ReviewFile, 0, len(preview.Files))
 		for _, file := range preview.Files {
@@ -121,7 +123,7 @@ func (p *PreviewPane) Update(preview Preview) {
 		return
 	}
 	if view == nil {
-		if preview.Status == PreviewEdit && len(preview.Files) == 0 && strings.TrimSpace(preview.Input) == "" &&
+		if preview.Status == previewmodel.PreviewEdit && len(preview.Files) == 0 && strings.TrimSpace(preview.Input) == "" &&
 			slices.ContainsFunc(p.Order, func(id string) bool {
 				old := p.Views[id]
 				return old.Complete && (len(old.Current.Files) != 0 || old.Current.DiffText)
@@ -663,7 +665,7 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme diffre
 func (p *PreviewView) Title(workspace string, theme diffrender.Theme, width int) string {
 	glyph := terminalui.Amber + "◐" + terminalui.Reset
 	var label string
-	reason, unavailable := strings.CutPrefix(p.Current.Status, PreviewUnavailable)
+	reason, unavailable := strings.CutPrefix(p.Current.Status, previewmodel.PreviewUnavailable)
 	switch {
 	case unavailable:
 		glyph, label = terminalui.Red+"!"+terminalui.Reset, textsanitize.Safe(reason, false)
@@ -679,12 +681,12 @@ func (p *PreviewView) Title(workspace string, theme diffrender.Theme, width int)
 		if len(p.Current.Files) > 1 {
 			label += fmt.Sprintf(" "+diffrender.Subtle+"%d/%d files"+diffrender.SubtleReset, p.file+1, len(p.Current.Files))
 		}
-	case p.Current.Status == PreviewPending:
+	case p.Current.Status == previewmodel.PreviewPending:
 		label = "scoped effects"
 	default:
 		label = "edit"
 	}
-	if p.Current.Status == PreviewRunning && !p.Complete {
+	if p.Current.Status == previewmodel.PreviewRunning && !p.Complete {
 		label += " " + diffrender.Subtle + "· observed so far" + diffrender.SubtleReset
 	}
 	if p.Current.Input != "" && p.Current.Truncated {
@@ -695,7 +697,7 @@ func (p *PreviewView) Title(workspace string, theme diffrender.Theme, width int)
 		// can finish when the projected file effect is seen, independently of
 		// command success; neither case earns a success checkmark.
 		glyph = terminalui.Dim + "○" + terminalui.Reset
-		if p.Current.Status == PreviewRunning {
+		if p.Current.Status == previewmodel.PreviewRunning {
 			label += " " + diffrender.Subtle + "· observed" + diffrender.SubtleReset
 		} else {
 			label += " " + diffrender.Subtle + "· preview" + diffrender.SubtleReset

@@ -1,4 +1,4 @@
-package diffview
+package preview
 
 import (
 	"github.com/yusing/mekugi/libraries/diffmodel"

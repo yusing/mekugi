@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+
 	"github.com/yusing/mekugi/libraries/terminalui"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -17,7 +19,6 @@ import (
 	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
-	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
@@ -131,7 +132,7 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
+	connection, broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{
 		Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
 	})
 	liveDiffTestChange(t, store, workspace, "one", "captured.go")
@@ -144,9 +145,10 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 		t.Fatalf("removed motion toggle remains in the stream footer: %q", initial)
 	}
 
+	publishLiveTurn(broker, true)
 	preview := previewViewFixture("one", 100)
 	preview.Workspace = workspace
-	broker.publishPreview(preview, false)
+	broker.Update(preview, false)
 	stream := ui.frame(t, func(frame string) bool {
 		return strings.Contains(ansi.Strip(frame), "◐ edit") && strings.Contains(ansi.Strip(frame), "+stream_0100")
 	})
@@ -161,7 +163,7 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 	ui.frame(t, func(frame string) bool {
 		return strings.Contains(frame, "STREAM · ") && !strings.Contains(ansi.Strip(frame), "stream_0100")
 	})
-	broker.publishTurn(false)
+	publishLiveTurn(broker, false)
 	ui.frame(t, func(frame string) bool {
 		return strings.Contains(frame, "v stream") && strings.Contains(ansi.Strip(frame), "1│-old")
 	})
@@ -178,7 +180,7 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 	ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "stream_0100") })
 	final := previewViewFixture("one", 101)
 	final.Workspace, final.Complete = workspace, true
-	broker.publishPreview(final, false)
+	broker.Update(final, false)
 	completed := ui.frame(t, func(frame string) bool {
 		return strings.Contains(ansi.Strip(frame), "○ edit") && strings.Contains(ansi.Strip(frame), "+stream_0101")
 	})
@@ -190,18 +192,20 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 	}
 
 	// Toggling modes preserves captured-diff paused position.
-	broker.publishTurn(false)
+	ui.write(t, "v")
 	resumedDiff := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "DIFF · v stream") })
 	if liveDiffFrameRow(resumedDiff, 1) == "" || pausedHeader == "" {
 		t.Fatal("turn transition lost captured-diff navigation state")
 	}
 
 	// Router coverage loss clears retained stream cards.
-	broker.publishTurn(true)
+	publishLiveTurn(broker, true)
 	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
-	broker.mu.Lock()
-	broker.emitLocked(liveDiffEvent{Kind: "coverage", Status: "RECONNECTING: test interruption"})
-	broker.mu.Unlock()
+	coverage, ok := testLiveCoverage.Load(broker)
+	if !ok {
+		t.Fatal("missing live transport")
+	}
+	coverage.(chan reviewEvent) <- reviewEvent{Kind: "coverage", Status: "RECONNECTING: test interruption"}
 	ui.frame(t, func(frame string) bool {
 		return strings.Contains(frame, "RECONNECTING") && !strings.Contains(ansi.Strip(frame), "○ edit")
 	})
@@ -211,20 +215,20 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 func TestLiveDiffTerminalTurnRevisionPreservesManualReconnectChoice(t *testing.T) {
 	controller := newLiveDiffTerminalController(nil, "", nil)
 	defer controller.close()
-	if _, err := controller.applyEvent(t.Context(), liveDiffEvent{Kind: "turn", Status: "active", TurnRevision: 1}); err != nil {
+	if _, err := controller.applyEvent(t.Context(), reviewEvent{Kind: "turn", Status: "active", TurnRevision: 1}); err != nil {
 		t.Fatal(err)
 	}
 	controller.handleKey('v')
 	if !controller.diffMode {
 		t.Fatal("manual toggle did not select diff mode")
 	}
-	if _, err := controller.applyEvent(t.Context(), liveDiffEvent{Kind: "turn", Status: "active", TurnRevision: 1}); err != nil {
+	if _, err := controller.applyEvent(t.Context(), reviewEvent{Kind: "turn", Status: "active", TurnRevision: 1}); err != nil {
 		t.Fatal(err)
 	}
 	if !controller.diffMode {
 		t.Fatal("replayed turn revision reset manual mode")
 	}
-	if _, err := controller.applyEvent(t.Context(), liveDiffEvent{Kind: "turn", Status: "active", TurnRevision: 2}); err != nil {
+	if _, err := controller.applyEvent(t.Context(), reviewEvent{Kind: "turn", Status: "active", TurnRevision: 2}); err != nil {
 		t.Fatal(err)
 	}
 	if controller.diffMode {
@@ -239,7 +243,7 @@ func TestLiveDiffTerminalComposedContextIsNotDuplicated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	connection, _, _ := liveDiffTestBroker(t, store, liveDiffScope{
+	connection, _, _ := liveDiffTestBroker(t, store, previewmodel.Scope{
 		Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
 	})
 	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
@@ -277,7 +281,7 @@ func TestLiveDiffTerminalEmptyPreviewUsesAvailableBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
+	connection, broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{
 		Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
 	})
 	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22, "COLORFGBG=15;0")
@@ -326,7 +330,7 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
+	connection, broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{
 		Workspaces: map[string]map[string]bool{workspace: {"thread": true, "child": true}},
 	})
 	liveDiffTestChange(t, store, workspace, "capture", "captured.go")
@@ -343,8 +347,8 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 	first.Workspace, first.Caller = workspace, "/root"
 	second := previewViewFixture("second", 200)
 	second.Workspace, second.Thread, second.Caller = workspace, "child", "/root/editor"
-	broker.publishPreview(first, false)
-	broker.publishPreview(second, false)
+	broker.Update(first, false)
+	broker.Update(second, false)
 	frame := ui.frame(t, func(frame string) bool {
 		text := ansi.Strip(frame)
 		return strings.Contains(text, "stream_0100") && strings.Contains(text, "stream_0200")
@@ -359,7 +363,7 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 	for i := 101; i <= 150; i++ {
 		first = previewViewFixture("first", i)
 		first.Workspace, first.Caller = workspace, "/root"
-		broker.publishPreview(first, false)
+		broker.Update(first, false)
 	}
 	frame = ui.frame(t, func(frame string) bool {
 		text := ansi.Strip(frame)
@@ -368,7 +372,7 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 	if text := ansi.Strip(frame); strings.Index(text, "main · ◐ edit") > strings.Index(text, "editor · ◐ edit") {
 		t.Fatal("concurrent delta reordered the cards")
 	}
-	broker.publishPreview(first, true)
+	broker.Update(first, true)
 	ui.frame(t, func(frame string) bool {
 		return strings.Contains(ansi.Strip(frame), "main · ○ edit") && strings.Contains(ansi.Strip(frame), "stream_0200")
 	})
@@ -379,7 +383,7 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 	ui.frame(t, func(frame string) bool {
 		return strings.Contains(frame, "\x1b[12;1H") && strings.Contains(ansi.Strip(frame), "stream_0200")
 	})
-	broker.publishPreview(second, true)
+	broker.Update(second, true)
 	ui.frame(t, func(frame string) bool { return strings.Count(ansi.Strip(frame), "○ edit") == 2 })
 	ui.write(t, "v")
 	diff := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "DIFF · v stream") })
@@ -396,17 +400,17 @@ func TestLiveDiffTerminalBoundedDiffPresentation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
+	connection, broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
 	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
 	ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "Diff preview") })
 	path := filepath.Join(workspace, "src", "main.go")
 	before := "package main\nconst liveTail = 1\n"
 	after := strings.Replace(before, "liveTail = 1", "liveTail = 2", 1)
-	preview := boundLiveDiffPreview(diffview.Preview{ID: "tail", Workspace: workspace, Thread: "thread", Caller: "/root", Status: diffview.PreviewRunning, Files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", filepath.Join(workspace, "large.txt"), "", strings.Repeat("padding\n", 10000)), diffmodel.RenderReviewFile(path, path, before, after)}})
+	preview := boundPreview(previewmodel.Preview{ID: "tail", Workspace: workspace, Thread: "thread", Caller: "/root", Status: previewmodel.PreviewRunning, Files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", filepath.Join(workspace, "large.txt"), "", strings.Repeat("padding\n", 10000)), diffmodel.RenderReviewFile(path, path, before, after)}})
 	if !preview.DiffText || !preview.Truncated || len(preview.Files) != 0 {
 		t.Fatalf("not a bounded diff tail: %+v", preview)
 	}
-	broker.publishPreview(preview, false)
+	broker.Update(preview, false)
 	frame := ui.frame(t, func(frame string) bool {
 		return strings.Contains(ansi.Strip(frame), "liveTail = 2") && strings.Contains(frame, diffrender.DarkTheme.RowBackground('+')) && strings.Contains(frame, diffrender.DarkTheme.Foreground(chroma.KeywordDeclaration))
 	})

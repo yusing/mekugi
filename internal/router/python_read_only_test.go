@@ -1,16 +1,38 @@
 package router
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+	"github.com/yusing/mekugi/modules/livepreview/projection"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
+
+func TestUISnapshotPythonReadOnlyScriptSource(t *testing.T) {
+	directory := t.TempDir()
+	writeTestFile(t, filepath.Join(directory, "target.txt"), "old\n")
+	worker := liveDiffPreviewWorker{ctx: t.Context()}
+	command := "cat >report.py <<'PY'\ns = open('target.txt').read()\ns = s.replace('old', 'new')\nprint(s)\nPY\n"
+	files, _, recognized, err := projection.Shell(worker.ctx, command, directory, true)
+	if err != nil || !recognized || len(files) != 1 {
+		t.Fatalf("script source preview: %+v %t %v", files, recognized, err)
+	}
+	pane := diffview.PreviewPane{Prefer: "/root"}
+	pane.Update(previewmodel.Preview{ID: "read-only", Workspace: directory, Caller: "/root", Status: previewmodel.PreviewEdit, Files: files})
+	rows, err := pane.Render(t.Context(), directory, diffrender.DarkTheme, 80, 12)
+	if err != nil {
+		t.Fatal(err)
+	}
+	uisnapshot.Assert(t, "testdata/snapshots/python-read-only-script-source.txt", strings.Join(rows, "\n")+"\n")
+}
 
 func TestPythonReadOnlyDoesNotPreviewInputEdits(t *testing.T) {
 	for _, script := range []string{
@@ -26,17 +48,17 @@ func TestPythonReadOnlyDoesNotPreviewInputEdits(t *testing.T) {
 			directory := t.TempDir()
 			target := filepath.Join(directory, "target.txt")
 			writeTestFile(t, target, "old\n")
-			worker := liveDiffPreviewWorker{ctx: t.Context()}
+			worker := struct{ ctx context.Context }{ctx: t.Context()}
 			for _, final := range []bool{false, true} {
 				command := "python3 - <<'PY'\n" + script + "PY\n"
-				files, recognized, err := worker.projectShell(command, directory, final)
+				files, _, recognized, err := projection.Shell(worker.ctx, command, directory, final)
 				if err != nil || recognized || len(files) != 0 {
 					t.Fatalf("read-only execution invented an edit (final=%t): %+v %t %v", final, files, recognized, err)
 				}
 				if display := toolActivityShell(command); !strings.HasPrefix(display, "Run") {
 					t.Fatalf("read-only execution displayed as edit: %s", display)
 				}
-				files, recognized, err = worker.projectShell("cat >report.py <<'PY'\n"+script+"PY\n", directory, final)
+				files, _, recognized, err = projection.Shell(worker.ctx, "cat >report.py <<'PY'\n"+script+"PY\n", directory, final)
 				if err != nil || !recognized || len(files) != 1 || files[0].AfterPath != filepath.Join(directory, "report.py") ||
 					!strings.Contains(files[0].Diff, "+print(s)") {
 					t.Fatalf("read-only script creation must preview its source (final=%t): %+v %t %v", final, files, recognized, err)
@@ -50,22 +72,4 @@ func TestPythonReadOnlyDoesNotPreviewInputEdits(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestUISnapshotPythonReadOnlyScriptSource(t *testing.T) {
-	directory := t.TempDir()
-	writeTestFile(t, filepath.Join(directory, "target.txt"), "old\n")
-	worker := liveDiffPreviewWorker{ctx: t.Context()}
-	command := "cat >report.py <<'PY'\ns = open('target.txt').read()\ns = s.replace('old', 'new')\nprint(s)\nPY\n"
-	files, recognized, err := worker.projectShell(command, directory, true)
-	if err != nil || !recognized || len(files) != 1 {
-		t.Fatalf("script source preview: %+v %t %v", files, recognized, err)
-	}
-	pane := diffview.PreviewPane{Prefer: "/root"}
-	pane.Update(diffview.Preview{ID: "read-only", Workspace: directory, Caller: "/root", Status: diffview.PreviewEdit, Files: files})
-	rows, err := pane.Render(t.Context(), directory, diffrender.DarkTheme, 80, 12)
-	if err != nil {
-		t.Fatal(err)
-	}
-	uisnapshot.Assert(t, "testdata/snapshots/python-read-only-script-source.txt", strings.Join(rows, "\n")+"\n")
 }

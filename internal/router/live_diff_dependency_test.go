@@ -6,13 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -42,7 +41,7 @@ func TestUISnapshotSavedDiffDependencyHistory(t *testing.T) {
 				}
 			}
 			reader := testReplayStore(mekugiReplayStore{directory: store.directory})
-			scope := liveDiffScope{Workspaces: map[string]map[string]bool{"/w": {"stock-thread": true}}}
+			scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{"/w": {"stock-thread": true}}}
 			data, err := reader.liveDiffSnapshot(t.Context(), scope)
 			if err != nil || len(data.files()) != 0 {
 				t.Fatalf("observation-only records became files: %+v, %v", data, err)
@@ -102,7 +101,7 @@ func TestLiveDiffTerminalDependencyHistory(t *testing.T) {
 			BeforePath: path, AfterPath: path, Directory: true, Incomplete: "directory contents intentionally not captured",
 		})
 	}
-	connection, _, _ := liveDiffTestBroker(t, store, liveDiffScope{Workspaces: map[string]map[string]bool{w: {"stock-thread": true}}})
+	connection, _, _ := liveDiffTestBroker(t, store, previewmodel.Scope{Workspaces: map[string]map[string]bool{w: {"stock-thread": true}}})
 	ui := startLiveDiffTerminal(t, w, store.directory, connection, 24)
 	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
 	ui.write(t, "v")

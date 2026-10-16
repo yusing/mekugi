@@ -203,11 +203,11 @@ func (a *requestAttempt) prepare() error {
 		}
 	}
 	if a.mekugiTransform != nil && a.metadataValid {
-		auto := a.executor.mekugiCalls.autoLiveDiff
-		auto.observe(a.mekugiTransform.directory, a.mekugiTransform.threadID, a.metadata)
+		auto := a.executor.mekugiCalls.review.Preview()
+		observeReview(a.executor.mekugiCalls.review, a.mekugiTransform.directory, a.mekugiTransform.threadID, a.metadata)
 		exchange, webSocket := a.executor.provider.(*webSocketExchange)
 		if !webSocket || !exchange.state.Automatic() {
-			auto.beginTurn(a.mekugiTransform.directory, a.mekugiTransform.threadID, a.metadata)
+			beginLiveDiffTurn(auto, a.mekugiTransform.directory, a.mekugiTransform.threadID, a.metadata)
 		}
 	}
 	if a.mekugiTransform != nil {

@@ -6,7 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/ui/diffview"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 )
 
@@ -20,18 +21,18 @@ func TestNativePreviewMailboxKeepsNewestFile(t *testing.T) {
 		u.shell.diff.store = store
 		return u
 	}
-	broker := newLiveDiffBroker(t.Context())
-	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{"/workspace": {"thread": true}}})
-	sub := broker.subscribe()
+	broker := newLivePreview(t.Context())
+	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{"/workspace": {"thread": true}}})
+	sub := testReview(broker).Subscribe()
 	older := nativeBatchPreview("older", "/root", "older")
 	newer := nativeBatchPreview("newer", "/root", "newer")
 	older.Thread, newer.Thread = "thread", "thread"
-	broker.publishPreview(older, false)
-	broker.publishPreview(newer, false)
+	broker.Update(older, false)
+	broker.Update(newer, false)
 	// Replacing an older call's queued snapshot must not make its file newest.
-	broker.publishPreview(older, false)
+	broker.Update(older, false)
 	drain := func(u *appServerUI) {
-		for _, event := range broker.takePreviews(sub) {
+		for _, event := range testReview(broker).TakePreviews(sub) {
 			u.shell.applyDiff(t.Context(), event)
 		}
 		if u.shell.diffFailure != "" {
@@ -52,32 +53,32 @@ func TestNativePreviewMailboxKeepsNewestFile(t *testing.T) {
 	drain(u)
 	requireNewest(u)
 	older.Complete, older.Evaluated = true, true
-	broker.publishPreview(older, false)
+	broker.Update(older, false)
 	drain(u)
 	u.shell.liveDock.ExpireBatches(time.Now().Add(2*time.Second), nativeDockMinimum)
 	if u.shell.liveDock.Views[older.ID] != nil {
 		t.Fatal("completed source did not retire")
 	}
-	sub = broker.subscribe()
+	sub = testReview(broker).Subscribe()
 	drain(u)
 	if u.shell.liveDock.Views[older.ID] != nil {
 		t.Fatal("resynchronization reopened an expired completion")
 	}
 	for i := range 33 {
-		broker.publishPreview(diffview.Preview{ID: fmt.Sprintf("absent-%d", i)}, true)
+		broker.Update(previewmodel.Preview{ID: fmt.Sprintf("absent-%d", i)}, true)
 	}
 	select {
-	case <-sub.gap:
+	case <-sub.PreviewGap():
 	default:
 		t.Fatal("preview overflow did not request resynchronization")
 	}
-	sub = broker.subscribe()
+	sub = testReview(broker).Subscribe()
 	// A new attachment must get the same order from the retained broker snapshot.
 	restored := attach()
 	drain(restored)
 	requireNewest(restored)
-	broker.resync(liveDiffScope{Workspaces: map[string]map[string]bool{}})
-	sub = broker.subscribe()
+	resyncLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{}})
+	sub = testReview(broker).Subscribe()
 	drain(restored)
 	if len(restored.shell.liveDock.Order) != 0 || len(restored.shell.livePending) != 0 {
 		t.Fatal("resynchronization retained previews outside its scope")

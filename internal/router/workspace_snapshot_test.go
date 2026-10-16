@@ -11,16 +11,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/legacycall"
-
-	"github.com/yusing/mekugi/libraries/commandargs"
-
 	"github.com/yusing/mekugi/libraries/commandanalysis"
-
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-
-	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
+	"github.com/yusing/mekugi/libraries/commandargs"
+	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
 func gitTestWorkspace(t *testing.T) string {
@@ -440,7 +437,7 @@ func TestWorkspaceSnapshotVCSChangesStayOutOfAuthoredTotals(t *testing.T) {
 			} else if list != "" {
 				t.Fatalf("VCS counted as authored: %q", list)
 			}
-			data, err := resumed.liveDiffSnapshot(ctx, liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {history.ExecutingThread: true}}})
+			data, err := resumed.liveDiffSnapshot(ctx, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {history.ExecutingThread: true}}})
 			if err != nil || len(data.files()) != map[bool]int{false: 0, true: 1}[mixed] {
 				t.Fatalf("saved Diff: %+v, %v", data, err)
 			}

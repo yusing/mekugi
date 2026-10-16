@@ -1,4 +1,4 @@
-package router
+package projection
 
 import (
 	"bytes"
@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 
@@ -46,14 +46,14 @@ func pythonCorpusExtractDetailed(command pythonCorpusCommand) ([]pythonCorpusCom
 			uncertain["invocation/source uncertainty"]++
 			return
 		}
-		statements, directory, partial, ok := liveDiffShellStatements(program, directory)
+		statements, directory, partial, ok := shellsyntax.StreamingStatements(program, directory)
 		if !ok || partial {
 			uncertain["shell parse uncertainty"]++
 			return
 		}
 		var visit func(*syntax.Stmt)
 		visit = func(stmt *syntax.Stmt) {
-			if next, ok := liveDiffShellCd(stmt, directory); ok {
+			if next, ok := shellsyntax.LiteralCd(stmt, directory); ok {
 				directory = next
 				return
 			}
@@ -123,7 +123,7 @@ func pythonCorpusExtractDetailed(command pythonCorpusCommand) ([]pythonCorpusCom
 				}
 				name = args[index]
 			}
-			identity := shellInterpreterName(name)
+			identity := shellsyntax.InterpreterIdentity(name)
 			if identity == "bash" || identity == "sh" {
 				if len(args) != index+3 || (args[index+1] != "-c" && args[index+1] != "-lc") {
 					uncertain["invocation/source uncertainty"]++

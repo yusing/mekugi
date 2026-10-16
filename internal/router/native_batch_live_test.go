@@ -6,11 +6,12 @@ import (
 	"testing"
 	"time"
 
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
-	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
@@ -33,8 +34,8 @@ func nativeBatchFixture(t *testing.T) *appServerUI {
 	return u
 }
 
-func nativeBatchPreview(id, caller string, names ...string) diffview.Preview {
-	p := diffview.Preview{ID: id, Caller: caller, Workspace: "/workspace", Status: diffview.PreviewEdit}
+func nativeBatchPreview(id, caller string, names ...string) previewmodel.Preview {
+	p := previewmodel.Preview{ID: id, Caller: caller, Workspace: "/workspace", Status: previewmodel.PreviewEdit}
 	for _, name := range names {
 		var source strings.Builder
 		for i := 1; i <= 40; i++ {
@@ -74,9 +75,9 @@ func TestUISnapshotNativeBatchPlacement(t *testing.T) {
 	paint("native-batch-short-summary", 80, 18)
 	u.agents.only, u.agents.selected = true, "/root/editor"
 	paint("native-batch-narrow-activity", 80, 28)
-	u.shell.preview(diffview.Preview{ID: "child", Workspace: "/workspace"}, false)
+	u.shell.preview(previewmodel.Preview{ID: "child", Workspace: "/workspace"}, false)
 	revealNativeDock(u.shell)
-	u.shell.preview(diffview.Preview{ID: "main", Workspace: "/workspace"}, false)
+	u.shell.preview(previewmodel.Preview{ID: "main", Workspace: "/workspace"}, false)
 	revealNativeDock(u.shell)
 	paint("native-batch-restored-transcripts", 140, 48)
 	u.shell.preview(nativeBatchPreview("child", "/root/editor", "child", "second", "third"), false)
@@ -153,14 +154,14 @@ func TestNativeBatchLivePTY(t *testing.T) {
 	if frame := paint(140, 48); strings.Contains(frame, "LIVE ·") || !strings.Contains(frame, "MAIN_TRANSCRIPT") {
 		t.Fatal("completed quick edit popped a dock")
 	}
-	deleted := diffview.Preview{ID: "deleted", Caller: "/root", Workspace: "/workspace", Status: diffview.PreviewEdit,
+	deleted := previewmodel.Preview{ID: "deleted", Caller: "/root", Workspace: "/workspace", Status: previewmodel.PreviewEdit,
 		Files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("/workspace/deleted.go", "", "package old\n", "")}}
 	u.shell.preview(deleted, false)
 	revealNativeDock(u.shell)
 	if frame := paint(140, 48); strings.Contains(frame, "LIVE ·") || !strings.Contains(frame, "MAIN_TRANSCRIPT") {
 		t.Fatal("deletion-only call replaced transcript with an empty dock")
 	}
-	u.shell.preview(diffview.Preview{ID: "deleted", Workspace: "/workspace"}, false)
+	u.shell.preview(previewmodel.Preview{ID: "deleted", Workspace: "/workspace"}, false)
 	p := nativeBatchPreview("main", "/root", "one")
 	u.shell.preview(p, false)
 	revealNativeDock(u.shell)
@@ -212,7 +213,7 @@ func TestNativeBatchLivePTY(t *testing.T) {
 	if frame = paint(80, 18); !strings.Contains(frame, "enlarge for diff") || strings.Contains(frame, "three_line") {
 		t.Fatal("short terminal squeezed below minimum file height")
 	}
-	u.shell.preview(diffview.Preview{ID: "next"}, false)
+	u.shell.preview(previewmodel.Preview{ID: "next"}, false)
 	revealNativeDock(u.shell)
 	u.shell.animating(time.Now().Add(nativeDockMinimum + time.Second))
 	frame = paint(140, 48)
@@ -223,7 +224,7 @@ func TestNativeBatchLivePTY(t *testing.T) {
 	if frame = paint(140, 48); !strings.Contains(frame, "child_line_40") {
 		t.Fatal("child preview was lost while viewing Main")
 	}
-	u.shell.preview(diffview.Preview{ID: "child", Workspace: "/workspace"}, false)
+	u.shell.preview(previewmodel.Preview{ID: "child", Workspace: "/workspace"}, false)
 	revealNativeDock(u.shell)
 	if frame = paint(140, 48); !strings.Contains(frame, "EDITOR_TRANSCRIPT") || strings.Contains(frame, "LIVE ·") {
 		t.Fatal("withdrawal did not restore Activity")
@@ -238,7 +239,7 @@ func TestUISnapshotNativeBatchDeletionPresentation(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			u := nativeBatchFixture(t)
-			preview := diffview.Preview{ID: "deleted", Caller: "/root", Workspace: "/workspace", Status: diffview.PreviewEdit,
+			preview := previewmodel.Preview{ID: "deleted", Caller: "/root", Workspace: "/workspace", Status: previewmodel.PreviewEdit,
 				Files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("/workspace/deleted.go", "", "package old\n", "")}}
 			if mixed {
 				preview.Files = append(preview.Files, nativeBatchPreview("kept", "/root", "kept").Files...)

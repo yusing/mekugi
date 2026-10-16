@@ -6,8 +6,9 @@ import (
 	"testing/synctest"
 	"time"
 
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 // Existing layout fixtures exercise an established stream, after admission.
@@ -64,13 +65,13 @@ func TestNativeDockPendingLifecycle(t *testing.T) {
 			u.shell.preview(child, false)
 			switch finish {
 			case "completed":
-				u.shell.preview(diffview.Preview{ID: p.ID}, false)
+				u.shell.preview(previewmodel.Preview{ID: p.ID}, false)
 			case "withdrawn":
-				u.shell.preview(diffview.Preview{ID: p.ID, Workspace: p.Workspace}, false)
+				u.shell.preview(previewmodel.Preview{ID: p.ID, Workspace: p.Workspace}, false)
 			case "turn ended":
 				u.endTurnPreviews("main", "turn")
 			case "reconnect":
-				u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "coverage", Status: "RECONNECTING: test"})
+				u.shell.applyDiff(t.Context(), reviewEvent{Kind: "coverage", Status: "RECONNECTING: test"})
 			}
 			revealNativeDock(u.shell)
 			if u.shell.liveDock.Views[p.ID] != nil || len(u.shell.livePending) != 0 {

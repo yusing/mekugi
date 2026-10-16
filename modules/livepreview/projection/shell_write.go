@@ -1,4 +1,6 @@
-package router
+package projection
+
+// Source: internal/router/live_diff_shell_write.go:1:242@3e523196, provisional source evaluation.
 
 import (
 	"context"
@@ -9,7 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 
@@ -60,15 +62,15 @@ func liveDiffShellWriteStatement(ctx context.Context, stmt *syntax.Stmt, directo
 	if !filepath.IsAbs(path) && !filepath.IsAbs(directory) {
 		return nil, true, errors.New("streaming file write requires an absolute execution directory")
 	}
-	path = shellFilePath(directory, path)
+	path = shellsyntax.FilePath(directory, path)
 	if err := ctx.Err(); err != nil {
 		return nil, true, err
 	}
-	const limit = liveDiffPreviewFileLimit
+	const limit = FileLimit
 	if len(content) > limit || !utf8.ValidString(content) {
 		return nil, true, errors.New("streaming file write requires bounded UTF-8 content")
 	}
-	before, exists, err := liveDiffSourceRead(ctx, path, liveDiffPreviewFile)
+	before, exists, err := liveDiffSourceRead(ctx, path, ReadFile)
 	if err != nil {
 		return nil, true, err
 	}
@@ -99,23 +101,23 @@ func liveDiffShellWriteStatement(ctx context.Context, stmt *syntax.Stmt, directo
 	if err := ctx.Err(); err != nil {
 		return nil, true, err
 	}
-	if partialLine && !final && !liveDiffSourceReady(ctx, path, content) {
+	if partialLine && !final && !SourceReady(ctx, path, content) {
 		return nil, true, nil
 	}
 	return []diffmodel.ReviewFile{diffmodel.RenderReviewPreviewFile(beforePath, path, before, content)}, true, nil
 }
 
-const liveDiffPreviewFileLimit = 256 << 10
+const FileLimit = 256 << 10
 
-// liveDiffPreviewFile reads bounded UTF-8 content that a preview predicts from.
-func liveDiffPreviewFile(path string) (string, bool, error) {
+// ReadFile reads bounded UTF-8 content that a preview predicts from.
+func ReadFile(path string) (string, bool, error) {
 	info, err := os.Stat(path)
 	switch {
 	case errors.Is(err, os.ErrNotExist):
 		return "", false, nil
 	case err != nil:
 		return "", false, err
-	case !info.Mode().IsRegular() || info.Size() > liveDiffPreviewFileLimit:
+	case !info.Mode().IsRegular() || info.Size() > FileLimit:
 		return "", false, errors.New("streaming file preview requires a bounded regular file")
 	}
 	file, err := sourceparse.Open(path)
@@ -123,7 +125,7 @@ func liveDiffPreviewFile(path string) (string, bool, error) {
 		return "", false, err
 	}
 	defer file.Close()
-	content, err := readNativeText(file, liveDiffPreviewFileLimit, "streaming file preview source exceeds capacity or is not UTF-8")
+	content, err := sourceparse.ReadText(file, FileLimit, "streaming file preview source exceeds capacity or is not UTF-8")
 	return content, err == nil, err
 }
 
@@ -192,7 +194,7 @@ func liveDiffShellFileOperation(ctx context.Context, stmt *syntax.Stmt, director
 		return nil, true, errors.New("streaming file preview requires an absolute execution directory")
 	}
 	for index := range operands {
-		operands[index] = filepath.Clean(shellFilePath(directory, operands[index]))
+		operands[index] = filepath.Clean(shellsyntax.FilePath(directory, operands[index]))
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, true, err
@@ -206,12 +208,12 @@ func liveDiffShellFileOperation(ctx context.Context, stmt *syntax.Stmt, director
 		return files, true, nil
 	case "tee":
 		content, literal := shellsyntax.Heredoc(heredoc, partialLine)
-		if !literal || len(content) > liveDiffPreviewFileLimit || !utf8.ValidString(content) {
+		if !literal || len(content) > FileLimit || !utf8.ValidString(content) {
 			return nil, true, errors.New("streaming file write requires bounded UTF-8 content")
 		}
 		files := make([]diffmodel.ReviewFile, 0, len(operands))
 		for _, path := range operands {
-			before, exists, err := liveDiffSourceRead(ctx, path, liveDiffPreviewFile)
+			before, exists, err := liveDiffSourceRead(ctx, path, ReadFile)
 			if err != nil {
 				return nil, true, err
 			}
@@ -222,7 +224,7 @@ func liveDiffShellFileOperation(ctx context.Context, stmt *syntax.Stmt, director
 			if !exists {
 				beforePath = ""
 			}
-			if partialLine && !final && (!liveDiffSourceTerminated(ctx, path, content) || !liveDiffSourceComplete(ctx, path, after)) {
+			if partialLine && !final && (!liveDiffSourceTerminated(ctx, path, content) || !SourceComplete(ctx, path, after)) {
 				return nil, true, nil
 			}
 			files = append(files, diffmodel.RenderReviewPreviewFile(beforePath, path, before, after))

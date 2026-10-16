@@ -11,7 +11,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 
-	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 )
 
 func execProviderReviewMarker(t *testing.T) string {

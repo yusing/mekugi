@@ -6,8 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 // The recorded stall used a Python edit followed by a Go heredoc in one exec
@@ -26,7 +27,7 @@ func TestLiveDiffCodeModeNativeSourceFollowLifecycle(t *testing.T) {
 	broker, sub, worker := newLiveDiffCodeModeWorkerTest(t, workspace)
 	prefix := input[:strings.Index(input, "const Source49")]
 	worker.appendDelta(prefix)
-	partial := waitLiveDiffWorkerPreview(t, broker, sub, func(p diffview.Preview) bool {
+	partial := waitLiveDiffWorkerPreview(t, broker, sub, func(p previewmodel.Preview) bool {
 		return !p.Complete && strings.Contains(fmt.Sprint(p.Files), "+const Source48")
 	})
 	u := nativeBatchFixture(t)
@@ -45,7 +46,7 @@ func TestLiveDiffCodeModeNativeSourceFollowLifecycle(t *testing.T) {
 		t.Fatal("partial source did not reach native renderer")
 	}
 	worker.finish(input)
-	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(p diffview.Preview) bool { return p.Complete })
+	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(p previewmodel.Preview) bool { return p.Complete })
 	u.shell.preview(complete, false)
 	if !strings.Contains(paint(), "Source79") {
 		t.Fatal("following remained on the stalled prefix")

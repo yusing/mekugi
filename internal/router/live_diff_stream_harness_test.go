@@ -18,8 +18,8 @@ func readLiveDiffConnection(path string) (liveDiffConnection, error) {
 	}
 	defer file.Close()
 	var connection liveDiffConnection
-	data, err := io.ReadAll(io.LimitReader(file, maxLiveDiffScopeBytes+1))
-	if err != nil || len(data) > maxLiveDiffScopeBytes {
+	data, err := io.ReadAll(io.LimitReader(file, (1<<20)+1))
+	if err != nil || len(data) > (1<<20) {
 		return connection, errors.New("invalid live diff connection")
 	}
 	if json.Unmarshal(data, &connection) != nil || connection.Endpoint == "" || connection.Token == "" {
@@ -30,9 +30,9 @@ func readLiveDiffConnection(path string) (liveDiffConnection, error) {
 
 // A bounded decoder queue propagates backpressure only to the event connection,
 // never the edit producer. Reconnection begins with a fresh snapshot barrier.
-func liveDiffStream(ctx context.Context, connection liveDiffConnection, output chan<- liveDiffEvent) {
+func liveDiffStream(ctx context.Context, connection liveDiffConnection, output chan<- reviewEvent) {
 	defer close(output)
-	send := func(event liveDiffEvent) bool {
+	send := func(event reviewEvent) bool {
 		select {
 		case output <- event:
 			return true
@@ -46,20 +46,20 @@ func liveDiffStream(ctx context.Context, connection liveDiffConnection, output c
 	for ctx.Err() == nil {
 		req, err := liveDiffRequest(ctx, connection, http.MethodGet, nil)
 		if err != nil {
-			send(liveDiffEvent{Kind: "error", Status: err.Error()})
+			send(reviewEvent{Kind: "error", Status: err.Error()})
 			return
 		}
 		response, err := client.Do(req)
 		if err == nil && response.StatusCode != http.StatusOK {
 			response.Body.Close()
-			send(liveDiffEvent{Kind: "error", Status: "router rejected live diff connection"})
+			send(reviewEvent{Kind: "error", Status: "router rejected live diff connection"})
 			return
 		}
 		if err == nil {
 			scanner := bufio.NewScanner(response.Body)
 			scanner.Buffer(make([]byte, 4096), maxLiveDiffEventBytes)
 			for scanner.Scan() {
-				var event liveDiffEvent
+				var event reviewEvent
 				if json.Unmarshal(scanner.Bytes(), &event) != nil {
 					break
 				}
@@ -81,10 +81,10 @@ func liveDiffStream(ctx context.Context, connection liveDiffConnection, output c
 		}
 		failures++
 		if failures > 5 {
-			send(liveDiffEvent{Kind: "error", Status: "router live diff connection is unavailable"})
+			send(reviewEvent{Kind: "error", Status: "router live diff connection is unavailable"})
 			return
 		}
-		if !send(liveDiffEvent{Kind: "coverage", Status: "RECONNECTING: live updates interrupted"}) {
+		if !send(reviewEvent{Kind: "coverage", Status: "RECONNECTING: live updates interrupted"}) {
 			return
 		}
 		timer := time.NewTimer(time.Duration(failures) * 200 * time.Millisecond)

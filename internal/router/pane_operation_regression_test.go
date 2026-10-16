@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
 func TestPaneOperationRegressionMCatReadLabels(t *testing.T) {
@@ -133,7 +134,7 @@ func TestPaneOperationRegressionCodeModePatchStreamsThroughPTY(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
+			connection, broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{
 				Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
 			})
 			ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 18)

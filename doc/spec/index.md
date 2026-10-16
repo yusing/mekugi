@@ -21,6 +21,7 @@ pjdoc:
     - ../../modules/diagnostics/SPEC.md
     - ../../modules/sessionreplay/SPEC.md
     - ../../modules/transportdiagnostics/SPEC.md
+    - ../../modules/livepreview/SPEC.md
     - changes.md
     - execution.md
 ---
@@ -66,6 +67,7 @@ resume evidence and renderer-keyed persistence.
 - [Diagnostics](../../modules/diagnostics/SPEC.md): debug bundles and failure references
 - [Session replay](../../modules/sessionreplay/SPEC.md): timed offline UI replay and profiling
 - [Transport diagnostics](../../modules/transportdiagnostics/SPEC.md): in-process captured Responses metrics
+- [Live preview](../../modules/livepreview/SPEC.md): provisional source changes, scope and bounded live publication
 - [`REQ-CHANGES-001`](changes.md): observed stock edits and command effects, durable change IDs, and bounded review reads
 - [`REQ-EXECUTION-001`](execution.md): stock editing, execution, and executable frontends
 - [`REQ-EXECUTION-002`](execution.md): Bash and Linux dash-backed sh command timing and per-segment list tracking

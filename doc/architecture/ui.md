@@ -21,7 +21,10 @@ observation capacity must remain visible and bounded without terminating unrelat
   cards, agent colors and reveal animation over those values.
 - `internal/ui/diffview` owns file/change navigation and live preview cards, including
   their viewport and reveal animation. Captured-file composition and attribution
-  remain in `internal/livediff`; router observations supply preview snapshots.
+  remain in `internal/livediff`; [live preview](../../modules/livepreview/SPEC.md)
+  owns plain snapshots, source projection, turn retirement and provisional publication.
+  The application review join owns admitted scope and retained-change delivery
+  even when live preview is absent.
   Rendering a preview cannot finalize evidence.
 - [Diff rendering](../../libraries/diffrender/SPEC.md) owns shared syntax, themes,
   row decoration and wrapping. [Text sanitization](../../libraries/textsanitize/SPEC.md)
@@ -50,8 +53,11 @@ side-answer docks and output dialogs share the selection mouse and scroll model;
 the caller retains composition and dismissal policy. Output dialogs defer live
 content refresh while their selection is active. Atomic submitted tokens consume the same bound composer
 spans through Codex text elements, rather than recognizing lookalike prompt text.
-Preview workers and brokers remain with router observation,
-not the view package. The launcher still owns invocation configuration and cancellation
+The application retains backend stream decoding, paced worker scheduling and
+observed-effect joins. Its saved-review join admits selected scope and delivers
+retained changes before optional previews. The live-preview module owns evaluation
+and provisional mailbox state;
+the renderer owns viewports, source following and settling timers. The launcher still owns invocation configuration and cancellation
 before handoff; the native client never executes model-requested tools.
 
 [Notifications](../../modules/notifications/SPEC.md) owns bounded recovery state,

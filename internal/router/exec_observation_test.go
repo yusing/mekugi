@@ -9,13 +9,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+	"github.com/yusing/mekugi/modules/livepreview/projection"
+
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
-	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
-
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/internal/execscope"
 	"github.com/yusing/mekugi/libraries/commandanalysis"
+	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
@@ -616,7 +618,7 @@ func TestLiveDiffTeeHeredocPreview(t *testing.T) {
 	workspace := t.TempDir()
 	writeTestFile(t, filepath.Join(workspace, "log"), "one\n")
 	command := "tee -a log <<'EOF' >/dev/null\ntwo\nEOF\n"
-	files, recognized, err := testLiveDiffShellWrite(t.Context(), command, workspace)
+	files, _, recognized, err := projection.Shell(t.Context(), command, workspace, true)
 	if !recognized || err != nil {
 		t.Fatalf("heredoc recognized=%v err=%v", recognized, err)
 	}
@@ -646,7 +648,7 @@ func TestLiveDiffFileOperationsPreserveSiblingStreams(t *testing.T) {
 			t.Fatalf("%q stream = %q, want %q", test.command, got, test.want)
 		}
 	}
-	files, _, err := worker.projectShell("mv a.txt b.txt\ncat > b.txt <<'EOF'\nnew content\nEOF\n", workspace, false)
+	files, _, _, err := projection.Shell(worker.ctx, "mv a.txt b.txt\ncat > b.txt <<'EOF'\nnew content\nEOF\n", workspace, false)
 	if len(files) != 0 || err == nil {
 		t.Fatal("a dependent write borrowed the pre-move baseline")
 	}
@@ -654,7 +656,7 @@ func TestLiveDiffFileOperationsPreserveSiblingStreams(t *testing.T) {
 
 func mustShellStatement(t *testing.T, command string) *syntax.Stmt {
 	t.Helper()
-	statements, _, _, parsed := liveDiffShellStatements(command, "/")
+	statements, _, _, parsed := shellsyntax.StreamingStatements(command, "/")
 	if !parsed || len(statements) != 1 {
 		t.Fatalf("%q did not parse", command)
 	}

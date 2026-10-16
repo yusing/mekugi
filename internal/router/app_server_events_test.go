@@ -9,11 +9,12 @@ import (
 	"testing"
 	"time"
 
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+
 	"github.com/yusing/mekugi/contracts/inference"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 func appServerTestNotify(t *testing.T, u *appServerUI, method string, params any) {
@@ -147,12 +148,12 @@ func TestAppServerSessionDocksSharedPreviewsByCaller(t *testing.T) {
 		t.Fatal(err)
 	}
 	u := newAppServerSessionTestUI(t, workspace)
-	u.shell.diff.scope = liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}}
+	u.shell.diff.scope = previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}}
 	// The router captures the source before host execution. App-server may
 	// deliver its notifications only after the workspace has already changed.
-	preview := projectStockPatchPreview(t.Context(), workspace, diffview.Preview{
+	preview := projectStockPatchPreview(t.Context(), workspace, previewmodel.Preview{
 		ID: "patch", Workspace: workspace, Thread: "main", Caller: "/root", Tool: applyPatchToolName,
-		Status: diffview.PreviewEdit, Input: "*** Begin Patch\n*** Update File: a.go\n@@\n-package a\n+package b\n*** End Patch\n",
+		Status: previewmodel.PreviewEdit, Input: "*** Begin Patch\n*** Update File: a.go\n@@\n-package a\n+package b\n*** End Patch\n",
 	})
 	if err := os.WriteFile(path, []byte("package b\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -163,14 +164,14 @@ func TestAppServerSessionDocksSharedPreviewsByCaller(t *testing.T) {
 	if len(u.shell.liveDock.Order) != 0 {
 		t.Fatal("app-server reconstructed a duplicate projection")
 	}
-	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview})
+	u.shell.applyDiff(t.Context(), reviewEvent{Kind: "preview", Preview: &preview})
 	revealNativeDock(u.shell)
 	card := u.shell.liveDock.Views["patch"].Current
 	if len(card.Files) != 1 || !strings.Contains(card.Files[0].Diff, "+package b") || strings.Contains(card.Status, "cannot be projected") {
 		t.Fatalf("shared preview lost: %+v", card)
 	}
 	preview.Complete = true
-	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview})
+	u.shell.applyDiff(t.Context(), reviewEvent{Kind: "preview", Preview: &preview})
 	revealNativeDock(u.shell)
 	if !u.shell.liveDock.Views["patch"].Complete {
 		t.Fatal("shared completion lost")
@@ -183,18 +184,18 @@ func TestAppServerSessionDocksSharedPreviewsByCaller(t *testing.T) {
 		}
 	}
 	preview.ID, preview.Thread, preview.Caller, preview.Tool = "exec", "child", "/root/worker", nativeExecCommandToolName
-	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview})
+	u.shell.applyDiff(t.Context(), reviewEvent{Kind: "preview", Preview: &preview})
 	revealNativeDock(u.shell)
 	if u.shell.liveDock.Views["exec"] != nil {
 		t.Fatal("completion-only shell preview flashed a dock")
 	}
 	preview.Complete = false
-	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview})
+	u.shell.applyDiff(t.Context(), reviewEvent{Kind: "preview", Preview: &preview})
 	revealNativeDock(u.shell)
 	if u.shell.liveDock.Views["exec"] == nil {
 		t.Fatal("child preview missing from shared dock")
 	}
-	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "turn", TurnRevision: 1, Status: "completed"})
+	u.shell.applyDiff(t.Context(), reviewEvent{Kind: "turn", TurnRevision: 1, Status: "completed"})
 	if u.shell.diffOpen {
 		t.Fatal("completed turn opened saved diff")
 	}

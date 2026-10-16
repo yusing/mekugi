@@ -1,4 +1,6 @@
-package router
+package projection
+
+// Source: internal/router/live_diff_source_boundary.go:1:327@3e523196, provisional source evaluation.
 
 import (
 	"context"
@@ -20,10 +22,10 @@ import (
 
 var liveDiffTSXLanguage = sitter.NewLanguage(typescript.LanguageTSX())
 
-// liveDiffSourceReady reports whether a still-arriving source tip ends at a
+// SourceReady reports whether a still-arriving source tip ends at a
 // displayable target-language unit.
-func liveDiffSourceReady(ctx context.Context, path, source string) bool {
-	return liveDiffSourceTerminated(ctx, path, source) && liveDiffSourceComplete(ctx, path, source)
+func SourceReady(ctx context.Context, path, source string) bool {
+	return liveDiffSourceTerminated(ctx, path, source) && SourceComplete(ctx, path, source)
 }
 
 func liveDiffSourceLanguage(format sourcekind.Format) (*sitter.Language, bool) {
@@ -111,7 +113,7 @@ func liveDiffSourceTerminated(ctx context.Context, path, source string) bool {
 // Buffer unfinished code units in projected source, not just in the script
 // transporting it. Unknown/text formats retain the decoded line boundary.
 // Final snapshots bypass this display-only gate, including malformed input.
-func liveDiffSourceComplete(ctx context.Context, path, source string) bool {
+func SourceComplete(ctx context.Context, path, source string) bool {
 	if ext := filepath.Ext(path); ext == ".sh" || ext == ".bash" {
 		_, err := syntax.NewParser().Parse(strings.NewReader(source), path)
 		if err == nil {

@@ -6,8 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 func TestLiveDiffTerminalCatWriteStreamsDiff(t *testing.T) {
@@ -17,7 +18,7 @@ func TestLiveDiffTerminalCatWriteStreamsDiff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
+	connection, broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{
 		Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
 	})
 	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
@@ -26,8 +27,8 @@ func TestLiveDiffTerminalCatWriteStreamsDiff(t *testing.T) {
 	t.Cleanup(worker.stop)
 	for i, delta := range []string{"mkdir -p generated\ncat >'visible file.txt' <<'END'\nfirst\n", "second\n", "END\n"} {
 		worker.appendDelta(delta)
-		preview := waitExecScopePreview(t, broker, func(preview diffview.Preview) bool {
-			return preview.Status == diffview.PreviewEdit && len(preview.Files) == 1
+		preview := waitExecScopePreview(t, broker, func(preview previewmodel.Preview) bool {
+			return preview.Status == previewmodel.PreviewEdit && len(preview.Files) == 1
 		})
 		want := "+first"
 		if i > 0 {

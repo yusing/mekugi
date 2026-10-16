@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
-	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
@@ -111,7 +112,7 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	// The observer finishes the edit before the command's test and before
 	// the next model request can supply durable outer-cell evidence.
 	u.shell.diff.data = newLiveDiffData()
-	u.shell.preview(diffview.Preview{ID: "observed", Workspace: workspace, Thread: "main", Complete: true,
+	u.shell.preview(previewmodel.Preview{ID: "observed", Workspace: workspace, Thread: "main", Complete: true,
 		HostItems: []string{"cmd"}, EditReceipt: receipt.text, Files: history.ReviewFiles}, false)
 	if err := u.paint(slave, width, height); err != nil {
 		t.Fatal(err)

@@ -8,7 +8,10 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/modules/livepreview/projection"
+
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
 func TestLiveDiffPreviewDeltaBoundaries(t *testing.T) {
@@ -62,11 +65,11 @@ func TestLiveDiffBurstRevealsStatementsSeparately(t *testing.T) {
 			t.Parallel()
 			synctest.Test(t, func(t *testing.T) {
 				workspace := t.TempDir()
-				broker := newLiveDiffBroker(t.Context())
-				broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"root": true}}})
-				sub := broker.subscribe()
-				defer broker.unsubscribe(sub)
-				<-sub.events
+				broker := newLivePreview(t.Context())
+				setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"root": true}}})
+				sub := testReview(broker).Subscribe()
+				defer testReview(broker).Unsubscribe(sub)
+				<-sub.Events()
 				// Share transport setup across the source forms. Each call still
 				// receives both statements in one burst; controlled time exercises
 				// real worker pacing without repeated wall-clock waits.
@@ -87,14 +90,14 @@ func TestLiveDiffBurstRevealsStatementsSeparately(t *testing.T) {
 					worker := startLiveDiffPreview(t.Context(), broker, workspace, "root", kind)
 					t.Cleanup(worker.stop)
 					worker.appendDelta(input)
-					first := waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
+					first := waitLiveDiffWorkerPreview(t, broker, sub, func(preview previewmodel.Preview) bool {
 						return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, source.first)
 					})
 					if strings.Contains(first.Files[0].Diff, source.second) {
 						t.Fatalf("two statements emitted together:\n%s", first.Files[0].Diff)
 					}
 					firstSeen := time.Now()
-					waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
+					waitLiveDiffWorkerPreview(t, broker, sub, func(preview previewmodel.Preview) bool {
 						return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, source.second)
 					})
 					if elapsed := time.Since(firstSeen); elapsed < diffview.PreviewUnitDelay-2*diffview.PreviewFrameDelay {
@@ -125,7 +128,7 @@ func TestLiveDiffSemicolonCandidatesRequireTargetStatements(t *testing.T) {
 		{"out.sh", "text=$(printf hi;"},
 		{"out.txt", "ordinary text;"},
 	} {
-		if liveDiffSourceReady(t.Context(), tc.path, tc.prefix) {
+		if projection.SourceReady(t.Context(), tc.path, tc.prefix) {
 			t.Errorf("non-statement candidate released for %s: %q", tc.path, tc.prefix)
 		}
 	}
@@ -238,10 +241,10 @@ func TestLiveDiffBufferedStatementKeepsMultiFileSnapshot(t *testing.T) {
 	for _, kind := range []string{applyPatchToolName, nativeExecCommandToolName} {
 		t.Run(kind, func(t *testing.T) {
 			workspace := t.TempDir()
-			broker := newLiveDiffBroker(t.Context())
-			broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
-			sub := broker.subscribe()
-			<-sub.events
+			broker := newLivePreview(t.Context())
+			setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
+			sub := testReview(broker).Subscribe()
+			<-sub.Events()
 			worker := liveDiffPreviewWorker{ctx: t.Context(), kind: kind}
 			encode := func(tail string) string {
 				if kind == applyPatchToolName {
@@ -253,8 +256,8 @@ func TestLiveDiffBufferedStatementKeepsMultiFileSnapshot(t *testing.T) {
 			for _, tail := range []string{"", "+const y = fn(\n"} {
 				preview, _ := worker.project(encode(tail), workspace, false)
 				preview.ID, preview.Workspace, preview.Thread = "call", workspace, "thread"
-				broker.publishPreview(preview, false)
-				batch := broker.takePreviews(sub)
+				broker.Update(preview, false)
+				batch := testReview(broker).TakePreviews(sub)
 				if len(batch) != 1 || batch[0].Preview == nil {
 					t.Fatalf("missing snapshot: %+v", batch)
 				}
@@ -313,7 +316,7 @@ func TestLiveDiffStatementsInsideOpenBlocks(t *testing.T) {
 		t.Run(tc.path, func(t *testing.T) {
 			workspace := t.TempDir()
 			worker := liveDiffPreviewWorker{ctx: t.Context(), kind: applyPatchToolName}
-			project := func(source string) diffview.Preview {
+			project := func(source string) previewmodel.Preview {
 				input := "*** Begin Patch\n*** Add File: " + tc.path + "\n+" + strings.ReplaceAll(strings.TrimSuffix(source, "\n"), "\n", "\n+") + "\n"
 				preview, _ := worker.project(input, workspace, false)
 				return preview
@@ -340,10 +343,10 @@ func TestLiveDiffStatementDelimitersInsideStrings(t *testing.T) {
 		{"out.go", "var text = `first;\nsecond;\n", "var text = `first;\nsecond;\n`\n"},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
-			if liveDiffSourceComplete(t.Context(), tc.path, tc.partial) {
+			if projection.SourceComplete(t.Context(), tc.path, tc.partial) {
 				t.Fatal("semicolon/newline inside unfinished string released a statement")
 			}
-			if !liveDiffSourceComplete(t.Context(), tc.path, tc.complete) {
+			if !projection.SourceComplete(t.Context(), tc.path, tc.complete) {
 				t.Fatal("complete string-bearing statement was buffered")
 			}
 		})
@@ -411,11 +414,11 @@ func TestLiveDiffFinishedCallDrainIsBounded(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		workspace := t.TempDir()
-		broker := newLiveDiffBroker(t.Context())
-		broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"root": true}}})
-		sub := broker.subscribe()
-		defer broker.unsubscribe(sub)
-		<-sub.events
+		broker := newLivePreview(t.Context())
+		setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"root": true}}})
+		sub := testReview(broker).Subscribe()
+		defer testReview(broker).Unsubscribe(sub)
+		<-sub.Events()
 		var input strings.Builder
 		input.WriteString("*** Begin Patch\n*** Add File: notes.md\n")
 		for i := range 30 {
@@ -427,7 +430,7 @@ func TestLiveDiffFinishedCallDrainIsBounded(t *testing.T) {
 		worker.appendDelta(input.String())
 		finished := time.Now()
 		worker.finish(input.String())
-		complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool { return preview.Complete })
+		complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview previewmodel.Preview) bool { return preview.Complete })
 		if elapsed := time.Since(finished); elapsed > diffview.PreviewFinishDrain+diffview.PreviewUnitDelay+4*diffview.PreviewFrameDelay {
 			t.Fatalf("finished call drained queued units for %v", elapsed)
 		}

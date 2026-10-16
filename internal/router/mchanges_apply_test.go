@@ -11,12 +11,12 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/contracts/command"
-	"github.com/yusing/mekugi/libraries/legacycall"
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-
-	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/livepreview/projection"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -411,7 +411,7 @@ func TestMChangesMutationTaintsLivePreview(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := liveDiffShellPreviewNeutral(program.Stmts[0]); got != neutral {
+		if got := projection.ShellNeutral(program.Stmts[0]); got != neutral {
 			t.Errorf("%q neutral = %v, want %v", command, got, neutral)
 		}
 	}

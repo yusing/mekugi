@@ -3,6 +3,8 @@ package diffview
 import (
 	"testing"
 
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
@@ -26,7 +28,7 @@ func TestUISnapshotDiffTailStyles(t *testing.T) {
 				"-old\n+new\n",
 			} {
 				pane := PreviewPane{}
-				pane.Update(Preview{ID: "tail", Workspace: "/workspace", Caller: "/root", Input: input, DiffText: true, Truncated: true})
+				pane.Update(previewmodel.Preview{ID: "tail", Workspace: "/workspace", Caller: "/root", Input: input, DiffText: true, Truncated: true})
 				rows, err := pane.Render(t.Context(), "/workspace", tc.theme, 60, 10)
 				if err != nil {
 					t.Fatal(err)
@@ -46,7 +48,7 @@ func TestUISnapshotDiffTailStyles(t *testing.T) {
 
 func TestPreviewDiffFlagReplacesPlainRows(t *testing.T) {
 	pane := PreviewPane{}
-	preview := Preview{ID: "tail", Workspace: "/workspace", Input: "+new\n"}
+	preview := previewmodel.Preview{ID: "tail", Workspace: "/workspace", Input: "+new\n"}
 	pane.Update(preview)
 	if _, err := pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, 60, 5); err != nil {
 		t.Fatal(err)

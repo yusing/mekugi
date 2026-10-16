@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/charmbracelet/x/ansi"
@@ -31,7 +33,7 @@ const (
 )
 
 type nativePendingPreview struct {
-	preview diffview.Preview
+	preview previewmodel.Preview
 	since   time.Time
 }
 
@@ -53,7 +55,7 @@ func (u *terminalUI) openActivityReply(seq uint64) bool {
 }
 
 // preview updates the shared dock by call ID, including caller-less completion markers.
-func (u *terminalUI) preview(preview diffview.Preview, restored bool) {
+func (u *terminalUI) preview(preview previewmodel.Preview, restored bool) {
 	if u.main != nil && preview.Complete && len(preview.HostItems) > 0 {
 		receipt := &capturedActivityEdit{thread: preview.Thread, calls: preview.HostItems, text: preview.EditReceipt}
 		for _, file := range preview.Files {
@@ -131,7 +133,7 @@ func (u *terminalUI) preview(preview diffview.Preview, restored bool) {
 
 // applyDiff sends saved changes to the diff pane and live edit cards to
 // the shared dock. All edits use the router preview and capture owners.
-func (u *terminalUI) applyDiff(ctx context.Context, event liveDiffEvent) {
+func (u *terminalUI) applyDiff(ctx context.Context, event reviewEvent) {
 	switch event.Kind {
 	case "preview":
 		preview := event.Preview
@@ -143,7 +145,7 @@ func (u *terminalUI) applyDiff(ctx context.Context, event liveDiffEvent) {
 		return
 	case "scope":
 		if event.Resync && event.Scope != nil {
-			retained := func(preview diffview.Preview, complete bool) bool {
+			retained := func(preview previewmodel.Preview, complete bool) bool {
 				return event.Scope.Workspaces[preview.Workspace][preview.Thread] &&
 					(complete || slices.Contains(event.PreviewIDs, preview.ID))
 			}

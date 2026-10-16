@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
 func TestManagedExecMChangesSurface(t *testing.T) {
@@ -35,7 +35,7 @@ func TestManagedExecMChangesSurface(t *testing.T) {
 	if err != nil || !strings.Contains(text, "generated body") {
 		t.Fatalf("diagnostic history lost: %q, %v", text, err)
 	}
-	data, err := f.store.liveDiffSnapshot(f.ctx, liveDiffScope{Workspaces: map[string]map[string]bool{f.workspace: {f.thread: true}}})
+	data, err := f.store.liveDiffSnapshot(f.ctx, previewmodel.Scope{Workspaces: map[string]map[string]bool{f.workspace: {f.thread: true}}})
 	if err != nil || len(data.files()) != 1 || !strings.HasSuffix(data.files()[0].Path, "direct.txt") {
 		t.Fatalf("managed saved Diff: %+v, %v", data.files(), err)
 	}

@@ -1,4 +1,4 @@
-package router
+package shellsyntax
 
 import (
 	"os"
@@ -6,21 +6,20 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"mvdan.cc/sh/v3/syntax"
 )
 
-// liveDiffShellStatements parses display-only stock command input. It never
+// StreamingStatements parses display-only stock command input. It never
 // expands shell values or authorizes execution. Recovery is limited to the
 // parser's incomplete final construct so streaming cat and interpreter
 // heredocs can become visible before the host completes the call.
-func liveDiffShellStatements(input, directory string) ([]*syntax.Stmt, string, bool, bool) {
-	header, err := shellsyntax.Parse(input)
+func StreamingStatements(input, directory string) ([]*syntax.Stmt, string, bool, bool) {
+	header, err := Parse(input)
 	if err != nil || len(header.Interpreter) != 1 {
 		return nil, "", false, false
 	}
 	variant := syntax.LangBash
-	switch shellInterpreterName(header.Interpreter[0]) {
+	switch InterpreterIdentity(header.Interpreter[0]) {
 	case "bash":
 	case "sh":
 		variant = syntax.LangPOSIX
@@ -50,8 +49,8 @@ func liveDiffShellStatements(input, directory string) ([]*syntax.Stmt, string, b
 	return program.Stmts, directory, partial, true
 }
 
-// liveDiffShellSequence flattens `a && b` chains into their steps.
-func liveDiffShellSequence(statements []*syntax.Stmt) []*syntax.Stmt {
+// Sequence flattens `a && b` chains into their steps.
+func Sequence(statements []*syntax.Stmt) []*syntax.Stmt {
 	var sequence []*syntax.Stmt
 	var add func(*syntax.Stmt)
 	add = func(stmt *syntax.Stmt) {
@@ -69,16 +68,16 @@ func liveDiffShellSequence(statements []*syntax.Stmt) []*syntax.Stmt {
 	return sequence
 }
 
-// liveDiffShellCd returns the directory a literal `cd` selects for later
+// LiteralCd returns the directory a literal `cd` selects for later
 // steps. Home-relative, previous-directory, and computed targets do not match.
-func liveDiffShellCd(stmt *syntax.Stmt, directory string) (string, bool) {
+func LiteralCd(stmt *syntax.Stmt, directory string) (string, bool) {
 	call, ok := stmt.Cmd.(*syntax.CallExpr)
 	if !ok || stmt.Background || stmt.Coprocess || stmt.Disown || stmt.Negated ||
 		len(stmt.Redirs) != 0 || len(call.Assigns) != 0 || len(call.Args) != 2 {
 		return "", false
 	}
-	name, literal := shellsyntax.Literal(call.Args[0])
-	target, targetLiteral := shellsyntax.Literal(call.Args[1])
+	name, literal := Literal(call.Args[0])
+	target, targetLiteral := Literal(call.Args[1])
 	if !literal || name != "cd" || !targetLiteral || target == "" || target == "-" || strings.HasPrefix(target, "~") {
 		return "", false
 	}
@@ -128,53 +127,9 @@ func completeStreamingHeredoc(input string) (string, bool) {
 	return input + "\n" + delimiter + "\n", true
 }
 
-func shellInterpreterName(interpreter string) string {
-	return shellsyntax.InterpreterIdentity(interpreter)
-}
-
-func shellFilePath(directory, path string) string {
+func FilePath(directory, path string) string {
 	if filepath.IsAbs(path) {
 		return path
 	}
 	return directory + string(os.PathSeparator) + path
-}
-
-func liveDiffShellPreviewNeutral(stmt *syntax.Stmt) bool {
-	call, ok := stmt.Cmd.(*syntax.CallExpr)
-	if !ok || stmt.Background || stmt.Coprocess || stmt.Disown || stmt.Negated || len(stmt.Redirs) != 0 {
-		return false
-	}
-	if len(call.Args) == 0 {
-		// Literal shell variables change no file; a later use of one is not
-		// a literal operand and is not predicted.
-		for _, assign := range call.Assigns {
-			if assign.Append || assign.Array != nil || assign.Index != nil {
-				return false
-			}
-			if _, literal := shellsyntax.Literal(assign.Value); assign.Value != nil && !literal {
-				return false
-			}
-		}
-		return len(call.Assigns) != 0
-	}
-	if len(call.Assigns) != 0 {
-		return false
-	}
-	name, literal := shellsyntax.Literal(call.Args[0])
-	if !literal {
-		return false
-	}
-	switch name {
-	case "mkdir", "mread", "mcat", "msymbol", "inspect_file", "mchanges", "set", "echo", "true":
-	default:
-		return false
-	}
-	for index, argument := range call.Args[1:] {
-		value, literal := shellsyntax.Literal(argument)
-		// mchanges revert and apply rewrite files that later previews read.
-		if !literal || index == 0 && name == "mchanges" && (value == "revert" || value == "apply") {
-			return false
-		}
-	}
-	return true
 }

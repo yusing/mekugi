@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
@@ -23,7 +25,6 @@ import (
 	"github.com/yusing/mekugi/libraries/diffmodel"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	"github.com/yusing/mekugi/internal/ui/diffview"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
@@ -106,9 +107,9 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			item := map[string]any{"id": "edit", "type": "commandExecution", "command": "/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
-			broker := newLiveDiffBroker(ctx)
-			broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
-			sub := broker.subscribe()
+			broker := newLivePreview(ctx)
+			setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
+			sub := testReview(broker).Subscribe()
 			registry := &execWindowRegistry{tracker: shell.hub}
 			registry.open(&execWindow{ref: "edit", thread: "main", turn: "turn", roots: []string{workspace}})
 			defer registry.close("edit")
@@ -126,7 +127,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			// Seed the same running dock before execution so completion must
 			// actively retire it, rather than simply avoid opening a new card.
 			if !opaque {
-				u.shell.preview(diffview.Preview{ID: "running:edit", Workspace: workspace, Thread: "main", Caller: "/root", Status: diffview.PreviewRunning, Input: "observing edit"}, false)
+				u.shell.preview(previewmodel.Preview{ID: "running:edit", Workspace: workspace, Thread: "main", Caller: "/root", Status: previewmodel.PreviewRunning, Input: "observing edit"}, false)
 			}
 			cmd := exec.CommandContext(ctx, execTrackShellExecutable(t, "bash"), "-lc", script)
 			cmd.Dir, cmd.Env = workspace, shell.env
@@ -184,12 +185,12 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			if strings.Contains(edit, "unlink()") {
 				wantFiles++
 			}
-			var completed *diffview.Preview
+			var completed *previewmodel.Preview
 			streamDone := opaque
 			for completed == nil || !streamDone {
 				select {
-				case <-sub.previewReady:
-					for _, event := range broker.takePreviews(sub) {
+				case <-sub.Ready():
+					for _, event := range testReview(broker).TakePreviews(sub) {
 						if event.Preview != nil {
 							u.shell.preview(*event.Preview, false)
 							if event.Preview.Complete {
@@ -487,12 +488,12 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 	if !ok || observation == nil || len(commands) != 2 || len(execPreviewExpected(t.Context(), *observation)) != 0 {
 		t.Fatal("fixture must capture two sequential edits in one exec cell")
 	}
-	auto, stop := newAutoLiveDiff(t.Context())
-	defer stop()
-	auto.enabled.Store(true)
-	auto.events.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
-	sub := auto.events.subscribe()
-	proxy := &mekugiProxy{execTrack: hub.execTrackHub, execWindows: &execWindowRegistry{tracker: hub.execTrackHub}, autoLiveDiff: auto}
+	auto := newLivePreview(t.Context())
+	defer auto.Close()
+	auto.Enable()
+	setLiveScope(auto, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
+	sub := testReview(auto).Subscribe()
+	proxy := &mekugiProxy{execTrack: hub.execTrackHub, execWindows: &execWindowRegistry{tracker: hub.execTrackHub}, review: testReview(auto)}
 	transform := &mekugiResponseTransform{proxy: proxy, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
 	transform.openExecWindow("cell", observation, nil)
 	defer proxy.execWindows.close("cell")
@@ -519,8 +520,8 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 	secondReport.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0}, segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Begin, Index: 1})
 	for {
 		select {
-		case <-sub.previewReady:
-			for _, event := range auto.events.takePreviews(sub) {
+		case <-sub.Ready():
+			for _, event := range testReview(auto).TakePreviews(sub) {
 				if event.Preview == nil || !event.Preview.Complete || event.Preview.EditReceipt != "" {
 					continue
 				}
@@ -559,12 +560,12 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 			if !ok || observation == nil || len(commands) != 2 {
 				t.Fatal("missing grouped edit observation")
 			}
-			auto, stop := newAutoLiveDiff(t.Context())
-			defer stop()
-			auto.enabled.Store(true)
-			auto.events.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
-			sub := auto.events.subscribe()
-			proxy := &mekugiProxy{execTrack: hub.execTrackHub, execWindows: &execWindowRegistry{tracker: hub.execTrackHub}, autoLiveDiff: auto}
+			auto := newLivePreview(t.Context())
+			defer auto.Close()
+			auto.Enable()
+			setLiveScope(auto, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
+			sub := testReview(auto).Subscribe()
+			proxy := &mekugiProxy{execTrack: hub.execTrackHub, execWindows: &execWindowRegistry{tracker: hub.execTrackHub}, review: testReview(auto)}
 			transform := &mekugiResponseTransform{proxy: proxy, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
 			transform.openExecWindow("cell", observation, nil)
 			defer proxy.execWindows.close("cell")
@@ -577,7 +578,7 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 				t.Fatalf("edit failed: %v: %s", err, out)
 			}
 			if shell == "sh" {
-				preview := waitExecScopePreview(t, auto.events, func(p diffview.Preview) bool { return len(p.Files) > 0 && !p.Complete })
+				preview := waitExecScopePreview(t, auto, func(p previewmodel.Preview) bool { return len(p.Files) > 0 && !p.Complete })
 				u.shell.preview(preview, false)
 				revealNativeDock(u.shell)
 				if u.shell.liveDock.Live() == 0 {
@@ -592,8 +593,8 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 			streamDone, receiptDone := false, false
 			for {
 				select {
-				case <-sub.previewReady:
-					for _, event := range auto.events.takePreviews(sub) {
+				case <-sub.Ready():
+					for _, event := range testReview(auto).TakePreviews(sub) {
 						if event.Preview != nil && event.Preview.Complete {
 							wantFiles := 1
 							if len(event.Preview.Files) != wantFiles || event.Preview.Footer != "observed edit" {
@@ -649,9 +650,9 @@ func TestExecTrackStreamableEditFinishesBeforeFormatter(t *testing.T) {
 	if !ok || observation == nil {
 		t.Fatal("missing source capture")
 	}
-	broker := newLiveDiffBroker(t.Context())
-	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
-	sub := broker.subscribe()
+	broker := newLivePreview(t.Context())
+	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
+	sub := testReview(broker).Subscribe()
 	registry := &execWindowRegistry{tracker: hub.execTrackHub}
 	registry.open(&execWindow{ref: "edit", thread: "main", turn: "turn", roots: []string{workspace}})
 	defer registry.close("edit")
@@ -661,7 +662,7 @@ func TestExecTrackStreamableEditFinishesBeforeFormatter(t *testing.T) {
 	report := dialExecTrackReport(t, hub, script)
 	writeTestFile(t, path, "package p; var A=1\n")
 	report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0}, segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Begin, Index: 1})
-	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(p diffview.Preview) bool { return p.Complete })
+	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(p previewmodel.Preview) bool { return p.Complete })
 	if len(preview.Files) != 1 || !strings.Contains(preview.Files[0].Diff, "+package p; var A=1") || !registry.find("edit").closed.IsZero() {
 		t.Fatalf("stream completion changed content or host lifecycle: %+v", preview)
 	}
@@ -690,12 +691,12 @@ func TestExecTrackPreviewDoesNotAdoptOlderInvocation(t *testing.T) {
 			if !ok || observation == nil {
 				t.Fatal("missing capture")
 			}
-			auto, stop := newAutoLiveDiff(t.Context())
-			defer stop()
-			auto.enabled.Store(true)
-			auto.events.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
-			sub := auto.events.subscribe()
-			proxy := &mekugiProxy{execTrack: hub.execTrackHub, execWindows: &execWindowRegistry{tracker: hub.execTrackHub}, autoLiveDiff: auto}
+			auto := newLivePreview(t.Context())
+			defer auto.Close()
+			auto.Enable()
+			setLiveScope(auto, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
+			sub := testReview(auto).Subscribe()
+			proxy := &mekugiProxy{execTrack: hub.execTrackHub, execWindows: &execWindowRegistry{tracker: hub.execTrackHub}, review: testReview(auto)}
 			transform := &mekugiResponseTransform{proxy: proxy, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
 			transform.openExecWindow("new", observation, nil)
 			defer proxy.execWindows.close("new")
@@ -711,8 +712,8 @@ func TestExecTrackPreviewDoesNotAdoptOlderInvocation(t *testing.T) {
 				defer timer.Stop()
 				for {
 					select {
-					case <-sub.previewReady:
-						for _, event := range auto.events.takePreviews(sub) {
+					case <-sub.Ready():
+						for _, event := range testReview(auto).TakePreviews(sub) {
 							if event.Preview == nil || len(event.Preview.Files) == 0 {
 								continue
 							}
@@ -760,12 +761,12 @@ func TestExecTrackSiblingWindowsCannotShareFutureReport(t *testing.T) {
 	t.Parallel()
 	u, hub := newTrackedAppServerUI(t)
 	workspace := t.TempDir()
-	auto, stop := newAutoLiveDiff(t.Context())
-	defer stop()
-	auto.enabled.Store(true)
-	auto.events.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
-	sub := auto.events.subscribe()
-	proxy := &mekugiProxy{execTrack: hub.execTrackHub, execWindows: &execWindowRegistry{tracker: hub.execTrackHub}, autoLiveDiff: auto}
+	auto := newLivePreview(t.Context())
+	defer auto.Close()
+	auto.Enable()
+	setLiveScope(auto, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
+	sub := testReview(auto).Subscribe()
+	proxy := &mekugiProxy{execTrack: hub.execTrackHub, execWindows: &execWindowRegistry{tracker: hub.execTrackHub}, review: testReview(auto)}
 	transform := &mekugiResponseTransform{proxy: proxy, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
 	script := "cat > source.go <<'EOF'\nafter\nEOF\ngo test ./..."
 	for _, id := range []string{"one", "two"} {
@@ -795,8 +796,8 @@ func TestExecTrackSiblingWindowsCannotShareFutureReport(t *testing.T) {
 	defer timer.Stop()
 	for len(seen) != 2 {
 		select {
-		case <-sub.previewReady:
-			for _, event := range auto.events.takePreviews(sub) {
+		case <-sub.Ready():
+			for _, event := range testReview(auto).TakePreviews(sub) {
 				if event.Preview == nil || len(event.Preview.Files) == 0 {
 					continue
 				}

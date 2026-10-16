@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	"github.com/yusing/mekugi/libraries/legacycall"
 
@@ -21,7 +22,6 @@ import (
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
-	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
@@ -135,21 +135,8 @@ func readNativePatchFile(path string) (content string, exists bool, err error) {
 	if !info.Mode().IsRegular() || info.Size() > maxNativePatchFileBytes {
 		return "", true, errors.New("file is not a bounded regular file")
 	}
-	content, err = readNativeText(file, maxNativePatchFileBytes, "file exceeds capture capacity or is not UTF-8")
+	content, err = sourceparse.ReadText(file, maxNativePatchFileBytes, "file exceeds capture capacity or is not UTF-8")
 	return content, true, err
-}
-
-// readNativeText shares bounded text decoding; callers own file identity,
-// existence, opening policy and operation-specific capacity diagnostics.
-func readNativeText(file *os.File, limit int, invalid string) (string, error) {
-	data, err := io.ReadAll(io.LimitReader(file, int64(limit)+1))
-	if err != nil {
-		return "", err
-	}
-	if len(data) > limit || !utf8.Valid(data) {
-		return "", errors.New(invalid)
-	}
-	return string(data), nil
 }
 
 func captureNativePatch(input, workspace string) (nativePatchObservation, error) {
@@ -617,10 +604,10 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 	return nil
 }
 
-func nativePatchPreview(input string) (diffview.Preview, bool) {
+func nativePatchPreview(input string) (previewmodel.Preview, bool) {
 	// Incomplete input is useful provisional display, never application evidence.
 	if input != "*** Begin Patch" && !strings.HasPrefix(input, "*** Begin Patch\n") && !strings.HasPrefix(input, "*** Begin Patch\r\n") {
-		return diffview.Preview{}, false
+		return previewmodel.Preview{}, false
 	}
-	return diffview.Preview{Input: input, DiffText: true, Status: diffview.PreviewEdit}, true
+	return previewmodel.Preview{Input: input, DiffText: true, Status: previewmodel.PreviewEdit}, true
 }

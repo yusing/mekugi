@@ -201,12 +201,12 @@ func (u *appServerUI) releaseRetired(root string) {
 // resetDiffScope starts the saved Diff over for a resumed root thread; its
 // restoration then includes only that thread and its descendants.
 func (u *appServerUI) resetDiffScope() {
-	if u.shell == nil || u.shell.auto == nil {
+	if u.shell == nil || u.shell.review == nil {
 		return
 	}
 	u.shell.diff.resetScope()
 	u.shell.liveDock, u.shell.diffFailure, u.shell.diffUnseen = diffview.PreviewPane{}, "", false
-	u.shell.auto.resetScope()
+	u.shell.review.ResetScope()
 }
 
 func (u *appServerUI) filterCommands(query string) {

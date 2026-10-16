@@ -6,12 +6,10 @@ import (
 	"context"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
-
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-
-	"github.com/yusing/mekugi/libraries/shellinstrumentation"
-
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	json "encoding/json/v2"
 	"errors"
@@ -28,6 +26,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/internal/livediff"
+
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 	"golang.org/x/sys/unix"
 )
@@ -238,7 +237,7 @@ func TestExecTrackCapturesMktempCreation(t *testing.T) {
 			if err != nil || strings.Contains(net, "entry") {
 				t.Fatalf("creation and deletion do not cancel: %q, %v", net, err)
 			}
-			data, err := resumed.liveDiffSnapshot(next.ctx, liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {creation.ExecutingThread: true, "stock-thread": true}}})
+			data, err := resumed.liveDiffSnapshot(next.ctx, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {creation.ExecutingThread: true, "stock-thread": true}}})
 			if err != nil {
 				t.Fatal(err)
 			}

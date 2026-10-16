@@ -303,8 +303,8 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 		}
 		u.observeCost(p.ThreadID, agent)
 	case "turn/started":
-		if u.proxy != nil && u.proxy.autoLiveDiff != nil {
-			u.proxy.autoLiveDiff.events.setPreviewTurn(p.ThreadID, p.Turn.ID, true)
+		if u.proxy != nil {
+			u.proxy.review.Preview().SetTurn(p.ThreadID, p.Turn.ID, true)
 		}
 		agent := s.agent(s.path(p.ThreadID))
 		agent.WorkTimer.update(true, now)

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/charmbracelet/x/ansi"
@@ -16,10 +18,10 @@ func TestLiveDiffPreviewBoundaryExpectations(t *testing.T) {
 	t.Parallel()
 	workspace := t.TempDir()
 	writeTestFile(t, filepath.Join(workspace, "boundary-python-target.go"), previewFiles["internal/pane/launch.go"])
-	broker := newLiveDiffBroker(t.Context())
-	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"root": true}}})
-	sub := broker.subscribe()
-	<-sub.events
+	broker := newLivePreview(t.Context())
+	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"root": true}}})
+	sub := testReview(broker).Subscribe()
+	<-sub.Events()
 	var pane diffview.PreviewPane
 	baseline := liveDiffPreviewWorker{ctx: t.Context(), kind: applyPatchToolName}
 	previous, _ := baseline.project("*** Begin Patch\n*** Add File: previous.txt\n+PREVIOUS DIFF\n*** End Patch\n", workspace, true)
@@ -36,10 +38,10 @@ func TestLiveDiffPreviewBoundaryExpectations(t *testing.T) {
 			}
 			preview.ID, preview.Workspace, preview.Thread = fmt.Sprint(index), workspace, "root"
 			if !recognized {
-				preview.Status = diffview.PreviewEdit
+				preview.Status = previewmodel.PreviewEdit
 			}
-			broker.publishPreview(preview, false)
-			for _, event := range broker.takePreviews(sub) {
+			broker.Update(preview, false)
+			for _, event := range testReview(broker).TakePreviews(sub) {
 				if event.Preview != nil {
 					pane.Update(*event.Preview)
 				}

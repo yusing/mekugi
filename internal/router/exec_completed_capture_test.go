@@ -8,9 +8,10 @@ import (
 	"testing"
 	"time"
 
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 
-	"github.com/yusing/mekugi/internal/ui/diffview"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
@@ -49,11 +50,11 @@ func TestExecCompletedCaptureOwnershipRetryAndWithdrawal(t *testing.T) {
 			registry := &execWindowRegistry{}
 			registry.open(&execWindow{ref: "cell", thread: "main", turn: "turn", roots: []string{workspace}})
 			defer registry.close("cell")
-			broker := newLiveDiffBroker(t.Context())
-			broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
-			sub := broker.subscribe()
+			broker := newLivePreview(t.Context())
+			setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
+			sub := testReview(broker).Subscribe()
 			capture := &execPreviewCapture{registry: registry, ref: "cell", observation: observation}
-			preview := diffview.Preview{Workspace: workspace, Thread: "main", Turn: "turn"}
+			preview := previewmodel.Preview{Workspace: workspace, Thread: "main", Turn: "turn"}
 			if scenario == "snapshot retry" || scenario == "unrelated overlap" {
 				capture.snapshots = newWorkspaceSnapshots(t.TempDir())
 				defer capture.snapshots.close()
@@ -95,7 +96,7 @@ func TestExecCompletedCaptureOwnershipRetryAndWithdrawal(t *testing.T) {
 			if !strings.Contains(capture.text, "+1 -1") {
 				t.Fatal("completed edit lacks counts", capture.text)
 			}
-			for _, event := range broker.takePreviews(sub) {
+			for _, event := range testReview(broker).TakePreviews(sub) {
 				if event.Preview != nil {
 					u.shell.preview(*event.Preview, false)
 				}
@@ -118,7 +119,7 @@ func TestExecCompletedCaptureOwnershipRetryAndWithdrawal(t *testing.T) {
 				tracking.matches[commands[0].Command].track.segments = append(tracking.matches[commands[0].Command].track.segments, execTrackSegment{edit: true, began: true, ended: true})
 				capture.next = time.Time{}
 				capture.update(t.Context(), broker, preview, tracking, tracking.state())
-				for _, event := range broker.takePreviews(sub) {
+				for _, event := range testReview(broker).TakePreviews(sub) {
 					if event.Preview != nil {
 						u.shell.preview(*event.Preview, false)
 					}

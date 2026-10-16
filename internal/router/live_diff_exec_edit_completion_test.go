@@ -12,13 +12,14 @@ import (
 	"testing"
 	"time"
 
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 
-	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 func TestUISnapshotNativeMoveKeepsTranscript(t *testing.T) {
@@ -32,12 +33,12 @@ func TestUISnapshotNativeMoveKeepsTranscript(t *testing.T) {
 	if !ok || observation == nil || len(observation.Files) == 0 {
 		t.Fatal("move lost its retained capture")
 	}
-	auto, stop := newAutoLiveDiff(t.Context())
-	defer stop()
-	auto.enabled.Store(true)
-	auto.events.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
-	sub := auto.events.subscribe()
-	proxy := &mekugiProxy{autoLiveDiff: auto, execWindows: &execWindowRegistry{}}
+	auto := newLivePreview(t.Context())
+	defer auto.Close()
+	auto.Enable()
+	setLiveScope(auto, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
+	sub := testReview(auto).Subscribe()
+	proxy := &mekugiProxy{review: testReview(auto), execWindows: &execWindowRegistry{}}
 	transform := &mekugiResponseTransform{proxy: proxy, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
 	transform.openExecWindow("cell", observation, nil)
 	defer proxy.execWindows.close("cell")
@@ -49,7 +50,7 @@ func TestUISnapshotNativeMoveKeepsTranscript(t *testing.T) {
 		t.Fatal(err)
 	}
 	u := nativeBatchFixture(t)
-	for _, event := range auto.events.takePreviews(sub) {
+	for _, event := range testReview(auto).TakePreviews(sub) {
 		if event.Preview != nil {
 			u.shell.preview(*event.Preview, false)
 		}
@@ -106,13 +107,13 @@ func TestExecEditCompletionFastPythonWriteWhileTestRuns(t *testing.T) {
 	if line, err := bufio.NewReader(output).ReadString('\n'); err != nil || line != "test running\n" {
 		t.Fatalf("test did not start after Python edit: %q, %v", line, err)
 	}
-	broker := newLiveDiffBroker(ctx)
-	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
-	sub := broker.subscribe()
+	broker := newLivePreview(ctx)
+	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
+	sub := testReview(broker).Subscribe()
 	finished := make(chan struct{})
 	go func() {
 		defer close(finished)
-		runExecScopePreview(ctx, broker, *observation, diffview.Preview{ID: "fast-edit", Workspace: workspace, Thread: "thread", Caller: "/root"}, nil, nil)
+		runExecScopePreview(ctx, broker, *observation, previewmodel.Preview{ID: "fast-edit", Workspace: workspace, Thread: "thread", Caller: "/root"}, nil, nil)
 	}()
 	select {
 	case <-finished:
@@ -123,7 +124,7 @@ func TestExecEditCompletionFastPythonWriteWhileTestRuns(t *testing.T) {
 	u.ensureShell()
 	defer u.shell.diffScreen.Close()
 	completed := false
-	for _, event := range broker.takePreviews(sub) {
+	for _, event := range testReview(broker).TakePreviews(sub) {
 		if event.Preview != nil {
 			completed = completed || event.Preview.Complete
 			u.shell.preview(*event.Preview, false)
@@ -190,32 +191,32 @@ func TestExecEditCompletionBeforeFollowingTestFinishes(t *testing.T) {
 	observation, path := execEditThenTestObservation(t, workspace)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	broker := newLiveDiffBroker(ctx)
-	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
-	sub := broker.subscribe()
+	broker := newLivePreview(ctx)
+	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
+	sub := testReview(broker).Subscribe()
 	registry := &execWindowRegistry{}
 	registry.open(&execWindow{ref: "edit-then-test", roots: []string{workspace}, thread: "thread"})
 	registry.preview("edit-then-test", observation, broker, workspace, "thread", "/root", nil)
 	if err := os.WriteFile(path, []byte("aft"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	partial := waitExecScopePreview(t, broker, func(preview diffview.Preview) bool {
+	partial := waitExecScopePreview(t, broker, func(preview previewmodel.Preview) bool {
 		return preview.ID == "running:edit-then-test" && len(preview.Files) == 1
 	})
 	if partial.Complete || partial.Tool != "python3" {
 		t.Fatal("partial Python write completed the edit card")
 	}
 	// Consume the partial frame, as the native viewer does while the process runs.
-	broker.takePreviews(sub)
+	testReview(broker).TakePreviews(sub)
 	if err := os.WriteFile(path, []byte("after\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	var completed diffview.Preview
+	var completed previewmodel.Preview
 	deadline := time.After(5 * time.Second)
 	for completed.ID == "" {
 		select {
-		case <-sub.previewReady:
-			for _, event := range broker.takePreviews(sub) {
+		case <-sub.Ready():
+			for _, event := range testReview(broker).TakePreviews(sub) {
 				if event.Preview != nil && event.Preview.ID == "running:edit-then-test" && event.Preview.Complete {
 					completed = *event.Preview
 				}
@@ -224,7 +225,7 @@ func TestExecEditCompletionBeforeFollowingTestFinishes(t *testing.T) {
 			t.Fatal("completion was replaced by a removal marker before the native viewer could render it")
 		}
 	}
-	if completed.Tool != "python3" || completed.Status != diffview.PreviewRunning || completed.Footer != "observed edit" || len(completed.Files) != 1 {
+	if completed.Tool != "python3" || completed.Status != previewmodel.PreviewRunning || completed.Footer != "observed edit" || len(completed.Files) != 1 {
 		t.Fatalf("edit completion lost the observed content: %+v", completed)
 	}
 	registry.mu.Lock()
@@ -235,7 +236,7 @@ func TestExecEditCompletionBeforeFollowingTestFinishes(t *testing.T) {
 		t.Fatal("display completion closed the host observation window before test outcome")
 	}
 	// There is no completed change event until the host command finishes.
-	for _, event := range broker.takePreviews(sub) {
+	for _, event := range testReview(broker).TakePreviews(sub) {
 		if event.Kind == "change" {
 			t.Fatalf("edit preview persisted change evidence before host result: %+v", event)
 		}
@@ -249,7 +250,7 @@ func TestNativeUIExecEditCompletionRetainsWorkingStatusAndClearsDock(t *testing.
 	defer u.shell.diffScreen.Close()
 	u.status = "Working"
 	workspace := t.TempDir()
-	preview := diffview.Preview{ID: "running:edit-then-test", Workspace: workspace, Thread: "thread", Caller: "/root", Tool: nativeExecCommandToolName, Status: diffview.PreviewRunning, Input: "observed edit"}
+	preview := previewmodel.Preview{ID: "running:edit-then-test", Workspace: workspace, Thread: "thread", Caller: "/root", Tool: nativeExecCommandToolName, Status: previewmodel.PreviewRunning, Input: "observed edit"}
 	u.shell.preview(preview, false)
 	revealNativeDock(u.shell)
 	preview.Complete = true
@@ -271,7 +272,7 @@ func TestNativeUIExecEditCompletionRetainsWorkingStatusAndClearsDock(t *testing.
 		t.Fatal("completed dock did not clear independently of process Working status")
 	}
 	// A final host observation must not create a second, late completion card.
-	u.shell.preview(diffview.Preview{ID: "late:edit-then-test", Workspace: workspace, Tool: nativeExecCommandToolName, Complete: true, Status: diffview.PreviewRunning}, false)
+	u.shell.preview(previewmodel.Preview{ID: "late:edit-then-test", Workspace: workspace, Tool: nativeExecCommandToolName, Complete: true, Status: previewmodel.PreviewRunning}, false)
 	revealNativeDock(u.shell)
 	if len(u.shell.liveDock.Order) != 0 {
 		t.Fatal("late shell completion resurrected the dock")
@@ -286,7 +287,7 @@ func TestExecEditCompletionTerminalFrameBeforeHostExit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
+	connection, broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
 	terminal := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
 	terminal.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
 	registry := &execWindowRegistry{}

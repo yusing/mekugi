@@ -13,7 +13,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 
-	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
@@ -403,12 +403,12 @@ func (t *mekugiResponseTransform) openExecWindow(callID string, observation *exe
 		window.roots = execAddRoot(window.roots, t.directory)
 	}
 	t.proxy.execWindows.open(window, commands...)
-	if observation != nil && t.proxy.autoLiveDiff != nil && t.proxy.autoLiveDiff.enabled.Load() {
+	if live := t.proxy.review.Preview(); observation != nil && live.Enabled() {
 		var snapshots *workspaceSnapshots
 		if t.proxy.replayStore != nil {
 			snapshots = t.proxy.replayStore.snapshots
 		}
-		t.proxy.execWindows.preview(callID, *observation, t.proxy.autoLiveDiff.events, t.directory, t.threadID, t.operationCaller(), snapshots)
+		t.proxy.execWindows.preview(callID, *observation, live, t.directory, t.threadID, t.operationCaller(), snapshots)
 	}
 }
 
@@ -416,7 +416,7 @@ func (t *mekugiResponseTransform) openExecWindow(callID string, observation *exe
 // turning formatter/managed effects into persisted authored changes.
 func (t *mekugiResponseTransform) openStockExecWindow(callID string, authored *execObservation, patches []nativePatchObservation, commands []commandanalysis.Command, dynamic, codeMode bool) bool {
 	display := authored
-	if (authored == nil || authored.Class == execscope.Opaque.String()) && t.proxy != nil && t.proxy.autoLiveDiff != nil && t.proxy.autoLiveDiff.enabled.Load() {
+	if (authored == nil || authored.Class == execscope.Opaque.String()) && t.proxy != nil && t.proxy.review.Preview().Enabled() {
 		env := t.execCaptureEnvironment(patches)
 		env.previewOnly = true
 		if preview, ok := captureExecObservation(commands, dynamic, codeMode, env); ok {

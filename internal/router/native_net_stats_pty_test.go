@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
 // Exercise durable capture -> controller -> native roster -> real PTY frames,
@@ -45,10 +46,10 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 	u.agents.agents = []activityPaneAgent{{Name: "/root"}, {Name: "/root/worker"}}
 	u.shell.focus = 3
 	u.shell.diff.store = store
-	scope := liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}}
+	scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}}
 	refresh := func() {
 		t.Helper()
-		if _, err := u.shell.diff.applyEvent(t.Context(), liveDiffEvent{Kind: "scope", Scope: &scope, Resync: true}); err != nil {
+		if _, err := u.shell.diff.applyEvent(t.Context(), reviewEvent{Kind: "scope", Scope: &scope, Resync: true}); err != nil {
 			t.Fatal(err)
 		}
 	}

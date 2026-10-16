@@ -29,10 +29,11 @@ is comparison state, not record evidence, and its size and idle lifetime are
 bounded by the snapshot owner rather than record retention. The in-memory window
 registry is not durable authorization or process state. Replay validates
 retained identity without rerunning an edit or command.
-Last-seen content and running preview state are bounded, process-local auxiliary
-state. Last-seen lookups are isolated by durable record namespace; previews use
-the captured scope and the broker's viewer lifetime, not the request lifetime.
-Neither is restored as a process or execution authority during replay.
+Last-seen content is bounded, process-local auxiliary state isolated by durable
+record namespace. [Live preview](../../modules/livepreview/SPEC.md) owns provisional
+source baselines and display publication. Running observations use captured scope
+and the attached-view lifetime, not the request lifetime. Neither last-seen state
+nor previews restore a process or execution authority during replay.
 Fork and resume views use visible durable facts. Compaction removes invisible
 ancestry from one request view without deleting records needed by other
 branches. Expired output references and Codex process handles are not revived.

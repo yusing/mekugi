@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 )
 
 // A file-count limit must not make a small, enumerable edit batch incomplete.

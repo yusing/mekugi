@@ -6,12 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
 func TestLiveDiffTerminalFileNavigator(t *testing.T) {
@@ -21,7 +21,7 @@ func TestLiveDiffTerminalFileNavigator(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	connection, _, _ := liveDiffTestBroker(t, store, liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
+	connection, _, _ := liveDiffTestBroker(t, store, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
 	files := make([]diffmodel.ReviewFile, 40)
 	for i := range files {
 		path := filepath.Join(workspace, fmt.Sprintf("internal/router/file%03d.go", i))

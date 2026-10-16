@@ -10,7 +10,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/diffrender"
 
-	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 )
 
 const temporaryPlanSetup = "batch_plan_dir=$(mktemp -d /tmp/mekugi-batches.XXXXXX)\nexport MEKUGI_BATCH_PLAN_DIR=\"$batch_plan_dir\"\n"

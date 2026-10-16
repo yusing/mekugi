@@ -12,14 +12,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/textsanitize"
-
-	"github.com/yusing/mekugi/libraries/diffmodel"
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/textsanitize"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+
 	terminalui "github.com/yusing/mekugi/libraries/terminalui"
 	"golang.org/x/term"
 )
@@ -35,7 +35,7 @@ type liveDiffTerminalController struct {
 	callerCounts map[string]diffmodel.Counts
 	// netCounts is the unfiltered composed project outcome, not caller activity.
 	netCounts   *diffmodel.Counts
-	scope       liveDiffScope
+	scope       previewmodel.Scope
 	coverage    string
 	view        livediff.View
 	previewPane diffview.PreviewPane
@@ -413,17 +413,18 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 // resetScope drops the saved-diff projection before the view follows another
 // root thread. Display preferences survive; files, filters and scroll do not.
 func (c *liveDiffTerminalController) resetScope() {
-	c.data, c.scope, c.callerCounts, c.coverage = newLiveDiffData(), liveDiffScope{}, nil, "CONNECTING"
+	c.data, c.scope, c.callerCounts, c.coverage = newLiveDiffData(), previewmodel.Scope{}, nil, "CONNECTING"
 	c.netCounts = nil
 	c.view = livediff.View{Scroll: make(map[string]int)}
 	c.navigation = diffview.Navigation{Flat: c.navigation.Flat}
 	c.previewPane, c.back = diffview.PreviewPane{}, liveDiffBack{}
 	c.files, c.lines, c.offset, c.rendered = nil, nil, 0, nil
+	c.turnRevision = 0
 	c.awaitingResync, c.dirty = true, true
 	c.refreshChanges()
 }
 
-func (c *liveDiffTerminalController) applyEvent(ctx context.Context, event liveDiffEvent) (bool, error) {
+func (c *liveDiffTerminalController) applyEvent(ctx context.Context, event reviewEvent) (bool, error) {
 	if err := validateLiveDiffEvent(event); err != nil {
 		return false, err
 	}

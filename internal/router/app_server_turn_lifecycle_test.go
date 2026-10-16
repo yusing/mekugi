@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/ui/diffview"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
 func TestAppServerInterruptedWaitEndsBeforeContinue(t *testing.T) {
@@ -56,25 +56,25 @@ func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.ensureShell()
 	defer u.shell.diffScreen.Close()
-	auto, stop := newAutoLiveDiff(t.Context())
-	defer stop()
-	u.proxy = &mekugiProxy{autoLiveDiff: auto, execWindows: &execWindowRegistry{}}
+	auto := newLivePreview(t.Context())
+	defer auto.Close()
+	u.proxy = &mekugiProxy{review: testReview(auto), execWindows: &execWindowRegistry{}}
 	workspace := u.session.cwd
-	auto.events.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}})
-	u.shell.diff.scope = cloneLiveDiffScope(auto.events.scope)
-	sub := auto.events.subscribe()
+	setLiveScope(auto, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}})
+	u.shell.diff.scope = testReview(auto).Scope()
+	sub := testReview(auto).Subscribe()
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "turn"}})
-	main := diffview.Preview{ID: "edit", Workspace: workspace, Thread: "main", Turn: "turn", Caller: "/root", Status: diffview.PreviewRunning, Input: "observed edit"}
+	main := previewmodel.Preview{ID: "edit", Workspace: workspace, Thread: "main", Turn: "turn", Caller: "/root", Status: previewmodel.PreviewRunning, Input: "observed edit"}
 	child := main
 	child.ID, child.Thread, child.Caller = "child-edit", "child", "/root/child"
-	for _, preview := range []diffview.Preview{main, child} {
-		auto.events.publishPreview(preview, false)
+	for _, preview := range []previewmodel.Preview{main, child} {
+		auto.Update(preview, false)
 		u.shell.preview(preview, false)
 		revealNativeDock(u.shell)
 	}
 	queued := main
 	queued.ID, queued.Complete, queued.Evaluated, queued.Tool = "queued-final", true, true, applyPatchToolName
-	auto.events.publishPreview(queued, false)
+	auto.Update(queued, false)
 	canceled := false
 	u.proxy.execWindows.open(&execWindow{ref: "cell", thread: "main", turn: "turn", previewCancel: func() { canceled = true }})
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "turn", "status": "interrupted"}})
@@ -89,8 +89,8 @@ func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 		if active {
 			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "next"}})
 		}
-		auto.events.publishPreview(main, false)
-		for _, event := range auto.events.takePreviews(sub) {
+		auto.Update(main, false)
+		for _, event := range testReview(auto).TakePreviews(sub) {
 			if event.Kind == "preview" {
 				u.shell.applyDiff(t.Context(), event)
 			}
@@ -99,8 +99,8 @@ func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 			t.Fatal("late producer or queued completion reopened interrupted preview")
 		}
 	}
-	sub = auto.events.subscribe()
-	for _, event := range auto.events.takePreviews(sub) {
+	sub = testReview(auto).Subscribe()
+	for _, event := range testReview(auto).TakePreviews(sub) {
 		if event.Preview != nil && event.Preview.Thread == "main" && event.Preview.Status != "" {
 			t.Fatal("resubscription revived stale preview")
 		}

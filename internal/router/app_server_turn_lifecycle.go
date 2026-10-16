@@ -4,22 +4,17 @@ import (
 	"slices"
 	"time"
 
-	"github.com/yusing/mekugi/internal/ui/diffview"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
-
-type liveDiffPreviewTurn struct {
-	id       string
-	complete bool
-}
 
 // Native turn completion retires display state even when interrupted tools
 // never return. It neither finalizes capture nor stops a host-owned process.
 func (u *appServerUI) endTurnPreviews(thread, turn string) {
 	if u.proxy != nil {
 		u.proxy.execWindows.stopTurnPreviews(thread, turn)
-		if u.proxy.autoLiveDiff != nil {
-			u.proxy.autoLiveDiff.events.setPreviewTurn(thread, turn, false)
-			u.proxy.autoLiveDiff.finishTurn(u.session.cwd, thread, turn)
+		if live := u.proxy.review.Preview(); live != nil {
+			live.SetTurn(thread, turn, false)
+			live.FinishTurn(u.session.cwd, thread, turn)
 		}
 	}
 	if u.shell != nil {
@@ -31,7 +26,7 @@ func (u *appServerUI) endTurnPreviews(thread, turn string) {
 		for _, id := range slices.Clone(u.shell.liveDock.Order) {
 			view := u.shell.liveDock.Views[id]
 			if view != nil && view.Current.Thread == thread && view.Current.Turn == turn {
-				u.shell.preview(diffview.Preview{ID: id, Workspace: view.Current.Workspace, Thread: thread, Turn: turn}, false)
+				u.shell.preview(previewmodel.Preview{ID: id, Workspace: view.Current.Workspace, Thread: thread, Turn: turn}, false)
 			}
 		}
 	}
@@ -48,55 +43,6 @@ func (r *execWindowRegistry) stopTurnPreviews(thread, turn string) {
 			window.previewCancel()
 			window.previewCancel = nil
 		}
-	}
-}
-
-func (b *liveDiffBroker) setPreviewTurn(thread, turn string, active bool) {
-	if b == nil || thread == "" || turn == "" {
-		return
-	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if b.previewTurns == nil {
-		b.previewTurns = make(map[string]liveDiffPreviewTurn)
-	}
-	previous, known := b.previewTurns[thread]
-	if !active && known && previous.id != turn {
-		return
-	}
-	if active && known && previous.id == turn {
-		return
-	}
-	b.previewTurns[thread] = liveDiffPreviewTurn{id: turn, complete: !active}
-	stale := func(p diffview.Preview) bool {
-		return p.Thread == thread && p.Turn != "" && (p.Turn != turn || !active)
-	}
-	retired := make(map[string]diffview.Preview)
-	b.previews = slices.DeleteFunc(b.previews, func(preview diffview.Preview) bool {
-		if !stale(preview) {
-			return false
-		}
-		retired[preview.ID] = preview
-		return true
-	})
-	for _, preview := range b.completedPreviews {
-		if stale(preview) {
-			retired[preview.ID] = preview
-		}
-	}
-	// A finished input frame may already be queued but not yet displayed.
-	// Replace it too, or draining the mailbox could reopen the interrupted dock.
-	if b.subscriber != nil {
-		for _, event := range b.subscriber.previews {
-			preview := *event.Preview
-			if stale(preview) {
-				retired[preview.ID] = preview
-			}
-		}
-	}
-	b.completedPreviews = slices.DeleteFunc(b.completedPreviews, stale)
-	for id, preview := range retired {
-		b.emitPreviewLocked(diffview.Preview{ID: id, Workspace: preview.Workspace, Thread: thread, Turn: preview.Turn})
 	}
 }
 

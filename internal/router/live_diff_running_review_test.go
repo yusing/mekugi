@@ -10,9 +10,9 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/yusing/mekugi/internal/execscope"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
-	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 )
 
 func TestExecRunningPreviewOmitsOversizedFile(t *testing.T) {
@@ -31,13 +31,13 @@ func TestExecRunningPreviewOmitsOversizedFile(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		broker := newLiveDiffBroker(ctx)
-		broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{root: {"thread": true}}})
-		go runExecScopePreview(ctx, broker, execObservation{Class: execscope.Scoped.String(), Files: []execFileSnapshot{before}}, diffview.Preview{ID: "oversized", Workspace: root, Thread: "thread"}, nil, nil)
+		broker := newLivePreview(ctx)
+		setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{root: {"thread": true}}})
+		go runExecScopePreview(ctx, broker, execObservation{Class: execscope.Scoped.String(), Files: []execFileSnapshot{before}}, previewmodel.Preview{ID: "oversized", Workspace: root, Thread: "thread"}, nil, nil)
 		time.Sleep(time.Second)
 		synctest.Wait()
-		if len(broker.previews) != 0 {
-			t.Fatalf("unavailable content opened a live card: %+v", broker.previews)
+		if len(broker.Current()) != 0 {
+			t.Fatalf("unavailable content opened a live card: %+v", broker.Current())
 		}
 		cancel()
 	})
@@ -65,12 +65,12 @@ func TestLiveDiffSocketAndNewRegularFile(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		broker := newLiveDiffBroker(ctx)
-		broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{root: {"thread": true}}})
-		go runExecScopePreview(ctx, broker, execObservation{Files: []execFileSnapshot{before, beforeRegular}}, diffview.Preview{ID: "socket", Workspace: root, Thread: "thread"}, nil, nil)
+		broker := newLivePreview(ctx)
+		setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{root: {"thread": true}}})
+		go runExecScopePreview(ctx, broker, execObservation{Files: []execFileSnapshot{before, beforeRegular}}, previewmodel.Preview{ID: "socket", Workspace: root, Thread: "thread"}, nil, nil)
 		time.Sleep(time.Second)
 		synctest.Wait()
-		preview, _ := broker.previewLocked("socket")
+		preview, _ := currentLivePreview(broker, "socket")
 		if len(preview.Files) != 1 || preview.Files[0].AfterPath != regular || !strings.Contains(preview.Files[0].Diff, "+new source") {
 			t.Fatalf("socket displayed or new regular file hidden: %+v", preview)
 		}
@@ -101,14 +101,14 @@ func TestExecRunningPreviewRetriesBudgetedFiles(t *testing.T) {
 		}
 	}
 	ctx, cancel := context.WithCancel(t.Context())
-	broker := newLiveDiffBroker(ctx)
-	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{root: {"thread": true}}})
+	broker := newLivePreview(ctx)
+	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{root: {"thread": true}}})
 	const previewID = "running:budgeted"
-	go runExecScopePreview(ctx, broker, execObservation{Class: execscope.Scoped.String(), Files: files}, diffview.Preview{
+	go runExecScopePreview(ctx, broker, execObservation{Class: execscope.Scoped.String(), Files: files}, previewmodel.Preview{
 		ID: previewID, Workspace: root, Thread: "thread", Caller: "budget-test",
 	}, nil, nil)
-	preview := waitExecScopePreview(t, broker, func(preview diffview.Preview) bool {
-		return preview.ID == previewID && preview.Status == diffview.PreviewRunning && len(preview.Files) == 2
+	preview := waitExecScopePreview(t, broker, func(preview previewmodel.Preview) bool {
+		return preview.ID == previewID && preview.Status == previewmodel.PreviewRunning && len(preview.Files) == 2
 	})
 	byPath := make(map[string]string, len(preview.Files))
 	for _, file := range preview.Files {

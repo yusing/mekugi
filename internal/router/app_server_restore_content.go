@@ -2,6 +2,7 @@ package router
 
 import (
 	"cmp"
+
 	json "encoding/json/v2"
 	"fmt"
 	"slices"
@@ -48,10 +49,10 @@ func (u *appServerUI) restorePaneContent(root appServerThreadInfo) error {
 }
 
 func (u *appServerUI) restoreDiffThread(info appServerThreadInfo, root bool) {
-	if u.shell == nil || u.shell.auto == nil {
+	if u.shell == nil || u.shell.review == nil {
 		return
 	}
-	u.shell.auto.includeThread(info.Cwd, info.ID, root)
+	u.shell.review.IncludeThread(info.Cwd, info.ID, root)
 	if root {
 		u.shell.diff.workspace = info.Cwd
 	}
@@ -260,11 +261,9 @@ func (u *appServerUI) finishRestoredContent() error {
 	if r == nil || !r.listed || r.next < len(r.order) {
 		return nil
 	}
-	if u.shell != nil && u.shell.auto != nil && u.shell.diffFailure == "" {
-		a := u.shell.auto
-		a.mu.Lock()
-		scope := cloneLiveDiffScope(a.scope)
-		a.mu.Unlock()
+	if u.shell != nil && u.shell.review != nil && u.shell.diff.store != nil && u.shell.diffFailure == "" {
+		a := u.shell.review
+		scope := a.Scope()
 		for workspace, threads := range scope.Workspaces {
 			for thread := range threads {
 				if !u.shell.diff.scope.Workspaces[workspace][thread] {

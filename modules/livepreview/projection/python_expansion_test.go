@@ -1,6 +1,7 @@
-package router
+package projection
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -86,7 +87,7 @@ func TestLiveDiffPythonExpansionRejectsUnsafeOrUnknownExpressions(t *testing.T) 
 		"invalid strip arity":                   "s = s.strip('o', 'd')",
 		"invalid split empty separator":         "s = ''.join(s.split(''))",
 		"out of range unicode index":            "s = s[100]",
-		"oversize repetition":                   fmt.Sprintf("s = 'x' * %d", liveDiffPreviewFileLimit+1),
+		"oversize repetition":                   fmt.Sprintf("s = 'x' * %d", FileLimit+1),
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -105,14 +106,14 @@ func TestLiveDiffPythonExpansionArrivingExpressions(t *testing.T) {
 			directory := t.TempDir()
 			before := map[string]string{"target.txt": "old\n"}
 			writeTestFile(t, filepath.Join(directory, "target.txt"), before["target.txt"])
-			worker := liveDiffPreviewWorker{ctx: t.Context()}
+			worker := struct{ ctx context.Context }{ctx: t.Context()}
 			prefix := "python3 - <<'PY'\ns = open('target.txt').read()\nopen('target.txt', 'w').write(" + strings.TrimPrefix(tc.body, "s = ")
-			files, recognized, err := worker.projectShell(prefix, directory, false)
+			files, _, recognized, err := Shell(worker.ctx, prefix, directory, false)
 			if err != nil || !recognized {
 				t.Fatalf("arriving expression recognized=%v err=%v files=%+v", recognized, err, files)
 			}
 			assertPythonExpansionDiffs(t, directory, files, before, map[string]string{"target.txt": strings.TrimSuffix(tc.after, "\n")})
-			files, recognized, err = worker.projectShell(prefix+strings.TrimSuffix(tc.completion, "\n")+")\nPY\n", directory, true)
+			files, _, recognized, err = Shell(worker.ctx, prefix+strings.TrimSuffix(tc.completion, "\n")+")\nPY\n", directory, true)
 			if err != nil || !recognized {
 				t.Fatalf("completed expression recognized=%v err=%v files=%+v", recognized, err, files)
 			}
@@ -123,8 +124,8 @@ func TestLiveDiffPythonExpansionArrivingExpressions(t *testing.T) {
 		directory := t.TempDir()
 		before := map[string]string{"target.txt": "old\n"}
 		writeTestFile(t, filepath.Join(directory, "target.txt"), before["target.txt"])
-		worker := liveDiffPreviewWorker{ctx: t.Context()}
-		files, _, err := worker.projectShell("python3 - <<'PY'\ns = open('target.txt').read()\ns = s.replace('o' + '''ld\n", directory, false)
+		worker := struct{ ctx context.Context }{ctx: t.Context()}
+		files, _, _, err := Shell(worker.ctx, "python3 - <<'PY'\ns = open('target.txt').read()\ns = s.replace('o' + '''ld\n", directory, false)
 		if err != nil {
 			t.Fatal(err)
 		}

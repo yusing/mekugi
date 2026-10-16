@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
@@ -81,7 +83,7 @@ type Session struct {
 
 // RunSession owns the private router for one wrapped Codex process.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func RunSession(activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, recovered *recovery.Service, segments *segmentservice.Service, changes changes.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, guards []binding.ShellApproval, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
+func RunSession(live *previewmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, recovered *recovery.Service, segments *segmentservice.Service, changes changes.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, guards []binding.ShellApproval, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
 	if diagnostics == nil && options.captureOutput != "" {
 		return errors.New("transport diagnostics are unavailable")
 	}
@@ -269,11 +271,10 @@ func RunSession(activity *activitymodel.Service, service *history.Service, prefs
 		replayStore.storageNotice = func(session, thread, phase, message string) {
 			issues.cleanupNotice(session, thread, phase, message)
 		}
-		var stopLiveDiff func()
-		mekugiCalls.autoLiveDiff, stopLiveDiff = newAutoLiveDiff(ctx)
-		mekugiCalls.autoLiveDiff.notice = func(category, message string) { issues.addNotice("", category, message) }
-		replayStore.liveDiff = mekugiCalls.autoLiveDiff.events.publish
-		defer stopLiveDiff()
+		mekugiCalls.review = newSavedReview(ctx, live)
+		defer mekugiCalls.review.Close()
+		mekugiCalls.review.notice = func(category, message string) { issues.addNotice("", category, message) }
+		replayStore.liveDiff = mekugiCalls.review.Publish
 		mekugiCalls.replayStore = replayStore
 		mekugiCalls.usage.Configure(replayStore.directory, replayStore.writes, replayStore.retentionLimits(), func(thread string, err error) {
 			issues.addThreadNotice("", thread, "usage_storage", "Provider usage could not be retained or restored: "+err.Error())

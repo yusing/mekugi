@@ -19,6 +19,7 @@ import (
 	"sync"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -30,7 +31,7 @@ type mekugiProxy struct {
 	registry         *toolRegistry
 	inputProjections []binding.InputProjection
 	usage            *accounting.Service
-	autoLiveDiff     *autoLiveDiff
+	review           *savedReview
 	activity         *subagentActivity
 	guard            *shellApprovalServer
 	execTrack        *execTrackHub // Set for the UI when command shells are tracked.
@@ -64,6 +65,7 @@ func newMekugiProxy(registry *toolRegistry, projections []binding.InputProjectio
 	activity.usage = usage
 	proxy := &mekugiProxy{
 		registry:         registry,
+		review:           newSavedReview(context.Background(), nil),
 		inputProjections: slices.Clone(projections),
 		usage:            activity.usage,
 		activity:         activity,

@@ -4,32 +4,29 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
-	"errors"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 	"unicode"
-	"unicode/utf8"
+
+	"github.com/yusing/mekugi/modules/livepreview/projection"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
-
-	"github.com/yusing/mekugi/libraries/pathdisplay"
-
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
-	"mvdan.cc/sh/v3/syntax"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
 type liveDiffPreviewWorker struct {
 	mu        sync.Mutex
 	ctx       context.Context
 	cancel    context.CancelFunc
-	broker    *liveDiffBroker
-	preview   diffview.Preview
+	broker    *previewmodel.Session
+	preview   previewmodel.Preview
 	input     strings.Builder
 	wake      chan struct{}
 	done      chan struct{}
@@ -38,58 +35,18 @@ type liveDiffPreviewWorker struct {
 	kind      string
 }
 
-// Large previews retain a bounded suffix of the actual unified diff.
-func boundLiveDiffPreview(preview diffview.Preview) diffview.Preview {
-	const limit = 48 << 10
-	if len(responses.MustMarshalJSON(preview)) <= limit {
-		return preview
-	}
-	if len(preview.Files) != 0 {
-		var tail string
-		for index := len(preview.Files) - 1; index >= 0 && len(tail) < 16<<10; index-- {
-			file := preview.Files[index]
-			if file.BeforePath != "" && file.AfterPath == "" {
-				continue // Deleted files do not have live source cards.
-			}
-			diff := file.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(preview.Workspace, file.BeforePath), pathdisplay.ForWorkspace(preview.Workspace, file.AfterPath))
-			if len(diff) > 16<<10 {
-				diff = diff[len(diff)-(16<<10):]
-			}
-			tail = diff + tail
-		}
-		preview.Input = tail
-		preview.Files = nil
-		if tail == "" {
-			preview.Status = "" // Withdraw a deletion-only oversized preview.
-			return preview
-		}
-		preview.DiffText, preview.Truncated = true, true
-	}
-	for preview.Input != "" && len(responses.MustMarshalJSON(preview)) > limit {
-		cut := max(1, len(preview.Input)/2)
-		for cut < len(preview.Input) && !utf8.RuneStart(preview.Input[cut]) {
-			cut++
-		}
-		preview.Input = preview.Input[cut:]
-		preview.Truncated = true
-	}
-	for preview.Input != "" && !utf8.RuneStart(preview.Input[0]) {
-		preview.Input = preview.Input[1:]
-	}
-	return preview
-}
-
-func startLiveDiffPreview(ctx context.Context, broker *liveDiffBroker, workspace, thread string, kind ...string) *liveDiffPreviewWorker {
-	ctx, cancel := context.WithCancel(withLiveDiffSources(ctx))
+func startLiveDiffPreview(ctx context.Context, broker *previewmodel.Session, workspace, thread string, kind ...string) *liveDiffPreviewWorker {
+	ctx, cancel := context.WithCancel(projection.WithSources(ctx, false))
 	worker := &liveDiffPreviewWorker{
 		ctx: ctx, cancel: cancel, broker: broker,
-		preview: diffview.Preview{ID: rand.Text(), Workspace: workspace, Thread: thread},
+		preview: previewmodel.Preview{ID: rand.Text(), Workspace: workspace, Thread: thread},
 		wake:    make(chan struct{}, 1), done: make(chan struct{}),
 	}
 	if len(kind) != 0 {
 		worker.kind = kind[0]
 	}
-	go worker.run()
+	stop := context.AfterFunc(broker.Context(), cancel)
+	go func() { defer stop(); worker.run() }()
 	return worker
 }
 
@@ -106,8 +63,8 @@ func (t *mekugiResponseTransform) previewStockDelta(itemID, kind, delta string) 
 	if delta == "" {
 		return
 	}
-	auto := t.proxy.autoLiveDiff
-	if auto == nil || !auto.enabled.Load() {
+	auto := t.proxy.review.Preview()
+	if auto == nil || !auto.Enabled() {
 		return
 	}
 	if t.previews == nil {
@@ -115,8 +72,7 @@ func (t *mekugiResponseTransform) previewStockDelta(itemID, kind, delta string) 
 	}
 	worker := t.previews[itemID]
 	if worker == nil {
-		auto.requestLaunch(t.directory, t.threadID)
-		worker = startLiveDiffPreview(t.ctx, auto.events, t.directory, t.threadID, kind)
+		worker = startLiveDiffPreview(t.ctx, auto, t.directory, t.threadID, kind)
 		worker.mu.Lock()
 		worker.preview.Caller = t.operationCaller()
 		worker.preview.Turn = t.shellTurnID
@@ -133,8 +89,8 @@ func (worker *liveDiffPreviewWorker) appendDelta(delta string) {
 			worker.closed = true
 			worker.cancel()
 			worker.preview.Files = nil
-			worker.preview.Status = diffview.PreviewEdit
-			worker.broker.publishPreview(worker.preview, false)
+			worker.preview.Status = previewmodel.PreviewEdit
+			worker.broker.Update(worker.preview, false)
 		} else {
 			worker.input.WriteString(delta)
 			select {
@@ -170,7 +126,7 @@ func (worker *liveDiffPreviewWorker) finish(input string) {
 	if len(input) > 256<<10 {
 		worker.closed = true
 		worker.cancel()
-		worker.broker.discardPreview(worker.preview.ID)
+		worker.broker.Discard(worker.preview.ID)
 		return
 	}
 	worker.input.Reset()
@@ -190,13 +146,13 @@ func (worker *liveDiffPreviewWorker) stop() {
 	}
 	worker.closed = true
 	worker.cancel()
-	worker.broker.discardPreview(worker.preview.ID)
+	worker.broker.Discard(worker.preview.ID)
 }
 
-func (w *liveDiffPreviewWorker) projectStockPreview(input, workspace string, final bool) (diffview.Preview, bool) {
+func (w *liveDiffPreviewWorker) projectStockPreview(input, workspace string, final bool) (previewmodel.Preview, bool) {
 	preview, ok := nativePatchPreview(input)
 	if !ok {
-		return diffview.Preview{}, false
+		return previewmodel.Preview{}, false
 	}
 	projectionContext := w.ctx
 	if final {
@@ -230,7 +186,7 @@ func (w *liveDiffPreviewWorker) run() {
 	defer func() {
 		w.mu.Lock()
 		w.closed = true
-		w.broker.discardPreview(w.preview.ID)
+		w.broker.Discard(w.preview.ID)
 		w.mu.Unlock()
 	}()
 	// Only edits are displayed, revealed by received line. JSON and JavaScript
@@ -307,7 +263,7 @@ func (w *liveDiffPreviewWorker) run() {
 		}
 		revealed = shown
 		if final && input == "" {
-			w.broker.publishPreview(preview, false)
+			w.broker.Update(preview, false)
 			continue
 		}
 		projected, recognized := w.project(input, preview.Workspace, final)
@@ -317,7 +273,7 @@ func (w *liveDiffPreviewWorker) run() {
 		}
 		if !recognized {
 			// A retained projection stays until a later frame replaces it.
-			projected = diffview.Preview{Status: diffview.PreviewEdit}
+			projected = previewmodel.Preview{Status: previewmodel.PreviewEdit}
 		}
 		projected.Complete = final
 		projected.ID, projected.Workspace, projected.Thread, projected.Caller = preview.ID, preview.Workspace, preview.Thread, preview.Caller
@@ -336,10 +292,10 @@ func (w *liveDiffPreviewWorker) run() {
 			}
 		}
 		w.mu.Lock()
-		if final && projected.Status == diffview.PreviewUnavailable+"patch cannot be projected" {
+		if final && projected.Status == previewmodel.PreviewUnavailable+"patch cannot be projected" {
 			// A speculative patch projection cannot establish failure or success.
 			// Clear any earlier preview and leave the result to the host tool.
-			w.broker.publishPreview(diffview.Preview{
+			w.broker.Update(previewmodel.Preview{
 				ID: preview.ID, Workspace: preview.Workspace, Thread: preview.Thread, Turn: preview.Turn, Complete: true,
 			}, false)
 			w.mu.Unlock()
@@ -348,8 +304,8 @@ func (w *liveDiffPreviewWorker) run() {
 		// One preview is in flight, with only the latest input sampled next.
 		// Final content and completion share one replaceable snapshot, so a slow
 		// viewer cannot receive only removal after losing the last content frame.
-		if !w.closed && (w.ctx.Err() == nil || final) && (final || !strings.HasPrefix(projected.Status, diffview.PreviewUnavailable)) {
-			w.broker.publishPreview(projected, false)
+		if !w.closed && (w.ctx.Err() == nil || final) && (final || !strings.HasPrefix(projected.Status, previewmodel.PreviewUnavailable)) {
+			w.broker.Update(projected, false)
 			if changed {
 				lastFiles, lastReveal = projected.Files, time.Now()
 			}
@@ -360,16 +316,16 @@ func (w *liveDiffPreviewWorker) run() {
 
 // project recognizes the edit in a call's received input. Command and script
 // text that is not an edit has no preview.
-func (w *liveDiffPreviewWorker) project(input, workspace string, final bool) (diffview.Preview, bool) {
-	shell := func(call codeModeShellCall) (diffview.Preview, bool) {
-		files, tool, recognized, err := w.projectShellWithTool(call.cmd, liveDiffWorkdir(workspace, call.workdir), final)
+func (w *liveDiffPreviewWorker) project(input, workspace string, final bool) (previewmodel.Preview, bool) {
+	shell := func(call codeModeShellCall) (previewmodel.Preview, bool) {
+		files, tool, recognized, err := projection.Shell(w.ctx, call.cmd, liveDiffWorkdir(workspace, call.workdir), final)
 		switch {
 		case recognized && call.dynamicWorkdir:
-			return diffview.Preview{Status: diffview.PreviewUnavailable + "edit target depends on a computed workdir"}, true
+			return previewmodel.Preview{Status: previewmodel.PreviewUnavailable + "edit target depends on a computed workdir"}, true
 		case !recognized || err != nil:
-			return diffview.Preview{}, recognized
+			return previewmodel.Preview{}, recognized
 		}
-		return diffview.Preview{Files: files, Tool: tool, Status: diffview.PreviewEdit}, true
+		return previewmodel.Preview{Files: files, Tool: tool, Status: previewmodel.PreviewEdit}, true
 	}
 	switch w.kind {
 	case applyPatchToolName:
@@ -377,7 +333,7 @@ func (w *liveDiffPreviewWorker) project(input, workspace string, final bool) (di
 	case nativeExecCommandToolName:
 		call, ok := liveDiffExecArguments(input)
 		if !ok {
-			return diffview.Preview{}, false
+			return previewmodel.Preview{}, false
 		}
 		return shell(call)
 	case "exec":
@@ -389,12 +345,12 @@ func (w *liveDiffPreviewWorker) project(input, workspace string, final bool) (di
 				case nativeExecCommandToolName:
 					var arguments map[string]json.RawMessage
 					if json.Unmarshal([]byte(responses.StringField(call, "arguments")), &arguments) != nil {
-						return diffview.Preview{}, false
+						return previewmodel.Preview{}, false
 					}
 					return shell(codeModeShellCall{cmd: responses.StringField(arguments, "cmd"), workdir: responses.StringField(arguments, "workdir")})
 				}
 			}
-			return diffview.Preview{}, false
+			return previewmodel.Preview{}, false
 		}
 		patches := stockLiteralPatchInputs(input)
 		if fragment := stockPatchFragment(input); fragment != "" {
@@ -407,7 +363,7 @@ func (w *liveDiffPreviewWorker) project(input, workspace string, final bool) (di
 		}
 		calls := codeModeShellFragments(input)
 		if len(calls) == 0 {
-			return diffview.Preview{}, false
+			return previewmodel.Preview{}, false
 		}
 		return shell(calls[len(calls)-1])
 	default:
@@ -450,168 +406,4 @@ func liveDiffWorkdir(workspace, workdir string) string {
 		return filepath.Join(workspace, workdir)
 	}
 	return workspace
-}
-
-// projectShell predicts literal shell and interpreter writes without running
-// the command. Recognized reports an edit even when its projection failed.
-func (w *liveDiffPreviewWorker) projectShell(program, directory string, final bool) ([]diffmodel.ReviewFile, bool, error) {
-	files, _, recognized, err := w.projectShellWithTool(program, directory, final)
-	return files, recognized, err
-}
-
-func (w *liveDiffPreviewWorker) projectShellWithTool(program, directory string, final bool) ([]diffmodel.ReviewFile, string, bool, error) {
-	statements, directory, partialLine, parsed := liveDiffShellStatements(program, directory)
-	if !final && !partialLine {
-		// A normal command's final operand may still be arriving. An open
-		// heredoc instead gates its decoded target content inside projection.
-		program = program[:strings.LastIndexByte(program, '\n')+1]
-		statements, directory, partialLine, parsed = liveDiffShellStatements(program, directory)
-	}
-	if !parsed {
-		return nil, "", false, nil
-	}
-	projectionContext := w.ctx
-	if final {
-		// Accepted final input outlives transport teardown, but projection
-		// remains independently bounded and never executes the command.
-		projectionContext = context.WithoutCancel(projectionContext)
-	}
-	ctx, cancel := context.WithTimeout(projectionContext, time.Second)
-	defer cancel()
-	var files []diffmodel.ReviewFile
-	var tools []string
-	recognized := false
-	seenPaths := make(map[string]struct{})
-	tainted := false
-	// A preview assumes each step of an `a && b` chain succeeds, as it does
-	// for separate statements.
-	statements = liveDiffShellSequence(statements)
-	for index, stmt := range statements {
-		if next, ok := liveDiffShellCd(stmt, directory); ok {
-			directory = next
-			continue
-		}
-		statementPartial := partialLine && index == len(statements)-1
-		projected, ok, err := liveDiffShellWriteStatement(ctx, stmt, directory, statementPartial, final)
-		if !ok {
-			if !liveDiffShellPreviewNeutral(stmt) {
-				tainted = true
-			}
-			continue
-		}
-		recognized = true
-		if tainted {
-			return nil, "", true, errors.New("edit follows unsupported shell state")
-		}
-		if err != nil {
-			return nil, "", true, err
-		}
-		if statementPartial && !final && len(projected) == 0 {
-			// Keep all previously displayed files while this statement waits
-			// for source, rather than publishing only its completed siblings.
-			return nil, "", true, nil
-		}
-		operationPaths := make(map[string]struct{})
-		for _, file := range projected {
-			if file.BeforePath != "" {
-				operationPaths[file.BeforePath] = struct{}{}
-			}
-			if file.AfterPath != "" {
-				operationPaths[file.AfterPath] = struct{}{}
-			}
-		}
-		for path := range operationPaths {
-			if _, exists := seenPaths[path]; exists {
-				return nil, "", true, errors.New("edits depend on an earlier operation")
-			}
-		}
-		for path := range operationPaths {
-			seenPaths[path] = struct{}{}
-		}
-		// Path-only operations constrain later predictions without arriving
-		// source content. No-op content writes likewise have no hunk to show.
-		projected = slices.DeleteFunc(projected, func(file diffmodel.ReviewFile) bool { return file.Diff == "" })
-		files = append(files, projected...)
-		if len(projected) > 0 {
-			if call, ok := stmt.Cmd.(*syntax.CallExpr); ok && len(call.Args) > 0 {
-				if name, literal := shellsyntax.Literal(call.Args[0]); literal {
-					name = shellsyntax.InterpreterIdentity(name)
-					if !slices.Contains(tools, name) {
-						tools = append(tools, name)
-					}
-				}
-			}
-		}
-	}
-	return files, strings.Join(tools, "+"), recognized, nil
-}
-
-// Cleanup only live state. An unconditional removal would overwrite an atomic
-// final snapshot still queued for a slow viewer with a contentless marker.
-func (b *liveDiffBroker) discardPreview(id string) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if b.removePreviewLocked(id) {
-		b.emitPreviewLocked(diffview.Preview{ID: id})
-	}
-}
-
-func (b *liveDiffBroker) publishPreview(preview diffview.Preview, remove bool) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if remove {
-		b.removePreviewLocked(preview.ID)
-		b.emitPreviewLocked(diffview.Preview{ID: preview.ID})
-		return
-	}
-	if turn, known := b.previewTurns[preview.Thread]; known && preview.Turn != "" && (turn.id != preview.Turn || turn.complete) {
-		return
-	}
-	if !b.scope.Workspaces[preview.Workspace][preview.Thread] {
-		return
-	}
-	at := slices.IndexFunc(b.previews, func(old diffview.Preview) bool { return old.ID == preview.ID })
-	if at < 0 && !preview.Complete && len(b.previews) >= 16 {
-		return
-	}
-	// Only source hunks can open live cards. Metadata and capture failures
-	// remain in the saved evidence, not a transcript-replacing empty preview.
-	preview.Files = slices.DeleteFunc(slices.Clone(preview.Files), func(file diffmodel.ReviewFile) bool {
-		added, removed := file.LineCounts()
-		return file.Binary || file.Link || added < 0 || removed < 0 || added+removed == 0
-	})
-	preview = boundLiveDiffPreview(preview)
-	if preview.Status == diffview.PreviewEdit && len(preview.Files) == 0 && (preview.Input == "" || preview.Input == "\n") {
-		// Incomplete fragments retain the latest displayed projection, including
-		// a bounded raw-diff window, never the preceding shell source. A lone
-		// newline is the pending stock-patch marker, not a new blank edit.
-		if previous, _ := b.previewLocked(preview.ID); len(previous.Files) != 0 || previous.DiffText {
-			preview.Files, preview.Input, preview.Tool = previous.Files, previous.Input, previous.Tool
-			preview.DiffText, preview.Truncated = previous.DiffText, previous.Truncated
-		}
-	}
-	if len(preview.Files) == 0 && strings.TrimSpace(preview.Input) == "" {
-		// Neither a patch header nor a status establishes a displayable hunk.
-		b.removePreviewLocked(preview.ID)
-		preview.Status, preview.Input = "", ""
-		b.emitPreviewLocked(preview)
-		return
-	}
-	if preview.Complete {
-		b.removePreviewLocked(preview.ID)
-		if preview.Evaluated {
-			b.completedPreviews = slices.DeleteFunc(b.completedPreviews, func(old diffview.Preview) bool {
-				return old.ID == preview.ID
-			})
-			if len(b.completedPreviews) == 16 {
-				b.completedPreviews = slices.Delete(b.completedPreviews, 0, 1)
-			}
-			b.completedPreviews = append(b.completedPreviews, preview)
-		}
-	} else if at >= 0 {
-		b.previews[at] = preview
-	} else {
-		b.previews = append(b.previews, preview)
-	}
-	b.emitPreviewLocked(preview)
 }

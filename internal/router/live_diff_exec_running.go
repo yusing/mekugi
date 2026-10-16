@@ -6,21 +6,20 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-
 	"github.com/yusing/mekugi/libraries/commandanalysis"
-	"github.com/yusing/mekugi/libraries/shellinstrumentation"
-
-	"github.com/yusing/mekugi/internal/execscope"
-
-	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/livepreview/projection"
+
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
 // The window registry owns display cancellation, not process continuation.
@@ -30,7 +29,7 @@ var execRunningPreviewSlots = make(chan struct{}, 16)
 
 const execRunningPreviewBytes = 1 << 20
 
-func (r *execWindowRegistry) preview(ref string, observation execObservation, broker *liveDiffBroker, workspace, thread, caller string, snapshots *workspaceSnapshots) {
+func (r *execWindowRegistry) preview(ref string, observation execObservation, broker *previewmodel.Session, workspace, thread, caller string, snapshots *workspaceSnapshots) {
 	// VCS effects use the same provenance admission as authored counts.
 	// Only source-content projections admit paths, never generic watch effects.
 	excludedVCS := func(origin string) bool {
@@ -45,7 +44,7 @@ func (r *execWindowRegistry) preview(ref string, observation execObservation, br
 	commands := observation.Commands
 	observation.Commands = nil
 	for _, command := range commands {
-		files, _ := execPreviewProjected(broker.ctx, execObservation{Files: observation.Files, Commands: []commandanalysis.Command{command}})
+		files, _ := execPreviewProjected(broker.Context(), execObservation{Files: observation.Files, Commands: []commandanalysis.Command{command}})
 		if len(files) == 0 {
 			continue
 		}
@@ -74,7 +73,7 @@ func (r *execWindowRegistry) preview(ref string, observation execObservation, br
 	default:
 		return
 	}
-	ctx, cancel := context.WithCancel(broker.ctx)
+	ctx, cancel := context.WithCancel(broker.Context())
 	window.previewCancel = cancel
 	tracking := window.tracking
 	if tracking == nil {
@@ -88,9 +87,9 @@ func (r *execWindowRegistry) preview(ref string, observation execObservation, br
 			segments, _ := shellinstrumentation.Split(command.Command)
 			directory := command.Workdir
 			for _, segment := range segments {
-				statements, _, _, _ := liveDiffShellStatements(segment.Source, directory)
+				statements, _, _, _ := shellsyntax.StreamingStatements(segment.Source, directory)
 				if len(statements) == 1 {
-					if next, ok := liveDiffShellCd(statements[0], directory); ok {
+					if next, ok := shellsyntax.LiteralCd(statements[0], directory); ok {
 						directory = next
 					}
 				}
@@ -107,7 +106,7 @@ func (r *execWindowRegistry) preview(ref string, observation execObservation, br
 	go func() {
 		defer func() { <-execRunningPreviewSlots }()
 		capture := &execPreviewCapture{registry: r, ref: ref, observation: observed, snapshots: snapshots}
-		runExecScopePreview(ctx, broker, observation, diffview.Preview{ID: "running:" + ref, Workspace: workspace, Thread: thread, Turn: turn, Caller: caller}, tracking, capture)
+		runExecScopePreview(ctx, broker, observation, previewmodel.Preview{ID: "running:" + ref, Workspace: workspace, Thread: thread, Turn: turn, Caller: caller}, tracking, capture)
 	}()
 }
 
@@ -162,25 +161,23 @@ func execScopePreviewFooter(observation execObservation) string {
 func execPreviewProjected(ctx context.Context, observation execObservation) (map[string]diffmodel.ReviewFile, bool) {
 	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
-	sources := &liveDiffSources{capturedOnly: true, files: make(map[liveDiffSourceKey]liveDiffSource)}
-	reader := reflect.ValueOf(liveDiffPreviewFile).Pointer()
+	ctx = projection.WithSources(ctx, true)
 	for _, file := range observation.Files {
-		if file.Error == "" && (file.Kind == execFileText || file.Kind == execFileAbsent) && len(file.Content) <= liveDiffPreviewFileLimit {
-			sources.files[liveDiffSourceKey{reader, file.Path}] = liveDiffSource{file.Content, file.Kind != execFileAbsent}
+		if file.Error == "" && (file.Kind == execFileText || file.Kind == execFileAbsent) && len(file.Content) <= projection.FileLimit {
+			projection.Prime(ctx, projection.ReadFile, file.Path, file.Content, file.Kind != execFileAbsent)
 		}
 	}
-	worker := liveDiffPreviewWorker{ctx: context.WithValue(ctx, liveDiffSourcesContext{}, sources)}
 	expected := make(map[string]diffmodel.ReviewFile)
 	complete := true
 	for _, command := range observation.Commands {
 		if ctx.Err() != nil {
 			return nil, false
 		}
-		if shell := shellInterpreterName(command.Shell); shell != "" && shell != "bash" && shell != "sh" {
+		if shell := shellsyntax.InterpreterIdentity(command.Shell); shell != "" && shell != "bash" && shell != "sh" {
 			complete = false
 			continue
 		}
-		files, _, err := worker.projectShell(command.Command, command.Workdir, true)
+		files, _, _, err := projection.Shell(ctx, command.Command, command.Workdir, true)
 		if err != nil {
 			complete = false
 			continue
@@ -230,7 +227,7 @@ type execPreviewCapture struct {
 	next        time.Time
 }
 
-func (c *execPreviewCapture) update(ctx context.Context, broker *liveDiffBroker, preview diffview.Preview, tracking *execPreviewTrack, state execPreviewState) {
+func (c *execPreviewCapture) update(ctx context.Context, broker *previewmodel.Session, preview previewmodel.Preview, tracking *execPreviewTrack, state execPreviewState) {
 	if state.completed <= c.completed || time.Now().Before(c.next) {
 		return
 	}
@@ -261,7 +258,7 @@ func (c *execPreviewCapture) update(ctx context.Context, broker *liveDiffBroker,
 		preview.ID, preview.Files = "observed:"+c.ref, files
 		preview.EditReceipt, preview.HostItems, preview.Complete = text, slices.Clone(state.calls), true
 		preview.Status, preview.Footer = "", "observed edit"
-		broker.publishPreview(preview, false)
+		broker.Update(preview, false)
 		c.text, c.calls = text, slices.Clone(state.calls)
 	}
 	if complete {
@@ -269,9 +266,9 @@ func (c *execPreviewCapture) update(ctx context.Context, broker *liveDiffBroker,
 	}
 }
 
-func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observation execObservation, preview diffview.Preview, tracking *execPreviewTrack, capture *execPreviewCapture) {
+func runExecScopePreview(ctx context.Context, broker *previewmodel.Session, observation execObservation, preview previewmodel.Preview, tracking *execPreviewTrack, capture *execPreviewCapture) {
 	preview.Tool = execPreviewTool(observation)
-	defer broker.discardRunningPreview(preview)
+	defer broker.DiscardRunning(preview)
 	expected := execPreviewExpected(ctx, observation)
 	matched := make(map[string]bool)
 	footer := execScopePreviewFooter(observation)
@@ -411,9 +408,9 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 		// window or persist a command outcome or completed change receipt.
 		if settled && len(settledPaths) == len(observation.Files) || !tracked && len(expected) > 0 && len(matched) == len(expected) {
 			if len(preview.Files) > 0 && ctx.Err() == nil {
-				preview.Status, preview.Complete = diffview.PreviewRunning, true
+				preview.Status, preview.Complete = previewmodel.PreviewRunning, true
 				preview.Footer = "observed edit"
-				broker.publishPreview(preview, false)
+				broker.Update(preview, false)
 			}
 			if capture == nil || tracking == nil {
 				return
@@ -422,20 +419,18 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 			continue
 		}
 		if len(preview.Files) == 0 {
-			broker.discardRunningPreview(preview)
+			broker.DiscardRunning(preview)
 			preview.Status, preview.Input = "", ""
 			continue
 		}
-		updated = updated || preview.Status != diffview.PreviewRunning
-		preview.Status, preview.Input = diffview.PreviewRunning, ""
+		updated = updated || preview.Status != previewmodel.PreviewRunning
+		preview.Status, preview.Input = previewmodel.PreviewRunning, ""
 		preview.Footer = footer
 		preview.Footer = strings.Replace(preview.Footer, "may write", "observed changes", 1)
 		if !updated {
 			// Admission can reject a new card while the broker is full. Keep
 			// retrying until it is visible, even if its files remain unchanged.
-			broker.mu.Lock()
-			_, visible := broker.previewLocked(preview.ID)
-			broker.mu.Unlock()
+			visible := slices.ContainsFunc(broker.Current(), func(frame previewmodel.Preview) bool { return frame.ID == preview.ID })
 			if visible {
 				continue
 			}
@@ -443,16 +438,6 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 		if ctx.Err() != nil {
 			return
 		}
-		broker.publishPreview(preview, false)
-	}
-}
-
-// A running card vanishes when it has no observed effect. Unlike completed
-// input streams, it must not leave a completed placeholder behind.
-func (b *liveDiffBroker) discardRunningPreview(preview diffview.Preview) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if b.removePreviewLocked(preview.ID) {
-		b.emitPreviewLocked(diffview.Preview{ID: preview.ID, Workspace: preview.Workspace, Thread: preview.Thread})
+		broker.Update(preview, false)
 	}
 }

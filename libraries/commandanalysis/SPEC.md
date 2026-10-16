@@ -2,8 +2,8 @@
 
 ## Purpose and scope
 
-Recognize deterministic command, executable, and literal source facts without
-running code or reading the target filesystem. Approval, evidence capture, and
+Recognize command, executable, source, and bounded execution-scope facts without
+executing the observed program. Approval, evidence capture, and
 presentation remain with the consumer.
 
 ## Command inputs
@@ -37,9 +37,25 @@ classification. GitHub CLI request method, fields and query source determine its
 remote-write classification. These facts perform no alias lookup or process I/O
 and grant no approval. Remote-write policy supplies any local Git alias lookup.
 
+## Execution scope
+
+`execscope` derives bounded write-scope candidates from shell/interpreter syntax,
+shared literal bindings, and supported producer queries. It never expands source
+by executing it or consults a router working directory. Consumers supply the
+selected directory, environment facts and retained-change resolver. Dynamic or
+unknown targets remain separate from recognized literal paths.
+
+Source reads use bounded nonblocking opens. Read-only producer queries run only
+validated argument vectors under the shared deadline; they never run shell query
+text. VCS and fixer providers share the classifier registry. Capture, authorization,
+writer-window lifetime and retained evidence remain application/feature owners.
+Bindings share path derivation with literal preview evaluation without making
+predicted content an observed execution result.
+
 ## Ownership and acceptance
 
-Shell syntax and wrapper operands live in `shellsyntax`. Shared JavaScript AST
+Shell syntax, wrapper operands, incomplete-stream parsing and literal directory
+steps live in `shellsyntax`. Shared JavaScript AST
 path and call recognition lives in `sourceanalysis/sourceparse`; it rejects
 optional/computed member access and omits argument comments.
 

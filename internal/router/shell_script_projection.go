@@ -51,7 +51,7 @@ type shellScriptProjection struct {
 }
 
 func shellInterpreterScriptProjection(input string) (shellScriptProjection, bool) {
-	statements, _, partialLine, ok := liveDiffShellStatements(input, "")
+	statements, _, partialLine, ok := shellsyntax.StreamingStatements(input, "")
 	if !ok || len(statements) != 1 {
 		return shellScriptProjection{}, false
 	}
@@ -119,7 +119,7 @@ func shellInterpreterScriptProjection(input string) (shellScriptProjection, bool
 // shellInterpreterReadsStdin reports a lone interpreter told by `-` to read its
 // program from stdin with nothing redirected there, as `python3 -`.
 func shellInterpreterReadsStdin(input string) bool {
-	statements, _, _, ok := liveDiffShellStatements(input, "")
+	statements, _, _, ok := shellsyntax.StreamingStatements(input, "")
 	if !ok || len(statements) != 1 {
 		return false
 	}

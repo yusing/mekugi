@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 )
 
 // storeChangeResolver reads the calling thread's change namespace.

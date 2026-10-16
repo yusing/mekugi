@@ -344,14 +344,14 @@ func TestLiveDiffResetScopeResynchronizes(t *testing.T) {
 	liveDiffScopeCapture(t, store, workspace, "new", "new-call", filepath.Join(workspace, "new.go"), "a", "b")
 	liveDiffScopeCapture(t, store, workspace, "old-child", "old-child-call", filepath.Join(workspace, "old-child.go"), "a", "b")
 	liveDiffScopeCapture(t, store, workspace, "new-child", "new-child-call", filepath.Join(workspace, "new-child.go"), "a", "b")
-	auto, stop := newAutoLiveDiff(t.Context())
-	defer stop()
-	auto.enable()
-	auto.includeThread(workspace, "old", true)
+	auto := newLivePreview(t.Context())
+	defer auto.Close()
+	auto.Enable()
+	testReview(auto).IncludeThread(workspace, "old", true)
 	c := newLiveDiffTerminalController(store, "", os.Stdout)
 	defer c.close()
-	sub := auto.events.subscribe()
-	apply := func(event liveDiffEvent) {
+	sub := testReview(auto).Subscribe()
+	apply := func(event reviewEvent) {
 		t.Helper()
 		if _, err := c.applyEvent(t.Context(), event); err != nil {
 			t.Fatal(err)
@@ -365,21 +365,21 @@ func TestLiveDiffResetScopeResynchronizes(t *testing.T) {
 		slices.Sort(paths)
 		return paths
 	}
-	apply(<-sub.events)
+	apply(<-sub.Events())
 	if got := paths(); !slices.Equal(got, []string{"old.go"}) {
 		t.Fatalf("initial scope files: %v", got)
 	}
 	child := func(thread, parent string) codexTurnMetadata {
 		return codexTurnMetadata{ThreadID: thread, ParentThreadID: parent, SubagentKind: "thread_spawn", RequestKind: "turn"}
 	}
-	auto.observe(workspace, "old-child", child("old-child", "old"))
-	stale := <-sub.events // Queued before the switch; the UI loop may still read it.
+	observeReview(testReview(auto), workspace, "old-child", child("old-child", "old"))
+	stale := <-sub.Events() // Queued before the switch; the UI loop may still read it.
 	// Production order: reset, include the resumed root, then resubscribe on gap.
 	c.resetScope()
-	auto.resetScope()
-	auto.includeThread(workspace, "new", true)
+	testReview(auto).ResetScope()
+	testReview(auto).IncludeThread(workspace, "new", true)
 	select {
-	case <-sub.gap:
+	case <-sub.Gap():
 	default:
 		t.Fatal("reset did not detach the previous subscriber")
 	}
@@ -387,11 +387,11 @@ func TestLiveDiffResetScopeResynchronizes(t *testing.T) {
 	if len(c.view.Files) != 0 {
 		t.Fatalf("stale scope reached the reset view: %v", paths())
 	}
-	auto.observe(workspace, "old-child", child("old-child", "old"))
-	auto.observe(workspace, "new-child", child("new-child", "new"))
-	sub = auto.events.subscribe()
-	apply(<-sub.events)
-	if got := paths(); !slices.Equal(got, []string{"new-child.go", "new.go"}) || auto.workspace != workspace {
+	observeReview(testReview(auto), workspace, "old-child", child("old-child", "old"))
+	observeReview(testReview(auto), workspace, "new-child", child("new-child", "new"))
+	sub = testReview(auto).Subscribe()
+	apply(<-sub.Events())
+	if got := paths(); !slices.Equal(got, []string{"new-child.go", "new.go"}) || testReview(auto).Workspace() != workspace {
 		t.Fatalf("resynchronized scope files: %v", got)
 	}
 }
@@ -427,16 +427,17 @@ func TestAppServerResumeSwitchWaitsForDiffResync(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.ctx = t.Context()
 	u.agents = newLiveActivityView()
-	auto, stop := newAutoLiveDiff(t.Context())
-	defer stop()
-	auto.enable()
+	auto := newLivePreview(t.Context())
+	defer auto.Close()
+	auto.Enable()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
-	u.shell.auto, u.shell.diff.store = auto, store
+	u.shell.diff.store = store
+	u.shell.review = testReview(auto)
 	u.session.start("main", workspace)
-	auto.includeThread(workspace, "main", true)
-	sub := auto.events.subscribe()
-	u.shell.applyDiff(t.Context(), <-sub.events)
+	testReview(auto).IncludeThread(workspace, "main", true)
+	sub := testReview(auto).Subscribe()
+	u.shell.applyDiff(t.Context(), <-sub.Events())
 	appServerTestKeys(t, u, "/resume saved\r")
 	resume := resumeTestPrepared(t, u, w)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"saved","cwd":%q,"turns":[]}}}`, resume.ID, workspace))
@@ -445,12 +446,12 @@ func TestAppServerResumeSwitchWaitsForDiffResync(t *testing.T) {
 		t.Fatalf("restoration finished before the Diff resynchronized: %q", u.status)
 	}
 	select {
-	case <-sub.gap:
+	case <-sub.Gap():
 	default:
 		t.Fatal("switch did not resynchronize the Diff subscription")
 	}
-	sub = auto.events.subscribe()
-	for _, event := range auto.events.takePreviews(sub) {
+	sub = testReview(auto).Subscribe()
+	for _, event := range testReview(auto).TakePreviews(sub) {
 		u.shell.applyDiff(t.Context(), event)
 	}
 	if err := u.finishRestoredContent(); err != nil {
@@ -463,10 +464,8 @@ func TestAppServerResumeSwitchWaitsForDiffResync(t *testing.T) {
 	appServerTestKeys(t, u, "/clear\r")
 	start := resumeTestOne(t, w, "thread/start")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"fresh","cwd":%q}}}`, start.ID, workspace))
-	auto.observe(workspace, "fresh-child", codexTurnMetadata{ThreadID: "fresh-child", ParentThreadID: "fresh", SubagentKind: "thread_spawn", RequestKind: "turn"})
-	auto.mu.Lock()
-	admitted := auto.scope.Workspaces[workspace]["fresh"] && auto.scope.Workspaces[workspace]["fresh-child"]
-	auto.mu.Unlock()
+	observeReview(testReview(auto), workspace, "fresh-child", codexTurnMetadata{ThreadID: "fresh-child", ParentThreadID: "fresh", SubagentKind: "thread_spawn", RequestKind: "turn"})
+	admitted := testReview(auto).Scope().Workspaces[workspace]["fresh"] && testReview(auto).Scope().Workspaces[workspace]["fresh-child"]
 	if !admitted {
 		t.Fatal("session cleared after a switch never entered the Diff")
 	}

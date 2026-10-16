@@ -13,14 +13,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-
 	"github.com/yusing/mekugi/libraries/legacycall"
-
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
-
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/libraries/persistence"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
@@ -36,7 +33,7 @@ type mekugiReplayStore struct {
 	maxBytes           int64
 	session            storageSessionIdentity
 	storageNotice      func(session, thread, phase, message string)
-	liveDiff           func([]liveDiffChange)
+	liveDiff           func([]reviewChange)
 	maxCommentaryBytes int64
 	snapshots          *workspaceSnapshots
 	publication        *history.Store

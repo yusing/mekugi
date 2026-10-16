@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -144,14 +144,14 @@ func TestLiveDiffStoreRestartAndMissingEvidence(t *testing.T) {
 	}
 	liveDiffTestChange(t, store, workspace, "one", "x.go")
 	reopened := testReplayStore(mekugiReplayStore{directory: store.directory})
-	files, err := reopened.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
+	files, err := reopened.liveDiffSnapshotFiles(t.Context(), previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: nil}})
 	if err != nil || len(files) != 1 || len(files[0].Chunks) != 1 || files[0].Chunks[0].Status != "" {
 		t.Fatalf("Files: %#v, %v", files, err)
 	}
 	if err := os.Rename(filepath.Join(store.directory, legacycall.Name(workspace, "one", false)), filepath.Join(store.directory, "removed-record")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := reopened.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}}); err == nil {
+	if _, err := reopened.liveDiffSnapshotFiles(t.Context(), previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: nil}}); err == nil {
 		t.Fatal("missing evidence treated as an empty view")
 	}
 }
@@ -188,7 +188,7 @@ func TestLiveDiffLegacyChangeFlagsDoNotAffectSavedEdits(t *testing.T) {
 	if err != nil || !found || record.History.ExecObservation == nil || record.History.ExecObservation.Class != "scoped" || len(record.History.ExecObservation.Commands) != 1 {
 		t.Fatalf("legacy capture scope lost: %+v found=%v err=%v", record.History.ExecObservation, found, err)
 	}
-	files, err := reopened.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
+	files, err := reopened.liveDiffSnapshotFiles(t.Context(), previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: nil}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -415,7 +415,7 @@ func TestLiveDiffDoesNotInferPrivateScopeFromScriptText(t *testing.T) {
 	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"private": h}); err != nil {
 		t.Fatal(err)
 	}
-	files, err := store.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
+	files, err := store.liveDiffSnapshotFiles(t.Context(), previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: nil}})
 	if err != nil || len(files) != 2 {
 		t.Fatalf("script spelling hid workspace evidence: %#v %v", files, err)
 	}
@@ -532,7 +532,7 @@ func liveDiffIdentityCapture(t *testing.T, store *mekugiReplayStore, workspace, 
 
 func liveDiffRefreshTest(t *testing.T, store *mekugiReplayStore, workspace string, view *livediff.View) {
 	t.Helper()
-	files, err := store.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
+	files, err := store.liveDiffSnapshotFiles(t.Context(), previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: nil}})
 	if err != nil {
 		t.Fatal(err)
 	}

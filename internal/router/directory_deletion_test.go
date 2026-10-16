@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -46,7 +47,7 @@ func TestUISnapshotDirectoryDeletion(t *testing.T) {
 				map[string]any{"type": "function_call_output", "call_id": "delete-call", "output": nativeExecOutput("Process exited with code 0")},
 			})
 			store := testReplayStore(mekugiReplayStore{directory: proxy.replayStore.directory})
-			data, err := store.liveDiffSnapshot(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"stock-thread": true}}})
+			data, err := store.liveDiffSnapshot(t.Context(), previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"stock-thread": true}}})
 			if err != nil {
 				t.Fatal(err)
 			}

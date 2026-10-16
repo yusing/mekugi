@@ -30,9 +30,19 @@ func (s *mekugiReplayStore) notifyChanges(updates []changes.Update) {
 	if s.liveDiff == nil || len(updates) == 0 {
 		return
 	}
-	values := make([]liveDiffChange, 0, len(updates))
+	values := make([]reviewChange, 0, len(updates))
 	for _, update := range updates {
-		values = append(values, liveDiffChange(update))
+		values = append(values, retainedReviewChange(update))
 	}
 	s.liveDiff(values)
+}
+
+// retainedReviewChange projects identities consumed by the saved-review loader.
+// Record encoding, sequence allocation and call metadata remain changehistory-owned.
+func retainedReviewChange(update changes.Update) reviewChange {
+	value := reviewChange{Workspace: update.Workspace, Namespace: update.Namespace, Thread: update.Thread, Stream: update.Stream, ID: update.ID, Correlation: update.Change.Correlation}
+	for _, call := range update.Change.Calls {
+		value.Calls = append(value.Calls, call.ID)
+	}
+	return value
 }

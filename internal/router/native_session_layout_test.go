@@ -5,11 +5,12 @@ import (
 	"testing"
 	"time"
 
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 func TestNativeUISessionLiveToggle(t *testing.T) {
@@ -77,7 +78,7 @@ func TestUISnapshotNativeLiveToggle(t *testing.T) {
 	defer u.shell.diffScreen.Close()
 	screen := vt.NewEmulator(100, 28)
 	defer screen.Close()
-	preview := diffview.Preview{ID: "edit", Workspace: t.TempDir(), Caller: "/root", Status: diffview.PreviewEdit, Input: "*** Begin Patch\n*** Add File: live.txt\n+Live edit still in progress\n*** End Patch"}
+	preview := previewmodel.Preview{ID: "edit", Workspace: t.TempDir(), Caller: "/root", Status: previewmodel.PreviewEdit, Input: "*** Begin Patch\n*** Add File: live.txt\n+Live edit still in progress\n*** End Patch"}
 	u.session.cwd = preview.Workspace
 	u.shell.preview(projectStockPatchPreview(t.Context(), preview.Workspace, preview), false)
 	revealNativeDock(u.shell)
@@ -107,7 +108,7 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 				return screen.String()
 			}
 			workspace := t.TempDir()
-			preview := diffview.Preview{ID: "edit", Workspace: workspace, Caller: caller, Status: diffview.PreviewEdit, Input: "*** Begin Patch\n*** Add File: a.txt\n+VISIBLE_EDIT\n*** End Patch"}
+			preview := previewmodel.Preview{ID: "edit", Workspace: workspace, Caller: caller, Status: previewmodel.PreviewEdit, Input: "*** Begin Patch\n*** Add File: a.txt\n+VISIBLE_EDIT\n*** End Patch"}
 			u.shell.preview(projectStockPatchPreview(t.Context(), workspace, preview), false)
 			revealNativeDock(u.shell)
 			if caller != "/root" {
