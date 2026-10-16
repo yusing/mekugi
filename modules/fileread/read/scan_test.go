@@ -3,6 +3,7 @@ package read
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -41,6 +42,26 @@ func nativeTokens(t *testing.T, source string) int {
 		t.Fatal(err)
 	}
 	return count
+}
+
+func TestNativeMCatLiteralColonPathDisambiguation(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the literal-colon filename fixture is unavailable on Windows")
+	}
+	directory := t.TempDir()
+	t.Chdir(directory)
+	if err := os.WriteFile("source:12", []byte("literal content\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out := nativeExecute(t, "mcat", "source:12")
+	if out.ExitCode != 0 || out.Stdout != "literal content\n" || out.Stderr != "" {
+		t.Fatalf("literal filename: %+v", out)
+	}
+	out = nativeExecute(t, "mcat", "missing:12")
+	if out.ExitCode != 1 || out.Stdout != "" || out.FailureClass != "invalid_arguments" ||
+		!strings.Contains(out.Stderr, "ranges must be separate operands; retry: mcat missing 12:12") {
+		t.Fatalf("absent ambiguous filename: %+v", out)
+	}
 }
 
 // Source: internal/router/toolplugin/tests/mcat-ranges.test.ts

@@ -64,6 +64,10 @@ its literal flags/program even with dynamic input operands. Their source remains
 visible and unevaluated, and Read does not describe embedded substitution effects.
 In-place edits and non-print programs are not reads.
 
+Source classification does not inspect the filesystem. Ambiguous `mcat PATH:N`
+operands retain Run source; the [reader](../fileread/SPEC.md#authenticated-raw-row-reader)
+owns execution-time disambiguation of literal filenames and range mistakes.
+
 Literal absolute executables, command-resolution-preserving `env` assignments and
 unsets, and literal `bash`/`sh`/`dash -c` or `-lc` scripts without extra arguments
 or redirections retain classification. Unknown wrapper options, dynamic arguments

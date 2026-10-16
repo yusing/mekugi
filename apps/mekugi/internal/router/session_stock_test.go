@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -103,6 +104,7 @@ func TestSessionInspectionReadsObservedStockPatchOutcome(t *testing.T) {
 func TestCorpusStockMcatRereadCandidate(t *testing.T) {
 	for _, tc := range []struct {
 		name, firstNamespace, secondNamespace, prefix, firstKind, secondKind string
+		path                                                                 string
 		want                                                                 bool
 	}{
 		{name: "unqualified", want: true},
@@ -113,16 +115,27 @@ func TestCorpusStockMcatRereadCandidate(t *testing.T) {
 		{name: "native wrong kind", firstKind: "custom_tool_call"},
 		{name: "JavaScript wrong kind", secondKind: "function_call"},
 		{name: "output-only identity", firstKind: "function_call_output"},
+		{name: "ambiguous filename", path: "file.go:12"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
+			if tc.path != "" {
+				if runtime.GOOS == "windows" {
+					t.Skip("the unrelated literal-colon filename fixture is unavailable on Windows")
+				}
+				t.Chdir(t.TempDir())
+				if err := os.WriteFile(tc.path, []byte("unrelated content\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			path := cmp.Or(tc.path, "file.go")
 			rollout := filepath.Join(root, "session.jsonl")
 			writeStockRollout(t, rollout,
 				map[string]any{"timestamp": "2026-09-15T10:00:00Z", "type": "session_meta", "payload": map[string]any{"id": "thread", "cwd": root, "source": "cli"}},
 				map[string]any{"timestamp": "2026-09-15T10:00:00Z", "type": "turn_context", "payload": map[string]any{"cwd": root, "model": "gpt-test"}},
-				stockRolloutItem(map[string]any{"type": cmp.Or(tc.firstKind, "function_call"), "name": tc.prefix + nativeExecCommandToolName, "namespace": tc.firstNamespace, "call_id": "first", "arguments": `{"cmd":"mcat file.go 1:100"}`}),
+				stockRolloutItem(map[string]any{"type": cmp.Or(tc.firstKind, "function_call"), "name": tc.prefix + nativeExecCommandToolName, "namespace": tc.firstNamespace, "call_id": "first", "arguments": string(responses.MustMarshalJSON(map[string]string{"cmd": "mcat " + path + " 1:100"}))}),
 				stockRolloutItem(map[string]any{"type": "function_call_output", "call_id": "first", "output": "read: incomplete; next_call: mread r_123"}),
-				stockRolloutItem(map[string]any{"type": cmp.Or(tc.secondKind, "custom_tool_call"), "name": tc.prefix + "exec", "namespace": tc.secondNamespace, "call_id": "second", "input": `await tools.exec_command({cmd: "mcat file.go 50:150"});`}),
+				stockRolloutItem(map[string]any{"type": cmp.Or(tc.secondKind, "custom_tool_call"), "name": tc.prefix + "exec", "namespace": tc.secondNamespace, "call_id": "second", "input": `await tools.exec_command({cmd: ` + string(responses.MustMarshalJSON("mcat "+path+" 50:150")) + `});`}),
 			)
 			var out, diagnostic bytes.Buffer
 			status := RunSessionCorpusInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), t.Context(), []string{
@@ -142,7 +155,7 @@ func TestCorpusStockMcatRereadCandidate(t *testing.T) {
 			findings := result.Sessions[0].Findings
 			if !tc.want {
 				if len(findings) != 0 {
-					t.Fatalf("non-stock identity produced findings: %+v", findings)
+					t.Fatalf("unsupported source or identity produced findings: %+v", findings)
 				}
 				return
 			}

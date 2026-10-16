@@ -88,7 +88,9 @@ output. Supported transparent JavaScript projections can supply these facts;
 printed lookalikes cannot. Truncation/reread findings require adjacent selected
 calls with an `mread` omission receipt, the same workspace and overlapping
 literal `mcat` selections. They remain static candidates, not evidence of repeated
-execution, unchanged sources or duplicate delivered bytes. Unsupported source is never run
+execution, unchanged sources or duplicate delivered bytes. Selection parsing does
+not inspect current files; operands requiring the [reader's filesystem disambiguation](../fileread/SPEC.md#authenticated-raw-row-reader)
+produce no candidate. Unsupported source is never run
 to manufacture evidence. The per-session finding limit defaults to 25 and accepts
 1–500; `omitted_findings` reports additional findings.
 Matching short names from another namespace or tool kind are not stock-read evidence.

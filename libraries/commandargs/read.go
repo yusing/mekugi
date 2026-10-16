@@ -23,6 +23,17 @@ type ReadSelection struct {
 // ParseReadBundle validates argv without reading content; ambiguous PATH:ROW
 // operands use filesystem metadata to preserve existing literal filenames.
 func ParseReadBundle(args []string) ([]ReadSelection, ReaderOptions, error) {
+	return parseReadBundle(args, true)
+}
+
+// ParseReadBundleSource validates unevaluated source arguments without filesystem
+// inspection. Ambiguous PATH:ROW operands remain unclassified, even when a literal
+// file with that name exists. Execution uses ParseReadBundle to disambiguate them.
+func ParseReadBundleSource(args []string) ([]ReadSelection, ReaderOptions, error) {
+	return parseReadBundle(args, false)
+}
+
+func parseReadBundle(args []string, inspectPaths bool) ([]ReadSelection, ReaderOptions, error) {
 	options, rest, err := ParseReaderOptions(args, true, 6000, "")
 	if err != nil {
 		return nil, ReaderOptions{}, err
@@ -66,6 +77,9 @@ func ParseReadBundle(args []string) ([]ReadSelection, ReaderOptions, error) {
 			return nil, ReaderOptions{}, fmt.Errorf("invalid range %q; retry: %s", operand, retryCommand(path, correction))
 		}
 		if path, row, ok := strings.CutLast(operand, ":"); ok && path != "" && readRowNumber.MatchString(row) {
+			if !inspectPaths {
+				return nil, ReaderOptions{}, errors.New("ambiguous PATH:ROW requires filesystem disambiguation")
+			}
 			if _, err := os.Stat(operand); errors.Is(err, os.ErrNotExist) {
 				return nil, ReaderOptions{}, fmt.Errorf("ranges must be separate operands; retry: %s", retryCommand(path, row+":"+row))
 			}

@@ -64,7 +64,7 @@ func sourceReadCommand(script string, call *syntax.CallExpr, cwd string) (string
 			add(label, value)
 		}
 	case "mcat":
-		specs, _, err := commandargs.ParseReadBundle(argv[1:])
+		specs, _, err := commandargs.ParseReadBundleSource(argv[1:])
 		if err != nil {
 			return "", false
 		}

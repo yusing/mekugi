@@ -2,7 +2,9 @@ package router
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -382,6 +384,46 @@ func TestAppServerCommandWorkdirDisplay(t *testing.T) {
 			restored := newAppServerSessionTestUI(t, workspace)
 			restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
 			check(restored)
+		})
+	}
+}
+
+func TestUISnapshotMCatSourceWithoutFilesystemDisambiguation(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the unrelated literal-colon filename fixture is unavailable on Windows")
+	}
+	packageDirectory, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	t.Chdir(t.TempDir())
+	if err := os.WriteFile("source:12", []byte("unrelated content\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ name, command, text string }{
+		{"ambiguous", "mcat source:12", "Run\n```bash\nmcat source:12\n```"},
+		{"separate-range", "mcat source.go 1:3", "Read `source.go 1:3`"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			item := appServerItem{ID: "cmd", Type: "commandExecution", Command: tc.command, Cwd: workspace, Status: "completed", ExitCode: new(0), DurationMS: new(int64(20))}
+			live, restored := newAppServerSessionTestUI(t, workspace), newAppServerSessionTestUI(t, workspace)
+			for _, method := range []string{"item/started", "item/completed"} {
+				appServerTestNotify(t, live, method, map[string]any{"threadId": "main", "turnId": "t", "item": item})
+			}
+			restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
+			t.Chdir(packageDirectory)
+			for name, ui := range map[string]*appServerUI{"live": live, "restored": restored} {
+				if len(ui.view.Entries) != 1 {
+					t.Fatalf("%s entries = %+v", name, ui.view.Entries)
+				}
+				entry := ui.view.Entries[0].Source
+				if entry.Text != tc.text || entry.native.command != tc.command {
+					t.Fatalf("%s source = %q, command = %q; want %q, %q", name, entry.Text, entry.native.command, tc.text, tc.command)
+				}
+				blocks := parseLiveActivity(entry)
+				assertNativeUISnapshot(t, "mcat-source-"+tc.name, (&activityui.Painter{Theme: diffrender.DarkTheme}).Block(blocks[0], 80))
+			}
 		})
 	}
 }

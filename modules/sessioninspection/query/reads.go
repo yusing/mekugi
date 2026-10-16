@@ -40,7 +40,7 @@ func corpusReadSelections(script string) []corpusReadSelection {
 		if len(args) < 2 || args[0] != "mcat" {
 			return false
 		}
-		specs, _, err := commandargs.ParseReadBundle(args[1:])
+		specs, _, err := commandargs.ParseReadBundleSource(args[1:])
 		if err != nil {
 			return false
 		}
