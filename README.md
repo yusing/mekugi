@@ -147,7 +147,7 @@ Use `grok login --oauth` or `XAI_API_KEY` (takes precedence); Codex credentials 
 The default follows `[models].default` in `~/.grok/config.toml`, then the latest standard model (currently `grok-4.7`);
 `-m`/`-c model=...` overrides it. Standalone IDs need `grok:`; `mekugi grok` uses plain IDs.
 Subagents use fresh context (`fork_turns="none"`). Build Fast needs OAuth;
-encrypted OpenAI history cannot switch to Grok. See [Grok requirements](doc/spec/grok.md).
+encrypted OpenAI history cannot switch to Grok. See [Grok requirements](providers/grok/SPEC.md).
 
 ### OpenCode Go and Zen
 
@@ -159,7 +159,7 @@ OPENCODE_ZEN_API_KEY='your-key' mekugi -m opencode-zen:kimi-k3
 Keys can also live in [settings](#mekugi-settings). `OPENCODE_API_KEY` overrides file
 keys; per-service variables override it, and an empty value disables that service.
 Models/prices refresh hourly; the picker updates next launch. See
-[OpenCode](doc/spec/opencode.md).
+[OpenCode](providers/opencode/SPEC.md).
 
 ### Resume
 

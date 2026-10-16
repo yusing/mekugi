@@ -35,17 +35,25 @@ Only supported representations are translated; opaque foreign history and
 unsupported content fail with the caller's compatibility diagnostic. Stable wire
 aliases preserve native names, namespaces, custom input, tool choice, and replay.
 Known native wait-schema corrections affect advertised parameters, leaving
-submitted argument bytes unchanged.
+submitted argument bytes unchanged. Multipart text retains separate source parts,
+and empty text arrays retain empty-string content. Custom tool grammars remain
+explicit input instructions, validated by their existing owners. Third-party
+`exec` guidance identifies JavaScript input and the requirement to print nested
+results with `text(...)`; Codex models need neither note.
 
 Endpoint adapters normalize their wire framing into one validated stream.
 Complete arguments for every parallel call are validated before any executable
 item is released. The first terminal choice seals content and calls; missing,
 conflicting, or malformed terminals cannot become successful execution results.
 Responses item identities and ordering stay stable through added, argument/input
-completion, and item completion events.
+completion, and item completion events. Function argument completion carries the
+restored function name. Usage-only trailers and the final stream marker remain
+valid after the first terminal choice.
 
 Visible reasoning and answer text follow Codex's active-item lifecycle. Reasoning
-replay, effort, output-budget compatibility, and usage interpretation follow the
+that begins before an answer completes before that answer item opens; reasoning
+received after text starts completes after the message instead of interleaving
+items. Reasoning replay, effort, output-budget compatibility, and usage interpretation follow the
 resolved provider policy. Provider error details stay in caller-facing failures;
 sanitized diagnostic classification remains separate. A consumer write failure
 prevents a second terminal write. Stream failure and optional upstream closure
@@ -122,9 +130,9 @@ Each translated request owns its immutable tool mapping and stream state. The
 adapter creates no process, credential store, transcript, or agent registry.
 Shared wire facts and exact JSON encoding belong to
 [modelprotocol](../../../libraries/modelprotocol/SPEC.md).
-Provider-specific obligations remain in the [Grok](../../../doc/spec/grok.md)
-and [OpenCode](../../../doc/spec/opencode.md) contracts; transport and routing
-obligations remain in the [third-party contract](../../../doc/spec/third_party.md).
+Provider-specific obligations remain in the [Grok](../../../providers/grok/SPEC.md)
+and [OpenCode](../../../providers/opencode/SPEC.md) specifications; cross-owner
+obligations remain in [provider routing](../../../docs/contracts/provider-routing.md).
 
 Package tests cover tool identity, custom input, wait aliases, fragmented and
 parallel calls, terminal integrity, reasoning replay, endpoint settings, and

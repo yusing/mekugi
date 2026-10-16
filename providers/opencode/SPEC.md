@@ -4,9 +4,9 @@
 
 Own service credentials, catalog acquisition, immutable request snapshots, model
 capabilities, price metadata, and authenticated inference transport. The application
-selects the cache path and loads invocation configuration. It also owns Codex
-catalog projection, protocol policy, and usage accounting described by the
-[OpenCode route](../../doc/spec/opencode.md).
+selects the cache path and loads invocation configuration. It applies the Codex
+adaptation policy below; shared authority and failure semantics belong to
+[provider routing](../../docs/contracts/provider-routing.md).
 
 ## Catalog and credentials
 
@@ -73,6 +73,47 @@ The transport sends already-encoded bytes. Final rejected responses and accepted
 body lifetime use the shared [HTTP exchange](../../libraries/httptransport/SPEC.md).
 Codex response framing and price accounting remain with their respective owners.
 
+## Codex adaptation and accounting
+
+The private catalog removes disabled services and advertises supported online
+`reasoning_options` efforts without inventing a default. Explicit supported values
+pass as Chat `reasoning_effort`, Responses `reasoning.effort` or Messages
+`output_config.effort`; structured output can coexist with effort. An absent or
+unsupported inherited value leaves provider defaults alone. `none` is forwarded
+only when advertised; toggle-only or token-budget-only controls are not efforts.
+
+Chat reasoning summaries are replayed on the corresponding assistant message,
+including tool-free and resumed turns. Messages thinking/signature/redacted blocks
+and Responses reasoning items use versioned, service/model-bound opaque envelopes.
+They restore only on that route; foreign encrypted history fails locally.
+Visible Chat, Messages and Responses reasoning streams as received, including
+completed-item text when no deltas exist. The backend's item lifecycle preserves
+its order relative to the answer. Messages/Responses visible summaries belong to
+the same opaque item; closing without a replay envelope retains no summary-only
+reasoning, which those formats cannot restore.
+
+OpenCode completion counts already include reasoning; Responses output retains
+that total and exposes reasoning only as a breakdown. Missing usage remains
+missing. Messages input includes uncached input plus cache reads/writes, and its
+output includes thinking. Messages requires a generation ceiling, defaulting to
+32,768 tokens; an explicit total-output budget maps to `max_tokens`. Responses
+preserves the requested total budget; Chat rejects incompatible total budgets.
+
+All three formats preserve provider-returned model aliases for JSON and streaming
+clients. They share native tool identity and complete-argument validation. Messages
+uses `input_schema`, `tool_use` and `tool_result`; Responses uses flat function
+schemas/calls. Custom tool input is one wire parameter, restored exactly before
+Codex execution. Signed reasoning and call identities survive JSON persistence.
+Refusals remain ordinary refusal output. Transport capture includes opaque
+reasoning separately from user-visible text.
+
+Reference estimates use the request-pinned online rates for input, output, cache
+reads/writes and explicit context tiers. Explicit context tiers take precedence
+over legacy 200k pricing; zero is free, while missing prices, unknown tier types
+and unsupported service tiers are unknown. These are API reference estimates,
+not subscription charges or billing quotes. [Usage](../../modules/usage/SPEC.md)
+owns accumulation and retained accounting.
+
 ## Lifetime and failures
 
 A catalog belongs to one invocation. A request pins its service snapshot before
@@ -86,4 +127,6 @@ Offline tests cover bootstrap validity, online replacement and legacy aliases,
 cache restart and failure backoff, canceled refresh waiters, immutable snapshots,
 metadata-only entries, unknown formats, and context-tier price selection.
 Application tests cover configuration precedence, actual request translation,
-Codex catalog projection, and in-flight accounting after model removal.
+Codex catalog projection, all three endpoint formats, effort/structured output,
+signed and plaintext reasoning replay, refusal, cancellation, prewarm and in-flight
+accounting after model removal. Disabled OpenCode leaves other routes unchanged.

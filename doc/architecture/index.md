@@ -6,11 +6,9 @@ pjdoc:
   status: draft
   revision: "54"
   files:
+    - ../../docs/contracts/provider-routing.md
     - workspace.md
     - ui.md
-    - third_party.md
-    - grok.md
-    - opencode.md
     - activity.md
     - boundary.md
     - plugin.md
@@ -46,9 +44,7 @@ resume evidence and renderer-keyed persistence.
 
 - [`CTR-UI-001`](ui.md): presentation, app-server client, and router integration boundaries
 
-- [`CTR-THIRD-PARTY-001`](third_party.md): third-party provider bridge ownership
-- [`CTR-GROK-001`](grok.md): Grok bridge ownership
-- [`CTR-OPENCODE-001`](opencode.md): OpenCode bridge ownership
+- [Provider routing](../../docs/contracts/provider-routing.md): provider/backend authority and native-agent continuity
 - [Notifications](../../modules/notifications/SPEC.md): bounded delivery, presentation claims and recovery
 - [`CTR-ACTIVITY-001`](activity.md): activity identity, collection, and native integration
 - [`CTR-ACTIVITY-002`](activity.md): bounded native child history pages

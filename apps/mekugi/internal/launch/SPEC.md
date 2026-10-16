@@ -26,8 +26,22 @@ built-in OpenAI provider capabilities, including native tools, reasoning updates
 and internal request metadata. Stock WebSockets and prewarming remain available;
 Codex owns retries and HTTP fallback. Third-party launches disable OpenAI
 requests and use provider-owned credentials. Configuration files remain untouched.
-Third-party catalogs use private bundled host metadata and the selected provider
-catalog; their temporary files are removed after the invocation.
+Third-party catalogs use the selected provider metadata and `codex debug models
+--bundled`, requiring its native v2 template without authenticated OpenAI discovery.
+The application pins the private `model_catalog_json` path in the final invocation
+layer, independent of user catalogs and other processes' shared caches. Profiles
+and `exec --ignore-user-config` retain host-owned selection semantics. Invalid
+catalogs, command failure or private-file failure prevent the main host launch.
+Preparation is bounded to one minute and 8 MiB; its directory is private (0700)
+and file mode is 0600, with both removed on exit or launch failure. The application
+does not rewrite user configuration or shared caches. Codex retains its catalog
+command behavior, and `/v1/models` remains unchanged rather than injecting models
+or synthetic ETags.
+
+Noninteractive `exec resume` and `exec fork` receive the same automatic startup
+default as new launches. Stock exec's provider override skips saved-model merging;
+an explicit invocation model still wins. Interactive saved-model restoration
+retains its separate session contract.
 
 Interactive terminals use the native client. Redirected and noninteractive
 commands retain stock cwd, arguments, environment and streams, augmented with the
@@ -72,8 +86,11 @@ Startup errors, launch failure, cancellation and child exit release owned servic
 and temporary files. Cleanup failures are reported. Undelivered critical notices
 are printed after terminal restoration with control sequences removed. Debug
 handoffs identify the retained private bundle without exposing its contents.
-Catalog progress is bounded and auxiliary: a display failure cannot fail catalog
-preparation or cancel startup. Normal launch advertises no browser URL.
+Catalog preparation prints content-free stderr progress immediately and every
+ten seconds. Interactive output is width-bounded and cleared before handoff;
+redirected output uses complete lines. Display failure stops progress only.
+Cancellation/deadline failures take precedence over generic process/configuration
+advice, and private bootstrap stderr is not exposed. Normal launch advertises no browser URL.
 
 ## Acceptance
 

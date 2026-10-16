@@ -6,13 +6,13 @@ pjdoc:
   status: draft
   revision: "73"
   files:
+    - ../../providers/grok/SPEC.md
+    - ../../providers/opencode/SPEC.md
+    - ../../docs/contracts/provider-routing.md
     - router.md
     - ../../apps/mekugi/internal/launch/SPEC.md
     - native_ui.md
     - transport.md
-    - third_party.md
-    - grok.md
-    - opencode.md
     - ../../modules/notifications/SPEC.md
     - activity.md
     - ../../modules/activity/CONTRACT.md
@@ -52,9 +52,9 @@ resume evidence and renderer-keyed persistence.
 - [`REQ-NATIVE-UI-001`](native_ui.md): UI presentation and client behavior
 - [`REQ-TRANSPORT-001`](transport.md): Codex-facing Responses transport
 - [OpenAI provider](../../providers/openai/SPEC.md): credential validation, model exchange, HTTP and WebSocket transport
-- [`REQ-THIRD-PARTY-001`](third_party.md): shared third-party native-agent routing
-- [`REQ-GROK-001`](grok.md): Grok provider route
-- [`REQ-OPENCODE-001`](opencode.md): OpenCode Go and Zen provider routes
+- [Provider routing](../../docs/contracts/provider-routing.md): native-agent continuity and cross-provider isolation
+- [Grok](../../providers/grok/SPEC.md): authentication, models and Codex adaptation policy
+- [OpenCode](../../providers/opencode/SPEC.md): Go/Zen catalog, inference and Codex adaptation policy
 - [Notifications](../../modules/notifications/SPEC.md): native diagnostic delivery and recovery
 - [`REQ-ACTIVITY-001`](activity.md): observed tool classification
 - [Activity presentation](../../modules/activity/CONTRACT.md): native operation rows and agent feeds
