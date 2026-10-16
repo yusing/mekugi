@@ -5,6 +5,7 @@ import (
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/legacycall"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 )
 
 // The historical wire schema has no live preview or request-local state.
@@ -14,17 +15,17 @@ func legacyBaseline(v legacycall.Baseline) resolvedStockBaseline {
 		Root:      v.Root,
 		Shell:     v.Shell,
 		Files:     legacySlice(v.Files, legacyFile),
-		Omitted:   legacySlice(v.Omitted, func(v legacycall.Omission) execOmission { return execOmission(v) }),
+		Omitted:   legacySlice(v.Omitted, func(v legacycall.Omission) changecapture.Omission { return changecapture.Omission(v) }),
 		Inventory: legacyPointer(v.Inventory, legacyInventory),
 	}
 }
 
-func legacyFile(v legacycall.File) execFileSnapshot {
-	return execFileSnapshot{
+func legacyFile(v legacycall.File) changecapture.File {
+	return changecapture.File{
 		Origin:      v.Origin,
 		AlsoManaged: v.AlsoManaged,
 		Path:        v.Path,
-		Kind:        execFileKind(v.Kind),
+		Kind:        changecapture.FileKind(v.Kind),
 		Content:     v.Content,
 		Size:        v.Size,
 		Hash:        v.Hash,
@@ -49,7 +50,7 @@ func legacyHistory(v legacycall.History) mekugiHistory {
 		NativePatches:        legacySlice(v.NativePatches, legacyNativePatch),
 		ResolvedBaseline:     legacyPointer(v.ResolvedBaseline, legacyBaseline),
 		ExecObservation:      legacyPointer(v.ExecObservation, legacyObservation),
-		ExecOutcome:          legacyPointer(v.ExecOutcome, func(v legacycall.Outcome) execOutcome { return execOutcome(v) }),
+		ExecOutcome:          legacyPointer(v.ExecOutcome, func(v legacycall.Outcome) changecapture.Outcome { return changecapture.Outcome(v) }),
 		HostResults:          legacySlice(v.HostResults, func(v legacycall.HostResult) nativeToolResult { return nativeToolResult(v) }),
 		CommandSegments:      v.CommandSegments,
 		CarrierName:          v.CarrierName,
@@ -67,8 +68,8 @@ func legacyHistory(v legacycall.History) mekugiHistory {
 	}
 }
 
-func legacyInventory(v legacycall.Inventory) execInventory {
-	return execInventory{
+func legacyInventory(v legacycall.Inventory) changecapture.Inventory {
+	return changecapture.Inventory{
 		Version:      v.Version,
 		Directories:  legacyDirectories(v.Directories),
 		Root:         v.Root,
@@ -77,27 +78,27 @@ func legacyInventory(v legacycall.Inventory) execInventory {
 		Files:        legacySlice(v.Files, legacyFile),
 		Repositories: v.Repositories,
 		Pruned:       v.Pruned,
-		Omitted:      legacySlice(v.Omitted, func(v legacycall.Omission) execOmission { return execOmission(v) }),
+		Omitted:      legacySlice(v.Omitted, func(v legacycall.Omission) changecapture.Omission { return changecapture.Omission(v) }),
 	}
 }
 
-func legacyNativePatch(v legacycall.NativePatch) nativePatchObservation {
-	return nativePatchObservation{
+func legacyNativePatch(v legacycall.NativePatch) changecapture.PatchObservation {
+	return changecapture.PatchObservation{
 		Input: v.Input,
-		Files: legacySlice(v.Files, func(v legacycall.NativeFile) nativePatchFileSnapshot { return nativePatchFileSnapshot(v) }),
+		Files: legacySlice(v.Files, func(v legacycall.NativeFile) changecapture.PatchFile { return changecapture.PatchFile(v) }),
 	}
 }
 
-func legacyObservation(v legacycall.Observation) execObservation {
-	return execObservation{
+func legacyObservation(v legacycall.Observation) changecapture.Observation {
+	return changecapture.Observation{
 		Commands:       legacySlice(v.Commands, func(v legacycall.Command) commandanalysis.Command { return commandanalysis.Command(v) }),
 		CommandClasses: v.CommandClasses,
 		Class:          v.Class,
 		Labels:         v.Labels,
 		Reason:         v.Reason,
 		Files:          legacySlice(v.Files, legacyFile),
-		Omitted:        legacySlice(v.Omitted, func(v legacycall.Omission) execOmission { return execOmission(v) }),
-		Listings:       legacySlice(v.Listings, func(v legacycall.Listing) execListing { return execListing(v) }),
+		Omitted:        legacySlice(v.Omitted, func(v legacycall.Omission) changecapture.Omission { return changecapture.Omission(v) }),
+		Listings:       legacySlice(v.Listings, func(v legacycall.Listing) changecapture.Listing { return changecapture.Listing(v) }),
 		CodeMode:       v.CodeMode,
 		Roots:          v.Roots,
 		WindowStart:    v.WindowStart,
@@ -129,13 +130,13 @@ func legacyPointer[A, B any](value *A, convert func(A) B) *B {
 	return new(convert(*value))
 }
 
-func legacyDirectories(values map[string]legacycall.DirectoryStamp) map[string]execDirectoryStamp {
+func legacyDirectories(values map[string]legacycall.DirectoryStamp) map[string]changecapture.DirectoryStamp {
 	if values == nil {
 		return nil
 	}
-	result := make(map[string]execDirectoryStamp, len(values))
+	result := make(map[string]changecapture.DirectoryStamp, len(values))
 	for key, value := range values {
-		result[key] = execDirectoryStamp(value)
+		result[key] = changecapture.DirectoryStamp(value)
 	}
 	return result
 }

@@ -10,13 +10,12 @@ import (
 	"testing/synctest"
 	"time"
 
-	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
-
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
-
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
 func TestMergeExecObservationsDoesNotMutateFirstMember(t *testing.T) {
@@ -24,35 +23,35 @@ func TestMergeExecObservationsDoesNotMutateFirstMember(t *testing.T) {
 	labels := []string{"shared", "label spare"}
 	programs := []execscope.Program{{Label: "shared"}, {Label: "program spare"}}
 	roots := []string{"/workspace/project", "/root spare"}
-	files := []execFileSnapshot{{Path: "/workspace/first"}, {Path: "/file spare"}}
-	omitted := []execOmission{{Path: "/workspace/omitted"}, {Path: "/omission spare"}}
-	listings := []execListing{{Root: "/workspace/listed"}, {Root: "/listing spare"}}
+	files := []changecapture.File{{Path: "/workspace/first"}, {Path: "/file spare"}}
+	omitted := []changecapture.Omission{{Path: "/workspace/omitted"}, {Path: "/omission spare"}}
+	listings := []changecapture.Listing{{Root: "/workspace/listed"}, {Root: "/listing spare"}}
 	excluded := []string{"/workspace/excluded", "/excluded spare"}
-	first := &execObservation{
+	first := &changecapture.Observation{
 		Commands: commands[:1], Class: execscope.Scoped.String(), Reason: "first reason", Labels: labels[:1],
 		Files: files[:1], Omitted: omitted[:1], Listings: listings[:1], Roots: roots[:1],
 		Programs: programs[:1], Excluded: excluded[:1], WindowStart: time.Unix(30, 0),
 	}
-	second := &execObservation{
+	second := &changecapture.Observation{
 		Commands: []commandanalysis.Command{{Command: "second"}}, Class: execscope.Opaque.String(), Reason: "stronger reason",
 		Labels: []string{"shared", "second"}, Programs: []execscope.Program{{Label: "shared"}, {Label: "second"}},
-		Roots: []string{"/workspace", "/outside"}, Files: []execFileSnapshot{{Path: "/workspace/second"}},
-		Omitted: []execOmission{{Path: "/workspace/omitted-2"}}, Listings: []execListing{{Root: "/workspace/listed-2"}},
+		Roots: []string{"/workspace", "/outside"}, Files: []changecapture.File{{Path: "/workspace/second"}},
+		Omitted: []changecapture.Omission{{Path: "/workspace/omitted-2"}}, Listings: []changecapture.Listing{{Root: "/workspace/listed-2"}},
 		Excluded: []string{"/workspace/excluded-2"}, WindowStart: time.Unix(20, 0), CodeMode: true,
 	}
-	third := &execObservation{
+	third := &changecapture.Observation{
 		Commands: []commandanalysis.Command{{Command: "third"}}, Labels: []string{"third"},
 		Programs: []execscope.Program{{Label: "third"}}, Roots: []string{"/workspace/child", "/last"},
-		Files: []execFileSnapshot{{Path: "/workspace/third"}}, WindowStart: time.Unix(10, 0),
+		Files: []changecapture.File{{Path: "/workspace/third"}}, WindowStart: time.Unix(10, 0),
 	}
 	firstBefore := *first
 	firstBefore.Commands = append([]commandanalysis.Command(nil), first.Commands...)
 	firstBefore.Labels = append([]string(nil), first.Labels...)
 	firstBefore.Programs = append([]execscope.Program(nil), first.Programs...)
 	firstBefore.Roots = append([]string(nil), first.Roots...)
-	firstBefore.Files = append([]execFileSnapshot(nil), first.Files...)
-	firstBefore.Omitted = append([]execOmission(nil), first.Omitted...)
-	firstBefore.Listings = append([]execListing(nil), first.Listings...)
+	firstBefore.Files = append([]changecapture.File(nil), first.Files...)
+	firstBefore.Omitted = append([]changecapture.Omission(nil), first.Omitted...)
+	firstBefore.Listings = append([]changecapture.Listing(nil), first.Listings...)
 	firstBefore.Excluded = append([]string(nil), first.Excluded...)
 
 	merged := mergeExecObservations([]execCompletion{
@@ -81,13 +80,13 @@ func TestMergeExecObservationsDoesNotMutateFirstMember(t *testing.T) {
 	if got, want := merged.Roots, []string{"/workspace", "/outside", "/last"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("roots = %v, want %v", got, want)
 	}
-	if got, want := merged.Files, []execFileSnapshot{{Path: "/workspace/first"}, {Path: "/workspace/second"}, {Path: "/workspace/third"}}; !reflect.DeepEqual(got, want) {
+	if got, want := merged.Files, []changecapture.File{{Path: "/workspace/first"}, {Path: "/workspace/second"}, {Path: "/workspace/third"}}; !reflect.DeepEqual(got, want) {
 		t.Errorf("files = %+v, want %+v", got, want)
 	}
-	if got, want := merged.Omitted, []execOmission{{Path: "/workspace/omitted"}, {Path: "/workspace/omitted-2"}}; !reflect.DeepEqual(got, want) {
+	if got, want := merged.Omitted, []changecapture.Omission{{Path: "/workspace/omitted"}, {Path: "/workspace/omitted-2"}}; !reflect.DeepEqual(got, want) {
 		t.Errorf("omitted = %+v, want %+v", got, want)
 	}
-	if got, want := merged.Listings, []execListing{{Root: "/workspace/listed"}, {Root: "/workspace/listed-2"}}; !reflect.DeepEqual(got, want) {
+	if got, want := merged.Listings, []changecapture.Listing{{Root: "/workspace/listed"}, {Root: "/workspace/listed-2"}}; !reflect.DeepEqual(got, want) {
 		t.Errorf("listings = %+v, want %+v", got, want)
 	}
 	if got, want := merged.Excluded, []string{"/workspace/excluded", "/workspace/excluded-2"}; !reflect.DeepEqual(got, want) {
@@ -105,7 +104,7 @@ func TestExecScopePreviewPublishesOnlyReviewChanges(t *testing.T) {
 		if err := os.WriteFile(path, []byte("original\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		before := snapshotExecFile(path, nil)
+		before := changecapture.ReadFile(path, nil)
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		broker := newLivePreview(ctx)
@@ -113,7 +112,7 @@ func TestExecScopePreviewPublishesOnlyReviewChanges(t *testing.T) {
 		sub := testReview(broker).Subscribe()
 		testReview(broker).TakePreviews(sub) // Discard initial scope synchronization.
 		const previewID = "running:cleanup-test"
-		go runExecScopePreview(ctx, broker, execObservation{Class: execscope.Scoped.String(), Files: []execFileSnapshot{before}}, previewmodel.Preview{
+		go runExecScopePreview(ctx, broker, changecapture.Observation{Class: execscope.Scoped.String(), Files: []changecapture.File{before}}, previewmodel.Preview{
 			ID: previewID, Workspace: root, Thread: "thread",
 		}, nil, nil)
 		synctest.Wait()
@@ -159,7 +158,7 @@ func TestExecScopePreviewRetriesAfterBrokerAdmissionRejection(t *testing.T) {
 		if err := os.WriteFile(path, []byte("original\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		before := snapshotExecFile(path, nil)
+		before := changecapture.ReadFile(path, nil)
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		broker := newLivePreview(ctx)
@@ -187,7 +186,7 @@ func TestExecScopePreviewRetriesAfterBrokerAdmissionRejection(t *testing.T) {
 		}
 
 		const previewID = "running:admission-retry"
-		go runExecScopePreview(ctx, broker, execObservation{Class: execscope.Scoped.String(), Files: []execFileSnapshot{before}}, previewmodel.Preview{
+		go runExecScopePreview(ctx, broker, changecapture.Observation{Class: execscope.Scoped.String(), Files: []changecapture.File{before}}, previewmodel.Preview{
 			ID: previewID, Workspace: root, Thread: "thread",
 		}, nil, nil)
 		synctest.Wait()
@@ -228,8 +227,8 @@ func TestExecScopePreviewDoesNotTreatReadBudgetAsChange(t *testing.T) {
 		if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		before := snapshotExecFile(path, nil)
-		if before.Error != "" || before.watchStamp == "" {
+		before := changecapture.ReadFile(path, nil)
+		if before.Error != "" || before.WatchStamp == "" {
 			t.Fatalf("capture did not retain a preview metadata baseline: %+v", before)
 		}
 		ctx, cancel := context.WithCancel(t.Context())
@@ -239,7 +238,7 @@ func TestExecScopePreviewDoesNotTreatReadBudgetAsChange(t *testing.T) {
 		sub := testReview(broker).Subscribe()
 		testReview(broker).TakePreviews(sub)
 		const previewID = "running:large-unchanged"
-		go runExecScopePreview(ctx, broker, execObservation{Class: execscope.Scoped.String(), Files: []execFileSnapshot{before}}, previewmodel.Preview{
+		go runExecScopePreview(ctx, broker, changecapture.Observation{Class: execscope.Scoped.String(), Files: []changecapture.File{before}}, previewmodel.Preview{
 			ID: previewID, Workspace: root, Thread: "thread",
 		}, nil, nil)
 		advanceExecCleanupPreviewTicker(t)

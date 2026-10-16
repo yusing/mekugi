@@ -9,13 +9,11 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
-
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-
-	"github.com/yusing/mekugi/libraries/legacycall"
-
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 )
 
 func TestAuthoredChangesUnknownCommandsStayQuiet(t *testing.T) {
@@ -23,14 +21,14 @@ func TestAuthoredChangesUnknownCommandsStayQuiet(t *testing.T) {
 		t.Run(command, func(t *testing.T) {
 			workspace := t.TempDir()
 			// Such commands are bounded only by a workspace snapshot.
-			observation, observed := captureExecObservation([]commandanalysis.Command{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{directory: workspace})
+			observation, observed := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false, changecapture.Options{Directory: workspace})
 			if observed || observation != nil && len(observation.Files) != 0 {
 				t.Fatalf("unsupported output acquired review evidence: %+v", observation)
 			}
 		})
 	}
-	if observation, observed := captureExecObservation(nil, true, true, execCaptureEnv{directory: t.TempDir()}); observed || observation == nil || len(observation.Files) != 0 {
-		t.Fatalf("dynamic exec call acquired named evidence or lost its classification: %+v", observation)
+	if observation, observed := changecapture.Capture(t.Context(), nil, true, true, changecapture.Options{Directory: t.TempDir()}); observed || observation != nil {
+		t.Fatalf("dynamic exec call without a baseline acquired evidence: %+v", observation)
 	}
 }
 
@@ -102,8 +100,8 @@ func TestAuthoredChangesLegacyObservationNoiseExcluded(t *testing.T) {
 	id := f.reserve(t, f.thread, "window")
 	path := filepath.Join(f.workspace, "random-generated-file")
 	file := diffmodel.RenderReviewFile("", path, "", strings.Repeat("generated\n", 1000))
-	file.OriginNote = execInventoryNote
-	f.publish(t, id, "window", legacycall.ExecCallID("outer", false), mekugiHistory{ToolName: nativeExecCommandToolName, ExecOutcome: &execOutcome{Class: "opaque", Coverage: execCoveragePartial}, ReviewFiles: []diffmodel.ReviewFile{file}})
+	file.OriginNote = changecapture.InventoryNote
+	f.publish(t, id, "window", legacycall.ExecCallID("outer", false), mekugiHistory{ToolName: nativeExecCommandToolName, ExecOutcome: &changecapture.Outcome{Class: "opaque", Coverage: changecapture.CoveragePartial}, ReviewFiles: []diffmodel.ReviewFile{file}})
 	for _, view := range []string{"list", "summary", "", "net"} {
 		text, err := f.store.changes.Read(f.ctx, f.store.scoped(f.ctx).changeScope(), changes.Query{Workspace: f.workspace, IDs: []string{id}, View: view})
 		if err != nil || strings.Contains(text, "generated") || strings.Contains(text, "incomplete captured scope") || strings.Contains(text, "1000") {
@@ -114,7 +112,7 @@ func TestAuthoredChangesLegacyObservationNoiseExcluded(t *testing.T) {
 	if err != nil || !strings.Contains(history, "generated") {
 		t.Fatalf("diagnostic history lost: %q, %v", history, err)
 	}
-	notice, err := f.store.agentEditNotice(f.ctx, f.workspace, "outer", mekugiHistory{ExecObservation: &execObservation{}})
+	notice, err := f.store.agentEditNotice(f.ctx, f.workspace, "outer", mekugiHistory{ExecObservation: &changecapture.Observation{}})
 	if err != nil || notice != "" {
 		t.Fatalf("observation-only notice: %q, %v", notice, err)
 	}
@@ -150,7 +148,7 @@ func TestAuthoredChangesPermissionRootsDoNotBecomeEditScope(t *testing.T) {
 	workspace := t.TempDir()
 	writeTestFile(t, filepath.Join(workspace, "output.js"), "generated\n")
 	command := `node --permission --allow-fs-write=. -e 'require("unknown-generator")()'`
-	if observation, observed := captureExecObservation([]commandanalysis.Command{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{directory: workspace}); observed || observation != nil && len(observation.Files) != 0 {
+	if observation, observed := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false, changecapture.Options{Directory: workspace}); observed || observation != nil && len(observation.Files) != 0 {
 		t.Fatal("permissions acquired an authored tree scope")
 	}
 }

@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
@@ -172,7 +174,7 @@ func TestSavedReviewWithoutLivePreview(t *testing.T) {
 	}
 	history := mekugiHistory{ToolName: nativeExecCommandToolName, Root: workspace, ExecutingThread: "main", CorrelationID: call, ChangeID: id,
 		ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile(filepath.Join(workspace, "formatted.go"), filepath.Join(workspace, "formatted.go"), "old\n", "new\n")},
-		ExecOutcome: &execOutcome{Status: execStatusFailed, Coverage: execCoverageExact, Exit: new(2)},
+		ExecOutcome: &changecapture.Outcome{Status: changecapture.StatusFailed, Coverage: changecapture.CoverageExact, Exit: new(2)},
 	}
 	if err := writer.put(t.Context(), workspace, map[string]mekugiHistory{call: history}); err != nil {
 		t.Fatal(err)

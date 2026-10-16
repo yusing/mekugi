@@ -15,6 +15,7 @@ import (
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/livepreview/projection"
 	"mvdan.cc/sh/v3/syntax"
@@ -478,7 +479,7 @@ func TestMChangesSkipsRecordedSymlinks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	legacy := mekugiHistory{ChangeID: legacyID, CorrelationID: "legacy", ExecObservation: &execObservation{},
+	legacy := mekugiHistory{ChangeID: legacyID, CorrelationID: "legacy", ExecObservation: &changecapture.Observation{},
 		ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", "old-link", "", "-> target\n")}}
 	if err := store.put(ctx, workspace, map[string]mekugiHistory{"legacy": legacy}); err != nil {
 		t.Fatal(err)

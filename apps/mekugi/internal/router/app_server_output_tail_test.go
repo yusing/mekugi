@@ -10,6 +10,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
@@ -77,7 +79,7 @@ func TestManagedFilesDoNotBecomeEditsInMain(t *testing.T) {
 		files[i] = diffmodel.RenderReviewFile("", fmt.Sprintf("gen-%d.txt", i), "", "x\n")
 		files[i].Origin = "generator"
 	}
-	if event := capturedEditActivity(t.TempDir(), mekugiHistory{ReviewFiles: files, ExecOutcome: &execOutcome{Labels: []string{"git"}}}); event != nil {
+	if event := capturedEditActivity(t.TempDir(), mekugiHistory{ReviewFiles: files, ExecOutcome: &changecapture.Outcome{Labels: []string{"git"}}}); event != nil {
 		t.Fatalf("generated effects created an Activity edit: %+v", event)
 	}
 }

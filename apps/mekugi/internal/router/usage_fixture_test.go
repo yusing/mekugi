@@ -21,7 +21,7 @@ func usageStoreFixture(t *testing.T, directory string) *mekugiReplayStore {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(store.snapshots.close)
+	t.Cleanup(store.snapshots.Close)
 	return store
 }
 func storedUsageFixture(t *testing.T, store *mekugiReplayStore) *accounting.Service {

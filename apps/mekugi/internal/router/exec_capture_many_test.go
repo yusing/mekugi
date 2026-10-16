@@ -6,33 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 )
 
 // A file-count limit must not make a small, enumerable edit batch incomplete.
-func TestExecCaptureManyLiteralGlobFiles(t *testing.T) {
-	workspace := t.TempDir()
-	for i := range 512 {
-		writeTestFile(t, filepath.Join(workspace, "many", fmt.Sprintf("file-%03d.txt", i)), "before\n")
-	}
-	capture := newExecCapture(time.Now().Add(10 * time.Second))
-	capture.scopeRoots = []string{workspace}
-	capture.entry(execscope.Entry{Kind: execscope.File, Operands: []execscope.Operand{{Path: filepath.Join(workspace, "many", "*.txt"), Glob: true}}})
-	if len(capture.files) != 512 || len(capture.omitted) != 0 {
-		t.Fatalf("glob baselines=%d omitted=%+v", len(capture.files), capture.omitted)
-	}
-	for i := range 12 {
-		writeTestFile(t, filepath.Join(workspace, "many", fmt.Sprintf("file-%03d.txt", i)), "after\n")
-	}
-	reviews, complete, coverage, unswept := reconcileExecObservation(execObservation{
-		Class: execscope.Scoped.String(), Roots: []string{workspace}, Files: capture.files, Omitted: capture.omitted,
-	}, execReconcileEnv{})
-	if !complete || coverage != execCoverageExact || unswept != "" || len(reviews) != 12 {
-		t.Fatalf("glob reviews=%d complete=%v coverage=%s unswept=%q", len(reviews), complete, coverage, unswept)
-	}
-}
 
 func TestPythonGlobManyCandidatesOnlyReportsWrites(t *testing.T) {
 	workspace := t.TempDir()
@@ -57,9 +35,10 @@ for source in Path("src").glob("*.py"):
 			}
 		}
 	})
-	reviews, complete, coverage, unswept := reconcileExecObservation(*observation, execReconcileEnv{})
-	if !complete || coverage != execCoverageExact || unswept != "" || len(reviews) != 52 {
-		t.Fatalf("Python writes=%d complete=%v coverage=%s unswept=%q", len(reviews), complete, coverage, unswept)
+	result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
+	reviews, complete, coverage := result.Files, result.Complete, result.Coverage
+	if !complete || coverage != changecapture.CoverageExact || len(reviews) != 52 {
+		t.Fatalf("Python writes=%d complete=%v coverage=%s", len(reviews), complete, coverage)
 	}
 	for _, review := range reviews {
 		if !strings.Contains(review.Diff, "+new") || !strings.Contains(review.Diff, "-old") {
@@ -84,26 +63,9 @@ func TestExecCaptureManyNewDestinations(t *testing.T) {
 	for i := range 512 {
 		writeTestFile(t, filepath.Join(out, fmt.Sprintf("file-%03d.txt", i)), "content\n")
 	}
-	reviews, complete, coverage, unswept := reconcileExecObservation(*observation, execReconcileEnv{})
-	if !complete || coverage != execCoverageExact || unswept != "" || len(reviews) != 512 {
-		t.Fatalf("destination reviews=%d complete=%v coverage=%s unswept=%q", len(reviews), complete, coverage, unswept)
-	}
-}
-
-func TestExecCaptureExpiredCandidatesDeduplicate(t *testing.T) {
-	capture := newExecCapture(time.Now().Add(-time.Second))
-	root := t.TempDir()
-	for i := range 50000 {
-		path := filepath.Join(root, fmt.Sprintf("candidate-%d", i))
-		capture.add(path)
-		capture.omit(path, "duplicate reason must not replace original")
-	}
-	if len(capture.files) != 0 || len(capture.omitted) != 50000 {
-		t.Fatalf("expired capture: snapshots=%d omissions=%d", len(capture.files), len(capture.omitted))
-	}
-	for _, omission := range capture.omitted {
-		if omission.Reason != "capture deadline" {
-			t.Fatalf("lost first omission: %+v", omission)
-		}
+	result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
+	reviews, complete, coverage := result.Files, result.Complete, result.Coverage
+	if !complete || coverage != changecapture.CoverageExact || len(reviews) != 512 {
+		t.Fatalf("destination reviews=%d complete=%v coverage=%s", len(reviews), complete, coverage)
 	}
 }

@@ -2,14 +2,13 @@ package router
 
 import (
 	"context"
-	"maps"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
@@ -39,7 +38,7 @@ type execWindow struct {
 	created []segmenttransport.Message
 	// claims are snapshot states that overlapping calls already recorded.
 	// This window's snapshot comparison starts from them.
-	claims workspaceSnapshotClaims
+	claims changecapture.Claims
 }
 
 type execWindowRegistry struct {
@@ -135,23 +134,19 @@ type execWindowView struct {
 	background []string
 	// claims merge the windows' own claims; snapshot reports whether every
 	// window is known and not background.
-	claims   workspaceSnapshotClaims
+	claims   changecapture.Claims
 	snapshot bool
 }
 
 func execRootsMeet(a, b []string) bool {
 	for _, left := range a {
 		for _, right := range b {
-			if execPathWithin(left, right) || execPathWithin(right, left) {
+			if changecapture.PathWithin(left, right) || changecapture.PathWithin(right, left) {
 				return true
 			}
 		}
 	}
 	return false
-}
-
-func execPathWithin(path, root string) bool {
-	return path == root || strings.HasPrefix(path, strings.TrimSuffix(root, string(filepath.Separator))+string(filepath.Separator))
 }
 
 // close ends the windows of refs and reports the other windows on their
@@ -188,7 +183,7 @@ func (r *execWindowRegistry) view(refs []string, complete bool) execWindowView {
 				}
 			}
 			selves = append(selves, window)
-			view.claims = view.claims.merge(window.claims)
+			view.claims = view.claims.Merge(window.claims)
 		}
 	}
 	// A background window, or one lost to a restart or eviction, may span
@@ -226,7 +221,7 @@ func (r *execWindowRegistry) view(refs []string, complete bool) execWindowView {
 
 // claim hands recorded snapshot states to the still-open windows that
 // overlapped refs, so their later comparisons do not record the same effect.
-func (r *execWindowRegistry) claim(refs []string, states workspaceSnapshotClaims) {
+func (r *execWindowRegistry) claim(refs []string, states changecapture.Claims) {
 	if r == nil || len(states) == 0 {
 		return
 	}
@@ -242,22 +237,8 @@ func (r *execWindowRegistry) claim(refs []string, states workspaceSnapshotClaims
 		if slices.Contains(refs, other.ref) || !other.closed.IsZero() || !execRootsMeet(other.roots, roots) {
 			continue
 		}
-		other.claims = other.claims.merge(states)
+		other.claims = other.claims.Merge(states)
 	}
-}
-
-// merge adds claims to c, allocating it when needed.
-func (c workspaceSnapshotClaims) merge(claims workspaceSnapshotClaims) workspaceSnapshotClaims {
-	for domain, states := range claims {
-		if c == nil {
-			c = make(workspaceSnapshotClaims)
-		}
-		if c[domain] == nil {
-			c[domain] = make(map[string]workspaceSnapshotEntry, len(states))
-		}
-		maps.Copy(c[domain], states)
-	}
-	return c
 }
 
 func execBackgroundLabel(session string) string {

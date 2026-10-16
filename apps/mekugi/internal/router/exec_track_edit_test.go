@@ -3,6 +3,9 @@ package router
 import (
 	"bufio"
 	"context"
+
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+
 	json "encoding/json/v2"
 	"fmt"
 	"io"
@@ -14,18 +17,16 @@ import (
 	"testing"
 	"time"
 
-	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
-
-	"github.com/yusing/mekugi/libraries/commandanalysis"
-
-	"github.com/yusing/mekugi/libraries/shellinstrumentation"
-
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
-	"github.com/yusing/mekugi/libraries/diffmodel"
-
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
 
@@ -65,30 +66,26 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			if strings.Contains(edit, "exec(") {
 				script = edit + "\npython3 -c 'import sys; print(\"test running\", flush=True); assert sys.stdin.readline().strip() == \"continue\"'"
 			}
-			observation, ok := captureExecObservation([]commandanalysis.Command{{Command: script, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{previewOnly: true, directory: workspace})
-			var snapshots *workspaceSnapshots
-			if observation == nil || !ok && !opaque {
+			var snapshots *changecapture.Workspaces
+			if opaque {
+				snapshots = changecapture.NewWorkspaces(t.TempDir())
+				defer snapshots.Close()
+			}
+			observation, ok := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: script, Workdir: workspace, Shell: "bash"}}, false, false, changecapture.Options{PreviewOnly: !opaque, Directory: workspace, Workspaces: snapshots})
+			if !ok || observation == nil {
 				t.Fatal("missing observation")
 			}
 			if opaque {
-				snapshots = newWorkspaceSnapshots(t.TempDir())
-				defer snapshots.close()
-				// This fixture requires a baseline. Use the error-bearing snapshot
-				// operation rather than the production best-effort fallback, which
-				// deliberately hides setup failures and narrows capture coverage.
-				baselineCtx, cancel := context.WithTimeout(t.Context(), workspaceSnapshotWarm)
-				var err error
-				observation.Tree, err = snapshots.repo(workspace).snapshot(baselineCtx)
-				cancel()
-				if err != nil {
-					t.Fatalf("prepare workspace baseline: %v", err)
+				if observation.Tree == "" {
+					t.Fatal("workspace baseline unavailable")
 				}
 				if files, _ := execPreviewProjected(t.Context(), *observation); len(files) != 0 {
 					t.Fatal("regression must bypass source prediction")
 				}
-			} else if !ok || observation == nil || len(observation.Files) == 0 {
+			} else if len(observation.Files) == 0 {
 				t.Fatal("missing edit capture")
 			}
+
 			if strings.Contains(edit, "git --version") {
 				var err error
 				script, err = shellinstrumentation.RewriteCommands(script, "/private/mekugi-exec", shell.hub.instrumentation.vcs, "", "edit")
@@ -484,7 +481,7 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 	second := "cat > source.go <<'EOF'\nafter\nEOF\ngo test ./..."
 	source := fmt.Sprintf("await tools.exec_command({cmd:%q,workdir:%q}); await tools.exec_command({cmd:%q,workdir:%q});", first, workspace, second, workspace)
 	commands, dynamic := commandanalysis.LiteralExecCommands(source, workspace, "bash")
-	observation, ok := captureExecObservation(commands, dynamic, true, execCaptureEnv{previewOnly: true, directory: workspace})
+	observation, ok := changecapture.Capture(t.Context(), commands, dynamic, true, changecapture.Options{PreviewOnly: true, Directory: workspace})
 	if !ok || observation == nil || len(commands) != 2 || len(execPreviewExpected(t.Context(), *observation)) != 0 {
 		t.Fatal("fixture must capture two sequential edits in one exec cell")
 	}
@@ -556,7 +553,7 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 			// Native completion ends only the edit; the sibling test stays pending.
 			source := fmt.Sprintf("await tools.exec_command({cmd:%q,workdir:%q,shell:%q,login:false}); await tools.exec_command({cmd:'go test ./...',workdir:%q});", script, workspace, "/bin/"+shell, workspace)
 			commands, dynamic := commandanalysis.LiteralExecCommands(source, workspace, shell)
-			observation, ok := captureExecObservation(commands, dynamic, true, execCaptureEnv{previewOnly: true, directory: workspace})
+			observation, ok := changecapture.Capture(t.Context(), commands, dynamic, true, changecapture.Options{PreviewOnly: true, Directory: workspace})
 			if !ok || observation == nil || len(commands) != 2 {
 				t.Fatal("missing grouped edit observation")
 			}
@@ -646,7 +643,7 @@ func TestExecTrackStreamableEditFinishesBeforeFormatter(t *testing.T) {
 	path := filepath.Join(workspace, "source.go")
 	writeTestFile(t, path, "before\n")
 	script := "cat > source.go <<'EOF'\npackage p; var A=1\nEOF\ngofmt -w source.go; go test ./..."
-	observation, ok := captureExecObservation([]commandanalysis.Command{{Command: script, Shell: "bash", Workdir: workspace}}, false, false, execCaptureEnv{directory: workspace})
+	observation, ok := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: script, Shell: "bash", Workdir: workspace}}, false, false, changecapture.Options{Directory: workspace})
 	if !ok || observation == nil {
 		t.Fatal("missing source capture")
 	}
@@ -687,7 +684,7 @@ func TestExecTrackPreviewDoesNotAdoptOlderInvocation(t *testing.T) {
 			workspace := t.TempDir()
 			path := filepath.Join(workspace, "source.go")
 			writeTestFile(t, path, "before\n")
-			observation, ok := captureExecObservation([]commandanalysis.Command{{Command: script, Shell: "bash", Workdir: workspace}}, false, false, execCaptureEnv{previewOnly: true, directory: workspace})
+			observation, ok := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: script, Shell: "bash", Workdir: workspace}}, false, false, changecapture.Options{PreviewOnly: true, Directory: workspace})
 			if !ok || observation == nil {
 				t.Fatal("missing capture")
 			}
@@ -775,7 +772,7 @@ func TestExecTrackSiblingWindowsCannotShareFutureReport(t *testing.T) {
 			t.Fatal(err)
 		}
 		writeTestFile(t, filepath.Join(directory, "source.go"), "before\n")
-		observation, ok := captureExecObservation([]commandanalysis.Command{{Command: script, Shell: "bash", Workdir: directory}}, false, false, execCaptureEnv{previewOnly: true, directory: workspace})
+		observation, ok := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: script, Shell: "bash", Workdir: directory}}, false, false, changecapture.Options{PreviewOnly: true, Directory: workspace})
 		if !ok || observation == nil {
 			t.Fatal("missing capture")
 		}

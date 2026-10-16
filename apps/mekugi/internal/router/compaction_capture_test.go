@@ -116,7 +116,7 @@ func testCompactionCapture(t *testing.T, tool string, failed bool) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(proxy.replayStore.snapshots.close)
+			t.Cleanup(proxy.replayStore.snapshots.Close)
 			request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 				"model": "gpt-test", "stream": true,
 				"access_programs": map[string]string{"cyber": "standard"},
@@ -175,7 +175,7 @@ func testCompactionCapture(t *testing.T, tool string, failed bool) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				t.Cleanup(reopened.snapshots.close)
+				t.Cleanup(reopened.snapshots.Close)
 				readCtx, release, err := reopened.beginSession(t.Context(), thread, "compact-review")
 				if err != nil {
 					t.Fatal(err)

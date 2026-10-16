@@ -11,13 +11,14 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffrender"
-	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
-
-	"github.com/yusing/mekugi/modules/livepreview/projection"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/livepreview/projection"
+	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
@@ -62,26 +63,26 @@ func waitExecScopePreviewGone(t *testing.T, broker *previewmodel.Session, id str
 
 func TestExecScopePreviewFooterDeduplicatesBoundedTargets(t *testing.T) {
 	t.Parallel()
-	observation := execObservation{
+	observation := changecapture.Observation{
 		Class:  execscope.Scoped.String(),
 		Reason: "additional VCS targets were unresolved",
-		Files: []execFileSnapshot{
+		Files: []changecapture.File{
 			{Path: "/scope/tracked.txt"},
 			{Path: "/scope/tracked.txt"},
 		},
-		Omitted: []execOmission{{Path: "/scope/also.txt", Reason: "fixture capture bound"}},
+		Omitted: []changecapture.Omission{{Path: "/scope/also.txt", Reason: "fixture capture bound"}},
 	}
 	if got, want := execScopePreviewFooter(observation), "may write · 2 scoped paths · tracked.txt, also.txt · other writes unknown · bounded scope"; got != want {
 		t.Fatalf("bounded VCS scope footer = %q, want %q", got, want)
 	}
 }
 
-func captureRunningExecScope(t *testing.T) (string, string, *execObservation) {
+func captureRunningExecScope(t *testing.T) (string, string, *changecapture.Observation) {
 	t.Helper()
 	repo := t.TempDir()
 	tracked := filepath.Join(repo, "tracked.txt")
 	writeTestFile(t, tracked, "before bytes\n")
-	observation, observed := captureExecObservation([]commandanalysis.Command{{Command: "cat > tracked.txt <<'EOF'\nafter\nEOF", Workdir: repo, Shell: "bash"}}, false, false, execCaptureEnv{directory: repo})
+	observation, observed := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: "cat > tracked.txt <<'EOF'\nafter\nEOF", Workdir: repo, Shell: "bash"}}, false, false, changecapture.Options{Directory: repo})
 	if !observed || observation == nil {
 		t.Fatal("ordinary write scope missing")
 	}
@@ -102,7 +103,7 @@ func TestLiveDiffStreamableAdmissionPreservesCapture(t *testing.T) {
 				if mixed {
 					commands = append(commands, commandanalysis.Command{Command: "cat > authored.go <<'EOF'\npackage authored\nEOF", Workdir: workspace, Shell: "bash"})
 				}
-				observation, ok := captureExecObservation(commands, false, false, execCaptureEnv{directory: workspace})
+				observation, ok := changecapture.Capture(t.Context(), commands, false, false, changecapture.Options{Directory: workspace})
 				if !ok || observation == nil || len(observation.Files) == 0 {
 					t.Fatal("ordinary capture was lost")
 				}
@@ -129,7 +130,7 @@ func TestLiveDiffStreamableAdmissionPreservesCapture(t *testing.T) {
 				}
 				registry.close(window.ref)
 			}
-			observation, _ := captureExecObservation([]commandanalysis.Command{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{directory: workspace})
+			observation, _ := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false, changecapture.Options{Directory: workspace})
 			process := exec.Command(execTrackShellExecutable(t, "bash"), "-c", command)
 			process.Dir = workspace
 			process.Env = append(os.Environ(), "BASH_ENV=", "MEKUGI_EXEC_TRACK=")
@@ -149,7 +150,7 @@ func TestExecRunningPreviewExcludesVCSScope(t *testing.T) {
 			repo := newExecVCSTestRepo(t, map[string]string{"tracked.txt": "committed bytes\n"})
 			writeTestFile(t, filepath.Join(repo, "tracked.txt"), "dirty bytes\n")
 			writeTestFile(t, filepath.Join(repo, "untracked.txt"), "untracked bytes\n")
-			observation, observed := captureExecObservation([]commandanalysis.Command{{Command: command, Workdir: repo, Shell: "bash"}}, false, false, execCaptureEnv{directory: repo, previewOnly: true})
+			observation, observed := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: command, Workdir: repo, Shell: "bash"}}, false, false, changecapture.Options{Directory: repo, PreviewOnly: true})
 			if !observed || observation == nil || len(observation.Files) == 0 {
 				t.Fatal("VCS scope missing")
 			}
@@ -270,7 +271,7 @@ func TestExecPreviewEditThenTestKeepsKnownTarget(t *testing.T) {
 	path := filepath.Join(workspace, "source.go")
 	writeTestFile(t, path, "before\n")
 	command := "python3 - <<'PY'\np='source.go'\ns=open(p).read().replace('before', 'after')\nopen(p,'w').write(s)\nPY\nenv -u BASH_ENV go test ./..."
-	observation, observed := captureExecObservation([]commandanalysis.Command{{Command: command, Workdir: workspace, Shell: "bash"}}, false, true, execCaptureEnv{directory: workspace})
+	observation, observed := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: command, Workdir: workspace, Shell: "bash"}}, false, true, changecapture.Options{Directory: workspace})
 	if !observed || observation == nil || len(observation.Files) != 1 || observation.Files[0].Path != path || observation.Files[0].Content != "before\n" {
 		t.Fatalf("lost literal edit target: %+v", observation)
 	}
@@ -297,7 +298,7 @@ func TestExecWatchWithoutCapturedPathsDoesNotCrowdStreamingInput(t *testing.T) {
 	for index := range 8 {
 		ref := fmt.Sprintf("watch-%d", index)
 		registry.open(&execWindow{ref: ref, roots: []string{workspace}, thread: "thread"})
-		registry.preview(ref, execObservation{Class: execscope.Opaque.String(), Reason: "unresolved command"}, broker, workspace, "thread", "same-caller", nil)
+		registry.preview(ref, changecapture.Observation{Class: execscope.Opaque.String(), Reason: "unresolved command"}, broker, workspace, "thread", "same-caller", nil)
 	}
 	broker.Update(previewmodel.Preview{ID: "script", Workspace: workspace, Thread: "thread", Caller: "same-caller",
 		Status: previewmodel.PreviewEdit, Input: "cat /tmp/example\n"}, false)
@@ -325,7 +326,7 @@ func TestExecRunningPreviewShowsAuthoredScopeAndCancelsWithoutEvidence(t *testin
 	repo := newExecVCSTestRepo(t, map[string]string{"tracked.txt": "before bytes\n", "restored.txt": "committed bytes\n"})
 	tracked := filepath.Join(repo, "tracked.txt")
 	writeTestFile(t, filepath.Join(repo, "restored.txt"), "dirty bytes\n")
-	observation, observed := captureExecObservation([]commandanalysis.Command{{Command: "cat > tracked.txt <<'EOF'\nafter\nEOF\ngit restore -- restored.txt", Workdir: repo, Shell: "bash"}}, false, false, execCaptureEnv{directory: repo})
+	observation, observed := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: "cat > tracked.txt <<'EOF'\nafter\nEOF\ngit restore -- restored.txt", Workdir: repo, Shell: "bash"}}, false, false, changecapture.Options{Directory: repo})
 	if !observed || observation == nil {
 		t.Fatal("mixed scope missing")
 	}
@@ -336,7 +337,7 @@ func TestExecRunningPreviewShowsAuthoredScopeAndCancelsWithoutEvidence(t *testin
 	// Exercise both qualification markers on an ordinary captured scope: the
 	// omitted target represents a path beyond the bounded pre-call capture.
 	observation.Reason = "additional targets were unresolved"
-	observation.Omitted = append(observation.Omitted, execOmission{Path: "also.txt", Reason: "fixture capture bound"})
+	observation.Omitted = append(observation.Omitted, changecapture.Omission{Path: "also.txt", Reason: "fixture capture bound"})
 
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {

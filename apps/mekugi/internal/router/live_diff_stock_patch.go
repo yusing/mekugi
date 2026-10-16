@@ -3,6 +3,8 @@ package router
 import (
 	"context"
 
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 	"github.com/yusing/mekugi/modules/livepreview/projection"
 )
@@ -18,7 +20,7 @@ func projectStockPatchPreview(ctx context.Context, workspace string, preview pre
 		preview.Status = previewmodel.PreviewUnavailable + "patch exceeds projection capacity"
 		return preview
 	}
-	files, err := projection.Patch(ctx, workspace, preview.Input, preview.Complete, readNativePatchFile)
+	files, err := projection.Patch(ctx, workspace, preview.Input, preview.Complete, changecapture.ReadPatchFile)
 	preview.Input = ""
 	if err != nil {
 		preview.Status = previewmodel.PreviewUnavailable + "patch cannot be projected"

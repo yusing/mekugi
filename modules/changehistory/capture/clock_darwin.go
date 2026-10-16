@@ -1,6 +1,8 @@
 //go:build darwin
 
-package router
+package capture
+
+// Source: apps/mekugi/internal/router/exec_clock_darwin.go:1:30@1e6d58c6.
 
 import (
 	"strings"
@@ -10,14 +12,13 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func execFileTimes(path string) (change, birth time.Time, hasBirth, ok bool) {
+func execFileTimes(path string) (change time.Time, ok bool) {
 	var stat syscall.Stat_t
 	if syscall.Lstat(path, &stat) != nil {
-		return time.Time{}, time.Time{}, false, false
+		return time.Time{}, false
 	}
 	change = time.Unix(stat.Ctimespec.Sec, stat.Ctimespec.Nsec)
-	birth = time.Unix(stat.Birthtimespec.Sec, stat.Birthtimespec.Nsec)
-	return change, birth, true, true
+	return change, true
 }
 
 func execRemoteFilesystem(path string) bool {

@@ -16,6 +16,7 @@ import (
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/livepreview/projection"
 
@@ -29,7 +30,7 @@ var execRunningPreviewSlots = make(chan struct{}, 16)
 
 const execRunningPreviewBytes = 1 << 20
 
-func (r *execWindowRegistry) preview(ref string, observation execObservation, broker *previewmodel.Session, workspace, thread, caller string, snapshots *workspaceSnapshots) {
+func (r *execWindowRegistry) preview(ref string, observation changecapture.Observation, broker *previewmodel.Session, workspace, thread, caller string, snapshots *changecapture.Workspaces) {
 	// VCS effects use the same provenance admission as authored counts.
 	// Only source-content projections admit paths, never generic watch effects.
 	excludedVCS := func(origin string) bool {
@@ -44,7 +45,7 @@ func (r *execWindowRegistry) preview(ref string, observation execObservation, br
 	commands := observation.Commands
 	observation.Commands = nil
 	for _, command := range commands {
-		files, _ := execPreviewProjected(broker.Context(), execObservation{Files: observation.Files, Commands: []commandanalysis.Command{command}})
+		files, _ := execPreviewProjected(broker.Context(), changecapture.Observation{Files: observation.Files, Commands: []commandanalysis.Command{command}})
 		if len(files) == 0 {
 			continue
 		}
@@ -53,12 +54,12 @@ func (r *execWindowRegistry) preview(ref string, observation execObservation, br
 			projected[path] = true
 		}
 	}
-	observation.Files = slices.DeleteFunc(slices.Clone(observation.Files), func(file execFileSnapshot) bool {
+	observation.Files = slices.DeleteFunc(slices.Clone(observation.Files), func(file changecapture.File) bool {
 		streamable := projected[file.Path]
-		return !streamable || file.watchMoveOnly || excludedVCS(file.Origin)
+		return !streamable || file.WatchMoveOnly || excludedVCS(file.Origin)
 	})
-	observation.Omitted = slices.DeleteFunc(slices.Clone(observation.Omitted), func(omission execOmission) bool { return excludedVCS(omission.Origin) })
-	observation.Listings = slices.DeleteFunc(slices.Clone(observation.Listings), func(listing execListing) bool { return excludedVCS(listing.Origin) })
+	observation.Omitted = slices.DeleteFunc(slices.Clone(observation.Omitted), func(omission changecapture.Omission) bool { return excludedVCS(omission.Origin) })
+	observation.Listings = slices.DeleteFunc(slices.Clone(observation.Listings), func(listing changecapture.Listing) bool { return excludedVCS(listing.Origin) })
 	if len(observation.Files) == 0 && r.tracker == nil {
 		return
 	}
@@ -95,7 +96,7 @@ func (r *execWindowRegistry) preview(ref string, observation execObservation, br
 				}
 				input := command
 				input.Command, input.Workdir = segment.Source, directory
-				files, _ := execPreviewProjected(ctx, execObservation{Files: observation.Files, Commands: []commandanalysis.Command{input}})
+				files, _ := execPreviewProjected(ctx, changecapture.Observation{Files: observation.Files, Commands: []commandanalysis.Command{input}})
 				if len(files) > 0 {
 					tracking.streamable[tracking.authoredScript(segment.Source, "")] = true
 				}
@@ -112,23 +113,23 @@ func (r *execWindowRegistry) preview(ref string, observation execObservation, br
 
 // Reuse captured program attribution, not the enclosing stock executor.
 // A missing program label is unknown, not evidence that a shell edited it.
-func execPreviewTool(observation execObservation) string {
+func execPreviewTool(observation changecapture.Observation) string {
 	observation.Labels = slices.DeleteFunc(slices.Clone(observation.Labels), func(label string) bool { return label == "mv" || label == "git mv" })
 	// The classifier's opaque-statement fallback is scope uncertainty,
 	// not an evidenced executable. Keep it out of display attribution.
 	observation.Programs = slices.DeleteFunc(slices.Clone(observation.Programs), func(program execscope.Program) bool {
 		return program.Label == "shell"
 	})
-	tool := observation.sourceLabel()
+	tool := observation.SourceLabel()
 	if tool == nativeExecCommandToolName {
 		return ""
 	}
 	return tool
 }
 
-func execPreviewPaths(observation execObservation) []string {
+func execPreviewPaths(observation changecapture.Observation) []string {
 	var paths []string
-	for _, path := range observation.scopePaths() {
+	for _, path := range observation.ScopePaths() {
 		if !slices.Contains(paths, path) {
 			paths = append(paths, path)
 		}
@@ -136,7 +137,7 @@ func execPreviewPaths(observation execObservation) []string {
 	return paths
 }
 
-func execScopePreviewFooter(observation execObservation) string {
+func execScopePreviewFooter(observation changecapture.Observation) string {
 	paths := execPreviewPaths(observation)
 	footer := fmt.Sprintf("may write · %d scoped paths", len(paths))
 	if len(paths) > 0 {
@@ -158,13 +159,13 @@ func execScopePreviewFooter(observation execObservation) string {
 // Reuse literal edit projection against the pre-call capture, never a fresh
 // read of a file the host may already have edited. Unprojectable effects keep
 // the normal host-result lifecycle; tests acquire no predicted write targets.
-func execPreviewProjected(ctx context.Context, observation execObservation) (map[string]diffmodel.ReviewFile, bool) {
+func execPreviewProjected(ctx context.Context, observation changecapture.Observation) (map[string]diffmodel.ReviewFile, bool) {
 	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	ctx = projection.WithSources(ctx, true)
 	for _, file := range observation.Files {
-		if file.Error == "" && (file.Kind == execFileText || file.Kind == execFileAbsent) && len(file.Content) <= projection.FileLimit {
-			projection.Prime(ctx, projection.ReadFile, file.Path, file.Content, file.Kind != execFileAbsent)
+		if file.Error == "" && (file.Kind == changecapture.Text || file.Kind == changecapture.Absent) && len(file.Content) <= projection.FileLimit {
+			projection.Prime(ctx, projection.ReadFile, file.Path, file.Content, file.Kind != changecapture.Absent)
 		}
 	}
 	expected := make(map[string]diffmodel.ReviewFile)
@@ -200,7 +201,7 @@ func execPreviewProjected(ctx context.Context, observation execObservation) (map
 	return expected, complete
 }
 
-func execPreviewExpected(ctx context.Context, observation execObservation) map[string]diffmodel.ReviewFile {
+func execPreviewExpected(ctx context.Context, observation changecapture.Observation) map[string]diffmodel.ReviewFile {
 	expected, complete := execPreviewProjected(ctx, observation)
 	// Only retire the watcher when its entire admitted edit scope is known.
 	if !complete || len(expected) != len(observation.Files) {
@@ -219,8 +220,8 @@ func execPreviewExpected(ctx context.Context, observation execObservation) map[s
 type execPreviewCapture struct {
 	registry    *execWindowRegistry
 	ref         string
-	observation execObservation
-	snapshots   *workspaceSnapshots
+	observation changecapture.Observation
+	snapshots   *changecapture.Workspaces
 	completed   int
 	text        string
 	calls       []string
@@ -233,27 +234,29 @@ func (c *execPreviewCapture) update(ctx context.Context, broker *previewmodel.Se
 	}
 	c.next = time.Now().Add(500 * time.Millisecond)
 	view := c.registry.view([]string{c.ref}, false)
-	env := execReconcileEnv{excluded: view.excluded}
+	comparison := changecapture.Comparison{Excluded: view.excluded, Workspace: preview.Workspace, Claims: view.claims}
 	// Only unnamed effects require an isolated workspace snapshot. A sibling
 	// on another target must not suppress captured named baselines.
-	if c.snapshots != nil && c.observation.Tree != "" && view.snapshot && len(view.overlaps) == 0 && len(view.background) == 0 {
-		var err error
-		env.snapshot, _, err = c.snapshots.since(ctx, preview.Workspace, c.observation.Tree, view.claims)
-		if err != nil {
-			return
-		} // Keep the boundary pending for retry.
+	if view.snapshot && len(view.overlaps) == 0 && len(view.background) == 0 {
+		comparison.Workspaces = c.snapshots
 	}
 	scope := c.observation
-	scope.addCreatedPaths(view.created)
+	for _, path := range view.created {
+		scope.AddCreatedPath(path.Data, path.Tree)
+	}
 	// This receipt is an observed endpoint, not a claim of complete intermediate
 	// write history. Returning to the baseline must withdraw the earlier endpoint.
 	scope.RepeatedPaths = false
-	files, complete, _, _ := reconcileExecObservation(scope, env)
+	result := changecapture.Reconcile(ctx, scope, comparison)
+	if result.SnapshotError != nil {
+		return
+	} // Keep the boundary pending for retry.
+	files, complete := result.Files, result.Complete
 	// Another writer may have started while the filesystem comparison ran.
 	if current := tracking.state(); current.completed != state.completed || !slices.Equal(current.calls, state.calls) || ctx.Err() != nil {
 		return
 	}
-	text := editReceiptText(preview.Workspace, mekugiHistory{Source: execPreviewTool(c.observation), ReviewFiles: files, ExecOutcome: &execOutcome{Labels: c.observation.Labels}})
+	text := editReceiptText(preview.Workspace, mekugiHistory{Source: execPreviewTool(c.observation), ReviewFiles: files, ExecOutcome: &changecapture.Outcome{Labels: c.observation.Labels}})
 	if (complete || text != "") && (text != c.text || text != "" && !slices.Equal(state.calls, c.calls)) {
 		preview.ID, preview.Files = "observed:"+c.ref, files
 		preview.EditReceipt, preview.HostItems, preview.Complete = text, slices.Clone(state.calls), true
@@ -266,7 +269,7 @@ func (c *execPreviewCapture) update(ctx context.Context, broker *previewmodel.Se
 	}
 }
 
-func runExecScopePreview(ctx context.Context, broker *previewmodel.Session, observation execObservation, preview previewmodel.Preview, tracking *execPreviewTrack, capture *execPreviewCapture) {
+func runExecScopePreview(ctx context.Context, broker *previewmodel.Session, observation changecapture.Observation, preview previewmodel.Preview, tracking *execPreviewTrack, capture *execPreviewCapture) {
 	preview.Tool = execPreviewTool(observation)
 	defer broker.DiscardRunning(preview)
 	expected := execPreviewExpected(ctx, observation)
@@ -275,7 +278,7 @@ func runExecScopePreview(ctx context.Context, broker *previewmodel.Session, obse
 	if len(expected) > 0 {
 		// This card belongs to the projected edit, not arbitrary side effects
 		// of a later test or other command sharing its host invocation.
-		footer = execScopePreviewFooter(execObservation{Files: observation.Files})
+		footer = execScopePreviewFooter(changecapture.Observation{Files: observation.Files})
 	}
 	preview.Footer = footer
 	ticker := time.NewTicker(500 * time.Millisecond)
@@ -312,20 +315,20 @@ func runExecScopePreview(ctx context.Context, broker *previewmodel.Session, obse
 			info, err := os.Lstat(before.Path)
 			stamp := "absent"
 			if err == nil {
-				stamp = execWatchFileStamp(before.Path, info)
+				stamp = changecapture.WatchFileStamp(before.Path, info)
 			} else if !os.IsNotExist(err) && !errors.Is(err, syscall.ENOTDIR) {
 				continue
 			}
 			// Copy scope includes both dst and dst/basename until the host
 			// resolves file-vs-directory semantics. Once dst is a regular file,
-			// its child candidate is absent, as in snapshotExecFile, not pending.
+			// its child candidate is absent, as in changecapture.ReadFile, not pending.
 			if previous, ok := stamps[before.Path]; ok && previous == stamp {
 				if settled {
 					settledPaths[before.Path] = true
 				}
 				continue
 			}
-			after := snapshotExecFile(before.Path, &budget)
+			after := changecapture.ReadFile(before.Path, &budget)
 			if after.Error == "capture budget exhausted" {
 				if after.Size <= execRunningPreviewBytes {
 					continue
@@ -339,20 +342,20 @@ func runExecScopePreview(ctx context.Context, broker *previewmodel.Session, obse
 			var file diffmodel.ReviewFile
 			if target, ok := expected[before.Path]; ok {
 				beforePath, afterPath := before.Path, before.Path
-				if !execFilePresent(before) {
+				if !changecapture.FilePresent(before) {
 					beforePath = ""
 				}
-				if !execFilePresent(after) {
+				if !changecapture.FilePresent(after) {
 					afterPath = ""
 				}
 				if before.Error == "" && after.Error == "" {
-					file = renderExecReview(beforePath, afterPath, before, after)
+					file = changecapture.RenderReview(beforePath, afterPath, before, after)
 				}
 				comparison := file
 				if file.Diff != "" && !file.Binary && !file.Link {
 					// Predictions are compact; compare that projection without
 					// shrinking the observed evidence shown below or retained later.
-					comparison.Diff = diffmodel.RenderReviewPreviewFile(beforePath, afterPath, execReviewText(before), execReviewText(after)).Diff
+					comparison.Diff = diffmodel.RenderReviewPreviewFile(beforePath, afterPath, changecapture.ReviewText(before), changecapture.ReviewText(after)).Diff
 				}
 				if comparison == target {
 					matched[before.Path] = true
@@ -360,36 +363,36 @@ func runExecScopePreview(ctx context.Context, broker *previewmodel.Session, obse
 					delete(matched, before.Path)
 				}
 			}
-			if before.Kind == execFileOther || after.Kind == execFileOther ||
-				after.Kind == execFileDir {
+			if before.Kind == changecapture.Other || after.Kind == changecapture.Other ||
+				after.Kind == changecapture.Directory {
 				_, existed := changed[before.Path]
 				updated = updated || existed
 				delete(changed, before.Path)
 				continue
 			}
 			if before.Error != "" || after.Error != "" {
-				if before.watchStamp != "" && before.watchStamp == stamp {
+				if before.WatchStamp != "" && before.WatchStamp == stamp {
 					_, existed := changed[before.Path]
 					updated = updated || existed
 					delete(changed, before.Path)
 					continue
 				}
 				file = diffmodel.RenderIncompleteReviewFile(before.Path, before.Path, strings.Trim(strings.Join([]string{before.Error, after.Error}, "; "), "; "))
-			} else if sameExecContent(before, after) {
+			} else if changecapture.SameContent(before, after) {
 				_, existed := changed[before.Path]
 				updated = updated || existed
 				delete(changed, before.Path)
 				continue
 			} else {
 				beforePath, afterPath := before.Path, before.Path
-				if !execFilePresent(before) {
+				if !changecapture.FilePresent(before) {
 					beforePath = ""
 				}
-				if !execFilePresent(after) {
+				if !changecapture.FilePresent(after) {
 					afterPath = ""
 				}
 				if file.Diff == "" {
-					file = renderExecReview(beforePath, afterPath, before, after)
+					file = changecapture.RenderReview(beforePath, afterPath, before, after)
 				}
 			}
 			if previous, exists := changed[before.Path]; !exists || previous != file {

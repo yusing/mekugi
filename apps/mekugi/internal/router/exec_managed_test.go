@@ -7,10 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
@@ -55,8 +56,8 @@ func saveManagedExecChange(
 	}
 	if err := store.put(ctx, workspace, map[string]mekugiHistory{correlation: {
 		ToolName: nativeExecCommandToolName, Script: "python generate.py", Root: workspace,
-		ExecutingThread: thread, CorrelationID: correlation, ChangeID: id, ReviewFiles: files, ExecOutcome: &execOutcome{
-			Status: execStatusCompleted, Class: "generator", Labels: []string{"formatter"}, Coverage: execCoverageExact,
+		ExecutingThread: thread, CorrelationID: correlation, ChangeID: id, ReviewFiles: files, ExecOutcome: &changecapture.Outcome{
+			Status: changecapture.StatusCompleted, Class: "generator", Labels: []string{"formatter"}, Coverage: changecapture.CoverageExact,
 		},
 	}}); err != nil {
 		t.Fatal(err)
@@ -79,23 +80,10 @@ func TestManagedExecReceiptGroupsFiles(t *testing.T) {
 	}
 }
 
-func TestExecCaptureNamesEverySharedOrigin(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "a.go")
-	writeTestFile(t, path, "package a\n")
-	capture := newExecCapture(time.Now().Add(time.Minute))
-	for _, origin := range []string{"", "gofmt", "goimports", "gofmt"} {
-		capture.origin = origin
-		capture.add(path)
-	}
-	if len(capture.files) != 1 || capture.files[0].Origin != "" || capture.files[0].AlsoManaged != "gofmt, goimports" {
-		t.Fatalf("shared capture = %+v, want one direct file also managed by gofmt, goimports", capture.files)
-	}
-}
-
 func TestExecReceiptOmitsSharedOriginNamedByLabels(t *testing.T) {
 	workspace := t.TempDir()
 	file := diffmodel.RenderReviewFile("a.go", "a.go", "package a\n\nfunc A() {}\n", "package a\n")
-	file.OriginNote = "goimports" + sharedOriginSuffix
+	file.OriginNote = "goimports" + changecapture.SharedOriginSuffix
 	for _, test := range []struct {
 		labels []string
 		note   bool
@@ -104,7 +92,7 @@ func TestExecReceiptOmitsSharedOriginNamedByLabels(t *testing.T) {
 		{labels: []string{"python3"}, note: true},
 		{note: true},
 	} {
-		got := editReceiptText(workspace, mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{file}, ExecOutcome: &execOutcome{Labels: test.labels}})
+		got := editReceiptText(workspace, mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{file}, ExecOutcome: &changecapture.Outcome{Labels: test.labels}})
 		if strings.Contains(got, "(goimports also ran)") != test.note {
 			t.Errorf("labels %q receipt = %q, want note %v", test.labels, got, test.note)
 		}
@@ -117,28 +105,30 @@ func TestMergedExecObservationReconcilesDuplicatePathsAndExcludesSameCellPatch(t
 	if err := os.WriteFile(path, []byte("before\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	var budget = maxExecContentBytes
-	before := snapshotExecFile(path, &budget)
+	var budget = changecapture.MaxContentBytes
+	before := changecapture.ReadFile(path, &budget)
 	if err := os.WriteFile(path, []byte("after\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	members := []execCompletion{
-		{history: mekugiHistory{ExecObservation: &execObservation{Files: []execFileSnapshot{before}}}, callID: "first"},
-		{history: mekugiHistory{ExecObservation: &execObservation{Files: []execFileSnapshot{before}}}, callID: "second"},
+		{history: mekugiHistory{ExecObservation: &changecapture.Observation{Files: []changecapture.File{before}}}, callID: "first"},
+		{history: mekugiHistory{ExecObservation: &changecapture.Observation{Files: []changecapture.File{before}}}, callID: "second"},
 	}
 	merged := mergeExecObservations(members)
-	reviews, complete, coverage, _ := reconcileExecObservation(merged, execReconcileEnv{})
-	if !complete || coverage != execCoverageExact || len(reviews) != 1 || reviews[0].BeforePath != path || reviews[0].AfterPath != path {
+	result := changecapture.Reconcile(t.Context(), merged, changecapture.Comparison{})
+	reviews, complete, coverage := result.Files, result.Complete, result.Coverage
+	if !complete || coverage != changecapture.CoverageExact || len(reviews) != 1 || reviews[0].BeforePath != path || reviews[0].AfterPath != path {
 		t.Fatalf("duplicate-path reconciliation = %+v complete=%v coverage=%q", reviews, complete, coverage)
 	}
 
 	excludedMembers := []execCompletion{
-		{history: mekugiHistory{ExecObservation: &execObservation{Files: []execFileSnapshot{before}}}, callID: "command"},
-		{history: mekugiHistory{ExecObservation: &execObservation{Excluded: []string{path}}}, callID: "patch"},
+		{history: mekugiHistory{ExecObservation: &changecapture.Observation{Files: []changecapture.File{before}}}, callID: "command"},
+		{history: mekugiHistory{ExecObservation: &changecapture.Observation{Excluded: []string{path}}}, callID: "patch"},
 	}
 	excluded := mergeExecObservations(excludedMembers)
-	reviews, complete, coverage, _ = reconcileExecObservation(excluded, execReconcileEnv{})
-	if !complete || coverage != execCoverageExact || len(reviews) != 0 {
+	result = changecapture.Reconcile(t.Context(), excluded, changecapture.Comparison{})
+	reviews, complete, coverage = result.Files, result.Complete, result.Coverage
+	if !complete || coverage != changecapture.CoverageExact || len(reviews) != 0 {
 		t.Fatalf("same-cell patch exclusion = %+v complete=%v coverage=%q", reviews, complete, coverage)
 	}
 }

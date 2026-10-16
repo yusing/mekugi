@@ -10,13 +10,13 @@ import (
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/legacycall"
-
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 )
 
 type snapshotFiles struct {
-	Exec   []execFileSnapshot        `json:",omitempty"`
-	Native []nativePatchFileSnapshot `json:",omitempty"`
+	Exec   []changecapture.File      `json:",omitempty"`
+	Native []changecapture.PatchFile `json:",omitempty"`
 	Review []diffmodel.ReviewFile    `json:",omitempty"`
 	Texts  map[int]string            `json:",omitempty"`
 }

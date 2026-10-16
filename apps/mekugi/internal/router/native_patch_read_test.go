@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/libraries/legacycall"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/commandanalysis"
@@ -64,7 +65,7 @@ func TestCodeModeLiteralPatchRetainsNeutralReadersThroughReplay(t *testing.T) {
 			wantCommand := commandanalysis.Command{Command: tc.command, Workdir: workspace, Shell: "bash"}
 			if observation == nil || observation.Class != execscope.Neutral.String() ||
 				!slices.Equal(observation.Commands, []commandanalysis.Command{wantCommand}) ||
-				!slices.Equal(observation.commandClasses(), []string{execscope.Neutral.String()}) {
+				!slices.Equal(observation.CommandClassesForCalls(), []string{execscope.Neutral.String()}) {
 				t.Fatalf("pre-call neutral command/default shell not retained: %+v", observation)
 			}
 
@@ -108,12 +109,12 @@ func TestCodeModeLiteralPatchRetainsNeutralReadersThroughReplay(t *testing.T) {
 			assertCommandAndIDs := func(p *mekugiProxy) {
 				t.Helper()
 				command := lookup(p, legacycall.ExecCallID("reader-cell", true))
-				status := execStatusCompleted
+				status := changecapture.StatusCompleted
 				if tc.exit != 0 {
-					status = execStatusFailed
+					status = changecapture.StatusFailed
 				}
 				if command.ExecOutcome == nil || command.ExecOutcome.Status != status ||
-					command.ExecOutcome.Coverage != execCoverageExact || command.ExecOutcome.Class != execscope.Neutral.String() ||
+					command.ExecOutcome.Coverage != changecapture.CoverageExact || command.ExecOutcome.Class != execscope.Neutral.String() ||
 					command.ChangeID != "" || len(command.ReviewFiles) != 0 || command.TranslationError != "" {
 					t.Fatalf("reader acquired incomplete or patch effects: %+v", command)
 				}

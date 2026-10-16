@@ -13,10 +13,9 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
-
 	"github.com/yusing/mekugi/libraries/legacycall"
-
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 )
 
 func TestMekugiReplayStoreRestartAndConflict(t *testing.T) {
@@ -55,14 +54,14 @@ func TestMekugiReplayStoreIgnoresLivePreviewStampOnRetry(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(workspace, "source"), []byte("old"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	observation, observed := captureExecObservation([]commandanalysis.Command{{
+	observation, observed := changecapture.Capture(t.Context(), []commandanalysis.Command{{
 		Command: "mv source target", Workdir: workspace, Shell: "bash",
-	}}, false, true, execCaptureEnv{directory: workspace})
+	}}, false, true, changecapture.Options{Directory: workspace})
 	if !observed || observation == nil || len(observation.Files) == 0 {
 		t.Fatal("move operands were not captured")
 	}
-	stamp := observation.Files[0].watchStamp
-	if stamp == "" || !observation.Files[0].watchMoveOnly {
+	stamp := observation.Files[0].WatchStamp
+	if stamp == "" || !observation.Files[0].WatchMoveOnly {
 		t.Fatal("move capture lacks live-preview state")
 	}
 	store, err := openMekugiReplayStore(t.TempDir())
@@ -82,7 +81,7 @@ func TestMekugiReplayStoreIgnoresLivePreviewStampOnRetry(t *testing.T) {
 	if err := put(); err != nil {
 		t.Fatalf("unchanged completed call conflicted after serialization: %v", err)
 	}
-	if history.ExecObservation.Files[0].watchStamp != stamp || !history.ExecObservation.Files[0].watchMoveOnly {
+	if history.ExecObservation.Files[0].WatchStamp != stamp || !history.ExecObservation.Files[0].WatchMoveOnly {
 		t.Fatal("durable projection changed the active live-preview baseline")
 	}
 	history.ExecObservation.Files[0].Content = "changed"
@@ -94,12 +93,12 @@ func TestMekugiReplayStoreIgnoresLivePreviewStampOnRetry(t *testing.T) {
 func TestMekugiReplayStoreNormalizesDurableObservationOnRetry(t *testing.T) {
 	for _, test := range []struct {
 		name        string
-		observation execObservation
+		observation changecapture.Observation
 	}{
-		{name: "empty directory entries", observation: execObservation{
-			Listings: []execListing{{Root: "/workspace/empty", Entries: map[string]string{}}},
+		{name: "empty directory entries", observation: changecapture.Observation{
+			Listings: []changecapture.Listing{{Root: "/workspace/empty", Entries: map[string]string{}}},
 		}},
-		{name: "file-clock location", observation: execObservation{
+		{name: "file-clock location", observation: changecapture.Observation{
 			WindowStart: time.Unix(1_700_000_000, 0).In(time.FixedZone("zero-offset-local", 0)),
 		}},
 	} {
@@ -124,7 +123,7 @@ func TestMekugiReplayStoreAcceptsRetainedOffsetTimestamp(t *testing.T) {
 		t.Fatal(err)
 	}
 	started := time.Unix(1_700_000_000, 0).In(time.FixedZone("captured-offset", 8*60*60))
-	history := mekugiHistory{Script: "same", ExecObservation: &execObservation{WindowStart: started}}
+	history := mekugiHistory{Script: "same", ExecObservation: &changecapture.Observation{WindowStart: started}}
 	if err := store.locked(t.Context(), func(store *mekugiReplayStore) error {
 		return store.write(replayRecord{Version: 1, Workspace: "/workspace", CallID: "call", History: history})
 	}); err != nil {

@@ -8,9 +8,10 @@ import (
 	"testing"
 	"time"
 
-	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
@@ -45,8 +46,8 @@ func TestExecCompletedCaptureOwnershipRetryAndWithdrawal(t *testing.T) {
 				tracking.matches[commands[0].Command].track.segments = []execTrackSegment{{began: true, ended: true}, {began: true, ended: true}, {began: true, ended: true}, {began: true}}
 				tracking.matches[commands[1].Command].track.segments[0].began = false
 			}
-			budget := maxExecContentBytes
-			observation := execObservation{Commands: commands, Files: []execFileSnapshot{snapshotExecFile(path, &budget)}, Labels: []string{"python3"}, RepeatedPaths: true}
+			budget := changecapture.MaxContentBytes
+			observation := changecapture.Observation{Commands: commands, Files: []changecapture.File{changecapture.ReadFile(path, &budget)}, Labels: []string{"python3"}, RepeatedPaths: true}
 			registry := &execWindowRegistry{}
 			registry.open(&execWindow{ref: "cell", thread: "main", turn: "turn", roots: []string{workspace}})
 			defer registry.close("cell")
@@ -56,9 +57,9 @@ func TestExecCompletedCaptureOwnershipRetryAndWithdrawal(t *testing.T) {
 			capture := &execPreviewCapture{registry: registry, ref: "cell", observation: observation}
 			preview := previewmodel.Preview{Workspace: workspace, Thread: "main", Turn: "turn"}
 			if scenario == "snapshot retry" || scenario == "unrelated overlap" {
-				capture.snapshots = newWorkspaceSnapshots(t.TempDir())
-				defer capture.snapshots.close()
-				capture.observation.Tree = capture.snapshots.checkpoint(t.Context(), workspace)
+				capture.snapshots = changecapture.NewWorkspaces(t.TempDir())
+				defer capture.snapshots.Close()
+				capture.observation.Tree = capture.snapshots.Checkpoint(t.Context(), workspace)
 				if capture.observation.Tree == "" {
 					t.Fatal("missing checkpoint")
 				}
@@ -78,16 +79,14 @@ func TestExecCompletedCaptureOwnershipRetryAndWithdrawal(t *testing.T) {
 				tracking.matches[commands[1].Command].track.segments[0].ended = true
 			}
 			if scenario == "snapshot retry" {
-				repo := capture.snapshots.repo(workspace)
-				repo.gate <- struct{}{}
-				ctx, cancel := context.WithTimeout(t.Context(), time.Millisecond)
-				capture.update(ctx, broker, preview, tracking, tracking.state())
+				ctx, cancel := context.WithCancel(t.Context())
 				cancel()
-				<-repo.gate
+				capture.update(ctx, broker, preview, tracking, tracking.state())
+
 				if capture.completed != 0 {
 					t.Fatal("failed comparison consumed its boundary")
 				}
-				if capture.snapshots.checkpoint(t.Context(), workspace) == "" {
+				if capture.snapshots.Checkpoint(t.Context(), workspace) == "" {
 					t.Fatal("snapshot failed to recover")
 				}
 			}

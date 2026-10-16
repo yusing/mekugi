@@ -8,14 +8,12 @@ import (
 	"encoding/json/jsontext"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
-
 	"github.com/yusing/mekugi/libraries/legacycall"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	json "encoding/json/v2"
 	"fmt"
@@ -373,7 +371,7 @@ func TestMChangesNestedNativeCodexE2E(t *testing.T) {
 			if history.ToolName == applyPatchToolName && strings.Contains(history.Script, "absent-before-line") {
 				sawPatch = true
 			}
-			if history.ExecOutcome != nil && history.ExecOutcome.Status == execStatusFailed &&
+			if history.ExecOutcome != nil && history.ExecOutcome.Status == changecapture.StatusFailed &&
 				strings.Contains(history.Script, "nested-partial.txt") {
 				sawNonzeroExec = true
 			}
@@ -449,7 +447,7 @@ func TestMChangesNestedNativeCodexE2E(t *testing.T) {
 	}
 	commandAttempt, found, err := loopStore.lookup(loopContext, loopWorkspace, legacycall.ExecCallID(loopProvider.callID, true))
 	if err != nil || !found || len(commandAttempt.HostResults) != 2 || commandAttempt.HostResults[0].CallID == commandAttempt.HostResults[1].CallID ||
-		len(commandAttempt.ReviewFiles) != 1 || commandAttempt.ExecOutcome.Coverage != execCoverageExact {
+		len(commandAttempt.ReviewFiles) != 1 || commandAttempt.ExecOutcome.Coverage != changecapture.CoverageExact {
 		t.Fatalf("literal command loop lost host occurrences or scoped effects: %+v, %v", commandAttempt, err)
 	}
 	if content, err := os.ReadFile(filepath.Join(loopWorkspace, "loop-command.txt")); err != nil || string(content) != "xx" {

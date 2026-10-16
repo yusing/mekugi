@@ -8,15 +8,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/libraries/legacycall"
-
 	"github.com/yusing/mekugi/libraries/commandanalysis"
-
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 )
 
 func TestSupportedSnapshotGeneratorRetainsInitialCreation(t *testing.T) {
@@ -96,7 +94,7 @@ func TestPythonTemporaryWriteAndRestoreRetainsIncompleteHistory(t *testing.T) {
 	if err != nil || !found || record.ChangeID != "" || len(record.ReviewFiles) != 0 {
 		t.Fatalf("attempt vanished or fabricated intermediate diff: %+v, %v", record, err)
 	}
-	if record.ExecOutcome.Coverage != execCoveragePartial || !strings.Contains(record.ExecOutcome.ScopeReason, "intermediate writes unobserved") {
+	if record.ExecOutcome.Coverage != changecapture.CoveragePartial || !strings.Contains(record.ExecOutcome.ScopeReason, "intermediate writes unobserved") {
 		t.Fatal("temporary edit uncertainty was not retained in command diagnostics")
 	}
 
@@ -151,7 +149,7 @@ func TestMChangesReadContextDistinguishesMissingEmptyAndPathScope(t *testing.T) 
 		t.Fatalf("unavailable selection became empty net: %q, %q, %d", output, stderr, status)
 	}
 	gap := f.reserve(t, f.thread, "gap")
-	f.publish(t, gap, "gap", "gap-call", mekugiHistory{ExecOutcome: &execOutcome{Coverage: execCoveragePartial, ScopeReason: "host inputs missing"}})
+	f.publish(t, gap, "gap", "gap-call", mekugiHistory{ExecOutcome: &changecapture.Outcome{Coverage: changecapture.CoveragePartial, ScopeReason: "host inputs missing"}})
 	output, stderr, status = f.run(t, "mchanges "+gap+" --net")
 	if status == 0 || !strings.Contains(stderr, "partial captured effects") || strings.Contains(output, "no net changes") {
 		t.Fatalf("missing evidence became empty successful net: %q, %q, %d", output, stderr, status)
@@ -176,7 +174,7 @@ func TestResolvedRepeatedStockCallsRetainEveryOutcome(t *testing.T) {
 					"for (let i = 0; i < 2; i++) await tools.exec_command({cmd: " + string(responses.MustMarshalJSON(command)) + "});"
 			}
 			commands, dynamic := commandanalysis.LiteralExecCommands(source, f.workspace, "bash")
-			observation, _ := captureExecObservation(commands, dynamic, true, execCaptureEnv{directory: f.workspace})
+			observation, _ := changecapture.Capture(t.Context(), commands, dynamic, true, changecapture.Options{Directory: f.workspace})
 			history := mekugiHistory{ToolName: "exec", ExecutingThread: f.thread,
 				NativePatches: nativePatchesInCall("exec", source, f.workspace), ExecObservation: observation}
 			if literalLoop {
@@ -228,7 +226,7 @@ func TestResolvedRepeatedStockCallsRetainEveryOutcome(t *testing.T) {
 			record, found, err := f.store.lookup(f.ctx, f.workspace, legacycall.ExecCallID("repeated-cell", true))
 			if err != nil || !found || len(record.HostResults) != 2 || record.HostResults[0].CallID != "command-first" ||
 				record.HostResults[1].CallID != "command-second" || record.HostResults[1].ExitCode == nil || *record.HostResults[1].ExitCode != 7 ||
-				strings.Count(record.Script, command) != 2 || len(record.ReviewFiles) != 1 || record.ExecOutcome.Coverage != execCoverageExact {
+				strings.Count(record.Script, command) != 2 || len(record.ReviewFiles) != 1 || record.ExecOutcome.Coverage != changecapture.CoverageExact {
 				t.Fatalf("command occurrences lost outcomes or duplicated scoped effects: %+v, %v", record, err)
 			}
 		})
@@ -247,7 +245,7 @@ func TestResolvedLiteralReadLoopsDoNotInventWriters(t *testing.T) {
 	if dynamic || len(commands) != 2 {
 		t.Fatal("fixture must have only literal call sites")
 	}
-	observation, _ := captureExecObservation(commands, dynamic, true, execCaptureEnv{directory: workspace})
+	observation, _ := changecapture.Capture(t.Context(), commands, dynamic, true, changecapture.Options{Directory: workspace})
 	trace := newNativeTraceFixture(t)
 	trace.start("author", "runtime", "read-loop", source)
 	for index, command := range []string{writer, reader, reader} {
@@ -258,9 +256,10 @@ func TestResolvedLiteralReadLoopsDoNotInventWriters(t *testing.T) {
 	trace.end("author", "runtime")
 	history := mekugiHistory{ExecObservation: observation, nativeCell: (&nativeToolTrace{directory: trace.root}).readCell("author", "read-loop", source)}
 	resolveStockEdits(&history, workspace)
-	reviews, complete, coverage, _ := reconcileExecObservation(*history.ExecObservation, execReconcileEnv{})
+	result := changecapture.Reconcile(t.Context(), *history.ExecObservation, changecapture.Comparison{})
+	reviews, complete, coverage := result.Files, result.Complete, result.Coverage
 	results, confirmed := history.nativeCell.commands(&history, workspace)
-	if !complete || coverage != execCoverageExact || len(reviews) != 0 || history.ExecObservation.RepeatedPaths || !confirmed || len(results) != 3 {
+	if !complete || coverage != changecapture.CoverageExact || len(reviews) != 0 || history.ExecObservation.RepeatedPaths || !confirmed || len(results) != 3 {
 		t.Fatalf("read loop became an incomplete writer: %+v, complete=%v coverage=%s results=%v", history.ExecObservation, complete, coverage, results)
 	}
 }
@@ -275,7 +274,7 @@ func TestResolvedLiteralProviderLoopsReusePreCallClassification(t *testing.T) {
 	command := python + " script.py"
 	source := "for (let i = 0; i < 2; i++) await tools.exec_command({cmd: " + string(responses.MustMarshalJSON(command)) + "});"
 	commands, dynamic := commandanalysis.LiteralExecCommands(source, workspace, "bash")
-	observation, _ := captureExecObservation(commands, dynamic, true, execCaptureEnv{directory: workspace})
+	observation, _ := changecapture.Capture(t.Context(), commands, dynamic, true, changecapture.Options{Directory: workspace})
 	if dynamic || len(observation.CommandClasses) != 1 || observation.CommandClasses[0] != execscope.Scoped.String() {
 		t.Fatal("fixture must pre-capture one scoped literal provider")
 	}
@@ -287,10 +286,11 @@ func TestResolvedLiteralProviderLoopsReusePreCallClassification(t *testing.T) {
 		{nativeToolResult: nativeToolResult{Tool: nativeExecCommandToolName}, command: commands[0], terminal: true},
 	}}}
 	resolveStockEdits(&history, workspace)
-	reviews, complete, coverage, _ := reconcileExecObservation(*history.ExecObservation, execReconcileEnv{})
+	result := changecapture.Reconcile(t.Context(), *history.ExecObservation, changecapture.Comparison{})
+	reviews, complete, coverage := result.Files, result.Complete, result.Coverage
 	if len(history.ExecObservation.Commands) != 2 || len(history.ExecObservation.CommandClasses) != 2 ||
 		history.ExecObservation.CommandClasses[1] != execscope.Scoped.String() || !history.ExecObservation.RepeatedPaths ||
-		len(reviews) != 0 || complete || coverage != execCoveragePartial {
+		len(reviews) != 0 || complete || coverage != changecapture.CoveragePartial {
 		t.Fatalf("late provider state erased repeated-write uncertainty: %+v, complete=%v coverage=%s", history.ExecObservation, complete, coverage)
 	}
 }

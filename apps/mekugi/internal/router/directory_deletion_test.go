@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -29,7 +31,7 @@ func TestUISnapshotDirectoryDeletion(t *testing.T) {
 			if contentGap {
 				path := filepath.Join(workspace, "removed/large")
 				writeTestFile(t, path, "")
-				if err := os.Truncate(path, maxNativePatchFileBytes+1); err != nil {
+				if err := os.Truncate(path, changecapture.MaxFileBytes+1); err != nil {
 					t.Fatal(err)
 				}
 			}

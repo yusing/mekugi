@@ -8,13 +8,15 @@ import (
 	"testing"
 	"time"
 
-	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
-
-	"github.com/yusing/mekugi/libraries/terminalui"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/terminalui"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
 
@@ -317,7 +319,7 @@ func TestObservedEditReceiptsBeforeHostRows(t *testing.T) {
 				file := diffmodel.RenderReviewFile(path, path, strings.Repeat(fmt.Sprintf("before source %d\n", i), tc.lines), strings.Repeat(fmt.Sprintf("after source %d\n", i), tc.lines))
 				broker.Update(previewmodel.Preview{ID: call, Workspace: u.session.cwd, Thread: "main", Complete: true,
 					HostItems: []string{call}, Files: []diffmodel.ReviewFile{file}, EditReceipt: editReceiptText(u.session.cwd,
-						mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{file}, ExecOutcome: &execOutcome{Labels: []string{"cat"}}})}, false)
+						mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{file}, ExecOutcome: &changecapture.Outcome{Labels: []string{"cat"}}})}, false)
 				events := testReview(broker).TakePreviews(sub)
 				if len(events) != 1 || events[0].Preview == nil {
 					t.Fatal("completion was not published")
@@ -369,7 +371,7 @@ func TestObservedEditReceiptsBeforeHostRows(t *testing.T) {
 func TestPendingObservedEditReceiptsStayBounded(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	file := diffmodel.RenderReviewFile("a.go", "a.go", strings.Repeat("before "+strings.Repeat("x", 90)+"\n", 100), "after\n")
-	receipt := editReceiptText(u.session.cwd, mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{file}, ExecOutcome: &execOutcome{Labels: []string{"cat"}}})
+	receipt := editReceiptText(u.session.cwd, mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{file}, ExecOutcome: &changecapture.Outcome{Labels: []string{"cat"}}})
 	for i := range 256 {
 		call := fmt.Sprintf("cmd%d", i)
 		u.shell.preview(previewmodel.Preview{ID: call, Workspace: u.session.cwd, Thread: "main", Complete: true, HostItems: []string{call}, EditReceipt: receipt}, false)

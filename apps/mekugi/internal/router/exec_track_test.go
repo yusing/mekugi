@@ -224,7 +224,7 @@ func TestExecTrackCapturesMktempCreation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(resumed.snapshots.close)
+			t.Cleanup(resumed.snapshots.Close)
 			ids := []string{creation.ChangeID, deletion.ChangeID}
 			for i, id := range ids {
 				history, err := resumed.changes.Read(next.ctx, resumed.scoped(next.ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{id}, View: "net", MaxTokens: 4000})

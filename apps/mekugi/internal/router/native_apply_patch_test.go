@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/libraries/legacycall"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/diffmodel"
@@ -112,18 +113,6 @@ func TestNativeApplyPatchFailureNeverPublishesSuccessAndRetainsPartialOutcome(t 
 				t.Fatalf("failure published success commentary: %+v", history.CommentaryMessageIDs)
 			}
 		})
-	}
-}
-
-func TestNativePatchPathsIgnoresHunkContentThatLooksLikeAnOperation(t *testing.T) {
-	workspace := t.TempDir()
-	patch := "*** Begin Patch\n*** Update File: real.txt\n@@\n-*** Add File: fake.txt\n+replacement\n*** End Patch\n"
-	paths, err := nativePatchPaths(patch, workspace)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(paths) != 1 || paths[0].before != filepath.Join(workspace, "real.txt") || paths[0].after != paths[0].before {
-		t.Fatalf("observed paths = %+v", paths)
 	}
 }
 
@@ -346,11 +335,11 @@ func TestNativePatchReviewChecksActualDeletionAndMove(t *testing.T) {
 		"*** Begin Patch\n*** Delete File: source.txt\n*** End Patch\n",
 		"*** Begin Patch\n*** Update File: source.txt\n*** Move to: destination.txt\n@@\n-before\n+after\n*** End Patch\n",
 	} {
-		observation, err := captureNativePatch(patch, workspace)
+		observation, err := changecapture.Patch(patch, workspace)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if reviews, complete := nativePatchReview(observation.Files); !complete || len(reviews) != 0 {
+		if reviews, complete := changecapture.ReviewPatch(observation.Files); !complete || len(reviews) != 0 {
 			t.Fatalf("unchanged deletion or move fabricated a diff: %+v, complete=%t", reviews, complete)
 		}
 		if strings.Contains(patch, "Move to") {
@@ -358,7 +347,7 @@ func TestNativePatchReviewChecksActualDeletionAndMove(t *testing.T) {
 			if err := os.WriteFile(destination, []byte("copied\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			reviews, complete := nativePatchReview(observation.Files)
+			reviews, complete := changecapture.ReviewPatch(observation.Files)
 			if !complete || len(reviews) != 1 || reviews[0].Action() != diffmodel.ReviewAdd {
 				t.Fatalf("partial move was not reported as destination creation: %+v, complete=%t", reviews, complete)
 			}
@@ -379,14 +368,14 @@ func TestNativePatchReviewShowsOnlyObservedPartialCodeModeEffect(t *testing.T) {
 		}
 	}
 	patch := "*** Begin Patch\n*** Update File: first.txt\n@@\n-old\n+new\n*** Update File: second.txt\n@@\n-old\n+new\n*** End Patch\n"
-	observation, err := captureNativePatch(patch, workspace)
+	observation, err := changecapture.Patch(patch, workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(first, []byte("new\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	reviews, complete := nativePatchReview(observation.Files)
+	reviews, complete := changecapture.ReviewPatch(observation.Files)
 	if !complete || len(reviews) != 1 || reviews[0].AfterPath != first {
 		t.Fatalf("partial effect = %+v, complete=%t", reviews, complete)
 	}

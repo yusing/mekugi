@@ -5,17 +5,17 @@ import (
 	"slices"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
-
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 )
 
 // Legacy schema, decoded only when reading retained pre-redesign records.
 type resolvedStockBaseline struct {
 	Root      string
 	Shell     string
-	Files     []execFileSnapshot `json:",omitempty"`
-	Omitted   []execOmission     `json:",omitempty"`
-	Inventory *execInventory     `json:",omitempty"`
+	Files     []changecapture.File     `json:",omitempty"`
+	Omitted   []changecapture.Omission `json:",omitempty"`
+	Inventory *changecapture.Inventory `json:",omitempty"`
 }
 
 // Host tracing confirms outcomes and repeated literal call sites. It never
@@ -27,7 +27,7 @@ func resolveStockEdits(history *mekugiHistory, workspace string) {
 	if original := history.ExecObservation; original != nil {
 		copy := *original
 		copy.Commands = slices.Clone(original.Commands)
-		classes := original.commandClasses()
+		classes := original.CommandClassesForCalls()
 		copy.CommandClasses = classes
 		history.ExecObservation = &copy
 		remaining := slices.Clone(original.Commands)
@@ -66,11 +66,11 @@ func resolveStockEdits(history *mekugiHistory, workspace string) {
 		if tool.Tool != applyPatchToolName {
 			continue
 		}
-		if i := slices.IndexFunc(remaining, func(p nativePatchObservation) bool { return p.Input == tool.input }); i >= 0 {
+		if i := slices.IndexFunc(remaining, func(p changecapture.PatchObservation) bool { return p.Input == tool.input }); i >= 0 {
 			remaining = slices.Delete(remaining, i, i+1)
 			continue
 		}
-		if i := slices.IndexFunc(literal, func(p nativePatchObservation) bool { return p.Input == tool.input }); i >= 0 {
+		if i := slices.IndexFunc(literal, func(p changecapture.PatchObservation) bool { return p.Input == tool.input }); i >= 0 {
 			history.NativePatches = append(history.NativePatches, literal[i])
 		}
 	}

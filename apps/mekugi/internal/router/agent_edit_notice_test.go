@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/yusing/mekugi/libraries/legacycall"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -224,7 +225,7 @@ func TestAgentEditNoticeRetainsAllIDsWhenStatisticsTruncate(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	notice, err := proxy.replayStore.agentEditNotice(t.Context(), workspace, "many-patches", mekugiHistory{NativePatches: make([]nativePatchObservation, 2)})
+	notice, err := proxy.replayStore.agentEditNotice(t.Context(), workspace, "many-patches", mekugiHistory{NativePatches: make([]changecapture.PatchObservation, 2)})
 	if err != nil {
 		t.Fatal(err)
 	}

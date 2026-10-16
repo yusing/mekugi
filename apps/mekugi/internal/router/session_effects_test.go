@@ -9,12 +9,11 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/libraries/legacycall"
-
-	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
-
-	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 func TestSessionInspectionShellEffects(t *testing.T) {
@@ -22,15 +21,15 @@ func TestSessionInspectionShellEffects(t *testing.T) {
 		name, status, coverage, want                    string
 		files, native, missing, mismatch, shared, patch bool
 	}{
-		{name: "native completed", native: true, status: execStatusCompleted, coverage: execCoverageExact, files: true, want: "applied"},
-		{name: "nested failed with effects", status: execStatusFailed, coverage: execCoveragePartial, files: true, want: "rejected"},
-		{name: "nested unconfirmed", coverage: execCoverageExact, files: true, want: "unconfirmed"},
-		{name: "partial empty", status: execStatusCompleted, coverage: execCoveragePartial, want: "unconfirmed"},
-		{name: "exact empty", status: execStatusCompleted, coverage: execCoverageExact, want: "no_changes"},
+		{name: "native completed", native: true, status: changecapture.StatusCompleted, coverage: changecapture.CoverageExact, files: true, want: "applied"},
+		{name: "nested failed with effects", status: changecapture.StatusFailed, coverage: changecapture.CoveragePartial, files: true, want: "rejected"},
+		{name: "nested unconfirmed", coverage: changecapture.CoverageExact, files: true, want: "unconfirmed"},
+		{name: "partial empty", status: changecapture.StatusCompleted, coverage: changecapture.CoveragePartial, want: "unconfirmed"},
+		{name: "exact empty", status: changecapture.StatusCompleted, coverage: changecapture.CoverageExact, want: "no_changes"},
 		{name: "missing", missing: true, want: "unavailable"},
 		{name: "wrong correlation", mismatch: true},
-		{name: "shared", shared: true, status: execStatusCompleted, coverage: execCoverageExact, want: "unconfirmed"},
-		{name: "patch and shell", patch: true, files: true, status: execStatusCompleted, coverage: execCoveragePartial, want: "applied"},
+		{name: "shared", shared: true, status: changecapture.StatusCompleted, coverage: changecapture.CoverageExact, want: "unconfirmed"},
+		{name: "patch and shell", patch: true, files: true, status: changecapture.StatusCompleted, coverage: changecapture.CoveragePartial, want: "applied"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root, replay := t.TempDir(), t.TempDir()
@@ -46,13 +45,13 @@ func TestSessionInspectionShellEffects(t *testing.T) {
 				script = `{"cmd":"printf changed > file"}`
 			}
 			parent := mekugiHistory{ToolName: name, CarrierName: name, CarrierKind: carrier, CarrierPayload: script, Script: script,
-				ExecObservation: &execObservation{CodeMode: !tc.native}}
+				ExecObservation: &changecapture.Observation{CodeMode: !tc.native}}
 			derivedID := legacycall.ExecCallID("call", !tc.native)
 			derived := mekugiHistory{ToolName: nativeExecCommandToolName, CorrelationID: "call\x00exec", Report: "retained shell result",
-				ExecOutcome: &execOutcome{Status: tc.status, Coverage: tc.coverage, CodeMode: !tc.native, ScopeReason: "scope diagnostic"}}
+				ExecOutcome: &changecapture.Outcome{Status: tc.status, Coverage: tc.coverage, CodeMode: !tc.native, ScopeReason: "scope diagnostic"}}
 			if tc.status != "" {
 				exit := 0
-				if tc.status == execStatusFailed {
+				if tc.status == changecapture.StatusFailed {
 					exit = 1
 				}
 				derived.ExecOutcome.Exit = &exit
@@ -72,7 +71,7 @@ func TestSessionInspectionShellEffects(t *testing.T) {
 			}
 			records := map[string]mekugiHistory{}
 			if tc.patch {
-				parent.NativePatches = []nativePatchObservation{{Input: "patch input"}}
+				parent.NativePatches = []changecapture.PatchObservation{{Input: "patch input"}}
 				records[legacycall.PatchCallID("call", 0)] = mekugiHistory{ToolName: applyPatchToolName, Script: "patch input", CorrelationID: "call\x000", Report: "patch result", ReviewFiles: derived.ReviewFiles}
 			}
 			records["call"] = parent

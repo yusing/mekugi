@@ -10,9 +10,10 @@ import (
 	"testing/synctest"
 	"time"
 
-	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
 func TestExecRunningPreviewOmitsOversizedFile(t *testing.T) {
@@ -26,14 +27,14 @@ func TestExecRunningPreviewOmitsOversizedFile(t *testing.T) {
 	if err := os.Chtimes(path, baselineTime, baselineTime); err != nil {
 		t.Fatal(err)
 	}
-	before := snapshotExecFile(path, nil)
+	before := changecapture.ReadFile(path, nil)
 	writeTestFile(t, path, strings.Repeat("new\n", 400000))
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		broker := newLivePreview(ctx)
 		setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{root: {"thread": true}}})
-		go runExecScopePreview(ctx, broker, execObservation{Class: execscope.Scoped.String(), Files: []execFileSnapshot{before}}, previewmodel.Preview{ID: "oversized", Workspace: root, Thread: "thread"}, nil, nil)
+		go runExecScopePreview(ctx, broker, changecapture.Observation{Class: execscope.Scoped.String(), Files: []changecapture.File{before}}, previewmodel.Preview{ID: "oversized", Workspace: root, Thread: "thread"}, nil, nil)
 		time.Sleep(time.Second)
 		synctest.Wait()
 		if len(broker.Current()) != 0 {
@@ -47,12 +48,12 @@ func TestLiveDiffSocketAndNewRegularFile(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	path := filepath.Join(root, "socket")
-	before := snapshotExecFile(path, nil)
+	before := changecapture.ReadFile(path, nil)
 	regular := filepath.Join(root, "file")
 	if err := os.Mkdir(regular, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	beforeRegular := snapshotExecFile(regular, nil)
+	beforeRegular := changecapture.ReadFile(regular, nil)
 	if err := os.Remove(regular); err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +68,7 @@ func TestLiveDiffSocketAndNewRegularFile(t *testing.T) {
 		defer cancel()
 		broker := newLivePreview(ctx)
 		setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{root: {"thread": true}}})
-		go runExecScopePreview(ctx, broker, execObservation{Files: []execFileSnapshot{before, beforeRegular}}, previewmodel.Preview{ID: "socket", Workspace: root, Thread: "thread"}, nil, nil)
+		go runExecScopePreview(ctx, broker, changecapture.Observation{Files: []changecapture.File{before, beforeRegular}}, previewmodel.Preview{ID: "socket", Workspace: root, Thread: "thread"}, nil, nil)
 		time.Sleep(time.Second)
 		synctest.Wait()
 		preview, _ := currentLivePreview(broker, "socket")
@@ -83,12 +84,12 @@ func TestExecRunningPreviewRetriesBudgetedFiles(t *testing.T) {
 	const rows = 56_000 // Each snapshot is over 600 KiB; two exceed the 1 MiB poll budget.
 	baseline := strings.Repeat("stable row\n", rows) + "old ending\n"
 	paths := []string{filepath.Join(root, "first.txt"), filepath.Join(root, "second.txt")}
-	files := make([]execFileSnapshot, 0, len(paths))
+	files := make([]changecapture.File, 0, len(paths))
 	for _, path := range paths {
 		if err := os.WriteFile(path, []byte(baseline), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		before := snapshotExecFile(path, nil)
+		before := changecapture.ReadFile(path, nil)
 		if before.Error != "" || len(before.Content) <= 600<<10 {
 			t.Fatalf("fixture snapshot for %s did not exceed 600 KiB: size=%d err=%q", path, len(before.Content), before.Error)
 		}
@@ -104,7 +105,7 @@ func TestExecRunningPreviewRetriesBudgetedFiles(t *testing.T) {
 	broker := newLivePreview(ctx)
 	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{root: {"thread": true}}})
 	const previewID = "running:budgeted"
-	go runExecScopePreview(ctx, broker, execObservation{Class: execscope.Scoped.String(), Files: files}, previewmodel.Preview{
+	go runExecScopePreview(ctx, broker, changecapture.Observation{Class: execscope.Scoped.String(), Files: files}, previewmodel.Preview{
 		ID: previewID, Workspace: root, Thread: "thread", Caller: "budget-test",
 	}, nil, nil)
 	preview := waitExecScopePreview(t, broker, func(preview previewmodel.Preview) bool {

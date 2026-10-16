@@ -1,6 +1,8 @@
 //go:build linux
 
-package router
+package capture
+
+// Source: apps/mekugi/internal/router/exec_clock_linux.go:1:46@1e6d58c6.
 
 import (
 	"time"
@@ -8,19 +10,15 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// execFileTimes reads a path's change time and, where the filesystem records
-// one, its birth time, without following a final symlink.
-func execFileTimes(path string) (change, birth time.Time, hasBirth, ok bool) {
+// execFileTimes reads a path's change time without following a final symlink.
+func execFileTimes(path string) (change time.Time, ok bool) {
 	var stat unix.Statx_t
-	if unix.Statx(unix.AT_FDCWD, path, unix.AT_SYMLINK_NOFOLLOW, unix.STATX_CTIME|unix.STATX_BTIME, &stat) != nil ||
+	if unix.Statx(unix.AT_FDCWD, path, unix.AT_SYMLINK_NOFOLLOW, unix.STATX_CTIME, &stat) != nil ||
 		stat.Mask&unix.STATX_CTIME == 0 {
-		return time.Time{}, time.Time{}, false, false
+		return time.Time{}, false
 	}
 	change = time.Unix(stat.Ctime.Sec, int64(stat.Ctime.Nsec))
-	if stat.Mask&unix.STATX_BTIME != 0 {
-		birth, hasBirth = time.Unix(stat.Btime.Sec, int64(stat.Btime.Nsec)), true
-	}
-	return change, birth, hasBirth, true
+	return change, true
 }
 
 // execRemoteFilesystem reports roots whose change times come from another

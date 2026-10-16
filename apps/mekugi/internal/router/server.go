@@ -251,7 +251,7 @@ func RunSession(live *previewmodel.Service, activity *activitymodel.Service, ser
 			return fmt.Errorf("initialize replay storage: %w", err)
 		}
 		replayStore.writes = writes
-		defer replayStore.snapshots.close()
+		defer replayStore.snapshots.Close()
 		if !options.duplicateOutput {
 			projections = nil
 		}

@@ -12,6 +12,8 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/legacycall"
@@ -39,12 +41,12 @@ type mekugiHistory struct {
 	Source           string `json:",omitempty"`
 	ChangeID         string
 	ReviewFiles      []diffmodel.ReviewFile
-	NativePatches    []nativePatchObservation `json:",omitempty"`
-	ResolvedBaseline *resolvedStockBaseline   `json:",omitempty"`
-	ExecObservation  *execObservation         `json:",omitempty"`
-	ExecOutcome      *execOutcome             `json:",omitempty"`
-	HostResults      []nativeToolResult       `json:",omitempty"`
-	CommandSegments  *legacycall.Segments     `json:",omitempty"`
+	NativePatches    []changecapture.PatchObservation `json:",omitempty"`
+	ResolvedBaseline *resolvedStockBaseline           `json:",omitempty"`
+	ExecObservation  *changecapture.Observation       `json:",omitempty"`
+	ExecOutcome      *changecapture.Outcome           `json:",omitempty"`
+	HostResults      []nativeToolResult               `json:",omitempty"`
+	CommandSegments  *legacycall.Segments             `json:",omitempty"`
 	CarrierName      string
 	CarrierKind      codeModeCarrierKind
 	CarrierPayload   string

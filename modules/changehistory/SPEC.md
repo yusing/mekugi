@@ -2,18 +2,41 @@
 
 ## Purpose
 
-Retain, review, apply, and revert observed filesystem change evidence.
+Capture, retain, review, apply, and revert observed filesystem change evidence.
 
 ## Scope
 
-The module owns change identities, stream allocation, attempt membership,
-retained review and mutation semantics, frozen read selections, semantic
-retirement, and renderer-neutral saved-review presentation. The application supplies validated host observations and publishes
-immutable evidence before its change membership. [Capture acquisition](../../docs/contracts/change-evidence.md), provisional
-live previews and host execution have separate owners. The module's terminal view
-paints its presentation values over the shared diff renderer.
+The module owns passive baseline acquisition, filesystem reconciliation, private
+workspace checkpoints, change identities, stream allocation, attempt membership,
+retained review and mutation semantics, frozen read selections, semantic retirement,
+and saved-review presentation. The application binds selected caller/workspace
+authority and decoded host completion to capture, then publishes immutable evidence
+before its change membership. Host execution and provisional live previews remain
+separate. The terminal view paints saved-review values over the shared diff renderer.
 
 ## Behavior
+
+### Passive capture
+
+The `capture` API acquires bounded before-state for literal patch and command
+inputs, then reconciles observed endpoint differences. The shared command-scope
+classifier supplies source facts; capture owns filesystem reads, limits, incomplete
+evidence, rename/copy pairing, and authored-versus-managed provenance. Named
+operands and workspace checkpoints pass through one admission boundary, so stock
+calls, terminal continuations, and locally submitted shell commands use the same
+recorder. Preview-only capture suppresses workspace checkpoints even when a caller
+supplies that owner. Reconciliation returns named evidence, comparison claims, and
+explicit fallback failure together; missing fallback narrows coverage without
+discarding named evidence. Preview consumers reuse bounded reads and comparison without publishing
+provisional values as retained changes.
+
+Workspace checkpoints are private comparison state. Overlapping application
+windows exchange owner-issued claims so a later comparison does not record an
+already claimed effect. The application coordinates window completion with host
+and command-segment facts; replay cannot reopen those windows. Patch batches share
+one aggregate capture bound and one endpoint window. The
+[change-evidence contract](../../docs/contracts/change-evidence.md) owns scope,
+coverage, attribution, fallback limits, and acceptance cases.
 
 ### Bounded read command
 
@@ -143,9 +166,9 @@ line comes first so that paging cannot hide it. A continuation retains the
 report as plain output and never repeats the mutation; when the report cannot
 be paged or retained, it is printed in full with the reason on stderr.
 
-The router classifies `mchanges revert` and `apply` as declared writers whose
-scope is every path named by the selected records, read from the change index
-before the call is forwarded. The host runs the command once; its observed
+The command-scope classifier resolves `mchanges revert` and `apply` as declared
+writers through a retained-change resolver. Their scope is every path named by
+the selected records, read before the call is forwarded. The host runs the command once; its observed
 effects become a new change record like any declared command. A revert is
 therefore revertable, and a clean command prints `undo: mchanges apply ID ...`
 or `undo: mchanges revert ID ...`, with the same paths after `--`. When some hunk was already in the requested
@@ -186,8 +209,11 @@ painting and terminal geometry.
 
 ## Lifecycle
 
-Durable operations are stateless over supplied records. Saved-review models and
-terminal viewports are attachment-local and restore no transient state on replay.
+The composed retained service is stateless over supplied records. The application
+opens capture workspace owners with its replay store and closes them at invocation
+shutdown; closing cancels and joins background checkpoint warm-ups. Capture workers
+remain independently bounded so slow reads cannot hold host forwarding. Saved-review models and terminal
+viewports are attachment-local and restore no transient state on replay.
 Composition supplies session history;
 callers select the retained namespace, thread, and workspace explicitly. No
 operation restores a process, approval, or execution handle. The authenticated
@@ -198,9 +224,16 @@ frontend holds its session lease through recovery publication and stream deliver
 The required executable frontend is `mchanges`, run by stock execution. Read and
 mutation results use the shared frontend delivery boundary. The module returns
 captured output or a pure plan; the host publishes recovery before exposing its
-reference. Capturing host effects remains a separate observation operation.
+reference. Application adapters pass decoded stock-call and Native Shell Mode
+completion facts to the passive recorder. Submission acknowledgement and yielded
+results keep observation windows open; only matching terminal completion permits
+retained reconciliation.
 
 ## Records
+
+Bounded capture observations and outcomes retain their existing call-envelope
+encoding. Provisional file stamps are excluded from durable comparison and storage.
+Private checkpoints never substitute for retained inline evidence.
 
 Change indexes retain identities, ordered attempt membership, allocation state,
 and retirement markers. Historical record names, namespace ownership, and
@@ -228,6 +261,10 @@ status. Cancellation suppresses delivery without repeating completed effects.
 
 ## Acceptance
 
+- Passive capture tests cover bounded reads, stalled workers, patch endpoints,
+  omitted baselines, private-checkpoint recovery, and ignored-index transitions.
+  Application consumers cover exact host forwarding, yielded completion, overlap
+  attribution, shell commands, preview receipts, and publication.
 - Module tests run with temporary history and a scripted binder, without Codex,
   network access, or a renderer.
 - Authenticated reads preserve cross-agent selection, capture order, partial

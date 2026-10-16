@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 )
 
 func TestMChangesCompactViewsKeepKnownStatsWithoutManagedNoise(t *testing.T) {
@@ -31,7 +31,7 @@ func TestMChangesCompactViewsKeepKnownStatsWithoutManagedNoise(t *testing.T) {
 	managed.Origin = "gofmt"
 	unknown := diffmodel.RenderIncompleteReviewFile(filepath.Join(workspace, "unread.go"), filepath.Join(workspace, "unread.go"), "capture deadline")
 	unknown.Origin = "go test"
-	history := mekugiHistory{ChangeID: id, CorrelationID: "mixed", ExecOutcome: &execOutcome{Class: "scoped", Coverage: execCoveragePartial}, ReviewFiles: []diffmodel.ReviewFile{direct, managed, unknown}}
+	history := mekugiHistory{ChangeID: id, CorrelationID: "mixed", ExecOutcome: &changecapture.Outcome{Class: "scoped", Coverage: changecapture.CoveragePartial}, ReviewFiles: []diffmodel.ReviewFile{direct, managed, unknown}}
 	if err := store.put(ctx, workspace, map[string]mekugiHistory{"mixed": history}); err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestMChangesListCompressesAppliedChangesRegardlessOfCommandAttribution(t *t
 			t.Fatal(err)
 		}
 		file := diffmodel.RenderReviewFile(call, call, "old\n", "new\n")
-		outcome := &execOutcome{Status: execStatusCompleted, Class: "scoped", Coverage: execCoverageExact, Overlaps: overlaps}
+		outcome := &changecapture.Outcome{Status: changecapture.StatusCompleted, Class: "scoped", Coverage: changecapture.CoverageExact, Overlaps: overlaps}
 		if err := store.put(ctx, workspace, map[string]mekugiHistory{call: {ChangeID: id, CorrelationID: call, ExecOutcome: outcome, ReviewFiles: []diffmodel.ReviewFile{file}}}); err != nil {
 			t.Fatal(err)
 		}

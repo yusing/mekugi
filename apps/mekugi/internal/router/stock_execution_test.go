@@ -103,14 +103,14 @@ func TestStreamedCodeModeObservedCallCommitsAtInputAndItemCompletion(t *testing.
 	}
 	history, exists := transform.local["call"]
 	if !exists || history.ExecObservation == nil || len(history.ExecObservation.Files) == 0 ||
-		history.ExecObservation.Files[0].watchStamp == "" {
+		history.ExecObservation.Files[0].WatchStamp == "" {
 		if history.ExecObservation == nil {
 			t.Fatal("expected an observed baseline")
 		}
 		var paths, stamps []string
 		for _, file := range history.ExecObservation.Files {
 			paths = append(paths, file.Path)
-			stamps = append(stamps, file.watchStamp)
+			stamps = append(stamps, file.WatchStamp)
 		}
 		t.Fatalf("expected a live observed file: exists=%v class=%q paths=%v stamps=%v omitted=%d", exists, history.ExecObservation.Class, paths, stamps, len(history.ExecObservation.Omitted))
 	}
@@ -126,7 +126,7 @@ func TestStreamedCodeModeObservedCallCommitsAtInputAndItemCompletion(t *testing.
 	retained, found, err := proxy.replayStore.lookup(t.Context(), workspace, "call")
 	if err != nil || !found || responses.StringField(retained.UpstreamItem, "input") != source ||
 		retained.ExecObservation == nil || len(retained.ExecObservation.Files) == 0 ||
-		retained.ExecObservation.Files[0].watchStamp != "" {
+		retained.ExecObservation.Files[0].WatchStamp != "" {
 		t.Fatalf("completed call lost its durable input or captured baseline: found=%v err=%v", found, err)
 	}
 }

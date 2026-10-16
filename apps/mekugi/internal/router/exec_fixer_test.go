@@ -9,17 +9,16 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
-
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
-
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 )
 
-func execFixerTestCapture(t *testing.T, root, workdir, command string) *execObservation {
+func execFixerTestCapture(t *testing.T, root, workdir, command string) *changecapture.Observation {
 	t.Helper()
-	observation, ok := captureExecObservation(
+	observation, ok := changecapture.Capture(t.Context(),
 		[]commandanalysis.Command{{Command: command, Workdir: workdir, Shell: "bash"}},
-		false, false, execCaptureEnv{previewOnly: true, directory: root},
+		false, false, changecapture.Options{PreviewOnly: true, Directory: root},
 	)
 	if !ok {
 		t.Fatalf("%q was not observed", command)
@@ -27,19 +26,20 @@ func execFixerTestCapture(t *testing.T, root, workdir, command string) *execObse
 	return observation
 }
 
-func execFixerTestCapturedFiles(observation *execObservation) map[string]execFileSnapshot {
-	files := make(map[string]execFileSnapshot, len(observation.Files))
+func execFixerTestCapturedFiles(observation *changecapture.Observation) map[string]changecapture.File {
+	files := make(map[string]changecapture.File, len(observation.Files))
 	for _, file := range observation.Files {
 		files[file.Path] = file
 	}
 	return files
 }
 
-func execFixerTestAssertExact(t *testing.T, root string, observation *execObservation, wantPaths []string) []diffmodel.ReviewFile {
+func execFixerTestAssertExact(t *testing.T, root string, observation *changecapture.Observation, wantPaths []string) []diffmodel.ReviewFile {
 	t.Helper()
-	reviews, complete, coverage, unswept := reconcileExecObservation(*observation, execReconcileEnv{})
-	if !complete || coverage != execCoverageExact || unswept != "" {
-		t.Fatalf("reconciliation complete=%v coverage=%q unswept=%q reviews=%+v", complete, coverage, unswept, reviews)
+	result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
+	reviews, complete, coverage := result.Files, result.Complete, result.Coverage
+	if !complete || coverage != changecapture.CoverageExact {
+		t.Fatalf("reconciliation complete=%v coverage=%q reviews=%+v", complete, coverage, reviews)
 	}
 	gotPaths := make([]string, 0, len(reviews))
 	for _, review := range reviews {

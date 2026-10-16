@@ -7,11 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/modules/livepreview/projection"
-
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	"github.com/yusing/mekugi/modules/livepreview/projection"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
@@ -97,7 +98,7 @@ func TestLiveDiffRunningEditingToolAttribution(t *testing.T) {
 			{"python3 - <<'PY'\nopen('target.txt','w').write('edited\\n')\nPY\n", "python3"},
 		} {
 			workspace := t.TempDir()
-			observation, ok := captureExecObservation([]commandanalysis.Command{{Command: tc.command, Workdir: workspace, Shell: "bash"}}, false, codeMode, execCaptureEnv{directory: workspace})
+			observation, ok := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: tc.command, Workdir: workspace, Shell: "bash"}}, false, codeMode, changecapture.Options{Directory: workspace})
 			if !ok || observation == nil {
 				t.Fatal("missing command observation")
 			}
@@ -110,7 +111,7 @@ func TestLiveDiffRunningEditingToolAttribution(t *testing.T) {
 			}
 		}
 	}
-	for _, unknown := range []execObservation{{}, {Programs: []execscope.Program{{Label: "shell", Direct: true}}}} {
+	for _, unknown := range []changecapture.Observation{{}, {Programs: []execscope.Program{{Label: "shell", Direct: true}}}} {
 		if tool := execPreviewTool(unknown); tool != "" {
 			t.Fatalf("unknown command guessed %q", tool)
 		}

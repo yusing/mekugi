@@ -12,13 +12,12 @@ import (
 	"testing"
 	"time"
 
-	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
-
-	"github.com/yusing/mekugi/libraries/commandanalysis"
-
-	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
 func TestUISnapshotNativeMoveKeepsTranscript(t *testing.T) {
@@ -28,7 +27,7 @@ func TestUISnapshotNativeMoveKeepsTranscript(t *testing.T) {
 	script := "mv command-timing.txt.new command-timing.txt; git status --short"
 	source := fmt.Sprintf("await tools.exec_command({cmd:%q,workdir:%q}); await tools.exec_command({cmd:'read -r answer',workdir:%q});", script, workspace, workspace)
 	commands, dynamic := commandanalysis.LiteralExecCommands(source, workspace, "bash")
-	observation, ok := captureExecObservation(commands, dynamic, true, execCaptureEnv{directory: workspace})
+	observation, ok := changecapture.Capture(t.Context(), commands, dynamic, true, changecapture.Options{Directory: workspace})
 	if !ok || observation == nil || len(observation.Files) == 0 {
 		t.Fatal("move lost its retained capture")
 	}
@@ -77,7 +76,7 @@ func TestExecEditCompletionFastPythonWriteWhileTestRuns(t *testing.T) {
 	// edit landed, then waits for us to inspect the UI before it can exit.
 	command := "python3 - <<'PY'\np='source.go'\ns=open(p).read().replace('before', 'after')\nopen(p,'w').write(s)\nPY\n" +
 		`python3 -c 'import sys; assert open("source.go").read() == "context\n"*20 + "after\n" + "context\n"*20; print("test running", flush=True); assert sys.stdin.readline().strip() == "continue"'`
-	observation, ok := captureExecObservation([]commandanalysis.Command{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{directory: workspace})
+	observation, ok := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false, changecapture.Options{Directory: workspace})
 	if !ok || observation == nil {
 		t.Fatal("missing edit observation")
 	}
@@ -141,12 +140,12 @@ func TestExecEditCompletionFastPythonWriteWhileTestRuns(t *testing.T) {
 	}
 }
 
-func execEditThenTestObservation(t *testing.T, workspace string) (execObservation, string) {
+func execEditThenTestObservation(t *testing.T, workspace string) (changecapture.Observation, string) {
 	t.Helper()
 	path := filepath.Join(workspace, "source.go")
 	writeTestFile(t, path, "before\n")
 	command := "python3 - <<'PY'\np='source.go'\ns=open(p).read().replace('before', 'after')\nopen(p,'w').write(s)\nPY\nenv -u BASH_ENV go test ./..."
-	observation, ok := captureExecObservation([]commandanalysis.Command{{Command: command, Workdir: workspace, Shell: "bash"}}, false, true, execCaptureEnv{directory: workspace})
+	observation, ok := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: command, Workdir: workspace, Shell: "bash"}}, false, true, changecapture.Options{Directory: workspace})
 	if !ok || observation == nil || len(observation.Files) != 1 {
 		t.Fatalf("edit and test target capture = %+v, observed=%v", observation, ok)
 	}
@@ -164,21 +163,21 @@ func TestExecEditCompletionUsesCapturedBaseline(t *testing.T) {
 	if len(expected) != 1 || expected[path].Diff == "" || !strings.Contains(expected[path].Diff, "-before") || !strings.Contains(expected[path].Diff, "+after") {
 		t.Fatalf("expected edit must compare against pre-call capture, not current disk: %+v", expected)
 	}
-	for name, mutate := range map[string]func(*execObservation){
-		"uncaptured": func(o *execObservation) { o.Files = nil },
-		"binary":     func(o *execObservation) { o.Files[0].Kind = execFileBinary },
-		"incomplete": func(o *execObservation) { o.Files[0].Error = "capture incomplete" },
+	for name, mutate := range map[string]func(*changecapture.Observation){
+		"uncaptured": func(o *changecapture.Observation) { o.Files = nil },
+		"binary":     func(o *changecapture.Observation) { o.Files[0].Kind = changecapture.Binary },
+		"incomplete": func(o *changecapture.Observation) { o.Files[0].Error = "capture incomplete" },
 	} {
 		t.Run(name, func(t *testing.T) {
 			copy := observation
-			copy.Files = append([]execFileSnapshot(nil), observation.Files...)
+			copy.Files = append([]changecapture.File(nil), observation.Files...)
 			mutate(&copy)
 			if got := execPreviewExpected(t.Context(), copy); len(got) != 0 {
 				t.Fatalf("unsafe source yielded predicted edit: %+v", got)
 			}
 		})
 	}
-	testOnly := execObservation{Commands: []commandanalysis.Command{{Command: "env -u BASH_ENV go test ./...", Workdir: workspace, Shell: "bash"}}, Class: execscope.Opaque.String()}
+	testOnly := changecapture.Observation{Commands: []commandanalysis.Command{{Command: "env -u BASH_ENV go test ./...", Workdir: workspace, Shell: "bash"}}, Class: execscope.Opaque.String()}
 	if got := execPreviewExpected(t.Context(), testOnly); len(got) != 0 {
 		t.Fatalf("test-only command yielded predicted edit: %+v", got)
 	}

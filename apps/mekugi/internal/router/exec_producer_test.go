@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
-
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 )
 
 func execProducerCommand(t *testing.T, name string) string {
@@ -22,11 +22,11 @@ func execProducerCommand(t *testing.T, name string) string {
 	return name
 }
 
-func execProducerCapture(t *testing.T, root, command string) *execObservation {
+func execProducerCapture(t *testing.T, root, command string) *changecapture.Observation {
 	t.Helper()
-	observation, ok := captureExecObservation(
+	observation, ok := changecapture.Capture(t.Context(),
 		[]commandanalysis.Command{{Command: command, Workdir: root, Shell: "bash"}},
-		false, false, execCaptureEnv{directory: root},
+		false, false, changecapture.Options{Directory: root},
 	)
 	if !ok {
 		t.Fatalf("%q was not observed", command)
@@ -34,7 +34,7 @@ func execProducerCapture(t *testing.T, root, command string) *execObservation {
 	return observation
 }
 
-func execProducerAssertCaptured(t *testing.T, observation *execObservation, root string, expected map[string]string) {
+func execProducerAssertCaptured(t *testing.T, observation *changecapture.Observation, root string, expected map[string]string) {
 	t.Helper()
 	if observation.Class != execscope.Scoped.String() {
 		t.Fatalf("capture class = %q (%s), want scoped", observation.Class, observation.Reason)
@@ -60,11 +60,12 @@ func execProducerRun(t *testing.T, bash, root, command string) {
 	}
 }
 
-func execProducerAssertExactDirect(t *testing.T, root string, observation *execObservation, want []string) {
+func execProducerAssertExactDirect(t *testing.T, root string, observation *changecapture.Observation, want []string) {
 	t.Helper()
-	reviews, complete, coverage, unswept := reconcileExecObservation(*observation, execReconcileEnv{})
-	if !complete || coverage != execCoverageExact || unswept != "" {
-		t.Fatalf("reconciliation complete=%v coverage=%q unswept=%q reviews=%+v", complete, coverage, unswept, reviews)
+	result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
+	reviews, complete, coverage := result.Files, result.Complete, result.Coverage
+	if !complete || coverage != changecapture.CoverageExact {
+		t.Fatalf("reconciliation complete=%v coverage=%q reviews=%+v", complete, coverage, reviews)
 	}
 	got := make([]string, 0, len(reviews))
 	for _, review := range reviews {
@@ -160,7 +161,7 @@ func TestExecRGPreProducerIsOpaqueWithoutExecutingHook(t *testing.T) {
 	if plan.Class != execscope.Opaque {
 		t.Fatalf("hostile producer class = %v (%s), want opaque", plan.Class, plan.Reason)
 	}
-	observation, observed := captureExecObservation([]commandanalysis.Command{{Command: command, Workdir: root, Shell: "bash"}}, false, false, execCaptureEnv{directory: root})
+	observation, observed := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: command, Workdir: root, Shell: "bash"}}, false, false, changecapture.Options{Directory: root})
 	if observed || observation != nil && len(observation.Files) != 0 {
 		t.Fatal("unsupported producer acquired change evidence")
 	}

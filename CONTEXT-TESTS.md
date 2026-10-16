@@ -43,6 +43,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 
 | Changed owner | Focused check |
 | --- | --- |
+| Module descriptors, lifetimes, or contribution slots | `./apps/mekugi/internal/composition ./apps/mekugi/internal/launch`, including real frontend composition and startup, plus affected module acceptance |
 | Captured diff model, composition, merge and status | `./libraries/diffmodel/...`, plus affected router and terminal consumers |
 | Activity rendering, diff navigation/previews, terminal input, or session metrics dialog | `./modules/activity/terminalview ./modules/changehistory/terminalview ./modules/livepreview/terminalview`, plus affected router integration tests |
 | Neutral activity content, parsing and retained output | `./modules/activity/... ./contracts/scope ./libraries/sourceanalysis/markdownsyntax`, plus router receipt/command/segment/dialog and terminal operation-group/tail consumers |
@@ -84,6 +85,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Structural inspection | `./modules/sourceoutline/... ./libraries/sourceanalysis/... ./apps/mekugi/internal/frontends`, then router integration |
 | Raw source reading | `./modules/fileread/... ./apps/mekugi/internal/frontends`, then router read/recovery/AX and activity consumers |
 | Retained changes, frozen selections, and mutation | `./modules/changehistory/...`, plus router `MChanges`, `Changes`, retention/fork/recovery, and live-view consumers |
+| Passive change acquisition and filesystem reconciliation | `./modules/changehistory/capture`, plus router stock patch, command observation, overlap, shell edit, preview, retained-evidence and publication consumers; compile tagged app fixtures after observation API changes |
 | Retained paging | `./modules/outputrecovery/... ./apps/mekugi/internal/frontends`, then router mread/storage/fork integration |
 | Shared command options and output admission | `./libraries/commandargs/... ./libraries/outputbudget/...`, plus affected frontend integration |
 | Bounded commands | `./modules/boundedcommand/... ./apps/mekugi/internal/frontends`, plus `./apps/mekugi/internal/router -run MRun` for authenticated delivery and process lifecycle |

@@ -1,47 +1,16 @@
 package router
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 )
-
-func TestExecReconcileDoesNotClaimUnvisitedListedEntriesDeleted(t *testing.T) {
-	t.Parallel()
-	root := t.TempDir()
-	zPath := filepath.Join(root, "z")
-	writeTestFile(t, zPath, "survives\n")
-	info, err := os.Lstat(zPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	observation := execObservation{Class: execscope.Scoped.String(), Roots: []string{root}, Listings: []execListing{{Root: root, Entries: map[string]string{"z": execFileStamp(info)}}}}
-	for index := range execscope.ListingLimit + 1 {
-		writeTestFile(t, filepath.Join(root, fmt.Sprintf("file-%04d.txt", index)), "new\n")
-	}
-	reviews, complete, _, _ := reconcileExecObservation(observation, execReconcileEnv{})
-	walkTruncated, added := false, 0
-	for _, review := range reviews {
-		walkTruncated = walkTruncated || review.Incomplete == "destination listing exceeds its bound"
-		if review.BeforePath == zPath && review.AfterPath == "" {
-			t.Fatalf("reconciliation falsely claims surviving z was deleted: %+v", review)
-		}
-		if review.Incomplete == "" && review.BeforePath == "" {
-			added++
-		}
-	}
-	if complete || !walkTruncated || added != execscope.ListingLimit {
-		t.Fatalf("destination enumeration: complete=%v truncated=%v added=%d", complete, walkTruncated, added)
-	}
-
-}
 
 func TestExecBackupStarRetainsOperandDirectories(t *testing.T) {
 	root := t.TempDir()
@@ -53,8 +22,9 @@ func TestExecBackupStarRetainsOperandDirectories(t *testing.T) {
 	execProducerCommand(t, "sed")
 	observation := execProducerCapture(t, root, command)
 	execProducerRun(t, execProducerCommand(t, "bash"), root, command)
-	reviews, complete, coverage, _ := reconcileExecObservation(*observation, execReconcileEnv{})
-	if !complete || coverage != execCoverageExact {
+	result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
+	reviews, complete, coverage := result.Files, result.Complete, result.Coverage
+	if !complete || coverage != changecapture.CoverageExact {
 		t.Fatalf("backup coverage: %v %s", complete, coverage)
 	}
 	if !slices.ContainsFunc(reviews, func(file diffmodel.ReviewFile) bool { return file.AfterPath == filepath.Join(root, "backup/src/a.txt") }) {
@@ -89,9 +59,11 @@ func TestExecInPlaceBackupGlobReconcilesExactBackupReview(t *testing.T) {
 				}
 			}
 
-			reviews, complete, coverage, unswept := reconcileExecObservation(*observation, execReconcileEnv{})
-			if !complete || coverage != execCoverageExact || unswept != "" {
-				t.Fatalf("reconciliation complete=%v coverage=%q unswept=%q; want exact evidence (reviews=%+v)", complete, coverage, unswept, reviews)
+			result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
+
+			reviews, complete, coverage := result.Files, result.Complete, result.Coverage
+			if !complete || coverage != changecapture.CoverageExact {
+				t.Fatalf("reconciliation complete=%v coverage=%q; want exact evidence (reviews=%+v)", complete, coverage, reviews)
 			}
 			got := make(map[string]struct {
 				fileTitle, diff, incomplete, origin string
@@ -155,9 +127,11 @@ func TestExecLnSfnCapturesReplacedSymlinkNotChild(t *testing.T) {
 		t.Fatalf("target directory changed: info=%v err=%v", info, err)
 	}
 
-	reviews, complete, coverage, unswept := reconcileExecObservation(*observation, execReconcileEnv{})
-	if !complete || coverage != execCoverageExact || unswept != "" {
-		t.Fatalf("reconciliation complete=%v coverage=%q unswept=%q reviews=%+v", complete, coverage, unswept, reviews)
+	result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
+
+	reviews, complete, coverage := result.Files, result.Complete, result.Coverage
+	if !complete || coverage != changecapture.CoverageExact {
+		t.Fatalf("reconciliation complete=%v coverage=%q reviews=%+v", complete, coverage, reviews)
 	}
 	if len(reviews) != 1 {
 		t.Fatalf("reviews = %+v, want only the replaced symlink", reviews)
@@ -167,7 +141,7 @@ func TestExecLnSfnCapturesReplacedSymlinkNotChild(t *testing.T) {
 		!strings.Contains(review.Diff, "targetdir") || !strings.Contains(review.Diff, "new") {
 		t.Fatalf("review = %+v, want an exact edit of link from targetdir to new", review)
 	}
-	if child := filepath.Join(link, "new"); slices.Contains(observation.scopePaths(), child) {
+	if child := filepath.Join(link, "new"); slices.Contains(observation.ScopePaths(), child) {
 		t.Errorf("pre-call scope captured phantom child %q instead of the destination link", child)
 	}
 }
@@ -178,7 +152,7 @@ func TestNativeExecResultFinalizesAfterReplayProxyReconstruction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(store.snapshots.close)
+	t.Cleanup(store.snapshots.Close)
 	firstProxy := newManagedMekugiProxy(t)
 	firstProxy.replayStore = store
 	workspace := t.TempDir()
@@ -195,7 +169,7 @@ func TestNativeExecResultFinalizesAfterReplayProxyReconstruction(t *testing.T) {
 	if err := firstProxy.Close(); err != nil {
 		t.Fatal(err)
 	}
-	store.snapshots.close()
+	store.snapshots.Close()
 
 	// Codex owns execution. Simulate its one host execution between the
 	// request that captured the call and the later terminal tool result.
@@ -211,7 +185,7 @@ func TestNativeExecResultFinalizesAfterReplayProxyReconstruction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(freshStore.snapshots.close)
+	t.Cleanup(freshStore.snapshots.Close)
 	freshProxy.replayStore = freshStore
 	items := []any{
 		map[string]any{"type": "function_call", "call_id": "exec-call", "name": nativeExecCommandToolName, "arguments": arguments},
@@ -220,7 +194,7 @@ func TestNativeExecResultFinalizesAfterReplayProxyReconstruction(t *testing.T) {
 	transform = reconcileExecItems(t, freshProxy, workspace, items)
 	history, found, err := freshStore.lookup(transform.ctx, workspace, "exec-call:exec:1")
 	if err != nil || !found || history.ChangeID == "" || history.ExecOutcome == nil ||
-		history.ExecOutcome.Status != execStatusCompleted || history.ExecOutcome.Coverage != execCoverageExact {
+		history.ExecOutcome.Status != changecapture.StatusCompleted || history.ExecOutcome.Coverage != changecapture.CoverageExact {
 		t.Fatalf("fresh proxy did not finalize exact captured effects: history=%+v found=%v err=%v", history, found, err)
 	}
 	got := make(map[string]struct {

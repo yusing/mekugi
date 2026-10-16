@@ -3,6 +3,7 @@ package router
 import (
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	json "encoding/json/v2"
 	"fmt"
@@ -80,7 +81,7 @@ func (f *nativeTraceFixture) end(thread, cell string) {
 }
 
 func observedCommands(commands ...commandanalysis.Command) *mekugiHistory {
-	return &mekugiHistory{ExecObservation: &execObservation{Commands: commands, CodeMode: true}}
+	return &mekugiHistory{ExecObservation: &changecapture.Observation{Commands: commands, CodeMode: true}}
 }
 
 func TestNativeTraceConfirmsEachToolWithoutPrintedOutput(t *testing.T) {
@@ -246,7 +247,7 @@ func TestNativeTraceCommandsMatchAuthoredShellCalls(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			history := &mekugiHistory{Script: source, CarrierPayload: `const command = "printf status";`,
-				ExecObservation: &execObservation{Commands: []commandanalysis.Command{{Command: edit}}, CodeMode: true}}
+				ExecObservation: &changecapture.Observation{Commands: []commandanalysis.Command{{Command: edit}}, CodeMode: true}}
 			if tc.authored {
 				history.ExecObservation.Commands = append(history.ExecObservation.Commands, commandanalysis.Command{Command: diagnostic})
 			}

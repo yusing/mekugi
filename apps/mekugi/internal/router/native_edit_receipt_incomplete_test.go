@@ -6,12 +6,13 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 )
 
 func TestEditReceiptGroupsCaptureGapsWithoutClaimingEdits(t *testing.T) {
 	for _, known := range []bool{false, true} {
 		t.Run(fmt.Sprint(known), func(t *testing.T) {
-			history := mekugiHistory{ChangeID: "amber1", ExecOutcome: &execOutcome{Labels: []string{"python3"}}}
+			history := mekugiHistory{ChangeID: "amber1", ExecOutcome: &changecapture.Outcome{Labels: []string{"python3"}}}
 			if known {
 				history.ReviewFiles = append(history.ReviewFiles, diffmodel.RenderReviewFile("edited.go", "edited.go", "old\n", "new\n"))
 			}

@@ -9,10 +9,9 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
-
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 )
 
 type mchangesSliceFixture struct {
@@ -39,7 +38,7 @@ func newMChangesSliceFixture(t *testing.T, thread string) *mchangesSliceFixture 
 	}
 	t.Cleanup(release)
 	workspace := t.TempDir()
-	t.Cleanup(store.snapshots.close)
+	t.Cleanup(store.snapshots.Close)
 	return &mchangesSliceFixture{
 		registry:   registry,
 		store:      store,
@@ -155,8 +154,8 @@ func TestMChangesHistoryReportsSavedEffectsWithoutCommandResult(t *testing.T) {
 	f.publish(t, execID, "exec-observed", "exec-call", mekugiHistory{
 		ToolName: nativeExecCommandToolName,
 		Script:   "text(await tools.exec_command({cmd: 'touch file.txt'}));\n",
-		ExecOutcome: &execOutcome{
-			Status: "", Class: "exec", Coverage: execCoverageExact,
+		ExecOutcome: &changecapture.Outcome{
+			Status: "", Class: "exec", Coverage: changecapture.CoverageExact,
 		},
 		ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file.txt", "file.txt", "before\n", "after\n")},
 	})
@@ -473,7 +472,7 @@ func TestMChangesFrozenOverlapLabelSurvivesUnselectedRetirement(t *testing.T) {
 	f.publish(t, other, "overlapping", "overlap-call:attempt", mekugiHistory{})
 	selected := f.reserve(t, f.thread, "selected")
 	f.publish(t, selected, "selected", "selected-call", mekugiHistory{
-		Script: "captured input\n", ExecOutcome: &execOutcome{Status: execStatusCompleted, Coverage: execCoverageExact, Overlaps: []string{"overlap-call"}},
+		Script: "captured input\n", ExecOutcome: &changecapture.Outcome{Status: changecapture.StatusCompleted, Coverage: changecapture.CoverageExact, Overlaps: []string{"overlap-call"}},
 	})
 	text, diag, status := f.run(t, "mchanges "+selected+" --history --max-tokens 15500")
 	if status != 0 || diag != "" || !strings.Contains(text, "observed alongside "+other+"\n") {
@@ -534,8 +533,8 @@ func TestMChangesNetLabelsUnconfirmedAndRejectsPartialCaptures(t *testing.T) {
 	f.publish(t, codeMode, codeModeCorrelation, "unconfirmed-codemode-call", mekugiHistory{
 		ToolName:        nativeExecCommandToolName,
 		Script:          "text(await tools.exec_command({cmd: 'touch exec.txt'}));\n",
-		ExecObservation: &execObservation{CodeMode: true},
-		ExecOutcome:     &execOutcome{Status: "", Coverage: execCoverageExact},
+		ExecObservation: &changecapture.Observation{CodeMode: true},
+		ExecOutcome:     &changecapture.Outcome{Status: "", Coverage: changecapture.CoverageExact},
 		ReviewFiles:     []diffmodel.ReviewFile{diffmodel.RenderReviewFile("exec.txt", "exec.txt", "before\n", "after\n")},
 	})
 	stdout, stderr, status := f.run(t, "mchanges --net "+codeMode)
@@ -548,7 +547,7 @@ func TestMChangesNetLabelsUnconfirmedAndRejectsPartialCaptures(t *testing.T) {
 	f.publish(t, move, moveCorrelation, "unconfirmed-move-call", mekugiHistory{
 		ToolName:    nativeExecCommandToolName,
 		Script:      "mv before.txt after.txt\n",
-		ExecOutcome: &execOutcome{Status: "", Coverage: execCoverageExact},
+		ExecOutcome: &changecapture.Outcome{Status: "", Coverage: changecapture.CoverageExact},
 		ReviewFiles: []diffmodel.ReviewFile{
 			diffmodel.RenderReviewFile("before.txt", "after.txt", "same content\n", "same content\n"),
 		},
@@ -571,7 +570,7 @@ func TestMChangesNetLabelsUnconfirmedAndRejectsPartialCaptures(t *testing.T) {
 	f.publish(t, partial, partialCorrelation, "partial-shell-call", mekugiHistory{
 		ToolName:    nativeExecCommandToolName,
 		Script:      "printf changed > partial.txt\n",
-		ExecOutcome: &execOutcome{Status: execStatusCompleted, Coverage: execCoveragePartial},
+		ExecOutcome: &changecapture.Outcome{Status: changecapture.StatusCompleted, Coverage: changecapture.CoveragePartial},
 		ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("partial.txt", "partial.txt", "before\n", "after\n")},
 	})
 	assertRejected(partial, "partial captured effects")

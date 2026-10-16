@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 )
 
 func TestExecExplicitSiblingsShareDurableRecord(t *testing.T) {
@@ -23,7 +24,7 @@ func TestExecExplicitSiblingsShareDurableRecord(t *testing.T) {
 	writeTestFile(t, filepath.Join(workspace, "generated"), "generated\n")
 	reconcileExecItems(t, proxy, workspace, items)
 	first, found, err := proxy.replayStore.lookup(t.Context(), workspace, "first:exec:1")
-	if err != nil || !found || first.ChangeID == "" || first.ExecOutcome.Coverage != execCoverageExact {
+	if err != nil || !found || first.ChangeID == "" || first.ExecOutcome.Coverage != changecapture.CoverageExact {
 		t.Fatalf("shared record: %+v %v", first, err)
 	}
 	if len(first.ReviewFiles) != 1 || !strings.Contains(first.Script, "printf second > generated") {

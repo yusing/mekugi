@@ -14,31 +14,29 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-
-	"github.com/yusing/mekugi/libraries/legacycall"
-
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
-
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 func snapshotTestHistory() mekugiHistory {
-	files := []execFileSnapshot{
-		{Path: "/w/text", Kind: execFileText, Content: "before\r\n<&>\n", Size: 14},
-		{Path: "/w/binary", Kind: execFileBinary, Size: 17, Hash: "binary-hash"},
-		{Path: "/w/link", Kind: execFileSymlink, Link: "../target"},
-		{Path: "/w/missing", Kind: execFileAbsent},
+	files := []changecapture.File{
+		{Path: "/w/text", Kind: changecapture.Text, Content: "before\r\n<&>\n", Size: 14},
+		{Path: "/w/binary", Kind: changecapture.Binary, Size: 17, Hash: "binary-hash"},
+		{Path: "/w/link", Kind: changecapture.Symlink, Link: "../target"},
+		{Path: "/w/missing", Kind: changecapture.Absent},
 		{Path: "/w/incomplete", Error: "bounded capture"},
 	}
 	return mekugiHistory{
 		ToolName: "exec", Script: "original input", CarrierPayload: "unchanged stock input",
 		ResolvedBaseline: &resolvedStockBaseline{Root: "/w", Shell: "bash", Files: files,
-			Omitted: []execOmission{{Path: "/w/omitted", Reason: "time bound"}}},
-		ExecObservation: &execObservation{Files: files, Class: "scoped", WindowStart: time.Unix(1700000000, 0).UTC(),
-			Listings: []execListing{{Root: "/w", Entries: map[string]string{"text": "f"}}}},
-		NativePatches: []nativePatchObservation{{Input: "exact patch input", Files: []nativePatchFileSnapshot{{
+			Omitted: []changecapture.Omission{{Path: "/w/omitted", Reason: "time bound"}}},
+		ExecObservation: &changecapture.Observation{Files: files, Class: "scoped", WindowStart: time.Unix(1700000000, 0).UTC(),
+			Listings: []changecapture.Listing{{Root: "/w", Entries: map[string]string{"text": "f"}}}},
+		NativePatches: []changecapture.PatchObservation{{Input: "exact patch input", Files: []changecapture.PatchFile{{
 			BeforePath: "/w/text", AfterPath: "/w/renamed", Before: "old\n", Exists: true,
 			TargetBefore: "target\n", TargetExists: true, TargetError: "target diagnostic",
 		}}}, {Input: "no files"}},
@@ -183,16 +181,16 @@ func TestInlineEditEvidenceAdmissionIsAtomic(t *testing.T) {
 		t.Fatal(err)
 	}
 	random := rand.New(rand.NewPCG(1, 2))
-	var files []execFileSnapshot
+	var files []changecapture.File
 	for i := range 4 {
 		content := make([]byte, 4096)
 		for j := range content {
 			content[j] = byte('a' + random.IntN(26))
 		}
-		files = append(files, execFileSnapshot{Path: fmt.Sprintf("/w/%d", i), Kind: execFileText, Content: string(content), Size: int64(len(content))})
+		files = append(files, changecapture.File{Path: fmt.Sprintf("/w/%d", i), Kind: changecapture.Text, Content: string(content), Size: int64(len(content))})
 	}
 	store.maxBytes = 10 << 10
-	err = store.put(t.Context(), "/w", map[string]mekugiHistory{"call": {ToolName: "exec", ExecObservation: &execObservation{Files: files}}})
+	err = store.put(t.Context(), "/w", map[string]mekugiHistory{"call": {ToolName: "exec", ExecObservation: &changecapture.Observation{Files: files}}})
 	if err == nil {
 		t.Fatal("accepted a record whose blobs exceed the quota")
 	}
@@ -200,7 +198,7 @@ func TestInlineEditEvidenceAdmissionIsAtomic(t *testing.T) {
 		t.Fatalf("rejected record left blobs behind: %v", blobs)
 	}
 	store.maxBytes = 0
-	if err := store.put(t.Context(), "/w", map[string]mekugiHistory{"call": {ToolName: "exec", ExecObservation: &execObservation{Files: files}}}); err != nil {
+	if err := store.put(t.Context(), "/w", map[string]mekugiHistory{"call": {ToolName: "exec", ExecObservation: &changecapture.Observation{Files: files}}}); err != nil {
 		t.Fatal(err)
 	}
 	if blobs := snapshotTestBlobs(t, store); len(blobs) != 0 {

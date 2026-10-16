@@ -6,12 +6,13 @@ import (
 	"testing"
 	"time"
 
-	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
 func TestAppServerEditIntentTerminalFrames(t *testing.T) {
@@ -81,7 +82,7 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 		t.Fatalf("terminal displayed edit source:\n%s", frame)
 	}
 	history := mekugiHistory{ExecutingThread: "main", CorrelationID: "cmd\x00exec", ChangeID: "c1",
-		ExecOutcome: &execOutcome{Status: execStatusCompleted, Coverage: execCoverageExact, Labels: []string{"cat", "python3"}},
+		ExecOutcome: &changecapture.Outcome{Status: changecapture.StatusCompleted, Coverage: changecapture.CoverageExact, Labels: []string{"cat", "python3"}},
 		ReviewFiles: []diffmodel.ReviewFile{
 			diffmodel.RenderReviewFile("a.go", "a.go", "old\n", "new\n"),
 			diffmodel.RenderReviewFile("b.go", "b.go", "old\n", "first\nsecond\n"),

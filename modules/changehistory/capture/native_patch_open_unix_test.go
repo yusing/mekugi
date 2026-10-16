@@ -1,6 +1,6 @@
 //go:build unix
 
-package router
+package capture
 
 import (
 	"path/filepath"
@@ -16,7 +16,7 @@ func TestNativePatchFileCaptureDoesNotWaitOnFIFO(t *testing.T) {
 	}
 	done := make(chan error, 1)
 	go func() {
-		_, _, err := readNativePatchFile(path)
+		_, _, err := ReadPatchFile(path)
 		done <- err
 	}()
 	select {

@@ -9,14 +9,15 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
@@ -152,17 +153,12 @@ func TestWorkspaceSnapshotRetainedIgnoredPathDoesNotBecomeDeletion(t *testing.T)
 	writeTestFile(t, tracked, "before\n")
 	gitTestCommit(t, workspace)
 	artifact := filepath.Join(workspace, "build", "cache.bin")
-	writeTestFile(t, artifact, strings.Repeat("\x00", maxNativePatchFileBytes+1))
+	writeTestFile(t, artifact, strings.Repeat("\x00", changecapture.MaxFileBytes+1))
 
 	history, ctx := runSnapshotExec(t, proxy, workspace, "ignore-transition", "python3 edit.py", func() {
 		writeTestFile(t, filepath.Join(workspace, ".gitignore"), "/build/\n*.log\n")
 		writeTestFile(t, tracked, "after\n")
-		// A refreshed private index can lose an ignored path retained by an
-		// older checkpoint, although the file on disk was never deleted.
-		repo := proxy.replayStore.snapshots.repo(workspace)
-		if _, err := repo.run(t.Context(), nil, "update-index", "--force-remove", "--", "build/cache.bin"); err != nil {
-			t.Fatal(err)
-		}
+
 	})
 	if paths := strings.Join(reviewPaths(history), "\n"); strings.Contains(paths, "cache.bin") || !strings.Contains(paths, "tracked.log") || len(history.ReviewFiles) != 2 {
 		t.Fatalf("ignore transition review: %s", paths)
@@ -188,7 +184,7 @@ func TestWorkspaceSnapshotPlainWorkspaceBoundsNewTrees(t *testing.T) {
 	history, _ := runSnapshotExec(t, proxy, workspace, "plain", "./generate", func() {
 		writeTestFile(t, filepath.Join(workspace, "existing.txt"), "after\n")
 		writeTestFile(t, filepath.Join(workspace, "small", "new.txt"), "new\n")
-		for index := range workspaceSnapshotPlainAdds + 1 {
+		for index := range 257 {
 			writeTestFile(t, filepath.Join(workspace, "bulk", fmt.Sprintf("%d.js", index)), "installed\n")
 			// A burst in an already-known directory is bounded the same way.
 			writeTestFile(t, filepath.Join(workspace, fmt.Sprintf("burst-%d.txt", index)), "generated\n")
@@ -208,13 +204,13 @@ func TestWorkspaceSnapshotOverlappingCallsRecordAnEffectOnce(t *testing.T) {
 	target := filepath.Join(f.workspace, "shared.txt")
 	writeTestFile(t, target, "one\n")
 	observe := func(ref string) mekugiHistory {
-		tree := f.store.snapshots.checkpoint(f.ctx, f.workspace)
+		tree := f.store.snapshots.Checkpoint(f.ctx, f.workspace)
 		if tree == "" {
 			t.Fatal("no workspace checkpoint")
 		}
 		proxy.execWindows.open(&execWindow{ref: ref, roots: []string{f.workspace}})
 		return mekugiHistory{ToolName: nativeExecCommandToolName, ExecutingThread: f.thread,
-			ExecObservation: &execObservation{Commands: []commandanalysis.Command{{Command: ref}}, Class: execscope.Opaque.String(), Roots: []string{f.workspace}, Tree: tree}}
+			ExecObservation: &changecapture.Observation{Commands: []commandanalysis.Command{{Command: ref}}, Class: execscope.Opaque.String(), Roots: []string{f.workspace}, Tree: tree}}
 	}
 	finalize := func(ref string, history mekugiHistory) mekugiHistory {
 		if err := proxy.finalizeExecObservations(f.ctx, f.workspace, []execCompletion{{callID: ref, history: history, output: responses.MustMarshalJSON(nativeExecOutput("Process exited with code 0"))}}); err != nil {
@@ -315,13 +311,13 @@ func TestWorkspaceSnapshotClaimsStayWithinTheirWorkspace(t *testing.T) {
 	writeTestFile(t, filepath.Join(inner, "code.go"), "package pkg\n")
 	proxy := &mekugiProxy{replayStore: f.store, execWindows: &execWindowRegistry{}}
 	observe := func(ref, workspace string) mekugiHistory {
-		tree := f.store.snapshots.checkpoint(f.ctx, workspace)
+		tree := f.store.snapshots.Checkpoint(f.ctx, workspace)
 		if tree == "" {
 			t.Fatal("no workspace checkpoint")
 		}
 		proxy.execWindows.open(&execWindow{ref: ref, roots: []string{workspace}})
 		return mekugiHistory{ToolName: nativeExecCommandToolName, ExecutingThread: f.thread,
-			ExecObservation: &execObservation{Commands: []commandanalysis.Command{{Command: ref}}, Class: execscope.Opaque.String(), Roots: []string{workspace}, Tree: tree}}
+			ExecObservation: &changecapture.Observation{Commands: []commandanalysis.Command{{Command: ref}}, Class: execscope.Opaque.String(), Roots: []string{workspace}, Tree: tree}}
 	}
 	outer, nested := observe("outer", f.workspace), observe("nested", inner)
 	writeTestFile(t, filepath.Join(f.workspace, "README"), "two\n")
@@ -340,53 +336,6 @@ func TestWorkspaceSnapshotClaimsStayWithinTheirWorkspace(t *testing.T) {
 	nestedRecord, _, err := f.store.lookup(f.ctx, inner, legacycall.ExecCallID("nested", false))
 	if err != nil || len(nestedRecord.ReviewFiles) != 0 {
 		t.Fatalf("a claim crossed into another workspace's comparison: %+v, %v", reviewPaths(nestedRecord), err)
-	}
-}
-
-func TestWorkspaceSnapshotRecoversFromPrunedState(t *testing.T) {
-	isolateSnapshotGit(t)
-	snapshots := newWorkspaceSnapshots(t.TempDir())
-	t.Cleanup(snapshots.close)
-	workspace := t.TempDir()
-	writeTestFile(t, filepath.Join(workspace, "a.txt"), "a\n")
-	if snapshots.checkpoint(t.Context(), workspace) == "" {
-		t.Fatal("no first checkpoint")
-	}
-	// Another router process pruned this workspace's state as idle.
-	if err := os.RemoveAll(filepath.Dir(snapshots.repo(workspace).lockPath)); err != nil {
-		t.Fatal(err)
-	}
-	if snapshots.checkpoint(t.Context(), workspace) == "" {
-		t.Fatal("pruned state was not rebuilt")
-	}
-}
-
-func TestWorkspaceSnapshotRetriesAFailedWarmup(t *testing.T) {
-	isolateSnapshotGit(t)
-	store := t.TempDir()
-	blocker := filepath.Join(store, workspaceSnapshotDirectory)
-	writeTestFile(t, blocker, "not a directory\n")
-	snapshots := newWorkspaceSnapshots(store)
-	t.Cleanup(snapshots.close)
-	workspace := t.TempDir()
-	writeTestFile(t, filepath.Join(workspace, "a.txt"), "a\n")
-	if snapshots.checkpoint(t.Context(), workspace) != "" {
-		t.Fatal("checkpoint despite an unwritable store")
-	}
-	if err := os.Remove(blocker); err != nil {
-		t.Fatal(err)
-	}
-	repo := snapshots.repo(workspace)
-	repo.mu.Lock()
-	repo.failed = time.Now().Add(-workspaceSnapshotRetry)
-	repo.mu.Unlock()
-	snapshots.checkpoint(t.Context(), workspace) // Starts the retry.
-	repo.mu.Lock()
-	ready := repo.ready
-	repo.mu.Unlock()
-	<-ready
-	if snapshots.checkpoint(t.Context(), workspace) == "" {
-		t.Fatal("a failed warmup was never retried")
 	}
 }
 
@@ -425,7 +374,7 @@ func TestWorkspaceSnapshotVCSChangesStayOutOfAuthoredTotals(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(resumed.snapshots.close)
+			t.Cleanup(resumed.snapshots.Close)
 			list, err := resumed.changes.Read(ctx, resumed.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{history.ChangeID}, View: "list"})
 			if err != nil {
 				t.Fatal(err)

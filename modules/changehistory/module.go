@@ -12,7 +12,7 @@ import (
 
 type Deps struct{ History *history.Service }
 
-var Module = module.Descriptor[Deps, changes.Service, codexbinding.Bindings]{ID: "changehistory", Summary: "Retain, review, apply, and revert filesystem change evidence", Requires: []module.ID{"sessionhistory"}, Lifetime: module.Stateless, Contributes: module.Contributions[changes.Service]{Guidance: []guidance.Section{{Command: changes.Command.Name, Text: commandGuidance}}, Commands: []command.Definition[changes.Service]{changes.Command}, RecordKinds: retained.RecordKinds(), References: retained.ChangeReferences()}, New: newService, Bindings: codexbinding.Codex}
+var Module = module.Descriptor[Deps, changes.Service, codexbinding.Bindings]{ID: "changehistory", Summary: "Capture, retain, review, apply, and revert filesystem change evidence", Requires: []module.ID{"sessionhistory"}, Lifetime: module.Stateless, Contributes: module.Contributions[changes.Service]{Guidance: []guidance.Section{{Command: changes.Command.Name, Text: commandGuidance}}, Commands: []command.Definition[changes.Service]{changes.Command}, RecordKinds: retained.RecordKinds(), References: retained.ChangeReferences()}, New: newService, Bindings: codexbinding.Codex}
 
 func newService(deps Deps, _ module.Slots) (changes.Service, error) {
 	return retained.New(deps.History)

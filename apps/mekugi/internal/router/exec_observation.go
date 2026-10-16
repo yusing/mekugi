@@ -3,205 +3,27 @@ package router
 import (
 	"cmp"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
-	"io"
-	"io/fs"
 	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
-	"syscall"
-	"time"
 	"unicode/utf8"
 
-	"github.com/yusing/mekugi/libraries/legacycall"
-
 	"github.com/yusing/mekugi/backends/codex/binding"
-
-	"github.com/yusing/mekugi/libraries/commandanalysis"
-
 	"github.com/yusing/mekugi/contracts/command"
-
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
+	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
-	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
-	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
-
-	"github.com/yusing/mekugi/libraries/diffmodel"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 )
 
-const (
-	// execCaptureHold bounds how long a call item waits for its pre-call
-	// capture. Unread paths become incomplete instead of delaying the host.
-	execCaptureHold = 500 * time.Millisecond
-	// maxExecReportBytes bounds the retained host result, which is context for
-	// the record rather than the command's full output.
-	maxExecReportBytes = 8 << 10
-	// maxExecContentBytes bounds the text read on each side of a call.
-	maxExecContentBytes = 8 << 20
-	// maxExecObservationBytes bounds the encoded pre-call capture that the call
-	// record carries until its result arrives.
-	maxExecObservationBytes = 8 << 20
-	// maxExecRecordBytes keeps the encoded reviews of a derived record below
-	// the store's record limit.
-	maxExecRecordBytes    = 24 << 20
-	maxExecListingEntries = execscope.ListingLimit
-)
+const maxExecReportBytes = 8 << 10
 
-// sharedOriginSuffix follows the managed tools whose scope also held a direct
-// path. One snapshot pair spans the whole command, so the note says the tool
-// ran, not that it changed the file.
-const sharedOriginSuffix = " also ran"
-
-type execFileKind string
-
-const (
-	execFileAbsent  execFileKind = ""
-	execFileText    execFileKind = "text"
-	execFileBinary  execFileKind = "binary"
-	execFileSymlink execFileKind = "symlink"
-	execFileDir     execFileKind = "dir"
-	execFileOther   execFileKind = "other"
-)
-
-// execFileSnapshot is the bounded state of one path. Binary content keeps only
-// size and hash; symlinks keep their target, never the target's content.
-type execFileSnapshot struct {
-	Origin      string `json:",omitempty"`
-	AlsoManaged string `json:",omitempty"`
-	Path        string
-	Kind        execFileKind `json:",omitempty"`
-	Content     string       `json:",omitempty"`
-	Size        int64        `json:",omitzero"`
-	Hash        string       `json:",omitempty"`
-	Link        string       `json:",omitempty"`
-	// Stamp identifies an uncaptured regular file, so an unchanged file is not
-	// reported just because its content was over a bound.
-	Stamp string `json:",omitempty"`
-	Error string `json:",omitempty"`
-	// watchStamp is the live preview's capture-time metadata baseline. It is
-	// not durable evidence and must not replace content comparison.
-	watchStamp string
-	// Move-only operands have retained evidence, but no arriving source to stream.
-	watchMoveOnly bool
-	// CopyOf names the source a copy command writes into this path.
-	CopyOf string `json:",omitempty"`
-}
-
-// execOmission records scope that was not captured at all.
-type execOmission struct {
-	Origin string `json:",omitempty"`
-	Path   string
-	Reason string
-	// Existing explicitly scoped fixer or formatter paths were not baselined. Their
-	// after-state is checked against the observation clock before reporting.
-	Deferred bool `json:",omitzero"`
-}
-
-// execObservation is the durable pre-call capture of one observed call: a
-// native exec_command, or all literal commands of one exec cell.
-type execObservation struct {
-	Commands []commandanalysis.Command
-	// CommandClasses retain pre-call classification for repeated literal
-	// occurrences, without reclassifying providers after execution.
-	CommandClasses []string `json:",omitempty"`
-	Class          string
-	Labels         []string `json:",omitempty"`
-	Reason         string   `json:",omitempty"`
-	Files          []execFileSnapshot
-	Omitted        []execOmission      `json:",omitempty"`
-	Listings       []execListing       `json:",omitempty"`
-	CodeMode       bool                `json:",omitzero"`
-	Roots          []string            `json:",omitempty"`
-	WindowStart    time.Time           `json:",omitzero"`
-	Programs       []execscope.Program `json:",omitempty"`
-	// Group identifies the response that emitted the call, so parallel
-	// siblings finalized together share one record.
-	Group string `json:",omitempty"`
-	// Excluded paths belong to patch records of the same call.
-	Excluded []string `json:",omitempty"`
-	// RepeatedPaths names multiple potential writes in one call window. A
-	// final equality cannot prove those intermediate attempts had no effects.
-	RepeatedPaths bool `json:",omitzero"`
-	// LiteralClass preserves pre-captured scope independently of uncertainty
-	// about additional exec calls whose arguments are not yet resolved.
-	LiteralClass string `json:",omitempty"`
-	// Inventory is the selected workspace before an opaque call. It is
-	// window evidence, separate from the explicit scope above.
-	Inventory *execInventory `json:",omitempty"`
-	// Tree is the private workspace snapshot taken before a writer call. Its
-	// comparison covers effects outside the source-named scope.
-	Tree string `json:",omitempty"`
-}
-
-// A successful mktemp report supplies the ordinary absent endpoint and empty
-// destination listing. Reconciliation reads only that path and its contents,
-// which are authored like any named operand.
-func (o *execObservation) addCreatedPaths(paths []segmenttransport.Message) {
-	// Observation copies may share backing arrays with a running preview.
-	o.Files, o.Listings = slices.Clip(o.Files), slices.Clip(o.Listings)
-	for _, path := range paths {
-		if !slices.ContainsFunc(o.Files, func(file execFileSnapshot) bool { return file.Path == path.Data }) {
-			o.Files = append(o.Files, execFileSnapshot{Path: path.Data})
-		}
-		if path.Tree && !slices.ContainsFunc(o.Listings, func(listing execListing) bool { return listing.Root == path.Data }) {
-			o.Listings = append(o.Listings, execListing{Root: path.Data})
-		}
-	}
-}
-
-// execOutcome is the finalized status of an observed exec record.
-type execOutcome struct {
-	DeletedDirectories []string `json:",omitempty"` // Captured directory roots absent after the call.
-	OutputRef          string   `json:",omitempty"` // Router-retained failed host result, readable with mread.
-	Status             string
-	Exit               *int `json:",omitempty"`
-	Class              string
-	Labels             []string `json:",omitempty"`
-	Coverage           string
-	CodeMode           bool `json:",omitzero"`
-	// Scope lists the captured paths, the only paths the record compares
-	// exactly.
-	Scope       []string `json:",omitempty"`
-	ScopeReason string   `json:",omitempty"`
-	// Unswept retains command-level coverage diagnostics, not changed files.
-	Unswept string `json:",omitempty"`
-	// Overlaps are calls whose windows overlapped this one on the same root.
-	Overlaps []string `json:",omitempty"`
-	// Background names still-running sessions for command-history diagnostics.
-	Background []string `json:",omitempty"`
-	// SharedWith names the record of a parallel sibling that holds this
-	// call's effects.
-	SharedWith string `json:",omitempty"`
-}
-
-func (o execObservation) commandClasses() []string {
-	classes := slices.Clone(o.CommandClasses)
-	// Older or timed-out captures without per-command facts can establish
-	// neutrality only for their aggregate original scope.
-	for len(classes) < len(o.Commands) {
-		classes = append(classes, cmp.Or(o.LiteralClass, o.Class))
-	}
-	return classes
-}
-
-const (
-	execStatusCompleted = "completed"
-	execStatusFailed    = "failed"
-
-	execCoverageExact   = "exact"
-	execCoveragePartial = "partial"
-	execCoverageUnswept = "unswept"
-)
-
-// requestSessionShell reads the session shell from the latest environment
-// context in a request. Several environments with different shells leave it
+// requestSessionShell reads the latest session environment shell. Multiple environments with different shells leave it
 // unknown.
 func requestSessionShell(raw json.RawMessage) string {
 	var input []struct {
@@ -254,1000 +76,6 @@ func requestSessionShell(raw json.RawMessage) string {
 	return shell
 }
 
-// execCaptureEnv is the router state a capture consults.
-type execCaptureEnv struct {
-	// previewOnly keeps source-derived display baselines out of durable edits.
-	previewOnly bool
-	// directory is the selected workspace for resolving explicit edit operands.
-	directory string
-	// excluded paths belong to patch records of the same call.
-	excluded []string
-	// changes scopes mchanges revert and apply by their recorded paths.
-	changes execscope.ChangeResolver
-}
-
-// captureExecObservation classifies commands and captures their scope before
-// the host runs them. An unobserved call keeps its classification, unless it
-// is neutral, so a writer without a derived scope can still be snapshotted.
-func captureExecObservation(commands []commandanalysis.Command, dynamic, codeMode bool, env execCaptureEnv) (*execObservation, bool) {
-	if len(commands) == 0 && !dynamic {
-		return nil, false
-	}
-	deadline := time.Now().Add(execCaptureHold)
-	type result struct {
-		observation *execObservation
-		observed    bool
-	}
-	done := make(chan result, 1)
-	timer := time.NewTimer(time.Until(deadline))
-	defer timer.Stop()
-	select {
-	case execCaptureSlots <- struct{}{}:
-		go func() {
-			defer func() { <-execCaptureSlots }()
-			observation, observed := captureExecObservationWithin(commands, dynamic, codeMode, env)
-			done <- result{observation, observed}
-		}()
-	case <-timer.C:
-		return incompleteExecCapture(commands, codeMode, env), true
-	}
-	select {
-	case result := <-done:
-		if time.Now().Before(deadline) {
-			return result.observation, result.observed
-		}
-	case <-timer.C:
-	}
-	// Late reads never enter evidence: the host may already be writing by then.
-	return incompleteExecCapture(commands, codeMode, env), true
-}
-
-// Isolate potentially stalled filesystem syscalls from forwarding while keeping
-// outstanding auxiliary workers bounded across requests and threads.
-var execCaptureSlots = make(chan struct{}, 16)
-
-func incompleteExecCapture(commands []commandanalysis.Command, codeMode bool, env execCaptureEnv) *execObservation {
-	return &execObservation{Commands: commands, CodeMode: codeMode, Class: execscope.Opaque.String(), Reason: "capture deadline"}
-}
-
-func captureExecObservationWithin(commands []commandanalysis.Command, dynamic, codeMode bool, env execCaptureEnv) (*execObservation, bool) {
-	started := time.Now()
-	if len(commands) == 0 && !dynamic {
-		return nil, false
-	}
-	observation := &execObservation{Commands: commands, CodeMode: codeMode}
-	class := execscope.Neutral
-	var scope []execscope.Entry
-	for _, command := range commands {
-		plan := execscope.Classify(execscope.Input{Command: command.Command, Directory: command.Workdir, Shell: command.Shell, Deadline: started.Add(execscope.Budget), Changes: env.changes, AuthoredOnly: !env.previewOnly})
-		observation.CommandClasses = append(observation.CommandClasses, plan.Class.String())
-		if plan.Class > class {
-			class = plan.Class
-		}
-		if plan.Reason != "" && !strings.Contains(observation.Reason, plan.Reason) {
-			if observation.Reason != "" {
-				observation.Reason += "; "
-			}
-			observation.Reason += plan.Reason
-		}
-		for _, label := range plan.Labels {
-			if !slices.Contains(observation.Labels, label) {
-				observation.Labels = append(observation.Labels, label)
-			}
-		}
-		for _, program := range plan.Programs {
-			if !slices.Contains(observation.Programs, program) {
-				observation.Programs = append(observation.Programs, program)
-			}
-		}
-		scope = append(scope, plan.Scope...)
-		observation.Roots = execAddRoot(observation.Roots, execCaptureRoot(command.Workdir, env.directory))
-	}
-	if dynamic {
-		observation.LiteralClass = class.String()
-		class, observation.Reason = execscope.Opaque, "exec cell has a non-literal command"
-		observation.Programs = append(observation.Programs, execscope.Program{Label: "exec command"})
-		if filepath.IsAbs(env.directory) {
-			observation.Roots = execAddRoot(observation.Roots, filepath.Clean(env.directory))
-		}
-	}
-	observation.Class = class.String()
-	observation.Excluded = env.excluded
-	if len(scope) == 0 {
-		if class == execscope.Neutral {
-			return nil, false
-		}
-		return observation, false
-	}
-	seenWrites := make(map[string]bool)
-	for _, entry := range scope {
-		for _, operand := range entry.Operands {
-			if !operand.Glob {
-				observation.RepeatedPaths = observation.RepeatedPaths || seenWrites[operand.Path]
-				seenWrites[operand.Path] = true
-			}
-		}
-	}
-	capture := newExecCapture(started.Add(execCaptureHold))
-	capture.scopeRoots = observation.Roots
-	for _, managed := range []bool{false, true} {
-		for _, entry := range scope {
-			tool, _, _ := strings.Cut(entry.Origin, " ")
-			if (entry.Origin != "") == managed && (env.previewOnly || entry.Origin == "" || commandanalysis.IsVCSTool(tool)) {
-				capture.entry(entry)
-			}
-		}
-	}
-	observation.Files, observation.Omitted, observation.Listings = capture.files, capture.omitted, capture.listings
-	boundExecObservation(observation)
-	if len(observation.Files) == 0 && len(observation.Omitted) == 0 && len(observation.Listings) == 0 {
-		return observation, false
-	}
-	return observation, true
-}
-
-// execCaptureRoot bounds deferred formatter checks to the selected workspace
-// or the command directory when no workspace is available.
-func execCaptureRoot(workdir, directory string) string {
-	if filepath.IsAbs(directory) {
-		return filepath.Clean(directory)
-	}
-	return workdir
-}
-
-// execAddRoot adds root unless an existing root contains it, and drops
-// roots it contains.
-func execAddRoot(roots []string, root string) []string {
-	for _, existing := range roots {
-		if execPathWithin(root, existing) {
-			return roots
-		}
-	}
-	roots = slices.DeleteFunc(roots, func(existing string) bool { return execPathWithin(existing, root) })
-	return append(roots, root)
-}
-
-// scopePaths are the paths a capture claims: files it compares and roots it
-// lists. Concurrent sweeps leave them to this record.
-func (o execObservation) scopePaths() []string {
-	var paths []string
-	for _, file := range o.Files {
-		paths = append(paths, file.Path)
-	}
-	for _, listing := range o.Listings {
-		paths = append(paths, listing.Root)
-	}
-	for _, omission := range o.Omitted {
-		if !omission.Deferred {
-			paths = append(paths, omission.Path)
-		}
-	}
-	return paths
-}
-
-// boundExecObservation keeps the encoded capture within its record share by
-// reducing the largest text snapshots to stamps.
-func boundExecObservation(observation *execObservation) {
-	total := len(responses.MustMarshalJSON(observation))
-	for total > maxExecObservationBytes {
-		largest := -1
-		for index, file := range observation.Files {
-			if file.Content != "" && (largest < 0 || len(file.Content) > len(observation.Files[largest].Content)) {
-				largest = index
-			}
-		}
-		if largest < 0 {
-			return
-		}
-		file := &observation.Files[largest]
-		before := len(responses.MustMarshalJSON(file))
-		file.Content, file.Error = "", "capture exceeds the record bound"
-		if info, err := os.Lstat(file.Path); err == nil {
-			file.Stamp = execFileStamp(info)
-		}
-		total -= before - len(responses.MustMarshalJSON(file))
-	}
-}
-
-// execListing names the files below one destination root before the call, so
-// files a recursive copy or move creates there are found afterwards.
-type execListing struct {
-	Origin string `json:",omitempty"`
-	Root   string
-	// Entries maps each file's relative path to its stamp.
-	Entries map[string]string `json:",omitempty"`
-}
-
-type execCapture struct {
-	origin       string
-	moveOnly     bool
-	deadline     time.Time
-	seen         map[string]bool
-	files        []execFileSnapshot
-	omitted      []execOmission
-	omittedPaths map[string]bool
-	listings     []execListing
-	scopeRoots   []string
-	listed       int
-	// removals are trees an earlier statement deletes or moves away.
-	removals []string
-	budget   int
-}
-
-func newExecCapture(deadline time.Time) *execCapture {
-	return &execCapture{deadline: deadline, seen: make(map[string]bool), omittedPaths: make(map[string]bool), budget: maxExecContentBytes}
-}
-
-func (c *execCapture) omit(path, reason string) {
-	if c.omittedPaths[path] {
-		return
-	}
-	c.omittedPaths[path] = true
-	c.omitted = append(c.omitted, execOmission{Path: path, Reason: reason, Origin: c.origin})
-}
-
-// exhausted names the bound that stops further capture.
-func (c *execCapture) exhausted() string {
-	if time.Now().After(c.deadline) {
-		return "capture deadline"
-	}
-	return ""
-}
-
-// add snapshots one path once. Past the capture deadline the path is
-// recorded as omitted, never silently dropped.
-func (c *execCapture) add(path string) {
-	c.addCopy(path, "")
-}
-
-func (c *execCapture) addCopy(path, source string) {
-	path = filepath.Clean(path)
-	if c.seen[path] {
-		for i := range c.files {
-			file := &c.files[i]
-			if file.Path != path {
-				continue
-			}
-			file.watchMoveOnly = file.watchMoveOnly && c.moveOnly
-			// A direct path may fall in several managed scopes.
-			if c.origin != "" && file.Origin == "" && !slices.Contains(strings.Split(file.AlsoManaged, ", "), c.origin) {
-				file.AlsoManaged = strings.TrimPrefix(file.AlsoManaged+", "+c.origin, ", ")
-			}
-			break
-		}
-		return
-	}
-	c.seen[path] = true
-	if reason := c.exhausted(); reason != "" {
-		// Explicit fixer and formatter paths were enumerated but not baselined.
-		// Check their after-state against the window clock instead of
-		// fabricating a changed-file review for every unread path.
-		if slices.Contains([]string{"go fix", "gofmt", "goimports", "prettier", "eslint", "ruff format", "ruff check", "black", "rustfmt", "cargo fmt"}, c.origin) &&
-			slices.ContainsFunc(c.scopeRoots, func(root string) bool { return execPathWithin(path, root) }) {
-			if !c.omittedPaths[path] {
-				c.omittedPaths[path] = true
-				c.omitted = append(c.omitted, execOmission{Path: path, Reason: reason, Origin: c.origin, Deferred: true})
-			}
-			return
-		}
-		c.omit(path, reason)
-		return
-	}
-	snapshot := snapshotExecFile(path, &c.budget)
-	snapshot.CopyOf = source
-	snapshot.Origin = c.origin
-	snapshot.watchMoveOnly = c.moveOnly
-	c.files = append(c.files, snapshot)
-}
-
-// through also captures the file a write reaches when path is a symlink.
-func (c *execCapture) through(path, source string) {
-	info, err := os.Lstat(path)
-	if err != nil || info.Mode()&os.ModeSymlink == 0 {
-		return
-	}
-	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		// A write through a dangling link creates a target this capture
-		// cannot name reliably.
-		c.omit(path, "symlink target is unavailable")
-		return
-	}
-	c.addCopy(resolved, source)
-}
-
-// tree snapshots a path and, for a real directory, every entry below it.
-func (c *execCapture) tree(root string) {
-	info, err := os.Lstat(root)
-	if err != nil || !info.IsDir() {
-		c.add(root)
-		return
-	}
-	_ = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			c.omit(path, err.Error())
-			return nil
-		}
-		if reason := c.exhausted(); reason != "" {
-			c.omit(root, "more files below were not captured ("+reason+")")
-			return filepath.SkipAll
-		}
-		if !entry.IsDir() {
-			c.add(path)
-		}
-		return nil
-	})
-}
-
-// list records the files below a destination root without reading them.
-func (c *execCapture) list(root string) {
-	root = filepath.Clean(root)
-	for _, listing := range c.listings {
-		if listing.Root == root {
-			return
-		}
-	}
-	listing := execListing{Root: root, Origin: c.origin}
-	info, err := os.Lstat(root)
-	if err == nil && info.IsDir() {
-		listing.Entries = make(map[string]string)
-		_ = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
-			if err != nil {
-				c.omit(path, err.Error())
-				return nil
-			}
-			if c.listed >= maxExecListingEntries || time.Now().After(c.deadline) {
-				c.omit(root, "destination listing exceeds its bound")
-				return filepath.SkipAll
-			}
-			if entry.IsDir() {
-				return nil
-			}
-			info, err := entry.Info()
-			if err != nil {
-				c.omit(path, err.Error())
-				return nil
-			}
-			relative, _ := filepath.Rel(root, path)
-			listing.Entries[relative] = execFileStamp(info)
-			c.listed++
-			return nil
-		})
-	}
-	c.listings = append(c.listings, listing)
-}
-
-func (c *execCapture) mayRemove(path string) bool {
-	for _, removed := range c.removals {
-		if path == removed || strings.HasPrefix(path, removed+string(filepath.Separator)) {
-			return true
-		}
-	}
-	return false
-}
-
-// expand returns a glob's current matches and earlier captured paths it may
-// match once earlier statements have run. Without nullglob, bash passes an
-// unmatched pattern through.
-func (c *execCapture) expand(operand execscope.Operand) ([]string, bool) {
-	if !operand.Glob {
-		return []string{operand.Path}, true
-	}
-	matches, err := filepath.Glob(operand.Path)
-	if err != nil {
-		return nil, false
-	}
-	matchedPaths := make(map[string]bool, len(matches))
-	for _, path := range matches {
-		matchedPaths[path] = true
-	}
-	for path := range c.seen {
-		if matched, _ := filepath.Match(operand.Path, path); matched && !matchedPaths[path] {
-			matches = append(matches, path)
-		}
-	}
-	if len(matches) == 0 {
-		return []string{operand.Path}, true
-	}
-	slices.Sort(matches)
-	return matches, true
-}
-
-func (c *execCapture) entry(entry execscope.Entry) {
-	c.origin = entry.Origin
-	c.moveOnly = entry.Kind == execscope.Into && entry.Sources
-	var sources []string
-	for _, operand := range entry.Operands {
-		matches, ok := c.expand(operand)
-		if !ok {
-			c.omit(operand.Path, "invalid glob pattern")
-			continue
-		}
-		sources = append(sources, matches...)
-	}
-	switch entry.Kind {
-	case execscope.File:
-		for _, path := range sources {
-			c.add(path)
-			if entry.Through {
-				c.through(path, "")
-			}
-		}
-	case execscope.Tree:
-		for _, path := range sources {
-			c.tree(path)
-			c.list(path)
-		}
-		c.removals = append(c.removals, sources...)
-	case execscope.Into:
-		for _, source := range sources {
-			for _, target := range c.targets(entry, source) {
-				c.into(entry, source, target)
-			}
-		}
-		if entry.Sources {
-			c.removals = append(c.removals, sources...)
-		}
-	}
-}
-
-// targets resolves coreutils destination rules. Whether an unforced
-// destination names the target or a directory to write into depends on the
-// state when the command reaches it, which an earlier statement may change,
-// so both readings are captured when both are possible.
-func (c *execCapture) targets(entry execscope.Entry, source string) []string {
-	inside := filepath.Join(entry.Dest, filepath.Base(source))
-	switch {
-	case entry.DestDir:
-		return []string{inside}
-	case entry.NoTarget:
-		return []string{entry.Dest}
-	}
-	info, err := os.Stat(entry.Dest)
-	if entry.NoDereference {
-		info, err = os.Lstat(entry.Dest)
-		if err == nil && info.Mode()&os.ModeSymlink != 0 && !c.mayRemove(entry.Dest) {
-			return []string{entry.Dest}
-		}
-	}
-	if err == nil && info.IsDir() && !c.mayRemove(entry.Dest) {
-		return []string{inside}
-	}
-	return []string{entry.Dest, inside}
-}
-
-func (c *execCapture) into(entry execscope.Entry, source, target string) {
-	if entry.Recursive {
-		// A recursive source can be created or grow before the command
-		// runs, so the destination is listed for files that appear there.
-		c.list(target)
-	}
-	info, err := os.Lstat(source)
-	if entry.Recursive && err == nil && info.IsDir() {
-		_ = filepath.WalkDir(source, func(path string, dirEntry fs.DirEntry, err error) error {
-			if err != nil {
-				c.omit(path, err.Error())
-				return nil
-			}
-			if reason := c.exhausted(); reason != "" {
-				c.omit(source, "more files below were not captured ("+reason+")")
-				return filepath.SkipAll
-			}
-			if dirEntry.IsDir() {
-				return nil
-			}
-			relative, relErr := filepath.Rel(source, path)
-			if relErr != nil {
-				return nil
-			}
-			if entry.Sources {
-				c.add(path)
-			}
-			destination := filepath.Join(target, relative)
-			c.addCopy(destination, execCopySource(entry, path))
-			if entry.Through {
-				c.through(destination, execCopySource(entry, path))
-			}
-			return nil
-		})
-		return
-	}
-	if entry.Sources {
-		c.add(source)
-	}
-	c.addCopy(target, execCopySource(entry, source))
-	if entry.Through {
-		c.through(target, execCopySource(entry, source))
-	}
-	if entry.Backup != "" {
-		c.add(target + entry.Backup)
-	}
-}
-
-func execCopySource(entry execscope.Entry, source string) string {
-	if entry.Copies {
-		return filepath.Clean(source)
-	}
-	return ""
-}
-
-func execFileStamp(info os.FileInfo) string {
-	return strconv.FormatInt(info.Size(), 10) + ":" + strconv.FormatInt(info.ModTime().UnixNano(), 10) + ":" + execFileIdentity(info)
-}
-
-func execWatchFileStamp(path string, info os.FileInfo) string {
-	stamp := execFileStamp(info)
-	if change, _, _, ok := execFileTimes(path); ok {
-		stamp += ":" + strconv.FormatInt(change.UnixNano(), 10)
-	}
-	return stamp
-}
-
-// snapshotExecFile reads one path without following a final symlink or
-// blocking on a FIFO.
-func snapshotExecFile(path string, budget *int) execFileSnapshot {
-	snapshot := execFileSnapshot{Path: path}
-	info, err := os.Lstat(path)
-	switch {
-	case errors.Is(err, os.ErrNotExist) || errors.Is(err, fs.ErrNotExist):
-		return snapshot
-	case err != nil:
-		if errors.Is(err, syscall.ENOTDIR) {
-			return snapshot
-		}
-		snapshot.Kind, snapshot.Error = execFileOther, err.Error()
-		return snapshot
-	}
-	snapshot.watchStamp = execWatchFileStamp(path, info)
-	switch mode := info.Mode(); {
-	case mode&os.ModeSymlink != 0:
-		target, err := os.Readlink(path)
-		snapshot.Kind, snapshot.Link = execFileSymlink, target
-		if err != nil {
-			snapshot.Error = err.Error()
-		}
-		return snapshot
-	case mode.IsDir():
-		snapshot.Kind = execFileDir
-		return snapshot
-	case !mode.IsRegular():
-		snapshot.Kind = execFileOther
-		return snapshot
-	}
-	snapshot.Kind, snapshot.Size = execFileText, info.Size()
-	if info.Size() > maxNativePatchFileBytes {
-		snapshot.Stamp, snapshot.Error = execFileStamp(info), "file exceeds the 8 MiB capture bound"
-		return snapshot
-	}
-	if budget != nil && int(info.Size()) > *budget {
-		snapshot.Stamp, snapshot.Error = execFileStamp(info), "capture budget exhausted"
-		return snapshot
-	}
-	file, err := sourceparse.Open(path)
-	if err != nil {
-		snapshot.Stamp, snapshot.Error = execFileStamp(info), err.Error()
-		return snapshot
-	}
-	defer file.Close()
-	opened, err := file.Stat()
-	if err != nil || !os.SameFile(info, opened) || !opened.Mode().IsRegular() {
-		snapshot.Stamp, snapshot.Error = execFileStamp(info), "file changed while it was captured"
-		return snapshot
-	}
-	data, err := io.ReadAll(io.LimitReader(file, maxNativePatchFileBytes+1))
-	if err != nil || len(data) > maxNativePatchFileBytes {
-		snapshot.Stamp, snapshot.Error = execFileStamp(info), "file could not be read within the capture bound"
-		return snapshot
-	}
-	snapshot.Kind, snapshot.Size, snapshot.Content, snapshot.Hash = execDataKind(data, budget)
-	return snapshot
-}
-
-// execDataSnapshot is the state of a regular file with known content.
-func execDataSnapshot(path string, data []byte, budget *int) execFileSnapshot {
-	snapshot := execFileSnapshot{Path: path}
-	snapshot.Kind, snapshot.Size, snapshot.Content, snapshot.Hash = execDataKind(data, budget)
-	return snapshot
-}
-
-func execDataKind(data []byte, budget *int) (kind execFileKind, size int64, content, hash string) {
-	// NUL marks binary content, as in Git.
-	if utf8.Valid(data) && !slices.Contains(data, 0) {
-		if budget != nil {
-			*budget -= len(data)
-		}
-		return execFileText, int64(len(data)), string(data), ""
-	}
-	sum := sha256.Sum256(data)
-	return execFileBinary, int64(len(data)), "", hex.EncodeToString(sum[:])
-}
-
-// sameExecContent compares captured states, treating directories as absent
-// because only files are reviewed.
-func sameExecContent(before, after execFileSnapshot) bool {
-	if before.Kind != after.Kind {
-		return false
-	}
-	switch before.Kind {
-	case execFileText:
-		return before.Content == after.Content
-	case execFileBinary:
-		return before.Hash == after.Hash
-	case execFileSymlink:
-		return before.Link == after.Link
-	default:
-		return true
-	}
-}
-
-func execFilePresent(snapshot execFileSnapshot) bool {
-	return snapshot.Kind != execFileAbsent && snapshot.Kind != execFileDir
-}
-
-func execReviewText(snapshot execFileSnapshot) string {
-	if snapshot.Kind == execFileSymlink {
-		return "-> " + snapshot.Link + "\n"
-	}
-	return snapshot.Content
-}
-
-func execSnapshotHash(snapshot execFileSnapshot) (int64, string) {
-	if snapshot.Kind == execFileBinary {
-		return snapshot.Size, snapshot.Hash
-	}
-	text := execReviewText(snapshot)
-	sum := sha256.Sum256([]byte(text))
-	return int64(len(text)), hex.EncodeToString(sum[:])
-}
-
-func renderExecReview(beforePath, afterPath string, before, after execFileSnapshot) diffmodel.ReviewFile {
-	if before.Kind == execFileBinary || after.Kind == execFileBinary {
-		// A text or link side against binary content has no row diff either.
-		beforeSize, beforeHash := execSnapshotHash(before)
-		afterSize, afterHash := execSnapshotHash(after)
-		return diffmodel.RenderBinaryReviewFile(beforePath, afterPath, beforeSize, afterSize, beforeHash, afterHash)
-	}
-	review := diffmodel.RenderReviewFile(beforePath, afterPath, execReviewText(before), execReviewText(after))
-	review.Link = before.Kind == execFileSymlink || after.Kind == execFileSymlink
-	return review
-}
-
-// execReconcileEnv identifies paths claimed by overlapping calls, and the
-// workspace snapshot changes outside the captured scope.
-type execReconcileEnv struct {
-	excluded []string
-	snapshot []execSnapshotChange
-}
-
-// reconcileExecObservation compares only the command's captured write scope.
-// Changes elsewhere cannot be attributed to this call.
-
-func reconcileExecObservation(observation execObservation, env execReconcileEnv) (reviews []diffmodel.ReviewFile, complete bool, coverage, unswept string) {
-	var changes []execSnapshotChange
-	complete = true
-	coverage = execCoverageExact
-	budget := maxExecContentBytes
-	after := make(map[string]execFileSnapshot, len(observation.Files))
-	metadata := make(map[string]execFileSnapshot, len(observation.Files))
-	// record keeps one path's before/after evidence as a change, or as an
-	// incomplete review when either side could not be read.
-	record := func(before, current execFileSnapshot) {
-		if before.Error != "" || current.Error != "" {
-			beforePath, afterPath := before.Path, before.Path
-			if !execFilePresent(before) && before.Error == "" {
-				beforePath = ""
-			}
-			if !execFilePresent(current) && current.Error == "" {
-				afterPath = ""
-			}
-			reason := strings.Trim(strings.Join([]string{before.Error, current.Error}, "; "), "; ")
-			reviews = append(reviews, diffmodel.RenderIncompleteReviewFile(beforePath, afterPath, reason))
-			complete = false
-			return
-		}
-		if before.Kind == execFileOther || current.Kind == execFileOther {
-			if before.Kind != current.Kind {
-				reviews = append(reviews, diffmodel.RenderIncompleteReviewFile(before.Path, before.Path, "not a regular file"))
-				complete = false
-			}
-			return
-		}
-		if !execFilePresent(before) && !execFilePresent(current) || sameExecContent(before, current) {
-			return
-		}
-		changes = append(changes, execSnapshotChange{before: before, after: current})
-	}
-	compare := func(before execFileSnapshot) {
-		if _, seen := after[before.Path]; seen || slices.Contains(observation.Excluded, before.Path) {
-			return
-		}
-		metadata[before.Path] = before
-		if before.Stamp != "" {
-			// An uncaptured file with the same identity, size, and time was
-			// not written.
-			if info, err := os.Lstat(before.Path); err == nil && execFileStamp(info) == before.Stamp {
-				after[before.Path] = before
-				return
-			}
-		}
-		current := snapshotExecFile(before.Path, &budget)
-		after[before.Path] = current
-		record(before, current)
-	}
-	for _, before := range observation.Files {
-		compare(before)
-	}
-	omitted := func(path string) bool {
-		for _, omission := range observation.Omitted {
-			if execPathWithin(path, omission.Path) {
-				return true
-			}
-		}
-		return false
-	}
-	walked := 0
-	for _, listing := range observation.Listings {
-		// A cut listing cannot prove which files are new; its omission
-		// already marks the record incomplete.
-		if omitted(listing.Root) {
-			continue
-		}
-		seen := make(map[string]bool)
-		_ = filepath.WalkDir(listing.Root, func(path string, entry fs.DirEntry, err error) error {
-			if err != nil || entry.IsDir() || path == listing.Root {
-				return nil
-			}
-			if walked++; walked > maxExecListingEntries {
-				reviews = append(reviews, diffmodel.RenderIncompleteReviewFile(listing.Root, listing.Root, "destination listing exceeds its bound"))
-				complete = false
-				return filepath.SkipAll
-			}
-			relative, _ := filepath.Rel(listing.Root, path)
-			seen[relative] = true
-			if slices.Contains(observation.Excluded, path) {
-				return nil
-			}
-			if _, captured := after[path]; captured {
-				return nil
-			}
-			if stamp, listed := listing.Entries[relative]; listed {
-				if info, err := entry.Info(); err != nil || execFileStamp(info) != stamp {
-					reviews = append(reviews, diffmodel.RenderIncompleteReviewFile(path, path, "modified; before content unavailable"))
-					complete = false
-				}
-				return nil
-			}
-			compare(execFileSnapshot{Path: path, Origin: listing.Origin})
-			return nil
-		})
-		for relative := range listing.Entries {
-			path := filepath.Join(listing.Root, relative)
-			if slices.Contains(observation.Excluded, path) {
-				continue
-			}
-			if _, captured := after[path]; !captured && !seen[relative] {
-				_, err := os.Lstat(path)
-				if err == nil {
-					continue
-				}
-				if errors.Is(err, os.ErrNotExist) {
-					reviews = append(reviews, diffmodel.RenderIncompleteReviewFile(path, "", "deleted; before content unavailable"))
-				} else {
-					reviews = append(reviews, diffmodel.RenderIncompleteReviewFile(path, path, "destination unavailable: "+err.Error()))
-				}
-				complete = false
-			}
-		}
-	}
-	// The workspace snapshot covers effects outside the named scope. Paths
-	// that scope, a same-call patch, or an overlapping call claims stay theirs.
-	claimed := func(path string) bool {
-		if _, captured := after[path]; captured || omitted(path) {
-			return true
-		}
-		for _, roots := range [][]string{observation.Excluded, env.excluded} {
-			for _, root := range roots {
-				if execPathWithin(path, root) {
-					return true
-				}
-			}
-		}
-		for _, listing := range observation.Listings {
-			if execPathWithin(path, listing.Root) {
-				return true
-			}
-		}
-		return false
-	}
-	vcsOrigin := ""
-	for _, program := range observation.Programs {
-		if program.VCS {
-			vcsOrigin = program.Label
-			break
-		}
-	}
-	for _, snapshot := range env.snapshot {
-		if !claimed(snapshot.before.Path) {
-			// A mixed call has no per-write facts. Only source-named sibling
-			// edits can be separated from VCS effects; keep the rest in history.
-			snapshot.before.Origin = vcsOrigin
-			metadata[snapshot.before.Path] = snapshot.before
-			record(snapshot.before, snapshot.after)
-		}
-	}
-	// A deletion and an addition with identical content form one move. Empty
-	// files carry no evidence of which deletion an addition came from.
-	paired := make(map[int]bool)
-	for index, deleted := range changes {
-		if !execFilePresent(deleted.before) || execFilePresent(deleted.after) || deleted.before.Kind == execFileText && deleted.before.Content == "" {
-			continue
-		}
-		for other, added := range changes {
-			if paired[other] || execFilePresent(added.before) || !execFilePresent(added.after) || !sameExecContent(deleted.before, added.after) {
-				continue
-			}
-			paired[index], paired[other] = true, true
-			review := renderExecReview(deleted.before.Path, added.after.Path, deleted.before, added.after)
-			reviews = append(reviews, review)
-			break
-		}
-	}
-	for index, changed := range changes {
-		if paired[index] {
-			continue
-		}
-		beforePath, afterPath := changed.before.Path, changed.after.Path
-		if !execFilePresent(changed.before) {
-			beforePath = ""
-		}
-		if !execFilePresent(changed.after) {
-			afterPath = ""
-		}
-		review := renderExecReview(beforePath, afterPath, changed.before, changed.after)
-		if beforePath == "" && changed.before.CopyOf != "" {
-			// A created copy names its source when the content matches.
-			source, captured := after[changed.before.CopyOf]
-			if !captured {
-				source = snapshotExecFile(changed.before.CopyOf, &budget)
-			}
-			if source.Error == "" && execFilePresent(source) && sameExecContent(source, changed.after) {
-				review.CopyFrom = changed.before.CopyOf
-			}
-		}
-		reviews = append(reviews, review)
-	}
-	deferredChanged := false
-	for _, omission := range observation.Omitted {
-		if slices.Contains(observation.Excluded, omission.Path) || slices.Contains(env.excluded, omission.Path) {
-			continue
-		}
-		if omission.Deferred {
-			// A remote mount or missing clock cannot prove an unchanged path.
-			// Keep the named gap instead of comparing timestamps from another host.
-			if observation.WindowStart.IsZero() || execRemoteFilesystem(filepath.Dir(omission.Path)) {
-				review := diffmodel.RenderIncompleteReviewFile(omission.Path, omission.Path, "managed baseline unavailable; filesystem clock incomparable")
-				review.Origin = omission.Origin
-				reviews = append(reviews, review)
-				complete = false
-				deferredChanged = true
-				continue
-			}
-			changed, _, _, ok := execFileTimes(omission.Path)
-			if ok && changed.Before(observation.WindowStart) {
-				continue
-			}
-			// These paths existed during provider enumeration. A missing
-			// after-state is therefore a possible deletion, not a no-op.
-			current := snapshotExecFile(omission.Path, &budget)
-			var review diffmodel.ReviewFile
-			switch {
-			case current.Error != "":
-				review = diffmodel.RenderIncompleteReviewFile(omission.Path, omission.Path, "managed baseline unavailable; "+current.Error)
-			case current.Kind == execFileAbsent:
-				review = diffmodel.RenderIncompleteReviewFile(omission.Path, "", "deleted; before content unavailable")
-			case current.Kind == execFileText || current.Kind == execFileSymlink:
-				review = diffmodel.RenderUnbasedReviewFile(omission.Path, execReviewText(current), "managed baseline unavailable")
-			default:
-				review = diffmodel.RenderIncompleteReviewFile(omission.Path, omission.Path, "managed baseline unavailable")
-			}
-			review.Origin = omission.Origin
-			reviews = append(reviews, review)
-			deferredChanged = true
-			continue
-		}
-		reviews = append(reviews, diffmodel.RenderIncompleteReviewFile(omission.Path, omission.Path, omission.Reason))
-		complete = false
-	}
-	reviews, complete = boundExecReviews(reviews, complete)
-	for i := range reviews {
-		file := &reviews[i]
-		meta, ok := metadata[cmp.Or(file.AfterPath, file.BeforePath)]
-		if !ok {
-			meta, ok = metadata[file.BeforePath]
-		}
-		if ok {
-			if before, found := metadata[file.BeforePath]; found && before.Origin == "" {
-				meta = before
-			}
-			file.Origin = meta.Origin
-			if meta.AlsoManaged != "" {
-				file.OriginNote = meta.AlsoManaged + sharedOriginSuffix
-			}
-		} else {
-			for _, omission := range observation.Omitted {
-				if omission.Path == file.BeforePath || omission.Path == file.AfterPath {
-					file.Origin = omission.Origin
-					break
-				}
-			}
-		}
-	}
-	if (!complete || deferredChanged) && coverage == execCoverageExact {
-		coverage = execCoveragePartial
-	}
-	if observation.Reason == "capture deadline" {
-		complete, coverage = false, execCoveragePartial
-	}
-	if observation.RepeatedPaths && len(reviews) == 0 {
-		// Before/after equality is not intermediate edit history. Keep a
-		// readable incomplete attempt, without inventing intermediate bytes.
-		complete, coverage = false, execCoveragePartial
-	}
-	return reviews, complete, coverage, unswept
-}
-
-// sourceLabel names the programs that made an exec record's edits, such as
-// sed or python, so a review can tell them from stock patches.
-func (o execObservation) sourceLabel() string {
-	var labels []string
-	add := func(label string) {
-		if label != "" && !slices.Contains(labels, label) {
-			labels = append(labels, label)
-		}
-	}
-	for _, label := range o.Labels {
-		add(label)
-	}
-	for _, program := range o.Programs {
-		if program.Direct {
-			add(program.Label)
-		}
-	}
-	if len(labels) == 0 {
-		return nativeExecCommandToolName
-	}
-	if len(labels) > 2 {
-		labels = append(labels[:2], "…")
-	}
-	return strings.Join(labels, "+")
-}
-
-// boundExecReviews keeps the encoded reviews within the derived record's
-// bound, replacing the largest diffs with incomplete entries.
-func boundExecReviews(reviews []diffmodel.ReviewFile, complete bool) ([]diffmodel.ReviewFile, bool) {
-	sizes := make([]int, len(reviews))
-	total := 0
-	for index, review := range reviews {
-		sizes[index] = len(responses.MustMarshalJSON(review))
-		total += sizes[index]
-	}
-	for total > maxExecRecordBytes {
-		largest := 0
-		for index := range sizes {
-			if sizes[index] > sizes[largest] {
-				largest = index
-			}
-		}
-		review := reviews[largest]
-		reviews[largest] = diffmodel.RenderIncompleteReviewFile(review.BeforePath, review.AfterPath, "review exceeds the record bound")
-		size := len(responses.MustMarshalJSON(reviews[largest]))
-		total -= sizes[largest] - size
-		sizes[largest] = size
-		complete = false
-	}
-	return reviews, complete
-}
-
 // execResultState reads a stock command or exec result. A yielded native
 // session or running cell returns the continuation key that later completes it.
 func execResultState(toolName string, raw json.RawMessage) (terminal bool, exit *int, completed bool, text, pending string) {
@@ -1277,7 +105,7 @@ func execResultState(toolName string, raw json.RawMessage) (terminal bool, exit 
 	return true, nil, false, text, ""
 }
 
-func execObservationScript(observation execObservation) string {
+func execObservationScript(observation changecapture.Observation) string {
 	if len(observation.Commands) == 0 {
 		return "# exec commands are not literal\n"
 	}
@@ -1321,13 +149,13 @@ func execSiblingKey(history mekugiHistory) string {
 
 // mergeExecObservations joins sibling captures into the one observation that
 // their shared record reconciles.
-func mergeExecObservations(members []execCompletion) execObservation {
+func mergeExecObservations(members []execCompletion) changecapture.Observation {
 	merged := *members[0].history.ExecObservation
 	if len(members) == 1 {
 		return merged
 	}
 	merged.Commands = slices.Clone(merged.Commands)
-	merged.CommandClasses = merged.commandClasses()
+	merged.CommandClasses = merged.CommandClassesForCalls()
 	merged.Labels = slices.Clone(merged.Labels)
 	merged.Programs = slices.Clone(merged.Programs)
 	merged.Roots = slices.Clone(merged.Roots)
@@ -1340,7 +168,7 @@ func mergeExecObservations(members []execCompletion) execObservation {
 		merged.CodeMode = merged.CodeMode || other.CodeMode
 		merged.RepeatedPaths = merged.RepeatedPaths || other.RepeatedPaths
 		merged.Commands = append(merged.Commands, other.Commands...)
-		merged.CommandClasses = append(merged.CommandClasses, other.commandClasses()...)
+		merged.CommandClasses = append(merged.CommandClasses, other.CommandClassesForCalls()...)
 		if execClassRank(other.Class) > execClassRank(merged.Class) {
 			merged.Class, merged.Reason = other.Class, other.Reason
 		}
@@ -1355,7 +183,7 @@ func mergeExecObservations(members []execCompletion) execObservation {
 			}
 		}
 		for _, root := range other.Roots {
-			merged.Roots = execAddRoot(merged.Roots, root)
+			merged.Roots = changecapture.AddRoot(merged.Roots, root)
 		}
 		merged.Files = append(merged.Files, other.Files...)
 		merged.Omitted = append(merged.Omitted, other.Omitted...)
@@ -1449,43 +277,36 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 	if observation.Tree != "" && p.replayStore != nil {
 		// Closing, comparing, and claiming are one step per workspace, so
 		// concurrent finalizations cannot both record one effect.
-		defer p.replayStore.snapshots.serialize(workspace)()
+		defer p.replayStore.snapshots.Serialize(workspace)()
 	}
 	view := p.execWindows.close(refs...)
-	observation.addCreatedPaths(view.created)
+	for _, path := range view.created {
+		observation.AddCreatedPath(path.Data, path.Tree)
+	}
 	background := slices.Compact(slices.Sorted(slices.Values(view.background)))
-	env := execReconcileEnv{excluded: view.excluded}
-	snapshotErr := ""
-	if observation.Tree != "" && view.snapshot && p.replayStore != nil {
-		var claims workspaceSnapshotClaims
-		var err error
-		env.snapshot, claims, err = p.replayStore.snapshots.since(ctx, workspace, observation.Tree, view.claims)
-		if err != nil {
-			snapshotErr = err.Error()
-		}
-		p.execWindows.claim(refs, claims)
+	comparison := changecapture.Comparison{Excluded: view.excluded, Workspace: workspace, Claims: view.claims}
+	if view.snapshot && p.replayStore != nil {
+		comparison.Workspaces = p.replayStore.snapshots
 	}
-	reviews, complete, coverage, unswept := reconcileExecObservation(observation, env)
-	if snapshotErr != "" && coverage == execCoverageExact {
-		// Effects outside the named scope went unobserved.
-		coverage = execCoveragePartial
-	}
-	outcome := &execOutcome{
-		Class: observation.Class, Labels: observation.Labels, Coverage: coverage, Unswept: unswept,
+	result := changecapture.Reconcile(ctx, observation, comparison)
+	p.execWindows.claim(refs, result.Claims)
+	reviews, complete := result.Files, result.Complete
+	outcome := &changecapture.Outcome{
+		Class: observation.Class, Labels: observation.Labels, Coverage: result.Coverage,
 		ScopeReason: observation.Reason,
 		CodeMode:    observation.CodeMode, Overlaps: view.overlaps, Background: background,
 	}
-	outcome.Scope = observation.scopePaths()
+	outcome.Scope = observation.ScopePaths()
 	for _, listing := range observation.Listings {
 		if listing.Entries == nil {
 			continue
 		}
 		if _, err := os.Lstat(listing.Root); errors.Is(err, os.ErrNotExist) {
-			outcome.DeletedDirectories = execAddRoot(outcome.DeletedDirectories, listing.Root)
+			outcome.DeletedDirectories = changecapture.AddRoot(outcome.DeletedDirectories, listing.Root)
 		}
 	}
-	if snapshotErr != "" {
-		outcome.ScopeReason = strings.TrimPrefix(outcome.ScopeReason+"; workspace snapshot unavailable: "+snapshotErr, "; ")
+	if result.SnapshotError != nil {
+		outcome.ScopeReason = strings.TrimPrefix(outcome.ScopeReason+"; workspace snapshot unavailable: "+result.SnapshotError.Error(), "; ")
 	}
 	if observation.RepeatedPaths {
 		outcome.ScopeReason = strings.TrimPrefix(outcome.ScopeReason+"; intermediate writes unobserved (call-window comparison only)", "; ")
@@ -1494,21 +315,21 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 	var hostResults []nativeToolResult
 	for index, member := range members {
 		_, exit, completed, resultText, _ := member.resultState()
-		status := execStatusCompleted
+		status := changecapture.StatusCompleted
 		switch {
 		case member.history.ExecObservation.CodeMode && completed:
 			// Outer script completion does not prove each nested command
 			// succeeded; nested exit codes are not visible to the router.
 			status = ""
 		case !completed:
-			status = execStatusFailed
+			status = changecapture.StatusFailed
 		}
 		if results, confirmed := member.history.nativeCell.commands(&member.history, workspace); confirmed {
-			status = execStatusCompleted
+			status = changecapture.StatusCompleted
 			hostResults = append(hostResults, results...)
 			for _, result := range results {
 				if result.Status != "completed" || result.ExitCode == nil || *result.ExitCode != 0 {
-					status = execStatusFailed
+					status = changecapture.StatusFailed
 				}
 			}
 			if len(results) == 1 {
@@ -1524,10 +345,10 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		} else {
 			reports = append(reports, fmt.Sprintf("# call %d\n%s", index+1, execTruncateReport(resultText, maxExecReportBytes/len(members))))
 		}
-		if index == 0 || status == execStatusFailed || status == "" && outcome.Status != execStatusFailed {
+		if index == 0 || status == changecapture.StatusFailed || status == "" && outcome.Status != changecapture.StatusFailed {
 			outcome.Status = status
 		}
-		if status == execStatusFailed {
+		if status == changecapture.StatusFailed {
 			failureReports = append(failureReports, execTruncateReport(resultText, maxExecReportBytes))
 		}
 	}
@@ -1541,7 +362,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		Root:            workspace,
 		ExecutingThread: thread,
 		Caller:          first.history.Caller,
-		Source:          observation.sourceLabel(),
+		Source:          observation.SourceLabel(),
 		CorrelationID:   correlation,
 		Attempt:         1,
 		ReviewFiles:     reviews,
@@ -1564,7 +385,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 	if !complete && record.Report != "" {
 		record.Report += "\nMekugi could not capture complete file evidence."
 	}
-	if p.replayStore != nil && outcome.Status == execStatusFailed && len(failureReports) != 0 {
+	if p.replayStore != nil && outcome.Status == changecapture.StatusFailed && len(failureReports) != 0 {
 		// Retain the bounded host evidence, not an invented reconstruction of
 		// output the host omitted. This never changes the host's tool result.
 		output := command.OmittedOutput{Stdout: strings.Join(failureReports, "\n")}
@@ -1595,7 +416,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 			ToolName: nativeExecCommandToolName, Script: memberScript, Root: workspace,
 			ExecutingThread: cmp.Or(member.history.ExecutingThread, thread), Caller: member.history.Caller,
 			CorrelationID: member.callID + "\x00exec", Attempt: 1,
-			ExecOutcome: &execOutcome{
+			ExecOutcome: &changecapture.Outcome{
 				Status: outcome.Status, Class: memberObservation.Class, Labels: memberObservation.Labels,
 				Coverage: outcome.Coverage, CodeMode: memberObservation.CodeMode, SharedWith: derivedCallID,
 			},

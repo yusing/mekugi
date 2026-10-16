@@ -11,12 +11,12 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/libraries/legacycall"
-
-	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 func TestSessionInspectionCanceledEmptySource(t *testing.T) {
@@ -65,7 +65,7 @@ func TestSessionInspectionReadsObservedStockPatchOutcome(t *testing.T) {
 			"call_id": responses.MustMarshalJSON("patch-call"), "name": responses.MustMarshalJSON(applyPatchToolName),
 			"input": responses.MustMarshalJSON(patch), "status": responses.MustMarshalJSON("completed"),
 		},
-		NativePatches: []nativePatchObservation{{Input: patch, Files: []nativePatchFileSnapshot{{AfterPath: filepath.Join(root, "observed.txt")}}}},
+		NativePatches: []changecapture.PatchObservation{{Input: patch, Files: []changecapture.PatchFile{{AfterPath: filepath.Join(root, "observed.txt")}}}},
 	}
 	derived := mekugiHistory{
 		ToolName: applyPatchToolName, Script: patch, CarrierName: applyPatchToolName,

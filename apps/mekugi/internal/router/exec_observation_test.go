@@ -11,6 +11,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/livepreview/projection"
 
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
@@ -34,9 +35,9 @@ func writeTestFile(t *testing.T, path, content string) {
 	}
 }
 
-func observeTestCommand(t *testing.T, workdir, command string) *execObservation {
+func observeTestCommand(t *testing.T, workdir, command string) *changecapture.Observation {
 	t.Helper()
-	observation, observed := captureExecObservation([]commandanalysis.Command{{Command: command, Workdir: workdir, Shell: "bash"}}, false, false, execCaptureEnv{})
+	observation, observed := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: command, Workdir: workdir, Shell: "bash"}}, false, false, changecapture.Options{})
 	if !observed {
 		t.Fatalf("%q was not observed; observation=%+v", command, observation)
 	}
@@ -146,7 +147,8 @@ func TestExecObservationReconcilesDeclaredEffects(t *testing.T) {
 			}
 			observation := observeTestCommand(t, workspace, test.command)
 			test.run(t, workspace)
-			reviews, complete, _, _ := reconcileExecObservation(*observation, execReconcileEnv{})
+			result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
+			reviews, complete := result.Files, result.Complete
 			if !complete {
 				t.Fatalf("incomplete evidence: %+v", reviews)
 			}
@@ -204,7 +206,8 @@ func TestExecObservationFollowsShellSemantics(t *testing.T) {
 			if output, err := command.CombinedOutput(); err != nil {
 				t.Fatalf("%s: %v\n%s", test.command, err, output)
 			}
-			reviews, complete, _, _ := reconcileExecObservation(*observation, execReconcileEnv{})
+			result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
+			reviews, complete := result.Files, result.Complete
 			if complete == test.partial {
 				t.Fatalf("complete = %v: %+v", complete, reviews)
 			}
@@ -212,36 +215,6 @@ func TestExecObservationFollowsShellSemantics(t *testing.T) {
 				t.Fatalf("reviews = %q, want %q", got, test.want)
 			}
 		})
-	}
-}
-
-func TestExecObservationBoundsEncodedCapture(t *testing.T) {
-	workspace := t.TempDir()
-	// JSON escapes control bytes as six bytes, so this content encodes past
-	// the bound.
-	writeTestFile(t, filepath.Join(workspace, "page.html"), strings.Repeat("\x01", 2<<20))
-	writeTestFile(t, filepath.Join(workspace, "small"), "kept\n")
-	// Exercise encoded-size admission independently of the forwarding deadline.
-	// Race instrumentation can make this deliberately large fixture exceed it.
-	observation, observed := captureExecObservationWithin([]commandanalysis.Command{{
-		Command: "touch page.html small", Workdir: workspace, Shell: "bash",
-	}}, false, false, execCaptureEnv{})
-	if !observed || observation == nil || len(observation.Files) != 2 {
-		t.Fatalf("named files were not captured: %+v", observation)
-	}
-	if size := len(responses.MustMarshalJSON(observation)); size > maxExecObservationBytes {
-		t.Fatalf("encoded capture is %d bytes", size)
-	}
-	for _, file := range observation.Files {
-		if strings.HasSuffix(file.Path, "page.html") && (file.Content != "" || file.Stamp == "") {
-			t.Fatalf("large file kept its content: %d bytes", len(file.Content))
-		}
-		if strings.HasSuffix(file.Path, "small") && file.Content != "kept\n" {
-			t.Fatalf("small file lost its content: %+v", file)
-		}
-	}
-	if reviews, complete, _, _ := reconcileExecObservation(*observation, execReconcileEnv{}); !complete || len(reviews) != 0 {
-		t.Fatalf("unchanged-file reconciliation: complete=%t reviews=%+v", complete, reviews)
 	}
 }
 
@@ -274,7 +247,8 @@ func TestExecObservationSymlinkReviewsLinkTarget(t *testing.T) {
 	if err := os.Symlink("target", filepath.Join(workspace, "link")); err != nil {
 		t.Fatal(err)
 	}
-	reviews, _, _, _ := reconcileExecObservation(*observation, execReconcileEnv{})
+	result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
+	reviews := result.Files
 	if len(reviews) != 1 || !strings.Contains(reviews[0].Diff, "+-> target") || strings.Contains(reviews[0].Diff, "secret") {
 		t.Fatalf("symlink review = %+v", reviews)
 	}
@@ -283,26 +257,26 @@ func TestExecObservationSymlinkReviewsLinkTarget(t *testing.T) {
 func TestExecObservationBoundsFileBytes(t *testing.T) {
 	workspace := t.TempDir()
 	large := filepath.Join(workspace, "large")
-	writeTestFile(t, large, strings.Repeat("x", maxNativePatchFileBytes+1))
+	writeTestFile(t, large, strings.Repeat("x", changecapture.MaxFileBytes+1))
 	observation := observeTestCommand(t, workspace, "touch large")
-	if reviews, complete, _, _ := reconcileExecObservation(*observation, execReconcileEnv{}); !complete || len(reviews) != 0 {
-		t.Fatalf("an unchanged oversized file was reported: %+v", reviews)
+	if result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{}); !result.Complete || len(result.Files) != 0 {
+		t.Fatalf("an unchanged oversized file was reported: %+v", result.Files)
 	}
-	writeTestFile(t, large, strings.Repeat("y", maxNativePatchFileBytes+2))
-	if reviews, complete, _, _ := reconcileExecObservation(*observation, execReconcileEnv{}); complete || len(reviews) != 1 || reviews[0].Incomplete == "" {
-		t.Fatalf("a changed oversized file = %+v, complete=%v", reviews, complete)
+	writeTestFile(t, large, strings.Repeat("y", changecapture.MaxFileBytes+2))
+	if result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{}); result.Complete || len(result.Files) != 1 || result.Files[0].Incomplete == "" {
+		t.Fatalf("a changed oversized file = %+v, complete=%v", result.Files, result.Complete)
 	}
 }
 
 func TestExecObservationSkipsNeutralCommands(t *testing.T) {
 	for _, command := range []string{"ls", "git status", `rg -n pattern internal/{router,ui}`, `find "$HOME/.codex/sessions" -type f -print`, `[ -d "$directory" ] && echo directory`, "skills-mgr info", "skills-mgr get golang-best-practices"} {
 		for _, codeMode := range []bool{false, true} {
-			if _, observed := captureExecObservation([]commandanalysis.Command{{Command: command, Workdir: t.TempDir(), Shell: "bash"}}, false, codeMode, execCaptureEnv{}); observed {
+			if _, observed := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: command, Workdir: t.TempDir(), Shell: "bash"}}, false, codeMode, changecapture.Options{}); observed {
 				t.Errorf("%q was observed without a declared scope", command)
 			}
 		}
 	}
-	if _, observed := captureExecObservation([]commandanalysis.Command{{Command: "rm a", Workdir: t.TempDir(), Shell: "bash"}}, true, true, execCaptureEnv{}); !observed {
+	if _, observed := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: "rm a", Workdir: t.TempDir(), Shell: "bash"}}, true, true, changecapture.Options{}); !observed {
 		t.Error("a dynamic exec cell was not observed")
 	}
 }
@@ -317,11 +291,11 @@ func TestCodeModeExecLiteralCommandAndResultDependentPollStayDirect(t *testing.T
 	if dynamic || len(commands) != 1 || commands[0].Command != "python3 edit.py" {
 		t.Fatalf("same-cell command and polling = %+v dynamic=%v", commands, dynamic)
 	}
-	observation, observed := captureExecObservation(commands, dynamic, true, execCaptureEnv{directory: workspace})
+	observation, observed := changecapture.Capture(t.Context(), commands, dynamic, true, changecapture.Options{Directory: workspace})
 	if !observed || observation == nil || observation.Class == execscope.Opaque.String() || !observation.CodeMode {
 		t.Fatalf("exec observation = %+v observed=%v; polling must not make the literal command opaque", observation, observed)
 	}
-	var baseline *execFileSnapshot
+	var baseline *changecapture.File
 	for i := range observation.Files {
 		if observation.Files[i].Path == target {
 			baseline = &observation.Files[i]
@@ -333,8 +307,9 @@ func TestCodeModeExecLiteralCommandAndResultDependentPollStayDirect(t *testing.T
 		t.Fatalf("same-cell direct baseline/program = %+v / %+v", baseline, observation.Programs)
 	}
 	writeTestFile(t, target, "after\n")
-	reviews, complete, coverage, _ := reconcileExecObservation(*observation, execReconcileEnv{})
-	if !complete || coverage != execCoverageExact || len(reviews) != 1 || reviews[0].Origin != "" ||
+	result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
+	reviews, complete, coverage := result.Files, result.Complete, result.Coverage
+	if !complete || coverage != changecapture.CoverageExact || len(reviews) != 1 || reviews[0].Origin != "" ||
 		!strings.Contains(reviews[0].Diff, "-before\n+after\n") {
 		t.Fatalf("same-cell direct review = %+v complete=%v coverage=%q", reviews, complete, coverage)
 	}
@@ -373,7 +348,7 @@ func retainCommandObservation(t *testing.T, transform *mekugiResponseTransform, 
 	if !ok {
 		t.Fatal("invalid retained command fixture")
 	}
-	observation, observed := transform.snapshotExecObservation(captureExecObservation([]commandanalysis.Command{command}, false, false, transform.execCaptureEnvironment(nil)))
+	observation, observed := changecapture.Capture(transform.ctx, []commandanalysis.Command{command}, false, false, transform.execCaptureEnvironment(nil))
 	if !observed {
 		return
 	}
@@ -666,7 +641,7 @@ func mustShellStatement(t *testing.T, command string) *syntax.Stmt {
 func TestExecReceiptAndSummaryText(t *testing.T) {
 	workspace := t.TempDir()
 	history := mekugiHistory{
-		ExecOutcome: &execOutcome{Status: execStatusCompleted, Labels: []string{"cp"}},
+		ExecOutcome: &changecapture.Outcome{Status: changecapture.StatusCompleted, Labels: []string{"cp"}},
 		ReviewFiles: []diffmodel.ReviewFile{
 			func() diffmodel.ReviewFile {
 				file := diffmodel.RenderReviewFile("", filepath.Join(workspace, "b.txt"), "", "a\n")

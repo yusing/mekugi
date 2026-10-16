@@ -26,7 +26,7 @@ func TestAppServerPreviewResyncNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	proxy.replayStore = store
-	t.Cleanup(store.snapshots.close)
+	t.Cleanup(store.snapshots.Close)
 	auto := newLivePreview(t.Context())
 	defer auto.Close()
 

@@ -1,4 +1,6 @@
-package router
+package capture
+
+// Source: apps/mekugi/internal/router/workspace_snapshot.go:1:852@1e6d58c6.
 
 import (
 	"bufio"
@@ -64,11 +66,11 @@ const workspaceSnapshotAttributes = "* -text -eol -crlf -filter -ident -working-
 // not yet been rehashed under the private attributes.
 const workspaceSnapshotSeeded = "mekugi-seeded"
 
-// workspaceSnapshotClaims are snapshot states that a finished call recorded,
+// Claims are snapshot states that a finished call recorded,
 // by private repository, so a claim never crosses comparison domains.
-type workspaceSnapshotClaims map[string]map[string]workspaceSnapshotEntry
+type Claims map[string]map[string]workspaceSnapshotEntry
 
-type workspaceSnapshots struct {
+type Workspaces struct {
 	directory string
 	// ctx bounds background warm-ups; close cancels it and waits for them.
 	ctx     context.Context
@@ -79,13 +81,13 @@ type workspaceSnapshots struct {
 	repos   map[string]*workspaceSnapshotRepo
 }
 
-func newWorkspaceSnapshots(storeDirectory string) *workspaceSnapshots {
+func NewWorkspaces(storeDirectory string) *Workspaces {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &workspaceSnapshots{directory: filepath.Join(storeDirectory, workspaceSnapshotDirectory), ctx: ctx, cancel: cancel, repos: make(map[string]*workspaceSnapshotRepo)}
+	return &Workspaces{directory: filepath.Join(storeDirectory, workspaceSnapshotDirectory), ctx: ctx, cancel: cancel, repos: make(map[string]*workspaceSnapshotRepo)}
 }
 
 // close stops background warm-ups and waits until none writes the store.
-func (s *workspaceSnapshots) close() {
+func (s *Workspaces) Close() {
 	if s == nil {
 		return
 	}
@@ -104,11 +106,11 @@ type workspaceSnapshotEntry struct {
 
 // execSnapshotChange is a snapshot-derived before/after pair for reconcile.
 type execSnapshotChange struct {
-	before, after execFileSnapshot
+	before, after File
 }
 
 type workspaceSnapshotRepo struct {
-	owner     *workspaceSnapshots
+	owner     *Workspaces
 	workspace string
 	git       string
 	gitDir    string
@@ -136,7 +138,7 @@ type workspaceSnapshotRepo struct {
 	failed  time.Time
 }
 
-func (s *workspaceSnapshots) repo(workspace string) *workspaceSnapshotRepo {
+func (s *Workspaces) repo(workspace string) *workspaceSnapshotRepo {
 	if s == nil || !filepath.IsAbs(workspace) {
 		return nil
 	}
@@ -166,20 +168,15 @@ func (r *workspaceSnapshotRepo) startWarm() {
 	}
 	owner := r.owner
 	owner.mu.Lock()
-	closed := owner.closed
-	if !closed {
-		owner.warmups.Add(1)
-	}
-	owner.mu.Unlock()
+	defer owner.mu.Unlock()
 	r.warming, r.ready = true, make(chan struct{})
 	ready := r.ready
-	if closed {
+	if owner.closed {
 		r.warming = false
 		close(ready)
 		return
 	}
-	go func() {
-		defer owner.warmups.Done()
+	owner.warmups.Go(func() {
 		ctx, cancel := context.WithTimeout(owner.ctx, workspaceSnapshotWarm)
 		defer cancel()
 		_, err := r.snapshot(ctx)
@@ -190,13 +187,13 @@ func (r *workspaceSnapshotRepo) startWarm() {
 		}
 		r.mu.Unlock()
 		close(ready)
-	}()
+	})
 }
 
 // checkpoint records the workspace and returns its tree, or "" when no
 // snapshot is available in time. A missing checkpoint only narrows coverage
 // to the source-named targets; it never blocks the call.
-func (s *workspaceSnapshots) checkpoint(ctx context.Context, workspace string) string {
+func (s *Workspaces) Checkpoint(ctx context.Context, workspace string) string {
 	repo := s.repo(workspace)
 	if repo == nil {
 		return ""
@@ -239,7 +236,7 @@ func (s *workspaceSnapshots) checkpoint(ctx context.Context, workspace string) s
 
 // serialize holds the workspace's comparison step until the returned
 // function is called.
-func (s *workspaceSnapshots) serialize(workspace string) func() {
+func (s *Workspaces) Serialize(workspace string) func() {
 	repo := s.repo(workspace)
 	if repo == nil {
 		return func() {}
@@ -322,7 +319,7 @@ func (r *workspaceSnapshotRepo) storeBytes(ctx context.Context) int64 {
 
 // pruneIdle removes other workspaces' private state that no router process
 // has used for workspaceSnapshotIdle.
-func (s *workspaceSnapshots) pruneIdle(keep string) {
+func (s *Workspaces) pruneIdle(keep string) {
 	entries, err := os.ReadDir(s.directory)
 	if err != nil {
 		return
@@ -547,8 +544,7 @@ func (r *workspaceSnapshotRepo) addPlain(ctx context.Context) error {
 // leave that path's previous state; a fatal error fails the snapshot.
 func (r *workspaceSnapshotRepo) add(ctx context.Context, stdin io.Reader, args ...string) error {
 	_, err := r.run(ctx, stdin, args...)
-	var exit *exec.ExitError
-	if errors.As(err, &exit) && ctx.Err() == nil && !strings.Contains(err.Error(), "fatal:") {
+	if _, ok := errors.AsType[*exec.ExitError](err); ok && ctx.Err() == nil && !strings.Contains(err.Error(), "fatal:") {
 		return nil
 	}
 	return err
@@ -637,8 +633,7 @@ func (r *workspaceSnapshotRepo) ignored(ctx context.Context, paths []string) ([]
 	command := r.command(ctx, strings.NewReader(strings.Join(paths, "\x00")+"\x00"), "check-ignore", "--stdin", "-z")
 	command.Env = append(command.Env, "GIT_INDEX_FILE="+r.seed)
 	output, err := command.Output()
-	var exit *exec.ExitError
-	if errors.As(err, &exit) && exit.ExitCode() == 1 {
+	if exit, ok := errors.AsType[*exec.ExitError](err); ok && exit.ExitCode() == 1 {
 		return nil, nil // No input path is ignored.
 	}
 	if err != nil {
@@ -651,12 +646,12 @@ func (r *workspaceSnapshotRepo) ignored(ctx context.Context, paths []string) ([]
 // Claimed paths start from the state an overlapping call already recorded,
 // so one effect is attributed once. It returns the changes and every changed
 // path's current state for claiming onto calls that are still open.
-func (s *workspaceSnapshots) since(ctx context.Context, workspace, tree string, all workspaceSnapshotClaims) ([]execSnapshotChange, workspaceSnapshotClaims, error) {
+func (s *Workspaces) since(ctx context.Context, workspace, tree string, all Claims) ([]execSnapshotChange, Claims, error) {
 	repo := s.repo(workspace)
 	if repo == nil || tree == "" {
 		return nil, nil, nil
 	}
-	current := s.checkpoint(ctx, workspace)
+	current := s.Checkpoint(ctx, workspace)
 	if current == "" {
 		return nil, nil, errors.New("no current checkpoint")
 	}
@@ -739,7 +734,7 @@ func (s *workspaceSnapshots) since(ctx context.Context, workspace, tree string, 
 			after:  workspaceSnapshotFile(path, change.after, contents),
 		})
 	}
-	return changes, workspaceSnapshotClaims{repo.gitDir: latest}, nil
+	return changes, Claims{repo.gitDir: latest}, nil
 }
 
 // states reads paths' entries in a snapshot tree; absent paths stay zero.
@@ -790,7 +785,7 @@ func (r *workspaceSnapshotRepo) blobs(ctx context.Context, oids []string) (map[s
 	if err != nil {
 		return nil, err
 	}
-	budget := maxExecContentBytes
+	budget := MaxContentBytes
 	var wanted []string
 	for line := range strings.SplitSeq(strings.TrimSpace(string(output)), "\n") {
 		oid, sizeText, _ := strings.Cut(line, " ")
@@ -799,7 +794,7 @@ func (r *workspaceSnapshotRepo) blobs(ctx context.Context, oids []string) (map[s
 			continue
 		}
 		switch {
-		case size > maxNativePatchFileBytes:
+		case size > MaxFileBytes:
 			blobs[oid] = workspaceSnapshotBlob{size: size, error: "file exceeds the 8 MiB capture bound"}
 		case size > int64(budget):
 			blobs[oid] = workspaceSnapshotBlob{size: size, error: "capture budget exhausted"}
@@ -835,18 +830,32 @@ func (r *workspaceSnapshotRepo) blobs(ctx context.Context, oids []string) (map[s
 	return blobs, nil
 }
 
-func workspaceSnapshotFile(path string, entry workspaceSnapshotEntry, blobs map[string]workspaceSnapshotBlob) execFileSnapshot {
+func workspaceSnapshotFile(path string, entry workspaceSnapshotEntry, blobs map[string]workspaceSnapshotBlob) File {
 	if entry.mode == "" {
-		return execFileSnapshot{Path: path}
+		return File{Path: path}
 	}
 	blob, found := blobs[entry.oid]
 	switch {
 	case !found:
-		return execFileSnapshot{Path: path, Kind: execFileText, Error: "snapshot content unavailable"}
+		return File{Path: path, Kind: Text, Error: "snapshot content unavailable"}
 	case blob.error != "":
-		return execFileSnapshot{Path: path, Kind: execFileText, Size: blob.size, Error: blob.error}
+		return File{Path: path, Kind: Text, Size: blob.size, Error: blob.error}
 	case entry.mode == "120000":
-		return execFileSnapshot{Path: path, Kind: execFileSymlink, Link: string(blob.data)}
+		return File{Path: path, Kind: Symlink, Link: string(blob.data)}
 	}
 	return execDataSnapshot(path, blob.data, nil)
+}
+
+// merge adds claims to c, allocating it when needed.
+func (c Claims) Merge(claims Claims) Claims {
+	for domain, states := range claims {
+		if c == nil {
+			c = make(Claims)
+		}
+		if c[domain] == nil {
+			c[domain] = make(map[string]workspaceSnapshotEntry, len(states))
+		}
+		maps.Copy(c[domain], states)
+	}
+	return c
 }

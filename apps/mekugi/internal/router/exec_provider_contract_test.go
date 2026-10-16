@@ -7,11 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/commandargs"
-
 	"github.com/yusing/mekugi/libraries/commandanalysis"
-
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
+	"github.com/yusing/mekugi/libraries/commandargs"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 )
 
 func TestExecGitScopeRejectsRevisionOptionInjection(t *testing.T) {
@@ -39,7 +38,7 @@ func TestExecProviderAliasesRecursionAndPreviewPermissions(t *testing.T) {
 			root := t.TempDir()
 			writeTestFile(t, filepath.Join(root, test.target), "before\n")
 			writeTestFile(t, filepath.Join(root, "edit.ts"), "unknown();\n")
-			observation, ok := captureExecObservation([]commandanalysis.Command{{Command: test.command, Workdir: root, Shell: "bash"}}, false, false, execCaptureEnv{directory: root, previewOnly: strings.HasSuffix(test.name, "permission")})
+			observation, ok := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: test.command, Workdir: root, Shell: "bash"}}, false, false, changecapture.Options{Directory: root, PreviewOnly: strings.HasSuffix(test.name, "permission")})
 			if !ok || observation.Class != execscope.Scoped.String() {
 				t.Fatalf("scope: %+v", observation)
 			}

@@ -12,8 +12,8 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
-
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
@@ -321,7 +321,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responseevents.Item)
 		execs, dynamic := commandanalysis.LiteralExecCommands(originalInput, t.directory, t.sessionShell)
 		// Source-resolved edit operands acquire baselines; a cell that may write
 		// elsewhere, including a dynamic one, is bounded by a workspace snapshot.
-		observation, observed := t.snapshotExecObservation(captureExecObservation(execs, dynamic, true, t.execCaptureEnvironment(patches)))
+		observation, observed := changecapture.Capture(t.ctx, execs, dynamic, true, t.execCaptureEnvironment(patches))
 		previewOpened := t.openStockExecWindow(callID, observation, patches, execs, dynamic, true)
 		if len(patches) == 0 && !observed && !previewOpened {
 			return false, nil
@@ -329,7 +329,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responseevents.Item)
 		if observation == nil && len(execs) != 0 {
 			// Retained patch cells still need literal reader identities
 			// for host-trace matching, without a baseline or writer window.
-			observation = &execObservation{Commands: execs, Class: execscope.Neutral.String(), CodeMode: true}
+			observation = &changecapture.Observation{Commands: execs, Class: execscope.Neutral.String(), CodeMode: true}
 		}
 		// Retain the provider input and captured baseline before exposing any
 		// executable call. The stock host remains the only edit executor.
@@ -349,33 +349,17 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responseevents.Item)
 	return false, nil
 }
 
-// snapshotExecObservation checkpoints the workspace before a call that may
-// write outside its source-named scope. Neutral readers take no checkpoint;
-// without one, an unscoped call stays unobserved as before.
-func (t *mekugiResponseTransform) snapshotExecObservation(observation *execObservation, observed bool) (*execObservation, bool) {
-	if observation != nil && observation.Class != execscope.Neutral.String() && t.proxy != nil && t.proxy.replayStore != nil {
-		if tree := t.proxy.replayStore.snapshots.checkpoint(t.ctx, t.directory); tree != "" {
-			observation.Tree = tree
-			observation.Roots = execAddRoot(observation.Roots, t.directory)
-			return observation, true
-		}
-	}
-	if !observed {
-		return nil, false
-	}
-	return observation, true
-}
-
-func (t *mekugiResponseTransform) execCaptureEnvironment(patches []nativePatchObservation) execCaptureEnv {
-	env := execCaptureEnv{directory: t.directory}
+func (t *mekugiResponseTransform) execCaptureEnvironment(patches []changecapture.PatchObservation) changecapture.Options {
+	env := changecapture.Options{Directory: t.directory}
 	if t.proxy != nil && t.proxy.replayStore != nil {
-		env.changes = storeChangeResolver(t.ctx, t.proxy.replayStore)
+		env.Changes = storeChangeResolver(t.ctx, t.proxy.replayStore)
+		env.Workspaces = t.proxy.replayStore.snapshots
 	}
 	for _, patch := range patches {
 		for _, file := range patch.Files {
 			for _, path := range []string{file.BeforePath, file.AfterPath} {
-				if path != "" && !slices.Contains(env.excluded, path) {
-					env.excluded = append(env.excluded, path)
+				if path != "" && !slices.Contains(env.Excluded, path) {
+					env.Excluded = append(env.Excluded, path)
 				}
 			}
 		}
@@ -383,7 +367,7 @@ func (t *mekugiResponseTransform) execCaptureEnvironment(patches []nativePatchOb
 	return env
 }
 
-func (t *mekugiResponseTransform) openExecWindow(callID string, observation *execObservation, patches []nativePatchObservation) {
+func (t *mekugiResponseTransform) openExecWindow(callID string, observation *changecapture.Observation, patches []changecapture.PatchObservation) {
 	if observation == nil && len(patches) == 0 || t.proxy == nil {
 		return
 	}
@@ -391,20 +375,20 @@ func (t *mekugiResponseTransform) openExecWindow(callID string, observation *exe
 		t.execGroup = rand.Text()
 	}
 	window := &execWindow{ref: callID, thread: t.shellThreadID, turn: t.shellTurnID, group: t.execGroup}
-	window.paths = t.execCaptureEnvironment(patches).excluded
+	window.paths = t.execCaptureEnvironment(patches).Excluded
 	var commands []commandanalysis.Command
 	if observation != nil {
 		observation.Group = t.execGroup
 		window.roots = slices.Clone(observation.Roots)
-		window.paths = append(window.paths, observation.scopePaths()...)
+		window.paths = append(window.paths, observation.ScopePaths()...)
 		commands = observation.Commands
 	}
 	if len(patches) != 0 {
-		window.roots = execAddRoot(window.roots, t.directory)
+		window.roots = changecapture.AddRoot(window.roots, t.directory)
 	}
 	t.proxy.execWindows.open(window, commands...)
 	if live := t.proxy.review.Preview(); observation != nil && live.Enabled() {
-		var snapshots *workspaceSnapshots
+		var snapshots *changecapture.Workspaces
 		if t.proxy.replayStore != nil {
 			snapshots = t.proxy.replayStore.snapshots
 		}
@@ -414,12 +398,12 @@ func (t *mekugiResponseTransform) openExecWindow(callID string, observation *exe
 
 // Display baselines are process-local. They preserve running LiveDiff without
 // turning formatter/managed effects into persisted authored changes.
-func (t *mekugiResponseTransform) openStockExecWindow(callID string, authored *execObservation, patches []nativePatchObservation, commands []commandanalysis.Command, dynamic, codeMode bool) bool {
+func (t *mekugiResponseTransform) openStockExecWindow(callID string, authored *changecapture.Observation, patches []changecapture.PatchObservation, commands []commandanalysis.Command, dynamic, codeMode bool) bool {
 	display := authored
 	if (authored == nil || authored.Class == execscope.Opaque.String()) && t.proxy != nil && t.proxy.review.Preview().Enabled() {
 		env := t.execCaptureEnvironment(patches)
-		env.previewOnly = true
-		if preview, ok := captureExecObservation(commands, dynamic, codeMode, env); ok {
+		env.PreviewOnly = true
+		if preview, ok := changecapture.Capture(t.ctx, commands, dynamic, codeMode, env); ok {
 			if authored != nil {
 				preview.Tree = authored.Tree
 			}

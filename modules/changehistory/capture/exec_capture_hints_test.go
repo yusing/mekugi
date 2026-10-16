@@ -1,4 +1,4 @@
-package router
+package capture
 
 import (
 	"path/filepath"
@@ -33,12 +33,13 @@ func TestDeferredFormatterHintWithoutClockDoesNotInventDiff(t *testing.T) {
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "source.go")
 	writeTestFile(t, path, "package pkg\n")
-	observation := execObservation{
+	observation := Observation{
 		Class: execscope.Scoped.String(), Roots: []string{workspace},
-		Omitted: []execOmission{{Path: path, Origin: "gofmt", Reason: "capture deadline", Deferred: true}},
+		Omitted: []Omission{{Path: path, Origin: "gofmt", Reason: "capture deadline", Deferred: true}},
 	}
-	reviews, complete, _, unswept := reconcileExecObservation(observation, execReconcileEnv{})
-	if complete || unswept != "" || len(reviews) != 1 || reviews[0].Incomplete == "" || strings.Contains(reviews[0].Diff, "+package pkg") {
-		t.Fatalf("unavailable formatter baseline invented evidence: %+v complete=%v unswept=%q", reviews, complete, unswept)
+	result := Reconcile(t.Context(), observation, Comparison{})
+	reviews, complete := result.Files, result.Complete
+	if complete || len(reviews) != 1 || reviews[0].Incomplete == "" || strings.Contains(reviews[0].Diff, "+package pkg") {
+		t.Fatalf("unavailable formatter baseline invented evidence: %+v complete=%v", reviews, complete)
 	}
 }

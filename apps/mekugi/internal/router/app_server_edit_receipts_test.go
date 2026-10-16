@@ -1,6 +1,8 @@
 package router
 
 import (
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -50,7 +52,7 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 			ToolName: nativeExecCommandToolName, Root: workspace, ExecutingThread: cmd.thread,
 			CorrelationID: cmd.carrier, ChangeID: id,
 			ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile(cmd.path, cmd.path, "old\n", "new\n")},
-			ExecOutcome: &execOutcome{Status: execStatusCompleted, Coverage: execCoverageExact,
+			ExecOutcome: &changecapture.Outcome{Status: changecapture.StatusCompleted, Coverage: changecapture.CoverageExact,
 				CodeMode: cmd.codeMode, Labels: []string{cmd.program}},
 		}
 		if cmd.codeMode {
@@ -59,7 +61,7 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 				{CallID: "sibling-call", Tool: nativeExecCommandToolName, Status: "completed"},
 			}
 		} else {
-			history.ExecOutcome.Status = execStatusFailed
+			history.ExecOutcome.Status = changecapture.StatusFailed
 			history.ExecOutcome.Exit = new(2)
 		}
 		if err := store.put(t.Context(), workspace, map[string]mekugiHistory{cmd.carrier: history}); err != nil {
@@ -311,7 +313,7 @@ func TestCodeModeCellEditReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 	record, found, err := proxy.replayStore.lookup(t.Context(), workspace, legacycall.ExecCallID("cell", true))
-	if err != nil || !found || record.ChangeID == "" || record.ExecOutcome.Status != execStatusCompleted {
+	if err != nil || !found || record.ChangeID == "" || record.ExecOutcome.Status != changecapture.StatusCompleted {
 		t.Fatalf("exec record: found=%v err=%v record=%+v", found, err, record)
 	}
 	var calls []string

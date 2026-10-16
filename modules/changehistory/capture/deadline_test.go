@@ -1,16 +1,16 @@
-package router
+package capture
 
 import (
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/libraries/commandanalysis"
 )
 
-func TestNativeExecForwardingWhileCaptureWorkersUnavailable(t *testing.T) {
+func TestCaptureWhileWorkersUnavailable(t *testing.T) {
 	// Occupied slots model filesystem workers that have not returned. The
-	// consuming SSE boundary must still forward the unchanged host call.
+	// capture boundary must release the unchanged command for host forwarding.
 	for range cap(execCaptureSlots) {
 		execCaptureSlots <- struct{}{}
 	}
@@ -19,23 +19,20 @@ func TestNativeExecForwardingWhileCaptureWorkersUnavailable(t *testing.T) {
 			<-execCaptureSlots
 		}
 	})
-	proxy := newManagedMekugiProxy(t)
-	attachTestReplayStore(t, proxy)
 	workspace := t.TempDir()
-	transform := prepareNativeStockTransform(t, proxy, workspace, "deadline-session")
-	arguments := string(responses.MustMarshalJSON(map[string]any{"cmd": "rm missing", "workdir": workspace}))
+	commands := []commandanalysis.Command{{Command: "rm missing", Workdir: workspace, Shell: "bash"}}
 	started := time.Now()
-	retainCommandObservation(t, transform, "deadline-call", arguments)
+	observation, observed := Capture(t.Context(), commands, false, false, Options{Directory: workspace})
 	if elapsed := time.Since(started); elapsed > execCaptureHold+250*time.Millisecond {
 		t.Fatalf("host forwarding exceeded capture hold: %v", elapsed)
 	}
-	observation := transform.local["deadline-call"].ExecObservation
-	if observation == nil || observation.Reason != "capture deadline" || len(observation.Files) != 0 || len(observation.Omitted) != 0 {
+	if !observed || observation == nil || observation.Reason != "capture deadline" || len(observation.Files) != 0 || len(observation.Omitted) != 0 {
 		t.Fatalf("unavailable capture claimed a baseline: %+v", observation)
 	}
 	unrelated := filepath.Join(workspace, "unrelated.txt")
 	writeTestFile(t, unrelated, "written while capture was unavailable\n")
-	reviews, _, _, _ := reconcileExecObservation(*observation, execReconcileEnv{})
+	result := Reconcile(t.Context(), *observation, Comparison{})
+	reviews := result.Files
 	for _, review := range reviews {
 		if review.BeforePath == unrelated || review.AfterPath == unrelated {
 			t.Fatalf("capture deadline fabricated a workspace-wide edit: %+v", reviews)

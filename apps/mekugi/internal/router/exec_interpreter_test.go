@@ -10,10 +10,9 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
-
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
-
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 )
 
 func TestPythonInterpreterLiteralLoopPathJoin(t *testing.T) {
@@ -31,7 +30,7 @@ p = Path('last.txt'); p.write_text(p.read_text().replace('old', 'new'))
 	pythonName, pythonBinary := interpreterForTest("python3", "python")
 	observation := captureInterpreterTestObservation(t, workspace, pythonName+" edit.py")
 	for _, file := range files {
-		if !slices.ContainsFunc(observation.Files, func(b execFileSnapshot) bool { return b.Path == filepath.Join(workspace, file) }) {
+		if !slices.ContainsFunc(observation.Files, func(b changecapture.File) bool { return b.Path == filepath.Join(workspace, file) }) {
 			t.Fatalf("missing pre-execution baseline for %s: %+v", file, observation.Files)
 		}
 	}
@@ -74,7 +73,7 @@ for name, source in sources.items():
 			observation := captureInterpreterTestObservation(t, workspace, command)
 			for _, name := range []string{"first.txt", "second.txt"} {
 				path := filepath.Join(workspace, "fixtures", name)
-				if !slices.ContainsFunc(observation.Files, func(file execFileSnapshot) bool { return file.Path == path }) {
+				if !slices.ContainsFunc(observation.Files, func(file changecapture.File) bool { return file.Path == path }) {
 					t.Fatalf("initial addition has no pre-execution baseline: %s; %+v", name, observation.Files)
 				}
 			}
@@ -217,7 +216,7 @@ Path('replace-source.txt').replace('replace-target.txt')
 	})
 }
 
-func assertInterpreterBaselinePaths(t *testing.T, workspace string, observation *execObservation, want []string) {
+func assertInterpreterBaselinePaths(t *testing.T, workspace string, observation *changecapture.Observation, want []string) {
 	t.Helper()
 	var got []string
 	for _, baseline := range observation.Files {
@@ -242,18 +241,18 @@ func TestRTKProxyPythonCaptureKeepsBaselineAndDirectOrigin(t *testing.T) {
 Path("target.txt").write_text("after\n")
 `)
 	command := "env -u BASH_ENV rtk --ultra-compact --skip-env proxy --skip-env --ultra-compact -- python3 edit.py"
-	observation, observed := captureExecObservation([]commandanalysis.Command{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{directory: workspace})
+	observation, observed := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false, changecapture.Options{Directory: workspace})
 	if !observed || observation == nil || observation.Class != execscope.Scoped.String() {
 		t.Fatalf("RTK proxy interpreter capture = %+v observed=%v", observation, observed)
 	}
-	var baseline *execFileSnapshot
+	var baseline *changecapture.File
 	for i := range observation.Files {
 		if observation.Files[i].Path == target {
 			baseline = &observation.Files[i]
 			break
 		}
 	}
-	if baseline == nil || baseline.Kind != execFileText || baseline.Content != "before\n" || baseline.Origin != "" {
+	if baseline == nil || baseline.Kind != changecapture.Text || baseline.Content != "before\n" || baseline.Origin != "" {
 		t.Fatalf("literal target baseline = %+v; want direct pre-call content", baseline)
 	}
 	if !slices.ContainsFunc(observation.Programs, func(program execscope.Program) bool {
@@ -266,8 +265,9 @@ Path("target.txt").write_text("after\n")
 	runOrSimulateInterpreter(t, pythonBinary, workspace, "edit.py", func() {
 		writeTestFile(t, target, "after\n")
 	})
-	reviews, complete, coverage, _ := reconcileExecObservation(*observation, execReconcileEnv{})
-	if !complete || coverage != execCoverageExact || len(reviews) != 1 || reviews[0].AfterPath != target || reviews[0].Origin != "" ||
+	result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
+	reviews, complete, coverage := result.Files, result.Complete, result.Coverage
+	if !complete || coverage != changecapture.CoverageExact || len(reviews) != 1 || reviews[0].AfterPath != target || reviews[0].Origin != "" ||
 		!strings.Contains(reviews[0].Diff, "-before\n+after\n") {
 		t.Fatalf("RTK proxy direct review = %+v complete=%v coverage=%q", reviews, complete, coverage)
 	}
@@ -305,7 +305,7 @@ await fsPromises.writeFile("capture-marker.txt", "executed\n");
 	)
 }
 
-func captureInterpreterTestObservation(t *testing.T, workspace, command string) *execObservation {
+func captureInterpreterTestObservation(t *testing.T, workspace, command string) *changecapture.Observation {
 	t.Helper()
 	observation := captureInterpreterTestObservationAnyClass(t, workspace, command)
 	if observation.Class != execscope.Scoped.String() {
@@ -314,11 +314,11 @@ func captureInterpreterTestObservation(t *testing.T, workspace, command string) 
 	return observation
 }
 
-func captureInterpreterTestObservationAnyClass(t *testing.T, workspace, command string) *execObservation {
+func captureInterpreterTestObservationAnyClass(t *testing.T, workspace, command string) *changecapture.Observation {
 	t.Helper()
-	observation, observed := captureExecObservation([]commandanalysis.Command{{
+	observation, observed := changecapture.Capture(t.Context(), []commandanalysis.Command{{
 		Command: command, Workdir: workspace, Shell: "bash",
-	}}, false, false, execCaptureEnv{directory: workspace})
+	}}, false, false, changecapture.Options{Directory: workspace})
 	if !observed || observation == nil {
 		t.Fatalf("interpreter command %q was not captured", command)
 	}
@@ -375,10 +375,11 @@ func nodeSupportsRecursiveReaddir(binary, workspace string) bool {
 	return command.Run() == nil
 }
 
-func assertExactInterpreterReviews(t *testing.T, workspace string, observation *execObservation, want map[string][]string) {
+func assertExactInterpreterReviews(t *testing.T, workspace string, observation *changecapture.Observation, want map[string][]string) {
 	t.Helper()
-	reviews, complete, coverage, _ := reconcileExecObservation(*observation, execReconcileEnv{})
-	if !complete || coverage != execCoverageExact {
+	result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
+	reviews, complete, coverage := result.Files, result.Complete, result.Coverage
+	if !complete || coverage != changecapture.CoverageExact {
 		t.Fatalf("interpreter evidence complete=%v coverage=%q files=%+v; want exact", complete, coverage, reviews)
 	}
 	byPath := make(map[string]diffmodel.ReviewFile, len(reviews))

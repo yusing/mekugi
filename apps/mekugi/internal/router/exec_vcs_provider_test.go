@@ -7,15 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/libraries/commandargs"
-
 	"github.com/yusing/mekugi/libraries/commandanalysis"
-
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
-
+	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 )
 
 func TestGitCleanProviderPreservesExclusions(t *testing.T) {
@@ -263,16 +260,16 @@ func runExecVCSTestGitAt(t *testing.T, repo, directory string, args ...string) [
 	return output
 }
 
-func captureExecVCSTestCommand(t *testing.T, repo, command string) *execObservation {
+func captureExecVCSTestCommand(t *testing.T, repo, command string) *changecapture.Observation {
 	t.Helper()
 	return captureExecVCSTestCommandAt(t, repo, repo, command)
 }
 
-func captureExecVCSTestCommandAt(t *testing.T, repo, workdir, command string) *execObservation {
+func captureExecVCSTestCommandAt(t *testing.T, repo, workdir, command string) *changecapture.Observation {
 	t.Helper()
-	observation, observed := captureExecObservation([]commandanalysis.Command{{
+	observation, observed := changecapture.Capture(t.Context(), []commandanalysis.Command{{
 		Command: command, Workdir: workdir, Shell: "bash",
-	}}, false, false, execCaptureEnv{directory: repo})
+	}}, false, false, changecapture.Options{Directory: repo})
 	if !observed || observation == nil {
 		t.Fatalf("VCS writer %q was not captured", command)
 	}
@@ -282,7 +279,7 @@ func captureExecVCSTestCommandAt(t *testing.T, repo, workdir, command string) *e
 	return observation
 }
 
-func assertCapturedExecVCSTestFile(t *testing.T, observation *execObservation, path, content string) {
+func assertCapturedExecVCSTestFile(t *testing.T, observation *changecapture.Observation, path, content string) {
 	t.Helper()
 	for _, file := range observation.Files {
 		if filepath.Clean(file.Path) == filepath.Clean(path) {
@@ -303,11 +300,12 @@ func assertExecVCSTestFileContent(t *testing.T, path, want string) {
 	}
 }
 
-func reconcileExecVCSTestExact(t *testing.T, observation *execObservation) []diffmodel.ReviewFile {
+func reconcileExecVCSTestExact(t *testing.T, observation *changecapture.Observation) []diffmodel.ReviewFile {
 	t.Helper()
-	reviews, complete, coverage, reason := reconcileExecObservation(*observation, execReconcileEnv{})
-	if !complete || coverage != execCoverageExact {
-		t.Fatalf("VCS review complete=%v coverage=%q reason=%q files=%+v; want exact", complete, coverage, reason, reviews)
+	result := changecapture.Reconcile(t.Context(), *observation, changecapture.Comparison{})
+	reviews, complete, coverage := result.Files, result.Complete, result.Coverage
+	if !complete || coverage != changecapture.CoverageExact {
+		t.Fatalf("VCS review complete=%v coverage=%q files=%+v; want exact", complete, coverage, reviews)
 	}
 	return reviews
 }
@@ -316,7 +314,7 @@ func TestVCSFallbackScopesKeepManagedProvenance(t *testing.T) {
 	for _, command := range []string{"git rm tracked.txt", "git mv tracked.txt moved.txt", "svn delete tracked.txt", "svn move tracked.txt moved.txt"} {
 		t.Run(command, func(t *testing.T) {
 			repo := newExecVCSTestRepo(t, map[string]string{"tracked.txt": "before\n"})
-			observation, captured := captureExecObservation([]commandanalysis.Command{{Command: command, Workdir: repo, Shell: "bash"}}, false, false, execCaptureEnv{directory: repo})
+			observation, captured := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: command, Workdir: repo, Shell: "bash"}}, false, false, changecapture.Options{Directory: repo})
 			if !captured {
 				t.Fatal("fallback VCS scope missing")
 			}

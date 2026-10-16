@@ -2,7 +2,7 @@
 
 ## REQ-CHANGES-001
 
-This contract connects host observation, application capture, retained
+This contract connects host observation, passive capture and retained
 [change history](../../modules/changehistory/SPEC.md), and
 [live preview](../../modules/livepreview/SPEC.md). Captured evidence describes
 observed file differences and its coverage, rather than the live Git diff or

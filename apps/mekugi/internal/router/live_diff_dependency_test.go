@@ -7,9 +7,12 @@ import (
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/diffrender"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
+
 	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -26,7 +29,7 @@ func TestUISnapshotSavedDiffDependencyHistory(t *testing.T) {
 			var ids []string
 			for i := range 10 {
 				file := diffmodel.RenderIncompleteReviewFile("/w/plugins/node_modules", "/w/plugins/node_modules", "dependency directory metadata capture incomplete")
-				file.OriginNote = execInventoryNote
+				file.OriginNote = changecapture.InventoryNote
 				call := fmt.Sprintf("command-%d", i)
 				id, err := store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), "/w", "stock-thread", call)
 				if err != nil {
@@ -34,7 +37,7 @@ func TestUISnapshotSavedDiffDependencyHistory(t *testing.T) {
 				}
 				ids = append(ids, id)
 				history := mekugiHistory{ChangeID: id, CorrelationID: call, Caller: "/root", ExecutingThread: "stock-thread", Source: "exec",
-					ExecOutcome: &execOutcome{Coverage: execCoveragePartial}, ReviewFiles: []diffmodel.ReviewFile{file}}
+					ExecOutcome: &changecapture.Outcome{Coverage: changecapture.CoveragePartial}, ReviewFiles: []diffmodel.ReviewFile{file}}
 				if err := store.put(t.Context(), "/w", map[string]mekugiHistory{call: history}); err != nil {
 					t.Fatal(err)
 				}
@@ -61,7 +64,7 @@ func TestUISnapshotSavedDiffDependencyHistory(t *testing.T) {
 				for i := range 10 {
 					putTestChange(t, t.Context(), store, "/w", fmt.Sprintf("install-%d", i), diffmodel.ReviewFile{
 						BeforePath: "/w/plugins/node_modules", AfterPath: "/w/plugins/node_modules", Directory: true,
-						Incomplete: "directory contents intentionally not captured", OriginNote: execInventoryNote,
+						Incomplete: "directory contents intentionally not captured", OriginNote: changecapture.InventoryNote,
 					})
 				}
 			}

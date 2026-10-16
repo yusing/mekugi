@@ -7,10 +7,9 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/libraries/legacycall"
-
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-
 	"github.com/yusing/mekugi/libraries/pathdisplay"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 )
 
 // Receipt diffs are display-only and stay well inside one publication.
@@ -80,7 +79,7 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 		for _, root := range exec.DeletedDirectories {
 			count, removed := 0, true
 			for _, file := range history.ReviewFiles {
-				if !execPathWithin(file.BeforePath, root) {
+				if !changecapture.PathWithin(file.BeforePath, root) {
 					continue
 				}
 				// Missing content does not undo the confirmed removal of a path.
@@ -106,7 +105,7 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 		grouped := false
 		for _, root := range roots {
 			count, compact := directories[root]
-			if !compact || !execPathWithin(file.BeforePath, root) {
+			if !compact || !changecapture.PathWithin(file.BeforePath, root) {
 				continue
 			}
 			if count > 0 {
@@ -316,8 +315,8 @@ func (s *mekugiReplayStore) agentEditNotice(ctx context.Context, workspace, call
 // receiptNamesSharedOrigin reports whether the receipt's command labels
 // already name every tool in a shared-origin note, which then only repeats
 // them on each row.
-func receiptNamesSharedOrigin(exec *execOutcome, note string) bool {
-	tools, ok := strings.CutSuffix(note, sharedOriginSuffix)
+func receiptNamesSharedOrigin(exec *changecapture.Outcome, note string) bool {
+	tools, ok := strings.CutSuffix(note, changecapture.SharedOriginSuffix)
 	if !ok || exec == nil {
 		return false
 	}

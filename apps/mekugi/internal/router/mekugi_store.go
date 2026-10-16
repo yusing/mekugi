@@ -17,6 +17,7 @@ import (
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/libraries/persistence"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -36,7 +37,7 @@ type mekugiReplayStore struct {
 	storageNotice      func(session, thread, phase, message string)
 	liveDiff           func([]reviewChange)
 	maxCommentaryBytes int64
-	snapshots          *workspaceSnapshots
+	snapshots          *changecapture.Workspaces
 	publication        *history.Store
 	transaction        *history.Transaction
 }
@@ -61,30 +62,12 @@ func durableHistory(h mekugiHistory) mekugiHistory {
 		baseline := *h.ResolvedBaseline
 		baseline.Files = slices.Clone(baseline.Files)
 		for i := range baseline.Files {
-			baseline.Files[i].watchStamp = ""
+			baseline.Files[i].WatchStamp = ""
 		}
-		baseline.Inventory = baseline.Inventory.durable()
+		baseline.Inventory = baseline.Inventory.Durable()
 		h.ResolvedBaseline = &baseline
 	}
-	if h.ExecObservation != nil {
-		observation := *h.ExecObservation
-		observation.WindowStart = observation.WindowStart.UTC()
-		observation.Files = slices.Clone(observation.Files)
-		for i := range observation.Files {
-			// Live-preview state is not serialized. Keep the request's copy
-			// while comparing against the persisted capture.
-			observation.Files[i].watchStamp = ""
-			observation.Files[i].watchMoveOnly = false
-		}
-		observation.Listings = slices.Clone(observation.Listings)
-		for i := range observation.Listings {
-			if len(observation.Listings[i].Entries) == 0 {
-				observation.Listings[i].Entries = nil // Omitted empty maps read back as nil.
-			}
-		}
-		observation.Inventory = observation.Inventory.durable()
-		h.ExecObservation = &observation
-	}
+	h.ExecObservation = h.ExecObservation.Durable()
 	return h
 }
 
@@ -104,7 +87,7 @@ func openReplayStore(ctx context.Context, service *history.Service, directory st
 	if err != nil {
 		return nil, err
 	}
-	return &mekugiReplayStore{directory: directory, maxBytes: defaultReplayStorageBytes, maxCommentaryBytes: 16 << 20, snapshots: newWorkspaceSnapshots(directory), publication: publication}, nil
+	return &mekugiReplayStore{directory: directory, maxBytes: defaultReplayStorageBytes, maxCommentaryBytes: 16 << 20, snapshots: changecapture.NewWorkspaces(directory), publication: publication}, nil
 }
 func (s *mekugiReplayStore) locked(ctx context.Context, fn func(*mekugiReplayStore) error) error {
 	if s.transaction != nil {
@@ -246,7 +229,7 @@ func (s *mekugiReplayStore) write(r replayRecord) (err error) {
 			return nil
 		}
 	}
-	failed := r.History.ExecOutcome != nil && r.History.ExecOutcome.Status == execStatusFailed && r.History.ExecOutcome.SharedWith == ""
+	failed := r.History.ExecOutcome != nil && r.History.ExecOutcome.Status == changecapture.StatusFailed && r.History.ExecOutcome.SharedWith == ""
 	if !exists && !r.Commentary && (r.History.ChangeID != "" && len(r.History.ReviewFiles) > 0 || failed) {
 		r.CaptureOrder, err = s.transaction.ReserveCaptureOrder()
 		if err != nil {

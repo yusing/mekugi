@@ -8,15 +8,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/libraries/terminalui"
-
-	"github.com/yusing/mekugi/libraries/diffrender"
-
-	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
-
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
+
 	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
 )
 
@@ -330,15 +329,15 @@ func TestLiveDiffCallerFilterComposesOthersAsBaseline(t *testing.T) {
 
 func TestExecObservationSourceLabel(t *testing.T) {
 	for _, tc := range []struct {
-		observation execObservation
+		observation changecapture.Observation
 		want        string
 	}{
-		{execObservation{}, "exec_command"},
-		{execObservation{Labels: []string{"sed"}}, "sed"},
-		{execObservation{Programs: []execscope.Program{{Label: "python3", Direct: true}, {Label: "make"}}}, "python3"},
-		{execObservation{Labels: []string{"sed", "rm"}, Programs: []execscope.Program{{Label: "shell", Direct: true}}}, "sed+rm+…"},
+		{changecapture.Observation{}, "exec_command"},
+		{changecapture.Observation{Labels: []string{"sed"}}, "sed"},
+		{changecapture.Observation{Programs: []execscope.Program{{Label: "python3", Direct: true}, {Label: "make"}}}, "python3"},
+		{changecapture.Observation{Labels: []string{"sed", "rm"}, Programs: []execscope.Program{{Label: "shell", Direct: true}}}, "sed+rm+…"},
 	} {
-		if got := tc.observation.sourceLabel(); got != tc.want {
+		if got := tc.observation.SourceLabel(); got != tc.want {
 			t.Errorf("%+v source = %q, want %q", tc.observation, got, tc.want)
 		}
 	}

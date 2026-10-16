@@ -1,6 +1,8 @@
 package router
 
 import (
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -168,9 +170,9 @@ func testCompletedPatchBeforeYieldedCommand(t *testing.T, exit int) {
 	items = append(items, map[string]any{"role": "user", "content": "continue"})
 	reconcile(items)
 	command, found := lookup(legacycall.ExecCallID("first-cell", true))
-	wantStatus := execStatusCompleted
+	wantStatus := changecapture.StatusCompleted
 	if exit != 0 {
-		wantStatus = execStatusFailed
+		wantStatus = changecapture.StatusFailed
 	}
 	if !found || command.ExecOutcome == nil || command.ExecOutcome.Status != wantStatus || command.ChangeID == "" ||
 		len(command.ReviewFiles) != 1 || command.ReviewFiles[0].AfterPath != filepath.Join(workspace, "command.txt") {
