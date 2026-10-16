@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/libraries/commandargs"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
@@ -29,7 +31,7 @@ func corpusReadSelectionsForCall(call sessionInspectionCall) []corpusReadSelecti
 	if call.item.Name != "exec" {
 		return nil
 	}
-	calls, ok := toolActivityUnwrapExecCalls(call.item.Input, false)
+	calls, ok := binding.ExecutionCalls(call.item.Input, false)
 	if !ok {
 		return nil
 	}

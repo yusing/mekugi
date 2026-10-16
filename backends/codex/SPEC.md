@@ -81,6 +81,21 @@ binding API also owns recognition of Codex execution headers and live-session
 JSON, shared by projection and continuation observation. These recognizers inspect
 host metadata; they never interpret printed body text as a new host outcome.
 
+## Static execution-source evidence
+
+The binding recognizes supported transparent JavaScript tool invocations for
+preview, continuation correlation and offline inspection. It preserves literal
+tool names and arguments without executing source. Unknown syntax, dynamic
+arguments, shadowed runtime bindings and additional effects remain opaque.
+Literal bindings and supported Promise batches can supply preview candidates;
+continuation correlation additionally requires the original result metadata.
+Output-only projections are therefore insufficient for that correlation.
+
+These candidates establish neither execution nor success. Host observations and
+retained filesystem evidence remain authoritative; UI labels and corpus findings
+belong to their consumers. Recognition never rewrites the submitted program or
+serializes parallel calls.
+
 ## Guidance projection
 
 One composed guidance registration provides three explicit request phases: before
@@ -127,7 +142,10 @@ identity-validated opener. Rollout reads cannot resume a thread or replay effect
 Process tests cover large and partial frames, original RPC IDs, ordered bursts,
 observation-before-queue delivery, paused-consumer close, EOF shutdown, and forced
 cleanup. Rollout tests cover identity, complete-record and byte bounds, newest
-settings, nullable defaults, and context evidence. Native session tests cover live
+settings, nullable defaults, and context evidence. Static-source tests cover
+literal argument preservation, transparent result projection and rejection of
+opaque or effectful wrappers; preview and continuation consumers retain their
+separate acceptance. Native session tests cover live
 usage precedence, resume settings, restored Activity, headless consumption, and
 command-tracking correlation. Installed-host checks remain distinct from offline
 process fixtures and retained-record decoding.

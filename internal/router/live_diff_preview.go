@@ -13,6 +13,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 
 	"github.com/yusing/mekugi/internal/ui/diffview"
@@ -379,7 +381,7 @@ func (w *liveDiffPreviewWorker) project(input, workspace string, final bool) (di
 		}
 		return shell(call)
 	case "exec":
-		if calls, ok := toolActivityUnwrapExecCalls(input, false); ok {
+		if calls, ok := binding.ExecutionCalls(input, false); ok {
 			for _, call := range slices.Backward(calls) {
 				switch responses.StringField(call, "name") {
 				case applyPatchToolName:

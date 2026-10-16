@@ -1,7 +1,9 @@
-package router
+package binding
+
+// Source: internal/router/subagent_tool_display_javascript.go:15:515@b530a2ac.
 
 import (
-	"encoding/json"
+	jsonv1 "encoding/json"
 	"maps"
 	"slices"
 	"strings"
@@ -12,15 +14,19 @@ import (
 	sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
-func toolActivityUnwrapExec(source string, requireResultMetadata bool) (map[string]json.RawMessage, bool) {
-	calls, ok := toolActivityUnwrapExecCalls(source, requireResultMetadata)
+// SingleExecutionCall recognizes one transparent Codex JavaScript invocation.
+func SingleExecutionCall(source string, requireResultMetadata bool) (map[string]jsonv1.RawMessage, bool) {
+	calls, ok := ExecutionCalls(source, requireResultMetadata)
 	if !ok || len(calls) != 1 {
 		return nil, false
 	}
 	return calls[0], true
 }
 
-func toolActivityUnwrapExecCalls(source string, requireResultMetadata bool) ([]map[string]json.RawMessage, bool) {
+// ExecutionCalls preserves literal tool arguments in supported transparent
+// JavaScript. Result metadata is required for continuation correlation, but not
+// for provisional source previews. Recognition never executes the source.
+func ExecutionCalls(source string, requireResultMetadata bool) ([]map[string]jsonv1.RawMessage, bool) {
 	parser := sitter.NewParser()
 	defer parser.Close()
 	if parser.SetLanguage(sourceparse.JavaScript) != nil {
@@ -46,7 +52,7 @@ func toolActivityUnwrapExecCalls(source string, requireResultMetadata bool) ([]m
 	if len(statements) == 0 {
 		return nil, false
 	}
-	var calls []map[string]json.RawMessage
+	var calls []map[string]jsonv1.RawMessage
 	bindings := make(map[string]string)
 	for i := 0; i < len(statements); i++ {
 		first := statements[i]
@@ -81,10 +87,10 @@ func toolActivityUnwrapExecCalls(source string, requireResultMetadata bool) ([]m
 					}
 				}
 			}
-			if !toolActivityResultProjection(statements[i+1], bytes, name, requireResultMetadata) {
+			if !executionResultProjection(statements[i+1], bytes, name, requireResultMetadata) {
 				batchProjection = !requireResultMetadata &&
-					(toolActivityBatchForEachProjection(statements[i+1], bytes, name) ||
-						toolActivityBatchIndexedProjection(statements[i+1], bytes, name))
+					(executionBatchForEachProjection(statements[i+1], bytes, name) ||
+						executionBatchIndexedPresentation(statements[i+1], bytes, name, map[string]bool{name: true}))
 				if !batchProjection {
 					return nil, false
 				}
@@ -93,9 +99,9 @@ func toolActivityUnwrapExecCalls(source string, requireResultMetadata bool) ([]m
 			i++
 		}
 		if expression != nil && expression.Kind() == "await_expression" && !requireResultMetadata {
-			if args, ok := sourceparse.JavaScriptCallArguments(expression.NamedChild(0), bytes, "tools", applyPatchToolName); ok && len(args) == 1 && args[0].Kind() == "identifier" {
+			if args, ok := sourceparse.JavaScriptCallArguments(expression.NamedChild(0), bytes, "tools", "apply_patch"); ok && len(args) == 1 && args[0].Kind() == "identifier" {
 				if patch, found := bindings[args[0].Utf8Text(bytes)]; found {
-					calls = append(calls, map[string]json.RawMessage{"name": responses.MustMarshalJSON(applyPatchToolName), "input": responses.MustMarshalJSON(patch)})
+					calls = append(calls, map[string]jsonv1.RawMessage{"name": responses.MustMarshalJSON("apply_patch"), "input": responses.MustMarshalJSON(patch)})
 					continue
 				}
 			}
@@ -109,8 +115,8 @@ func toolActivityUnwrapExecCalls(source string, requireResultMetadata bool) ([]m
 				expression = object.NamedChild(0)
 			}
 		}
-		nested, ok := toolActivityAwaitedCalls(expression, bytes, requireResultMetadata)
-		if !ok || batchProjection && !toolActivityPromiseBatch(expression, bytes) {
+		nested, ok := executionAwaitedCalls(expression, bytes, requireResultMetadata)
+		if !ok || batchProjection && !executionPromiseBatch(expression, bytes) {
 			return nil, false
 		}
 		calls = append(calls, nested...)
@@ -118,7 +124,7 @@ func toolActivityUnwrapExecCalls(source string, requireResultMetadata bool) ([]m
 	return calls, true
 }
 
-func toolActivityProtectedBindingName(node *sitter.Node, source []byte) bool {
+func executionProtectedBindingName(node *sitter.Node, source []byte) bool {
 	if node == nil {
 		return false
 	}
@@ -129,14 +135,14 @@ func toolActivityProtectedBindingName(node *sitter.Node, source []byte) bool {
 		return slices.Contains([]string{"tools", "Promise"}, node.Utf8Text(source))
 	}
 	for i := range node.NamedChildCount() {
-		if toolActivityProtectedBindingName(node.NamedChild(uint(i)), source) {
+		if executionProtectedBindingName(node.NamedChild(uint(i)), source) {
 			return true
 		}
 	}
 	return false
 }
 
-func toolActivityPromiseBatch(expression *sitter.Node, source []byte) bool {
+func executionPromiseBatch(expression *sitter.Node, source []byte) bool {
 	if expression == nil || expression.Kind() != "await_expression" {
 		return false
 	}
@@ -157,7 +163,7 @@ func toolActivityPromiseBatch(expression *sitter.Node, source []byte) bool {
 // The callback must only print a JSON object made from its own parameters.
 // This keeps display recognition presentation-only and rejects callbacks with
 // additional effects or values from outside the callback.
-func toolActivityBatchForEachProjection(statement *sitter.Node, source []byte, binding string) bool {
+func executionBatchForEachProjection(statement *sitter.Node, source []byte, binding string) bool {
 	if statement.Kind() != "expression_statement" || statement.NamedChildCount() != 1 {
 		return false
 	}
@@ -187,16 +193,12 @@ func toolActivityBatchForEachProjection(statement *sitter.Node, source []byte, b
 	if len(allowed) == 0 {
 		return false
 	}
-	return toolActivityBatchPrintedObject(body, source, allowed)
+	return executionBatchPrintedObject(body, source, allowed)
 }
 
 // The indexed form consumes the same completed batch, once per result. Its
 // loop header is checked structurally so unrelated work cannot be hidden.
-func toolActivityBatchIndexedProjection(statement *sitter.Node, source []byte, binding string) bool {
-	return toolActivityBatchIndexedPresentation(statement, source, binding, map[string]bool{binding: true})
-}
-
-func toolActivityBatchIndexedPresentation(statement *sitter.Node, source []byte, binding string, allowed map[string]bool) bool {
+func executionBatchIndexedPresentation(statement *sitter.Node, source []byte, binding string, allowed map[string]bool) bool {
 	if statement.Kind() != "for_statement" {
 		return false
 	}
@@ -229,12 +231,12 @@ func toolActivityBatchIndexedPresentation(statement *sitter.Node, source []byte,
 	}
 	locals := maps.Clone(allowed)
 	locals[indexName] = true
-	return toolActivityPresentationStatement(body, source, locals)
+	return executionPresentationStatement(body, source, locals)
 }
 
 // A forEach callback prints an object built only from its local result and
 // index references. This inspects output shape, not JS execution.
-func toolActivityBatchPrintedObject(body *sitter.Node, source []byte, allowed map[string]bool) bool {
+func executionBatchPrintedObject(body *sitter.Node, source []byte, allowed map[string]bool) bool {
 	textArgs, ok := sourceparse.JavaScriptCallArguments(body, source, "text")
 	if !ok || len(textArgs) != 1 {
 		return false
@@ -275,7 +277,7 @@ func toolActivityBatchPrintedObject(body *sitter.Node, source []byte, allowed ma
 	return true
 }
 
-func toolActivityAwaitedCalls(expression *sitter.Node, bytes []byte, requireResultMetadata bool) ([]map[string]json.RawMessage, bool) {
+func executionAwaitedCalls(expression *sitter.Node, bytes []byte, requireResultMetadata bool) ([]map[string]jsonv1.RawMessage, bool) {
 	if expression == nil || expression.Kind() != "await_expression" {
 		return nil, false
 	}
@@ -286,10 +288,10 @@ func toolActivityAwaitedCalls(expression *sitter.Node, bytes []byte, requireResu
 	if !requireResultMetadata {
 		for _, method := range []string{"all", "allSettled"} {
 			if args, ok := sourceparse.JavaScriptCallArguments(call, bytes, "Promise", method); ok && len(args) == 1 && args[0].Kind() == "array" {
-				var calls []map[string]json.RawMessage
+				var calls []map[string]jsonv1.RawMessage
 				for i := range args[0].NamedChildCount() {
 					node := args[0].NamedChild(uint(i))
-					item, ok := toolActivityStaticToolCall(node, bytes)
+					item, ok := executionStaticToolCall(node, bytes)
 					if !ok {
 						return nil, false
 					}
@@ -299,14 +301,14 @@ func toolActivityAwaitedCalls(expression *sitter.Node, bytes []byte, requireResu
 			}
 		}
 	}
-	item, ok := toolActivityStaticToolCall(call, bytes)
+	item, ok := executionStaticToolCall(call, bytes)
 	if !ok {
 		return nil, false
 	}
-	return []map[string]json.RawMessage{item}, true
+	return []map[string]jsonv1.RawMessage{item}, true
 }
 
-func toolActivityStaticToolCall(call *sitter.Node, bytes []byte) (map[string]json.RawMessage, bool) {
+func executionStaticToolCall(call *sitter.Node, bytes []byte) (map[string]jsonv1.RawMessage, bool) {
 	if call == nil || call.Kind() != "call_expression" {
 		return nil, false
 	}
@@ -322,15 +324,14 @@ func toolActivityStaticToolCall(call *sitter.Node, bytes []byte) (map[string]jso
 		return nil, false
 	}
 	switch name {
-	case "exec_command", "view_image", "write_stdin", "apply_patch":
+	case "exec_command", "view_image", "write_stdin", "apply_patch",
+		"list_mcp_resources", "list_mcp_resource_templates", "read_mcp_resource",
+		"clock.curr_time", "clock__curr_time", "curr_time",
+		"clock.sleep", "clock__sleep", "sleep", "get_context_remaining", "new_context",
+		"web.run", "web__run", "image_gen.imagegen", "image_gen__imagegen", "wait":
 	default:
-		_, _, mcp := toolActivityMCPName(name)
-		plugin := false
-		if !strings.HasPrefix(name, "mcp__") {
-			group, tool, qualified := strings.Cut(name, "__")
-			plugin = qualified && group != "" && tool != ""
-		}
-		if !mcp && !plugin && toolActivityBuiltinLabel(name) == "" {
+		group, tool, qualified := strings.Cut(strings.TrimPrefix(name, "mcp__"), "__")
+		if !qualified || group == "" || tool == "" {
 			return nil, false
 		}
 	}
@@ -345,7 +346,7 @@ func toolActivityStaticToolCall(call *sitter.Node, bytes []byte) (map[string]jso
 			return nil, false
 		}
 	}
-	item := map[string]json.RawMessage{"name": responses.MustMarshalJSON(name)}
+	item := map[string]jsonv1.RawMessage{"name": responses.MustMarshalJSON(name)}
 	if text, ok := value.(string); ok {
 		item["input"] = responses.MustMarshalJSON(text)
 	} else if args.NamedChildCount() != 0 {
@@ -356,7 +357,7 @@ func toolActivityStaticToolCall(call *sitter.Node, bytes []byte) (map[string]jso
 
 // Inspect the projection tree so formatting never determines whether a wrapper
 // is transparent. Only the bound result and the supported metadata copy qualify.
-func toolActivityResultProjection(statement *sitter.Node, source []byte, binding string, requireResultMetadata bool) bool {
+func executionResultProjection(statement *sitter.Node, source []byte, binding string, requireResultMetadata bool) bool {
 	if statement.Kind() != "expression_statement" || statement.NamedChildCount() != 1 {
 		return false
 	}
@@ -394,7 +395,7 @@ func toolActivityResultProjection(statement *sitter.Node, source []byte, binding
 		len(targetObject) == 0 && len(metadataObject) == 1 && metadataObject["retained"] == false
 }
 
-func toolActivityPresentationStatement(node *sitter.Node, source []byte, allowed map[string]bool) bool {
+func executionPresentationStatement(node *sitter.Node, source []byte, allowed map[string]bool) bool {
 	if node == nil {
 		return false
 	}
@@ -404,7 +405,7 @@ func toolActivityPresentationStatement(node *sitter.Node, source []byte, allowed
 	case "statement_block":
 		locals := maps.Clone(allowed)
 		for i := range node.NamedChildCount() {
-			if !toolActivityPresentationStatement(node.NamedChild(uint(i)), source, locals) {
+			if !executionPresentationStatement(node.NamedChild(uint(i)), source, locals) {
 				return false
 			}
 		}
@@ -415,34 +416,34 @@ func toolActivityPresentationStatement(node *sitter.Node, source []byte, allowed
 		}
 		declaration := node.NamedChild(0)
 		name := declaration.ChildByFieldName("name")
-		if name == nil || name.Kind() != "identifier" || toolActivityProtectedBindingName(name, source) {
+		if name == nil || name.Kind() != "identifier" || executionProtectedBindingName(name, source) {
 			return false
 		}
 		key := name.Utf8Text(source)
-		if allowed[key] || key == "text" || key == "JSON" || !toolActivityPresentationValue(declaration.ChildByFieldName("value"), source, allowed) {
+		if allowed[key] || key == "text" || key == "JSON" || !executionPresentationValue(declaration.ChildByFieldName("value"), source, allowed) {
 			return false
 		}
 		allowed[key] = true
 		return true
 	case "expression_statement":
 		args, ok := sourceparse.JavaScriptCallArguments(node.NamedChild(0), source, "text")
-		return ok && len(args) == 1 && toolActivityPresentationValue(args[0], source, allowed)
+		return ok && len(args) == 1 && executionPresentationValue(args[0], source, allowed)
 	case "if_statement":
-		if !toolActivityPresentationValue(node.ChildByFieldName("condition"), source, allowed) ||
-			!toolActivityPresentationStatement(node.ChildByFieldName("consequence"), source, maps.Clone(allowed)) {
+		if !executionPresentationValue(node.ChildByFieldName("condition"), source, allowed) ||
+			!executionPresentationStatement(node.ChildByFieldName("consequence"), source, maps.Clone(allowed)) {
 			return false
 		}
 		alternative := node.ChildByFieldName("alternative")
-		return alternative == nil || toolActivityPresentationStatement(alternative, source, maps.Clone(allowed))
+		return alternative == nil || executionPresentationStatement(alternative, source, maps.Clone(allowed))
 	case "else_clause":
-		return node.NamedChildCount() == 1 && toolActivityPresentationStatement(node.NamedChild(0), source, allowed)
+		return node.NamedChildCount() == 1 && executionPresentationStatement(node.NamedChild(0), source, allowed)
 	case "continue_statement":
 		return node.NamedChildCount() == 0
 	case "for_in_statement":
 		kind, operator := node.ChildByFieldName("kind"), node.ChildByFieldName("operator")
 		left, right := node.ChildByFieldName("left"), node.ChildByFieldName("right")
 		if kind == nil || kind.Kind() != "const" || operator == nil || operator.Kind() != "of" ||
-			left == nil || left.Kind() != "identifier" || toolActivityProtectedBindingName(left, source) ||
+			left == nil || left.Kind() != "identifier" || executionProtectedBindingName(left, source) ||
 			right == nil || right.Kind() != "identifier" || !allowed[right.Utf8Text(source)] {
 			return false
 		}
@@ -452,12 +453,12 @@ func toolActivityPresentationStatement(node *sitter.Node, source []byte, allowed
 		}
 		locals := maps.Clone(allowed)
 		locals[name] = true
-		return toolActivityPresentationStatement(node.ChildByFieldName("body"), source, locals)
+		return executionPresentationStatement(node.ChildByFieldName("body"), source, locals)
 	}
 	return false
 }
 
-func toolActivityPresentationValue(node *sitter.Node, source []byte, allowed map[string]bool) bool {
+func executionPresentationValue(node *sitter.Node, source []byte, allowed map[string]bool) bool {
 	if node == nil {
 		return false
 	}
@@ -470,14 +471,14 @@ func toolActivityPresentationValue(node *sitter.Node, source []byte, allowed map
 	case "member_expression":
 		property := node.ChildByFieldName("property")
 		return node.ChildByFieldName("optional_chain") == nil && property != nil && property.Kind() == "property_identifier" &&
-			toolActivityPresentationValue(node.ChildByFieldName("object"), source, allowed)
+			executionPresentationValue(node.ChildByFieldName("object"), source, allowed)
 	case "subscript_expression":
 		index := node.ChildByFieldName("index")
 		return node.ChildByFieldName("optional_chain") == nil && index != nil && (index.Kind() == "identifier" || index.Kind() == "number") &&
-			toolActivityPresentationValue(index, source, allowed) && toolActivityPresentationValue(node.ChildByFieldName("object"), source, allowed)
+			executionPresentationValue(index, source, allowed) && executionPresentationValue(node.ChildByFieldName("object"), source, allowed)
 	case "call_expression":
 		args, ok := sourceparse.JavaScriptCallArguments(node, source, "JSON", "stringify")
-		return ok && len(args) == 1 && toolActivityPresentationValue(args[0], source, allowed)
+		return ok && len(args) == 1 && executionPresentationValue(args[0], source, allowed)
 	case "binary_expression":
 		operator := node.ChildByFieldName("operator")
 		if operator == nil || !slices.Contains([]string{"+", "===", "!==", "==", "!=", "&&", "||", "??"}, operator.Kind()) {
@@ -488,11 +489,11 @@ func toolActivityPresentationValue(node *sitter.Node, source []byte, allowed map
 			field := node.NamedChild(uint(i))
 			if field.Kind() == "pair" {
 				key := field.ChildByFieldName("key")
-				if key == nil || key.Kind() != "property_identifier" && key.Kind() != "string" || !toolActivityPresentationValue(field.ChildByFieldName("value"), source, allowed) {
+				if key == nil || key.Kind() != "property_identifier" && key.Kind() != "string" || !executionPresentationValue(field.ChildByFieldName("value"), source, allowed) {
 					return false
 				}
 			} else if field.Kind() == "shorthand_property_identifier" || field.Kind() == "spread_element" {
-				if !toolActivityPresentationValue(field, source, allowed) {
+				if !executionPresentationValue(field, source, allowed) {
 					return false
 				}
 			} else {
@@ -507,7 +508,7 @@ func toolActivityPresentationValue(node *sitter.Node, source []byte, allowed map
 		return false
 	}
 	for i := range node.NamedChildCount() {
-		if !toolActivityPresentationValue(node.NamedChild(uint(i)), source, allowed) {
+		if !executionPresentationValue(node.NamedChild(uint(i)), source, allowed) {
 			return false
 		}
 	}
