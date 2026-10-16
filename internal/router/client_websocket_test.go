@@ -180,12 +180,12 @@ func TestProviderWebSocketPoisonedLeasesAreNotReplayed(t *testing.T) {
 					if !errors.Is(err, context.Canceled) {
 						t.Fatalf("request cancellation lost its cause: %v", err)
 					}
-					issues := NewCriticalErrors()
+					issues := testCriticalErrors()
 					f := &requestFinalization{}
 					f.classifyCopyError(err)
 					f.finish(responseCtx, err, &trackedResponseWriter{committed: true}, issues)
-					if f.observation.outcome != requestOutcomeCanceledAfterResponse || len(issues.Pending()) != 0 {
-						t.Fatalf("host interruption reported as failure: outcome=%v notices=%v", f.observation.outcome, issues.Pending())
+					if f.observation.outcome != requestOutcomeCanceledAfterResponse || len(issues.Notices.Pending()) != 0 {
+						t.Fatalf("host interruption reported as failure: outcome=%v notices=%v", f.observation.outcome, issues.Notices.Pending())
 					}
 				}
 				if scenario == "idle timeout" {

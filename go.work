@@ -25,6 +25,7 @@ use (
 	./modules/contextreset
 	./modules/diagnostics
 	./modules/fileread
+	./modules/notifications
 	./modules/outputdeduplication
 	./modules/outputrecovery
 	./modules/remotewriteapproval

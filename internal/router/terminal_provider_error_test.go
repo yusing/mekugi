@@ -40,7 +40,7 @@ func TestTerminalProviderErrorNotices(t *testing.T) {
 				response.Header.Set("Content-Type", "text/event-stream")
 			}
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
-			issues := NewCriticalErrors()
+			issues := testCriticalErrors()
 			var output bytes.Buffer
 			err := executeRequest(t.Context(), t.Context(),
 				serverRequest(t, func(fields map[string]any) { fields["stream"] = tc.stream }),
@@ -48,7 +48,7 @@ func TestTerminalProviderErrorNotices(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			notices := issues.Pending()
+			notices := issues.Notices.Pending()
 			if len(notices) != 1 || !strings.Contains(notices[0], tc.want) {
 				t.Fatalf("notices=%q want=%q", notices, tc.want)
 			}
@@ -71,7 +71,7 @@ func TestTerminalProviderErrorCompletenessAndCaptureIsolation(t *testing.T) {
 	if marshalErr != nil || strings.Contains(string(encoded), "actual detail") || strings.Contains(string(encoded), "credential-secret") {
 		t.Fatalf("provider details leaked to diagnostics: %s %v", encoded, marshalErr)
 	}
-	issues := NewCriticalErrors()
+	issues := testCriticalErrors()
 	for _, message := range []string{"first cause", "second cause", "first cause"} {
 		body := []byte(`{"type":"error","error":{"message":"` + message + `"}}`)
 		issues.record(&requestFinalization{
@@ -81,7 +81,7 @@ func TestTerminalProviderErrorCompletenessAndCaptureIsolation(t *testing.T) {
 			providerFailure:       terminalProviderError(body, true),
 		}, nil)
 	}
-	notices := issues.Pending()
+	notices := issues.Notices.Pending()
 	if len(notices) != 2 || !strings.Contains(notices[0], "first cause") ||
 		!strings.Contains(notices[0], "occurred 2 times") || !strings.Contains(notices[1], "second cause") {
 		t.Fatalf("distinct causes were merged: %q", notices)
@@ -113,10 +113,10 @@ func TestAdaptedProviderErrorDelivery(t *testing.T) {
 				req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
 				req.Header = grokTestHeaders()
 				req.Header.Set("Authorization", "Bearer caller-secret")
-				issues := NewCriticalErrors()
+				issues := testCriticalErrors()
 				recorder := httptest.NewRecorder()
 				responsesHandler(t.Context(), 5*time.Second, provider, issues, nil)(recorder, req)
-				for _, text := range []string{recorder.Body.String(), strings.Join(issues.Pending(), "\n")} {
+				for _, text := range []string{recorder.Body.String(), strings.Join(issues.Notices.Pending(), "\n")} {
 					if !strings.Contains(text, "actual rejection provider-secret caller-secret") {
 						t.Fatalf("incomplete adapted error: %s", text)
 					}

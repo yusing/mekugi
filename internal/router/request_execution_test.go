@@ -17,7 +17,7 @@ func TestDeprecatedTerraRoutesToSol(t *testing.T) {
 	request := modelTestRequest(t, "gpt-5.6-terra")
 	headers := serverMetadataHeaders(t, "turn", nil)
 	headers.Set(codexresponses.ThreadIDHeader, "terra-thread")
-	attempt := newRequestAttempt(requestExecutor{provider: &serverFakeProvider{}, issues: NewCriticalErrors()}, t.Context(), t.Context(), request, headers, "")
+	attempt := newRequestAttempt(requestExecutor{provider: &serverFakeProvider{}, issues: testCriticalErrors()}, t.Context(), t.Context(), request, headers, "")
 	if err := attempt.prepare(); err != nil {
 		t.Fatal(err)
 	}

@@ -423,11 +423,11 @@ func TestReplayItemConflictReportsSafeCause(t *testing.T) {
 	if err == nil {
 		t.Fatal("accepted changed tool input")
 	}
-	issues := NewCriticalErrors()
+	issues := testCriticalErrors()
 	finalization := &requestFinalization{failurePhase: requestFailureTransform,
 		observation: requestObservation{outcome: requestOutcomeFailed}}
 	issues.record(finalization, err)
-	notice := strings.Join(issues.Pending(), "\n")
+	notice := strings.Join(issues.Notices.Pending(), "\n")
 	if finalization.diagnosticCode != "replay_item_conflict" ||
 		!strings.Contains(notice, "changed a retained replay item field") ||
 		strings.Contains(notice, "private") || strings.Contains(notice, "not safe for display") {

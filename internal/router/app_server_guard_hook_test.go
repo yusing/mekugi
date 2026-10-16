@@ -60,8 +60,8 @@ func TestAppServerGuardHookFailureRestoresDrafts(t *testing.T) {
 		appServerTestKeys(t, u, "first\rsecond\rtyping")
 		request := appServerOneRequest(t, wire, "hooks/list", "")
 		appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,%s}`, request.ID, response))
-		if wire.Len() != 0 || u.draft != "first\nsecond\ntyping" || len(u.unsent)+len(u.queued) != 0 || !u.noticeAlert || u.notice == "" {
-			t.Fatalf("failure lost drafts or submitted input: draft=%q unsent=%+v queued=%+v notice=%q wire=%q", u.draft, u.unsent, u.queued, u.notice, wire.String())
+		if wire.Len() != 0 || u.draft != "first\nsecond\ntyping" || len(u.unsent)+len(u.queued) != 0 || !u.feedback.Alert || u.feedback.Text == "" {
+			t.Fatalf("failure lost drafts or submitted input: draft=%q unsent=%+v queued=%+v notice=%q wire=%q", u.draft, u.unsent, u.queued, u.feedback.Text, wire.String())
 		}
 		appServerTestKeys(t, u, "\r")
 		appServerOneRequest(t, wire, "hooks/list", "")
@@ -83,6 +83,6 @@ func TestAppServerGuardHookIgnoresStaleThreadResponse(t *testing.T) {
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":%s}`, old.ID, guardHookTestResult(t, "/old", guardHookTestEntry("guard"))))
 	appServerOneRequest(t, wire, "hooks/list", "")
 	if u.guardHookCheck.readyThread != "" || u.guardHookCheck.pendingThread != "new" || len(u.unsent)+len(u.queued) != 1 || u.alert {
-		t.Fatalf("stale result affected new thread: check=%+v notice=%q", u.guardHookCheck, u.notice)
+		t.Fatalf("stale result affected new thread: check=%+v notice=%q", u.guardHookCheck, u.feedback.Text)
 	}
 }

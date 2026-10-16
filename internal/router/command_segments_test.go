@@ -87,7 +87,7 @@ func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing
 			t.Fatal(err)
 		}
 		u.finishCommandSegments()
-		if notices := u.issues.Pending(); len(notices) != 0 {
+		if notices := u.issues.Notices.Pending(); len(notices) != 0 {
 			t.Fatal(notices)
 		}
 		reopened, err := openMekugiReplayStore(store.directory)
@@ -137,12 +137,12 @@ func TestCommandSegmentsPendingRetentionIsBoundedAndCanceled(t *testing.T) {
 		entry := activityPaneEntry{native: &liveActivityNativeItem{thread: "main", turn: "turn", item: item.ID}}
 		u.retainCommandSegments(entry, item, execTrackView{complete: true, segments: []commandSegment{{}, {}}})
 	}
-	if notices := u.issues.Pending(); u.commandSegmentPending != commandSegmentRetentionLimit || len(notices) != 1 || !strings.Contains(notices[0], "reached the limit of 32") {
+	if notices := u.issues.Notices.Pending(); u.commandSegmentPending != commandSegmentRetentionLimit || len(notices) != 1 || !strings.Contains(notices[0], "reached the limit of 32") {
 		t.Fatalf("retention grew beyond its bound: %d, %v", u.commandSegmentPending, notices)
 	}
 	cancel()
 	awaitCommandSegments(t, u)
-	if notices := u.issues.Pending(); len(notices) != commandSegmentRetentionLimit+1 || !strings.Contains(notices[1], context.Canceled.Error()) {
+	if notices := u.issues.Notices.Pending(); len(notices) != commandSegmentRetentionLimit+1 || !strings.Contains(notices[1], context.Canceled.Error()) {
 		t.Fatalf("canceled retention lost its underlying error: %v", notices)
 	}
 	files, err := filepath.Glob(filepath.Join(store.directory, "call-*.json"))
@@ -168,23 +168,23 @@ func TestCommandSegmentsRetentionErrorsStayWithOriginalThreadAndCause(t *testing
 	u.thread = "main"
 	delivery := u.applyCriticalNotices()
 
-	if delivery == nil || len(u.view.entries) != 0 || !u.noticeAlert {
+	if delivery == nil || len(u.view.entries) != 0 || !u.feedback.Alert {
 		t.Fatal("retention errors missed the composer")
 	}
 	for _, cause := range []error{first, second} {
-		if !strings.Contains(u.notice, cause.Error()) || !strings.Contains(u.notice, "item item (turn turn)") {
+		if !strings.Contains(u.feedback.Text, cause.Error()) || !strings.Contains(u.feedback.Text, "item item (turn turn)") {
 			t.Fatal("composer omitted complete error or identity")
 		}
 	}
-	before := u.notice
+	before := u.feedback.Text
 	delivery.finish(false)
-	if retry := u.applyCriticalNotices(); retry == nil || u.notice != before || len(u.view.entries) != 0 {
+	if retry := u.applyCriticalNotices(); retry == nil || u.feedback.Text != before || len(u.view.entries) != 0 {
 		t.Fatal("unpainted error was lost or duplicated")
 	} else {
 		u.mainFrame(100, 12, 0)
 		retry.finish(true)
 	}
-	if len(u.issues.Pending()) != 0 {
+	if len(u.issues.Notices.Pending()) != 0 {
 		t.Fatal("painted errors remained pending")
 	}
 }
@@ -345,7 +345,7 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 				awaitCommandSegments(t, u)
 			}
 			if mode == "storage-failure" {
-				notices := u.issues.Pending()
+				notices := u.issues.Notices.Pending()
 				if len(notices) != 1 || !strings.Contains(notices[0], "limit is 1 bytes") || !u.dirty {
 					t.Fatalf("storage failure omitted its actual cause: %v", notices)
 				}

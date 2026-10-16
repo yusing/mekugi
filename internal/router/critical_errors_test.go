@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/notifications/notice"
+
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
@@ -29,30 +31,30 @@ func queueCritical(c *CriticalErrors, session string) {
 }
 
 func TestCriticalErrorsDeduplicateReserveAndRetainUntilDelivery(t *testing.T) {
-	c := NewCriticalErrors()
+	c := testCriticalErrors()
 	queueCritical(c, "one")
 	queueCritical(c, "one")
-	if pending := c.Pending(); len(pending) != 1 || !strings.Contains(pending[0], "2 times") {
+	if pending := c.Notices.Pending(); len(pending) != 1 || !strings.Contains(pending[0], "2 times") {
 		t.Fatalf("pending = %v", pending)
 	}
 	first := c.takeNative("one", nil)
-	if first == nil || len(first.notices) != 1 || c.takeNative("two", nil) != nil || c.takeNative("one", nil) != nil {
+	if first == nil || len(first.Errors.Messages) != 1 || c.takeNative("two", nil) != nil || c.takeNative("one", nil) != nil {
 		t.Fatal("notice crossed a session or concurrent response")
 	}
-	first.finish(false)
+	first.Errors.Finish(false)
 	retry := c.takeNative("one", nil)
-	if len(retry.notices) != 1 || !strings.Contains(noticeText(retry.notices[0]), "Enable supported tools.") {
+	if len(retry.Errors.Messages) != 1 || !strings.Contains(retry.Errors.Messages[0].Text, "Enable supported tools.") {
 		t.Fatal("failed delivery lost notice")
 	}
-	retry.finish(true)
-	if len(c.Pending()) != 0 {
+	retry.Errors.Finish(true)
+	if len(c.Notices.Pending()) != 0 {
 		t.Fatal("delivered notice still pending")
 	}
 	queueCritical(c, "one")
 	if c.takeNative("one", nil) != nil {
 		t.Fatal("repeat flooded the session")
 	}
-	if pending := c.Pending(); len(pending) != 1 || !strings.Contains(pending[0], "3 times") {
+	if pending := c.Notices.Pending(); len(pending) != 1 || !strings.Contains(pending[0], "3 times") {
 		t.Fatalf("repeat summary = %v", pending)
 	}
 }
@@ -67,7 +69,7 @@ func TestCriticalErrorsIdentifyEveryGenericFailurePhaseWithCompleteCauses(t *tes
 		{requestFailureWriteResponse, "downstream response writing"},
 	} {
 		t.Run(string(test.phase), func(t *testing.T) {
-			c := NewCriticalErrors()
+			c := testCriticalErrors()
 			record := func(err error) {
 				c.record(&requestFinalization{sessionID: "one", failurePhase: test.phase,
 					observation: requestObservation{outcome: requestOutcomeFailed}}, err)
@@ -76,10 +78,10 @@ func TestCriticalErrorsIdentifyEveryGenericFailurePhaseWithCompleteCauses(t *tes
 			record(first)
 			record(first)
 			record(errors.New("plain secondsecret prompt"))
-			if len(c.entries) != 2 || c.entries[0].count != 2 || c.entries[1].count != 1 {
-				t.Fatalf("non-transform causes collapsed or did not deduplicate: %+v", c.entries)
+			if len(c.Notices.Pending()) != 2 || !strings.Contains(c.Notices.Pending()[0], "occurred 2 times") || strings.Contains(c.Notices.Pending()[1], "occurred") {
+				t.Fatalf("non-transform causes collapsed or did not deduplicate: %+v", c.Notices.Pending())
 			}
-			pending := strings.Join(c.Pending(), "\n")
+			pending := strings.Join(c.Notices.Pending(), "\n")
 			if !strings.Contains(pending, first.Error()) || !strings.Contains(pending, "plain secondsecret prompt") ||
 				strings.Count(pending, "Failure phase: "+test.label+".") != 2 ||
 				strings.Count(pending, "Diagnostic reference:") != 2 {
@@ -88,19 +90,19 @@ func TestCriticalErrorsIdentifyEveryGenericFailurePhaseWithCompleteCauses(t *tes
 		})
 	}
 
-	terminal := NewCriticalErrors()
+	terminal := testCriticalErrors()
 	terminal.record(&requestFinalization{sessionID: "one", failurePhase: requestFailureTerminalValidation,
 		observation: requestObservation{outcome: requestOutcomeFailed}}, fmt.Errorf("validate response: %w", errUpstreamResponseWithoutTerminal))
-	terminalNotice := strings.Join(terminal.Pending(), "\n")
+	terminalNotice := strings.Join(terminal.Notices.Pending(), "\n")
 	if !strings.Contains(terminalNotice, "Failure phase: terminal response validation.") ||
 		!strings.Contains(terminalNotice, "ended without a completed or failed terminal state") {
 		t.Fatalf("known terminal cause was hidden: %s", terminalNotice)
 	}
 
-	prepare := NewCriticalErrors()
+	prepare := testCriticalErrors()
 	prepare.record(&requestFinalization{sessionID: "one", failurePhase: requestFailurePrepare,
 		observation: requestObservation{outcome: requestOutcomeFailed}}, errors.New("plain preparesecret"))
-	prepareNotice := strings.Join(prepare.Pending(), "\n")
+	prepareNotice := strings.Join(prepare.Notices.Pending(), "\n")
 	if strings.Contains(prepareNotice, "check the request error") || !strings.Contains(prepareNotice, "preparesecret") ||
 		!strings.Contains(prepareNotice, "Failure phase: request preparation.") {
 		t.Fatalf("prepare notice was not self-contained: %s", prepareNotice)
@@ -108,7 +110,7 @@ func TestCriticalErrorsIdentifyEveryGenericFailurePhaseWithCompleteCauses(t *tes
 }
 
 func TestCriticalErrorsNativeOwnershipAndRouterWideNotice(t *testing.T) {
-	c := NewCriticalErrors()
+	c := testCriticalErrors()
 	queueCritical(c, "one")
 	queueCritical(c, "two")
 	queueCritical(c, "child")
@@ -122,28 +124,22 @@ func TestCriticalErrorsNativeOwnershipAndRouterWideNotice(t *testing.T) {
 		t.Fatal("child stole native root notices")
 	}
 	root := c.takeNative("one", activity)
-	if root == nil || len(root.notices) != 3 {
-		t.Fatalf("root notices = %d, want own, child, and router-wide", len(root.notices))
+	if root == nil || len(root.Errors.Messages) != 3 {
+		t.Fatalf("root notices = %d, want own, child, and router-wide", len(root.Errors.Messages))
 	}
-	root.finish(true)
-	if len(c.Pending()) != 1 {
-		t.Fatalf("unrelated session notice was acknowledged: %v", c.Pending())
+	root.Errors.Finish(true)
+	if len(c.Notices.Pending()) != 1 {
+		t.Fatalf("unrelated session notice was acknowledged: %v", c.Notices.Pending())
 	}
 }
 
-func TestCriticalErrorsBoundedAndCancellationSilent(t *testing.T) {
-	c := NewCriticalErrors()
+func TestCriticalErrorsSuccessAndCancellationSilent(t *testing.T) {
+	c := testCriticalErrors()
 	for _, outcome := range []requestOutcome{requestOutcomeCompleted, requestOutcomeCanceledBeforeResponse, requestOutcomeCanceledAfterResponse} {
 		c.record(&requestFinalization{observation: requestObservation{outcome: outcome}}, context.Canceled)
 	}
-	if len(c.Pending()) != 0 {
+	if len(c.Notices.Pending()) != 0 {
 		t.Fatal("success or cancellation emitted a notice")
-	}
-	for i := range 300 {
-		queueCritical(c, fmt.Sprint(i))
-	}
-	if len(c.entries) != 256 || c.overflow != 44 || len(c.Pending()) != 257 {
-		t.Fatal("unbounded error queue or missing overflow summary")
 	}
 }
 
@@ -162,7 +158,7 @@ func TestInvalidNativeCatalogIsBadRequestBeforeForwarding(t *testing.T) {
 		request.Header = serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 		request.Header.Set(sessionIDHeader, "one")
 		output := httptest.NewRecorder()
-		responsesHandler(t.Context(), time.Minute, provider, NewCriticalErrors(), proxy)(output, request)
+		responsesHandler(t.Context(), time.Minute, provider, testCriticalErrors(), proxy)(output, request)
 		if output.Code != 400 || len(provider.forwarded) != 0 {
 			t.Fatalf("catalog reached upstream or remained retryable: %d %s", output.Code, output.Body.String())
 		}
@@ -204,7 +200,7 @@ func TestForwardFailureDiagnostics(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			issues := NewCriticalErrors()
+			issues := testCriticalErrors()
 			provider := &serverFakeProvider{results: []serverForwardResult{{err: test.err}}}
 			err = executeRequest(ctx, ctx, request, serverMetadataHeaders(t, "turn", nil), "diagnostic-session", provider, io.Discard, issues, nil)
 			if !errors.Is(err, test.err) {
@@ -226,7 +222,7 @@ func TestForwardFailureDiagnostics(t *testing.T) {
 			if len(reference) != 12 {
 				t.Fatalf("missing reference: %v", record)
 			}
-			notices := strings.Join(issues.Pending(), "\n")
+			notices := strings.Join(issues.Notices.Pending(), "\n")
 			if rejection, ok := errors.AsType[*webSocketStatusError](test.err); ok {
 				if record["upstream_status"] != float64(rejection.status) {
 					t.Fatalf("handshake status lost: %v", record)
@@ -274,7 +270,7 @@ func TestCriticalSynthesizedDiagnosticCodes(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			issues := NewCriticalErrors()
+			issues := testCriticalErrors()
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: &http.Response{
 				StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}},
 				Body: io.NopCloser(strings.NewReader(test.body)),
@@ -289,10 +285,10 @@ func TestCriticalSynthesizedDiagnosticCodes(t *testing.T) {
 			if err := json.Unmarshal([]byte(lines[len(lines)-1]), &record); err != nil {
 				t.Fatal(err)
 			}
-			notices := strings.Join(issues.Pending(), "\n")
+			notices := strings.Join(issues.Notices.Pending(), "\n")
 			reference, _ := record["diagnostic_reference"].(string)
 			if record["diagnostic_code"] != test.code || len(reference) != 12 || !strings.Contains(notices, reference) ||
-				len(issues.entries) != 1 || !strings.Contains(issues.entries[0].category, test.code) {
+				len(issues.Notices.Pending()) != 1 {
 				t.Fatalf("diagnostics disagree: %v, %s", record, notices)
 			}
 			if test.code == "downstream_response_write" &&
@@ -302,3 +298,5 @@ func TestCriticalSynthesizedDiagnosticCodes(t *testing.T) {
 		})
 	}
 }
+
+func testCriticalErrors() *CriticalErrors { return NewCriticalErrors(new(notice.Service)) }

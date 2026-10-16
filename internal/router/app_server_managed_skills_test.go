@@ -119,8 +119,8 @@ func TestManagedSkillSourceFailuresRemainIndependent(t *testing.T) {
 	appServerTestKeys(t, u, "\x1b[200~use $review please\x1b[201~\r")
 	requests := pickerRequests(t, w)
 	appServerTestMessage(t, u, `{"id":`+strconv.Itoa(requests[0].ID)+`,"error":{"code":-1,"message":"native catalog unavailable"}}`)
-	if len(u.submission.attachments) != 1 || !u.noticeAlert || !strings.Contains(u.notice, "native catalog unavailable") {
-		t.Fatalf("native failure discarded managed source: %+v %q", u.submission, u.notice)
+	if len(u.submission.attachments) != 1 || !u.feedback.Alert || !strings.Contains(u.feedback.Text, "native catalog unavailable") {
+		t.Fatalf("native failure discarded managed source: %+v %q", u.submission, u.feedback.Text)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()

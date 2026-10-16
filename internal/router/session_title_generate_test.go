@@ -461,7 +461,7 @@ func TestSessionTitleFailedManualRenameSurvivesResume(t *testing.T) {
 	appServerTestKeys(t, u, "/title Manual intent\r")
 	save := sessionTitleTestOne(t, wire)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"save failed"}}`, save.ID))
-	if u.notice == "" {
+	if u.feedback.Text == "" {
 		t.Fatal("manual save failure was not reported")
 	}
 	// Detach the original view, then resume its still-unnamed completed turn.

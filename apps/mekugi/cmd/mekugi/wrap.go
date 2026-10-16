@@ -102,12 +102,6 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	if err != nil {
 		return 1, fmt.Errorf("locate codex: %w", err)
 	}
-	issues := router.NewCriticalErrors()
-	defer func() {
-		for _, message := range issues.Pending() {
-			fmt.Fprintln(os.Stderr, message)
-		}
-	}()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	// Before handoff Ctrl-C cancels startup. Once started, Codex receives the
@@ -121,6 +115,12 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	if err != nil {
 		return 1, err
 	}
+	issues := router.NewCriticalErrors(frontends.Notifications)
+	defer func() {
+		for _, message := range issues.Notices.Pending() {
+			fmt.Fprintln(os.Stderr, message)
+		}
+	}()
 	defer func() {
 		if err := frontends.Close(context.WithoutCancel(ctx)); err != nil {
 			runErr = errors.Join(runErr, err)
@@ -275,7 +275,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 			if session.StartAppUI != nil {
 				waitCodex, err = session.StartAppUI(ctx, cmd, os.Stdin, os.Stdout, resumeThread, resumeArgv, approvals)
 			} else {
-				waitCodex, err = router.StartAppServerUI(frontends.History, frontends.Preferences, ctx, cmd, os.Stdin, os.Stdout, resumeThread, resumeArgv, approvals)
+				waitCodex, err = router.StartAppServerUI(frontends.History, frontends.Preferences, frontends.Notifications, ctx, cmd, os.Stdin, os.Stdout, resumeThread, resumeArgv, approvals)
 			}
 		} else {
 			err = cmd.Start()

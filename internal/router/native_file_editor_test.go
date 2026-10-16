@@ -55,15 +55,15 @@ func TestNativeFileEditorPathsAndFailure(t *testing.T) {
 	t.Setenv("EDITOR", `sh -c 'printf changed > "$1"; exit 1' editor`)
 	u.openSelectedFileEditor(path, output, output)
 	data, err := os.ReadFile(path)
-	if err != nil || string(data) != "changed" || !u.noticeAlert {
-		t.Fatalf("editor failure: data=%q notice=%q error=%v", data, u.notice, err)
+	if err != nil || string(data) != "changed" || !u.feedback.Alert {
+		t.Fatalf("editor failure: data=%q notice=%q error=%v", data, u.feedback.Text, err)
 	}
 	t.Setenv("EDITOR", "true")
 	for _, path := range []string{filepath.Join(dir, "missing"), dir, "relative-without-workspace"} {
-		u.notice, u.noticeAlert = "", false
+		u.feedback.Text, u.feedback.Alert = "", false
 		u.openSelectedFileEditor(path, output, output)
-		if !u.noticeAlert || !strings.HasPrefix(u.notice, "Open editor:") {
-			t.Fatalf("path %q: %q", path, u.notice)
+		if !u.feedback.Alert || !strings.HasPrefix(u.feedback.Text, "Open editor:") {
+			t.Fatalf("path %q: %q", path, u.feedback.Text)
 		}
 	}
 }

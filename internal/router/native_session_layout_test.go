@@ -33,7 +33,7 @@ func TestNativeUISessionLiveToggle(t *testing.T) {
 	for _, command := range []string{"/live invalid", "/live on extra"} {
 		u.loadDraft(composerDraft{})
 		appServerTestKeys(t, u, command+"\r")
-		if u.shell.liveHidden || u.draft != command || !u.noticeAlert {
+		if u.shell.liveHidden || u.draft != command || !u.feedback.Alert {
 			t.Fatal("invalid value changed preference or lost draft")
 		}
 	}

@@ -55,14 +55,14 @@ func TestGrokStreamFailureTerminal(t *testing.T) {
 					t.Fatalf("failure exposed successful output: %v", event)
 				}
 			}
-			notices := NewCriticalErrors()
+			notices := testCriticalErrors()
 			finalization := &requestFinalization{sessionID: "test", failurePhase: requestFailureInspectResponse,
 				observation: requestObservation{outcome: requestOutcomeFailed}}
 			notices.record(finalization, err)
 			if finalization.diagnosticCode != test.code {
 				t.Fatalf("unclassified request failure: %s", finalization.diagnosticCode)
 			}
-			pending := strings.Join(notices.Pending(), "\n")
+			pending := strings.Join(notices.Notices.Pending(), "\n")
 			want := diagnostic.summary
 			if test.name == "provider error" {
 				want = "private-provider-content"
@@ -164,7 +164,7 @@ func TestGrokClientFailedTerminalRetainsTimeoutAccounting(t *testing.T) {
 	}
 	finalization := &requestFinalization{upstreamTerminalState: state}
 	finalization.classifyCopyError(err)
-	finalization.finish(t.Context(), err, &output, NewCriticalErrors())
+	finalization.finish(t.Context(), err, &output, testCriticalErrors())
 	if finalization.observation.outcome != requestOutcomeStreamIdleTimedOut ||
 		finalization.failurePhase != requestFailureStreamIdleTimeout {
 		t.Fatalf("timeout accounting lost: %+v", finalization)

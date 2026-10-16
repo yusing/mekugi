@@ -161,6 +161,6 @@ func TestAppServerSettingsCatalogNativeCodex(t *testing.T) {
 		}
 	}
 	if len(u.effortChoices()) == 0 {
-		t.Fatalf("model=%q catalog=%+v notice=%q", u.model, u.models, u.notice)
+		t.Fatalf("model=%q catalog=%+v notice=%q", u.model, u.models, u.feedback.Text)
 	}
 }

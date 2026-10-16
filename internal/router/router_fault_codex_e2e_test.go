@@ -223,7 +223,7 @@ func TestRouterTransformFaultNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	proxy.replayStore = store
-	issues := NewCriticalErrors()
+	issues := testCriticalErrors()
 	issues.failureStore = store.publication
 	issues.failureLimits = store.retentionLimits()
 	issues.diagnostics = testDiagnostics(nil, nil)
@@ -258,10 +258,8 @@ func TestRouterTransformFaultNativeCodexE2E(t *testing.T) {
 	if count := strings.Count(strings.Join(failedEvents, "\n"), "Diagnostic reference:"); count != 1 {
 		t.Fatalf("native terminal event carried %d notices, want one: %s", count, failedEvents)
 	}
-	issues.mu.Lock()
-	defer issues.mu.Unlock()
-	if len(issues.entries) != 1 || issues.entries[0].count != 1 {
-		t.Fatalf("native fault notice count = %+v, want one", issues.entries)
+	if len(issues.Notices.Pending()) != 1 || strings.Contains(issues.Notices.Pending()[0], "occurred") {
+		t.Fatalf("native fault notice count = %+v, want one", issues.Notices.Pending())
 	}
 	server.Close()
 	if _, err := openMekugiReplayStore(replayDirectory); err != nil {
@@ -286,7 +284,7 @@ func TestRouterTransformFaultNativeCodexE2E(t *testing.T) {
 func TestRecoveredStreamDoesNotLeaveHeadlessNoticeNativeCodexE2E(t *testing.T) {
 	provider := &routerFaultCodexProvider{mode: "close"}
 	proxy := newManagedMekugiProxy(t)
-	issues := NewCriticalErrors()
+	issues := testCriticalErrors()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -318,8 +316,8 @@ func TestRecoveredStreamDoesNotLeaveHeadlessNoticeNativeCodexE2E(t *testing.T) {
 	provider.mu.Lock()
 	requests := provider.requests
 	provider.mu.Unlock()
-	if requests != 2 || len(issues.Pending()) != 0 || !strings.Contains(output.String(), "Recovered after a retry.") {
-		t.Fatalf("recovery requests=%d pending=%v\n%s", requests, issues.Pending(), output.String())
+	if requests != 2 || len(issues.Notices.Pending()) != 0 || !strings.Contains(output.String(), "Recovered after a retry.") {
+		t.Fatalf("recovery requests=%d pending=%v\n%s", requests, issues.Notices.Pending(), output.String())
 	}
 	records, err := testDiagnostics(nil, nil).ReadFailures(ctx, store.directory, "")
 	if err != nil || len(records) != 1 {
@@ -331,7 +329,7 @@ func TestRecoveredStreamDoesNotLeaveHeadlessNoticeNativeCodexE2E(t *testing.T) {
 func TestRetryablePrestream5xxStillRetriesInNativeCodexE2E(t *testing.T) {
 	provider := &routerFaultCodexProvider{mode: "retry"}
 	proxy := newManagedMekugiProxy(t)
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, NewCriticalErrors(), proxy))
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, testCriticalErrors(), proxy))
 	defer server.Close()
 
 	stdout, stderr, runErr := runRouterFaultNativeCodex(t, server.URL, "Complete after one retryable provider error.")

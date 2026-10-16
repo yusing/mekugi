@@ -15,6 +15,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/modules/notifications/notice"
+	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
+
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/backends/codex/shellhook"
@@ -72,6 +75,7 @@ type appServerItem struct {
 }
 
 type appServerUI struct {
+	feedback noticepresentation.Model
 	history  *history.Service
 	segments *reports.Service
 	appServerLifecycle
@@ -115,7 +119,6 @@ type appServerUI struct {
 	shellEdits                appServerShellEdits
 	pendingEditReceipts       []*capturedActivityEdit // Observed edits can precede their host Activity item.
 	issues                    *CriticalErrors
-	noticeEntries             map[string]bool
 	shell                     *terminalUI
 	session                   appServerSession
 	ctx                       context.Context
@@ -127,12 +130,9 @@ type appServerUI struct {
 	exitUsage                 appServerTokenUsage
 	resumeArgv                []string
 	replayDebugDirectory      string
-	compacting                *[2]string // Main turn and compaction item.
-	polling                   *[2]string // Main turn and polled process.
-	alert                     bool       // The status reports a failure or blocked request.
-	notice                    string     // Composer feedback; errors persist until the next draft edit.
-	noticeAlert               bool
-	noticeUntil               time.Time
+	compacting                *[2]string   // Main turn and compaction item.
+	polling                   *[2]string   // Main turn and polled process.
+	alert                     bool         // The status reports a failure or blocked request.
 	noticeDetails             terminalRect // Truncated composer error, relative to Main.
 	noticeDismiss             terminalRect // Check button, relative to Main.
 	turnStarted               time.Time    // Shown as elapsed time while a turn runs.
@@ -172,9 +172,9 @@ type appServerUI struct {
 // StartAppServerUI starts the native terminal frontend without router observers.
 // Codex app-server owns execution; the launcher
 // still owns routing, environment, invocation-local configuration and cancellation.
-func StartAppServerUI(service *history.Service, prefs *preferences.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
+func StartAppServerUI(service *history.Service, prefs *preferences.Service, notices *notice.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
 	faint, _ := terminalui.SupportsFaint(ctx, "auto")
-	issues := NewCriticalErrors()
+	issues := NewCriticalErrors(notices)
 	return startAppServerUI(service, prefs, nil, ctx, cmd, stdin, stdout, nil, issues, resumeThread, faint, nil, nil, resumeArgv, "", nil, approvals)
 }
 

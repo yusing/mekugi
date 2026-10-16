@@ -6,10 +6,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 	"unicode"
+
+	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
@@ -133,18 +134,20 @@ func (u *appServerUI) notificationConfig(m appserver.Message) {
 }
 
 func (n *nativeNotifications) allows(event string) bool {
-	if n == nil || n.out == nil || !n.ready || n.focused && n.settings.Condition != "always" {
+	if n == nil || n.out == nil || !n.ready {
 		return false
 	}
-	if len(n.settings.Events) == 0 {
-		return true
-	}
+	policy := noticepresentation.DesktopPolicy{Enabled: true, Always: n.settings.Condition == "always"}
 	if n.settings.Events.Kind() == '[' {
-		var events []string
-		return json.Unmarshal(n.settings.Events, &events) == nil && slices.Contains(events, event)
+		if json.Unmarshal(n.settings.Events, &policy.Events) != nil {
+			return false
+		}
+	} else if len(n.settings.Events) != 0 {
+		if json.Unmarshal(n.settings.Events, &policy.Enabled) != nil {
+			return false
+		}
 	}
-	var enabled bool
-	return json.Unmarshal(n.settings.Events, &enabled) == nil && enabled
+	return policy.Allows(event, n.focused)
 }
 
 func (u *appServerUI) notify(event, message string) {

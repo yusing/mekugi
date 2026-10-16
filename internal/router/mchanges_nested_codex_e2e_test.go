@@ -531,7 +531,7 @@ func runMChangesNestedCodexCell(
 	proxy.replayStore = store
 	proxy.nativeTrace = &nativeToolTrace{directory: traceRoot}
 	provider.trace = proxy.nativeTrace
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, NewCriticalErrors(), proxy))
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, testCriticalErrors(), proxy))
 	defer server.Close()
 	config := `model_providers.mchanges_fixture={name="mchanges_fixture",base_url=` +
 		strconv.Quote(server.URL+"/v1") + `,wire_api="responses",requires_openai_auth=false}`

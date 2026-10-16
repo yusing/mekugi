@@ -77,7 +77,7 @@ func TestAppServerArchiveCancelAndUnavailable(t *testing.T) {
 			u.replacement.clear()
 		}
 		appServerTestKeys(t, u, "/archive\r")
-		if wire.Len() != 0 || u.picker.modal == "archive" || !strings.Contains(u.notice, "ready") {
+		if wire.Len() != 0 || u.picker.modal == "archive" || !strings.Contains(u.feedback.Text, "ready") {
 			t.Fatalf("archive allowed during %s", state)
 		}
 	}
@@ -87,8 +87,8 @@ func TestAppServerArchiveFailureRetry(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	appServerTestKeys(t, u, "/archive\r\x1b[B\r")
 	appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"archive unavailable"}}`)
-	if u.quitRequested || u.archived || u.replacement.pending() || !u.noticeAlert || !strings.Contains(u.notice, "archive unavailable") {
-		t.Fatalf("archive failure lost session or feedback: %q", u.notice)
+	if u.quitRequested || u.archived || u.replacement.pending() || !u.feedback.Alert || !strings.Contains(u.feedback.Text, "archive unavailable") {
+		t.Fatalf("archive failure lost session or feedback: %q", u.feedback.Text)
 	}
 	appServerTestKeys(t, u, "/archive\r\x1b[B\r")
 	if len(pickerRequests(t, wire)) != 2 {

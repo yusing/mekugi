@@ -109,7 +109,7 @@ func TestRequestPreparationBeginsOnlyNewRootTurn(t *testing.T) {
 	proxy.autoLiveDiff = auto
 	executor := requestExecutor{
 		provider:    &serverFakeProvider{},
-		issues:      NewCriticalErrors(),
+		issues:      testCriticalErrors(),
 		mekugiCalls: proxy,
 	}
 	headers := func(turnID string) http.Header {

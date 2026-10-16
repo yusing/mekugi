@@ -11,7 +11,6 @@ pjdoc:
     - third_party.md
     - grok.md
     - opencode.md
-    - notices.md
     - activity.md
     - boundary.md
     - plugin.md
@@ -50,7 +49,7 @@ resume evidence and renderer-keyed persistence.
 - [`CTR-THIRD-PARTY-001`](third_party.md): third-party provider bridge ownership
 - [`CTR-GROK-001`](grok.md): Grok bridge ownership
 - [`CTR-OPENCODE-001`](opencode.md): OpenCode bridge ownership
-- [`CTR-NOTICES-001`](notices.md): native diagnostic delivery and recovery
+- [Notifications](../../modules/notifications/SPEC.md): bounded delivery, presentation claims and recovery
 - [`CTR-ACTIVITY-001`](activity.md): activity identity, collection, and native integration
 - [`CTR-ACTIVITY-002`](activity.md): bounded native child history pages
 - [`CTR-USAGE-001`](../../modules/usage/SPEC.md): provider accounting ownership

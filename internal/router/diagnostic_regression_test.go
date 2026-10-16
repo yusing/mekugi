@@ -27,7 +27,7 @@ func TestProviderErrorEventIsFailedNotMissingTerminal(t *testing.T) {
 			response := serverHTTPResponse("data: " + payload + "\n\n")
 			response.Header.Set("Content-Type", "text/event-stream")
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
-			issues := NewCriticalErrors()
+			issues := testCriticalErrors()
 			var output bytes.Buffer
 			err := executeRequest(t.Context(), t.Context(),
 				serverRequest(t, func(request map[string]any) { request["stream"] = true }),
@@ -38,7 +38,7 @@ func TestProviderErrorEventIsFailedNotMissingTerminal(t *testing.T) {
 			if !strings.Contains(output.String(), payload) {
 				t.Fatalf("provider event was not preserved: %s", output.String())
 			}
-			notices := issues.Pending()
+			notices := issues.Notices.Pending()
 			if len(notices) != 1 || !strings.Contains(notices[0], "private provider message") ||
 				strings.Contains(notices[0], "without a completed") {
 				t.Fatalf("wrong failure notice: %v", notices)
@@ -62,14 +62,14 @@ func TestGrokEncryptedHistoryCompatibility(t *testing.T) {
 			if !ok || compatibility.code != "grok_encrypted_history" {
 				t.Fatalf("wrong classification: %v", err)
 			}
-			issues := NewCriticalErrors()
+			issues := testCriticalErrors()
 			finalization := &requestFinalization{sessionID: "grok-session", failurePhase: requestFailureForward,
 				observation: requestObservation{outcome: requestOutcomeFailed}}
 			issues.record(finalization, err)
 			if finalization.diagnosticCode != "grok_encrypted_history" ||
-				strings.Contains(strings.Join(issues.Pending(), ""), "transport") ||
-				!strings.Contains(strings.Join(issues.Pending(), ""), "fresh") {
-				t.Fatalf("wrong diagnostic: %+v, %v", finalization, issues.Pending())
+				strings.Contains(strings.Join(issues.Notices.Pending(), ""), "transport") ||
+				!strings.Contains(strings.Join(issues.Notices.Pending(), ""), "fresh") {
+				t.Fatalf("wrong diagnostic: %+v, %v", finalization, issues.Notices.Pending())
 			}
 
 			provider := &serverFakeProvider{results: []serverForwardResult{{err: err}}}
@@ -128,7 +128,7 @@ func TestResponsesWebSocketProviderErrorRecovery(t *testing.T) {
 		}
 	}))
 	defer upstream.Close()
-	issues := NewCriticalErrors()
+	issues := testCriticalErrors()
 	endpoint := responsesWebSocketHandler(ctx, time.Second, newProviderClient(upstream.URL, upstream.Client()), issues, nil)
 	defer endpoint.Close()
 	server := httptest.NewServer(endpoint)
@@ -155,14 +155,13 @@ func TestResponsesWebSocketProviderErrorRecovery(t *testing.T) {
 	}
 	conn.CloseNow()
 	endpoint.Close()
-	issues.mu.Lock()
-	defer issues.mu.Unlock()
-	if len(issues.entries) != 1 || !strings.Contains(issues.entries[0].message, "HTTP 429: rate_limit_exceeded: private") {
-		t.Fatalf("lost actual WebSocket error: %v", issues.entries)
+	notices := issues.Notices.Pending()
+	if len(notices) != 1 || !strings.Contains(notices[0], "HTTP 429: rate_limit_exceeded: private") {
+		t.Fatalf("lost actual WebSocket error: %v", notices)
 	}
-	for _, notice := range issues.entries {
-		if strings.Contains(notice.message, "invalid") || strings.Contains(notice.message, "without a completed") {
-			t.Fatalf("misclassified provider error: %s", notice.message)
+	for _, notice := range notices {
+		if strings.Contains(notice, "invalid") || strings.Contains(notice, "without a completed") {
+			t.Fatalf("misclassified provider error: %s", notice)
 		}
 	}
 }

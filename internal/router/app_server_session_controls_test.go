@@ -62,8 +62,8 @@ func TestAppServerCompactFailureRestoresCommand(t *testing.T) {
 	appServerTestKeys(t, u, "/compact\r")
 	r := appServerOneRequest(t, w, "thread/compact/start", "")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, r.ID))
-	if u.draft != "/compact" || u.compaction.ackPending || u.starting() || !strings.Contains(u.notice, "rejected") || len(u.view.entries) != 0 {
-		t.Fatalf("failed compact not restored: draft=%q notice=%q entries=%+v", u.draft, u.notice, u.view.entries)
+	if u.draft != "/compact" || u.compaction.ackPending || u.starting() || !strings.Contains(u.feedback.Text, "rejected") || len(u.view.entries) != 0 {
+		t.Fatalf("failed compact not restored: draft=%q notice=%q entries=%+v", u.draft, u.feedback.Text, u.view.entries)
 	}
 }
 
@@ -71,8 +71,8 @@ func TestAppServerClearBusyRejected(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestTurn(t, u, "busy")
 	appServerTestKeys(t, u, "/clear\r")
-	if w.Len() != 0 || u.replacement.pending() || u.turn != "busy" || !strings.Contains(u.notice, "disabled") {
-		t.Fatalf("busy clear was accepted: request=%q notice=%q", w.String(), u.notice)
+	if w.Len() != 0 || u.replacement.pending() || u.turn != "busy" || !strings.Contains(u.feedback.Text, "disabled") {
+		t.Fatalf("busy clear was accepted: request=%q notice=%q", w.String(), u.feedback.Text)
 	}
 }
 
@@ -149,8 +149,8 @@ func TestAppServerClearFailureKeepsTranscript(t *testing.T) {
 	appServerTestKeys(t, u, "/clear\r")
 	r := appServerOneRequest(t, w, "thread/start", "")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"unavailable"}}`, r.ID))
-	if u.thread != "main" || u.replacement.pending() || len(u.view.entries) != 1 || u.view.entries[0].Text != "keep this" || !strings.Contains(u.notice, "unavailable") {
-		t.Fatalf("failed clear discarded state: thread=%q entries=%+v notice=%q", u.thread, u.view.entries, u.notice)
+	if u.thread != "main" || u.replacement.pending() || len(u.view.entries) != 1 || u.view.entries[0].Text != "keep this" || !strings.Contains(u.feedback.Text, "unavailable") {
+		t.Fatalf("failed clear discarded state: thread=%q entries=%+v notice=%q", u.thread, u.view.entries, u.feedback.Text)
 	}
 }
 

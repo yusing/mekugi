@@ -89,7 +89,7 @@ func TestAppServerNotificationConfig(t *testing.T) {
 		u.requests["42"] = "config/read"
 		appServerTestMessage(t, u, reply)
 		u.notify("agent-turn-complete", "test")
-		if u.notifications.ready || out.Len() != 0 || u.notice == "" {
+		if u.notifications.ready || out.Len() != 0 || u.feedback.Text == "" {
 			t.Fatal("invalid configuration enabled notifications or hid the error")
 		}
 	}
@@ -217,7 +217,7 @@ func TestAppServerNotificationOutputFailureNonfatal(t *testing.T) {
 	appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"turn"}}}`)
 	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"turn","status":"completed"}}}`)
 	u.notify("agent-turn-complete", "again")
-	if u.turn != "" || !strings.HasPrefix(u.status, "Completed") || failing.calls != 1 || u.notice == "" {
-		t.Fatalf("output failure disrupted completion: turn=%q status=%q calls=%d notice=%q", u.turn, u.status, failing.calls, u.notice)
+	if u.turn != "" || !strings.HasPrefix(u.status, "Completed") || failing.calls != 1 || u.feedback.Text == "" {
+		t.Fatalf("output failure disrupted completion: turn=%q status=%q calls=%d notice=%q", u.turn, u.status, failing.calls, u.feedback.Text)
 	}
 }

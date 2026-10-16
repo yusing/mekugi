@@ -75,7 +75,7 @@ func TestStreamDiagnosticsRequestLog(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = recorder.Close() })
 			recorder.Handler(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-				_ = executeRequest(r.Context(), r.Context(), request, serverMetadataHeaders(t, "turn", nil), "diagnostic-session", provider, io.Discard, NewCriticalErrors(), nil)
+				_ = executeRequest(r.Context(), r.Context(), request, serverMetadataHeaders(t, "turn", nil), "diagnostic-session", provider, io.Discard, testCriticalErrors(), nil)
 			})).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{}`)).WithContext(ctx))
 			data, err := os.ReadFile(debug.Paths()[0])
 			if err != nil {

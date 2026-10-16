@@ -251,8 +251,8 @@ func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 	u.status, u.alert = "Sending…", false
 	if s.attachmentNotice != "" {
 		notice := s.attachmentNotice
-		if strings.HasPrefix(u.notice, "Skill attachment unavailable:") || strings.HasPrefix(u.notice, "Skill catalog incomplete:") {
-			notice = u.notice + " " + notice
+		if strings.HasPrefix(u.feedback.Text, "Skill attachment unavailable:") || strings.HasPrefix(u.feedback.Text, "Skill catalog incomplete:") {
+			notice = u.feedback.Text + " " + notice
 		}
 		u.setNotice(notice, true)
 	}

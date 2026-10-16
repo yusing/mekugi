@@ -3,6 +3,8 @@ package composition
 import (
 	"context"
 
+	"github.com/yusing/mekugi/modules/notifications"
+
 	"github.com/yusing/mekugi/modules/sessionpreferences"
 
 	"github.com/yusing/mekugi/modules/diagnostics"
@@ -32,6 +34,7 @@ import (
 // frontend host. Host observation records remain application contributions.
 func Frontends(ctx context.Context, liveReports bool) (*Runtime, error) {
 	c := Composition{LegacyRecordKinds: router.RetainedRecordKinds()}
+	notifications := c.Add(notifications.Module, func() notifications.Deps { return notifications.Deps{} })
 	transport := c.Add(transportdiagnostics.Module, func() transportdiagnostics.Deps { return transportdiagnostics.Deps{} })
 	metrics := c.Add(agentmetrics.Module, func() agentmetrics.Deps { return agentmetrics.Deps{} })
 	history := c.Add(sessionhistory.Module, func() sessionhistory.Deps { return sessionhistory.Deps{} })
@@ -66,6 +69,7 @@ func Frontends(ctx context.Context, liveReports bool) (*Runtime, error) {
 	runtime.Changes = changes.Value()
 	runtime.History = history.Value()
 	runtime.Preferences = prefs.Value()
+	runtime.Notifications = notifications.Value()
 	runtime.Recovery = recovery.Value()
 	runtime.Segments = segments.Value()
 	return runtime, nil

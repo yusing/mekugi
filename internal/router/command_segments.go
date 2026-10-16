@@ -81,7 +81,7 @@ func (u *appServerUI) commandSegmentRetained(result commandSegmentWrite) {
 
 func (u *appServerUI) commandSegmentRetentionFailed(key [3]string, err error) {
 	if u.issues == nil {
-		u.issues = NewCriticalErrors()
+		return
 	}
 	message := fmt.Sprintf("Command segment history could not be retained for item %s (turn %s). Live output remains available, but this report cannot be restored after restart. Error: %v", key[2], key[1], err)
 	if diagnostic, ok := errors.AsType[*criticalDiagnosticError](err); ok && !strings.Contains(message, diagnostic.summary) {

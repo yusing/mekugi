@@ -60,8 +60,8 @@ func TestAppServerSessionTitleSaveFailureNonfatal(t *testing.T) {
 				request := resumeTestOne(t, wire, "thread/name/set")
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"unavailable"}}`, request.ID))
 			}
-			if u.title != "Confirmed" || u.status != "Working" || u.turn != "active-turn" || u.draft != "unsent input" || u.notice == "" || u.noticeAlert || !u.dirty || len(u.titleRequests) != 0 || len(u.requests) != 0 {
-				t.Fatalf("save failure disturbed session: title=%q status=%q turn=%q draft=%q notice=%q alert=%v dirty=%v", u.title, u.status, u.turn, u.draft, u.notice, u.noticeAlert, u.dirty)
+			if u.title != "Confirmed" || u.status != "Working" || u.turn != "active-turn" || u.draft != "unsent input" || u.feedback.Text == "" || u.feedback.Alert || !u.dirty || len(u.titleRequests) != 0 || len(u.requests) != 0 {
+				t.Fatalf("save failure disturbed session: title=%q status=%q turn=%q draft=%q notice=%q alert=%v dirty=%v", u.title, u.status, u.turn, u.draft, u.feedback.Text, u.feedback.Alert, u.dirty)
 			}
 		})
 	}
@@ -86,8 +86,8 @@ func TestAppServerSessionTitleIdleSaveFailureRepaints(t *testing.T) {
 				request := resumeTestOne(t, wire, "thread/name/set")
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"unavailable"}}`, request.ID))
 			}
-			if !u.dirty || u.notice == "" || u.noticeAlert || u.turn != "" || u.status != "Ready" {
-				t.Fatalf("idle failure will not repaint: dirty=%v notice=%q status=%q", u.dirty, u.notice, u.status)
+			if !u.dirty || u.feedback.Text == "" || u.feedback.Alert || u.turn != "" || u.status != "Ready" {
+				t.Fatalf("idle failure will not repaint: dirty=%v notice=%q status=%q", u.dirty, u.feedback.Text, u.status)
 			}
 		})
 	}
@@ -132,12 +132,12 @@ func TestAppServerSessionTitleSkippedNamingPreservesHostMetadata(t *testing.T) {
 		t.Fatalf("unavailable naming emitted update: %+v", update)
 	default:
 	}
-	if u.dirty || u.notice != "Existing host notice" || wire.Len() != 0 {
-		t.Fatalf("skipped naming changed UI: dirty=%v notice=%q wire=%q", u.dirty, u.notice, wire.String())
+	if u.dirty || u.feedback.Text != "Existing host notice" || wire.Len() != 0 {
+		t.Fatalf("skipped naming changed UI: dirty=%v notice=%q wire=%q", u.dirty, u.feedback.Text, wire.String())
 	}
 	appServerTestMessage(t, u, `{"method":"thread/name/updated","params":{"threadId":"main","threadName":"Saved host title"}}`)
-	if u.title != "Saved host title" || !u.dirty || u.notice != "Existing host notice" || u.status != "Working" || u.turn != "active-turn" || u.draft != "unsent input" || wire.Len() != 0 || len(u.titleRequests) != 0 {
-		t.Fatalf("host metadata after skipped naming: title=%q dirty=%v notice=%q status=%q turn=%q draft=%q wire=%q", u.title, u.dirty, u.notice, u.status, u.turn, u.draft, wire.String())
+	if u.title != "Saved host title" || !u.dirty || u.feedback.Text != "Existing host notice" || u.status != "Working" || u.turn != "active-turn" || u.draft != "unsent input" || wire.Len() != 0 || len(u.titleRequests) != 0 {
+		t.Fatalf("host metadata after skipped naming: title=%q dirty=%v notice=%q status=%q turn=%q draft=%q wire=%q", u.title, u.dirty, u.feedback.Text, u.status, u.turn, u.draft, wire.String())
 	}
 }
 
@@ -246,8 +246,8 @@ func TestAppServerSessionTitleBeforeSessionStart(t *testing.T) {
 func TestAppServerSessionTitleEmptyAndCommandBoundaries(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	appServerTestKeys(t, u, "/title\r")
-	if u.notice != "Usage: /title <title>" || u.draft != "/title " || wire.Len() != 0 {
-		t.Fatalf("empty title: draft=%q notice=%q wire=%q", u.draft, u.notice, wire.String())
+	if u.feedback.Text != "Usage: /title <title>" || u.draft != "/title " || wire.Len() != 0 {
+		t.Fatalf("empty title: draft=%q notice=%q wire=%q", u.draft, u.feedback.Text, wire.String())
 	}
 	if u.titleCommand("/titles wrong") || u.titleCommand("prompt /title wrong") {
 		t.Fatal("non-command interpreted as a rename")
@@ -272,8 +272,8 @@ func TestAppServerSessionTitleManualSaveFailure(t *testing.T) {
 				request := sessionTitleTestOne(t, wire)
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"unavailable"}}`, request.ID))
 			}
-			if u.title != "Saved title" || len(u.titleRenames) != 0 || len(u.titleRequests) != 0 || u.notice == "" || u.noticeAlert || !u.dirty || u.turn != "active-turn" || u.status != "Working" {
-				t.Fatalf("manual save failure: title=%q pending=%v notice=%q turn=%q status=%q", u.title, u.titleRenames, u.notice, u.turn, u.status)
+			if u.title != "Saved title" || len(u.titleRenames) != 0 || len(u.titleRequests) != 0 || u.feedback.Text == "" || u.feedback.Alert || !u.dirty || u.turn != "active-turn" || u.status != "Working" {
+				t.Fatalf("manual save failure: title=%q pending=%v notice=%q turn=%q status=%q", u.title, u.titleRenames, u.feedback.Text, u.turn, u.status)
 			}
 		})
 	}
@@ -300,8 +300,8 @@ func TestAppServerSessionTitleSerializesManualRenames(t *testing.T) {
 				}
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,%s}`, older.ID, response))
 				latest := sessionTitleTestOne(t, wire)
-				if latest.Params.Name != "Latest name" || u.notice != "" {
-					t.Fatalf("queued rename: request=%+v notice=%q", latest, u.notice)
+				if latest.Params.Name != "Latest name" || u.feedback.Text != "" {
+					t.Fatalf("queued rename: request=%+v notice=%q", latest, u.feedback.Text)
 				}
 				if !failed {
 					appServerTestMessage(t, u, `{"method":"thread/name/updated","params":{"threadId":"main","threadName":"Older name"}}`)

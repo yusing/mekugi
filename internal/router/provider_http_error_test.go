@@ -44,11 +44,11 @@ func TestProviderHTTPErrorDetails(t *testing.T) {
 			if !ok || diagnostic.code != "upstream_provider_http_403" || strings.Contains(diagnostic.summary, test.want) {
 				t.Fatalf("unsafe diagnostic: %#v", diagnostic)
 			}
-			issues := NewCriticalErrors()
+			issues := testCriticalErrors()
 			finalization := &requestFinalization{sessionID: "provider", upstreamStatusCode: 403,
 				failurePhase: requestFailureForward, observation: requestObservation{outcome: requestOutcomeFailed}}
 			issues.record(finalization, diagnostic)
-			notices := issues.Pending()
+			notices := issues.Notices.Pending()
 			if len(notices) != 1 || !strings.Contains(notices[0], test.want) || strings.Contains(notices[0], "authentication") {
 				t.Fatalf("provider detail hidden: %v", notices)
 			}
@@ -75,7 +75,7 @@ func TestOpenCodeHTTPErrorDelivery(t *testing.T) {
 						`{"error":{"type":"provider_failure","message":"Useful provider detail provider-secret"}}`))}, nil
 				})},
 			}}
-			issues := NewCriticalErrors()
+			issues := testCriticalErrors()
 			body := openCodeTestRequest(t, service, false)
 			req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
 			req.Header = grokTestHeaders()
@@ -109,7 +109,7 @@ func TestOpenCodeHTTPErrorDelivery(t *testing.T) {
 			if calls != 2 {
 				t.Fatalf("unexpected provider retries: %d", calls)
 			}
-			if notices := strings.Join(issues.Pending(), "\n"); !strings.Contains(notices, "Useful provider detail provider-secret") {
+			if notices := strings.Join(issues.Notices.Pending(), "\n"); !strings.Contains(notices, "Useful provider detail provider-secret") {
 				t.Fatalf("notice missing complete detail: %s", notices)
 			}
 		})
@@ -136,14 +136,14 @@ func TestOpenCodeHTTPErrorBodyLimit(t *testing.T) {
 }
 
 func TestProviderHTTPErrorNoticesStayDistinct(t *testing.T) {
-	issues := NewCriticalErrors()
+	issues := testCriticalErrors()
 	for _, detail := range []string{"first failure", "second failure", "first failure"} {
 		err := newProviderHTTPError("OpenCode Go", 403, []byte(detail))
 		issues.record(&requestFinalization{sessionID: "same", upstreamStatusCode: 403,
 			failurePhase: requestFailureForward, observation: requestObservation{outcome: requestOutcomeFailed}},
 			forwardCriticalDiagnostic(err))
 	}
-	notices := issues.Pending()
+	notices := issues.Notices.Pending()
 	if len(notices) != 2 || !strings.Contains(notices[0], "first failure") ||
 		!strings.Contains(notices[0], "2 times") || !strings.Contains(notices[1], "second failure") {
 		t.Fatalf("distinct errors hidden: %v", notices)

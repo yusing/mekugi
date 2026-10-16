@@ -12,9 +12,11 @@ import (
 func TestCriticalNoticeNeverEntersProviderResponses(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
-			issues := NewCriticalErrors()
+			issues := testCriticalErrors()
 			queueCritical(issues, "session")
-			noticeID := issues.entries[0].id
+			claim := issues.takeNative("session", nil)
+			noticeID := claim.Errors.Messages[0].ID
+			claim.Errors.Finish(false)
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: criticalTestResponse(stream)}}}
 			request := serverRequest(t, func(fields map[string]any) { fields["stream"] = stream })
 			var visible bytes.Buffer
@@ -24,7 +26,7 @@ func TestCriticalNoticeNeverEntersProviderResponses(t *testing.T) {
 			if bytes.Contains(visible.Bytes(), []byte(noticeID)) || bytes.Contains(visible.Bytes(), []byte("Enable supported tools.")) {
 				t.Fatalf("native notice leaked into provider response: %s", visible.Bytes())
 			}
-			if len(issues.Pending()) != 1 {
+			if len(issues.Notices.Pending()) != 1 {
 				t.Fatal("request completion acknowledged a notice before native paint")
 			}
 		})
@@ -55,7 +57,7 @@ func TestPreviouslyGeneratedNoticeReplayUsesDurableExactProvenance(t *testing.T)
 	provider := &serverFakeProvider{results: []serverForwardResult{{response: criticalTestResponse(false)}}}
 	if err := executeRequest(t.Context(), t.Context(), replay,
 		serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}),
-		"fork-session", provider, io.Discard, NewCriticalErrors(), fresh); err != nil {
+		"fork-session", provider, io.Discard, testCriticalErrors(), fresh); err != nil {
 		t.Fatal(err)
 	}
 	if bytes.Contains(provider.forwarded[0], []byte(legacyID)) || !bytes.Contains(provider.forwarded[0], []byte("model-owned")) {

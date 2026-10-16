@@ -61,7 +61,7 @@ func TestDownstreamDisconnectFinalization(t *testing.T) {
 				}
 				f := &requestFinalization{}
 				f.classifyCopyError(err)
-				issues := NewCriticalErrors()
+				issues := testCriticalErrors()
 				f.finish(t.Context(), err, &webSocketOutput{committed: started}, issues)
 				want := requestOutcomeFailed
 				if test.disconnected {
@@ -75,8 +75,8 @@ func TestDownstreamDisconnectFinalization(t *testing.T) {
 				if f.observation.outcome != want {
 					t.Fatalf("started=%v: outcome=%v, want %v", started, f.observation.outcome, want)
 				}
-				if (len(issues.Pending()) == 0) != test.disconnected {
-					t.Fatalf("unexpected notices: %v", issues.Pending())
+				if (len(issues.Notices.Pending()) == 0) != test.disconnected {
+					t.Fatalf("unexpected notices: %v", issues.Notices.Pending())
 				}
 				if test.disconnected && requestCancellationCause(t.Context(), err) != "downstream_disconnected" {
 					t.Fatal("missing disconnect evidence")
@@ -155,7 +155,7 @@ func TestHTTPDownstreamDisconnectFinalization(t *testing.T) {
 					for _, output := range []*trackedResponseWriter{{ResponseWriter: httptest.NewRecorder()}, writer} {
 						f := &requestFinalization{}
 						f.classifyCopyError(requestErr)
-						issues := NewCriticalErrors()
+						issues := testCriticalErrors()
 						f.finish(t.Context(), requestErr, output, issues)
 						if t.Context().Err() != nil {
 							t.Fatal("finalization relied on a canceled context")
@@ -172,8 +172,8 @@ func TestHTTPDownstreamDisconnectFinalization(t *testing.T) {
 						if f.observation.outcome != want || f.failurePhase != requestFailureWriteResponse {
 							t.Fatalf("committed=%v: outcome=%v want %v, phase=%v", output.committed, f.observation.outcome, want, f.failurePhase)
 						}
-						if (len(issues.Pending()) == 0) != test.disconnected {
-							t.Fatalf("unexpected notices: %v", issues.Pending())
+						if (len(issues.Notices.Pending()) == 0) != test.disconnected {
+							t.Fatalf("unexpected notices: %v", issues.Notices.Pending())
 						}
 						if test.disconnected && requestCancellationCause(t.Context(), requestErr) != "downstream_disconnected" {
 							t.Fatal("missing disconnect evidence")
@@ -238,10 +238,10 @@ func TestWebSocketOutputDisconnectBeforeReaderCancellation(t *testing.T) {
 		t.Fatalf("write error=%v, context=%v", err, ctx.Err())
 	}
 	f := &requestFinalization{}
-	issues := NewCriticalErrors()
+	issues := testCriticalErrors()
 	f.finish(ctx, errors.Join(codexresponses.ErrWrite, err), output, issues)
-	if f.observation.outcome != requestOutcomeCanceledAfterResponse || len(issues.Pending()) != 0 {
-		t.Fatalf("disconnect produced outcome %v, notices %v", f.observation.outcome, issues.Pending())
+	if f.observation.outcome != requestOutcomeCanceledAfterResponse || len(issues.Notices.Pending()) != 0 {
+		t.Fatalf("disconnect produced outcome %v, notices %v", f.observation.outcome, issues.Notices.Pending())
 	}
 }
 
@@ -268,10 +268,10 @@ func TestDownstreamDisconnectDuringAnswerStreaming(t *testing.T) {
 	_, err := copySSETransformed(serverErrorWriter{err: disconnected}, reader, transform, &responseHooks{streamDiagnostics: diagnostics})
 	f := &requestFinalization{}
 	f.classifyCopyError(err)
-	issues := NewCriticalErrors()
+	issues := testCriticalErrors()
 	f.finish(t.Context(), err, &webSocketOutput{}, issues)
-	if f.observation.outcome != requestOutcomeCanceledBeforeResponse || len(issues.Pending()) != 0 {
-		t.Fatalf("stream disconnect: %v, outcome %v, notices %v", err, f.observation.outcome, issues.Pending())
+	if f.observation.outcome != requestOutcomeCanceledBeforeResponse || len(issues.Notices.Pending()) != 0 {
+		t.Fatalf("stream disconnect: %v, outcome %v, notices %v", err, f.observation.outcome, issues.Notices.Pending())
 	}
 	if diagnostics.WriteTermination != "downstream_websocket_close_1001" || diagnostics.WriteWebSocketCloseCode != 1001 {
 		t.Fatalf("lost stream diagnostics: %+v", diagnostics)

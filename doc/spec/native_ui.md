@@ -208,7 +208,7 @@ summaries, turn events drive each agent's state, and
 `thread/tokenUsage/updated` supplies token counts. Cost stays with the router's
 usage accounting. The client binds Main's thread in the router's activity collector for scoped
 assignment/message and filter observations. Tool and lifecycle activity comes from
-app-server, never generated commentary. [Router errors](notices.md) render as user-only
+app-server, never generated commentary. [Router errors](../../modules/notifications/SPEC.md) render as user-only
 composer feedback and leave the transcript and provider responses unchanged.
 Cleanup planning and reclaimed-storage progress remain transcript content.
 
@@ -939,8 +939,9 @@ restoration cannot reorder or duplicate input. On exit, stacked input is
 printed with the unsent draft, and unresolved or uncommitted submissions as
 outcome unknown, never resent. Composer notices (router errors, command, paste,
 editor and Ctrl-C feedback) follow the turn state on the composer border without replacing
-it. Non-error feedback clears after three seconds or the next draft edit;
-actionable errors remain until editing or clicking the check button (`[✓]`).
+it. [Notifications](../../modules/notifications/SPEC.md) owns feedback lifetime and
+complete batches. Draft editing clears feedback; the check button (`[✓]`) dismisses
+actionable errors.
 An ellipsis marks omitted error details; clicking a truncated composer error opens
 its complete text, including the full router-error batch, in the shared error dialog.
 Composer feedback stays user-only; model-visible error evidence
@@ -1218,8 +1219,9 @@ without editing configuration. Events are `agent-turn-complete`,
 Only successful live Main completion notifies; pending questions take priority.
 History restoration and duplicate question events do not notify again.
 
-Notifications default to enabled and unfocused-only; `always` also allows them
-while focused. Focus reports are terminal events, never composer or pane input.
+[Notifications](../../modules/notifications/SPEC.md#desktop-eligibility) owns normalized
+enablement, focus and event eligibility. Focus reports are terminal events, never
+composer or pane input.
 `osc9` emits OSC 9 and `bel` emits BEL. `auto` uses OSC 9 in supported terminals
 and Herdr, otherwise BEL; tmux receives passthrough-wrapped OSC 9 outside Herdr.
 Notification text is generic, excluding prompt, answer, tool and secret content.

@@ -74,7 +74,7 @@ func (e requestExecutor) execute(
 	sessionID string,
 ) (requestErr error) {
 	if e.issues == nil {
-		e.issues = NewCriticalErrors()
+		e.issues = NewCriticalErrors(nil)
 	}
 	attempt := newRequestAttempt(e, startCtx, executionCtx, request, headers, sessionID)
 	defer func() { requestErr = attempt.finish(requestErr) }()

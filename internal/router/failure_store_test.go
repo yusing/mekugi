@@ -37,7 +37,7 @@ func TestFailureReferencePersistsWithoutDebugAndResolvesAfterReopen(t *testing.T
 	}
 
 	// No debug output is configured. The ordinary replay store retains the error.
-	issues := NewCriticalErrors()
+	issues := testCriticalErrors()
 	issues.failureStore = store.publication
 	issues.failureLimits = store.retentionLimits()
 	issues.diagnostics = testDiagnostics(nil, nil)
@@ -194,7 +194,7 @@ func TestInspectFailuresRejectsSessionInspectionOptionCombinations(t *testing.T)
 func TestFailurePersistenceLazilyOpensStateDirectory(t *testing.T) {
 	stateHome := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", stateHome)
-	issues := NewCriticalErrors()
+	issues := testCriticalErrors()
 	issues.diagnostics = testDiagnostics(nil, nil)
 	failure := failureStoreTestFinalization("lazy-open-reference")
 
@@ -228,7 +228,7 @@ func TestFailurePersistenceOpenFailureRetainsOnlyNotice(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("XDG_STATE_HOME", stateHome)
-	issues := NewCriticalErrors()
+	issues := testCriticalErrors()
 	issues.diagnostics = testDiagnostics(nil, nil)
 	failure := failureStoreTestFinalization("failed-open-reference")
 
@@ -240,7 +240,7 @@ func TestFailurePersistenceOpenFailureRetainsOnlyNotice(t *testing.T) {
 	if store != nil {
 		t.Fatal("failed state-directory open was cached as a usable failure store")
 	}
-	if pending := strings.Join(issues.Pending(), "\n"); !strings.Contains(pending, "could not retain the failure reference") {
+	if pending := strings.Join(issues.Notices.Pending(), "\n"); !strings.Contains(pending, "could not retain the failure reference") {
 		t.Fatalf("failure-store notice missing: %s", pending)
 	}
 	if files, err := failureRecordFiles(filepath.Join(stateHome, "mekugi", "replay")); err != nil || len(files) != 0 {
@@ -265,7 +265,7 @@ func TestFailureStoreLockTimeoutDoesNotBlockCriticalNoticeAccess(t *testing.T) {
 			t.Fatalf("could not hold managed store lock: locked=%v err=%v", locked, err)
 		}
 
-		issues := NewCriticalErrors()
+		issues := testCriticalErrors()
 		issues.diagnostics = testDiagnostics(nil, nil)
 		failure := failureStoreTestFinalization("lock-timeout-reference")
 		done := make(chan struct{})
@@ -290,7 +290,7 @@ func TestFailureStoreLockTimeoutDoesNotBlockCriticalNoticeAccess(t *testing.T) {
 		accessed := make(chan struct{})
 		go func() {
 			issues.addNotice("session", "concurrent-access", "notice access remained available")
-			_ = issues.Pending()
+			_ = issues.Notices.Pending()
 			close(accessed)
 		}()
 		select {
@@ -307,7 +307,7 @@ func TestFailureStoreLockTimeoutDoesNotBlockCriticalNoticeAccess(t *testing.T) {
 		if elapsed := time.Since(started); elapsed > 5*time.Second {
 			t.Fatalf("failure persistence exceeded timeout headroom: %s", elapsed)
 		}
-		pending := strings.Join(issues.Pending(), "\n")
+		pending := strings.Join(issues.Notices.Pending(), "\n")
 		if !strings.Contains(pending, "could not retain the failure reference") {
 			t.Fatalf("timed-out persistence did not report degradation: %s", pending)
 		}

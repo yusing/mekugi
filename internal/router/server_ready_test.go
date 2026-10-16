@@ -97,7 +97,7 @@ func TestRunSessionDoesNotNotifyOnStartupFailure(t *testing.T) {
 func TestRunSessionServesMetricsWithoutLogging(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	err := testRunSession(testHistory(), testRecovery(), ctx, testCommands(), []string{"--mode", "passthrough"}, NewCriticalErrors(), func(session Session) {
+	err := testRunSession(testHistory(), testRecovery(), ctx, testCommands(), []string{"--mode", "passthrough"}, testCriticalErrors(), func(session Session) {
 		if session.FrontendDirectory != "" {
 			t.Error("passthrough installed frontends")
 		}

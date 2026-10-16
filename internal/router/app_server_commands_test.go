@@ -59,8 +59,8 @@ func TestComposerCommandBoundaries(t *testing.T) {
 	}
 	u, wire := newAppServerTestUI()
 	appServerTestKeys(t, u, "/nonexistent\r")
-	if !u.noticeAlert || !strings.Contains(u.notice, "Unknown command") || len(pickerRequests(t, wire)) != 0 {
-		t.Fatalf("unknown command leaked or lacked feedback: %q", u.notice)
+	if !u.feedback.Alert || !strings.Contains(u.feedback.Text, "Unknown command") || len(pickerRequests(t, wire)) != 0 {
+		t.Fatalf("unknown command leaked or lacked feedback: %q", u.feedback.Text)
 	}
 }
 

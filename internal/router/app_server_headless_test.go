@@ -113,7 +113,7 @@ func TestHeadlessAppServerRejectsHostRequestsAndRPCFailures(t *testing.T) {
 }
 
 func TestHeadlessAppServerIgnoresStaleCompletionAndRejectsFailedTurn(t *testing.T) {
-	h := &headlessAppServer{ctx: t.Context(), issues: NewCriticalErrors(), thread: "main", turn: "current", output: jsontext.NewEncoder(io.Discard)}
+	h := &headlessAppServer{ctx: t.Context(), issues: testCriticalErrors(), thread: "main", turn: "current", output: jsontext.NewEncoder(io.Discard)}
 	for _, params := range []string{
 		`{"threadId":"foreign","turn":{"id":"current","status":"completed"}}`,
 		`{"threadId":"` + h.thread + `","turn":{"id":"stale","status":"completed"}}`,
@@ -130,7 +130,7 @@ func TestHeadlessAppServerIgnoresStaleCompletionAndRejectsFailedTurn(t *testing.
 		if h.completed || h.turn != "current" {
 			t.Fatal("unrelated completion changed current turn")
 		}
-		if len(h.issues.Pending()) != 0 {
+		if len(h.issues.Notices.Pending()) != 0 {
 			t.Fatal("headless recovery left a launcher failure notice")
 		}
 	}

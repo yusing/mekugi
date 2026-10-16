@@ -42,7 +42,7 @@ func startShellEditTestCommand(t *testing.T, u *appServerUI, command, item strin
 		"item": appServerItem{ID: item, Type: "commandExecution", Source: "userShell", Command: command, Status: "inProgress"}})
 	u.shellResponse(nil)
 	if edit != nil && u.shellEdits.running[[2]string{u.thread, item}] != edit {
-		t.Fatalf("shell start was not matched: pending=%+v running=%+v notice=%s", u.shellEdits.pending, u.shellEdits.running, u.notice)
+		t.Fatalf("shell start was not matched: pending=%+v running=%+v notice=%s", u.shellEdits.pending, u.shellEdits.running, u.feedback.Text)
 	}
 	return edit
 }
@@ -82,8 +82,8 @@ func TestAppServerShellEditsRevertApplyReplay(t *testing.T) {
 			t.Fatalf("mutation failed: %s", output)
 		}
 		completeShellEditTestCommand(t, u, item, 0)
-		if u.noticeAlert {
-			t.Fatal(u.notice)
+		if u.feedback.Alert {
+			t.Fatal(u.feedback.Text)
 		}
 		// Duplicate notifications and resumed host history cannot allocate another capture.
 		completeShellEditTestCommand(t, u, item, 0)
@@ -132,8 +132,8 @@ func TestAppServerShellEditsFailedWriterAndNoEffect(t *testing.T) {
 		if u.turn != "model" {
 			t.Fatal("shell completion ended the model turn")
 		}
-		if u.noticeAlert {
-			t.Fatal(u.notice)
+		if u.feedback.Alert {
+			t.Fatal(u.feedback.Text)
 		}
 		history, found, err := u.proxy.replayStore.lookup(u.session.waitContext, u.session.cwd, legacycall.ExecCallID(edit.call, false))
 		if err != nil || !found || history.ExecOutcome.Exit == nil || *history.ExecOutcome.Exit != exit {

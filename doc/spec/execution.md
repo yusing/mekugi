@@ -293,7 +293,7 @@ Normal exit drains accepted writes; cancellation cancels their lock waits.
 Storage failure or a full pending-report bound leaves live presentation available
 without promising restoration. The owning thread receives composer error feedback
 with the host turn/item identity and complete underlying error. Distinct causes
-remain separate; the [notice contract](notices.md) owns access to full details,
+remain separate; the [notice contract](../../modules/notifications/SPEC.md) owns access to full details,
 dismissal, delivery and launcher recovery.
 
 The same matching, host-exit validation, retention and history restoration apply
