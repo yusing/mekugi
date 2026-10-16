@@ -22,6 +22,7 @@ import (
 // bottom_pane/skills_toggle_view.rs:98:299@86be5320b068ef67b56348b02aa8c33706955da6.
 func (u *appServerUI) closeSkillsModal() {
 	p := &u.picker
+	p.toggleOwnsManager = false
 	if p.modal == "manage" {
 		enabled, disabled := p.SkillChanges()
 		if enabled+disabled > 0 {
@@ -40,6 +41,7 @@ func (u *appServerUI) chooseSkillsAction() {
 		p.Dismissed = completion.Target{}
 		u.insertDraft("$")
 	} else {
+		p.toggleOwnsManager = false
 		p.modal, p.Selected, p.Top, p.Query, p.Problem = "manage", 0, 0, "", ""
 		p.Dismissed = completion.Target{}
 		p.Resolved = completion.Target{}
@@ -60,7 +62,13 @@ func (u *appServerUI) toggleSkill() {
 		p.Problem = "Could not save skill: " + err.Error()
 		return
 	}
-	p.toggleID, p.togglePath, p.Problem = id, choice.Path, ""
+	p.toggleID, p.togglePath, p.toggleCwd = id, choice.Path, u.session.cwd
+	p.toggleOwnsManager, p.Problem = p.modal == "manage", ""
+}
+
+func (u *appServerUI) skillSaveOwnsManager() bool {
+	p := &u.picker
+	return p.toggleOwnsManager && p.modal == "manage" && p.toggleCwd == u.session.cwd
 }
 
 func (u *appServerUI) skillToggleResponse(m appserver.Message) {
@@ -68,27 +76,34 @@ func (u *appServerUI) skillToggleResponse(m appserver.Message) {
 	if string(m.ID) != p.toggleID {
 		return
 	}
-	path := p.togglePath
-	p.toggleID, p.togglePath = "", ""
+	path, cwd := p.togglePath, p.toggleCwd
+	ownsManager := u.skillSaveOwnsManager()
+	p.toggleID, p.togglePath, p.toggleCwd, p.toggleOwnsManager = "", "", "", false
+	problem, updated := "", false
 	if m.Error != nil {
-		p.Problem = "Could not save skill: " + m.Error.Message
+		problem = "Could not save skill: " + m.Error.Message
 	} else {
 		var result struct {
 			Enabled bool `json:"effectiveEnabled"`
 		}
 		if err := json.Unmarshal(m.Result, &result); err != nil {
-			p.Problem = "Invalid skill save response: " + err.Error()
+			problem = "Invalid skill save response: " + err.Error()
 		} else {
-			p.SkillSaved(path, result.Enabled)
+			updated = p.SkillSaved(cwd, path, result.Enabled)
 		}
 	}
-	if p.modal != "manage" && p.Problem != "" {
-		u.setNotice(p.Problem, true)
+	if ownsManager {
+		p.Problem = problem
+	} else if problem != "" {
+		u.setNotice(problem, true)
+	}
+	if !updated || cwd != u.session.cwd {
+		return
 	}
 	if p.modal == "manage" {
-		u.picker.FilterSkills(p.Query, u.picker.modal == "manage")
+		p.FilterSkills(p.Query, true)
 	} else if p.Open && p.Target.Kind == '$' {
-		u.picker.FilterSkills(p.Target.Query, u.picker.modal == "manage")
+		p.FilterSkills(p.Target.Query, false)
 	}
 }
 

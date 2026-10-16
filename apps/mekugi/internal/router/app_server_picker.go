@@ -30,15 +30,16 @@ import (
 type composerPicker struct {
 	completion.State
 	terminalui.ChoiceListLayout
-	scanResults          chan pickerScanResult
-	scanCancel           context.CancelFunc
-	scanID               uint64
-	scanTarget           completion.Target
-	scanCwd              string
-	modal                string
-	toggleID, togglePath string
-	rect                 terminalsession.Rect
-	copyTexts            []string
+	scanResults                     chan pickerScanResult
+	scanCancel                      context.CancelFunc
+	scanID                          uint64
+	scanTarget                      completion.Target
+	scanCwd                         string
+	modal                           string
+	toggleID, togglePath, toggleCwd string
+	toggleOwnsManager               bool
+	rect                            terminalsession.Rect
+	copyTexts                       []string
 }
 
 func (u *appServerUI) completionTarget() completion.Target {
@@ -269,6 +270,7 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 				problem += "skills-mgr: " + loadErr.Error()
 			}
 		}
+		p.toggleOwnsManager = false
 		p.Catalog(choices, cwd, available, problem)
 		if p.modal == "manage" && p.Initial == nil {
 			u.picker.RememberSkills()

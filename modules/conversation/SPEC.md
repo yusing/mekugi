@@ -257,6 +257,9 @@ management filters enabled/disabled entries by display/canonical name. Selecting
 toggle saves its native path; enabled state changes only after success, failures stay
 visible, and closing reloads the catalog. Managed references never enter
 `skills/config/write` with invented paths; their configuration belongs to the manager.
+Closing management leaves an already-sent save pending. Its result updates only the
+matching workspace catalog; a late failure remains a notice without replacing the
+new query's error or a reopened manager's error.
 Plugin browsing is outside this picker. Terminal completion and editing controls
 belong to [terminal session](../../apps/mekugi/internal/terminalsession/SPEC.md#composer-controls).
 

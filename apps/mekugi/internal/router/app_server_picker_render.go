@@ -63,7 +63,7 @@ func (u *appServerUI) renderPicker(width, height int) []string {
 		if p.modal == "manage" {
 			band = activityui.UserBand(u.view.Painter.Theme)
 		}
-		return conversationui.Picker(p.View(), &p.ChoiceListLayout, conversationui.PickerOptions{SkillsMenu: p.modal == "menu", Manage: p.modal == "manage", Saving: p.toggleID != "", QueueCompact: strings.TrimSpace(u.Text) == "/compact", Selection: u.pickerSelection(), Band: band}, width, height)
+		return conversationui.Picker(p.View(), &p.ChoiceListLayout, conversationui.PickerOptions{SkillsMenu: p.modal == "menu", Manage: p.modal == "manage", Saving: u.skillSaveOwnsManager(), QueueCompact: strings.TrimSpace(u.Text) == "/compact", Selection: u.pickerSelection(), Band: band}, width, height)
 	}
 	frame := make([]string, height)
 	put := func(y int, text string) {
@@ -109,8 +109,5 @@ func (u *appServerUI) renderPicker(width, height int) []string {
 		rows[i] = terminalui.ChoiceRow{Text: choice.Label(), Description: choice.Description}
 	}
 	p.ChoiceListLayout.Draw(frame, width, first, visible, terminalui.ChoiceListView{Rows: rows, Selected: p.Selected, Selection: u.pickerSelection(), Problem: p.Problem, Loading: p.Loading})
-	if p.toggleID != "" {
-		put(height-2, "  "+dim+"Saving…"+reset)
-	}
 	return frame
 }

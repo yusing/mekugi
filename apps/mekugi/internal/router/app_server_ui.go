@@ -525,6 +525,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		}
 	}()
 	if m.Method == "skills/changed" {
+		u.picker.toggleOwnsManager = false
 		u.picker.SkillsLoaded = false
 		u.picker.SkillsProblem = ""
 		u.picker.Resolved = completion.Target{}

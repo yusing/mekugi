@@ -65,7 +65,7 @@ func TestSkillCatalogFilteringAndAcknowledgedToggle(t *testing.T) {
 	if len(p.Choices) != 2 {
 		t.Fatalf("management must include disabled native entries only: %+v", p.Choices)
 	}
-	p.SkillSaved("/skills/review", true)
+	p.SkillSaved("/workspace", "/skills/review", true)
 	if enabled, disabled := p.SkillChanges(); enabled != 1 || disabled != 0 {
 		t.Fatalf("toggle summary=%d/%d", enabled, disabled)
 	}

@@ -102,13 +102,20 @@ func (p *State) SkillChanges() (enabled, disabled int) {
 	return
 }
 
-func (p *State) SkillSaved(path string, enabled bool) {
+// SkillSaved applies a confirmed write to its catalog without changing the
+// foreground query's error or selection.
+func (p *State) SkillSaved(cwd, path string, enabled bool) bool {
+	if cwd != p.SkillsCwd {
+		return false
+	}
+	updated := false
 	for i := range p.Skills {
 		if p.Skills[i].Path == path {
 			p.Skills[i].Enabled = enabled
+			updated = true
 		}
 	}
-	p.Problem = ""
+	return updated
 }
 
 type View struct {
