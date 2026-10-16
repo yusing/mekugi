@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	activitymodel "github.com/yusing/mekugi/internal/activity"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 )
 
 // Block attaches terminal interaction, layout and retained-output state to
@@ -34,6 +34,7 @@ type Block struct {
 	Owner              string
 	WaitTargets        []WaitTarget // Canonical identity and observed status, not parsed display text.
 	Results            *int
+	Exited             bool   // The host or segment report supplied an exit status.
 	ExitCode           int    // Nonzero command exit; zero means no failure label.
 	Approval           string // Approval outcome, distinct from execution status and exit.
 	BatchExit          bool   // This row owns an invocation-wide exit, not an individual operation's.

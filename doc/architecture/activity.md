@@ -3,7 +3,7 @@
 ## CTR-ACTIVITY-001 — Activity identity and collection
 
 Native session integration in `internal/router` consumes Codex app-server events.
-[Activity content](../../internal/activity/SPEC.md) owns renderer-neutral source
+[Activity content](../../modules/activity/SPEC.md) owns renderer-neutral source
 interpretation and bounded retained output; `internal/ui/activity` owns terminal
 blocks, aggregation, animated tails and painting.
 The [UI boundary](ui.md) owns their

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	activitymodel "github.com/yusing/mekugi/internal/activity"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 
@@ -33,6 +33,7 @@ type liveActivityNativeItem struct {
 	phase              string
 	wait               *activityui.Block // Structured wait progress is roster-only.
 	command, status    string
+	exit               *int   // Observed exit presence is independent of retained output.
 	commandCwd         string // Metadata-owned directory for classified paths and receipt refreshes.
 	commandTimeout     string // Explicit timeout from available invocation input.
 	approval           string // UI decision, independent of the host execution result.
@@ -87,7 +88,7 @@ func (v *liveActivityView) applyAppServerItem(live bool, cwd, main, thread, turn
 		return
 	}
 	entry := activityPaneEntry{Seq: v.lastSeq + 1, Agent: "Main", Kind: "text", Text: item.Text, Observed: v.now(),
-		native: &liveActivityNativeItem{thread: thread, turn: turn, item: id, phase: method, live: live, command: item.Command, status: item.Status, duration: appServerDuration(item)}}
+		native: &liveActivityNativeItem{thread: thread, turn: turn, item: id, phase: method, live: live, command: item.Command, status: item.Status, exit: item.ExitCode, duration: appServerDuration(item)}}
 	if thread != main {
 		entry.Agent = "Thread " + thread
 	}

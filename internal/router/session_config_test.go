@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
@@ -28,7 +30,7 @@ func TestRunSessionReusesParsedConfigWithIndependentDebugOutputs(t *testing.T) {
 		var paths []string
 		var readLog string
 		// RunSession returns only after cancellation has joined its owned work.
-		err := RunSession(testHistory(), testPreferences(), testRecovery(), &segmentservice.Service{Reports: testReports()}, testChanges(), newTestUsage(t), new(evidence.Service), new(transportcapture.Service), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), ctx, testCommands(), testInputProjections(), testGuidance(), testNaming(), testGuards(), options, nil, func(session Session) {
+		err := RunSession(new(activitymodel.Service), testHistory(), testPreferences(), testRecovery(), &segmentservice.Service{Reports: testReports()}, testChanges(), newTestUsage(t), new(evidence.Service), new(transportcapture.Service), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), ctx, testCommands(), testInputProjections(), testGuidance(), testNaming(), testGuards(), options, nil, func(session Session) {
 			readLog = session.AXReadOutput
 			cancel()
 		}, func(artifacts []string) { paths = artifacts })

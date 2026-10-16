@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/providers/openai"
 
@@ -132,7 +134,7 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 		if err := pty.Setsize(outer, &pty.Winsize{Cols: 160, Rows: 30}); err != nil {
 			t.Fatal(err)
 		}
-		wait, err := startAppServerUI(testHistory(), testPreferences(), testReports(), runCtx, command(runCtx), inner, inner, nil, nil, resume, true, nil, nil, nil, "", naming, false)
+		wait, err := startAppServerUI(new(activitymodel.Service), testHistory(), testPreferences(), testReports(), runCtx, command(runCtx), inner, inner, nil, nil, resume, true, nil, nil, nil, "", naming, false)
 		if err != nil {
 			t.Fatal(err)
 		}

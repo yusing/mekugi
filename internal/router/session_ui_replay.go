@@ -14,6 +14,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/scope"
+
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -26,6 +30,7 @@ import (
 )
 
 type uiReplayPlayback struct {
+	activity              *activitymodel.Service
 	paintedAt             time.Time
 	source                *sessionUIReplay
 	ui                    *appServerUI
@@ -44,8 +49,8 @@ type replayDiscard struct{ io.Writer }
 
 func (replayDiscard) Close() error { return nil }
 
-func newUIReplayPlayback(ctx context.Context, source *sessionUIReplay, speed float64) *uiReplayPlayback {
-	p := &uiReplayPlayback{source: source, ctx: ctx, speed: speed, until: source.End.Sub(source.Start)}
+func newUIReplayPlayback(activity *activitymodel.Service, ctx context.Context, source *sessionUIReplay, speed float64) *uiReplayPlayback {
+	p := &uiReplayPlayback{activity: activity, source: source, ctx: ctx, speed: speed, until: source.End.Sub(source.Start)}
 	p.reset()
 	return p
 }
@@ -60,7 +65,7 @@ func (p *uiReplayPlayback) reset() {
 	p.position, p.paintedAt = 0, time.Time{}
 	// The real message/projector/render path, but no app-server process, router,
 	// replay store, filesystem observers, input submission, or notification sink.
-	u := &appServerUI{ctx: p.ctx, client: &appserver.Client{Input: replayDiscard{io.Discard}}, view: newLiveActivityView(), agents: newLiveActivityView(), thread: p.source.Thread, status: "Replay", requests: make(map[string]string), clock: func() time.Time { return p.at }, replay: p}
+	u := &appServerUI{session: appServerSession{activity: p.activity}, ctx: p.ctx, client: &appserver.Client{Input: replayDiscard{io.Discard}}, view: newLiveActivityView(), agents: newLiveActivityView(), thread: p.source.Thread, status: "Replay", requests: make(map[string]string), clock: func() time.Time { return p.at }, replay: p}
 	u.view.clock, u.agents.clock = u.clock, u.clock
 	u.session.start(p.source.Thread, p.source.Cwd)
 	for id := range p.source.Threads {
@@ -79,6 +84,7 @@ func (p *uiReplayPlayback) reset() {
 func (p *uiReplayPlayback) close() {
 	p.ui.shell.diff.close()
 	p.ui.shell.diffScreen.Close()
+	p.ui.session.state = scope.Store{}
 }
 
 func (p *uiReplayPlayback) advance(position time.Duration) error {
@@ -308,7 +314,7 @@ func replaySpeedStep(speed float64, faster bool) float64 {
 
 // RunSessionUIReplay is an offline entry point. It shares the native presenter,
 // but constructs no host, upstream connection, execution capability, or store.
-func RunSessionUIReplay(service *history.Service, diagnostics *transportcapture.Service, ctx context.Context, args []string, stdin, stdout, stderr *os.File) (code int) {
+func RunSessionUIReplay(activity *activitymodel.Service, service *history.Service, diagnostics *transportcapture.Service, ctx context.Context, args []string, stdin, stdout, stderr *os.File) (code int) {
 	f := flag.NewFlagSet("replay-session", flag.ContinueOnError)
 	f.SetOutput(stderr)
 	session := f.String("session", "", "Codex session ID (required; searches CODEX_HOME or ~/.codex)")
@@ -371,7 +377,7 @@ func RunSessionUIReplay(service *history.Service, diagnostics *transportcapture.
 	for _, failure := range source.HookUnavailable {
 		fmt.Fprintf(stderr, "Coverage: hook history unavailable (%s).\n", failure)
 	}
-	p := newUIReplayPlayback(ctx, source, *speed)
+	p := newUIReplayPlayback(activity, ctx, source, *speed)
 	defer p.close()
 	p.from, p.until = *from, *until
 	if err = p.seek(*from); err != nil {

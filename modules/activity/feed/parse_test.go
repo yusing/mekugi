@@ -1,10 +1,10 @@
-package activity_test
+package feed_test
 
 import (
 	"reflect"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/activity"
+	activity "github.com/yusing/mekugi/modules/activity/feed"
 )
 
 func TestParseOperations(t *testing.T) {

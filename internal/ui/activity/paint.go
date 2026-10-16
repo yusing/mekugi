@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	activitymodel "github.com/yusing/mekugi/internal/activity"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 )
 
 const (

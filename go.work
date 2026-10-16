@@ -20,6 +20,7 @@ use (
 	./libraries/sourceanalysis
 	./libraries/terminalui
 	./libraries/textsanitize
+	./modules/activity
 	./modules/agentguidance
 	./modules/agentmetrics
 	./modules/boundedcommand

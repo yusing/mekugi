@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
 	"github.com/charmbracelet/x/ansi"
@@ -194,7 +196,7 @@ func TestHookObservationRestartResumeAndReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	playback := newUIReplayPlayback(t.Context(), source, 1)
+	playback := newUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
 	t.Cleanup(playback.close)
 	if err := playback.advance(playback.until); err != nil {
 		t.Fatal(err)

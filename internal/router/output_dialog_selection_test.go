@@ -8,7 +8,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
-	activitymodel "github.com/yusing/mekugi/internal/activity"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
@@ -20,7 +20,7 @@ func outputSelectionFixture(text string, live bool) (*terminalUI, *activitymodel
 		output.Finish(nil, new(0))
 	}
 	u := dialogForOutput(output)
-	u.main = &appServerUI{view: newLiveActivityView()}
+	u.main = &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: newLiveActivityView()}
 	drawOutputDialog(u)
 	return u, output
 }
@@ -176,7 +176,7 @@ func TestOutputDialogSkillMarkdownSearchSelectionAndCopy(t *testing.T) {
 	output.Write(source)
 	output.Finish(nil, new(0))
 	u := dialogForOutput(output)
-	u.main = &appServerUI{view: newLiveActivityView()}
+	u.main = &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: newLiveActivityView()}
 	block := activityui.Block{Content: activitymodel.ParseOperation("Skill `example`")}
 	block.Output = output
 	u.output.pages[0] = block

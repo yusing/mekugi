@@ -19,6 +19,8 @@ import (
 	"testing"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/providers/openai"
 
@@ -48,7 +50,7 @@ func startThirdPartyResumeTerminal(t *testing.T, newCommand func(context.Context
 	if err != nil {
 		t.Fatal(err)
 	}
-	wait, err := startAppServerUI(testHistory(), testPreferences(), testReports(), ctx, newCommand(ctx), inner, inner, nil, nil, thread, true, nil, nil, argv, "", nil, false)
+	wait, err := startAppServerUI(new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, newCommand(ctx), inner, inner, nil, nil, thread, true, nil, nil, argv, "", nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}

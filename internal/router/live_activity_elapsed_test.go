@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -24,7 +26,7 @@ func TestLiveActivityElapsedFormatting(t *testing.T) {
 		t.Run(tc.want+"/"+tc.age.String(), func(t *testing.T) {
 			now := start.Add(tc.age)
 			for _, status := range []string{"Waiting", "Working"} {
-				u := appServerUI{view: &liveActivityView{}, turn: "active", status: status, turnStarted: start}
+				u := appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: &liveActivityView{}, turn: "active", status: status, turnStarted: start}
 				if got := ansi.Strip(u.sessionLabel(now)); !strings.HasSuffix(got, " "+tc.want) {
 					t.Fatalf("composer = %q, want elapsed %q", got, tc.want)
 				}

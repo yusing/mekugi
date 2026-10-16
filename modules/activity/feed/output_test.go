@@ -1,4 +1,4 @@
-package activity
+package feed
 
 import (
 	"slices"

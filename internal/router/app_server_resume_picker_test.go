@@ -226,6 +226,7 @@ func TestAppServerResumePickerSearchFilterAndPages(t *testing.T) {
 
 func TestAppServerResumeSwitchesSession(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
+	outputs := u.session.activity.Outputs(&u.session.state)
 	appServerTestUserMessage(t, u, "old-user", "", "old transcript")
 	appServerTestKeys(t, u, "/resume\r")
 	list := resumeTestOne(t, w, "thread/list")
@@ -256,6 +257,9 @@ func TestAppServerResumeSwitchesSession(t *testing.T) {
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"saved","turnId":"old","item":{"type":"agentMessage","id":"answer","text":"Saved answer"}}}`)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"model":"model","thread":{"id":"saved","cwd":"/work","turns":[{"id":"old","status":"completed","items":[{"type":"userMessage","id":"question","content":[{"type":"text","text":"Saved question"}]},{"type":"agentMessage","id":"answer","text":"Saved answer"}]}]}}}`, resume.ID))
 	methods := resumeTestSettle(t, u, w)
+	if u.session.activity.Outputs(&u.session.state) == outputs {
+		t.Fatal("confirmed replacement retained the old activity scope")
+	}
 	if len(methods) == 0 || methods[0] != "thread/unsubscribe" || !slices.Contains(methods, "model/list") {
 		t.Fatalf("switch follow-up requests: %v", methods)
 	}
@@ -291,6 +295,7 @@ func TestAppServerResumeSwitchesSession(t *testing.T) {
 
 func TestAppServerResumeSwitchFailureKeepsSession(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
+	outputs := u.session.activity.Outputs(&u.session.state)
 	appServerTestUserMessage(t, u, "old-user", "", "keep this")
 	appServerTestKeys(t, u, "/resume missing\r")
 	resume := resumeTestPrepared(t, u, w)
@@ -306,6 +311,9 @@ func TestAppServerResumeSwitchFailureKeepsSession(t *testing.T) {
 	appServerTestKeys(t, u, "\r")
 	if start := resumeTestOne(t, w, "turn/start"); start.Params.ThreadID != "main" {
 		t.Fatalf("input after failed switch targeted %q", start.Params.ThreadID)
+	}
+	if u.session.activity.Outputs(&u.session.state) != outputs {
+		t.Fatal("failed replacement discarded activity state")
 	}
 }
 

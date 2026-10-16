@@ -270,7 +270,7 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 				if v0.Agent == entry.Agent && v0.CallID == entry.CallID && entry.CallID != "" {
 					code, _ := strconv.Atoi(entry.Text)
 					blocks := commandExitBlocks(v.entries[i].blocks, code, entry.outputTail, entry.outputOmit)
-					setCommandTiming(blocks, v0.activityPaneEntry)
+					setCommandFacts(blocks, v0.activityPaneEntry)
 					v.replaceEntry(i, v0.activityPaneEntry, blocks)
 					break
 				}
@@ -289,7 +289,7 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 					continue
 				}
 				entry.Seq = prior.Seq
-				blocks[0].ExitCode = v.entries[i].blocks[0].ExitCode
+				blocks[0].ExitCode, blocks[0].Exited = v.entries[i].blocks[0].ExitCode, v.entries[i].blocks[0].Exited
 				for _, annotation := range v.entries[i].blocks[1:] {
 					if annotation.BatchExit {
 						blocks = retainBatchResult(blocks, annotation)

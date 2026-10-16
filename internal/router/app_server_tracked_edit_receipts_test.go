@@ -99,7 +99,7 @@ func TestAppServerTrackedEditReceiptPreservesSegments(t *testing.T) {
 			for _, source := range sources {
 				segments = append(segments, commandSegment{source: source, text: execSegmentText(source)})
 			}
-			output := u.session.outputs.New()
+			output := u.session.activity.Outputs(&u.session.state).New()
 			output.Finish(new("edit diagnostic"), new(0))
 			segments[0].output = output
 			segments[2].exit, segments[2].tail = 2, []string{"test failed"}
@@ -147,7 +147,7 @@ func TestUISnapshotTrackedEditReceiptOutputSourceOnlyInDialog(t *testing.T) {
 	var segments []commandSegment
 	for i, source := range []string{"cat > a.go", "go vet ./...", "cat > b.go"} {
 		line := strings.Fields(source)[len(strings.Fields(source))-1] + " diagnostic"
-		output := u.session.outputs.New()
+		output := u.session.activity.Outputs(&u.session.state).New()
 		output.Finish(new(line), new(0))
 		elapsed := time.Duration(i+1) * time.Second
 		segments = append(segments, commandSegment{source: source, text: execSegmentText(source), output: output, tail: []string{line},
@@ -235,7 +235,7 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 			u := newAppServerSessionTestUI(t, workspace)
 			u.proxy = &mekugiProxy{replayStore: store}
 			item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc 'cat > a.go; cat > b.go; go test ./...'", ExitCode: new(2), AggregatedOutput: new("test failed")}
-			output := u.session.outputs.New()
+			output := u.session.activity.Outputs(&u.session.state).New()
 			output.Finish(new("test failed"), new(2))
 			u.retainCommandSegments(activityPaneEntry{native: &liveActivityNativeItem{thread: thread, turn: "turn", item: item.ID}}, item,
 				execTrackView{complete: true, output: true, code: 2, segments: []commandSegment{{}, {}, {exit: 2, output: output}}})
@@ -270,7 +270,7 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 func TestAppServerTrackedEditReceiptKeepsSiblingCombinedOutput(t *testing.T) {
 	for _, tail := range [][]string{nil, {"host diagnostic"}} {
 		u := newAppServerSessionTestUI(t, t.TempDir())
-		output := u.session.outputs.New()
+		output := u.session.activity.Outputs(&u.session.state).New()
 		output.Finish(new("host diagnostic"), new(0))
 		command := "cat > a.go; cat > b.go"
 		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{

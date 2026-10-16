@@ -5,7 +5,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
-	activitymodel "github.com/yusing/mekugi/internal/activity"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	json "encoding/json/v2"
 	"strconv"

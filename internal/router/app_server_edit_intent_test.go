@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/libraries/commandargs"
@@ -238,7 +240,7 @@ func TestAppServerEditIntentLiveAndRestored(t *testing.T) {
 				assertCapturedCommand(t, view, thread, "cmd", "Move", 0)
 				if method == "item/completed" {
 					finishPacing(u.view, u.agents)
-					if got := mainFeed(&appServerUI{view: view}, 100); !strings.Contains(got, "shell batch · exit 2") {
+					if got := mainFeed(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: view}, 100); !strings.Contains(got, "shell batch · exit 2") {
 						t.Fatalf("batch failure missing: %s", got)
 					}
 				}

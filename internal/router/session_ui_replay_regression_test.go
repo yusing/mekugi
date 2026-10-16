@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
@@ -32,7 +34,7 @@ func TestSessionUIReplayRetainsQuestionAnswerWait(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := newUIReplayPlayback(t.Context(), source, 4)
+	p := newUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 4)
 	t.Cleanup(p.close)
 	var wire bytes.Buffer
 	p.ui.client.Input = replayDiscard{Writer: &wire}
@@ -66,7 +68,7 @@ func TestSessionUIReplayReasoningUsesRecordedItemStart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := newUIReplayPlayback(t.Context(), source, 1)
+	p := newUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
 	t.Cleanup(p.close)
 	for _, step := range []struct {
 		at   time.Duration
@@ -117,7 +119,7 @@ func TestSessionUIReplayRustAgentStatusShapesReachFinalWaitDisplay(t *testing.T)
 			t.Errorf("%s normalized status = %q, want %q", id, normalized[id].Status, status)
 		}
 	}
-	p := newUIReplayPlayback(t.Context(), source, 1)
+	p := newUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
 	t.Cleanup(p.close)
 	if err := p.advance(p.until); err != nil {
 		t.Fatal(err)
@@ -199,7 +201,7 @@ func TestSessionUIReplayItemlessForkTurnUsesSettingsBoundary(t *testing.T) {
 			t.Fatalf("incorrect turn owner: %+v", event)
 		}
 	}
-	p := newUIReplayPlayback(t.Context(), source, 1)
+	p := newUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
 	t.Cleanup(p.close)
 	if err := p.advance(2 * time.Second); err != nil {
 		t.Fatal(err)
@@ -232,7 +234,7 @@ func TestSessionUIReplayEndPaintSettlesQueuedCommandOutput(t *testing.T) {
 		{At: start.Add(500 * time.Millisecond), Method: "item/commandExecution/outputDelta", Params: appServerEvent{ThreadID: "root", TurnID: "turn", ItemID: command.ID, Delta: output}},
 		{At: end, Method: "item/completed", Params: appServerEvent{ThreadID: "root", TurnID: "turn", ItemID: command.ID, Item: completed}},
 	}}
-	p := newUIReplayPlayback(t.Context(), source, 1)
+	p := newUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
 	t.Cleanup(p.close)
 	p.ui.view.painter.Theme, p.ui.agents.painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
 	if err := p.advance(500 * time.Millisecond); err != nil {

@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
@@ -79,7 +81,7 @@ type Session struct {
 
 // RunSession owns the private router for one wrapped Codex process.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func RunSession(service *history.Service, prefs *preferences.Service, recovered *recovery.Service, segments *segmentservice.Service, changes changes.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, guards []binding.ShellApproval, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
+func RunSession(activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, recovered *recovery.Service, segments *segmentservice.Service, changes changes.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, guards []binding.ShellApproval, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
 	if diagnostics == nil && options.captureOutput != "" {
 		return errors.New("transport diagnostics are unavailable")
 	}
@@ -398,7 +400,7 @@ func RunSession(service *history.Service, prefs *preferences.Service, recovered 
 			if debug != nil {
 				debugDirectory = filepath.Dir(debug.Paths()[0])
 			}
-			return startAppServerUI(service, prefs, segments.Reports, ctx, cmd, stdin, stdout, mekugiCalls, issues, resumeThread, faint, provider.serviceTiers, capture, resumeArgv, debugDirectory, provider.titleGenerator, approvals)
+			return startAppServerUI(activity, service, prefs, segments.Reports, ctx, cmd, stdin, stdout, mekugiCalls, issues, resumeThread, faint, provider.serviceTiers, capture, resumeArgv, debugDirectory, provider.titleGenerator, approvals)
 		}
 		if mekugiCalls != nil && mekugiCalls.nativeTrace != nil {
 			session.NativeTraceDirectory = mekugiCalls.nativeTrace.directory

@@ -8,8 +8,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
-	activitymodel "github.com/yusing/mekugi/internal/activity"
 	"github.com/yusing/mekugi/libraries/diffrender"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"

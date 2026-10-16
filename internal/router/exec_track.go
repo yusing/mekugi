@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	activitymodel "github.com/yusing/mekugi/internal/activity"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 
@@ -743,7 +743,7 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 	if run.completion != nil {
 		view, _ := u.execTrack.view(key, false, func(source string) string {
 			return execSegmentTextInDirectory(source, run.entry.native.commandCwd)
-		}, &s.outputs)
+		}, s.activity.Outputs(&s.state))
 		if !view.ended && time.Since(run.completedAt) < execTrackCompletionWait {
 			return nil, true
 		}
@@ -757,7 +757,7 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 	}
 	view, changed := u.execTrack.view(key, false, func(source string) string {
 		return execSegmentTextInDirectory(source, run.entry.native.commandCwd)
-	}, &s.outputs)
+	}, s.activity.Outputs(&s.state))
 	if !u.execTrack.tracking(key) {
 		return nil, false
 	}
@@ -792,7 +792,7 @@ func (u *appServerUI) trackedCommandDone(key [3]string, entry activityPaneEntry,
 	now := time.Now()
 	view, _ := u.execTrack.view(key, true, func(source string) string {
 		return execSegmentTextInDirectory(source, appServerCommandDirectory(item, u.session.cwd))
-	}, &u.session.outputs)
+	}, u.session.activity.Outputs(&u.session.state))
 	if !view.complete || item.ExitCode == nil || view.code != *item.ExitCode || len(view.segments) == 0 {
 		return u.session.commandDone(entry, item, now)
 	}

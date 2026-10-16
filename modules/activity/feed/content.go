@@ -1,4 +1,4 @@
-package activity
+package feed
 
 // Source: internal/ui/activity/blocks.go:18:83@[3c06e4fa] semantic content.
 // Content is renderer-neutral text and target data. Host adapters also use it

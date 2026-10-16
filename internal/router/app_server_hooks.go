@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	activitymodel "github.com/yusing/mekugi/internal/activity"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
@@ -118,10 +118,12 @@ func (s *appServerSession) hookEntry(thread string, observation retainedHookObse
 	if run.DurationMS != nil {
 		n.duration = time.Duration(*run.DurationMS) * time.Millisecond
 	}
-	n.output = s.outputs.New()
-	n.output.Write(observation.Output)
-	if !n.running {
-		n.output.Finish(nil, nil) // Hook status does not imply a shell exit.
+	if outputs := s.activity.Outputs(&s.state); outputs != nil {
+		n.output = outputs.New()
+		n.output.Write(observation.Output)
+		if !n.running {
+			n.output.Finish(nil, nil) // Hook status does not imply a shell exit.
+		}
 	}
 	label := run.EventName
 	if run.StatusMessage != "" { // The host's description of what the hook does.

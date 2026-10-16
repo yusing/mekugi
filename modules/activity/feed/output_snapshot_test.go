@@ -1,11 +1,11 @@
-package activity_test
+package feed_test
 
 import (
 	"reflect"
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/activity"
+	activity "github.com/yusing/mekugi/modules/activity/feed"
 )
 
 func TestOutputSnapshotSurvivesStreamFinishAndRelease(t *testing.T) {

@@ -16,7 +16,7 @@ there is one implementation and one retained store.
 
 The initial descriptor surface supports typed dependencies, executable command
 contributions, record-kind contributions, capability requirements, and stateless,
-invocation, or host-operation lifetimes.
+invocation, attached-session, or host-operation lifetimes.
 Composition validates the complete list before construction: unique identities
 and command names, dependency presence and order, lifecycle consistency, and
 required capabilities. Optional unavailable mechanisms remain explicit gaps.
@@ -37,9 +37,16 @@ feature schemas remain with their owners. Its constructed service is passed to
 live sessions, standalone frontend workers, and offline readers. Backend-neutral
 descriptors do not register a Codex binding.
 
-There are no placeholder feature modules. Observation callbacks, scoped stores,
-and presentation contracts are introduced with their real consumers
-in the [target design](../design/modular-monorepo.md).
+The application owns the memory store for each attached session. Modules keep
+private typed keys into that store, so one module cannot read another's entries.
+Entries are initialized on first use, and replacing the store creates fresh state.
+Access is serialized by the attachment owner; stores and keys are not copied after
+use. Attached-session modules acquire no invocation resources and have no Start/Stop.
+The activity module uses this boundary for Main and child output retention.
+
+Observation callbacks and plain presentation contributions remain with their
+current consumers until extracted; scoped output ownership alone does not replace
+the router's feed, dialog or event reconciliation.
 
 The import check enforces the extracted workspace boundaries. Libraries declare
 only the allowed library relationships; contracts depend on no local implementation;

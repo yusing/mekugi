@@ -6,6 +6,7 @@ import (
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	jsonv1 "encoding/json"
 	"maps"
@@ -220,7 +221,7 @@ func TestAppServerCapturedEditsPreserveTrackedExits(t *testing.T) {
 			t.Fatalf("receipt overwrote per-command statuses: %+v", blocks)
 		}
 	}
-	got := mainFeed(&appServerUI{view: v}, 100)
+	got := mainFeed(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: v}, 100)
 	if strings.Count(got, "exit 1") != 1 || !strings.Contains(got, "git cherry-pick · exit 1") {
 		t.Fatalf("receipt changed rendered failure ownership:\n%s", got)
 	}

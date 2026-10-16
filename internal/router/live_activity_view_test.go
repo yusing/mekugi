@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	activitymodel "github.com/yusing/mekugi/internal/activity"
 	"github.com/yusing/mekugi/libraries/diffrender"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 

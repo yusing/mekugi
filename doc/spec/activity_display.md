@@ -69,7 +69,7 @@ through `mchanges`.
 A path too wide for its row gives way before the row's other parts: it drops
 whole leading directories behind `…/`, keeping its nearest directories and file
 name, or elides the middle of the name itself when that alone is too wide; below
-a readable width it wraps instead. [Parsed operations](../../internal/activity/SPEC.md)
+a readable width it wraps instead. [Parsed operations](../../modules/activity/SPEC.md)
 supply receipt source inheritance, unavailable-target labels and generated edit-body
 omission. Tool-managed files occupy one row in their source's `Edited` group.
 Main also folds repeated confirmed edits of one path within
@@ -329,7 +329,7 @@ a selection before a later Esc closes the dialog. Wheel, arrow, page, and
 Home/End scrolling preserve the frozen selection, including off-screen rows.
 Changing pages, navigating search, or resizing clears it; End resumes live
 following when there is no selection. The footer offers no drag-selection hint.
-[Retained activity output](../../internal/activity/SPEC.md#retained-output) owns
+[Retained activity output](../../modules/activity/SPEC.md#retained-output) owns
 content bounds, completed outcomes and session retention independently of the
 animated tail. Dropped lines have a visible count. A released page says so and
 shows its bounded display tail instead. When tracked output loses attribution or

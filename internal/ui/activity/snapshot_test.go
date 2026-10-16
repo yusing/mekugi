@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	activitymodel "github.com/yusing/mekugi/internal/activity"
 	"github.com/yusing/mekugi/libraries/diffrender"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -99,21 +99,21 @@ func TestUISnapshotActivityOutputDialog(t *testing.T) {
 	}{
 		{
 			name: "notification_timing", width: 80, height: 15,
-			block: Block{Kind: "op", Verb: "Run", Label: "combined output", Code: "pwd; rg --files", NotificationTiming: true,
+			block: Block{Kind: "op", Verb: "Run", Label: "combined output", Code: "pwd; rg --files", NotificationTiming: true, Exited: true,
 				Started: time.Date(2026, 10, 2, 3, 4, 7, 94000000, time.UTC),
 				Ended:   time.Date(2026, 10, 2, 3, 4, 7, 196000000, time.UTC), Duration: 268 * time.Millisecond,
 				Tail: []string{"/workspace", "setup.sh"}},
 		},
 		{
 			name: "segment_timing", width: 80, height: 15,
-			block: Block{Kind: "op", Verb: "Run", Code: "pwd", Segment: true,
+			block: Block{Kind: "op", Verb: "Run", Code: "pwd", Segment: true, Exited: true,
 				Started: time.Date(2026, 10, 2, 3, 4, 7, 94000000, time.UTC),
 				Ended:   time.Date(2026, 10, 2, 3, 4, 7, 196000000, time.UTC), Duration: 102 * time.Millisecond,
 				Tail: []string{"/workspace"}},
 		},
 		{
 			name: "failed_output", width: 64, height: 14, position: "2 / 3",
-			block: Block{Kind: "op", Verb: "Run", Code: "printf 'one\\ntwo\\n'\nexit 2", ExitCode: 2, Duration: 125 * time.Millisecond,
+			block: Block{Kind: "op", Verb: "Run", Code: "printf 'one\\ntwo\\n'\nexit 2", Exited: true, ExitCode: 2, Duration: 125 * time.Millisecond,
 				Tail: []string{"one", "two"}, TailOmitted: 9},
 		},
 		{

@@ -12,7 +12,9 @@ import (
 	"strings"
 	"time"
 
-	activitymodel "github.com/yusing/mekugi/internal/activity"
+	"github.com/yusing/mekugi/contracts/scope"
+
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
@@ -43,7 +45,8 @@ type appServerSession struct {
 	metadata        map[string]string                  // Child thread → pending metadata request ID; empty when settled.
 	commands        map[[3]string]*appServerCommandRun // Live commands by thread, turn, item.
 	summaries       map[[3]string]*appServerSummaryRun // Public summaries pacing through the same frame cadence.
-	outputs         activitymodel.Retention            // Command output the output dialog reads, bounded across the session.
+	activity        *activitymodel.Service
+	state           scope.Store
 	cwd             string
 	waits           map[[3]string][]appServerWaitTarget // Start-time targets by thread, turn, item.
 	waitStore       *mekugiReplayStore
@@ -461,7 +464,9 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 				if item.Type == "commandExecution" {
 					native.running, native.commandStarted = true, now
 					if run := s.commands[key]; run == nil {
-						native.output = s.outputs.New()
+						if outputs := s.activity.Outputs(&s.state); outputs != nil {
+							native.output = outputs.New()
+						}
 						s.commands[key] = &appServerCommandRun{entry: entry, instant: instantOperations(entry.Text)}
 					} else {
 						native.output = run.entry.native.output
@@ -801,11 +806,15 @@ func (s *appServerSession) retainOutput(native *liveActivityNativeItem, item app
 	if item.Type != "commandExecution" {
 		return
 	}
+	native.exit = item.ExitCode
+	if s.activity == nil {
+		return
+	}
 	if run := s.commands[[3]string{native.thread, native.turn, native.item}]; run != nil {
 		native.output = run.entry.native.output
 	}
 	if native.output == nil {
-		native.output = s.outputs.New()
+		native.output = s.activity.Outputs(&s.state).New()
 	}
 	native.output.Finish(item.AggregatedOutput, item.ExitCode)
 }
