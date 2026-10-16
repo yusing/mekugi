@@ -27,7 +27,7 @@ func (e *providerHTTPError) Error() string {
 	return message
 }
 
-func newProviderHTTPError(label string, status int, body []byte, _ ...http.Header) error {
+func newProviderHTTPError(label string, status int, body []byte) error {
 	raw := string(body)
 	detail := strings.TrimSpace(string(body))
 	var envelope struct {
@@ -73,7 +73,7 @@ func newProviderHTTPError(label string, status int, body []byte, _ ...http.Heade
 
 // terminalProviderError extracts caller-facing details without exporting them
 // through sanitized stream diagnostics or changing delivery of the original event.
-func terminalProviderError(payload []byte, stream bool, headers http.Header) error {
+func terminalProviderError(payload []byte, stream bool) error {
 	var envelope struct {
 		Status   int            `json:"status"`
 		Response jsontext.Value `json:"response"`
@@ -102,5 +102,5 @@ func terminalProviderError(payload []byte, stream bool, headers http.Header) err
 	if (len(detail.Error) == 0 || string(detail.Error) == "null") && detail.Message == "" {
 		return nil
 	}
-	return newProviderHTTPError("Upstream response failed", status, body, headers)
+	return newProviderHTTPError("Upstream response failed", status, body)
 }

@@ -132,7 +132,7 @@ func (a *requestAttempt) prepare() error {
 		if !stream && a.response.StatusCode >= http.StatusBadRequest {
 			a.finalization.providerFailure = newProviderHTTPError("Upstream response", a.response.StatusCode, payload)
 		} else {
-			a.finalization.providerFailure = terminalProviderError(payload, stream, a.headers)
+			a.finalization.providerFailure = terminalProviderError(payload, stream)
 		}
 	}
 	a.metadata, a.metadataValid = decodeCodexTurnMetadata(a.headers)

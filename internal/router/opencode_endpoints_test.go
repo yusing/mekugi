@@ -243,16 +243,6 @@ func TestOpenCodeResponsesRefusal(t *testing.T) {
 	}
 }
 
-func TestOpenCodeSessionAffinity(t *testing.T) {
-	first := openCodeSessionID("opencode-go", "thread-a")
-	if first == "" || first != openCodeSessionID("opencode-go", "thread-a") ||
-		first == openCodeSessionID("opencode-go", "thread-b") ||
-		first == openCodeSessionID("opencode-zen", "thread-a") ||
-		strings.Contains(first, "thread-a") || openCodeSessionID("opencode-go", "") != "" {
-		t.Fatal("provider-scoped stable thread identity is not isolated")
-	}
-}
-
 func TestOpenCodeMessagesCombinesReasoningAndStructuredOutput(t *testing.T) {
 	service := openCodeTestService(t, map[string]opencode.Metadata{"test": {Format: "anthropic", Efforts: []string{"high"}}})
 	tr, err := translateProviderRequest([]byte(`{

@@ -53,8 +53,8 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Shared shell instrumentation | `./libraries/shellinstrumentation/... ./libraries/commandanalysis/...`, plus router `ExecTrack`, `VCSGuard`, `Sudo` and guard-display consumers |
 | Shell/source execution-scope classification | `./libraries/commandanalysis/... ./libraries/sourceanalysis/sourceparse ./internal/execscope`, plus router observation, native trace, preview, and display tests |
 | OpenAI transport, pool lifetime and Codex request shaping | `./providers/openai/... ./libraries/httptransport/... ./backends/codex/responses`, plus router `Provider`, `WebSocket`, `Models`, `CodexAuxiliary`, timeout/cancellation and capture consumers |
-| Provider credentials and model metadata | `./providers/grok/... ./providers/opencode/...`, plus router and launcher `Grok`, `OpenCode`, `ThirdParty`, and accounting consumers |
-| Provider request encoding and stream normalization | `./backends/codex/responses ./libraries/modelprotocol/...`, plus router Grok/OpenCode integration and capture tests |
+| Third-party credentials, metadata and inference transport | `./providers/grok/... ./providers/opencode/... ./libraries/httptransport`, plus router and launcher `Grok`, `OpenCode`, `ThirdParty`, provider-error and accounting consumers |
+| Provider request encoding, stream normalization and response-body bridge | `./backends/codex/responses ./libraries/modelprotocol/...`, plus router Grok/OpenCode integration, cancellation, failed-terminal and capture tests |
 | Optional session naming | `./modules/sessionnaming/...`, plus router `SessionTitle`, `NativeSessionTitle`, `TerminalTitle`, and submitted-assignment consumers; installed persistence/resume cases in `app_server_session_title_codex_e2e_test.go` |
 | Inactive instruction loading | `./modules/contextreset/...`, plus router selected-skill acquisition and attachment consumers |
 | Reserved MCP transport | `./libraries/mcptransport`, plus application worker/bridge dispatch and tagged guard-outage fixtures |

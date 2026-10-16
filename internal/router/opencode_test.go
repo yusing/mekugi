@@ -164,7 +164,7 @@ func TestOpenCodeRoutesAndCredentials(t *testing.T) {
 						if request.URL.String() != service.Endpoint || request.Header.Get("Authorization") != "Bearer "+service.APIKey {
 							t.Error("wrong endpoint or credential")
 						}
-						if request.Header.Get("x-opencode-session") != openCodeSessionID(service.Prefix, "child-thread") {
+						if request.Header.Get("x-opencode-session") != openCodeTestChildSessionIDs[service.Prefix] {
 							t.Error("stable provider-scoped session identity missing")
 						}
 						for _, name := range []string{openai.AccountIDHeader, codexresponses.ThreadIDHeader, codexresponses.SubagentHeader, codexresponses.TurnMetadataHeader} {
@@ -484,4 +484,10 @@ func TestEveryEmbeddedGoModelHasAnEndpoint(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Fixed wire fixtures for the child-thread identity used by routing tests.
+var openCodeTestChildSessionIDs = map[string]string{
+	"opencode-go":  "mekugi-8e83a0c5d15e6eabd13205400fefbf3a459361acadb52197444c792e71839539",
+	"opencode-zen": "mekugi-90b8d63d82801fc35cd7beb0238f3758dfd91fbf10123116d8670bbc929b45c4",
 }

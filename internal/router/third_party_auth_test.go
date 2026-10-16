@@ -89,7 +89,7 @@ func TestThirdPartyOpenCodeExecutionWithoutCodexAuthentication(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls.Add(1)
 				assertThirdPartyHeaderIsolation(t, r.Header, service.APIKey)
-				if r.Header.Get("x-opencode-session") != openCodeSessionID(service.Prefix, "child-thread") {
+				if r.Header.Get("x-opencode-session") != openCodeTestChildSessionIDs[service.Prefix] {
 					t.Error("missing provider-scoped session identity")
 				}
 				var wire map[string]any

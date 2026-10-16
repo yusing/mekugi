@@ -56,9 +56,8 @@ func TestTerminalProviderErrorNotices(t *testing.T) {
 }
 
 func TestTerminalProviderErrorCompletenessAndCaptureIsolation(t *testing.T) {
-	headers := http.Header{"Authorization": {"Bearer credential-secret"}}
 	payload := []byte(`{"type":"error","status":400,"error":{"message":"actual detail credential-secret\u001b\n"}}`)
-	err := terminalProviderError(payload, true, headers)
+	err := terminalProviderError(payload, true)
 	if err == nil || !strings.Contains(err.Error(), "actual detail credential-secret\x1b\n") {
 		t.Fatalf("incomplete provider error: %v", err)
 	}
@@ -75,7 +74,7 @@ func TestTerminalProviderErrorCompletenessAndCaptureIsolation(t *testing.T) {
 			sessionID: "same", failurePhase: requestFailureTerminalValidation,
 			upstreamTerminalState: responseTerminalFailed,
 			observation:           requestObservation{outcome: requestOutcomeFailed},
-			providerFailure:       terminalProviderError(body, true, nil),
+			providerFailure:       terminalProviderError(body, true),
 		}, nil)
 	}
 	notices := issues.Pending()
@@ -84,7 +83,7 @@ func TestTerminalProviderErrorCompletenessAndCaptureIsolation(t *testing.T) {
 		t.Fatalf("distinct causes were merged: %q", notices)
 	}
 	body, _ := json.Marshal(map[string]any{"type": "error", "message": strings.Repeat("x", 3000)})
-	if err := terminalProviderError(body, true, nil); err == nil || !strings.Contains(err.Error(), strings.Repeat("x", 3000)) {
+	if err := terminalProviderError(body, true); err == nil || !strings.Contains(err.Error(), strings.Repeat("x", 3000)) {
 		t.Fatalf("provider error truncated: %v", err)
 	}
 }

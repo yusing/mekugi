@@ -1,11 +1,11 @@
-# OpenCode configuration and model metadata
+# OpenCode configuration, metadata and inference transport
 
 ## Ownership
 
 Own service credentials, catalog acquisition, immutable request snapshots, model
-capabilities, and price metadata. The application selects the cache path and
-loads invocation configuration. It also owns Codex catalog projection, inference
-transport, protocol policy, and usage accounting described by the
+capabilities, price metadata, and authenticated inference transport. The application
+selects the cache path and loads invocation configuration. It also owns Codex
+catalog projection, protocol policy, and usage accounting described by the
 [OpenCode route](../../doc/spec/opencode.md).
 
 ## Catalog and credentials
@@ -56,6 +56,22 @@ their respective service. Keys are trimmed; an explicitly empty environment valu
 disables that service. Nonempty keys enable catalog registration and routing in
 standalone `mekugi` only, not `mekugi codex` or `mekugi grok`. No new command-line flag, credential-store write, or Codex config
 rewrite is introduced.
+
+## Inference
+
+Go requests use `https://opencode.ai/zen/go/v1` with `/chat/completions`, `/messages`
+or `/responses` according to the pinned model's format. Zen uses the same formats
+beneath `https://opencode.ai/zen/v1`. Chat and Responses use the selected
+service's Bearer key; Messages uses `x-api-key` and `anthropic-version: 2023-06-01`.
+A provider-scoped hash of the stable thread ID is sent as `x-opencode-session`
+for routing/cache affinity. It survives restart without sharing identities
+between services or threads; absent thread identity does not borrow another session.
+Other Codex account/session headers remain excluded. Redirects are not followed,
+and there is no authentication retry.
+
+The transport sends already-encoded bytes. Final rejected responses and accepted
+body lifetime use the shared [HTTP exchange](../../libraries/httptransport/SPEC.md).
+Codex response framing and price accounting remain with their respective owners.
 
 ## Lifetime and failures
 

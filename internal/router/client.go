@@ -208,12 +208,12 @@ func copyUpstreamBodyTransformed(writer io.Writer, response *http.Response, stre
 	} else {
 		terminalState, err = copyJSONTransformed(writer, response.Body, transformer, hooks)
 	}
-	// The Grok adapter emits a failed terminal before closing its local pipe.
+	// The response bridge emits a failed terminal before closing its local pipe.
 	// SSE copying stops at that terminal, so retrieve its producer error without
 	// draining a provider stream or waiting after a downstream write failure.
 	if err == nil && terminalState == responseTerminalFailed {
-		if body, ok := response.Body.(*grokResponseBody); ok && body.terminalError != nil {
-			err = body.terminalError()
+		if body, ok := response.Body.(*grokResponseBody); ok {
+			err = body.TerminalError()
 		}
 	}
 	if err != nil {

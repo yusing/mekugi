@@ -31,6 +31,13 @@ sanitized diagnostic classification remains separate. A consumer write failure
 prevents a second terminal write. Stream failure and optional upstream closure
 preserve the original error for request accounting.
 
+The response bridge exposes either the successful terminal JSON object or the
+Responses SSE stream. Closing a streaming bridge cancels the request before
+closing its source and joins the producer. A failed terminal retains the original
+producer error separately, so a consumer can finish terminal delivery without
+draining upstream or losing cancellation/timeout accounting. Non-stream producer
+failure returns an error instead of a successful response.
+
 ## OpenAI request shaping
 
 The adapter selects the existing Codex identity, capability, and routing headers.

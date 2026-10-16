@@ -33,9 +33,11 @@ meaning, publication, compatibility, and adoption by a viewing thread.
 [Bounded commands](../../modules/boundedcommand/SPEC.md) own foreground output
 selection and return delivery omissions to the frontend host.
 
-The [OpenAI provider](../../providers/openai/SPEC.md) owns upstream exchanges;
-[HTTP primitives](../../libraries/httptransport/SPEC.md) share body lifetime mechanics.
-Codex request shaping belongs to the [backend adapter](../../backends/codex/responses/SPEC.md).
+The [OpenAI](../../providers/openai/SPEC.md), [Grok](../../providers/grok/SPEC.md)
+and [OpenCode](../../providers/opencode/SPEC.md) providers own upstream exchanges;
+[HTTP primitives](../../libraries/httptransport/SPEC.md) share response admission
+and body lifetime mechanics. Codex request shaping and response framing belong
+to the [backend adapter](../../backends/codex/responses/SPEC.md).
 
 ## Inventory
 

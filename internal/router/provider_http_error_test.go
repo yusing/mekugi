@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 
-	"github.com/yusing/mekugi/providers/openai"
-
 	"github.com/yusing/mekugi/providers/opencode"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -38,9 +36,7 @@ func TestProviderHTTPErrorDetails(t *testing.T) {
 		{"controls", `{"error":{"message":"before\u001bafter\u202eend"}}`, "before\x1bafter\u202eend"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			err := newProviderHTTPError("OpenCode Go", 403, []byte(test.body),
-				http.Header{"Authorization": {"Bearer provider-secret"}},
-				http.Header{"Authorization": {"Bearer caller-secret"}, http.CanonicalHeaderKey(openai.AccountIDHeader): {"account-secret"}})
+			err := newProviderHTTPError("OpenCode Go", 403, []byte(test.body))
 			if !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("missing detail: %v", err)
 			}
@@ -203,14 +199,4 @@ func TestOpenCodeHTTPErrorReadCancellation(t *testing.T) {
 			t.Fatalf("cancellation lost: %v, elapsed %s", err, time.Since(start))
 		}
 	})
-}
-
-func TestProviderHTTPErrorPreservesCredentialTextFromProvider(t *testing.T) {
-	for _, scheme := range []string{"Bearer", "bearer", "bEaReR"} {
-		err := newProviderHTTPError("OpenCode", 403, []byte(`{"error":{"message":"caller-secret provider-secret"}}`),
-			http.Header{"Authorization": {scheme + " caller-secret"}, "X-Api-Key": {"provider-secret"}})
-		if !strings.Contains(err.Error(), "caller-secret provider-secret") {
-			t.Fatalf("provider error text changed for %s: %v", scheme, err)
-		}
-	}
 }

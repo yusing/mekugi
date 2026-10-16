@@ -1,11 +1,12 @@
-# Grok credentials
+# Grok authentication and inference transport
 
 ## Ownership
 
 Own API-key selection, OAuth credential reads, trusted discovery, token refresh,
-and credential publication. The application selects the credential path and
-configured HTTP transport. Grok owns interactive login. Native model selection,
-request retries and inference remain with the [Grok route](../../doc/spec/grok.md).
+credential publication, and authenticated inference transport. The application
+selects the credential path and configured HTTP transport. Grok owns interactive
+login. Native model selection and protocol policy remain with the
+[Grok route](../../doc/spec/grok.md).
 
 ## Authentication
 
@@ -21,6 +22,20 @@ and preserves unrelated accounts and fields. Rejected-token refresh reuses a
 newer token already published by another lock holder. OAuth discovery and token
 requests never follow redirects.
 
+## Inference
+
+Inference sends the supplied encoded request only to the selected credential
+destination. It never forwards Codex credentials or internal headers. API-key
+requests use the public xAI API; OAuth requests use the Grok CLI proxy and carry
+the selected model override. Build Fast requires OAuth.
+
+A rejected OAuth token closes the first response before refreshing and retries
+once with the same request bytes. API-key requests do not retry authentication.
+Inference never follows redirects. Transport failures retain their underlying
+cause, including cancellation after refresh. Final rejected responses and accepted
+body lifetime use the shared [HTTP exchange](../../libraries/httptransport/SPEC.md).
+Codex response framing belongs to the backend adapter, not this transport.
+
 ## Lifetime and failure
 
 Authentication is invocation-local. HTTP clients are copied before enforcing
@@ -33,6 +48,6 @@ another provider's authentication.
 
 Provider tests cover shared-store preservation and rotation, concurrent refresh,
 trusted discovery, API-key precedence, and redirect rejection. Application tests
-cover startup selection, one rejected-token retry, Build Fast eligibility, and
-credential isolation through actual inference. Same-process lock tests do not
+cover startup selection, one rejected-token retry, Build Fast eligibility,
+credential isolation and cancellation through actual inference. Same-process lock tests do not
 establish interoperability with a concurrently running Grok CLI.

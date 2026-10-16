@@ -36,10 +36,9 @@ a self-contained assignment; projection never changes submitted arguments.
 
 Grok uses the public xAI API with `XAI_API_KEY` or the Grok CLI OAuth proxy.
 `--grok-auth-file` selects the OAuth file; otherwise the current user's Grok store
-is selected. The [credential specification](../../providers/grok/SPEC.md) owns precedence,
-refresh, trusted discovery, and store publication. The application retries one
-rejected OAuth token. `grok-4.7-build-fast` requires OAuth and fails locally for
-API-key requests; proxy requests carry the selected model override.
+is selected. The [provider specification](../../providers/grok/SPEC.md) owns
+credential precedence, refresh, trusted discovery, store publication,
+authenticated inference and the OAuth-only Build Fast restriction.
 
 The adapter preserves supported text/image messages, plaintext agent messages, custom/function tool
 calls and their identities/results, parallel calls, structured output, reasoning effort and usage.

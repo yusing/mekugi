@@ -7,17 +7,7 @@ OpenCode follows the shared [third-party native-agent routing contract](third_pa
 OpenCode Go and compatible Zen models use `opencode-go:<model>` and
 `opencode-zen:<model>`. Their [provider specification](../../providers/opencode/SPEC.md)
 owns service configuration, key precedence, catalog discovery, cached metadata,
-request pinning, and refresh behavior.
-
-Go requests use `https://opencode.ai/zen/go/v1` with `/chat/completions`, `/messages`
-or `/responses` according to the model's endpoint. Zen uses the same formats
-beneath `https://opencode.ai/zen/v1`. Chat and Responses use the selected
-service's Bearer key; Messages uses `x-api-key` and `anthropic-version: 2023-06-01`.
-A provider-scoped hash of the stable thread ID is sent as `x-opencode-session`
-for routing/cache affinity. It survives router restart without sharing identities
-between services or threads; absent thread identity does not borrow another session.
-Other Codex account/session headers remain excluded. Redirects are not followed, and there is no
-authentication retry.
+request pinning, refresh behavior, authenticated endpoints and session affinity.
 
 Cost estimates use the request-selected online rates, including cache reads,
 cache writes and explicit context-tier thresholds. Explicit zero rates are free;

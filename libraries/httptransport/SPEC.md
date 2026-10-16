@@ -18,6 +18,15 @@ upstream read inactivity, excluding consumer backpressure. It closes the source
 once and retains timeout, cancellation, and source-error identity together.
 Prefix restoration makes bounded inspection transparent to the next reader.
 
+A final-response exchange links request startup cancellation until an accepted
+response is available. Accepted body reads then follow execution cancellation,
+not the expired startup deadline. The sender owns any authentication retry and
+returns its final response. Final rejection reads remain startup-cancelable,
+are bounded to 8 KiB and five seconds, and close the response. Unreadable or
+oversized details have an explicit explanation. Rejection status and bytes remain
+available to the caller's error policy; this library does not format provider
+notices or classify application diagnostics.
+
 ## Acceptance
 
 Provider and router consumers cover cancellation, idle reads, partial bytes,

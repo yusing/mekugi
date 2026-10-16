@@ -165,7 +165,6 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 		auth := grok.NewAuth(path, apiKey, httptransport.Client(nil))
 		if _, authErr := auth.Credentials(ctx); authErr == nil {
 			client := httptransport.Client(nil)
-			client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 			client.Transport = capture.Transport(client.Transport)
 			provider.grok = &grokClient{httpClient: client, auth: auth, unprefixed: grokEnabled, streamIdleTimeout: options.streamIdleTimeout}
 		} else if grokEnabled {
@@ -189,7 +188,6 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 	provider.opencode = make(map[string]*grokClient)
 	for _, service := range openCode.Services() {
 		client := httptransport.Client(nil)
-		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 		client.Transport = capture.Transport(client.Transport)
 		provider.opencode[service.Prefix] = &grokClient{httpClient: client, openCode: &service, streamIdleTimeout: options.streamIdleTimeout}
 	}

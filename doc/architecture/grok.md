@@ -3,8 +3,9 @@
 ## CTR-GROK-001 — Grok bridge ownership
 
 The launcher owns Grok's invocation-local Codex model-catalog entry and private catalog lifecycle.
-The router owns Grok route selection, xAI and Grok CLI authentication adaptation,
-translation policy, and provider usage accounting. The shared provider codec owns
+The router owns Grok route selection, translation policy, and provider usage
+accounting. The [Grok provider](../../providers/grok/SPEC.md) owns authentication
+and inference transport. The shared provider codec owns
 Chat Completions translation, wire tool aliases, and stream normalization as defined
 by the [shared provider boundary](third_party.md).
 
