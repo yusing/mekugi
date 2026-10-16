@@ -57,7 +57,7 @@ func (h *appServerLifecycle) acceptsInput() bool {
 
 func (h *appServerLifecycle) acceptsShell() bool {
 	return !h.replacement.pending() && h.shellCommand.pending.text == "" &&
-		h.shellCommand.origin == nil && !h.starting() &&
+		h.shellCommand.origin == nil && !h.starting() && !h.compaction.Pending() &&
 		!h.appServerInputOperation.pending() && h.interruption.target == "" &&
 		!h.steerInterruptAckPending
 }

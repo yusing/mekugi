@@ -886,6 +886,8 @@ its output, and owns interruption and durable command/result history. While
 Main is working, Codex injects the command and output into that turn. Otherwise
 they remain in history for the next user input without starting a model reply.
 Ordinary input submitted during a standalone shell run waits for its completion.
+While manual compaction is pending, a shell submission stays in the composer for
+retry once compaction settles.
 Rejected submissions return to an empty composer with an error; if a later draft
 exists, the rejected command is saved separately in input history instead of
 turning that draft into executable shell text. Acknowledgements do

@@ -73,6 +73,50 @@ func TestAppServerShellIdleCompletionDoesNotStartModel(t *testing.T) {
 	}
 }
 
+func TestAppServerShellWaitsForCompaction(t *testing.T) {
+	for _, phase := range []string{"running", "completion-before-ack", "prerequisite-completion-before-ack"} {
+		t.Run(phase, func(t *testing.T) {
+			u, wire := newAppServerTestUI()
+			prerequisite := strings.HasPrefix(phase, "prerequisite")
+			if prerequisite {
+				appServerTestTurn(t, u, "work")
+			}
+			appServerTestKeys(t, u, "/compact\r")
+			method := "thread/compact/start"
+			if prerequisite {
+				method = "turn/interrupt"
+			}
+			request := appServerOneRequest(t, wire, method, "")
+			acknowledgement := fmt.Sprintf(`{"id":%d,"result":{}}`, request.ID)
+			if phase == "running" {
+				appServerTestMessage(t, u, acknowledgement)
+			}
+			if prerequisite {
+				appServerTestTurnEnd(t, u, "work", "interrupted")
+			} else {
+				appServerTestTurn(t, u, "compact")
+				if phase == "completion-before-ack" {
+					appServerTestTurnEnd(t, u, "compact", "completed")
+				}
+			}
+			appServerTestKeys(t, u, "!pwd\r")
+			if wire.Len() != 0 || u.draft != "!pwd" || u.feedback.Text == "" {
+				t.Fatalf("shell overtook compaction: wire=%s draft=%q notice=%q", wire.String(), u.draft, u.feedback.Text)
+			}
+			if prerequisite {
+				return // Existing busy-turn shell coverage checks ordinary Main admission.
+			}
+			if phase == "running" {
+				appServerTestTurnEnd(t, u, "compact", "completed")
+			} else {
+				appServerTestMessage(t, u, acknowledgement)
+			}
+			appServerTestKeys(t, u, "\r")
+			btwTestRequest(t, wire, "thread/shellCommand", "main")
+		})
+	}
+}
+
 func TestAppServerShellRejectedAndEmpty(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestKeys(t, u, "!\r")
