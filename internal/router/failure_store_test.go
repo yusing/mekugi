@@ -18,6 +18,15 @@ import (
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 )
 
+func TestFailureInspectionHelpDisclosesPrivateErrors(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	status := RunSessionInspection(nil, nil, nil, t.Context(), []string{"--help"}, &stdout, &stderr)
+	if status != 0 || !strings.Contains(stderr.String(), "--failures includes complete private errors") ||
+		!strings.Contains(stderr.String(), "request content or credentials") || strings.Contains(stderr.String(), "sanitized failures") {
+		t.Fatalf("help status=%d output=%q", status, stderr.String())
+	}
+}
+
 func TestFailureReferencePersistsWithoutDebugAndResolvesAfterReopen(t *testing.T) {
 	directory := t.TempDir()
 	store, err := openMekugiReplayStore(directory)
@@ -29,7 +38,7 @@ func TestFailureReferencePersistsWithoutDebugAndResolvesAfterReopen(t *testing.T
 	issues := NewCriticalErrors()
 	issues.failureStore = store
 	const secret = "Authorization Bearer failure-store-secret"
-	const prompt = "private request body that must not be retained"
+	const prompt = "private request body retained in the error"
 	wrapped := fmt.Errorf("translate prompt %q: %w", prompt,
 		criticalDiagnostic(errors.New(secret), "mekugi_sse:invalid_json", "the response could not be translated", false))
 	failure := &requestFinalization{
@@ -86,7 +95,7 @@ func TestFailureReferencePersistsWithoutDebugAndResolvesAfterReopen(t *testing.T
 	if err := json.Unmarshal(stdout.Bytes(), &resolved); err != nil {
 		t.Fatalf("resolve output is not JSON: %s: %v", stdout.String(), err)
 	}
-	if len(resolved) != 1 || resolved[0].Reference != failure.diagnosticReference {
+	if len(resolved) != 1 || resolved[0].Reference != failure.diagnosticReference || resolved[0].Error != wrapped.Error() {
 		t.Fatalf("resolved failures = %+v", resolved)
 	}
 
