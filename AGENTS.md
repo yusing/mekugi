@@ -36,12 +36,12 @@ acceptance cases, not a blanket request to implement every listed concern.
   separate.
   Persist completed evidence/output before exposing dependent references. Failures and missing
   coverage are not success, zero, or no-ops. Replay validates retained facts without rerunning tools.
-  See [capture](docs/contracts/change-evidence.md), [changes](modules/changehistory/SPEC.md), and [storage](doc/architecture/boundary.md).
+  See [capture](docs/contracts/change-evidence.md), [changes](modules/changehistory/SPEC.md), and [publication](docs/contracts/record-publication.md).
 - **Scope/isolation:** resolve filesystem operands from selected metadata, never router cwd;
   reject relative operands without it. Keep request views, thread identity, workspace replay, and
   process resources separate; reclaim only owned resources and protect running/shared dependencies.
   Mekugi-owned reads and copies retain caller authorization; cross-thread input retains its
-  originating authority. See [boundary](doc/architecture/boundary.md) and
+  originating authority. See [authority and publication](docs/contracts/record-publication.md) and
   [activity identity](doc/architecture/activity.md).
 - **Continuity:** preserve existing behavior for affected forks, side threads, switching, and
   fresh resume. Restore inherited authorization from durable records/visible history, never live

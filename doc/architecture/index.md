@@ -10,7 +10,7 @@ pjdoc:
     - ../../docs/contracts/composition.md
     - ui.md
     - activity.md
-    - boundary.md
+    - ../../docs/contracts/record-publication.md
     - ../../apps/mekugi/internal/frontends/SPEC.md
     - execution.md
     - ../../modules/transportdiagnostics/SPEC.md
@@ -49,7 +49,7 @@ resume evidence and renderer-keyed persistence.
 - [`CTR-ACTIVITY-001`](activity.md): activity identity, collection, and native integration
 - [`CTR-ACTIVITY-002`](activity.md): bounded native child history pages
 - [`CTR-USAGE-001`](../../modules/usage/SPEC.md): provider accounting ownership
-- [`CTR-BOUNDARY-001`](boundary.md): filesystem, history, and output authority
+- [Retained publication](../../docs/contracts/record-publication.md): filesystem authority, cross-owner publication, and continuity
 - [`CTR-PLUGIN-001`](../../apps/mekugi/internal/frontends/SPEC.md): authenticated executable catalog
 - [`CTR-EXECUTION-001`](execution.md): host-owned editing and process lifecycle
 - [Transport diagnostics](../../modules/transportdiagnostics/SPEC.md): capture-owned transport metrics

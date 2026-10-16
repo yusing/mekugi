@@ -77,7 +77,7 @@ fixture; the installed-host acceptance drives the real loader directly.
 Stock `apply_patch` and `exec_command` remain Codex-owned. The router uses
 selected workspace metadata only for bounded observation and durable review
 scope, not to authorize or execute a patch. See the
-[filesystem boundary](architecture/boundary.md) and
+[retained authority](../docs/contracts/record-publication.md) and
 [stock execution](spec/execution.md) contracts.
 
 ### Interpret end-to-end evidence

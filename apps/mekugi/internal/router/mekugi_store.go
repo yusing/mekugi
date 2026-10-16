@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/recordtransactions"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/libraries/persistence"
@@ -151,20 +152,25 @@ func (s *mekugiReplayStore) put(ctx context.Context, workspace string, histories
 		return nil
 	}
 	s = s.scoped(ctx)
-	return s.locked(ctx, func(s *mekugiReplayStore) error {
+	if s.transaction != nil {
+		return errors.New("nested replay publication transaction")
+	}
+	updates, err := recordtransactions.PublishEvidence(ctx, s.changeScope(), s.changes, workspace, changePublications(histories), func(tx *history.Transaction) error {
+		writer := *s
+		writer.transaction = tx
 		for _, id := range slices.SortedFunc(maps.Keys(histories), func(a, b string) int {
 			return cmp.Or(cmp.Compare(histories[a].sequence, histories[b].sequence), strings.Compare(a, b))
 		}) {
-			if err := s.write(replayRecord{Version: 1, Workspace: workspace, CallID: id, History: durableHistory(histories[id])}); err != nil {
+			if err := writer.write(replayRecord{Version: 1, Workspace: workspace, CallID: id, History: durableHistory(histories[id])}); err != nil {
 				return err
 			}
 		}
-		updates, err := s.changes.Publish(s.transaction, s.changeScope(), workspace, changePublications(histories))
-		if err == nil {
-			s.notifyChanges(updates)
-		}
-		return changeError(err)
+		return nil
 	})
+	if err == nil {
+		s.notifyChanges(updates)
+	}
+	return changeError(err)
 }
 
 // Upstream completion may add fields or finalize status after an SSE item is

@@ -21,7 +21,8 @@ Evidence is retained before change membership, references or completed receipts
 become usable. Storage failure cannot advertise durable evidence. Completed
 results first visible in a compaction request are reconciled before forwarding
 can discard them, without injecting replay carriers or edit notices into that
-payload. Missing workspace metadata permits only the thread's unique retained
+payload. Observation failure reports missing evidence without blocking provider
+compaction. Missing workspace metadata permits only the thread's unique retained
 workspace; ambiguity cannot establish scope.
 
 New records retain bounded inline file evidence. Private workspace checkpoints

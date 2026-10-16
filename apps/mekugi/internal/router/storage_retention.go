@@ -5,12 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/recordtransactions"
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 
 	"github.com/yusing/mekugi/libraries/legacycall"
@@ -156,53 +155,32 @@ func (s *mekugiReplayStore) retainInput(ctx context.Context, workspace string, r
 	if s.session.Thread == "" {
 		return nil
 	}
-	return s.locked(ctx, func(s *mekugiReplayStore) error {
-		var names []string
-		for call := range histories {
-			names = append(names, legacycall.Name(workspace, call, false))
+	if s.transaction != nil {
+		return errors.New("nested replay publication transaction")
+	}
+	input := recordtransactions.Input{Workspace: workspace, ReleaseSnapshot: releaseSnapshot}
+	for call, item := range histories {
+		input.Files = append(input.Files, legacycall.Name(workspace, call, false))
+		input.Changes = append(input.Changes, item.ChangeID)
+	}
+	var items []map[string]json.RawMessage
+	_ = json.Unmarshal(raw, &items)
+	for _, item := range items {
+		if responses.StringField(item, "type") == "message" {
+			input.OptionalFiles = append(input.OptionalFiles, legacycall.Name(workspace, responses.StringField(item, "id"), true))
 		}
-		var items []map[string]json.RawMessage
-		_ = json.Unmarshal(raw, &items)
-		for _, item := range items {
-			if responses.StringField(item, "type") == "message" {
-				name := legacycall.Name(workspace, responses.StringField(item, "id"), true)
-				if info, err := os.Lstat(filepath.Join(s.directory, name)); err == nil && info.Mode().IsRegular() {
-					names = append(names, name)
-				}
-			}
-		}
-		if err := s.initializeHandleScope(names, releaseSnapshot); err != nil {
-			return err
-		}
-		var ids []string
-		for _, item := range histories {
-			ids = append(ids, item.ChangeID)
-		}
-		dependencies, err := s.changes.Dependencies(s.changeScope(), workspace, ids, true)
-		if err != nil {
-			return err
-		}
-		names = append(names, dependencies...)
-		for _, match := range retainedReadReference.FindAllStringSubmatch(string(raw), -1) {
-			session, err := s.recoverySession(ctx)
-			if err != nil {
-				return err
-			}
-			for id := range strings.FieldsSeq(strings.ReplaceAll(match[1], `\t`, " ")) {
-				dependencies, err := session.Dependencies(id)
-				if err != nil {
-					return err
-				}
-				names = append(names, dependencies...)
-			}
-		}
-		if releaseSnapshot != nil {
-			// store.lock now bridges validation to ownership publication;
-			// ownership publication proceeds without retaining the reader lease.
-			releaseSnapshot()
-		}
-		return s.retainFiles(names...)
-	})
+	}
+	for _, match := range retainedReadReference.FindAllStringSubmatch(string(raw), -1) {
+		input.References = append(input.References, strings.Fields(strings.ReplaceAll(match[1], `\t`, " "))...)
+	}
+	if identity := s.session; identity.Initialize {
+		input.Initialize = &history.Scope{Thread: identity.Thread, Namespace: identity.Namespace, Parent: identity.Parent, Fork: identity.Fork}
+	}
+	err := recordtransactions.RetainInput(ctx, s.changeScope(), s.changes, s.recovery, input)
+	if retention, ok := errors.AsType[*recordtransactions.RetentionError](err); ok {
+		return storagePublicationError(retention.Err)
+	}
+	return changeError(err)
 }
 
 func storageCapacityError(resource string, required, limit int64, action string) error {
