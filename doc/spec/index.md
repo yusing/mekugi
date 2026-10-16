@@ -16,7 +16,7 @@ pjdoc:
     - activity.md
     - activity_display.md
     - plugin.md
-    - ax.md
+    - ../../modules/agentmetrics/SPEC.md
     - session.md
     - session_replay.md
     - metrics.md
@@ -57,7 +57,7 @@ policy; the native UI contract owns manual name-save interaction and rendering.
 - [`REQ-SYMBOL-001`](../../modules/symbolquery/SPEC.md): routed semantic symbol lookup with raw source rows
 - [`REQ-INSPECT-001`](../../modules/sourceoutline/SPEC.md): executable structural file inspection with numeric spans
 - [`REQ-PLUGIN-001`](plugin.md): authenticated compiled executable tools
-- [`REQ-AX-001`](ax.md): runtime reads and evidence-backed AX reporting
+- [Agent metrics](../../modules/agentmetrics/SPEC.md): runtime reads and evidence-backed AX reporting
 - [`REQ-SESSION-001`](session.md): offline logical session inspection
 - [`REQ-SESSION-REPLAY-001`](session_replay.md): timed offline UI replay and profiling
 - [`REQ-METRICS-001`](metrics.md): in-process captured Responses metrics

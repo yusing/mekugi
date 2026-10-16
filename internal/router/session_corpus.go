@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -71,7 +73,7 @@ type sessionCorpus struct {
 
 // RunSessionCorpusInspection is read-only. Counts are per rollout: inherited
 // calls in forks are not summed into an invented global workload.
-func RunSessionCorpusInspection(service *history.Service, ctx context.Context, args []string, stdout, stderr io.Writer) int {
+func RunSessionCorpusInspection(service *history.Service, agentMetrics *evidence.Service, ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("inspect-sessions", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	directory := flags.String("sessions-dir", "", "Codex rollout directory (default CODEX_HOME/sessions)")
@@ -150,7 +152,7 @@ func RunSessionCorpusInspection(service *history.Service, ctx context.Context, a
 		}
 		result.Scanned++
 		var observations sessionAXInput
-		calls, err := readSessionInspection(ctx, path, &observations)
+		calls, err := readSessionInspection(ctx, path, &observations, agentMetrics != nil)
 		if err != nil {
 			result.Unavailable = append(result.Unavailable, corpusUnavailable{path, err.Error()})
 			continue

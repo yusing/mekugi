@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 
@@ -73,7 +75,7 @@ type Session struct {
 
 // RunSession owns the private router for one wrapped Codex process.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func RunSession(service *history.Service, recovered *recovery.Service, segments *segmentservice.Service, changes changes.Service, usage *accounting.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, guards []binding.ShellApproval, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
+func RunSession(service *history.Service, recovered *recovery.Service, segments *segmentservice.Service, changes changes.Service, usage *accounting.Service, agentMetrics *evidence.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, guards []binding.ShellApproval, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
 	if options.mode == "" {
 		return errors.New("session configuration has not been parsed")
 	}
@@ -90,10 +92,12 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 		return err
 	}
 	openCode := config.Providers
-	if err := validateAXOutputAliases(os.Getenv(capturer.AXReadOutputEnvironment), options.captureOutput); err != nil {
-		return err
+	if agentMetrics != nil {
+		if err := validateAXOutputAliases(os.Getenv(evidence.AXReadOutputEnvironment), options.captureOutput); err != nil {
+			return err
+		}
 	}
-	debug, err := openDebugOutput(service, options.debug, options.captureOutput)
+	debug, err := openDebugOutput(service, agentMetrics, options.debug, options.captureOutput)
 	if err != nil {
 		return err
 	}
@@ -376,7 +380,7 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 			session.NativeTraceDirectory = mekugiCalls.nativeTrace.directory
 		}
 		if debug != nil {
-			session.AXReadOutput = debug.paths[4]
+			session.AXReadOutput = debug.axReadPath
 		}
 		ready(session)
 	}

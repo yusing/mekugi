@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+
 	"github.com/coder/websocket"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
@@ -190,7 +192,7 @@ func TestForwardFailureDiagnostics(t *testing.T) {
 			t.Setenv("TMPDIR", t.TempDir())
 			flags := newRouterFlags(io.Discard)
 			flags.debug = true
-			debug, err := openDebugOutput(testHistory(), flags.debug, flags.captureOutput)
+			debug, err := openDebugOutput(testHistory(), new(evidence.Service), flags.debug, flags.captureOutput)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -260,7 +262,7 @@ func TestCriticalSynthesizedDiagnosticCodes(t *testing.T) {
 			t.Setenv("TMPDIR", t.TempDir())
 			flags := newRouterFlags(io.Discard)
 			flags.debug = true
-			debug, err := openDebugOutput(testHistory(), flags.debug, flags.captureOutput)
+			debug, err := openDebugOutput(testHistory(), new(evidence.Service), flags.debug, flags.captureOutput)
 			if err != nil {
 				t.Fatal(err)
 			}

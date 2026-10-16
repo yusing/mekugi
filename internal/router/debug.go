@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/capturer"
@@ -22,23 +24,25 @@ import (
 // Debug output is separate from sanitized capture. Failure events include the
 // complete error string, which can contain request content or credentials.
 type debugOutput struct {
-	history            *history.Service
-	instructionContent map[string]bool
-	writes             *persistence.Counter
-	release            func() error
-	mu                 sync.Mutex
-	log                *os.File
-	dump               *os.File
-	paths              []string
-	metricsPath        string
-	axThreads          map[string]bool
-	axDroppedThreads   bool
-	err                error
+	agentMetrics             *evidence.Service
+	axReadPath, axReportPath string
+	history                  *history.Service
+	instructionContent       map[string]bool
+	writes                   *persistence.Counter
+	release                  func() error
+	mu                       sync.Mutex
+	log                      *os.File
+	dump                     *os.File
+	paths                    []string
+	metricsPath              string
+	axThreads                map[string]bool
+	axDroppedThreads         bool
+	err                      error
 }
 
 type debugContextKey struct{}
 
-func openDebugOutput(service *history.Service, enabled bool, capturePath string) (*debugOutput, error) {
+func openDebugOutput(service *history.Service, agentMetrics *evidence.Service, enabled bool, capturePath string) (*debugOutput, error) {
 	if !enabled {
 		return nil, nil
 	}
@@ -63,15 +67,18 @@ func openDebugOutput(service *history.Service, enabled bool, capturePath string)
 		return nil, err
 	}
 	metrics := filepath.Join(directory, "metrics.json")
-	readLog := os.Getenv(capturer.AXReadOutputEnvironment)
-	if readLog == "" {
-		readLog = filepath.Join(directory, "reads.jsonl")
-	}
-	if err := capturer.PrepareAXReadLog(readLog); err != nil {
-		return nil, fmt.Errorf("initialize AX read log: %w", err)
-	}
-	if err := validateAXOutputAliases(readLog, capture, metrics); err != nil {
-		return nil, err
+	readLog := ""
+	if agentMetrics != nil {
+		readLog = os.Getenv(evidence.AXReadOutputEnvironment)
+		if readLog == "" {
+			readLog = filepath.Join(directory, "reads.jsonl")
+		}
+		if err := agentMetrics.PrepareReadLog(readLog); err != nil {
+			return nil, fmt.Errorf("initialize AX read log: %w", err)
+		}
+		if err := validateAXOutputAliases(readLog, capture, metrics); err != nil {
+			return nil, err
+		}
 	}
 	// Replay consumes the standard bundle path even when capture output was
 	// explicitly selected elsewhere. Keep one capture writer and one record.
@@ -80,12 +87,16 @@ func openDebugOutput(service *history.Service, enabled bool, capturePath string)
 			return nil, fmt.Errorf("link debug capture: %w", err)
 		}
 	}
-	d = &debugOutput{history: service,
+	d = &debugOutput{history: service, agentMetrics: agentMetrics,
 		writes: new(persistence.Counter), release: release,
 		paths: []string{filepath.Join(directory, "router.jsonl"), capture, metrics,
-			filepath.Join(directory, "instructions.jsonl"), readLog, filepath.Join(directory, "ax.json")},
+			filepath.Join(directory, "instructions.jsonl")},
 		metricsPath: metrics,
-		axThreads:   make(map[string]bool),
+	}
+	if agentMetrics != nil {
+		d.axReadPath, d.axReportPath = readLog, filepath.Join(directory, "ax.json")
+		d.paths = append(d.paths, d.axReadPath, d.axReportPath)
+		d.axThreads = make(map[string]bool)
 	}
 	d.log, err = os.OpenFile(d.paths[0], os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err == nil {

@@ -122,7 +122,7 @@ Acceptance:
 5. Inspection leaves session, replay records, and directory permissions unchanged.
 
 `--ax`, `--read-log`, and `--defects` add whole-rollout AX reporting under
-[REQ-AX-001](ax.md); table selection and pagination do not narrow its evidence scope.
+[agent-metrics contract](../../modules/agentmetrics/SPEC.md); table selection and pagination do not narrow its evidence scope.
 
 ### Corpus friction inspection
 

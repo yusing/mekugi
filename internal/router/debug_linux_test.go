@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/yusing/mekugi/capturer"
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 )
 
 // A child process keeps the real filesystem fault and signal handling isolated
@@ -27,7 +27,7 @@ func TestDebugInitialWriteFailure(t *testing.T) {
 	}
 	directory := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", directory)
-	t.Setenv(capturer.AXReadOutputEnvironment, "")
+	t.Setenv(evidence.AXReadOutputEnvironment, "")
 	signal.Ignore(syscall.SIGXFSZ)
 	var original syscall.Rlimit
 	if err := syscall.Getrlimit(syscall.RLIMIT_FSIZE, &original); err != nil {
@@ -40,7 +40,7 @@ func TestDebugInitialWriteFailure(t *testing.T) {
 	}
 	flags := newRouterFlags(io.Discard)
 	flags.debug = true
-	debug, initErr := openDebugOutput(testHistory(), flags.debug, flags.captureOutput)
+	debug, initErr := openDebugOutput(testHistory(), new(evidence.Service), flags.debug, flags.captureOutput)
 	if err := syscall.Setrlimit(syscall.RLIMIT_FSIZE, &original); err != nil {
 		t.Fatal(err)
 	}

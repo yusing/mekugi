@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 	"unicode/utf8"
 )
@@ -32,12 +34,12 @@ type UsageInspectionFilter struct {
 // InspectProviderUsage reads sanitized capture JSONL, never executable history.
 func InspectProviderUsage(ctx context.Context, path string, filter UsageInspectionFilter) (map[string]UsageInspection, error) {
 	result := make(map[string]UsageInspection)
-	file, err := openAXEvidence(path, maxAXEvidenceBytes)
+	file, err := openCaptureEvidence(path)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
-	reader := &io.LimitedReader{R: file, N: maxAXEvidenceBytes + 1}
+	reader := &io.LimitedReader{R: file, N: maxCaptureEvidenceBytes + 1}
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 4096), 32<<20)
 	seen := make(map[string]bool)
@@ -118,4 +120,19 @@ func InspectProviderUsage(ctx context.Context, path string, filter UsageInspecti
 		return nil, errors.New("capture exceeds evidence size limit")
 	}
 	return result, nil
+}
+
+const maxCaptureEvidenceBytes = 64 << 20
+
+func openCaptureEvidence(path string) (*os.File, error) {
+	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() > maxCaptureEvidenceBytes {
+		file.Close()
+		return nil, errors.New("evidence must be a bounded regular file")
+	}
+	return file, nil
 }

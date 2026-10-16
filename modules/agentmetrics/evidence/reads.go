@@ -1,17 +1,17 @@
-package capturer
+// Source: capturer/ax.go@fdb889f8.
+package evidence
 
 import (
 	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	jsonv1 "encoding/json"
+	"encoding/json/jsontext"
+	json "encoding/json/v2"
 	"errors"
-	"fmt"
 	"io"
-	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -57,9 +57,9 @@ func validAXReader(tool string) bool {
 	return tool == "mcat" || tool == "msymbol" || tool == "inspect_file"
 }
 
-// StartAXReadWithContext is auxiliary to execution. Callers report failures separately and
+// StartRead is auxiliary to execution. Callers report failures separately and
 // keep the original command outcome. Each event is one O_APPEND write.
-func StartAXReadWithContext(path, threadID, tool string, identity AXReadContext) (*AXReadObservation, error) {
+func (service *Service) StartRead(path, threadID, tool string, identity AXReadContext) (*AXReadObservation, error) {
 	if path == "" {
 		return nil, nil
 	}
@@ -89,8 +89,8 @@ func StartAXReadWithContext(path, threadID, tool string, identity AXReadContext)
 	return observation, nil
 }
 
-// PrepareAXReadLog enables a debug bundle before the executor starts.
-func PrepareAXReadLog(path string) error {
+// PrepareReadLog validates the destination before the executor starts.
+func (service *Service) PrepareReadLog(path string) error {
 	file, err := openAXLog(path)
 	if err != nil {
 		return err
@@ -126,7 +126,8 @@ func openAXLog(path string) (*os.File, error) {
 }
 
 func (observation *AXReadObservation) write() (writeErr error) {
-	data, err := json.Marshal(observation.event)
+	// Preserve the version-2 event encoding and historical decoder admission.
+	data, err := json.Marshal(&observation.event, jsonv1.DefaultOptionsV1())
 	if err != nil {
 		return err
 	}
@@ -262,16 +263,16 @@ func (log AXReadLog) ForThread(threadID string) AXReadMetrics {
 	return result
 }
 
-// ReadAXReads retains the one-thread API, but no longer silently hides exclusions.
-func ReadAXReads(ctx context.Context, path, threadID string) (AXReadMetrics, error) {
-	log, err := ReadAXReadLog(ctx, path)
+// ReadReads validates the log and reports the selected thread with explicit exclusions.
+func (service *Service) ReadReads(ctx context.Context, path, threadID string) (AXReadMetrics, error) {
+	log, err := service.ReadLog(ctx, path)
 	if err != nil {
 		return unavailableAXReads(), err
 	}
 	return log.ForThread(threadID), nil
 }
 
-func ReadAXReadLog(ctx context.Context, path string) (AXReadLog, error) {
+func (service *Service) ReadLog(ctx context.Context, path string) (AXReadLog, error) {
 	result := AXReadLog{Threads: map[string]AXReadMetrics{}}
 	invalid := func(err error) (AXReadLog, error) { return AXReadLog{}, err }
 	if path == "" {
@@ -286,7 +287,6 @@ func ReadAXReadLog(ctx context.Context, path string) (AXReadLog, error) {
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 4096), 4096)
 	starts := make(map[string]axReadEvent)
-	finished := make(map[string]bool)
 	for scanner.Scan() {
 		if err := ctx.Err(); err != nil {
 			return invalid(err)
@@ -295,12 +295,11 @@ func ReadAXReadLog(ctx context.Context, path string) (AXReadLog, error) {
 			return invalid(errors.New("invalid UTF-8 in AX read event"))
 		}
 		var event axReadEvent
-		decoder := json.NewDecoder(bytes.NewReader(scanner.Bytes()))
-		decoder.DisallowUnknownFields()
-		if decoder.Decode(&event) != nil || !validAXReadEvent(event) {
+		decoder := jsontext.NewDecoder(bytes.NewReader(scanner.Bytes()), jsonv1.DefaultOptionsV1())
+		if json.UnmarshalDecode(decoder, &event, jsonv1.DefaultOptionsV1(), json.RejectUnknownMembers(true)) != nil || !validAXReadEvent(event) {
 			return invalid(errors.New("invalid AX read event"))
 		}
-		if decoder.Decode(new(any)) != io.EOF {
+		if json.UnmarshalDecode(decoder, new(any), jsonv1.DefaultOptionsV1()) != io.EOF {
 			return invalid(errors.New("trailing AX read event data"))
 		}
 		reads, ok := result.Threads[event.ThreadID]
@@ -323,11 +322,12 @@ func ReadAXReadLog(ctx context.Context, path string) (AXReadLog, error) {
 		}
 		start, exists := starts[event.ID]
 		// Wall timestamps may move backward; elapsed time is recorded monotonically.
-		if !exists || finished[event.ID] || start.ThreadID != event.ThreadID || start.Tool != event.Tool ||
+		if !exists || start.Phase != "start" || start.ThreadID != event.ThreadID || start.Tool != event.Tool ||
 			start.Schema != event.Schema || start.AXReadContext != event.AXReadContext {
 			return invalid(errors.New("unpaired AX read finish"))
 		}
-		finished[event.ID] = true
+		start.Phase = "finish"
+		starts[event.ID] = start
 		reads.Completed++
 		if uint64(*event.DurationNS) > ^uint64(0)-reads.DurationNS {
 			return invalid(errors.New("AX read durations overflow"))
@@ -338,9 +338,6 @@ func ReadAXReadLog(ctx context.Context, path string) (AXReadLog, error) {
 		} else {
 			reads.Failed++
 			class := event.FailureClass
-			if class == "" {
-				class = "unknown"
-			}
 			reads.FailuresByClass[class]++
 			if len(reads.Failures) < 256 {
 				reads.Failures = append(reads.Failures, AXReadFailure{AXReadContext: event.AXReadContext,
@@ -394,190 +391,4 @@ func openAXEvidence(path string, limit int64) (*os.File, error) {
 		return nil, errors.New("evidence must be a bounded regular file")
 	}
 	return file, nil
-}
-
-// AXEditMetrics reports measured emissions separately from defect judgments.
-type AXEditMetrics struct {
-	Calls              uint64 `json:"calls"`
-	EmittedBytes       uint64 `json:"emitted_bytes"`
-	ReEmittedLineBytes uint64 `json:"re_emitted_line_bytes"`
-	Failed             uint64 `json:"failed"`
-	Unconfirmed        uint64 `json:"unconfirmed"`
-}
-
-// AXEditAccumulator holds only the preceding original payload for exact,
-// line-aligned repetition measurement, never a durable script history.
-type AXEditAccumulator struct {
-	Metrics  AXEditMetrics
-	previous string
-}
-
-func (accumulator *AXEditAccumulator) Observe(script string, failed, unconfirmed bool) {
-	accumulator.Metrics.Calls++
-	accumulator.Metrics.EmittedBytes += uint64(len(script))
-	if failed {
-		accumulator.Metrics.Failed++
-	}
-	if unconfirmed {
-		accumulator.Metrics.Unconfirmed++
-	}
-	previous := make(map[string]int)
-	for line := range strings.Lines(accumulator.previous) {
-		previous[line]++
-	}
-	for line := range strings.Lines(script) {
-		if previous[line] > 0 {
-			accumulator.Metrics.ReEmittedLineBytes += uint64(len(line))
-			previous[line]--
-		}
-	}
-	accumulator.previous = script
-}
-
-type AXCompletionMetrics struct {
-	State          string `json:"state"`
-	CompletedTurns uint64 `json:"completed_turns"`
-	DurationMS     int64  `json:"duration_ms"`
-	UnpairedEvents uint64 `json:"unpaired_events"`
-}
-
-// AXCompletionAccumulator pairs actual task/turn events by identity. It does not
-// infer completion from silence, a tool exit, or an assistant's prose.
-type AXCompletionAccumulator struct {
-	Metrics   AXCompletionMetrics
-	starts    map[string]axCompletionStart
-	completed map[string]bool
-}
-
-type axCompletionStart struct {
-	kind string
-	at   time.Time
-}
-
-func (accumulator *AXCompletionAccumulator) Observe(kind, id string, at time.Time) {
-	if accumulator.starts == nil {
-		accumulator.completed = make(map[string]bool)
-		accumulator.starts = make(map[string]axCompletionStart)
-	}
-	if id == "" || at.IsZero() {
-		accumulator.Metrics.UnpairedEvents++
-		return
-	}
-	if accumulator.completed[id] {
-		accumulator.Metrics.UnpairedEvents++
-		return
-	}
-	if kind == "task_started" || kind == "turn_started" {
-		if _, exists := accumulator.starts[id]; exists {
-			accumulator.Metrics.UnpairedEvents++
-			return
-		}
-		accumulator.starts[id] = axCompletionStart{kind: kind, at: at}
-		return
-	}
-	start, exists := accumulator.starts[id]
-	matchingKind := start.kind == "task_started" && kind == "task_complete" ||
-		start.kind == "turn_started" && kind == "turn_complete"
-	if !exists || !matchingKind || at.Before(start.at) {
-		accumulator.Metrics.UnpairedEvents++
-		return
-	}
-	delete(accumulator.starts, id)
-	accumulator.completed[id] = true
-	accumulator.Metrics.CompletedTurns++
-	durationMS := at.Sub(start.at).Milliseconds()
-	if durationMS > math.MaxInt64-accumulator.Metrics.DurationMS {
-		accumulator.Metrics.DurationMS = math.MaxInt64
-	} else {
-		accumulator.Metrics.DurationMS += durationMS
-	}
-}
-
-func (accumulator *AXCompletionAccumulator) Result() AXCompletionMetrics {
-	result := accumulator.Metrics
-	result.UnpairedEvents += uint64(len(accumulator.starts))
-	result.State = "unavailable"
-	if result.CompletedTurns > 0 || result.UnpairedEvents > 0 {
-		result.State = "observed"
-	}
-	return result
-}
-
-type AXDefectAssessment struct {
-	CallID   string `json:"call_id"`
-	Verdict  string `json:"verdict"`
-	Evidence string `json:"evidence"`
-	SHA256   string `json:"sha256"`
-}
-
-type AXDefectMetrics struct {
-	AssessedCalls uint64               `json:"assessed_calls"`
-	Reported      uint64               `json:"reported_defects"`
-	Unassessed    uint64               `json:"unassessed_calls"`
-	Assessments   []AXDefectAssessment `json:"assessments"`
-}
-
-// ReadAXDefects requires a real evidence artifact for every explicit verdict.
-// It records provenance, not a claim that a test failure proves edit causality.
-func ReadAXDefects(path string, editCalls map[string]bool) (AXDefectMetrics, error) {
-	result := AXDefectMetrics{Unassessed: uint64(len(editCalls)), Assessments: []AXDefectAssessment{}}
-	if path == "" {
-		return result, nil
-	}
-	file, err := openAXEvidence(path, 1<<20)
-	if err != nil {
-		return result, err
-	}
-	defer file.Close()
-	decoder := json.NewDecoder(io.LimitReader(file, (1<<20)+1))
-	decoder.DisallowUnknownFields()
-	var assessments []struct {
-		CallID   string `json:"call_id"`
-		Verdict  string `json:"verdict"`
-		Evidence string `json:"evidence"`
-	}
-	if err := decoder.Decode(&assessments); err != nil {
-		return result, errors.New("invalid defect assessment JSON")
-	}
-	if assessments == nil {
-		return result, errors.New("defect assessments must be an array")
-	}
-	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
-		return result, errors.New("trailing defect assessment data")
-	}
-	seen := make(map[string]bool)
-	for _, assessment := range assessments {
-		if !editCalls[assessment.CallID] || seen[assessment.CallID] ||
-			(assessment.Verdict != "defect" && assessment.Verdict != "no_defect") || assessment.Evidence == "" {
-			return result, errors.New("defect assessment needs one known edit call, verdict, and evidence path")
-		}
-		evidencePath := assessment.Evidence
-		if !filepath.IsAbs(evidencePath) {
-			evidencePath = filepath.Join(filepath.Dir(path), evidencePath)
-		}
-		evidencePath, err = filepath.Abs(evidencePath)
-		if err != nil {
-			return result, err
-		}
-		evidence, err := openAXEvidence(evidencePath, 1<<20)
-		if err != nil {
-			return result, fmt.Errorf("defect evidence for call %q is unavailable", assessment.CallID)
-		}
-		data, readErr := io.ReadAll(io.LimitReader(evidence, (1<<20)+1))
-		closeErr := evidence.Close()
-		if readErr != nil || closeErr != nil || len(data) == 0 || len(data) > 1<<20 {
-			return result, errors.New("defect evidence must be nonempty and at most 1 MiB")
-		}
-		digest := sha256.Sum256(data)
-		result.Assessments = append(result.Assessments, AXDefectAssessment{
-			CallID: assessment.CallID, Verdict: assessment.Verdict, Evidence: evidencePath, SHA256: hex.EncodeToString(digest[:]),
-		})
-		seen[assessment.CallID] = true
-		result.AssessedCalls++
-		result.Unassessed--
-		if assessment.Verdict == "defect" {
-			result.Reported++
-		}
-	}
-	return result, nil
 }

@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -29,7 +31,6 @@ import (
 	"github.com/yusing/mekugi/modules/boundedcommand/run"
 
 	"github.com/dlclark/regexp2/v2"
-	"github.com/yusing/mekugi/capturer"
 )
 
 type proxyRegistryFixture struct {
@@ -147,7 +148,7 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, "start regexp2 timeout clock:", err)
 		os.Exit(1)
 	}
-	if err := os.Unsetenv(capturer.AXReadOutputEnvironment); err != nil {
+	if err := os.Unsetenv(evidence.AXReadOutputEnvironment); err != nil {
 		fmt.Fprintln(os.Stderr, "isolate AX test instrumentation:", err)
 		os.Exit(1)
 	}
@@ -201,7 +202,7 @@ func runToolPluginWorker(service *history.Service, recovered *recovery.Service, 
 	if invocation == nil {
 		return false, 0
 	}
-	return true, runAuthenticatedToolWorker(service, recovered, commands, processScope, ctx, invocation.directory, invocation.name, args, stdin, stdout, stderr)
+	return true, runAuthenticatedToolWorker(service, recovered, new(evidence.Service), commands, processScope, ctx, invocation.directory, invocation.name, args, stdin, stdout, stderr)
 }
 
 func runOwnedToolPluginWorker(service *history.Service, recovered *recovery.Service, commands []command.Contribution, ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
@@ -213,5 +214,5 @@ func runOwnedToolPluginWorker(service *history.Service, recovered *recovery.Serv
 	if invocation == nil {
 		return false, 0
 	}
-	return true, invocation.Run(service, recovered, commands, ctx, args, stdin, stdout, stderr)
+	return true, invocation.Run(service, recovered, new(evidence.Service), commands, ctx, args, stdin, stdout, stderr)
 }

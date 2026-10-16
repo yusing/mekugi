@@ -13,6 +13,7 @@ import (
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/contracts/reference"
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/commandsegments/segments"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
@@ -184,6 +185,7 @@ func (r *moduleRegistrar) ShellApproval(guard binding.ShellApproval) error {
 }
 
 type Runtime struct {
+	AgentMetrics     *evidence.Service
 	Usage            *accounting.Service
 	Guards           []binding.ShellApproval
 	Naming           *binding.SessionNaming

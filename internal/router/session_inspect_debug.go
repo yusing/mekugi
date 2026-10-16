@@ -13,7 +13,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/yusing/mekugi/capturer"
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 )
 
 type debugInspectionArtifact struct {
@@ -49,7 +49,7 @@ type debugSessionInspection struct {
 
 // inspectDebugSession reads the selected bundle only. Each artifact is independent:
 // startup failures can leave useful diagnostics alongside missing final reports.
-func inspectDebugSession(ctx context.Context, directory, requestID, field string, offset, limit, textBytes int, stdout, stderr io.Writer) int {
+func inspectDebugSession(agentMetrics *evidence.Service, ctx context.Context, directory, requestID, field string, offset, limit, textBytes int, stdout, stderr io.Writer) int {
 	directory, err := filepath.Abs(directory)
 	if err != nil {
 		fmt.Fprintln(stderr, "mekugi inspect-session:", err)
@@ -177,7 +177,11 @@ func inspectDebugSession(ctx context.Context, directory, requestID, field string
 		result.Artifacts = append(result.Artifacts, artifact)
 	}
 	readLog := filepath.Join(directory, "reads.jsonl")
-	for _, name := range []string{"metrics.json", "ax.json"} {
+	reports := []string{"metrics.json"}
+	if agentMetrics != nil {
+		reports = append(reports, "ax.json")
+	}
+	for _, name := range reports {
 		path := filepath.Join(directory, name)
 		artifact := debugInspectionArtifact{Name: name, Path: path, State: "observed"}
 		if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
@@ -200,15 +204,17 @@ func inspectDebugSession(ctx context.Context, directory, requestID, field string
 		}
 		result.Artifacts = append(result.Artifacts, artifact)
 	}
-	reads := debugInspectionArtifact{Name: "reads.jsonl", Path: readLog, State: "observed"}
-	if info, err := os.Stat(readLog); err == nil && info.Mode().IsRegular() {
-		reads.Bytes = new(info.Size())
+	if agentMetrics != nil {
+		reads := debugInspectionArtifact{Name: "reads.jsonl", Path: readLog, State: "observed"}
+		if info, err := os.Stat(readLog); err == nil && info.Mode().IsRegular() {
+			reads.Bytes = new(info.Size())
+		}
+		if _, err := agentMetrics.ReadLog(ctx, readLog); err != nil {
+			reads.State = "invalid_or_unavailable"
+			reportError(readLog, err)
+		}
+		result.Artifacts = append(result.Artifacts, reads)
 	}
-	if _, err := capturer.ReadAXReadLog(ctx, readLog); err != nil {
-		reads.State = "invalid_or_unavailable"
-		reportError(readLog, err)
-	}
-	result.Artifacts = append(result.Artifacts, reads)
 	if next := offset + max(len(result.Evidence), len(result.Requests)); next < max(result.TotalEvidence, result.TotalRequests) {
 		result.NextOffset = &next
 	}

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
@@ -97,7 +99,7 @@ func TestSessionInspectionShellEffects(t *testing.T) {
 				before[entry.Name()] = info
 			}
 			var stdout, stderr bytes.Buffer
-			code := RunSessionInspection(testHistory(), t.Context(), []string{"--session", rollout, "--replay-dir", replay, "--field", "all", "--text-bytes", "15", "--ax"}, &stdout, &stderr)
+			code := RunSessionInspection(testHistory(), new(evidence.Service), t.Context(), []string{"--session", rollout, "--replay-dir", replay, "--field", "all", "--text-bytes", "15", "--ax"}, &stdout, &stderr)
 			if tc.mismatch {
 				if code != 1 || !strings.Contains(stderr.String(), "inconsistent effect observation") {
 					t.Fatalf("identity accepted: %d %s", code, stderr.String())

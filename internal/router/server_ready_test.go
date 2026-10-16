@@ -14,9 +14,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+
 	"github.com/yusing/mekugi/modules/usage/accounting"
 
-	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/contracts/command"
 	segmentservice "github.com/yusing/mekugi/modules/commandsegments/segments"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
@@ -121,7 +122,7 @@ func TestRunSessionRejectsAXCaptureAlias(t *testing.T) {
 	if err := os.WriteFile(capture, []byte("retained\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv(capturer.AXReadOutputEnvironment, capture)
+	t.Setenv(evidence.AXReadOutputEnvironment, capture)
 	err := testRunSession(testHistory(), testRecovery(), t.Context(), testCommands(), []string{"--mode", "passthrough", "--capture-output", capture}, nil, func(Session) { t.Error("aliased exports reached readiness") }, nil)
 	if err == nil {
 		t.Fatal("aliased outputs accepted")
@@ -199,5 +200,5 @@ func testRunSession(service *history.Service, recovered *recovery.Service, ctx c
 		return err
 	}
 	defer usage.Close()
-	return RunSession(service, recovered, &segmentservice.Service{Reports: testReports()}, testChanges(), usage, ctx, commands, testInputProjections(), testGuidance(), testNaming(), testGuards(), options, issues, ready, artifacts)
+	return RunSession(service, recovered, &segmentservice.Service{Reports: testReports()}, testChanges(), usage, new(evidence.Service), ctx, commands, testInputProjections(), testGuidance(), testNaming(), testGuards(), options, issues, ready, artifacts)
 }

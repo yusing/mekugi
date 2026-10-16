@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/yusing/mekugi/capturer"
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 )
 
 func TestCompiledOutlineAuthenticatedReadEvidence(t *testing.T) {
@@ -19,7 +19,7 @@ func TestCompiledOutlineAuthenticatedReadEvidence(t *testing.T) {
 	log := filepath.Join(directory, "reads.jsonl")
 	const thread = "compiled-outline-acceptance"
 	invocation := newShellWorkerTestInvocation(directory,
-		"CODEX_THREAD_ID="+thread, capturer.AXReadOutputEnvironment+"="+log)
+		"CODEX_THREAD_ID="+thread, evidence.AXReadOutputEnvironment+"="+log)
 	stdout, stderr, status := runShellWorkerTest(t, registry, "sh", nil,
 		"inspect_file sample.go", nil, invocation)
 	if stdout != "2-2 function Item\n" || stderr != "" || status != 0 {
@@ -30,7 +30,7 @@ func TestCompiledOutlineAuthenticatedReadEvidence(t *testing.T) {
 	if stdout != "" || stderr != "inspect_file: missing.go: path does not exist\n" || status != 1 {
 		t.Fatalf("authenticated failure: stdout=%q stderr=%q status=%d", stdout, stderr, status)
 	}
-	reads, err := capturer.ReadAXReads(t.Context(), log, thread)
+	reads, err := new(evidence.Service).ReadReads(t.Context(), log, thread)
 	if err != nil || reads.Started != 2 || reads.Completed != 2 || reads.Succeeded != 1 || reads.Failed != 1 || reads.Incomplete != 0 || reads.ByTool["inspect_file"] != 2 || reads.FailuresByClass["not_found"] != 1 {
 		t.Fatalf("compiled reader AX=%+v err=%v", reads, err)
 	}

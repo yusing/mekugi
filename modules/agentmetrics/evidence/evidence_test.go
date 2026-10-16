@@ -1,9 +1,11 @@
-package capturer
+// Source: capturer/ax_test.go@fdb889f8.
+package evidence
 
 import (
 	"bufio"
 	"context"
-	"encoding/json"
+	jsonv1 "encoding/json"
+	json "encoding/json/v2"
 	"fmt"
 	"math"
 	"os"
@@ -21,14 +23,14 @@ func TestAXReadLogRestrictiveUmask(t *testing.T) {
 	if path := os.Getenv(marker); path != "" {
 		previous := syscall.Umask(0777)
 		defer syscall.Umask(previous)
-		if err := PrepareAXReadLog(path); err != nil {
+		if err := new(Service).PrepareReadLog(path); err != nil {
 			t.Fatal(err)
 		}
 		info, err := os.Stat(path)
 		if err != nil || info.Mode().Perm() != 0600 {
 			t.Fatalf("log mode = %v, %v", info, err)
 		}
-		observation, err := StartAXReadWithContext(path, "thread", "mcat", AXReadContext{})
+		observation, err := new(Service).StartRead(path, "thread", "mcat", AXReadContext{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -44,7 +46,7 @@ func TestAXReadLogRestrictiveUmask(t *testing.T) {
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("restrictive umask: %v\n%s", err, output)
 	}
-	result, err := ReadAXReads(t.Context(), path, "thread")
+	result, err := new(Service).ReadReads(t.Context(), path, "thread")
 	if err != nil || result.Succeeded != 1 {
 		t.Fatalf("log = %+v, %v", result, err)
 	}
@@ -77,7 +79,7 @@ func TestAXReadLogExactSizeWithoutFinalNewline(t *testing.T) {
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
-	result, err := ReadAXReads(t.Context(), path, "thread")
+	result, err := new(Service).ReadReads(t.Context(), path, "thread")
 	if err != nil || result.Started != records || result.Incomplete != records {
 		t.Fatalf("boundary log = %+v, %v", result, err)
 	}
@@ -91,7 +93,7 @@ func TestAXReadLogExactSizeWithoutFinalNewline(t *testing.T) {
 			t.Fatal(err)
 		}
 	}}
-	if _, err := ReadAXReads(ctx, path, "thread"); err == nil || !strings.Contains(err.Error(), "exceeds 64 MiB") {
+	if _, err := new(Service).ReadReads(ctx, path, "thread"); err == nil || !strings.Contains(err.Error(), "exceeds 64 MiB") {
 		t.Fatalf("growing log accepted: %v", err)
 	}
 }
@@ -116,7 +118,7 @@ func TestAXRuntimeReadLog(t *testing.T) {
 		thread  string
 		success bool
 	}{{"thread", true}, {"thread", false}, {"other", true}} {
-		observation, err := StartAXReadWithContext(path, test.thread, "mcat", AXReadContext{})
+		observation, err := new(Service).StartRead(path, test.thread, "mcat", AXReadContext{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -124,17 +126,17 @@ func TestAXRuntimeReadLog(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	pending, err := StartAXReadWithContext(path, "thread", "inspect_file", AXReadContext{})
+	pending, err := new(Service).StartRead(path, "thread", "inspect_file", AXReadContext{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	pending.file.Close() // Model an interrupted worker that never publishes finish.
-	result, err := ReadAXReads(t.Context(), path, "thread")
+	result, err := new(Service).ReadReads(t.Context(), path, "thread")
 	if err != nil || result.Started != 3 || result.Completed != 2 || result.Succeeded != 1 ||
 		result.Failed != 1 || result.Incomplete != 1 || result.ByTool["mcat"] != 2 || result.State != "observed" {
 		t.Fatalf("read metrics = %+v, %v", result, err)
 	}
-	if got, err := ReadAXReads(t.Context(), "", "thread"); err != nil || got.State != "unavailable" {
+	if got, err := new(Service).ReadReads(t.Context(), "", "thread"); err != nil || got.State != "unavailable" {
 		t.Fatalf("missing evidence = %+v, %v", got, err)
 	}
 	data, _ := os.ReadFile(path)
@@ -149,18 +151,18 @@ func TestAXReadAcceptsBackwardWallClock(t *testing.T) {
 	finish := start
 	finish.Phase, finish.At = "finish", start.At.Add(-time.Second)
 	finish.DurationNS, finish.Succeeded = new(int64(123)), new(true)
-	first, err := json.Marshal(start)
+	first, err := json.Marshal(&start, jsonv1.DefaultOptionsV1())
 	if err != nil {
 		t.Fatal(err)
 	}
-	last, err := json.Marshal(finish)
+	last, err := json.Marshal(&finish, jsonv1.DefaultOptionsV1())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, append(append(first, '\n'), append(last, '\n')...), 0600); err != nil {
 		t.Fatal(err)
 	}
-	result, err := ReadAXReads(t.Context(), path, "thread")
+	result, err := new(Service).ReadReads(t.Context(), path, "thread")
 	if err != nil || result.Completed != 1 || result.Succeeded != 1 || result.DurationNS != 123 {
 		t.Fatalf("read metrics = %+v, %v", result, err)
 	}
@@ -171,7 +173,7 @@ func TestAXReadConcurrentWriters(t *testing.T) {
 	var workers sync.WaitGroup
 	for range 20 {
 		workers.Go(func() {
-			observation, err := StartAXReadWithContext(path, "thread", "mcat", AXReadContext{})
+			observation, err := new(Service).StartRead(path, "thread", "mcat", AXReadContext{})
 			if err != nil {
 				t.Error(err)
 				return
@@ -182,7 +184,7 @@ func TestAXReadConcurrentWriters(t *testing.T) {
 		})
 	}
 	workers.Wait()
-	result, err := ReadAXReads(t.Context(), path, "thread")
+	result, err := new(Service).ReadReads(t.Context(), path, "thread")
 	if err != nil || result.Started != 20 || result.Succeeded != 20 || result.Incomplete != 0 {
 		t.Fatalf("concurrent metrics = %+v, %v", result, err)
 	}
@@ -199,7 +201,7 @@ func TestAXReadRejectsUnsafeStorageAndMalformedEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, invalid := range []string{"relative", root, path, link} {
-		if _, err := StartAXReadWithContext(invalid, "thread", "mcat", AXReadContext{}); err == nil {
+		if _, err := new(Service).StartRead(invalid, "thread", "mcat", AXReadContext{}); err == nil {
 			t.Fatalf("invalid log %q accepted", invalid)
 		}
 	}
@@ -213,7 +215,7 @@ func TestAXReadRejectsUnsafeStorageAndMalformedEvents(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(root, "bad"), []byte(data), 0600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := ReadAXReads(t.Context(), filepath.Join(root, "bad"), "thread"); err == nil {
+		if _, err := new(Service).ReadReads(t.Context(), filepath.Join(root, "bad"), "thread"); err == nil {
 			t.Fatal("invalid event accepted")
 		}
 	}
@@ -224,7 +226,7 @@ func TestAXReadRejectsDuplicateAndUnpairedEvents(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "reads.jsonl")
 		event := axReadEvent{Schema: "mekugi.ax.read.v2", ID: "id", ThreadID: "thread",
 			Tool: "mcat", Phase: phase, At: time.Now()}
-		data, _ := json.Marshal(event)
+		data, _ := json.Marshal(&event, jsonv1.DefaultOptionsV1())
 		data = append(data, '\n')
 		if phase == "start" {
 			data = append(data, data...)
@@ -232,7 +234,7 @@ func TestAXReadRejectsDuplicateAndUnpairedEvents(t *testing.T) {
 		if err := os.WriteFile(path, data, 0600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := ReadAXReads(t.Context(), path, "thread"); err == nil {
+		if _, err := new(Service).ReadReads(t.Context(), path, "thread"); err == nil {
 			t.Fatalf("bad %s events accepted", phase)
 		}
 	}
@@ -333,7 +335,7 @@ func TestAXDefectsRequireKnownCallsAndRealEvidence(t *testing.T) {
 		if err := os.WriteFile(path, []byte(test.data), 0600); err != nil {
 			t.Fatal(err)
 		}
-		result, err := ReadAXDefects(path, map[string]bool{"edit": true, "unassessed": true})
+		result, err := new(Service).ReadDefects(path, map[string]bool{"edit": true, "unassessed": true})
 		if !test.valid {
 			if err == nil {
 				t.Fatalf("invalid assessment accepted: %s", test.data)
@@ -349,13 +351,13 @@ func TestAXDefectsRequireKnownCallsAndRealEvidence(t *testing.T) {
 
 func TestAXValidatesLogWithoutThreadMetadata(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "reads.jsonl")
-	if _, err := ReadAXReads(t.Context(), path, ""); err == nil {
+	if _, err := new(Service).ReadReads(t.Context(), path, ""); err == nil {
 		t.Fatal("missing supplied log accepted")
 	}
 	if err := os.WriteFile(path, []byte("{}\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ReadAXReads(t.Context(), path, ""); err == nil {
+	if _, err := new(Service).ReadReads(t.Context(), path, ""); err == nil {
 		t.Fatal("malformed supplied log accepted")
 	}
 }
@@ -373,7 +375,7 @@ func TestAXConcurrentNearCapacity(t *testing.T) {
 	var workers sync.WaitGroup
 	for range 20 {
 		workers.Go(func() {
-			observation, err := StartAXReadWithContext(path, "thread", "mcat", AXReadContext{})
+			observation, err := new(Service).StartRead(path, "thread", "mcat", AXReadContext{})
 			if err == nil {
 				_ = observation.FinishResult(true, "", nil)
 			}
@@ -393,11 +395,11 @@ func TestAXReadLogRejectsCorruptUTF8IDs(t *testing.T) {
 	if err := os.WriteFile(path, []byte(start+"\n"+finish+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	log, err := ReadAXReadLog(t.Context(), path)
+	log, err := new(Service).ReadLog(t.Context(), path)
 	if err == nil || !strings.Contains(err.Error(), "UTF-8") || len(log.Threads) != 0 {
 		t.Fatalf("corrupt IDs were admitted: %+v, %v", log, err)
 	}
-	reads, err := ReadAXReads(t.Context(), path, "thread")
+	reads, err := new(Service).ReadReads(t.Context(), path, "thread")
 	if err == nil || reads.Succeeded != 0 || reads.State != "unavailable" {
 		t.Fatalf("corrupt evidence became successful reads: %+v, %v", reads, err)
 	}

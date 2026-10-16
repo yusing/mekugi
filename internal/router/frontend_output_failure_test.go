@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/capturer"
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/modules/fileread/read"
@@ -61,7 +61,7 @@ func TestFrontendBundleRecoveryFailurePreservesBodiesAndReadEvidence(t *testing.
 	log := filepath.Join(directory, "reads.jsonl")
 	thread := uniqueTestThread("bundle-publication-failure")
 	t.Setenv(codexThreadIDEnvironment, thread)
-	t.Setenv(capturer.AXReadOutputEnvironment, log)
+	t.Setenv(evidence.AXReadOutputEnvironment, log)
 	var stdout, stderr bytes.Buffer
 	handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), testCommands(), t.Context(), registry.frontends["mcat"],
 		[]string{"--max-tokens", "2000", path, filepath.Join(directory, "missing")}, nil, &stdout, &stderr)
@@ -72,7 +72,7 @@ func TestFrontendBundleRecoveryFailurePreservesBodiesAndReadEvidence(t *testing.
 		t.Fatalf("publication failure lost diagnostics or exposed reference: %q", stderr.String())
 	}
 	assertMCatOutputWithinBudget(t, 2000, stdout.String(), "")
-	reads, err := capturer.ReadAXReads(t.Context(), log, thread)
+	reads, err := new(evidence.Service).ReadReads(t.Context(), log, thread)
 	if err != nil || reads.Started != 1 || reads.Completed != 1 || reads.Failed != 1 || reads.Succeeded != 0 {
 		t.Fatalf("read evidence=%+v err=%v", reads, err)
 	}

@@ -6,6 +6,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/internal/router"
 	"github.com/yusing/mekugi/modules/agentguidance"
+	"github.com/yusing/mekugi/modules/agentmetrics"
 	"github.com/yusing/mekugi/modules/boundedcommand"
 	"github.com/yusing/mekugi/modules/changehistory"
 	"github.com/yusing/mekugi/modules/commandsegments"
@@ -25,6 +26,7 @@ import (
 // frontend host. Host observation records remain application contributions.
 func Frontends(ctx context.Context, liveReports bool) (*Runtime, error) {
 	c := Composition{LegacyRecordKinds: router.RetainedRecordKinds()}
+	metrics := c.Add(agentmetrics.Module, func() agentmetrics.Deps { return agentmetrics.Deps{} })
 	history := c.Add(sessionhistory.Module, func() sessionhistory.Deps { return sessionhistory.Deps{} })
 	usage := c.Add(usage.Module, func() usage.Deps { return usage.Deps{History: history.Value()} })
 	changes := c.Add(changehistory.Module, func() changehistory.Deps { return changehistory.Deps{History: history.Value()} })
@@ -44,6 +46,7 @@ func Frontends(ctx context.Context, liveReports bool) (*Runtime, error) {
 	if err != nil {
 		return nil, err
 	}
+	runtime.AgentMetrics = metrics.Value()
 	runtime.Usage = usage.Value()
 	runtime.Changes = changes.Value()
 	runtime.History = history.Value()
