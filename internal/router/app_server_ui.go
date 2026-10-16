@@ -739,7 +739,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			if method == "thread/start" {
 				u.settings.restoredEffort()
 				if u.proxy != nil {
-					u.proxy.usage.markNew(result.Thread.ID)
+					u.proxy.usage.MarkNew(result.Thread.ID)
 				}
 			}
 			u.models, u.modelsLoading = nil, true // A cleared or switched session lists them again.

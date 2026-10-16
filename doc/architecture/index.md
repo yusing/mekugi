@@ -13,7 +13,6 @@ pjdoc:
     - opencode.md
     - notices.md
     - activity.md
-    - usage.md
     - boundary.md
     - plugin.md
     - execution.md
@@ -51,7 +50,7 @@ to the [backend adapter](../../backends/codex/responses/SPEC.md).
 - [`CTR-NOTICES-001`](notices.md): native diagnostic delivery and recovery
 - [`CTR-ACTIVITY-001`](activity.md): activity identity, collection, and native integration
 - [`CTR-ACTIVITY-002`](activity.md): bounded native child history pages
-- [`CTR-USAGE-001`](usage.md): provider accounting ownership
+- [`CTR-USAGE-001`](../../modules/usage/SPEC.md): provider accounting ownership
 - [`CTR-BOUNDARY-001`](boundary.md): filesystem, history, and output authority
 - [`CTR-PLUGIN-001`](plugin.md): authenticated executable catalog
 - [`CTR-EXECUTION-001`](execution.md): host-owned editing and process lifecycle

@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/inference"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 )
@@ -12,14 +14,14 @@ import (
 func restoredUsageRosterFixture(t *testing.T) *appServerUI {
 	t.Helper()
 	directory := t.TempDir()
-	usage := storedUsageFixture(usageStoreFixture(t, directory))
-	usage.observation("child", "child", "gpt-6-sol", "").observe(tokenCounts{InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 10_000})
-	usage.observation("child", "child", "gpt-6-sol", "").finish()
-	usage.observation("gap", "gap", "gpt-6-sol", "").finish()
-	usage.close()
+	usage := storedUsageFixture(t, usageStoreFixture(t, directory))
+	usage.Observation("child", "child", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 10_000})
+	usage.Observation("child", "child", "gpt-6-sol", "").Finish()
+	usage.Observation("gap", "gap", "gpt-6-sol", "").Finish()
+	usage.Close()
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.proxy = &mekugiProxy{usage: storedUsageFixture(usageStoreFixture(t, directory))}
-	t.Cleanup(u.proxy.usage.close)
+	u.proxy = &mekugiProxy{usage: storedUsageFixture(t, usageStoreFixture(t, directory))}
+
 	for _, thread := range []string{"child", "gap", "historical"} {
 		info := appServerThreadInfo{ID: thread, AgentNickname: thread, Turns: []appServerHistoryTurn{{ID: "old", Status: "completed"}}}
 		u.session.registerThread(info)
@@ -46,7 +48,7 @@ func TestNativeRosterRestoredUsageUsesProviderTotals(t *testing.T) {
 	if child.InputTokens != 100_000 || child.OutputTokens != 10_000 {
 		t.Fatalf("host totals overrode provider report: %+v", child)
 	}
-	u.proxy.usage.observation("child", "child", "gpt-6-sol", "").observe(tokenCounts{InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 10_000})
+	u.proxy.usage.Observation("child", "child", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 10_000})
 	u.observeCost("child", child)
 	if child.InputTokens != 200_000 || child.OutputTokens != 20_000 || child.Roundtrips != 3 || !child.CostPartial || math.Abs(child.Cost-.6) > 1e-10 {
 		t.Fatalf("followup reset restored child totals: %+v", child)
@@ -57,7 +59,7 @@ func TestNativeRosterRestoredUsageUsesProviderTotals(t *testing.T) {
 		t.Fatalf("unobserved thread borrowed host consumption: %+v", unknown)
 	}
 	historical := u.session.agent(u.session.paths["historical"])
-	u.proxy.usage.observation("historical", "historical", "gpt-6-sol", "").observe(tokenCounts{InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 10_000})
+	u.proxy.usage.Observation("historical", "historical", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 10_000})
 	u.observeCost("historical", historical)
 	if !historical.TokensKnown || !historical.UsagePartial || !historical.CostPartial || historical.Roundtrips != 1 || historical.InputTokens != 100_000 || historical.OutputTokens != 10_000 {
 		t.Fatalf("historical followup claimed complete totals: %+v", historical)
@@ -69,7 +71,7 @@ func TestNativeRosterRestoredUsageUsesProviderTotals(t *testing.T) {
 
 func TestUISnapshotNativeRosterRestoredUsage(t *testing.T) {
 	u := restoredUsageRosterFixture(t)
-	u.proxy.usage.observation("historical", "historical", "gpt-6-sol", "").observe(tokenCounts{InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 10_000})
+	u.proxy.usage.Observation("historical", "historical", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 10_000})
 	u.observeCost("historical", u.session.agent(u.session.paths["historical"]))
 	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: u.session.agents})
 	u.agents.painter.Theme = livediff.DarkTheme

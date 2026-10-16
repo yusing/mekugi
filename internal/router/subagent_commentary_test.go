@@ -41,7 +41,7 @@ func TestChildCompletionsPreserveTerminalEvents(t *testing.T) {
 
 func observeTestResponseUsage(t *testing.T, transform *mekugiResponseTransform, payload []byte, streamEvent bool) {
 	t.Helper()
-	counts, observed := usageFromResponsePayload(payload, streamEvent)
+	counts, observed := codexresponses.UsageFromPayload(payload, streamEvent)
 	if !observed {
 		t.Fatal("test response has no provider usage")
 	}

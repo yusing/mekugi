@@ -115,20 +115,9 @@ of request rates or session wall-clock duration. Unmeasured requests contribute 
 neither sum. Coverage is the measured-request count and summed duration. Measurements
 are attached to the usage-bearing attempt and remain cumulative after detail eviction.
 
-Main's composer and child-agent roster rows display provider-measured total output
-throughput for forwarded requests, not the user/app-server turn's rate. Main's output
-rate MUST appear only in its composer, never in its roster row. The last valid
-rate MUST remain visible while streaming, across new requests and missing terminal
-measurements, until a newer valid terminal measurement arrives. Throughput MUST
-remain absent before the first valid measurement. Local visible-output TPS estimates
-MUST NOT be displayed: visible streaming excludes hidden reasoning and cannot stand
-in for provider-counted total output. Authoritative terminal usage includes
-provider-counted reasoning. Terminal measurements from older requests MUST NOT
-replace the newest-started request's display updates.
-
-Only authoritative paired token-and-duration measurements restore by stable
-thread identity through the existing usage record; restoration never revives an
-in-flight stopwatch. Old records without timing leave throughput absent.
+Per-thread throughput ordering and restoration belong to the
+[usage module](../../modules/usage/SPEC.md#output-throughput); renderer placement
+belongs to the native UI and activity-display contracts.
 `/session` retains its existing
 all-threads-in-this-launch scope and authoritative average calculation.
 

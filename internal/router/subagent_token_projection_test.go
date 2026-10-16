@@ -3,6 +3,8 @@ package router
 import (
 	"bytes"
 	"testing"
+
+	"github.com/yusing/mekugi/contracts/inference"
 )
 
 func TestChildCompletionPreservesRootAnswer(t *testing.T) {
@@ -14,12 +16,12 @@ func TestChildCompletionPreservesRootAnswer(t *testing.T) {
 				proxy := newManagedMekugiProxy(t)
 				root, _ := prepareActivityTest(t, proxy, "shared-session", "root", "", "/root", nil)
 				child, _ := prepareActivityTest(t, proxy, "shared-session", "child", "root", "/root/worker", nil)
-				child.usageTracker.model = "gpt-5.6-sol"
+				child.usageTracker = proxy.usage.Observation("child", "child", "gpt-5.6-sol", "")
 				root.Close()
 				if missing {
-					child.usageTracker.finish()
+					child.usageTracker.Finish()
 				} else {
-					child.observeResponseUsage(tokenCounts{InputTokens: 120, UncachedInputTokens: 40, OutputTokens: 30, ReasoningTokens: 20})
+					child.observeResponseUsage(inference.Usage{InputTokens: 120, UncachedInputTokens: 40, OutputTokens: 30, ReasoningTokens: 20})
 				}
 				response := []byte(`{"id":"child-response","status":"completed","output":[{"type":"message","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"Child result."}]}]}`)
 				var output []byte
@@ -46,8 +48,8 @@ func TestChildCompletionPreservesRootAnswer(t *testing.T) {
 				}
 				child.Close()
 				root, _ = prepareActivityTest(t, proxy, "remapped", "root", "", "/root", nil)
-				root.usageTracker.model = "gpt-6-astra"
-				root.observeResponseUsage(tokenCounts{InputTokens: 100, UncachedInputTokens: 50, OutputTokens: 10, ReasoningTokens: 5})
+				root.usageTracker = proxy.usage.Observation("root", "root", "gpt-6-astra", "")
+				root.observeResponseUsage(inference.Usage{InputTokens: 100, UncachedInputTokens: 50, OutputTokens: 10, ReasoningTokens: 5})
 				if stream {
 					events, err := root.TransformSSE([]byte(`{"type":"response.created","response":{"id":"root-response"}}`))
 					if err != nil {

@@ -14,9 +14,10 @@ import (
 	"testing"
 	"time"
 
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/contracts/inference"
 
 	"github.com/coder/websocket"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -57,10 +58,10 @@ func TestTokenUsageManualSwitch(t *testing.T) {
 					t.Fatalf("model=%s want=%s", forwarded.Model(), wants[i])
 				}
 			}
-			got, ok := proxy.usage.snapshot("thread-1")
+			got, ok := proxy.usage.Snapshot("thread-1")
 			// Independent arithmetic: Astra 1.14 + Sol .456 + Luna .0248 = 1.6208.
-			total := got.cost.uncachedInput + got.cost.cachedInput + got.cost.output
-			if !ok || !got.cost.known || got.InputTokens != 300000 || got.UncachedInputTokens != 180000 || got.OutputTokens != 30000 || got.ReasoningTokens != 15000 || math.Abs(total-1.6208) > 1e-10 {
+			total := got.Cost.UncachedInput + got.Cost.CachedInput + got.Cost.Output
+			if !ok || !got.Cost.Known || got.InputTokens != 300000 || got.UncachedInputTokens != 180000 || got.OutputTokens != 30000 || got.ReasoningTokens != 15000 || math.Abs(total-1.6208) > 1e-10 {
 				t.Fatalf("report=%+v total=%v valid=%v", got, total, ok)
 			}
 			if strings.Contains(out.String(), "Router session usage") {
@@ -76,7 +77,7 @@ func TestTokenUsageWebSocketHandshakeRecovery(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 			defer cancel()
 			proxy := newManagedMekugiProxy(t)
-			proxy.usage.observation("thread-1", "", "gpt-5.6-sol", "default").observe(tokenCounts{InputTokens: 100, UncachedInputTokens: 60, OutputTokens: 10, ReasoningTokens: 5})
+			proxy.usage.Observation("thread-1", "", "gpt-5.6-sol", "default").Observe(inference.Usage{InputTokens: 100, UncachedInputTokens: 60, OutputTokens: 10, ReasoningTokens: 5})
 			var handshakes atomic.Int32
 			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if handshakes.Add(1) == 1 {
@@ -139,22 +140,10 @@ func TestTokenUsageWebSocketHandshakeRecovery(t *testing.T) {
 					}
 				}
 				conn.CloseNow()
-				got, valid := proxy.usage.snapshot("thread-1")
-				if !valid || !got.cost.known || got.InputTokens != uint64(attempt+1)*100 {
+				got, valid := proxy.usage.Snapshot("thread-1")
+				if !valid || !got.Cost.Known || got.InputTokens != uint64(attempt+1)*100 {
 					t.Fatalf("HTTP handshake rejection poisoned retained totals: %+v valid=%t", got, valid)
 				}
-			}
-		})
-	}
-}
-
-func TestTokenUsageRejectsIncompletePricing(t *testing.T) {
-	for _, raw := range []string{`null`, `{}`, `{"input_tokens":null,"output_tokens":null}`, `{"input_tokens":100,"output_tokens":10}`} {
-		t.Run(raw, func(t *testing.T) {
-			counts, observed := usageFromResponsePayload([]byte(`{"usage":`+raw+`}`), false)
-			cost := estimateTokenCost("gpt-6-astra", "", counts)
-			if observed && cost.known {
-				t.Errorf("incomplete telemetry accepted as complete priced usage: counts=%+v total=%v", counts, cost.uncachedInput+cost.cachedInput+cost.output)
 			}
 		})
 	}
@@ -240,7 +229,7 @@ func TestTokenUsageGapRetainsObservedTotals(t *testing.T) {
 						if strings.Contains(out.String(), "Router session usage") {
 							t.Fatalf("completion emitted usage commentary: %s", out.String())
 						}
-						got, valid := proxy.usage.snapshot("thread-1")
+						got, valid := proxy.usage.Snapshot("thread-1")
 						wantInput, wantMissing := uint64(200), uint64(1)
 						if wantReport {
 							wantMissing = 0
@@ -248,7 +237,7 @@ func TestTokenUsageGapRetainsObservedTotals(t *testing.T) {
 								wantInput = 300
 							}
 						}
-						if !valid || got.Incomplete || got.InputTokens != wantInput || got.OutputTokens != wantInput/10 || got.missingUsage != wantMissing || !got.cost.known {
+						if !valid || got.Incomplete || got.InputTokens != wantInput || got.OutputTokens != wantInput/10 || got.MissingUsage != wantMissing || !got.Cost.Known {
 							t.Fatalf("observed report=%+v valid=%t; want input=%d missing=%d", got, valid, wantInput, wantMissing)
 						}
 					}
@@ -433,9 +422,9 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 		}
 	}
 	finalAnswerIDs <- finalAnswerID
-	got, ok := proxy.usage.snapshot("thread-1")
-	total := got.cost.uncachedInput + got.cost.cachedInput + got.cost.output
-	if !ok || !got.cost.known || got.InputTokens != 200000 || math.Abs(total-2*initialCost) > 1e-10 {
+	got, ok := proxy.usage.Snapshot("thread-1")
+	total := got.Cost.UncachedInput + got.Cost.CachedInput + got.Cost.Output
+	if !ok || !got.Cost.Known || got.InputTokens != 200000 || math.Abs(total-2*initialCost) > 1e-10 {
 		t.Fatalf("successor repriced unsent model: report=%+v total=%v want=%v", got, total, 2*initialCost)
 	}
 	if configured != "gpt-5.6-terra" {
@@ -453,9 +442,9 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 			break
 		}
 	}
-	got, ok = proxy.usage.snapshot("thread-1")
-	total = got.cost.uncachedInput + got.cost.cachedInput + got.cost.output
-	if !ok || !got.cost.known || got.InputTokens != 300000 || math.Abs(total-(2*initialCost+configuredCost)) > 1e-10 {
+	got, ok = proxy.usage.Snapshot("thread-1")
+	total = got.Cost.UncachedInput + got.Cost.CachedInput + got.Cost.Output
+	if !ok || !got.Cost.Known || got.InputTokens != 300000 || math.Abs(total-(2*initialCost+configuredCost)) > 1e-10 {
 		t.Fatalf("explicit successor failed to change price: report=%+v total=%v", got, total)
 	}
 }

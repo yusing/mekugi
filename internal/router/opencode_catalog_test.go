@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/contracts/inference"
+
 	"github.com/yusing/mekugi/providers/opencode"
 )
 
@@ -62,17 +64,17 @@ func TestOpenCodeCatalogConsumers(t *testing.T) {
 		}
 	}
 	m, _ := service.Model("new-model")
-	cost := estimateOpenCodeCost(m.Cost, "", tokenCounts{InputTokens: 100, UncachedInputTokens: 80, CacheWriteTokens: 10, OutputTokens: 20})
-	if !cost.known || math.Abs(cost.uncachedInput-90.0/1e6) > 1e-12 || cost.cachedInput != 0 || cost.output != 100.0/1e6 {
+	cost := estimateOpenCodeCost(m.Cost, "", inference.Usage{InputTokens: 100, UncachedInputTokens: 80, CacheWriteTokens: 10, OutputTokens: 20})
+	if !cost.Known || math.Abs(cost.UncachedInput-90.0/1e6) > 1e-12 || cost.CachedInput != 0 || cost.Output != 100.0/1e6 {
 		t.Fatalf("online pricing: %+v", cost)
 	}
 	free := opencode.Price{Input: new(0.0), Output: new(0.0)}
-	counts := tokenCounts{InputTokens: 10, UncachedInputTokens: 10, OutputTokens: 2}
-	if !estimateOpenCodeCost(free, "", counts).known {
+	counts := inference.Usage{InputTokens: 10, UncachedInputTokens: 10, OutputTokens: 2}
+	if !estimateOpenCodeCost(free, "", counts).Known {
 		t.Fatal("explicit zero price is not free")
 	}
 	counts.UncachedInputTokens = 5
-	if estimateOpenCodeCost(free, "", counts).known || estimateOpenCodeCost(opencode.Price{}, "", counts).known || estimateOpenCodeCost(free, "priority", tokenCounts{}).known {
+	if estimateOpenCodeCost(free, "", counts).Known || estimateOpenCodeCost(opencode.Price{}, "", counts).Known || estimateOpenCodeCost(free, "priority", inference.Usage{}).Known {
 		t.Fatal("missing rates or unsupported tier priced")
 	}
 }
@@ -102,15 +104,15 @@ func TestOpenCodeInflightPriceSurvivesRemoval(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer response.Body.Close()
-			usage := newThreadUsage()
-			observation := usage.observation("thread", "", "opencode-go:glm-5.3-flash", "")
-			observation.openCodePrice = response.Body.(*grokResponseBody).openCodePrice
+			usage := newTestUsage(t)
+			observation := usage.Observation("thread", "", "opencode-go:glm-5.3-flash", "")
+			observation.Price = pinnedOpenCodePrice(response.Body.(*grokResponseBody).openCodePrice)
 			if _, err := io.ReadAll(response.Body); err != nil {
 				t.Fatal(err)
 			}
-			observation.observe(tokenCounts{InputTokens: 10, UncachedInputTokens: 10, OutputTokens: 4})
-			report, ok := usage.snapshot("thread")
-			if !ok || !report.cost.known || report.cost.uncachedInput != 10.0/1e6 || report.cost.output != 8.0/1e6 {
+			observation.Observe(inference.Usage{InputTokens: 10, UncachedInputTokens: 10, OutputTokens: 4})
+			report, ok := usage.Snapshot("thread")
+			if !ok || !report.Cost.Known || report.Cost.UncachedInput != 10.0/1e6 || report.Cost.Output != 8.0/1e6 {
 				t.Fatalf("in-flight price lost after removal: %+v", report)
 			}
 		})

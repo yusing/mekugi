@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/capability"
 	"github.com/yusing/mekugi/contracts/command"
@@ -15,9 +13,11 @@ import (
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/contracts/reference"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/commandsegments/segments"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
+	"github.com/yusing/mekugi/modules/usage/accounting"
 )
 
 // Handle resolves one explicitly declared dependency during ordered construction.
@@ -184,6 +184,7 @@ func (r *moduleRegistrar) ShellApproval(guard binding.ShellApproval) error {
 }
 
 type Runtime struct {
+	Usage            *accounting.Service
 	Guards           []binding.ShellApproval
 	Naming           *binding.SessionNaming
 	Guidance         *binding.Guidance

@@ -4,45 +4,9 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/contracts/inference"
 )
-
-func TestOutputThroughputRate(t *testing.T) {
-	for _, tc := range []struct {
-		name        string
-		measurement OutputThroughput
-		wantRate    float64
-		wantKnown   bool
-	}{
-		{name: "absent"},
-		{name: "missing-duration", measurement: OutputThroughput{OutputTokens: 100, MeasuredRequests: 1}},
-		{name: "missing-request-count", measurement: OutputThroughput{OutputTokens: 100, DurationNanos: uint64(time.Second)}},
-		{name: "measured-zero-output", measurement: OutputThroughput{DurationNanos: uint64(time.Second), MeasuredRequests: 1}, wantKnown: true},
-		{name: "fractional-second", measurement: OutputThroughput{OutputTokens: 30, DurationNanos: uint64(500 * time.Millisecond), MeasuredRequests: 1}, wantRate: 60, wantKnown: true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			gotRate, gotKnown := tc.measurement.Rate()
-			if gotRate != tc.wantRate || gotKnown != tc.wantKnown {
-				t.Fatalf("Rate() = (%g, %t), want (%g, %t)", gotRate, gotKnown, tc.wantRate, tc.wantKnown)
-			}
-		})
-	}
-}
-
-func TestOutputThroughputAddWeightsByMeasuredDuration(t *testing.T) {
-	var total OutputThroughput
-	total.Add(OutputThroughput{OutputTokens: 100, DurationNanos: uint64(time.Second), MeasuredRequests: 1})
-	total.Add(OutputThroughput{OutputTokens: 90, DurationNanos: uint64(9 * time.Second), MeasuredRequests: 1})
-	total.Add(OutputThroughput{})
-	want := OutputThroughput{OutputTokens: 190, DurationNanos: uint64(10 * time.Second), MeasuredRequests: 2}
-	if total != want {
-		t.Fatalf("aggregate = %+v, want %+v", total, want)
-	}
-	// The two individual rates are 100 and 10 TPS. Their arithmetic mean,
-	// 55 TPS, is not the aggregate's duration-weighted 19 TPS.
-	if rate, known := total.Rate(); !known || rate != 19 {
-		t.Fatalf("aggregate Rate() = (%g, %t), want (19, true)", rate, known)
-	}
-}
 
 func TestSnapshotOutputThroughputAggregatesMeasuredAttempts(t *testing.T) {
 	r, err := New(Config{Mode: "mekugi"})
@@ -50,9 +14,9 @@ func TestSnapshotOutputThroughputAggregatesMeasuredAttempts(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { r.Close() })
-	first := OutputThroughput{OutputTokens: 100, DurationNanos: uint64(time.Second), MeasuredRequests: 1}
-	second := OutputThroughput{OutputTokens: 90, DurationNanos: uint64(9 * time.Second), MeasuredRequests: 1}
-	zero := OutputThroughput{DurationNanos: uint64(2 * time.Second), MeasuredRequests: 1}
+	first := inference.OutputThroughput{OutputTokens: 100, DurationNanos: uint64(time.Second), MeasuredRequests: 1}
+	second := inference.OutputThroughput{OutputTokens: 90, DurationNanos: uint64(9 * time.Second), MeasuredRequests: 1}
+	zero := inference.OutputThroughput{DurationNanos: uint64(2 * time.Second), MeasuredRequests: 1}
 	r.addExchange(captureRecord{RequestSequence: 1}, []captureRecord{
 		{ProviderAttempt: 1, Usage: &ProviderUsage{OutputTokens: 100, OutputThroughput: first}},
 		{ProviderAttempt: 2, Usage: &ProviderUsage{OutputTokens: 90, OutputThroughput: second}},
@@ -65,7 +29,7 @@ func TestSnapshotOutputThroughputAggregatesMeasuredAttempts(t *testing.T) {
 		{ProviderAttempt: 1, Usage: &ProviderUsage{OutputThroughput: zero}},
 	})
 	s := r.Snapshot()
-	want := OutputThroughput{OutputTokens: 190, DurationNanos: uint64(12 * time.Second), MeasuredRequests: 3}
+	want := inference.OutputThroughput{OutputTokens: 190, DurationNanos: uint64(12 * time.Second), MeasuredRequests: 3}
 	if s.Usage.OutputThroughput != want || s.Usage.OutputTokens != 1190 {
 		t.Fatalf("snapshot usage = %+v, want paired measurement %+v and 1190 total output tokens", s.Usage, want)
 	}
@@ -75,10 +39,10 @@ func TestSnapshotOutputThroughputAggregatesMeasuredAttempts(t *testing.T) {
 	if s.Requests.Retries != 3 || s.Usage.MissingAttempts != 1 {
 		t.Fatalf("retry/missing evidence = requests %+v, usage %+v", s.Requests, s.Usage)
 	}
-	if got := s.Exchanges[0].Usage.OutputThroughput; got != (OutputThroughput{OutputTokens: 190, DurationNanos: uint64(10 * time.Second), MeasuredRequests: 2}) {
+	if got := s.Exchanges[0].Usage.OutputThroughput; got != (inference.OutputThroughput{OutputTokens: 190, DurationNanos: uint64(10 * time.Second), MeasuredRequests: 2}) {
 		t.Fatalf("exchange throughput = %+v", got)
 	}
-	for i, want := range []OutputThroughput{first, second, {}} {
+	for i, want := range []inference.OutputThroughput{first, second, {}} {
 		if got := s.Exchanges[0].ProviderAttempts[i].Usage.OutputThroughput; got != want {
 			t.Fatalf("attempt %d throughput = %+v, want %+v", i+1, got, want)
 		}
@@ -101,7 +65,7 @@ func TestSnapshotOutputThroughputSurvivesDetailEviction(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { r.Close() })
-	measurement := OutputThroughput{OutputTokens: 7, DurationNanos: uint64(2 * time.Second), MeasuredRequests: 1}
+	measurement := inference.OutputThroughput{OutputTokens: 7, DurationNanos: uint64(2 * time.Second), MeasuredRequests: 1}
 	r.addExchange(captureRecord{RequestSequence: 1}, []captureRecord{
 		{ProviderAttempt: 1, Usage: &ProviderUsage{OutputTokens: 7, OutputThroughput: measurement}},
 	})

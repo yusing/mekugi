@@ -4,6 +4,9 @@ package router
 import (
 	"context"
 	"encoding/json/jsontext"
+
+	"github.com/yusing/mekugi/modules/usage/accounting"
+
 	json "encoding/json/v2"
 	"errors"
 	"io"
@@ -11,14 +14,13 @@ import (
 	"strings"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
-
-	"github.com/yusing/mekugi/providers/openai"
 
 	"github.com/yusing/mekugi/contracts/inference"
+	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/providers/openai"
 )
 
-func namingCompletion(provider responseProvider, accounting *threadUsage, thread string, headers http.Header) inference.Complete {
+func namingCompletion(provider responseProvider, totals *accounting.Service, thread string, headers http.Header) inference.Complete {
 	if provider == nil {
 		return nil
 	}
@@ -40,12 +42,12 @@ func namingCompletion(provider responseProvider, accounting *threadUsage, thread
 			return "", err
 		}
 		response, err := provider.forwardExecution(ctx, ctx, body, auxHeaders, "")
-		var usage *threadUsageObservation
+		var usage *accounting.Observation
 		_, rejected := errors.AsType[*providerHTTPError](err)
-		if accounting != nil && !rejected && (response == nil || response.StatusCode >= 200 && response.StatusCode < 300) {
-			usage = accounting.observation(thread, thread, request.Model, "")
-			usage.reasoning = request.Effort
-			defer usage.finish()
+		if totals != nil && !rejected && (response == nil || response.StatusCode >= 200 && response.StatusCode < 300) {
+			usage = totals.Observation(thread, thread, request.Model, "")
+			usage.Reasoning = request.Effort
+			defer usage.Finish()
 		}
 		if err != nil {
 			return "", err
@@ -61,7 +63,7 @@ func namingCompletion(provider responseProvider, accounting *threadUsage, thread
 		collector := new(sessionTitleCollector)
 		hooks := new(responseHooks)
 		if usage != nil {
-			hooks.onUsage = usage.observe
+			hooks.onUsage = usage.Observe
 		}
 		state, err := copyUpstreamBodyTransformed(io.Discard, response, stream, collector, hooks)
 		if err != nil {

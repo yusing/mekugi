@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"context"
 
+	"github.com/yusing/mekugi/contracts/inference"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/providers/openai"
 
@@ -208,8 +210,8 @@ func TestFinalAnswerTransportStreamsBeforeTerminal(t *testing.T) {
 						if err := <-providerDone; err != nil {
 							t.Fatal(err)
 						}
-						counts, available := proxy.usage.snapshot("thread-1")
-						if !available || counts.tokenCounts != (tokenCounts{InputTokens: 20, UncachedInputTokens: 8, OutputTokens: 5, ReasoningTokens: 3}) {
+						counts, available := proxy.usage.Snapshot("thread-1")
+						if !available || counts.Usage != (inference.Usage{InputTokens: 20, UncachedInputTokens: 8, OutputTokens: 5, ReasoningTokens: 3}) {
 							t.Fatalf("usage=%+v available=%v", counts, available)
 						}
 					})

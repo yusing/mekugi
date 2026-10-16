@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/inference"
+
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -354,8 +356,8 @@ func TestProviderWebSocketNonstreamReconstructsOutput(t *testing.T) {
 	}
 	var output bytes.Buffer
 	transform := &webSocketCountingTransform{}
-	usage := tokenCounts{}
-	state, err := copyUpstreamBodyTransformed(&output, response, false, transform, &responseHooks{onUsage: func(counts tokenCounts) { usage = counts }})
+	usage := inference.Usage{}
+	state, err := copyUpstreamBodyTransformed(&output, response, false, transform, &responseHooks{onUsage: func(counts inference.Usage) { usage = counts }})
 	if err != nil {
 		t.Fatal(err)
 	}

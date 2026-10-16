@@ -26,11 +26,12 @@ use (
 	./modules/outputdeduplication
 	./modules/outputrecovery
 	./modules/remotewriteapproval
-	./modules/sudoapproval
-	./modules/sessionnaming
 	./modules/sessionhistory
+	./modules/sessionnaming
 	./modules/sourceoutline
+	./modules/sudoapproval
 	./modules/symbolquery
+	./modules/usage
 	./providers/grok
 	./providers/openai
 	./providers/opencode

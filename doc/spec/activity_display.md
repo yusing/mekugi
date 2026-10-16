@@ -500,7 +500,7 @@ uses ordinary status colors. Timer, input,
 output, cost, and turn slots are reserved before data arrives and do not resize
 with changing digits or numeric formats. Selection shades the selected agent's rows in
 place rather than reserving a marker column.
-Tokens and cost are read from the canonical [per-thread usage totals](usage.md),
+Tokens and cost are read from the canonical [per-thread usage totals](../../modules/usage/SPEC.md),
 not accumulated separately by the roster. The roster follows their gap rules:
 an accepted or transport-interrupted response without usable usage
 shows the observed cost as a lower bound, `≥$N`, and later usage does not erase the

@@ -1,4 +1,4 @@
-package router
+package accounting
 
 import (
 	"context"
@@ -10,18 +10,20 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/inference"
+
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 func TestThreadUsageFailedPublicationCannotRestoreCompleteLifetime(t *testing.T) {
 	store := usageStoreFixture(t, t.TempDir())
-	u := storedUsageFixture(store)
-	t.Cleanup(u.close)
-	u.markNew("child")
-	counts := tokenCounts{InputTokens: 10, UncachedInputTokens: 10, OutputTokens: 1}
-	u.observation("child", "child", "gpt-6-sol", "").observe(counts)
+	u := storedUsageFixture(t, store)
+
+	u.MarkNew("child")
+	counts := inference.Usage{InputTokens: 10, UncachedInputTokens: 10, OutputTokens: 1}
+	u.Observation("child", "child", "gpt-6-sol", "").Observe(counts)
 	flushUsageForTest(t, u)
-	if report, _ := u.snapshot("child"); report.priorUnknown {
+	if report, _ := u.Snapshot("child"); report.PriorUnknown {
 		t.Fatal("positive creation evidence did not establish a new baseline")
 	}
 	// Actual storage corruption, not ordinary contention, prevents publication.
@@ -32,43 +34,43 @@ func TestThreadUsageFailedPublicationCannotRestoreCompleteLifetime(t *testing.T)
 	if err := os.Mkdir(lockPath, 0700); err != nil {
 		t.Fatal(err)
 	}
-	u.observation("child", "child", "gpt-6-sol", "").observe(counts)
+	u.Observation("child", "child", "gpt-6-sol", "").Observe(counts)
 	flushUsageForTest(t, u)
-	if report, _ := u.snapshot("child"); !report.priorUnknown || report.InputTokens != 20 {
+	if report, _ := u.Snapshot("child"); !report.PriorUnknown || report.InputTokens != 20 {
 		t.Fatalf("publication failure lost live evidence or claimed continuity: %+v", report)
 	}
 	if err := os.Remove(lockPath); err != nil {
 		t.Fatal(err)
 	}
-	u.close()
-	restored := storedUsageFixture(store)
+	u.Close()
+	restored := storedUsageFixture(t, store)
 	report := requireStoredUsage(t, restored, "child", 10, 1, 1, .00003)
-	if !report.priorUnknown {
+	if !report.PriorUnknown {
 		t.Fatal("a stale durable record claimed complete lifetime usage after write failure")
 	}
 }
 
 func TestThreadUsageAccountingBeforeHistoryRemainsUncertain(t *testing.T) {
 	store := usageStoreFixture(t, t.TempDir())
-	u := storedUsageFixture(store)
-	t.Cleanup(u.close)
-	u.observation("legacy", "legacy", "gpt-6-sol", "").observe(tokenCounts{InputTokens: 10, UncachedInputTokens: 10})
-	u.restore("legacy", true)
-	u.markNew("legacy") // Late notifications cannot erase established uncertainty.
-	if report, _ := u.snapshot("legacy"); !report.priorUnknown {
+	u := storedUsageFixture(t, store)
+
+	u.Observation("legacy", "legacy", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 10, UncachedInputTokens: 10})
+	u.Restore("legacy", true)
+	u.MarkNew("legacy") // Late notifications cannot erase established uncertainty.
+	if report, _ := u.Snapshot("legacy"); !report.PriorUnknown {
 		t.Fatal("accounting before history hydration lost the unknown earlier window")
 	}
-	u.close()
-	restored := storedUsageFixture(store)
-	if report, _ := restored.snapshot("legacy"); !report.priorUnknown {
+	u.Close()
+	restored := storedUsageFixture(t, store)
+	if report, _ := restored.Snapshot("legacy"); !report.PriorUnknown {
 		t.Fatal("unclassified history became complete after restart")
 	}
 }
 
 func TestThreadUsageStorageFailurePreservesLiveEvidence(t *testing.T) {
 	store := usageStoreFixture(t, t.TempDir())
-	u := storedUsageFixture(store)
-	t.Cleanup(u.close)
+	u := storedUsageFixture(t, store)
+
 	// Corrupt retained evidence is unreadable, not an empty baseline.
 	if err := os.WriteFile(filepath.Join(store.directory, threadUsageName("child")), []byte(`{broken`), 0600); err != nil {
 		t.Fatal(err)
@@ -80,26 +82,26 @@ func TestThreadUsageStorageFailurePreservesLiveEvidence(t *testing.T) {
 		}
 		notices++
 	}
-	u.restore("child", true)
+	u.Restore("child", true)
 	for range 2 {
-		u.observation("child", "child", "gpt-6-sol", "").observe(tokenCounts{InputTokens: 10, UncachedInputTokens: 10, OutputTokens: 1})
+		u.Observation("child", "child", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 10, UncachedInputTokens: 10, OutputTokens: 1})
 	}
 	report := requireStoredUsage(t, u, "child", 20, 2, 2, .00006)
-	if !report.priorUnknown || notices != 1 {
+	if !report.PriorUnknown || notices != 1 {
 		t.Fatalf("storage failure claimed completeness or repeated notices: %+v notices=%d", report, notices)
 	}
 	// Another thread's persistence remains independent of the failed target.
-	u.observation("other", "other", "gpt-6-sol", "").observe(tokenCounts{InputTokens: 10, UncachedInputTokens: 10})
+	u.Observation("other", "other", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 10, UncachedInputTokens: 10})
 	flushUsageForTest(t, u)
-	restored := storedUsageFixture(store)
+	restored := storedUsageFixture(t, store)
 	requireStoredUsage(t, restored, "other", 10, 0, 1, .00002)
 }
 
 func TestThreadUsageStoreRejectsConflictingIdentityAndRetainsOwnership(t *testing.T) {
 	store := usageStoreFixture(t, t.TempDir())
-	u := storedUsageFixture(store)
-	t.Cleanup(u.close)
-	u.observation("source", "source", "gpt-6-sol", "").observe(tokenCounts{InputTokens: 10, UncachedInputTokens: 10})
+	u := storedUsageFixture(t, store)
+
+	u.Observation("source", "source", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 10, UncachedInputTokens: 10})
 	flushUsageForTest(t, u)
 	name := threadUsageName("source")
 	if _, found, err := testHistory().Kind(name); err != nil || !found {
@@ -116,10 +118,10 @@ func TestThreadUsageStoreRejectsConflictingIdentityAndRetainsOwnership(t *testin
 	if err := os.WriteFile(filepath.Join(store.directory, threadUsageName("fork")), data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	restored := storedUsageFixture(store)
-	restored.restore("fork", true)
-	got, _ := restored.snapshot("fork")
-	if got.InputTokens != 0 || got.OutputTokens != 0 || got.roundtrips != 0 || !got.priorUnknown {
+	restored := storedUsageFixture(t, store)
+	restored.Restore("fork", true)
+	got, _ := restored.Snapshot("fork")
+	if got.InputTokens != 0 || got.OutputTokens != 0 || got.Roundtrips != 0 || !got.PriorUnknown {
 		t.Fatalf("conflicting durable identity borrowed consumption: %+v", got)
 	}
 	requireStoredUsage(t, restored, "source", 10, 0, 1, .00002)
@@ -127,12 +129,12 @@ func TestThreadUsageStoreRejectsConflictingIdentityAndRetainsOwnership(t *testin
 
 func TestThreadUsageAsyncRetirementPreservesKnownLiveBaseline(t *testing.T) {
 	store := usageStoreFixture(t, t.TempDir())
-	u := storedUsageFixture(store)
-	t.Cleanup(u.close)
-	u.observation("child", "child", "gpt-6-sol", "").observe(tokenCounts{InputTokens: 10, UncachedInputTokens: 10, OutputTokens: 1})
+	u := storedUsageFixture(t, store)
+
+	u.Observation("child", "child", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 10, UncachedInputTokens: 10, OutputTokens: 1})
 	flushUsageForTest(t, u)
 	unlock := holdUsageStoreLock(t, store)
-	u.observation("child", "child", "gpt-6-sol", "").observe(tokenCounts{InputTokens: 20, UncachedInputTokens: 20, OutputTokens: 2})
+	u.Observation("child", "child", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 20, UncachedInputTokens: 20, OutputTokens: 2})
 	// Simulate retirement under its actual publication lock. Known consumption
 	// in the live owner must survive even if its durable baseline disappears.
 	if err := os.Remove(filepath.Join(store.directory, threadUsageName("child"))); err != nil {
@@ -141,16 +143,16 @@ func TestThreadUsageAsyncRetirementPreservesKnownLiveBaseline(t *testing.T) {
 	unlock()
 	flushUsageForTest(t, u)
 	requireStoredUsage(t, u, "child", 30, 3, 2, .00009)
-	restarted := storedUsageFixture(store)
+	restarted := storedUsageFixture(t, store)
 	requireStoredUsage(t, restarted, "child", 30, 3, 2, .00009)
 }
 
 func TestThreadUsageAsyncShutdownBudgetCancelsAndJoins(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		store := usageStoreFixture(t, t.TempDir())
-		u := storedUsageFixture(store)
-		defer u.close()
-		u.observation("child", "child", "gpt-6-sol", "").observe(tokenCounts{InputTokens: 10, UncachedInputTokens: 10, OutputTokens: 1})
+		u := storedUsageFixture(t, store)
+		defer u.Close()
+		u.Observation("child", "child", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 10, UncachedInputTokens: 10, OutputTokens: 1})
 		flushUsageForTest(t, u)
 		var notices atomic.Int64
 		u.notice = func(thread string, err error) {
@@ -161,9 +163,9 @@ func TestThreadUsageAsyncShutdownBudgetCancelsAndJoins(t *testing.T) {
 		}
 		unlock := holdUsageStoreLock(t, store)
 		defer unlock()
-		u.observation("child", "child", "gpt-6-sol", "").observe(tokenCounts{InputTokens: 20, UncachedInputTokens: 20, OutputTokens: 2})
+		u.Observation("child", "child", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 20, UncachedInputTokens: 20, OutputTokens: 2})
 		done := make(chan struct{})
-		go func() { u.close(); close(done) }()
+		go func() { u.Close(); close(done) }()
 		select {
 		case <-done:
 		case <-time.After(shutdownTimeout + 5*time.Second):
@@ -174,9 +176,9 @@ func TestThreadUsageAsyncShutdownBudgetCancelsAndJoins(t *testing.T) {
 		}
 		// A joined writer cannot publish later merely because contention clears.
 		unlock()
-		restarted := storedUsageFixture(store)
+		restarted := storedUsageFixture(t, store)
 		report := requireStoredUsage(t, restarted, "child", 10, 1, 1, .00003)
-		if !report.priorUnknown {
+		if !report.PriorUnknown {
 			t.Fatal("restart claimed complete usage after exhausting shutdown budget")
 		}
 	})

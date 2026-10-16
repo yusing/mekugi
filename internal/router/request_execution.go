@@ -11,6 +11,9 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/contracts/inference"
+	"github.com/yusing/mekugi/modules/usage/accounting"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/libraries/httptransport"
@@ -54,7 +57,7 @@ type requestAttempt struct {
 	mekugiTransform *mekugiResponseTransform
 	bridge          *subagentBridge
 	forwardBody     []byte
-	usageTracker    *threadUsageObservation
+	usageTracker    *accounting.Observation
 	providerStarted time.Time
 
 	response          *http.Response
@@ -312,17 +315,17 @@ func (a *requestAttempt) forward() error {
 		if a.mekugiTransform != nil {
 			a.usageTracker = a.mekugiTransform.usageTracker
 		} else if a.executor.mekugiCalls != nil && a.metadataValid {
-			a.usageTracker = a.executor.mekugiCalls.usage.observation(
+			a.usageTracker = a.executor.mekugiCalls.usage.Observation(
 				a.threadID,
 				a.metadata.ThreadID,
 				a.request.Model(),
-				usageServiceTier(a.request.Fields["service_tier"]),
+				codexresponses.UsageServiceTier(a.request.Fields["service_tier"]),
 			)
 		}
 	}
 	if a.usageTracker != nil {
-		a.usageTracker.reasoning = a.request.ReasoningEffort()
-		a.usageTracker.begin()
+		a.usageTracker.Reasoning = a.request.ReasoningEffort()
+		a.usageTracker.Begin()
 	} else {
 		a.providerStarted = time.Now()
 	}
@@ -352,7 +355,7 @@ func (a *requestAttempt) forward() error {
 		return fmt.Errorf("execute request: %w", forwardCriticalDiagnostic(err))
 	}
 	if body, ok := a.response.Body.(*grokResponseBody); ok && a.usageTracker != nil {
-		a.usageTracker.openCodePrice = body.openCodePrice
+		a.usageTracker.Price = pinnedOpenCodePrice(body.openCodePrice)
 	}
 	a.finalization.upstreamStatusCode = a.response.StatusCode
 	a.finalization.failurePhase = requestFailureInspectResponse
@@ -392,22 +395,22 @@ func (a *requestAttempt) prepareResponse() error {
 			return fmt.Errorf("record mekugi request overhead: %w", err)
 		}
 	}
-	a.hooks.onUsage = func(counts tokenCounts) {
+	a.hooks.onUsage = func(counts inference.Usage) {
 		a.finalization.observation.usageCounts = counts
 		a.finalization.observation.usageObserved = true
 		if a.usageTracker != nil {
-			a.usageTracker.receivedAt = a.hooks.receivedAt
+			a.usageTracker.ReceivedAt = a.hooks.receivedAt
 		}
 		if a.response.StatusCode >= http.StatusOK && a.response.StatusCode < http.StatusMultipleChoices {
 			if a.mekugiTransform != nil {
 				a.mekugiTransform.observeResponseUsage(counts)
 			} else {
-				a.usageTracker.observe(counts)
+				a.usageTracker.Observe(counts)
 			}
 		}
-		throughput := measureOutputThroughput(counts, a.providerStarted, a.hooks.receivedAt)
+		throughput := accounting.MeasureThroughput(counts, a.providerStarted, a.hooks.receivedAt)
 		if a.usageTracker != nil {
-			throughput = a.usageTracker.throughput
+			throughput = a.usageTracker.Throughput
 		}
 		capturer.ObserveProviderUsage(a.executionCtx, capturer.ProviderUsage{
 			OutputThroughput: throughput,
@@ -521,7 +524,7 @@ func (a *requestAttempt) observeTitleSuccess() {
 
 func (a *requestAttempt) finish(requestErr error) error {
 	if a.finishUsage {
-		a.usageTracker.finish()
+		a.usageTracker.Finish()
 	}
 	if a.mekugiTransform != nil {
 		a.mekugiTransform.Close()

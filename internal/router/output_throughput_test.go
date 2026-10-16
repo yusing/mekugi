@@ -13,85 +13,33 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/capturer"
+	"github.com/yusing/mekugi/contracts/inference"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/modules/usage/accounting"
 )
 
-func requireRoundThroughput(t *testing.T, usage *threadUsage, thread string, rate float64, known bool) tokenUsageReport {
+func requireRoundThroughput(t *testing.T, usage *accounting.Service, thread string, rate float64, known bool) accounting.Report {
 	t.Helper()
-	report, _ := usage.snapshot(thread)
-	got, ok := report.roundOutput.Throughput.Rate()
+	report, _ := usage.Snapshot(thread)
+	got, ok := report.RoundOutput.Throughput.Rate()
 	if got != rate || ok != known {
 		t.Fatalf("%s rate=(%g,%v), want (%g,%v); %+v", thread, got, ok, rate, known, report)
 	}
 	return report
 }
 
-func TestOutputThroughputCurrentRound(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		usage := newThreadUsage()
-		t.Cleanup(usage.close)
-		first := usage.observation("main", "main", "gpt-6-sol", "")
-		first.begin()
-		requireRoundThroughput(t, usage, "main", 0, false)
-		time.Sleep(2 * time.Second)
-		first.observe(tokenCounts{TotalsKnown: true, OutputTokens: 80})
-		requireRoundThroughput(t, usage, "main", 40, true)
-		first.observe(tokenCounts{TotalsKnown: true, OutputTokens: 999})
-		first.finish()
-		if report := requireRoundThroughput(t, usage, "main", 40, true); report.roundtrips != 1 {
-			t.Fatal(report)
-		}
-		// Tool time between requests does not dilute the next provider round.
-		time.Sleep(time.Minute)
-		zero := usage.observation("main", "main", "gpt-6-luna", "")
-		zero.begin()
-		requireRoundThroughput(t, usage, "main", 40, true)
-		time.Sleep(time.Second)
-		zero.observe(tokenCounts{TotalsKnown: true})
-		requireRoundThroughput(t, usage, "main", 0, true)
-		time.Sleep(time.Second)
-		gap := usage.observation("main", "main", "gpt-6-sol", "")
-		gap.begin()
-		time.Sleep(time.Second)
-		gap.finish()
-		requireRoundThroughput(t, usage, "main", 0, true)
-	})
-}
-
-func TestOutputThroughputConcurrentRoundOrdering(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		usage := newThreadUsage()
-		t.Cleanup(usage.close)
-		old := usage.observation("main", "main", "gpt-6-sol", "")
-		old.begin()
-		time.Sleep(time.Second)
-		next := usage.observation("main", "main", "gpt-6-sol", "")
-		next.begin()
-		time.Sleep(time.Second)
-		next.observe(tokenCounts{TotalsKnown: true, OutputTokens: 60})
-		requireRoundThroughput(t, usage, "main", 60, true)
-		time.Sleep(time.Second)
-		old.observe(tokenCounts{TotalsKnown: true, OutputTokens: 30})
-		requireRoundThroughput(t, usage, "main", 60, true)
-		// The older request still keeps its own paired measurement for capture.
-		if rate, known := old.throughput.Rate(); !known || rate != 10 {
-			t.Fatalf("older capture rate=%g,%v", rate, known)
-		}
-	})
-}
-
 func TestOutputThroughputRestoredThreadIsolation(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		store := usageStoreFixture(t, t.TempDir())
-		usage := storedUsageFixture(store)
-		first := usage.observation("child", "child", "gpt-6-sol", "")
-		first.begin()
+		usage := storedUsageFixture(t, store)
+		first := usage.Observation("child", "child", "gpt-6-sol", "")
+		first.Begin()
 		time.Sleep(2 * time.Second)
-		first.observe(tokenCounts{TotalsKnown: true, OutputTokens: 100})
-		usage.close()
-		restored := storedUsageFixture(store)
-		restored.restore("child", true)
-		t.Cleanup(restored.close)
+		first.Observe(inference.Usage{TotalsKnown: true, OutputTokens: 100})
+		usage.Close()
+		restored := storedUsageFixture(t, store)
+		restored.Restore("child", true)
+
 		requireRoundThroughput(t, restored, "child", 50, true)
 		requireRoundThroughput(t, restored, "fork", 0, false)
 		u, _ := newAppServerTestUI()
@@ -102,30 +50,34 @@ func TestOutputThroughputRestoredThreadIsolation(t *testing.T) {
 			t.Fatal(child)
 		}
 		time.Sleep(time.Second)
-		interrupted := restored.observation("child", "child", "gpt-6-sol", "")
-		interrupted.begin()
-		restored.close()
-		again := storedUsageFixture(store)
-		t.Cleanup(again.close)
-		again.restore("child", true)
+		interrupted := restored.Observation("child", "child", "gpt-6-sol", "")
+		interrupted.Begin()
+		restored.Close()
+		again := storedUsageFixture(t, store)
+
+		again.Restore("child", true)
 		// Resume keeps the last measurement, without reviving a stopwatch.
 		requireRoundThroughput(t, again, "child", 50, true)
-		next := again.observation("child", "child", "gpt-6-sol", "")
-		next.begin()
+		next := again.Observation("child", "child", "gpt-6-sol", "")
+		next.Begin()
 		time.Sleep(time.Second)
-		next.observe(tokenCounts{TotalsKnown: true, OutputTokens: 30})
+		next.Observe(inference.Usage{TotalsKnown: true, OutputTokens: 30})
 		requireRoundThroughput(t, again, "child", 30, true)
 	})
 }
 
 func TestOutputThroughputProviderRequestJSONAndSSE(t *testing.T) {
-	for _, recordThread := range []bool{false, true} {
+	for _, mode := range []string{"no-proxy", "thread", "module-absent"} {
 		for _, stream := range []bool{false, true} {
-			t.Run(fmt.Sprintf("stream=%v/thread=%v", stream, recordThread), func(t *testing.T) {
+			t.Run(fmt.Sprintf("stream=%v/%s", stream, mode), func(t *testing.T) {
 				synctest.Test(t, func(t *testing.T) {
 					var proxy *mekugiProxy
-					if recordThread {
+					if mode != "no-proxy" {
 						proxy = newManagedMekugiProxy(t)
+						if mode == "module-absent" {
+							proxy.usage = nil
+							proxy.activity.usage = nil
+						}
 					}
 					headers := serverMetadataHeaders(t, "turn", nil)
 					headers.Set(sessionIDHeader, "transport-session")
@@ -169,9 +121,9 @@ func TestOutputThroughputProviderRequestJSONAndSSE(t *testing.T) {
 					if rate, known := measurement.Rate(); !known || rate != 40 {
 						t.Fatalf("capture throughput=%+v", measurement)
 					}
-					if recordThread {
+					if mode == "thread" {
 						report := requireRoundThroughput(t, proxy.usage, "thread-1", 40, true)
-						if report.OutputTokens != 80 || report.roundtrips != 1 {
+						if report.OutputTokens != 80 || report.Roundtrips != 1 {
 							t.Fatal(report)
 						}
 					}
@@ -198,19 +150,19 @@ func TestOutputThroughputUIRefreshRetainsPreviousRound(t *testing.T) {
 		u, _ := newAppServerTestUI()
 		u.session.start(u.thread, "")
 		u.ensureShell()
-		usage := newThreadUsage()
-		t.Cleanup(usage.close)
+		usage := newTestUsage(t)
+
 		u.proxy = &mekugiProxy{usage: usage}
-		first := usage.observation(u.thread, u.thread, "gpt-6-sol", "")
-		first.begin()
+		first := usage.Observation(u.thread, u.thread, "gpt-6-sol", "")
+		first.Begin()
 		time.Sleep(time.Second)
-		first.observe(tokenCounts{TotalsKnown: true, OutputTokens: 30})
+		first.Observe(inference.Usage{TotalsKnown: true, OutputTokens: 30})
 		u.applyObservedActivity()
 		if outputThroughputLabel(u.session.agent("/root").OutputThroughput) != "30.0 tok/s" {
 			t.Fatal("main did not refresh")
 		}
-		next := usage.observation(u.thread, u.thread, "gpt-6-sol", "")
-		next.begin()
+		next := usage.Observation(u.thread, u.thread, "gpt-6-sol", "")
+		next.Begin()
 		u.applyObservedActivity()
 		if got := outputThroughputLabel(u.session.agent("/root").OutputThroughput); got != "30.0 tok/s" {
 			t.Fatalf("previous rate disappeared: %s", got)
@@ -227,14 +179,14 @@ func TestUISnapshotOutputThroughputStreamingRetainsMeasuredRate(t *testing.T) {
 				u.thread, u.proxy = "thread-1", proxy
 				u.session.start(u.thread, "")
 				u.ensureShell()
-				var previous capturer.OutputThroughput
+				var previous inference.OutputThroughput
 				if prior {
-					observation := proxy.usage.observation(u.thread, "", "gpt-6.1-sol", "")
-					observation.begin()
+					observation := proxy.usage.Observation(u.thread, "", "gpt-6.1-sol", "")
+					observation.Begin()
 					// Actual reported response: 620 of 883 output tokens were hidden reasoning.
 					time.Sleep(20125689348 * time.Nanosecond)
-					observation.observe(tokenCounts{TotalsKnown: true, OutputTokens: 883, ReasoningTokens: 620})
-					previous = observation.throughput
+					observation.Observe(inference.Usage{TotalsKnown: true, OutputTokens: 883, ReasoningTokens: 620})
+					previous = observation.Throughput
 				}
 				r, w := io.Pipe()
 				defer r.Close()
@@ -308,14 +260,14 @@ func TestUISnapshotOutputThroughputComposerAndRoster(t *testing.T) {
 			u.view.painter.Theme = livediff.DarkTheme
 			root := u.session.agent("/root")
 			root.ContextKnown, root.ContextTokens, root.ContextWindow = true, 24000, 200000
-			root.OutputThroughput = capturer.OutputThroughput{OutputTokens: 83, DurationNanos: uint64(2 * time.Second), MeasuredRequests: 1}
+			root.OutputThroughput = inference.OutputThroughput{OutputTokens: 83, DurationNanos: uint64(2 * time.Second), MeasuredRequests: 1}
 			root.Final = true
 			u.status, u.model = "Ready", "gpt-6-sol"
 			rows, _ := u.mainFrame(width, 10, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("output-throughput-composer-%d", width), rows)
 			u.agents.apply(activityPaneEvent{Kind: "agents", Agents: []activityPaneAgent{*root,
-				{Name: "/root/fast", OutputThroughput: capturer.OutputThroughput{OutputTokens: 120, DurationNanos: uint64(time.Second), MeasuredRequests: 1}, ContextKnown: true, ContextTokens: 1000, ContextWindow: 200000},
-				{Name: "/root/zero", OutputThroughput: capturer.OutputThroughput{DurationNanos: uint64(time.Second), MeasuredRequests: 1}},
+				{Name: "/root/fast", OutputThroughput: inference.OutputThroughput{OutputTokens: 120, DurationNanos: uint64(time.Second), MeasuredRequests: 1}, ContextKnown: true, ContextTokens: 1000, ContextWindow: 200000},
+				{Name: "/root/zero", OutputThroughput: inference.OutputThroughput{DurationNanos: uint64(time.Second), MeasuredRequests: 1}},
 				{Name: "/root/absent"},
 			}})
 			assertNativeUISnapshot(t, fmt.Sprintf("output-throughput-roster-%d", width), u.agents.nativeRoster(width, 6, now, true))
@@ -323,49 +275,20 @@ func TestUISnapshotOutputThroughputComposerAndRoster(t *testing.T) {
 	}
 }
 
-func TestOutputThroughputMissingAndPartialEvidence(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		started := time.Now()
-		time.Sleep(2 * time.Second)
-		for _, tc := range []struct {
-			name   string
-			counts tokenCounts
-			time   time.Time
-			known  bool
-			rate   float64
-		}{
-			{name: "missing-timing", counts: tokenCounts{TotalsKnown: true, OutputTokens: 80}},
-			{name: "missing-totals", counts: tokenCounts{Incomplete: true}, time: started},
-			{name: "inconsistent", counts: tokenCounts{TotalsKnown: true, OutputTokens: 80, Inconsistent: true}, time: started},
-			{name: "partial-categories-known-totals", counts: tokenCounts{TotalsKnown: true, OutputTokens: 80, Incomplete: true}, time: started, known: true, rate: 40},
-		} {
-			got := measureOutputThroughput(tc.counts, tc.time, time.Now())
-			rate, known := got.Rate()
-			if known != tc.known || rate != tc.rate {
-				t.Fatalf("%s rate=%g,%v want %g,%v", tc.name, rate, known, tc.rate, tc.known)
-			}
-		}
-		got := measureOutputThroughput(tokenCounts{TotalsKnown: true, OutputTokens: 80}, time.Now(), time.Now())
-		if _, known := got.Rate(); known {
-			t.Fatal("zero elapsed time was a measured rate")
-		}
-	})
-}
-
 func TestUISnapshotOutputThroughputRestoredRoster(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		store := usageStoreFixture(t, t.TempDir())
-		usage := storedUsageFixture(store)
-		measured := usage.observation("child", "child", "gpt-6-sol", "")
-		measured.begin()
+		usage := storedUsageFixture(t, store)
+		measured := usage.Observation("child", "child", "gpt-6-sol", "")
+		measured.Begin()
 		time.Sleep(2 * time.Second)
-		measured.observe(tokenCounts{TotalsKnown: true, OutputTokens: 100})
-		interrupted := usage.observation("interrupted", "interrupted", "gpt-6-sol", "")
-		interrupted.begin()
-		usage.close()
+		measured.Observe(inference.Usage{TotalsKnown: true, OutputTokens: 100})
+		interrupted := usage.Observation("interrupted", "interrupted", "gpt-6-sol", "")
+		interrupted.Begin()
+		usage.Close()
 		u := newAppServerSessionTestUI(t, t.TempDir())
-		u.proxy = &mekugiProxy{usage: storedUsageFixture(store)}
-		t.Cleanup(u.proxy.usage.close)
+		u.proxy = &mekugiProxy{usage: storedUsageFixture(t, store)}
+
 		for _, thread := range []string{"child", "interrupted", "legacy"} {
 			info := appServerThreadInfo{ID: thread, AgentNickname: thread, Turns: []appServerHistoryTurn{{ID: "old", Status: "completed"}}}
 			u.session.registerThread(info)
