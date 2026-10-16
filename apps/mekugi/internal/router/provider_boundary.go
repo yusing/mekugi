@@ -13,9 +13,7 @@ import (
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
-// Preserve the existing wire instruction on both providers; diagnostic identity
-// does not rewrite provider-visible prompt content.
-const providerNoHostedSearchInstruction = "\nOpenAI-hosted web search is unavailable on this Grok route. Use only the provided tools; do not claim to have performed unavailable searches."
+const providerNoHostedSearchInstruction = "\nOpenAI-hosted web search is unavailable on this route. Use only the provided tools; do not claim to have performed unavailable searches."
 
 // providerCodecDiagnostics preserves router error identity at the codec boundary.
 func providerCodecDiagnostics(name, subject, prefix, contentCode string) codexresponses.Diagnostics {

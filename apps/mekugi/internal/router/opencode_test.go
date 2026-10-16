@@ -93,6 +93,32 @@ func TestOpenCodeRoutesAndCredentials(t *testing.T) {
 	}
 }
 
+func TestProviderHostedSearchGuidanceMatchesRoute(t *testing.T) {
+	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
+	for _, tc := range []struct {
+		model   string
+		service *opencode.Service
+	}{
+		{"grok-4.7", nil},
+		{service.Prefix + ":" + openCodeTestModel(service), &service},
+	} {
+		t.Run(tc.model, func(t *testing.T) {
+			request := mustTestJSON(t, map[string]any{
+				"model": tc.model, "instructions": "Keep caller policy.", "input": []any{},
+				"tools": []any{map[string]string{"type": "web_search"}},
+			})
+			translated, err := translateProviderRequest(request, tc.service)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wire := string(mustTestJSON(t, translated.body))
+			if !strings.Contains(wire, "Keep caller policy.") || !strings.Contains(wire, "OpenAI-hosted web search is unavailable on this route.") {
+				t.Fatalf("missing caller or route-neutral search guidance: %s", wire)
+			}
+		})
+	}
+}
+
 func TestOpenCodeRequestDiagnosticIdentity(t *testing.T) {
 	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
 	request := mustTestJSON(t, map[string]any{
