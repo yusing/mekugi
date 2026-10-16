@@ -102,6 +102,61 @@ func TestNativeQuestionResolvedAndInterrupt(t *testing.T) {
 	}
 }
 
+func TestNativeChildQuestionUsesBlockedFallback(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	u.Turn = "main-turn"
+	u.notifications = new(nativeNotifications)
+	request := func(thread string) {
+		questionTestMessage(t, u, thread+"-request", "item/tool/requestUserInput", map[string]any{
+			"threadId": thread, "turnId": thread + "-turn", "itemId": "shared-item",
+			"questions": []any{map[string]any{"id": "scope", "question": "Which scope?"}},
+		})
+	}
+	request("child")
+	frame := questionTestPaint(t, u, 140)
+	if !u.alert || !strings.Contains(frame, "Blocked on unsupported request item/tool/requestUserInput") || !strings.Contains(frame, "Ctrl-C interrupts") {
+		t.Fatalf("child request was not visibly blocked: %s", frame)
+	}
+	blocked := u.notifications.blocked[`"child-request"`]
+	if blocked.Thread != "child" || blocked.Turn != "child-turn" || len(u.notifications.blocked) != 1 {
+		t.Fatalf("blocked identity = %+v", u.notifications.blocked)
+	}
+	if wire.Len() != 0 || u.questionCount() != 0 || u.activeQuestionCall() != nil || u.Thread != "main" {
+		t.Fatalf("child request acquired Main input or received a response: %s", wire.String())
+	}
+
+	request("main")
+	if u.questionCount() != 1 || u.activeQuestionCall() == nil || u.activeQuestionCall().Thread != "main" {
+		t.Fatal("Main request with the same item/question identities was not answerable")
+	}
+	questionTestPaint(t, u, 140)
+	appServerTestKeys(t, u, "Main answer\r")
+	want := `{"id":"main-request","result":{"answers":{"scope":{"answers":["user_note: Main answer"]}}}}` + "\n"
+	if wire.String() != want {
+		t.Fatalf("response = %s, want %s", wire.String(), want)
+	}
+	questionTestMessage(t, u, nil, "serverRequest/resolved", map[string]any{"threadId": "main", "requestId": "main-request"})
+	if len(u.notifications.blocked) != 1 {
+		t.Fatal("Main response resolved the child request")
+	}
+
+	wire.Reset()
+	appServerTestKeys(t, u, "\x03")
+	var interrupt struct {
+		Method string `json:"method"`
+		Params struct {
+			Thread string `json:"threadId"`
+			Turn   string `json:"turnId"`
+		} `json:"params"`
+	}
+	if err := json.Unmarshal(wire.Bytes(), &interrupt); err != nil {
+		t.Fatal(err)
+	}
+	if interrupt.Method != "turn/interrupt" || interrupt.Params.Thread != "main" || interrupt.Params.Turn != "main-turn" {
+		t.Fatalf("Ctrl-C did not interrupt Main's waiting turn: %s", wire.String())
+	}
+}
+
 func TestNativeQuestionAsyncBatchAndExternalCommit(t *testing.T) {
 	u, input := newAppServerTestUI()
 	u.session.start("main", t.TempDir())

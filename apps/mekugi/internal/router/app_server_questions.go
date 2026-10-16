@@ -193,6 +193,9 @@ func (u *appServerUI) questionMessage(m appserver.Message) (bool, error) {
 		if err != nil {
 			return true, err
 		}
+		if p.ThreadID != u.Thread {
+			return false, nil
+		}
 		u.addQuestions(&nativeQuestionCall{Call: conversationbinding.Questions(p.ThreadID, p.TurnID, p.ItemID, m.ID, p.Questions), request: slices.Clone(m.ID)}, false)
 		return true, nil
 	}
