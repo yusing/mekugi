@@ -6,7 +6,6 @@ package tokenizer
 import (
 	"fmt"
 	"math"
-	"strings"
 
 	"github.com/dlclark/regexp2/v2"
 )
@@ -14,9 +13,8 @@ import (
 // Codec tokenizes text with the pinned o200k_base vocabulary.
 // Use New to initialize a codec with its own regexp.
 type Codec struct {
-	vocabulary        map[string]uint
-	reverseVocabulary []string
-	splitRegexp       *regexp2.Regexp
+	vocabulary  map[string]uint
+	splitRegexp *regexp2.Regexp
 }
 
 // Count returns the number of tokens in the input string.
@@ -69,17 +67,6 @@ func (c *Codec) tokenize(input string, yield func(uint, string)) error {
 	}
 
 	return nil
-}
-
-func (c *Codec) Decode(tokens []uint) (string, error) {
-	var out strings.Builder
-	for _, t := range tokens {
-		if t >= uint(len(c.reverseVocabulary)) {
-			return "", fmt.Errorf("invalid token: %d", t)
-		}
-		out.WriteString(c.reverseVocabulary[t])
-	}
-	return out.String(), nil
 }
 
 type part struct {

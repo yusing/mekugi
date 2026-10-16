@@ -47,8 +47,8 @@ func TestPinnedTokenIDs(t *testing.T) {
 		if count, err := codec.Count(string(fixture.Text)); err != nil || count != len(fixture.IDs) {
 			t.Fatalf("fixture %d count = %d, want %d: %v", i, count, len(fixture.IDs), err)
 		}
-		if decoded, err := codec.Decode(ids); err != nil || !bytes.Equal([]byte(decoded), fixture.Decoded) {
-			t.Fatalf("fixture %d decoded = %q, want %q: %v", i, decoded, fixture.Decoded, err)
+		if decoded := strings.Join(pieces, ""); !bytes.Equal([]byte(decoded), fixture.Decoded) {
+			t.Fatalf("fixture %d pieces join to %q, want %q", i, decoded, fixture.Decoded)
 		}
 	}
 }
@@ -73,13 +73,8 @@ func TestVocabularyAndConcurrentCodecs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(vocabulary.ranks) != 199998 || len(vocabulary.tokens) != 199998 {
-		t.Fatalf("vocabulary sizes = %d, %d", len(vocabulary.ranks), len(vocabulary.tokens))
-	}
-	for id, token := range vocabulary.tokens {
-		if rank, ok := vocabulary.ranks[token]; !ok || rank != uint(id) {
-			t.Fatalf("rank mismatch at %d", id)
-		}
+	if len(vocabulary) != 199998 {
+		t.Fatalf("vocabulary size = %d", len(vocabulary))
 	}
 	shared, err := New()
 	if err != nil {
@@ -95,25 +90,20 @@ func TestVocabularyAndConcurrentCodecs(t *testing.T) {
 			}
 			for _, codec := range []*Codec{own, shared} {
 				for range 20 {
-					ids, _, err := codec.Encode("Hello, 世界🙂")
+					ids, pieces, err := codec.Encode("Hello, 世界🙂")
 					if err != nil {
 						t.Error(err)
 						return
 					}
-					text, err := codec.Decode(ids)
-					if err != nil || text != "Hello, 世界🙂" {
-						t.Errorf("round trip %q: %v", text, err)
+					count, err := codec.Count("Hello, 世界🙂")
+					if err != nil || count != len(ids) || strings.Join(pieces, "") != "Hello, 世界🙂" {
+						t.Errorf("concurrent encoding: count=%d IDs=%v pieces=%q err=%v", count, ids, pieces, err)
 					}
 				}
 			}
 		})
 	}
 	workers.Wait()
-	for _, id := range []uint{199998, 199999, 200018, ^uint(0)} {
-		if _, err := shared.Decode([]uint{id}); err == nil {
-			t.Fatalf("accepted invalid token %d", id)
-		}
-	}
 }
 
 // Long pieces take the heap merge; it must select exactly the verbatim merges.
