@@ -43,7 +43,7 @@ func BenchmarkNativeFrontends(b *testing.B) {
 		abs("vcs_display.go"), abs("server.go"), abs("native_shell.go"),
 		abs("storage_retention.go"), abs("../../../../modules/changehistory/internal/retained/mutate.go"),
 	}
-	docs := []string{abs("../../../../doc/architecture/ui.md"), abs("../../../../doc/architecture/activity.md"), abs("../../../../doc/architecture/boundary.md")}
+	docs := []string{abs("../../../../docs/contracts/composition.md"), abs("../../../../docs/contracts/record-publication.md"), abs("../../../../docs/contracts/provider-routing.md")}
 	rows := filepath.Join(directory, "rows.txt")
 	if err := os.WriteFile(rows, []byte(strings.Repeat("word\n", 3000)), 0o600); err != nil {
 		b.Fatal(err)
