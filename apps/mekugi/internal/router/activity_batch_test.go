@@ -80,10 +80,10 @@ func TestUISnapshotActivityPlainPrintfHeadings(t *testing.T) {
 					entry.native.segments[0].tail = []string{"printf: write error"}
 				}
 			}
-			v := newLiveActivityView()
-			v.painter.Theme = diffrender.DarkTheme
+			v := newActivityAdapter()
+			v.Painter.Theme = diffrender.DarkTheme
 			v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/probe", Final: true}}, Entries: []activityPaneEntry{entry}})
-			assertNativeUISnapshot(t, "activity-plain-printf-"+state, v.render(100, 18, now))
+			assertNativeUISnapshot(t, "activity-plain-printf-"+state, v.Render(100, 18, now))
 		})
 	}
 }
@@ -176,10 +176,10 @@ func TestUISnapshotActivityPrintfSuccessMarkers(t *testing.T) {
 						last.exit, last.tail = 1, []string{"printf: write error"}
 					}
 				}
-				v := newLiveActivityView()
-				v.painter.Theme = diffrender.DarkTheme
+				v := newActivityAdapter()
+				v.Painter.Theme = diffrender.DarkTheme
 				v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/probe", Final: true}}, Entries: []activityPaneEntry{entry}})
-				assertNativeUISnapshot(t, "activity-printf-success-"+producer.name+"-"+state, v.render(100, 18, now))
+				assertNativeUISnapshot(t, "activity-printf-success-"+producer.name+"-"+state, v.Render(100, 18, now))
 			})
 		}
 	}

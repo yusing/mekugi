@@ -14,7 +14,7 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
 	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.Local)
 	u.clock = func() time.Time { return now }
-	u.view.clock, u.agents.clock = u.clock, u.clock
+	u.view.Clock, u.agents.Clock = u.clock, u.clock
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "reader"}})
 	u.Text = "retained draft"
 	for _, settings := range []struct{ thread, model, effort, tier string }{
@@ -52,11 +52,11 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	}
 	click := func(agent string) {
 		t.Helper()
-		for _, hit := range u.agents.hits {
-			if hit.agent == agent && !hit.skills {
+		for _, hit := range u.agents.Hits {
+			if hit.Agent == agent && !hit.Skills {
 				r := u.shell.layout.Roster
 				for _, suffix := range []string{"M", "m"} {
-					if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", r.X+hit.first, r.Y+hit.row, suffix)); err != nil {
+					if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", r.X+hit.First, r.Y+hit.Row, suffix)); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -109,13 +109,13 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 
 func TestNativeChildReferenceReturnsToMain(t *testing.T) {
 	u := selectionTestUI("child answer")
-	u.agents = newLiveActivityView()
+	u.agents = newActivityAdapter()
 	u.main.agents = u.agents
 	u.main.sessionPresentation()
 	u.main.Text = "draft "
 	u.main.agents.setDisplayFilter(true, "/root/reader")
-	u.main.agents.feedLeft, u.main.agents.feedTop = 1, 1
-	u.main.agents.feedRight, u.main.agents.feedRows = 40, 1
+	u.main.agents.FeedLeft, u.main.agents.FeedTop = 1, 1
+	u.main.agents.FeedRight, u.main.agents.FeedRows = 40, 1
 	selectionTestDrag(t, u, 0, 0, 4, 0)
 	u.selectionAction('r')
 	if u.main.composerReadOnly() || !strings.HasPrefix(u.main.Text, "draft ") || len(u.main.Selections) != 1 || u.Focus != 0 {

@@ -181,9 +181,9 @@ func TestUISnapshotRunningProcesses(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
 	now := time.Date(2026, 10, 6, 12, 0, 0, 0, time.Local)
 	u.clock = func() time.Time { return now }
-	for _, view := range []*liveActivityView{u.view, u.agents} {
-		view.clock, view.painter.Theme = u.clock, diffrender.DarkTheme
-		view.feedOnly, view.bare = true, true
+	for _, view := range []*activityAdapter{u.view, u.agents} {
+		view.Clock, view.Painter.Theme = u.clock, diffrender.DarkTheme
+		view.FeedOnly, view.Bare = true, true
 	}
 	u.session.registerThread(appServerThreadInfo{ID: "child", AgentNickname: "worker"})
 	for _, thread := range []string{"main", "child"} {
@@ -194,7 +194,7 @@ func TestUISnapshotRunningProcesses(t *testing.T) {
 	}
 	frame, _ := u.mainFrame(80, 12, 0)
 	assertNativeUISnapshot(t, "running-processes-composer", frame)
-	assertNativeUISnapshot(t, "running-processes-activity", u.agents.render(70, 8, now))
+	assertNativeUISnapshot(t, "running-processes-activity", u.agents.Render(70, 8, now))
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/running-processes-pulse.txt", append([]string{u.stateLabel(now), u.stateLabel(now.Add(time.Second))}, "plain"), 80)
 	for _, line := range []string{"ok  \tgithub.com/yusing/mekugi/internal/ui/activity\t0.412s\n", "=== RUN   TestRouter\n"} {
 		appServerTestNotify(t, u, "item/commandExecution/outputDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "cmd", "delta": line})
@@ -202,8 +202,8 @@ func TestUISnapshotRunningProcesses(t *testing.T) {
 	now = now.Add(12 * time.Second)
 	appServerTestKeys(t, u, "/ps\r")
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/running-processes-dialog.txt", append(processDialog(u, 80, 16), "plain"), 80)
-	for _, view := range []*liveActivityView{u.view, u.agents} {
-		view.painter.Theme = diffrender.LightTheme
+	for _, view := range []*activityAdapter{u.view, u.agents} {
+		view.Painter.Theme = diffrender.LightTheme
 	}
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/running-processes-light.txt", append(processDialog(u, 44, 14), "plain"), 44)
 	for _, thread := range []string{"main", "child"} {

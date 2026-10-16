@@ -50,7 +50,7 @@ func (r *execWindowRegistry) stopTurnPreviews(thread, turn string) {
 // only that turn's presentation, without claiming any child has finished.
 func (u *appServerUI) endTurnWaits(thread, turn string, now time.Time) []activityPaneEntry {
 	var entries []activityPaneEntry
-	for _, view := range []*liveActivityView{u.view, u.agents} {
+	for _, view := range []*activityAdapter{u.view, u.agents} {
 		if view == nil {
 			continue
 		}

@@ -91,10 +91,10 @@ func TestNativeUIPreview(t *testing.T) {
 					return err
 				}
 				p.serve()
-				flashExpired := p.ui.view.expireFlash(now)
+				flashExpired := p.ui.view.ExpireFlash(now)
 				settled := settleActivity(now, p.ui.view, p.ui.agents)
-				settled = p.ui.view.pace(now) || settled
-				settled = p.ui.agents.pace(now) || settled
+				settled = p.ui.view.testPace(now) || settled
+				settled = p.ui.agents.testPace(now) || settled
 				settled = p.ui.dirty || settled // Includes keys drained by this tick.
 				p.ui.dirty = false
 				p.ui.flushStreamOutput() // Rolls output bursts, as each real frame does.
@@ -118,7 +118,7 @@ func TestNativeUIPreview(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || p.ui.sessionAnimating() || p.ui.agents.hasLiveStatus() || flashExpired || settled || noticeExpired || p.ui.shell.animating(now) {
+				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || p.ui.sessionAnimating() || p.ui.agents.HasLiveStatus() || flashExpired || settled || noticeExpired || p.ui.shell.animating(now) {
 					if err := paint(); err != nil {
 						return err
 					}
@@ -191,10 +191,10 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	render("grok thought readable", "• Thought")
 	retained := false
 	for _, record := range p.ui.agents.Entries {
-		blocks := p.ui.agents.disclosure.Blocks(record.Values)
+		blocks := p.ui.agents.Disclosure.Blocks(record.Values)
 		for _, block := range blocks {
 			if block.Kind == "summary" && block.Body == nativePreviewGrokReasoning {
-				retained = p.ui.agents.painter.DialogPage(block, 120).Text == nativePreviewGrokReasoning
+				retained = p.ui.agents.Painter.DialogPage(block, 120).Text == nativePreviewGrokReasoning
 			}
 		}
 	}
@@ -202,7 +202,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		t.Fatal("collapsed reasoning lost its complete dialog body")
 	}
 	p.until("three agents edit at once")
-	p.ui.agents.setDisplayFilter(false, p.ui.agents.selected)
+	p.ui.agents.setDisplayFilter(false, p.ui.agents.Selected)
 	p.ui.shell.liveHidden = false
 	frame := render("caller-local live previews", "LIVE ·", "3 Agents", "2 Diff ●")
 	if strings.Contains(frame, "3 Activity ─") && strings.Contains(frame, "no captured edits yet") {
@@ -211,10 +211,10 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	agents := func() string {
 		rollCommandOutput(p.ui)
 		finishPacing(p.ui.agents)
-		return ansi.Strip(strings.Join(p.ui.agents.renderFeed(120, 80).lines, "\n"))
+		return ansi.Strip(strings.Join(p.ui.agents.RenderFeed(120, 80).Lines, "\n"))
 	}
 	p.ui.shell.liveHidden = true
-	p.ui.agents.livePreviews = nil
+	p.ui.agents.LivePreviews = nil
 	p.until("tester applies")
 	// Hold the real rerun process at its first output boundary until the live
 	// frame has been inspected. A zero-delay script can otherwise finish before
@@ -298,18 +298,18 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		t.Fatal("focusing the roster closed the saved diff")
 	}
 	shell := p.ui.shell
-	index := slices.IndexFunc(shell.agents.hits, func(hit liveActivityHit) bool { return hit.agent == "/root/tester" })
+	index := slices.IndexFunc(shell.agents.Hits, func(hit activityui.Hit) bool { return hit.Agent == "/root/tester" })
 	if index < 0 {
 		t.Fatal("the focused roster has no tester row")
 	}
-	hit, roster := shell.agents.hits[index], shell.layout.Roster
-	for _, key := range []byte(fmt.Sprintf("\x1b[<0;%d;%dM", roster.X+hit.first, roster.Y+hit.row)) {
+	hit, roster := shell.agents.Hits[index], shell.layout.Roster
+	for _, key := range []byte(fmt.Sprintf("\x1b[<0;%d;%dM", roster.X+hit.First, roster.Y+hit.Row)) {
 		if err := shell.key(key); err != nil {
 			t.Fatal(err)
 		}
 	}
 	render("roster pick", "1 Thread", "tester")
-	if !shell.DiffOpen || !shell.agents.displayingChild() || shell.agents.selected != "/root/tester" {
+	if !shell.DiffOpen || !shell.agents.displayingChild() || shell.agents.Selected != "/root/tester" {
 		t.Fatal("clicking a roster agent did not show its Activity")
 	}
 }
@@ -1315,9 +1315,9 @@ func TestNativeUIPreviewSessionReplyIdentity(t *testing.T) {
 	for p.advance() {
 	}
 	main := p.ui.view
-	main.conversation = true
-	feed := main.renderFeed(100, 100)
-	text := ansi.Strip(strings.Join(feed.lines, "\n"))
+	main.Conversation = true
+	feed := main.RenderFeed(100, 100)
+	text := ansi.Strip(strings.Join(feed.Lines, "\n"))
 	if strings.Contains(text, "Message received:") || strings.Contains(text, "not loaded") || strings.Count(text, "The initial race test exposed") != 1 {
 		t.Fatalf("fake session repeated or misformatted reply: %s", text)
 	}
@@ -1377,15 +1377,15 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 			if seq == 0 {
 				t.Fatal("preview edit missing")
 			}
-			row := slices.IndexFunc(view.feedSnippets, func(s liveActivitySnippet) bool { return s.run == seq && s.block == editNavigationSnippet })
+			row := slices.IndexFunc(view.FeedSnippets, func(s activityui.Snippet) bool { return s.Run == seq && s.Block == activityui.EditNavigationSnippet })
 			if row < 0 {
-				t.Fatalf("preview edit has no click target: %v", view.feedSnippets)
+				t.Fatalf("preview edit has no click target: %v", view.FeedSnippets)
 			}
 			rect := u.shell.layout.Main
 			if activity {
 				rect = u.shell.layout.Main
 			}
-			x, y := rect.X+view.feedLeft+1, rect.Y+view.feedTop+row
+			x, y := rect.X+view.FeedLeft+1, rect.Y+view.FeedTop+row
 			if err := u.shell.mouse(fmt.Sprintf("\x1b[<35;%d;%dM", x, y)); err != nil {
 				t.Fatal(err)
 			}

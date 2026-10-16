@@ -11,12 +11,12 @@ import (
 )
 
 // threadTestView is Main with a long assignment and the agent's long reply.
-func threadTestView() *liveActivityView {
+func threadTestView() *activityAdapter {
 	start := time.Date(2026, 9, 27, 21, 40, 8, 0, time.Local)
 	task := strings.Repeat("Review the follow-scroll changes read-only. ", 12)
 	reply := strings.Repeat("Inspection found no behavioral failure. ", 16)
-	v := newLiveActivityView()
-	v.conversation, v.feedOnly = true, true
+	v := newActivityAdapter()
+	v.Conversation, v.FeedOnly = true, true
 	v.Entries = []liveActivityRecord{
 		{Source: activityPaneEntry{Seq: 1, Agent: "Main", Kind: "start", Observed: start, assignment: &activityAssignment{to: "/root/reviewer", text: task}}, Values: activityui.Values([]activityui.Block{{Kind: "start", From: "/root", To: "/root/reviewer", Label: "gpt-6-astra", Body: task}})},
 		{Source: activityPaneEntry{Seq: 2, Agent: "/root/reviewer", Kind: "reply", Observed: start.Add(58 * time.Second), activitySeq: 9}, Values: activityui.Values([]activityui.Block{{Kind: "message", From: "/root/reviewer", To: "/root", Body: reply}})},
@@ -24,9 +24,9 @@ func threadTestView() *liveActivityView {
 	return v
 }
 
-func threadPlain(feed liveActivityFeed) []string {
-	plain := make([]string, len(feed.lines))
-	for i, line := range feed.lines {
+func threadPlain(feed activityui.Feed) []string {
+	plain := make([]string, len(feed.Lines))
+	for i, line := range feed.Lines {
 		plain[i] = ansi.Strip(line)
 	}
 	return plain
@@ -35,14 +35,14 @@ func threadPlain(feed liveActivityFeed) []string {
 func TestConversationThreadsReplyUnderAssignment(t *testing.T) {
 	const width = 60
 	v := threadTestView()
-	feed := v.renderFeed(width, 40)
+	feed := v.RenderFeed(width, 40)
 	plain := threadPlain(feed)
 	want := []string{"▶ reviewer started · gpt-6-astra", "│ ", "│ ", "├─← replied · 58s", "│ ", "│ ", "│ ", "│ ", "╰─↩ Open reply · +"}
 	if len(plain) != len(want) {
 		t.Fatalf("thread rows = %d, want %d:\n%s", len(plain), len(want), strings.Join(plain, "\n"))
 	}
 	for i, prefix := range want {
-		if !strings.HasPrefix(plain[i], prefix) || ansi.StringWidth(feed.lines[i]) > width {
+		if !strings.HasPrefix(plain[i], prefix) || ansi.StringWidth(feed.Lines[i]) > width {
 			t.Fatalf("row %d = %q, want prefix %q:\n%s", i, plain[i], prefix, strings.Join(plain, "\n"))
 		}
 	}
@@ -52,21 +52,21 @@ func TestConversationThreadsReplyUnderAssignment(t *testing.T) {
 	if !strings.Contains(plain[2], "… ") || !strings.HasSuffix(plain[2], " lines") {
 		t.Fatalf("collapsed assignment lost its ellipsis or count: %q", plain[2])
 	}
-	if !strings.HasSuffix(plain[7], "…") || feed.questions[8] != 2 {
-		t.Fatalf("reply excerpt or its dialog link is wrong: %q, link %d", plain[7], feed.questions[8])
+	if !strings.HasSuffix(plain[7], "…") || feed.Questions[8] != 2 {
+		t.Fatalf("reply excerpt or its dialog link is wrong: %q, link %d", plain[7], feed.Questions[8])
 	}
-	snippet := feed.snippets[1]
-	if snippet != (liveActivitySnippet{run: 1, block: 0}) || feed.snippets[2] != snippet || feed.questions[1] != 0 {
-		t.Fatalf("collapsed assignment is not expandable: %+v", feed.snippets[:3])
+	snippet := feed.Snippets[1]
+	if snippet != (activityui.Snippet{Run: 1, Block: 0}) || feed.Snippets[2] != snippet || feed.Questions[1] != 0 {
+		t.Fatalf("collapsed assignment is not expandable: %+v", feed.Snippets[:3])
 	}
 
 	shell := &terminalUI{}
-	v.opening = snippet
+	v.Opening = snippet
 	shell.openRequested(v)
 	if shell.output == nil || !strings.Contains(shell.output.pages[0].Body, "Review the follow-scroll") {
 		t.Fatal("collapsed assignment did not open full dialog")
 	}
-	if again := threadPlain(v.renderFeed(width, 40)); len(again) != len(plain) {
+	if again := threadPlain(v.RenderFeed(width, 40)); len(again) != len(plain) {
 		t.Fatalf("dialog request changed the feed:\n%s", strings.Join(again, "\n"))
 	}
 }
@@ -75,7 +75,7 @@ func TestConversationThreadEndsAtOtherTraffic(t *testing.T) {
 	v := threadTestView()
 	// Pending: the assignment is the latest item, so it stays in full.
 	v.Entries = v.Entries[:1]
-	pending := threadPlain(v.renderFeed(60, 40))
+	pending := threadPlain(v.RenderFeed(60, 40))
 	if strings.Contains(strings.Join(pending, "\n"), "lines") || len(pending) < 5 {
 		t.Fatalf("an unanswered assignment was collapsed:\n%s", strings.Join(pending, "\n"))
 	}
@@ -88,7 +88,7 @@ func TestConversationThreadEndsAtOtherTraffic(t *testing.T) {
 		{Source: other, Values: activityui.Values([]activityui.Block{{Kind: "message", From: "/root/other", To: "/root", Body: "Unrelated."}})},
 		v.Entries[1],
 	}
-	text := strings.Join(threadPlain(v.renderFeed(60, 40)), "\n")
+	text := strings.Join(threadPlain(v.RenderFeed(60, 40)), "\n")
 	if strings.Contains(text, "├─") || strings.Contains(text, " lines\n") || !strings.Contains(text, "← reviewer") {
 		t.Fatalf("non-adjacent traffic joined a thread:\n%s", text)
 	}
@@ -106,7 +106,7 @@ func TestConversationAsidesFollowThread(t *testing.T) {
 			}
 			v.appendEntry(reasoning, parseLiveActivity(reasoning))
 			v.reorderEntries([]int{0, 2, 1})
-			feed := v.renderFeed(width, 40)
+			feed := v.RenderFeed(width, 40)
 			plain := threadPlain(feed)
 			text := strings.Join(plain, "\n")
 			if !strings.Contains(text, "├─← replied · 58s") || !strings.Contains(text, " lines") || strings.Contains(text, "← reviewer") {
@@ -122,7 +122,7 @@ func TestConversationAsidesFollowThread(t *testing.T) {
 				t.Fatalf("reasoning is not after the thread:\n%s", text)
 			}
 			for i, row := range plain[:end+1] {
-				if ansi.StringWidth(feed.lines[i]) > width {
+				if ansi.StringWidth(feed.Lines[i]) > width {
 					t.Fatalf("row %d overflows: %q", i, row)
 				}
 				if row == "" || !strings.HasPrefix(row, "▶") && !strings.HasPrefix(row, "│") && !strings.HasPrefix(row, "├─") && !strings.HasPrefix(row, "╰─") {
@@ -132,8 +132,8 @@ func TestConversationAsidesFollowThread(t *testing.T) {
 
 			// Reasoning after the latest item is outside the thread until it continues.
 			v.Entries = v.Entries[:2]
-			v.runs = nil
-			pending := strings.Join(threadPlain(v.renderFeed(width, 40)), "\n")
+			v.Runs = nil
+			pending := strings.Join(threadPlain(v.RenderFeed(width, 40)), "\n")
 			if strings.Contains(pending, " lines") || strings.Contains(pending, "│ The reviewer") {
 				t.Fatalf("trailing reasoning joined an unanswered thread:\n%s", pending)
 			}
@@ -149,12 +149,12 @@ func TestConversationMainToolsFollowTheirLead(t *testing.T) {
 	done := activityPaneEntry{Seq: 3, Agent: "/root/lookup", Kind: "final", Text: "Evidence points to a namespace-context loss.", Observed: at.Add(time.Minute), activitySeq: 9}
 	edit := activityPaneEntry{Seq: 4, Agent: "Main", Kind: "tool", Text: "Edit `change_capture_test.go` +65 -0", Observed: at.Add(2 * time.Minute)}
 	render := func(entries ...activityPaneEntry) []string {
-		v := newLiveActivityView()
-		v.conversation, v.feedOnly = true, true
+		v := newActivityAdapter()
+		v.Conversation, v.FeedOnly = true, true
 		for _, entry := range entries {
 			v.appendEntry(entry, parseLiveActivity(entry))
 		}
-		return threadPlain(v.renderFeed(width, 40))
+		return threadPlain(v.RenderFeed(width, 40))
 	}
 	row := func(plain []string, text string) int {
 		return slices.IndexFunc(plain, func(row string) bool { return strings.Contains(row, text) })
@@ -191,8 +191,8 @@ func TestConversationMainToolsFollowTheirLead(t *testing.T) {
 
 func TestConversationConsecutiveReasoning(t *testing.T) {
 	for _, main := range []bool{true, false} {
-		v := newLiveActivityView()
-		v.conversation, v.childrenOnly = main, !main
+		v := newActivityAdapter()
+		v.Conversation, v.ChildrenOnly = main, !main
 		agent := "Main"
 		if !main {
 			agent = "/root/worker"
@@ -202,21 +202,21 @@ func TestConversationConsecutiveReasoning(t *testing.T) {
 				native: &liveActivityNativeItem{thread: "thread", turn: "turn", item: body, phase: "item/completed", thought: 12 * time.Second}}
 			v.appendEntry(entry, parseLiveActivity(entry))
 		}
-		feed := v.renderFeed(80, 40)
+		feed := v.RenderFeed(80, 40)
 		got := strings.Join(threadPlain(feed), "\n")
 		if strings.Count(got, "First for 12s") != 1 || strings.Count(got, "Second for 12s") != 1 || strings.Count(got, "Latest body for 12s") != 1 || strings.Contains(got, "Old body") || strings.Contains(got, "Second body") {
 			t.Fatalf("independent folded items: %s", got)
 		}
 		shell := &terminalUI{}
 		opened := 0
-		for _, snippet := range feed.snippets {
-			if snippet == (liveActivitySnippet{}) {
+		for _, snippet := range feed.Snippets {
+			if snippet == (activityui.Snippet{}) {
 				continue
 			}
 			if !shell.openOutput(v, snippet) {
 				t.Fatal("reasoning did not request dialog")
 			}
-			page := v.painter.DialogPage(shell.output.pages[0], 80)
+			page := v.Painter.DialogPage(shell.output.pages[0], 80)
 			if page.Text != v.Entries[opened].Source.Text {
 				t.Fatalf("wrong item opened: %q", page.Text)
 			}
@@ -229,8 +229,8 @@ func TestConversationConsecutiveReasoning(t *testing.T) {
 }
 
 func TestRosterJoinsConsecutiveReasoning(t *testing.T) {
-	v := newLiveActivityView()
-	v.childrenOnly = true
+	v := newActivityAdapter()
+	v.ChildrenOnly = true
 	entries := []activityPaneEntry{
 		{Seq: 1, Agent: "/root/worker", Kind: "reasoning", Text: "**Before action**"},
 		{Seq: 2, Agent: "/root/worker", Kind: "tool", Text: "Read `Makefile`"},
@@ -242,7 +242,7 @@ func TestRosterJoinsConsecutiveReasoning(t *testing.T) {
 		v.appendEntry(entry, parseLiveActivity(entry))
 	}
 	for _, live := range []bool{false, true} {
-		summary, _ := v.current(activityPaneAgent{Name: "/root/worker", Responding: live}, time.Now())
+		summary, _ := v.testCurrent(activityPaneAgent{Name: "/root/worker", Responding: live}, time.Now())
 		if got := ansi.Strip(summary); got != "First, Second" {
 			t.Fatalf("live=%v: inline = %q", live, got)
 		}

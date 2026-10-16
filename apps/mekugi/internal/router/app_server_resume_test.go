@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
@@ -15,7 +17,7 @@ func TestAppServerResumeStartup(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.Thread, u.resumeThread = "", "saved"
 	u.resumeConfig = map[string]any{"model": "override", "model_provider": "routed"}
-	u.agents = newLiveActivityView()
+	u.agents = newActivityAdapter()
 	appServerTestRequest(t, u, "0", "initialize")
 	appServerTestMessage(t, u, `{"id":0,"result":{}}`)
 	appServerTestMessage(t, u, `{"id":1,"result":{"thread":{"id":"saved"}}}`)
@@ -53,7 +55,7 @@ func TestAppServerResumeStartup(t *testing.T) {
 	if u.Thread != "saved" || u.status != "Ready" || u.model != "model" || u.reasoningEffort != "high" || len(u.view.Entries) != 2 || u.view.Entries[0].Source.Text != "Saved question" || u.view.Entries[1].Source.Text != "Saved answer" {
 		t.Fatalf("resume state: %+v, entries=%+v", u, u.view.Entries)
 	}
-	if got := contextWindowLabel(*u.session.agent("/root")); got != "120K/400K • 30%" {
+	if got := activityui.ContextWindowLabel(testActivityAgent(*u.session.agent("/root"))); got != "120K/400K • 30%" {
 		t.Fatalf("startup lost replayed usage: %s", got)
 	}
 	if bytes.Contains(w.Bytes(), []byte("turn/start")) || bytes.Contains(w.Bytes(), []byte("thread/resume")) {

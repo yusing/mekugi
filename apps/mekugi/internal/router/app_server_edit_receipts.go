@@ -63,7 +63,7 @@ func (u *appServerUI) applyCapturedEdits() {
 // Both audiences reconcile using exact thread/tool identities, regardless of
 // whether the retained receipt or the app-server item arrived first. A grouped
 // capture is shown once, never attributed separately to each nested command.
-func (v *liveActivityView) applyCapturedEdits(data *liveDiffData) {
+func (v *activityAdapter) applyCapturedEdits(data *liveDiffData) {
 	if len(data.order) == 0 {
 		return
 	}

@@ -7,12 +7,14 @@ import (
 	"strings"
 	"testing"
 
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
 func TestFormatUsageTokens(t *testing.T) {
 	for value, want := range map[uint64]string{0: "0", 12: "12", 123: "123", 1234: "1.2K", 149000: "149K", 1234567: "1.2M", 1200000000: "1.2B", ^uint64(0): "18446744073.7B"} {
-		if got := formatUsageTokens(value); got != want {
+		if got := activityui.FormatUsageTokens(value); got != want {
 			t.Errorf("%d: %q != %q", value, got, want)
 		}
 	}

@@ -10,12 +10,12 @@ import (
 )
 
 // openActivityEdit resolves an exact host invocation, never a nearby edit or path.
-func (u *terminalUI) openActivityEdit(view *liveActivityView, seq uint64, path string) bool {
+func (u *terminalUI) openActivityEdit(view *activityAdapter, seq uint64, path string) bool {
 	pages, path := u.activityEditPages(view, seq, path)
 	return u.openEditPages(view, pages, path)
 }
 
-func (u *terminalUI) activityEditPages(view *liveActivityView, seq uint64, path string) ([]activityui.Block, string) {
+func (u *terminalUI) activityEditPages(view *activityAdapter, seq uint64, path string) ([]activityui.Block, string) {
 	for _, entry := range view.Entries {
 		if entry.Source.Seq != seq || entry.Source.native == nil {
 			continue
@@ -44,7 +44,7 @@ func (u *terminalUI) activityEditPages(view *liveActivityView, seq uint64, path 
 				}
 				pages = append(pages, activityui.Block{Kind: "op", Verb: chunk.Review.Action().Title(), Path: display, Code: chunk.Review.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(workspace, chunk.Review.BeforePath), pathdisplay.ForWorkspace(workspace, chunk.Review.AfterPath)), Lang: "diff", Fenced: true})
 			}
-			for _, block := range view.disclosure.Blocks(entry.Values) {
+			for _, block := range view.Disclosure.Blocks(entry.Values) {
 				if block.DirectoryDeletion() && activityui.EditPath(block) == path {
 					for _, page := range pages {
 						if strings.HasPrefix(page.Path, strings.TrimSuffix(path, "/")+"/") {
@@ -68,7 +68,7 @@ func (u *terminalUI) activityEditPages(view *liveActivityView, seq uint64, path 
 	return nil, path
 }
 
-func (u *terminalUI) openEditPages(view *liveActivityView, pages []activityui.Block, path string) bool {
+func (u *terminalUI) openEditPages(view *activityAdapter, pages []activityui.Block, path string) bool {
 	for i, page := range pages {
 		if path == "" || page.Path == path {
 			u.openBlocks(view, pages)

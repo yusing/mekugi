@@ -19,11 +19,11 @@ func nativeBatchFixture(t *testing.T) *appServerUI {
 	t.Helper()
 	u, _ := newAppServerTestUI()
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	u.status, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 	u.session.cwd = "/workspace"
 	u.ensureShell()
-	u.view.clock, u.agents.clock = u.clock, u.clock
+	u.view.Clock, u.agents.Clock = u.clock, u.clock
 
 	t.Cleanup(func() { _ = u.shell.diffScreen.Close() })
 	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "MAIN_TRANSCRIPT", Observed: u.clock()}}})
@@ -62,7 +62,7 @@ func TestUISnapshotNativeBatchPlacement(t *testing.T) {
 	revealNativeDock(u.shell)
 	u.agents.setDisplayFilter(true, "/root/editor")
 	paint("native-batch-child-replaces-transcript", 140, 48)
-	u.agents.setDisplayFilter(false, u.agents.selected)
+	u.agents.setDisplayFilter(false, u.agents.Selected)
 	u.shell.preview(nativeBatchPreview("main", "/root", "one", "two", "three"), false)
 	revealNativeDock(u.shell)
 	paint("native-batch-main-overflow", 140, 48)

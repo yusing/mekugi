@@ -52,7 +52,7 @@ func (u *appServerUI) renameThreadActivity(old, name string) {
 	if old == name {
 		return
 	}
-	for _, view := range []*liveActivityView{u.view, u.agents} {
+	for _, view := range []*activityAdapter{u.view, u.agents} {
 		for i := range view.Entries {
 			view.mutateEntry(i, func(entry *liveActivityRecord) {
 				if entry.Source.Agent == old {
@@ -82,13 +82,13 @@ func (u *appServerUI) renameThreadActivity(old, name string) {
 				}
 			})
 		}
-		if view.selected == old {
-			view.selected = name
+		if view.Selected == old {
+			view.Selected = name
 		}
-		if view.rosterSelected == old {
-			view.rosterSelected = name
+		if view.RosterSelected == old {
+			view.RosterSelected = name
 		}
-		view.runs = nil
+		view.Runs = nil
 		view.RenameRetiredSkills(old, name)
 	}
 	for thread, entry := range u.session.messages {

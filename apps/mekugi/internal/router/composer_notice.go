@@ -56,7 +56,7 @@ func (u *appServerUI) stateLabel(now time.Time) string {
 		if label != "" {
 			label += terminalui.Dim + " · " + terminalui.Undim
 		}
-		label += activityui.StatusPulse(fmt.Sprintf("%d running processes", count), now, u.view.painter.Colors) + terminalui.Reset
+		label += activityui.StatusPulse(fmt.Sprintf("%d running processes", count), now, u.view.Painter.Colors) + terminalui.Reset
 	}
 	notice := strings.ReplaceAll(textsanitize.Safe(u.feedback.Text, false), "\n", " ")
 	switch {

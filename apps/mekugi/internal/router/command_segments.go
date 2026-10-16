@@ -138,7 +138,7 @@ func (u *appServerUI) restoreCommandSegments(entry *activityPaneEntry, item appS
 		entry.native.segments = append(entry.native.segments, segment)
 	}
 	entry.native.command = item.Command
-	entry.native.running, entry.native.collapsed = false, true
+	entry.native.running = false
 	entry.outputTail, entry.outputOmit = nil, 0
 	if !separate {
 		entry.outputTail, entry.outputOmit = appServerOutputTail(item.AggregatedOutput)

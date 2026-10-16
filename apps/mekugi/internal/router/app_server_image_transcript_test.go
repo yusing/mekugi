@@ -15,26 +15,25 @@ func TestAppServerImageTranscriptHighlight(t *testing.T) {
 	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		for _, width := range []int{16, 80} {
 			u, _ := newAppServerTestUI()
-			u.view.painter.Theme = theme
+			u.view.Painter.Theme = theme
 			appServerTestKeys(t, u, "literal [Image 1] 世界 ")
 			u.insertImage("/tmp/one.png")
 			appServerTestKeys(t, u, " after ")
 			u.insertImage("/tmp/two.png")
 			appServerTestKeys(t, u, "\r")
-			check := func(v *liveActivityView) {
+			check := func(v *activityAdapter) {
 				t.Helper()
 				if len(v.Entries) != 1 {
 					t.Fatalf("unexpected duplicate or synthetic tool activity: %+v", v.Entries)
 				}
-				var out conversationLines
-				v.userItemContinued(&out, v.Entries[0].Source, width, false)
-				screen := vt.NewEmulator(width, len(out.lines))
+				out := v.testUserItem(v.Entries[0].Source, width)
+				screen := vt.NewEmulator(width, len(out.Lines))
 				defer screen.Close()
-				if _, err := screen.Write([]byte(strings.Join(out.lines, "\r\n"))); err != nil {
+				if _, err := screen.Write([]byte(strings.Join(out.Lines, "\r\n"))); err != nil {
 					t.Fatal(err)
 				}
 				var bold strings.Builder
-				for y, line := range out.lines {
+				for y, line := range out.Lines {
 					if ansi.StringWidth(line) > width {
 						t.Fatalf("row exceeds viewport: %q", line)
 					}
@@ -59,7 +58,7 @@ func TestAppServerImageTranscriptHighlight(t *testing.T) {
 				check(u.view)
 			}
 			restored := newAppServerSessionTestUI(t, t.TempDir())
-			restored.view.painter.Theme = theme
+			restored.view.Painter.Theme = theme
 			restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
 			check(restored.view)
 		}

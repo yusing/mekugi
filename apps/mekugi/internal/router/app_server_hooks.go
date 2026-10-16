@@ -130,9 +130,8 @@ func (s *appServerSession) hookEntry(thread string, observation history.HookObse
 	entry := activityPaneEntry{Agent: s.path(thread), Kind: "hook", CallID: run.ID, Text: label, Observed: observation.At, native: n}
 	entry.outputTail, entry.outputOmit = appServerOutputTail(&observation.Output)
 	if observation.Completed && run.Status == "completed" && !observation.HasError {
-		n.collapsed = !live
 		if live && len(entry.outputTail) > 0 {
-			n.settled = observation.At
+			entry.completed = observation.At
 		}
 	}
 	return entry

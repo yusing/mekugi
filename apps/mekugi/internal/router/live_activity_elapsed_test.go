@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/charmbracelet/x/ansi"
@@ -26,36 +28,36 @@ func TestLiveActivityElapsedFormatting(t *testing.T) {
 		t.Run(tc.want+"/"+tc.age.String(), func(t *testing.T) {
 			now := start.Add(tc.age)
 			for _, status := range []string{"Waiting", "Working"} {
-				u := appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: newLiveActivityView(), Turn: "active", status: status, turnStarted: start}
+				u := appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: newActivityAdapter(), Turn: "active", status: status, turnStarted: start}
 				if got := ansi.Strip(u.sessionLabel(now)); !strings.HasSuffix(got, " "+tc.want) {
 					t.Fatalf("composer = %q, want elapsed %q", got, tc.want)
 				}
 			}
-			v := newLiveActivityView()
+			v := newActivityAdapter()
 			agent := activityPaneAgent{Name: "/root/worker", Started: start, Responding: true, WorkTimer: activeWorkTimer{Known: true, Since: start}}
 			// Before its first response, the agent's last activity is its start.
 			last := tc.want + " ago"
 			if tc.age < 2*time.Second {
 				last = "just now"
 			}
-			if _, got := v.current(agent, now); got != tc.want+" · "+last {
+			if _, got := v.testCurrent(agent, now); got != tc.want+" · "+last {
 				t.Fatalf("running agent timer = %q", got)
 			}
 			agent.LastResponse = now.Add(-time.Minute)
-			if _, got := v.current(agent, now); got != tc.want+" · 1m ago" {
+			if _, got := v.testCurrent(agent, now); got != tc.want+" · 1m ago" {
 				t.Fatalf("responded agent timer = %q", got)
 			}
 			agent.WorkTimer.update(false, now)
 			agent.Responding, agent.LastResponse = false, now
-			if _, got := v.current(agent, now.Add(time.Minute)); got != tc.want+" · 1m ago" {
+			if _, got := v.testCurrent(agent, now.Add(time.Minute)); got != tc.want+" · 1m ago" {
 				t.Fatalf("finished agent timer = %q", got)
 			}
 		})
 	}
-	if got := liveActivityLast(start, start.Add(82*time.Second)); got != "1m22s ago" {
+	if got := activityui.Last(start, start.Add(82*time.Second)); got != "1m22s ago" {
 		t.Fatalf("last response = %q", got)
 	}
-	if got := liveActivityLast(start, start.Add(time.Second)); got != "just now" {
+	if got := activityui.Last(start, start.Add(time.Second)); got != "just now" {
 		t.Fatalf("recent response = %q", got)
 	}
 }

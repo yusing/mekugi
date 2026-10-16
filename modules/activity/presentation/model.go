@@ -3,6 +3,9 @@ package presentation
 import (
 	"slices"
 	"strings"
+	"time"
+
+	"github.com/yusing/mekugi/contracts/inference"
 )
 
 // Source identifies an application-supplied observation without interpreting host protocol.
@@ -10,13 +13,34 @@ import (
 type Source interface{ ActivityFacts() Facts }
 type Facts struct {
 	Seq                                                   uint64
-	Agent, Kind                                           string
+	Agent, Kind, Text                                     string
+	Observed                                              time.Time
+	Spans                                                 []TextSpan
+	InputGroup                                            string
+	Question, Activity                                    uint64
+	AssignmentTo, AssignmentText                          string
+	Assignment                                            bool
 	Running, Live, Restored, Unconfirmed, ContextBoundary bool
+	Suppressed, RosterOnly, OutputFailed, OutputComplete  bool
+	Completed                                             time.Time
+	Outputs                                               map[int]int
 }
 type AgentSource interface{ ActivityAgent() AgentFacts }
 type AgentFacts struct {
-	Name              string
-	Responding, Final bool
+	Name, Role                                   string
+	Responding, Final                            bool
+	Started, LastResponse                        time.Time
+	WorkElapsed                                  time.Duration
+	WorkSince                                    time.Time
+	WorkKnown                                    bool
+	Turns, Roundtrips                            uint64
+	Cost                                         float64
+	CostKnown, CostPartial                       bool
+	InputTokens, OutputTokens                    uint64
+	OutputThroughput                             inference.OutputThroughput
+	TokensKnown, UsagePartial, RoundtripsPartial bool
+	ContextTokens, ContextWindow                 uint64
+	ContextKnown                                 bool
 }
 
 // Source: internal/router/live_activity_record.go:9:87@[ebde9ad5].
@@ -57,6 +81,7 @@ func (m *Model[S, A]) Replace(index int, source S, values []Value) {
 	m.Revise(index)
 }
 func (m *Model[S, A]) Mutate(index int, mutate func(*Record[S])) {
+	m.Entries[index].Values = CloneValues(m.Entries[index].Values)
 	mutate(&m.Entries[index])
 	m.Revise(index)
 }
@@ -64,12 +89,6 @@ func (m *Model[S, A]) Revise(index int) { m.Revision++; m.Entries[index].Revisio
 func (m *Model[S, A]) Remove(from, to int) {
 	m.Entries = slices.Delete(m.Entries, from, to)
 	m.skills = nil
-}
-func (m *Model[S, A]) RunRevision(from, to int) (revision uint64) {
-	for _, record := range m.Entries[from:to] {
-		revision = max(revision, record.Revision)
-	}
-	return
 }
 func (m *Model[S, A]) Reorder(indices []int) {
 	records := slices.Clone(m.Entries)
@@ -150,14 +169,6 @@ func Identify(values []Value, source uint64) {
 			values[i].Members[j].Source = source
 		}
 	}
-}
-
-func (r Record[S]) StatusAnimating() bool {
-	if !r.Source.ActivityFacts().Live || len(r.Values) == 0 {
-		return false
-	}
-	value := r.Values[len(r.Values)-1]
-	return value.Live && (value.Kind == "summary" || value.Kind == "progress")
 }
 
 // Accept deduplicates host publications independently of display order.

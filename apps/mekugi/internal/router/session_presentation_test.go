@@ -8,8 +8,8 @@ import (
 
 // Tests that arrange a feed filter also retain the renderer's remembered row.
 // Production selection enters through roster keys, clicks and Main selection.
-func (v *liveActivityView) setDisplayFilter(child bool, caller string) {
-	v.selected = caller
+func (v *activityAdapter) setDisplayFilter(child bool, caller string) {
+	v.Selected = caller
 	if child {
 		v.displayThread(caller)
 	} else {
@@ -23,17 +23,17 @@ func TestNativeDisplayedThreadIndependentOfRosterFocus(t *testing.T) {
 		appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": thread, "agentNickname": thread}})
 	}
 	u.agents.displayThread("/root/first")
-	u.agents.selected = "/root/second"
-	u.agents.keepSelection()
+	u.agents.Selected = "/root/second"
+	u.agents.testKeepSelection()
 	view := u.sessionPresentation().View()
 	if view.Displayed.ID != "first" || view.Input.ID != "main" || !u.composerReadOnly() || u.transcriptCaller() != "/root/first" {
 		t.Fatalf("roster focus changed display or admission: %+v", view)
 	}
-	if !u.agents.visible(activityPaneEntry{Agent: "/root/first", Kind: "text"}) || u.agents.visible(activityPaneEntry{Agent: "/root/second", Kind: "text"}) {
+	if !u.agents.testVisible(activityPaneEntry{Agent: "/root/first", Kind: "text"}) || u.agents.testVisible(activityPaneEntry{Agent: "/root/second", Kind: "text"}) {
 		t.Fatal("transcript followed the focused roster row")
 	}
 	u.shell.selectNativePane(0)
-	if u.composerReadOnly() || u.transcriptView() != u.view || u.agents.selected != "/root/second" {
+	if u.composerReadOnly() || u.transcriptView() != u.view || u.agents.Selected != "/root/second" {
 		t.Fatal("Main selection changed roster focus or retained child admission")
 	}
 }

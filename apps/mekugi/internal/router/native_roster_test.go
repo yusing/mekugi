@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
@@ -22,19 +24,19 @@ func TestAppServerChildMetadataWithoutThreadStarted(t *testing.T) {
 		t.Fatal("child observation did not request metadata")
 	}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": child, "turnId": "t", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "go test ./...", "exitCode": 2}})
-	u.agents.selected = appServerPlaceholder(child)
+	u.agents.Selected = appServerPlaceholder(child)
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
 		"id": "spawn", "type": "subAgentActivity", "kind": "started", "agentThreadId": child, "agentPath": "/root/checker"}})
-	if u.session.metadata[child] != id || u.session.paths[child] != "/root/checker" || u.agents.selected != "/root/checker" {
+	if u.session.metadata[child] != id || u.session.paths[child] != "/root/checker" || u.agents.Selected != "/root/checker" {
 		t.Fatal("activity identity or in-flight metadata request lost")
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%s,"result":{"thread":{"id":%q,"agentNickname":"random-nickname","agentRole":"review","source":{"subAgent":{"thread_spawn":{"parent_thread_id":"main","agent_path":"/root/checker","agent_role":"review"}}}}}}`, id, child))
-	row := ansi.Strip(strings.Join(u.agents.nativeRoster(140, 6, time.Now(), true), "\n"))
+	row := ansi.Strip(strings.Join(u.agents.NativeRoster(140, 6, time.Now(), true), "\n"))
 	if !strings.Contains(row, "checker") || !strings.Contains(row, "● review") || !strings.Contains(row, "go test ./...") || strings.Contains(row, "01234567") {
 		t.Fatalf("metadata roster: %s", row)
 	}
-	u.agents.setDisplayFilter(true, u.agents.selected)
-	feed := ansi.Strip(strings.Join(u.agents.renderFeed(120, 30).lines, "\n"))
+	u.agents.setDisplayFilter(true, u.agents.Selected)
+	feed := ansi.Strip(strings.Join(u.agents.RenderFeed(120, 30).Lines, "\n"))
 	if !strings.Contains(feed, "exit 2") || strings.Contains(feed, "01234567") {
 		t.Fatalf("late rename lost retained activity: %s", feed)
 	}
@@ -50,7 +52,7 @@ func TestAppServerChildMetadataFailureKeepsActivity(t *testing.T) {
 	id := u.session.metadata["child"]
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%s,"error":{"code":-1,"message":"not available"}}`, id))
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "mcat child.go"}})
-	if u.requests.Pending() || u.alert || !strings.Contains(ansi.Strip(u.agents.agentState(*u.session.agent("/root/child"), 80, u.now())), "child.go") {
+	if u.requests.Pending() || u.alert || !strings.Contains(ansi.Strip(u.agents.AgentState(u.agents.testAgent(*u.session.agent("/root/child")), 80, u.now())), "child.go") {
 		t.Fatal("metadata failure blocked activity or caused repeated reads")
 	}
 }
@@ -62,7 +64,7 @@ func TestNativeRosterShowsActivityDetails(t *testing.T) {
 		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
 		appServerTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "mcat " + thread + ".go"}})
 	}
-	got := ansi.Strip(strings.Join(u.agents.nativeRoster(140, 6, time.Now(), true), "\n"))
+	got := ansi.Strip(strings.Join(u.agents.NativeRoster(140, 6, time.Now(), true), "\n"))
 	for _, want := range []string{"main.go", "child.go", "reviewer", "● review", "Read"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("roster missing %q: %s", want, got)
@@ -70,25 +72,25 @@ func TestNativeRosterShowsActivityDetails(t *testing.T) {
 	}
 	appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "reasoning", "delta": "Checking event routing"})
 	u.flushStreamOutput()
-	got = ansi.Strip(strings.Join(u.agents.nativeRoster(140, 6, time.Now(), true), "\n"))
+	got = ansi.Strip(strings.Join(u.agents.NativeRoster(140, 6, time.Now(), true), "\n"))
 	if !strings.Contains(got, "Checking event routing") {
 		t.Fatalf("summary missing: %s", got)
 	}
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "t", "status": "completed"}})
-	if got := ansi.Strip(u.agents.agentState(*u.session.agent("/root/reviewer"), 80, u.now())); got != "done" {
+	if got := ansi.Strip(u.agents.AgentState(u.agents.testAgent(*u.session.agent("/root/reviewer")), 80, u.now())); got != "done" {
 		t.Fatalf("finished state: %q", got)
 	}
 }
 
 func TestNativeRosterRoleLegendAndCompactSpacing(t *testing.T) {
-	v := newLiveActivityView()
+	v := newActivityAdapter()
 	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
 		{Name: "/root", Responding: true},
 		{Name: "/root/very_long_finished_agent", Role: "worker", Final: true},
 		{Name: "/root/other_finished_agent", Role: "worker", Final: true},
 	}})
 	now := time.Now()
-	compact := v.nativeRoster(100, 4, now, false)
+	compact := v.NativeRoster(100, 4, now, false)
 	if got := ansi.Strip(compact[1]); !strings.HasPrefix(got, " ◐ main  working") {
 		t.Fatalf("folded names left padding in compact row: %q", got)
 	}
@@ -97,12 +99,12 @@ func TestNativeRosterRoleLegendAndCompactSpacing(t *testing.T) {
 	}
 	for _, width := range []int{24, 60, 140} {
 		for _, limit := range []int{2, 4, 8} {
-			lines := v.nativeRoster(width, limit, now, true)
+			lines := v.NativeRoster(width, limit, now, true)
 			if len(lines) > limit+1 {
 				t.Fatalf("roster exceeded row budget: %d > %d", len(lines), limit+1)
 			}
 			legend := lines[len(lines)-1]
-			if strings.Count(ansi.Strip(legend), "worker") != 1 || !strings.Contains(legend, v.roleColor("worker")+"●") {
+			if strings.Count(ansi.Strip(legend), "worker") != 1 || !strings.Contains(legend, v.RoleColor("worker")+"●") {
 				t.Fatalf("missing or duplicate role mapping: %q", legend)
 			}
 			for _, line := range lines {
@@ -110,22 +112,22 @@ func TestNativeRosterRoleLegendAndCompactSpacing(t *testing.T) {
 					t.Fatalf("row overflow at width %d: %q", width, line)
 				}
 			}
-			for _, hit := range v.hits {
-				if hit.row >= len(lines) || strings.Contains(ansi.Strip(lines[hit.row-1]), "worker") {
+			for _, hit := range v.Hits {
+				if hit.Row >= len(lines) || strings.Contains(ansi.Strip(lines[hit.Row-1]), "worker") {
 					t.Fatalf("role text in agent row or legend hit: %+v", hit)
 				}
 			}
 		}
 	}
 	for _, agent := range v.Agents[1:] {
-		if got := v.nativeGlyph(agent); got != v.roleColor("worker")+"✓"+terminalui.Reset {
+		if got := v.NativeGlyph(v.testAgent(agent)); got != v.RoleColor("worker")+"✓"+terminalui.Reset {
 			t.Fatalf("status did not preserve role color and completion shape: %q", got)
 		}
 	}
 }
 
 func TestNativeRosterOverflowLegendKeepsSelectedRole(t *testing.T) {
-	v := newLiveActivityView()
+	v := newActivityAdapter()
 	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
 		{Name: "/root"},
 		{Name: "/root/a", Role: "review-correctness"},
@@ -134,24 +136,24 @@ func TestNativeRosterOverflowLegendKeepsSelectedRole(t *testing.T) {
 		{Name: "/root/d", Role: "worker"},
 	}})
 	for _, agent := range v.Agents[1:] {
-		v.selected = agent.Name
-		lines := v.nativeRoster(60, 8, time.Now(), true)
+		v.Selected = agent.Name
+		lines := v.NativeRoster(60, 8, time.Now(), true)
 		legend := lines[len(lines)-1]
-		if !strings.HasPrefix(ansi.Strip(legend), " Roles: ● "+agent.Role) || !strings.Contains(legend, v.roleColor(agent.Role)+"●") {
+		if !strings.HasPrefix(ansi.Strip(legend), " Roles: ● "+agent.Role) || !strings.Contains(legend, v.RoleColor(agent.Role)+"●") {
 			t.Fatalf("selected role lost in overflowing legend: %q", legend)
 		}
 	}
 }
 
 func TestNativeRosterUnfocusedMetricsRightAligned(t *testing.T) {
-	v := newLiveActivityView()
+	v := newActivityAdapter()
 	now := time.Now()
 	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
 		{Name: "/root", Responding: true, Started: now.Add(-13 * time.Second), WorkTimer: activeWorkTimer{Known: true, Since: now.Add(-13 * time.Second)}, ContextKnown: true, ContextTokens: 47_600, ContextWindow: 200_000, InputTokens: 182_000, OutputTokens: 2_100, Turns: 1, Roundtrips: 1},
 		{Name: "/root/tester", Responding: true, Started: now.Add(-10 * time.Second), WorkTimer: activeWorkTimer{Known: true, Since: now.Add(-10 * time.Second)}},
 		{Name: "/root/explorer_agent", Responding: true, Started: now.Add(-10 * time.Second), WorkTimer: activeWorkTimer{Known: true, Since: now.Add(-10 * time.Second)}, ContextKnown: true, ContextTokens: 27_600, ContextWindow: 200_000},
 	}})
-	lines := v.nativeRoster(150, 8, now, false)
+	lines := v.NativeRoster(150, 8, now, false)
 	var rows []string
 	for _, line := range lines[1:] {
 		rows = append(rows, ansi.Strip(line))
@@ -175,19 +177,19 @@ func TestNativeRosterUnfocusedMetricsRightAligned(t *testing.T) {
 }
 
 func TestNativeRosterMetricsAlignParts(t *testing.T) {
-	v := newLiveActivityView()
+	v := newActivityAdapter()
 	now := time.Now()
 	agents := []activityPaneAgent{
 		{Name: "/root", Started: now.Add(-37 * time.Minute), WorkTimer: activeWorkTimer{Known: true, ElapsedNS: int64(37 * time.Minute)}, ContextKnown: true, ContextTokens: 171_300, ContextWindow: 285_000, InputTokens: 7_500_000, OutputTokens: 30_000, Turns: 3, Roundtrips: 3},
 		{Name: "/root/a", Started: now.Add(-94 * time.Second), WorkTimer: activeWorkTimer{Known: true, ElapsedNS: int64(94 * time.Second)}, ContextKnown: true, ContextTokens: 24_400, ContextWindow: 285_000, InputTokens: 411_600, OutputTokens: 4_000, Turns: 1, Roundtrips: 1},
 	}
 	v.apply(activityPaneEvent{Kind: "snapshot", Agents: agents})
-	var parts [][nativeMetricParts]string
+	var parts [][activityui.MetricParts]string
 	for _, agent := range agents {
-		parts = append(parts, nativeRosterMetricParts(v, agent, now))
+		parts = append(parts, activityui.RosterMetricParts(v.View, v.testAgent(agent), now))
 	}
 	var rows []string
-	for _, row := range nativeRosterColumns(parts, 200) {
+	for _, row := range activityui.RosterColumns(parts, 200) {
 		rows = append(rows, ansi.Strip(row))
 	}
 	if ansi.StringWidth(rows[0]) != ansi.StringWidth(rows[1]) {
@@ -206,7 +208,7 @@ func TestNativeRosterMetricsAlignParts(t *testing.T) {
 }
 
 func TestNativeRosterShowsEditedLines(t *testing.T) {
-	v := newLiveActivityView()
+	v := newActivityAdapter()
 	now := time.Now()
 	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
 		{Name: "/root", Started: now.Add(-time.Minute), InputTokens: 2000, OutputTokens: 100},
@@ -216,12 +218,12 @@ func TestNativeRosterShowsEditedLines(t *testing.T) {
 	chunk := func(caller, diff string, incomplete string) presentation.Chunk {
 		return presentation.Chunk{Origin: presentation.Origin{Caller: caller}, Review: diffmodel.ReviewFile{Diff: diff, Incomplete: incomplete}}
 	}
-	v.lineCounts = presentation.CallerCounts([]presentation.File{
+	v.LineCounts = presentation.CallerCounts([]presentation.File{
 		{Chunks: []presentation.Chunk{chunk("/root", "@@ -1 +1,2 @@\n-a\n+b\n+c", ""), chunk("/root/a", "@@ -1 +1 @@\n-x\n+y", ""), chunk("/root/a", "", "tool-managed coverage")}},
 		{Chunks: []presentation.Chunk{chunk("/root", "@@ -0,0 +1 @@\n+d", ""), chunk("/root/b", "", "truncated")}},
 	})
-	v.netCounts = new(diffmodel.Counts{Added: 2, Removed: 1})
-	lines := v.nativeRoster(150, 8, now, true)
+	v.NetCounts = new(diffmodel.Counts{Added: 2, Removed: 1})
+	lines := v.NativeRoster(150, 8, now, true)
 	var rows []string
 	for _, line := range lines {
 		rows = append(rows, ansi.Strip(line))
@@ -241,8 +243,8 @@ func TestNativeRosterShowsEditedLines(t *testing.T) {
 	if at := strings.Index(rows[1], " -1"); ansi.StringWidth(rows[1][:at]) != ansi.StringWidth(rows[2][:strings.Index(rows[2], " -1")]) {
 		t.Fatalf("line counts are not aligned:\n%s", strings.Join(rows, "\n"))
 	}
-	delete(v.lineCounts, "/root/b")
-	if header := ansi.Strip(v.nativeRoster(150, 8, now, true)[0]); !strings.Contains(header, "+2 -1 · ↑3K") {
+	delete(v.LineCounts, "/root/b")
+	if header := ansi.Strip(v.NativeRoster(150, 8, now, true)[0]); !strings.Contains(header, "+2 -1 · ↑3K") {
 		t.Fatalf("session total missing: %q", header)
 	}
 }
@@ -270,34 +272,34 @@ func TestLiveDiffCallerCountsSkipFilesOutsideWorkspace(t *testing.T) {
 }
 
 func TestNativeRosterMetricsEaseToNewValues(t *testing.T) {
-	v := newLiveActivityView()
+	v := newActivityAdapter()
 	now := time.Now()
 	agent := activityPaneAgent{Name: "/root", Started: now.Add(-time.Minute), Turns: 1, CostKnown: true, Cost: 1, InputTokens: 100_000, OutputTokens: 1000}
 	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{agent}})
-	v.lineCounts = map[string]diffmodel.Counts{"/root": {Added: 10, Removed: 2}}
+	v.LineCounts = map[string]diffmodel.Counts{"/root": {Added: 10, Removed: 2}}
 	row := func(at time.Time) string {
 		t.Helper()
-		return ansi.Strip(v.nativeRoster(150, 8, at, true)[1])
+		return ansi.Strip(v.NativeRoster(150, 8, at, true)[1])
 	}
 	// Restored or first-seen values show at once.
-	if got := row(now); !strings.Contains(got, "+10 -2") || !strings.Contains(got, "↑100K") || !strings.Contains(got, "$1.00") || v.rosterEasing {
+	if got := row(now); !strings.Contains(got, "+10 -2") || !strings.Contains(got, "↑100K") || !strings.Contains(got, "$1.00") || v.RosterEasing {
 		t.Fatalf("first frame eased: %q", got)
 	}
 	agent.InputTokens, agent.Cost = 200_000, 2
 	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{agent}})
-	v.lineCounts = map[string]diffmodel.Counts{"/root": {Added: 110, Removed: 2}}
+	v.LineCounts = map[string]diffmodel.Counts{"/root": {Added: 110, Removed: 2}}
 	row(now)
-	mid := row(now.Add(rosterMetricEase / 4))
-	if strings.Contains(mid, "↑100K") || strings.Contains(mid, "↑200K") || strings.Contains(mid, "+10 ") || strings.Contains(mid, "+110") || strings.Contains(mid, "$1.00") || strings.Contains(mid, "$2.00") || !v.rosterEasing {
+	mid := row(now.Add(activityui.MetricEase / 4))
+	if strings.Contains(mid, "↑100K") || strings.Contains(mid, "↑200K") || strings.Contains(mid, "+10 ") || strings.Contains(mid, "+110") || strings.Contains(mid, "$1.00") || strings.Contains(mid, "$2.00") || !v.RosterEasing {
 		t.Fatalf("metrics jumped instead of easing: %q", mid)
 	}
-	if got := row(now.Add(rosterMetricEase)); !strings.Contains(got, "+110 -2") || !strings.Contains(got, "↑200K") || !strings.Contains(got, "$2.00") || v.rosterEasing {
+	if got := row(now.Add(activityui.MetricEase)); !strings.Contains(got, "+110 -2") || !strings.Contains(got, "↑200K") || !strings.Contains(got, "$2.00") || v.RosterEasing {
 		t.Fatalf("metrics did not settle: %q", got)
 	}
 	// A change mid-ease continues from the value on screen.
 	agent.InputTokens = 300_000
 	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{agent}})
-	later := now.Add(rosterMetricEase)
+	later := now.Add(activityui.MetricEase)
 	row(later)
 	agent.InputTokens = 400_000
 	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{agent}})
@@ -307,7 +309,7 @@ func TestNativeRosterMetricsEaseToNewValues(t *testing.T) {
 }
 
 func TestNativeRosterLineCountColorsAndZeros(t *testing.T) {
-	v := newLiveActivityView()
+	v := newActivityAdapter()
 	for _, tt := range []struct {
 		count          diffmodel.Counts
 		added, removed string
@@ -318,15 +320,15 @@ func TestNativeRosterLineCountColorsAndZeros(t *testing.T) {
 		{diffmodel.Counts{Removed: 2}, "", terminalui.Red + "-2\x1b[39m"},
 		{diffmodel.Counts{Added: 3, Removed: 2}, terminalui.Green + "+3\x1b[39m", terminalui.Red + "-2\x1b[39m"},
 	} {
-		added, removed := v.lineCountParts(tt.count)
+		added, removed := v.LineCountParts(tt.count)
 		if added != tt.added || removed != tt.removed {
 			t.Fatalf("%+v: got %q %q", tt.count, added, removed)
 		}
-		view := newLiveActivityView()
+		view := newActivityAdapter()
 		now := time.Now()
 		view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root", Started: now, InputTokens: 100}}})
-		view.lineCounts = map[string]diffmodel.Counts{"/root": tt.count}
-		rows := view.nativeRoster(150, 8, now, true)
+		view.LineCounts = map[string]diffmodel.Counts{"/root": tt.count}
+		rows := view.NativeRoster(150, 8, now, true)
 		for _, row := range rows[1:2] {
 			if strings.Contains(row, "+0") || strings.Contains(row, "-0") {
 				t.Fatalf("zero count rendered: %q", row)

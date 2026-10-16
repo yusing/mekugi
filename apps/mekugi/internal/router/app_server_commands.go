@@ -164,14 +164,14 @@ func (u *appServerUI) clearSessionPresentation() error {
 	waiting := u.conversation()
 	u.session.state = scope.Store{}
 	u.conversation().Unsent, u.conversation().Queued = waiting.Unsent, waiting.Queued
-	painter := u.view.painter
-	*u.view = *newLiveActivityView()
-	u.view.painter, u.view.conversation = painter, true
+	painter := u.view.Painter
+	*u.view = *newActivityAdapter()
+	u.view.Painter, u.view.Conversation = painter, true
 	if u.agents != nil {
-		painter = u.agents.painter
-		*u.agents = *newLiveActivityView()
-		u.agents.painter, u.agents.mainView = painter, u.view
-		u.agents.childrenOnly, u.agents.bare = true, true
+		painter = u.agents.Painter
+		*u.agents = *newActivityAdapter()
+		u.agents.Painter, u.agents.mainView = painter, u.view
+		u.agents.ChildrenOnly, u.agents.Bare = true, true
 	}
 	u.sessionPresentation()
 	u.attachActivity()

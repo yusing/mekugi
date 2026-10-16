@@ -25,7 +25,7 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 	for _, child := range []bool{false, true} {
 		t.Run(map[bool]string{false: "main", true: "child"}[child], func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			u.view.conversation = true
+			u.view.Conversation = true
 			activity := newSubagentActivity()
 			activity.attachNativePane("main")
 			proxy := &mekugiProxy{activity: activity}
@@ -64,9 +64,9 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 			if child {
 				view.setDisplayFilter(true, "/root/worker")
 			}
-			feed := view.renderFeed(80, 40)
-			row := slices.IndexFunc(feed.snippets, func(s liveActivitySnippet) bool { return s != liveActivitySnippet{} })
-			if row < 0 || !u.shell.openOutput(view, feed.snippets[row]) {
+			feed := view.RenderFeed(80, 40)
+			row := slices.IndexFunc(feed.Snippets, func(s activityui.Snippet) bool { return s != activityui.Snippet{} })
+			if row < 0 || !u.shell.openOutput(view, feed.Snippets[row]) {
 				t.Fatal("error click target cannot open shared dialog")
 			}
 			assertErrorDialog(t, u.shell, textsanitize.Safe(full, false))
@@ -220,7 +220,7 @@ func TestErrorDetailsTerminalClick(t *testing.T) {
 			if err := u.paint(screen, 120, 40); err != nil {
 				t.Fatal(err)
 			}
-			row := slices.IndexFunc(view.feedSnippets, func(s liveActivitySnippet) bool { return s != liveActivitySnippet{} })
+			row := slices.IndexFunc(view.FeedSnippets, func(s activityui.Snippet) bool { return s != activityui.Snippet{} })
 			if row < 0 {
 				t.Fatal("painted error lacks pointer target")
 			}
@@ -228,14 +228,14 @@ func TestErrorDetailsTerminalClick(t *testing.T) {
 			if child {
 				pane = u.shell.layout.Main
 			}
-			x, y := pane.X+view.feedLeft, pane.Y+view.feedTop+row
-			offset, following := view.offset, view.following
+			x, y := pane.X+view.FeedLeft, pane.Y+view.FeedTop+row
+			offset, following := view.Offset, view.Following
 			for _, suffix := range []string{"M", "m"} {
 				if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", x, y, suffix)); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if u.shell.output == nil || u.Text != "preserve draft" || view.offset != offset || view.following != following {
+			if u.shell.output == nil || u.Text != "preserve draft" || view.Offset != offset || view.Following != following {
 				t.Fatal("terminal click did not open details without disturbing the pane")
 			}
 			assertErrorDialog(t, u.shell, full)
@@ -244,10 +244,10 @@ func TestErrorDetailsTerminalClick(t *testing.T) {
 }
 
 func TestUISnapshotErrorDetailsConversation(t *testing.T) {
-	view := newLiveActivityView()
-	view.conversation = true
-	view.clock = func() time.Time { return time.Date(2026, 10, 2, 12, 40, 21, 0, time.Local) }
-	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "error", Observed: view.now(),
+	view := newActivityAdapter()
+	view.Conversation = true
+	view.Clock = func() time.Time { return time.Date(2026, 10, 2, 12, 40, 21, 0, time.Local) }
+	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "error", Observed: view.Now(),
 		Text: "exec script failed", ErrorDetail: "exec script failed: exec_command failed: CreateProcess { message: Rejected(\"" + strings.Repeat("escaped command ", 30) + "\") }\nrejected: forced cleanup is not permitted"}}})
-	assertNativeUISnapshot(t, "error-details-conversation", view.renderFeed(80, 20).lines)
+	assertNativeUISnapshot(t, "error-details-conversation", view.RenderFeed(80, 20).Lines)
 }

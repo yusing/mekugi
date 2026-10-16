@@ -20,12 +20,12 @@ import (
 
 // Separate operations with commentary so Main has independent transcript
 // items, while Activity groups each pair under a distinct agent heading.
-func viewportSyntaxView(main bool, lang string) *liveActivityView {
+func viewportSyntaxView(main bool, lang string) *activityAdapter {
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
-	v := newLiveActivityView()
-	v.conversation, v.feedOnly = main, true
-	v.painter.Theme = diffrender.DarkTheme
-	v.clock = func() time.Time { return now }
+	v := newActivityAdapter()
+	v.Conversation, v.FeedOnly = main, true
+	v.Painter.Theme = diffrender.DarkTheme
+	v.Clock = func() time.Time { return now }
 	for i := range 12 {
 		agent := fmt.Sprintf("/root/source%d", i)
 		if main {
@@ -45,37 +45,37 @@ func viewportSyntaxView(main bool, lang string) *liveActivityView {
 
 // Off-screen ANSI intentionally differs. Everything else, including full-feed
 // scroll geometry and navigation targets, must equal a fresh eager render.
-func assertViewportSyntaxEager(t *testing.T, lazy, eager *liveActivityView, width, rows int) {
+func assertViewportSyntaxEager(t *testing.T, lazy, eager *activityAdapter, width, rows int) {
 	t.Helper()
-	eager.runs = nil
-	got := lazy.renderFeed(width, rows)
-	want := eager.layoutFeed(width)
+	eager.Runs = nil
+	got := lazy.RenderFeed(width, rows)
+	want := eager.LayoutFeed(width)
 	if !reflect.DeepEqual(threadPlain(got), threadPlain(want)) ||
-		!reflect.DeepEqual(got.heads, want.heads) ||
-		!reflect.DeepEqual(got.snippets, want.snippets) ||
-		!reflect.DeepEqual(got.questions, want.questions) ||
-		!reflect.DeepEqual(got.passing, want.passing) ||
-		!reflect.DeepEqual(lazy.questionRows, eager.questionRows) {
+		!reflect.DeepEqual(got.Heads, want.Heads) ||
+		!reflect.DeepEqual(got.Snippets, want.Snippets) ||
+		!reflect.DeepEqual(got.Questions, want.Questions) ||
+		!reflect.DeepEqual(got.Passing, want.Passing) ||
+		!reflect.DeepEqual(lazy.QuestionRows, eager.QuestionRows) {
 		t.Fatalf("deferred feed changed geometry or navigation:\ngot: %#v\nwant: %#v", got, want)
 	}
-	for key, run := range lazy.runs {
-		reference, ok := eager.runs[key]
-		if !ok || !reflect.DeepEqual(run.blocks, reference.blocks) ||
-			!reflect.DeepEqual(run.entryRows, reference.entryRows) ||
-			!reflect.DeepEqual(run.snippets, reference.snippets) ||
-			!reflect.DeepEqual(run.questions, reference.questions) {
+	for key, run := range lazy.Runs {
+		reference, ok := eager.Runs[key]
+		if !ok || !reflect.DeepEqual(run.Blocks, reference.Blocks) ||
+			!reflect.DeepEqual(run.EntryRows, reference.EntryRows) ||
+			!reflect.DeepEqual(run.Snippets, reference.Snippets) ||
+			!reflect.DeepEqual(run.Questions, reference.Questions) {
 			t.Fatalf("run %v changed dialog or navigation metadata", key)
 		}
 	}
-	gotRows, wantRows := lazy.viewport(got, rows), eager.viewport(want, rows)
+	gotRows, wantRows := lazy.Viewport(got, rows), eager.Viewport(want, rows)
 	if !reflect.DeepEqual(gotRows, wantRows) {
 		t.Fatalf("visible ANSI differs from eager render:\ngot: %q\nwant: %q", gotRows, wantRows)
 	}
-	if lazy.offset != eager.offset || lazy.following != eager.following ||
-		lazy.feedLines != eager.feedLines || lazy.feedRows != eager.feedRows ||
-		!reflect.DeepEqual(lazy.feedSnippets, eager.feedSnippets) ||
-		!reflect.DeepEqual(lazy.feedQuestions, eager.feedQuestions) ||
-		!reflect.DeepEqual(lazy.passed, eager.passed) {
+	if lazy.Offset != eager.Offset || lazy.Following != eager.Following ||
+		lazy.FeedLines != eager.FeedLines || lazy.FeedRows != eager.FeedRows ||
+		!reflect.DeepEqual(lazy.FeedSnippets, eager.FeedSnippets) ||
+		!reflect.DeepEqual(lazy.FeedQuestions, eager.FeedQuestions) ||
+		!reflect.DeepEqual(lazy.Passed, eager.Passed) {
 		t.Fatal("deferred viewport changed scrolling or pointer targets")
 	}
 }
@@ -85,7 +85,7 @@ func TestLiveActivityViewportSyntaxMatchesEager(t *testing.T) {
 	for _, main := range []bool{false, true} {
 		t.Run(fmt.Sprintf("Main=%t", main), func(t *testing.T) {
 			lazy, eager := viewportSyntaxView(main, "go"), viewportSyntaxView(main, "go")
-			for _, v := range []*liveActivityView{lazy, eager} {
+			for _, v := range []*activityAdapter{lazy, eager} {
 				v.Entries[9].Values[0].Lang = "diff"
 				v.Entries[9].Values[0].Code = "diff --git a/source.go b/source.go\n--- a/source.go\n+++ b/source.go\n@@ -1,2 +1,2 @@\n package source\n-var value = 1\n+var value = 2\n"
 				v.replaceEntry(11, v.Entries[11].Source, append(v.blocks(11), activityui.Block{Kind: "op", Verb: "Ask", Label: "1 question", Questions: []activityui.Question{{Text: "Continue the inspection?", State: "answered", Answer: "Yes"}}}))
@@ -95,33 +95,33 @@ func TestLiveActivityViewportSyntaxMatchesEager(t *testing.T) {
 			}
 			check("cold seek at end", 70, 9)
 			check("repeated end", 70, 9)
-			for _, v := range []*liveActivityView{lazy, eager} {
-				v.following, v.offset = false, 2
+			for _, v := range []*activityAdapter{lazy, eager} {
+				v.Following, v.Offset = false, 2
 			}
 			check("scroll inside early run", 70, 9)
-			for _, v := range []*liveActivityView{lazy, eager} {
-				if _, ok := v.questionRows[12]; !ok {
+			for _, v := range []*activityAdapter{lazy, eager} {
+				if _, ok := v.QuestionRows[12]; !ok {
 					t.Fatal("fixture lacks the cross-pane navigation target")
 				}
-				v.pendingTarget = 12
+				v.PendingTarget = 12
 			}
 			check("cross pane jump", 70, 9)
 			check("narrow resize", 34, 6)
-			for _, v := range []*liveActivityView{lazy, eager} {
-				v.painter.Theme = diffrender.LightTheme
+			for _, v := range []*activityAdapter{lazy, eager} {
+				v.Painter.Theme = diffrender.LightTheme
 			}
 			check("theme change", 34, 6)
-			for _, v := range []*liveActivityView{lazy, eager} {
-				v.following = true
+			for _, v := range []*activityAdapter{lazy, eager} {
+				v.Following = true
 			}
 			check("follow end after resize", 90, 12)
-			for _, v := range []*liveActivityView{lazy, eager} {
+			for _, v := range []*activityAdapter{lazy, eager} {
 				v.Entries[1].Values[0].Code = "package changed\n\nfunc updated() string { return \"new source\" }\n"
 				v.invalidateEntry(2)
 			}
 			check("off screen update", 90, 12)
-			for _, v := range []*liveActivityView{lazy, eager} {
-				v.following, v.offset = false, 0
+			for _, v := range []*activityAdapter{lazy, eager} {
+				v.Following, v.Offset = false, 0
 			}
 			check("updated source enters viewport", 90, 12)
 		})
@@ -162,13 +162,13 @@ func TestLiveActivityViewportSyntaxDefersTokenization(t *testing.T) {
 			v := viewportSyntaxView(main, "viewportfixture")
 			first := strings.ReplaceAll(v.blocks(1)[0].Code, "\t", "    ")
 			last := strings.ReplaceAll(v.blocks(len(v.Entries) - 1)[0].Code, "\t", "    ")
-			feed := v.renderFeed(70, 9)
-			v.viewport(feed, 9)
+			feed := v.RenderFeed(70, 9)
+			v.Viewport(feed, 9)
 			if lexer.sources[first] != 0 || lexer.sources[last] != 1 {
 				t.Fatalf("cold end tokenizations: first=%d last=%d, want 0 and 1", lexer.sources[first], lexer.sources[last])
 			}
-			for key, run := range v.runs {
-				if key.first == 1 && run.colored {
+			for key, run := range v.Runs {
+				if key.First == 1 && run.Colored {
 					t.Fatal("cold off-screen run was decorated")
 				}
 			}
@@ -176,34 +176,34 @@ func TestLiveActivityViewportSyntaxDefersTokenization(t *testing.T) {
 			for source, count := range lexer.sources {
 				before[source] = count
 			}
-			v.renderFeed(70, 9)
+			v.RenderFeed(70, 9)
 			if !reflect.DeepEqual(before, lexer.sources) {
 				t.Fatal("unchanged end viewport retokenized source")
 			}
-			v.following, v.offset = false, 0
-			feed = v.renderFeed(70, 9)
-			v.viewport(feed, 9)
+			v.Following, v.Offset = false, 0
+			feed = v.RenderFeed(70, 9)
+			v.Viewport(feed, 9)
 			if lexer.sources[first] != 1 {
 				t.Fatalf("entering early viewport tokenized first source %d times, want 1", lexer.sources[first])
 			}
-			v.renderFeed(70, 9)
+			v.RenderFeed(70, 9)
 			if lexer.sources[first] != 1 || lexer.sources[last] != 1 {
 				t.Fatal("repaint retokenized retained source")
 			}
-			if text := strings.Join(v.viewport(v.renderFeed(70, 9), 9), "\n"); text == ansi.Strip(text) {
+			if text := strings.Join(v.Viewport(v.RenderFeed(70, 9), 9), "\n"); text == ansi.Strip(text) {
 				t.Fatal("visible viewport lost ANSI styling")
 			}
-			v.following = true
-			v.viewport(v.renderFeed(70, 9), 9)
+			v.Following = true
+			v.Viewport(v.RenderFeed(70, 9), 9)
 			changed := "package updated\n\nfunc updated() int { return 42 }\n"
 			v.Entries[1].Values[0].Code = changed
 			v.invalidateEntry(2)
-			v.renderFeed(70, 9)
+			v.RenderFeed(70, 9)
 			if lexer.sources[changed] != 0 {
 				t.Fatal("off-screen update was tokenized before becoming visible")
 			}
-			v.following, v.offset = false, 0
-			v.renderFeed(70, 9)
+			v.Following, v.Offset = false, 0
+			v.RenderFeed(70, 9)
 			if lexer.sources[changed] != 1 {
 				t.Fatalf("updated source entering viewport tokenized %d times, want 1", lexer.sources[changed])
 			}
@@ -213,7 +213,7 @@ func TestLiveActivityViewportSyntaxDefersTokenization(t *testing.T) {
 
 // Real replay history can keep hundreds of operations in one run. A run-level
 // viewport gate is insufficient: only intersecting blocks may be tokenized.
-func groupedViewportSyntaxView(main bool, lang string) *liveActivityView {
+func groupedViewportSyntaxView(main bool, lang string) *activityAdapter {
 	v := viewportSyntaxView(main, lang)
 	records := make([]liveActivityRecord, 0, len(v.Entries)/2)
 	for i := 1; i < len(v.Entries); i += 2 {
@@ -233,39 +233,39 @@ func TestLiveActivityViewportSyntaxGroupedBlocks(t *testing.T) {
 		t.Run(fmt.Sprintf("Main=%t/children=%t", mode.main, mode.children), func(t *testing.T) {
 			clear(lexer.sources)
 			v := groupedViewportSyntaxView(mode.main, "viewportfixture")
-			v.childrenOnly = mode.children
+			v.ChildrenOnly = mode.children
 			first := strings.ReplaceAll(v.blocks(0)[0].Code, "\t", "    ")
 			last := strings.ReplaceAll(v.blocks(len(v.Entries) - 1)[0].Code, "\t", "    ")
-			v.viewport(v.renderFeed(70, 9), 9)
-			if len(v.runs) != 1 {
-				t.Fatalf("fixture produced %d runs, want one grouped run", len(v.runs))
+			v.Viewport(v.RenderFeed(70, 9), 9)
+			if len(v.Runs) != 1 {
+				t.Fatalf("fixture produced %d runs, want one grouped run", len(v.Runs))
 			}
 			if lexer.sources[first] != 0 || lexer.sources[last] != 1 || len(lexer.sources) >= len(v.Entries) {
 				t.Fatalf("cold grouped end tokenizations: first=%d last=%d sources=%d, want deferred early blocks", lexer.sources[first], lexer.sources[last], len(lexer.sources))
 			}
 			coldSources := len(lexer.sources)
-			v.renderFeed(70, 9)
+			v.RenderFeed(70, 9)
 			if len(lexer.sources) != coldSources || lexer.sources[last] != 1 {
 				t.Fatal("grouped end repaint tokenized additional blocks")
 			}
-			v.following, v.offset = false, 0
-			v.viewport(v.renderFeed(70, 9), 9)
+			v.Following, v.Offset = false, 0
+			v.Viewport(v.RenderFeed(70, 9), 9)
 			if lexer.sources[first] != 1 || lexer.sources[last] != 1 || len(lexer.sources) >= len(v.Entries) {
 				t.Fatalf("early grouped scroll tokenizations: first=%d last=%d sources=%d, want only newly visible blocks", lexer.sources[first], lexer.sources[last], len(lexer.sources))
 			}
 			earlySources := len(lexer.sources)
-			v.renderFeed(70, 9)
+			v.RenderFeed(70, 9)
 			if len(lexer.sources) != earlySources || lexer.sources[first] != 1 {
 				t.Fatal("grouped early repaint retokenized source")
 			}
 			// Compare only after counting assertions: the eager reference must
 			// tokenize all blocks, but cannot hide excessive lazy tokenization.
 			eager := groupedViewportSyntaxView(mode.main, "viewportfixture")
-			eager.childrenOnly = mode.children
-			eager.following, eager.offset = false, 0
+			eager.ChildrenOnly = mode.children
+			eager.Following, eager.Offset = false, 0
 			assertViewportSyntaxEager(t, v, eager, 70, 9)
-			for _, view := range []*liveActivityView{v, eager} {
-				view.following = true
+			for _, view := range []*activityAdapter{v, eager} {
+				view.Following = true
 			}
 			assertViewportSyntaxEager(t, v, eager, 70, 9)
 			assertViewportSyntaxEager(t, v, eager, 34, 6)
@@ -288,9 +288,9 @@ func TestUISnapshotLiveActivityViewportSyntaxRepaint(t *testing.T) {
 				{"early scroll", false, 2},
 				{"early repaint", false, 2},
 			} {
-				v.following, v.offset = frame.follow, frame.offset
+				v.Following, v.Offset = frame.follow, frame.offset
 				fmt.Fprintf(&snapshot, "== %s ==\n", frame.label)
-				snapshot.WriteString(strings.Join(v.render(60, 12, v.now()), "\n"))
+				snapshot.WriteString(strings.Join(v.Render(60, 12, v.Now()), "\n"))
 				snapshot.WriteByte('\n')
 			}
 			name := "activity"
@@ -306,19 +306,19 @@ func TestLiveActivityViewportSyntaxScrollEveryRow(t *testing.T) {
 	t.Parallel()
 	for _, main := range []bool{false, true} {
 		t.Run(fmt.Sprintf("Main=%t", main), func(t *testing.T) {
-			build := func() *liveActivityView {
+			build := func() *activityAdapter {
 				v := groupedViewportSyntaxView(main, "go")
 				if main {
 					// A tool group after agent traffic continues an earlier lead
 					// that already headed a read. Its extra heading shifts every
 					// block's syntax window by one row.
 					prefix := []liveActivityRecord{
-						{Source: activityPaneEntry{Seq: 1, Agent: "Main", Kind: "reasoning", Text: "**Preparing regression seed**", Observed: v.now()}},
-						{Source: activityPaneEntry{Seq: 2, Agent: "Main", Kind: "tool", Text: "Read `main.go 1:2`", Observed: v.now()}},
-						{Source: activityPaneEntry{Seq: 3, Agent: "/root/lookup", Kind: "final", Text: "Evidence collected.", Observed: v.now()}},
+						{Source: activityPaneEntry{Seq: 1, Agent: "Main", Kind: "reasoning", Text: "**Preparing regression seed**", Observed: v.Now()}},
+						{Source: activityPaneEntry{Seq: 2, Agent: "Main", Kind: "tool", Text: "Read `main.go 1:2`", Observed: v.Now()}},
+						{Source: activityPaneEntry{Seq: 3, Agent: "/root/lookup", Kind: "final", Text: "Evidence collected.", Observed: v.Now()}},
 					}
 					for i := range prefix {
-						prefix[i].Values = v.disclosure.Keep(prefix[i].Source.Seq, parseLiveActivity(prefix[i].Source))
+						prefix[i].Values = v.Disclosure.Keep(prefix[i].Source.Seq, parseLiveActivity(prefix[i].Source))
 					}
 					for i := range v.Entries {
 						v.Entries[i].Source.Seq += 4
@@ -328,24 +328,24 @@ func TestLiveActivityViewportSyntaxScrollEveryRow(t *testing.T) {
 				return v
 			}
 			lazy, eager := build(), build()
-			full := eager.layoutFeed(70)
+			full := eager.LayoutFeed(70)
 			if main {
 				continued := false
-				for key := range eager.runs {
-					continued = continued || key.lead != 0
+				for key := range eager.Runs {
+					continued = continued || key.Lead != 0
 				}
 				if !continued {
 					t.Fatal("fixture lacks a continuation-headed tool group")
 				}
 			}
 			for _, forward := range []bool{true, false} {
-				for i := range len(full.lines) {
+				for i := range len(full.Lines) {
 					offset := i
 					if !forward {
-						offset = len(full.lines) - 1 - i
+						offset = len(full.Lines) - 1 - i
 					}
-					lazy.following, eager.following = false, false
-					lazy.offset, eager.offset = offset, offset
+					lazy.Following, eager.Following = false, false
+					lazy.Offset, eager.Offset = offset, offset
 					assertViewportSyntaxEager(t, lazy, eager, 70, 3)
 				}
 			}
@@ -368,34 +368,29 @@ func TestActivityFeedOutputContextIsBounded(t *testing.T) {
 				view.replaceEntry(1, entry.Source, blocks)
 				// A cold off-screen layout and a later visible paint must leave full
 				// snapshot creation to a consumer that actually requests the stream.
-				view.renderFeed(80, 8)
+				view.RenderFeed(80, 8)
 				if !reflect.ValueOf(output).Elem().FieldByName("snapshot").IsNil() {
 					t.Fatal("off-screen feed populated the full output snapshot")
 				}
-				view.following, view.offset = false, 0
-				view.renderFeed(80, 20)
+				view.Following, view.Offset = false, 0
+				view.RenderFeed(80, 20)
 				if !reflect.ValueOf(output).Elem().FieldByName("snapshot").IsNil() {
 					t.Fatal("feed syntax populated the full output snapshot")
 				}
-				context := view.outputContext(*block)
-				if collapsed {
-					if context.OutputSnapshot != nil {
-						t.Fatal("collapsed output requested syntax context")
-					}
-				} else if context.OutputSnapshot == nil || !context.OutputContextLimited || len(context.OutputSnapshot.Lines) >= 20000 {
-					t.Fatal("feed output context was not bounded")
+				if demands := view.View.OutputDemands(); len(demands) != 0 {
+					t.Fatalf("adapter left feed output demands unresolved: %+v", demands)
 				}
 			})
 		}
 		t.Run(fmt.Sprintf("Main=%t/retained diff header", main), func(t *testing.T) {
 			output := new(activitymodel.Retention).New()
 			output.Write("amber1\n--- a/sample.go\n+++ b/sample.go\n@@ -1,3 +1,3 @@\n package main\n \n-var answer = 41\n+var answer = 42")
-			view := newLiveActivityView()
-			view.conversation, view.feedOnly = main, true
-			view.painter.Theme = diffrender.DarkTheme
+			view := newActivityAdapter()
+			view.Conversation, view.FeedOnly = main, true
+			view.Painter.Theme = diffrender.DarkTheme
 			entry := activityPaneEntry{Seq: 1, Agent: "Main", Kind: "tool", Text: "Run `mchanges amber1`", outputTail: []string{"-var answer = 41", "+var answer = 42"}, outputOmit: 6, native: &liveActivityNativeItem{output: output, running: true}}
 			view.appendEntry(entry, parseLiveActivity(entry))
-			rows := strings.Join(view.renderFeed(100, 20).lines, "\n")
+			rows := strings.Join(view.RenderFeed(100, 20).Lines, "\n")
 			if !strings.Contains(rows, diffrender.DarkTheme.RowBackground('+')) || !strings.Contains(ansi.Strip(rows), "+var answer = 42") {
 				t.Fatalf("feed lost retained diff context: %q", rows)
 			}

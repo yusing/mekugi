@@ -8,12 +8,13 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // Source: codex-rs/tui/src/chatwidget/skills.rs:29:136 and
@@ -273,7 +274,7 @@ func (u *appServerUI) bindSkills(d *conversationmodel.Input, final bool) {
 		if !final && binding.End == len(d.Text) {
 			continue // A still-growing word stays editable.
 		}
-		if !slices.ContainsFunc(spans, func(span activityui.TextSpan) bool {
+		if !slices.ContainsFunc(spans, func(span activitypresentation.TextSpan) bool {
 			return binding.Start < span.End && binding.End > span.Start
 		}) {
 			d.Skills = append(d.Skills, binding)

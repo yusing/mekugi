@@ -156,7 +156,7 @@ func TestCommandSegmentsRetentionErrorsStayWithOriginalThreadAndCause(t *testing
 	t.Parallel()
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.Thread = "other"
-	u.view.conversation = true
+	u.view.Conversation = true
 	first := errors.New("open replay record: permission denied; complete underlying cause")
 	second := errors.New("sync replay directory: no space left on device; different underlying cause")
 	for _, cause := range []error{first, second} {
@@ -381,7 +381,7 @@ func TestCombinedOutputDialogUnwrapsOnlyLiteralShell(t *testing.T) {
 		`/usr/bin/bash -lc "mcat a.go; mcat b.go"`,
 		`/usr/bin/bash -lc 'mcat a.go; mcat b.go' > output`,
 	} {
-		view := newLiveActivityView()
+		view := newActivityAdapter()
 		view.Entries = []liveActivityRecord{{Source: activityPaneEntry{Seq: 1, Text: "Read `a.go`\n\nRead `b.go`", native: &liveActivityNativeItem{command: command}}}}
 		pages := view.commandOutputPages(1)
 		if len(pages) != 1 || pages[0].Code != appServerDisplayCommand(command) || view.Entries[0].Source.native.command != command {
@@ -419,7 +419,7 @@ func TestCommandSegmentsRestoreRichChangeRows(t *testing.T) {
 	for _, restored := range u.view.Entries {
 		for _, block := range commandSegmentBlocks(restored.Source, false) {
 			block.Collapsed = false
-			rows = append(rows, u.view.painter.Block(block, 90)...)
+			rows = append(rows, u.view.Painter.Block(block, 90)...)
 		}
 	}
 	frame := ansi.Strip(strings.Join(rows, "\n"))

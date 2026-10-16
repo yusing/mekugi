@@ -85,7 +85,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		if n := entry.native; entry.Kind == "tool" && n != nil && n.command != "" &&
 			(len(n.segments) == 0 && (n.running || n.duration > 0) && commandTimingIsCompound(blocks, entry) || n.approval != "" && len(blocks) > 1) &&
 			!slices.ContainsFunc(blocks, func(b activityui.Block) bool { return b.BatchExit }) {
-			batch := activityui.Block{Kind: "op", Verb: "Run", Label: "shell batch", BatchExit: true, Running: n.running, Output: retainedOutputID(n.output, 1), Tail: entry.outputTail, TailOmitted: entry.outputOmit, Collapsed: n.collapsed}
+			batch := activityui.Block{Kind: "op", Verb: "Run", Label: "shell batch", BatchExit: true, Running: n.running, Output: retainedOutputID(n.output, 1), Tail: entry.outputTail, TailOmitted: entry.outputOmit}
 			if len(n.segments) == 0 {
 				for i := range blocks {
 					blocks[i].Output, blocks[i].Tail, blocks[i].TailOmitted = 0, nil, 0
@@ -123,7 +123,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 			return nil
 		}
 		return []activityui.Block{{Kind: "op", Verb: "Run", Hook: new(*n.hook), Label: text, Running: n.running,
-			Output: retainedOutputID(n.output, 1), Tail: entry.outputTail, TailOmitted: entry.outputOmit, Collapsed: n.collapsed}}
+			Output: retainedOutputID(n.output, 1), Tail: entry.outputTail, TailOmitted: entry.outputOmit}}
 	case "reply":
 		// Direction comes from the delivered message, never from its text.
 		if entry.message != nil {
@@ -162,7 +162,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 					block.Thought = entry.native.thought
 				}
 			}
-			block.Collapsed = block.Collapsible() && (entry.native == nil || !entry.native.live || entry.native.collapsed || entry.native.phase != "item/completed")
+			block.Collapsed = block.Collapsible() && (entry.native == nil || !entry.native.live || entry.native.phase != "item/completed")
 		}
 		return blocks
 	case "command":
@@ -211,7 +211,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 				last.Tail, last.TailOmitted = entry.outputTail, entry.outputOmit
 				last.Changes = entry.native.changes
 				// A read's output is what the agent read; it starts collapsed.
-				last.Collapsed = (entry.native.collapsed || last.ReadOutput()) && last.Collapsible()
+				last.Collapsed = last.ReadOutput() && last.Collapsible()
 			}
 		}
 		return activityui.GroupOperations(blocks)
@@ -413,7 +413,7 @@ func commandSegmentBlocks(entry activityPaneEntry, dialog bool) []activityui.Blo
 	}
 	blocks = activityui.FoldStages(blocks)
 	for i := range blocks {
-		blocks[i].Collapsed = (entry.native.collapsed || blocks[i].ReadOutput()) && blocks[i].Collapsible()
+		blocks[i].Collapsed = blocks[i].ReadOutput() && blocks[i].Collapsible()
 	}
 	return activityui.GroupOperations(blocks)
 }

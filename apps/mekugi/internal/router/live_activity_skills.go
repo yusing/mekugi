@@ -1,7 +1,6 @@
 package router
 
 import (
-	"fmt"
 	"slices"
 	"strings"
 
@@ -12,21 +11,15 @@ import (
 
 type activeSkillSet = activitypresentation.SkillSet
 
-func skillLabel(names activeSkillSet) string {
-	if len(names) == 1 {
-		return "1 loaded skill"
-	}
-	return fmt.Sprintf("%d loaded skills", len(names))
-}
 func contextBoundary(entry activityPaneEntry) bool {
 	return entry.Kind == "progress" && entry.Text == "Context compacted"
 }
 
-func (u *terminalUI) openSkills(view *liveActivityView, agent string) {
+func (u *terminalUI) openSkills(view *activityAdapter, agent string) {
 	names := slices.Clone(view.ActiveSkills()[agent])
 	if len(names) == 0 {
 		return
 	}
 	slices.Sort(names)
-	u.openBlocks(view, []activityui.Block{{Kind: "op", Verb: "Skill", Label: skillLabel(names), Body: "- " + strings.Join(names, "\n- ")}})
+	u.openBlocks(view, []activityui.Block{{Kind: "op", Verb: "Skill", Label: activityui.SkillLabel(names), Body: "- " + strings.Join(names, "\n- ")}})
 }

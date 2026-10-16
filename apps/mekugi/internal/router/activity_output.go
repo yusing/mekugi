@@ -19,7 +19,7 @@ func retainedOutputID(output *activitymodel.Output, id int) int {
 	return id
 }
 
-func (v *liveActivityView) retainedOutput(block activityui.Block) *activitymodel.Output {
+func (v *activityAdapter) retainedOutput(block activityui.Block) *activitymodel.Output {
 	if block.Output == 0 {
 		return nil
 	}
@@ -41,19 +41,6 @@ func snapshotOutput(block activityui.Block, output *activitymodel.Output) activi
 	if output != nil {
 		snapshot := output.View()
 		block.OutputSnapshot, block.OutputContextLimited = &snapshot, false
-	}
-	return block
-}
-
-// outputContext supplies only the retained prefix the feed can use for syntax.
-// Collapsed values and structured change rows never need stream context.
-func (v *liveActivityView) outputContext(block activityui.Block) activityui.Block {
-	if block.Collapsed || len(block.Tail) == 0 || len(block.Changes) > 0 {
-		return block
-	}
-	if output := v.retainedOutput(block); output != nil {
-		context, limited := output.Context(activityui.OutputContextBytes)
-		block.OutputSnapshot, block.OutputContextLimited = &context, limited
 	}
 	return block
 }

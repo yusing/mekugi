@@ -21,12 +21,12 @@ import (
 
 func TestUISnapshotNativeFaintLabelForeground(t *testing.T) {
 	const width = 40
-	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, model: "model", view: newLiveActivityView()}
+	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, model: "model", view: newActivityAdapter()}
 	frame, _ := u.mainFrame(width, 3, 0)
 	rows := []string{
-		nativeRule("┌", "┐", "─", nativeTitle(2, "Diff", "", false), terminalui.Dim+"metadata"+terminalui.Undim, width, nativeBorder(false)),
-		nativeRule("┌", "┐", "─", nativeTitle(1, "Main", "", true), "", width, nativeBorder(true)),
-		nativeRule("┌", "┐", "─", "\x1b[38;5;170m"+terminalui.Dim+"agent"+terminalui.Undim, "", width, nativeBorder(false)),
+		terminalui.PaneRule("┌", "┐", "─", terminalui.PaneTitle(2, "Diff", "", false), terminalui.Dim+"metadata"+terminalui.Undim, width, terminalui.PaneBorder(false)),
+		terminalui.PaneRule("┌", "┐", "─", terminalui.PaneTitle(1, "Main", "", true), "", width, terminalui.PaneBorder(true)),
+		terminalui.PaneRule("┌", "┐", "─", "\x1b[38;5;170m"+terminalui.Dim+"agent"+terminalui.Undim, "", width, terminalui.PaneBorder(false)),
 	}
 	screen := vt.NewEmulator(width, 1)
 	defer screen.Close()
@@ -42,10 +42,10 @@ func TestUISnapshotNativeFaintLabelForeground(t *testing.T) {
 
 func TestNativeUISubtleForeground(t *testing.T) {
 	p := activityui.Painter{}
-	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, model: "x", view: newLiveActivityView()}
+	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, model: "x", view: newActivityAdapter()}
 	frame, _ := u.mainFrame(40, 3, 0)
-	v := newLiveActivityView()
-	metrics := nativeRosterColumns([][nativeMetricParts]string{nativeRosterMetricParts(v, activityPaneAgent{Name: "/root/a", ContextKnown: true, ContextTokens: 1000, ContextWindow: 4000, InputTokens: 2000, OutputTokens: 1000}, time.Now())}, 200)[0]
+	v := newActivityAdapter()
+	metrics := activityui.RosterColumns([][activityui.MetricParts]string{activityui.RosterMetricParts(v.View, testActivityAgent(activityPaneAgent{Name: "/root/a", ContextKnown: true, ContextTokens: 1000, ContextWindow: 4000, InputTokens: 2000, OutputTokens: 1000}), time.Now())}, 200)[0]
 	for name, row := range map[string]string{
 		"roster context": strings.Replace(metrics, "1K/", "x/", 1),
 		"roster tokens":  strings.Replace(metrics, "↑2K", "↑x", 1),

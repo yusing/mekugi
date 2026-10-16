@@ -143,7 +143,7 @@ func TestUISnapshotGrokLaunchModelPicker(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.view.painter.Theme = diffrender.DarkTheme
+			u.view.Painter.Theme = diffrender.DarkTheme
 			body, err := ProviderModelCatalog([]byte(`{"models":[{"slug":"gpt-6-sol","multi_agent_version":"v2"}]}`), Session{GrokEnabled: true, GrokUnprefixed: unprefixed, ThirdPartyOnly: true})
 			if err != nil {
 				t.Fatal(err)

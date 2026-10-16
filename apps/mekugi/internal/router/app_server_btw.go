@@ -354,9 +354,9 @@ func (u *appServerUI) btwRows(width, height int) []string {
 	status := textsanitize.Safe(b.Status, false)
 	if (b.Busy || b.Starting) && b.Status == "Answering" && !b.Alert && !b.Started.IsZero() {
 		elapsed := max(time.Duration(0), u.now().Sub(b.Started))
-		status = activityui.ReasoningShimmer("Answering", elapsed, u.view.painter.Colors) + terminalui.Dim + " · " + activityui.FormatDuration(elapsed) + terminalui.Reset
+		status = activityui.ReasoningShimmer("Answering", elapsed, u.view.Painter.Colors) + terminalui.Dim + " · " + activityui.FormatDuration(elapsed) + terminalui.Reset
 	}
-	frame := conversationui.Side(b.View(), &u.view.painter.Painter, status, width, height, b.scroll)
+	frame := conversationui.Side(b.View(), &u.view.Painter.Painter, status, width, height, b.scroll)
 	b.copyAnswer, b.rows, b.scroll = frame.CopyAnswer, frame.AnswerRows, frame.Scroll
 	return frame.Rows
 }

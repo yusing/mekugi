@@ -145,7 +145,7 @@ func TestCodeModeEditIntentBatchPreview(t *testing.T) {
 }
 
 func TestLiveActivityRequestedEditReplacedByReceipt(t *testing.T) {
-	view := newLiveActivityView()
+	view := newActivityAdapter()
 	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
 		Seq: 1, Agent: "/root/worker", Kind: "tool", CallID: "edit-call", Text: "Edit `a.go` · cat (requested)",
 	}}})

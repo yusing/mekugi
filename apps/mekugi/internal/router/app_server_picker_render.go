@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -42,8 +44,8 @@ func pickerText(text string) string {
 }
 
 func (u *appServerUI) pickerSelection() string {
-	if u.view != nil && u.view.painter.Colors.HasBackground {
-		if u.view.painter.Theme == diffrender.LightTheme {
+	if u.view != nil && u.view.Painter.Colors.HasBackground {
+		if u.view.Painter.Theme == diffrender.LightTheme {
 			return "\x1b[1;38;2;0;0;46;48;2;164;205;251m"
 		}
 		return "\x1b[1;38;2;0;0;46;48;2;99;168;248m"
@@ -57,7 +59,7 @@ func (u *appServerUI) skillsModalFrame(width, height int) []string {
 	u.mainContentPainted = false
 	u.composerRect = terminalsession.Rect{}
 	if height > ph {
-		copy(frame, u.transcriptView().render(width, height-ph, u.now()))
+		copy(frame, u.transcriptView().Render(width, height-ph, u.now()))
 	}
 	copy(frame[height-ph:], u.renderPicker(width, ph))
 	u.picker.rect = terminalsession.Rect{0, height - ph, width, ph}
@@ -258,7 +260,7 @@ func (u *appServerUI) renderPicker(width, height int) []string {
 	}
 	if p.modal == "manage" {
 		// Stock management paints the full panel surface, including its blank rows.
-		band := userBand(u.view.painter.Theme)
+		band := activityui.UserBand(u.view.Painter.Theme)
 		for i := 0; i < height-1; i++ {
 			frame[i] = band + frame[i] + strings.Repeat(" ", max(0, width-ansi.StringWidth(frame[i]))) + reset
 		}

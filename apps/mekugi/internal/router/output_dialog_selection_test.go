@@ -20,7 +20,7 @@ func outputSelectionFixture(text string, live bool) (*terminalUI, *activitymodel
 		output.Finish(nil, new(0))
 	}
 	u := dialogForOutput(output)
-	u.main = &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: newLiveActivityView()}
+	u.main = &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: newActivityAdapter()}
 	drawOutputDialog(u)
 	return u, output
 }
@@ -176,7 +176,7 @@ func TestOutputDialogSkillMarkdownSearchSelectionAndCopy(t *testing.T) {
 	output.Write(source)
 	output.Finish(nil, new(0))
 	u := dialogForOutput(output)
-	u.main = &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: newLiveActivityView()}
+	u.main = &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: newActivityAdapter()}
 	block := activityui.Block{Content: activitymodel.ParseOperation("Skill `example`")}
 	block.Source, block.Output = u.output.pages[0].Source, u.output.pages[0].Output
 	u.output.pages[0] = block

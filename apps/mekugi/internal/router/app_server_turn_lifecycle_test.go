@@ -43,7 +43,7 @@ func TestAppServerRestoredStoppedWait(t *testing.T) {
 			u.restoreHistory(history)
 			u.session.registerThread(appServerThreadInfo{ID: "child"})
 			u.restoreActivityThread(appServerThreadInfo{ID: "child", Turns: history})
-			for _, view := range []*liveActivityView{u.view, u.agents} {
+			for _, view := range []*activityAdapter{u.view, u.agents} {
 				if view.Entries[0].Source.Text != "Wait ended" || view.Entries[0].Source.native.phase != "turn/completed" {
 					t.Fatalf("stopped history revived waiting: %+v", view.Entries[0])
 				}

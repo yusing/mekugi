@@ -14,8 +14,8 @@ import (
 
 func TestRequestedEditGroupsMergeAdjacentInvocations(t *testing.T) {
 	for _, agent := range []string{"Main", "/root/worker"} {
-		v := newLiveActivityView()
-		v.childrenOnly = agent != "Main"
+		v := newActivityAdapter()
+		v.ChildrenOnly = agent != "Main"
 		text := "Edit `a.go` +2 -1 · python3\n\nCreate `b.go` +3 -0 · python3"
 		patch := appServerEditText(appServerItem{Status: "failed", Changes: []appServerFileChange{
 			{Path: "c.go", Diff: "+new\n-old\n"},
@@ -26,11 +26,11 @@ func TestRequestedEditGroupsMergeAdjacentInvocations(t *testing.T) {
 			{Seq: 2, Agent: agent, Kind: "tool", CallID: "two", Text: text},
 			{Seq: 3, Agent: agent, Kind: "tool", CallID: "patch", Text: patch},
 		}})
-		feed := v.renderFeed(100, 80)
+		feed := v.RenderFeed(100, 80)
 		if agent == "Main" {
-			feed = v.renderConversation(100)
+			feed = v.testRenderConversation(100)
 		}
-		got := ansi.Strip(strings.Join(feed.lines, "\n"))
+		got := ansi.Strip(strings.Join(feed.Lines, "\n"))
 		if strings.Count(got, "Edited  a.go") != 1 || strings.Count(got, "via python3 ×2") != 1 || strings.Count(got, "Edit    c.go") != 1 || strings.Count(got, "· failed") != 1 || strings.Contains(got, "apply_patch") || strings.Contains(got, " · python3") {
 			t.Fatalf("%s invocation grouping:\n%s", agent, got)
 		}
@@ -59,10 +59,10 @@ func TestUISnapshotUnresolvedEditCommand(t *testing.T) {
 		for _, tracked := range []bool{false, true} {
 			t.Run(fmt.Sprintf("partial=%v/tracked=%v", partial, tracked), func(t *testing.T) {
 				u := newAppServerSessionTestUI(t, t.TempDir())
-				u.view.conversation = true
-				u.view.painter.Theme = diffrender.DarkTheme
+				u.view.Conversation = true
+				u.view.Painter.Theme = diffrender.DarkTheme
 				now := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
-				u.view.clock = func() time.Time { return now }
+				u.view.Clock = func() time.Time { return now }
 				native := &liveActivityNativeItem{thread: "main", item: "cmd", command: command, status: "completed"}
 				if tracked {
 					native.segments = []commandSegment{{source: command, text: execSegmentText(command)}}
@@ -70,9 +70,9 @@ func TestUISnapshotUnresolvedEditCommand(t *testing.T) {
 				u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
 					Seq: 1, Agent: "Main", Kind: "tool", CallID: "cmd", Text: toolActivityShell(command), Observed: now, native: native,
 				}}})
-				feed := u.view.renderFeed(100, 40)
+				feed := u.view.RenderFeed(100, 40)
 				var opened bool
-				for _, snippet := range feed.snippets {
+				for _, snippet := range feed.Snippets {
 					if u.shell.openOutput(u.view, snippet) {
 						opened = true
 						break
@@ -82,7 +82,7 @@ func TestUISnapshotUnresolvedEditCommand(t *testing.T) {
 					t.Fatal("unresolved edit has no ordinary command dialog")
 				}
 				// The interpreter projection is the original source, not a made-up edit.
-				page := u.view.painter.DialogPage(u.shell.output.pages[0], 100)
+				page := u.view.Painter.DialogPage(u.shell.output.pages[0], 100)
 				var source string
 				for _, line := range page.Lines {
 					source += ansi.Strip(line.Text) + "\n"
@@ -97,7 +97,7 @@ func TestUISnapshotUnresolvedEditCommand(t *testing.T) {
 						snapshot += "-ran"
 					}
 				}
-				assertNativeUISnapshot(t, snapshot, feed.lines)
+				assertNativeUISnapshot(t, snapshot, feed.Lines)
 			})
 		}
 	}
@@ -107,7 +107,7 @@ func TestUISnapshotMoveIntent(t *testing.T) {
 	const move = "mv testdata/output.txt.new testdata/output.txt"
 	command := move + "; gofmt -w internal/router/native_shell.go"
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
 		Seq: 1, Agent: "Main", Kind: "tool", CallID: "cmd", Text: toolActivityShell(command),
 		native: &liveActivityNativeItem{thread: "main", item: "cmd", command: command, status: "completed", segments: []commandSegment{
@@ -115,7 +115,7 @@ func TestUISnapshotMoveIntent(t *testing.T) {
 			{source: "gofmt -w internal/router/native_shell.go", text: execSegmentText("gofmt -w internal/router/native_shell.go")},
 		}},
 	}}})
-	assertNativeUISnapshot(t, "move-intent-ran", u.view.renderConversation(100).lines)
+	assertNativeUISnapshot(t, "move-intent-ran", u.view.testRenderConversation(100).Lines)
 }
 
 func TestRequestedReasoningHeadsOperationTree(t *testing.T) {
@@ -124,18 +124,18 @@ func TestRequestedReasoningHeadsOperationTree(t *testing.T) {
 			{"Read `a.go`\n\nSearch `needle`", "├ Read   a.go"},
 			{"Edit `a.go` +2 -1 · git stash push\n\nEdit `b.go` +1 -0 · git stash push", "└ Edited a.go"},
 		} {
-			v := newLiveActivityView()
-			v.childrenOnly = agent != "Main"
-			v.conversation = agent == "Main"
+			v := newActivityAdapter()
+			v.ChildrenOnly = agent != "Main"
+			v.Conversation = agent == "Main"
 			v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
 				{Seq: 1, Agent: agent, Kind: "reasoning", Text: "**Locating targeted files**"},
 				{Seq: 2, Agent: agent, Kind: "tool", CallID: "op", Text: operation.text},
 			}})
-			feed := v.renderFeed(100, 80)
+			feed := v.RenderFeed(100, 80)
 			if agent == "Main" {
-				feed = v.renderConversation(100)
+				feed = v.testRenderConversation(100)
 			}
-			plain := plainLines(feed.lines)
+			plain := plainLines(feed.Lines)
 			row := slices.IndexFunc(plain, func(row string) bool { return strings.Contains(row, "Locating targeted files") })
 			// The operations branch from the reasoning row with no gap between.
 			if row < 0 || row+1 >= len(plain) || !strings.Contains(plain[row+1], operation.first) || strings.Count(strings.Join(plain, "\n"), "Locating targeted files") != 1 {
@@ -156,7 +156,7 @@ func TestRequestedInspectOperandsGroupLikeReads(t *testing.T) {
 
 func TestRequestedConsecutiveInspectGroupingBoundaries(t *testing.T) {
 	now := time.Now()
-	view := newLiveActivityView()
+	view := newActivityAdapter()
 	view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/a"}, {Name: "/root/b"}}, Entries: []activityPaneEntry{
 		{Seq: 1, Agent: "/root/a", Kind: "tool", Text: "Inspect `a.go`\n\nInspect `b.go`", Observed: now},
 		{Seq: 2, Agent: "/root/a", Kind: "tool", Text: "Inspect `c.go`", Observed: now},
@@ -165,7 +165,7 @@ func TestRequestedConsecutiveInspectGroupingBoundaries(t *testing.T) {
 		{Seq: 5, Agent: "/root/a", Kind: "tool", Text: "Inspect `f.go`", Observed: now},
 		{Seq: 6, Agent: "/root/b", Kind: "tool", Text: "Inspect `g.go`", Observed: now},
 	}})
-	feed := strings.Join(plainLines(view.renderFeed(150, 28).lines), "\n")
+	feed := strings.Join(plainLines(view.RenderFeed(150, 28).Lines), "\n")
 	if strings.Count(feed, "Inspect ") != 3 || !strings.Contains(feed, "a.go · b.go · c.go") ||
 		!strings.Contains(feed, "Read ") || !strings.Contains(feed, "Edit ") ||
 		!strings.Contains(feed, "f.go") || !strings.Contains(feed, "g.go") {
@@ -177,7 +177,7 @@ func TestRequestedRosterGlyphCenteredInThreeCellGutter(t *testing.T) {
 	now := time.Now()
 	view := liveActivityTestView("/root", "/root/a")
 	view.Agents[1].Responding = true
-	lines := plainLines(view.render(100, 16, now))
+	lines := plainLines(view.Render(100, 16, now))
 	for _, glyph := range []string{"·", "◐"} {
 		found := false
 		for _, line := range lines {
@@ -193,16 +193,16 @@ func TestRequestedRosterGlyphCenteredInThreeCellGutter(t *testing.T) {
 
 func TestRequestedRootRosterOwnActivityAndAddressedMessage(t *testing.T) {
 	now := time.Now()
-	view := newLiveActivityView()
+	view := newActivityAdapter()
 	view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root"}, {Name: "/root/a"}}, Entries: []activityPaneEntry{
 		{Seq: 1, Agent: "/root", Kind: "tool", Text: "Read `main.go`", Observed: now},
 		{Seq: 2, Agent: "/root/a", Kind: "tool", Text: "Read `child.go`", Observed: now},
 	}})
-	if summary, _ := view.current(view.Agents[0], now); !strings.Contains(summary, "main.go") {
+	if summary, _ := view.testCurrent(view.Agents[0], now); !strings.Contains(summary, "main.go") {
 		t.Fatalf("root own activity missing: %q", summary)
 	}
 	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 3, Agent: "/root/a", Kind: "reply", message: &activityMessage{from: "/root/a", to: "/root", text: "Answer"}, Observed: now}}})
-	if summary, _ := view.current(view.Agents[0], now); !strings.Contains(ansi.Strip(summary), "← a") {
+	if summary, _ := view.testCurrent(view.Agents[0], now); !strings.Contains(ansi.Strip(summary), "← a") {
 		t.Fatalf("newer addressed message missing: %q", summary)
 	}
 }
@@ -215,14 +215,14 @@ func TestRequestedRosterMetricSlotsStableAcrossAvailabilityAndFormat(t *testing.
 	view.Agents[0].LastResponse = now
 	view.Agents[0].InputTokens, view.Agents[0].OutputTokens = 140_600, 789
 	view.Agents[0].Turns, view.Agents[0].Roundtrips, view.Agents[0].Cost, view.Agents[0].CostKnown = 7, 7, .5171, true
-	full := plainLines(view.metricTable(view.Roster(), now))[0]
+	full := plainLines(view.MetricTable(view.testRoster(), now))[0]
 	view.Agents[0].InputTokens, view.Agents[0].OutputTokens = 73_700, 844
 	view.Agents[0].Turns, view.Agents[0].Roundtrips, view.Agents[0].Cost = 14, 14, 12.0811
 	view.Agents[0].LastResponse = now.Add(-4 * time.Second)
-	changed := plainLines(view.metricTable(view.Roster(), now))[0]
+	changed := plainLines(view.MetricTable(view.testRoster(), now))[0]
 	view.Agents[0].InputTokens, view.Agents[0].OutputTokens = 0, 0
 	view.Agents[0].Turns, view.Agents[0].Roundtrips, view.Agents[0].CostKnown = 0, 0, false
-	empty := plainLines(view.metricTable(view.Roster(), now))[0]
+	empty := plainLines(view.MetricTable(view.testRoster(), now))[0]
 	for _, marker := range []string{"·", "↑", "↓", "$", "T+"} {
 		a, b := strings.Index(full, marker), strings.Index(changed, marker)
 		if a < 0 || b < 0 || ansi.StringWidth(full[:a]) != ansi.StringWidth(changed[:b]) {

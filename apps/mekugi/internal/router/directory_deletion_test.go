@@ -60,7 +60,7 @@ func TestUISnapshotDirectoryDeletion(t *testing.T) {
 				"id": "delete-call", "type": "commandExecution", "command": "rm -rf removed removed2", "exitCode": 0}})
 			u.shell.diff.data = data
 			u.applyCapturedEdits()
-			u.view.pace(u.view.now().Add(time.Second))
+			u.view.testPace(u.view.Now().Add(time.Second))
 			var seq uint64
 			for _, entry := range u.view.Entries {
 				if entry.Source.native != nil && entry.Source.native.item == "delete-call" {
@@ -74,7 +74,7 @@ func TestUISnapshotDirectoryDeletion(t *testing.T) {
 			if !u.shell.openActivityEdit(u.view, seq, "removed/") || len(u.shell.output.pages) != wantPages {
 				t.Fatal("directory link did not open all retained file pages")
 			}
-			uisnapshot.Assert(t, "testdata/snapshots/"+name+".txt", strings.Join(u.view.renderFeed(100, 30).lines, "\n")+"\n")
+			uisnapshot.Assert(t, "testdata/snapshots/"+name+".txt", strings.Join(u.view.RenderFeed(100, 30).Lines, "\n")+"\n")
 		})
 	}
 }

@@ -330,7 +330,7 @@ func (u *appServerUI) resumePickerFrame(width, height int) []string {
 	}
 	bold, dim, reset := "\x1b[1m", terminalui.Dim, terminalui.Reset
 	accent := "\x1b[38;2;104;174;245m"
-	if u.view.painter.Theme == diffrender.LightTheme {
+	if u.view.Painter.Theme == diffrender.LightTheme {
 		accent = "\x1b[38;2;25;94;164m"
 	}
 	option := func(label string, on bool) string {

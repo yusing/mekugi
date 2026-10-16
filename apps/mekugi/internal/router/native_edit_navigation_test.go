@@ -159,7 +159,7 @@ func TestUISnapshotNativeCompletedHostEditDialog(t *testing.T) {
 	if !u.shell.openActivityEdit(u.view, 1, "internal/router/batch.go") {
 		t.Fatal("host edit did not open")
 	}
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	uisnapshot.Assert(t, "testdata/snapshots/native-completed-host-edit-dialog.txt", drawOutputDialog(u.shell)+"\n")
 }
 

@@ -16,8 +16,8 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			at := time.Date(2026, 9, 30, 8, 0, 0, 0, time.Local)
 			u.clock = func() time.Time { return at }
-			u.view.clock, u.agents.clock = u.clock, u.clock
-			u.view.painter.Theme, u.agents.painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
+			u.view.Clock, u.agents.Clock = u.clock, u.clock
+			u.view.Painter.Theme, u.agents.Painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
 			appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 			u.agents.setDisplayFilter(false, "/root/worker")
 			view := u.view
@@ -31,13 +31,13 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 			}
 			snapshot := func(stage string) {
 				t.Run(stage, func(t *testing.T) {
-					uisnapshot.Assert(t, "testdata/snapshots/reasoning-paced-sections-"+thread+"-"+stage+".txt", strings.Join(view.renderFeed(80, 40).lines, "\n")+"\n")
+					uisnapshot.Assert(t, "testdata/snapshots/reasoning-paced-sections-"+thread+"-"+stage+".txt", strings.Join(view.RenderFeed(80, 40).Lines, "\n")+"\n")
 				})
 			}
 			body := "Inspecting layout\n\nFirst checkpoint.\nSecond checkpoint.\n\n**Checking completion.**\n\nThird checkpoint.\nFourth checkpoint.\n"
 			notify("item/started", map[string]any{"item": map[string]any{"id": "r", "type": "reasoning"}})
 			notify("item/reasoning/summaryTextDelta", map[string]any{"itemId": "r", "delta": body})
-			if len(view.Entries) != 1 || len(view.renderFeed(80, 40).lines) != 0 {
+			if len(view.Entries) != 1 || len(view.RenderFeed(80, 40).Lines) != 0 {
 				t.Fatal("summary position was not reserved invisibly before its first frame")
 			}
 			u.flushStreamOutput()
@@ -64,18 +64,18 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 			nextEvent(t, u, thread)
 			settleActivity(at.Add(time.Minute), view)
 			snapshot("collapsed")
-			feed := view.renderFeed(80, 40)
+			feed := view.RenderFeed(80, 40)
 			for i := range 2 {
 				opened := false
-				for _, snippet := range feed.snippets {
-					block, ok := view.snippetBlock(snippet)
+				for _, snippet := range feed.Snippets {
+					block, ok := view.SnippetBlock(snippet)
 					if !ok || block.Source != view.Entries[0].Source.Seq || len(block.Members) != 2 {
 						continue
 					}
 					if !u.shell.openOutput(view, snippet) {
 						t.Fatal("section has no dialog target")
 					}
-					page := view.painter.DialogPage(u.shell.output.pages[i], 80)
+					page := view.Painter.DialogPage(u.shell.output.pages[i], 80)
 					if page.Text != block.Members[i].Body || strings.Contains(page.Text, []string{"Third checkpoint.", "First checkpoint."}[i]) {
 						t.Fatalf("section dialog mixed bodies: %+v", page)
 					}

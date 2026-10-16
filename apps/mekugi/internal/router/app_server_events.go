@@ -663,8 +663,8 @@ func (u *appServerUI) flushStreamOutput() {
 		if run.done != nil && run.output.Pending() == 0 {
 			for _, done := range run.done {
 				done.Agent = entry.Agent
-				if done.native != nil && !done.native.settled.IsZero() {
-					done.native.settled = u.now() // Output settles once it has shown.
+				if !done.completed.IsZero() {
+					done.completed = u.now() // Output settles once it has shown.
 				}
 				entries = append(entries, done)
 			}
@@ -826,7 +826,7 @@ func appServerCommandOutput(entry *activityPaneEntry, item appServerItem, settle
 	if item.ExitCode == nil {
 		return
 	}
-	entry.native.settled, entry.native.collapsed = settled, settled.IsZero()
+	entry.completed = settled
 	entry.native.changes, entry.native.commit = commandOutputRows(item)
 }
 

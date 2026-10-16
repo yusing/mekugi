@@ -261,13 +261,13 @@ func TestSessionUIReplayPanePrefixConsumesInvalidControls(t *testing.T) {
 				t.Fatal(err)
 			}
 			p.Paused = true
-			position, at, next, offset := p.Position, p.At, p.Next, p.ui.view.offset
+			position, at, next, offset := p.Position, p.At, p.Next, p.ui.view.Offset
 			for _, key := range []byte{2, invalid} {
 				if quit, err := p.key(key); err != nil || quit {
 					t.Fatalf("key %q: quit=%v error=%v", key, quit, err)
 				}
 			}
-			if p.prefix || p.ui.shell.Focus != 0 || p.Speed != 1 || !p.Paused || p.Position != position || !p.At.Equal(at) || p.Next != next || p.ui.view.offset != offset {
+			if p.prefix || p.ui.shell.Focus != 0 || p.Speed != 1 || !p.Paused || p.Position != position || !p.At.Equal(at) || p.Next != next || p.ui.view.Offset != offset {
 				t.Fatal("invalid pane suffix changed playback or kept the prefix armed")
 			}
 			if quit, err := p.key('+'); err != nil || quit || p.Speed != 2 {

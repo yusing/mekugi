@@ -100,10 +100,10 @@ func TestUISnapshotTemporaryWriteActivity(t *testing.T) {
 					source += "Path(dynamic).write_text('code')\n"
 				}
 				command := temporaryPlanCommand(temporaryPlanSetup, source)
-				v := newLiveActivityView()
-				v.childrenOnly = agent != "Main"
-				v.clock = func() time.Time { return now }
-				v.painter.Theme = diffrender.DarkTheme
+				v := newActivityAdapter()
+				v.ChildrenOnly = agent != "Main"
+				v.Clock = func() time.Time { return now }
+				v.Painter.Theme = diffrender.DarkTheme
 				output := new(activitymodel.Retention).New()
 				output.Finish(new("/tmp/mekugi-batches.YcIbga/plan.json\n"), new(0))
 				v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
@@ -111,11 +111,11 @@ func TestUISnapshotTemporaryWriteActivity(t *testing.T) {
 					outputTail: []string{"/tmp/mekugi-batches.YcIbga/plan.json"},
 					native:     &liveActivityNativeItem{command: command, duration: 157 * time.Millisecond, output: output},
 				}}})
-				feed := v.renderFeed(100, 80)
+				feed := v.RenderFeed(100, 80)
 				if agent == "Main" {
-					feed = v.renderConversation(100)
+					feed = v.testRenderConversation(100)
 				}
-				assertNativeUISnapshot(t, fmt.Sprintf("temporary-write-%s-unknown-%v", strings.TrimPrefix(agent, "/root/"), unresolved), feed.lines)
+				assertNativeUISnapshot(t, fmt.Sprintf("temporary-write-%s-unknown-%v", strings.TrimPrefix(agent, "/root/"), unresolved), feed.Lines)
 			})
 		}
 	}

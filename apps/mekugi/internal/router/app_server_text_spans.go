@@ -6,12 +6,12 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
-
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func composerContentSkills(content []composerUserContent) []composer.Token {
@@ -40,8 +40,8 @@ type composerUserContent struct {
 	Elements []binding.InputTextElement `json:"text_elements"`
 }
 
-func composerElementSpans(text string, elements []binding.InputTextElement) []activityui.TextSpan {
-	var spans []activityui.TextSpan
+func composerElementSpans(text string, elements []binding.InputTextElement) []activitypresentation.TextSpan {
+	var spans []activitypresentation.TextSpan
 	for _, element := range elements {
 		start, end := element.ByteRange.Start, element.ByteRange.End
 		if start < 0 || end <= start || end > len(text) || !utf8.ValidString(text[:start]) || !utf8.ValidString(text[start:end]) {
@@ -51,21 +51,21 @@ func composerElementSpans(text string, elements []binding.InputTextElement) []ac
 		if element.Placeholder != label {
 			continue
 		}
-		kind := activityui.FileToken
+		kind := activitypresentation.FileToken
 		switch {
 		case strings.HasPrefix(label, "@"):
 		case strings.HasPrefix(label, "$"):
-			kind = activityui.SkillToken
+			kind = activitypresentation.SkillToken
 		case composer.SelectionLabel(label):
-			kind = activityui.SelectionToken
+			kind = activitypresentation.SelectionToken
 		default:
 			continue
 		}
-		spans = append(spans, activityui.TextSpan{Start: start, End: end, Kind: kind})
+		spans = append(spans, activitypresentation.TextSpan{Start: start, End: end, Kind: kind})
 	}
-	slices.SortFunc(spans, func(a, b activityui.TextSpan) int { return cmp.Compare(a.Start, b.Start) })
+	slices.SortFunc(spans, func(a, b activitypresentation.TextSpan) int { return cmp.Compare(a.Start, b.Start) })
 	end := 0
-	return slices.DeleteFunc(spans, func(span activityui.TextSpan) bool {
+	return slices.DeleteFunc(spans, func(span activitypresentation.TextSpan) bool {
 		if span.Start < end {
 			return true
 		}
@@ -77,7 +77,7 @@ func composerElementSpans(text string, elements []binding.InputTextElement) []ac
 // Rebind only complete, unambiguous skill tokens from authoritative history or
 // the edited draft. A similarly prefixed word must not activate a stale skill.
 
-func unambiguousSkillBindings(text string, skills []composer.Token, spans []activityui.TextSpan) []composer.Token {
+func unambiguousSkillBindings(text string, skills []composer.Token, spans []activitypresentation.TextSpan) []composer.Token {
 	paths := make(map[string]string)
 	ambiguous := make(map[string]bool)
 	for _, skill := range skills {
@@ -92,14 +92,14 @@ func unambiguousSkillBindings(text string, skills []composer.Token, spans []acti
 		if ambiguous[name] {
 			continue
 		}
-		var explicit []activityui.TextSpan
+		var explicit []activitypresentation.TextSpan
 		for _, span := range spans {
-			if span.Kind == activityui.SkillToken && text[span.Start:span.End] == "$"+name {
+			if span.Kind == activitypresentation.SkillToken && text[span.Start:span.End] == "$"+name {
 				explicit = append(explicit, span)
 			}
 		}
 		for _, binding := range composer.SkillBindings(text, name, path) {
-			if len(explicit) == 0 || slices.ContainsFunc(explicit, func(span activityui.TextSpan) bool {
+			if len(explicit) == 0 || slices.ContainsFunc(explicit, func(span activitypresentation.TextSpan) bool {
 				return span.Start == binding.Start && span.End == binding.End
 			}) {
 				bindings = append(bindings, binding)

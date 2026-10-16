@@ -36,7 +36,7 @@ func TestUISnapshotAppServerStatusResetCredits(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u, sent := newAppServerTestUI()
-			u.view.painter.Theme = diffrender.DarkTheme
+			u.view.Painter.Theme = diffrender.DarkTheme
 			appServerTestKeys(t, u, "/status\r")
 			appServerTestMessage(t, u, `{"id":1,"result":{"account":{"type":"chatgpt","planType":"pro"}}}`)
 			response := string(wire)
@@ -75,7 +75,7 @@ func TestUISnapshotAppServerStatusSystemTimezone(t *testing.T) {
 				t.Fatal(err)
 			}
 			u, _ := newAppServerTestUI()
-			u.view.painter.Theme = diffrender.DarkTheme
+			u.view.Painter.Theme = diffrender.DarkTheme
 			appServerTestKeys(t, u, "/status\r")
 			appServerTestMessage(t, u, `{"id":1,"result":{"account":{"type":"chatgpt","planType":"pro"}}}`)
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":2,"result":{"rateLimits":{"primary":{"usedPercent":20,"windowDurationMins":300,"resetsAt":%d}}}}`, tc.reset.Unix()))
@@ -91,7 +91,7 @@ func TestUISnapshotAppServerStatusSystemTimezone(t *testing.T) {
 func TestAppServerStatusLocalAndAccountRefresh(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.session.start("main", "/workspace")
-	u.agents = newLiveActivityView()
+	u.agents = newActivityAdapter()
 	u.model, u.reasoningEffort, u.serviceTier = "gpt-6-sol", "high", "priority"
 	u.Turn, u.status = "active", "Working"
 	u.statusConfig.Provider = "openai"
@@ -295,7 +295,7 @@ func TestAppServerStatusPanelVisual(t *testing.T) {
 	appServerTestMessage(t, u, `{"id":1,"result":{"account":{"type":"chatgpt","email":"yusing@example.com","planType":"pro"}}}`)
 	appServerTestMessage(t, u, `{"id":2,"result":{"rateLimits":{"primary":{"usedPercent":22,"windowDurationMins":300},"secondary":{"usedPercent":83,"windowDurationMins":10080},"credits":{"unlimited":false,"balance":"12.50"}}}}`)
 	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
-		u.view.painter.Theme = theme
+		u.view.Painter.Theme = theme
 		for _, size := range [][2]int{{88, 42}, {44, 20}, {12, 8}, {1, 1}} {
 			frame := u.statusPanelFrame(size[0], size[1])
 			for _, row := range frame {
@@ -337,7 +337,7 @@ func TestAppServerStatusPanelVisual(t *testing.T) {
 
 	// Render through the real pane compositor and terminal emulator, then verify
 	// closing clears the already-painted panel, not only its backing state.
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	u.statusPanel.top = 0
 	screen := vt.NewEmulator(160, 48)
 	defer screen.Close()

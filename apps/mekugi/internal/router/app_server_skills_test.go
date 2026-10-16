@@ -16,7 +16,7 @@ import (
 // and bottom_pane/skills_toggle_view.rs (skills_toggle_basic).
 func TestUISnapshotSkillsMenuAndActions(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	appServerTestKeys(t, u, "/skills\r")
 	if u.picker.modal != "menu" || !u.picker.open || u.pickerHeight(80) != 8 {
 		t.Fatalf("menu state/height = %+v, %d", u.picker, u.pickerHeight(80))
@@ -43,7 +43,7 @@ func TestUISnapshotSkillsMenuAndActions(t *testing.T) {
 
 func TestUISnapshotSkillsManageFilteringAndSave(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	u.session.cwd = "/work"
 	u.picker.modal, u.picker.open = "manage", true
 	u.picker.skills = []composerChoice{
@@ -84,7 +84,7 @@ func TestUISnapshotSkillsManageFilteringAndSave(t *testing.T) {
 
 func TestUISnapshotSkillsManagerViewportAndPaste(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	u.session.cwd = "/work"
 	u.picker.modal, u.picker.open = "manage", true
 	u.picker.skillsLoaded, u.picker.skillsCwd = true, "/work"
@@ -122,7 +122,7 @@ func TestUISnapshotSkillsColumnsMeasureOnlyVisibleRows(t *testing.T) {
 	for _, modal := range []string{"", "manage"} {
 		t.Run("modal="+modal, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.view.painter.Theme = diffrender.DarkTheme
+			u.view.Painter.Theme = diffrender.DarkTheme
 			u.picker.modal, u.picker.target.kind = modal, '$'
 			for i := range 9 {
 				u.picker.choices = append(u.picker.choices, composerChoice{

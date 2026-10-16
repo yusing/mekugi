@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -14,7 +16,7 @@ func newPagedHistoryUI(t *testing.T) (*appServerUI, *appServerTestInput) {
 	t.Helper()
 	u, wire := newAppServerTestUI()
 	u.ctx = t.Context()
-	u.agents = newLiveActivityView()
+	u.agents = newActivityAdapter()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
 	u.session.start("main", t.TempDir())
@@ -41,7 +43,7 @@ func historyTurnsReply(t *testing.T, u *appServerUI) {
 	restoreContentReply(t, u, 3, map[string]any{"data": []any{map[string]any{"id": "t", "status": "completed", "startedAt": 100, "completedAt": 110}, map[string]any{"id": "old", "status": "failed", "startedAt": 90, "completedAt": 95, "error": map[string]any{"message": "retained failure"}}}})
 }
 
-func entryTexts(v *liveActivityView) []string {
+func entryTexts(v *activityAdapter) []string {
 	var result []string
 	for _, e := range v.Entries {
 		if e.Source.Kind == "text" || e.Source.Kind == "final" {
@@ -59,8 +61,8 @@ func TestAppServerAnchoredHistoryPages(t *testing.T) {
 		t.Fatalf("unbounded requests: %+v", requests)
 	}
 	restoreContentReply(t, u, 4, map[string]any{"data": []any{historyItem("last", "latest answer", 109000), historyItem("middle", "middle commentary", 105000)}, "nextCursor": "older"})
-	if u.restoring != nil || u.historyLoading() != nil || u.agents.status != "" {
-		t.Fatalf("partial history blocked resume: restoring=%+v loading=%+v status=%q agents=%q", u.restoring, u.historyLoading(), u.status, u.agents.status)
+	if u.restoring != nil || u.historyLoading() != nil || u.agents.StatusLabel != "" {
+		t.Fatalf("partial history blocked resume: restoring=%+v loading=%+v status=%q agents=%q", u.restoring, u.historyLoading(), u.status, u.agents.StatusLabel)
 	}
 	agent := u.session.agent("/root/worker")
 	if agent.Turns != 2 || agent.Started.Unix() != 90 || agent.LastResponse.Unix() != 110 || !agent.Final || agent.Responding {
@@ -130,7 +132,7 @@ func TestAppServerAnchoredHistoryErrorsAndCancellation(t *testing.T) {
 			case "cancel":
 				u.shell.Focus = 0
 				u.agents.setDisplayFilter(true, "/root/worker")
-				u.agents.following = false
+				u.agents.Following = false
 				if err := u.shell.send("\x1b"); err != nil {
 					t.Fatal(err)
 				}
@@ -231,7 +233,7 @@ func TestUISnapshotNativeAnchoredHistory(t *testing.T) {
 			}
 			now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
 			u.clock = func() time.Time { return now }
-			for _, view := range []*liveActivityView{u.view, u.agents} {
+			for _, view := range []*activityAdapter{u.view, u.agents} {
 				for i := range view.Entries {
 					view.Entries[i].Source.Observed = now.Add(-10 * time.Second)
 				}
@@ -242,8 +244,8 @@ func TestUISnapshotNativeAnchoredHistory(t *testing.T) {
 					u.agents.Agents[i].LastResponse = now.Add(-10 * time.Second)
 				}
 			}
-			u.agents.clock = u.clock
-			u.view.clock = u.clock
+			u.agents.Clock = u.clock
+			u.view.Clock = u.clock
 			u.shell.width, u.shell.height = 100, 24
 			if err := u.shell.paintNative(t.Context(), io.Discard); err != nil {
 				t.Fatal(err)
@@ -285,7 +287,7 @@ func TestAppServerAnchoredHistoryEmptyPageAndLiveCompletion(t *testing.T) {
 	if got := strings.Join(entryTexts(u.agents), ","); got != "historical commentary,full live answer" {
 		t.Fatal(got)
 	}
-	if u.agents.events["/root/worker"].seq != u.agents.Entries[len(u.agents.Entries)-1].Source.Seq {
+	if u.agents.Events["/root/worker"].Seq != u.agents.Entries[len(u.agents.Entries)-1].Source.Seq {
 		t.Fatal("older history replaced latest live event")
 	}
 }
@@ -314,14 +316,14 @@ func TestAppServerAnchoredHistoryRetainsPausedViewportAndLinks(t *testing.T) {
 	historyTurnsReply(t, u)
 	u.agents.setDisplayFilter(true, "/root/worker")
 	restoreContentReply(t, u, 4, map[string]any{"data": []any{historyItem("last", "latest\nanswer", 109000), historyItem("middle", "middle\ncommentary", 105000)}, "nextCursor": "older"})
-	u.agents.width = 60
-	feed := u.agents.renderFeed(60, 3)
-	u.agents.viewport(feed, 3)
-	u.agents.following = false
-	u.agents.offset = 3
+	u.agents.Width = 60
+	feed := u.agents.RenderFeed(60, 3)
+	u.agents.Viewport(feed, 3)
+	u.agents.Following = false
+	u.agents.Offset = 3
 	stable := u.agents.Entries[0].Source.Seq
-	beforeRow := u.agents.questionRows[stable]
-	beforeOffset := u.agents.offset
+	beforeRow := u.agents.QuestionRows[stable]
+	beforeOffset := u.agents.Offset
 	if err := u.loadOlderActivity(); err != nil {
 		t.Fatal(err)
 	}
@@ -329,14 +331,14 @@ func TestAppServerAnchoredHistoryRetainsPausedViewportAndLinks(t *testing.T) {
 	if u.agents.entrySeq(activityPaneEntry{native: &liveActivityNativeItem{thread: "child", turn: "t", item: "middle"}}) != stable {
 		t.Fatal("older insertion changed existing item links")
 	}
-	u.agents.renderFeed(60, 3)
-	if u.agents.offset-u.agents.questionRows[stable] != beforeOffset-beforeRow || u.agents.following {
-		t.Fatalf("paused viewport jumped: before=%d/%d after=%d/%d", beforeOffset, beforeRow, u.agents.offset, u.agents.questionRows[stable])
+	u.agents.RenderFeed(60, 3)
+	if u.agents.Offset-u.agents.QuestionRows[stable] != beforeOffset-beforeRow || u.agents.Following {
+		t.Fatalf("paused viewport jumped: before=%d/%d after=%d/%d", beforeOffset, beforeRow, u.agents.Offset, u.agents.QuestionRows[stable])
 	}
 	// A live update to a retained item still invalidates an out-of-order run.
-	u.agents.runs = map[liveActivityRunKey]liveActivityRun{{first: u.agents.Entries[0].Source.Seq, last: u.agents.Entries[len(u.agents.Entries)-1].Source.Seq}: {}}
+	u.agents.Runs = map[activityui.RunKey]activityui.Run{{First: u.agents.Entries[0].Source.Seq, Last: u.agents.Entries[len(u.agents.Entries)-1].Source.Seq}: {}}
 	u.agents.invalidateEntry(stable)
-	if len(u.agents.runs) != 0 {
+	if len(u.agents.Runs) != 0 {
 		t.Fatal("older insertion broke live cache invalidation")
 	}
 }
@@ -355,7 +357,7 @@ func TestAppServerAnchoredHistoryTurnBudgetKeepsRecentItems(t *testing.T) {
 		t.Fatalf("metadata limit discarded recent history or kept paging: %+v", requests)
 	}
 	restoreContentReply(t, u, 11, map[string]any{"data": []any{historyItem("recent", "still available", 101000)}})
-	if u.restoring != nil || u.agents.status != "History incomplete" || len(u.agents.Entries) != 1 || u.session.agent("/root/worker").Turns != 8 {
+	if u.restoring != nil || u.agents.StatusLabel != "History incomplete" || len(u.agents.Entries) != 1 || u.session.agent("/root/worker").Turns != 8 {
 		t.Fatal("metadata limit pretended complete coverage or hid retained recent items")
 	}
 }
@@ -363,7 +365,7 @@ func TestAppServerAnchoredHistoryTurnBudgetKeepsRecentItems(t *testing.T) {
 func TestAppServerAnchoredHistoryArchivedChild(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.ctx = t.Context()
-	u.agents = newLiveActivityView()
+	u.agents = newActivityAdapter()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
 	u.session.start("main", t.TempDir())
@@ -400,14 +402,14 @@ func TestAppServerAnchoredHistoryInitialFailureRetryKeepsEvidence(t *testing.T) 
 		}
 		return n
 	}
-	if count() != 1 || u.restoring != nil || u.historyTarget() == nil || u.agents.historyHint != "History unavailable · Ctrl-B o retry" {
+	if count() != 1 || u.restoring != nil || u.historyTarget() == nil || u.agents.HistoryHint != "History unavailable · Ctrl-B o retry" {
 		t.Fatal("failed initial read lost evidence or its retry state")
 	}
 	if err := u.loadOlderActivity(); err != nil {
 		t.Fatal(err)
 	}
 	restoreContentReply(t, u, 5, map[string]any{"data": []any{historyItem("last", "latest answer", 109000)}})
-	if count() != 1 || len(h.placements) != 0 || u.agents.status == "History incomplete" {
+	if count() != 1 || len(h.placements) != 0 || u.agents.StatusLabel == "History incomplete" {
 		t.Fatal("recovery duplicated Main evidence or left a false gap")
 	}
 	for _, e := range u.view.Entries {

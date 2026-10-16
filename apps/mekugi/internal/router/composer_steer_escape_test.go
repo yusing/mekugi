@@ -201,7 +201,7 @@ func TestComposerEscapeContextPrecedesSteerDelivery(t *testing.T) {
 			case "selection":
 				u.shell.selection = &terminalSelection{Selection: selectedTerminalText("selected")}
 			case "scrollback":
-				u.view.following = false
+				u.view.Following = false
 			case "picker":
 				appServerTestKeys(t, u, "/")
 			case "locked":
@@ -246,7 +246,7 @@ func TestUISnapshotNativeExpeditedSteer(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) }
 	appServerTestTurn(t, u, "t")
 	u.turnStarted = u.now()

@@ -3,6 +3,8 @@ package router
 import (
 	"strings"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -17,19 +19,19 @@ func (u *appServerUI) insertDraft(text string) {
 
 // displaySpans is the shared editing and presentation boundary for every
 // atomic composer token. Payload and lifetime remain owned by each token kind.
-func draftDisplaySpans(d composer.Draft) []activityui.TextSpan {
-	var spans []activityui.TextSpan
+func draftDisplaySpans(d composer.Draft) []activitypresentation.TextSpan {
+	var spans []activitypresentation.TextSpan
 	for _, span := range d.Spans() {
-		kind := activityui.ImageToken
+		kind := activitypresentation.ImageToken
 		switch span.Kind {
 		case composer.File:
-			kind = activityui.FileToken
+			kind = activitypresentation.FileToken
 		case composer.Skill:
-			kind = activityui.SkillToken
+			kind = activitypresentation.SkillToken
 		case composer.Selection:
-			kind = activityui.SelectionToken
+			kind = activitypresentation.SelectionToken
 		}
-		spans = append(spans, activityui.TextSpan{Start: span.Start, End: span.End, Kind: kind})
+		spans = append(spans, activitypresentation.TextSpan{Start: span.Start, End: span.End, Kind: kind})
 	}
 	return spans
 }

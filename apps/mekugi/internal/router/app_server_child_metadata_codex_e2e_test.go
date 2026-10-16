@@ -51,7 +51,7 @@ func TestAppServerChildMetadataNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, history: testHistory(), client: client, view: newLiveActivityView(), agents: newLiveActivityView(), requests: sessioncontrol.NewRequests[appServerRequest](client), ctx: ctx}
+	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, history: testHistory(), client: client, view: newActivityAdapter(), agents: newActivityAdapter(), requests: sessioncontrol.NewRequests[appServerRequest](client), ctx: ctx}
 	u.ensureShell()
 	defer u.shell.diff.close()
 	defer u.shell.diffScreen.Close()
@@ -86,7 +86,7 @@ func TestAppServerChildMetadataNativeCodexE2E(t *testing.T) {
 				}
 				for _, entry := range u.agents.Entries {
 					if entry.Source.Agent == path && entry.Source.Kind == "tool" && strings.Contains(entry.Source.Text, "printf CHILD_METADATA_TOOL") {
-						for _, view := range []*liveActivityView{u.view, u.agents} {
+						for _, view := range []*activityAdapter{u.view, u.agents} {
 							found := false
 							for _, summary := range view.Entries {
 								found = found || summary.Source.Kind == "reasoning" && summary.Source.Text == "Checking the native fixture."

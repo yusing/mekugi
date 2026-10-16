@@ -2,7 +2,6 @@ package router
 
 import (
 	"context"
-	"slices"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -13,57 +12,34 @@ import (
 // presentation changes, including updates that do not reparse the source.
 type liveActivityRecord = activitypresentation.Record[activityPaneEntry]
 
-func (v *liveActivityView) appendEntry(entry activityPaneEntry, blocks []activityui.Block) {
-	v.Model.Append(entry, v.disclosure.Keep(entry.Seq, blocks))
+func (v *activityAdapter) appendEntry(entry activityPaneEntry, blocks []activityui.Block) {
+	v.Model.Append(entry, v.Disclosure.Keep(entry.Seq, blocks))
+	v.View.Observe(v.Entries[len(v.Entries)-1].Publish(), true)
 }
-func (v *liveActivityView) replaceEntry(index int, entry activityPaneEntry, blocks []activityui.Block) {
-	v.Model.Replace(index, entry, v.disclosure.Keep(entry.Seq, blocks))
-	v.invalidateRuns(entry.Seq)
+func (v *activityAdapter) replaceEntry(index int, entry activityPaneEntry, blocks []activityui.Block) {
+	v.Model.Replace(index, entry, v.Disclosure.Keep(entry.Seq, blocks))
+	v.View.Observe(v.Entries[index].Publish(), false)
 }
-func (v *liveActivityView) mutateEntry(index int, mutate func(*liveActivityRecord)) {
+func (v *activityAdapter) mutateEntry(index int, mutate func(*liveActivityRecord)) {
 	v.Model.Mutate(index, mutate)
-	v.invalidateRuns(v.Entries[index].Source.Seq)
+	v.View.InvalidateRuns(v.Entries[index].Source.Seq)
 }
-func (v *liveActivityView) removeEntries(from, to int) {
+func (v *activityAdapter) removeEntries(from, to int) {
 	for _, record := range v.Entries[from:to] {
-		v.disclosure.Remove(record.Source.Seq)
+		v.View.Forget(record.Source.Seq)
 	}
 	v.Model.Remove(from, to)
-	v.runs = nil
+	v.Runs = nil
 }
-func (v *liveActivityView) blocks(index int) []activityui.Block {
-	return v.disclosure.Blocks(v.Entries[index].Values)
-}
-
-// invalidateEntry keeps unrelated completed runs warm while one item streams.
-// Main's later items can quote earlier assignments or continue reasoning, so
-// invalidate its suffix as well. Grouping keys account for later traffic.
-func (v *liveActivityView) invalidateEntry(seq uint64) {
-	if i := slices.IndexFunc(v.Entries, func(record liveActivityRecord) bool { return record.Source.Seq == seq }); i >= 0 {
-		v.Model.Revise(i)
-		v.invalidateRuns(seq)
-		return
-	}
-	v.invalidateRuns(seq)
-}
-
-func (v *liveActivityView) invalidateRuns(seq uint64) {
-	if v.historyOrder {
-		v.runs = nil
-		return
-	}
-	for key := range v.runs {
-		if seq <= key.last && (v.conversation || key.first <= seq) {
-			delete(v.runs, key)
-		}
-	}
+func (v *activityAdapter) blocks(index int) []activityui.Block {
+	return v.Disclosure.Blocks(v.Entries[index].Values)
 }
 
 // reorderEntries moves whole records; sequence IDs and parsed annotations stay
 // attached to the source they describe.
-func (v *liveActivityView) reorderEntries(indices []int) {
+func (v *activityAdapter) reorderEntries(indices []int) {
 	v.Model.Reorder(indices)
-	v.runs = nil
+	v.Runs = nil
 }
 
 // Parsed blocks are ephemeral. The model attaches canonical membership to their values.

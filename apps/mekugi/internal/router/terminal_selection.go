@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -20,10 +22,10 @@ import (
 type terminalSelection struct {
 	*terminalsession.Selection
 	link      string
-	view      *liveActivityView
+	view      *activityAdapter
 	pane      terminalsession.Rect
 	questions []uint64
-	snippets  []liveActivitySnippet
+	snippets  []activityui.Snippet
 	mention   string
 	diff      []diffrender.LineSource
 	workspace string
@@ -113,12 +115,12 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 								return true
 							}
 							u.openEntry(s.view, s.questions[index])
-						} else if index >= 0 && index < len(s.snippets) && s.snippets[index] != (liveActivitySnippet{}) {
+						} else if index >= 0 && index < len(s.snippets) && s.snippets[index] != (activityui.Snippet{}) {
 							snippet := s.snippets[index]
-							if snippet.block == editNavigationSnippet {
-								u.openActivityEdit(s.view, snippet.run, snippet.path)
+							if snippet.Block == activityui.EditNavigationSnippet {
+								u.openActivityEdit(s.view, snippet.Run, snippet.Path)
 							} else if !u.openOutput(s.view, snippet) {
-								u.openEntry(s.view, snippet.run)
+								u.openEntry(s.view, snippet.Run)
 							}
 						}
 					}
@@ -182,7 +184,7 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 	if button != 0 || release || u.Dragging() || u.main == nil || u.main.keybindings {
 		return false
 	}
-	var view *liveActivityView
+	var view *activityAdapter
 	var pane terminalsession.Rect
 	mention := "message"
 	switch {
@@ -199,10 +201,10 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 	default:
 		return false
 	}
-	rect := terminalsession.Rect{pane.X + view.feedLeft - 1, pane.Y + view.feedTop - 1, view.feedRight - view.feedLeft + 1, view.feedRows}
+	rect := terminalsession.Rect{pane.X + view.FeedLeft - 1, pane.Y + view.FeedTop - 1, view.FeedRight - view.FeedLeft + 1, view.FeedRows}
 	rect.W = min(rect.W, pane.X+pane.W-rect.X)
 	rect.H = min(rect.H, pane.Y+pane.H-rect.Y)
-	questions, snippets := view.feedQuestions, view.feedSnippets
+	questions, snippets := view.FeedQuestions, view.FeedSnippets
 	if u.main.btw != nil {
 		btw := u.main.btw.rect
 		btw.X += pane.X
@@ -259,19 +261,19 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 func (u *terminalUI) selectionDocument(s *terminalSelection) {
 	switch s.mention {
 	case "message", "activity":
-		if s.view.feedLines > s.Rect.H {
-			feed := s.view.renderFeed(s.Rect.W, s.view.feedLines)
-			top, fixed := s.view.offset, 0
-			if !s.view.conversation && top+1 < len(feed.heads) && feed.heads[top] != top && feed.heads[top+1] == feed.heads[top] {
-				feed.lines = append([]string{feed.lines[feed.heads[top]]}, feed.lines...)
-				feed.questions = append([]uint64{0}, feed.questions...)
-				feed.snippets = append([]liveActivitySnippet{{}}, feed.snippets...)
+		if s.view.FeedLines > s.Rect.H {
+			feed := s.view.RenderFeed(s.Rect.W, s.view.FeedLines)
+			top, fixed := s.view.Offset, 0
+			if !s.view.Conversation && top+1 < len(feed.Heads) && feed.Heads[top] != top && feed.Heads[top+1] == feed.Heads[top] {
+				feed.Lines = append([]string{feed.Lines[feed.Heads[top]]}, feed.Lines...)
+				feed.Questions = append([]uint64{0}, feed.Questions...)
+				feed.Snippets = append([]activityui.Snippet{{}}, feed.Snippets...)
 				top, fixed = top+1, 1
 			}
-			s.Document(feed.lines, top, fixed)
+			s.Document(feed.Lines, top, fixed)
 			questions, snippets := s.questions, s.snippets
-			s.questions = append(slices.Clone(feed.questions), make([]uint64, max(0, len(s.Rows)-s.Rect.Y-len(feed.questions)))...)
-			s.snippets = append(slices.Clone(feed.snippets), make([]liveActivitySnippet, max(0, len(s.Rows)-s.Rect.Y-len(feed.snippets)))...)
+			s.questions = append(slices.Clone(feed.Questions), make([]uint64, max(0, len(s.Rows)-s.Rect.Y-len(feed.Questions)))...)
+			s.snippets = append(slices.Clone(feed.Snippets), make([]activityui.Snippet, max(0, len(s.Rows)-s.Rect.Y-len(feed.Snippets)))...)
 			for row := 0; row < s.Rect.H; row++ {
 				at := s.DocumentY(s.Rect.Y+row) - s.Rect.Y
 				if row < len(questions) {
@@ -399,7 +401,7 @@ func (u *terminalUI) paintSelection(rows []string) {
 		return
 	}
 	for y := s.Rect.Y; y < s.Rect.Y+s.Rect.H; y++ {
-		line := ansi.Cut(s.Row(s.DocumentY(y), u.main.view.painter.Theme), s.Rect.X, s.Rect.X+s.Rect.W)
+		line := ansi.Cut(s.Row(s.DocumentY(y), u.main.view.Painter.Theme), s.Rect.X, s.Rect.X+s.Rect.W)
 		line += strings.Repeat(" ", max(0, s.Rect.W-ansi.StringWidth(line)))
 		rows[y] += fmt.Sprintf("\x1b[%dG\x1b[0m%s\x1b[0m", s.Rect.X+1, line)
 	}

@@ -22,7 +22,7 @@ type terminalUI struct {
 	output        *outputDialog // Open over both panes, taking every key.
 	diffScreen    *terminalsession.DiffScreen
 	diff          *liveDiffTerminalController
-	agents        *liveActivityView
+	agents        *activityAdapter
 	main          *appServerUI
 	review        *savedReview
 	width, height int
@@ -148,9 +148,9 @@ func (u *terminalUI) resize(key string) {
 			return
 		}
 		if key == "\x1b[5~" {
-			u.main.transcriptView().scrollKey('b')
+			u.main.transcriptView().ScrollKey('b')
 		} else {
-			u.main.transcriptView().scrollKey(' ')
+			u.main.transcriptView().ScrollKey(' ')
 		}
 		return
 	}
@@ -173,14 +173,14 @@ func (u *terminalUI) resize(key string) {
 // terminalColor applies OSC 10/11 default-color reports to every pane, as the
 // standalone Activity and diff views did for their own queries.
 func (u *terminalUI) terminalColor(reply string) {
-	views := []*liveActivityView{u.agents}
+	views := []*activityAdapter{u.agents}
 	if u.main != nil {
 		views = append(views, u.main.view)
 	}
 	if fg, ok := diffrender.ForegroundColor(reply); ok {
 		for _, view := range views {
 			if view != nil {
-				view.painter.Colors.Foreground, view.painter.Colors.HasForeground = fg, true
+				view.Painter.Colors.Foreground, view.Painter.Colors.HasForeground = fg, true
 			}
 		}
 	}
@@ -191,8 +191,8 @@ func (u *terminalUI) terminalColor(reply string) {
 	bg, _ := diffrender.BackgroundColor(reply)
 	for _, view := range views {
 		if view != nil {
-			view.painter.Theme = theme
-			view.painter.Colors.Background, view.painter.Colors.HasBackground = bg, true
+			view.Painter.Theme = theme
+			view.Painter.Colors.Background, view.Painter.Colors.HasBackground = bg, true
 		}
 	}
 	if u.diff != nil {
@@ -216,14 +216,14 @@ func (u *terminalUI) send(s string) error {
 		transcript := u.main.transcriptView()
 		switch s {
 		case "\x05":
-			transcript.toggleExpansion()
+			transcript.ToggleExpansion()
 		case "\x1b[5~":
-			transcript.scrollKey('b')
+			transcript.ScrollKey('b')
 		case "\x1b[6~":
-			transcript.scrollKey(' ')
+			transcript.ScrollKey(' ')
 		case "\x1b":
 			if !u.selectionKey(s) {
-				transcript.follow()
+				transcript.Follow()
 			}
 		}
 		return nil
@@ -268,12 +268,12 @@ func (u *terminalUI) send(s string) error {
 	}
 
 	if s == "\x1b" && u.main != nil && !u.main.keybindings {
-		var transcript *liveActivityView
+		var transcript *activityAdapter
 		if u.Focus == 0 {
 			transcript = u.main.transcriptView()
 		}
-		if transcript != nil && !transcript.following {
-			transcript.follow()
+		if transcript != nil && !transcript.Following {
+			transcript.Follow()
 			u.selection = nil
 			u.agentEscape = ""
 			return nil
@@ -323,9 +323,9 @@ func (u *terminalUI) send(s string) error {
 				u.Focus = 0
 			}
 		} else {
-			only, selected := u.agents.displayingChild(), u.agents.selected
+			only, selected := u.agents.displayingChild(), u.agents.Selected
 			var quit bool
-			u.agentEscape, quit = u.agents.handleRosterKey(u.agentEscape, key)
+			u.agentEscape, quit = u.agents.HandleRosterKey(u.agentEscape, key)
 			u.showRosterPick(only, selected)
 			if quit {
 				u.Focus = 0
@@ -342,13 +342,13 @@ func (u *terminalUI) mouse(s string) error {
 	}
 	button, x, y, release := pointer.Button, pointer.X, pointer.Y, pointer.Release
 	if u.main != nil {
-		u.main.view.skillsHover = ""
+		u.main.view.SkillsHover = ""
 		if button == 35 && !release && u.output == nil && u.layout.MainSkills.Contains(x, y) {
-			u.main.view.skillsHover = "Main"
+			u.main.view.SkillsHover = "Main"
 		}
 	}
 	if u.agents != nil && (u.output != nil || !u.layout.Roster.Contains(x, y)) {
-		u.agents.skillsHover = ""
+		u.agents.SkillsHover = ""
 	}
 	if u.output != nil {
 		u.outputMouse(button, x, y, release)
@@ -503,7 +503,7 @@ func (u *terminalUI) mouse(s string) error {
 				action = 'j'
 			}
 			view := u.main.transcriptView()
-			view.handleMouse(action, y-r.Y+1, x-r.X+1)
+			view.HandleMouse(action, y-r.Y+1, x-r.X+1)
 			u.openRequested(view)
 		}
 		return nil
@@ -530,20 +530,20 @@ func (u *terminalUI) mouse(s string) error {
 	}
 	if pane == 3 {
 		if action == 'j' {
-			u.agents.scrollRoster(1)
+			u.agents.ScrollRoster(1)
 		} else if action == 'k' {
-			u.agents.scrollRoster(-1)
+			u.agents.ScrollRoster(-1)
 		} else {
-			only, selected := u.agents.displayingChild(), u.agents.selected
-			u.agents.pointAgent(action, y-r.Y+1, x-r.X+1)
-			if agent := u.agents.skillsRequest; agent != "" {
-				u.agents.skillsRequest = ""
+			only, selected := u.agents.displayingChild(), u.agents.Selected
+			u.agents.PointAgent(action, y-r.Y+1, x-r.X+1)
+			if agent := u.agents.SkillsRequest; agent != "" {
+				u.agents.SkillsRequest = ""
 				u.openSkills(u.agents, agent)
 			}
 			u.showRosterPick(only, selected)
 		}
 	} else {
-		u.agents.handleMouse(action, y-r.Y+1, x-r.X+1)
+		u.agents.HandleMouse(action, y-r.Y+1, x-r.X+1)
 		u.openRequested(u.agents)
 	}
 	return nil
@@ -551,9 +551,9 @@ func (u *terminalUI) mouse(s string) error {
 
 func (u *terminalUI) clearSkillsHover() {
 	if u.main != nil {
-		u.main.view.skillsHover = ""
+		u.main.view.SkillsHover = ""
 	}
 	if u.agents != nil {
-		u.agents.skillsHover = ""
+		u.agents.SkillsHover = ""
 	}
 }

@@ -10,7 +10,7 @@ import (
 func TestActivityAbsenceKeepsHostOutput(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.session.activity = nil
-	u.view.conversation = true
+	u.view.Conversation = true
 	item := appServerItem{ID: "command", Type: "commandExecution", Command: "printf 'host output'", Status: "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	appServerTestNotify(t, u, "item/commandExecution/outputDelta", map[string]any{"threadId": "main", "turnId": "turn", "itemId": item.ID, "delta": "host output\n"})
@@ -21,13 +21,13 @@ func TestActivityAbsenceKeepsHostOutput(t *testing.T) {
 	appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.session.cwd, "failed")})
 	hookShown := false
 	for _, entry := range u.view.Entries {
-		for _, block := range u.view.disclosure.Blocks(entry.Values) {
+		for _, block := range u.view.Disclosure.Blocks(entry.Values) {
 			if block.Output != 0 {
 				t.Fatal("absent activity retained output")
 			}
 			if block.Hook != nil {
 				hookShown = true
-				page := u.view.painter.DialogPage(block, 80)
+				page := u.view.Painter.DialogPage(block, 80)
 				if !strings.Contains(page.Text, "policy checked") || strings.Contains(ansi.Strip(page.Detail), "exit") {
 					t.Fatalf("hook fallback lost output or invented a shell exit: %+v", page)
 				}
@@ -70,12 +70,12 @@ func TestActivityAbsenceUnknownExit(t *testing.T) {
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 			found := false
 			for _, entry := range u.view.Entries {
-				for _, block := range u.view.disclosure.Blocks(entry.Values) {
+				for _, block := range u.view.Disclosure.Blocks(entry.Values) {
 					if block.Verb != "Run" {
 						continue
 					}
 					found = true
-					page := u.view.painter.DialogPage(block, 80)
+					page := u.view.Painter.DialogPage(block, 80)
 					if !strings.Contains(page.Text, "interrupted") {
 						t.Errorf("unknown exit discarded host output: %q", page.Text)
 					}
@@ -99,7 +99,7 @@ func TestActivityAbsenceDialogRefresh(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			u.view.conversation = true
+			u.view.Conversation = true
 			if absent {
 				u.session.activity = nil
 			}

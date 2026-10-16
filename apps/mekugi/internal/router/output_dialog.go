@@ -28,7 +28,7 @@ import (
 // up; End follows again. It holds the blocks as they were opened; retained
 // output keeps them current.
 type outputDialog struct {
-	view      *liveActivityView // Supplies the painter's theme and colors.
+	view      *activityAdapter // Supplies the painter's theme and colors.
 	pages     []activityui.Block
 	origins   []outputOrigin                                    // Original invocation members, including merged feed rows.
 	processes func(pages []activityui.Block) []activityui.Block // Rebuilds /ps pages in place of origins.
@@ -106,8 +106,8 @@ const (
 
 // openOutput opens the operation a snippet names in the dialog, reporting
 // whether it names one.
-func (u *terminalUI) openOutput(view *liveActivityView, snippet liveActivitySnippet) bool {
-	block, ok := view.snippetBlock(snippet)
+func (u *terminalUI) openOutput(view *activityAdapter, snippet activityui.Snippet) bool {
+	block, ok := view.SnippetBlock(snippet)
 	if !ok || block.EditSource != "" || len(block.Questions) > 0 {
 		return false
 	}
@@ -146,7 +146,7 @@ func (u *terminalUI) openOutput(view *liveActivityView, snippet liveActivitySnip
 }
 
 // openBlocks is the shared modal entry point. It never changes pane navigation.
-func (u *terminalUI) openBlocks(view *liveActivityView, pages []activityui.Block) {
+func (u *terminalUI) openBlocks(view *activityAdapter, pages []activityui.Block) {
 	var originals []activityui.Block
 	for _, page := range pages {
 		if len(page.Members) == 0 {
@@ -168,7 +168,7 @@ func (u *terminalUI) openBlocks(view *liveActivityView, pages []activityui.Block
 	u.output.showPage(0)
 }
 
-func (u *terminalUI) openEntry(view *liveActivityView, seq uint64) bool {
+func (u *terminalUI) openEntry(view *activityAdapter, seq uint64) bool {
 	for index, entry := range view.Entries {
 		if entry.Source.Seq != seq {
 			continue
@@ -187,7 +187,7 @@ func (u *terminalUI) openEntry(view *liveActivityView, seq uint64) bool {
 }
 
 // commandOutputPages uses only observed segment boundaries, never output text.
-func (v *liveActivityView) commandOutputPages(source uint64) []activityui.Block {
+func (v *activityAdapter) commandOutputPages(source uint64) []activityui.Block {
 	if source == 0 {
 		return nil
 	}
@@ -301,7 +301,7 @@ func (d *outputDialog) tabRow(width int) string {
 		label = ansi.Truncate(label, cell, "…")
 		label += strings.Repeat(" ", max(0, cell-ansi.StringWidth(label)))
 		if i == d.page {
-			label = d.view.painter.Theme.Accent() + "\x1b[7m" + label + terminalui.Reset
+			label = d.view.Painter.Theme.Accent() + "\x1b[7m" + label + terminalui.Reset
 		} else {
 			label = terminalui.Dim + label + terminalui.Undim
 		}
@@ -312,13 +312,13 @@ func (d *outputDialog) tabRow(width int) string {
 }
 
 // openRequested opens an operation the view's pointer handling clicked.
-func (u *terminalUI) openRequested(view *liveActivityView) {
-	if snippet := view.opening; snippet != (liveActivitySnippet{}) {
-		view.opening = liveActivitySnippet{}
-		if snippet.block == editNavigationSnippet {
-			u.openActivityEdit(view, snippet.run, snippet.path)
+func (u *terminalUI) openRequested(view *activityAdapter) {
+	if snippet := view.Opening; snippet != (activityui.Snippet{}) {
+		view.Opening = activityui.Snippet{}
+		if snippet.Block == activityui.EditNavigationSnippet {
+			u.openActivityEdit(view, snippet.Run, snippet.Path)
 		} else if !u.openOutput(view, snippet) {
-			u.openEntry(view, snippet.run)
+			u.openEntry(view, snippet.Run)
 		}
 	}
 }
@@ -454,7 +454,7 @@ func (d *outputDialog) layout(width int) {
 	d.refreshPages()
 	block := d.pages[d.page]
 	retained := d.retainedOutput(block)
-	key := outputDialogKey{page: d.page, width: width, output: retained, theme: d.view.painter.Theme, body: block.Body, approval: block.Approval, live: block.Live}
+	key := outputDialogKey{page: d.page, width: width, output: retained, theme: d.view.Painter.Theme, body: block.Body, approval: block.Approval, live: block.Live}
 	if retained != nil {
 		key.version = retained.Version()
 	} else {
@@ -462,10 +462,10 @@ func (d *outputDialog) layout(width int) {
 		key.running, key.exited, key.exit = block.Running, block.Exited, block.ExitCode
 	}
 	if key == d.laidKey && d.starts != nil {
-		d.laid.Title = d.view.painter.DialogPageTitle(snapshotOutput(block, retained), d.view.now(), width)
+		d.laid.Title = d.view.Painter.DialogPageTitle(snapshotOutput(block, retained), d.view.Now(), width)
 		return
 	}
-	d.laid, d.laidKey = d.view.painter.DialogPage(snapshotOutput(block, retained), width), key
+	d.laid, d.laidKey = d.view.Painter.DialogPage(snapshotOutput(block, retained), width), key
 	if d.filePath != "" {
 		d.laid.Lines = append([]activityui.DialogLine{{Text: terminalui.StyledPath(textsanitize.Safe(d.filePath, false)), Wrap: true}, {}}, d.laid.Lines...)
 		if block.Kind != "error" {
@@ -473,7 +473,7 @@ func (d *outputDialog) layout(width int) {
 			for i := range d.laid.Lines {
 				line := &d.laid.Lines[i]
 				if line.Number > 0 && line.Number >= d.fileFirst && line.Number <= d.fileLast {
-					line.GutterStyle = d.view.painter.Theme.Accent() + d.view.painter.Theme.SelectionBackground()
+					line.GutterStyle = d.view.Painter.Theme.Accent() + d.view.Painter.Theme.SelectionBackground()
 				}
 			}
 		}
@@ -489,7 +489,7 @@ func (d *outputDialog) layout(width int) {
 				d.laid.Lines = append(d.laid.Lines, activityui.DialogLine{})
 			}
 			first := len(d.laid.Lines)
-			page := d.view.painter.DialogPage(segment, width)
+			page := d.view.Painter.DialogPage(segment, width)
 			heading := terminalui.Dim + "─ " + segment.Label + " "
 			heading += strings.Repeat("─", max(0, width-ansi.StringWidth(heading))) + terminalui.Undim
 			d.laid.Lines = append(d.laid.Lines, activityui.DialogLine{Text: heading})
@@ -722,7 +722,7 @@ func (u *terminalUI) paintOutput(rows []string, width, height int) {
 		for _, line := range lines {
 			line = d.highlight(line, d.laid.Indent(i), i == d.match)
 			if i >= d.flashFrom && i < d.flashTo && time.Now().Before(d.flashUntil) {
-				fill := d.view.painter.Theme.SelectionBackground()
+				fill := d.view.Painter.Theme.SelectionBackground()
 				line = fill + strings.ReplaceAll(line, terminalui.Reset, terminalui.Reset+fill) + "\x1b[49m"
 			}
 			body = append(body, line)
@@ -740,7 +740,7 @@ func (u *terminalUI) paintOutput(rows []string, width, height int) {
 	if selected := u.selection; selected != nil {
 		body = slices.Clone(body)
 		for i := range body {
-			body[i] = selected.Row(selected.DocumentY(i), d.view.painter.Theme)
+			body[i] = selected.Row(selected.DocumentY(i), d.view.Painter.Theme)
 		}
 	}
 	frame := activityui.DialogFrame{Tabs: d.tabRow(w - 4), Page: d.laid, Paused: d.laid.Live && !d.follow, Rows: body, GutterStyles: gutterStyles, Top: d.top, Total: d.total(), Footer: d.footer(w)}
@@ -755,7 +755,7 @@ func (u *terminalUI) paintOutput(rows []string, width, height int) {
 	for i := range rows {
 		rows[i] = activityui.Backdrop(rows[i])
 	}
-	for i, line := range d.view.painter.Dialog(frame, w, h) {
+	for i, line := range d.view.Painter.Dialog(frame, w, h) {
 		if y+i < len(rows) {
 			rows[y+i] += fmt.Sprintf("\x1b[%dG\x1b[0m%s\x1b[0m", x+1, line)
 		}
@@ -782,7 +782,7 @@ func (d *outputDialog) highlight(row string, indent int, current bool) string {
 		to := from + ansi.StringWidth(d.query)
 		match := ansi.Cut(text, from, to)
 		if current {
-			match = activityui.TextSelection(match, d.view.painter.Theme)
+			match = activityui.TextSelection(match, d.view.Painter.Theme)
 		} else {
 			match = mark + strings.ReplaceAll(match, terminalui.Reset, terminalui.Reset+mark) + unmark
 		}

@@ -9,13 +9,13 @@ import (
 	"strings"
 	"testing"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
-
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func skillAttachmentCatalog(t *testing.T, u *appServerUI, w *appServerTestInput) {
@@ -121,12 +121,12 @@ func TestSkillAttachmentTranscriptAndHistoryMetadata(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			text, spans, ok := appServerUserText([]byte(tc.content))
-			if !ok || len(spans) != 1 || spans[0].Kind != activityui.SkillToken || spans[0].Start != tc.wantStart || text[spans[0].Start:spans[0].End] != "$review" {
+			if !ok || len(spans) != 1 || spans[0].Kind != activitypresentation.SkillToken || spans[0].Start != tc.wantStart || text[spans[0].Start:spans[0].End] != "$review" {
 				t.Fatalf("skill display: %q %+v, ok=%v", text, spans, ok)
 			}
 			u, _ := newAppServerTestUI()
 			u.session.start("main", "/work")
-			u.agents = newLiveActivityView()
+			u.agents = newActivityAdapter()
 			var turns []appServerHistoryTurn
 			payload := `[{"id":"turn","status":"completed","items":[{"type":"userMessage","id":"message","content":` + tc.content + `}]}]`
 			if err := json.Unmarshal([]byte(payload), &turns); err != nil {

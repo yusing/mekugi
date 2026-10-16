@@ -12,7 +12,7 @@ func newActiveWorkTestUI(t *testing.T) (*appServerUI, *time.Time) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	at := time.Date(2026, 10, 3, 12, 0, 0, 0, time.UTC)
 	u.clock = func() time.Time { return at }
-	u.view.clock, u.agents.clock = u.clock, u.clock
+	u.view.Clock, u.agents.Clock = u.clock, u.clock
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 	return u, &at
 }
@@ -128,25 +128,25 @@ func TestAppServerActiveWorkRestoresClosedSpans(t *testing.T) {
 
 func TestUISnapshotNativeRosterActiveWork(t *testing.T) {
 	u, at := newActiveWorkTestUI(t)
-	u.agents.painter.Theme = diffrender.DarkTheme
+	u.agents.Painter.Theme = diffrender.DarkTheme
 	u.agents.setDisplayFilter(false, "/root/worker")
 	for _, thread := range []string{"main", "child"} {
 		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "first"}})
 	}
 	*at = at.Add(20 * time.Second)
 	rows := []string{"Active: 20 seconds of work"}
-	rows = append(rows, u.agents.nativeRoster(100, 6, *at, true)...)
+	rows = append(rows, u.agents.NativeRoster(100, 6, *at, true)...)
 	for _, thread := range []string{"main", "child"} {
 		appServerTestNotify(t, u, "thread/status/changed", map[string]any{"threadId": thread, "status": map[string]any{"type": "idle"}})
 	}
 	*at = at.Add(10 * time.Minute)
 	rows = append(rows, "", "Paused: same work after 10 idle minutes")
-	rows = append(rows, u.agents.nativeRoster(100, 6, *at, true)...)
+	rows = append(rows, u.agents.NativeRoster(100, 6, *at, true)...)
 	for _, thread := range []string{"main", "child"} {
 		appServerTestNotify(t, u, "thread/status/changed", map[string]any{"threadId": thread, "status": map[string]any{"type": "active"}})
 	}
 	*at = at.Add(7 * time.Second)
 	rows = append(rows, "", "Resumed: 27 seconds of work")
-	rows = append(rows, u.agents.nativeRoster(100, 6, *at, true)...)
+	rows = append(rows, u.agents.NativeRoster(100, 6, *at, true)...)
 	assertNativeUISnapshot(t, "native-roster-active-work", rows)
 }

@@ -21,7 +21,7 @@ func TestUISnapshotNativeMainComposer(t *testing.T) {
 	for _, width := range []int{36, 80} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.view.painter.Theme = diffrender.DarkTheme
+			u.view.Painter.Theme = diffrender.DarkTheme
 			// An idle session avoids wall-clock durations and status animation.
 			u.status, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 			now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
@@ -49,7 +49,7 @@ func TestUISnapshotShellComposer(t *testing.T) {
 		for _, width := range []int{18, 60} {
 			t.Run(fmt.Sprintf("%d/%d", theme, width), func(t *testing.T) {
 				u, _ := newAppServerTestUI()
-				u.view.painter.Theme = theme
+				u.view.Painter.Theme = theme
 				u.status = "Ready"
 				appServerTestKeys(t, u, "\x1b[200~!printf '%s\\n' \"你好\n$HOME\" | cat\n# comment\n\x1b[201~")
 				u.CursorBack = len(u.Text) - strings.Index(u.Text, "$HOME")
@@ -79,7 +79,7 @@ func TestUISnapshotNativeResumePicker(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.view.painter.Theme = diffrender.DarkTheme
+			u.view.Painter.Theme = diffrender.DarkTheme
 			u.resumePicker = &appServerResumePicker{cwd: "/workspace", all: tc.all, loading: tc.loading, query: tc.query, loadedAt: now, selected: 1,
 				rows: []appServerResumeRow{
 					{id: "main", title: "Improve rendered snapshot coverage", cwd: "/workspace", branch: "coverage/snapshot", updated: now.Add(-2 * time.Minute).Unix()},
@@ -91,10 +91,10 @@ func TestUISnapshotNativeResumePicker(t *testing.T) {
 	}
 }
 
-func snapshotActivityView(now time.Time) *liveActivityView {
-	v := newLiveActivityView()
-	v.painter.Theme = diffrender.DarkTheme
-	v.selected = "/root/review"
+func snapshotActivityView(now time.Time) *activityAdapter {
+	v := newActivityAdapter()
+	v.Painter.Theme = diffrender.DarkTheme
+	v.Selected = "/root/review"
 	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
 		{Name: "/root", Final: true, InputTokens: 1200, OutputTokens: 240, Cost: .02, CostKnown: true},
 		{Name: "/root/inventory", Role: "worker", Final: true},
@@ -120,38 +120,38 @@ func TestUISnapshotNativeAgentsRoster(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			v := snapshotActivityView(now)
-			assertNativeUISnapshot(t, tc.name, v.nativeRoster(tc.width, 6, now, tc.focused))
+			assertNativeUISnapshot(t, tc.name, v.NativeRoster(tc.width, 6, now, tc.focused))
 		})
 	}
 }
 
 func TestUISnapshotNativeRosterEditCounts(t *testing.T) {
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
-	v := newLiveActivityView()
-	v.painter.Theme = diffrender.DarkTheme
+	v := newActivityAdapter()
+	v.Painter.Theme = diffrender.DarkTheme
 	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
 		{Name: "/root", Final: true, InputTokens: 2000},
 		{Name: "/root/cleanup", Final: true, InputTokens: 1000},
 	}})
-	v.lineCounts = map[string]diffmodel.Counts{
+	v.LineCounts = map[string]diffmodel.Counts{
 		"/root":         {Added: 3, Removed: 1},
 		"/root/cleanup": {Removed: 2},
 	}
-	v.netCounts = new(diffmodel.Counts{Added: 2, Removed: 1})
-	assertNativeUISnapshot(t, "native-roster-edit-counts", v.nativeRoster(100, 6, now, true))
+	v.NetCounts = new(diffmodel.Counts{Added: 2, Removed: 1})
+	assertNativeUISnapshot(t, "native-roster-edit-counts", v.NativeRoster(100, 6, now, true))
 }
 
 func TestUISnapshotNativeRosterContext(t *testing.T) {
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
 	for _, width := range []int{48, 100} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
-			v := newLiveActivityView()
-			v.painter.Theme = diffrender.DarkTheme
+			v := newActivityAdapter()
+			v.Painter.Theme = diffrender.DarkTheme
 			v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
 				{Name: "/root", ContextKnown: true, ContextTokens: 171_300, ContextWindow: 285_000},
 				{Name: "/root/child", ContextKnown: true, ContextTokens: 24_400, ContextWindow: 285_000},
 			}})
-			assertNativeUISnapshot(t, fmt.Sprintf("native-roster-context-%d", width), v.nativeRoster(width, 6, now, true))
+			assertNativeUISnapshot(t, fmt.Sprintf("native-roster-context-%d", width), v.NativeRoster(width, 6, now, true))
 		})
 	}
 }
@@ -159,7 +159,7 @@ func TestUISnapshotNativeRosterContext(t *testing.T) {
 func TestUISnapshotNativeLockedComposer(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.status = "Ready"
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	appServerTestKeys(t, u, "/lock\r")
 	rows, _ := u.mainFrame(100, 10, 0)
 	assertNativeUISnapshot(t, "native-main-locked", rows)
@@ -170,7 +170,7 @@ func TestUISnapshotNativeActivityLayouts(t *testing.T) {
 	for _, width := range []int{70, 105} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			v := snapshotActivityView(now)
-			assertNativeUISnapshot(t, fmt.Sprintf("native-activity-%d", width), v.render(width, 16, now))
+			assertNativeUISnapshot(t, fmt.Sprintf("native-activity-%d", width), v.Render(width, 16, now))
 		})
 	}
 }
@@ -179,7 +179,7 @@ func TestUISnapshotNativeFilePicker(t *testing.T) {
 	for _, width := range []int{30, 80} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.view.painter.Theme = diffrender.DarkTheme
+			u.view.Painter.Theme = diffrender.DarkTheme
 			u.session.cwd = "/workspace"
 			u.picker = composerPicker{open: true, target: composerTarget{kind: '@', query: "snapshot"}, selected: 1, choices: []composerChoice{
 				{name: "internal/uisnapshot/snapshot.go", path: "internal/uisnapshot/snapshot.go"},
@@ -196,7 +196,7 @@ func TestUISnapshotNativeWaitingInputStacks(t *testing.T) {
 		for _, width := range []int{36, 80} {
 			t.Run(fmt.Sprintf("%s/%d", mode, width), func(t *testing.T) {
 				u, w := newAppServerTestUI()
-				u.view.painter.Theme = diffrender.DarkTheme
+				u.view.Painter.Theme = diffrender.DarkTheme
 				u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) }
 				appServerTestTurn(t, u, "t")
 				u.turnStarted = u.now()

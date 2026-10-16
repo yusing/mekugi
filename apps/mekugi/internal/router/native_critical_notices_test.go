@@ -26,7 +26,7 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	u, _ := newAppServerTestUI()
 	u.issues = issues
 	u.proxy = &mekugiProxy{activity: activity}
-	u.view.conversation = true
+	u.view.Conversation = true
 
 	first := u.applyCriticalNotices()
 	if first == nil || len(first.errors.Messages) != 3 {
@@ -162,7 +162,7 @@ func TestFailureStorageNoticeReachesOwningNativeRootBeforeShutdown(t *testing.T)
 	owner, _ := newAppServerTestUI()
 	owner.Thread = failure.threadID
 	owner.issues = issues
-	owner.view.conversation = true
+	owner.view.Conversation = true
 	delivery := owner.applyCriticalNotices()
 	if delivery == nil || len(delivery.errors.Messages) != 1 || len(owner.view.Entries) != 0 || !owner.feedback.Alert {
 		t.Fatalf("owning root did not receive the storage notice: delivery=%v entries=%d", delivery, len(owner.view.Entries))

@@ -12,19 +12,18 @@ import (
 
 func TestLiveActivityWrappedUserBand(t *testing.T) {
 	for _, theme := range []diffrender.Theme{diffrender.LightTheme, diffrender.DarkTheme} {
-		v := newLiveActivityView()
-		v.painter = activityui.Painter{Theme: theme}
-		var out conversationLines
-		v.userItemContinued(&out, activityPaneEntry{Text: "one two three four five six seven eight"}, 12, false)
-		if len(out.lines) < 2 {
+		v := newActivityAdapter()
+		v.Painter = activityui.Painter{Theme: theme}
+		out := v.testUserItem(activityPaneEntry{Agent: "You", Text: "one two three four five six seven eight"}, 12)
+		if len(out.Lines) < 2 {
 			t.Fatal("expected wrapped user message")
 		}
-		screen := vt.NewEmulator(13, len(out.lines))
-		for y, line := range out.lines {
+		screen := vt.NewEmulator(13, len(out.Lines))
+		for y, line := range out.Lines {
 			_, _ = fmt.Fprintf(screen, "\x1b[%d;1H\x1b[0m%s", y+1, line)
 		}
 		want := screen.CellAt(0, 0).Style.Bg
-		for y := range out.lines {
+		for y := range out.Lines {
 			for x := range 12 {
 				got := screen.CellAt(x, y).Style.Bg
 				if got == nil || want == nil {

@@ -4,6 +4,8 @@ import (
 	"math"
 	"testing"
 
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+
 	"github.com/yusing/mekugi/contracts/inference"
 
 	"github.com/charmbracelet/x/ansi"
@@ -26,7 +28,7 @@ func TestNativeRosterCostMatchesCanonicalUsage(t *testing.T) {
 		agent.InputTokens != counts.InputTokens || agent.OutputTokens != counts.OutputTokens {
 		t.Fatalf("native agent = %+v, report = %+v", agent, report)
 	}
-	if got := liveActivityCost(agent); got != "$0.30" {
+	if got := activityui.Cost(testActivityAgent(agent)); got != "$0.30" {
 		t.Fatalf("cost = %q", got)
 	}
 	root := activityPaneAgent{Name: "/root"}
@@ -54,13 +56,13 @@ func TestNativeRosterUsageGapShowsLowerBoundCost(t *testing.T) {
 	if !agent.CostPartial || !agent.CostKnown || math.Abs(agent.Cost-.6) > 1e-10 || agent.InputTokens != 200_000 {
 		t.Fatalf("missing usage hid or reset lower bound: %+v", agent)
 	}
-	if got := liveActivityCost(agent); got != "≥$0.60" {
+	if got := activityui.Cost(testActivityAgent(agent)); got != "≥$0.60" {
 		t.Fatalf("lower-bound cost = %q", got)
 	}
 	// T+N counts every forwarded provider request, including one without usage,
 	// rather than Codex turns.
-	if agent.Roundtrips != 3 || ansi.Strip(liveActivityTurns(agent)) != "T+3" {
-		t.Fatalf("roundtrips = %d, label %q", agent.Roundtrips, liveActivityTurns(agent))
+	if agent.Roundtrips != 3 || ansi.Strip(activityui.Turns(testActivityAgent(agent))) != "T+3" {
+		t.Fatalf("roundtrips = %d, label %q", agent.Roundtrips, activityui.Turns(testActivityAgent(agent)))
 	}
 }
 
@@ -72,7 +74,7 @@ func TestNativeRosterUnknownAndMissingUsageDoNotClaimCost(t *testing.T) {
 	for _, thread := range []string{"child", "root"} {
 		agent := activityPaneAgent{}
 		u.observeCost(thread, &agent)
-		if agent.CostKnown || liveActivityCost(agent) != "" {
+		if agent.CostKnown || activityui.Cost(testActivityAgent(agent)) != "" {
 			t.Fatalf("%s claimed unknown cost: %+v", thread, agent)
 		}
 	}

@@ -354,7 +354,7 @@ func TestUISnapshotNativeSessionTitle(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.view.painter.Theme = diffrender.DarkTheme
+			u.view.Painter.Theme = diffrender.DarkTheme
 			u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 			u.status, u.model, u.title = "Ready", "snapshot-model", tc.title
 			if tc.name == "idle-save-failure" {
@@ -374,7 +374,7 @@ func TestUISnapshotNativeSessionTitle(t *testing.T) {
 					entries = append(entries, activityPaneEntry{Seq: uint64(i + 1), Agent: "Main", Kind: "text", Text: fmt.Sprintf("Earlier message %02d", i+1), Observed: u.now()})
 				}
 				u.view.apply(activityPaneEvent{Kind: "entries", Entries: entries})
-				u.view.following, u.view.offset, u.view.unseen = false, 0, 2
+				u.view.Following, u.view.Offset, u.view.Unseen = false, 0, 2
 			}
 			screen := vt.NewEmulator(tc.width, 16)
 			defer screen.Close()

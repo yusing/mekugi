@@ -84,9 +84,9 @@ func (*appServerTestInput) Close() error { return nil }
 func newAppServerTestUI() (*appServerUI, *appServerTestInput) {
 	w := new(appServerTestInput)
 	client := &appserver.Client{Input: w}
-	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, issues: testCriticalErrors(), history: testHistory(), client: client, view: newLiveActivityView(), requests: sessioncontrol.NewRequests[appServerRequest](appServerTestTransport{client, w}), Thread: "main"}
+	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, issues: testCriticalErrors(), history: testHistory(), client: client, view: newActivityAdapter(), requests: sessioncontrol.NewRequests[appServerRequest](appServerTestTransport{client, w}), Thread: "main"}
 	u.approvals.initGuards(testGuards())
-	u.view.painter.FileLink = u.markdownFileExists
+	u.view.Painter.FileLink = u.markdownFileExists
 	return u, w
 }
 
@@ -240,13 +240,13 @@ func TestAppServerUIShellUnicodeInput(t *testing.T) {
 func TestAppServerUIImmediateInputEcho(t *testing.T) {
 	for _, rejected := range []bool{false, true} {
 		u, _ := newAppServerTestUI()
-		u.view.following = false
+		u.view.Following = false
 		appServerTestKeys(t, u, "你好 first message\r")
 		var frame bytes.Buffer
 		if err := u.paint(&frame, 100, 24); err != nil {
 			t.Fatal(err)
 		}
-		if !u.view.following || !strings.Contains(frame.String(), "你好 first message") {
+		if !u.view.Following || !strings.Contains(frame.String(), "你好 first message") {
 			t.Fatal("submitted input disappeared while waiting for app-server")
 		}
 		if rejected {

@@ -280,7 +280,7 @@ func TestNativeQuestionSupersedeBannerAndRejectedSend(t *testing.T) {
 
 func TestNativeQuestionResumeOnlyUnanswered(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.agents = newLiveActivityView()
+	u.agents = newActivityAdapter()
 	u.session.start("main", t.TempDir())
 	id, err := json.Marshal([]any{"request_user_input_async", "answered-item", 0})
 	if err != nil {

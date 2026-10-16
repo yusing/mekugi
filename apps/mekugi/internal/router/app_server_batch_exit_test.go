@@ -33,8 +33,8 @@ func TestAppServerBatchFailureDoesNotFailEachOperation(t *testing.T) {
 			finishPacing(u.view, u.agents)
 			got := mainFeed(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: view}, 140)
 			if mode == "resume" {
-				feed := view.renderFeed(140, 10)
-				if !strings.Contains(got, "1 failed command") || !u.shell.openOutput(view, feed.snippets[0]) || len(u.shell.output.pages) != 1 {
+				feed := view.RenderFeed(140, 10)
+				if !strings.Contains(got, "1 failed command") || !u.shell.openOutput(view, feed.Snippets[0]) || len(u.shell.output.pages) != 1 {
 					t.Fatalf("resumed batch lost its summary or aggregate output: %s", got)
 				}
 				if output := u.shell.output.retainedOutput(u.shell.output.pages[0]); output == nil || !output.View().Exited || output.View().Exit != 1 || !strings.Contains(strings.Join(output.View().Lines, "\n"), "conflict") {

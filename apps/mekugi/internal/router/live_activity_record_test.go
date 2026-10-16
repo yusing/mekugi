@@ -10,10 +10,10 @@ import (
 )
 
 func TestLiveActivityRecordRetentionAndHistoryInsertion(t *testing.T) {
-	v := newLiveActivityView()
-	v.childrenOnly = true
+	v := newActivityAdapter()
+	v.ChildrenOnly = true
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
-	v.clock = func() time.Time { return now }
+	v.Clock = func() time.Time { return now }
 	entries := make([]activityPaneEntry, liveActivityFeedLimit)
 	for i := range entries {
 		entries[i] = activityPaneEntry{Seq: uint64(i + 1), Agent: "/root/worker", Kind: "text", Text: fmt.Sprint("Retained item ", i), Observed: now}
@@ -25,7 +25,7 @@ func TestLiveActivityRecordRetentionAndHistoryInsertion(t *testing.T) {
 		t.Fatal("output annotation missing")
 	}
 	revision := v.Entries[2].Revision
-	v.renderFeed(90, 24)
+	v.RenderFeed(90, 24)
 	before := v.LastSeq
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
 		{Seq: before + 1, Agent: "/root/worker", Kind: "text", Text: "Older page one", Observed: now},
@@ -47,16 +47,16 @@ func TestLiveActivityRecordRetentionAndHistoryInsertion(t *testing.T) {
 }
 
 func TestLiveActivityRecordMutationOwnsInvalidation(t *testing.T) {
-	v := newLiveActivityView()
-	v.childrenOnly = true
+	v := newActivityAdapter()
+	v.ChildrenOnly = true
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
-	v.clock = func() time.Time { return now }
+	v.Clock = func() time.Time { return now }
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
 		{Seq: 1, Agent: "/root/finished", Kind: "text", Text: "Independent result", Observed: now},
 		{Seq: 2, Agent: "/root/other", Kind: "text", Text: "Another result", Observed: now},
 		{Seq: 3, Agent: "/root/working", Kind: "text", Text: "Original result", Observed: now},
 	}})
-	v.renderFeed(90, 24)
+	v.RenderFeed(90, 24)
 	stableKey, stable := liveActivityCacheRun(t, v, 1)
 	changedKey, _ := liveActivityCacheRun(t, v, 3)
 	revision := v.Entries[2].Revision
@@ -68,11 +68,11 @@ func TestLiveActivityRecordMutationOwnsInvalidation(t *testing.T) {
 	if v.Entries[2].Revision <= revision {
 		t.Fatal("source and annotation mutation did not advance its revision")
 	}
-	if _, present := v.runs[changedKey]; present {
+	if _, present := v.Runs[changedKey]; present {
 		t.Fatal("source and annotation mutation retained its cached run")
 	}
-	retained, present := v.runs[stableKey]
-	if !present || &retained.lines[0] != &stable.lines[0] {
+	retained, present := v.Runs[stableKey]
+	if !present || &retained.Lines[0] != &stable.Lines[0] {
 		t.Fatal("record mutation discarded an unrelated completed run")
 	}
 	assertLiveActivityCacheFresh(t, v)

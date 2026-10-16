@@ -236,7 +236,7 @@ func TestComposerSkillPickerUndoHistoryAndAtomicEditing(t *testing.T) {
 func TestComposerSkillPickerResumeAndEditorBindings(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.session.start("main", "/work")
-	u.agents = newLiveActivityView()
+	u.agents = newActivityAdapter()
 	var turns []appServerHistoryTurn
 	if err := json.Unmarshal([]byte(`[{"id":"turn","status":"completed","items":[{"type":"userMessage","id":"message","content":[{"type":"text","text":"use $review please"},{"type":"skill","name":"review","path":"/work/review/SKILL.md"}]}]}]`), &turns); err != nil {
 		t.Fatal(err)

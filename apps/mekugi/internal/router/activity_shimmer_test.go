@@ -20,9 +20,9 @@ func TestNativeUITerminalColorReports(t *testing.T) {
 		}
 	}
 	want := terminalui.Colors{Foreground: diffrender.RGB{R: 220, G: 214, B: 200}, Background: diffrender.RGB{R: 24, G: 22, B: 30}, HasForeground: true, HasBackground: true}
-	for _, view := range []*liveActivityView{u.view, u.agents} {
-		if view.painter.Colors != want || view.painter.Theme != diffrender.DarkTheme {
-			t.Fatalf("pane palette = %+v theme %v", view.painter.Colors, view.painter.Theme)
+	for _, view := range []*activityAdapter{u.view, u.agents} {
+		if view.Painter.Colors != want || view.Painter.Theme != diffrender.DarkTheme {
+			t.Fatalf("pane palette = %+v theme %v", view.Painter.Colors, view.Painter.Theme)
 		}
 	}
 	if !u.shell.diff.backgrounded || u.shell.diff.background != want.Background || u.shell.diff.theme != diffrender.DarkTheme {
@@ -38,9 +38,9 @@ func TestAppServerReasoningAnimationLifecycle(t *testing.T) {
 	u.ensureShell()
 	v := u.agents
 	v.apply(activityPaneEvent{Kind: "entries", Agents: []activityPaneAgent{{Name: "/root/reviewer", Responding: true}}, Entries: []activityPaneEntry{{Seq: 1, Agent: "/root/reviewer", Kind: "reasoning", CallID: "r", native: &liveActivityNativeItem{phase: "summary", live: true}, Text: "Checking the answer target", Observed: time.Unix(0, 0)}}})
-	first, _ := v.current(v.Agents[0], v.Entries[0].Source.Observed)
-	second, _ := v.current(v.Agents[0], v.Entries[0].Source.Observed.Add(500*time.Millisecond))
-	if !v.hasLiveStatus() || first == second || ansi.Strip(first) != ansi.Strip(second) {
+	first, _ := v.testCurrent(v.Agents[0], v.Entries[0].Source.Observed)
+	second, _ := v.testCurrent(v.Agents[0], v.Entries[0].Source.Observed.Add(500*time.Millisecond))
+	if !v.HasLiveStatus() || first == second || ansi.Strip(first) != ansi.Strip(second) {
 		t.Fatal("live summary animation froze in roster or changed text")
 	}
 	before := v.Entries[0].Source.Observed
@@ -48,8 +48,8 @@ func TestAppServerReasoningAnimationLifecycle(t *testing.T) {
 	if v.Entries[0].Source.Observed != before {
 		t.Fatal("unchanged header restarted animation")
 	}
-	v.Agents[0].Responding = false
-	if v.hasLiveStatus() || !strings.Contains(ansi.Strip(strings.Join(v.renderFeed(80, 20).lines, "\n")), "Checking the answer target") {
+	v.apply(activityPaneEvent{Kind: "agents", Agents: []activityPaneAgent{{Name: "/root/reviewer"}}})
+	if v.HasLiveStatus() || !strings.Contains(ansi.Strip(strings.Join(v.RenderFeed(80, 20).Lines, "\n")), "Checking the answer target") {
 		t.Fatal("completed reasoning animation or transcript retention is wrong")
 	}
 }
@@ -58,8 +58,8 @@ func TestUISnapshotNativeStatusBreathing(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	now := time.Unix(0, 0)
 	u.clock = func() time.Time { return now }
-	u.view.clock, u.agents.clock = u.clock, u.clock
-	u.agents.painter.Theme = diffrender.DarkTheme
+	u.view.Clock, u.agents.Clock = u.clock, u.clock
+	u.agents.Painter.Theme = diffrender.DarkTheme
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
 	waitTargetTestAgent(t, u, "child", "/root/reviewer", true)
 	waitTargetTestEvent(t, u, "item/started", "main", "t", "w")
@@ -71,13 +71,13 @@ func TestUISnapshotNativeStatusBreathing(t *testing.T) {
 			waitTargetTestEvent(t, u, "item/completed", "main", "t", "w")
 			reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "work", "item": item})
 		}
-		if u.agents.hasLiveStatus() != (state == "live") {
+		if u.agents.HasLiveStatus() != (state == "live") {
 			t.Fatalf("%s animation scheduling", state)
 		}
 		rows = append(rows, state)
 		for _, phase := range []time.Duration{0, time.Second} {
 			now = time.Unix(0, 0).Add(phase)
-			rows = append(rows, u.agents.nativeRoster(120, 6, now, true)...)
+			rows = append(rows, u.agents.NativeRoster(120, 6, now, true)...)
 			rows = append(rows, "plain after roster")
 		}
 	}

@@ -101,12 +101,12 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 	assertCapturedCommand(t, u.agents, "child", "python-call", "Edit", 0)
 	assertCapturedCommand(t, u.agents, "child", "sibling-call", "Search", 0)
 	assertCapturedCommand(t, u.view, "main", "cat-call", "Edit", 2)
-	feed := ansi.Strip(strings.Join(u.agents.renderFeed(120, 80).lines, "\n"))
+	feed := ansi.Strip(strings.Join(u.agents.RenderFeed(120, 80).Lines, "\n"))
 	if strings.Contains(feed, "PRIVATE_EDIT_SOURCE") || strings.Contains(feed, "included in grouped edit capture") || !strings.Contains(feed, "Search") {
 		t.Fatalf("grouped capture leaked sibling source or lost its status row: %q", feed)
 	}
 	for _, tc := range []struct {
-		view                        *liveActivityView
+		view                        *activityAdapter
 		thread, item, path, program string
 	}{
 		{u.view, "main", "cat-call", "direct.go", "cat"},
@@ -143,24 +143,24 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 	restored.session.path("child")
 	restored.restoreActivityThread(appServerThreadInfo{ID: "child", Cwd: workspace, Turns: []appServerHistoryTurn{{ID: "c", Status: "completed", Items: []appServerItem{sibling}}}})
 	assertCapturedCommand(t, restored.agents, "child", sibling.ID, "Search", 0)
-	for _, view := range []*liveActivityView{u.agents, restored.agents} {
+	for _, view := range []*activityAdapter{u.agents, restored.agents} {
 		for _, entry := range view.Entries {
 			if entry.Source.native == nil || entry.Source.native.item != sibling.ID {
 				continue
 			}
 			var rows []string
-			for _, block := range view.disclosure.Blocks(entry.Values) {
+			for _, block := range view.Disclosure.Blocks(entry.Values) {
 				if block.Verb == "Edit" {
 					t.Fatalf("captured sibling retained edit intent: %+v", block)
 				}
-				rows = append(rows, view.painter.Block(block, 120)...)
+				rows = append(rows, view.Painter.Block(block, 120)...)
 			}
 			assertNativeUISnapshot(t, "captured-edit-sibling-batch", rows)
 		}
 	}
 }
 
-func assertCapturedCommand(t *testing.T, view *liveActivityView, thread, item, verb string, exit int) {
+func assertCapturedCommand(t *testing.T, view *activityAdapter, thread, item, verb string, exit int) {
 	t.Helper()
 	for i, entry := range view.Entries {
 		if entry.Source.native == nil || entry.Source.native.thread != thread || entry.Source.native.item != item || entry.Source.Kind != "tool" {
@@ -207,7 +207,7 @@ func TestAppServerCapturedEditsReuseReceipt(t *testing.T) {
 }
 
 func TestAppServerCapturedEditsPreserveTrackedExits(t *testing.T) {
-	v := newLiveActivityView()
+	v := newActivityAdapter()
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
 		Seq: 1, Agent: "Main", Kind: "tool", CallID: "cmd", Text: "Run `git show`; Skill `mekugi-owners`; Run `git cherry-pick`",
 		native: &liveActivityNativeItem{thread: "main", item: "cmd", phase: "item/completed", segments: []commandSegment{
@@ -235,7 +235,7 @@ func TestAppServerCapturedEditsPreserveTrackedExits(t *testing.T) {
 }
 
 func TestAppServerGroupedReceiptOmitsBookkeeping(t *testing.T) {
-	v := newLiveActivityView()
+	v := newActivityAdapter()
 	calls := []string{"anchor", "edit", "tests", "failed-edit"}
 	for i, source := range []string{
 		"cat > a.go <<'EOF'\nfirst\nEOF",
@@ -259,13 +259,13 @@ func TestAppServerGroupedReceiptOmitsBookkeeping(t *testing.T) {
 	}}
 	for range 2 {
 		v.applyCapturedEdits(data)
-		if v.Entries[1].Source.Text != "" || len(v.blocks(1)) != 0 || v.visible(v.Entries[1].Source) {
+		if v.Entries[1].Source.Text != "" || len(v.blocks(1)) != 0 || v.testVisible(v.Entries[1].Source) {
 			t.Fatalf("successful sibling retained a placeholder: %+v", v.Entries[1])
 		}
 		assertCapturedCommand(t, v, "main", "tests", "Run", 2)
 		assertCapturedCommand(t, v, "main", "failed-edit", "Edit", 1)
 	}
-	feed := ansi.Strip(strings.Join(v.renderFeed(120, 80).lines, "\n"))
+	feed := ansi.Strip(strings.Join(v.RenderFeed(120, 80).Lines, "\n"))
 	if strings.Contains(feed, "included in grouped") || strings.Contains(feed, "PRIVATE_") ||
 		!strings.Contains(feed, "go test") || !strings.Contains(feed, "exit 2") || !strings.Contains(feed, "exit 1") {
 		t.Fatalf("grouped receipt hid work/failures or exposed bookkeeping: %q", feed)
@@ -364,7 +364,7 @@ func TestAppServerCapturedRemovalKeepsRunNeighbors(t *testing.T) {
 				data := newLiveDiffData()
 				data.order = []string{"receipt"}
 				data.attempts["receipt"] = liveDiffAttempt{receipt: &capturedActivityEdit{thread: thread, calls: []string{"cmd"}, text: "Delete `FILE` +0 -1 · rm"}}
-				check := func(view *liveActivityView) {
+				check := func(view *activityAdapter) {
 					for range 2 {
 						view.applyCapturedEdits(data)
 						blocks := view.blocks(0)
@@ -401,7 +401,7 @@ func TestAppServerCapturedEditKeepsCommandPaths(t *testing.T) {
 	data := newLiveDiffData()
 	data.order = []string{"receipt"}
 	data.attempts["receipt"] = liveDiffAttempt{receipt: &capturedActivityEdit{thread: "main", calls: []string{"cmd"}, text: "Edit `edit.go` +1 -1"}}
-	check := func(view *liveActivityView) {
+	check := func(view *activityAdapter) {
 		t.Helper()
 		entry := view.Entries[0]
 		if !strings.Contains(entry.Source.Text, "Read `read.go`") || !strings.Contains(entry.Source.Text, "Search `/command-dir/query` in `src`") || !strings.Contains(entry.Source.Text, "Edit `edit.go` +1 -1") || entry.Source.native.command != item.Command {

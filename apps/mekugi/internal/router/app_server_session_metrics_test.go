@@ -194,7 +194,7 @@ func TestAppServerSessionMetricsRefreshAndBounds(t *testing.T) {
 	u.refreshSessionMetrics(false)
 	sessionMetricField(t, u, "Requests", "Logical", "1")
 	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
-		u.view.painter.Theme = theme
+		u.view.Painter.Theme = theme
 		for tab := range sessionMetricViews {
 			u.statusPanel.metrics.tab = tab
 			u.renderSessionMetrics()
@@ -244,7 +244,7 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.view.painter.Theme = diffrender.DarkTheme
+			u.view.Painter.Theme = diffrender.DarkTheme
 			u.session.cwd = "/workspace"
 			u.replayDebugDirectory = tc.debug
 			u.showSessionMetrics()

@@ -72,10 +72,10 @@ func TestNativeUILiveToggleDuringModelList(t *testing.T) {
 
 func TestUISnapshotNativeLiveToggle(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	u.status, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
-	u.view.clock = u.clock
+	u.view.Clock = u.clock
 	u.ensureShell()
 	defer u.shell.diffScreen.Close()
 	screen := vt.NewEmulator(100, 28)
@@ -119,9 +119,9 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			if !strings.Contains(paint(), "VISIBLE_EDIT") {
 				t.Fatal("default dock missing")
 			}
-			u.agents.setDisplayFilter(false, u.agents.selected)
+			u.agents.setDisplayFilter(false, u.agents.Selected)
 			appServerTestKeys(t, u, "/live\r")
-			u.agents.setDisplayFilter(caller != "/root", u.agents.selected)
+			u.agents.setDisplayFilter(caller != "/root", u.agents.Selected)
 			frame := paint()
 			if strings.Contains(frame, "VISIBLE_EDIT") || u.shell.layout.Live.H != 0 || len(u.shell.liveDock.Order) != 1 {
 				t.Fatal("hidden dock lost state or reserved space")
@@ -131,9 +131,9 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			if r.H == 0 || !strings.Contains(lines[r.Y-1], "┘") || strings.TrimSpace(lines[r.Y+r.H]) != "" {
 				t.Fatalf("roster must immediately follow the pane border with padding only below:\n%s", frame)
 			}
-			u.agents.setDisplayFilter(false, u.agents.selected)
+			u.agents.setDisplayFilter(false, u.agents.Selected)
 			appServerTestKeys(t, u, "/live\r")
-			u.agents.setDisplayFilter(caller != "/root", u.agents.selected)
+			u.agents.setDisplayFilter(caller != "/root", u.agents.Selected)
 			if !strings.Contains(paint(), "VISIBLE_EDIT") {
 				t.Fatal("current edit not restored")
 			}

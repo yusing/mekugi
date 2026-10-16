@@ -63,8 +63,8 @@ func (p *uiReplayPlayback) reset() {
 	// The real message/projector/render path, but no app-server process, router,
 	// replay store, filesystem observers, input submission, or notification sink.
 	client := &appserver.Client{Input: replayDiscard{io.Discard}}
-	u := &appServerUI{session: appServerSession{activity: p.activity}, ctx: p.ctx, client: client, view: newLiveActivityView(), agents: newLiveActivityView(), Thread: p.Source.Thread, status: "Replay", requests: sessioncontrol.NewRequests[appServerRequest](client), clock: func() time.Time { return p.At }, replay: p}
-	u.view.clock, u.agents.clock = u.clock, u.clock
+	u := &appServerUI{session: appServerSession{activity: p.activity}, ctx: p.ctx, client: client, view: newActivityAdapter(), agents: newActivityAdapter(), Thread: p.Source.Thread, status: "Replay", requests: sessioncontrol.NewRequests[appServerRequest](client), clock: func() time.Time { return p.At }, replay: p}
+	u.view.Clock, u.agents.Clock = u.clock, u.clock
 	u.session.start(p.Source.Thread, p.Source.Cwd)
 	for id := range p.Source.Threads {
 		if id != p.Source.Thread {
@@ -158,12 +158,12 @@ func (p *uiReplayPlayback) paint(out io.Writer, width, height int) error {
 	if !p.At.Equal(p.paintedAt) {
 		u.flushStreamOutput()
 		settleActivity(p.At, u.view, u.agents)
-		u.view.pace(p.At)
-		u.agents.pace(p.At)
+		u.view.Pace(p.At)
+		u.agents.Pace(p.At)
 		p.paintedAt = p.At
 	}
-	u.view.expireFlash(p.At)
-	u.agents.expireFlash(p.At)
+	u.view.ExpireFlash(p.At)
+	u.agents.ExpireFlash(p.At)
 	w := &replayTimedWriter{Writer: out}
 	err := u.paint(w, width, height)
 	p.writeTime += w.elapsed
@@ -208,7 +208,7 @@ func (p *uiReplayPlayback) bar(width int) string {
 	if width >= 100 {
 		label += hint
 	}
-	return p.ui.view.painter.Theme.Accent() + ansi.Truncate(label, max(1, width), "…") + terminalui.Reset
+	return p.ui.view.Painter.Theme.Accent() + ansi.Truncate(label, max(1, width), "…") + terminalui.Reset
 }
 
 func replayTime(d time.Duration) string {
@@ -265,11 +265,11 @@ func (p *uiReplayPlayback) key(key byte) (bool, error) {
 	case 'r':
 		return false, p.step(0, playback.Restart)
 	case 'k':
-		p.ui.transcriptView().scrollKey('b')
+		p.ui.transcriptView().ScrollKey('b')
 	case 'j':
-		p.ui.transcriptView().scrollKey(' ')
+		p.ui.transcriptView().ScrollKey(' ')
 	case terminalui.PaneWheelUp, terminalui.PaneWheelDown:
-		p.ui.transcriptView().scrollKey(key)
+		p.ui.transcriptView().ScrollKey(key)
 	}
 	return false, nil
 }

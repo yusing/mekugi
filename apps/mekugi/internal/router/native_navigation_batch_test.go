@@ -197,8 +197,8 @@ func TestNativeNavigationBatchFilterBinding(t *testing.T) {
 }
 
 func navigationBatchDialog() *terminalUI {
-	v := newLiveActivityView()
-	v.painter.Theme = diffrender.DarkTheme
+	v := newActivityAdapter()
+	v.Painter.Theme = diffrender.DarkTheme
 	d := &outputDialog{view: v, match: -1}
 	retention := new(activitymodel.Retention)
 	for i, path := range []string{
@@ -305,7 +305,7 @@ func TestUISnapshotNativeNavigationBatchStatus(t *testing.T) {
 				u.status = "Ready"
 				u.shell.diffUnseen = true
 				u.shell.Focus = 3
-				u.agents.setDisplayFilter(only, u.agents.selected)
+				u.agents.setDisplayFilter(only, u.agents.Selected)
 				screen := navigationBatchPaint(t, u, width, 24)
 				footer := strings.Split(screen.String(), "\n")[23]
 				uisnapshot.Assert(t, fmt.Sprintf("testdata/snapshots/native-navigation-status-%d-only%v.txt", width, only), footer+"\n")

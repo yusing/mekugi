@@ -49,9 +49,9 @@ func TestTerminalSourceSelectionDirectionsAndActions(t *testing.T) {
 					u := selectionTestUI(rows...)
 					u.frame.Copy = append(meta, nil)
 					if activity {
-						u.agents = newLiveActivityView()
-						u.agents.feedLeft, u.agents.feedTop = 1, 1
-						u.agents.feedRight, u.agents.feedRows = 40, len(rows)
+						u.agents = newActivityAdapter()
+						u.agents.FeedLeft, u.agents.FeedTop = 1, 1
+						u.agents.FeedRight, u.agents.FeedRows = 40, len(rows)
 						u.main.agents = u.agents
 						u.main.sessionPresentation()
 						u.agents.setDisplayFilter(true, "/root/worker")
@@ -184,7 +184,7 @@ func TestUISnapshotBTWCopyDock(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	start := time.Date(2026, 9, 30, 0, 0, 0, 0, time.UTC)
 	u.clock = func() time.Time { return start.Add(75 * time.Second) }
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	u.btw = &appServerBTW{Busy: true, SideAnswer: &conversationmodel.SideAnswer{Status: "Answering", Started: start, Question: "Which option?", Answer: []conversationmodel.Answer{{Text: "Name | Value\n--- | ---\n**alpha** | `x`"}}}}
 	uisnapshot.Assert(t, "testdata/snapshots/btw-copy-dock.txt", strings.Join(u.btwRows(60, 12), "\n")+"\n")
 }
@@ -196,7 +196,7 @@ func TestTerminalSourceScrolledMainReply(t *testing.T) {
 	// Scroll back to the original reply above a long trailing tool run.
 	u.Turn = "running"
 	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "**original reply**", Observed: time.Now()}, {Seq: 2, Agent: "Main", Kind: "tool", Text: "Run: go test\n" + strings.Repeat("output\n", 100), Observed: time.Now()}}})
-	u.view.following, u.view.offset = false, 0
+	u.view.Following, u.view.Offset = false, 0
 	screen := vt.NewEmulator(80, 30)
 	defer screen.Close()
 	if err := u.paint(screen, 80, 30); err != nil {

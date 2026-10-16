@@ -46,9 +46,9 @@ func TestNativeActivityFollowupAssignments(t *testing.T) {
 		t.Fatalf("follow-up was omitted or conflated with spawn: %+v", next)
 	}
 	u.applyActivity([]activityPaneEntry{{Seq: u.session.next(), Agent: "/root/reviewer", Kind: "final", Text: "The edited answer is correct."}}, nil)
-	u.view.conversation = true
-	feed := u.view.renderFeed(100, 40)
-	main := ansi.Strip(strings.Join(feed.lines, "\n"))
+	u.view.Conversation = true
+	feed := u.view.RenderFeed(100, 40)
+	main := ansi.Strip(strings.Join(feed.Lines, "\n"))
 	if !strings.Contains(main, "▶ reviewer started") || !strings.Contains(main, "├─→ follow-up") || !strings.Contains(main, "├─✓ finished") || strings.Contains(main, "↩ re:") {
 		t.Fatalf("follow-up answer was not threaded under its assignment:\n%s", main)
 	}
@@ -84,7 +84,7 @@ func TestNativeActivityAssignmentsPreserveOriginalTime(t *testing.T) {
 		}
 		u, _ := newAppServerTestUI()
 		u.ensureShell()
-		u.view.conversation = true
+		u.view.Conversation = true
 		for i := range entries {
 			want := time.Unix(1700000000+int64(i*60), 125000000)
 			if !entries[i].Observed.Equal(want) {
@@ -93,7 +93,7 @@ func TestNativeActivityAssignmentsPreserveOriginalTime(t *testing.T) {
 			entries[i].Seq = uint64(i + 1)
 		}
 		u.applyActivity(entries, nil)
-		rendered := ansi.Strip(strings.Join(u.view.renderFeed(100, 60).lines, "\n"))
+		rendered := ansi.Strip(strings.Join(u.view.RenderFeed(100, 60).Lines, "\n"))
 		for _, entry := range entries {
 			if !strings.Contains(rendered, entry.Observed.Local().Format("15:04:05")) {
 				t.Fatalf("original timestamp missing from feed: %s", rendered)
@@ -145,8 +145,8 @@ func TestNativeActivityChildResultsStaySeparateAndLinked(t *testing.T) {
 	collab("task-3", "spawnAgent", "other", "Explore elsewhere.")
 	result("/root/other", "OTHER ANSWER")
 	result("/root/reviewer", "SECOND ANSWER")
-	u.view.conversation = true
-	main := ansi.Strip(strings.Join(u.view.renderFeed(100, 80).lines, "\n"))
+	u.view.Conversation = true
+	main := ansi.Strip(strings.Join(u.view.RenderFeed(100, 80).Lines, "\n"))
 	first, second := strings.Index(main, "FIRST ANSWER"), strings.Index(main, "SECOND ANSWER")
 	if first < 0 || second < first || strings.Count(main, "SECOND ANSWER") != 1 {
 		t.Fatalf("consecutive child results merged:\n%s", main)

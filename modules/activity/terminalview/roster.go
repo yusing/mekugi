@@ -1,4 +1,6 @@
-package router
+package terminalview
+
+// Source: apps/mekugi/internal/router/native_roster.go:18:474@[29de53cc].
 
 import (
 	"fmt"
@@ -10,27 +12,27 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/terminalui"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // nativeRosterItem is one roster row: an agent, or the fold of finished ones.
 type nativeRosterItem struct {
-	row      liveActivityRosterRow
-	finished []liveActivityRosterRow
+	row      activitypresentation.AgentRow
+	finished []activitypresentation.AgentRow
 }
 
-// nativeRoster fits the roster to its content within limit rows, under a rule
+// NativeRoster fits the roster to its content within limit rows, under a rule
 // carrying the counts and session totals. Unfocused, finished agents fold
 // into one row. Rows show state, then timer, edited lines, tokens, cost and
 // turns; turns drop first when narrow.
-func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused bool) []string {
+func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []string {
 	rows := v.Roster()
 	if len(rows) == 0 || width < 20 {
 		return nil
 	}
-	v.hits = v.hits[:0]
+	v.Hits = v.Hits[:0]
 	v.paceRosterMetrics(rows, now)
 	var items []nativeRosterItem
 	fold := -1
@@ -45,7 +47,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		}
 		items = append(items, nativeRosterItem{row: row})
 	}
-	responding, errors := v.statusCounts(rows)
+	responding, errors := v.StatusCounts(rows)
 	var input, output uint64
 	var cost float64
 	costKnown, partial := false, false
@@ -69,11 +71,11 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		detail += terminalui.Dim + " · " + terminalui.Undim + terminalui.Red + fmt.Sprintf("%d error", errors) + terminalui.Reset
 	}
 	var totals []string
-	if v.netCounts != nil {
-		totals = append(totals, strings.TrimSpace(diffrender.CountStats(*v.netCounts, v.painter.Theme)))
+	if v.NetCounts != nil {
+		totals = append(totals, strings.TrimSpace(diffrender.CountStats(*v.NetCounts, v.Painter.Theme)))
 	}
 	if input+output > 0 {
-		in, out := liveActivityTokenParts(activityPaneAgent{InputTokens: input, OutputTokens: output, UsagePartial: tokensPartial})
+		in, out := tokenParts(activitypresentation.Agent{AgentFacts: activitypresentation.AgentFacts{InputTokens: input, OutputTokens: output, UsagePartial: tokensPartial}})
 		totals = append(totals, "↑"+in+" ↓"+out)
 	}
 	if costKnown {
@@ -87,27 +89,27 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	if len(totals) > 0 {
 		right = terminalui.Dim + strings.Join(totals, " · ") + terminalui.Undim
 	}
-	lines := []string{nativeRule("─", "─", "─", nativeTitle(3, "Agents", detail, focused), right, width, nativeBorder(focused))}
+	lines := []string{terminalui.PaneRule("─", "─", "─", terminalui.PaneTitle(3, "Agents", detail, focused), right, width, terminalui.PaneBorder(focused))}
 
 	limit = max(1, limit)
 	legend := ""
 	if focused && limit > 1 {
 		var roles []string
 		for _, row := range rows {
-			if role := liveActivityRole(row.Agent); role != "" && !slices.Contains(roles, role) {
+			if role := Role(row.Agent); role != "" && !slices.Contains(roles, role) {
 				roles = append(roles, role)
 			}
 		}
 		if len(roles) > 0 {
 			var labels []string
 			for _, role := range roles {
-				labels = append(labels, v.roleColor(role)+"●"+terminalui.Reset+" "+role)
+				labels = append(labels, v.RoleColor(role)+"●"+terminalui.Reset+" "+role)
 			}
 			// Keep the selected role discoverable when the full legend cannot fit.
 			if ansi.StringWidth(" Roles: "+strings.Join(labels, "  ")) > width {
 				for _, row := range rows {
-					if row.Agent.Name == v.selected {
-						if index := slices.Index(roles, liveActivityRole(row.Agent)); index > 0 {
+					if row.Agent.Name == v.Selected {
+						if index := slices.Index(roles, Role(row.Agent)); index > 0 {
 							labels[0], labels[index] = labels[index], labels[0]
 						}
 						break
@@ -118,7 +120,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 			limit--
 		}
 	}
-	selected := max(0, slices.IndexFunc(items, func(item nativeRosterItem) bool { return item.finished == nil && item.row.Agent.Name == v.selected }))
+	selected := max(0, slices.IndexFunc(items, func(item nativeRosterItem) bool { return item.finished == nil && item.row.Agent.Name == v.Selected }))
 	start := 0
 	if len(items) > limit {
 		start = max(0, min(selected-limit+2, len(items)-limit+1))
@@ -129,19 +131,19 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	}
 	nameWidth := 4
 	for _, row := range rows {
-		name, _ := rosterTree(rows, slices.IndexFunc(rows, func(other liveActivityRosterRow) bool { return other.Agent.Name == row.Agent.Name }), 0)
+		name, _ := RosterTree(rows, slices.IndexFunc(rows, func(other activitypresentation.AgentRow) bool { return other.Agent.Name == row.Agent.Name }), 0)
 		nameWidth = max(nameWidth, ansi.StringWidth(name))
 	}
 	nameWidth = min(nameWidth, max(8, width/4))
 	// Lay out agent rows first, so right-aligned metric columns fit their
 	// widest visible values rather than fixed widths.
 	type agentLine struct {
-		row          liveActivityRosterRow
+		row          activitypresentation.AgentRow
 		prefix       string
 		finishedLine string
 	}
 	var laid []agentLine
-	var parts [][nativeMetricParts]string
+	var parts [][MetricParts]string
 	widest := 0
 	for _, item := range items[start:end] {
 		if item.finished != nil {
@@ -154,26 +156,25 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 			continue
 		}
 		row := item.row
-		index := slices.IndexFunc(rows, func(other liveActivityRosterRow) bool { return other.Agent.Name == row.Agent.Name })
-		tree, _ := rosterTree(rows, index, 0)
-		tree = strings.TrimRight(liveActivityMiddle(tree, nameWidth), " ")
+		index := slices.IndexFunc(rows, func(other activitypresentation.AgentRow) bool { return other.Agent.Name == row.Agent.Name })
+		tree, _ := RosterTree(rows, index, 0)
+		tree = strings.TrimRight(Middle(tree, nameWidth), " ")
 		split := strings.LastIndexAny(tree, " /") + 1
 		color := terminalui.AgentColor(row.Agent.Name)
 		if color == "" {
-			color = "\x1b[1m" + v.painter.Theme.Accent()
+			color = "\x1b[1m" + v.Painter.Theme.Accent()
 		}
 		name := terminalui.DimAgentColor(row.Agent.Name) + tree[:split] + terminalui.Undim + color + v.hoverName(tree[split:], row.Agent.Name) + terminalui.Reset
 		gap := "  "
 		if focused {
 			gap += strings.Repeat(" ", max(0, nameWidth-ansi.StringWidth(tree)))
 		}
-		line := agentLine{row: row, prefix: " " + v.nativeGlyph(row.Agent) + " " + name + gap}
+		line := agentLine{row: row, prefix: " " + v.NativeGlyph(row.Agent) + " " + name + gap}
 		laid = append(laid, line)
-		parts = append(parts, nativeRosterMetricParts(v, row.Agent, now))
+		parts = append(parts, RosterMetricParts(v, row.Agent, now))
 		widest = max(widest, ansi.StringWidth(line.prefix))
 	}
-	metrics := nativeRosterColumns(parts, width-widest-24)
-	skills := v.ActiveSkills()
+	metrics := RosterColumns(parts, width-widest-24)
 	stateEnd := width - 1
 	if len(metrics) > 0 {
 		stateEnd -= ansi.StringWidth(metrics[0])
@@ -188,8 +189,8 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		// A child's skill count ends its state cell and opens those skills.
 		// Main's count is in Main's title.
 		label := ""
-		if set := skills[item.row.Agent.Name]; set != nil && item.row.Agent.Name != "/root" {
-			label = skillLabel(set)
+		if set := item.row.Agent.Skills; set != nil && item.row.Agent.Name != "/root" {
+			label = SkillLabel(set)
 		}
 		if room-ansi.StringWidth(label)-2 < 8 {
 			label = ""
@@ -198,25 +199,25 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		if label != "" {
 			state = room - ansi.StringWidth(label) - 2
 		}
-		line := item.prefix + liveActivityPad(v.agentState(item.row.Agent, state, now), state)
+		line := item.prefix + liveActivityPad(v.AgentState(item.row.Agent, state, now), state)
 		if label != "" {
 			styled := label
-			if v.skillsHover == item.row.Agent.Name {
-				styled = activityui.Underline(styled)
+			if v.SkillsHover == item.row.Agent.Name {
+				styled = Underline(styled)
 			}
 			line += "  " + terminalui.Dim + styled + terminalui.Undim
-			v.hits = append(v.hits, liveActivityHit{row: len(lines) + 1, first: stateEnd - ansi.StringWidth(label) + 1, last: stateEnd, agent: item.row.Agent.Name, skills: true})
+			v.Hits = append(v.Hits, Hit{Row: len(lines) + 1, First: stateEnd - ansi.StringWidth(label) + 1, Last: stateEnd, Agent: item.row.Agent.Name, Skills: true})
 		}
 		if next < len(metrics) {
 			line += metrics[next]
 		}
 		next++
 		line = ansi.Truncate(line, width, "…")
-		if focused && item.row.Agent.Name == v.selected || v.displayingChild() && item.row.Agent.Name == v.displayedCaller() {
+		if focused && item.row.Agent.Name == v.Selected || v.displayingChild() && item.row.Agent.Name == v.displayedCaller() {
 			line = v.selectRow(line, width)
 		}
 		lines = append(lines, line)
-		v.hits = append(v.hits, liveActivityHit{row: len(lines), first: 1, last: width, agent: item.row.Agent.Name})
+		v.Hits = append(v.Hits, Hit{Row: len(lines), First: 1, Last: width, Agent: item.row.Agent.Name})
 	}
 	if hidden := len(items) - end; hidden > 0 {
 		lines = append(lines, ansi.Truncate(terminalui.Dim+fmt.Sprintf("   +%d more · ^B 3 shows all", hidden)+terminalui.Undim, width, "…"))
@@ -224,21 +225,21 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	if legend != "" {
 		lines = append(lines, legend)
 	}
-	v.rosterOffset, v.rosterEnd = start, end
+	v.RosterOffset, v.rosterEnd = start, end
 	return lines
 }
 
 // Metric parts, in column order: context used and percent, elapsed and last
 // response, added and removed lines, input and output tokens, cost, and
 // roundtrips, and current-round output throughput.
-const nativeMetricParts = 11
+const MetricParts = 11
 
-func nativeRosterMetricParts(v *liveActivityView, agent activityPaneAgent, now time.Time) [nativeMetricParts]string {
-	var parts [nativeMetricParts]string
+func RosterMetricParts(v *View, agent activitypresentation.Agent, now time.Time) [MetricParts]string {
+	var parts [MetricParts]string
 	if agent.Name != "/root" {
 		// Main's context and output rate belong to the composer.
-		parts[10] = outputThroughputLabel(agent.OutputThroughput)
-		context := contextWindowLabel(agent)
+		parts[10] = OutputThroughputLabel(agent.OutputThroughput)
+		context := ContextWindowLabel(agent)
 		if used, percent, ok := strings.Cut(context, " • "); ok {
 			parts[0], parts[1] = used, percent
 		} else if strings.HasSuffix(context, "%") {
@@ -247,22 +248,22 @@ func nativeRosterMetricParts(v *liveActivityView, agent activityPaneAgent, now t
 			parts[0] = context
 		}
 	}
-	_, timer := v.current(agent, now)
+	_, timer := v.Current(agent, now)
 	parts[2], parts[3], _ = strings.Cut(timer, " · ")
-	if count, ok := v.rosterLines[agent.Name]; ok {
-		parts[4], parts[5] = v.lineCountParts(count)
+	if count, ok := v.RosterLines[agent.Name]; ok {
+		parts[4], parts[5] = v.LineCountParts(count)
 	}
 	if agent.TokensKnown || agent.InputTokens > 0 || agent.OutputTokens > 0 {
-		input, output := liveActivityTokenParts(agent)
+		input, output := tokenParts(agent)
 		parts[6], parts[7] = "↑"+input, "↓"+output
 	}
-	parts[8], parts[9] = liveActivityCost(agent), ansi.Strip(liveActivityTurns(agent))
+	parts[8], parts[9] = Cost(agent), ansi.Strip(Turns(agent))
 	return parts
 }
 
-// rosterMetricEase is how long a changed roster metric takes to reach its new
+// MetricEase is how long a changed roster metric takes to reach its new
 // value, so usage and edit reports count up rather than jump.
-const rosterMetricEase = 500 * time.Millisecond
+const MetricEase = 500 * time.Millisecond
 
 // rosterMetrics are the roster's paced values. Negative line counts are
 // unknown and never interpolate.
@@ -278,7 +279,7 @@ type rosterMetricPace struct {
 }
 
 func (p rosterMetricPace) at(now time.Time) rosterMetrics {
-	t := min(1, max(0, float64(now.Sub(p.start))/float64(rosterMetricEase)))
+	t := min(1, max(0, float64(now.Sub(p.start))/float64(MetricEase)))
 	e := 1 - (1-t)*(1-t)*(1-t) // Ease out: fast start, gentle landing.
 	lerp := func(from, to float64) float64 {
 		if t >= 1 || from < 0 || to < 0 {
@@ -296,12 +297,12 @@ func (p rosterMetricPace) at(now time.Time) rosterMetrics {
 // paceRosterMetrics replaces rows' usage with eased values and records the
 // line counts to show. A first observation, such as restored history, shows
 // its values at once; later changes ease from the value on screen.
-func (v *liveActivityView) paceRosterMetrics(rows []liveActivityRosterRow, now time.Time) {
+func (v *View) paceRosterMetrics(rows []activitypresentation.AgentRow, now time.Time) {
 	pace := make(map[string]rosterMetricPace, len(rows))
-	v.rosterLines, v.rosterEasing = make(map[string]diffmodel.Counts), false
+	v.RosterLines, v.RosterEasing = make(map[string]diffmodel.Counts), false
 	for i, row := range rows {
 		agent := &rows[i].Agent
-		lines, hasLines := v.lineCounts[agent.Name]
+		lines, hasLines := v.LineCounts[agent.Name]
 		target := rosterMetrics{float64(agent.InputTokens), float64(agent.OutputTokens), float64(agent.ContextTokens), agent.Cost, float64(lines.Added), float64(lines.Removed)}
 		p, seen := v.rosterPace[row.Agent.Name]
 		switch {
@@ -311,20 +312,20 @@ func (v *liveActivityView) paceRosterMetrics(rows []liveActivityRosterRow, now t
 			p = rosterMetricPace{p.at(now), target, now}
 		}
 		pace[agent.Name] = p
-		v.rosterEasing = v.rosterEasing || now.Sub(p.start) < rosterMetricEase
+		v.RosterEasing = v.RosterEasing || now.Sub(p.start) < MetricEase
 		shown := p.at(now)
 		agent.InputTokens, agent.OutputTokens = uint64(math.Round(shown.input)), uint64(math.Round(shown.output))
 		agent.ContextTokens, agent.Cost = uint64(math.Round(shown.context)), shown.cost
 		if hasLines {
-			v.rosterLines[agent.Name] = diffmodel.Counts{Added: int(math.Round(shown.added)), Removed: int(math.Round(shown.removed))}
+			v.RosterLines[agent.Name] = diffmodel.Counts{Added: int(math.Round(shown.added)), Removed: int(math.Round(shown.removed))}
 		}
 	}
 	v.rosterPace = pace
 }
 
-// lineCountParts uses semantic green/red colors, independent of the syntax
+// LineCountParts uses semantic green/red colors, independent of the syntax
 // theme. Zero and unknown counts are omitted.
-func (v *liveActivityView) lineCountParts(count diffmodel.Counts) (string, string) {
+func (v *View) LineCountParts(count diffmodel.Counts) (string, string) {
 	if count.Added < 0 || count.Removed < 0 {
 		return "", ""
 	}
@@ -338,14 +339,14 @@ func (v *liveActivityView) lineCountParts(count diffmodel.Counts) (string, strin
 	return added, removed
 }
 
-// nativeRosterColumns renders each row's metrics as columns sized to their
+// RosterColumns renders each row's metrics as columns sized to their
 // widest value. Context is retained longest as lower-priority columns drop to
 // fit room. Within a column, the part before its separator is right-aligned
 // and the part after it left-aligned, so separators line up across rows
 // while each value stays next to its separator. Metrics are uniformly
 // secondary text.
-func nativeRosterColumns(rows [][nativeMetricParts]string, room int) []string {
-	var widths [nativeMetricParts]int
+func RosterColumns(rows [][MetricParts]string, room int) []string {
+	var widths [MetricParts]int
 	for _, row := range rows {
 		for i, part := range row {
 			widths[i] = max(widths[i], ansi.StringWidth(part))
@@ -412,26 +413,26 @@ func rosterAlign(text string, width int) string {
 	return strings.Repeat(" ", max(0, width-ansi.StringWidth(text))) + text
 }
 
-func contextWindowLabel(agent activityPaneAgent) string {
+func ContextWindowLabel(agent activitypresentation.Agent) string {
 	if !agent.ContextKnown {
 		return "0%"
 	}
-	used := formatUsageTokens(agent.ContextTokens)
+	used := FormatUsageTokens(agent.ContextTokens)
 	if agent.ContextWindow == 0 {
 		return used + " used"
 	}
-	return fmt.Sprintf("%s/%s • %.0f%%", used, formatUsageTokens(agent.ContextWindow), 100*float64(agent.ContextTokens)/float64(agent.ContextWindow))
+	return fmt.Sprintf("%s/%s • %.0f%%", used, FormatUsageTokens(agent.ContextWindow), 100*float64(agent.ContextTokens)/float64(agent.ContextWindow))
 }
 
-// nativeGlyph uses role colors when known; the glyph shape preserves status.
+// NativeGlyph uses role colors when known; the glyph shape preserves status.
 // Names retain the agent identity colors shared with Main and Activity.
-func (v *liveActivityView) nativeGlyph(agent activityPaneAgent) string {
-	if role := liveActivityRole(agent); role != "" {
-		return v.glyph(agent)
+func (v *View) NativeGlyph(agent activitypresentation.Agent) string {
+	if role := Role(agent); role != "" {
+		return v.Glyph(agent)
 	}
 	color := terminalui.AgentColor(agent.Name)
 	if color == "" {
-		color = v.painter.Theme.Accent()
+		color = v.Painter.Theme.Accent()
 	}
 	switch v.agentStatus(agent) {
 	case '◐':
@@ -444,31 +445,19 @@ func (v *liveActivityView) nativeGlyph(agent activityPaneAgent) string {
 	return color + "●" + terminalui.Reset
 }
 
-// agentState preserves lifecycle states when idle, and shares the detailed
+// AgentState preserves lifecycle states when idle, and shares the detailed
 // activity summary while an agent is working.
-func (v *liveActivityView) agentState(agent activityPaneAgent, width int, now time.Time) string {
-	source, owner := v, agent.Name
-	if agent.Name == "/root" && v.mainView != nil {
-		source, owner = v.mainView, "Main"
-	}
-	var blocks []activityui.Block
-	var kind string
-	for i, entry := range slices.Backward(source.Entries) {
-		if entry.Source.Agent == owner || source == v && entry.Source.Agent == agent.Name {
-			blocks, kind = source.blocks(i), entry.Source.Kind
-			break
-		}
-	}
+func (v *View) AgentState(agent activitypresentation.Agent, width int, now time.Time) string {
 	switch {
-	case kind == "error":
+	case agent.LatestKind == "error":
 		return terminalui.Red + "error" + terminalui.Reset
 	case !agent.Responding && agent.Final:
 		return terminalui.Dim + "done" + terminalui.Undim
 	case !agent.Responding:
 		return terminalui.Dim + "idle" + terminalui.Undim
-	case len(blocks) == 0:
+	case len(agent.Summary) == 0:
 		return "working"
 	}
-	summary, _ := v.current(agent, now, width)
+	summary, _ := v.Current(agent, now, width)
 	return summary
 }

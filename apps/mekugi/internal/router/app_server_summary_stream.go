@@ -94,9 +94,7 @@ func (u *appServerUI) flushSummaryOutput() {
 		if run.done != nil && run.output.Pending() == 0 {
 			done := *run.done
 			done.Agent = entry.Agent
-			native := *done.native
-			native.settled = u.now() // Start the reading period after queued text is shown.
-			done.native = &native
+			done.completed = u.now() // Start the reading period after queued text is shown.
 			entries = append(entries, done)
 			delete(u.session.summaries, key)
 		}

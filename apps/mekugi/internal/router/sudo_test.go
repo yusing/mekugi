@@ -145,7 +145,7 @@ func TestSudoUnlockDialog(t *testing.T) {
 
 func TestUISnapshotSudoDialogs(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	u.status, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 	u.session.start("main", "/workspace")
 	u.Turn = "turn"

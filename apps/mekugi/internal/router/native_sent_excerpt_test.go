@@ -31,7 +31,7 @@ func TestNativeSentMessagesBecomeExcerptsOutOfView(t *testing.T) {
 		if err := u.paint(&bytes.Buffer{}, 120, 28); err != nil {
 			t.Fatal(err)
 		}
-		return ansi.Strip(strings.Join(u.view.renderFeed(110, 50).lines, "\n"))
+		return ansi.Strip(strings.Join(u.view.RenderFeed(110, 50).Lines, "\n"))
 	}
 	// The thread has moved past the spawn, which shrinks in place as before.
 	if main := paint(); !strings.Contains(main, "Spawn first line.") || !strings.Contains(main, "Follow last line.") || strings.Contains(main, "Open assignment") {
@@ -73,8 +73,8 @@ func TestNativeSentMessagesBecomeExcerptsOutOfView(t *testing.T) {
 }
 
 func TestSentExcerptKeepsScrolledViewportStill(t *testing.T) {
-	v := newLiveActivityView()
-	v.conversation, v.feedOnly = true, true
+	v := newActivityAdapter()
+	v.Conversation, v.FeedOnly = true, true
 	start := time.Date(2026, 9, 28, 8, 44, 12, 0, time.Local)
 	task := strings.Repeat("Remove only the fixtures you created. ", 20)
 	v.Entries = []liveActivityRecord{
@@ -85,21 +85,21 @@ func TestSentExcerptKeepsScrolledViewportStill(t *testing.T) {
 		v.appendEntry(entry, parseLiveActivity(entry))
 	}
 	const width, rows = 60, 6
-	feed := v.renderFeed(width, rows)
-	v.following, v.offset = false, feed.passing[0].end+12
-	top := v.viewport(feed, rows)[0]
-	if !v.passed[1] {
+	feed := v.RenderFeed(width, rows)
+	v.Following, v.Offset = false, feed.Spans[0].End+12
+	top := v.Viewport(feed, rows)[0]
+	if !v.Passed[1] {
 		t.Fatal("assignment above the viewport was not marked")
 	}
-	feed = v.renderFeed(width, rows)
-	if got := v.viewport(feed, rows)[0]; got != top || !strings.Contains(ansi.Strip(strings.Join(feed.lines, "\n")), "↩ Open assignment") {
+	feed = v.RenderFeed(width, rows)
+	if got := v.Viewport(feed, rows)[0]; got != top || !strings.Contains(ansi.Strip(strings.Join(feed.Lines, "\n")), "↩ Open assignment") {
 		t.Fatalf("collapse moved the viewport: %q, want %q", ansi.Strip(got), ansi.Strip(top))
 	}
 }
 
 func TestMainBatchCollapsesOutOfView(t *testing.T) {
-	v := newLiveActivityView()
-	v.conversation, v.feedOnly = true, true
+	v := newActivityAdapter()
+	v.Conversation, v.FeedOnly = true, true
 	start := time.Date(2026, 9, 28, 8, 44, 12, 0, time.Local)
 	for _, entry := range []activityPaneEntry{
 		{Seq: 1, Agent: "Main", Kind: "tool", Text: "Search `zzz`\n\nSearch `bbb`\n\nRun `foo`\n\nRead `bar`", Observed: start},
@@ -113,29 +113,29 @@ func TestMainBatchCollapsesOutOfView(t *testing.T) {
 		v.appendEntry(entry, parseLiveActivity(entry))
 	}
 	const width, rows = 60, 6
-	feed := v.renderFeed(width, rows)
-	if got := ansi.Strip(strings.Join(feed.lines, "\n")); !strings.Contains(got, "Search zzz · bbb") || !strings.Contains(got, "Read   bar") {
+	feed := v.RenderFeed(width, rows)
+	if got := ansi.Strip(strings.Join(feed.Lines, "\n")); !strings.Contains(got, "Search zzz · bbb") || !strings.Contains(got, "Read   bar") {
 		t.Fatalf("batch in view was collapsed:\n%s", got)
 	}
-	v.following, v.offset = false, feed.passing[0].end+12
-	top := v.viewport(feed, rows)[0]
-	if !v.passed[1] {
+	v.Following, v.Offset = false, feed.Spans[0].End+12
+	top := v.Viewport(feed, rows)[0]
+	if !v.Passed[1] {
 		t.Fatal("batch above the viewport was not marked")
 	}
-	feed = v.renderFeed(width, rows)
-	got := ansi.Strip(strings.Join(feed.lines, "\n"))
+	feed = v.RenderFeed(width, rows)
+	got := ansi.Strip(strings.Join(feed.Lines, "\n"))
 	if !strings.Contains(got, "└ Searched 2 patterns • Read 1 file • Ran 1 command") || strings.Contains(got, "zzz") {
 		t.Fatalf("batch out of view did not collapse to one row:\n%s", got)
 	}
-	if row := v.viewport(feed, rows)[0]; row != top {
+	if row := v.Viewport(feed, rows)[0]; row != top {
 		t.Fatalf("collapse moved the viewport: %q, want %q", ansi.Strip(row), ansi.Strip(top))
 	}
 	if !strings.Contains(got, "single.go") {
 		t.Fatalf("a lone operation collapsed:\n%s", got)
 	}
-	row := slices.IndexFunc(feed.lines, func(line string) bool { return strings.Contains(line, "Searched") })
+	row := slices.IndexFunc(feed.Lines, func(line string) bool { return strings.Contains(line, "Searched") })
 	u := &terminalUI{}
-	if !u.openOutput(v, feed.snippets[row]) || len(u.output.pages) != 3 {
+	if !u.openOutput(v, feed.Snippets[row]) || len(u.output.pages) != 3 {
 		t.Fatalf("collapsed batch did not open its operations in the dialog: %+v", u.output)
 	}
 }
@@ -143,7 +143,7 @@ func TestMainBatchCollapsesOutOfView(t *testing.T) {
 func TestMainBatchKeepsUnconfirmedHostItemsOutOfView(t *testing.T) {
 	for _, status := range []string{"completed", "declined", "failed"} {
 		u := newAppServerSessionTestUI(t, t.TempDir())
-		u.view.conversation = true
+		u.view.Conversation = true
 		search := map[string]any{"id": "search", "type": "commandExecution", "command": "rg zzz", "status": status,
 			"commandActions": []map[string]any{{"type": "search", "command": "rg zzz", "query": "zzz"}}}
 		if status == "completed" {
@@ -159,10 +159,10 @@ func TestMainBatchKeepsUnconfirmedHostItemsOutOfView(t *testing.T) {
 		}
 		const width, rows = 60, 6
 		v := u.view
-		feed := v.renderFeed(width, rows)
-		v.following, v.offset = false, len(feed.lines)-rows
-		v.viewport(feed, rows)
-		got := ansi.Strip(strings.Join(v.renderFeed(width, rows).lines, "\n"))
+		feed := v.RenderFeed(width, rows)
+		v.Following, v.Offset = false, len(feed.Lines)-rows
+		v.Viewport(feed, rows)
+		got := ansi.Strip(strings.Join(v.RenderFeed(width, rows).Lines, "\n"))
 		if collapsed := strings.Contains(got, "Searched 1 pattern • Read 1 file"); collapsed != (status == "completed") || !collapsed && !strings.Contains(got, "zzz") {
 			t.Fatalf("%s search out of view collapsed=%v:\n%s", status, collapsed, got)
 		}
@@ -194,11 +194,11 @@ func TestUISnapshotMainBatchWithFailedCommand(t *testing.T) {
 			}
 			finishPacing(u.view, u.agents)
 			v := u.view
-			feed := v.renderFeed(100, 6)
-			v.viewport(feed, 6)
-			feed = v.renderFeed(100, 6)
-			assertNativeUISnapshot(t, "native-main-batch-failed-command", feed.lines[:1])
-			v.following, v.offset = false, 0
+			feed := v.RenderFeed(100, 6)
+			v.Viewport(feed, 6)
+			feed = v.RenderFeed(100, 6)
+			assertNativeUISnapshot(t, "native-main-batch-failed-command", feed.Lines[:1])
+			v.Following, v.Offset = false, 0
 			screen := vt.NewEmulator(120, 28)
 			defer screen.Close()
 			if err := u.paint(screen, 120, 28); err != nil {

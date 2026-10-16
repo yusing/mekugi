@@ -150,7 +150,7 @@ func TestUISnapshotGuardedHeredocCommit(t *testing.T) {
 	command := shellCommandString("/bin/bash", []string{"-lc", guarded})
 	output := "[main e9085377] docs(ui): describe content-detected inline highlighting\n 2 files changed, 6 insertions(+), 4 deletions(-)\n"
 	u := vcsCommandUI(t, "")
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	u.restoreHistory([]appServerHistoryTurn{{ID: "past", Status: "completed", Items: []appServerItem{{
 		ID: "cmd", Type: "commandExecution", Command: command, AggregatedOutput: &output, ExitCode: new(0), DurationMS: new(int64(500)),
 	}}}})
@@ -162,7 +162,7 @@ func TestUISnapshotGuardedHeredocCommit(t *testing.T) {
 
 func TestUISnapshotGuardCommandDisplay(t *testing.T) {
 	u, hub := newTrackedAppServerUI(t)
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	now := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
 	u.clock = func() time.Time { return now }
 	source := "git log -1 --format='%H%n%s'; git status --porcelain; git cat-file commit HEAD | awk '/^gpgsig / {print \"signature_present\"; exit}'"
@@ -204,12 +204,12 @@ func TestUISnapshotGuardCommandDisplay(t *testing.T) {
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, strings.Join(outputs, "")
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	awaitMain(t, u, "signature_present")
-	assertNativeUISnapshot(t, "guard-command-display", u.view.renderFeed(90, 12).lines)
+	assertNativeUISnapshot(t, "guard-command-display", u.view.RenderFeed(90, 12).Lines)
 }
 
 func TestUISnapshotGuardCommandOutputDialog(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	source := "git status --porcelain; sudo journalctl -k --no-pager"
 	guarded, err := shellinstrumentation.RewriteCommands(source, displayGuardHelper, displayGuardDirectory, displaySudoDirectory, "cmd")
 	if err != nil {

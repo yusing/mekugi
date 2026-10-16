@@ -270,7 +270,7 @@ func (u *appServerUI) recordSyncQuestionAnswer(c *nativeQuestionCall) {
 	if len(answers) == 0 {
 		return
 	}
-	for _, v := range []*liveActivityView{u.view, u.agents} {
+	for _, v := range []*activityAdapter{u.view, u.agents} {
 		if v == nil {
 			continue
 		}
@@ -608,7 +608,7 @@ func (u *appServerUI) renderQuestionRecord(c *nativeQuestionCall) {
 	if len(c.request) > 0 {
 		id = "question/" + string(c.request)
 	}
-	for _, v := range []*liveActivityView{u.view, u.agents} {
+	for _, v := range []*activityAdapter{u.view, u.agents} {
 		if v == nil {
 			continue
 		}
@@ -621,7 +621,7 @@ func (u *appServerUI) questionRows(width, height int) []string {
 	if u.questionCount() == 0 {
 		return nil
 	}
-	p := &u.view.painter
+	p := &u.view.Painter
 	accent, dim, reset := p.Theme.Accent(), terminalui.Dim, terminalui.Reset
 	if u.activeQuestionCall() == nil {
 		label := accent + "? " + reset + fmt.Sprintf("main asks %d questions", u.questionCount()) + dim + " · " + reset + accent + "ctrl+b q" + reset + dim + " answer" + reset
@@ -741,7 +741,7 @@ func (u *appServerUI) questionRows(width, height int) []string {
 func (u *appServerUI) mainTitleDetail() string {
 	details := []string{u.questionBadge()}
 	if set := u.view.ActiveSkills()["Main"]; set != nil {
-		details = append(details, skillLabel(set))
+		details = append(details, activityui.SkillLabel(set))
 	}
 	return strings.Join(slices.DeleteFunc(details, func(detail string) bool { return detail == "" }), terminalui.Dim+" · "+terminalui.Undim)
 }

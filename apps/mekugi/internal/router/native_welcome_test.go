@@ -66,7 +66,7 @@ func TestUISnapshotNativeWelcome(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			setMekugiBuildVersion(t, tc.version)
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			u.view.painter.Theme = diffrender.DarkTheme
+			u.view.Painter.Theme = diffrender.DarkTheme
 			u.backendVersion, u.status, u.model, u.Text = "0.158.0", "Ready", "snapshot-model", tc.draft
 			rows, _ := u.mainFrame(tc.width, tc.height, 0)
 			// Build identity is not fixed across test executables.

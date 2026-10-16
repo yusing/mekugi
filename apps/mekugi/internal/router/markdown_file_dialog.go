@@ -64,7 +64,7 @@ func (u *appServerUI) markdownFileExists(target string) bool {
 }
 
 // openMarkdownFile uses only session workspace metadata for relative paths.
-func (u *terminalUI) openMarkdownFile(view *liveActivityView, target string) bool {
+func (u *terminalUI) openMarkdownFile(view *activityAdapter, target string) bool {
 	workspace := ""
 	if u.main != nil {
 		workspace = u.main.session.cwd

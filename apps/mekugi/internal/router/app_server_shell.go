@@ -20,7 +20,7 @@ func (u *appServerUI) shellMode() bool {
 // Soft wraps must not change Bash's multiline lexical state or cursor geometry.
 func (u *appServerUI) paintShellDraft(rows []string) {
 	// Highlight returns cached rows. The mode marker belongs only to this draft.
-	lines := slices.Clone(u.view.painter.Highlight("bash", textsanitize.Safe(u.Text[1:], false)+"\n"))
+	lines := slices.Clone(u.view.Painter.Highlight("bash", textsanitize.Safe(u.Text[1:], false)+"\n"))
 	lines[0] = "!" + lines[0]
 	line, column := 0, 0
 	for i, row := range rows {
@@ -69,7 +69,7 @@ func (u *appServerUI) submitShell() error {
 	u.conversation().Shell = u.takeDraft()
 	u.Shell.Begin(u.Turn)
 	u.setNotice("Shell command submitted", false)
-	u.view.follow()
+	u.view.Follow()
 	return nil
 }
 

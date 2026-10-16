@@ -18,14 +18,14 @@ func TestUISnapshotNativeGroupedSkills(t *testing.T) {
 		t.Run(fmt.Sprintf("main=%t", main), func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			view := u.view
-			view.conversation, view.bare, view.feedOnly = main, !main, !main
-			view.clock = func() time.Time { return time.Date(2026, 10, 9, 12, 0, 0, 0, time.Local) }
-			u.clock = view.clock
+			view.Conversation, view.Bare, view.FeedOnly = main, !main, !main
+			view.Clock = func() time.Time { return time.Date(2026, 10, 9, 12, 0, 0, 0, time.Local) }
+			u.clock = view.Clock
 			var items []appServerItem
 			for i, command := range []string{"skills-mgr get mekugi-owners", "skills-mgr get deliver-vertical-slice", "cat CONTEXT-TESTS.md"} {
 				item := appServerItem{ID: fmt.Sprint(i), Type: "commandExecution", Command: command, ExitCode: new(0), DurationMS: new(int64(40 + i)), AggregatedOutput: new(fmt.Sprintf("# Guide %d\nUse this guide.\n", i))}
 				appServerTestNotify(t, u, "item/started", map[string]any{"threadId": u.Thread, "turnId": "turn", "item": item})
-				if i == 1 && strings.Count(ansi.Strip(strings.Join(view.renderFeed(60, 40).lines, "\n")), "Skill") != 2 {
+				if i == 1 && strings.Count(ansi.Strip(strings.Join(view.RenderFeed(60, 40).Lines, "\n")), "Skill") != 2 {
 					t.Fatal("running skill merged")
 				}
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": u.Thread, "turnId": "turn", "item": item})
@@ -36,17 +36,17 @@ func TestUISnapshotNativeGroupedSkills(t *testing.T) {
 					continue
 				}
 				if restored {
-					clock := view.clock
-					*view = *newLiveActivityView()
-					view.clock = clock
-					view.conversation, view.bare, view.feedOnly = main, !main, !main
+					clock := view.Clock
+					*view = *newActivityAdapter()
+					view.Clock = clock
+					view.Conversation, view.Bare, view.FeedOnly = main, !main, !main
 					u.restoreHistory([]appServerHistoryTurn{{ID: "turn", Status: "completed", CompletedAt: clock().Unix(), Items: items}})
 				}
 				finishPacing(view)
-				feed := view.renderFeed(60, 40)
+				feed := view.RenderFeed(60, 40)
 				found := false
-				for _, snippet := range feed.snippets {
-					block, ok := view.snippetBlock(snippet)
+				for _, snippet := range feed.Snippets {
+					block, ok := view.SnippetBlock(snippet)
 					if !ok || len(block.Members) != 2 {
 						continue
 					}
@@ -62,9 +62,9 @@ func TestUISnapshotNativeGroupedSkills(t *testing.T) {
 					break
 				}
 				if !found {
-					t.Fatalf("no grouped skill dialog target (restored=%t):\n%s", restored, ansi.Strip(strings.Join(feed.lines, "\n")))
+					t.Fatalf("no grouped skill dialog target (restored=%t):\n%s", restored, ansi.Strip(strings.Join(feed.Lines, "\n")))
 				}
-				uisnapshot.Assert(t, fmt.Sprintf("testdata/snapshots/native-grouped-skills-%t.txt", main), strings.Join(feed.lines, "\n")+"\n")
+				uisnapshot.Assert(t, fmt.Sprintf("testdata/snapshots/native-grouped-skills-%t.txt", main), strings.Join(feed.Lines, "\n")+"\n")
 			}
 		})
 	}
@@ -129,7 +129,7 @@ func TestNativeBatchElapsedFailureAndResume(t *testing.T) {
 			finishPacing(view)
 			found := false
 			for _, entry := range view.Entries {
-				for _, block := range u.view.disclosure.Blocks(entry.Values) {
+				for _, block := range u.view.Disclosure.Blocks(entry.Values) {
 					if block.BatchExit {
 						if found || block.Duration != 191129*time.Millisecond || block.ExitCode != 1 {
 							t.Fatalf("incorrect batch timing or exit: %+v", block)
@@ -165,7 +165,7 @@ func TestNativeCapturedBatchKeepsSingleElapsedResult(t *testing.T) {
 				u.view.applyCapturedEdits(data)
 				count := 0
 				for _, entry := range u.view.Entries {
-					for _, block := range u.view.disclosure.Blocks(entry.Values) {
+					for _, block := range u.view.Disclosure.Blocks(entry.Values) {
 						if block.BatchExit {
 							count++
 							if block.Duration != time.Second || block.ExitCode != exit || block.Output == 0 || strings.Join(u.view.retainedOutput(block).View().Lines, "\n") != "retained batch output" {

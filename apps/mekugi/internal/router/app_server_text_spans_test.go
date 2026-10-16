@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -16,7 +18,6 @@ import (
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 
 	"github.com/charmbracelet/x/ansi"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func TestAppServerTypedTokensAcrossSubmissionAndResume(t *testing.T) {
@@ -64,18 +65,17 @@ func TestAppServerTypedTokensAcrossSubmissionAndResume(t *testing.T) {
 	if !ok || text != draft.Text || len(spans) != 3 {
 		t.Fatalf("lost typed spans or bound literal lookalike: %q %+v", text, spans)
 	}
-	if spans[0].Kind != activityui.ImageToken || spans[1].Kind != activityui.FileToken || spans[2].Kind != activityui.SkillToken {
+	if spans[0].Kind != activitypresentation.ImageToken || spans[1].Kind != activitypresentation.FileToken || spans[2].Kind != activitypresentation.SkillToken {
 		t.Fatalf("lost token kinds: %+v", spans)
 	}
-	check := func(v *liveActivityView) {
+	check := func(v *activityAdapter) {
 		t.Helper()
 		entry := v.Entries[0].Source
 		if !reflect.DeepEqual(entry.native.spans, spans) {
 			t.Fatalf("wrong spans: %+v", entry.native.spans)
 		}
-		var out conversationLines
-		v.userItemContinued(&out, entry, 24, false)
-		shown := ansi.Strip(strings.Join(out.lines, "\n"))
+		out := v.testUserItem(entry, 24)
+		shown := ansi.Strip(strings.Join(out.Lines, "\n"))
 		for _, span := range spans {
 			if !strings.Contains(shown, text[span.Start:span.End]) {
 				t.Fatalf("split token: %q", shown)

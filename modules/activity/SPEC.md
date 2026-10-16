@@ -210,20 +210,16 @@ ledger. Final edit totals consume composed saved-review evidence, not cumulative
 caller counters. Presentation cannot finalize captured changes, reconstruct missing
 provider usage or revive replayed processes.
 
-`presentation` owns records, semantic derivation, plain values and canonical flat
-group membership. Typed adapter evidence stays private to source records; published
-values contain no callbacks, terminal state or live output handles. `terminalview`
-owns disclosure annotations keyed by source identity, geometry, styles and wrapping.
-Renderer adapters own focus, offsets, animation and cache invalidation. Main
-invalidates dependent layouts; ordinary Activity updates retain unrelated completed
-layouts. The [presentation contract](CONTRACT.md) defines observable behavior.
+The [presentation contract](CONTRACT.md) defines terminal behavior and the boundary
+between retained observations, terminal state and application navigation.
 
 Retained streams stay with their invocation or segment. Feed publications carry
 bounded tails and scoped output identities rather than whole retained snapshots.
-Feed syntax uses bounded retained context, preserving source headers without
-publishing whole streams. Full immutable snapshots are requested for dialog
-content. An open dialog retains direct output handles with its flat original pages, so feed
-aging does not invalidate them. It refreshes from unpaced source records before
+Visible feed syntax preserves source headers using bounded retained context.
+Ordinary collapsed or offscreen output does not materialize full snapshots;
+expanded content and dialogs can read full retained output. An open dialog retains
+its flat original pages, so feed aging does not invalidate them. It refreshes from
+unpaced source records before
 visible feed reveal and follows newly observed segments. Release falls back to the
 bounded tail without reviving discarded bytes or inventing a successful exit.
 

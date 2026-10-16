@@ -10,7 +10,7 @@ func TestAppServerUnknownExitKeepsOutput(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			u.view.conversation = true
+			u.view.Conversation = true
 			item := appServerItem{ID: "command", Type: "commandExecution", Command: "go test ./...", Status: "failed", AggregatedOutput: new("interrupted output\n")}
 			if restored {
 				var entries []activityPaneEntry

@@ -82,7 +82,7 @@ func (u *appServerUI) restoreContentNotice(message string) {
 
 func (u *appServerUI) restoreHistoryNotice(message string, incomplete bool) {
 	if incomplete {
-		u.agents.status = "History incomplete"
+		u.agents.StatusLabel = "History incomplete"
 	}
 	if r := u.restoring; r != nil && !r.rendered {
 		r.notices = append(r.notices, restoredHistoryNotice{message, incomplete}) // Shown after Main's history.

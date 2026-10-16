@@ -47,11 +47,9 @@ type liveActivityNativeItem struct {
 	searchResults      *int
 	running            bool                             // Started live and not yet completed; replay never sets it.
 	live               bool                             // From a live notification; restored history never sets it.
-	settled            time.Time                        // Successful output stays open from then until its agent's next event.
 	changes            []activitypresentation.ChangeRow // Change rows read from a successful change history, VCS read, or commit.
 	commit             activitypresentation.CommitKey   // The commit object whose files complete changes.
-	collapsed          bool                             // Settled output or a restored block.
-	spans              []activityui.TextSpan            // Attachment spans, not text resembling image labels.
+	spans              []activitypresentation.TextSpan  // Attachment spans, not text resembling image labels.
 	question           uint64                           // Original user entry.
 	thought            time.Duration                    // Reasoning time from its start to completion.
 	replaces           string                           // Pending thinking block this reasoning item takes over.
@@ -77,7 +75,7 @@ func (n *liveActivityNativeItem) unconfirmed() bool {
 	return n != nil && !n.running && n.status != "" && n.status != "completed"
 }
 
-func (v *liveActivityView) entrySeq(entry activityPaneEntry) uint64 {
+func (v *activityAdapter) entrySeq(entry activityPaneEntry) uint64 {
 	for _, current := range v.Entries {
 		if entry.native != nil && entry.native.sameItem(current.Source.native) || entry.native == nil && current.Source.Seq == entry.Seq {
 			return current.Source.Seq
@@ -86,14 +84,14 @@ func (v *liveActivityView) entrySeq(entry activityPaneEntry) uint64 {
 	return 0
 }
 
-func (v *liveActivityView) applyAppServerItem(live bool, cwd, main, thread, turn, id, method, delta string, item appServerItem) {
+func (v *activityAdapter) applyAppServerItem(live bool, cwd, main, thread, turn, id, method, delta string, item appServerItem) {
 	if item.Delivery == "async" && len(item.Questions) > 0 {
 		return
 	}
 	if thread == "" || turn == "" || id == "" {
 		return
 	}
-	entry := activityPaneEntry{Seq: v.LastSeq + 1, Agent: "Main", Kind: "text", Text: item.Text, Observed: v.now(),
+	entry := activityPaneEntry{Seq: v.LastSeq + 1, Agent: "Main", Kind: "text", Text: item.Text, Observed: v.Now(),
 		native: &liveActivityNativeItem{thread: thread, turn: turn, item: id, phase: method, live: live, command: item.Command, status: item.Status, exit: item.ExitCode, duration: appServerDuration(item)}}
 	if thread != main {
 		entry.Agent = "Thread " + thread
@@ -173,13 +171,13 @@ func (v *liveActivityView) applyAppServerItem(live bool, cwd, main, thread, turn
 
 // appServerUserText renders userMessage content as the composer wrote it,
 // with each image as its "[Image N]" label.
-func appServerUserText(content jsontext.Value) (string, []activityui.TextSpan, bool) {
+func appServerUserText(content jsontext.Value) (string, []activitypresentation.TextSpan, bool) {
 	var contents []composerUserContent
 	if len(content) > 0 && json.Unmarshal(content, &contents) != nil {
 		return "", nil, false
 	}
 	var text string
-	var spans []activityui.TextSpan
+	var spans []activitypresentation.TextSpan
 	imageCount := 0
 	for _, content := range contents {
 		if content.Type == "text" {
@@ -199,25 +197,25 @@ func appServerUserText(content jsontext.Value) (string, []activityui.TextSpan, b
 			start := len(text)
 			imageCount++
 			text += fmt.Sprintf("[Image %d]", imageCount)
-			spans = append(spans, activityui.TextSpan{Start: start, End: len(text), Kind: activityui.ImageToken})
+			spans = append(spans, activitypresentation.TextSpan{Start: start, End: len(text), Kind: activitypresentation.ImageToken})
 		}
 	}
 	draft := conversationmodel.Input{Text: text}
 	draft.Skills = unambiguousSkillBindings(text, composerContentSkills(contents), spans)
 	for _, span := range draftDisplaySpans(draft.Draft) {
-		if !slices.ContainsFunc(spans, func(existing activityui.TextSpan) bool {
+		if !slices.ContainsFunc(spans, func(existing activitypresentation.TextSpan) bool {
 			return span.Start < existing.End && span.End > existing.Start
 		}) {
 			spans = append(spans, span)
 		}
 	}
-	slices.SortFunc(spans, func(a, b activityui.TextSpan) int { return a.Start - b.Start })
+	slices.SortFunc(spans, func(a, b activitypresentation.TextSpan) int { return a.Start - b.Start })
 	return text, spans, true
 }
 
 // mergeNative updates the owning activity entry in place. Completed snapshots
 // supersede fragments; duplicate starts and late deltas cannot reopen them.
-func (v *liveActivityView) mergeNative(entry activityPaneEntry) bool {
+func (v *activityAdapter) mergeNative(entry activityPaneEntry) bool {
 	if entry.native == nil {
 		return false
 	}
@@ -273,7 +271,7 @@ func (v *liveActivityView) mergeNative(entry activityPaneEntry) bool {
 	return false
 }
 
-func (v *liveActivityView) removePendingInput(seq uint64) {
+func (v *activityAdapter) removePendingInput(seq uint64) {
 	for i, entry := range v.Entries {
 		if entry.Source.Seq == seq && entry.Source.native != nil && entry.Source.native.phase == "input/pending" {
 			v.removeEntries(i, i+1)

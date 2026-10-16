@@ -8,10 +8,3 @@ func (u *appServerUI) now() time.Time {
 	}
 	return time.Now()
 }
-
-func (v *liveActivityView) now() time.Time {
-	if v.clock != nil {
-		return v.clock()
-	}
-	return time.Now()
-}

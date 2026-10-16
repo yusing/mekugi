@@ -18,11 +18,11 @@ func TestUISnapshotMoveActivityAndDialog(t *testing.T) {
 	file := diffmodel.RenderReviewFile(workspace+"/internal/router/old.txt.new", workspace+"/internal/router/old.txt", "same\n", "same\n")
 	text := editReceiptText(workspace, mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{file}})
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: text, native: &liveActivityNativeItem{thread: "main", item: "move"}}}})
 	var rows []string
 	for _, block := range toolOperationBlocks(text) {
-		rows = append(rows, u.view.painter.Block(block, 100)...)
+		rows = append(rows, u.view.Painter.Block(block, 100)...)
 	}
 	uisnapshot.Assert(t, "testdata/snapshots/move-paths-activity.txt", strings.Join(rows, "\n")+"\n")
 	c := liveDiffChangesController(t, 100, 24, nil)
@@ -89,7 +89,7 @@ func TestUISnapshotHostMoveDialogSyntax(t *testing.T) {
 	item := appServerItem{Status: "completed", Changes: []appServerFileChange{change}}
 	pages := appServerEditPages(item, "/w", "item/completed")
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	if !u.shell.openEditPages(u.view, pages, "internal/{old.go=>new.go}") {
 		t.Fatal("compressed host move did not open its exact page")
 	}

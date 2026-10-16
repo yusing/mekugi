@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
@@ -33,7 +35,7 @@ func TestSubmittedAttachmentHostSchema(t *testing.T) {
 	// Raw Codex UserInput/TextElement wire spelling, not a loopback of input().
 	raw := jsontext.Value(`[{"type":"text","text":"$batch-agent-sessions @FIXME.md non-deferred items","text_elements":[{"byteRange":{"start":0,"end":21},"placeholder":"$batch-agent-sessions"},{"byteRange":{"start":22,"end":31},"placeholder":"@FIXME.md"}]}]`)
 	text, spans, ok := appServerUserText(raw)
-	want := []activityui.TextSpan{{Start: 0, End: 21, Kind: activityui.SkillToken}, {Start: 22, End: 31, Kind: activityui.FileToken}}
+	want := []activitypresentation.TextSpan{{Start: 0, End: 21, Kind: activitypresentation.SkillToken}, {Start: 22, End: 31, Kind: activitypresentation.FileToken}}
 	if !ok || !reflect.DeepEqual(spans, want) {
 		t.Fatalf("host spans=%+v", spans)
 	}
@@ -66,13 +68,12 @@ func TestSubmittedAttachmentHostSchema(t *testing.T) {
 
 func TestUISnapshotSubmittedAttachmentTokens(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	raw := jsontext.Value(`[{"type":"text","text":"$batch-agent-sessions @FIXME.md non-deferred items","text_elements":[{"byteRange":{"start":0,"end":21},"placeholder":"$batch-agent-sessions"},{"byteRange":{"start":22,"end":31},"placeholder":"@FIXME.md"}]}]`)
 	text, spans, _ := appServerUserText(raw)
 	entry := activityPaneEntry{Agent: "You", Text: text, Observed: time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local), native: &liveActivityNativeItem{spans: spans}}
-	var out conversationLines
-	u.view.userItemContinued(&out, entry, 80, false)
-	uisnapshot.AssertTerminal(t, "testdata/snapshots/submitted-attachment-tokens.txt", append(out.lines, "plain after attachments"), 80)
+	out := u.view.testUserItem(entry, 80)
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/submitted-attachment-tokens.txt", append(out.Lines, "plain after attachments"), 80)
 }
 
 func pasteTestImage(t *testing.T) string {
@@ -136,7 +137,7 @@ func TestComposerImagePastePTYLifecycle(t *testing.T) {
 	ready := make(chan struct{})
 	done := make(chan error, 1)
 	// Scrollback must not consume the ESC byte of either paste terminator.
-	u.view.following = false
+	u.view.Following = false
 	go func() {
 		done <- terminalui.WithRawPane(ctx, slave, slave, "", "", func(keys <-chan byte) error {
 			close(ready)

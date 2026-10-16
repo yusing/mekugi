@@ -71,7 +71,7 @@ func vcsCommitFixture(t *testing.T, subject string) (gitFixture, string) {
 func vcsCommandUI(t *testing.T, workspace string) *appServerUI {
 	t.Helper()
 	u := newAppServerSessionTestUI(t, workspace)
-	u.view.conversation = true
+	u.view.Conversation = true
 	return u
 }
 
@@ -88,10 +88,10 @@ func TestVCSCommitShowsTheRecordedCommit(t *testing.T) {
 	u := vcsCommandUI(t, g.dir)
 	now := time.Date(2026, 10, 2, 8, 0, 0, 0, time.UTC)
 	u.clock = func() time.Time { return now }
-	u.view.clock = u.clock
+	u.view.Clock = u.clock
 	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "/usr/bin/bash -lc " + quoteShellWord(script), "cwd": g.dir, "status": "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	u.view.pace(now.Add(time.Second))
+	u.view.testPace(now.Add(time.Second))
 	// Staging folds into the commit; the extra batch row owns invocation timing.
 	// The request is not yet a recorded commit.
 	if got, want := mainFeed(u, 90), "├ Check   working tree · git diff --check\n├ Commit  amend! feat(router): pin latest reply · git\n└ Running shell batch"; got != want {

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 
@@ -27,7 +28,6 @@ import (
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/rollout"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func (u *appServerUI) requestResume(thread string) error {
@@ -297,7 +297,7 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 		if json.Unmarshal(item.Content, &content) == nil {
 			var text strings.Builder
 			var attached []string
-			var spans []activityui.TextSpan
+			var spans []activitypresentation.TextSpan
 			for _, part := range content {
 				if part.Type == "text" {
 					if frames, ok := attachments.Decode(part.Text); ok {

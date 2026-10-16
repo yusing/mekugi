@@ -17,8 +17,8 @@ import (
 )
 
 func TestConversationJoinsConsecutiveUserMessagesInTurn(t *testing.T) {
-	v := newLiveActivityView()
-	v.conversation = true
+	v := newActivityAdapter()
+	v.Conversation = true
 	user := func(turn, id, text string) {
 		v.applyAppServerItem(true, "", "main", "main", turn, id, "item/completed", "", appServerItem{
 			Type: "userMessage", Content: []byte(fmt.Sprintf(`[{"type":"text","text":%q}]`, text)),
@@ -26,35 +26,35 @@ func TestConversationJoinsConsecutiveUserMessagesInTurn(t *testing.T) {
 	}
 	user("t", "one", strings.Repeat("Also make sure different unit types have different colors.\n", 20))
 	user("t", "two", "I do not want blue for everything")
-	feed := v.renderConversation(100)
-	shown := ansi.Strip(strings.Join(feed.lines, "\n"))
-	if strings.Count(shown, "❯") != 1 || !strings.Contains(shown, "  I do not want blue for everything") || len(feed.questions) == 0 {
+	feed := v.testRenderConversation(100)
+	shown := ansi.Strip(strings.Join(feed.Lines, "\n"))
+	if strings.Count(shown, "❯") != 1 || !strings.Contains(shown, "  I do not want blue for everything") || len(feed.Questions) == 0 {
 		t.Fatalf("stacked input did not render as one prompt: %q", shown)
 	}
-	if v.questionRows[v.Entries[1].Source.Seq] <= v.questionRows[v.Entries[0].Source.Seq]+10 {
-		t.Fatalf("stacked input lost its own navigation row: %+v", v.questionRows)
+	if v.QuestionRows[v.Entries[1].Source.Seq] <= v.QuestionRows[v.Entries[0].Source.Seq]+10 {
+		t.Fatalf("stacked input lost its own navigation row: %+v", v.QuestionRows)
 	}
-	second := v.questionRows[v.Entries[1].Source.Seq]
-	if feed.heads[second] != second || feed.heads[second-1] == second {
-		t.Fatalf("continued prompt lost its flash range: heads=%+v target=%d", feed.heads, second)
+	second := v.QuestionRows[v.Entries[1].Source.Seq]
+	if feed.Heads[second] != second || feed.Heads[second-1] == second {
+		t.Fatalf("continued prompt lost its flash range: heads=%+v target=%d", feed.Heads, second)
 	}
-	v.painter.Theme = diffrender.DarkTheme
-	v.feedOnly = true
-	v.flashQuestion, v.flashUntil = v.Entries[1].Source.Seq, time.Now().Add(time.Second)
-	v.offset = second
-	frame := strings.Join(v.render(100, 12, time.Now()), "\n")
-	if !strings.Contains(frame, "I do not want blue for everything") || !strings.Contains(frame, v.painter.Theme.SelectionBackground()) {
+	v.Painter.Theme = diffrender.DarkTheme
+	v.FeedOnly = true
+	v.FlashQuestion, v.FlashUntil = v.Entries[1].Source.Seq, time.Now().Add(time.Second)
+	v.Offset = second
+	frame := strings.Join(v.Render(100, 12, time.Now()), "\n")
+	if !strings.Contains(frame, "I do not want blue for everything") || !strings.Contains(frame, v.Painter.Theme.SelectionBackground()) {
 		t.Fatalf("continued prompt not visible and shaded: %q", frame)
 	}
 	user("next", "three", "A separate turn")
-	shown = ansi.Strip(strings.Join(v.renderConversation(100).lines, "\n"))
+	shown = ansi.Strip(strings.Join(v.testRenderConversation(100).Lines, "\n"))
 	if strings.Count(shown, "❯") != 2 {
 		t.Fatalf("different turns were joined: %q", shown)
 	}
 }
 
 func TestLiveActivityNativeItemsShareStateAndRendering(t *testing.T) {
-	v := newLiveActivityView()
+	v := newActivityAdapter()
 	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/agentMessage/delta", "partial", appServerItem{})
 	first := v.Entries[0].Source.Seq
 	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/started", "", appServerItem{Type: "agentMessage"})
@@ -95,10 +95,10 @@ func TestLiveActivityMainQuestionBranchLink(t *testing.T) {
 		t.Fatal(err)
 	}
 	clicked := false
-	for row, target := range v.feedQuestions {
+	for row, target := range v.FeedQuestions {
 		if target == 1 {
-			x := u.shell.layout.Main.X + v.feedLeft + 2
-			y := u.shell.layout.Main.Y + v.feedTop + row
+			x := u.shell.layout.Main.X + v.FeedLeft + 2
+			y := u.shell.layout.Main.Y + v.FeedTop + row
 			if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", x, y)); err != nil {
 				t.Fatal(err)
 			}
@@ -109,7 +109,7 @@ func TestLiveActivityMainQuestionBranchLink(t *testing.T) {
 			break
 		}
 	}
-	if !clicked || u.shell.output == nil || !v.following {
+	if !clicked || u.shell.output == nil || !v.Following {
 		t.Fatal("reply branch did not open a dialog while preserving follow")
 	}
 	var frame bytes.Buffer
@@ -117,7 +117,7 @@ func TestLiveActivityMainQuestionBranchLink(t *testing.T) {
 		t.Fatalf("original question not visible in dialog: %v", err)
 	}
 	u.shell.outputKey("\x1b")
-	if u.shell.output != nil || !v.following {
+	if u.shell.output != nil || !v.Following {
 		t.Fatal("dialog close changed Main follow")
 	}
 	// Editing an answer after the same prompt is submitted again must retain
@@ -138,8 +138,8 @@ func TestAppServerActivityExcludesMain(t *testing.T) {
 		{Seq: 1, Agent: "/root", Kind: "text", Text: "MAIN_ONLY"},
 		{Seq: 2, Agent: "/root/reviewer", Kind: "text", Text: "CHILD_ONLY"},
 	}, Agents: []activityPaneAgent{{Name: "/root"}, {Name: "/root/reviewer"}}})
-	feed := strings.Join(u.agents.renderFeed(80, 20).lines, "\n")
-	if strings.Contains(feed, "MAIN_ONLY") || !strings.Contains(feed, "CHILD_ONLY") || len(u.agents.Roster()) != 2 {
+	feed := strings.Join(u.agents.RenderFeed(80, 20).Lines, "\n")
+	if strings.Contains(feed, "MAIN_ONLY") || !strings.Contains(feed, "CHILD_ONLY") || len(u.agents.testRoster()) != 2 {
 		t.Fatal("Activity duplicated Main or removed its roster entry")
 	}
 }
@@ -153,15 +153,15 @@ func TestAppServerMainRosterSummary(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := activityPaneAgent{Name: "/root"}
-	if got, _ := u.agents.current(root, time.Now()); ansi.Strip(got) != "Working" {
+	if got, _ := u.agents.testCurrent(root, time.Now()); ansi.Strip(got) != "Working" {
 		t.Fatalf("Main status missing: %q", got)
 	}
 	u.view.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/agentMessage/delta", "Checking the roster", appServerItem{})
-	if got, _ := u.agents.current(root, time.Now()); ansi.Strip(got) != "Checking the roster" {
+	if got, _ := u.agents.testCurrent(root, time.Now()); ansi.Strip(got) != "Checking the roster" {
 		t.Fatalf("Main streaming summary missing: %q", got)
 	}
 	u.view.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Roster fixed"})
-	if got, _ := u.agents.current(root, time.Now()); ansi.Strip(got) != "Roster fixed" {
+	if got, _ := u.agents.testCurrent(root, time.Now()); ansi.Strip(got) != "Roster fixed" {
 		t.Fatalf("Main completed summary stale: %q", got)
 	}
 	if len(u.agents.Entries) != 0 {
@@ -172,37 +172,37 @@ func TestAppServerMainRosterSummary(t *testing.T) {
 func TestAppServerActivityReasoningSummaries(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
-	legacy := newLiveActivityView()
+	legacy := newActivityAdapter()
 	for seq, text := range []string{"Initial public summary", "Updated public summary"} {
 		event := activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: uint64(seq + 1), Agent: "/root/reviewer", Kind: "reasoning", CallID: "summary-1", Text: text}}}
 		u.agents.apply(event)
 		legacy.apply(event)
 		u.view.apply(event)
 	}
-	feed := ansi.Strip(strings.Join(u.agents.renderFeed(80, 20).lines, "\n"))
-	status, _ := u.agents.current(activityPaneAgent{Name: "/root/reviewer"}, time.Now())
+	feed := ansi.Strip(strings.Join(u.agents.RenderFeed(80, 20).Lines, "\n"))
+	status, _ := u.agents.testCurrent(activityPaneAgent{Name: "/root/reviewer"}, time.Now())
 	if !strings.Contains(feed, "Updated public summary") || !strings.Contains(status, "Updated public summary") || len(u.agents.Entries) != 1 {
 		t.Fatal("summary must remain in Activity and update status")
 	}
 	u.agents.Agents = []activityPaneAgent{{Name: "/root/reviewer", Responding: true}}
-	live := strings.Join(u.agents.renderFeed(80, 20).lines, "\n")
+	live := strings.Join(u.agents.RenderFeed(80, 20).Lines, "\n")
 	if !strings.Contains(ansi.Strip(live), "Updated public summary") {
 		t.Fatal("reasoning summary is missing from Activity")
 	}
 	u.agents.Agents[0].Responding = false
-	if idle := strings.Join(u.agents.renderFeed(80, 20).lines, "\n"); !strings.Contains(idle, "Updated public summary") {
+	if idle := strings.Join(u.agents.RenderFeed(80, 20).Lines, "\n"); !strings.Contains(idle, "Updated public summary") {
 		t.Fatal("reasoning transcript disappeared after completion")
 	}
 	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
 		{Seq: 3, Agent: "/root/reviewer", Kind: "reasoning", CallID: "summary-2", Text: "Later public summary"},
 		{Seq: 4, Agent: "/root", Kind: "reasoning", CallID: "main-summary", Text: "Main only summary"},
 	}})
-	retained := ansi.Strip(strings.Join(u.agents.renderFeed(80, 30).lines, "\n"))
+	retained := ansi.Strip(strings.Join(u.agents.RenderFeed(80, 30).Lines, "\n"))
 	if !strings.Contains(retained, "Updated public summary") || !strings.Contains(retained, "Later public summary") || strings.Contains(retained, "Main only summary") {
 		t.Fatalf("Activity lost earlier reasoning or included Main: %q", retained)
 	}
 	u.agents.setDisplayFilter(true, "/root/reviewer")
-	detail := strings.Join(u.agents.renderFeed(80, 20).lines, "\n")
+	detail := strings.Join(u.agents.RenderFeed(80, 20).Lines, "\n")
 	if !strings.Contains(detail, "Updated public summary") || strings.Contains(detail, "Reasoning summary") {
 		t.Fatal("detailed summary must remain visible, not a labelled card")
 	}
@@ -220,9 +220,9 @@ func TestAppServerCommunicationBothAudiences(t *testing.T) {
 		{Seq: 2, Agent: "/root/reviewer", Kind: "reply", message: &activityMessage{from: "/root/reviewer", to: "/root", text: "I checked the link."}},
 		{Seq: 3, Agent: "/root/reviewer", Kind: "final", Text: "The question link is correct."},
 	}, nil)
-	u.view.conversation = true
-	main := ansi.Strip(strings.Join(u.view.renderFeed(90, 40).lines, "\n"))
-	agents := ansi.Strip(strings.Join(u.agents.renderFeed(90, 40).lines, "\n"))
+	u.view.Conversation = true
+	main := ansi.Strip(strings.Join(u.view.RenderFeed(90, 40).Lines, "\n"))
+	agents := ansi.Strip(strings.Join(u.agents.RenderFeed(90, 40).Lines, "\n"))
 	for _, body := range []string{assignment, "I checked the link.", "The question link is correct."} {
 		if !strings.Contains(main, body) || !strings.Contains(agents, body) {
 			t.Fatalf("communication missing from one audience: %q", body)
@@ -236,15 +236,15 @@ func TestAppServerCommunicationBothAudiences(t *testing.T) {
 func TestAppServerOutgoingMessageHeader(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
-	u.view.conversation = true
+	u.view.Conversation = true
 	u.applyActivity([]activityPaneEntry{{Seq: 1, Agent: "/root/reviewer", Kind: "reply", message: &activityMessage{from: "/root", to: "/root/reviewer", text: "Check the answer link."}}}, nil)
-	feed := u.view.renderFeed(90, 20)
-	if len(feed.lines) != 2 || !strings.HasPrefix(ansi.Strip(feed.lines[0]), "→ reviewer") || ansi.Strip(feed.lines[1]) != "│ Check the answer link." {
-		t.Fatalf("outgoing recipient must head Main's message, above its body: %q", feed.lines)
+	feed := u.view.RenderFeed(90, 20)
+	if len(feed.Lines) != 2 || !strings.HasPrefix(ansi.Strip(feed.Lines[0]), "→ reviewer") || ansi.Strip(feed.Lines[1]) != "│ Check the answer link." {
+		t.Fatalf("outgoing recipient must head Main's message, above its body: %q", feed.Lines)
 	}
 	screen := vt.NewEmulator(90, 2)
 	defer screen.Close()
-	if _, err := screen.Write([]byte(feed.lines[0])); err != nil {
+	if _, err := screen.Write([]byte(feed.Lines[0])); err != nil {
 		t.Fatal(err)
 	}
 	if screen.CellAt(0, 0).Content != "→" || screen.CellAt(1, 0).Content != " " || screen.CellAt(2, 0).Content != "r" {
@@ -263,7 +263,7 @@ func TestAppServerActivityGroupsAgentRun(t *testing.T) {
 	}, nil)
 	u.agents.setDisplayFilter(true, "/root/reviewer")
 	var plain []string
-	for _, line := range u.agents.renderFeed(90, 40).lines {
+	for _, line := range u.agents.RenderFeed(90, 40).Lines {
 		plain = append(plain, strings.TrimRight(ansi.Strip(line), " "))
 	}
 	// Narrative events retain their individual timestamps and message direction.
@@ -312,17 +312,17 @@ func TestAppServerNativeAssignmentQuestionLink(t *testing.T) {
 			assignment: &activityAssignment{id: "task-1", from: "/root", to: "/root/reviewer", text: assignment}},
 		{Seq: 2, Agent: "/root/reviewer", Kind: "final", Text: "The question link is correct."},
 	}, nil)
-	u.view.conversation = true
-	main := ansi.Strip(strings.Join(u.view.renderFeed(90, 40).lines, "\n"))
-	agents := ansi.Strip(strings.Join(u.agents.renderFeed(90, 40).lines, "\n"))
+	u.view.Conversation = true
+	main := ansi.Strip(strings.Join(u.view.RenderFeed(90, 40).Lines, "\n"))
+	agents := ansi.Strip(strings.Join(u.agents.RenderFeed(90, 40).Lines, "\n"))
 	if !strings.Contains(main, assignment) || !strings.Contains(agents, assignment) || !strings.Contains(main, "├─✓ finished") || strings.Contains(main, "↩ re:") {
 		t.Fatalf("native NEW_TASK answer was not threaded under its assignment:\n%s\n%s", main, agents)
 	}
 }
 
 func TestLiveActivityQuestionLinksKeepIndividualPrompts(t *testing.T) {
-	v := newLiveActivityView()
-	v.conversation, v.feedOnly = true, true
+	v := newActivityAdapter()
+	v.Conversation, v.FeedOnly = true, true
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
 		{Seq: 1, Agent: "You", Kind: "text", Text: strings.Repeat("Long original prompt\n", 30)},
 		{Seq: 2, Agent: "You", Kind: "text", Text: "Steering prompt", native: &liveActivityNativeItem{thread: "root", turn: "turn", item: "steer"}},
@@ -330,28 +330,28 @@ func TestLiveActivityQuestionLinksKeepIndividualPrompts(t *testing.T) {
 	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/agentMessage/delta", "Live answer", appServerItem{})
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: v.LastSeq + 1, Agent: "You", Kind: "text", Text: "Steering prompt"}}})
 	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Final answer body"})
-	v.render(80, 12, time.Now())
-	if v.questionRows[1] == v.questionRows[2] {
+	v.Render(80, 12, time.Now())
+	if v.QuestionRows[1] == v.QuestionRows[2] {
 		t.Fatal("consecutive user entries share a navigation target")
 	}
-	for row, target := range v.feedQuestions {
+	for row, target := range v.FeedQuestions {
 		if target == 2 {
 			// The pointer underlines the link row it rests on.
-			if !v.handleMouse('h', v.feedTop+row, v.feedLeft+2) || !strings.Contains(v.render(80, 12, time.Now())[v.feedTop-1+row], "\x1b[4m↩ re:") {
+			if !v.testHandleMouse('h', v.FeedTop+row, v.FeedLeft+2) || !strings.Contains(v.Render(80, 12, time.Now())[v.FeedTop-1+row], "\x1b[4m↩ re:") {
 				t.Fatal("hovered question link was not underlined")
 			}
-			v.handleMouse('\r', v.feedTop+row, v.feedLeft+2)
-			frame := strings.Join(v.render(80, 12, time.Now()), "\n")
-			if !strings.Contains(frame, "Steering prompt") || v.questionRows[2] < v.offset || v.questionRows[2] >= v.offset+v.feedRows || v.offset > max(0, v.feedLines-v.feedRows) {
+			v.testHandleMouse('\r', v.FeedTop+row, v.FeedLeft+2)
+			frame := strings.Join(v.Render(80, 12, time.Now()), "\n")
+			if !strings.Contains(frame, "Steering prompt") || v.QuestionRows[2] < v.Offset || v.QuestionRows[2] >= v.Offset+v.FeedRows || v.Offset > max(0, v.FeedLines-v.FeedRows) {
 				t.Fatal("link did not navigate to the individual original steering prompt")
 			}
-			if v.flashQuestion != 2 || !strings.Contains(frame, v.painter.Theme.SelectionBackground()) {
+			if v.FlashQuestion != 2 || !strings.Contains(frame, v.Painter.Theme.SelectionBackground()) {
 				t.Fatal("clicked original question did not flash")
 			}
-			if !v.expireFlash(v.flashUntil) {
+			if !v.ExpireFlash(v.FlashUntil) {
 				t.Fatal("flash expiry did not request a repaint")
 			}
-			if restored := strings.Join(v.render(80, 12, time.Now()), "\n"); strings.Contains(restored, v.painter.Theme.SelectionBackground()) || ansi.Strip(restored) != ansi.Strip(frame) {
+			if restored := strings.Join(v.Render(80, 12, time.Now()), "\n"); strings.Contains(restored, v.Painter.Theme.SelectionBackground()) || ansi.Strip(restored) != ansi.Strip(frame) {
 				t.Fatal("flash did not restore the original message without changing its contents")
 			}
 			return
@@ -361,13 +361,13 @@ func TestLiveActivityQuestionLinksKeepIndividualPrompts(t *testing.T) {
 }
 
 func TestLiveActivityConversationKeepsFullTextAndViewport(t *testing.T) {
-	v := newLiveActivityView()
+	v := newActivityAdapter()
 	text := strings.Repeat("visible line\n", 30) + "END_OF_ANSWER"
 	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: text})
-	compact := v.renderFeed(80, 9)
-	v.conversation = true
-	full := v.renderFeed(80, 9)
-	if len(full.lines) <= len(compact.lines) || !strings.Contains(strings.Join(full.lines, "\n"), "END_OF_ANSWER") {
+	compact := v.RenderFeed(80, 9)
+	v.Conversation = true
+	full := v.RenderFeed(80, 9)
+	if len(full.Lines) <= len(compact.Lines) || !strings.Contains(strings.Join(full.Lines, "\n"), "END_OF_ANSWER") {
 		t.Fatal("Main inherited compact answer clipping")
 	}
 	u, _ := newAppServerTestUI()
@@ -376,15 +376,15 @@ func TestLiveActivityConversationKeepsFullTextAndViewport(t *testing.T) {
 		t.Fatal(err)
 	}
 	appServerTestKeys(t, u, "\x1b[5~")
-	if v.following {
+	if v.Following {
 		t.Fatal("Main did not pause the activity viewport")
 	}
-	offset := v.offset
+	offset := v.Offset
 	v.applyAppServerItem(true, "", "root", "root", "turn", "next", "item/completed", "", appServerItem{Type: "agentMessage", Text: "new answer"})
 	if err := u.paint(&bytes.Buffer{}, 80, 15); err != nil {
 		t.Fatal(err)
 	}
-	if v.following || v.offset != offset || v.unseen != 1 {
+	if v.Following || v.Offset != offset || v.Unseen != 1 {
 		t.Fatal("Main discarded activity scroll/unseen state")
 	}
 }
@@ -402,26 +402,26 @@ func TestLiveActivityMainShortTerminalKeepsNewestLine(t *testing.T) {
 }
 
 func TestAppServerMainDoesNotPinItemFirstRow(t *testing.T) {
-	v := newLiveActivityView()
-	v.conversation, v.feedOnly = true, true
+	v := newActivityAdapter()
+	v.Conversation, v.FeedOnly = true, true
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "You", Kind: "text", Text: "Question?", Observed: time.Now()}}})
 	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: strings.Repeat("answer row\n\n", 20)})
-	v.render(60, 60, time.Now())
-	v.offset, v.following = 6, false
-	lines := v.render(60, 8, time.Now())
+	v.Render(60, 60, time.Now())
+	v.Offset, v.Following = 6, false
+	lines := v.Render(60, 8, time.Now())
 	if strings.Contains(ansi.Strip(lines[0]), "↩") {
 		t.Fatalf("Main pinned an item's first row over its middle: %q", ansi.Strip(lines[0]))
 	}
 }
 
 func TestAppServerActivityHeadingShowsLateRole(t *testing.T) {
-	v := newLiveActivityView()
-	v.childrenOnly = true
+	v := newActivityAdapter()
+	v.ChildrenOnly = true
 	v.apply(activityPaneEvent{Kind: "entries", Agents: []activityPaneAgent{{Name: "/root/probe"}},
 		Entries: []activityPaneEntry{{Seq: 1, Agent: "/root/probe", Kind: "text", Text: "hello", Observed: time.Now()}}})
-	v.render(60, 8, time.Now())
+	v.Render(60, 8, time.Now())
 	v.apply(activityPaneEvent{Kind: "agents", Agents: []activityPaneAgent{{Name: "/root/probe", Role: "explorer"}}})
-	if frame := ansi.Strip(strings.Join(v.render(60, 8, time.Now()), "\n")); !strings.Contains(frame, "probe · explorer") {
+	if frame := ansi.Strip(strings.Join(v.Render(60, 8, time.Now()), "\n")); !strings.Contains(frame, "probe · explorer") {
 		t.Fatalf("heading kept a stale role:\n%s", frame)
 	}
 }
@@ -449,37 +449,37 @@ func TestAppServerPacesBatchedOperations(t *testing.T) {
 	item := map[string]any{"id": "batch", "type": "commandExecution", "command": "ls; rg needle; cat a.go", "commandActions": []map[string]any{
 		{"type": "listFiles", "path": "."}, {"type": "search", "query": "needle"}, {"type": "read", "path": "a.go"}}}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	frame := func() string { return ansi.Strip(strings.Join(u.view.render(100, 20, time.Now()), "\n")) }
+	frame := func() string { return ansi.Strip(strings.Join(u.view.Render(100, 20, time.Now()), "\n")) }
 	if got := frame(); !strings.Contains(got, "List") || strings.Contains(got, "needle") || strings.Contains(got, "a.go") {
 		t.Fatalf("batch did not start with its first operation:\n%s", got)
 	}
 	now := time.Now()
-	if u.view.pace(now) {
+	if u.view.testPace(now) {
 		t.Fatal("paced before the step elapsed")
 	}
-	if !u.view.pace(now.Add(liveActivityPaceStep)) {
+	if !u.view.testPace(now.Add(activityui.PaceStep)) {
 		t.Fatal("second operation did not reveal after one step")
 	}
 	if got := frame(); !strings.Contains(got, "needle") || strings.Contains(got, "a.go") {
 		t.Fatalf("second step revealed the wrong operations:\n%s", got)
 	}
-	u.view.pace(now.Add(3 * liveActivityPaceStep))
-	if got := frame(); !strings.Contains(got, "a.go") || len(u.view.paced) != 0 {
-		t.Fatalf("batch did not finish revealing (paced=%v):\n%s", u.view.paced, got)
+	u.view.testPace(now.Add(3 * activityui.PaceStep))
+	if got := frame(); !strings.Contains(got, "a.go") || len(u.view.Paced) != 0 {
+		t.Fatalf("batch did not finish revealing (paced=%v):\n%s", u.view.Paced, got)
 	}
 
 	// Restored history shows at once.
-	restored := newLiveActivityView()
+	restored := newActivityAdapter()
 	restored.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "List `.`\n\nSearch `needle`",
 		native: &liveActivityNativeItem{thread: "main", turn: "t", item: "old", phase: "item/completed"}}}})
-	if len(restored.paced) != 0 {
+	if len(restored.Paced) != 0 {
 		t.Fatal("restored history was paced")
 	}
 }
 
 // finishPacing reveals every paced operation, as frames eventually do.
-func finishPacing(views ...*liveActivityView) {
+func finishPacing(views ...*activityAdapter) {
 	for _, view := range views {
-		view.pace(time.Now().Add(time.Hour))
+		view.testPace(time.Now().Add(time.Hour))
 	}
 }

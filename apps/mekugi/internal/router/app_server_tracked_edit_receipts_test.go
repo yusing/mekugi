@@ -29,7 +29,7 @@ func TestObservedEditReceiptBeforeHostItemSurvivesSegmentRefresh(t *testing.T) {
 		HostItems: []string{"cmd"}, Files: []diffmodel.ReviewFile{file}, EditReceipt: "Edit `a.go` +1 -1 · python3"}, false)
 	command := "python3 - <<'PY'\np='a.go';s=open(p).read().replace('before','after');open(p,'w').write(s)\nPY\ngo test ./..."
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": appServerItem{ID: "cmd", Type: "commandExecution", Command: command, Status: "inProgress"}})
-	for _, view := range []*liveActivityView{u.view, u.agents} {
+	for _, view := range []*activityAdapter{u.view, u.agents} {
 		for _, entry := range view.Entries {
 			if entry.Source.native == nil || entry.Source.native.item != "cmd" {
 				continue
@@ -62,7 +62,7 @@ func trackedEditReceiptData(thread string, calls ...string) *liveDiffData {
 	return data
 }
 
-func assertTrackedReceiptStats(t *testing.T, view *liveActivityView, entry int) {
+func assertTrackedReceiptStats(t *testing.T, view *activityAdapter, entry int) {
 	t.Helper()
 	blocks := view.blocks(entry)
 	counts := map[string][2]int{}
@@ -76,7 +76,7 @@ func assertTrackedReceiptStats(t *testing.T, view *liveActivityView, entry int) 
 			if block.StatScale != 4 || block.ExitCode != 0 || block.Skipped || block.Running {
 				t.Fatalf("captured counts lost bars or borrowed segment failure: %+v", block)
 			}
-			frame = append(frame, view.painter.Block(block, 120)...)
+			frame = append(frame, view.Painter.Block(block, 120)...)
 		}
 	}
 	if !reflect.DeepEqual(counts, map[string][2]int{"a.go": {3, 1}, "b.go": {1, 2}}) {
@@ -181,10 +181,10 @@ func TestUISnapshotTrackedEditReceiptOutputSourceOnlyInDialog(t *testing.T) {
 	if len(pages) != 3 || pages[0].Code != "cat > a.go" || pages[2].Code != "cat > b.go" {
 		t.Fatalf("edit output dialog: %+v", pages)
 	}
-	feed := u.agents.renderFeed(100, 20)
-	assertNativeUISnapshot(t, "captured-edit-output", feed.lines)
-	row := slices.IndexFunc(feed.lines, func(line string) bool { return strings.Contains(ansi.Strip(line), "a.go diagnostic") })
-	if row < 0 || feed.snippets[row].block == editNavigationSnippet || !u.shell.openOutput(u.agents, feed.snippets[row]) {
+	feed := u.agents.RenderFeed(100, 20)
+	assertNativeUISnapshot(t, "captured-edit-output", feed.Lines)
+	row := slices.IndexFunc(feed.Lines, func(line string) bool { return strings.Contains(ansi.Strip(line), "a.go diagnostic") })
+	if row < 0 || feed.Snippets[row].Block == activityui.EditNavigationSnippet || !u.shell.openOutput(u.agents, feed.Snippets[row]) {
 		t.Fatalf("output row does not open its output: row %d", row)
 	}
 	rows := make([]string, 12)
@@ -193,7 +193,7 @@ func TestUISnapshotTrackedEditReceiptOutputSourceOnlyInDialog(t *testing.T) {
 }
 
 func TestAppServerTrackedEditReceiptExactAnchor(t *testing.T) {
-	view := newLiveActivityView()
+	view := newActivityAdapter()
 	add := func(seq uint64, thread, item string) {
 		source := "cat > a.go"
 		view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
@@ -292,7 +292,7 @@ func TestAppServerTrackedEditReceiptKeepsSiblingCombinedOutput(t *testing.T) {
 			if len(blocks) != 1 || blocks[0].Verb != "Edited" || blocks[0].Code != "" || u.view.retainedOutput(blocks[0]) != output || !reflect.DeepEqual(blocks[0].Tail, tail) {
 				t.Fatalf("grouped sibling lost combined host output: %+v", blocks)
 			}
-			if page := u.view.painter.DialogPage(snapshotOutput(blocks[0], u.view.retainedOutput(blocks[0])), 100); page.Text != "host diagnostic" {
+			if page := u.view.Painter.DialogPage(snapshotOutput(blocks[0], u.view.retainedOutput(blocks[0])), 100); page.Text != "host diagnostic" {
 				t.Fatalf("combined output dialog lost content: %q", page.Text)
 			}
 		}
@@ -334,7 +334,7 @@ func TestObservedEditReceiptsBeforeHostRows(t *testing.T) {
 				path, call := fmt.Sprintf("a%d.go", i), fmt.Sprintf("cmd%d", i)
 				appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": appServerItem{
 					ID: call, Type: "commandExecution", Command: "cat > " + path + " <<'EOF'\nafter\nEOF\ngo test ./...", Status: "inProgress"}})
-				for _, view := range []*liveActivityView{u.view, u.agents} {
+				for _, view := range []*activityAdapter{u.view, u.agents} {
 					found := false
 					for _, entry := range view.Entries {
 						if entry.Source.native == nil || entry.Source.native.item != call {

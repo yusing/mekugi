@@ -215,7 +215,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 				var rows []string
 				for _, block := range u.view.blocks(0) {
 					if _, _, _, _, ok := activityui.EditStat(block.Label); ok {
-						rows = append(rows, u.view.painter.Block(block, 120)...)
+						rows = append(rows, u.view.Painter.Block(block, 120)...)
 					}
 				}
 				name := "tracked-python-edited-before-test"
@@ -615,7 +615,7 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 							if len(u.shell.liveDock.Order) != 0 || strings.Contains(screen.String(), "LIVE ·") {
 								t.Fatal("completed native command retained the live dock")
 							}
-							for _, view := range []*liveActivityView{u.view, u.agents} {
+							for _, view := range []*activityAdapter{u.view, u.agents} {
 								for _, entry := range view.Entries {
 									if entry.Source.native != nil && entry.Source.native.item == "edit" {
 										if !u.shell.openActivityEdit(view, entry.Source.Seq, "source.go") || !strings.Contains(u.shell.output.pages[0].Code, "+package p; var B=2") {

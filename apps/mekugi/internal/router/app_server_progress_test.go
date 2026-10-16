@@ -98,8 +98,8 @@ func TestAppServerProgressUnfinishedChildWait(t *testing.T) {
 	// A later turn must not restart animation for the restored wait.
 	agent := *u.session.agent(u.session.paths["child"])
 	agent.Responding = true
-	first, _ := u.agents.current(agent, time.Unix(0, 0))
-	second, _ := u.agents.current(agent, time.Unix(1, 0))
+	first, _ := u.agents.testCurrent(agent, time.Unix(0, 0))
+	second, _ := u.agents.testCurrent(agent, time.Unix(1, 0))
 	if first != second {
 		t.Fatal("restored wait animated in a later turn")
 	}
@@ -122,10 +122,10 @@ func TestAppServerWaitRosterOnly(t *testing.T) {
 			}
 			check := func(want string) {
 				t.Helper()
-				if rows := feed.renderFeed(100, 30).lines; len(rows) != 0 {
+				if rows := feed.RenderFeed(100, 30).Lines; len(rows) != 0 {
 					t.Fatalf("wait leaked into transcript: %q", rows)
 				}
-				if got, _ := u.agents.current(activityPaneAgent{Name: name}, time.Now()); !strings.Contains(ansi.Strip(got), want) {
+				if got, _ := u.agents.testCurrent(activityPaneAgent{Name: name}, time.Now()); !strings.Contains(ansi.Strip(got), want) {
 					t.Fatalf("roster = %q, want %q", got, want)
 				}
 			}

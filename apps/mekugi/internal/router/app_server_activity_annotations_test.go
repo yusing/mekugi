@@ -52,7 +52,7 @@ func TestAppServerSearchResultCounts(t *testing.T) {
 			if len(u.view.Entries) != 1 || len(u.view.blocks(0)) != 1 || u.view.blocks(0)[0].Results == nil || *u.view.blocks(0)[0].Results != tc.want {
 				t.Fatalf("lost count: %+v", u.view.Entries)
 			}
-			painted := strings.Join(u.view.painter.Block(u.view.blocks(0)[0], 120), "\n")
+			painted := strings.Join(u.view.Painter.Block(u.view.blocks(0)[0], 120), "\n")
 			if !strings.Contains(painted, activityui.ResultCount(count)) {
 				t.Fatalf("not muted: %q", painted)
 			}
@@ -95,7 +95,7 @@ func TestAppServerFailedCodeModeCellShowsItsError(t *testing.T) {
 	for _, child := range []bool{false, true} {
 		t.Run(map[bool]string{false: "main", true: "child"}[child], func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			u.view.conversation = true
+			u.view.Conversation = true
 			activity := newSubagentActivity()
 			activity.attachNativePane("main")
 			proxy := &mekugiProxy{activity: activity}
@@ -123,7 +123,7 @@ func TestAppServerFailedCodeModeCellShowsItsError(t *testing.T) {
 				t.Fatalf("failed cell entries: %+v", view.Entries)
 			}
 			if !child {
-				got := ansi.Strip(strings.Join(view.renderFeed(90, 40).lines, "\n"))
+				got := ansi.Strip(strings.Join(view.RenderFeed(90, 40).Lines, "\n"))
 				if !strings.Contains(got, "✗ Main") || !strings.Contains(got, "│ exec script failed: SyntaxError: Unexpected token '<<'") {
 					t.Fatalf("Main lacks the failed cell:\n%s", got)
 				}
@@ -136,7 +136,7 @@ func TestAppServerFailedCodeModeCellShowsItsError(t *testing.T) {
 // say so rather than implying the model saw it.
 func TestAppServerUnreturnedCodeModeOutputIsNoted(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.conversation = true
+	u.view.Conversation = true
 	activity := newSubagentActivity()
 	activity.attachNativePane("main")
 	trace := newNativeTraceFixture(t)
@@ -176,7 +176,7 @@ func TestAppServerUnreturnedCodeModeOutputIsNoted(t *testing.T) {
 		proxy.observeCodeModeFailures("main", "exec", request, nil)
 		u.applyObservedActivity()
 	}
-	got := ansi.Strip(strings.Join(u.view.renderFeed(90, 60).lines, "\n"))
+	got := ansi.Strip(strings.Join(u.view.RenderFeed(90, 60).Lines, "\n"))
 	under := "Ran git log\n│     ┆ commit abc\n│     " + unreturnedOutputNote + "\n"
 	if strings.Count(got, unreturnedOutputNote) != 1 || !strings.Contains(got, under) {
 		t.Fatalf("want one note, under git log's output:\n%s", got)

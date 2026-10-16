@@ -184,7 +184,7 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 	if !slices.Equal(pane, wantPane) {
 		t.Fatalf("Activity history:\n%s\nwant:\n%s", strings.Join(pane, "\n"), strings.Join(wantPane, "\n"))
 	}
-	feed := ansi.Strip(strings.Join(u.agents.renderFeed(100, 80).lines, "\n"))
+	feed := ansi.Strip(strings.Join(u.agents.RenderFeed(100, 80).Lines, "\n"))
 	for _, text := range []string{"Inspect the change.", "Keep going.", "I found a failure.", "ReferenceError"} {
 		if !strings.Contains(feed, text) {
 			t.Fatalf("Activity missing %q: %s", text, feed)
@@ -233,7 +233,7 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 func TestAppServerResumeDefersHistoryButKeepsActiveTurn(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.Thread, u.resumeThread = "", "saved"
-	u.agents = newLiveActivityView()
+	u.agents = newActivityAdapter()
 	appServerTestRequest(t, u, "1", "thread/resume")
 	appServerTestMessage(t, u, `{"id":1,"result":{"thread":{"id":"saved","turns":[{"id":"active","status":"inProgress","items":[{"type":"userMessage","id":"q","content":[{"type":"text","text":"Still running"}]}]}]}}}`)
 	if u.Turn != "active" || !u.session.agent("/root").Responding || len(u.view.Entries) != 0 {

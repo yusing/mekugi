@@ -3,7 +3,6 @@ package router
 import (
 	"bytes"
 	"fmt"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -36,7 +35,7 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 	if err := u.paint(&bytes.Buffer{}, 120, 28); err != nil {
 		t.Fatal(err)
 	}
-	main := ansi.Strip(strings.Join(u.view.renderFeed(110, 50).lines, "\n"))
+	main := ansi.Strip(strings.Join(u.view.RenderFeed(110, 50).Lines, "\n"))
 	if strings.Contains(main, "End of requested reply") || !strings.Contains(main, "↩ Open reply") {
 		t.Fatalf("Main did not collapse the actual message: %s", main)
 	}
@@ -54,12 +53,12 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 		t.Fatal("reply has no cross-pane identity")
 	}
 	clicked := false
-	for row, target := range u.view.feedQuestions {
+	for row, target := range u.view.FeedQuestions {
 		if target != seq {
 			continue
 		}
-		x := u.shell.layout.Main.X + u.view.feedLeft + 1
-		y := u.shell.layout.Main.Y + u.view.feedTop + row
+		x := u.shell.layout.Main.X + u.view.FeedLeft + 1
+		y := u.shell.layout.Main.Y + u.view.FeedTop + row
 		if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", x, y)); err != nil {
 			t.Fatal(err)
 		}
@@ -70,7 +69,7 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 		break
 	}
 	if !clicked || u.shell.output == nil || u.shell.DiffOpen {
-		t.Fatalf("reply link did not open modal: clicked=%v seq=%d links=%v diff=%v", clicked, seq, u.view.feedQuestions, u.shell.DiffOpen)
+		t.Fatalf("reply link did not open modal: clicked=%v seq=%d links=%v diff=%v", clicked, seq, u.view.FeedQuestions, u.shell.DiffOpen)
 	}
 	screen := vt.NewEmulator(120, 28)
 	defer screen.Close()
@@ -120,32 +119,8 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 	}
 }
 
-func TestNativeAssignmentExcerptWrapsAndRetainsTarget(t *testing.T) {
-	v := newLiveActivityView()
-	var out conversationLines
-	v.replyContext(&out, activityPaneEntry{Seq: 42, Kind: "assignment", assignment: &activityAssignment{text: "Review the response and verify the assignment excerpt wraps without losing its navigation target."}}, "│ ", 36)
-	v.replyExcerpt(&out, activityPaneEntry{Seq: 43}, "The response excerpt remains visible.", "│ ", "│ ", 36, conversationLatestRows)
-	if len(out.lines) < 5 || !strings.HasPrefix(ansi.Strip(out.lines[1]), "│ ▎ Review") || !strings.HasPrefix(ansi.Strip(out.lines[2]), "│ ▎ ") {
-		t.Fatalf("assignment was not separately quoted and wrapped: %q", out.lines)
-	}
-	if !strings.HasSuffix(ansi.Strip(out.lines[2]), "…") || strings.TrimSpace(ansi.Strip(out.lines[2])) == "│ ▎ …" {
-		t.Fatalf("assignment ellipsis must end the last excerpt line: %q", out.lines)
-	}
-	for i, line := range out.lines {
-		if ansi.StringWidth(line) > 38 {
-			t.Fatalf("row %d overflows: %q", i, line)
-		}
-		if i < 3 && out.questions[i] != 42 {
-			t.Fatalf("assignment row %d lost its target", i)
-		}
-	}
-	if !strings.Contains(ansi.Strip(strings.Join(out.lines, "\n")), "The response excerpt") || out.questions[len(out.questions)-1] != 43 {
-		t.Fatal("response excerpt or its Activity target was lost")
-	}
-}
-
 func TestLiveActivitySkillNamesBold(t *testing.T) {
-	v := newLiveActivityView()
+	v := newActivityAdapter()
 	for _, operand := range []string{"golang-best-practices", "golang-best-practices/references/api.md 1:20", "run golang-best-practices/scripts/check.sh --all", "run  golang-best-practices/scripts/check.sh", "run\tgolang-best-practices/scripts/check.sh"} {
 		command := "skills-mgr get " + operand
 		if strings.HasPrefix(operand, "run ") || strings.HasPrefix(operand, "run\t") {
@@ -156,46 +131,10 @@ func TestLiveActivitySkillNamesBold(t *testing.T) {
 		if block.Verb != "Skill" {
 			t.Fatalf("skill command misclassified: %q", classified)
 		}
-		rendered := strings.Join(v.painter.Block(block, 120), "\n")
+		rendered := strings.Join(v.Painter.Block(block, 120), "\n")
 		if !strings.Contains(rendered, "\x1b[1mgolang-best-practices"+terminalui.Undim) || !strings.Contains(ansi.Strip(rendered), operand) {
 			t.Fatalf("skill name not bold or operand changed: %q", rendered)
 		}
-	}
-}
-
-func TestNativeReplyExcerptEllipsisStaysInline(t *testing.T) {
-	v := newLiveActivityView()
-	var out conversationLines
-	v.replyExcerpt(&out, activityPaneEntry{Seq: 43}, "First response line.\nSecond response line.\nThird response line.", "│ ", "│ ", 24, conversationEarlierRows)
-	if len(out.lines) != 3 || ansi.Strip(out.lines[1]) != "│ Second response line.…" {
-		t.Fatalf("response ellipsis did not stay inline: %q", out.lines)
-	}
-	for _, line := range out.lines {
-		if ansi.StringWidth(line) > 26 {
-			t.Fatalf("excerpt overflow: %q", line)
-		}
-	}
-}
-
-func TestNativeExcerptEllipsisSkipsParagraphGaps(t *testing.T) {
-	v := newLiveActivityView()
-	var out conversationLines
-	v.replyContext(&out, activityPaneEntry{Seq: 42, Kind: "assignment", assignment: &activityAssignment{text: "Fix the finding.\n\nThen rerun the tests.\n\nReport back."}}, "", 40)
-	v.replyExcerpt(&out, activityPaneEntry{Seq: 43}, "APPROVE. No remaining actionable findings.\n\nVerified with make test.\n\nDone.", "", "", 60, conversationEarlierRows)
-	got := make([]string, len(out.lines))
-	for i, line := range out.lines {
-		got[i] = ansi.Strip(line)
-	}
-	want := []string{
-		got[0],
-		"▎ Fix the finding.",
-		"▎ Then rerun the tests.…",
-		"APPROVE. No remaining actionable findings.",
-		"Verified with make test.…",
-		"↩ Open reply · +1 line",
-	}
-	if !slices.Equal(got, want) {
-		t.Fatalf("excerpt rows:\n got %q\nwant %q", got, want)
 	}
 }
 
@@ -203,8 +142,8 @@ func TestNativeRepliesShareHeaderQuoteAnswerLayout(t *testing.T) {
 	for _, width := range []int{32, 90} {
 		for _, kind := range []string{"main raw", "agent raw", "agent excerpt"} {
 			t.Run(fmt.Sprintf("%s/%d", kind, width), func(t *testing.T) {
-				v := newLiveActivityView()
-				v.conversation = true
+				v := newActivityAdapter()
+				v.Conversation = true
 				question := activityPaneEntry{Seq: 1, Agent: "You", Kind: "text", Text: "Original request.\n\nSecond detail.\n\nThird detail.", Observed: time.Now()}
 				entry := activityPaneEntry{Seq: 2, Agent: "Main", Kind: "text", Text: "Answer body.", native: &liveActivityNativeItem{question: 1}}
 				block := activityui.Block{Kind: "text", Body: entry.Text}
@@ -220,28 +159,28 @@ func TestNativeRepliesShareHeaderQuoteAnswerLayout(t *testing.T) {
 					{Source: question, Values: activityui.Values(nil)},
 					{Source: entry, Values: activityui.Values([]activityui.Block{block})},
 				}
-				run := v.conversationItem(1, 1, width, conversationThread{})
-				if len(run.lines) < 5 {
-					t.Fatalf("missing reply rows: %q", run.lines)
+				run := v.testConversationItem(1, 1, width, activityui.ConversationThread{})
+				if len(run.Lines) < 5 {
+					t.Fatalf("missing reply rows: %q", run.Lines)
 				}
-				for i, line := range run.lines {
+				for i, line := range run.Lines {
 					plain := ansi.Strip(line)
 					if ansi.StringWidth(line) > width {
 						t.Fatalf("row %d exceeds width: %q", i, plain)
 					}
-					if i >= 1 && i <= 3 && run.questions[i] != question.Seq {
+					if i >= 1 && i <= 3 && run.Questions[i] != question.Seq {
 						t.Fatalf("context row %d lost navigation", i)
 					}
 				}
 				answerRow := 4
 				if kind == "main raw" {
 					answerRow++
-					if run.questions[4] != 0 {
+					if run.Questions[4] != 0 {
 						t.Fatal("Main's reply boundary gained a navigation target")
 					}
 				}
-				if !strings.Contains(ansi.Strip(run.lines[1]), "↩ re:") || strings.Contains(ansi.Strip(run.lines[1]), "Original") || !strings.HasSuffix(ansi.Strip(run.lines[2]), "▎ Original request.") || !strings.HasSuffix(ansi.Strip(run.lines[3]), "▎ Second detail.…") || !strings.HasSuffix(ansi.Strip(run.lines[answerRow]), "Answer body.") {
-					t.Fatalf("expected header, quoted excerpt, answer: %q", run.lines)
+				if !strings.Contains(ansi.Strip(run.Lines[1]), "↩ re:") || strings.Contains(ansi.Strip(run.Lines[1]), "Original") || !strings.HasSuffix(ansi.Strip(run.Lines[2]), "▎ Original request.") || !strings.HasSuffix(ansi.Strip(run.Lines[3]), "▎ Second detail.…") || !strings.HasSuffix(ansi.Strip(run.Lines[answerRow]), "Answer body.") {
+					t.Fatalf("expected header, quoted excerpt, answer: %q", run.Lines)
 				}
 			})
 		}

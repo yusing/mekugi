@@ -22,10 +22,10 @@ func TestComposerPastePausedTranscriptThenReference(t *testing.T) {
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
 	u.Turn = "active"
-	u.view.following = false
+	u.view.Following = false
 	composerShellKeys(t, u, "\x1b[200~'"+image+"'\x1b[201~")
-	if u.paste || u.shell.input.Pasting() || len(u.Images) != 1 || u.Text != "[Image 1] " || u.view.following {
-		t.Fatalf("paste on scrollback: draft=%q image=%v paste=%v/%v following=%v", u.Text, u.Images, u.paste, u.shell.input.Pasting(), u.view.following)
+	if u.paste || u.shell.input.Pasting() || len(u.Images) != 1 || u.Text != "[Image 1] " || u.view.Following {
+		t.Fatalf("paste on scrollback: draft=%q image=%v paste=%v/%v following=%v", u.Text, u.Images, u.paste, u.shell.input.Pasting(), u.view.Following)
 	}
 	u.shell.selection = &terminalSelection{Selection: selectedTerminalText("quote"), mention: "message"}
 	composerShellKeys(t, u, "rtyped")
@@ -68,7 +68,7 @@ func TestUISnapshotComposerPasteAndReferenceOnScrollback(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
-	u.view.following = false
+	u.view.Following = false
 	composerShellKeys(t, u, "\x1b[200~'"+pasteTestImage(t)+"'\x1b[201~")
 	u.shell.selection = &terminalSelection{Selection: selectedTerminalText("quote"), mention: "message"}
 	composerShellKeys(t, u, "rtyped")

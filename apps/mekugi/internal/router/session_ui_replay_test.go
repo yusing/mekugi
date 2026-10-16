@@ -51,7 +51,7 @@ func replayPlaybackTestNew(t *testing.T) *uiReplayPlayback {
 	t.Helper()
 	p := newUIReplayPlayback(new(activitymodel.Service), t.Context(), replayPlaybackTestSource(), 1)
 	t.Cleanup(p.close)
-	p.ui.view.painter.Theme, p.ui.agents.painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
+	p.ui.view.Painter.Theme, p.ui.agents.Painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
 	return p
 }
 
@@ -75,7 +75,7 @@ func TestSessionUIReplayPlaybackUsesRecordedClockAndSeekReset(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantNow := p.Source.Start.Add(4500 * time.Millisecond)
-	if !p.At.Equal(wantNow) || !p.ui.now().Equal(wantNow) || !p.ui.view.clock().Equal(wantNow) || !p.ui.agents.clock().Equal(wantNow) {
+	if !p.At.Equal(wantNow) || !p.ui.now().Equal(wantNow) || !p.ui.view.Clock().Equal(wantNow) || !p.ui.agents.Clock().Equal(wantNow) {
 		t.Fatal("presentation clocks are not tied to recorded position")
 	}
 	command := p.ui.session.commands[[3]string{"root", "turn", "command"}]

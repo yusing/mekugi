@@ -86,21 +86,21 @@ func TestPaneScrollUnified(t *testing.T) {
 		if !ok {
 			t.Fatal("missing scroll binding")
 		}
-		v := newLiveActivityView()
-		v.following = false
-		v.offset = 50
-		v.feedRows = 10
-		v.feedLines = 100
-		v.scrollKey(key)
-		if v.offset != next || v.following != (follow || next >= 90) {
-			t.Fatalf("agents %c: %d %v, expected %d %v", key, v.offset, v.following, next, follow)
+		v := newActivityAdapter()
+		v.Following = false
+		v.Offset = 50
+		v.FeedRows = 10
+		v.FeedLines = 100
+		v.ScrollKey(key)
+		if v.Offset != next || v.Following != (follow || next >= 90) {
+			t.Fatalf("agents %c: %d %v, expected %d %v", key, v.Offset, v.Following, next, follow)
 		}
 	}
-	v := newLiveActivityView()
-	v.feedRows = 10
-	v.feedLines = 100
-	v.handleMouse('k', 2, 2)
-	if v.offset != 87 || v.following {
+	v := newActivityAdapter()
+	v.FeedRows = 10
+	v.FeedLines = 100
+	v.testHandleMouse('k', 2, 2)
+	if v.Offset != 87 || v.Following {
 		t.Fatalf("wheel did not pause/scroll: %+v", v)
 	}
 
@@ -199,7 +199,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			}
 			assertFollow := func(frame string) {
 				t.Helper()
-				if !view.following || view.offset != max(0, view.feedLines-view.feedRows) || !strings.Contains(frame, "LATEST_TRANSCRIPT") || strings.Contains(frame, "Back to bottom") {
+				if !view.Following || view.Offset != max(0, view.FeedLines-view.FeedRows) || !strings.Contains(frame, "LATEST_TRANSCRIPT") || strings.Contains(frame, "Back to bottom") {
 					t.Fatalf("lost following:\n%s", frame)
 				}
 			}
@@ -210,7 +210,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			assertLiveFollow := func(frame string) {
 				t.Helper()
 				body := strings.Join(strings.Split(frame, "\n")[:u.shell.layout.Roster.Y], "\n")
-				if !view.following || strings.Contains(body, "LATEST_TRANSCRIPT") {
+				if !view.Following || strings.Contains(body, "LATEST_TRANSCRIPT") {
 					t.Fatalf("live replacement lost follow or retained transcript:\n%s", frame)
 				}
 			}
@@ -219,7 +219,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			assertLiveFollow(paint(120, 40))
 			u.shell.DiffOpen = true
 			paint(120, 40)
-			if !view.following {
+			if !view.Following {
 				t.Fatal("opening Diff paused transcript")
 			}
 			u.shell.DiffOpen = false
@@ -227,19 +227,19 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			u.shell.preview(previewmodel.Preview{ID: "edit", Workspace: workspace}, false)
 			revealNativeDock(u.shell)
 			assertFollow(paint(140, 32))
-			view.scrollKey(terminalui.PaneWheelDown)
+			view.ScrollKey(terminalui.PaneWheelDown)
 			assertFollow(paint(140, 32))
-			view.scrollKey(terminalui.PaneWheelUp)
+			view.ScrollKey(terminalui.PaneWheelUp)
 			frame := paint(140, 32)
-			if view.following || !strings.Contains(frame, "↓ Back to bottom · esc") {
+			if view.Following || !strings.Contains(frame, "↓ Back to bottom · esc") {
 				t.Fatalf("missing manual scrollback hint:\n%s", frame)
 			}
-			offset := view.offset
+			offset := view.Offset
 			if activity {
 				if err := u.shell.key('r'); err != nil {
 					t.Fatal(err)
 				}
-				if view.following || view.offset != offset {
+				if view.Following || view.Offset != offset {
 					t.Fatal("r resumed Activity follow")
 				}
 				if strings.Contains(frame, "r follow") {
@@ -248,7 +248,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			}
 			view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 2, Agent: caller, Kind: "text", Text: "LATEST_TRANSCRIPT new"}}})
 			paint(140, 32)
-			if view.following || view.offset != offset {
+			if view.Following || view.Offset != offset {
 				t.Fatal("new output moved manual scrollback")
 			}
 			if err := u.shell.key(27); err != nil {
@@ -259,17 +259,17 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 				t.Fatal(err)
 			}
 			assertFollow(paint(140, 32))
-			if view.unseen != 0 {
+			if view.Unseen != 0 {
 				t.Fatal("Escape retained unseen count")
 			}
-			view.scrollKey('b')
+			view.ScrollKey('b')
 			paint(140, 32)
-			for !view.following {
-				view.scrollKey(terminalui.PaneWheelDown)
+			for !view.Following {
+				view.ScrollKey(terminalui.PaneWheelDown)
 			}
 			assertFollow(paint(140, 32))
 			u.shell.openEntry(view, 1)
-			if !view.following {
+			if !view.Following {
 				t.Fatal("opening a snippet paused follow")
 			}
 		})

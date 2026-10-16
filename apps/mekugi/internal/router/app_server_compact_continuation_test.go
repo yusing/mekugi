@@ -239,9 +239,9 @@ func TestAppServerCompactCancelCompletionBeforeAckDoesNotQuitOrContinue(t *testi
 
 func TestUISnapshotNativeCompactQueuedCancel(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
-	u.view.clock = u.clock
+	u.view.Clock = u.clock
 	u.model, u.reasoningEffort = "snapshot-model", "high"
 	appServerTestTurn(t, u, "work")
 	appServerTestKeys(t, u, "/compact\t")
@@ -331,10 +331,10 @@ func TestUISnapshotNativeCompactQueuedContinuation(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.proxy = &mekugiProxy{}
 	u.session.start(u.Thread, "")
-	u.agents = newLiveActivityView()
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.agents = newActivityAdapter()
+	u.view.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
-	u.view.clock = u.clock
+	u.view.Clock = u.clock
 	u.model, u.reasoningEffort = "snapshot-model", "high"
 	r := queueBusyCompact(t, u, w)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID))
@@ -480,9 +480,9 @@ func TestAppServerCompactSteerCancelDuringInterrupt(t *testing.T) {
 func TestUISnapshotNativeCompactSteerInterrupt(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.proxy = &mekugiProxy{}
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
-	u.view.clock = u.clock
+	u.view.Clock = u.clock
 	u.model, u.reasoningEffort = "snapshot-model", "high"
 	appServerTestTurn(t, u, "work")
 	appServerTestKeys(t, u, "/compact\r")

@@ -20,30 +20,38 @@ import (
 	terminalui "github.com/yusing/mekugi/libraries/terminalui"
 )
 
+// invalidateEntry republishes direct fixture edits through the renderer cache.
+func (v *activityAdapter) invalidateEntry(seq uint64) {
+	if i := slices.IndexFunc(v.Entries, func(record liveActivityRecord) bool { return record.Source.Seq == seq }); i >= 0 {
+		v.Model.Revise(i)
+	}
+	v.View.InvalidateRuns(seq)
+}
+
 func TestEditHoverDecoratesOnlyPointedText(t *testing.T) {
 	for _, main := range []bool{false, true} {
-		v := newLiveActivityView()
-		v.conversation = main
-		v.feedTop, v.feedLeft, v.feedRight = 1, 1, 100
-		target := liveActivitySnippet{run: 1, block: editNavigationSnippet}
+		v := newActivityAdapter()
+		v.Conversation = main
+		v.FeedTop, v.FeedLeft, v.FeedRight = 1, 1, 100
+		target := activityui.Snippet{Run: 1, Block: activityui.EditNavigationSnippet}
 		bar := terminalui.Green + "━━━━━━━━" + terminalui.Red + "\x1b[39m" + terminalui.Dim + terminalui.Undim
-		feed := liveActivityFeed{
-			lines: []string{
+		feed := activityui.Feed{
+			Lines: []string{
 				"│ " + terminalui.Green + "Edited" + terminalui.Reset + "  src/a ━━━━━━━━.go   +15 -1  " + bar,
 				"└         ─file.go   +30     " + bar,
 			},
-			heads: []int{0, 0}, snippets: []liveActivitySnippet{target, target}, questions: []uint64{0, 0},
+			Heads: []int{0, 0}, Snippets: []activityui.Snippet{target, target}, Questions: []uint64{0, 0},
 		}
-		v.viewport(feed, 2)
+		v.Viewport(feed, 2)
 		for _, hover := range []int{0, 1, -1} {
-			if !v.pointSnippet('h', hover+1, 10) {
+			if !v.PointSnippet('h', hover+1, 10) {
 				t.Fatalf("moving hover to row %d did not request redraw", hover)
 			}
-			rows := v.viewport(feed, 2)
+			rows := v.Viewport(feed, 2)
 			for y, row := range rows {
 				want := vt.NewEmulator(100, 1)
 				got := vt.NewEmulator(100, 1)
-				_, _ = want.Write([]byte(feed.lines[y] + "!"))
+				_, _ = want.Write([]byte(feed.Lines[y] + "!"))
 				_, _ = got.Write([]byte(row + "!"))
 				for x := range ansi.StringWidth(row) + 1 {
 					expected := *want.CellAt(x, 0)
@@ -60,14 +68,14 @@ func TestEditHoverDecoratesOnlyPointedText(t *testing.T) {
 			}
 		}
 		// A stationary pointer stays on its screen row when content scrolls.
-		v.pointSnippet('h', 2, 10)
-		feed.lines = append(feed.lines, "unrelated output")
-		feed.heads = append(feed.heads, 2)
-		feed.snippets = append(feed.snippets, liveActivitySnippet{})
-		feed.questions = append(feed.questions, 0)
+		v.PointSnippet('h', 2, 10)
+		feed.Lines = append(feed.Lines, "unrelated output")
+		feed.Heads = append(feed.Heads, 2)
+		feed.Snippets = append(feed.Snippets, activityui.Snippet{})
+		feed.Questions = append(feed.Questions, 0)
 		for _, following := range []bool{false, true} {
-			v.following, v.offset = following, 1
-			for _, row := range v.viewport(feed, 2) {
+			v.Following, v.Offset = following, 1
+			for _, row := range v.Viewport(feed, 2) {
 				if strings.Contains(row, "\x1b[4m") {
 					t.Fatal("hover followed the edit away from the pointer")
 				}
@@ -77,26 +85,26 @@ func TestEditHoverDecoratesOnlyPointedText(t *testing.T) {
 }
 
 func TestLiveActivityScrollStopsAtLastFullViewport(t *testing.T) {
-	v := newLiveActivityView()
-	v.conversation = true
+	v := newActivityAdapter()
+	v.Conversation = true
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: strings.Repeat("Content row\n", 30) + "Last row"}}})
-	feed := v.renderFeed(80, 8)
-	bottom := v.viewport(feed, 8)
+	feed := v.RenderFeed(80, 8)
+	bottom := v.Viewport(feed, 8)
 	for _, key := range []byte{'j', terminalui.PaneWheelDown, ' ', 'G'} {
-		v.scrollKey(key)
-		if got := v.viewport(feed, 8); !slices.Equal(got, bottom) {
+		v.ScrollKey(key)
+		if got := v.Viewport(feed, 8); !slices.Equal(got, bottom) {
 			t.Fatalf("key %d scrolled past the bottom: %q", key, got)
 		}
 	}
-	v.offset = len(feed.lines) - 1 // A question jump near the end must also clamp.
-	if got := v.viewport(feed, 8); !slices.Equal(got, bottom) {
+	v.Offset = len(feed.Lines) - 1 // A question jump near the end must also clamp.
+	if got := v.Viewport(feed, 8); !slices.Equal(got, bottom) {
 		t.Fatal("near-end jump left blank space below the last row")
 	}
-	if got := v.viewport(feed, 16); got[15] != feed.lines[len(feed.lines)-1] {
+	if got := v.Viewport(feed, 16); got[15] != feed.Lines[len(feed.Lines)-1] {
 		t.Fatal("resizing left blank space below the last row")
 	}
-	v.viewport(feed, len(feed.lines)+5)
-	if v.offset != 0 {
+	v.Viewport(feed, len(feed.Lines)+5)
+	if v.Offset != 0 {
 		t.Fatal("content shorter than the viewport remained scrolled")
 	}
 }
@@ -166,13 +174,13 @@ func TestLiveActivityRendersSpawnAssignment(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now()
-	view := newLiveActivityView()
+	view := newActivityAdapter()
 	view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/explorer"}}, Entries: []activityPaneEntry{{
 		Seq: 1, Agent: "/root/explorer", Kind: "start", start: nativeSubagentStart(&request), Observed: now,
 		assignment: &activityAssignment{id: "task-1", from: "/root", to: "/root/explorer", text: "Inspect parser.\n\n- Preserve behavior."},
 	}}})
 	view.setDisplayFilter(true, "/root/explorer")
-	frame := strings.Join(plainLines(view.render(100, 20, now)), "\n")
+	frame := strings.Join(plainLines(view.Render(100, 20, now)), "\n")
 	for _, want := range []string{"Started", "gpt-effective", "Inspect parser.", "Preserve behavior."} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("pane does not render %q:\n%s", want, frame)
@@ -181,7 +189,7 @@ func TestLiveActivityRendersSpawnAssignment(t *testing.T) {
 }
 
 func TestLiveActivityConfirmedEditReplacesRun(t *testing.T) {
-	v := newLiveActivityView()
+	v := newActivityAdapter()
 	caller := "/root/worker"
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
 		Seq: 1, Agent: caller, Kind: "tool", CallID: "call", Text: "Run\n```bash\npython3 edit.py\n```",
@@ -199,7 +207,7 @@ func TestLiveActivityConfirmedEditReplacesRun(t *testing.T) {
 		t.Fatalf("confirmed edit did not replace Run: records=%+v", v.Entries)
 	}
 	if len(v.blocks(0)) != 1 || v.blocks(0)[0].ExitCode != 1 ||
-		!strings.Contains(ansi.Strip(strings.Join(v.painter.Block(v.blocks(0)[0], 80), "\n")), "exit 1") {
+		!strings.Contains(ansi.Strip(strings.Join(v.Painter.Block(v.blocks(0)[0], 80), "\n")), "exit 1") {
 		t.Fatalf("replacement lost failure: %+v", v.blocks(0))
 	}
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
@@ -211,24 +219,24 @@ func TestLiveActivityConfirmedEditReplacesRun(t *testing.T) {
 }
 
 func TestLiveActivityViewCollapsesReadsAcrossRun(t *testing.T) {
-	view := newLiveActivityView()
+	view := newActivityAdapter()
 	now := time.Now()
 	view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/a"}}, Entries: []activityPaneEntry{
 		{Seq: 1, Agent: "/root/a", Kind: "tool", Text: "Read `../ab/README.md 186:241`\n\nRead `../ab/prepare.ts 440:485`", Observed: now},
 		{Seq: 2, Agent: "/root/a", Kind: "tool", Text: "Read `../ab/prepare.ts 580:609`", Observed: now},
 	}})
-	feed := strings.Join(plainLines(view.render(150, 20, now)), "\n")
+	feed := strings.Join(plainLines(view.Render(150, 20, now)), "\n")
 	if strings.Count(feed, "Read ") != 2 || !strings.Contains(feed, "Read ../ab/README.md L186–241 · ../ab/prepare.ts L440–485, L580–609") {
 		t.Fatalf("feed = %s", feed)
 	}
 }
 
 func TestLiveActivityViewSanitizesChildText(t *testing.T) {
-	view := newLiveActivityView()
+	view := newActivityAdapter()
 	view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/a"}}, Entries: []activityPaneEntry{
 		{Seq: 1, Agent: "/root/a", Kind: "commentary", Text: "hi \x1b]0;title\x07 \x1b[2J there", Observed: time.Now()},
 	}})
-	for _, line := range view.render(100, 12, time.Now()) {
+	for _, line := range view.Render(100, 12, time.Now()) {
 		if strings.Contains(line, "\x07") || strings.Contains(line, "\x1b]") || strings.Contains(line, "\x1b[2J") {
 			t.Fatalf("child control sequence reached the terminal: %q", line)
 		}
@@ -237,7 +245,7 @@ func TestLiveActivityViewSanitizesChildText(t *testing.T) {
 
 func TestLiveActivityViewResponsiveLayouts(t *testing.T) {
 	now := time.Now()
-	view := newLiveActivityView()
+	view := newActivityAdapter()
 	view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
 		{Name: "/root/inventory", Final: true}, {Name: "/root/review", Responding: true}, {Name: "/root/review/probe"},
 	}, Entries: []activityPaneEntry{
@@ -248,7 +256,7 @@ func TestLiveActivityViewResponsiveLayouts(t *testing.T) {
 		{Seq: 5, Agent: "/root/review", Kind: "commentary", Text: "Checking the `prepare.ts` copy step.", Observed: now},
 	}})
 	for _, size := range [][2]int{{10, 3}, {40, 6}, {70, 16}, {99, 16}, {105, 16}, {150, 40}, {240, 60}} {
-		lines := view.render(size[0], size[1], now)
+		lines := view.Render(size[0], size[1], now)
 		if len(lines) != size[1] {
 			t.Fatalf("%v: %d lines", size, len(lines))
 		}
@@ -259,21 +267,21 @@ func TestLiveActivityViewResponsiveLayouts(t *testing.T) {
 		}
 	}
 	// A laptop-height pane at least 100 columns wide keeps cards beside the feed.
-	side := plainLines(view.render(105, 16, now))
+	side := plainLines(view.Render(105, 16, now))
 	if !strings.HasPrefix(side[1], " ✓ inventory") || !strings.Contains(side[1], " │ ") || !strings.Contains(side[2], "→ main") ||
 		!strings.Contains(side[5], "Checking the") || !strings.Contains(side[7], "└ probe") {
 		t.Fatalf("side layout = %q", side)
 	}
 	// Narrower panes compact before hiding agents.
-	stacked := plainLines(view.render(70, 16, now))
+	stacked := plainLines(view.Render(70, 16, now))
 	if !strings.Contains(stacked[3], "probe") || !strings.HasPrefix(stacked[4], "───") {
 		t.Fatalf("stacked layout = %q", stacked)
 	}
-	if strip := plainLines(view.render(80, 6, now)); !strings.HasPrefix(strip[1], "✓ inventory  ◐ review  · review/probe") {
+	if strip := plainLines(view.Render(80, 6, now)); !strings.HasPrefix(strip[1], "✓ inventory  ◐ review  · review/probe") {
 		t.Fatalf("strip layout = %q", strip)
 	}
 	// A message body is clipped in the shared feed and shown in full in only mode.
-	wide := strings.Join(plainLines(view.render(60, 20, now)), "\n")
+	wide := strings.Join(plainLines(view.Render(60, 20, now)), "\n")
 	if !strings.Contains(wide, "… +") {
 		t.Fatalf("long message was not clipped: %s", wide)
 	}
@@ -287,33 +295,33 @@ func TestLiveActivityRosterPointerSelection(t *testing.T) {
 			{Seq: 1, Agent: "/root/a", Kind: "commentary", Text: "alpha", Observed: now},
 			{Seq: 2, Agent: "/root/b", Kind: "commentary", Text: "bravo", Observed: now},
 		}})
-		view.render(size[0], size[1], now)
-		var hit liveActivityHit
-		for _, candidate := range view.hits {
-			if candidate.agent == "/root/b" {
+		view.Render(size[0], size[1], now)
+		var hit activityui.Hit
+		for _, candidate := range view.Hits {
+			if candidate.Agent == "/root/b" {
 				hit = candidate
 				break
 			}
 		}
-		if hit.agent == "" {
+		if hit.Agent == "" {
 			t.Fatalf("%v: agent b has no clickable row", size)
 		}
-		view.handleMouse('h', hit.row, hit.first)
-		if view.hovered != "/root/b" || view.displayingChild() {
+		view.testHandleMouse('h', hit.Row, hit.First)
+		if view.Hovered != "/root/b" || view.displayingChild() {
 			t.Fatalf("%v: hover changed filter: %+v", size, view)
 		}
-		view.handleMouse('\r', hit.row, hit.first)
-		if !view.displayingChild() || view.selected != "/root/b" || view.visible(activityPaneEntry{Agent: "/root/a"}) {
+		view.testHandleMouse('\r', hit.Row, hit.First)
+		if !view.displayingChild() || view.Selected != "/root/b" || view.testVisible(activityPaneEntry{Agent: "/root/a"}) {
 			t.Fatalf("%v: click did not filter b", size)
 		}
-		view.render(size[0], size[1], now)
-		view.handleMouse('\r', hit.row, hit.first)
-		if view.displayingChild() || !view.visible(activityPaneEntry{Agent: "/root/a"}) {
+		view.Render(size[0], size[1], now)
+		view.testHandleMouse('\r', hit.Row, hit.First)
+		if view.displayingChild() || !view.testVisible(activityPaneEntry{Agent: "/root/a"}) {
 			t.Fatalf("%v: second click did not restore all", size)
 		}
-		view.render(size[0], size[1], now)
-		view.handleMouse('\r', 1, 1)
-		if view.displayingChild() || view.hovered != "" {
+		view.Render(size[0], size[1], now)
+		view.testHandleMouse('\r', 1, 1)
+		if view.displayingChild() || view.Hovered != "" {
 			t.Fatalf("%v: header click changed filter", size)
 		}
 	}
@@ -322,27 +330,27 @@ func TestLiveActivityRosterPointerSelection(t *testing.T) {
 func TestLiveActivityHoverClearsWhenRosterMoves(t *testing.T) {
 	view := liveActivityTestView("/root/a", "/root/b", "/root/c", "/root/d", "/root/e", "/root/f", "/root/g", "/root/h", "/root/i", "/root/j")
 	now := time.Now()
-	view.render(110, 10, now)
-	var first liveActivityHit
-	for _, hit := range view.hits {
-		if hit.agent == "/root/c" {
+	view.Render(110, 10, now)
+	var first activityui.Hit
+	for _, hit := range view.Hits {
+		if hit.Agent == "/root/c" {
 			first = hit
 			break
 		}
 	}
-	if first.agent == "" {
+	if first.Agent == "" {
 		t.Fatal("c is not visible in the initial roster")
 	}
-	view.handleMouse('h', first.row, first.first)
-	view.handleMouse('\r', first.row, first.first)
-	if view.hovered != "" {
-		t.Fatalf("click left stale hover on %q", view.hovered)
+	view.testHandleMouse('h', first.Row, first.First)
+	view.testHandleMouse('\r', first.Row, first.First)
+	if view.Hovered != "" {
+		t.Fatalf("click left stale hover on %q", view.Hovered)
 	}
-	view.render(110, 10, now)
-	view.handleMouse('h', first.row, first.first)
-	view.render(100, 10, now)
-	if view.hovered != "" {
-		t.Fatalf("resize left stale hover on %q", view.hovered)
+	view.Render(110, 10, now)
+	view.testHandleMouse('h', first.Row, first.First)
+	view.Render(100, 10, now)
+	if view.Hovered != "" {
+		t.Fatalf("resize left stale hover on %q", view.Hovered)
 	}
 }
 
@@ -387,26 +395,26 @@ func TestLiveActivityLinksAndCommandExit(t *testing.T) {
 }
 
 func TestLiveActivityViewAppliesExitToMatchingRun(t *testing.T) {
-	view := newLiveActivityView()
+	view := newActivityAdapter()
 	now := time.Now()
 	view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/a"}}, Entries: []activityPaneEntry{
 		{Seq: 1, Agent: "/root/a", CallID: "call-1", Kind: "tool", Text: "Run `false`", Observed: now},
 		{Seq: 2, Agent: "/root/a", CallID: "other", Kind: "tool", Text: "Run `true`", Observed: now},
 	}})
 	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 3, Agent: "/root/a", CallID: "call-1", Kind: "exit", Text: "1", Observed: now}}})
-	got := strings.Join(plainLines(view.render(90, 15, now)), "\n")
-	if !strings.Contains(got, "▎ Ran false · exit 1\n▎ Ran true") || !strings.Contains(strings.Join(view.render(90, 15, now), "\n"), terminalui.Red+"\x1b[1mRan") {
+	got := strings.Join(plainLines(view.Render(90, 15, now)), "\n")
+	if !strings.Contains(got, "▎ Ran false · exit 1\n▎ Ran true") || !strings.Contains(strings.Join(view.Render(90, 15, now), "\n"), terminalui.Red+"\x1b[1mRan") {
 		t.Fatalf("exit rendering = %s", got)
 	}
 }
 
 func TestLiveActivityCompactionAppearsInFeedAndRoster(t *testing.T) {
-	view := newLiveActivityView()
+	view := newActivityAdapter()
 	now := time.Now()
 	view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/a"}}, Entries: []activityPaneEntry{
 		{Seq: 1, Agent: "/root/a", Kind: "compaction", Text: "Context compacted", Observed: now},
 	}})
-	got := strings.Join(plainLines(view.render(110, 15, now)), "\n")
+	got := strings.Join(plainLines(view.Render(110, 15, now)), "\n")
 	if strings.Count(got, "Context compacted") != 2 {
 		t.Fatalf("compaction feed/roster = %s", got)
 	}
@@ -487,17 +495,17 @@ func TestLiveActivityReviewRegressions(t *testing.T) {
 	// Narrow stacked rosters and three-row panes stay in bounds and keep the agents.
 	view := liveActivityTestView("/root/b", "/root/c")
 	for _, only := range []bool{false, true} {
-		view.setDisplayFilter(only, view.selected)
+		view.setDisplayFilter(only, view.Selected)
 		for width := 10; width <= 24; width++ {
-			for _, line := range view.render(width, 12, time.Now()) {
+			for _, line := range view.Render(width, 12, time.Now()) {
 				if ansi.StringWidth(line) > width-1 {
 					t.Fatalf("width %d: line exceeds pane: %q", width, ansi.Strip(line))
 				}
 			}
 		}
 	}
-	view.setDisplayFilter(false, view.selected)
-	if lines := plainLines(view.render(40, 3, time.Now())); len(lines) != 3 || !strings.Contains(lines[1], "b") || !strings.Contains(lines[1], "c") {
+	view.setDisplayFilter(false, view.Selected)
+	if lines := plainLines(view.Render(40, 3, time.Now())); len(lines) != 3 || !strings.Contains(lines[1], "b") || !strings.Contains(lines[1], "c") {
 		t.Fatalf("three-row pane = %q", lines)
 	}
 

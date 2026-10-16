@@ -195,73 +195,6 @@ func (u *terminalUI) animating(now time.Time) bool {
 	return changed || len(u.liveDock.Order) > 0 || len(u.livePending) > 0
 }
 
-func nativeBorder(focused bool) string {
-	if focused {
-		return "\x1b[38;2;130;170;255m"
-	}
-	return "\x1b[38;2;70;70;90m"
-}
-
-// nativeRule is a pane edge with embedded labels. The right label yields
-// first when both do not fit.
-func nativeRule(open, close, fill, left, right string, width int, color string) string {
-	if width < 2 {
-		return ""
-	}
-	inner := width - 2
-	segment := func(label string) string {
-		if label == "" {
-			return ""
-		}
-		return " \x1b[39m" + label + terminalui.Reset + color + " "
-	}
-	l, r := segment(left), segment(right)
-	if ansi.StringWidth(l)+ansi.StringWidth(r)+1 > inner {
-		r = ""
-	}
-	if ansi.StringWidth(l)+1 > inner {
-		l = ansi.Truncate(l, max(0, inner-2), "…") + terminalui.Reset + color + " "
-	}
-	gap := max(0, inner-ansi.StringWidth(l)-ansi.StringWidth(r))
-	return color + open + l + strings.Repeat(fill, gap) + r + close + terminalui.Reset
-}
-
-// nativeBox frames a pane. rules replace whole rows, borders included, so a
-// dock separator can span the frame.
-func nativeBox(width, height int, title, right string, focused bool, body []string, rules map[int]string) []string {
-	if width < 4 || height < 3 {
-		return nil
-	}
-	color := nativeBorder(focused)
-	lines := []string{nativeRule("┌", "┐", "─", title, right, width, color)}
-	for row := range height - 2 {
-		if rule, ok := rules[row]; ok {
-			lines = append(lines, rule)
-			continue
-		}
-		text := ""
-		if row < len(body) {
-			text = ansi.Truncate(body[row], width-2, "")
-		}
-		lines = append(lines, color+"│"+terminalui.Reset+text+strings.Repeat(" ", max(0, width-2-ansi.StringWidth(text)))+color+"│"+terminalui.Reset)
-	}
-	return append(lines, color+"└"+strings.Repeat("─", width-2)+"┘"+terminalui.Reset)
-}
-
-// nativeTitle labels a pane with its Ctrl-B digit.
-func nativeTitle(digit int, name, detail string, focused bool) string {
-	label := fmt.Sprintf("%d %s", digit, name)
-	if focused {
-		label = nativeBorder(true) + "\x1b[1m" + label + "\x1b[22m"
-	} else {
-		label = terminalui.Dim + label + terminalui.Undim
-	}
-	if detail != "" {
-		label += terminalui.Dim + " · " + terminalui.Undim + detail
-	}
-	return label
-}
-
 func (u *appServerUI) transcriptCaller() string {
 	return u.sessionPresentation().View().Displayed.Caller
 }
@@ -271,10 +204,10 @@ func (u *appServerUI) composerReadOnly() bool {
 }
 
 // transcriptView selects display state without changing the input or execution owner.
-func (u *appServerUI) transcriptView() *liveActivityView {
+func (u *appServerUI) transcriptView() *activityAdapter {
 	view := u.sessionPresentation().View()
 	if u.agents != nil && view.Displayed.ID != view.Main.ID {
-		u.agents.conversation = true
+		u.agents.Conversation = true
 		return u.agents
 	}
 	return u.view
@@ -286,7 +219,7 @@ func (u *appServerUI) transcriptView() *liveActivityView {
 func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	width, height := max(1, u.width), max(1, u.height)
 	now := u.main.now()
-	u.agents.feedOnly, u.agents.focused = true, u.Focus == 3
+	u.agents.FeedOnly, u.agents.Focused = true, u.Focus == 3
 	u.liveDock.Motion.Enabled = true
 	u.liveDock.Motion.Canvas = u.diff.theme.Canvas()
 	if u.diff.backgrounded {
@@ -294,12 +227,12 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	}
 	caller := u.main.transcriptCaller()
 	mainEdit := !u.liveHidden && slices.Contains(u.liveDock.Callers(), caller)
-	u.agents.livePreviews = nil
+	u.agents.LivePreviews = nil
 	if u.diff != nil {
-		u.agents.lineCounts = u.diff.callerCounts
-		u.agents.netCounts = u.diff.netCounts
+		u.agents.LineCounts = u.diff.callerCounts
+		u.agents.NetCounts = u.diff.netCounts
 	}
-	roster := u.agents.nativeRoster(width, u.Panes.RosterLimit(height), now, u.Focus == 3)
+	roster := u.agents.NativeRoster(width, u.Panes.RosterLimit(height), now, u.Focus == 3)
 	l, left, right, framed, rosterRows := u.Panes.Geometry(width, height, len(roster))
 	roster = roster[:rosterRows]
 	rows := make([]string, height)
@@ -316,9 +249,9 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		if mainEdit && !u.main.keybindings && !u.main.picker.open {
 			dockRows = ih
 		}
-		rosterHits := u.agents.hits
+		rosterHits := u.agents.Hits
 		body, dockRect := u.main.mainFrame(iw, ih, dockRows)
-		u.agents.hits = rosterHits
+		u.agents.Hits = rosterHits
 		dockAt, dockRows := dockRect.Y, dockRect.H
 		rules := map[int]string{}
 		if dockRows > 0 && dockAt+dockRows <= len(body) {
@@ -343,26 +276,26 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			draw(left, body)
 		} else {
 			detail := u.main.mainTitleDetail()
-			if set := u.main.view.ActiveSkills()["Main"]; set != nil && u.main.view.skillsHover == "Main" {
-				detail = strings.TrimSuffix(detail, skillLabel(set)) + activityui.Underline(skillLabel(set))
+			if set := u.main.view.ActiveSkills()["Main"]; set != nil && u.main.view.SkillsHover == "Main" {
+				detail = strings.TrimSuffix(detail, activityui.SkillLabel(set)) + activityui.Underline(activityui.SkillLabel(set))
 			}
 			name := "Main"
 			if u.agents.displayingChild() {
-				name, detail = "Thread", u.agents.painter.Agent(u.agents.displayedCaller())
+				name, detail = "Thread", u.agents.Painter.Agent(u.agents.displayedCaller())
 			}
-			title := nativeTitle(1, name, detail, u.Focus == 0)
+			title := terminalui.PaneTitle(1, name, detail, u.Focus == 0)
 			// The skill count ends the title, after the frame corner and a space.
 			// A truncated title has no reliable target.
-			if set := u.main.view.ActiveSkills()["Main"]; !u.agents.displayingChild() && set != nil && strings.HasSuffix(ansi.Strip(detail), skillLabel(set)) && ansi.StringWidth(title)+5 <= left.W {
+			if set := u.main.view.ActiveSkills()["Main"]; !u.agents.displayingChild() && set != nil && strings.HasSuffix(ansi.Strip(detail), activityui.SkillLabel(set)) && ansi.StringWidth(title)+5 <= left.W {
 				end := left.X + 2 + ansi.StringWidth(title)
-				l.MainSkills = terminalsession.Rect{end - ansi.StringWidth(skillLabel(set)), left.Y, ansi.StringWidth(skillLabel(set)), 1}
+				l.MainSkills = terminalsession.Rect{end - ansi.StringWidth(activityui.SkillLabel(set)), left.Y, ansi.StringWidth(activityui.SkillLabel(set)), 1}
 			}
 			headerRight := u.main.mainHeaderRight(left.W, u.Focus == 0)
 			if u.agents.displayingChild() {
 				u.main.updateHistoryHint()
-				headerRight = strings.TrimSpace(scrollLabel(u.agents) + " " + u.agents.historyHint)
+				headerRight = strings.TrimSpace(scrollLabel(u.agents) + " " + u.agents.HistoryHint)
 			}
-			draw(left, nativeBox(left.W, left.H, title, headerRight, u.Focus == 0, body, rules))
+			draw(left, terminalui.PaneBox(left.W, left.H, title, headerRight, u.Focus == 0, body, rules))
 		}
 	}
 	if right.W >= 4 && right.H >= 1 {
@@ -390,11 +323,11 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			body = strings.Split(u.diffScreen.Render(), "\n")
 		}
 		summary, state := u.diff.nativeTitle()
-		title, label = nativeTitle(2, "Diff", "saved · "+summary, u.Focus == 1), state
+		title, label = terminalui.PaneTitle(2, "Diff", "saved · "+summary, u.Focus == 1), state
 		u.diffUnseen = false
 		body = append(body[:min(len(body), content)], make([]string, max(0, content-len(body)))...)
 		if framed {
-			draw(right, nativeBox(right.W, right.H, title, label, focused, body, nil))
+			draw(right, terminalui.PaneBox(right.W, right.H, title, label, focused, body, nil))
 		} else {
 			draw(right, body)
 		}
@@ -444,7 +377,7 @@ func (u *terminalUI) nativeStatus() string {
 	if u.diffUnseen {
 		diffBadge = terminalui.Amber + " ●" + "\x1b[39m"
 	}
-	responding, _ := u.agents.statusCounts(u.agents.Roster())
+	responding, _ := u.agents.StatusCounts(u.agents.View.Roster())
 	agentsBadge := ""
 	if responding > 0 {
 		agentsBadge = terminalui.Amber + superscript(responding) + "\x1b[39m"
@@ -477,7 +410,7 @@ func (u *terminalUI) nativeStatus() string {
 	}
 	hints = append(hints, terminalHint{"^B 1-3", "views", 0})
 	if u.Focus == 0 {
-		expansion := u.main.transcriptView().expansion
+		expansion := u.main.transcriptView().Expansion
 		hints = append(hints, terminalHint{"^E", [3]string{"expand events", "expand all", "default"}[expansion], 0})
 	}
 	return tabs.String() + "  " + hints.render()
@@ -503,9 +436,10 @@ func superscript(n int) string {
 
 // showRosterPick switches presentation only; Main retains its composer and host identity.
 func (u *terminalUI) showRosterPick(only bool, selected string) {
-	if u.main != nil && (u.agents.displayingChild() != only || u.agents.selected != selected) {
+	u.agents.applyDisplayIntent()
+	if u.main != nil && (u.agents.displayingChild() != only || u.agents.Selected != selected) {
 		u.selection = nil
-		u.agents.runs = nil
+		u.agents.Runs = nil
 	}
 }
 

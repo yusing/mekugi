@@ -27,7 +27,7 @@ func resumeSettingsRollout(t *testing.T, records ...string) appServerThreadInfo 
 
 func TestUISnapshotNativeResumeSettingsUnavailable(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	u.Thread, u.resumeThread = "", "saved"
 	if err := u.requestResume("saved"); err != nil {
@@ -42,7 +42,7 @@ func TestUISnapshotNativeResumeSettingsUnavailable(t *testing.T) {
 
 func TestUISnapshotNativeResumeSwitchSettingsUnavailable(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	appServerTestKeys(t, u, "/resume saved\r")
 	resume := resumeTestPrepared(t, u, w)
@@ -136,7 +136,7 @@ func TestAppServerResumeClearsSavedReasoningDefault(t *testing.T) {
 		t.Run("launch="+effort, func(t *testing.T) {
 			u, w := newAppServerTestUI()
 			u.Thread, u.resumeThread, u.ResumeEffort = "", "saved", true
-			u.agents = newLiveActivityView()
+			u.agents = newActivityAdapter()
 			appServerTestRequest(t, u, "1", "thread/resume")
 			savedEffort := "null"
 			if effort != "" {

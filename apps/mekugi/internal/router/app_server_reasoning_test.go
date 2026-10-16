@@ -36,8 +36,8 @@ func TestAppServerPublicSummaryNotifications(t *testing.T) {
 		}
 		reasoningTestNotify(t, u, "item/reasoning/textDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": "same-id", "delta": "PRIVATE"})
 	}
-	main := ansi.Strip(strings.Join(u.view.renderFeed(90, 40).lines, "\n"))
-	child := ansi.Strip(strings.Join(u.agents.renderFeed(90, 40).lines, "\n"))
+	main := ansi.Strip(strings.Join(u.view.RenderFeed(90, 40).Lines, "\n"))
+	child := ansi.Strip(strings.Join(u.agents.RenderFeed(90, 40).Lines, "\n"))
 	if !strings.Contains(main, "Public main summary.") || strings.Contains(main, "Public child") || !strings.Contains(child, "Public child summary.") || strings.Contains(child, "Public main") {
 		t.Fatalf("summary routing: main=%q, child=%q", main, child)
 	}
@@ -48,14 +48,14 @@ func TestAppServerPublicSummaryNotifications(t *testing.T) {
 		reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t", "status": "completed"}})
 	}
 	u.agents.setDisplayFilter(false, "/root/worker")
-	main = ansi.Strip(strings.Join(u.view.renderFeed(90, 40).lines, "\n"))
-	child = ansi.Strip(strings.Join(u.agents.renderFeed(90, 40).lines, "\n"))
+	main = ansi.Strip(strings.Join(u.view.RenderFeed(90, 40).Lines, "\n"))
+	child = ansi.Strip(strings.Join(u.agents.RenderFeed(90, 40).Lines, "\n"))
 	if strings.Count(main, "• Complete") != 1 || strings.Count(child, "• Complete") != 1 || !strings.Contains(main, "Final public main.") || !strings.Contains(child, "Final public child.") || strings.Contains(main+child, "PRIVATE") || strings.Contains(main+child, "Public main summary") {
 		t.Fatalf("completed summaries: main=%q, child=%q", main, child)
 	}
 	// A reused item ID in a new turn must not replace earlier summaries.
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "next", "itemId": "same-id", "delta": "Next public summary."})
-	main = ansi.Strip(strings.Join(u.view.renderFeed(90, 40).lines, "\n"))
+	main = ansi.Strip(strings.Join(u.view.RenderFeed(90, 40).Lines, "\n"))
 	if !strings.Contains(main, "• Complete") || !strings.Contains(main, "Next public summary.") || u.view.Entries[0].Source.Text != "**Complete**\n\nFinal public main." {
 		t.Fatalf("turn identity lost: %q", main)
 	}
@@ -71,13 +71,13 @@ func TestAppServerRestorePublicSummaries(t *testing.T) {
 	u.session.registerThread(appServerThreadInfo{ID: "child", AgentNickname: "worker"})
 	u.restoreActivityThread(appServerThreadInfo{ID: "child", Turns: turns})
 	u.agents.setDisplayFilter(false, "/root/worker")
-	for _, view := range []*liveActivityView{u.view, u.agents} {
-		feed := view.renderFeed(90, 40)
-		got := ansi.Strip(strings.Join(feed.lines, "\n"))
+	for _, view := range []*activityAdapter{u.view, u.agents} {
+		feed := view.RenderFeed(90, 40)
+		got := ansi.Strip(strings.Join(feed.Lines, "\n"))
 		if !strings.Contains(got, "• Public restored summary.") || strings.Count(got, "Public restored summary.") != 1 || strings.Contains(got, "PRIVATE") {
 			t.Fatalf("restored summary did not fold: %q", got)
 		}
-		row := slices.IndexFunc(feed.snippets, func(s liveActivitySnippet) bool { return s != liveActivitySnippet{} })
+		row := slices.IndexFunc(feed.Snippets, func(s activityui.Snippet) bool { return s != activityui.Snippet{} })
 		if row >= 0 {
 			t.Fatal("fully shown restored reasoning has a redundant detail target")
 		}
@@ -85,8 +85,8 @@ func TestAppServerRestorePublicSummaries(t *testing.T) {
 	// A new turn must not restart the restored summary animation.
 	agent := *u.session.agent("/root/worker")
 	agent.Responding = true
-	first, _ := u.agents.current(agent, time.Unix(0, 0))
-	second, _ := u.agents.current(agent, time.Unix(1, 0))
+	first, _ := u.agents.testCurrent(agent, time.Unix(0, 0))
+	second, _ := u.agents.testCurrent(agent, time.Unix(1, 0))
 	if first != second {
 		t.Fatal("restored reasoning animated in a later turn")
 	}
@@ -221,7 +221,7 @@ func TestAppServerProviderThinking(t *testing.T) {
 	reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "t"}})
 	u.agents.setDisplayFilter(false, "/root/worker")
-	feed := func() string { return ansi.Strip(strings.Join(u.agents.renderFeed(90, 40).lines, "\n")) }
+	feed := func() string { return ansi.Strip(strings.Join(u.agents.RenderFeed(90, 40).Lines, "\n")) }
 	for _, delta := range []string{"First ", "thought.\n\nSecond.\n\nThird.\n\nFourth."} {
 		reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "r1", "delta": delta})
 	}
@@ -255,22 +255,22 @@ func TestAppServerThinkingFolds(t *testing.T) {
 		nextEvent(t, u, thread)
 	}
 	settleActivity(time.Now().Add(time.Minute), u.view, u.agents)
-	for name, view := range map[string]*liveActivityView{"Main": u.view, "Activity": u.agents} {
+	for name, view := range map[string]*activityAdapter{"Main": u.view, "Activity": u.agents} {
 		t.Run(name, func(t *testing.T) {
-			render := func() liveActivityFeed { return view.renderFeed(90, 40) }
-			plain := func(feed liveActivityFeed) string { return ansi.Strip(strings.Join(feed.lines, "\n")) }
+			render := func() activityui.Feed { return view.RenderFeed(90, 40) }
+			plain := func(feed activityui.Feed) string { return ansi.Strip(strings.Join(feed.Lines, "\n")) }
 			feed := render()
 			if got := plain(feed); !strings.Contains(got, "• Reviewing") || strings.Contains(got, "Alpha.") {
 				t.Fatalf("finished thinking did not fold: %q", got)
 			}
-			row := slices.IndexFunc(feed.snippets, func(s liveActivitySnippet) bool { return s != liveActivitySnippet{} })
-			if row < 0 || !strings.Contains(ansi.Strip(feed.lines[row]), "Reviewing") {
+			row := slices.IndexFunc(feed.Snippets, func(s activityui.Snippet) bool { return s != activityui.Snippet{} })
+			if row < 0 || !strings.Contains(ansi.Strip(feed.Lines[row]), "Reviewing") {
 				t.Fatal("folded thinking cannot expand")
 			}
-			if !u.shell.openOutput(view, feed.snippets[row]) {
+			if !u.shell.openOutput(view, feed.Snippets[row]) {
 				t.Fatal("folded thinking did not request dialog")
 			}
-			page := view.painter.DialogPage(u.shell.output.pages[0], 80)
+			page := view.Painter.DialogPage(u.shell.output.pages[0], 80)
 			if page.Text != body || len(page.Lines) < 4 {
 				t.Fatalf("dialog lost full reasoning: %+v", page)
 			}
@@ -301,15 +301,15 @@ func TestThinkingElapsedNamesWholeSecondsOnly(t *testing.T) {
 // output first, or the turn's end, removes the empty block.
 func TestAppServerThinkingFromRequestStart(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.conversation = true
+	u.view.Conversation = true
 	activity := newSubagentActivity()
 	activity.attachNativePane("main")
 	activity.observe("child", "main", "/root/worker", true)
 	u.proxy = &mekugiProxy{activity: activity}
 	reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 	u.agents.setDisplayFilter(false, "/root/worker")
-	feed := func(view *liveActivityView) string {
-		return ansi.Strip(strings.Join(view.renderFeed(90, 40).lines, "\n"))
+	feed := func(view *activityAdapter) string {
+		return ansi.Strip(strings.Join(view.RenderFeed(90, 40).Lines, "\n"))
 	}
 	start := func(thread string, ago time.Duration) {
 		t.Helper()
@@ -317,7 +317,7 @@ func TestAppServerThinkingFromRequestStart(t *testing.T) {
 		activity.starts[len(activity.starts)-1].at = time.Now().Add(-ago)
 		u.applyObservedActivity()
 	}
-	thinkingRows := func(view *liveActivityView) int {
+	thinkingRows := func(view *activityAdapter) int {
 		rows := 0
 		for _, entry := range view.Entries {
 			if entry.Source.Kind == "reasoning" {
@@ -330,7 +330,7 @@ func TestAppServerThinkingFromRequestStart(t *testing.T) {
 	// Main and child each show the block while waiting for the first delta.
 	start("main", 3*time.Second)
 	start("child", 3*time.Second)
-	for name, view := range map[string]*liveActivityView{"Main": u.view, "Activity": u.agents} {
+	for name, view := range map[string]*activityAdapter{"Main": u.view, "Activity": u.agents} {
 		if got := feed(view); !strings.Contains(got, "• Thinking…") {
 			t.Fatalf("%s shows no thinking before the first delta: %q", name, got)
 		}
@@ -398,7 +398,7 @@ func TestAppServerStartedSummarySettlesWithoutDelta(t *testing.T) {
 				if thread == "child" {
 					view = u.agents
 				}
-				if got := ansi.Strip(strings.Join(view.renderFeed(90, 40).lines, "\n")); strings.Contains(got, "Thinking…") || !strings.Contains(got, "• Checking") || !strings.Contains(got, "Started public body.") {
+				if got := ansi.Strip(strings.Join(view.RenderFeed(90, 40).Lines, "\n")); strings.Contains(got, "Thinking…") || !strings.Contains(got, "• Checking") || !strings.Contains(got, "Started public body.") {
 					t.Fatalf("started summary is not streaming: %s", got)
 				}
 				if interrupted {
@@ -408,11 +408,11 @@ func TestAppServerStartedSummarySettlesWithoutDelta(t *testing.T) {
 				}
 				nextEvent(t, u, thread)
 				settleActivity(time.Now().Add(time.Minute), view)
-				feed := view.renderFeed(90, 40)
-				if got := ansi.Strip(strings.Join(feed.lines, "\n")); strings.Contains(got, "Thinking…") || !strings.Contains(got, "• Checking") || strings.Contains(got, "Started public body.") {
+				feed := view.RenderFeed(90, 40)
+				if got := ansi.Strip(strings.Join(feed.Lines, "\n")); strings.Contains(got, "Thinking…") || !strings.Contains(got, "• Checking") || strings.Contains(got, "Started public body.") {
 					t.Fatalf("started summary did not settle: %s", got)
 				}
-				row := slices.IndexFunc(feed.snippets, func(s liveActivitySnippet) bool { return s != liveActivitySnippet{} })
+				row := slices.IndexFunc(feed.Snippets, func(s activityui.Snippet) bool { return s != activityui.Snippet{} })
 				if row < 0 {
 					t.Fatal("folded started summary has no detail target")
 				}
@@ -427,8 +427,8 @@ func TestUISnapshotAppServerReasoningStartsBeforeSummary(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			at := time.Date(2026, 9, 30, 8, 38, 54, 904000000, time.Local)
 			u.clock = func() time.Time { return at }
-			u.view.clock, u.agents.clock = u.clock, u.clock
-			u.view.painter.Theme, u.agents.painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
+			u.view.Clock, u.agents.Clock = u.clock, u.clock
+			u.view.Painter.Theme, u.agents.Painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
 			reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 			u.agents.setDisplayFilter(false, "/root/worker")
 			view := u.view
@@ -437,7 +437,7 @@ func TestUISnapshotAppServerReasoningStartsBeforeSummary(t *testing.T) {
 			}
 			reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
 			reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{}}})
-			frame := func() string { return ansi.Strip(strings.Join(view.renderFeed(80, 40).lines, "\n")) + "\n" }
+			frame := func() string { return ansi.Strip(strings.Join(view.RenderFeed(80, 40).Lines, "\n")) + "\n" }
 			t.Run("waiting", func(t *testing.T) {
 				uisnapshot.Assert(t, "testdata/snapshots/reasoning-waiting-"+thread+".txt", frame())
 			})
@@ -467,8 +467,8 @@ func TestUISnapshotAppServerReasoningLifecycle(t *testing.T) {
 				u := newAppServerSessionTestUI(t, t.TempDir())
 				at := time.Date(2026, 9, 30, 8, 0, 0, 0, time.Local)
 				u.clock = func() time.Time { return at }
-				u.view.clock, u.agents.clock = u.clock, u.clock
-				u.view.painter.Theme, u.agents.painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
+				u.view.Clock, u.agents.Clock = u.clock, u.clock
+				u.view.Painter.Theme, u.agents.Painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
 				reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 				u.agents.setDisplayFilter(false, "/root/worker")
 				view := u.view
@@ -481,7 +481,7 @@ func TestUISnapshotAppServerReasoningLifecycle(t *testing.T) {
 				snapshot := func(stage string) {
 					t.Helper()
 					t.Run(stage, func(t *testing.T) {
-						uisnapshot.Assert(t, "testdata/snapshots/reasoning-lifecycle-"+thread+"-"+tc.name+"-"+stage+".txt", strings.Join(view.renderFeed(80, 40).lines, "\n")+"\n")
+						uisnapshot.Assert(t, "testdata/snapshots/reasoning-lifecycle-"+thread+"-"+tc.name+"-"+stage+".txt", strings.Join(view.RenderFeed(80, 40).Lines, "\n")+"\n")
 					})
 				}
 				snapshot("streaming")
@@ -510,7 +510,7 @@ func TestAppServerEmptyStartedReasoningDoesNotLeaveThought(t *testing.T) {
 		} else {
 			reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{}}})
 		}
-		got := ansi.Strip(strings.Join(u.view.renderFeed(80, 40).lines, "\n"))
+		got := ansi.Strip(strings.Join(u.view.RenderFeed(80, 40).Lines, "\n"))
 		if strings.Contains(got, "Thinking") || strings.Contains(got, "Thought") || strings.Contains(got, "PRIVATE") || len(u.session.thinking) != 0 {
 			t.Fatalf("empty reasoning left visible or unfinished state: %s", got)
 		}

@@ -53,12 +53,12 @@ func TestRosterMetricsInlineAndHitTargets(t *testing.T) {
 		t.Fatalf("roster = %q", lines)
 	}
 	for row, want := range map[int]string{2: "/root/a", 3: "/root/b"} {
-		v.pointAgent('h', row, 5)
-		if hit := v.hovered; hit != want {
+		v.testPointAgent('h', row, 5)
+		if hit := v.Hovered; hit != want {
 			t.Fatalf("row %d hit = %q, want %q", row, hit, want)
 		}
 	}
-	v.selected = "/root/c"
+	v.Selected = "/root/c"
 	for _, height := range []int{2, 3, 4, 5, 8} {
 		lines := v.renderRosterPane(35, height, time.Now())
 		if len(lines) != height || !strings.Contains(strings.Join(plainLines(lines), "\n"), "c") {
@@ -74,6 +74,6 @@ func TestRosterMetricsInlineAndHitTargets(t *testing.T) {
 
 func TestUISnapshotRosterStripSelectionStyling(t *testing.T) {
 	v := liveActivityTestView("/root/a", "/root/b")
-	v.selected, v.hovered = "/root/a", "/root/b"
-	uisnapshot.AssertTerminal(t, "testdata/snapshots/roster-strip-selection.txt", []string{v.renderStrip(v.Roster(), 80), "plain after roster"}, 80)
+	v.Selected, v.Hovered = "/root/a", "/root/b"
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/roster-strip-selection.txt", []string{v.RenderStrip(v.testRoster(), 80), "plain after roster"}, 80)
 }

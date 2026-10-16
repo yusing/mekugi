@@ -809,7 +809,7 @@ func (u *appServerUI) trackedCommandDone(key [3]string, entry activityPaneEntry,
 		}
 	}
 	// Successful segments' output stays open until the agent's next event.
-	native.settled, native.collapsed = now, false
+	entry.completed = now
 	entry.native = &native
 	if !view.output {
 		entry.outputTail, entry.outputOmit = appServerOutputTail(item.AggregatedOutput)

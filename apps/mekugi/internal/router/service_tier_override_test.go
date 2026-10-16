@@ -52,7 +52,7 @@ func TestUISnapshotNativeConfiguredServiceTier(t *testing.T) {
 	u.proxy = newManagedMekugiProxy(t)
 	u.serviceTiers = &serviceTierSettings{configured: config.ServiceTiers}
 	u.status = "Ready"
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	for _, tc := range []struct{ model, requested, want string }{
 		{"gpt-6.1-sol", "default", "priority"},
 		{"gpt-6-astra", "priority", "flex"},
@@ -107,7 +107,7 @@ func newServiceTierPickerTestUI(t *testing.T, model, tier string, overrides map[
 	u.ctx = t.Context()
 	u.model, u.serviceTier = model, tier
 	u.serviceTiers = &serviceTierSettings{configured: overrides}
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	if err := json.Unmarshal([]byte(`[{"model":"gpt-6.1-sol","serviceTiers":[{"id":"priority"},{"id":"flex"}]},{"model":"gpt-5.6-terra","serviceTiers":[{"id":"priority"},{"id":"flex"}]},{"model":"unconfigured","serviceTiers":[{"id":"priority"},{"id":"flex"}]}]`), &u.models); err != nil {
 		t.Fatal(err)
 	}

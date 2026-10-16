@@ -80,13 +80,13 @@ func TestUISnapshotMarkdownFileLinkExistence(t *testing.T) {
 		"Missing: missing.go, `missing.go`, [missing](missing.go).\n" +
 		"Existing: sample.go:1, `sample.go`, [source](sample.go:1-2).\n" +
 		"Web: [remote](https://example.com)."
-	for _, view := range []*liveActivityView{u.view, u.agents} {
-		view.painter.Theme = diffrender.TerminalTheme
-		rows := view.painter.Markdown(text, 72, false)
+	for _, view := range []*activityAdapter{u.view, u.agents} {
+		view.Painter.Theme = diffrender.TerminalTheme
+		rows := view.Painter.Markdown(text, 72, false)
 		uisnapshot.AssertTerminal(t, "testdata/snapshots/markdown-file-link-existence.txt", append(rows, "plain after links"), 72)
 	}
 	u.session.cwd = ""
-	if strings.Contains(u.view.painter.Inline("sample.go"), "\x1b]8;") {
+	if strings.Contains(u.view.Painter.Inline("sample.go"), "\x1b]8;") {
 		t.Fatal("relative path became clickable without workspace metadata")
 	}
 }
@@ -174,7 +174,7 @@ func TestUISnapshotMarkdownFileViews(t *testing.T) {
 	}
 	main, _ := newAppServerTestUI()
 	main.session.cwd = workspace
-	main.view.painter.Theme = diffrender.TerminalTheme
+	main.view.Painter.Theme = diffrender.TerminalTheme
 	u := &terminalUI{main: main, width: 80, height: 24}
 	u.openMarkdownFile(main.view, path)
 	for _, view := range []string{"markdown", "file"} {
@@ -215,7 +215,7 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 		t.Fatal("displayed path is not selectable")
 	}
 	for _, target := range []string{"missing.go", "sample.go:0", "sample.go:2-1", "sample.go:1-", workspace, "file://remote" + workspace + "/sample.go", "https://example.com", "#section"} {
-		if target != "https://example.com" && strings.Contains(main.view.painter.Inline("[file](<"+target+">)"), "\x1b]8;") {
+		if target != "https://example.com" && strings.Contains(main.view.Painter.Inline("[file](<"+target+">)"), "\x1b]8;") {
 			t.Fatalf("linked non-file destination %q", target)
 		}
 		if u.openMarkdownFile(main.view, target) {
@@ -258,7 +258,7 @@ func TestUISnapshotMarkdownFileDialog(t *testing.T) {
 			}
 			main, _ := newAppServerTestUI()
 			main.session.cwd = workspace
-			main.view.painter.Theme = test.theme
+			main.view.Painter.Theme = test.theme
 			u := &terminalUI{main: main, width: 80, height: 18}
 			if !u.openMarkdownFile(main.view, path+test.location) {
 				t.Fatal("existing file did not open")

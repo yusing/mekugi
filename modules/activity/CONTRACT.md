@@ -11,9 +11,13 @@ displayed-thread identity, input admission and bounded child history; the
 [terminal session](../../apps/mekugi/internal/terminalsession/SPEC.md) owns pane layout, input routing and
 dialog interaction. `presentation` owns the retained
 feed records, roster derivation, neutral values and canonical group membership;
-`terminalview` owns disclosure, blocks and painting. Application adapters supply
-typed observations and host reconciliation without retaining a second transcript. Group members retain entry, operation
-and reasoning-section identity through read merges, reasoning compaction, batch
+`terminalview` owns transcript and roster state, disclosure, pacing, geometry,
+painting and navigation targets. Application adapters supply typed observations,
+host reconciliation and detached displayed-thread admission without retaining a
+second transcript. Display intents carry their admission version; detail and edit
+targets preserve source identity, and skill intents name their agent. Application
+owners resolve host identities and retain output handles. Group members retain
+entry, operation and reasoning-section identity through read merges, reasoning compaction, batch
 flattening and stage folding. Dialogs consume that same flat membership.
 
 ## Operation rows

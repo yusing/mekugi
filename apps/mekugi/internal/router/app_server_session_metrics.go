@@ -6,6 +6,8 @@ import (
 	"slices"
 	"time"
 
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
@@ -158,7 +160,7 @@ func (u *appServerUI) renderSessionMetrics() {
 		add("Requests", "Failed", s.Requests.Failed)
 		add("Usage", "", "Provider-reported consumption, not local estimates. Missing normalized telemetry may default to zero; inspect Exchanges for explicit evidence.")
 		usage("Usage", s.Usage.InputTokens, s.Usage.CachedInputTokens, s.Usage.UncachedInputTokens, s.Usage.OutputTokens, s.Usage.ReasoningTokens)
-		if throughput := outputThroughputLabel(s.Usage.OutputThroughput); throughput != "" {
+		if throughput := activityui.OutputThroughputLabel(s.Usage.OutputThroughput); throughput != "" {
 			add("Usage", "Average output", throughput)
 			add("Usage", "Measured requests", s.Usage.OutputThroughput.MeasuredRequests)
 			add("Usage", "Measured duration", fmt.Sprintf("%.3f s", float64(s.Usage.OutputThroughput.DurationNanos)/1e9))

@@ -21,6 +21,7 @@ type activityPaneEntry struct {
 	ErrorDetail string `json:",omitempty"` // Full error evidence; Text is the bounded preview.
 	CallID      string `json:",omitempty"`
 	Observed    time.Time
+	completed   time.Time // Completion after the observed output has been presented.
 
 	native      *liveActivityNativeItem // In-process app-server lifecycle input, not a provider observation.
 	assignment  *activityAssignment     // Validated native NEW_TASK, not an ordinary message.
@@ -264,12 +265,35 @@ func (a *subagentActivity) takeNativeActivity(root string) []activityPaneEntry {
 }
 
 func (entry activityPaneEntry) ActivityFacts() activitypresentation.Facts {
-	facts := activitypresentation.Facts{Seq: entry.Seq, Agent: entry.Agent, Kind: entry.Kind, ContextBoundary: contextBoundary(entry)}
+	facts := activitypresentation.Facts{Seq: entry.Seq, Agent: entry.Agent, Kind: entry.Kind, Text: entry.Text, Observed: entry.Observed, Activity: entry.activitySeq, Completed: entry.completed, ContextBoundary: contextBoundary(entry)}
+	if entry.assignment != nil {
+		facts.Assignment = true
+		facts.AssignmentTo, facts.AssignmentText = entry.assignment.to, entry.assignment.text
+	}
 	if n := entry.native; n != nil {
 		facts.Running, facts.Live, facts.Restored, facts.Unconfirmed = n.running, n.live, !n.live, n.unconfirmed()
+		facts.Spans, facts.Question = n.spans, n.question
+		facts.Suppressed, facts.RosterOnly = n.phase == "queued-summary", n.wait != nil
+		facts.OutputComplete = n.exit != nil && *n.exit == 0 || !n.live && len(n.segments) > 0 ||
+			n.hook != nil && n.hook.Status == "completed" && !n.hook.HasError
+		if n.turn != "" {
+			facts.InputGroup = n.thread + "\x00" + n.turn
+		}
+		if n.output != nil {
+			state, _ := n.output.Context(0)
+			facts.OutputFailed = state.Exited && state.Exit != 0
+		}
 	}
 	return facts
 }
 func (agent activityPaneAgent) ActivityAgent() activitypresentation.AgentFacts {
-	return activitypresentation.AgentFacts{Name: agent.Name, Responding: agent.Responding, Final: agent.Final}
+	return activitypresentation.AgentFacts{
+		Name: agent.Name, Role: agent.Role, Responding: agent.Responding, Final: agent.Final,
+		Started: agent.Started, LastResponse: agent.LastResponse,
+		WorkElapsed: time.Duration(agent.WorkTimer.ElapsedNS), WorkSince: agent.WorkTimer.Since, WorkKnown: agent.WorkTimer.Known,
+		Turns: agent.Turns, Roundtrips: agent.Roundtrips, Cost: agent.Cost, CostKnown: agent.CostKnown, CostPartial: agent.CostPartial,
+		InputTokens: agent.InputTokens, OutputTokens: agent.OutputTokens, OutputThroughput: agent.OutputThroughput,
+		TokensKnown: agent.TokensKnown, UsagePartial: agent.UsagePartial, RoundtripsPartial: agent.RoundtripsPartial,
+		ContextTokens: agent.ContextTokens, ContextWindow: agent.ContextWindow, ContextKnown: agent.ContextKnown,
+	}
 }

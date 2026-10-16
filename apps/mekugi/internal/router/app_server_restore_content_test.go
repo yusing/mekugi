@@ -75,7 +75,7 @@ func TestAppServerRestoreRosterAndActivityFromObservationalHistory(t *testing.T)
 	workspace := t.TempDir()
 	u, w := newAppServerTestUI()
 	u.ctx = t.Context()
-	u.agents = newLiveActivityView()
+	u.agents = newActivityAdapter()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
 	u.session.start("main", workspace)
@@ -121,7 +121,7 @@ func TestAppServerRestoreRosterAndActivityFromObservationalHistory(t *testing.T)
 	if u.restoring != nil || u.session.paths["live"] != "/root/late" || u.session.agent("/root/reviewer").Role != "review" || u.session.agent("/root/reviewer/explorer").Role != "explore" || u.session.agent("/root/reviewer/explorer").Responding {
 		t.Fatalf("hydrated roster or buffered notification missing: %+v", u.session.agents)
 	}
-	feed := ansi.Strip(strings.Join(u.agents.renderFeed(100, 80).lines, "\n"))
+	feed := ansi.Strip(strings.Join(u.agents.RenderFeed(100, 80).Lines, "\n"))
 	for _, want := range []string{"Inspect the change.", "Check again.", "go test ./internal/router", "a.go", "I found a failure.", "Review complete.", "Partial analysis", "history only"} {
 		if !strings.Contains(feed, want) {
 			t.Fatalf("Activity missing %q: %s", want, feed)
@@ -140,7 +140,7 @@ func TestAppServerRestoreRosterAndActivityFromObservationalHistory(t *testing.T)
 func TestAppServerRestoreWrongChildIdentityContinues(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.ctx = t.Context()
-	u.agents = newLiveActivityView()
+	u.agents = newActivityAdapter()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
 	u.session.start("main", t.TempDir())
@@ -155,7 +155,7 @@ func TestAppServerRestoreWrongChildIdentityContinues(t *testing.T) {
 		t.Fatal("wrong identity prevented remaining Activity reads")
 	}
 	restoreContentReply(t, u, 3, map[string]any{"thread": map[string]any{"id": "second", "turns": []any{map[string]any{"id": "t", "status": "completed", "items": []any{map[string]any{"id": "answer", "type": "agentMessage", "text": "Still available"}}}}}})
-	if u.restoring != nil || u.session.paths["wrong"] != "" || u.agents.status != "History incomplete" || !strings.Contains(strings.Join(u.agents.renderFeed(90, 50).lines, "\n"), "Still available") {
+	if u.restoring != nil || u.session.paths["wrong"] != "" || u.agents.StatusLabel != "History incomplete" || !strings.Contains(strings.Join(u.agents.RenderFeed(90, 50).Lines, "\n"), "Still available") {
 		t.Fatal("partial failure leaked identity or suppressed later history")
 	}
 }
@@ -163,7 +163,7 @@ func TestAppServerRestoreWrongChildIdentityContinues(t *testing.T) {
 func TestAppServerRestoreChildReadErrorContinues(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.ctx = t.Context()
-	u.agents = newLiveActivityView()
+	u.agents = newActivityAdapter()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
 	u.session.start("main", t.TempDir())
@@ -179,7 +179,7 @@ func TestAppServerRestoreChildReadErrorContinues(t *testing.T) {
 		t.Fatalf("read error stopped remaining history: %+v", requests)
 	}
 	restoreContentReply(t, u, 3, map[string]any{"thread": map[string]any{"id": "second", "turns": []any{map[string]any{"id": "t", "status": "completed", "items": []any{map[string]any{"id": "answer", "type": "agentMessage", "text": "Recovered answer"}}}}}})
-	if u.restoring != nil || u.agents.status != "History incomplete" || !strings.Contains(strings.Join(u.agents.renderFeed(90, 50).lines, "\n"), "Recovered answer") {
+	if u.restoring != nil || u.agents.StatusLabel != "History incomplete" || !strings.Contains(strings.Join(u.agents.RenderFeed(90, 50).Lines, "\n"), "Recovered answer") {
 		t.Fatal("error hid partial notice or remaining Activity")
 	}
 }
@@ -245,7 +245,7 @@ func TestAppServerRestoreCollaborationRequiresCompletedStatus(t *testing.T) {
 
 func TestAppServerRestoreListPageBudget(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.agents = newLiveActivityView()
+	u.agents = newActivityAdapter()
 	u.session.start("main", t.TempDir())
 	if err := u.restorePaneContent(appServerThreadInfo{ID: "main"}); err != nil {
 		t.Fatal(err)
@@ -253,7 +253,7 @@ func TestAppServerRestoreListPageBudget(t *testing.T) {
 	for i := range 8 {
 		restoreContentReply(t, u, i, map[string]any{"data": []any{}, "nextCursor": fmt.Sprint(i + 1)})
 	}
-	if len(restoreContentRequests(t, w)) != 8 || u.restoring != nil || u.agents.status != "History incomplete" {
+	if len(restoreContentRequests(t, w)) != 8 || u.restoring != nil || u.agents.StatusLabel != "History incomplete" {
 		t.Fatalf("list-page budget not enforced before dispatch: %+v", restoreContentRequests(t, w))
 	}
 }

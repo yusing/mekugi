@@ -57,7 +57,7 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 		t.Fatalf("transport envelope leaked into transcript: %q", text)
 	}
 	resumed, _ := newAppServerTestUI()
-	resumed.agents = newLiveActivityView()
+	resumed.agents = newActivityAdapter()
 	resumed.session.start(resumed.Thread, cwd)
 	resumed.restoreHistory([]appServerHistoryTurn{{ID: "saved", Status: "completed", Items: []appServerItem{{Type: "userMessage", ID: "saved-input", Content: content}}}})
 	if len(resumed.InputHistory) != 1 || resumed.InputHistory[0].Text != draft.Text {

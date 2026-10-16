@@ -131,7 +131,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 		t.Fatalf("measurement fixture not materialized: turns=%d items=%d mode=%s", len(read.Thread.Turns), len(read.Thread.Turns[0].Items), read.Thread.HistoryMode)
 	}
 	baseline, _ := newAppServerTestUI()
-	baseline.agents = newLiveActivityView()
+	baseline.agents = newActivityAdapter()
 	baseline.ctx = t.Context()
 	baseline.ensureShell()
 	t.Cleanup(func() { baseline.shell.diff.close(); baseline.shell.diffScreen.Close() })
@@ -145,7 +145,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	u.client = client
 	u.requests = sessioncontrol.NewRequests[appServerRequest](client)
 	u.ctx = t.Context()
-	u.agents = newLiveActivityView()
+	u.agents = newActivityAdapter()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
 	u.session.start("main", workspace)
@@ -209,7 +209,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	client = start()
 	t.Cleanup(client.Close)
 	fresh, _ := newAppServerTestUI()
-	fresh.client, fresh.ctx, fresh.agents = client, t.Context(), newLiveActivityView()
+	fresh.client, fresh.ctx, fresh.agents = client, t.Context(), newActivityAdapter()
 	fresh.session.start("main", workspace)
 	fresh.session.registerThread(appServerThreadInfo{ID: forked.Thread.ID, AgentNickname: "worker", AgentRole: "worker"})
 	fresh.restoring = &appServerActivityRestore{root: appServerThreadInfo{ID: "main", Cwd: workspace}, order: []string{forked.Thread.ID}, listed: true, pane: make(map[string][]*restoredPlacement), itemAt: make(map[string]map[string]time.Time)}

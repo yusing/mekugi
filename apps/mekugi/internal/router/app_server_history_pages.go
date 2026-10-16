@@ -8,6 +8,10 @@ import (
 	"strings"
 	"time"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
@@ -225,13 +229,13 @@ func (u *appServerUI) updateHistoryHint() {
 	if u.agents == nil {
 		return
 	}
-	u.agents.historyHint = ""
+	u.agents.HistoryHint = ""
 	if h := u.historyLoading(); h != nil && !h.state.View(h.info.ID).Initial {
-		u.agents.historyHint = "Loading older · Esc cancels"
+		u.agents.HistoryHint = "Loading older · Esc cancels"
 	} else if h := u.historyTarget(); h != nil {
-		u.agents.historyHint = "Older history · Ctrl-B o load"
+		u.agents.HistoryHint = "Older history · Ctrl-B o load"
 		if h.state.View("").Status == sessionpresentation.Failed {
-			u.agents.historyHint = "History unavailable · Ctrl-B o retry"
+			u.agents.HistoryHint = "History unavailable · Ctrl-B o retry"
 		}
 	}
 }
@@ -390,16 +394,16 @@ func (u *appServerUI) hydrateChildHistoryMetadata(h *appServerChildHistory) {
 // Move the newly rendered page before the child's previously loaded entries.
 // Sequence IDs remain stable for output and Main-to-Activity links. Parsing,
 // deduplication, output ownership and retention stay with the existing view.
-func (v *liveActivityView) insertHistory(before uint64, belongs func(activityPaneEntry) bool) {
+func (v *activityAdapter) insertHistory(before uint64, belongs func(activityPaneEntry) bool) {
 	var anchor uint64
 	anchorRow := -1
-	if !v.following && v.width > 0 && v.feedRows > 0 {
-		layoutOnly := v.painter.LayoutOnly
-		v.painter.LayoutOnly = true
-		v.layoutFeed(v.width)
-		v.painter.LayoutOnly = layoutOnly
-		for seq, row := range v.questionRows {
-			if seq <= before && row <= v.offset && row > anchorRow {
+	if !v.Following && v.Width > 0 && v.FeedRows > 0 {
+		layoutOnly := v.Painter.LayoutOnly
+		v.Painter.LayoutOnly = true
+		v.LayoutFeed(v.Width)
+		v.Painter.LayoutOnly = layoutOnly
+		for seq, row := range v.QuestionRows {
+			if seq <= before && row <= v.Offset && row > anchorRow {
 				anchor, anchorRow = seq, row
 			}
 		}
@@ -422,23 +426,23 @@ func (v *liveActivityView) insertHistory(before uint64, belongs func(activityPan
 	}
 	indices = slices.Insert(indices, at, added...)
 	v.reorderEntries(indices)
-	v.historyOrder = true
-	clear(v.events)
+	v.HistoryOrder = true
+	clear(v.Events)
 	for _, entry := range v.Entries {
-		if v.standalone(entry.Source) {
-			if v.events == nil {
-				v.events = make(map[string]liveActivityEvent)
+		if (activitypresentation.Entry{Facts: entry.Source.ActivityFacts()}).Standalone() {
+			if v.Events == nil {
+				v.Events = make(map[string]activityui.Event)
 			}
-			v.events[entry.Source.Agent] = liveActivityEvent{entry.Source.Seq, cmp.Or(entry.Source.Observed, v.now())}
+			v.Events[entry.Source.Agent] = activityui.Event{entry.Source.Seq, cmp.Or(entry.Source.Observed, v.Now())}
 		}
 	}
 	if anchor != 0 {
-		layoutOnly := v.painter.LayoutOnly
-		v.painter.LayoutOnly = true
-		v.layoutFeed(v.width)
-		v.painter.LayoutOnly = layoutOnly
-		if row, ok := v.questionRows[anchor]; ok {
-			v.offset += row - anchorRow
+		layoutOnly := v.Painter.LayoutOnly
+		v.Painter.LayoutOnly = true
+		v.LayoutFeed(v.Width)
+		v.Painter.LayoutOnly = layoutOnly
+		if row, ok := v.QuestionRows[anchor]; ok {
+			v.Offset += row - anchorRow
 		}
 	}
 }

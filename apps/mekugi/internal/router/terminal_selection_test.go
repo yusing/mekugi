@@ -27,8 +27,8 @@ import (
 
 func selectionTestUI(rows ...string) *terminalUI {
 	main, _ := newAppServerTestUI()
-	main.view.feedLeft, main.view.feedTop = 1, 1
-	main.view.feedRight, main.view.feedRows = 40, len(rows)
+	main.view.FeedLeft, main.view.FeedTop = 1, 1
+	main.view.FeedRight, main.view.FeedRows = 40, len(rows)
 	painted := append([]string(nil), rows...)
 	painted = append(painted, "")
 	return &terminalUI{main: main, width: 40, height: len(painted), frame: terminalsession.Frame{Width: 40, Rows: painted}, layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 40, len(rows)}}}
@@ -51,7 +51,7 @@ func TestTerminalSelectionSyntaxColors(t *testing.T) {
 				const source = `var text = "green"`
 				p := &activityui.Painter{Theme: theme}
 				u := selectionTestUI(p.Inline("`" + source + "` outside"))
-				u.main.view.painter.Theme = theme
+				u.main.view.Painter.Theme = theme
 				x, y := 0, 0
 				if dialog {
 					u.width, u.height = 80, 18
@@ -334,23 +334,23 @@ func TestTerminalUISelectionReplacementKeepsCleanLinks(t *testing.T) {
 func TestTerminalUISelectionKeepsPressedHitTarget(t *testing.T) {
 	for _, question := range []bool{false, true} {
 		u := selectionTestUI("click target")
-		u.agents = newLiveActivityView()
+		u.agents = newActivityAdapter()
 		u.diff = newLiveDiffTerminalController(nil, "", nil)
 		t.Cleanup(u.diff.close)
 		for _, entry := range []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "First target"}, {Seq: 2, Agent: "Main", Kind: "text", Text: "Advanced target"}} {
 			u.main.view.appendEntry(entry, parseLiveActivity(entry))
 		}
-		old, next := liveActivitySnippet{run: 1}, liveActivitySnippet{run: 2}
+		old, next := activityui.Snippet{Run: 1}, activityui.Snippet{Run: 2}
 		if question {
-			u.main.view.feedQuestions = []uint64{1}
-			u.main.view.questionRows = map[uint64]int{1: 3, 2: 9}
+			u.main.view.FeedQuestions = []uint64{1}
+			u.main.view.QuestionRows = map[uint64]int{1: 3, 2: 9}
 		} else {
-			u.main.view.feedSnippets = []liveActivitySnippet{old}
+			u.main.view.FeedSnippets = []activityui.Snippet{old}
 		}
 		u.selectionMouse(0, 0, 0, false)
 		// A streaming repaint replaces viewport hit maps before button release.
-		u.main.view.feedQuestions = []uint64{2}
-		u.main.view.feedSnippets = []liveActivitySnippet{next}
+		u.main.view.FeedQuestions = []uint64{2}
+		u.main.view.FeedSnippets = []activityui.Snippet{next}
 		u.paintSelection(u.frame.Rows)
 		u.selectionMouse(0, 0, 0, true)
 		if question {
@@ -358,7 +358,7 @@ func TestTerminalUISelectionKeepsPressedHitTarget(t *testing.T) {
 				t.Fatal("clicked an advancing question target")
 			}
 			u.outputKey("\x1b")
-			if u.output != nil || u.main.view.offset != 0 {
+			if u.output != nil || u.main.view.Offset != 0 {
 				t.Fatal("dismissing question changed transcript")
 			}
 		} else if u.output == nil || !strings.Contains(fmt.Sprint(u.output.pages), "First target") || strings.Contains(fmt.Sprint(u.output.pages), "Advanced target") {
@@ -502,8 +502,8 @@ func TestTerminalUISelectionComposerReplacesTranscript(t *testing.T) {
 		}
 	}
 	paint()
-	u.view.feedQuestions = []uint64{1, 1, 1, 1}
-	u.view.questionRows = map[uint64]int{1: 99}
+	u.view.FeedQuestions = []uint64{1, 1, 1, 1}
+	u.view.QuestionRows = map[uint64]int{1: 99}
 	u.insertDraft("first\nsecond\nthird\nfourth\nfifth")
 	paint()
 	r := u.composerRect
@@ -515,7 +515,7 @@ func TestTerminalUISelectionComposerReplacesTranscript(t *testing.T) {
 	}
 	u.shell.selectionMouse(0, r.X, r.Y, false)
 	u.shell.selectionMouse(0, r.X, r.Y, true)
-	if u.view.flashQuestion != 0 {
+	if u.view.FlashQuestion != 0 {
 		t.Fatal("composer click activated stale transcript question")
 	}
 }

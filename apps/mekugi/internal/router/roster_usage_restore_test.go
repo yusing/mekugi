@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/yusing/mekugi/contracts/inference"
@@ -39,7 +41,7 @@ func TestNativeRosterRestoredUsageUsesProviderTotals(t *testing.T) {
 	}
 	for _, thread := range []string{"gap", "historical"} {
 		agent := u.session.agent(u.session.paths[thread])
-		if agent.CostKnown || liveActivityCost(*agent) != "" || agent.InputTokens != 0 || agent.OutputTokens != 0 {
+		if agent.CostKnown || activityui.Cost(testActivityAgent(*agent)) != "" || agent.InputTokens != 0 || agent.OutputTokens != 0 {
 			t.Fatalf("%s invented consumption or zero cost: %+v", thread, agent)
 		}
 	}
@@ -65,7 +67,7 @@ func TestNativeRosterRestoredUsageUsesProviderTotals(t *testing.T) {
 	if !historical.TokensKnown || !historical.UsagePartial || !historical.CostPartial || historical.Roundtrips != 1 || historical.InputTokens != 100_000 || historical.OutputTokens != 10_000 {
 		t.Fatalf("historical followup claimed complete totals: %+v", historical)
 	}
-	if got := ansi.Strip(liveActivityTurns(*historical)); got != "≥T+1" {
+	if got := ansi.Strip(activityui.Turns(testActivityAgent(*historical))); got != "≥T+1" {
 		t.Fatalf("historical roundtrips = %q", got)
 	}
 }
@@ -75,8 +77,8 @@ func TestUISnapshotNativeRosterRestoredUsage(t *testing.T) {
 	u.proxy.usage.Observation("historical", "historical", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 10_000})
 	u.observeCost("historical", u.session.agent(u.session.paths["historical"]))
 	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: u.session.agents})
-	u.agents.painter.Theme = diffrender.DarkTheme
-	u.agents.selected = u.session.paths["child"]
+	u.agents.Painter.Theme = diffrender.DarkTheme
+	u.agents.Selected = u.session.paths["child"]
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
-	assertNativeUISnapshot(t, "native-roster-restored-usage", u.agents.nativeRoster(140, 8, now, true))
+	assertNativeUISnapshot(t, "native-roster-restored-usage", u.agents.NativeRoster(140, 8, now, true))
 }

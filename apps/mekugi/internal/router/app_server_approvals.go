@@ -302,7 +302,7 @@ func (u *appServerUI) endApproval(a *nativeApproval, outcome string) {
 // approvalItem finds one exact host identity across the two presentation views.
 func (u *appServerUI) approvalItem(thread, turn, item string) *liveActivityNativeItem {
 	var owner *liveActivityNativeItem
-	for _, view := range []*liveActivityView{u.view, u.agents} {
+	for _, view := range []*activityAdapter{u.view, u.agents} {
 		if view == nil {
 			continue
 		}
@@ -504,7 +504,7 @@ func (u *appServerUI) approvalRows(width, height int) []string {
 	if len(u.pendingApprovals()) == 0 {
 		return nil
 	}
-	p := &u.view.painter
+	p := &u.view.Painter
 	accent, dim, reset := p.Theme.Accent(), terminalui.Dim, terminalui.Reset
 	if !d.Open {
 		label := accent + "! " + reset + fmt.Sprintf("%d approval", len(u.pendingApprovals()))

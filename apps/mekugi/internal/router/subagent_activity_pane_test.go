@@ -7,11 +7,13 @@ import (
 	"testing"
 	"time"
 
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+
 	"github.com/charmbracelet/x/ansi"
 )
 
-func liveActivityTestView(names ...string) *liveActivityView {
-	view := newLiveActivityView()
+func liveActivityTestView(names ...string) *activityAdapter {
+	view := newActivityAdapter()
 	var agents []activityPaneAgent
 	var entries []activityPaneEntry
 	now := time.Now()
@@ -37,13 +39,13 @@ func TestLiveActivityViewRosterTreeOverflowAndSelection(t *testing.T) {
 	view.Agents[1].Final = true
 	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 8, Agent: "/root/c", Kind: "error", Text: "failed", Observed: time.Now()}}})
 	var order []string
-	for _, row := range view.Roster() {
+	for _, row := range view.testRoster() {
 		order = append(order, strings.Repeat(">", row.Depth)+row.Agent.Name)
 	}
 	if got := strings.Join(order, " "); got != "/root/a >/root/a/x >/root/a/y /root/b /root/c /root/d /root/e" {
 		t.Fatalf("roster order = %s", got)
 	}
-	lines := plainLines(view.render(60, 20, time.Now()))
+	lines := plainLines(view.Render(60, 20, time.Now()))
 	if !strings.HasPrefix(lines[0], "AGENTS  7 agents · 1 responding · 1 error") || !strings.HasSuffix(lines[0], "FOLLOW") {
 		t.Fatalf("header = %q", lines[0])
 	}
@@ -52,18 +54,18 @@ func TestLiveActivityViewRosterTreeOverflowAndSelection(t *testing.T) {
 		lines[6] != "↓ 2 more" {
 		t.Fatalf("roster = %q", lines[1:7])
 	}
-	view.selected = "/root/e"
-	styled := view.render(60, 20, time.Now())
+	view.Selected = "/root/e"
+	styled := view.Render(60, 20, time.Now())
 	lines = plainLines(styled)
 	// Selection fills its row in place, without a marker column.
-	fill := view.painter.Theme.SelectionBackground()
-	if view.selected != "/root/e" || !slices.ContainsFunc(styled[1:7], func(line string) bool {
+	fill := view.Painter.Theme.SelectionBackground()
+	if view.Selected != "/root/e" || !slices.ContainsFunc(styled[1:7], func(line string) bool {
 		return strings.HasPrefix(line, fill) && strings.Contains(ansi.Strip(line), " · e")
 	}) ||
 		!slices.ContainsFunc(lines[1:7], func(line string) bool { return strings.HasPrefix(line, " · e") }) {
-		t.Fatalf("selection scroll: selected=%s roster=%q", view.selected, lines[1:7])
+		t.Fatalf("selection scroll: selected=%s roster=%q", view.Selected, lines[1:7])
 	}
-	for _, line := range view.render(60, 20, time.Now()) {
+	for _, line := range view.Render(60, 20, time.Now()) {
 		if ansi.StringWidth(line) > 59 {
 			t.Fatalf("line exceeds pane: %q", ansi.Strip(line))
 		}
@@ -74,13 +76,13 @@ func TestLiveActivityViewClampOnlyModeAndPausedCount(t *testing.T) {
 	view := liveActivityTestView("/root/a", "/root/b")
 	long := "Plan\n```go\n" + strings.Repeat("line\n", 20) + "```"
 	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 3, Agent: "/root/a", Text: long, Observed: time.Now()}}})
-	all := strings.Join(plainLines(view.render(80, 40, time.Now())), "\n")
+	all := strings.Join(plainLines(view.Render(80, 40, time.Now())), "\n")
 	if !strings.Contains(all, "… +") || !strings.Contains(all, "  line") {
 		t.Fatalf("clamped feed = %s", all)
 	}
-	view.setDisplayFilter(true, view.selected)
-	view.follow()
-	only := plainLines(view.render(80, 40, time.Now()))
+	view.setDisplayFilter(true, view.Selected)
+	view.Follow()
+	only := plainLines(view.Render(80, 40, time.Now()))
 	joined := strings.Join(only, "\n")
 	if !strings.Contains(joined, "… +") || strings.Count(joined, "  line") >= 20 || strings.Contains(joined, "● b") {
 		t.Fatalf("only feed = %s", joined)
@@ -88,18 +90,18 @@ func TestLiveActivityViewClampOnlyModeAndPausedCount(t *testing.T) {
 	if !strings.HasPrefix(only[len(only)-1], "ONLY ·") || !strings.Contains(only[0], "only a (1/2)") {
 		t.Fatalf("only chrome = %q / %q", only[0], only[len(only)-1])
 	}
-	view.render(80, 5, time.Now()) // Make scrollback possible with five-row excerpts.
-	view.scrollKey('k')
+	view.Render(80, 5, time.Now()) // Make scrollback possible with five-row excerpts.
+	view.ScrollKey('k')
 	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
 		{Seq: 4, Agent: "/root/a", Text: "more", Observed: time.Now()},
 		{Seq: 5, Agent: "/root/b", Text: "hidden", Observed: time.Now()},
 		{Seq: 4, Agent: "/root/a", Text: "duplicate", Observed: time.Now()},
 	}})
-	if header := plainLines(view.render(80, 5, time.Now()))[0]; !strings.HasSuffix(header, "PAUSED · 1 new") {
+	if header := plainLines(view.Render(80, 5, time.Now()))[0]; !strings.HasSuffix(header, "PAUSED · 1 new") {
 		t.Fatalf("paused header = %q", header)
 	}
-	view.scrollKey('G')
-	if header := plainLines(view.render(80, 5, time.Now()))[0]; !strings.HasSuffix(header, "FOLLOW") {
+	view.ScrollKey('G')
+	if header := plainLines(view.Render(80, 5, time.Now()))[0]; !strings.HasSuffix(header, "FOLLOW") {
 		t.Fatalf("follow header = %q", header)
 	}
 }
@@ -111,7 +113,7 @@ func TestLiveActivitySnippetClick(t *testing.T) {
 		view := liveActivityTestView("/root/a", "/root/b")
 		now := time.Now()
 		view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 3, Agent: "/root/a", Text: long, Observed: now}}})
-		lines := view.render(size[0], size[1], now)
+		lines := view.Render(size[0], size[1], now)
 		clipped := func(lines []string) bool {
 			return slices.ContainsFunc(plainLines(lines), func(line string) bool { return hint.MatchString(strings.TrimRight(line, " ")) })
 		}
@@ -119,22 +121,22 @@ func TestLiveActivitySnippetClick(t *testing.T) {
 		if row == 0 {
 			t.Fatalf("%v: no clipped snippet: %q", size, plainLines(lines))
 		}
-		column := view.feedLeft + 4
-		if !view.handleMouse('h', row-2, column) || !strings.Contains(view.render(size[0], size[1], now)[row-1], "\x1b[4m… +") {
+		column := view.FeedLeft + 4
+		if !view.testHandleMouse('h', row-2, column) || !strings.Contains(view.Render(size[0], size[1], now)[row-1], "\x1b[4m… +") {
 			t.Fatalf("%v: hovering a collapsed snippet did not underline its hint", size)
 		}
-		if !view.handleMouse('h', 1, column) || view.render(size[0], size[1], now)[row-1] != lines[row-1] {
+		if !view.testHandleMouse('h', 1, column) || view.Render(size[0], size[1], now)[row-1] != lines[row-1] {
 			t.Fatalf("%v: leaving the snippet kept its underline", size)
 		}
 		// Clicks outside a snippet leave it clipped.
-		view.handleMouse('\r', 1, column)
-		if !clipped(view.render(size[0], size[1], now)) {
+		view.testHandleMouse('\r', 1, column)
+		if !clipped(view.Render(size[0], size[1], now)) {
 			t.Fatalf("%v: header click expanded the snippet", size)
 		}
-		if !view.handleMouse('\r', row, column) {
+		if !view.testHandleMouse('\r', row, column) {
 			t.Fatalf("%v: click did not redraw", size)
 		}
-		if view.opening == (liveActivitySnippet{}) || !clipped(view.render(size[0], size[1], now)) {
+		if view.Opening == (activityui.Snippet{}) || !clipped(view.Render(size[0], size[1], now)) {
 			t.Fatalf("%v: click did not request dialog while retaining clipped feed", size)
 		}
 	}
@@ -143,7 +145,7 @@ func TestLiveActivitySnippetClick(t *testing.T) {
 func TestLiveActivityViewTinyAndNarrowPanes(t *testing.T) {
 	view := liveActivityTestView("/root/explorer/deeply/nested/worker", "/root/b", "/root/c")
 	for _, size := range [][2]int{{10, 3}, {24, 6}, {30, 9}} {
-		lines := view.render(size[0], size[1], time.Now())
+		lines := view.Render(size[0], size[1], time.Now())
 		if len(lines) != size[1] {
 			t.Fatalf("%v: %d lines", size, len(lines))
 		}
@@ -153,10 +155,10 @@ func TestLiveActivityViewTinyAndNarrowPanes(t *testing.T) {
 			}
 		}
 	}
-	if lines := plainLines(view.render(40, 6, time.Now())); !strings.HasPrefix(lines[1], "· explorer/deeply/nested/worker  · b") {
+	if lines := plainLines(view.Render(40, 6, time.Now())); !strings.HasPrefix(lines[1], "· explorer/deeply/nested/worker  · b") {
 		t.Fatalf("short pane roster = %q", lines)
 	}
-	if got := liveActivityMiddle("/root/explorer/deeply/nested/worker", 20); !strings.HasSuffix(got, "…worker") || ansi.StringWidth(got) != 20 {
+	if got := activityui.Middle("/root/explorer/deeply/nested/worker", 20); !strings.HasSuffix(got, "…worker") || ansi.StringWidth(got) != 20 {
 		t.Fatalf("middle = %q", got)
 	}
 }
@@ -165,7 +167,7 @@ func TestLiveActivityRosterShowsUsageByLayout(t *testing.T) {
 	view := liveActivityTestView("/root/a", "/root/b")
 	view.Agents[0].InputTokens, view.Agents[0].OutputTokens = 146_800, 3_200
 	for _, width := range []int{140} {
-		lines := plainLines(view.render(width, 20, time.Now()))
+		lines := plainLines(view.Render(width, 20, time.Now()))
 		row := slices.IndexFunc(lines, func(line string) bool { return strings.Contains(line, "↑") })
 		// The roster status ends the row; cards end it at the column divider.
 		status, _, _ := strings.Cut(lines[max(0, row)], " │ ")
@@ -195,7 +197,7 @@ func TestLiveActivityCombinedRosterShowsTimerCostAndUsage(t *testing.T) {
 	view.Agents[1].LastResponse = now.Add(-2 * time.Minute)
 	view.Agents[1].InputTokens, view.Agents[1].OutputTokens = 500, 0
 	view.Agents[1].Turns, view.Agents[1].Roundtrips, view.Agents[1].Cost, view.Agents[1].CostKnown = 1, 1, 0, false
-	lines := plainLines(view.render(90, 20, now))
+	lines := plainLines(view.Render(90, 20, now))
 	for i := range lines {
 		lines[i] = strings.Join(strings.Fields(lines[i]), " ")
 	}
@@ -212,12 +214,12 @@ func TestLiveActivityCombinedRosterShowsTimerCostAndUsage(t *testing.T) {
 
 func TestLiveActivityRosterUsesAvailableWidth(t *testing.T) {
 	view := liveActivityTestView("/root/review_stock_preview")
-	lines := plainLines(view.render(80, 20, time.Now()))
+	lines := plainLines(view.Render(80, 20, time.Now()))
 	if !strings.Contains(lines[1], "review_stock_preview  ") || strings.Contains(lines[1], "…") {
 		t.Fatalf("roster name clipped or padded unexpectedly: %q", lines[1])
 	}
 	view = liveActivityTestView("/root/very/long/agent/name/that/could/eat/the/whole/roster", "/root/b")
-	lines = plainLines(view.render(60, 20, time.Now()))
+	lines = plainLines(view.Render(60, 20, time.Now()))
 	if !strings.Contains(lines[2], "Read b.go") {
 		t.Fatalf("long name obscured short agent's summary: %q", lines[2])
 	}

@@ -72,11 +72,11 @@ func TestScrollablePaneWheelAgreesAtConsumers(t *testing.T) {
 				t.Fatalf("live diff wheel offset = %d, want %d", got, test.diffWant)
 			}
 
-			activity := newLiveActivityView()
-			activity.feedLines, activity.feedRows, activity.offset = 100, 10, test.starting
-			activity.following = test.following
-			if !activity.handleMouse(test.action, 1, 1) || activity.offset != test.activityWant || activity.following {
-				t.Fatalf("agents wheel offset/follow = %d/%v, want %d/false", activity.offset, activity.following, test.activityWant)
+			activity := newActivityAdapter()
+			activity.FeedLines, activity.FeedRows, activity.Offset = 100, 10, test.starting
+			activity.Following = test.following
+			if !activity.testHandleMouse(test.action, 1, 1) || activity.Offset != test.activityWant || activity.Following {
+				t.Fatalf("agents wheel offset/follow = %d/%v, want %d/false", activity.Offset, activity.Following, test.activityWant)
 			}
 		})
 	}
@@ -98,17 +98,17 @@ func newTerminalScrollTestController(offset int) *liveDiffTerminalController {
 func TestScrollablePaneWheelBurstAccumulates(t *testing.T) {
 	c := newTerminalScrollTestController(50)
 	defer c.close()
-	v := newLiveActivityView()
-	v.following = false
-	v.feedLines, v.feedRows, v.offset = 100, 10, 50
+	v := newActivityAdapter()
+	v.Following = false
+	v.FeedLines, v.FeedRows, v.Offset = 100, 10, 50
 	for range 4 {
 		for _, key := range []byte("\x1b[<64;1;2M") {
 			c.handleKey(key)
 		}
-		v.handleMouse('k', 2, 1)
+		v.testHandleMouse('k', 2, 1)
 	}
-	if c.offset != 38 || c.view.Scroll["scroll.txt"] != 38 || v.offset != 38 {
-		t.Fatalf("wheel burst lost events before paint: diff=%d saved=%d agents=%d", c.offset, c.view.Scroll["scroll.txt"], v.offset)
+	if c.offset != 38 || c.view.Scroll["scroll.txt"] != 38 || v.Offset != 38 {
+		t.Fatalf("wheel burst lost events before paint: diff=%d saved=%d agents=%d", c.offset, c.view.Scroll["scroll.txt"], v.Offset)
 	}
 }
 

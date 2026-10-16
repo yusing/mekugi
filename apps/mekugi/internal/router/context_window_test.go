@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+
 	"github.com/yusing/mekugi/contracts/inference"
 
 	"github.com/charmbracelet/x/ansi"
@@ -48,7 +50,7 @@ func TestAppServerContextWindow(t *testing.T) {
 		t.Fatalf("context must follow model in composer: %q", bottom)
 	}
 	for _, width := range []int{40, 80, 160} {
-		lines := u.agents.nativeRoster(width, 6, time.Now(), true)
+		lines := u.agents.NativeRoster(width, 6, time.Now(), true)
 		for _, line := range lines {
 			if ansi.StringWidth(line) > width {
 				t.Fatalf("roster overflow at %d: %q", width, line)
@@ -64,19 +66,19 @@ func TestAppServerContextWindow(t *testing.T) {
 		t.Fatalf("compaction did not reduce context: %+v", root)
 	}
 	notify("main", 0, 200000)
-	if got := contextWindowLabel(*root); got != "0/200K • 0%" {
+	if got := activityui.ContextWindowLabel(testActivityAgent(*root)); got != "0/200K • 0%" {
 		t.Fatal(got)
 	}
 	notify("main", 1000, 0)
-	if got := contextWindowLabel(*root); got != "1K used" {
+	if got := activityui.ContextWindowLabel(testActivityAgent(*root)); got != "1K used" {
 		t.Fatal(got)
 	}
 	appServerTestNotify(t, u, "thread/tokenUsage/updated", map[string]any{"threadId": "main", "tokenUsage": map[string]any{"total": map[string]any{"inputTokens": 1}}})
-	if got := contextWindowLabel(*root); got != "0%" {
+	if got := activityui.ContextWindowLabel(testActivityAgent(*root)); got != "0%" {
 		t.Fatal(got)
 	}
 	u.session.start("fresh", t.TempDir())
-	if got := contextWindowLabel(*u.session.agent("/root")); got != "0%" {
+	if got := activityui.ContextWindowLabel(testActivityAgent(*u.session.agent("/root"))); got != "0%" {
 		t.Fatal(got)
 	}
 }
@@ -108,17 +110,17 @@ func TestAppServerStartupRestoresContext(t *testing.T) {
 	u.restoring = &appServerActivityRestore{order: []string{"child"}, listed: true}
 	appServerTestRequest(t, u, "2", "thread/read")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":2,"result":{"thread":{"id":"child","path":%q,"turns":[]}}}`, path))
-	if got := contextWindowLabel(*child); got != "20K/400K • 5%" {
+	if got := activityui.ContextWindowLabel(testActivityAgent(*child)); got != "20K/400K • 5%" {
 		t.Fatal(got)
 	}
-	roster := ansi.Strip(strings.Join(u.agents.nativeRoster(160, 6, time.Now(), true), "\n"))
+	roster := ansi.Strip(strings.Join(u.agents.NativeRoster(160, 6, time.Now(), true), "\n"))
 	if !strings.Contains(roster, "20K/400K • 5%") {
 		t.Fatalf("saved child context did not reach roster: %s", roster)
 	}
 	// Metadata must never replace a newer live update with a stale disk snapshot.
 	appServerTestNotify(t, u, "thread/tokenUsage/updated", map[string]any{"threadId": "child", "tokenUsage": map[string]any{"last": map[string]any{"totalTokens": 40000}, "modelContextWindow": 400000}})
 	u.session.registerThread(appServerThreadInfo{ID: "child", Path: path})
-	if got := contextWindowLabel(*child); got != "40K/400K • 10%" {
+	if got := activityui.ContextWindowLabel(testActivityAgent(*child)); got != "40K/400K • 10%" {
 		t.Fatal(got)
 	}
 	other := activityPaneAgent{}

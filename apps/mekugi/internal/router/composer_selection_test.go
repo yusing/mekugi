@@ -3,6 +3,8 @@ package router
 import (
 	"encoding/json/jsontext"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
@@ -24,8 +26,6 @@ import (
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
-
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func TestComposerSelectionMentionIsOneToken(t *testing.T) {
@@ -37,7 +37,7 @@ func TestComposerSelectionMentionIsOneToken(t *testing.T) {
 		t.Fatalf("draft = %q, want %q", u.Text, want)
 	}
 	spans := draftDisplaySpans(u.draftSnapshot().Draft)
-	if len(spans) != 2 || spans[0].Kind != activityui.SelectionToken || u.Text[spans[1].Start:spans[1].End] != "[Selected message 2]" {
+	if len(spans) != 2 || spans[0].Kind != activitypresentation.SelectionToken || u.Text[spans[1].Start:spans[1].End] != "[Selected message 2]" {
 		t.Fatalf("spans = %+v", spans)
 	}
 	// Backspace after the token removes it whole, then undo restores it.
@@ -85,7 +85,7 @@ func TestComposerSelectionSubmitsQuotedFrames(t *testing.T) {
 	}
 	// The host echo keeps the concise label as one styled token.
 	spans := composerElementSpans(input[0]["text"].(string), elements)
-	if len(spans) != 1 || spans[0].Kind != activityui.SelectionToken {
+	if len(spans) != 1 || spans[0].Kind != activitypresentation.SelectionToken {
 		t.Fatalf("transcript spans = %+v", spans)
 	}
 }

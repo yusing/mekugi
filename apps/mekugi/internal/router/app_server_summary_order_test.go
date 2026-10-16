@@ -16,11 +16,11 @@ func TestUISnapshotAppServerReasoningBeforeLaterActivity(t *testing.T) {
 		for _, later := range []string{"answer", "command"} {
 			t.Run(thread+"_"+later, func(t *testing.T) {
 				u := newAppServerSessionTestUI(t, t.TempDir())
-				u.view.conversation = true
+				u.view.Conversation = true
 				at := time.Date(2026, 9, 30, 8, 0, 0, 0, time.Local)
 				u.clock = func() time.Time { return at }
-				u.view.clock, u.agents.clock = u.clock, u.clock
-				u.view.painter.Theme, u.agents.painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
+				u.view.Clock, u.agents.Clock = u.clock, u.clock
+				u.view.Painter.Theme, u.agents.Painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
 				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 				u.agents.setDisplayFilter(false, "/root/worker")
 				view := u.view
@@ -50,11 +50,11 @@ func TestUISnapshotAppServerReasoningBeforeLaterActivity(t *testing.T) {
 				if view.blocks(0)[0].Collapsed || settleActivity(at.Add(time.Second), view) {
 					t.Fatal("completed paced summary folded before it could be read")
 				}
-				uisnapshot.Assert(t, "testdata/snapshots/reasoning-before-"+later+"-"+thread+"-expanded.txt", strings.Join(view.renderFeed(80, 40).lines, "\n")+"\n")
+				uisnapshot.Assert(t, "testdata/snapshots/reasoning-before-"+later+"-"+thread+"-expanded.txt", strings.Join(view.RenderFeed(80, 40).Lines, "\n")+"\n")
 				if !settleActivity(at.Add(activityui.OutputDebounce), view) || !view.blocks(0)[0].Collapsed {
 					t.Fatal("completed paced summary did not fold after the reading period")
 				}
-				uisnapshot.Assert(t, "testdata/snapshots/reasoning-before-"+later+"-"+thread+"-collapsed.txt", strings.Join(view.renderFeed(80, 40).lines, "\n")+"\n")
+				uisnapshot.Assert(t, "testdata/snapshots/reasoning-before-"+later+"-"+thread+"-collapsed.txt", strings.Join(view.RenderFeed(80, 40).Lines, "\n")+"\n")
 			})
 		}
 	}

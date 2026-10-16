@@ -36,7 +36,7 @@ func (u *appServerUI) startCommitReads() {
 	if u.commits == nil {
 		return
 	}
-	for _, view := range []*liveActivityView{u.view, u.agents} {
+	for _, view := range []*activityAdapter{u.view, u.agents} {
 		if view == nil {
 			continue
 		}

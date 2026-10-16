@@ -26,7 +26,7 @@ func (u *appServerUI) statusPanelFrame(width, height int) []string {
 	const bold = "\x1b[1m"
 	const dim = "\x1b[2m"
 	accent, warning, danger := "\x1b[38;2;104;174;245m", "\x1b[38;2;230;181;94m", "\x1b[38;2;239;117;117m"
-	if u.view.painter.Theme == diffrender.LightTheme {
+	if u.view.Painter.Theme == diffrender.LightTheme {
 		accent, warning, danger = "\x1b[38;2;25;94;164m", "\x1b[38;2;134;86;16m", "\x1b[38;2;178;43;43m"
 	}
 	panelWidth := min(82, width)
@@ -104,7 +104,7 @@ func (u *appServerUI) statusPanelFrame(width, height int) []string {
 				style = bold + accent
 			}
 			wrapValue := func(width int) []string {
-				return u.view.painter.CopyWrapped(pickerWrap(value, width), terminalui.CopyFragment{ID: uint64(index + 1), Text: ansi.Strip(value)}, 0)
+				return u.view.Painter.CopyWrapped(pickerWrap(value, width), terminalui.CopyFragment{ID: uint64(index + 1), Text: ansi.Strip(value)}, 0)
 			}
 			// Reserve a bounded label column for wrapping. Actual alignment is measured
 			// below from visible rows only, so off-screen labels cannot widen it.

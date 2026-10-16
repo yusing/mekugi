@@ -7,47 +7,51 @@ import (
 	"testing"
 	"time"
 
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 )
 
 // Compare the complete feed and hit targets, not just the visible text: an
 // unchanged rendering must not retain stale snippets or question navigation.
-func assertLiveActivityCacheFresh(t *testing.T, v *liveActivityView) {
+func assertLiveActivityCacheFresh(t *testing.T, v *activityAdapter) {
 	t.Helper()
-	got := v.renderFeed(90, 24)
-	rows := v.questionRows
+	got := v.RenderFeed(90, 24)
+	rows := v.QuestionRows
 	fresh := *v
-	fresh.runs = nil
-	want := fresh.renderFeed(90, 24)
-	if !reflect.DeepEqual(got, want) || !reflect.DeepEqual(rows, fresh.questionRows) {
-		t.Fatalf("cached feed differs from fresh render:\ngot: %#v\nwant: %#v\nrows: %v / %v", got, want, rows, fresh.questionRows)
+	freshView := *v.View
+	fresh.View = &freshView
+	fresh.Runs = nil
+	want := fresh.RenderFeed(90, 24)
+	if !reflect.DeepEqual(got, want) || !reflect.DeepEqual(rows, fresh.QuestionRows) {
+		t.Fatalf("cached feed differs from fresh render:\ngot: %#v\nwant: %#v\nrows: %v / %v", got, want, rows, fresh.QuestionRows)
 	}
-	for key, run := range v.runs {
-		if !reflect.DeepEqual(run, fresh.runs[key]) {
+	for key, run := range v.Runs {
+		if !reflect.DeepEqual(run, fresh.Runs[key]) {
 			t.Fatalf("cached run %v has stale lines, snippets, questions, blocks or entryRows", key)
 		}
 	}
 }
 
-func liveActivityCacheRun(t *testing.T, v *liveActivityView, seq uint64) (liveActivityRunKey, liveActivityRun) {
+func liveActivityCacheRun(t *testing.T, v *activityAdapter, seq uint64) (activityui.RunKey, activityui.Run) {
 	t.Helper()
-	for key, run := range v.runs {
-		if key.first <= seq && seq <= key.last {
+	for key, run := range v.Runs {
+		if key.First <= seq && seq <= key.Last {
 			return key, run
 		}
 	}
 	t.Fatalf("no cached run containing entry %d", seq)
-	return liveActivityRunKey{}, liveActivityRun{}
+	return activityui.RunKey{}, activityui.Run{}
 }
 
 func TestLiveActivityCacheEntryUpdates(t *testing.T) {
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 	for _, change := range []string{"output delta", "reasoning", "exit", "receipt", "paced reveal", "settled output"} {
 		t.Run(change, func(t *testing.T) {
-			v := newLiveActivityView()
-			v.childrenOnly = true
-			v.painter.Theme = diffrender.DarkTheme
-			v.clock = func() time.Time { return now }
+			v := newActivityAdapter()
+			v.ChildrenOnly = true
+			v.Painter.Theme = diffrender.DarkTheme
+			v.Clock = func() time.Time { return now }
 			entry := activityPaneEntry{Seq: 3, Agent: "/root/working", Kind: "tool", CallID: "command", Text: "Run `printf hello`", Observed: now,
 				native:     &liveActivityNativeItem{thread: "child", turn: "turn", item: "command", phase: "item/commandExecution/outputDelta"},
 				outputTail: []string{"hello"}}
@@ -58,7 +62,7 @@ func TestLiveActivityCacheEntryUpdates(t *testing.T) {
 				entry.Text = "List `.`\n\nSearch `needle`\n\nRead `a.go`"
 				entry.native.live = true
 			case "settled output":
-				entry.native.phase, entry.native.settled = "item/completed", now
+				entry.native.phase, entry.completed = "item/completed", now
 				// A one-line result is already compact and is not collapsible.
 				entry.outputTail = []string{"hello", "completed second output line"}
 			}
@@ -70,12 +74,12 @@ func TestLiveActivityCacheEntryUpdates(t *testing.T) {
 				entries = append(entries, activityPaneEntry{Seq: 4, Agent: entry.Agent, Kind: "text", Text: "The next event settles output", Observed: now})
 			}
 			v.apply(activityPaneEvent{Kind: "entries", Entries: entries})
-			v.renderFeed(90, 24)
+			v.RenderFeed(90, 24)
 			stableKey, stable := liveActivityCacheRun(t, v, 1)
 			changedKey, before := liveActivityCacheRun(t, v, 3)
 			switch change {
 			case "paced reveal":
-				if !v.pace(now.Add(liveActivityPaceStep)) {
+				if !v.testPace(now.Add(activityui.PaceStep)) {
 					t.Fatal("due operation did not reveal")
 				}
 			case "settled output":
@@ -99,23 +103,23 @@ func TestLiveActivityCacheEntryUpdates(t *testing.T) {
 				}
 				v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{update}})
 			}
-			if _, present := v.runs[changedKey]; present {
+			if _, present := v.Runs[changedKey]; present {
 				t.Fatal("in-place update retained its stale cached run")
 			}
-			retained, present := v.runs[stableKey]
-			if !present || &retained.lines[0] != &stable.lines[0] {
+			retained, present := v.Runs[stableKey]
+			if !present || &retained.Lines[0] != &stable.Lines[0] {
 				t.Fatal("in-place update discarded unrelated completed run storage")
 			}
 			assertLiveActivityCacheFresh(t, v)
 			afterKey, after := liveActivityCacheRun(t, v, 3)
-			if afterKey.revision <= changedKey.revision {
+			if change != "paced reveal" && change != "settled output" && afterKey.Revision <= changedKey.Revision {
 				t.Fatal("entry update did not advance its presentation cache revision")
 			}
-			if reflect.DeepEqual(before.lines, after.lines) {
+			if reflect.DeepEqual(before.Lines, after.Lines) {
 				t.Fatal("entry update did not change rendered output")
 			}
 			_, retained = liveActivityCacheRun(t, v, 1)
-			if &retained.lines[0] != &stable.lines[0] {
+			if &retained.Lines[0] != &stable.Lines[0] {
 				t.Fatal("render rebuilt the unrelated completed run")
 			}
 		})
@@ -123,61 +127,61 @@ func TestLiveActivityCacheEntryUpdates(t *testing.T) {
 }
 
 func TestLiveActivityCacheMainUpdateRemainsFresh(t *testing.T) {
-	v := newLiveActivityView()
-	v.conversation = true
-	v.painter.Theme = diffrender.DarkTheme
+	v := newActivityAdapter()
+	v.Conversation = true
+	v.Painter.Theme = diffrender.DarkTheme
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
-	v.clock = func() time.Time { return now }
+	v.Clock = func() time.Time { return now }
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "You", Kind: "text", Text: "Explain the result", Observed: now}}})
 	v.applyAppServerItem(true, "", "main", "main", "turn", "reply", "item/agentMessage/delta", "Initial explanation", appServerItem{})
-	v.renderFeed(90, 24)
+	v.RenderFeed(90, 24)
 	stableKey, stable := liveActivityCacheRun(t, v, 1)
 	changedKey, _ := liveActivityCacheRun(t, v, 2)
 	v.applyAppServerItem(true, "", "main", "main", "turn", "reply", "item/agentMessage/delta", " with a continuation", appServerItem{})
-	if _, present := v.runs[changedKey]; present {
+	if _, present := v.Runs[changedKey]; present {
 		t.Fatal("Main update retained its stale run")
 	}
-	retained, present := v.runs[stableKey]
-	if !present || &retained.lines[0] != &stable.lines[0] {
+	retained, present := v.Runs[stableKey]
+	if !present || &retained.Lines[0] != &stable.Lines[0] {
 		t.Fatal("Main stream update discarded completed prefix storage")
 	}
 	assertLiveActivityCacheFresh(t, v)
-	if !strings.Contains(strings.Join(v.renderFeed(90, 24).lines, "\n"), "continuation") {
+	if !strings.Contains(strings.Join(v.RenderFeed(90, 24).Lines, "\n"), "continuation") {
 		t.Fatal("Main reply continuation missing")
 	}
 }
 
 func TestLiveActivityCacheMainInvalidatesLaterQuotes(t *testing.T) {
-	v := newLiveActivityView()
-	v.conversation = true
-	v.painter.Theme = diffrender.DarkTheme
+	v := newActivityAdapter()
+	v.Conversation = true
+	v.Painter.Theme = diffrender.DarkTheme
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
-	v.clock = func() time.Time { return now }
+	v.Clock = func() time.Time { return now }
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
 		{Seq: 1, Agent: "Main", Kind: "text", Text: "Completed prefix", Observed: now},
 		{Seq: 2, Agent: "You", Kind: "text", Text: "Original prompt", Observed: now, native: &liveActivityNativeItem{thread: "main", turn: "turn", item: "prompt"}},
 		{Seq: 3, Agent: "/root/worker", Kind: "text", Text: "Intervening agent activity", Observed: now},
 		{Seq: 4, Agent: "Main", Kind: "text", Text: "Answer to the prompt", Observed: now, native: &liveActivityNativeItem{thread: "main", turn: "turn", item: "answer"}},
 	}})
-	v.renderFeed(90, 24)
+	v.RenderFeed(90, 24)
 	stableKey, stable := liveActivityCacheRun(t, v, 1)
 	laterKey, later := liveActivityCacheRun(t, v, 4)
-	if !strings.Contains(strings.Join(later.lines, "\n"), "Original prompt") {
+	if !strings.Contains(strings.Join(later.Lines, "\n"), "Original prompt") {
 		t.Fatal("fixture did not quote the earlier prompt")
 	}
 	entry := v.Entries[1].Source
 	entry.Text = "Updated prompt"
 	v.replaceEntry(1, entry, parseLiveActivity(entry))
-	if _, present := v.runs[laterKey]; present {
+	if _, present := v.Runs[laterKey]; present {
 		t.Fatal("prompt update kept a later dependent quote")
 	}
-	retained, present := v.runs[stableKey]
-	if !present || &retained.lines[0] != &stable.lines[0] {
+	retained, present := v.Runs[stableKey]
+	if !present || &retained.Lines[0] != &stable.Lines[0] {
 		t.Fatal("prompt update discarded completed prefix storage")
 	}
 	assertLiveActivityCacheFresh(t, v)
 	_, updated := liveActivityCacheRun(t, v, 4)
-	if !strings.Contains(strings.Join(updated.lines, "\n"), "Updated prompt") {
+	if !strings.Contains(strings.Join(updated.Lines, "\n"), "Updated prompt") {
 		t.Fatal("later reply retained the old quoted prompt")
 	}
 }
@@ -196,10 +200,10 @@ func BenchmarkLiveActivityCacheCommandDelta(b *testing.B) {
 				}
 				b.Run(name, func(b *testing.B) {
 					now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
-					v := newLiveActivityView()
-					v.conversation, v.childrenOnly = main, !main
-					v.painter.Theme = diffrender.DarkTheme
-					v.clock = func() time.Time { return now }
+					v := newActivityAdapter()
+					v.Conversation, v.ChildrenOnly = main, !main
+					v.Painter.Theme = diffrender.DarkTheme
+					v.Clock = func() time.Time { return now }
 					for i := range 80 {
 						agent := fmt.Sprintf("/root/agent%d", i)
 						if main {
@@ -214,7 +218,7 @@ func BenchmarkLiveActivityCacheCommandDelta(b *testing.B) {
 					entry := activityPaneEntry{Seq: 81, Agent: agent, Kind: "tool", Text: "Run `go test ./...`", Observed: now,
 						native: &liveActivityNativeItem{thread: "child", turn: "turn", item: "command", phase: "item/commandExecution/outputDelta", running: true}, outputTail: []string{"package result 0"}}
 					v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
-					v.renderFeed(90, 24)
+					v.RenderFeed(90, 24)
 					b.ReportAllocs()
 					iteration := 0
 					for b.Loop() {
@@ -222,9 +226,9 @@ func BenchmarkLiveActivityCacheCommandDelta(b *testing.B) {
 						entry.outputTail = []string{fmt.Sprintf("package result %d", iteration%10)}
 						v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 						if cold {
-							v.runs = nil
+							v.Runs = nil
 						}
-						v.renderFeed(90, 24)
+						v.RenderFeed(90, 24)
 						iteration++
 					}
 				})

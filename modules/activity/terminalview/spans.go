@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"slices"
 
+	presentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/yusing/mekugi/libraries/terminalui"
 
 	"github.com/yusing/mekugi/libraries/textsanitize"
@@ -12,29 +14,13 @@ import (
 	"github.com/rivo/uniseg"
 )
 
-// TextSpan identifies a bound, atomic token, not text resembling a placeholder.
-// Offsets are UTF-8 byte boundaries; spans must not overlap.
-type TokenKind uint8
-
-const (
-	ImageToken TokenKind = iota
-	FileToken
-	SkillToken
-	SelectionToken // A screen selection quoted as one mention.
-)
-
-type TextSpan struct {
-	Start, End int
-	Kind       TokenKind
-}
-
-func tokenStyle(kind TokenKind) string {
+func tokenStyle(kind presentation.TokenKind) string {
 	switch kind {
-	case FileToken:
+	case presentation.FileToken:
 		return "\x1b[1m" + terminalui.Green
-	case SkillToken:
+	case presentation.SkillToken:
 		return "\x1b[1m" + terminalui.Amber
-	case SelectionToken:
+	case presentation.SelectionToken:
 		return "\x1b[1;36m"
 	default:
 		return "\x1b[1;35m"
@@ -45,10 +31,10 @@ type TextPoint struct{ Offset, Row, Column int }
 
 // LayoutSpans keeps tokens together when they fit a row. Oversized tokens wrap
 // at grapheme boundaries without losing text. Composer and transcript share it.
-func LayoutSpans(text string, spans []TextSpan, width int) ([]string, []TextPoint) {
+func LayoutSpans(text string, spans []presentation.TextSpan, width int) ([]string, []TextPoint) {
 	width = max(1, width)
 	spans = slices.Clone(spans)
-	slices.SortFunc(spans, func(a, b TextSpan) int { return cmp.Compare(a.Start, b.Start) })
+	slices.SortFunc(spans, func(a, b presentation.TextSpan) int { return cmp.Compare(a.Start, b.Start) })
 	rows := []string{""}
 	var points []TextPoint
 	column := 0

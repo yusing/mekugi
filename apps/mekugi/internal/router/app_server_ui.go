@@ -131,8 +131,8 @@ type appServerUI struct {
 	commandSegmentPending   int
 	restoredSegments        map[string]*reports.Report // Turn-local, validated and adopted history.
 	client                  *appserver.Client
-	view                    *liveActivityView
-	agents                  *liveActivityView
+	view                    *activityAdapter
+	agents                  *activityAdapter
 	proxy                   *mekugiProxy
 	guard                   *shellApprovalServer
 	execTrack               *execTrackHub // Per-segment command reports; nil when not tracking.
@@ -221,7 +221,7 @@ func startAppServerUI(conversation *conversationmodel.Service, activity *activit
 	if err != nil {
 		return nil, err
 	}
-	u := &appServerUI{conversationState: conversation, session: appServerSession{activity: activity}, history: service, segments: segments, client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
+	u := &appServerUI{conversationState: conversation, session: appServerSession{activity: activity}, history: service, segments: segments, client: c, view: newActivityAdapter(), agents: newActivityAdapter(), proxy: proxy, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
 	u.attachActivity()
 	u.guardHookCheck.hash = guardHash
 	if generator != nil {
@@ -374,15 +374,15 @@ func startAppServerUI(conversation *conversationmodel.Service, activity *activit
 						if settleActivity(now, u.view, u.agents) {
 							u.dirty = true
 						}
-						for _, view := range []*liveActivityView{u.view, u.agents} {
-							if view.expireFlash(now) {
+						for _, view := range []*activityAdapter{u.view, u.agents} {
+							if view.ExpireFlash(now) {
 								u.dirty = true
 							}
-							if view.pace(now) {
+							if view.Pace(now) {
 								u.dirty = true
 							}
 						}
-						if u.sessionAnimating() || u.agents.hasLiveStatus() {
+						if u.sessionAnimating() || u.agents.HasLiveStatus() {
 							u.dirty = true
 						}
 						if time.Since(agePaint) >= time.Second {
@@ -393,7 +393,7 @@ func startAppServerUI(conversation *conversationmodel.Service, activity *activit
 							return err
 						}
 						notices := u.applyCriticalNotices()
-						if u.shell.animating(u.now()) || u.agents.rosterEasing {
+						if u.shell.animating(u.now()) || u.agents.RosterEasing {
 							u.dirty = true
 						}
 						w, h, err := term.GetSize(int(stdout.Fd()))
@@ -1035,9 +1035,9 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			case "\x1b[201~": // A stray terminator is not composer input.
 
 			case "\x1b[5~":
-				u.transcriptView().scrollKey('b')
+				u.transcriptView().ScrollKey('b')
 			case "\x1b[6~":
-				u.transcriptView().scrollKey(' ')
+				u.transcriptView().ScrollKey(' ')
 			default:
 				// Only caret movement ends an edit run; forward deletes still group.
 				u.moveDraft(u.escape)
@@ -1048,7 +1048,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 	}
 	switch key {
 	case 5: // Ctrl+E discloses the displayed transcript, leaving the draft intact.
-		u.transcriptView().toggleExpansion()
+		u.transcriptView().ToggleExpansion()
 	case 23: // macOS terminals may encode Option+Backspace as Ctrl+W.
 		u.deleteWord(true)
 	case 11: // Ctrl+K kills to the logical line end, or joins at its newline.
@@ -1186,7 +1186,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		}
 		u.pruneDraftImages()
 		u.setNotice("", false)
-		u.view.follow()
+		u.view.Follow()
 		return false, u.flushInput()
 	case '\t':
 		// Tab queues busy input for the next turn; otherwise it sends like Enter.
@@ -1338,7 +1338,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 			if u.btw != nil && u.btw.rect.H > 0 {
 				u.btw.rect.Y++
 			}
-			transcript.feedTop++
+			transcript.FeedTop++
 		}()
 	}
 	visible := min(6, height-borderRows)
@@ -1387,14 +1387,14 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	dock = min(dock, room)
 	room -= dock
 	u.mainContentPainted = room > 1
-	transcript.conversation, transcript.feedOnly, transcript.status = true, true, textsanitize.Safe(u.status, false)
+	transcript.Conversation, transcript.FeedOnly, transcript.StatusLabel = true, true, textsanitize.Safe(u.status, false)
 	var frame []string
-	transcript.feedRows = 0
-	transcript.feedQuestions, transcript.feedSnippets = nil, nil
+	transcript.FeedRows = 0
+	transcript.FeedQuestions, transcript.FeedSnippets = nil, nil
 	if room > 0 {
-		frame = transcript.render(width, room, u.now())
+		frame = transcript.Render(width, room, u.now())
 		for row := range frame {
-			frame[row] = terminalui.AttachCopy(frame[row], transcript.copyRows[row])
+			frame[row] = terminalui.AttachCopy(frame[row], transcript.CopyRows[row])
 		}
 		if !readOnly && u.keybindings && (u.shell == nil || u.shell.Focus == 0) {
 			u.mainContentPainted = false
@@ -1431,7 +1431,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	// Colors: xai-grok-pager-render/src/theme/oscura.rs, same revision.
 	border := "\x1b[38;2;52;48;72m"
 	if !readOnly && (u.currentQuestion() != nil || u.approvals.Open) {
-		border = u.view.painter.Theme.Accent()
+		border = u.view.Painter.Theme.Accent()
 	} else if !readOnly && u.shellMode() {
 		border = terminalui.Red
 	}
@@ -1448,7 +1448,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	for i, line := range draft {
 		prefix := strings.Repeat(" ", min(2, inset))
 		if i == 0 && inset >= 2 {
-			prefix = liveActivityPrompt + "❯ " + inputColor
+			prefix = activityui.PromptColor + "❯ " + inputColor
 		}
 		line = ansi.Truncate(line, textWidth, "")
 		if focused && textWidth > 1 && i+firstRow == caret.Row {
@@ -1495,10 +1495,10 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 			model += " · " + tier
 		}
 		model = strings.ReplaceAll(textsanitize.Safe(model, false), "\n", " ")
-		context := contextWindowLabel(activityPaneAgent{})
+		context := activityui.ContextWindowLabel(activitypresentation.Agent{})
 		if agent != nil {
-			context = contextWindowLabel(*agent)
-			if throughput := outputThroughputLabel(agent.OutputThroughput); throughput != "" {
+			context = activityui.ContextWindowLabel(activitypresentation.Agent{AgentFacts: agent.ActivityAgent()})
+			if throughput := activityui.OutputThroughputLabel(agent.OutputThroughput); throughput != "" {
 				context += " • " + throughput
 			}
 		}
@@ -1542,7 +1542,7 @@ func (u *appServerUI) sessionAnimating() bool {
 
 func (u *appServerUI) sessionLabel(now time.Time) string {
 	if u.Replacement.Archiving() {
-		return activityui.StatusPulse("Archiving session…", now, u.view.painter.Colors) + terminalui.Reset
+		return activityui.StatusPulse("Archiving session…", now, u.view.Painter.Colors) + terminalui.Reset
 	}
 	status := strings.ReplaceAll(textsanitize.Safe(u.status, false), "\n", " ")
 	switch {
@@ -1551,7 +1551,7 @@ func (u *appServerUI) sessionLabel(now time.Time) string {
 	case u.alert:
 		return terminalui.Red + "✗ " + activityui.ErrorPreview(u.status) + terminalui.Reset
 	case u.Turn != "":
-		label := "\x1b[39m◐ " + activityui.StatusPulse(status, now, u.view.painter.Colors) + terminalui.Reset
+		label := "\x1b[39m◐ " + activityui.StatusPulse(status, now, u.view.Painter.Colors) + terminalui.Reset
 		if status == "Working" {
 			if u.Shell.Standalone() {
 				status = "Running shell"
@@ -1560,14 +1560,14 @@ func (u *appServerUI) sessionLabel(now time.Time) string {
 			} else if u.polling != nil {
 				status = "Still running"
 			}
-			label = "\x1b[39m◐ " + activityui.ReasoningShimmer(status, now.Sub(u.turnStarted), u.view.painter.Colors) + terminalui.Reset
+			label = "\x1b[39m◐ " + activityui.ReasoningShimmer(status, now.Sub(u.turnStarted), u.view.Painter.Colors) + terminalui.Reset
 		}
 		if !u.turnStarted.IsZero() {
 			label += terminalui.Dim + " " + activityui.FormatDuration(now.Sub(u.turnStarted)) + terminalui.Undim
 		}
 		return label
 	case u.Starting() || u.InputPending() || u.restoring != nil || u.Thread == "":
-		return activityui.StatusPulse(status, now, u.view.painter.Colors) + terminalui.Reset
+		return activityui.StatusPulse(status, now, u.view.Painter.Colors) + terminalui.Reset
 	}
 	// Idle states use default text; the border color would otherwise carry over.
 	return "\x1b[39m" + status + terminalui.Reset
@@ -1575,17 +1575,17 @@ func (u *appServerUI) sessionLabel(now time.Time) string {
 
 // scrollLabel shows how much of the feed lies above the viewport and, once
 // the reader scrolls back, how much lies below and what arrived since.
-func scrollLabel(v *liveActivityView) string {
-	below := v.feedLines - v.offset - v.feedRows
+func scrollLabel(v *activityAdapter) string {
+	below := v.FeedLines - v.Offset - v.FeedRows
 	switch {
-	case !v.following && below > 0:
+	case !v.Following && below > 0:
 		label := fmt.Sprintf("▼ %d", below)
-		if v.unseen > 0 {
-			label += fmt.Sprintf(" · %d new", v.unseen)
+		if v.Unseen > 0 {
+			label += fmt.Sprintf(" · %d new", v.Unseen)
 		}
 		return terminalui.Amber + label + terminalui.Reset
-	case v.offset > 0:
-		return terminalui.Dim + fmt.Sprintf("▲ %d", v.offset) + terminalui.Undim
+	case v.Offset > 0:
+		return terminalui.Dim + fmt.Sprintf("▲ %d", v.Offset) + terminalui.Undim
 	}
 	return ""
 }
@@ -1593,19 +1593,19 @@ func scrollLabel(v *liveActivityView) string {
 func (u *appServerUI) ensureShell() {
 	u.sessionPresentation()
 	u.attachActivity()
-	u.view.conversation = true
-	u.view.painter.FileLink = u.markdownFileExists
+	u.view.Conversation = true
+	u.view.Painter.FileLink = u.markdownFileExists
 	if u.shell != nil {
 		return
 	}
 	if u.agents == nil {
-		u.agents = newLiveActivityView()
+		u.agents = newActivityAdapter()
 		u.sessionPresentation()
 		u.attachActivity()
 	}
-	u.agents.painter.FileLink = u.markdownFileExists
-	u.agents.childrenOnly = true
-	u.agents.status = "" // Fed by app-server directly, never by a collector connection.
+	u.agents.Painter.FileLink = u.markdownFileExists
+	u.agents.ChildrenOnly = true
+	u.agents.StatusLabel = "" // Fed by app-server directly, never by a collector connection.
 	u.agents.mainView = u.view
 	var store *mekugiReplayStore
 	var review *savedReview
@@ -1616,7 +1616,7 @@ func (u *appServerUI) ensureShell() {
 	if review == nil {
 		review = newSavedReview(u.ctx, nil)
 	}
-	u.agents.bare = true
+	u.agents.Bare = true
 	shell := &terminalUI{main: u, agents: u.agents, review: review, diffScreen: new(terminalsession.DiffScreen)}
 	shell.diff = newLiveDiffTerminalController(store, "", os.Stdout)
 	shell.diff.stdout = shell.diffScreen
@@ -1628,7 +1628,7 @@ func (u *appServerUI) paint(out io.Writer, width, height int) error {
 	u.ensureShell()
 	u.refreshRosterRoles()
 	u.agents.mainView = u.view
-	u.view.status = textsanitize.Safe(u.status, false)
+	u.view.StatusLabel = textsanitize.Safe(u.status, false)
 	u.shell.width, u.shell.height = max(1, width), max(1, height)
 	u.mainContentPainted = false
 	ctx := u.ctx

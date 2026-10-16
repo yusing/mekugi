@@ -101,7 +101,7 @@ func newResumeSessionTestUI(t *testing.T) (*appServerUI, *appServerTestInput) {
 func TestAppServerResumePickerStartup(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.Thread, u.resumeThread, u.resumeCwd = "", resumePickerStartup, "/work"
-	u.agents = newLiveActivityView()
+	u.agents = newActivityAdapter()
 	appServerTestRequest(t, u, "0", "initialize")
 	appServerTestMessage(t, u, `{"id":0,"result":{}}`)
 	requests := resumeTestRequests(t, w)
@@ -430,7 +430,7 @@ func TestAppServerResumeSwitchWaitsForDiffResync(t *testing.T) {
 	liveDiffScopeCapture(t, store, workspace, "saved", "saved-call", filepath.Join(workspace, "saved.go"), "a", "b")
 	u, w := newAppServerTestUI()
 	u.ctx = t.Context()
-	u.agents = newLiveActivityView()
+	u.agents = newActivityAdapter()
 	auto := newLivePreview(t.Context())
 	defer auto.Close()
 	auto.Enable()

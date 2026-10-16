@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
@@ -112,28 +114,28 @@ exit 127
 				if strings.Join(first.output.View().Lines, "\n") != strings.TrimSpace(line) || len(second.output.View().Lines) != 0 {
 					t.Fatal("live output crossed a command boundary")
 				}
-				view := newLiveActivityView()
+				view := newActivityAdapter()
 				view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: execSegmentText(args[3]), native: &liveActivityNativeItem{command: args[3], running: true, segments: live.segments}}}})
 				finishPacing(view)
-				feed := view.renderFeed(100, 30)
-				if !strings.Contains(strings.Join(feed.lines, "\n"), "RAN <argument with spaces>") {
+				feed := view.RenderFeed(100, 30)
+				if !strings.Contains(strings.Join(feed.Lines, "\n"), "RAN <argument with spaces>") {
 					t.Fatal("first command output did not stream while the second command was running")
 				}
-				seen := make(map[liveActivitySnippet]bool)
-				for _, snippet := range feed.snippets {
-					if snippet.run == 0 || seen[snippet] {
+				seen := make(map[activityui.Snippet]bool)
+				for _, snippet := range feed.Snippets {
+					if snippet.Run == 0 || seen[snippet] {
 						continue
 					}
 					i := len(seen)
 					seen[snippet] = true
-					block, _ := view.snippetBlock(snippet)
+					block, _ := view.SnippetBlock(snippet)
 					u := &terminalUI{}
-					if block.BatchExit || !view.clickTarget(&block, snippet, 100) || !u.openOutput(view, snippet) || len(u.output.pages) != 2 || u.output.page != i {
+					if block.BatchExit || !view.ClickTarget(&block, snippet, 100) || !u.openOutput(view, snippet) || len(u.output.pages) != 2 || u.output.page != i {
 						t.Fatal("command click did not select its separate output")
 					}
 				}
 				if len(seen) != 2 {
-					t.Fatalf("command snippets=%d: %q; records=%+v", len(seen), feed.lines, view.Entries)
+					t.Fatalf("command snippets=%d: %q; records=%+v", len(seen), feed.Lines, view.Entries)
 				}
 				request.reply <- shellapproval.Reply{Reason: "denied in test"}
 				if exit, ok := cmd.Wait().(*exec.ExitError); !ok || exit.ExitCode() != 1 || !strings.Contains(stderr.String(), "remote write denied") {

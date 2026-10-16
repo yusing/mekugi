@@ -13,6 +13,7 @@ import (
 	"time"
 
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
 
@@ -49,7 +50,7 @@ func TestOutputThroughputRestoredThreadIsolation(t *testing.T) {
 		u.proxy = &mekugiProxy{usage: restored}
 		child := activityPaneAgent{Name: "/root/child"}
 		u.observeCost("child", &child)
-		if outputThroughputLabel(child.OutputThroughput) != "50.0 tok/s" {
+		if activityui.OutputThroughputLabel(child.OutputThroughput) != "50.0 tok/s" {
 			t.Fatal(child)
 		}
 		time.Sleep(time.Second)
@@ -176,13 +177,13 @@ func TestOutputThroughputUIRefreshRetainsPreviousRound(t *testing.T) {
 		time.Sleep(time.Second)
 		first.Observe(inference.Usage{TotalsKnown: true, OutputTokens: 30})
 		u.applyObservedActivity()
-		if outputThroughputLabel(u.session.agent("/root").OutputThroughput) != "30.0 tok/s" {
+		if activityui.OutputThroughputLabel(u.session.agent("/root").OutputThroughput) != "30.0 tok/s" {
 			t.Fatal("main did not refresh")
 		}
 		next := usage.Observation(u.Thread, u.Thread, "gpt-6-sol", "")
 		next.Begin()
 		u.applyObservedActivity()
-		if got := outputThroughputLabel(u.session.agent("/root").OutputThroughput); got != "30.0 tok/s" {
+		if got := activityui.OutputThroughputLabel(u.session.agent("/root").OutputThroughput); got != "30.0 tok/s" {
 			t.Fatalf("previous rate disappeared: %s", got)
 		}
 	})
@@ -245,7 +246,7 @@ func TestUISnapshotOutputThroughputStreamingRetainsMeasuredRate(t *testing.T) {
 				rows, _ := u.mainFrame(80, 10, 0)
 				if prior {
 					assertNativeUISnapshot(t, "output-throughput-live-composer", rows)
-					assertNativeUISnapshot(t, "output-throughput-live-roster", u.agents.nativeRoster(80, 4, time.Now(), true))
+					assertNativeUISnapshot(t, "output-throughput-live-roster", u.agents.NativeRoster(80, 4, time.Now(), true))
 				} else if strings.Contains(strings.Join(rows, "\n"), "tok/s") {
 					t.Fatal("first response displayed TPS before provider usage")
 				}
@@ -275,7 +276,7 @@ func TestUISnapshotOutputThroughputComposerAndRoster(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.session.start(u.Thread, "")
 			u.ensureShell()
-			u.view.painter.Theme = diffrender.DarkTheme
+			u.view.Painter.Theme = diffrender.DarkTheme
 			root := u.session.agent("/root")
 			root.ContextKnown, root.ContextTokens, root.ContextWindow = true, 24000, 200000
 			root.OutputThroughput = inference.OutputThroughput{OutputTokens: 83, DurationNanos: uint64(2 * time.Second), MeasuredRequests: 1}
@@ -288,7 +289,7 @@ func TestUISnapshotOutputThroughputComposerAndRoster(t *testing.T) {
 				{Name: "/root/zero", OutputThroughput: inference.OutputThroughput{DurationNanos: uint64(time.Second), MeasuredRequests: 1}},
 				{Name: "/root/absent"},
 			}})
-			assertNativeUISnapshot(t, fmt.Sprintf("output-throughput-roster-%d", width), u.agents.nativeRoster(width, 6, now, true))
+			assertNativeUISnapshot(t, fmt.Sprintf("output-throughput-roster-%d", width), u.agents.NativeRoster(width, 6, now, true))
 		})
 	}
 }
@@ -313,8 +314,8 @@ func TestUISnapshotOutputThroughputRestoredRoster(t *testing.T) {
 			u.restoreActivityThread(info)
 		}
 		u.agents.apply(activityPaneEvent{Kind: "agents", Agents: u.session.agents})
-		u.agents.painter.Theme = diffrender.DarkTheme
-		u.agents.selected = u.session.paths["child"]
-		assertNativeUISnapshot(t, "output-throughput-restored-roster", u.agents.nativeRoster(120, 8, time.Now(), true))
+		u.agents.Painter.Theme = diffrender.DarkTheme
+		u.agents.Selected = u.session.paths["child"]
+		assertNativeUISnapshot(t, "output-throughput-restored-roster", u.agents.NativeRoster(120, 8, time.Now(), true))
 	})
 }

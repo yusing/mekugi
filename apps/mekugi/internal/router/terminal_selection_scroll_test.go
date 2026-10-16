@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	"github.com/charmbracelet/x/ansi"
@@ -239,7 +241,7 @@ func TestSelectionScrolledClickUsesDocumentTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := u.shell.layout.Main
-	x, y := r.X+u.agents.feedLeft, r.Y+u.agents.feedTop
+	x, y := r.X+u.agents.FeedLeft, r.Y+u.agents.FeedTop
 	selectionTestDrag(t, u.shell, x, y, x+1, y)
 	s := u.shell.selection
 	if !s.ScrollKey("\x1b[H") {
@@ -248,7 +250,7 @@ func TestSelectionScrolledClickUsesDocumentTarget(t *testing.T) {
 	y = -1
 	for row := s.Rect.Y; row < s.Rect.Y+s.Rect.H; row++ {
 		at := s.DocumentY(row) - s.Rect.Y
-		if at < len(s.questions) && (s.questions[at] != 0 || s.snippets[at] != (liveActivitySnippet{})) && strings.Contains(ansi.Strip(s.Rows[s.DocumentY(row)]), "prompt 00") {
+		if at < len(s.questions) && (s.questions[at] != 0 || s.snippets[at] != (activityui.Snippet{})) && strings.Contains(ansi.Strip(s.Rows[s.DocumentY(row)]), "prompt 00") {
 			y = row
 			break
 		}

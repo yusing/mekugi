@@ -123,7 +123,7 @@ func TestQuestionAsyncRemainingSurvivesReplyTurnSteerAndReplay(t *testing.T) {
 	}
 	// Replay is history-only. It must recover the remaining open question without resending.
 	v, input := newAppServerTestUI()
-	v.agents = newLiveActivityView()
+	v.agents = newActivityAdapter()
 	v.session.start("main", t.TempDir())
 	first, _ := json.Marshal(map[string]any{"id": "two", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Who receives it?", "questions": []any{
 		map[string]any{"title": "Who receives it?", "options": []string{"Customers", "Internal"}}, map[string]any{"title": "Who approves it?", "options": []string{"Customers", "Internal"}},
@@ -254,7 +254,7 @@ func TestQuestionRecordPreservesLiteralNotePrefix(t *testing.T) {
 			t.Fatalf("sync=%v: displayed %q, want literal %q", sync, got, literal)
 		}
 		questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": appServerItem{ID: "ack", Type: "agentMessage", Text: "I will use that answer."}})
-		u.view.conversation = true
+		u.view.Conversation = true
 		if frame := mainFeed(u, 100); !strings.Contains(frame, "re: your answer") || strings.Count(frame, literal) != 2 {
 			t.Fatalf("sync=%v: reply changed the literal answer:\n%s", sync, frame)
 		}
@@ -265,7 +265,7 @@ func TestQuestionReplyBecomesMainReplyAnchor(t *testing.T) {
 	for _, replay := range []bool{false, true} {
 		t.Run(map[bool]string{false: "live", true: "resume"}[replay], func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			u.view.conversation = true
+			u.view.Conversation = true
 			u.Turn = "turn"
 			content := func(text string) []byte {
 				data, err := json.Marshal([]map[string]string{{"type": "text", "text": text}})
@@ -303,7 +303,7 @@ func TestQuestionReplyBecomesMainReplyAnchor(t *testing.T) {
 			if !strings.Contains(frame, "re: your answer") || strings.Contains(frame, "re: your message") || strings.Contains(frame, binding.QuestionReplyStart) {
 				t.Fatalf("incorrect reply context:\n%s", frame)
 			}
-			if _, ok := u.view.questionRows[reply.Seq]; !ok {
+			if _, ok := u.view.QuestionRows[reply.Seq]; !ok {
 				t.Fatal("answer link has no Asked navigation target")
 			}
 		})
@@ -312,7 +312,7 @@ func TestQuestionReplyBecomesMainReplyAnchor(t *testing.T) {
 
 func TestQuestionReplyLinkSkipsContinuationHeading(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.conversation = true
+	u.view.Conversation = true
 	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
 		{Seq: 1, Agent: "Main", Kind: "reasoning", Text: "Check the audience"},
 		{Seq: 2, Agent: "Main", Kind: "tool", Text: "Read `config.go`"},
@@ -326,16 +326,16 @@ func TestQuestionReplyLinkSkipsContinuationHeading(t *testing.T) {
 			reply = entry.Source.Seq
 		}
 	}
-	feed := u.view.renderFeed(100, 60)
-	row, ok := u.view.questionRows[reply]
-	if !ok || row >= len(feed.lines) || !strings.Contains(feed.lines[row], "Asked") {
-		t.Fatalf("answer target is not Asked: row=%d frame=%s", row, strings.Join(feed.lines, "\n"))
+	feed := u.view.RenderFeed(100, 60)
+	row, ok := u.view.QuestionRows[reply]
+	if !ok || row >= len(feed.Lines) || !strings.Contains(feed.Lines[row], "Asked") {
+		t.Fatalf("answer target is not Asked: row=%d frame=%s", row, strings.Join(feed.Lines, "\n"))
 	}
 }
 
 func TestSyncQuestionReplyBecomesMainAnchor(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.conversation = true
+	u.view.Conversation = true
 	u.Turn = "turn"
 	lifecycleUserMessage(t, u, "turn", "prompt", "Original task")
 	questionTestSync(t, u, "sync", false)

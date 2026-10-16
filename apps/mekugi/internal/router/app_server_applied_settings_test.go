@@ -369,7 +369,7 @@ func TestAppServerAppliedSettingsMalformedAndLayoutOnly(t *testing.T) {
 
 func TestUISnapshotNativeSettingsPersistenceFailure(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
 	u.clock = func() time.Time { return now }
 	u.status, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
@@ -381,7 +381,7 @@ func TestUISnapshotNativeSettingsPersistenceFailure(t *testing.T) {
 
 func TestUISnapshotNativeResumeReasoningRejected(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	u.status, u.model, u.reasoningEffort = "Ready", "saved-model", "high"
 	u.Settings.RestoreEffort = true

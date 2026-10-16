@@ -66,10 +66,10 @@ func TestAppServerWaitTargetsSnapshotAndRender(t *testing.T) {
 	if got := u.view.Entries[0].Source.Text; got != want {
 		t.Fatalf("start = %q, want %q", got, want)
 	}
-	if rendered := u.view.renderFeed(120, 30).lines; len(rendered) != 0 {
+	if rendered := u.view.RenderFeed(120, 30).Lines; len(rendered) != 0 {
 		t.Fatalf("wait leaked into transcript: %q", rendered)
 	}
-	rendered, _ := u.agents.current(activityPaneAgent{Name: "/root"}, time.Now())
+	rendered, _ := u.agents.testCurrent(activityPaneAgent{Name: "/root"}, time.Now())
 	if !strings.Contains(rendered, terminalui.DimAgentColor("/root/alpha")+"alpha") || !strings.Contains(rendered, terminalui.DimAgentColor("/root/alpha/nested")+"alpha/nested") {
 		t.Fatalf("missing muted targets: %q", rendered)
 	}
@@ -148,10 +148,10 @@ func TestAppServerWaitTargetsDurableReplay(t *testing.T) {
 	if got := restored.view.Entries[0].Source.Text; got != "Finished waiting · alpha, alpha/nested" {
 		t.Fatalf("main replay lost targets: %q", got)
 	}
-	if rendered := restored.view.renderFeed(120, 30).lines; len(rendered) != 0 {
+	if rendered := restored.view.RenderFeed(120, 30).Lines; len(rendered) != 0 {
 		t.Fatalf("restored wait leaked into transcript: %q", rendered)
 	}
-	rendered, _ := restored.agents.current(activityPaneAgent{Name: "/root"}, time.Now())
+	rendered, _ := restored.agents.testCurrent(activityPaneAgent{Name: "/root"}, time.Now())
 	if !strings.Contains(rendered, terminalui.DimAgentColor("/root/alpha")+"alpha") {
 		t.Fatalf("restored wait lost color: %q", rendered)
 	}

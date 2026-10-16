@@ -31,7 +31,7 @@ func editDialogRegressionCases() []editDialogRegressionCase {
 func openRegressionEditDialog(t *testing.T, tc editDialogRegressionCase, captured bool) (*terminalUI, string) {
 	t.Helper()
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.painter.Theme = diffrender.DarkTheme
+	u.view.Painter.Theme = diffrender.DarkTheme
 	const path = "answer.go"
 	want := tc.host
 	if captured {

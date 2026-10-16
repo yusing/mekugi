@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"encoding/json/jsontext"
 
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	json "encoding/json/v2"
@@ -97,10 +99,10 @@ func (u *appServerUI) showStatus() error {
 		}
 		if agent.ContextKnown && agent.ContextWindow > 0 {
 			remaining := 100 * (1 - min(1, float64(agent.ContextTokens)/float64(agent.ContextWindow)))
-			rows = append(rows, statusField{group: "Usage", label: "Context window", value: fmt.Sprintf("%.0f%% left", remaining), detail: fmt.Sprintf("%s used / %s", formatUsageTokens(agent.ContextTokens), formatUsageTokens(agent.ContextWindow)), remaining: new(remaining)})
+			rows = append(rows, statusField{group: "Usage", label: "Context window", value: fmt.Sprintf("%.0f%% left", remaining), detail: fmt.Sprintf("%s used / %s", activityui.FormatUsageTokens(agent.ContextTokens), activityui.FormatUsageTokens(agent.ContextWindow)), remaining: new(remaining)})
 		}
 		if agent.InputTokens > 0 || agent.OutputTokens > 0 {
-			report.tokens = []statusField{{group: "Usage", label: "Token usage", value: fmt.Sprintf("%s input · %s output", formatUsageTokens(agent.InputTokens), formatUsageTokens(agent.OutputTokens))}}
+			report.tokens = []statusField{{group: "Usage", label: "Token usage", value: fmt.Sprintf("%s input · %s output", activityui.FormatUsageTokens(agent.InputTokens), activityui.FormatUsageTokens(agent.OutputTokens))}}
 		}
 	}
 	report.body = rows

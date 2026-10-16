@@ -67,7 +67,7 @@ func TestLiveActivityAttachmentOutcomes(t *testing.T) {
 		t.Fatal(err)
 	}
 	resumed, _ := newAppServerTestUI()
-	resumed.agents = newLiveActivityView()
+	resumed.agents = newActivityAdapter()
 	resumed.session.start(resumed.Thread, cwd)
 	resumed.restoreHistory([]appServerHistoryTurn{{ID: "turn", Status: "completed", Items: []appServerItem{item}}})
 	if len(resumed.view.Entries) != 2 || resumed.view.blocks(1)[0].Verb != "Attached" || resumed.view.blocks(1)[1].Verb != "Attach failed" || resumed.view.blocks(1)[0].Path != "attached.txt" || resumed.view.blocks(1)[1].Path != "missing.txt" {
@@ -94,7 +94,7 @@ func TestLiveActivityAttachmentDisplayPaths(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			v := newLiveActivityView()
+			v := newActivityAdapter()
 			v.applyAppServerItem(true, tt.workspace, "main", tt.thread, "turn", "input", "item/completed", "", appServerItem{Type: "userMessage", Content: content})
 			if len(v.Entries) != 2 || len(v.blocks(1)) != 1 || v.blocks(1)[0].Path != tt.want {
 				t.Fatalf("attachment display path: got %+v, want %q", v.Entries, tt.want)
@@ -123,12 +123,12 @@ func TestUISnapshotExpandedSkillMatchesDialog(t *testing.T) {
 			thread = "child"
 		}
 		v.applyAppServerItem(true, "/workspace", "main", thread, "turn", "input", "item/completed", "", appServerItem{Type: "userMessage", Content: content, ID: "input"})
-		v.toggleExpansion()
-		v.toggleExpansion()
-		feed := v.renderFeed(70, 40)
-		v.viewport(feed, 40)
+		v.ToggleExpansion()
+		v.ToggleExpansion()
+		feed := v.RenderFeed(70, 40)
+		v.Viewport(feed, 40)
 		block := v.blocks(1)[0]
-		page := v.painter.DialogPage(block, 70)
+		page := v.Painter.DialogPage(block, 70)
 		if page.Text != body {
 			t.Fatal("expanded skill changed its dialog copy source")
 		}
@@ -136,7 +136,7 @@ func TestUISnapshotExpandedSkillMatchesDialog(t *testing.T) {
 		if child {
 			name = "activity"
 		}
-		uisnapshot.AssertTerminal(t, "testdata/snapshots/expanded-skill-"+name+".txt", append(feed.lines, "plain after skill"), 70)
+		uisnapshot.AssertTerminal(t, "testdata/snapshots/expanded-skill-"+name+".txt", append(feed.Lines, "plain after skill"), 70)
 	}
 }
 
@@ -168,22 +168,22 @@ func TestLiveActivityAttachmentDialogs(t *testing.T) {
 					t.Fatalf("duplicate chunk or receipt: %+v", v.Entries)
 				}
 				block := v.blocks(1)[0]
-				if !block.Collapsed || !outputBlock(block) || outputBlock(v.blocks(1)[1]) {
+				if !block.Collapsed || !activityui.OutputBlock(block) || activityui.OutputBlock(v.blocks(1)[1]) {
 					t.Fatal("receipt click eligibility is incorrect")
 				}
-				feed := v.renderFeed(80, 40)
-				v.viewport(feed, 40)
+				feed := v.RenderFeed(80, 40)
+				v.Viewport(feed, 40)
 				clicked := false
-				for row, target := range v.feedSnippets {
-					if target.run == 0 {
+				for row, target := range v.FeedSnippets {
+					if target.Run == 0 {
 						continue
 					}
-					v.pointSnippet('\r', v.feedTop+row, v.feedLeft)
+					v.PointSnippet('\r', v.FeedTop+row, v.FeedLeft)
 					u := &terminalUI{}
-					if !u.openOutput(v, v.opening) {
+					if !u.openOutput(v, v.Opening) {
 						t.Fatal("attachment click did not open shared dialog")
 					}
-					page := v.painter.DialogPage(u.output.pages[0], 80)
+					page := v.Painter.DialogPage(u.output.pages[0], 80)
 					if page.Text != textsanitize.Safe(body, false) {
 						t.Fatalf("dialog changed submitted content: got %d bytes, want %d", len(page.Text), len(body))
 					}
@@ -193,7 +193,7 @@ func TestLiveActivityAttachmentDialogs(t *testing.T) {
 							t.Fatal("attachment terminal controls reached rendered dialog")
 						}
 					}
-					if !v.following {
+					if !v.Following {
 						t.Fatal("dialog changed follow state")
 					}
 					if !skill && len(page.Lines) > 0 && page.Lines[0].Gutter != "│" {
@@ -206,10 +206,10 @@ func TestLiveActivityAttachmentDialogs(t *testing.T) {
 					t.Fatal("successful receipt has no click target")
 				}
 				resumed, _ := newAppServerTestUI()
-				resumed.agents = newLiveActivityView()
+				resumed.agents = newActivityAdapter()
 				resumed.session.start(resumed.Thread, "/workspace")
 				resumed.restoreHistory([]appServerHistoryTurn{{ID: "turn", Status: "completed", Items: []appServerItem{item}}})
-				page := resumed.view.painter.DialogPage(resumed.view.blocks(1)[0], 80)
+				page := resumed.view.Painter.DialogPage(resumed.view.blocks(1)[0], 80)
 				if page.Text != textsanitize.Safe(body, false) {
 					t.Fatal("replay lost submitted content")
 				}
@@ -225,16 +225,16 @@ func TestUISnapshotAttachmentDialogs(t *testing.T) {
 	frames = append(frames, "Attached file \"/workspace/missing.txt\": CONTENT NOT ATTACHED (\"missing\"). Read this separately if needed.")
 	content, _ := json.Marshal([]map[string]string{{"type": "text", "text": attachments.Encode(frames)}})
 	v.applyAppServerItem(true, "/workspace", "main", "main", "turn", "input", "item/completed", "", appServerItem{Type: "userMessage", Content: content})
-	feed := v.renderFeed(80, 40)
-	uisnapshot.Assert(t, "testdata/snapshots/attachment-receipts.txt", strings.Join(feed.lines, "\n")+"\n")
+	feed := v.RenderFeed(80, 40)
+	uisnapshot.Assert(t, "testdata/snapshots/attachment-receipts.txt", strings.Join(feed.Lines, "\n")+"\n")
 	for i, name := range []string{"file", "skill"} {
-		page := v.painter.DialogPage(v.blocks(1)[i], 72)
+		page := v.Painter.DialogPage(v.blocks(1)[i], 72)
 		var rows []string
 		for line := range page.Lines {
 			rows = append(rows, page.Rows(line, 72)...)
 		}
 		frame := activityui.DialogFrame{Page: page, Rows: rows, Total: len(rows), Footer: "escape close · scroll"}
-		uisnapshot.Assert(t, "testdata/snapshots/attachment-dialog-"+name+".txt", strings.Join(v.painter.Dialog(frame, 80, 14), "\n")+"\n")
+		uisnapshot.Assert(t, "testdata/snapshots/attachment-dialog-"+name+".txt", strings.Join(v.Painter.Dialog(frame, 80, 14), "\n")+"\n")
 	}
 }
 
@@ -254,15 +254,15 @@ func TestUISnapshotDirectoryAttachment(t *testing.T) {
 	content, _ := json.Marshal(conversationbinding.Input(draft.Draft))
 	v := sharedEventsView(false)
 	v.applyAppServerItem(true, cwd, "main", "main", "turn", "input", "item/completed", "", appServerItem{Type: "userMessage", Content: content})
-	feed := v.renderFeed(80, 40)
-	uisnapshot.Assert(t, "testdata/snapshots/directory-attachment-receipt.txt", strings.Join(feed.lines, "\n")+"\n")
-	page := v.painter.DialogPage(v.blocks(1)[0], 72)
+	feed := v.RenderFeed(80, 40)
+	uisnapshot.Assert(t, "testdata/snapshots/directory-attachment-receipt.txt", strings.Join(feed.Lines, "\n")+"\n")
+	page := v.Painter.DialogPage(v.blocks(1)[0], 72)
 	var rows []string
 	for line := range page.Lines {
 		rows = append(rows, page.Rows(line, 72)...)
 	}
 	frame := activityui.DialogFrame{Page: page, Rows: rows, Total: len(rows), Footer: "escape close · scroll"}
-	uisnapshot.Assert(t, "testdata/snapshots/directory-attachment-dialog.txt", strings.Join(v.painter.Dialog(frame, 80, 14), "\n")+"\n")
+	uisnapshot.Assert(t, "testdata/snapshots/directory-attachment-dialog.txt", strings.Join(v.Painter.Dialog(frame, 80, 14), "\n")+"\n")
 }
 
 func TestLiveActivityAttachmentStackedSnapshots(t *testing.T) {
@@ -288,7 +288,7 @@ func TestLiveActivityAttachmentStackedSnapshots(t *testing.T) {
 				t.Fatalf("stacked snapshots collapsed together: %d receipts", len(blocks))
 			}
 			for i, want := range []string{"first\n", second} {
-				page := v.painter.DialogPage(blocks[i], 80)
+				page := v.Painter.DialogPage(blocks[i], 80)
 				if page.Text != want {
 					t.Fatalf("snapshot %d: got %q, want %q", i, page.Text, want)
 				}
