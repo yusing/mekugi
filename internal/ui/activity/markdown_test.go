@@ -5,8 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -52,9 +53,9 @@ func TestUISnapshotMarkdownCodeFill(t *testing.T) {
 		painter activityui.Painter
 	}{
 		{"terminal", activityui.Painter{}}, // Undetected theme, as behind mosh.
-		{"dark", activityui.Painter{Theme: livediff.DarkTheme}},
-		{"light", activityui.Painter{Theme: livediff.LightTheme}},
-		{"reported_background", activityui.Painter{Theme: livediff.DarkTheme, Colors: activityui.Colors{Background: livediff.RGB{R: 40, G: 44, B: 52}, HasBackground: true}}},
+		{"dark", activityui.Painter{Theme: diffrender.DarkTheme}},
+		{"light", activityui.Painter{Theme: diffrender.LightTheme}},
+		{"reported_background", activityui.Painter{Theme: diffrender.DarkTheme, Colors: activityui.Colors{Background: diffrender.RGB{R: 40, G: 44, B: 52}, HasBackground: true}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := tc.painter
@@ -79,8 +80,8 @@ func plainLines(lines []string) []string {
 func TestUISnapshotFlashedAnswerCard(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
-		theme livediff.Theme
-	}{{"terminal", livediff.TerminalTheme}, {"dark", livediff.DarkTheme}, {"light", livediff.LightTheme}} {
+		theme diffrender.Theme
+	}{{"terminal", diffrender.TerminalTheme}, {"dark", diffrender.DarkTheme}, {"light", diffrender.LightTheme}} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := activityui.Painter{Theme: tc.theme}
 			block := activityui.Block{Kind: "final", Body: "The answer text."}

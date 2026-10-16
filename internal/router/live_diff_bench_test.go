@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/internal/livediff"
 )
 
@@ -18,7 +20,7 @@ func BenchmarkLiveDiffWrappedRender(b *testing.B) {
 			b.Run(fmt.Sprintf("%d/warm=%t", rows, warm), func(b *testing.B) {
 				var renderer livediff.Renderer
 				if warm {
-					if _, err := renderer.Render(b.Context(), livediff.DarkTheme, files, "", 100); err != nil {
+					if _, err := renderer.Render(b.Context(), diffrender.DarkTheme, files, "", 100); err != nil {
 						b.Fatal(err)
 					}
 				}
@@ -27,7 +29,7 @@ func BenchmarkLiveDiffWrappedRender(b *testing.B) {
 					if !warm {
 						renderer = livediff.Renderer{}
 					}
-					if _, err := renderer.Render(b.Context(), livediff.DarkTheme, files, "", 100); err != nil {
+					if _, err := renderer.Render(b.Context(), diffrender.DarkTheme, files, "", 100); err != nil {
 						b.Fatal(err)
 					}
 				}

@@ -6,10 +6,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -26,7 +27,7 @@ func TestSearchOutputSelectedTailParity(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := Painter{}
-			for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+			for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 				p.Theme = theme
 				for _, suffix := range []string{"", " // changed"} {
 					rows := slices.Clone(tc.rows)
@@ -67,7 +68,7 @@ func TestOutputSelectedTailPreservesSourceAndDiffContext(t *testing.T) {
 		{"search diff precedence", Block{Verb: "Search"}, []string{"--- a/main.go", "+++ b/main.go", "@@ -1 +1 @@", "-var answer = 41", "+var answer = 42"}, 3},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+			for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 				p := Painter{Theme: theme}
 				block := selectedOutputBlock(tc.block, tc.rows, tc.start)
 				full := p.outputColors(block, tc.rows)
@@ -93,7 +94,7 @@ func TestSearchOutputSelectedTailRetainsHighlightLimit(t *testing.T) {
 	if len(strings.Join(rows, "\n")) <= dialogHighlightBytes {
 		t.Fatal("fixture must exceed highlighting limit")
 	}
-	p := Painter{Theme: livediff.DarkTheme}
+	p := Painter{Theme: diffrender.DarkTheme}
 	block := selectedOutputBlock(Block{Verb: "Search"}, rows, len(rows)-2)
 	if got := p.tailColors(block); !slices.Equal(got, block.Tail) {
 		t.Fatalf("small selected tail bypassed retained-content limit: %q", got)
@@ -130,7 +131,7 @@ func TestSearchOutputSelectedTailSkipsOffscreenTokenization(t *testing.T) {
 		rows[i] = fmt.Sprintf("result.fixture:%d:value%d", i+1, i)
 	}
 	block := selectedOutputBlock(Block{Verb: "Search"}, rows, len(rows)-3)
-	p := Painter{Theme: livediff.DarkTheme}
+	p := Painter{Theme: diffrender.DarkTheme}
 	first := p.tailColors(block)
 	wantSources := []string{"value197\n", "value198\n", "value199\n"}
 	if !slices.Equal(lexer.sources, wantSources) {
@@ -179,7 +180,7 @@ func TestUISnapshotSearchOutputSelectedTail(t *testing.T) {
 		"internal/ui/activity/output.go:41:println(ready)",
 	}
 	block := selectedOutputBlock(Block{Kind: "op", Verb: "Search", Label: "`answer` in `internal`", Running: true}, rows, 3)
-	p := Painter{Theme: livediff.DarkTheme}
+	p := Painter{Theme: diffrender.DarkTheme}
 	uisnapshot.Assert(t, "testdata/snapshots/search_output_selected_tail.txt", strings.Join(p.Block(block, 96), "\n")+"\n")
 }
 
@@ -195,7 +196,7 @@ func BenchmarkSearchOutputRetainedSelectedTail(b *testing.B) {
 			name = "selected-tail"
 		}
 		b.Run(name, func(b *testing.B) {
-			p := Painter{Theme: livediff.DarkTheme}
+			p := Painter{Theme: diffrender.DarkTheme}
 			retained := block.Output.View().Lines
 			paint := func() []string {
 				if selected {
@@ -220,8 +221,8 @@ func TestOutputTailLayoutPreservesBoundedText(t *testing.T) {
 		strings.Repeat("界 é 👩‍💻 ", 2000),
 	} {
 		block := selectedOutputBlock(Block{Kind: "op", Verb: "Run", Code: "producer"}, []string{"old", "", content, "done"}, 1)
-		plain := Painter{LayoutOnly: true, Theme: livediff.DarkTheme}
-		colored := Painter{Theme: livediff.DarkTheme}
+		plain := Painter{LayoutOnly: true, Theme: diffrender.DarkTheme}
+		colored := Painter{Theme: diffrender.DarkTheme}
 		if got := plain.tailColors(block); !slices.Equal(got, block.Tail) {
 			t.Fatal("layout changed the observed tail")
 		}
@@ -242,7 +243,7 @@ func BenchmarkOutputTailLongRetainedLine(b *testing.B) {
 	block := selectedOutputBlock(Block{Kind: "op", Verb: "Run"}, []string{strings.Repeat("large untyped output ", 800)}, 0)
 	for _, layout := range []bool{true, false} {
 		b.Run(fmt.Sprintf("layout-%t", layout), func(b *testing.B) {
-			p := Painter{Theme: livediff.DarkTheme, LayoutOnly: layout}
+			p := Painter{Theme: diffrender.DarkTheme, LayoutOnly: layout}
 			b.ReportAllocs()
 			for b.Loop() {
 				if got := p.tailColors(block); !slices.Equal(got, block.Tail) {

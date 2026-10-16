@@ -18,7 +18,7 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/internal/livediff"
-	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
+	terminalui "github.com/yusing/mekugi/libraries/terminalui"
 	"golang.org/x/term"
 )
 

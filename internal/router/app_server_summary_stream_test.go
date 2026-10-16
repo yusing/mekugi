@@ -5,7 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -16,7 +17,7 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 			at := time.Date(2026, 9, 30, 8, 0, 0, 0, time.Local)
 			u.clock = func() time.Time { return at }
 			u.view.clock, u.agents.clock = u.clock, u.clock
-			u.view.painter.Theme, u.agents.painter.Theme = livediff.DarkTheme, livediff.DarkTheme
+			u.view.painter.Theme, u.agents.painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
 			appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 			u.agents.only, u.agents.selected = false, "/root/worker"
 			view := u.view

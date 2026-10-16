@@ -6,9 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
@@ -17,7 +18,7 @@ func nativeBatchFixture(t *testing.T) *appServerUI {
 	t.Helper()
 	u, _ := newAppServerTestUI()
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
-	u.view.painter.Theme = livediff.DarkTheme
+	u.view.painter.Theme = diffrender.DarkTheme
 	u.status, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 	u.session.cwd = "/workspace"
 	u.ensureShell()

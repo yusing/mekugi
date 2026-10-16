@@ -6,9 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/internal/execscope"
 
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -102,7 +103,7 @@ func TestUISnapshotTemporaryWriteActivity(t *testing.T) {
 				v := newLiveActivityView()
 				v.childrenOnly = agent != "Main"
 				v.clock = func() time.Time { return now }
-				v.painter.Theme = livediff.DarkTheme
+				v.painter.Theme = diffrender.DarkTheme
 				output := new(activityui.Retention).New()
 				output.Finish(new("/tmp/mekugi-batches.YcIbga/plan.json\n"), new(0))
 				v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{

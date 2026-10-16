@@ -8,10 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 )
 
 func TestSessionUIReplayRetainsQuestionAnswerWait(t *testing.T) {
@@ -233,7 +234,7 @@ func TestSessionUIReplayEndPaintSettlesQueuedCommandOutput(t *testing.T) {
 	}}
 	p := newUIReplayPlayback(t.Context(), source, 1)
 	t.Cleanup(p.close)
-	p.ui.view.painter.Theme, p.ui.agents.painter.Theme = livediff.DarkTheme, livediff.DarkTheme
+	p.ui.view.painter.Theme, p.ui.agents.painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
 	if err := p.advance(500 * time.Millisecond); err != nil {
 		t.Fatal(err)
 	}

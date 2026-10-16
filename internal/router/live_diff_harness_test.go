@@ -13,7 +13,7 @@ import (
 
 	"github.com/yusing/mekugi/modules/sessioninspection/query"
 
-	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
+	terminalui "github.com/yusing/mekugi/libraries/terminalui"
 	"golang.org/x/term"
 )
 

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffrender"
 )
 
 func TestUISnapshotCommandSegmentRetentionNotice(t *testing.T) {
@@ -20,7 +20,7 @@ func TestUISnapshotCommandSegmentRetentionNotice(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.view.painter.Theme = livediff.DarkTheme
+			u.view.painter.Theme = diffrender.DarkTheme
 			u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 			u.thread = "main"
 			u.view.conversation = true

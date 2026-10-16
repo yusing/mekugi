@@ -7,10 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -353,7 +354,7 @@ func TestUISnapshotNativeSessionTitle(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.view.painter.Theme = livediff.DarkTheme
+			u.view.painter.Theme = diffrender.DarkTheme
 			u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 			u.status, u.model, u.title = "Ready", "snapshot-model", tc.title
 			if tc.name == "idle-save-failure" {

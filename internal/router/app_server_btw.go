@@ -6,9 +6,10 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -413,7 +414,7 @@ func (u *appServerUI) btwRows(width, height int) []string {
 	if b.alert {
 		color = activityui.Red
 	}
-	status := livediff.Safe(b.status, false)
+	status := diffrender.Safe(b.status, false)
 	if (b.busy || b.starting) && b.status == "Answering" && !b.alert && !b.started.IsZero() {
 		elapsed := max(time.Duration(0), u.now().Sub(b.started))
 		status = activityui.ReasoningShimmer("Answering", elapsed, u.view.painter.Colors) + activityui.Dim + " · " + activityui.FormatDuration(elapsed) + activityui.Reset
@@ -421,12 +422,12 @@ func (u *appServerUI) btwRows(width, height int) []string {
 	label := " /btw · " + status
 	rows := []string{ansi.Truncate(color+"╭─"+label+activityui.Reset, width, "…")}
 	inner := max(1, width-2)
-	question := activityui.Wrap(livediff.Safe(b.question, false), inner, true)
+	question := activityui.Wrap(diffrender.Safe(b.question, false), inner, true)
 	for _, row := range question[:min(2, len(question))] {
 		rows = append(rows, ansi.Truncate(color+"│ "+activityui.Reset+row, width, "…"))
 	}
 	if b.attachmentNotice != "" {
-		rows = append(rows, ansi.Truncate(activityui.Red+"│ "+livediff.Safe(b.attachmentNotice, false)+activityui.Reset, width, "…"))
+		rows = append(rows, ansi.Truncate(activityui.Red+"│ "+diffrender.Safe(b.attachmentNotice, false)+activityui.Reset, width, "…"))
 	}
 	var answer []string
 	for index, item := range b.answer {

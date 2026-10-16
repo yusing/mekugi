@@ -6,9 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -45,7 +46,7 @@ func replayPlaybackTestNew(t *testing.T) *uiReplayPlayback {
 	t.Helper()
 	p := newUIReplayPlayback(t.Context(), replayPlaybackTestSource(), 1)
 	t.Cleanup(p.close)
-	p.ui.view.painter.Theme, p.ui.agents.painter.Theme = livediff.DarkTheme, livediff.DarkTheme
+	p.ui.view.painter.Theme, p.ui.agents.painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
 	return p
 }
 

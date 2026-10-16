@@ -9,10 +9,10 @@ behavioral contract. UI presentation packages and router session integration are
 | --- | --- |
 | Workspace enumeration and import-boundary validation | `apps/mekugi/cmd/workspace`; membership in `go.work` |
 | Application composition and initial executable bindings | `apps/mekugi/internal/composition`, `contracts`, `backends/codex/binding`; scripted harness in `testsupport/moduletest` |
-| Captured diff model, composition, merge and file status | `libraries/diffmodel`; terminal painting remains in `internal/livediff` |
+| Captured diff model, composition, merge and file status | `libraries/diffmodel`; shared terminal decoration in `libraries/diffrender`; captured-file painting in `internal/livediff` |
 | Shared source capability and shell-header semantics | `libraries/sourceanalysis/sourcekind`, `libraries/commandanalysis/shellsyntax` |
 | Shared source parsing, literal decoding, and nonblocking source-file opens | `libraries/sourceanalysis/sourceparse`; execution classification uses `internal/execscope`, while preview evaluation remains in `internal/router` |
-| Activity presentation, diff navigation/previews, and terminal primitives | `internal/ui/activity`, `internal/ui/diffview`, `internal/ui/terminal`; native session integration remains in `internal/router` |
+| Activity presentation, diff navigation/previews, and terminal primitives | `internal/ui/activity`, `internal/ui/diffview`, `libraries/terminalui`; native session integration remains in `internal/router` |
 | Native screen composition, transcript switching, and pane layout | `internal/router/native_shell.go`; preview fixtures in `internal/router/app_server_preview_test.go` |
 | Applied settings, recovery evidence and renderer preferences | `modules/sessionpreferences/preferences`; terminal schema and host control adaptation in `internal/router/app_server_panes.go` and `app_server_resume.go` |
 | Session/composer controller and host-event reconciliation | `internal/router/app_server_ui.go`; input paths in `internal/router/app_server_input.go`; composer error display in `internal/router/composer_notice.go` |
@@ -28,7 +28,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Submitted file attachments | `internal/router/composer_file_attachment.go`; shared path formatting in `libraries/pathdisplay` |
 | Live-diff models and preview presentation | `internal/livediff/model.go`, `internal/ui/diffview/preview.go`; native composition in `internal/router/native_shell.go` |
 | Selected-file editor handoff | `internal/router/native_file_editor.go`, `internal/router/terminal_ui.go`; shared editor runner and terminal restoration in `internal/router/app_server_composer_editor.go`, `internal/router/app_server_ui.go` |
-| Shared Diff syntax and word highlighting | `internal/livediff/render.go`, `internal/livediff/word_diff.go`, `internal/livediff/theme.go`; source previews in `internal/ui/diffview/preview.go` |
+| Shared Diff syntax and word highlighting | `libraries/diffrender/source.go`, `libraries/diffrender/word_diff.go`, `libraries/diffrender/theme.go`; source previews in `internal/ui/diffview/preview.go` |
 | Codex app-server stdio RPC and child-process lifecycle | `backends/codex/appserver` |
 | Codex execution-source and result recognition | `backends/codex/binding/execution_source.go` and `execution_evidence.go`; preview, continuation correlation, restored evidence and offline corpus inspection consume these facts without executing them |
 | Host-selected rollout identity, bounded context usage and resume settings | `backends/codex/rollout`; resume precedence in `modules/sessionpreferences`; Activity projection stays in router consumers |

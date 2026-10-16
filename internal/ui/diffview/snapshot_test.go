@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
@@ -54,12 +56,12 @@ func TestUISnapshotDiffNavigation(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			files := snapshotFiles()
-			var counts []livediff.Counts
+			var counts []diffmodel.Counts
 			for _, file := range files {
 				counts = append(counts, file.NetCounts())
 			}
 			tc.nav.Rebuild(files, "/workspace")
-			assertRowsSnapshot(t, tc.name, tc.nav.Render(files, counts, 1, tc.width, tc.height, livediff.DarkTheme))
+			assertRowsSnapshot(t, tc.name, tc.nav.Render(files, counts, 1, tc.width, tc.height, diffrender.DarkTheme))
 		})
 	}
 }
@@ -77,7 +79,7 @@ func TestUISnapshotDiffChanges(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			view := livediff.View{Files: snapshotFiles()}
 			tc.changes.Rebuild(&view, "/workspace")
-			assertRowsSnapshot(t, tc.name, tc.changes.Render(true, tc.changes.Query != "", "", tc.width, tc.height, livediff.DarkTheme))
+			assertRowsSnapshot(t, tc.name, tc.changes.Render(true, tc.changes.Query != "", "", tc.width, tc.height, diffrender.DarkTheme))
 		})
 	}
 }
@@ -115,7 +117,7 @@ func TestUISnapshotDiffPreview(t *testing.T) {
 			for _, preview := range tc.previews {
 				pane.Update(preview)
 			}
-			rows, err := pane.Render(t.Context(), "/workspace", livediff.DarkTheme, tc.width, tc.height)
+			rows, err := pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, tc.width, tc.height)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -129,14 +131,14 @@ func TestUISnapshotDependencyDirectoryNavigation(t *testing.T) {
 	files := []livediff.File{file}
 	nav := Navigation{Flat: true, Focused: true}
 	nav.Rebuild(files, "/workspace")
-	assertRowsSnapshot(t, "dependency-directory-navigation", nav.Render(files, []livediff.Counts{file.NetCounts()}, 0, 50, 5, livediff.DarkTheme))
+	assertRowsSnapshot(t, "dependency-directory-navigation", nav.Render(files, []diffmodel.Counts{file.NetCounts()}, 0, 50, 5, diffrender.DarkTheme))
 }
 
 func TestUISnapshotWordDiff(t *testing.T) {
 	const before = "Keep each listed task small and bounded. Record results as they become known.\n"
 	const after = "Keep each listed task small and checkable. At 70% context use, split the current slice. Record results as they become known.\n"
 	review := diffmodel.RenderReviewFile("guidance.txt", "guidance.txt", before, after)
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.DarkTheme,
+	render, err := new(livediff.Renderer).Render(t.Context(), diffrender.DarkTheme,
 		[]livediff.File{{Path: "guidance.txt", Chunks: []livediff.Chunk{{Review: review}}}}, "", 60)
 	if err != nil {
 		t.Fatal(err)

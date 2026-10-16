@@ -6,11 +6,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -62,7 +63,7 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 				t.Fatal("truncated error did not open")
 			}
 			drawOutputDialog(u.shell)
-			if u.shell.output.laid.Text != livediff.Safe(full, false) {
+			if u.shell.output.laid.Text != diffrender.Safe(full, false) {
 				t.Fatal("details lost full error")
 			}
 			u.shell.outputKey("q")
@@ -78,7 +79,7 @@ func TestUISnapshotComposerError(t *testing.T) {
 	for _, width := range []int{12, 20, 36, 80} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.view.painter.Theme = livediff.DarkTheme
+			u.view.painter.Theme = diffrender.DarkTheme
 			u.clock = func() time.Time { return time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC) }
 			u.status = "Ready"
 			u.setNotice("File contents omitted: setup.sh (attachment budget exceeded).\nThe attachment result names the missing content.", true)

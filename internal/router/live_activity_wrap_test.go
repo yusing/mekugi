@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 func TestLiveActivityWrappedUserBand(t *testing.T) {
-	for _, theme := range []livediff.Theme{livediff.LightTheme, livediff.DarkTheme} {
+	for _, theme := range []diffrender.Theme{diffrender.LightTheme, diffrender.DarkTheme} {
 		v := liveActivityView{painter: activityui.Painter{Theme: theme}}
 		var out conversationLines
 		v.userItemContinued(&out, activityPaneEntry{Text: "one two three four five six seven eight"}, 12, false)

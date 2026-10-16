@@ -4,14 +4,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/livediff"
 )
 
 func TestAppServerImageTranscriptHighlight(t *testing.T) {
-	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		for _, width := range []int{16, 80} {
 			u, _ := newAppServerTestUI()
 			u.view.painter.Theme = theme

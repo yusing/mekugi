@@ -10,7 +10,7 @@ import (
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/ui/diffview"
-	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
+	terminalui "github.com/yusing/mekugi/libraries/terminalui"
 )
 
 func TestTerminalUIBatchKeepsSettlingTime(t *testing.T) {

@@ -8,13 +8,14 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/approval"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"mvdan.cc/sh/v3/shell"
@@ -771,10 +772,10 @@ func (u *appServerUI) approvalRows(width, height int) []string {
 	}
 	var text []string
 	for _, line := range strings.Split(a.subject, "\n") {
-		text = append(text, pickerWrap(livediff.Safe(line, false), inner)...)
+		text = append(text, pickerWrap(diffrender.Safe(line, false), inner)...)
 	}
 	for _, detail := range a.details {
-		for _, line := range pickerWrap(livediff.Safe(detail, false), inner) {
+		for _, line := range pickerWrap(diffrender.Safe(detail, false), inner) {
 			text = append(text, dim+line+reset)
 		}
 	}

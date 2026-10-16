@@ -7,8 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -101,7 +102,7 @@ func TestUISnapshotWrappedCommands(t *testing.T) {
 		if thread == "child" {
 			view = u.agents
 		}
-		view.clock, view.painter.Theme = u.clock, livediff.DarkTheme
+		view.clock, view.painter.Theme = u.clock, diffrender.DarkTheme
 		for i, command := range []string{
 			`env -u BASH_ENV -u MEKUGI_EXEC_TRACK bash -c 'sed -n "28,85p" internal/router/app_server_ui.go; cat internal/router/subagent_activity_pane.go | head -85; rg -n "MCP|spawn_agent" internal/router/subagent_activity.go | head -80'`,
 			`/usr/bin/sed -n '2,4p' app.go; /bin/cat other.go | /usr/bin/head -80`,
@@ -157,7 +158,7 @@ func TestAppServerShellDisplay(t *testing.T) {
 func TestAppServerShellDisplayHighlight(t *testing.T) {
 	source := `printf '%s' "$HOME"; go test ./...`
 	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: appServerCommandText(appServerItem{Command: `/bin/bash -lc 'printf '\''%s'\'' "$HOME"; go test ./...'`}, "")})
-	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		p := activityui.Painter{Theme: theme}
 		var rows []string
 		for _, block := range blocks {
@@ -267,14 +268,14 @@ func TestAppServerCommandTimeoutInput(t *testing.T) {
 }
 
 func TestUISnapshotTimeoutSkill(t *testing.T) {
-	p := activityui.Painter{Theme: livediff.DarkTheme}
+	p := activityui.Painter{Theme: diffrender.DarkTheme}
 	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell("timeout 123 skills-mgr get skill")})
 	blocks[0].Duration = 500 * time.Millisecond
 	assertNativeUISnapshot(t, "timeout-skill", p.Block(blocks[0], 90))
 }
 
 func TestUISnapshotTimeoutRun(t *testing.T) {
-	p := activityui.Painter{Theme: livediff.DarkTheme}
+	p := activityui.Painter{Theme: diffrender.DarkTheme}
 	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell("timeout 5 sleep 6")})
 	blocks[0].Duration, blocks[0].ExitCode = 5*time.Second, 124
 	assertNativeUISnapshot(t, "timeout-run", p.Block(blocks[0], 90))
@@ -282,7 +283,7 @@ func TestUISnapshotTimeoutRun(t *testing.T) {
 
 func TestUISnapshotShellSetupEvent(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
-	u.view.painter.Theme = livediff.DarkTheme
+	u.view.painter.Theme = diffrender.DarkTheme
 	command := "probe_root=$(mktemp -d /tmp/setup-apt-baseline.XXXXXX)\n" +
 		"trap 'rm -rf \"$probe_root\"' EXIT\nexport SETUP_CONFIG=/workspace/setup.json\n" +
 		"smoke_root=\"$probe_root\"\ngit show 99076ca:setup.sh > \"$probe_root/baseline.sh\"\n" +
@@ -296,7 +297,7 @@ func TestUISnapshotShellSetupEvent(t *testing.T) {
 
 func TestUISnapshotClassifiedCommandPaths(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
-	u.view.painter.Theme = livediff.DarkTheme
+	u.view.painter.Theme = diffrender.DarkTheme
 	for i, command := range []string{
 		"mcat /workspace/internal/router/app.go 1:3",
 		"inspect_file /workspace/app.go /external/other.go",
@@ -310,7 +311,7 @@ func TestUISnapshotClassifiedCommandPaths(t *testing.T) {
 }
 
 func TestLiveActivitySkillRendering(t *testing.T) {
-	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		p := activityui.Painter{Theme: theme}
 		for _, command := range []string{"skills-mgr get golang-best-practices", "skills-mgr run use-modern-go/scripts/run-tool.sh list --go-version 1.27"} {
 			blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell(command)})
@@ -365,7 +366,7 @@ func TestAppServerCommandWorkdirDisplay(t *testing.T) {
 				if len(blocks) == 0 || blocks[0].Workdir != tc.workdir {
 					t.Fatalf("blocks = %+v; want workdir %q", blocks, tc.workdir)
 				}
-				row := ansi.Strip((&activityui.Painter{Theme: livediff.DarkTheme}).Block(blocks[0], 200)[0])
+				row := ansi.Strip((&activityui.Painter{Theme: diffrender.DarkTheme}).Block(blocks[0], 200)[0])
 				if want := "· in " + tc.workdir; (tc.workdir != "") != strings.Contains(row, want) || tc.workdir == "" && strings.Contains(row, "· in ") {
 					t.Fatalf("row = %q; want workdir %q", row, tc.workdir)
 				}
@@ -447,7 +448,7 @@ func TestUISnapshotShellSetupTimeoutEvent(t *testing.T) {
 		if thread == "child" {
 			view = u.agents
 		}
-		view.clock, view.painter.Theme = u.clock, livediff.DarkTheme
+		view.clock, view.painter.Theme = u.clock, diffrender.DarkTheme
 		item := appServerItem{ID: "setup", Type: "commandExecution", Command: "set -e\ntimeout 10 sleep 1", Cwd: "/workspace", Status: "inProgress"}
 		appServerTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "t", "item": item})
 		now = now.Add(500 * time.Millisecond)

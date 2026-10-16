@@ -43,7 +43,7 @@ import (
 
 	// Source: main.go:20:551 HTTP lifecycle and Responses proxy execution.
 
-	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
+	terminalui "github.com/yusing/mekugi/libraries/terminalui"
 )
 
 const (

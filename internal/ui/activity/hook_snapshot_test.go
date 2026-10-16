@@ -6,13 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 func TestUISnapshotHookRuns(t *testing.T) {
 	for _, width := range []int{38, 80} {
-		p := Painter{Theme: livediff.DarkTheme, Clock: func() time.Time { return time.Unix(1001, 0) }}
+		p := Painter{Theme: diffrender.DarkTheme, Clock: func() time.Time { return time.Unix(1001, 0) }}
 		var rows []string
 		for _, status := range []string{"running", "completed", "failed", "blocked", "stopped", "unknown"} {
 			b := Block{Kind: "op", Verb: "Run", Label: "PreToolUse · `hooks.toml` · async", Running: status == "running",

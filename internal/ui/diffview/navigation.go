@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
@@ -195,7 +197,7 @@ func (n *Navigation) EnsureVisible(rows int) {
 	}
 }
 
-func (n *Navigation) Render(files []livediff.File, counts []livediff.Counts, selected, width, rows int, theme livediff.Theme) []string {
+func (n *Navigation) Render(files []livediff.File, counts []diffmodel.Counts, selected, width, rows int, theme diffrender.Theme) []string {
 	out := make([]string, rows)
 	if rows == 0 {
 		return out
@@ -207,7 +209,7 @@ func (n *Navigation) Render(files []livediff.File, counts []livediff.Counts, sel
 	heading := fmt.Sprintf(" Files  %d/%d · %s", len(n.Matches), n.total, mode)
 	if n.Caller != "" {
 		name, _ := CallerStyle(theme)(n.Caller)
-		heading += " · @" + livediff.Safe(name, false)
+		heading += " · @" + diffrender.Safe(name, false)
 	}
 	if n.Focused {
 		heading = theme.Accent() + "▎" + strings.TrimPrefix(heading, " ") + "\x1b[0m"
@@ -218,12 +220,12 @@ func (n *Navigation) Render(files []livediff.File, counts []livediff.Counts, sel
 	}
 	filter := " / filter paths"
 	if n.Query != "" || n.Filtering {
-		filter = " / " + livediff.Safe(n.Query, false)
+		filter = " / " + diffrender.Safe(n.Query, false)
 		if n.Filtering {
 			filter += "▏"
 		}
 	}
-	out[1] = ansi.Truncate(livediff.Subtle+filter+"\x1b[0m", max(0, width-1), "…")
+	out[1] = ansi.Truncate(diffrender.Subtle+filter+"\x1b[0m", max(0, width-1), "…")
 	// Rows never stay scrolled off the top while space remains below.
 	n.Top = min(n.Top, max(0, len(n.Entries)-(rows-2)))
 	scrollbar := len(n.Entries) > rows-2 && rows > 2
@@ -247,14 +249,14 @@ func (n *Navigation) Render(files []livediff.File, counts []livediff.Counts, sel
 			if n.Collapsed[entry.Folder] {
 				arrow = "▶"
 			}
-			label = indent + theme.Accent() + arrow + "\x1b[39m " + livediff.Safe(entry.Label, false)
-			stats = fmt.Sprintf(" "+livediff.Subtle+"(%d)"+livediff.SubtleReset, entry.Count)
+			label = indent + theme.Accent() + arrow + "\x1b[39m " + diffrender.Safe(entry.Label, false)
+			stats = fmt.Sprintf(" "+diffrender.Subtle+"(%d)"+diffrender.SubtleReset, entry.Count)
 		} else {
 			var regions []diffmodel.ReviewFile
 			for _, chunk := range files[entry.File].Chunks {
 				regions = append(regions, chunk.Review)
 			}
-			label = indent + livediff.Safe(entry.Label, false)
+			label = indent + diffrender.Safe(entry.Label, false)
 			if len(regions) > 0 {
 				label = indent + FileLabel(diffmodel.StatusOf(regions...), entry.Label, n.workspace, theme)
 			}
@@ -284,7 +286,7 @@ func (n *Navigation) Render(files []livediff.File, counts []livediff.Counts, sel
 			if row-2 == thumb {
 				bar = "┃"
 			}
-			out[row] = line + strings.Repeat(" ", max(0, width-2-ansi.StringWidth(line))) + livediff.Subtle + bar + "\x1b[0m"
+			out[row] = line + strings.Repeat(" ", max(0, width-2-ansi.StringWidth(line))) + diffrender.Subtle + bar + "\x1b[0m"
 		}
 	}
 	return out
@@ -292,7 +294,7 @@ func (n *Navigation) Render(files []livediff.File, counts []livediff.Counts, sel
 
 // liveDiffSelectRow marks the active row without reserving a marker column.
 // Inline style resets restore the fill, and the row fills its available width.
-func liveDiffSelectRow(line string, width int, theme livediff.Theme) string {
+func liveDiffSelectRow(line string, width int, theme diffrender.Theme) string {
 	fill := theme.SelectionBackground()
 	line = strings.ReplaceAll(line, "\x1b[0m", "\x1b[0m"+fill)
 	return fill + line + strings.Repeat(" ", max(0, width-ansi.StringWidth(line))) + "\x1b[49m"
@@ -303,7 +305,7 @@ func liveDiffHoverRow(line string) string {
 	return "\x1b[4m" + strings.ReplaceAll(line, "\x1b[0m", "\x1b[0m\x1b[4m") + "\x1b[24m"
 }
 
-func statusCode(s diffmodel.Status, theme livediff.Theme) (string, string) {
+func statusCode(s diffmodel.Status, theme diffrender.Theme) (string, string) {
 	code := s.ShortCode()
 	switch code {
 	case "UU", "D":
@@ -319,27 +321,27 @@ func statusCode(s diffmodel.Status, theme livediff.Theme) (string, string) {
 // FileLabel prefixes a file label with its colored status; a rename
 // also names its source. Every file row (tree, flat list, Changes tab,
 // streaming title) uses this format.
-func FileLabel(status diffmodel.Status, label, workspace string, theme livediff.Theme) string {
+func FileLabel(status diffmodel.Status, label, workspace string, theme diffrender.Theme) string {
 	if status.Directory {
 		label = strings.TrimSuffix(label, "/") + "/"
 	}
 	code, color := statusCode(status, theme)
-	label = livediff.Safe(label, false)
+	label = diffrender.Safe(label, false)
 	if status.Before != "" && status.After != "" && status.Before != status.After {
 		// The source's base name when it stayed in the same folder.
 		from := pathdisplay.ForWorkspace(workspace, status.Before)
 		if path.Dir(status.Before) == path.Dir(status.After) {
 			from = path.Base(status.Before)
 		}
-		label = livediff.Safe(from, false) + " → " + label
+		label = diffrender.Safe(from, false) + " → " + label
 	}
 	return color + code + "\x1b[39m " + label
 }
 
 // CountStats shows known line counts; unknown counts are not zero.
-func CountStats(count livediff.Counts, theme livediff.Theme) string {
+func CountStats(count diffmodel.Counts, theme diffrender.Theme) string {
 	if count.Added < 0 || count.Removed < 0 {
-		return " " + livediff.Subtle + "?" + livediff.SubtleReset
+		return " " + diffrender.Subtle + "?" + diffrender.SubtleReset
 	}
 	return fmt.Sprintf(" %s+%d\x1b[39m %s-%d\x1b[39m", theme.Foreground(chroma.GenericInserted), count.Added, theme.Foreground(chroma.GenericDeleted), count.Removed)
 }

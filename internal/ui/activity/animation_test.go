@@ -7,8 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -16,8 +17,8 @@ func TestCodexReasoningShimmerSweep(t *testing.T) {
 	const text = "Checking the answer target"
 	colors := regexp.MustCompile(`\x1b\[38;2;(\d+);(\d+);(\d+)m`)
 	palettes := []activityui.Colors{
-		{Foreground: livediff.RGB{R: 220, G: 214, B: 200}, Background: livediff.RGB{R: 24, G: 22, B: 30}, HasForeground: true, HasBackground: true},
-		{Foreground: livediff.RGB{R: 30, G: 40, B: 50}, Background: livediff.RGB{R: 250, G: 248, B: 240}, HasForeground: true, HasBackground: true},
+		{Foreground: diffrender.RGB{R: 220, G: 214, B: 200}, Background: diffrender.RGB{R: 24, G: 22, B: 30}, HasForeground: true, HasBackground: true},
+		{Foreground: diffrender.RGB{R: 30, G: 40, B: 50}, Background: diffrender.RGB{R: 250, G: 248, B: 240}, HasForeground: true, HasBackground: true},
 	}
 	for _, palette := range palettes {
 		fg, bg := palette.Foreground, palette.Background
@@ -78,8 +79,8 @@ func TestReasoningShimmerWithoutReportedPalette(t *testing.T) {
 
 func TestStatusPulseReportedPalette(t *testing.T) {
 	for _, palette := range []activityui.Colors{
-		{Foreground: livediff.RGB{R: 220, G: 220, B: 220}, Background: livediff.RGB{R: 20, G: 20, B: 20}, HasForeground: true, HasBackground: true},
-		{Foreground: livediff.RGB{R: 20, G: 20, B: 20}, Background: livediff.RGB{R: 220, G: 220, B: 220}, HasForeground: true, HasBackground: true},
+		{Foreground: diffrender.RGB{R: 220, G: 220, B: 220}, Background: diffrender.RGB{R: 20, G: 20, B: 20}, HasForeground: true, HasBackground: true},
+		{Foreground: diffrender.RGB{R: 20, G: 20, B: 20}, Background: diffrender.RGB{R: 220, G: 220, B: 220}, HasForeground: true, HasBackground: true},
 	} {
 		start := time.Unix(0, 0)
 		dim := activityui.StatusPulse("Sending…", start, palette)

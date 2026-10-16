@@ -3,6 +3,7 @@ package router
 import (
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/commandargs"
+	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
@@ -15,7 +16,6 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
@@ -112,7 +112,7 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 				len(tc.view.entries[i].blocks) == 0 || tc.view.entries[i].blocks[0].Verb != "Edit" {
 				t.Fatalf("receipt for %s: %+v, blocks %+v", tc.item, entry, tc.view.entries[i].blocks)
 			}
-			for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+			for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 				painted := strings.Join((&activityui.Painter{Theme: theme}).Block(tc.view.entries[i].blocks[0], 120), "\n")
 				// The file row names its outcome and source.
 				heading := "Edited " + tc.path + " +1 -1 via " + tc.program

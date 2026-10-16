@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -19,7 +21,6 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/coder/websocket"
-	"github.com/yusing/mekugi/internal/livediff"
 
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
@@ -542,7 +543,7 @@ func TestUISnapshotNativeApprovalDock(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.view.painter.Theme = livediff.DarkTheme
+			u.view.painter.Theme = diffrender.DarkTheme
 			u.status, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 			u.session.start("main", "/workspace")
 			u.turn = "turn"
@@ -571,7 +572,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 			u := newAppServerSessionTestUI(t, "/workspace")
 			u.clock = func() time.Time { return time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC) }
 			u.view.clock, u.agents.clock = u.clock, u.clock
-			u.view.painter.Theme, u.agents.painter.Theme = livediff.DarkTheme, livediff.DarkTheme
+			u.view.painter.Theme, u.agents.painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
 			u.turn = "turn"
 			thread, view := "main", u.view
 			if tc.child {

@@ -1,8 +1,10 @@
 package activity
 
-import "strings"
+import (
+	"strings"
 
-import "github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffrender"
+)
 
 // WaitTarget retains canonical identity for both live and restored wait notices.
 type WaitTarget struct{ Name, Status string }
@@ -16,20 +18,20 @@ func (b Block) progressText(style string) string {
 	if b.Label != "" {
 		body = b.Label // Progress disclosures keep the full message in Body.
 	}
-	text.WriteString(livediff.Safe(body, false))
+	text.WriteString(diffrender.Safe(body, false))
 	for i, target := range b.WaitTargets {
 		if i == 0 {
 			text.WriteString(" · ")
 		} else {
 			text.WriteString(", ")
 		}
-		name := livediff.Safe(AgentDisplayName(target.Name), false)
+		name := diffrender.Safe(AgentDisplayName(target.Name), false)
 		if style != "" {
 			name = DimColor(target.Name) + name + Reset + style
 		}
 		text.WriteString(name)
 		if target.Status != "" {
-			text.WriteString(": " + livediff.Safe(target.Status, false))
+			text.WriteString(": " + diffrender.Safe(target.Status, false))
 		}
 	}
 	return text.String()

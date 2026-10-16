@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/internal/livediff"
@@ -28,7 +30,7 @@ func TestLiveDiffRenderAllFiles(t *testing.T) {
 			Review: diffmodel.ReviewFile{AfterPath: path, Diff: diff},
 		}}})
 	}
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, files, workspace, 90)
+	render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, files, workspace, 90)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/libraries/httptransport"
 
 	"github.com/yusing/mekugi/providers/grok"
-
-	"github.com/yusing/mekugi/internal/livediff"
 )
 
 func TestGrokLaunchCatalogNamespaces(t *testing.T) {
@@ -143,7 +143,7 @@ func TestUISnapshotGrokLaunchModelPicker(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.view.painter.Theme = livediff.DarkTheme
+			u.view.painter.Theme = diffrender.DarkTheme
 			body, err := ProviderModelCatalog([]byte(`{"models":[{"slug":"gpt-6-sol","multi_agent_version":"v2"}]}`), Session{GrokEnabled: true, GrokUnprefixed: unprefixed, ThirdPartyOnly: true})
 			if err != nil {
 				t.Fatal(err)

@@ -6,7 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -19,7 +21,7 @@ func TestUISnapshotNativeMainComposer(t *testing.T) {
 	for _, width := range []int{36, 80} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.view.painter.Theme = livediff.DarkTheme
+			u.view.painter.Theme = diffrender.DarkTheme
 			// An idle session avoids wall-clock durations and status animation.
 			u.status, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 			now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
@@ -43,7 +45,7 @@ func TestUISnapshotShellComposer(t *testing.T) {
 		rows, _ := u.mainFrame(36, 6, 0)
 		uisnapshot.AssertTerminal(t, "testdata/snapshots/shell-composer-marker.txt", rows, 36)
 	})
-	for _, theme := range []livediff.Theme{livediff.TerminalTheme, livediff.DarkTheme, livediff.LightTheme} {
+	for _, theme := range []diffrender.Theme{diffrender.TerminalTheme, diffrender.DarkTheme, diffrender.LightTheme} {
 		for _, width := range []int{18, 60} {
 			t.Run(fmt.Sprintf("%d/%d", theme, width), func(t *testing.T) {
 				u, _ := newAppServerTestUI()
@@ -77,7 +79,7 @@ func TestUISnapshotNativeResumePicker(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.view.painter.Theme = livediff.DarkTheme
+			u.view.painter.Theme = diffrender.DarkTheme
 			u.resumePicker = &appServerResumePicker{cwd: "/workspace", all: tc.all, loading: tc.loading, query: tc.query, loadedAt: now, selected: 1,
 				rows: []appServerResumeRow{
 					{id: "main", title: "Improve rendered snapshot coverage", cwd: "/workspace", branch: "coverage/snapshot", updated: now.Add(-2 * time.Minute).Unix()},
@@ -91,7 +93,7 @@ func TestUISnapshotNativeResumePicker(t *testing.T) {
 
 func snapshotActivityView(now time.Time) *liveActivityView {
 	v := newLiveActivityView()
-	v.painter.Theme = livediff.DarkTheme
+	v.painter.Theme = diffrender.DarkTheme
 	v.selected = "/root/review"
 	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
 		{Name: "/root", Final: true, InputTokens: 1200, OutputTokens: 240, Cost: .02, CostKnown: true},
@@ -126,16 +128,16 @@ func TestUISnapshotNativeAgentsRoster(t *testing.T) {
 func TestUISnapshotNativeRosterEditCounts(t *testing.T) {
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 	v := newLiveActivityView()
-	v.painter.Theme = livediff.DarkTheme
+	v.painter.Theme = diffrender.DarkTheme
 	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
 		{Name: "/root", Final: true, InputTokens: 2000},
 		{Name: "/root/cleanup", Final: true, InputTokens: 1000},
 	}})
-	v.lineCounts = map[string]livediff.Counts{
+	v.lineCounts = map[string]diffmodel.Counts{
 		"/root":         {Added: 3, Removed: 1},
 		"/root/cleanup": {Removed: 2},
 	}
-	v.netCounts = new(livediff.Counts{Added: 2, Removed: 1})
+	v.netCounts = new(diffmodel.Counts{Added: 2, Removed: 1})
 	assertNativeUISnapshot(t, "native-roster-edit-counts", v.nativeRoster(100, 6, now, true))
 }
 
@@ -144,7 +146,7 @@ func TestUISnapshotNativeRosterContext(t *testing.T) {
 	for _, width := range []int{48, 100} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			v := newLiveActivityView()
-			v.painter.Theme = livediff.DarkTheme
+			v.painter.Theme = diffrender.DarkTheme
 			v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
 				{Name: "/root", ContextKnown: true, ContextTokens: 171_300, ContextWindow: 285_000},
 				{Name: "/root/child", ContextKnown: true, ContextTokens: 24_400, ContextWindow: 285_000},
@@ -157,7 +159,7 @@ func TestUISnapshotNativeRosterContext(t *testing.T) {
 func TestUISnapshotNativeLockedComposer(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.status = "Ready"
-	u.view.painter.Theme = livediff.DarkTheme
+	u.view.painter.Theme = diffrender.DarkTheme
 	appServerTestKeys(t, u, "/lock\r")
 	rows, _ := u.mainFrame(100, 10, 0)
 	assertNativeUISnapshot(t, "native-main-locked", rows)
@@ -177,7 +179,7 @@ func TestUISnapshotNativeFilePicker(t *testing.T) {
 	for _, width := range []int{30, 80} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.view.painter.Theme = livediff.DarkTheme
+			u.view.painter.Theme = diffrender.DarkTheme
 			u.session.cwd = "/workspace"
 			u.picker = composerPicker{open: true, target: composerTarget{kind: '@', query: "snapshot"}, selected: 1, choices: []composerChoice{
 				{name: "internal/uisnapshot/snapshot.go", path: "internal/uisnapshot/snapshot.go"},
@@ -194,7 +196,7 @@ func TestUISnapshotNativeWaitingInputStacks(t *testing.T) {
 		for _, width := range []int{36, 80} {
 			t.Run(fmt.Sprintf("%s/%d", mode, width), func(t *testing.T) {
 				u, w := newAppServerTestUI()
-				u.view.painter.Theme = livediff.DarkTheme
+				u.view.painter.Theme = diffrender.DarkTheme
 				u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) }
 				appServerTestTurn(t, u, "t")
 				u.turnStarted = u.now()

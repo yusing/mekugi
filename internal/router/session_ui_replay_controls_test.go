@@ -15,7 +15,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
-	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
+	terminalui "github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 	"golang.org/x/term"
 )

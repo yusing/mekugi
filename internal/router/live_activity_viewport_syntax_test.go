@@ -7,10 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -21,7 +22,7 @@ func viewportSyntaxView(main bool, lang string) *liveActivityView {
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
 	v := newLiveActivityView()
 	v.conversation, v.feedOnly = main, true
-	v.painter.Theme = livediff.DarkTheme
+	v.painter.Theme = diffrender.DarkTheme
 	v.clock = func() time.Time { return now }
 	for i := range 12 {
 		agent := fmt.Sprintf("/root/source%d", i)
@@ -105,7 +106,7 @@ func TestLiveActivityViewportSyntaxMatchesEager(t *testing.T) {
 			check("cross pane jump", 70, 9)
 			check("narrow resize", 34, 6)
 			for _, v := range []*liveActivityView{lazy, eager} {
-				v.painter.Theme = livediff.LightTheme
+				v.painter.Theme = diffrender.LightTheme
 			}
 			check("theme change", 34, 6)
 			for _, v := range []*liveActivityView{lazy, eager} {

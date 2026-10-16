@@ -1,5 +1,6 @@
-package livediff
+package diffrender
 
+// Source: internal/livediff/diff_syntax.go@[b95dde39]
 import (
 	"context"
 	"fmt"
@@ -124,7 +125,7 @@ func (r *Renderer) DiffOutput(ctx context.Context, theme Theme, source string, c
 			stats = " counts unavailable"
 		}
 		lines[section.start] = ""
-		lines[section.start+1] = Header(label, ansi.StringWidth(Safe(label, false)+stats), Counts{added, removed}, theme)
+		lines[section.start+1] = Header(label, ansi.StringWidth(Safe(label, false)+stats), diffmodel.Counts{added, removed}, theme)
 		if r.LayoutOnly {
 			lines[section.start+1] = ansi.Strip(lines[section.start+1])
 		}

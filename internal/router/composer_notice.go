@@ -5,10 +5,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/modules/notifications/notice"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -55,7 +56,7 @@ func (u *appServerUI) stateLabel(now time.Time) string {
 		}
 		label += activityui.StatusPulse(fmt.Sprintf("%d running processes", count), now, u.view.painter.Colors) + activityui.Reset
 	}
-	notice := strings.ReplaceAll(livediff.Safe(u.feedback.Text, false), "\n", " ")
+	notice := strings.ReplaceAll(diffrender.Safe(u.feedback.Text, false), "\n", " ")
 	switch {
 	case notice == "":
 		return label

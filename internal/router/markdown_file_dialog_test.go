@@ -8,8 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -80,7 +81,7 @@ func TestUISnapshotMarkdownFileLinkExistence(t *testing.T) {
 		"Existing: sample.go:1, `sample.go`, [source](sample.go:1-2).\n" +
 		"Web: [remote](https://example.com)."
 	for _, view := range []*liveActivityView{u.view, u.agents} {
-		view.painter.Theme = livediff.TerminalTheme
+		view.painter.Theme = diffrender.TerminalTheme
 		rows := view.painter.Markdown(text, 72)
 		uisnapshot.AssertTerminal(t, "testdata/snapshots/markdown-file-link-existence.txt", append(rows, "plain after links"), 72)
 	}
@@ -173,7 +174,7 @@ func TestUISnapshotMarkdownFileViews(t *testing.T) {
 	}
 	main, _ := newAppServerTestUI()
 	main.session.cwd = workspace
-	main.view.painter.Theme = livediff.TerminalTheme
+	main.view.painter.Theme = diffrender.TerminalTheme
 	u := &terminalUI{main: main, width: 80, height: 24}
 	u.openMarkdownFile(main.view, path)
 	for _, view := range []string{"markdown", "file"} {
@@ -241,12 +242,12 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 func TestUISnapshotMarkdownFileDialog(t *testing.T) {
 	for _, test := range []struct {
 		name, content, location string
-		theme                   livediff.Theme
+		theme                   diffrender.Theme
 	}{
-		{"native-markdown-file-dialog", "package sample\n\n// Copy this source. " + strings.Repeat("more source ", 8) + "\n", ":1-3", livediff.TerminalTheme},
-		{"native-markdown-file-error", "\xff", ":1-3", livediff.TerminalTheme},
-		{"native-markdown-file-line-52-dark", strings.Repeat("// previous line\n", 50) + "// before\nvar text = \"green\" // " + strings.Repeat("wrapped source ", 8) + "\n// selected too\n// after\n", ":52-53", livediff.DarkTheme},
-		{"native-markdown-file-line-52-light", strings.Repeat("// previous line\n", 50) + "// before\nvar text = \"green\" // " + strings.Repeat("wrapped source ", 8) + "\n// selected too\n// after\n", ":52-53", livediff.LightTheme},
+		{"native-markdown-file-dialog", "package sample\n\n// Copy this source. " + strings.Repeat("more source ", 8) + "\n", ":1-3", diffrender.TerminalTheme},
+		{"native-markdown-file-error", "\xff", ":1-3", diffrender.TerminalTheme},
+		{"native-markdown-file-line-52-dark", strings.Repeat("// previous line\n", 50) + "// before\nvar text = \"green\" // " + strings.Repeat("wrapped source ", 8) + "\n// selected too\n// after\n", ":52-53", diffrender.DarkTheme},
+		{"native-markdown-file-line-52-light", strings.Repeat("// previous line\n", 50) + "// before\nvar text = \"green\" // " + strings.Repeat("wrapped source ", 8) + "\n// selected too\n// after\n", ":52-53", diffrender.LightTheme},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			workspace := t.TempDir()

@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/ui/diffview"
@@ -165,7 +167,7 @@ func TestLiveDiffNavigationRenderIsSafeAndWidthBounded(t *testing.T) {
 	var nav diffview.Navigation
 	nav.Flat = true
 	nav.Rebuild(files, "")
-	rendered := nav.Render(files, []livediff.Counts{{Added: -1, Removed: -1}}, 0, 32, 6, livediff.DarkTheme)
+	rendered := nav.Render(files, []diffmodel.Counts{{Added: -1, Removed: -1}}, 0, 32, 6, diffrender.DarkTheme)
 	if len(rendered) != 6 {
 		t.Fatalf("renderer returned %d rows for a six-row viewport", len(rendered))
 	}
@@ -191,7 +193,7 @@ func TestLiveDiffNavigationExternalAbsolutePaths(t *testing.T) {
 	if n.Entries[0].File != -1 || n.Entries[0].Folder != "/" || n.Entries[0].Label != "/" {
 		t.Fatalf("absolute root missing: %+v", n.Entries[0])
 	}
-	n.Render(files, nil, 2, 32, 12, livediff.DarkTheme)
+	n.Render(files, nil, 2, 32, 12, diffrender.DarkTheme)
 	c.openNavEntry()
 	if !n.Collapsed["/"] || len(n.Entries) != 1 {
 		t.Fatal("absolute root did not collapse")
@@ -230,7 +232,7 @@ func TestLiveDiffNavigationScrollbarPreservesCounts(t *testing.T) {
 	files := []livediff.File{navigationFile("a.go"), navigationFile("b.go"), navigationFile("c.go")}
 	var nav diffview.Navigation
 	nav.Rebuild(files, "")
-	rows := nav.Render(files, []livediff.Counts{{Added: 123, Removed: 456}}, 0, 28, 3, livediff.DarkTheme)
+	rows := nav.Render(files, []diffmodel.Counts{{Added: 123, Removed: 456}}, 0, 28, 3, diffrender.DarkTheme)
 	row := ansi.Strip(rows[2])
 	if !strings.Contains(row, "+123 -456") || !strings.HasSuffix(row, "┃") {
 		t.Fatalf("scrollbar consumed counts: %q", row)
@@ -251,8 +253,8 @@ func TestLiveDiffNavigationColoredInlineStatusAndStats(t *testing.T) {
 	var nav diffview.Navigation
 	nav.Flat = true
 	nav.Rebuild(files, "")
-	counts := []livediff.Counts{{Added: 5, Removed: 2}, {Added: 3, Removed: 0}, {Added: 0, Removed: 7}, {Added: 1, Removed: 1}}
-	rows := nav.Render(files, counts, 0, 34, 6, livediff.DarkTheme)
+	counts := []diffmodel.Counts{{Added: 5, Removed: 2}, {Added: 3, Removed: 0}, {Added: 0, Removed: 7}, {Added: 1, Removed: 1}}
+	rows := nav.Render(files, counts, 0, 34, 6, diffrender.DarkTheme)
 	if heading := ansi.Strip(rows[0]); heading != " Files  4/4 · flat" {
 		t.Errorf("navigator repeats the Files title or loses its counts: %q", heading)
 	}
@@ -309,13 +311,13 @@ func TestLiveDiffNavigationFolderArrow(t *testing.T) {
 	files := []livediff.File{navigationFile("pkg/a.go")}
 	var nav diffview.Navigation
 	nav.Rebuild(files, "")
-	row := nav.Render(files, nil, 0, 25, 4, livediff.DarkTheme)[2]
+	row := nav.Render(files, nil, 0, 25, 4, diffrender.DarkTheme)[2]
 	if !strings.Contains(ansi.Strip(row), "▼ pkg (1)") || !strings.Contains(row, "\x1b[38;2;") {
 		t.Fatalf("expanded folder is not prominent: %q", row)
 	}
 	nav.Collapsed = map[string]bool{"pkg": true}
 	nav.Rebuild(files, "")
-	if row = ansi.Strip(nav.Render(files, nil, 0, 25, 4, livediff.DarkTheme)[2]); !strings.Contains(row, "▶ pkg (1)") {
+	if row = ansi.Strip(nav.Render(files, nil, 0, 25, 4, diffrender.DarkTheme)[2]); !strings.Contains(row, "▶ pkg (1)") {
 		t.Fatalf("collapsed folder arrow missing: %q", row)
 	}
 }
@@ -327,15 +329,15 @@ func TestLiveDiffNavigationSelectionUsesRowFill(t *testing.T) {
 	nav.Rebuild(files, "")
 	nav.Focused = true
 	nav.Cursor = 1
-	rows := nav.Render(files, nil, 0, 16, 4, livediff.DarkTheme)
+	rows := nav.Render(files, nil, 0, 16, 4, diffrender.DarkTheme)
 	for i, row := range rows[2:] {
 		if i == 0 {
-			if strings.Contains(row, livediff.DarkTheme.SelectionBackground()) {
+			if strings.Contains(row, diffrender.DarkTheme.SelectionBackground()) {
 				t.Fatalf("open file should not compete with focused cursor: %q", row)
 			}
 			continue
 		}
-		if !strings.HasPrefix(row, livediff.DarkTheme.SelectionBackground()) ||
+		if !strings.HasPrefix(row, diffrender.DarkTheme.SelectionBackground()) ||
 			!strings.HasSuffix(row, "\x1b[49m") || ansi.StringWidth(row) != 15 {
 			t.Fatalf("selected and focused rows should fill the available width: %q", row)
 		}
@@ -344,9 +346,9 @@ func TestLiveDiffNavigationSelectionUsesRowFill(t *testing.T) {
 		}
 	}
 	nav.Focused = false
-	rows = nav.Render(files, nil, 0, 16, 4, livediff.DarkTheme)
-	if !strings.HasPrefix(rows[2], livediff.DarkTheme.SelectionBackground()) ||
-		strings.Contains(rows[3], livediff.DarkTheme.SelectionBackground()) {
+	rows = nav.Render(files, nil, 0, 16, 4, diffrender.DarkTheme)
+	if !strings.HasPrefix(rows[2], diffrender.DarkTheme.SelectionBackground()) ||
+		strings.Contains(rows[3], diffrender.DarkTheme.SelectionBackground()) {
 		t.Fatalf("unfocused file selection = %q", rows)
 	}
 }
@@ -366,7 +368,7 @@ func TestLiveDiffNavigationChainSplitKeepsAncestor(t *testing.T) {
 		t.Fatalf("after split top = %d (%q)", nav.Top, nav.Entries[nav.Top].Label)
 	}
 	nav.Top = 3
-	if row := ansi.Strip(nav.Render(files, nil, 0, 34, 10, livediff.DarkTheme)[2]); nav.Top != 0 || !strings.Contains(row, "internal") {
+	if row := ansi.Strip(nav.Render(files, nil, 0, 34, 10, diffrender.DarkTheme)[2]); nav.Top != 0 || !strings.Contains(row, "internal") {
 		t.Fatalf("fitting tree scrolled to %d, first row %q", nav.Top, row)
 	}
 }

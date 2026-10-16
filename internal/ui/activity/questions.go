@@ -3,8 +3,9 @@ package activity
 import (
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 )
 
 // Question is a presentation snapshot, never an editable or transport record.
@@ -17,7 +18,7 @@ func (p *Painter) QuestionState(state string) string {
 	switch state {
 	case "answered", "answered elsewhere":
 		color = "\x1b[38;2;165;214;167m"
-		if p.Theme == livediff.LightTheme {
+		if p.Theme == diffrender.LightTheme {
 			color = "\x1b[38;2;10;102;52m"
 		}
 	case "open", "waiting", "sending":
@@ -38,7 +39,7 @@ func (p *Painter) questionRows(block Block, width int) []string {
 		if i > 0 {
 			rows = append(rows, "")
 		}
-		text := livediff.Safe(q.Text, false)
+		text := diffrender.Safe(q.Text, false)
 		rows = append(rows, liveActivityIndent(Wrap(text, inner, false), "  ")...)
 		if len(block.Questions) > 1 {
 			rows = append(rows, "  "+p.QuestionState(q.State))
@@ -54,7 +55,7 @@ func (p *Painter) questionRows(block Block, width int) []string {
 				rows = append(rows, prefix+row)
 			}
 		case q.Options != "":
-			rows = append(rows, liveActivityIndent(Wrap(Dim+livediff.Safe(q.Options, false)+Undim, inner, false), "  ")...)
+			rows = append(rows, liveActivityIndent(Wrap(Dim+diffrender.Safe(q.Options, false)+Undim, inner, false), "  ")...)
 		}
 	}
 	for i, row := range rows {

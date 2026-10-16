@@ -19,29 +19,29 @@ func TestFileNetCountsComposesVisibleHistory(t *testing.T) {
 	tests := []struct {
 		name     string
 		captures []Chunk
-		want     Counts
+		want     diffmodel.Counts
 	}{
 		{"superseded writes", []Chunk{
 			netCountsCapture(1, "/root", "a", "a", "old\n", "draft\none\n"),
 			netCountsCapture(2, "/root", "a", "a", "draft\none\n", "final\n"),
-		}, Counts{1, 1}},
+		}, diffmodel.Counts{1, 1}},
 		{"delete and recreate", []Chunk{
 			netCountsCapture(1, "/root", "a", "", "old\nkeep\n", ""),
 			netCountsCapture(2, "/root/worker", "", "a", "", "new\nkeep\n"),
-		}, Counts{1, 1}},
+		}, diffmodel.Counts{1, 1}},
 		{"rename chain across agents in capture order", []Chunk{
 			netCountsCapture(3, "/root", "b", "c", "draft\n", "final\n"),
 			netCountsCapture(1, "/root/worker", "a", "b", "old\n", "draft\n"),
 			netCountsCapture(2, "/root/other", "b", "b", "draft\n", "draft\n"),
-		}, Counts{1, 1}},
+		}, diffmodel.Counts{1, 1}},
 		{"created then deleted", []Chunk{
 			netCountsCapture(1, "/root", "", "a", "", "temporary\n"),
 			netCountsCapture(2, "/root/worker", "a", "", "temporary\n", ""),
-		}, Counts{}},
+		}, diffmodel.Counts{}},
 		{"reverted rewrite", []Chunk{
 			netCountsCapture(1, "/root", "a", "a", "old\n", "draft\n"),
 			netCountsCapture(2, "/root/worker", "a", "a", "draft\n", "old\n"),
-		}, Counts{}},
+		}, diffmodel.Counts{}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -77,7 +77,7 @@ func TestFileNetCountsUnknownEvidence(t *testing.T) {
 				view.FilterCaller("/root")
 			}
 			view.RefreshVisible()
-			if got := view.Visible[view.Files[0].Key()].NetCounts(); got != (Counts{-1, -1}) {
+			if got := view.Visible[view.Files[0].Key()].NetCounts(); got != (diffmodel.Counts{-1, -1}) {
 				t.Fatalf("%s net counts = %+v, want unknown", kind, got)
 			}
 		})

@@ -63,8 +63,8 @@ snapshots cover running, paused, completed, and narrow playback states.
 columns and 8–500 rows). It emits no terminal bytes and returns a JSON timing
 summary on stdout; loading/coverage/progress notices use stderr. Interactive
 mode requires terminal stdin/stdout and restores terminal state on exit.
-The p key or Space pauses playback. `Ctrl-B` followed by 1–4 selects Main, Diff,
-Activity, or Agents; `Ctrl-E` uses the focused pane's
+The p key or Space pauses playback. `Ctrl-B` followed by 1–3 selects Main, toggles
+Diff, or selects Agents; `Ctrl-E` uses the focused pane's
 [disclosure controls](native_ui.md) as in live presentation. Output dialogs use
 their ordinary navigation and close controls. Outside a dialog, Escape or q
 quits; Ctrl+C always quits replay.

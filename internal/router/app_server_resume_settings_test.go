@@ -10,8 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	"github.com/yusing/mekugi/internal/livediff"
 )
 
 func resumeSettingsRollout(t *testing.T, records ...string) appServerThreadInfo {
@@ -26,7 +27,7 @@ func resumeSettingsRollout(t *testing.T, records ...string) appServerThreadInfo 
 
 func TestUISnapshotNativeResumeSettingsUnavailable(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.view.painter.Theme = livediff.DarkTheme
+	u.view.painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	u.thread, u.resumeThread = "", "saved"
 	if err := u.requestResume("saved"); err != nil {
@@ -41,7 +42,7 @@ func TestUISnapshotNativeResumeSettingsUnavailable(t *testing.T) {
 
 func TestUISnapshotNativeResumeSwitchSettingsUnavailable(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
-	u.view.painter.Theme = livediff.DarkTheme
+	u.view.painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	appServerTestKeys(t, u, "/resume saved\r")
 	resume := resumeTestPrepared(t, u, w)

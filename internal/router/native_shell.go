@@ -9,9 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
@@ -397,7 +398,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			}
 		}
 		if u.diffFailure != "" {
-			body = []string{"Diff unavailable", livediff.Safe(u.diffFailure, false), "Use mchanges to review captured edits."}
+			body = []string{"Diff unavailable", diffrender.Safe(u.diffFailure, false), "Use mchanges to review captured edits."}
 		} else {
 			body = strings.Split(u.diffScreen.Render(), "\n")
 		}

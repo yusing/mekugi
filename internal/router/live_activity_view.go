@@ -10,10 +10,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
-	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
+	terminalui "github.com/yusing/mekugi/libraries/terminalui"
 )
 
 const (
@@ -59,10 +61,10 @@ type liveActivityView struct {
 	childrenOnly   bool                        // Main owns root activity; this view retains child entries.
 	bare           bool                        // The shell's pane title replaces the heading and footer rows.
 	focused        bool                        // Show key hints only while the view has keyboard focus.
-	lineCounts     map[string]livediff.Counts  // Captured edit lines by caller key, for the native roster.
-	netCounts      *livediff.Counts            // Composed project outcome, independent of roster rows.
+	lineCounts     map[string]diffmodel.Counts // Captured edit lines by caller key, for the native roster.
+	netCounts      *diffmodel.Counts           // Composed project outcome, independent of roster rows.
 	rosterPace     map[string]rosterMetricPace // Roster metrics easing toward their latest values, by agent.
-	rosterLines    map[string]livediff.Counts  // Line counts as last shown by the roster.
+	rosterLines    map[string]diffmodel.Counts // Line counts as last shown by the roster.
 	rosterEasing   bool                        // The last roster frame showed metrics still easing.
 	mainView       *liveActivityView           // Roster reads Main's state without duplicating its feed entries.
 	painter        activityui.Painter
@@ -153,7 +155,7 @@ type liveActivityRunKey struct {
 	first, last uint64
 	revision    uint64
 	width, clip int
-	theme       livediff.Theme
+	theme       diffrender.Theme
 	hover       int // Hovered snippet block in this run, or -1.
 	main        bool
 	thread      conversationThread // Main transcript thread placement.
@@ -167,7 +169,7 @@ type liveActivityRunKey struct {
 func newLiveActivityView() *liveActivityView {
 	v := &liveActivityView{
 		following: true, status: "CONNECTING",
-		painter: activityui.Painter{CopySource: true, Theme: livediff.EnvironmentTheme(os.Getenv("COLORFGBG"))},
+		painter: activityui.Painter{CopySource: true, Theme: diffrender.EnvironmentTheme(os.Getenv("COLORFGBG"))},
 	}
 	v.painter.Clock = v.now
 	return v
@@ -825,7 +827,7 @@ func (v *liveActivityView) render(width, height int, now time.Time) []string {
 	return lines
 }
 
-func liveActivityHint(theme livediff.Theme, label string, width int) string {
+func liveActivityHint(theme diffrender.Theme, label string, width int) string {
 	label = ansi.Truncate(label, width, "")
 	return strings.Repeat(" ", max(0, (width-ansi.StringWidth(label))/2)) + theme.Accent() + label + activityui.Reset
 }
@@ -1301,7 +1303,7 @@ func liveActivityRole(agent activityPaneAgent) string {
 	if agent.Name == "/root" {
 		return ""
 	}
-	return strings.Join(strings.Fields(livediff.Safe(agent.Role, false)), " ")
+	return strings.Join(strings.Fields(diffrender.Safe(agent.Role, false)), " ")
 }
 
 // Keep numerical values bright while labels and units recede, including

@@ -7,10 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/internal/livediff"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
@@ -37,7 +38,7 @@ func TestConversationJoinsConsecutiveUserMessagesInTurn(t *testing.T) {
 	if feed.heads[second] != second || feed.heads[second-1] == second {
 		t.Fatalf("continued prompt lost its flash range: heads=%+v target=%d", feed.heads, second)
 	}
-	v.painter.Theme = livediff.DarkTheme
+	v.painter.Theme = diffrender.DarkTheme
 	v.feedOnly = true
 	v.flashQuestion, v.flashUntil = v.entries[1].Seq, time.Now().Add(time.Second)
 	v.offset = second

@@ -5,9 +5,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -35,11 +36,13 @@ func pickerWrap(text string, width int) []string {
 	return strings.Split(ansi.Wrap(text, max(1, width), ""), "\n")
 }
 
-func pickerText(text string) string { return strings.ReplaceAll(livediff.Safe(text, false), "\n", " ") }
+func pickerText(text string) string {
+	return strings.ReplaceAll(diffrender.Safe(text, false), "\n", " ")
+}
 
 func (u *appServerUI) pickerSelection() string {
 	if u.view != nil && u.view.painter.Colors.HasBackground {
-		if u.view.painter.Theme == livediff.LightTheme {
+		if u.view.painter.Theme == diffrender.LightTheme {
 			return "\x1b[1;38;2;0;0;46;48;2;164;205;251m"
 		}
 		return "\x1b[1;38;2;0;0;46;48;2;99;168;248m"

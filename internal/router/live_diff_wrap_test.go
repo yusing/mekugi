@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
@@ -15,7 +17,7 @@ func TestLiveDiffWrapAndResize(t *testing.T) {
 		"@@ -1,2 +1,2 @@\n "+source+"\n-old\n+new\n")
 	chunk.Status = ""
 	files := []livediff.File{{Path: "file.txt", Chunks: []livediff.Chunk{chunk}}}
-	wrapped, err := new(livediff.Renderer).Render(t.Context(), livediff.DarkTheme, files, "", 22)
+	wrapped, err := new(livediff.Renderer).Render(t.Context(), diffrender.DarkTheme, files, "", 22)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +36,7 @@ func TestLiveDiffWrapAndResize(t *testing.T) {
 	if restored.String() != source {
 		t.Fatalf("wrapped source changed: %q, want %q", restored.String(), source)
 	}
-	wide, err := new(livediff.Renderer).Render(t.Context(), livediff.DarkTheme, files, "", 200)
+	wide, err := new(livediff.Renderer).Render(t.Context(), diffrender.DarkTheme, files, "", 200)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,14 +56,14 @@ func TestLiveDiffWrappedSyntax(t *testing.T) {
 		"@@ -0,0 +1 @@\n+\""+strings.Repeat("abcdefgh", 15)+"\"\n")
 	chunk.Status = ""
 	chunk.Highlighted = true
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.DarkTheme,
+	render, err := new(livediff.Renderer).Render(t.Context(), diffrender.DarkTheme,
 		[]livediff.File{{Path: "file.go", Chunks: []livediff.Chunk{chunk}}}, "", 30)
 	if err != nil {
 		t.Fatal(err)
 	}
-	color := livediff.DarkTheme.Foreground(chroma.LiteralStringDouble)
+	color := diffrender.DarkTheme.Foreground(chroma.LiteralStringDouble)
 	for _, line := range render.Lines[render.RowStarts[1]:] {
-		if !strings.Contains(line, color) || !strings.Contains(line, livediff.DarkTheme.RowBackground('+')) ||
+		if !strings.Contains(line, color) || !strings.Contains(line, diffrender.DarkTheme.RowBackground('+')) ||
 			!strings.Contains(line, "▎") || !strings.HasSuffix(line, "\x1b[0m") {
 			t.Fatalf("continuation lost standalone styling: %q", line)
 		}
@@ -77,11 +79,11 @@ func TestLiveDiffResizeReflowsSavedFiles(t *testing.T) {
 		chunk.Status = strings.Repeat("prepared status ", 8)
 		files = append(files, livediff.File{Path: path, Chunks: []livediff.Chunk{chunk}})
 	}
-	wide, err := new(livediff.Renderer).Render(t.Context(), livediff.DarkTheme, files, "", 90)
+	wide, err := new(livediff.Renderer).Render(t.Context(), diffrender.DarkTheme, files, "", 90)
 	if err != nil {
 		t.Fatal(err)
 	}
-	narrow, err := new(livediff.Renderer).Render(t.Context(), livediff.DarkTheme, files, "", 22)
+	narrow, err := new(livediff.Renderer).Render(t.Context(), diffrender.DarkTheme, files, "", 22)
 	if err != nil {
 		t.Fatal(err)
 	}

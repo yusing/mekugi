@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffrender"
 )
 
 func TestCommandClipPreservesWrappedRows(t *testing.T) {
@@ -16,7 +16,7 @@ func TestCommandClipPreservesWrappedRows(t *testing.T) {
 		`printf '%s' '` + strings.Repeat("界e\u0301👩‍💻 ", 100) + `'`,
 	} {
 		for _, layout := range []bool{false, true} {
-			p := Painter{Theme: livediff.DarkTheme, LayoutOnly: layout}
+			p := Painter{Theme: diffrender.DarkTheme, LayoutOnly: layout}
 			block := Block{Kind: "op", Verb: "Run", Code: code, Lang: "bash", Fenced: true}
 			for _, width := range []int{12, 44, 90} {
 				full := p.Block(block, width)
@@ -53,7 +53,7 @@ func BenchmarkCommandClippedLayout(b *testing.B) {
 			name = "clipped"
 		}
 		b.Run(name, func(b *testing.B) {
-			p := Painter{Theme: livediff.DarkTheme, LayoutOnly: true}
+			p := Painter{Theme: diffrender.DarkTheme, LayoutOnly: true}
 			block := Block{Kind: "op", Verb: "Run", Code: code, Lang: "bash", Fenced: true, SourceRows: budget}
 			b.ReportAllocs()
 			for b.Loop() {

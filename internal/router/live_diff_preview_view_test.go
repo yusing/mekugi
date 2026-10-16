@@ -9,10 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/libraries/diffmodel"
@@ -32,7 +33,7 @@ func TestLiveDiffPreviewPaneFollowAndLifecycle(t *testing.T) {
 	var pane diffview.PreviewPane
 	for _, size := range []int{2, 30, 300, 2000} {
 		pane.Update(previewViewFixture("one", size))
-		lines, err := pane.Render(t.Context(), "/workspace", livediff.DarkTheme, 70, 12)
+		lines, err := pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, 70, 12)
 		if err != nil || len(lines) > 12 || !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), fmt.Sprintf("+stream_%04d", size)) {
 			t.Fatalf("stream tip %d escaped region: %v %q", size, err, lines)
 		}
@@ -41,7 +42,7 @@ func TestLiveDiffPreviewPaneFollowAndLifecycle(t *testing.T) {
 		}
 	}
 	pane.Update(diffview.Preview{ID: "one"})
-	lines, err := pane.Render(t.Context(), "/workspace", livediff.DarkTheme, 70, 12)
+	lines, err := pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, 70, 12)
 	if err != nil || !strings.Contains(ansi.Strip(lines[0]), "○ edit") {
 		t.Fatalf("missing completion hold: %v %q", err, lines)
 	}
@@ -51,7 +52,7 @@ func TestLiveDiffPreviewPaneFollowAndLifecycle(t *testing.T) {
 		t.Fatal("new call did not replace completed input")
 	}
 	pane.Update(diffview.Preview{ID: "two"})
-	lines, err = pane.Render(t.Context(), "/workspace", livediff.DarkTheme, 70, 12)
+	lines, err = pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, 70, 12)
 	if err != nil || !strings.Contains(ansi.Strip(lines[0]), "○ edit") || !strings.Contains(strings.Join(lines, "\n"), "stream_0010") {
 		t.Fatalf("completed stream did not persist: %v %q", err, lines)
 	}
@@ -63,7 +64,7 @@ func TestLiveDiffPreviewPaneFinishedCardPersistsUntilReplaced(t *testing.T) {
 	pane.Update(previewViewFixture("done", 2))
 	pane.Update(previewViewFixture("live", 2))
 	pane.Update(diffview.Preview{ID: "done"})
-	lines, err := pane.Render(t.Context(), "/workspace", livediff.DarkTheme, 70, 12)
+	lines, err := pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, 70, 12)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,13 +181,13 @@ func TestLiveDiffPreviewPaneLatestOnlyAndIndependent(t *testing.T) {
 	if pane.Views["one"].Source != nil || pane.Views["one"].Rendered.ID != "" {
 		t.Fatal("queued snapshots performed rendering")
 	}
-	lines, err := pane.Render(t.Context(), "/workspace", livediff.LightTheme, 80, 10)
+	lines, err := pane.Render(t.Context(), "/workspace", diffrender.LightTheme, 80, 10)
 	if err != nil || !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "+stream_0500") {
 		t.Fatalf("rendered stale queued snapshot: %v %q", err, lines)
 	}
 	source := pane.Views["one"].Source
 	// Repaints (including captured-diff navigation) do not parse source again.
-	_, err = pane.Render(t.Context(), "/workspace", livediff.LightTheme, 80, 10)
+	_, err = pane.Render(t.Context(), "/workspace", diffrender.LightTheme, 80, 10)
 	if err != nil || &source[0] != &pane.Views["one"].Source[0] {
 		t.Fatal("unchanged preview rebuilt its source")
 	}
@@ -204,7 +205,7 @@ func TestLiveDiffPreviewLayoutAndWrapping(t *testing.T) {
 	preview.Input = strings.Repeat("界", 100) + "TIP\n"
 	pane.Update(preview)
 	for _, width := range []int{4, 10, 40, 120} {
-		lines, err := pane.Render(t.Context(), "/workspace", livediff.DarkTheme, width, 8)
+		lines, err := pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, width, 8)
 		if err != nil || len(lines) > 8 {
 			t.Fatalf("render at width %d: %v", width, err)
 		}
@@ -224,9 +225,9 @@ func TestLiveDiffPreviewRepeatedSnapshotKeepsFocus(t *testing.T) {
 	// A repeated snapshot must not move focus, because prepare reuses it.
 	var pane diffview.PreviewPane
 	pane.Update(previewViewFixture("one", 30))
-	first, _ := pane.Render(t.Context(), "/workspace", livediff.DarkTheme, 80, 8)
+	first, _ := pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, 80, 8)
 	pane.Update(previewViewFixture("one", 30))
-	second, _ := pane.Render(t.Context(), "/workspace", livediff.DarkTheme, 80, 8)
+	second, _ := pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, 80, 8)
 	if !slices.Equal(first, second) {
 		t.Fatal("identical snapshot moved the viewport")
 	}
@@ -244,7 +245,7 @@ func BenchmarkLiveDiffPreviewPaneFrame(b *testing.B) {
 		next := preview
 		next.Input = strings.Replace(base, "stream_2000", fmt.Sprintf("stream_tip_%d", sequence), 1)
 		pane.Update(next)
-		if _, err := pane.Render(b.Context(), "/workspace", livediff.DarkTheme, 120, 28); err != nil {
+		if _, err := pane.Render(b.Context(), "/workspace", diffrender.DarkTheme, 120, 28); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -262,7 +263,7 @@ func TestLiveDiffConcurrentPreviewCards(t *testing.T) {
 	pane.Update(second)
 	check := func(height int) string {
 		t.Helper()
-		lines, err := pane.Render(t.Context(), "/workspace", livediff.DarkTheme, 100, height)
+		lines, err := pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, 100, height)
 		if err != nil || len(lines) > height {
 			t.Fatalf("render: %v %q", err, lines)
 		}
@@ -318,7 +319,7 @@ func TestLiveDiffPreviewCallerSafeAndBounded(t *testing.T) {
 	preview.Caller = "/root/\x1b[2J" + strings.Repeat("界", 80)
 	pane.Update(preview)
 	for _, width := range []int{1, 8, 40, 80} {
-		lines, err := pane.Render(t.Context(), "/workspace", livediff.DarkTheme, width, 5)
+		lines, err := pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, width, 5)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -336,7 +337,7 @@ func TestLiveDiffPreviewCallerUsesAvailableWidth(t *testing.T) {
 	preview := previewViewFixture("caller", 1)
 	preview.Caller = "/root/review_stock_preview"
 	pane.Update(preview)
-	lines, err := pane.Render(t.Context(), "/workspace", livediff.DarkTheme, 100, 5)
+	lines, err := pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, 100, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -346,7 +347,7 @@ func TestLiveDiffPreviewCallerUsesAvailableWidth(t *testing.T) {
 	}
 	preview.Status = diffview.PreviewUnavailable + strings.Repeat("reason ", 20)
 	pane.Update(preview)
-	lines, err = pane.Render(t.Context(), "/workspace", livediff.DarkTheme, 60, 5)
+	lines, err = pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, 60, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -362,7 +363,7 @@ func BenchmarkLiveDiffConcurrentPreviewFrame(b *testing.B) {
 	}
 	b.ReportAllocs()
 	for b.Loop() {
-		if _, err := pane.Render(b.Context(), "/workspace", livediff.DarkTheme, 100, 28); err != nil {
+		if _, err := pane.Render(b.Context(), "/workspace", diffrender.DarkTheme, 100, 28); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -389,7 +390,7 @@ func TestLiveDiffPreviewTitleShowsFileStatusAndCounts(t *testing.T) {
 			var pane diffview.PreviewPane
 			tc.preview.ID, tc.preview.Workspace, tc.preview.Thread = "one", "/workspace", "thread"
 			pane.Update(tc.preview)
-			lines, err := pane.Render(t.Context(), "/workspace", livediff.DarkTheme, 120, 8)
+			lines, err := pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, 120, 8)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -401,9 +402,9 @@ func TestLiveDiffPreviewTitleShowsFileStatusAndCounts(t *testing.T) {
 	var pane diffview.PreviewPane
 	pane.Update(diffview.Preview{ID: "one", Workspace: "/workspace", Thread: "thread", Status: diffview.PreviewEdit, Files: []diffmodel.ReviewFile{modified}})
 	pane.Update(diffview.Preview{ID: "one"})
-	lines, err := pane.Render(t.Context(), "/workspace", livediff.DarkTheme, 120, 8)
+	lines, err := pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, 120, 8)
 	if err != nil || !strings.Contains(lines[0], activityui.Dim+"○") ||
-		!strings.Contains(lines[0], livediff.DarkTheme.Foreground(chroma.GenericInserted)+"+2") {
+		!strings.Contains(lines[0], diffrender.DarkTheme.Foreground(chroma.GenericInserted)+"+2") {
 		t.Fatalf("completed header lost its glyph or count colors: %v %q", err, lines[0])
 	}
 }
@@ -432,7 +433,7 @@ func TestLiveDiffPreviewCardsKeepSlotsAndGutter(t *testing.T) {
 	}
 	render := func() {
 		t.Helper()
-		if _, err := pane.Render(t.Context(), "/workspace", livediff.DarkTheme, 100, 30); err != nil {
+		if _, err := pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, 100, 30); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -467,11 +468,11 @@ func TestLiveDiffPreviewCardsKeepSlotsAndGutter(t *testing.T) {
 	// Line numbers keep their width when the source shrinks back.
 	var single diffview.PreviewPane
 	single.Update(previewViewFixture("one", 100))
-	if _, err := single.Render(t.Context(), "/workspace", livediff.DarkTheme, 100, 10); err != nil {
+	if _, err := single.Render(t.Context(), "/workspace", diffrender.DarkTheme, 100, 10); err != nil {
 		t.Fatal(err)
 	}
 	single.Update(previewViewFixture("one", 99))
-	lines, err := single.Render(t.Context(), "/workspace", livediff.DarkTheme, 100, 10)
+	lines, err := single.Render(t.Context(), "/workspace", diffrender.DarkTheme, 100, 10)
 	if err != nil || !strings.Contains(ansi.Strip(lines[len(lines)-1]), "  99│") {
 		t.Fatalf("line-number gutter narrowed: %v %q", err, lines)
 	}
@@ -634,13 +635,13 @@ func TestLiveDiffPreviewCompletionDoesNotFadeFinalSnapshot(t *testing.T) {
 	t.Parallel()
 	start := time.Unix(100, 0)
 	view := diffview.PreviewView{Current: previewViewFixture("done", 2)}
-	motion := diffview.PreviewMotion{Enabled: true, Canvas: livediff.DarkTheme.Canvas(), Now: start}
-	streaming, err := view.Render(t.Context(), "/workspace", livediff.DarkTheme, 70, 8, motion)
+	motion := diffview.PreviewMotion{Enabled: true, Canvas: diffrender.DarkTheme.Canvas(), Now: start}
+	streaming, err := view.Render(t.Context(), "/workspace", diffrender.DarkTheme, 70, 8, motion)
 	if err != nil {
 		t.Fatal(err)
 	}
 	motion.Enabled = false
-	settled, err := view.Render(t.Context(), "/workspace", livediff.DarkTheme, 70, 8, motion)
+	settled, err := view.Render(t.Context(), "/workspace", diffrender.DarkTheme, 70, 8, motion)
 	if err != nil || slices.Equal(streaming, settled) {
 		t.Fatalf("active input did not fade: %v %q", err, streaming)
 	}
@@ -650,12 +651,12 @@ func TestLiveDiffPreviewCompletionDoesNotFadeFinalSnapshot(t *testing.T) {
 	view.Complete = true
 	motion.Enabled = true
 	motion.Now = start.Add(10 * time.Millisecond)
-	completed, err := view.Render(t.Context(), "/workspace", livediff.DarkTheme, 70, 8, motion)
+	completed, err := view.Render(t.Context(), "/workspace", diffrender.DarkTheme, 70, 8, motion)
 	if err != nil {
 		t.Fatal(err)
 	}
 	motion.Enabled = false
-	plain, err := view.Render(t.Context(), "/workspace", livediff.DarkTheme, 70, 8, motion)
+	plain, err := view.Render(t.Context(), "/workspace", diffrender.DarkTheme, 70, 8, motion)
 	if err != nil || !slices.Equal(completed, plain) || !view.Fading.IsZero() {
 		t.Fatalf("completed preview remained dimmed: %v %q vs %q", err, completed, plain)
 	}
@@ -697,13 +698,13 @@ func TestLiveDiffPreviewFadesOnlyChangedText(t *testing.T) {
 	path := "/workspace/a.txt"
 	view := diffview.PreviewView{Current: diffview.Preview{ID: "fade", Workspace: "/workspace", Thread: "thread", Status: diffview.PreviewEdit,
 		Files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile(path, path, "keep\nold\n", "keep\nnew\n")}}}
-	motion := diffview.PreviewMotion{Enabled: true, Canvas: livediff.DarkTheme.Canvas(), Now: time.Now()}
-	fading, err := view.Render(t.Context(), "/workspace", livediff.DarkTheme, 60, 6, motion)
+	motion := diffview.PreviewMotion{Enabled: true, Canvas: diffrender.DarkTheme.Canvas(), Now: time.Now()}
+	fading, err := view.Render(t.Context(), "/workspace", diffrender.DarkTheme, 60, 6, motion)
 	if err != nil {
 		t.Fatal(err)
 	}
 	motion.Enabled = false
-	settled, err := view.Render(t.Context(), "/workspace", livediff.DarkTheme, 60, 6, motion)
+	settled, err := view.Render(t.Context(), "/workspace", diffrender.DarkTheme, 60, 6, motion)
 	if err != nil || len(fading) != len(settled) {
 		t.Fatalf("renders: %v %q %q", err, fading, settled)
 	}
@@ -721,7 +722,7 @@ func TestLiveDiffPreviewFadesOnlyChangedText(t *testing.T) {
 			if strings.Contains(plain, "-old") {
 				kind = '-'
 			}
-			fill := livediff.DarkTheme.RowBackground(kind)
+			fill := diffrender.DarkTheme.RowBackground(kind)
 			if fading[i] == settled[i] || ansi.Strip(fading[i]) != plain || strings.Count(fading[i], fill) != strings.Count(settled[i], fill) ||
 				strings.Count(fading[i], "\x1b[48;2;") != strings.Count(settled[i], "\x1b[48;2;") {
 				t.Fatalf("changed row did not fade its text only:\n%q\n%q", fading[i], settled[i])

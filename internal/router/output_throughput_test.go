@@ -12,8 +12,9 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/contracts/inference"
-	"github.com/yusing/mekugi/internal/livediff"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 )
@@ -272,7 +273,7 @@ func TestUISnapshotOutputThroughputComposerAndRoster(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.session.start(u.thread, "")
 			u.ensureShell()
-			u.view.painter.Theme = livediff.DarkTheme
+			u.view.painter.Theme = diffrender.DarkTheme
 			root := u.session.agent("/root")
 			root.ContextKnown, root.ContextTokens, root.ContextWindow = true, 24000, 200000
 			root.OutputThroughput = inference.OutputThroughput{OutputTokens: 83, DurationNanos: uint64(2 * time.Second), MeasuredRequests: 1}
@@ -310,7 +311,7 @@ func TestUISnapshotOutputThroughputRestoredRoster(t *testing.T) {
 			u.restoreActivityThread(info)
 		}
 		u.agents.apply(activityPaneEvent{Kind: "agents", Agents: u.session.agents})
-		u.agents.painter.Theme = livediff.DarkTheme
+		u.agents.painter.Theme = diffrender.DarkTheme
 		u.agents.selected = u.session.paths["child"]
 		assertNativeUISnapshot(t, "output-throughput-restored-roster", u.agents.nativeRoster(120, 8, time.Now(), true))
 	})

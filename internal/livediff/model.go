@@ -2,16 +2,8 @@ package livediff
 
 import (
 	"cmp"
-	"errors"
-	"fmt"
 	"slices"
-	"strings"
-	"unicode"
-	"unicode/utf8"
 
-	"github.com/alecthomas/chroma/v2"
-	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/goutils/synk"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
@@ -275,15 +267,15 @@ func (v *View) RefreshVisible() {
 
 // NetCounts reports the line counts of an already composed visible file.
 // Unknown or inconsistent evidence never becomes a cumulative-edit total.
-func (file File) NetCounts() Counts {
+func (file File) NetCounts() diffmodel.Counts {
 	if file.incomplete {
-		return Counts{-1, -1}
+		return diffmodel.Counts{-1, -1}
 	}
-	var total Counts
+	var total diffmodel.Counts
 	for _, chunk := range file.Chunks {
 		added, removed := chunk.Review.LineCounts()
 		if added < 0 || removed < 0 || chunk.Review.Binary || chunk.Status != "" {
-			return Counts{-1, -1}
+			return diffmodel.Counts{-1, -1}
 		}
 		total.Added += added
 		total.Removed += removed
@@ -364,41 +356,6 @@ func GroupCaptures(captures []Chunk) []File {
 	return files
 }
 
-// Only text and SGR colors may reach the viewport. In particular, captured
-// source must not emit cursor controls, OSC clipboard writes, or terminal titles.
-func Safe(text string, colors bool) string {
-	var local [512]byte
-	out := local[:0]
-	// Tabs are the only expansion. Bound the borrowed storage up front so
-	// appending never abandons a pooled allocation or returns an alias to it.
-	if size := len(text) + 3*strings.Count(text, "\t"); size > len(local) {
-		pool := synk.GetSizedBytesPool()
-		buf := pool.GetSized(size)
-		defer func() { clear(buf); pool.Put(buf) }()
-		out = buf[:0]
-	}
-	var state byte
-	for len(text) > 0 {
-		seq, width, n, next := ansi.DecodeSequence(text, state, nil)
-		if n == 0 {
-			break
-		}
-		state, text = next, text[n:]
-		if width > 0 || seq == "\n" {
-			out = append(out, seq...)
-		} else if seq == "\t" {
-			out = append(out, "    "...)
-		} else if colors && strings.HasPrefix(seq, "\x1b[") && strings.HasSuffix(seq, "m") &&
-			strings.Trim(seq[2:len(seq)-1], "0123456789;:") == "" {
-			out = append(out, seq...)
-		} else if r, _ := utf8.DecodeRuneInString(seq); unicode.IsMark(r) || r == '\u200c' || r == '\u200d' {
-			// Zero-width marks and joiners are source text, not terminal controls.
-			out = append(out, seq...)
-		}
-	}
-	return string(out)
-}
-
 func fileAction(file diffmodel.ReviewFile, workspace string) string {
 	switch {
 	case file.BeforePath == "" && file.AfterPath != "":
@@ -412,29 +369,7 @@ func fileAction(file diffmodel.ReviewFile, workspace string) string {
 	}
 }
 
-func Gutter(highlighted bool, theme Theme) string {
-	if highlighted {
-		return theme.Accent() + "▎\x1b[0m "
-	}
-	return "  "
-}
-
-// Give each file a clear section boundary without painting over source colors.
-func Header(text string, width int, counts Counts, theme Theme) string {
-	width = max(0, width)
-	stats := fmt.Sprintf(" %s+%d\x1b[39m %s-%d\x1b[39m", theme.Foreground(chroma.GenericInserted), counts.Added, theme.Foreground(chroma.GenericDeleted), counts.Removed)
-	if counts.Added < 0 || counts.Removed < 0 {
-		stats = " counts unavailable"
-	}
-	text = ansi.Truncate(Safe(text, false), max(0, width-ansi.StringWidth(stats)), "")
-	header := ansi.Truncate("\x1b[1m"+text+"\x1b[22m"+stats, width, "")
-	if remaining := width - ansi.StringWidth(header); remaining > 0 {
-		header += Subtle + " " + strings.Repeat("─", remaining-1) + SubtleReset
-	}
-	return header
-}
-
-// gutterWidth is the display width of Gutter.
+// gutterWidth is the display width of diffrender.Gutter.
 const gutterWidth = 2
 
 // LineSource attributes a display row. Chrome rows have no Line.
@@ -442,13 +377,9 @@ type LineSource struct {
 	// Change names the capture a row shows, or for a composed file the
 	// comma-separated changes it combines.
 	Change, Path string
-	Line         int  // Gutter coordinate: old for deletions, new otherwise.
+	Line         int  // diffrender.Gutter coordinate: old for deletions, new otherwise.
 	Deleted      bool // Line is an old-file coordinate.
 	Content      int  // Display column where the row's text starts, after gutters.
-}
-
-type Counts struct {
-	Added, Removed int
 }
 
 type Render struct {
@@ -459,7 +390,7 @@ type Render struct {
 	Hunks         []int        // Display offsets for hunk navigation.
 	RowStarts     []int        // First display row of each logical row, including chrome.
 	Sources       []LineSource // Aligned with Lines.
-	Counts        []Counts
+	Counts        []diffmodel.Counts
 }
 
 // Keep the viewport anchored to a file and its local row when preceding files grow.
@@ -527,16 +458,4 @@ func (v *View) Reflow(before, after Render) {
 			v.Scroll[file.Key()] = max(0, after.RowStarts[row]-after.Starts[i])
 		}
 	}
-}
-
-const MaxSourceBytes = 64 << 20
-
-type Output struct{ strings.Builder }
-
-// WriteString bounds rendered output without per-token byte-slice allocation.
-func (b *Output) WriteString(s string) (int, error) {
-	if b.Len()+len(s) > MaxSourceBytes {
-		return 0, errors.New("rendered diff exceeds 64 MiB")
-	}
-	return b.Builder.WriteString(s)
 }

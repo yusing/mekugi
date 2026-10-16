@@ -5,7 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -34,7 +35,7 @@ func TestUISnapshotThinkingBlock(t *testing.T) {
 		{"partial_title", activityui.Block{Kind: "summary", Body: "**Check", Live: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			p := activityui.Painter{Theme: livediff.DarkTheme}
+			p := activityui.Painter{Theme: diffrender.DarkTheme}
 			rows := p.Block(tc.block, 40)
 			uisnapshot.Assert(t, "testdata/snapshots/thinking_block_"+tc.name+".txt", strings.Join(rows, "\n")+"\n")
 		})

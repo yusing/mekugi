@@ -6,15 +6,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
-	"github.com/yusing/mekugi/internal/livediff"
 )
 
 // Colors are the default text and background colors the terminal
 // reported through OSC 10 and OSC 11.
 type Colors struct {
-	Foreground, Background       livediff.RGB
+	Foreground, Background       diffrender.RGB
 	HasForeground, HasBackground bool
 }
 

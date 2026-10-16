@@ -3,7 +3,8 @@ package diffview
 import (
 	"testing"
 
-	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -11,11 +12,11 @@ import (
 func TestUISnapshotDiffTailStyles(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
-		theme livediff.Theme
+		theme diffrender.Theme
 	}{
-		{"terminal", livediff.TerminalTheme},
-		{"dark", livediff.DarkTheme},
-		{"light", livediff.LightTheme},
+		{"terminal", diffrender.TerminalTheme},
+		{"dark", diffrender.DarkTheme},
+		{"light", diffrender.LightTheme},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var frame []string
@@ -47,7 +48,7 @@ func TestPreviewDiffFlagReplacesPlainRows(t *testing.T) {
 	pane := PreviewPane{}
 	preview := Preview{ID: "tail", Workspace: "/workspace", Input: "+new\n"}
 	pane.Update(preview)
-	if _, err := pane.Render(t.Context(), "/workspace", livediff.DarkTheme, 60, 5); err != nil {
+	if _, err := pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, 60, 5); err != nil {
 		t.Fatal(err)
 	}
 	if row := pane.Views["tail"].Source[0]; row.Kind != ' ' || row.Number != 1 || row.Text != "+new\n" {
@@ -55,7 +56,7 @@ func TestPreviewDiffFlagReplacesPlainRows(t *testing.T) {
 	}
 	preview.DiffText = true
 	pane.Update(preview)
-	if _, err := pane.Render(t.Context(), "/workspace", livediff.DarkTheme, 60, 5); err != nil {
+	if _, err := pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, 60, 5); err != nil {
 		t.Fatal(err)
 	}
 	row := pane.Views["tail"].Source[0]

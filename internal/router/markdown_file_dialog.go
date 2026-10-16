@@ -11,10 +11,11 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffrender"
+
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourcekind"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 // markdownFileTarget shares existence and workspace resolution between painting
@@ -74,7 +75,7 @@ func (u *terminalUI) openMarkdownFile(view *liveActivityView, target string) boo
 	block := activityui.Block{Kind: "reads", Verb: "Read", Path: display + location, SyntaxPath: path, Reads: []activityui.Read{{Path: display + location}}}
 	data, err := readMarkdownFile(path)
 	source := string(data)
-	content := livediff.Safe(source, false)
+	content := diffrender.Safe(source, false)
 	if err != nil {
 		block.Kind, block.Verb, block.Body = "error", "", err.Error()
 	} else {

@@ -10,10 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/libraries/diffmodel"
@@ -256,7 +257,7 @@ func TestLiveDiffTerminalComposedContextIsNotDuplicated(t *testing.T) {
 	}
 	frame := ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "new second") })
 	for _, kind := range []byte{'-', '+'} {
-		if !strings.Contains(frame, livediff.TerminalTheme.WordBackground(kind)) {
+		if !strings.Contains(frame, diffrender.TerminalTheme.WordBackground(kind)) {
 			t.Fatalf("PTY Diff frame has no %c word emphasis: %q", kind, frame)
 		}
 	}
@@ -285,7 +286,7 @@ func TestLiveDiffTerminalEmptyPreviewUsesAvailableBody(t *testing.T) {
 	// Python source stays buffered until the heredoc closes, so setup lines
 	// cannot flash as a script diff before an edit target becomes recognizable.
 	input := "cat > big.py <<'EOF'\n" + strings.Repeat("# context\n", 30) + "return 42\nEOF\n"
-	tip, colored := "return 42", livediff.DarkTheme.Foreground(chroma.Keyword)+"return"
+	tip, colored := "return 42", diffrender.DarkTheme.Foreground(chroma.Keyword)+"return"
 	worker.appendDelta(input)
 	// Revealed rows fade in, so wait for the tip to settle on its syntax color.
 	frame := ui.frame(t, func(frame string) bool {
@@ -403,16 +404,16 @@ func TestLiveDiffTerminalBoundedDiffPresentation(t *testing.T) {
 	}
 	broker.publishPreview(preview, false)
 	frame := ui.frame(t, func(frame string) bool {
-		return strings.Contains(ansi.Strip(frame), "liveTail = 2") && strings.Contains(frame, livediff.DarkTheme.RowBackground('+')) && strings.Contains(frame, livediff.DarkTheme.Foreground(chroma.KeywordDeclaration))
+		return strings.Contains(ansi.Strip(frame), "liveTail = 2") && strings.Contains(frame, diffrender.DarkTheme.RowBackground('+')) && strings.Contains(frame, diffrender.DarkTheme.Foreground(chroma.KeywordDeclaration))
 	})
 	plain := ansi.Strip(frame)
 	if strings.Contains(plain, workspace) || !strings.Contains(plain, "src/main.go") {
 		t.Fatalf("header path not shortened: %q", plain)
 	}
-	if !strings.Contains(frame, livediff.DarkTheme.RowBackground('-')) {
+	if !strings.Contains(frame, diffrender.DarkTheme.RowBackground('-')) {
 		t.Fatal("missing deletion fill")
 	}
-	if !strings.Contains(frame, livediff.DarkTheme.Foreground(chroma.KeywordDeclaration)) {
+	if !strings.Contains(frame, diffrender.DarkTheme.Foreground(chroma.KeywordDeclaration)) {
 		t.Fatal("missing source syntax")
 	}
 	ui.quit(t)

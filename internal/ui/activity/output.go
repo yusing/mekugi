@@ -4,7 +4,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffrender"
 )
 
 // Output keeps a command's host output for reading in full, apart from the
@@ -85,7 +85,7 @@ func (o *Output) endLine() {
 		o.truncated = true
 		line = strings.ToValidUTF8(line[:OutputLineBytes], "") + "…"
 	}
-	line = strings.TrimRight(livediff.Safe(line, false), " ")
+	line = strings.TrimRight(diffrender.Safe(line, false), " ")
 	o.lines = append(o.lines, line)
 	o.bytes += len(line) + outputLineOverhead
 	o.line = o.line[:0]
@@ -169,7 +169,7 @@ func (o *Output) View() OutputView {
 		if len(line) > OutputLineBytes {
 			line = strings.ToValidUTF8(line[:OutputLineBytes], "") + "…"
 		}
-		line = strings.TrimRight(livediff.Safe(line, false), " ")
+		line = strings.TrimRight(diffrender.Safe(line, false), " ")
 		lines = append(slices.Clip(lines), line)
 	}
 	// Trailing blank lines only pad the output.

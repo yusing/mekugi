@@ -9,22 +9,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alecthomas/chroma/v2"
-	"github.com/alecthomas/chroma/v2/lexers"
-	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
-// Syntax is independent of wrapping, coordinates, and recency marks. Keep
-// bounded caches in each viewer, never shared across sessions.
+// Renderer paints captured-change provenance and geometry using viewer-local
+// shared syntax decoration.
 type Renderer struct {
 	// LayoutOnly defers complete-hunk syntax decoration until PaintViewport.
-	LayoutOnly  bool
-	syntax      map[syntaxKey][]string
-	lexers      map[string]chroma.Lexer
-	syntaxBytes int
+	LayoutOnly bool
+	syntax     diffrender.Renderer
 	// Caller presents a canonical agent path as a display name and an SGR
 	// color prefix. Without it, paths appear as recorded, uncolored.
 	Caller func(path string) (name, color string)
@@ -60,16 +57,16 @@ func (r *Renderer) provenance(file File) string {
 	var parts []string
 	for i, origin := range file.Origins {
 		if i == 4 {
-			parts = append(parts, fmt.Sprintf(Subtle+"+%d more"+SubtleReset, len(file.Origins)-i))
+			parts = append(parts, fmt.Sprintf(diffrender.Subtle+"+%d more"+diffrender.SubtleReset, len(file.Origins)-i))
 			break
 		}
 		name, color := r.caller(origin.Caller)
-		part := Safe(origin.Change, false)
+		part := diffrender.Safe(origin.Change, false)
 		if name != "" {
-			part += " " + color + Safe(name, false) + "\x1b[0m"
+			part += " " + color + diffrender.Safe(name, false) + "\x1b[0m"
 		}
 		if origin.Source != "" {
-			part += Subtle + "·" + Safe(origin.Source, false) + SubtleReset
+			part += diffrender.Subtle + "·" + diffrender.Safe(origin.Source, false) + diffrender.SubtleReset
 		}
 		parts = append(parts, part)
 	}
@@ -79,85 +76,14 @@ func (r *Renderer) provenance(file File) string {
 			noun += "s"
 		}
 		attribution := "by other callers"
-		parts = append(parts, fmt.Sprintf(Subtle+"%d %s %s as baseline"+SubtleReset, file.Baseline, noun, attribution))
+		parts = append(parts, fmt.Sprintf(diffrender.Subtle+"%d %s %s as baseline"+diffrender.SubtleReset, file.Baseline, noun, attribution))
 	}
-	return Subtle + "┄" + SubtleReset + " " + strings.Join(parts, "  ")
-}
-
-type syntaxKey struct {
-	theme        Theme
-	path, source string
-}
-
-const maxSyntaxCacheBytes = 8 << 20
-const maxSyntaxCacheEntries = 128
-
-// ColorSource uses the filename when supplied, otherwise content analysis.
-func (r *Renderer) ColorSource(ctx context.Context, theme Theme, path, source string) ([]string, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	key := syntaxKey{theme, path, source}
-	if lines, ok := r.syntax[key]; ok {
-		return lines, nil
-	}
-	var lexer chroma.Lexer
-	matched := false
-	lines, err := colorSourceWithMatcher(ctx, theme, path, source, func(path string) chroma.Lexer {
-		if path == "" {
-			// A detected lexer belongs to this content, not the empty path.
-			// The rendered-source cache below also retains negative detections.
-			return lexers.Analyse(source)
-		}
-		var cached bool
-		lexer, cached = r.lexers[path]
-		if !cached {
-			lexer = lexers.Match(path)
-		}
-		matched = true
-		return lexer
-	})
-	if err != nil || source == "" {
-		return lines, err
-	}
-	// Count string headers as well as content: many blank lines still retain
-	// a sizeable slice even though the strings themselves have no bytes.
-	size := len(path) + len(source) + len(lines)*2*(strconv.IntSize/8)
-	if matched {
-		// Conservatively charge each source for its selected path and lexer
-		// headers, even when several sources share the same selection.
-		size += len(path) + 4*(strconv.IntSize/8)
-	}
-	for _, line := range lines {
-		size += len(line)
-	}
-	if size > maxSyntaxCacheBytes {
-		return lines, nil
-	}
-	if r.syntaxBytes+size > maxSyntaxCacheBytes || len(r.syntax) >= maxSyntaxCacheEntries {
-		clear(r.syntax)
-		clear(r.lexers)
-		r.syntaxBytes = 0
-	}
-	if r.syntax == nil {
-		r.syntax = make(map[syntaxKey][]string)
-	}
-	r.syntax[key] = lines
-	r.syntaxBytes += size
-	if matched {
-		if r.lexers == nil {
-			r.lexers = make(map[string]chroma.Lexer)
-		}
-		// Include nil results. Selections live only as long as admitted
-		// syntax entries, so unknown paths cannot grow a separate cache.
-		r.lexers[path] = lexer
-	}
-	return lines, nil
+	return diffrender.Subtle + "┄" + diffrender.SubtleReset + " " + strings.Join(parts, "  ")
 }
 
 // Rendering consumes the engine's validated rows. File and hunk offsets are
 // recorded as rows are emitted, never recovered from a subprocess's output.
-func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, workspace string, width int) (Render, error) {
+func (r *Renderer) Render(ctx context.Context, theme diffrender.Theme, files []File, workspace string, width int) (Render, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	if err := ctx.Err(); err != nil {
@@ -170,19 +96,19 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 			sourceBytes += len(chunk.Review.Diff) + len(chunk.Status) + len(chunk.Review.BeforePath) + len(chunk.Review.AfterPath)
 		}
 	}
-	if sourceBytes > MaxSourceBytes {
+	if sourceBytes > diffrender.MaxSourceBytes {
 		return Render{}, errors.New("live diff source exceeds 64 MiB; use mchanges with a narrower range")
 	}
-	render := Render{Starts: make([]int, len(files)), Counts: make([]Counts, len(files))}
+	render := Render{Starts: make([]int, len(files)), Counts: make([]diffmodel.Counts, len(files))}
 	renderedBytes := 0
 	var source LineSource // Attribution of the rows being appended.
 	appendLine := func(line string, highlighted, continuation bool) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		line = ansi.Truncate(Gutter(highlighted, theme)+line, max(0, width-1), "")
+		line = ansi.Truncate(diffrender.Gutter(highlighted, theme)+line, max(0, width-1), "")
 		renderedBytes += len(line) + 1
-		if renderedBytes > MaxSourceBytes {
+		if renderedBytes > diffrender.MaxSourceBytes {
 			return errors.New("live diff rendering exceeds 64 MiB; use mchanges with a narrower range")
 		}
 		if !continuation {
@@ -222,7 +148,7 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 			}
 		}
 		if incomplete {
-			render.Counts[i] = Counts{-1, -1}
+			render.Counts[i] = diffmodel.Counts{-1, -1}
 		}
 		label := fmt.Sprintf("%d/%d  %s", fileNumber, fileCount, pathLabel)
 		if action != "" {
@@ -233,10 +159,10 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 		if incomplete {
 			statsWidth = len(" counts unavailable")
 		}
-		headings := strings.Split(ansi.Wrap(Safe(label, false), max(1, width-3-statsWidth), ""), "\n")
+		headings := strings.Split(ansi.Wrap(diffrender.Safe(label, false), max(1, width-3-statsWidth), ""), "\n")
 		for j, heading := range headings {
 			if j == 0 {
-				heading = Header(heading, width-3, counts, theme)
+				heading = diffrender.Header(heading, width-3, counts, theme)
 			} else {
 				heading = "\x1b[1m" + heading + "\x1b[22m"
 			}
@@ -280,7 +206,7 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 		sourceWidth := max(1, width-4-numberWidth)
 		continuationNumbers := ""
 		if numberWidth > 0 {
-			continuationNumbers = Subtle + strings.Repeat(" ", digits) + "│" + SubtleReset
+			continuationNumbers = diffrender.Subtle + strings.Repeat(" ", digits) + "│" + diffrender.SubtleReset
 		}
 		for j, chunk := range file.Chunks {
 			review := chunk.Review
@@ -306,7 +232,7 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 					}
 				}
 				continuation := false
-				for line := range strings.SplitSeq(ansi.Wrap(Safe(label, false), max(1, width-3), ""), "\n") {
+				for line := range strings.SplitSeq(ansi.Wrap(diffrender.Safe(label, false), max(1, width-3), ""), "\n") {
 					if err := appendLine(line, chunk.Highlighted, continuation); err != nil {
 						return Render{}, err
 					}
@@ -322,14 +248,14 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 				var before, after []string
 				if !r.LayoutOnly {
 					var err error
-					before, after, err = r.ColorHunk(ctx, theme, review, hunk.Rows)
+					before, after, err = r.syntax.ColorHunk(ctx, theme, review, hunk.Rows)
 					if err != nil {
 						return Render{}, err
 					}
 				}
 				var paint syntaxHunk
 				if r.LayoutOnly {
-					paint = syntaxHunk{renderer: r, theme: theme, review: review, rows: hunk.Rows,
+					paint = syntaxHunk{renderer: &r.syntax, theme: theme, review: review, rows: hunk.Rows,
 						start: len(render.Lines), width: width, sourceWidth: sourceWidth, digits: digits,
 						numberWidth: numberWidth, highlighted: chunk.Highlighted}
 				}
@@ -338,7 +264,7 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 				for _, row := range hunk.Rows {
 					coordinate, text := 0, ""
 					if r.LayoutOnly {
-						text = Safe(strings.TrimSuffix(row.Text, "\n"), false)
+						text = diffrender.Safe(strings.TrimSuffix(row.Text, "\n"), false)
 						paint.rowStarts = append(paint.rowStarts, len(render.Lines))
 					}
 					if row.Kind != '+' {
@@ -361,7 +287,7 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 					source.Line, source.Deleted = coordinate, row.Kind == '-'
 					numbers := ""
 					if numberWidth > 0 {
-						numbers = Subtle + strings.Repeat(" ", max(0, digits-len(number))) + number + "│" + SubtleReset
+						numbers = diffrender.Subtle + strings.Repeat(" ", max(0, digits-len(number))) + number + "│" + diffrender.SubtleReset
 					}
 					for n, line := range sourceFragments(theme, width, sourceWidth, numbers, continuationNumbers, text, row.Kind) {
 						prefix := numbers
@@ -375,7 +301,7 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 					}
 					source.Line, source.Deleted, source.Content = 0, false, gutterWidth
 					if !strings.HasSuffix(row.Text, "\n") {
-						if err := appendLine(Subtle+"\\ No newline at end of file"+SubtleReset, chunk.Highlighted, false); err != nil {
+						if err := appendLine(diffrender.Subtle+"\\ No newline at end of file"+diffrender.SubtleReset, chunk.Highlighted, false); err != nil {
 							return Render{}, err
 						}
 					}
@@ -392,47 +318,21 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 }
 
 // Source wrapping is shared by layout and decoration, so syntax cannot change geometry.
-func sourceFragments(theme Theme, width, sourceWidth int, numbers, continuationNumbers, text string, kind byte) []string {
+func sourceFragments(theme diffrender.Theme, width, sourceWidth int, numbers, continuationNumbers, text string, kind byte) []string {
 	var lines []string
-	for _, fragment := range WrapSource(text, sourceWidth) {
+	for _, fragment := range diffrender.WrapSource(text, sourceWidth) {
 		prefix := numbers
 		if len(lines) > 0 && numbers != "" {
 			prefix = continuationNumbers
 		}
-		lines = append(lines, SourceLine(theme, width, prefix, fragment, kind))
-	}
-	return lines
-}
-
-// WrapSource keeps both syntax foregrounds and word backgrounds on independently
-// painted continuation rows. SourceLine keeps gutters and padding at the row fill.
-func WrapSource(text string, width int) []string {
-	var style uv.Style
-	parser := ansi.GetParser()
-	defer func() {
-		parser.SetHandler(ansi.Handler{})
-		ansi.PutParser(parser)
-	}()
-	parser.SetHandler(ansi.Handler{HandleCsi: func(cmd ansi.Cmd, params ansi.Params) {
-		if cmd == 'm' {
-			uv.ReadStyle(params, &style)
-		}
-	}})
-	var lines []string
-	for fragment := range strings.SplitSeq(ansi.Hardwrap(text, max(1, width), true), "\n") {
-		carry := ""
-		if !style.IsZero() {
-			carry = style.String()
-		}
-		lines = append(lines, carry+fragment)
-		parser.Parse([]byte(fragment))
+		lines = append(lines, diffrender.SourceLine(theme, width, prefix, fragment, kind))
 	}
 	return lines
 }
 
 type syntaxHunk struct {
-	renderer                                            *Renderer
-	theme                                               Theme
+	renderer                                            *diffrender.Renderer
+	theme                                               diffrender.Theme
 	review                                              diffmodel.ReviewFile
 	rows                                                []diffmodel.ReviewRow
 	rowStarts                                           []int
@@ -470,12 +370,12 @@ func (render *Render) PaintViewport(ctx context.Context, start, end int) error {
 			numbers, continuation := "", ""
 			if h.numberWidth > 0 {
 				number := strconv.Itoa(render.Sources[h.rowStarts[n]].Line)
-				numbers = Subtle + strings.Repeat(" ", max(0, h.digits-len(number))) + number + "│" + SubtleReset
-				continuation = Subtle + strings.Repeat(" ", h.digits) + "│" + SubtleReset
+				numbers = diffrender.Subtle + strings.Repeat(" ", max(0, h.digits-len(number))) + number + "│" + diffrender.SubtleReset
+				continuation = diffrender.Subtle + strings.Repeat(" ", h.digits) + "│" + diffrender.SubtleReset
 			}
 			lines = append(lines, sourceFragments(h.theme, h.width, h.sourceWidth, numbers, continuation, text, row.Kind)...)
 			if !strings.HasSuffix(row.Text, "\n") {
-				lines = append(lines, Subtle+"\\ No newline at end of file"+SubtleReset)
+				lines = append(lines, diffrender.Subtle+"\\ No newline at end of file"+diffrender.SubtleReset)
 			}
 		}
 		if len(lines) != h.end-h.start {
@@ -483,10 +383,10 @@ func (render *Render) PaintViewport(ctx context.Context, start, end int) error {
 		}
 		delta := 0
 		for n, line := range lines {
-			lines[n] = ansi.Truncate(Gutter(h.highlighted, h.theme)+line, max(0, h.width-1), "")
+			lines[n] = ansi.Truncate(diffrender.Gutter(h.highlighted, h.theme)+line, max(0, h.width-1), "")
 			delta += len(lines[n]) - len(render.Lines[h.start+n])
 		}
-		if render.renderedBytes+delta > MaxSourceBytes {
+		if render.renderedBytes+delta > diffrender.MaxSourceBytes {
 			return errors.New("live diff rendering exceeds 64 MiB; use mchanges with a narrower range")
 		}
 		copy(render.Lines[h.start:h.end], lines)
@@ -509,131 +409,4 @@ func originChanges(origins []Origin) string {
 		return strings.Join(changes[:3], ",") + fmt.Sprintf(" +%d", len(changes)-3)
 	}
 	return strings.Join(changes, ",")
-}
-
-func SourceLine(theme Theme, width int, numbers, fragment string, kind byte) string {
-	style := ""
-	if kind == '+' {
-		style = theme.Foreground(chroma.GenericInserted)
-	} else if kind == '-' {
-		style = theme.Foreground(chroma.GenericDeleted)
-	}
-	line := numbers + style + string(kind) + "\x1b[39m" + fragment
-	if background := theme.RowBackground(kind); background != "" {
-		// Token resets restore a readable foreground on the fill.
-		base := theme.Foreground(chroma.NameOther)
-		line = strings.ReplaceAll(line, "\x1b[39m", base)
-		line = ansi.Truncate(line, max(0, width-3), "")
-		line += background // Word emphasis must not extend into right padding.
-		line += strings.Repeat(" ", max(0, width-3-ansi.StringWidth(line)))
-		line = background + base + line
-	}
-	return line + "\x1b[0m"
-}
-
-// Tokenise the two sides separately so deleted text cannot change the syntax
-// state of additions. Never read the workspace to fill uncaptured source gaps.
-func (r *Renderer) ColorHunk(ctx context.Context, theme Theme, review diffmodel.ReviewFile, rows []diffmodel.ReviewRow) ([]string, []string, error) {
-	var before, after Output
-	for _, row := range rows {
-		if err := ctx.Err(); err != nil {
-			return nil, nil, err
-		}
-		text := Safe(strings.TrimSuffix(row.Text, "\n"), false) + "\n"
-		if row.Kind != '+' {
-			if _, err := before.WriteString(text); err != nil {
-				return nil, nil, err
-			}
-		}
-		if row.Kind != '-' {
-			if _, err := after.WriteString(text); err != nil {
-				return nil, nil, err
-			}
-		}
-	}
-	old, err := r.ColorSource(ctx, theme, review.BeforePath, before.String())
-	if err != nil {
-		return nil, nil, err
-	}
-	next, err := r.ColorSource(ctx, theme, review.AfterPath, after.String())
-	if err != nil {
-		return nil, nil, err
-	}
-	return colorHunkWords(ctx, theme, rows, old, next)
-}
-
-// Syntax is best-effort decoration. Bound lexer input independently of the
-// display limit; huge hunks and unknown languages still display exact safe text.
-const MaxSyntaxBytes = 256 << 10
-
-func colorSourceWithMatcher(ctx context.Context, theme Theme, path, source string, match func(string) chroma.Lexer) (lines []string, err error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if source == "" {
-		return nil, nil
-	}
-	plain := strings.Split(strings.TrimSuffix(source, "\n"), "\n")
-	// Third-party lexers can panic while iterating incomplete source. Syntax
-	// decoration must not take down the viewer or expose half-colored content.
-	defer func() {
-		if recover() != nil {
-			lines, err = plain, ctx.Err()
-		}
-	}()
-	if len(source) > MaxSyntaxBytes {
-		return plain, nil
-	}
-	lexer := match(path)
-	if lexer == nil {
-		return plain, nil
-	}
-	iterator, err := lexer.Tokenise(nil, source)
-	if err != nil {
-		return plain, nil
-	}
-	var commands map[int]string
-	if lexer.Config().Name == "Bash" {
-		commands = shellCommands(source)
-	}
-	var output Output
-	remaining := source
-	for token := iterator(); token != chroma.EOF; token = iterator() {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		if !strings.HasPrefix(remaining, token.Value) {
-			return plain, nil
-		}
-		if token.Type.InCategory(chroma.Text) && token.Value != "" && commands[len(source)-len(remaining)] == token.Value {
-			token.Type = chroma.NameFunction
-		}
-		remaining = remaining[len(token.Value):]
-		style := theme.Foreground(token.Type)
-		// Reset each token fragment so scrolling never inherits another row's
-		// style. Only foreground colors are generated, never backgrounds.
-		parts := strings.Split(token.Value, "\n")
-		for i, part := range parts {
-			if i > 0 {
-				if _, err := output.WriteString("\n"); err != nil {
-					return nil, err
-				}
-			}
-			if part != "" {
-				if style != "" {
-					part = style + part + "\x1b[39m"
-				}
-				if _, err := output.WriteString(part); err != nil {
-					return nil, err
-				}
-			}
-		}
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if remaining != "" {
-		return plain, nil
-	}
-	return strings.Split(strings.TrimSuffix(output.String(), "\n"), "\n"), nil
 }

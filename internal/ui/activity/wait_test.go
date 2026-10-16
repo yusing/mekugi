@@ -6,9 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -68,13 +69,13 @@ func TestWaitProgressSanitizesHostText(t *testing.T) {
 }
 
 func TestUISnapshotWaitingBreathing(t *testing.T) {
-	for _, theme := range []livediff.Theme{livediff.TerminalTheme, livediff.DarkTheme, livediff.LightTheme} {
+	for _, theme := range []diffrender.Theme{diffrender.TerminalTheme, diffrender.DarkTheme, diffrender.LightTheme} {
 		t.Run(fmt.Sprint(theme), func(t *testing.T) {
 			now := time.Unix(0, 0)
 			p := activityui.Painter{Theme: theme, Clock: func() time.Time { return now }}
-			if theme != livediff.TerminalTheme {
-				fg, bg := livediff.RGB{R: 220, G: 220, B: 220}, livediff.RGB{R: 20, G: 20, B: 20}
-				if theme == livediff.LightTheme {
+			if theme != diffrender.TerminalTheme {
+				fg, bg := diffrender.RGB{R: 220, G: 220, B: 220}, diffrender.RGB{R: 20, G: 20, B: 20}
+				if theme == diffrender.LightTheme {
 					fg, bg = bg, fg
 				}
 				p.Colors = activityui.Colors{Foreground: fg, Background: bg, HasForeground: true, HasBackground: true}

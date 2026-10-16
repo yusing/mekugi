@@ -6,19 +6,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 func TestUISnapshotDialogSurfaceStyles(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
-		theme livediff.Theme
+		theme diffrender.Theme
 	}{
-		{"terminal", livediff.TerminalTheme},
-		{"dark", livediff.DarkTheme},
-		{"light", livediff.LightTheme},
+		{"terminal", diffrender.TerminalTheme},
+		{"dark", diffrender.DarkTheme},
+		{"light", diffrender.LightTheme},
 	} {
 		for _, fallback := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/fallback=%v", tc.name, fallback), func(t *testing.T) {
@@ -216,7 +217,7 @@ func TestDialogSourceTitleAndBodySyntax(t *testing.T) {
 		{"Run", "diff", "+added line"},
 		{"MCP", "", `{"answer": 42}`},
 	} {
-		for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+		for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 			p := Painter{Theme: theme}
 			block := Block{Verb: tc.verb, Lang: tc.lang, Code: tc.code}
 			page := p.DialogPage(block, 80)
@@ -234,7 +235,7 @@ func TestDialogSourceTitleAndBodySyntax(t *testing.T) {
 }
 
 func TestDialogSearchTitleAndResultSyntax(t *testing.T) {
-	p := Painter{Theme: livediff.DarkTheme}
+	p := Painter{Theme: diffrender.DarkTheme}
 	for _, line := range []string{"main.go:12:return 42", "12:return 42"} {
 		page := p.DialogPage(Block{Verb: "Search", Label: "`return` in `main.go`", Tail: []string{line}}, 80)
 		if !strings.Contains(page.Title, p.Theme.Accent()+"return") {
@@ -258,7 +259,7 @@ func TestBackdropFadesColorsAndKeepsCursorMoves(t *testing.T) {
 
 func TestDialogSkillReadMarkdown(t *testing.T) {
 	content := "# Skill guide\n\nUse **careful steps** and `code`.\n\n- Read before editing and keep the output within the available width.\n\n```go\nreturn 42\n```\n"
-	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		for _, width := range []int{24, 80} {
 			for _, retained := range []bool{false, true} {
 				p := Painter{Theme: theme}
@@ -367,7 +368,7 @@ func TestRunElapsedSuffix(t *testing.T) {
 
 func TestDialogMchangesDiffColorsAndCopy(t *testing.T) {
 	source := "amber1\n--- a.go\n+++ a.go\n@@ -1 +1 @@\n-old\n+new"
-	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		p := Painter{Theme: theme}
 		page := p.DialogPage(Block{Kind: "op", Verb: "Run", Code: "mchanges amber1", Tail: strings.Split(source, "\n")}, 80)
 		if page.Text != source {

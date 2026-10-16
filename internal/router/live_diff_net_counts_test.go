@@ -24,15 +24,15 @@ func TestLiveDiffNetCountsLargeSupersededRewrite(t *testing.T) {
 		liveDiffNetCapture(2, "/root/worker", "/w/a", "/w/a", intermediate, final),
 	}))
 	got := liveDiffNetCounts(&view)
-	if got == nil || *got != (livediff.Counts{Added: 818, Removed: 110}) {
+	if got == nil || *got != (diffmodel.Counts{Added: 818, Removed: 110}) {
 		t.Fatalf("final outcome = %+v, want +818 -110", got)
 	}
-	var activity livediff.Counts
+	var activity diffmodel.Counts
 	for _, count := range liveDiffCallerCounts(view.Files) {
 		activity.Added += count.Added
 		activity.Removed += count.Removed
 	}
-	if activity != (livediff.Counts{Added: 1278, Removed: 570}) {
+	if activity != (diffmodel.Counts{Added: 1278, Removed: 570}) {
 		t.Fatalf("cumulative activity = %+v, want +1278 -570", activity)
 	}
 }
@@ -59,14 +59,14 @@ func TestLiveDiffNetCountsComposesCrossAgentOutcomeNotActivity(t *testing.T) {
 	view.RefreshVisible()
 	view.FilterCaller("/root")
 	got := liveDiffNetCounts(&view)
-	if got == nil || *got != (livediff.Counts{Added: 1, Removed: 1}) {
+	if got == nil || *got != (diffmodel.Counts{Added: 1, Removed: 1}) {
 		t.Fatalf("overall net counts = %+v, want +1 -1", got)
 	}
 	if view.Caller != "/root" {
 		t.Fatalf("computing overall counts changed caller filter to %q", view.Caller)
 	}
 	activity := liveDiffCallerCounts(view.Files)
-	if activity["/root"] != (livediff.Counts{Added: 1, Removed: 2}) || activity["/root/worker"] != (livediff.Counts{Added: 2, Removed: 1}) {
+	if activity["/root"] != (diffmodel.Counts{Added: 1, Removed: 2}) || activity["/root/worker"] != (diffmodel.Counts{Added: 2, Removed: 1}) {
 		t.Fatalf("activity counts = %+v, want cumulative per-agent edits without scratch", activity)
 	}
 }
@@ -95,7 +95,7 @@ func TestLiveDiffNetCountsDistinguishesCancellationFromNoProjectEvidence(t *test
 			view := livediff.View{}
 			view.Merge(livediff.GroupCaptures(tt.captures))
 			got := liveDiffNetCounts(&view)
-			if (got == nil) != tt.wantNil || got != nil && *got != (livediff.Counts{}) {
+			if (got == nil) != tt.wantNil || got != nil && *got != (diffmodel.Counts{}) {
 				t.Fatalf("net counts = %+v, want nil=%t or known zero", got, tt.wantNil)
 			}
 		})
@@ -121,7 +121,7 @@ func TestLiveDiffNetCountsRejectsUnknownProjectEvidence(t *testing.T) {
 				view.FilterCaller("/root")
 			}
 			got := liveDiffNetCounts(&view)
-			if got == nil || *got != (livediff.Counts{Added: -1, Removed: -1}) {
+			if got == nil || *got != (diffmodel.Counts{Added: -1, Removed: -1}) {
 				t.Fatalf("%s net counts = %+v, want unknown", kind, got)
 			}
 		})

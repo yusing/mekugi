@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffrender"
 )
 
 const compactContinuationText = "Continue the task from where you left off before compaction."
@@ -239,7 +239,7 @@ func TestAppServerCompactCancelCompletionBeforeAckDoesNotQuitOrContinue(t *testi
 
 func TestUISnapshotNativeCompactQueuedCancel(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.view.painter.Theme = livediff.DarkTheme
+	u.view.painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	u.view.clock = u.clock
 	u.model, u.reasoningEffort = "snapshot-model", "high"
@@ -332,7 +332,7 @@ func TestUISnapshotNativeCompactQueuedContinuation(t *testing.T) {
 	u.proxy = &mekugiProxy{}
 	u.session.start(u.thread, "")
 	u.agents = newLiveActivityView()
-	u.view.painter.Theme = livediff.DarkTheme
+	u.view.painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	u.view.clock = u.clock
 	u.model, u.reasoningEffort = "snapshot-model", "high"
@@ -480,7 +480,7 @@ func TestAppServerCompactSteerCancelDuringInterrupt(t *testing.T) {
 func TestUISnapshotNativeCompactSteerInterrupt(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.proxy = &mekugiProxy{}
-	u.view.painter.Theme = livediff.DarkTheme
+	u.view.painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	u.view.clock = u.clock
 	u.model, u.reasoningEffort = "snapshot-model", "high"

@@ -28,8 +28,8 @@ import (
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 
-	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	terminalui "github.com/yusing/mekugi/libraries/terminalui"
 
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"golang.org/x/term"

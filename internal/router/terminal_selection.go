@@ -7,12 +7,14 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/rivo/uniseg"
 	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/libraries/pathdisplay"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
 type terminalSelection struct {
@@ -260,7 +262,7 @@ func (s *terminalSelection) move(x, y int, release bool) {
 }
 
 // row paints the selection without retaining highlight escapes in its snapshot.
-func (s *terminalSelection) row(y int, theme livediff.Theme) string {
+func (s *terminalSelection) row(y int, theme diffrender.Theme) string {
 	row := s.rows[y]
 	if left, right := s.bounds(y); s.moved && right > left {
 		return ansi.Cut(row, 0, left) + activityui.TextSelection(ansi.Cut(row, left, right), theme) + ansi.Cut(row, right, ansi.StringWidth(row))

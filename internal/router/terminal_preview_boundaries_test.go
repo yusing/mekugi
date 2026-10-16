@@ -6,8 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
@@ -43,7 +44,7 @@ func TestLiveDiffPreviewBoundaryExpectations(t *testing.T) {
 					pane.Update(*event.Preview)
 				}
 			}
-			lines, err := pane.Render(t.Context(), workspace, livediff.DarkTheme, 110, 24)
+			lines, err := pane.Render(t.Context(), workspace, diffrender.DarkTheme, 110, 24)
 			if err != nil {
 				t.Fatal(err)
 			}

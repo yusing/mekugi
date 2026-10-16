@@ -12,9 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -166,7 +167,7 @@ func TestAppServerBTWCompactionBeforeStartAckDoesNotResend(t *testing.T) {
 
 func TestUISnapshotBTWCompactionRequired(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.view.painter.Theme = livediff.DarkTheme
+	u.view.painter.Theme = diffrender.DarkTheme
 	u.btw = &appServerBTW{question: "Why did this fail?", status: btwCompactionRequired, alert: true}
 	for _, test := range []struct {
 		name  string

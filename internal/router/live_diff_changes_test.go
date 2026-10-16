@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/internal/execscope"
 
 	"github.com/charmbracelet/x/ansi"
@@ -138,7 +140,7 @@ func TestLiveDiffChangesGraphLanesAndJumps(t *testing.T) {
 	c.handleKey('\t')
 	c.frame(t)
 	n := &c.navigation
-	rows := n.Changes.Render(false, false, "", n.Width(130), 12, livediff.DarkTheme)
+	rows := n.Changes.Render(false, false, "", n.Width(130), 12, diffrender.DarkTheme)
 	var plain []string
 	for _, row := range rows {
 		plain = append(plain, ansi.Strip(row))
@@ -192,7 +194,7 @@ func TestLiveDiffChangesRowFormat(t *testing.T) {
 	origin := livediff.Origin{Change: "apple1", Caller: "/root", Source: "apply_patch"}
 	single := liveDiffChangesController(t, 130, 20, []livediff.Chunk{liveDiffCapture("k1", "broker.go", 1, "one\n", "ONE\n", origin)})
 	s := &single.navigation.Changes
-	if rows := s.Render(false, false, "", 60, 4, livediff.DarkTheme); len(s.Rows) != 2 || !strings.Contains(ansi.Strip(rows[2]), "apple1 apply_patch 1f") || !strings.Contains(ansi.Strip(rows[3]), "└ M broker.go +1 -1") {
+	if rows := s.Render(false, false, "", 60, 4, diffrender.DarkTheme); len(s.Rows) != 2 || !strings.Contains(ansi.Strip(rows[2]), "apple1 apply_patch 1f") || !strings.Contains(ansi.Strip(rows[3]), "└ M broker.go +1 -1") {
 		t.Fatalf("a side navigator did not nest the single file: %q", rows)
 	}
 	s.Inline = true
@@ -200,12 +202,12 @@ func TestLiveDiffChangesRowFormat(t *testing.T) {
 	if len(s.Rows) != 1 {
 		t.Fatalf("an inline single-file change expanded into %d rows", len(s.Rows))
 	}
-	if row := ansi.Strip(s.Render(false, false, "", 60, 3, livediff.DarkTheme)[2]); !strings.Contains(row, "apple1 apply_patch M broker.go +1 -1") || strings.Contains(row, "1f") {
+	if row := ansi.Strip(s.Render(false, false, "", 60, 3, diffrender.DarkTheme)[2]); !strings.Contains(row, "apple1 apply_patch M broker.go +1 -1") || strings.Contains(row, "1f") {
 		t.Fatalf("single-file change row = %q", row)
 	}
 	// Hover underlines the row's text but not its graph lane.
 	s.Hover = 1
-	if row := s.Render(false, false, "", 60, 3, livediff.DarkTheme)[2]; !strings.Contains(row, "\x1b[4m") || strings.Index(row, "\x1b[4m") < strings.Index(row, "●") {
+	if row := s.Render(false, false, "", 60, 3, diffrender.DarkTheme)[2]; !strings.Contains(row, "\x1b[4m") || strings.Index(row, "\x1b[4m") < strings.Index(row, "●") {
 		t.Fatalf("hover underlined the graph: %q", row)
 	}
 	c := liveDiffChangesController(t, 130, 20, []livediff.Chunk{
@@ -215,19 +217,19 @@ func TestLiveDiffChangesRowFormat(t *testing.T) {
 	l := &c.navigation.Changes
 	l.Expanded = map[string]bool{"apple1": true}
 	l.Rebuild(&c.view, c.workspace)
-	rows := l.Render(false, false, "", 40, 5, livediff.DarkTheme)
-	file := diffview.FileLabel(diffmodel.Status{Before: "/w/broker.go", After: "/w/broker.go", Edited: true}, "broker.go", "/w", livediff.DarkTheme)
+	rows := l.Render(false, false, "", 40, 5, diffrender.DarkTheme)
+	file := diffview.FileLabel(diffmodel.Status{Before: "/w/broker.go", After: "/w/broker.go", Edited: true}, "broker.go", "/w", diffrender.DarkTheme)
 	if !strings.Contains(rows[3], file) || !strings.Contains(ansi.Strip(rows[3]), "├ M broker.go +1 -1") {
 		t.Fatalf("file row = %q, want shared label %q", rows[3], file)
 	}
 	if row := ansi.Strip(rows[2]); !strings.Contains(row, "apple1 apply_patch 2f") {
 		t.Fatalf("wide change row = %q", row)
 	}
-	if row := ansi.Strip(l.Render(false, false, "", 24, 4, livediff.DarkTheme)[2]); strings.Contains(row, "apply") || !strings.Contains(row, "apple1 2f +2 -2") {
+	if row := ansi.Strip(l.Render(false, false, "", 24, 4, diffrender.DarkTheme)[2]); strings.Contains(row, "apply") || !strings.Contains(row, "apple1 2f +2 -2") {
 		t.Fatalf("narrow change row = %q, want the source omitted", row)
 	}
-	focused := l.Render(true, false, "", 24, 4, livediff.DarkTheme)[2]
-	if !strings.HasPrefix(focused, livediff.DarkTheme.SelectionBackground()) ||
+	focused := l.Render(true, false, "", 24, 4, diffrender.DarkTheme)[2]
+	if !strings.HasPrefix(focused, diffrender.DarkTheme.SelectionBackground()) ||
 		!strings.HasSuffix(focused, "\x1b[49m") || ansi.StringWidth(focused) != 23 ||
 		strings.HasPrefix(ansi.Strip(focused), ">") {
 		t.Fatalf("focused change row should fill in place without an arrow: %q", focused)
@@ -256,7 +258,7 @@ func TestLiveDiffFileStatus(t *testing.T) {
 		{"binary rename with edit", []diffmodel.ReviewFile{diffmodel.RenderBinaryReviewFile("/w/old.bin", "/w/a.go", 3, 4, "abc", "abd")}, "RM old.bin → a.go"},
 		{"mchanges conflict", []diffmodel.ReviewFile{conflicted}, "UU a.go"},
 	} {
-		if got := ansi.Strip(diffview.FileLabel(diffmodel.StatusOf(tc.regions...), "a.go", "/w", livediff.DarkTheme)); got != tc.want {
+		if got := ansi.Strip(diffview.FileLabel(diffmodel.StatusOf(tc.regions...), "a.go", "/w", diffrender.DarkTheme)); got != tc.want {
 			t.Errorf("%s: %q, want %q", tc.name, got, tc.want)
 		}
 	}
@@ -270,7 +272,7 @@ func TestLiveDiffTreeConflictClearsWhenResolved(t *testing.T) {
 	captures := []livediff.Chunk{liveDiffCapture("k1", "a.go", 1, base, markers, origin)}
 	row := func() string {
 		c := liveDiffChangesController(t, 130, 20, captures)
-		for _, line := range c.navigation.Render(c.files, c.rendering.Counts, c.view.Selected, 34, 6, livediff.DarkTheme) {
+		for _, line := range c.navigation.Render(c.files, c.rendering.Counts, c.view.Selected, 34, 6, diffrender.DarkTheme) {
 			if line := ansi.Strip(line); strings.Contains(line, "a.go") {
 				return line
 			}
@@ -383,7 +385,7 @@ func TestLiveDiffChangesFilterAndQueryDetails(t *testing.T) {
 	// One caller: the filtered view is unchanged, but the heading still says so.
 	c.handleKey('a')
 	c.frame(t)
-	if heading := ansi.Strip(c.navigation.Render(c.files, c.rendering.Counts, 0, 34, 4, livediff.DarkTheme)[0]); !strings.Contains(heading, "@worker") {
+	if heading := ansi.Strip(c.navigation.Render(c.files, c.rendering.Counts, 0, 34, 4, diffrender.DarkTheme)[0]); !strings.Contains(heading, "@worker") {
 		t.Fatalf("Files heading = %q", heading)
 	}
 	// Accepting a Changes query opens the match instead of the caller's branch row.

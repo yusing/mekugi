@@ -4,9 +4,10 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	"github.com/yusing/mekugi/internal/livediff"
 )
 
 func (u *appServerUI) shellMode() bool {
@@ -17,7 +18,7 @@ func (u *appServerUI) shellMode() bool {
 // Soft wraps must not change Bash's multiline lexical state or cursor geometry.
 func (u *appServerUI) paintShellDraft(rows []string) {
 	// Highlight returns cached rows. The mode marker belongs only to this draft.
-	lines := slices.Clone(u.view.painter.Highlight("bash", livediff.Safe(u.draft[1:], false)+"\n"))
+	lines := slices.Clone(u.view.painter.Highlight("bash", diffrender.Safe(u.draft[1:], false)+"\n"))
 	lines[0] = "!" + lines[0]
 	line, column := 0, 0
 	for i, row := range rows {

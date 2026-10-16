@@ -8,6 +8,8 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
@@ -116,7 +118,7 @@ func TestLiveDiffRenderHighlights(t *testing.T) {
 	recent.Highlighted = true
 	file := livediff.File{Path: path, Highlighted: true, Chunks: []livediff.Chunk{old, recent}}
 	for _, width := range []int{36, 90} {
-		render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, width)
+		render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, []livediff.File{file}, workspace, width)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -151,7 +153,7 @@ func TestLiveDiffRenderHighlights(t *testing.T) {
 func TestLiveDiffSafePreservesZeroWidthText(t *testing.T) {
 	const source = "e\u0301 界 👩\u200d💻 क\u094d\u200cष ✈\ufe0f"
 	for _, colors := range []bool{false, true} {
-		got := livediff.Safe("\x1b]52;c;clipboard\a\x1b[2J"+source+"\x00\x1b[6n\n", colors)
+		got := diffrender.Safe("\x1b]52;c;clipboard\a\x1b[2J"+source+"\x00\x1b[6n\n", colors)
 		if got != source+"\n" {
 			t.Fatalf("colors=%t: source text damaged or terminal controls retained: %q", colors, got)
 		}
@@ -166,7 +168,7 @@ func TestLiveDiffHighlightPreservesSyntaxColors(t *testing.T) {
 		t.Helper()
 		chunk.Highlighted = highlighted
 		file := livediff.File{Path: path, Chunks: []livediff.Chunk{chunk}}
-		render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 90)
+		render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, []livediff.File{file}, workspace, 90)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -212,7 +214,7 @@ func TestLiveDiffHeaders(t *testing.T) {
 				BeforePath: tc.before, AfterPath: tc.after, Diff: diff,
 			}}
 			file := livediff.File{Path: path, Chunks: []livediff.Chunk{chunk}}
-			render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 90)
+			render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, []livediff.File{file}, workspace, 90)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -231,8 +233,8 @@ func TestLiveDiffHeaders(t *testing.T) {
 				!strings.Contains(render.Lines[0], "─") || ansi.StringWidth(render.Lines[0]) != 89 {
 				t.Fatalf("file heading lacks bounded emphasis: %q", render.Lines[0])
 			}
-			if !strings.Contains(render.Lines[0], livediff.TerminalTheme.Foreground(chroma.GenericInserted)+"+"+strconv.Itoa(tc.added)+"\x1b[39m") ||
-				!strings.Contains(render.Lines[0], livediff.TerminalTheme.Foreground(chroma.GenericDeleted)+"-"+strconv.Itoa(tc.removed)+"\x1b[39m") {
+			if !strings.Contains(render.Lines[0], diffrender.TerminalTheme.Foreground(chroma.GenericInserted)+"+"+strconv.Itoa(tc.added)+"\x1b[39m") ||
+				!strings.Contains(render.Lines[0], diffrender.TerminalTheme.Foreground(chroma.GenericDeleted)+"-"+strconv.Itoa(tc.removed)+"\x1b[39m") {
 				t.Fatalf("missing green/red source-line counts: %q", render.Lines[0])
 			}
 
@@ -245,7 +247,7 @@ func TestLiveDiffHeaders(t *testing.T) {
 
 func TestLiveDiffHeaderWidthAndControls(t *testing.T) {
 	for _, width := range []int{0, 1, 2, 10, 36, 90} {
-		header := livediff.Header("1/2  界 é.go\x1b]52;c;clipboard\a", width, livediff.Counts{Added: 12, Removed: 4}, livediff.TerminalTheme)
+		header := diffrender.Header("1/2  界 é.go\x1b]52;c;clipboard\a", width, diffmodel.Counts{Added: 12, Removed: 4}, diffrender.TerminalTheme)
 		if !utf8.ValidString(header) || ansi.StringWidth(header) > width || strings.Contains(header, "clipboard") {
 			t.Fatalf("width %d: unsafe or overflowing header: %q", width, header)
 		}
@@ -264,11 +266,11 @@ func TestLiveDiffHeaderCountsUseVisibleComposition(t *testing.T) {
 	v.Merge(snapshot)
 	v.RefreshVisible()
 	file := v.Visible[v.Files[0].Key()]
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 90)
+	render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, []livediff.File{file}, workspace, 90)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := livediff.Counts{Added: 2, Removed: 1}
+	want := diffmodel.Counts{Added: 2, Removed: 1}
 	if len(render.Counts) != 1 || render.Counts[0] != want {
 		t.Fatalf("counts = %v, want visible net counts %v", render.Counts, want)
 	}
@@ -286,7 +288,7 @@ func TestLiveDiffPreparedRenameKeepsDestination(t *testing.T) {
 	v := livediff.View{}
 	v.Merge([]livediff.File{{Path: oldPath, Chunks: []livediff.Chunk{chunk}}})
 	v.RefreshVisible()
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{v.Visible[v.Files[0].Key()]}, workspace, 90)
+	render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, []livediff.File{v.Visible[v.Files[0].Key()]}, workspace, 90)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -348,7 +350,7 @@ func TestLiveDiffNewFileRegionsStayCompact(t *testing.T) {
 			t.Fatalf("fixture is not a composed new file: %#v", chunk)
 		}
 	}
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 100)
+	render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, []livediff.File{file}, workspace, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,7 +360,7 @@ func TestLiveDiffNewFileRegionsStayCompact(t *testing.T) {
 			t.Fatalf("file label is missing from its header or repeats between hunks: %q\n%s", label, text)
 		}
 	}
-	if len(render.Lines) != len(rows)+1 || render.Counts[0] != (livediff.Counts{Added: 340, Removed: 0}) {
+	if len(render.Lines) != len(rows)+1 || render.Counts[0] != (diffmodel.Counts{Added: 340, Removed: 0}) {
 		t.Fatalf("extra heading rows or lost blank source rows: rows=%d counts=%v\n%s",
 			len(render.Lines), render.Counts, text)
 	}
@@ -389,12 +391,12 @@ func TestLiveDiffRenderLatestCombinedResult(t *testing.T) {
 		!strings.Contains(text, "+LATEST20") || !strings.Contains(text, "+LATEST337") {
 		t.Fatalf("result contains intermediate patches instead of final changes: %s", text)
 	}
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 100)
+	render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, []livediff.File{file}, workspace, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
 	text = ansi.Strip(strings.Join(render.Lines, "\n"))
-	if strings.Contains(text, "LATEST UPDATE") || render.Counts[0] != (livediff.Counts{Added: 2, Removed: 2}) {
+	if strings.Contains(text, "LATEST UPDATE") || render.Counts[0] != (diffmodel.Counts{Added: 2, Removed: 2}) {
 		t.Fatalf("unexpected update label or incorrect counts: counts=%v\n%s", render.Counts, text)
 	}
 	for _, line := range render.Lines {
@@ -418,7 +420,7 @@ func TestLiveDiffOnlyShowsFinalComposition(t *testing.T) {
 	v.Merge([]livediff.File{{Path: path, Chunks: []livediff.Chunk{first, second}}})
 	v.RefreshVisible()
 	file := v.Visible[v.Files[0].Key()]
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 90)
+	render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, []livediff.File{file}, workspace, 90)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -444,7 +446,7 @@ func TestLiveDiffConflictingSavedEditsRemainReadable(t *testing.T) {
 	v.Merge([]livediff.File{{Path: path, Chunks: []livediff.Chunk{first, second}}})
 	v.RefreshVisible()
 	file := v.Visible[v.Files[0].Key()]
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 90)
+	render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, []livediff.File{file}, workspace, 90)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -464,13 +466,13 @@ func TestLiveDiffBlankSourceRows(t *testing.T) {
 	path := filepath.Join(workspace, "file.txt")
 	chunk := liveDiffHighlightChunk("edit", path, "@@ -1,4 +1,4 @@\n \n-old\n+new\n-\n+\n tail\n")
 	chunk.Status = ""
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{{Path: path, Chunks: []livediff.Chunk{chunk}}}, workspace, 90)
+	render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, []livediff.File{{Path: path, Chunks: []livediff.Chunk{chunk}}}, workspace, 90)
 
 	if err != nil {
 		t.Fatal(err)
 	}
 	wantRows := 7
-	if len(render.Lines) != wantRows || render.Counts[0] != (livediff.Counts{Added: 2, Removed: 2}) {
+	if len(render.Lines) != wantRows || render.Counts[0] != (diffmodel.Counts{Added: 2, Removed: 2}) {
 		t.Fatalf("blank context/added/removed rows changed: rows=%d counts=%v\n%s",
 			len(render.Lines), render.Counts, strings.Join(render.Lines, "\n"))
 	}
@@ -495,12 +497,12 @@ func TestLiveDiffPathOnlyChangesStayCompact(t *testing.T) {
 			review := diffmodel.ReviewFile{BeforePath: tc.before, AfterPath: tc.after,
 				Diff: tc.name + " " + strconv.Quote(tc.before) + " -> " + strconv.Quote(tc.after) + "\n"}
 			chunk := livediff.Chunk{Key: "change", Review: review}
-			render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{{Path: path, Chunks: []livediff.Chunk{chunk}}}, workspace, 100)
+			render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, []livediff.File{{Path: path, Chunks: []livediff.Chunk{chunk}}}, workspace, 100)
 			if err != nil {
 				t.Fatal(err)
 			}
 			text := ansi.Strip(strings.Join(render.Lines, "\n"))
-			if len(render.Lines) != 1 || strings.Count(text, tc.action) != 1 || render.Counts[0] != (livediff.Counts{}) {
+			if len(render.Lines) != 1 || strings.Count(text, tc.action) != 1 || render.Counts[0] != (diffmodel.Counts{}) {
 				t.Fatalf("path-only action duplicated or lost: %+v\n%s", render, text)
 			}
 		})
@@ -523,7 +525,7 @@ func TestLiveDiffNarrowFileActions(t *testing.T) {
 				Diff: tc.name + " " + strconv.Quote(tc.before) + " -> " + strconv.Quote(tc.after) + "\n"}
 			file := livediff.File{Path: path, Highlighted: true, Chunks: []livediff.Chunk{{Review: review}}}
 			for _, width := range []int{40, 90} {
-				render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file, {Path: "next.txt", Chunks: []livediff.Chunk{{Status: "prepared"}}}}, workspace, width)
+				render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, []livediff.File{file, {Path: "next.txt", Chunks: []livediff.Chunk{{Status: "prepared"}}}}, workspace, width)
 
 				if err != nil {
 					t.Fatal(err)

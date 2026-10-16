@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/libraries/diffmodel"
 
 	"github.com/charmbracelet/x/ansi"
@@ -213,10 +215,10 @@ func (l *liveDiffChanges) FocusChange(change string, rows int) {
 }
 
 // CallerStyle is how the diff presents a canonical agent path.
-func CallerStyle(theme livediff.Theme) func(string) (string, string) {
+func CallerStyle(theme diffrender.Theme) func(string) (string, string) {
 	return func(caller string) (string, string) {
 		if caller == "" || caller == livediff.UnknownCaller {
-			return "unknown", livediff.Subtle
+			return "unknown", diffrender.Subtle
 		}
 		if color := activityui.Color(caller); color != "" {
 			return activityui.AgentDisplayName(caller), color
@@ -225,7 +227,7 @@ func CallerStyle(theme livediff.Theme) func(string) (string, string) {
 	}
 }
 
-func (l *liveDiffChanges) Render(focused bool, filtering bool, callerFilter string, width, rows int, theme livediff.Theme) []string {
+func (l *liveDiffChanges) Render(focused bool, filtering bool, callerFilter string, width, rows int, theme diffrender.Theme) []string {
 	out := make([]string, rows)
 	if rows == 0 {
 		return out
@@ -236,7 +238,7 @@ func (l *liveDiffChanges) Render(focused bool, filtering bool, callerFilter stri
 		name, _ := style(callerFilter)
 		scope = "@" + name
 	}
-	heading := fmt.Sprintf(" Changes  %d · %s", len(l.Nodes), livediff.Safe(scope, false))
+	heading := fmt.Sprintf(" Changes  %d · %s", len(l.Nodes), diffrender.Safe(scope, false))
 	if focused {
 		heading = theme.Accent() + "▎" + strings.TrimPrefix(heading, " ") + "\x1b[0m"
 	}
@@ -246,12 +248,12 @@ func (l *liveDiffChanges) Render(focused bool, filtering bool, callerFilter stri
 	}
 	filter := " / id, @caller, source"
 	if l.Query != "" || filtering {
-		filter = " / " + livediff.Safe(l.Query, false)
+		filter = " / " + diffrender.Safe(l.Query, false)
 		if filtering {
 			filter += "▏"
 		}
 	}
-	out[1] = ansi.Truncate(livediff.Subtle+filter+"\x1b[0m", max(0, width-1), "…")
+	out[1] = ansi.Truncate(diffrender.Subtle+filter+"\x1b[0m", max(0, width-1), "…")
 	// Rows never stay scrolled off the top while space remains below.
 	l.Top = min(l.Top, max(0, len(l.Rows)-(rows-2)))
 	contentWidth := max(0, width-1)
@@ -299,18 +301,18 @@ func (l *liveDiffChanges) Render(focused bool, filtering bool, callerFilter stri
 		label, source, callerTag, stats := "", "", "", ""
 		switch entry.Kind {
 		case 'b':
-			label = color + livediff.Safe(name, false) + "\x1b[0m"
+			label = color + diffrender.Safe(name, false) + "\x1b[0m"
 		case 'c':
-			label = livediff.Safe(node.Change, false)
+			label = diffrender.Safe(node.Change, false)
 			if node.Source != "" {
-				source = " " + livediff.Subtle + livediff.Safe(node.Source, false) + livediff.SubtleReset
+				source = " " + diffrender.Subtle + diffrender.Safe(node.Source, false) + diffrender.SubtleReset
 			}
 			if entry.lane != lane {
-				callerTag = " " + color + livediff.Safe(name, false) + "\x1b[0m"
+				callerTag = " " + color + diffrender.Safe(name, false) + "\x1b[0m"
 			}
-			stats = CountStats(livediff.Counts{Added: node.added, Removed: node.removed}, theme)
+			stats = CountStats(diffmodel.Counts{Added: node.added, Removed: node.removed}, theme)
 			if node.unknown {
-				stats = CountStats(livediff.Counts{Added: -1, Removed: -1}, theme)
+				stats = CountStats(diffmodel.Counts{Added: -1, Removed: -1}, theme)
 			}
 			if len(node.Files) == 1 && l.Inline {
 				file := node.Files[0]
@@ -319,7 +321,7 @@ func (l *liveDiffChanges) Render(focused bool, filtering bool, callerFilter stri
 				}
 				stats = " " + FileLabel(file.status, l.path(file.File), l.workspace, theme) + stats
 			} else {
-				stats = fmt.Sprintf(" "+livediff.Subtle+"%df"+livediff.SubtleReset, len(node.Files)) + stats
+				stats = fmt.Sprintf(" "+diffrender.Subtle+"%df"+diffrender.SubtleReset, len(node.Files)) + stats
 			}
 		case 'f':
 			file := node.Files[entry.File]
@@ -328,11 +330,11 @@ func (l *liveDiffChanges) Render(focused bool, filtering bool, callerFilter stri
 				branch = "└"
 			}
 			// The tree glyph extends the graph.
-			graph.WriteString(livediff.Subtle + branch + livediff.SubtleReset + " ")
+			graph.WriteString(diffrender.Subtle + branch + diffrender.SubtleReset + " ")
 			label = FileLabel(file.status, l.path(file.File), l.workspace, theme)
-			stats = CountStats(livediff.Counts{Added: file.added, Removed: file.removed}, theme)
+			stats = CountStats(diffmodel.Counts{Added: file.added, Removed: file.removed}, theme)
 			if file.unknown {
-				stats = CountStats(livediff.Counts{Added: -1, Removed: -1}, theme)
+				stats = CountStats(diffmodel.Counts{Added: -1, Removed: -1}, theme)
 			}
 			if file.status.Directory {
 				stats = ""

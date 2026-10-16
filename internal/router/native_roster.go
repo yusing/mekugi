@@ -7,8 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffmodel"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
@@ -296,7 +297,7 @@ func (p rosterMetricPace) at(now time.Time) rosterMetrics {
 // its values at once; later changes ease from the value on screen.
 func (v *liveActivityView) paceRosterMetrics(rows []liveActivityRosterRow, now time.Time) {
 	pace := make(map[string]rosterMetricPace, len(rows))
-	v.rosterLines, v.rosterEasing = make(map[string]livediff.Counts), false
+	v.rosterLines, v.rosterEasing = make(map[string]diffmodel.Counts), false
 	for i, row := range rows {
 		agent := &rows[i].agent
 		lines, hasLines := v.lineCounts[agent.Name]
@@ -314,7 +315,7 @@ func (v *liveActivityView) paceRosterMetrics(rows []liveActivityRosterRow, now t
 		agent.InputTokens, agent.OutputTokens = uint64(math.Round(shown.input)), uint64(math.Round(shown.output))
 		agent.ContextTokens, agent.Cost = uint64(math.Round(shown.context)), shown.cost
 		if hasLines {
-			v.rosterLines[agent.Name] = livediff.Counts{Added: int(math.Round(shown.added)), Removed: int(math.Round(shown.removed))}
+			v.rosterLines[agent.Name] = diffmodel.Counts{Added: int(math.Round(shown.added)), Removed: int(math.Round(shown.removed))}
 		}
 	}
 	v.rosterPace = pace
@@ -322,7 +323,7 @@ func (v *liveActivityView) paceRosterMetrics(rows []liveActivityRosterRow, now t
 
 // lineCountParts uses semantic green/red colors, independent of the syntax
 // theme. Zero and unknown counts are omitted.
-func (v *liveActivityView) lineCountParts(count livediff.Counts) (string, string) {
+func (v *liveActivityView) lineCountParts(count diffmodel.Counts) (string, string) {
 	if count.Added < 0 || count.Removed < 0 {
 		return "", ""
 	}

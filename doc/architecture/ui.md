@@ -20,12 +20,14 @@ observation capacity must remain visible and bounded without terminating unrelat
   syntax presentation, source-aware Markdown copy annotations and reconstruction,
   agent labels/colors, and reasoning/status animation.
 - `internal/ui/diffview` owns file/change navigation and live preview cards, including
-  their viewport and reveal animation. It consumes shared `internal/livediff` models
-  and router-produced preview snapshots. Rendering a preview cannot finalize evidence.
-- `internal/ui/terminal` owns raw-terminal restoration, cancellable input reading,
-  mouse decoding, and shared scrolling primitives. Input cancellation preserves
-  caller descriptors and their shared file-status flags. Callers retain pane composition,
-  focus, follow policy, and the enclosing session lifetime.
+  their viewport and reveal animation. Captured-file composition and attribution
+  remain in `internal/livediff`; router observations supply preview snapshots.
+  Rendering a preview cannot finalize evidence.
+- [Diff rendering](../../libraries/diffrender/SPEC.md) owns shared syntax, themes,
+  row decoration, wrapping and terminal sanitization.
+- [Terminal primitives](../../libraries/terminalui/SPEC.md) owns raw-mode lifetime,
+  input decoding, scrolling and Mermaid drawing. Feature adapters retain pane
+  composition, focus and follow policy.
 - Router-native `/session` presentation consumes a detached capturer snapshot.
   It owns only view, scroll and retained-exchange selection, never a metric store.
 - [The Codex backend](../../backends/codex/SPEC.md) owns newline-delimited stdio RPC and the launched Codex process:
@@ -86,6 +88,5 @@ must precede a new `turn/start`. Waiting user input takes precedence over the on
 automatic continuation message. Interrupt cancels that intent immediately; replay
 and session switching never revive it. Codex still owns compaction and execution.
 
-Dependencies point from router integration into the client and presentation packages,
-not back into router internals. Shared diff rendering remains in `internal/livediff`;
-UI extraction does not introduce a second capturer, history store, or transcript.
+Dependencies point from router integration into feature presentation and shared
+libraries. Rendering introduces no second capturer, history store or transcript.
