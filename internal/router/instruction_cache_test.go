@@ -200,20 +200,17 @@ func TestPrewarmProjectionMatchesFirstTurnPrefix(t *testing.T) {
 }
 
 func TestInstructionCacheAutomaticSuccessorCannotSilentlyDropChanges(t *testing.T) {
-	var session codexresponses.SessionHistory
-	parent, _, err := session.Prepare([]byte(`{"input":[]}`), nil)
-	if err != nil {
-		t.Fatal(err)
+	original := json.RawMessage(`{"role":"developer","content":"rules"}`)
+	exchange := confirmedHistoryExchange(t, []json.RawMessage{original}, true)
+	request := &codexresponses.Request{Fields: map[string]json.RawMessage{
+		"previous_response_id": json.RawMessage(`"parent"`),
+		"input":                responses.MustMarshalJSON([]json.RawMessage{original}),
+	}}
+	if reason, err := exchange.Reconcile(request, true); err != nil || reason != "matching_prefix" || request.CachedInput != 1 {
+		t.Fatalf("confirmed automatic prefix = %q, %v; cached=%d", reason, err, request.CachedInput)
 	}
-	if err := parent.ObserveOutput([]byte(`{"type":"response.completed","response":{"id":"parent","output":[]}}`)); err != nil {
-		t.Fatal(err)
-	}
-	exchange, _, err := session.Prepare(nil, []byte(`{"type":"response.created","response":{"id":"next"}}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	request := &codexresponses.Request{CachedInput: 1, Fields: map[string]json.RawMessage{"input": json.RawMessage(`[{"role":"developer","content":"changed"}]`)}}
-	_, err = exchange.Reconcile(request, true)
+	request.Fields["input"] = json.RawMessage(`[{"role":"developer","content":"changed"}]`)
+	_, err := exchange.Reconcile(request, true)
 	if err == nil || !strings.Contains(err.Error(), "cached provider history") {
 		t.Fatalf("automatic successor silently accepted a different prefix: %v", err)
 	}
