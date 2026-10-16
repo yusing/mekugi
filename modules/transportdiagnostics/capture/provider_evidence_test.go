@@ -146,7 +146,7 @@ func TestProviderEvidenceRetainsAttemptHeadersWithoutSecrets(t *testing.T) {
 		t.Fatal("durable attempt metadata incorrect")
 	}
 	for _, value := range []string{"unsafe\ntext", "text with spaces", strings.Repeat("x", 257), "<script>"} {
-		if safeProviderIdentifier(value) != "" {
+		if safeDiagnosticIdentifier(value) != "" {
 			t.Fatal("unsafe identifier accepted")
 		}
 	}

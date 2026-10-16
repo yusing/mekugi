@@ -91,7 +91,7 @@ eligibility, residency, hidden token-prefix equality or router-caused misses.
 Provider attempts retain allowlisted request/model identifiers, returned service
 tier and terminal cached-token evidence separately from requested-model identity
 and normalized usage. Header and body model claims remain distinct. Identifiers
-are limited to 256 ASCII letters, digits and `-_.:/`; invalid values are omitted.
+are limited to 256 ASCII letters, digits and `-_.:/`; invalid values and URLs are omitted.
 Private provider request IDs may appear in local details, not public summaries.
 Per-response metadata replaces handshake evidence on reused connections.
 
@@ -155,6 +155,11 @@ allowlisted evidence above. They never contain credentials, prompts,
 instructions, arguments, command output, response text, patches or raw errors.
 These opt-in artifacts are outside managed session-history retention. Private
 debug instructions and AX logs have separate owners and privacy boundaries.
+
+Request identities, model and tool names are bounded operational identifiers;
+invalid values and URLs are omitted from capture and metrics without changing
+forwarded requests. Response status is a known protocol category, never arbitrary
+provider text. Omitted identity cannot establish a same-thread predecessor.
 
 ## Failure
 
