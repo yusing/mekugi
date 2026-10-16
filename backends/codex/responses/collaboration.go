@@ -1,4 +1,5 @@
-package router
+// Source: apps/mekugi/internal/router/subagent_bridge.go:1:235@[9436a9cb] native collaboration projection.
+package responses
 
 import (
 	"encoding/json"
@@ -6,9 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/yusing/mekugi/providers/grok"
-
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -22,15 +20,16 @@ type subagentBridge struct {
 	names map[string]bool
 }
 
-func prepareSubagentBridge(request *codexresponses.Request, grokEnabled, grokUnprefixed bool, openCode ...string) (*subagentBridge, error) {
-	grokModelNote := strings.ReplaceAll(grokModelInstruction, "%MODELS%", "`grok:"+strings.Join(grok.Models(), "`, `grok:")+"`")
-	if grokUnprefixed {
-		grokModelNote = strings.ReplaceAll(grokModelNote, "grok:", "")
-	}
-	openCodeNote := ""
-	if len(openCode) > 0 {
-		openCodeNote = " " + strings.ReplaceAll(opencodeSpawnInstruction, "%MODELS%", strings.Join(openCode, ", "))
-	}
+// CollaborationGuidance adds resolved provider advice beside native spawn fields.
+// Empty guidance adds no provider advice. Native validation constraints stay intact.
+type CollaborationGuidance struct {
+	SpawnDescription string
+	SpawnArguments   map[string]string
+}
+
+// PrepareCollaboration projects native collaboration into its plaintext namespace
+// and returns the corresponding response transform. The caller owns turn eligibility.
+func PrepareCollaboration(request *Request, guidance CollaborationGuidance) (Transformer, error) {
 	bridge := &subagentBridge{names: make(map[string]bool)}
 	var projectTools func(json.RawMessage) (json.RawMessage, error)
 	projectTools = func(raw json.RawMessage) (json.RawMessage, error) {
@@ -54,8 +53,8 @@ func prepareSubagentBridge(request *codexresponses.Request, grokEnabled, grokUnp
 				}
 				for _, fn := range functions {
 					bridge.names[responses.StringField(fn, "name")] = true
-					if openCodeNote != "" && responses.StringField(fn, "name") == "spawn_agent" {
-						fn["description"] = responses.MustMarshalJSON(responses.StringField(fn, "description") + openCodeNote)
+					if guidance.SpawnDescription != "" && responses.StringField(fn, "name") == "spawn_agent" {
+						fn["description"] = responses.MustMarshalJSON(responses.StringField(fn, "description") + " " + guidance.SpawnDescription)
 					}
 					// Remove only the provider's message encryption annotation, not arbitrary
 					// schema keywords or strictness owned by the collaboration runtime.
@@ -76,12 +75,8 @@ func prepareSubagentBridge(request *codexresponses.Request, grokEnabled, grokUnp
 							delete(message, "encrypted")
 							properties["message"] = responses.MustMarshalJSON(message)
 						}
-						if grokEnabled && responses.StringField(fn, "name") == "spawn_agent" {
-							for name, note := range map[string]string{
-								"model":            grokModelNote,
-								"fork_turns":       grokForkTurnsInstruction,
-								"reasoning_effort": grokReasoningEffortInstruction,
-							} {
+						if responses.StringField(fn, "name") == "spawn_agent" {
+							for name, note := range guidance.SpawnArguments {
 								raw, exists := properties[name]
 								if !exists {
 									continue

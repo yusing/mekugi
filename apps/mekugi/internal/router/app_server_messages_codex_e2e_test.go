@@ -188,7 +188,7 @@ func (p *appServerDirectedMessageProvider) forwardExecution(_, _ context.Context
 	}
 	call := func(name string, args any) map[string]any {
 		return map[string]any{"type": "function_call", "id": fmt.Sprintf("fc_%s_%d", thread, turn),
-			"call_id": fmt.Sprintf("call_%s_%d", thread, turn), "name": name, "namespace": subagentBridgeNamespace,
+			"call_id": fmt.Sprintf("call_%s_%d", thread, turn), "name": name, "namespace": "mekugi_collaboration",
 			"arguments": string(responses.MustMarshalJSON(args)), "status": "completed"}
 	}
 	answer := func(text string) map[string]any {

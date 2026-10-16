@@ -53,6 +53,27 @@ func providerCodecPolicy(d codexresponses.Diagnostics) codexresponses.Policy {
 	}
 }
 
+// collaborationGuidance resolves invocation-specific provider advice without
+// changing native collaboration schemas or choosing tool eligibility.
+func collaborationGuidance(grokEnabled, grokUnprefixed bool, openCode ...string) codexresponses.CollaborationGuidance {
+	var guidance codexresponses.CollaborationGuidance
+	if grokEnabled {
+		modelNote := strings.ReplaceAll(grokModelInstruction, "%MODELS%", "`grok:"+strings.Join(grok.Models(), "`, `grok:")+"`")
+		if grokUnprefixed {
+			modelNote = strings.ReplaceAll(modelNote, "grok:", "")
+		}
+		guidance.SpawnArguments = map[string]string{
+			"model":            modelNote,
+			"fork_turns":       grokForkTurnsInstruction,
+			"reasoning_effort": grokReasoningEffortInstruction,
+		}
+	}
+	if len(openCode) > 0 {
+		guidance.SpawnDescription = strings.ReplaceAll(opencodeSpawnInstruction, "%MODELS%", strings.Join(openCode, ", "))
+	}
+	return guidance
+}
+
 // providerRequest holds transport decisions separately from the opaque codec.
 type providerRequest struct {
 	body   map[string]any

@@ -1,4 +1,4 @@
-package router
+package responses
 
 import (
 	"encoding/json"
@@ -8,7 +8,11 @@ import (
 )
 
 func TestSubagentBridgePreservesReplayFieldEncoding(t *testing.T) {
-	bridge := &subagentBridge{names: map[string]bool{"spawn_agent": true}}
+	request := bridgeTestRequest(t, false)
+	bridge, err := PrepareCollaboration(&request, CollaborationGuidance{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, item := range []string{
 		`{"type":"custom_tool_call","name":"shell","input":"echo '<>&'","call_id":"c"}`,
 		`{"type":"custom_tool_call","name":"shell","input":"echo '\u003c\u003e\u0026'","call_id":"c"}`,

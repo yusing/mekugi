@@ -2,11 +2,15 @@
 
 ## Purpose and scope
 
-Adapt Codex's Responses requests and native tool identities to a selected Chat
-Completions, Messages, or Responses endpoint, then emit the Responses lifecycle
-Codex consumes. The caller supplies resolved provider policy and diagnostics.
-Provider authentication, model selection, HTTP transport and native tool execution
-remain with their existing owners.
+Own Codex Responses request adaptation, native collaboration projection and
+response framing. Endpoint translation supports Chat Completions, Messages and
+Responses. The caller selects eligible turns and supplies resolved provider policy,
+spawn guidance and diagnostics. Provider authentication, model selection, HTTP
+transport and native tool execution remain with their existing owners.
+
+The [native-agent continuity contract](../../../docs/contracts/provider-routing.md#plaintext-collaboration)
+defines plaintext collaboration, history preservation and native-call restoration
+for both ordinary OpenAI and third-party requests.
 
 ## Request envelopes and catalogs
 
@@ -147,8 +151,8 @@ Provider-specific obligations remain in the [Grok](../../../providers/grok/SPEC.
 and [OpenCode](../../../providers/opencode/SPEC.md) specifications; cross-owner
 obligations remain in [provider routing](../../../docs/contracts/provider-routing.md).
 
-Package tests cover tool identity, custom input, wait aliases, fragmented and
-parallel calls, terminal integrity, reasoning replay, endpoint settings, and
-caller diagnostics. Router acceptance covers selected policy, actual transport,
-provider errors, cancellation, and capture. Installed-Codex checks establish the
+Package tests cover native collaboration and tool identity, custom input, wait
+aliases, fragmented and parallel calls, terminal integrity, reasoning replay,
+endpoint settings and caller diagnostics. Router acceptance covers selected policy,
+actual transport, provider errors, cancellation and capture. Installed-Codex checks establish the
 host consumption boundary separately from offline encoding tests.

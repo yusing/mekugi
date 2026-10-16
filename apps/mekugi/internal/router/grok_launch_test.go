@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
-
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/yusing/mekugi/libraries/httptransport"
@@ -40,7 +40,7 @@ func TestGrokLaunchRejectsWrongNamespacesAndOpenAI(t *testing.T) {
 
 func TestGrokDedicatedSpawnGuidance(t *testing.T) {
 	request := bridgeTestRequest(t, false)
-	if _, err := prepareSubagentBridge(&request, true, true); err != nil {
+	if _, err := codexresponses.PrepareCollaboration(&request, collaborationGuidance(true, true)); err != nil {
 		t.Fatal(err)
 	}
 	for _, model := range grok.Models() {

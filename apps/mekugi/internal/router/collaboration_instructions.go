@@ -2,9 +2,6 @@ package router
 
 import _ "embed"
 
-//go:embed instructions/collaboration_namespace.md
-var collaborationNamespaceInstruction string
-
 //go:embed instructions/opencode_spawn.md
 var opencodeSpawnInstruction string
 
