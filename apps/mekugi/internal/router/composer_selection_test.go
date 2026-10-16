@@ -4,6 +4,8 @@ import (
 	"encoding/json/jsontext"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -34,7 +36,7 @@ func TestComposerSelectionMentionIsOneToken(t *testing.T) {
 	if want := "see [Selected message] [Selected message 2] "; u.Text != want {
 		t.Fatalf("draft = %q, want %q", u.Text, want)
 	}
-	spans := u.draftSnapshot().displaySpans()
+	spans := draftDisplaySpans(u.draftSnapshot().Draft)
 	if len(spans) != 2 || spans[0].Kind != activityui.SelectionToken || u.Text[spans[1].Start:spans[1].End] != "[Selected message 2]" {
 		t.Fatalf("spans = %+v", spans)
 	}
@@ -49,7 +51,7 @@ func TestComposerSelectionMentionIsOneToken(t *testing.T) {
 		t.Fatalf("undo lost token: %+v", u.Selections)
 	}
 	// Queue joining shifts later entries' tokens.
-	joined := joinDrafts(composerDraft{Text: "x"}, u.draftSnapshot())
+	joined := conversationmodel.Join(conversationmodel.Input{Text: "x"}, u.draftSnapshot())
 	if got := joined.Selections[0]; joined.Text[got.Start:got.End] != "[Selected message]" {
 		t.Fatalf("joined token = %q", joined.Text[got.Start:got.End])
 	}
@@ -224,7 +226,7 @@ func TestComposerSelectionReviewEdges(t *testing.T) {
 	t.Run("pending labels stay distinct", func(t *testing.T) {
 		u, _ := newAppServerTestUI()
 		u.insertSelection("message", "one", "")
-		u.queued = append(u.queued, u.takeDraft())
+		u.conversation().Queued = append(u.conversation().Queued, u.takeDraft())
 		u.insertSelection("message", "two", "")
 		if u.Text != "[Selected message 2] " {
 			t.Fatalf("queued label reused: %q", u.Text)

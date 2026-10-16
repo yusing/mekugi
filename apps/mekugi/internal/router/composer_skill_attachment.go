@@ -10,6 +10,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
@@ -62,7 +64,7 @@ func readSkillAttachment(ctx context.Context, cwd string, environment []string, 
 	data, err := composer.ReadFile(path)
 	return data, false, err
 }
-func (u *appServerUI) snapshotDraftSkills(d *composerDraft) {
+func (u *appServerUI) snapshotDraftSkills(d *conversationmodel.Input) {
 	d.SnapshotSkills(func(name, path string) ([]byte, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()

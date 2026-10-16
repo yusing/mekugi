@@ -3,6 +3,7 @@ package router
 import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 
 	"encoding/json/jsontext"
@@ -222,7 +223,7 @@ func (u *appServerUI) observeQuestionItem(thread, turn string, item appServerIte
 
 func (u *appServerUI) saveUnsentAnswer(d composer.Draft) {
 	if d.Text != "" {
-		u.rememberInput(composerDraft{Draft: d})
+		u.rememberInput(conversationmodel.Input{Draft: d})
 		u.setNotice("unsent answer saved to input history", false)
 	}
 }
@@ -404,7 +405,7 @@ func (u *appServerUI) submitQuestions() error {
 	if c.sudo != nil {
 		return u.submitSudoPassword(c)
 	}
-	attached := questionAnswerAttachments(c)
+	attached := questionAnswerAttachments(&c.Call, c.secrets, c.secretAnswers)
 	if len(c.request) > 0 {
 		if err := u.requests.Respond(c.request, conversationbinding.QuestionResponse(&c.Call, c.secretAnswers)); err != nil {
 			return err
@@ -415,8 +416,8 @@ func (u *appServerUI) submitQuestions() error {
 		clear(c.secretAnswers)
 		u.renderQuestionRecord(c)
 		if len(attached.AnswerImages) > 0 || len(attached.Attachments) > 0 {
-			d := composerDraft{Draft: attached}
-			d.Text, d.questionCall, d.InHistory = "Attachments accompanying answers to "+c.Item+":\n", c, true
+			d := conversationmodel.Input{Draft: attached}
+			d.Text, d.Question, d.InHistory = "Attachments accompanying answers to "+c.Item+":\n", &c.Call, true
 			d.AnswerImages = nil
 			for i, path := range attached.AnswerImages {
 				label := fmt.Sprintf("[Image %d]", i+1)
@@ -424,7 +425,7 @@ func (u *appServerUI) submitQuestions() error {
 				d.Text += label + "\n"
 				d.Images = append(d.Images, composer.Token{Start: start, End: start + len(label), Path: path})
 			}
-			u.unsent = append(u.unsent, d)
+			u.conversation().Unsent = append(u.conversation().Unsent, d)
 			return u.flushInput()
 		}
 		return nil
@@ -438,14 +439,14 @@ func (u *appServerUI) submitQuestions() error {
 		return nil
 	}
 	attached.Text, attached.InHistory = reply, true
-	u.unsent = append(u.unsent, composerDraft{Draft: attached, questionCall: c})
+	u.conversation().Unsent = append(u.conversation().Unsent, conversationmodel.Input{Draft: attached, Question: &c.Call, ReplyCount: len(binding.QuestionReplies(reply))})
 	u.renderQuestionRecord(c)
 	return u.flushInput()
 }
 
 // Answers use composer attachment snapshots. Keep the async reply envelope
 // intact while the host processes accompanying images and quoted selections.
-func questionAnswerAttachments(c *nativeQuestionCall) composer.Draft {
+func questionAnswerAttachments(c *prompt.Call, secrets map[int]questionEditor, secretAnswers map[int][]string) composer.Draft {
 	var paths []string
 	var drafts []composer.Draft
 	for i := range c.Questions {
@@ -455,7 +456,7 @@ func questionAnswerAttachments(c *nativeQuestionCall) composer.Draft {
 		}
 		d := q.Editor.Snapshot.Draft
 		if q.IsSecret {
-			d = c.secrets[i].Snapshot.Draft
+			d = secrets[i].Snapshot.Draft
 		}
 		if len(d.Images) == 0 && !c.Sync && q.Selected < len(q.Choices) {
 			continue // Async option-only replies do not submit the parked free text.
@@ -477,7 +478,7 @@ func questionAnswerAttachments(c *nativeQuestionCall) composer.Draft {
 			answer = []string{q.Choices[q.Selected].Label, text}
 		}
 		if q.IsSecret {
-			c.secretAnswers[i] = answer
+			secretAnswers[i] = answer
 		} else {
 			q.Answer = answer
 		}
@@ -489,24 +490,25 @@ func questionAnswerAttachments(c *nativeQuestionCall) composer.Draft {
 
 // Already-transmitted input belongs to Codex. Only local unsent batches can
 // be rebuilt after another client answers some or all of their questions.
-func pendingQuestionReplies(parts []composerDraft) []composerDraft {
-	var pending []composerDraft
+func pendingQuestionReplies(parts []conversationmodel.Input) []conversationmodel.Input {
+	var pending []conversationmodel.Input
 	for _, part := range parts {
-		c := part.questionCall
+		c := part.Question
 		if c == nil {
 			pending = append(pending, part)
 			continue
 		}
-		if len(c.request) > 0 {
+		if c.Sync {
 			pending = append(pending, part) // Sync attachments follow the completed tool response.
 			continue
 		}
 		if c.Resolved {
 			continue
 		}
-		attached := questionAnswerAttachments(c)
+		attached := questionAnswerAttachments(c, nil, nil)
 		part.AnswerImages, part.Attachments, part.AttachmentNotice = attached.AnswerImages, attached.Attachments, attached.AttachmentNotice
-		part.Text = conversationbinding.PendingQuestionReply(&c.Call, part.Text)
+		part.Text = conversationbinding.PendingQuestionReply(c, part.Text)
+		part.ReplyCount = len(binding.QuestionReplies(part.Text))
 		if part.Text == "" {
 			continue
 		}
@@ -549,16 +551,18 @@ func (u *appServerUI) commitQuestionReplies(item appServerItem, turn string) {
 		}
 	}
 }
-func (u *appServerUI) rejectQuestionParts(parts []composerDraft) []composerDraft {
-	var ordinary []composerDraft
+func (u *appServerUI) rejectQuestionParts(parts []conversationmodel.Input) []conversationmodel.Input {
+	var ordinary []conversationmodel.Input
 	for _, p := range parts {
-		c := p.questionCall
-		if c == nil || len(c.request) > 0 {
+		c := p.Question
+		if c == nil || c.Sync {
 			ordinary = append(ordinary, p)
 			continue
 		}
 		if c.Reject() {
-			u.renderQuestionRecord(c)
+			if handle := u.questions.handles[c]; handle != nil {
+				u.renderQuestionRecord(handle)
+			}
 		}
 	}
 	return ordinary

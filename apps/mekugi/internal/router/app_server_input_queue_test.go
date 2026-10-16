@@ -92,8 +92,8 @@ func TestAppServerSteersStackUntilSendable(t *testing.T) {
 		t.Fatalf("steer identity: %+v", first.Params)
 	}
 	appServerTestKeys(t, u, "second\rthird\r")
-	if requests := appServerTurnRequests(t, w); len(requests) != 0 || len(u.unsent) != 2 {
-		t.Fatalf("steer sent while another was unresolved: %+v unsent=%d", requests, len(u.unsent))
+	if requests := appServerTurnRequests(t, w); len(requests) != 0 || len(u.conversation().Unsent) != 2 {
+		t.Fatalf("steer sent while another was unresolved: %+v unsent=%d", requests, len(u.conversation().Unsent))
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"t"}}`, first.ID))
 	stacked := appServerOneRequest(t, w, "turn/steer", "second\nthird")
@@ -105,7 +105,7 @@ func TestAppServerSteersStackUntilSendable(t *testing.T) {
 	appServerTestUserMessage(t, u, "user-1", first.Params.ClientUserMessageID, "first")
 	appServerTestUserMessage(t, u, "user-2", stacked.Params.ClientUserMessageID, "second\nthird")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"t"}}`, stacked.ID))
-	if len(u.Steers()) != 0 || len(u.inputPayloads) != 0 || len(u.pendingInputPreview(80)) != 0 {
+	if len(u.Steers()) != 0 || len(u.conversation().Submitted) != 0 || len(u.pendingInputPreview(80)) != 0 {
 		t.Fatalf("committed steers still pending: %+v", u.Steers())
 	}
 	if len(u.view.Entries) != 2 || u.view.Entries[1].Source.Text != "second\nthird" {
@@ -131,11 +131,11 @@ func TestAppServerStartPayloadRetiresAfterCommitAndAcknowledgement(t *testing.T)
 				first, second = commit, ack
 			}
 			first()
-			if len(u.inputPayloads) != 1 {
+			if len(u.conversation().Submitted) != 1 {
 				t.Fatal("payload retired before both observations")
 			}
 			second()
-			if len(u.inputPayloads) != 0 || u.InputPending() || u.PendingStart() != "" {
+			if len(u.conversation().Submitted) != 0 || u.InputPending() || u.PendingStart() != "" {
 				t.Fatal("settled submission retained payload or operation metadata")
 			}
 			if len(u.InputHistory) != 1 || u.InputHistory[0].Text != "task" || len(u.view.Entries) != 1 {
@@ -152,7 +152,7 @@ func TestAppServerProgrammaticTurnResponseHasNoComposerPayload(t *testing.T) {
 	}
 	request := appServerOneRequest(t, wire, "turn/start", "host input")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"t"}}}`, request.ID))
-	if len(u.inputPayloads) != 0 || u.InputPending() || len(u.InputHistory) != 0 {
+	if len(u.conversation().Submitted) != 0 || u.InputPending() || len(u.InputHistory) != 0 {
 		t.Fatal("programmatic request acquired composer payload or pending input")
 	}
 }
@@ -161,12 +161,12 @@ func TestAppServerQueuedInputStacksIntoNextTurn(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestTurn(t, u, "t")
 	appServerTestKeys(t, u, "one\ttwo\t")
-	if requests := appServerTurnRequests(t, w); len(requests) != 0 || len(u.queued) != 2 || u.Text != "" {
+	if requests := appServerTurnRequests(t, w); len(requests) != 0 || len(u.conversation().Queued) != 2 || u.Text != "" {
 		t.Fatalf("queued input sent early: %+v", requests)
 	}
 	appServerTestTurnEnd(t, u, "t", "completed")
 	start := appServerOneRequest(t, w, "turn/start", "one\ntwo")
-	if len(u.queued) != 0 || !u.Starting() || len(u.view.Entries) != 1 || u.view.Entries[0].Source.Text != "one\ntwo" {
+	if len(u.conversation().Queued) != 0 || !u.Starting() || len(u.view.Entries) != 1 || u.view.Entries[0].Source.Text != "one\ntwo" {
 		t.Fatalf("queued turn not started and echoed: %+v", u.view.Entries)
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"t2"}}}`, start.ID))
@@ -219,7 +219,7 @@ func TestAppServerInterruptRestoresSteersAndQueuedInput(t *testing.T) {
 		t.Fatalf("steered the interrupted turn: %+v", requests)
 	}
 	appServerTestTurnEnd(t, u, "t", "interrupted")
-	if requests := appServerTurnRequests(t, w); len(requests) != 0 || u.Text != "accepted\ntyped while interrupting\nlater" || len(u.queued)+len(u.unsent) != 0 {
+	if requests := appServerTurnRequests(t, w); len(requests) != 0 || u.Text != "accepted\ntyped while interrupting\nlater" || len(u.conversation().Queued)+len(u.conversation().Unsent) != 0 {
 		t.Fatalf("input not restored: requests=%+v draft=%q", requests, u.Text)
 	}
 }
@@ -273,7 +273,7 @@ func TestAppServerPlainInterruptRestoresQueuedInput(t *testing.T) {
 	}
 	appServerTestKeys(t, u, "draft")
 	appServerTestTurnEnd(t, u, "t", "interrupted")
-	if u.Text != "queued\ndraft" || len(u.queued) != 0 || len(appServerTurnRequests(t, w)) != 0 {
+	if u.Text != "queued\ndraft" || len(u.conversation().Queued) != 0 || len(appServerTurnRequests(t, w)) != 0 {
 		t.Fatalf("queued input not returned to composer: %q", u.Text)
 	}
 }
@@ -283,11 +283,11 @@ func TestAppServerEditQueuedStack(t *testing.T) {
 	appServerTestTurn(t, u, "t")
 	appServerTestKeys(t, u, "one\ttwo\tdraft")
 	appServerTestKeys(t, u, "\x1b[1;3A")
-	if u.Text != "one\ntwo\ndraft" || len(u.queued) != 0 {
-		t.Fatalf("alt+up edited %q, queued %+v", u.Text, u.queued)
+	if u.Text != "one\ntwo\ndraft" || len(u.conversation().Queued) != 0 {
+		t.Fatalf("alt+up edited %q, queued %+v", u.Text, u.conversation().Queued)
 	}
 	appServerTestKeys(t, u, "\x1b[1;2D")
-	if u.Text != "one\ntwo\ndraft" || len(u.queued) != 0 || w.Len() != 0 {
+	if u.Text != "one\ntwo\ndraft" || len(u.conversation().Queued) != 0 || w.Len() != 0 {
 		t.Fatalf("shift+left edited %q", u.Text)
 	}
 	appServerTestTurnEnd(t, u, "t", "completed")
@@ -371,7 +371,7 @@ func TestAppServerRejectedStartReturnsInputStackedBehindIt(t *testing.T) {
 	start := appServerOneRequest(t, w, "turn/start", "A")
 	appServerTestKeys(t, u, "steer\rB\t")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, start.ID))
-	if requests := appServerTurnRequests(t, w); len(requests) != 0 || u.Text != "A\nsteer\nB" || len(u.unsent)+len(u.queued) != 0 {
+	if requests := appServerTurnRequests(t, w); len(requests) != 0 || u.Text != "A\nsteer\nB" || len(u.conversation().Unsent)+len(u.conversation().Queued) != 0 {
 		t.Fatalf("stacked input jumped a rejected start: %+v draft=%q", requests, u.Text)
 	}
 }
@@ -442,7 +442,7 @@ func TestAppServerInterruptLocallyStackedInputDoesNotQuit(t *testing.T) {
 	u.Settings.BeginLive()
 	appServerTestKeys(t, u, "not sent\r")
 	quit, err := u.key(3)
-	if quit || err != nil || u.Text != "not sent" || len(u.unsent) != 0 || w.Len() != 0 {
+	if quit || err != nil || u.Text != "not sent" || len(u.conversation().Unsent) != 0 || w.Len() != 0 {
 		t.Fatalf("quit=%v err=%v draft=%q requests=%s", quit, err, u.Text, w.String())
 	}
 }
@@ -455,8 +455,8 @@ func TestAppServerEditAllWaitingInput(t *testing.T) {
 			appServerTestKeys(t, u, "host owned\r")
 			sent := appServerOneRequest(t, w, "turn/steer", "host owned")
 			appServerTestKeys(t, u, "first\rsecond\rqueued\tdraft\x1b[D"+key)
-			if u.Text != "first\nsecond\nqueued\ndraft" || u.CursorBack != 1 || len(u.unsent)+len(u.queued) != 0 || u.inputPayloads[u.Submission().ID].Text != "host owned" {
-				t.Fatalf("dequeue: draft=%q cursorBack=%d submission=%q", u.Text, u.CursorBack, u.inputPayloads[u.Submission().ID].Text)
+			if u.Text != "first\nsecond\nqueued\ndraft" || u.CursorBack != 1 || len(u.conversation().Unsent)+len(u.conversation().Queued) != 0 || u.conversation().Submitted[u.Submission().ID].Text != "host owned" {
+				t.Fatalf("dequeue: draft=%q cursorBack=%d submission=%q", u.Text, u.CursorBack, u.conversation().Submitted[u.Submission().ID].Text)
 			}
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"t"}}`, sent.ID))
 			if len(appServerTurnRequests(t, w)) != 0 {

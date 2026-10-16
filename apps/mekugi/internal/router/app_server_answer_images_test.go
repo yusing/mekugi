@@ -40,7 +40,7 @@ func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 	questionTestPaint(t, u, 70)
 	first, second := answerImageFixture(t), answerImageFixture(t)
 	appServerTestKeys(t, u, "\x1b[200~"+first+"\x1b[201~")
-	if u.Text != "[Image 1] " || len(u.Images) != 1 || len(u.draftSnapshot().displaySpans()) != 1 {
+	if u.Text != "[Image 1] " || len(u.Images) != 1 || len(draftDisplaySpans(u.draftSnapshot().Draft)) != 1 {
 		t.Fatalf("answer did not reuse composer: %q %+v", u.Text, u.Images)
 	}
 	u.insertSelection("message", "first quote", "")
@@ -80,7 +80,7 @@ func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 	if !ok || len(frames) != 2 || !strings.HasSuffix(frames[0], "\nfirst quote") || !strings.HasSuffix(frames[1], "\nsecond quote") {
 		t.Fatalf("answer selections lost: %q", frames)
 	}
-	content, err := json.Marshal(conversationbinding.Input(u.inputPayloads[u.Submission().ID].Draft))
+	content, err := json.Marshal(conversationbinding.Input(u.conversation().Submitted[u.Submission().ID].Draft))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 	if !ok || len(binding.QuestionReplies(text)) != 2 || len(spans) != 0 {
 		t.Fatalf("reply images created a user band: %q %+v", text, spans)
 	}
-	questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{"id": "reply", "type": "userMessage", "clientUserMessageId": u.Submission().ID, "content": conversationbinding.Input(u.inputPayloads[u.Submission().ID].Draft)}})
+	questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{"id": "reply", "type": "userMessage", "clientUserMessageId": u.Submission().ID, "content": conversationbinding.Input(u.conversation().Submitted[u.Submission().ID].Draft)}})
 	for _, q := range u.questionCalls()[0].Questions {
 		if q.Outcome != "answered" {
 			t.Fatalf("image answer not committed: %+v", q)
@@ -109,7 +109,7 @@ func TestQuestionSyncImageSendsHostOwnedCompanion(t *testing.T) {
 	if !strings.Contains(wire.String(), `"user_note: [Image 1] "`) || strings.Contains(wire.String(), `"localImage"`) {
 		t.Fatalf("sync tool response must be strings, companion waits for resolution: %s", wire.String())
 	}
-	if len(u.unsent) != 1 || len(u.unsent[0].Images) != 1 {
+	if len(u.conversation().Unsent) != 1 || len(u.conversation().Unsent[0].Images) != 1 {
 		t.Fatal("missing image companion")
 	}
 	wire.Reset()
@@ -187,7 +187,7 @@ func TestQuestionSecretDraftKeepsImageWithoutExposingModelState(t *testing.T) {
 	u.openQuestions()
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "\r")
-	if !strings.Contains(wire.String(), "user_note: [Image 1]") || len(u.unsent) != 1 || len(u.unsent[0].Images) != 1 {
+	if !strings.Contains(wire.String(), "user_note: [Image 1]") || len(u.conversation().Unsent) != 1 || len(u.conversation().Unsent[0].Images) != 1 {
 		t.Fatal("secret answer image companion lost")
 	}
 	if len(call.secrets) != 0 || len(call.secretAnswers) != 0 || len(call.Questions[0].Answer) != 0 {

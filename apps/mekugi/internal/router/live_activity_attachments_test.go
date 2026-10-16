@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
@@ -27,7 +29,7 @@ func TestLiveActivityAttachmentOutcomes(t *testing.T) {
 	if err := os.WriteFile(path, []byte(strings.Repeat("private file contents\n", 1500)), 0600); err != nil {
 		t.Fatal(err)
 	}
-	draft := composerDraft{Text: "Review files", Files: []composer.Token{{Path: path}, {Path: filepath.Join(cwd, "missing.txt")}}}
+	draft := conversationmodel.Input{Text: "Review files", Files: []composer.Token{{Path: path}, {Path: filepath.Join(cwd, "missing.txt")}}}
 	draft.SnapshotFiles(cwd)
 	content, err := json.Marshal(conversationbinding.Input(draft.Draft))
 	if err != nil {
@@ -247,7 +249,7 @@ func TestUISnapshotDirectoryAttachment(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	draft := composerDraft{Text: "Review @src", Files: []composer.Token{{Path: "src"}}}
+	draft := conversationmodel.Input{Text: "Review @src", Files: []composer.Token{{Path: "src"}}}
 	draft.SnapshotFiles(cwd)
 	content, _ := json.Marshal(conversationbinding.Input(draft.Draft))
 	v := sharedEventsView(false)
@@ -266,15 +268,15 @@ func TestUISnapshotDirectoryAttachment(t *testing.T) {
 func TestLiveActivityAttachmentStackedSnapshots(t *testing.T) {
 	for _, skill := range []bool{false, true} {
 		for _, second := range []string{"first\n", "second\n"} {
-			var drafts []composerDraft
+			var drafts []conversationmodel.Input
 			for _, body := range []string{"first\n", second} {
 				frames := composer.FileFrames("/workspace/sample.txt", body)
 				if skill {
 					frames = composer.SkillFrames("guide", "/workspace/SKILL.md", body)
 				}
-				drafts = append(drafts, composerDraft{Text: "review", Attachments: []string{attachments.Encode(frames)}})
+				drafts = append(drafts, conversationmodel.Input{Text: "review", Attachments: []string{attachments.Encode(frames)}})
 			}
-			joined := joinDrafts(drafts...)
+			joined := conversationmodel.Join(drafts...)
 			content, err := json.Marshal(conversationbinding.Input(joined.Draft))
 			if err != nil {
 				t.Fatal(err)

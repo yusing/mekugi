@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/modules/conversation/composer"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
@@ -45,7 +45,7 @@ func TestAppServerNotificationsNativeCodexE2E(t *testing.T) {
 	if err := pty.Setsize(outer, &pty.Winsize{Cols: 100, Rows: 30}); err != nil {
 		t.Fatal(err)
 	}
-	wait, err := startAppServerUI(composer.Service{}, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, cmd, inner, inner, nil, nil, "", true, nil, nil, nil, "", nil, false)
+	wait, err := startAppServerUI(new(conversationmodel.Service), new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, cmd, inner, inner, nil, nil, "", true, nil, nil, nil, "", nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}

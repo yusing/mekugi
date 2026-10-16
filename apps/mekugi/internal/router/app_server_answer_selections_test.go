@@ -38,9 +38,9 @@ func TestQuestionSelectedTextUsesComposerAttachments(t *testing.T) {
 			appServerTestKeys(t, u, "**This?**")
 			if mode == "async option" {
 				appServerTestKeys(t, u, "\x1b[A\r")
-				replies := binding.QuestionReplies(u.inputPayloads[u.Submission().ID].Text)
-				if len(replies) != 1 || replies[0].Answer != "Internal" || len(conversationbinding.Input(u.inputPayloads[u.Submission().ID].Draft)) != 1 {
-					t.Fatalf("option sent unsubmitted free text: %+v", conversationbinding.Input(u.inputPayloads[u.Submission().ID].Draft))
+				replies := binding.QuestionReplies(u.conversation().Submitted[u.Submission().ID].Text)
+				if len(replies) != 1 || replies[0].Answer != "Internal" || len(conversationbinding.Input(u.conversation().Submitted[u.Submission().ID].Draft)) != 1 {
+					t.Fatalf("option sent unsubmitted free text: %+v", conversationbinding.Input(u.conversation().Submitted[u.Submission().ID].Draft))
 				}
 				return
 			}
@@ -51,12 +51,12 @@ func TestQuestionSelectedTextUsesComposerAttachments(t *testing.T) {
 				}
 				questionTestMessage(t, u, nil, "serverRequest/resolved", map[string]any{"threadId": "main", "requestId": "selected"})
 			} else {
-				replies := binding.QuestionReplies(u.inputPayloads[u.Submission().ID].Text)
+				replies := binding.QuestionReplies(u.conversation().Submitted[u.Submission().ID].Text)
 				if len(replies) != 1 || replies[0].Answer != "[Selected message] **This?**" {
 					t.Fatalf("wrong async answer: %+v", replies)
 				}
 			}
-			input := conversationbinding.Input(u.inputPayloads[u.Submission().ID].Draft)
+			input := conversationbinding.Input(u.conversation().Submitted[u.Submission().ID].Draft)
 			frames, ok := attachments.Decode(input[len(input)-1]["text"].(string))
 			if !ok || len(frames) != 1 || !strings.HasSuffix(frames[0], "\nquoted") || !strings.Contains(frames[0], `"[Selected message]"`) {
 				t.Fatalf("selection lost in transport: %+v", input)
@@ -104,7 +104,7 @@ func TestQuestionSecretAndOrdinarySelectionsKeepDistinctLabels(t *testing.T) {
 		t.Fatal("secret draft entered neutral model")
 	}
 	questionTestMessage(t, u, nil, "serverRequest/resolved", map[string]any{"threadId": "main", "requestId": "mixed-selection"})
-	input := conversationbinding.Input(u.inputPayloads[u.Submission().ID].Draft)
+	input := conversationbinding.Input(u.conversation().Submitted[u.Submission().ID].Draft)
 	frames, ok := attachments.Decode(input[len(input)-1]["text"].(string))
 	if !ok || len(frames) != 2 || !strings.Contains(frames[0], `"[Selected message]"`) || !strings.HasSuffix(frames[0], "\nprivate quote") || !strings.Contains(frames[1], `"[Selected message 2]"`) || !strings.HasSuffix(frames[1], "\nordinary quote") {
 		t.Fatalf("companion selection frames = %q", frames)

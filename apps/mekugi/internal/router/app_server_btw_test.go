@@ -10,6 +10,8 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -109,8 +111,8 @@ func TestAppServerBTWIsolationAndFollowUp(t *testing.T) {
 			appServerTestMessage(t, u, `{"method":"thread/started","params":{"thread":{"id":"side"}}}`)
 			appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"side","turn":{"id":"side-turn"}}}`)
 			appServerTestMessage(t, u, `{"method":"item/agentMessage/delta","params":{"threadId":"side","turnId":"side-turn","itemId":"answer","delta":"**Side answer**"}}`)
-			if len(u.btw.answer) != 1 || u.btw.answer[0].text != "**Side answer**" {
-				t.Fatalf("stream missing: %+v", u.btw.answer)
+			if len(u.btw.Answer) != 1 || u.btw.Answer[0].Text != "**Side answer**" {
+				t.Fatalf("stream missing: %+v", u.btw.Answer)
 			}
 			appServerTestMessage(t, u, `{"method":"thread/tokenUsage/updated","params":{"threadId":"side","tokenUsage":{"total":{"inputTokens":9999,"outputTokens":123}}}}`)
 			appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"side","turn":{"id":"side-turn","status":"completed"}}}`)
@@ -134,7 +136,7 @@ func TestAppServerBTWBusyRetainsDraft(t *testing.T) {
 	u, w := newAppServerTestUI()
 	btwTestStart(t, u, w)
 	appServerTestKeys(t, u, "/btw next question\r")
-	if u.Text != "/btw next question" || w.Len() != 0 || u.btw.question != "why?" {
+	if u.Text != "/btw next question" || w.Len() != 0 || u.btw.Question != "why?" {
 		t.Fatalf("busy submission lost draft or sent: draft=%q wire=%s", u.Text, w.String())
 	}
 }
@@ -160,7 +162,7 @@ func TestAppServerBTWTurnFailureDetailsAreLocal(t *testing.T) {
 	u.Turn, u.status = "main-turn", "Working"
 	btwTestStart(t, u, w)
 	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"side","turn":{"id":"side-turn","status":"failed","error":{"message":"side model failed"}}}}`)
-	if u.btw.busy || !u.btw.alert || u.btw.status != "side model failed" || u.Turn != "main-turn" || u.status != "Working" {
+	if u.btw.Busy || !u.btw.Alert || u.btw.Status != "side model failed" || u.Turn != "main-turn" || u.status != "Working" {
 		t.Fatalf("side failure changed Main or lost detail: %+v", u.btw)
 	}
 }
@@ -199,11 +201,11 @@ func TestAppServerBTWAnswerBoundPreservesUTF8(t *testing.T) {
 		t.Fatal(err)
 	}
 	appServerTestMessage(t, u, `{"method":"item/agentMessage/delta","params":`+string(params)+`}`)
-	if len(u.btw.answer) != 1 {
-		t.Fatalf("answer items = %d", len(u.btw.answer))
+	if len(u.btw.Answer) != 1 {
+		t.Fatalf("answer items = %d", len(u.btw.Answer))
 	}
-	if len(u.btw.answer[0].text) > 256<<10 || !utf8.ValidString(u.btw.answer[0].text) || !u.btw.truncated {
-		t.Fatalf("answer bound invalid: bytes=%d valid=%v truncated=%v", len(u.btw.answer[0].text), utf8.ValidString(u.btw.answer[0].text), u.btw.truncated)
+	if len(u.btw.Answer[0].Text) > 256<<10 || !utf8.ValidString(u.btw.Answer[0].Text) || !u.btw.Truncated {
+		t.Fatalf("answer bound invalid: bytes=%d valid=%v truncated=%v", len(u.btw.Answer[0].Text), utf8.ValidString(u.btw.Answer[0].Text), u.btw.Truncated)
 	}
 }
 
@@ -216,7 +218,7 @@ func TestAppServerBTWCompletionBeforeStartAckKeepsNextDraft(t *testing.T) {
 	appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"side","turn":{"id":"first-turn"}}}`)
 	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"side","turn":{"id":"first-turn","status":"completed"}}}`)
 	appServerTestKeys(t, u, "/btw second\r")
-	if u.Text != "/btw second" || w.Len() != 0 || u.btw.question != "first" {
+	if u.Text != "/btw second" || w.Len() != 0 || u.btw.Question != "first" {
 		t.Fatalf("next side turn sent before first start ack: draft=%q request=%s", u.Text, w.String())
 	}
 	btwTestReply(t, u, start, `{"turn":{"id":"first-turn"}}`)
@@ -270,7 +272,7 @@ func TestAppServerBTWCloseInFlightDoesNotAffectReplacement(t *testing.T) {
 			unload := btwTestRequest(t, w, "thread/unsubscribe", "old-side")
 			btwTestReply(t, u, unload, `{}`)
 			appServerTestMessage(t, u, `{"method":"item/agentMessage/delta","params":{"threadId":"old-side","turnId":"old-turn","itemId":"a","delta":"late"}}`)
-			if u.btw != replacement || replacement.question != "replacement" || len(replacement.answer) != 0 || u.Turn != "main-turn" {
+			if u.btw != replacement || replacement.Question != "replacement" || len(replacement.Answer) != 0 || u.Turn != "main-turn" {
 				t.Fatal("late response affected replacement or main")
 			}
 		})
@@ -289,7 +291,7 @@ func TestAppServerBTWErrorsStayLocal(t *testing.T) {
 				r = btwTestRequest(t, w, "turn/start", "side")
 			}
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"side failed"}}`, r.ID))
-			if u.btw.busy || !u.btw.alert || !strings.Contains(u.btw.status, "side failed") || u.status != "Working" || u.Turn != "main-turn" || len(u.view.Entries) != 0 {
+			if u.btw.Busy || !u.btw.Alert || !strings.Contains(u.btw.Status, "side failed") || u.status != "Working" || u.Turn != "main-turn" || len(u.view.Entries) != 0 {
 				t.Fatalf("error leaked or side stayed busy: %+v", u.btw)
 			}
 		})
@@ -331,7 +333,7 @@ func TestAppServerBTWRejectedAttachmentsReturnWithNewDraft(t *testing.T) {
 			if _, err := os.Stat(path); err != nil {
 				t.Fatalf("rejected image removed: %v", err)
 			}
-			if u.btw.pending.Text != "" || w.Len() != 0 {
+			if u.btw.Pending.Text != "" || w.Len() != 0 {
 				t.Fatal("failed side input was automatically resent")
 			}
 		})
@@ -340,7 +342,7 @@ func TestAppServerBTWRejectedAttachmentsReturnWithNewDraft(t *testing.T) {
 
 func TestAppServerBTWRenderAndScroll(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.btw = &appServerBTW{question: "SIDE_QUESTION", status: "Answering", answer: []btwAnswer{{id: "a", text: "**FIRST_ANSWER**\n\n" + strings.Repeat("middle line\n\n", 30) + "LAST_ANSWER"}}}
+	u.btw = &appServerBTW{SideAnswer: &conversationmodel.SideAnswer{Question: "SIDE_QUESTION", Status: "Answering", Answer: []conversationmodel.Answer{{ID: "a", Text: "**FIRST_ANSWER**\n\n" + strings.Repeat("middle line\n\n", 30) + "LAST_ANSWER"}}}}
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
 	shell := u.shell

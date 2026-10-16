@@ -3,6 +3,8 @@ package router
 import (
 	"bytes"
 
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -236,7 +238,7 @@ func TestDirectoryAttachmentSnapshotAndProviderReplay(t *testing.T) {
 	if err := os.Rename(filepath.Join(root, "src/original.go"), filepath.Join(root, "src/changed.go")); err != nil {
 		t.Fatal(err)
 	}
-	if err := u.send([]composerDraft{draft}, false); err != nil {
+	if err := u.send([]conversationmodel.Input{draft}, false); err != nil {
 		t.Fatal(err)
 	}
 	requests := appServerTurnRequests(t, w)
@@ -283,7 +285,7 @@ func TestDirectoryAttachmentSnapshotAndProviderReplay(t *testing.T) {
 
 func TestDirectoryAttachmentSharedEnvelopeBudget(t *testing.T) {
 	root := directoryAttachmentRoot(t)
-	draft := composerDraft{}
+	draft := conversationmodel.Input{}
 	for i := range 16 {
 		dir := fmt.Sprintf("directory-%02d", i)
 		for j := range 80 {

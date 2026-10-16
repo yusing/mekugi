@@ -6,6 +6,7 @@ import (
 	"encoding/json/jsontext"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 
@@ -94,9 +95,7 @@ type appServerUI struct {
 	history  *history.Service
 	segments *reports.Service
 	sessioncontrol.Live
-	unsent, queued          []composerDraft
-	inputPayloads           map[string]composerSubmission
-	shellDraft              composerDraft
+	conversationState       *conversationmodel.Service
 	resumeThread, resumeCwd string
 	resumeConfig            map[string]any
 	resumeEvidence          preferences.Evidence
@@ -110,7 +109,6 @@ type appServerUI struct {
 	titleGenerator          *sessionNaming
 	titleUpdates            <-chan sessionTitleUpdate
 	btw                     *appServerBTW
-	btwThreads              map[string]*appServerBTW
 	notifications           *nativeNotifications
 	promptEditor            prompt.Editor
 	promptColumn            *int
@@ -183,14 +181,14 @@ type appServerUI struct {
 // StartAppServerUI starts the native terminal frontend without router observers.
 // Codex app-server owns execution; the launcher
 // still owns routing, environment, invocation-local configuration and cancellation.
-func StartAppServerUI(conversation composer.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, notices *notice.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
+func StartAppServerUI(conversation *conversationmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, notices *notice.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
 	faint, _ := terminalui.SupportsFaint(ctx, "auto")
 	issues := NewCriticalErrors(notices)
 	return startAppServerUI(conversation, activity, service, prefs, nil, ctx, cmd, stdin, stdout, nil, issues, resumeThread, faint, nil, nil, resumeArgv, "", nil, approvals)
 }
 
 // Codex approval policy and the invocation-local Shell guard are independent.
-func startAppServerUI(conversation composer.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *serviceTierSettings, capture *transportcapture.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, approvals bool) (func() error, error) {
+func startAppServerUI(conversation *conversationmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *serviceTierSettings, capture *transportcapture.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, approvals bool) (func() error, error) {
 	guardHash := ""
 	for _, entry := range cmd.Environ() {
 		if hash, ok := strings.CutPrefix(entry, shellhook.Environment+"="); ok {
@@ -219,7 +217,7 @@ func startAppServerUI(conversation composer.Service, activity *activitymodel.Ser
 	if err != nil {
 		return nil, err
 	}
-	u := &appServerUI{Editor: conversation.NewEditor(), session: appServerSession{activity: activity}, history: service, segments: segments, client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
+	u := &appServerUI{conversationState: conversation, session: appServerSession{activity: activity}, history: service, segments: segments, client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
 	u.attachActivity()
 	u.guardHookCheck.hash = guardHash
 	if generator != nil {
@@ -349,7 +347,7 @@ func startAppServerUI(conversation composer.Service, activity *activitymodel.Ser
 						}
 						u.dirty = true
 					case <-tick.C:
-						if len(u.unsent) > 0 && u.unsent[0].questionCall != nil && !u.proxy.emittingToolInput(u.session.cwd, u.Thread) {
+						if len(u.conversation().Unsent) > 0 && u.conversation().Unsent[0].Question != nil && !u.proxy.emittingToolInput(u.session.cwd, u.Thread) {
 							if err := u.flushInput(); err != nil {
 								return err
 							}
@@ -436,24 +434,24 @@ func startAppServerUI(conversation composer.Service, activity *activitymodel.Ser
 		}
 		u.finishCommandSegments()
 		u.execTrack.detachOutputs()
-		u.session.state = scope.Store{}
-		u.session.threadStates = nil
 		u.shell.review.Close()
 		u.hideQuestions()
 		u.hideApprovals()
-		if unsent := joinDrafts(slices.Concat(u.unsent, u.queued, []composerDraft{u.draftSnapshot()})...); unsent.Text != "" {
+		if unsent := conversationmodel.Join(slices.Concat(u.conversation().Unsent, u.conversation().Queued, []conversationmodel.Input{u.draftSnapshot()})...); unsent.Text != "" {
 			fmt.Fprintln(stdout, "Unsent draft:\n"+textsanitize.Safe(unsent.Text, false))
 		}
 		unknown := slices.Clone(u.Steers())
 		if !u.Submission().Committed {
 			unknown = append(unknown, u.Submission().ID)
 		}
-		if unknown := joinDrafts(u.steerParts(unknown)...); unknown.Text != "" {
+		if unknown := conversationmodel.Join(u.conversation().Parts(unknown)...); unknown.Text != "" {
 			fmt.Fprintln(stdout, "Submission outcome unknown; not automatically resent:\n"+textsanitize.Safe(unknown.Text, false))
 		}
-		if u.shellDraft.Text != "" {
-			fmt.Fprintln(stdout, "Shell submission outcome unknown; not automatically rerun:\n"+textsanitize.Safe(u.shellDraft.Text, false))
+		if u.conversation().Shell.Text != "" {
+			fmt.Fprintln(stdout, "Shell submission outcome unknown; not automatically rerun:\n"+textsanitize.Safe(u.conversation().Shell.Text, false))
 		}
+		u.session.state = scope.Store{}
+		u.session.threadStates = nil
 		if err != nil {
 			c.Diagnostics.Lock()
 			defer c.Diagnostics.Unlock()
@@ -613,8 +611,8 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		if method == "thread/compact/start" {
 			u.CompactResponse(m.Error != nil)
 			if m.Error != nil {
-				u.restoreDrafts(append([]composerDraft{{Text: "/compact"}}, slices.Concat(u.unsent, u.queued)...)...)
-				u.unsent, u.queued = nil, nil
+				u.restoreDrafts(append([]conversationmodel.Input{{Text: "/compact"}}, slices.Concat(u.conversation().Unsent, u.conversation().Queued)...)...)
+				u.conversation().Unsent, u.conversation().Queued = nil, nil
 				u.setNotice("Compaction failed: "+m.Error.Message, true)
 				u.status = "Ready"
 			}
@@ -623,8 +621,8 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		if method == "compact/interrupt" {
 			u.InterruptResponse(method, m.Error != nil)
 			if m.Error != nil {
-				u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
-				u.unsent, u.queued = nil, nil
+				u.restoreDrafts(slices.Concat(u.conversation().Unsent, u.conversation().Queued)...)
+				u.conversation().Unsent, u.conversation().Queued = nil, nil
 				u.setNotice("Could not interrupt for compaction: "+m.Error.Message, true)
 				u.status = "Ready"
 				if u.Turn != "" {
@@ -639,8 +637,8 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				// The completion can precede this rejection. Do not deliver
 				// steers that were moved to the local stack in that interval.
 				if restore {
-					u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
-					u.unsent, u.queued = nil, nil
+					u.restoreDrafts(slices.Concat(u.conversation().Unsent, u.conversation().Queued)...)
+					u.conversation().Unsent, u.conversation().Queued = nil, nil
 				}
 				u.setNotice("Could not interrupt to send steer: "+m.Error.Message, true)
 			}
@@ -651,8 +649,8 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		}
 		if method == "thread/start" && u.Replacement.Pending() && m.Error != nil {
 			u.Replacement.Finish()
-			u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
-			u.unsent, u.queued = nil, nil
+			u.restoreDrafts(slices.Concat(u.conversation().Unsent, u.conversation().Queued)...)
+			u.conversation().Unsent, u.conversation().Queued = nil, nil
 			u.status = "Ready"
 			u.setNotice("Could not clear session: "+m.Error.Message, true)
 			return nil
@@ -722,8 +720,6 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 					return err
 				}
 				u.LeaveThread()
-				u.inputPayloads = nil
-				u.shellDraft = composerDraft{}
 				u.resumeThread, u.resumeCwd = "", ""
 				u.releaseRetired(result.Thread.ID)
 				if method == "thread/resume" {
@@ -1101,7 +1097,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		if u.cancelQueuedCompact() {
 			return false, nil
 		}
-		if u.Turn != "" || u.Starting() || u.InputPending() || u.Compaction.Pending() || u.Compaction.ContinuationPending() || len(u.unsent)+len(u.queued) > 0 {
+		if u.Turn != "" || u.Starting() || u.InputPending() || u.Compaction.Pending() || u.Compaction.ContinuationPending() || len(u.conversation().Unsent)+len(u.conversation().Queued) > 0 {
 			return false, u.keyboardInterrupt()
 		}
 		if u.interruptLocked {
@@ -1181,9 +1177,9 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		}
 		// A draft that cannot be sent yet stacks with earlier unsent steers.
 		if u.waitingQuestion() {
-			u.queued = append(u.queued, u.takeDraft())
+			u.conversation().Queued = append(u.conversation().Queued, u.takeDraft())
 		} else {
-			u.unsent = append(u.unsent, u.takeDraft())
+			u.conversation().Unsent = append(u.conversation().Unsent, u.takeDraft())
 		}
 		u.pruneDraftImages()
 		u.setNotice("", false)
@@ -1198,7 +1194,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		if u.shellMode() || text == "" || strings.HasPrefix(text, "/") || u.Turn == "" && !u.Starting() && !u.InputPending() {
 			return u.key('\r')
 		}
-		u.queued = append(u.queued, u.takeDraft())
+		u.conversation().Queued = append(u.conversation().Queued, u.takeDraft())
 		u.pruneDraftImages()
 		u.setNotice("", false)
 	default:
@@ -1538,7 +1534,7 @@ func composerBorder(open, close, left, right string, width int, color string) st
 }
 
 func (u *appServerUI) sessionAnimating() bool {
-	return u.runningProcessCount() > 0 || u.btw != nil && (u.btw.busy || u.btw.starting) || !u.alert && (u.Turn != "" || u.Starting() || u.InputPending() || u.restoring != nil || u.Thread == "")
+	return u.runningProcessCount() > 0 || u.btw != nil && (u.btw.Busy || u.btw.Starting) || !u.alert && (u.Turn != "" || u.Starting() || u.InputPending() || u.restoring != nil || u.Thread == "")
 }
 
 func (u *appServerUI) sessionLabel(now time.Time) string {
@@ -1682,8 +1678,8 @@ func (u *appServerUI) applyObservedActivity() {
 func (u *appServerUI) interruptTurn() error {
 	intent := u.Interrupt()
 	if intent.RestoreWaiting {
-		u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
-		u.unsent, u.queued = nil, nil
+		u.restoreDrafts(slices.Concat(u.conversation().Unsent, u.conversation().Queued)...)
+		u.conversation().Unsent, u.conversation().Queued = nil, nil
 	}
 	if intent.Pending {
 		u.status = "Interrupting…"

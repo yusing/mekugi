@@ -334,7 +334,7 @@ func TestNativeQuestionGapsQueueAndLiteralAnswers(t *testing.T) {
 	appServerTestKeys(t, v, "main draft")
 	questionTestSync(t, v, "queue", false)
 	appServerTestKeys(t, v, "\r")
-	if len(v.queued) != 1 || wire.Len() != 0 {
+	if len(v.conversation().Queued) != 1 || wire.Len() != 0 {
 		t.Fatal("hidden sync steered instead of queueing")
 	}
 	v.openQuestions()

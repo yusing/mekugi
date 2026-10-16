@@ -292,7 +292,7 @@ func (u *terminalUI) send(s string) error {
 		return nil
 	}
 	if s == "\x1b" && u.Focus == 0 && u.main != nil && !u.main.paste {
-		if u.main.Turn != "" || u.main.Starting() || u.main.InputPending() || len(u.main.unsent)+len(u.main.queued) > 0 {
+		if u.main.Turn != "" || u.main.Starting() || u.main.InputPending() || len(u.main.conversation().Unsent)+len(u.main.conversation().Queued) > 0 {
 			return u.main.keyboardEscape()
 		}
 		return nil

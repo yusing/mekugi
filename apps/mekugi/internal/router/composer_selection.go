@@ -2,6 +2,8 @@ package router
 
 import (
 	"slices"
+
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
 
 // composer.Token is a screen selection mentioned as one composer token.
@@ -15,20 +17,20 @@ func (u *appServerUI) insertSelection(description, text, source string) {
 	if text == "" {
 		return
 	}
-	pending := slices.Concat(u.inputPayloads[u.Submission().ID].parts, u.unsent, u.queued, u.steerParts(u.Steers()))
+	pending := slices.Concat(u.conversation().Submitted[u.Submission().ID].Parts, u.conversation().Unsent, u.conversation().Queued, u.conversation().Parts(u.Steers()))
 	for _, call := range u.questionCalls() {
 		for i, question := range call.Questions {
 			draft := question.Editor.Snapshot.Draft
 			if question.IsSecret {
 				draft = call.secrets[i].Snapshot.Draft
 			}
-			pending = append(pending, composerDraft{Draft: draft})
+			pending = append(pending, conversationmodel.Input{Draft: draft})
 		}
 	}
 	if u.currentQuestion() != nil {
-		pending = append(pending, composerDraft{Draft: u.promptEditor.Parked.Snapshot.Draft})
+		pending = append(pending, conversationmodel.Input{Draft: u.promptEditor.Parked.Snapshot.Draft})
 	}
-	if err := u.Editor.InsertSelection(description, text, source, draftValues(pending)); err != nil {
+	if err := u.Editor.InsertSelection(description, text, source, conversationmodel.Drafts(pending)); err != nil {
 		u.setNotice(err.Error(), true)
 		return
 	}

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/yusing/mekugi/modules/conversation/composer"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	"github.com/yusing/mekugi/modules/livepreview/preview"
 
@@ -251,7 +251,7 @@ func (r *moduleRegistrar) ShellApproval(guard binding.ShellApproval) error {
 }
 
 type Runtime struct {
-	Conversation         composer.Service
+	Conversation         *conversationmodel.Service
 	Replay               *playback.Service
 	LivePreview          *preview.Service
 	Activity             *feed.Service

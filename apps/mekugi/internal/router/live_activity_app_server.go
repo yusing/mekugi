@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -200,9 +202,9 @@ func appServerUserText(content jsontext.Value) (string, []activityui.TextSpan, b
 			spans = append(spans, activityui.TextSpan{Start: start, End: len(text), Kind: activityui.ImageToken})
 		}
 	}
-	draft := composerDraft{Text: text}
+	draft := conversationmodel.Input{Text: text}
 	draft.Skills = unambiguousSkillBindings(text, composerContentSkills(contents), spans)
-	for _, span := range draft.displaySpans() {
+	for _, span := range draftDisplaySpans(draft.Draft) {
 		if !slices.ContainsFunc(spans, func(existing activityui.TextSpan) bool {
 			return span.Start < existing.End && span.End > existing.Start
 		}) {

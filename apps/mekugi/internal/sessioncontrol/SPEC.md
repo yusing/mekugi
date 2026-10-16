@@ -23,7 +23,7 @@ Admission derives from these operation records, not displayed status, elapsed
 time, or activity items. Request acknowledgement, committed user input, and host
 turn completion remain separate observations.
 
-The composer retains draft queues, attachments, question callbacks, input history,
+Conversation retains draft queues, attachments, neutral question identities, input history,
 and provisional transcript rows. Sent payloads remain indexed by submission
 identity while control retains an outstanding acknowledgement or commitment.
 Control returns synchronous restoration or requeue decisions naming those
@@ -79,3 +79,9 @@ without changing execution or input identity.
 question/approval presentation models. The application adapter maps observations and
 semantic decisions to this owner's admission, response, and settlement operations;
 rendering and live request handles remain outside those models.
+
+Side-thread request correlation outlives a closed dock or Main replacement until
+its delayed fork/start response and cleanup settle. A completed turn cannot be
+revived by its later start acknowledgement. Interruption and unsubscription target
+only that side thread; its notifications never become Main observations. Closing
+presentation drops the visible exchange, not the pending host correlation.

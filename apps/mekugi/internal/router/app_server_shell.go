@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/charmbracelet/x/ansi"
@@ -64,7 +66,7 @@ func (u *appServerUI) submitShell() error {
 		return err // Keep the draft when transport submission fails.
 	}
 	u.shellEdits.pending = edit
-	u.shellDraft = u.takeDraft()
+	u.conversation().Shell = u.takeDraft()
 	u.Shell.Begin(u.Turn)
 	u.setNotice("Shell command submitted", false)
 	u.view.follow()
@@ -72,8 +74,8 @@ func (u *appServerUI) submitShell() error {
 }
 
 func (u *appServerUI) shellResponse(failure *appserver.Error) {
-	draft := u.shellDraft
-	u.shellDraft = composerDraft{}
+	draft := u.conversation().Shell
+	u.conversation().Shell = conversationmodel.Input{}
 	u.Shell.Acknowledge(failure != nil, u.Turn)
 	if failure != nil {
 		u.discardShellEdit(u.shellEdits.pending)

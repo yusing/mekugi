@@ -361,8 +361,8 @@ func TestComposerPickerEditorRefreshBeforeSelection(t *testing.T) {
 		if len(u.Images) != 0 || len(u.Skills) != 0 || strings.Contains(u.Text, "file.go") {
 			t.Fatal("stale selection changed edited draft")
 		}
-		if key == "\r" && u.inputPayloads[u.Submission().ID].Text != "new" {
-			t.Fatalf("edited submission = %q", u.inputPayloads[u.Submission().ID].Text)
+		if key == "\r" && u.conversation().Submitted[u.Submission().ID].Text != "new" {
+			t.Fatalf("edited submission = %q", u.conversation().Submitted[u.Submission().ID].Text)
 		}
 	}
 }

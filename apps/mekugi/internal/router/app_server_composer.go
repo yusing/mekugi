@@ -17,7 +17,7 @@ func (u *appServerUI) insertDraft(text string) {
 
 // displaySpans is the shared editing and presentation boundary for every
 // atomic composer token. Payload and lifetime remain owned by each token kind.
-func (d composerDraft) displaySpans() []activityui.TextSpan {
+func draftDisplaySpans(d composer.Draft) []activityui.TextSpan {
 	var spans []activityui.TextSpan
 	for _, span := range d.Spans() {
 		kind := activityui.ImageToken
@@ -69,7 +69,7 @@ func (u *appServerUI) draftLayout() ([]string, []activityui.TextPoint) {
 	if width == 0 {
 		width = 80
 	}
-	rows, points := activityui.LayoutSpans(u.Text, (composerDraft{Images: u.Images, Skills: u.Skills, Files: u.Files, Selections: u.Selections}).displaySpans(), width)
+	rows, points := activityui.LayoutSpans(u.Text, draftDisplaySpans(u.Draft), width)
 	last := points[len(points)-1]
 	if width > 1 && last.Column >= width {
 		rows = append(rows, "")

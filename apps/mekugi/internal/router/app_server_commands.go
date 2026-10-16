@@ -7,8 +7,9 @@ import (
 	"slices"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+
 	"github.com/yusing/mekugi/contracts/scope"
 
 	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
@@ -89,27 +90,27 @@ func (u *appServerUI) submitCompact(queue bool) error {
 	}
 	draft := u.takeDraft()
 	draft.Text = "/compact"
-	draft.compact = sessioncontrol.CompactIntent{WaitForIdle: queue, Continue: u.Turn != "" || u.Starting()}
-	u.unsent = append(u.unsent, draft)
+	draft.Compact = conversationmodel.CompactIntent{WaitForIdle: queue, Continue: u.Turn != "" || u.Starting()}
+	u.conversation().Unsent = append(u.conversation().Unsent, draft)
 	return u.flushInput()
 }
 
 // sessionBusy reports work that leaving the current thread would strand.
 func (u *appServerUI) sessionBusy() bool {
-	return u.Busy(len(u.unsent)+len(u.queued) > 0)
+	return u.Busy(len(u.conversation().Unsent)+len(u.conversation().Queued) > 0)
 }
 
 // A queued compact is a local action, not Main's running turn. Return waiting
 // input for retry without interrupting that turn or an in-flight submission.
 func (u *appServerUI) cancelQueuedCompact() bool {
-	isCompact := func(d composerDraft) bool { return d.Text == "/compact" }
-	hasQueued := slices.ContainsFunc(u.unsent, isCompact) || slices.ContainsFunc(u.queued, isCompact)
+	isCompact := func(d conversationmodel.Input) bool { return d.Text == "/compact" }
+	hasQueued := slices.ContainsFunc(u.conversation().Unsent, isCompact) || slices.ContainsFunc(u.conversation().Queued, isCompact)
 	cancelled, interruptionIssued := u.Compaction.CancelQueued(hasQueued)
 	if !cancelled {
 		return false
 	}
-	u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
-	u.unsent, u.queued = nil, nil
+	u.restoreDrafts(slices.Concat(u.conversation().Unsent, u.conversation().Queued)...)
+	u.conversation().Unsent, u.conversation().Queued = nil, nil
 	if interruptionIssued {
 		u.setNotice("Compaction cancelled · input restored · interruption already requested", false)
 	} else {
@@ -160,7 +161,9 @@ func (u *appServerUI) clearSessionPresentation() error {
 	u.feedback = noticepresentation.Model{}
 	u.noticeDetails, u.noticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
 	u.execTrack.detachOutputs()
+	waiting := u.conversation()
 	u.session.state = scope.Store{}
+	u.conversation().Unsent, u.conversation().Queued = waiting.Unsent, waiting.Queued
 	painter := u.view.painter
 	*u.view = *newLiveActivityView()
 	u.view.painter, u.view.conversation = painter, true

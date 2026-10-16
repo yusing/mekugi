@@ -330,13 +330,13 @@ func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 	}
 	p.until("main streams its patch")
 	keys("also check Unsubscribe\r")
-	if p.ui.inputPayloads[p.ui.Submission().ID].Text != "" || p.ui.Turn == "" || !slices.ContainsFunc(p.ui.view.Entries, func(e liveActivityRecord) bool {
+	if p.ui.conversation().Submitted[p.ui.Submission().ID].Text != "" || p.ui.Turn == "" || !slices.ContainsFunc(p.ui.view.Entries, func(e liveActivityRecord) bool {
 		return e.Source.Agent == "You" && e.Source.Text == "also check Unsubscribe"
 	}) {
-		t.Fatalf("steer not accepted: submitted=%q turn=%q", p.ui.inputPayloads[p.ui.Submission().ID].Text, p.ui.Turn)
+		t.Fatalf("steer not accepted: submitted=%q turn=%q", p.ui.conversation().Submitted[p.ui.Submission().ID].Text, p.ui.Turn)
 	}
 	keys("queued follow-up\t")
-	if len(p.ui.queued) != 1 || p.ui.Text != "" {
+	if len(p.ui.conversation().Queued) != 1 || p.ui.Text != "" {
 		t.Fatal("Tab did not queue during playback")
 	}
 	keys("scratch\x03")
@@ -347,7 +347,7 @@ func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 	if p.ui.Turn != "" || p.ui.status != "Interrupted" || p.advance() || len(p.active) != 0 {
 		t.Fatalf("interrupt left playback running: turn=%q status=%q active=%v", p.ui.Turn, p.ui.status, p.active)
 	}
-	if p.ui.Text != "queued follow-up" || len(p.ui.queued) != 0 {
+	if p.ui.Text != "queued follow-up" || len(p.ui.conversation().Queued) != 0 {
 		t.Fatalf("interrupt did not return queued input: %q", p.ui.Text)
 	}
 	keys("\x03")
@@ -391,7 +391,7 @@ func TestNativeUIPreviewSessionControlsRendered(t *testing.T) {
 	}
 	p.until("main streams its patch")
 	keys("/compact\t")
-	if p.ui.Turn == "" || len(p.ui.unsent) != 1 || p.ui.unsent[0].Text != "/compact" {
+	if p.ui.Turn == "" || len(p.ui.conversation().Unsent) != 1 || p.ui.conversation().Unsent[0].Text != "/compact" {
 		t.Fatal("busy compact was not queued locally")
 	}
 	if frame := render(); !strings.Contains(frame, "/compact") {

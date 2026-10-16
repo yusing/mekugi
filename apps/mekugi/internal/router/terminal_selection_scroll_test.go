@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -30,7 +32,7 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 				view.Agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
 			}
 			if surface == "btw" {
-				u.btw = &appServerBTW{question: "side question", status: "completed", answer: []btwAnswer{{text: text}}}
+				u.btw = &appServerBTW{SideAnswer: &conversationmodel.SideAnswer{Question: "side question", Status: "completed", Answer: []conversationmodel.Answer{{Text: text}}}}
 			} else {
 				if surface == "Activity" {
 					for i := 0; i < len(lines); i += 4 {
@@ -80,7 +82,7 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 			}
 			// Arrivals must not replace even off-screen source while selecting.
 			if surface == "btw" {
-				u.btw.answer[0].text = "replacement"
+				u.btw.Answer[0].Text = "replacement"
 			}
 			for attempts := 0; s.Top() > 0 && attempts < 30; attempts++ {
 				mouse(64, x, y, false)

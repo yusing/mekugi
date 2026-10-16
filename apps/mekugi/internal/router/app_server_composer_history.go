@@ -3,21 +3,15 @@ package router
 import (
 	"os"
 
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/modules/conversation/composer"
-
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 )
 
-type composerDraft struct {
-	composer.Draft
-	compact      sessioncontrol.CompactIntent
-	questionCall *nativeQuestionCall
-}
-
-func (u *appServerUI) rememberInput(draft composerDraft) {
-	if draft.questionCall == nil && len(binding.QuestionReplies(draft.Text)) == 0 {
+func (u *appServerUI) rememberInput(draft conversationmodel.Input) {
+	if draft.Question == nil && len(binding.QuestionReplies(draft.Text)) == 0 {
 		u.Editor.Remember(draft.Draft)
 	}
 }
@@ -28,8 +22,10 @@ func (u *appServerUI) recallInput(backward bool) {
 		u.pruneDraftImages()
 	}
 }
-func (u *appServerUI) draftSnapshot() composerDraft { return composerDraft{Draft: u.Draft.Editable()} }
-func (u *appServerUI) loadDraft(d composerDraft)    { u.Draft = d.Draft.Editable() }
+func (u *appServerUI) draftSnapshot() conversationmodel.Input {
+	return conversationmodel.Input{Draft: u.Draft.Editable()}
+}
+func (u *appServerUI) loadDraft(d conversationmodel.Input) { u.Draft = d.Draft.Editable() }
 func (u *appServerUI) recordDraft() {
 	u.Editor.Record()
 	u.setNotice("", false)
@@ -49,7 +45,7 @@ func (u *appServerUI) pruneDraftImages() {
 		used[image.Path] = true
 	}
 	if u.btw != nil {
-		for _, image := range u.btw.pending.Images {
+		for _, image := range u.btw.Pending.Images {
 			used[image.Path] = true
 		}
 	}
@@ -80,7 +76,7 @@ func (u *appServerUI) pruneDraftImages() {
 			}
 		}
 	}
-	for _, history := range [][]composer.Draft{u.InputHistory, {u.HistoryDraft}, draftValues(u.unsent), draftValues(u.queued)} {
+	for _, history := range [][]composer.Draft{u.InputHistory, {u.HistoryDraft}, conversationmodel.Drafts(u.conversation().Unsent), conversationmodel.Drafts(u.conversation().Queued)} {
 		for _, snapshot := range history {
 			for _, path := range snapshot.AnswerImages {
 				used[path] = true

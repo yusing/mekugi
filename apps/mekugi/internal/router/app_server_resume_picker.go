@@ -223,8 +223,8 @@ func (u *appServerUI) resumeSession(id string) error {
 func (u *appServerUI) resumeSessionFailed(message string) error {
 	u.Replacement.Finish()
 	u.ResumeEffort = false
-	u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
-	u.unsent, u.queued = nil, nil
+	u.restoreDrafts(slices.Concat(u.conversation().Unsent, u.conversation().Queued)...)
+	u.conversation().Unsent, u.conversation().Queued = nil, nil
 	u.status = "Ready"
 	u.setNotice("Could not resume session: "+message, true)
 	return u.replayResumePending()

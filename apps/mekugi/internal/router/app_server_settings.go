@@ -265,8 +265,8 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 		if m.Error != nil {
 			u.Settings.Finish()
 			if u.Settings.RestoreEffort {
-				u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
-				u.unsent, u.queued = nil, nil
+				u.restoreDrafts(slices.Concat(u.conversation().Unsent, u.conversation().Queued)...)
+				u.conversation().Unsent, u.conversation().Queued = nil, nil
 				u.setNotice("Could not restore default reasoning: "+m.Error.Message+" · choose /effort VALUE or restart resume", true)
 			} else {
 				u.setNotice(method+": "+m.Error.Message, true)

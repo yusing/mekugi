@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/modules/conversation/composer"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
@@ -33,7 +33,7 @@ func TestRunSessionReusesParsedConfigWithIndependentDebugOutputs(t *testing.T) {
 		var paths []string
 		var readLog string
 		// RunSession returns only after cancellation has joined its owned work.
-		err := RunSession(composer.Service{}, new(previewmodel.Service), new(activitymodel.Service), testHistory(), testPreferences(), testRecovery(), &segmentservice.Service{Reports: testReports()}, testCapture(t, ""), newTestUsage(t), new(evidence.Service), new(transportcapture.Service), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), ctx, testCommands(), testInputProjections(), testGuidance(), testNaming(), testGuards(), options, nil, func(session Session) {
+		err := RunSession(new(conversationmodel.Service), new(previewmodel.Service), new(activitymodel.Service), testHistory(), testPreferences(), testRecovery(), &segmentservice.Service{Reports: testReports()}, testCapture(t, ""), newTestUsage(t), new(evidence.Service), new(transportcapture.Service), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), ctx, testCommands(), testInputProjections(), testGuidance(), testNaming(), testGuards(), options, nil, func(session Session) {
 			readLog = session.AXReadOutput
 			cancel()
 		}, func(artifacts []string) { paths = artifacts })

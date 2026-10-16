@@ -11,11 +11,6 @@ import (
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 )
 
-// Service creates independent attached-session editors without a global store.
-type Service struct{}
-
-func (Service) NewEditor() Editor { return Editor{} }
-
 type Run uint8
 
 const (

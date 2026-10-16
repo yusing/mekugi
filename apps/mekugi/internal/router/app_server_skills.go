@@ -8,6 +8,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
@@ -252,9 +254,9 @@ func (u *appServerUI) skillQueryCompletable(query string) bool {
 
 // The catalog, not a textual lookalike, authorizes a skill binding. Repeated
 // names with different paths are ambiguous and remain literal until selected.
-func (u *appServerUI) bindSkills(d *composerDraft, final bool) {
+func (u *appServerUI) bindSkills(d *conversationmodel.Input, final bool) {
 	p := &u.picker
-	if strings.HasPrefix(d.Text, "!") || d.questionCall != nil {
+	if strings.HasPrefix(d.Text, "!") || d.Question != nil {
 		return
 	}
 	if !p.skillsLoaded || p.skillsCwd != u.session.cwd {
@@ -266,7 +268,7 @@ func (u *appServerUI) bindSkills(d *composerDraft, final bool) {
 			catalog = append(catalog, composer.Token{Name: choice.name, Path: choice.path})
 		}
 	}
-	spans := d.displaySpans()
+	spans := draftDisplaySpans(d.Draft)
 	for _, binding := range unambiguousSkillBindings(d.Text, catalog, nil) {
 		if !final && binding.End == len(d.Text) {
 			continue // A still-growing word stays editable.
@@ -280,12 +282,12 @@ func (u *appServerUI) bindSkills(d *composerDraft, final bool) {
 	slices.SortFunc(d.Skills, func(a, b composer.Token) int { return a.Start - b.Start })
 }
 
-func (u *appServerUI) skillBindingQuery(d composerDraft, final bool) string {
-	if strings.HasPrefix(d.Text, "!") || d.questionCall != nil {
+func (u *appServerUI) skillBindingQuery(d conversationmodel.Input, final bool) string {
+	if strings.HasPrefix(d.Text, "!") || d.Question != nil {
 		return ""
 	}
 	at := 0
-	spans := d.displaySpans()
+	spans := draftDisplaySpans(d.Draft)
 	for word := range strings.FieldsSeq(d.Text) {
 		start := at + strings.Index(d.Text[at:], word)
 		at = start + len(word)
@@ -307,7 +309,7 @@ func (u *appServerUI) skillBindingQuery(d composerDraft, final bool) string {
 	return ""
 }
 
-func (u *appServerUI) waitForSkillBindings(parts []composerDraft) bool {
+func (u *appServerUI) waitForSkillBindings(parts []conversationmodel.Input) bool {
 	p := &u.picker
 	if p.skillsLoaded && p.skillsCwd == u.session.cwd {
 		return false

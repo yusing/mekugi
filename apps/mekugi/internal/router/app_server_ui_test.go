@@ -375,8 +375,8 @@ func TestAppServerSteerStatusAcknowledgement(t *testing.T) {
 			if u.status != before || u.Turn != "" {
 				t.Fatal("late acknowledgement revived completed turn")
 			}
-		} else if u.status != "Working" || u.Turn != "t" || u.inputPayloads[u.Submission().ID].Text != "" {
-			t.Fatalf("steer stayed pending: status=%s turn=%s submitted=%s", u.status, u.Turn, u.inputPayloads[u.Submission().ID].Text)
+		} else if u.status != "Working" || u.Turn != "t" || u.conversation().Submitted[u.Submission().ID].Text != "" {
+			t.Fatalf("steer stayed pending: status=%s turn=%s submitted=%s", u.status, u.Turn, u.conversation().Submitted[u.Submission().ID].Text)
 		}
 	}
 }

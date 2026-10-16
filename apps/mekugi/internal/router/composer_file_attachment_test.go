@@ -3,6 +3,8 @@ package router
 import (
 	"bytes"
 
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -35,7 +37,7 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 	if err := os.WriteFile(path, []byte("changed after queueing"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := u.send([]composerDraft{draft}, false); err != nil {
+	if err := u.send([]conversationmodel.Input{draft}, false); err != nil {
 		t.Fatal(err)
 	}
 	requests := appServerTurnRequests(t, w)
@@ -126,7 +128,7 @@ func TestComposerFileAttachmentWireAndProviderPrefix(t *testing.T) {
 }
 
 func TestComposerFileAttachmentNoticeBudget(t *testing.T) {
-	d := composerDraft{}
+	d := conversationmodel.Input{}
 	for i := range 1200 {
 		d.Files = append(d.Files, composer.Token{Path: strings.Repeat("missing", 25) + string(rune(0x4e00+i))})
 	}
@@ -165,7 +167,7 @@ func TestComposerFileAttachmentChunksAndBounds(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	d := composerDraft{}
+	d := conversationmodel.Input{}
 	for _, path := range []string{"empty", "empty", "binary", "invalid", "large", "escaped", "missing"} {
 		d.Files = append(d.Files, composer.Token{Path: path})
 	}
@@ -260,8 +262,8 @@ func TestSkillAttachmentProjectionMatchesSuccessfulSource(t *testing.T) {
 
 func TestComposerFileAttachmentOversizedInputRestoresDraft(t *testing.T) {
 	u, w := newAppServerTestUI()
-	d := composerDraft{Text: strings.Repeat("x", composerTextLimit), Attachments: []string{attachments.Encode([]string{"Attached file data"})}}
-	if err := u.send([]composerDraft{d}, false); err != nil {
+	d := conversationmodel.Input{Text: strings.Repeat("x", composerTextLimit), Attachments: []string{attachments.Encode([]string{"Attached file data"})}}
+	if err := u.send([]conversationmodel.Input{d}, false); err != nil {
 		t.Fatal(err)
 	}
 	if w.Len() != 0 || u.Text != d.Text || !u.feedback.Alert || u.Starting() {
@@ -271,8 +273,8 @@ func TestComposerFileAttachmentOversizedInputRestoresDraft(t *testing.T) {
 
 func TestComposerFileAttachmentLeavesOrdinaryUnicodeLimitToCodex(t *testing.T) {
 	u, w := newAppServerTestUI()
-	d := composerDraft{Text: strings.Repeat("界", 400_000)}
-	if err := u.send([]composerDraft{d}, false); err != nil {
+	d := conversationmodel.Input{Text: strings.Repeat("界", 400_000)}
+	if err := u.send([]conversationmodel.Input{d}, false); err != nil {
 		t.Fatal(err)
 	}
 	requests := appServerTurnRequests(t, w)

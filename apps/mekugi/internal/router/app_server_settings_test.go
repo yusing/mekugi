@@ -67,11 +67,11 @@ func TestAppServerSettingsSlashControls(t *testing.T) {
 				u.Turn, u.model, u.reasoningEffort, u.serviceTier = turn, "original", "low", "flex"
 				appServerTestKeys(t, u, tt.command+"\r")
 				assertAppServerSettingsRequest(t, w, "thread/settings/update", map[string]any{"threadId": "main", tt.field: tt.value})
-				if u.model != "original" || u.reasoningEffort != "low" || u.serviceTier != "flex" || u.inputPayloads[u.Submission().ID].Text != "" || !u.Settings.Pending() {
+				if u.model != "original" || u.reasoningEffort != "low" || u.serviceTier != "flex" || u.conversation().Submitted[u.Submission().ID].Text != "" || !u.Settings.Pending() {
 					t.Fatal("command submitted conversation or changed metadata before notification")
 				}
 				appServerTestKeys(t, u, "next prompt\r")
-				if w.Len() != 0 || u.Text != "" || len(u.unsent) != 1 || u.unsent[0].Text != "next prompt" {
+				if w.Len() != 0 || u.Text != "" || len(u.conversation().Unsent) != 1 || u.conversation().Unsent[0].Text != "next prompt" {
 					t.Fatal("pending settings allowed conversation submission or lost stacked input")
 				}
 			})
@@ -107,7 +107,7 @@ func TestAppServerSettingsAuthoritativeLiveUpdate(t *testing.T) {
 			if u.Settings.Pending() || !strings.Contains(u.feedback.Text, tt.notice) || u.reasoningEffort != "high" {
 				t.Fatalf("live result state: pending=%v effort=%s notice=%q", u.Settings.Pending(), u.reasoningEffort, u.feedback.Text)
 			}
-			if w.Len() != 0 || u.inputPayloads[u.Submission().ID].Text != "" {
+			if w.Len() != 0 || u.conversation().Submitted[u.Submission().ID].Text != "" {
 				t.Fatal("live settings response submitted conversation")
 			}
 		})
@@ -193,7 +193,7 @@ func TestAppServerSettingsUnchangedDoesNotWaitForNotification(t *testing.T) {
 			t.Fatal("no-op command remains pending")
 		}
 		appServerTestKeys(t, u, "prompt\r")
-		if u.inputPayloads[u.Submission().ID].Text != "prompt" {
+		if u.conversation().Submitted[u.Submission().ID].Text != "prompt" {
 			t.Fatal("no-op blocked prompt")
 		}
 	}
@@ -210,7 +210,7 @@ func TestAppServerSettingsChoicesRenderedInPicker(t *testing.T) {
 	if !strings.Contains(rendered, "first-choice") || !strings.Contains(rendered, "last-choice-that-would-not-fit") {
 		t.Fatalf("missing choices: %s", rendered)
 	}
-	if len(u.view.Entries) != 0 || len(u.InputHistory) != 0 || u.inputPayloads[u.Submission().ID].Text != "" {
+	if len(u.view.Entries) != 0 || len(u.InputHistory) != 0 || u.conversation().Submitted[u.Submission().ID].Text != "" {
 		t.Fatal("local choices submitted to host")
 	}
 }
@@ -227,7 +227,7 @@ func TestAppServerSettingsTierAliasNoop(t *testing.T) {
 			t.Fatal("alias queued unchanged thread settings")
 		}
 		appServerTestKeys(t, u, "prompt\r")
-		if u.Settings.Pending() || u.inputPayloads[u.Submission().ID].Text != "prompt" {
+		if u.Settings.Pending() || u.conversation().Submitted[u.Submission().ID].Text != "prompt" {
 			t.Fatal("alias no-op blocked prompt")
 		}
 	}
@@ -255,7 +255,7 @@ func TestAppServerSettingsPickerSelection(t *testing.T) {
 					field, value = "serviceTier", nil
 				}
 				assertAppServerSettingsRequest(t, w, "thread/settings/update", map[string]any{"threadId": "main", field: value})
-				if u.picker.open || u.model != "one" || u.reasoningEffort != "low" || u.serviceTier != "priority" || len(u.view.Entries) != 0 || len(u.InputHistory) != 0 || u.inputPayloads[u.Submission().ID].Text != "" {
+				if u.picker.open || u.model != "one" || u.reasoningEffort != "low" || u.serviceTier != "priority" || len(u.view.Entries) != 0 || len(u.InputHistory) != 0 || u.conversation().Submitted[u.Submission().ID].Text != "" {
 					t.Fatal("selection polluted transcript or changed confirmed settings")
 				}
 			})

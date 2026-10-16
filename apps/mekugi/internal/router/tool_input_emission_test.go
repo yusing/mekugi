@@ -30,8 +30,8 @@ func TestQuestionAnswerWaitsForToolInput(t *testing.T) {
 			u.openQuestions()
 			questionTestPaint(t, u, 70)
 			appServerTestKeys(t, u, "1\r")
-			if requests := appServerTurnRequests(t, wire); len(requests) != 0 || len(u.unsent) != 1 {
-				t.Fatalf("answer interrupted tool input: requests=%+v unsent=%+v", requests, u.unsent)
+			if requests := appServerTurnRequests(t, wire); len(requests) != 0 || len(u.conversation().Unsent) != 1 {
+				t.Fatalf("answer interrupted tool input: requests=%+v unsent=%+v", requests, u.conversation().Unsent)
 			}
 			done := "response.custom_tool_call_input.done"
 			if kind == "function_call" {
@@ -43,7 +43,7 @@ func TestQuestionAnswerWaitsForToolInput(t *testing.T) {
 			if err := u.flushInput(); err != nil {
 				t.Fatal(err)
 			}
-			appServerOneRequest(t, wire, "turn/steer", u.inputPayloads[u.Submission().ID].Text)
+			appServerOneRequest(t, wire, "turn/steer", u.conversation().Submitted[u.Submission().ID].Text)
 		})
 	}
 }
@@ -70,7 +70,7 @@ func TestToolInputEmissionDoesNotBlockNormalPromptsOrOtherSessions(t *testing.T)
 				questionTestPaint(t, u, 70)
 			}
 			appServerTestKeys(t, u, "1\r")
-			appServerOneRequest(t, wire, "turn/steer", u.inputPayloads[u.Submission().ID].Text)
+			appServerOneRequest(t, wire, "turn/steer", u.conversation().Submitted[u.Submission().ID].Text)
 		})
 	}
 }
@@ -111,9 +111,9 @@ func TestNormalPromptBypassesDeferredQuestionAnswer(t *testing.T) {
 	appServerTestKeys(t, u, "1\r")
 	appServerTestKeys(t, u, "Stop and change direction\r")
 	if requests := appServerTurnRequests(t, wire); len(requests) != 1 || requests[0].text() != "Stop and change direction" {
-		t.Fatalf("normal prompt blocked behind deferred answer; queued entries=%d", len(u.unsent))
+		t.Fatalf("normal prompt blocked behind deferred answer; queued entries=%d", len(u.conversation().Unsent))
 	}
-	if len(u.unsent) != 1 || u.unsent[0].questionCall == nil {
+	if len(u.conversation().Unsent) != 1 || u.conversation().Unsent[0].Question == nil {
 		t.Fatal("normal prompt consumed the deferred answer")
 	}
 }

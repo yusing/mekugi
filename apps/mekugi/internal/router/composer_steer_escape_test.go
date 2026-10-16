@@ -63,8 +63,8 @@ func TestComposerEscapeExpeditesSteersInHostEventOrder(t *testing.T) {
 					}
 				}
 				appServerOneRequest(t, wire, "turn/start", "older\nfirst\nsecond")
-				if u.Text != "draft" || u.CursorBack != 1 || len(u.queued) != 1 || u.queued[0].Text != "queued" {
-					t.Fatalf("expedite altered draft or queue: draft=%q caret=%d queued=%+v", u.Text, u.CursorBack, u.queued)
+				if u.Text != "draft" || u.CursorBack != 1 || len(u.conversation().Queued) != 1 || u.conversation().Queued[0].Text != "queued" {
+					t.Fatalf("expedite altered draft or queue: draft=%q caret=%d queued=%+v", u.Text, u.CursorBack, u.conversation().Queued)
 				}
 				appServerTestTurn(t, u, "expedited")
 				if wire.Len() != 0 {
@@ -96,7 +96,7 @@ func TestComposerEscapeCommittedSteerIsNotResent(t *testing.T) {
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, interrupt.ID))
 			if unsent {
 				appServerOneRequest(t, wire, "turn/start", "second")
-				if u.Text != "draft" || len(u.queued) != 1 {
+				if u.Text != "draft" || len(u.conversation().Queued) != 1 {
 					t.Fatal("remaining steer did not preserve editor and queue")
 				}
 			} else if wire.Len() != 0 || u.Text != "queued\ndraft" {
@@ -153,9 +153,9 @@ func TestComposerEscapeExpeditesAttachments(t *testing.T) {
 	if len(requests) != 1 || requests[0].Method != "turn/start" {
 		t.Fatalf("requests=%+v", requests)
 	}
-	input := conversationbinding.Input(u.inputPayloads[u.Submission().ID].Draft)
-	if input[0]["path"] != "first.png" || input[2]["path"] != "second.png" || len(u.inputPayloads[u.Submission().ID].Selections) != 1 || u.inputPayloads[u.Submission().ID].Selections[0].Text != "exact quote" || u.inputPayloads[u.Submission().ID].Text != "[Image 1][Selected message] \n[Image 2]" {
-		t.Fatalf("expedite corrupted attachments: %+v draft=%+v", input, u.inputPayloads[u.Submission().ID].composerDraft)
+	input := conversationbinding.Input(u.conversation().Submitted[u.Submission().ID].Draft)
+	if input[0]["path"] != "first.png" || input[2]["path"] != "second.png" || len(u.conversation().Submitted[u.Submission().ID].Selections) != 1 || u.conversation().Submitted[u.Submission().ID].Selections[0].Text != "exact quote" || u.conversation().Submitted[u.Submission().ID].Text != "[Image 1][Selected message] \n[Image 2]" {
+		t.Fatalf("expedite corrupted attachments: %+v draft=%+v", input, u.conversation().Submitted[u.Submission().ID].Draft)
 	}
 }
 

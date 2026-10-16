@@ -133,7 +133,7 @@ func TestSudoUnlockDialog(t *testing.T) {
 			case <-time.After(10 * time.Second):
 				t.Fatal("sudo did not complete")
 			}
-			if input.Len() != 0 || len(u.unsent) != 0 || len(u.InputHistory) != 0 || u.activeQuestionCall() != nil {
+			if input.Len() != 0 || len(u.conversation().Unsent) != 0 || len(u.InputHistory) != 0 || u.activeQuestionCall() != nil {
 				t.Fatal("local sudo answer escaped into host input or history")
 			}
 			if strings.Contains(approvalTestTranscript(t, u), "1234-secret") {

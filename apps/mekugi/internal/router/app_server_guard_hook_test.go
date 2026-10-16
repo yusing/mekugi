@@ -34,8 +34,8 @@ func TestAppServerGuardHookChecksBeforeEachNewTurn(t *testing.T) {
 		} `json:"params"`
 	}
 	requests := appServerDrainRequests[hookRequest](t, wire)
-	if len(requests) != 1 || requests[0].Method != "hooks/list" || len(requests[0].Params.Cwds) != 1 || requests[0].Params.Cwds[0] != u.session.cwd || len(u.unsent)+len(u.queued) != 2 {
-		t.Fatalf("pending input bypassed workspace check: requests=%+v unsent=%+v queued=%+v", requests, u.unsent, u.queued)
+	if len(requests) != 1 || requests[0].Method != "hooks/list" || len(requests[0].Params.Cwds) != 1 || requests[0].Params.Cwds[0] != u.session.cwd || len(u.conversation().Unsent)+len(u.conversation().Queued) != 2 {
+		t.Fatalf("pending input bypassed workspace check: requests=%+v unsent=%+v queued=%+v", requests, u.conversation().Unsent, u.conversation().Queued)
 	}
 	result := guardHookTestResult(t, u.session.cwd, guardHookTestEntry("guard"))
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":%s}`, requests[0].ID, result))
@@ -60,8 +60,8 @@ func TestAppServerGuardHookFailureRestoresDrafts(t *testing.T) {
 		appServerTestKeys(t, u, "first\rsecond\rtyping")
 		request := appServerOneRequest(t, wire, "hooks/list", "")
 		appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,%s}`, request.ID, response))
-		if wire.Len() != 0 || u.Text != "first\nsecond\ntyping" || len(u.unsent)+len(u.queued) != 0 || !u.feedback.Alert || u.feedback.Text == "" {
-			t.Fatalf("failure lost drafts or submitted input: draft=%q unsent=%+v queued=%+v notice=%q wire=%q", u.Text, u.unsent, u.queued, u.feedback.Text, wire.String())
+		if wire.Len() != 0 || u.Text != "first\nsecond\ntyping" || len(u.conversation().Unsent)+len(u.conversation().Queued) != 0 || !u.feedback.Alert || u.feedback.Text == "" {
+			t.Fatalf("failure lost drafts or submitted input: draft=%q unsent=%+v queued=%+v notice=%q wire=%q", u.Text, u.conversation().Unsent, u.conversation().Queued, u.feedback.Text, wire.String())
 		}
 		appServerTestKeys(t, u, "\r")
 		appServerOneRequest(t, wire, "hooks/list", "")
@@ -75,14 +75,14 @@ func TestAppServerGuardHookIgnoresStaleThreadResponse(t *testing.T) {
 	old := appServerOneRequest(t, wire, "hooks/list", "")
 	// Thread switching owns pending-input removal. The outstanding host request
 	// can still arrive after the selected thread and workspace change.
-	u.Thread, u.session.cwd, u.unsent, u.queued = "new", "/new", nil, nil
+	u.Thread, u.session.cwd, u.conversation().Unsent, u.conversation().Queued = "new", "/new", nil, nil
 	appServerTestKeys(t, u, "new input\r")
 	if wire.Len() != 0 {
 		t.Fatalf("overlapping hook check: %q", wire.String())
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":%s}`, old.ID, guardHookTestResult(t, "/old", guardHookTestEntry("guard"))))
 	appServerOneRequest(t, wire, "hooks/list", "")
-	if u.guardHookCheck.readyThread != "" || u.guardHookCheck.pendingThread != "new" || len(u.unsent)+len(u.queued) != 1 || u.alert {
+	if u.guardHookCheck.readyThread != "" || u.guardHookCheck.pendingThread != "new" || len(u.conversation().Unsent)+len(u.conversation().Queued) != 1 || u.alert {
 		t.Fatalf("stale result affected new thread: check=%+v notice=%q", u.guardHookCheck, u.feedback.Text)
 	}
 }

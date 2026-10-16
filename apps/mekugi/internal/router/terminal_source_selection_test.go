@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
@@ -105,7 +106,7 @@ func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
-	u.btw = &appServerBTW{question: "side question", status: "completed", answer: []btwAnswer{{text: "**side answer**"}}}
+	u.btw = &appServerBTW{SideAnswer: &conversationmodel.SideAnswer{Question: "side question", Status: "completed", Answer: []conversationmodel.Answer{{Text: "**side answer**"}}}}
 	var wire bytes.Buffer
 	if err := u.paint(&wire, 80, 30); err != nil {
 		t.Fatal(err)
@@ -165,15 +166,15 @@ func TestAppServerBTWShimmerElapsed(t *testing.T) {
 	start := time.Date(2026, 9, 30, 0, 0, 0, 0, time.UTC)
 	now := start.Add(75 * time.Second)
 	u.clock = func() time.Time { return now }
-	u.btw = &appServerBTW{busy: true, status: "Answering", started: start}
+	u.btw = &appServerBTW{Busy: true, SideAnswer: &conversationmodel.SideAnswer{Status: "Answering", Started: start}}
 	a := u.btwRows(80, 8)[0]
 	now = now.Add(100 * time.Millisecond)
 	b := u.btwRows(80, 8)[0]
 	if a == b || ansi.Strip(a) != ansi.Strip(b) || !strings.Contains(ansi.Strip(a), "Answering · 1m15s") || !u.sessionAnimating() {
 		t.Fatalf("status=%q / %q", a, b)
 	}
-	u.btw.busy = false
-	u.btw.status = "completed"
+	u.btw.Busy = false
+	u.btw.Status = "completed"
 	if strings.Contains(ansi.Strip(u.btwRows(80, 8)[0]), "Answering") {
 		t.Fatal("completed answer still shimmers")
 	}
@@ -184,7 +185,7 @@ func TestUISnapshotBTWCopyDock(t *testing.T) {
 	start := time.Date(2026, 9, 30, 0, 0, 0, 0, time.UTC)
 	u.clock = func() time.Time { return start.Add(75 * time.Second) }
 	u.view.painter.Theme = diffrender.DarkTheme
-	u.btw = &appServerBTW{busy: true, status: "Answering", started: start, question: "Which option?", answer: []btwAnswer{{text: "Name | Value\n--- | ---\n**alpha** | `x`"}}}
+	u.btw = &appServerBTW{Busy: true, SideAnswer: &conversationmodel.SideAnswer{Status: "Answering", Started: start, Question: "Which option?", Answer: []conversationmodel.Answer{{Text: "Name | Value\n--- | ---\n**alpha** | `x`"}}}}
 	uisnapshot.Assert(t, "testdata/snapshots/btw-copy-dock.txt", strings.Join(u.btwRows(60, 12), "\n")+"\n")
 }
 

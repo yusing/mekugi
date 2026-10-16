@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -33,7 +35,7 @@ func TestNativeUISessionLiveToggle(t *testing.T) {
 		}
 	}
 	for _, command := range []string{"/live invalid", "/live on extra"} {
-		u.loadDraft(composerDraft{})
+		u.loadDraft(conversationmodel.Input{})
 		appServerTestKeys(t, u, command+"\r")
 		if u.shell.liveHidden || u.Text != command || !u.feedback.Alert {
 			t.Fatal("invalid value changed preference or lost draft")

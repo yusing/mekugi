@@ -1,42 +1,33 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
 
 	json "encoding/json/v2"
 	"strings"
 	"time"
-	"unicode/utf8"
 
-	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
-// The dock owns presentation and RPC correlation only. Codex owns the snapshot,
-// conversation history, execution, cancellation and unloading of this thread.
+// The adapter retains terminal interaction state and the host correlation owner.
+// Its conversation state is the same entry exposed by the scoped module service.
 type appServerBTW struct {
-	thread, turn, question, status string
-	pending                        composerDraft
-	answer                         []btwAnswer
-	busy, starting, closed, alert  bool
-	interrupting, unloading        bool
-	truncated                      bool
-	attachmentNotice               string
-	scroll, rows                   int
-	started                        time.Time
-	rect                           terminalsession.Rect
-	copyAnswer                     []string // Full rendered answer for shared scrolling selection.
+	*conversationmodel.SideAnswer
+	sessioncontrol.Side
+	scroll, rows int
+	rect         terminalsession.Rect
+	copyAnswer   []string
 }
-
-type btwAnswer struct{ id, text string }
-
-const btwCompactionRequired = "Side question requires compaction. Compact Main, then close this panel and retry /btw."
 
 func (p *mekugiProxy) setBTWThread(thread string, active bool) {
 	if p == nil {
@@ -74,27 +65,25 @@ func (u *appServerUI) submitBTW() error {
 		u.setNotice("Wait for the conversation to load before asking a side question", false)
 		return nil
 	}
-	if u.btw != nil && (u.btw.busy || u.btw.starting) {
+	if u.btw != nil && (u.btw.Busy || u.btw.Starting) {
 		u.setNotice("Side answer still running · wait for it or Esc to close", false)
 		return nil
 	}
-	if u.btw != nil && u.btw.status == btwCompactionRequired {
-		u.setNotice(btwCompactionRequired, true)
+	if u.btw != nil && u.btw.Status == conversationmodel.SideCompactionRequired {
+		u.setNotice(conversationmodel.SideCompactionRequired, true)
 		return nil
 	}
 	if u.btw == nil {
-		u.btw = new(appServerBTW)
+		u.conversation().Side = new(conversationmodel.SideAnswer)
+		u.btw = &appServerBTW{SideAnswer: u.conversation().Side}
 	}
 	b := u.btw
 	// Remove the command through the composer so attachment offsets stay valid.
 	prefix := strings.Index(u.Text, "/btw") + len("/btw")
 	u.deleteDraftRange(0, prefix)
-	b.pending = u.takeDraft()
-	b.attachmentNotice = b.pending.AttachmentNotice
-	b.question, b.answer, b.scroll = question, nil, 0
-	b.truncated = false
-	b.started = time.Time{}
-	b.busy, b.alert, b.status = true, false, "Waiting for Main's submission…"
+	b.Begin(question, u.takeDraft())
+	b.scroll = 0
+	b.Busy = true
 	u.setNotice("", false)
 	return u.flushBTW()
 }
@@ -106,23 +95,23 @@ func (u *appServerUI) btwRequest(b *appServerBTW, method string, params any) err
 
 func (u *appServerUI) flushBTW() error {
 	b := u.btw
-	if b == nil || b.pending.Text == "" || b.starting || b.turn != "" || u.Replacement.Pending() {
+	if b == nil || b.Pending.Text == "" || b.Starting || b.Turn != "" || u.Replacement.Pending() {
 		return nil
 	}
-	parts := []composerDraft{b.pending}
+	parts := []conversationmodel.Input{b.Pending}
 	if u.waitForSkillBindings(parts) {
 		return nil
 	}
 	u.bindSkills(&parts[0], true)
 	u.snapshotDraftSkills(&parts[0])
-	b.pending = parts[0]
-	if b.thread == "" {
+	b.Pending = parts[0]
+	if b.Thread == "" {
 		// A just-submitted main message must reach Codex before its snapshot.
 		// An already-running turn is deliberately not interrupted or awaited.
 		if u.Starting() || u.InputPending() || u.Settings.Pending() {
 			return nil
 		}
-		b.starting, b.status = true, "Branching…"
+		b.Starting, b.Status = true, "Branching…"
 		params := map[string]any{
 			"threadId": u.Thread, "ephemeral": true, "excludeTurns": true,
 			"sandbox": "read-only", "approvalPolicy": "never",
@@ -145,36 +134,33 @@ func (u *appServerUI) flushBTW() error {
 		}
 		return u.btwRequest(b, "thread/fork", params)
 	}
-	b.starting, b.status = true, "Answering"
-	b.started = u.now()
-	input := conversationbinding.Input(b.pending.Draft)
+	b.Starting, b.Status = true, "Answering"
+	b.Started = u.now()
+	input := conversationbinding.Input(b.Pending.Draft)
 	input = append(appserver.Input("This is a /btw side question. Answer only the side question using the conversation context. Do not continue the main task or use tools."), input...)
 	textBytes := 0
 	for _, part := range input {
 		text, _ := part["text"].(string)
 		textBytes += len(text)
 	}
-	if (len(b.pending.Attachments) > 0 || len(b.pending.Skills) > 0) && textBytes > composerTextLimit {
+	if (len(b.Pending.Attachments) > 0 || len(b.Pending.Skills) > 0) && textBytes > composerTextLimit {
 		u.failBTW(b, "Input with attachments exceeds the safe 1 MiB text limit. Reduce the draft or attachments and retry.")
 		return nil
 	}
-	for _, image := range b.pending.Images {
+	for _, image := range b.Pending.Images {
 		delete(u.ownedImages, image.Path)
 	}
 	return u.btwRequest(b, "turn/start", map[string]any{
-		"threadId": b.thread, "input": input, "environments": []any{},
+		"threadId": b.Thread, "input": input, "environments": []any{},
 	})
 }
 
 func (u *appServerUI) failBTW(b *appServerBTW, message string) {
-	b.busy, b.starting, b.alert, b.status = false, false, true, message
-	if !b.closed && b.pending.Text != "" {
-		// Reuse the composer restorer to retain image/file tokens and any newer
-		// draft. The command and question may be separated by a newline.
-		u.restoreDrafts(joinDrafts(composerDraft{Text: "/btw"}, b.pending))
+	b.Busy, b.Starting = false, false
+	if restored := b.Fail(message, b.Closed); restored.Text != "" {
+		u.restoreDrafts(restored)
 		u.setNotice("Side question restored ahead of draft · edit before resending", true)
 	}
-	b.pending = composerDraft{}
 }
 
 func (u *appServerUI) closeBTW() error {
@@ -182,22 +168,23 @@ func (u *appServerUI) closeBTW() error {
 	if b == nil {
 		return nil
 	}
-	u.btw, b.closed = nil, true
-	b.pending, b.answer = composerDraft{}, nil
+	u.btw, b.Closed = nil, true
+	b.Close()
+	u.conversation().Side = nil
 	u.pruneDraftImages()
 	return u.releaseBTW(b)
 }
 
 func (u *appServerUI) releaseBTW(b *appServerBTW) error {
-	if b.thread == "" || b.starting || b.interrupting || b.unloading {
-		return nil // The correlated response will finish cancellation.
+	method := b.Release()
+	if method == "" {
+		return nil
 	}
-	if b.turn != "" {
-		b.interrupting = true
-		return u.btwRequest(b, "turn/interrupt", map[string]any{"threadId": b.thread, "turnId": b.turn})
+	params := map[string]any{"threadId": b.Thread}
+	if method == "turn/interrupt" {
+		params["turnId"] = b.Turn
 	}
-	b.unloading = true
-	return u.btwRequest(b, "thread/unsubscribe", map[string]any{"threadId": b.thread})
+	return u.btwRequest(b, method, params)
 }
 
 func (u *appServerUI) btwMessage(m appserver.Message, method string, b *appServerBTW) (bool, error) {
@@ -207,7 +194,7 @@ func (u *appServerUI) btwMessage(m appserver.Message, method string, b *appServe
 		}
 		u.dirty = true
 		if method == "turn/interrupt" {
-			b.turn, b.interrupting = "", false
+			b.InterruptAcknowledged()
 			if m.Error != nil {
 				u.setNotice("Could not interrupt side answer: "+m.Error.Message, true)
 			}
@@ -217,14 +204,14 @@ func (u *appServerUI) btwMessage(m appserver.Message, method string, b *appServe
 			if m.Error != nil {
 				u.setNotice("Could not unload side conversation: "+m.Error.Message, true)
 			} else {
-				u.proxy.setBTWThread(b.thread, false)
+				u.proxy.setBTWThread(b.Thread, false)
 			}
 			return true, nil
 		}
-		b.starting = false
+		b.Starting = false
 		if m.Error != nil {
 			u.failBTW(b, m.Error.Message)
-			if b.closed {
+			if b.Closed {
 				return true, u.releaseBTW(b)
 			}
 			return true, nil
@@ -247,28 +234,23 @@ func (u *appServerUI) btwMessage(m appserver.Message, method string, b *appServe
 				u.failBTW(b, "Codex did not return a separate side thread")
 				return true, nil
 			}
-			b.thread = result.Thread.ID
+			b.Thread = result.Thread.ID
 			// Register before turn/start, so even pre-sampling compaction is
 			// rejected before the provider request can run.
-			u.proxy.setBTWThread(b.thread, true)
-			if u.btwThreads == nil {
-				u.btwThreads = make(map[string]*appServerBTW)
-			}
-			u.btwThreads[b.thread] = b
+			u.proxy.setBTWThread(b.Thread, true)
+			u.requests.TrackSide(b.Thread, appServerRequest{side: b})
 		case "turn/start":
 			if result.Turn.ID == "" {
 				u.failBTW(b, "Codex returned no side-turn identity")
 			}
-			if b.busy {
-				b.turn = result.Turn.ID
-			}
+			b.StartAcknowledged(result.Turn.ID)
 		}
-		if b.closed {
+		if b.Closed {
 			return true, u.releaseBTW(b)
 		}
 		return true, u.flushBTW()
 	}
-	if len(u.btwThreads) == 0 {
+	if !u.requests.HasSides() {
 		return false, nil
 	}
 	var p struct {
@@ -284,51 +266,50 @@ func (u *appServerUI) btwMessage(m appserver.Message, method string, b *appServe
 	if m.Method == "thread/started" {
 		thread = p.Thread.ID
 	}
-	b = u.btwThreads[thread]
+	b = u.requests.Side(thread).side
 	if b == nil {
 		return false, nil
 	}
 	u.dirty = true
 	if m.Method == "thread/closed" {
 		u.proxy.setBTWThread(thread, false)
-		delete(u.btwThreads, thread)
-		if !b.closed {
-			b.thread, b.turn, b.busy, b.starting = "", "", false, false
-			b.status, b.alert = "Side conversation closed · /btw starts a new branch", true
+		u.requests.CloseSide(thread)
+		if !b.Closed {
+			b.Thread, b.Turn, b.Busy, b.Starting = "", "", false, false
+			b.Status, b.Alert = "Side conversation closed · /btw starts a new branch", true
 		}
 		return true, nil
 	}
 	if len(m.ID) != 0 {
-		b.status, b.alert = "Side answer blocked on "+m.Method+" · Esc closes", true
+		b.Status, b.Alert = "Side answer blocked on "+m.Method+" · Esc closes", true
 		return true, nil
 	}
 	switch m.Method {
 	case "turn/started":
-		b.turn = p.Turn.ID
+		b.Turn = p.Turn.ID
 	case "turn/completed":
-		if b.turn != "" && b.turn != p.Turn.ID {
+		if !b.Side.Complete(p.Turn.ID) {
 			return true, nil
 		}
-		b.turn, b.busy = "", false
-		if b.status == btwCompactionRequired || p.Turn.Error != nil && strings.Contains(p.Turn.Error.Message, btwCompactionRequired) {
-			u.failBTW(b, btwCompactionRequired)
+		if b.Status == conversationmodel.SideCompactionRequired || p.Turn.Error != nil && strings.Contains(p.Turn.Error.Message, conversationmodel.SideCompactionRequired) {
+			u.failBTW(b, conversationmodel.SideCompactionRequired)
 			return true, nil
 		}
-		b.pending = composerDraft{}
-		b.status, b.alert = p.Turn.Status, p.Turn.Status == "failed"
+		failure := ""
 		if p.Turn.Error != nil {
-			b.status = p.Turn.Error.Message
+			failure = p.Turn.Error.Message
 		}
+		b.SideAnswer.Complete(p.Turn.Status, failure)
 	case "error":
 		if p.Error != nil {
-			if strings.Contains(p.Error.Message, btwCompactionRequired) {
-				u.failBTW(b, btwCompactionRequired)
+			if strings.Contains(p.Error.Message, conversationmodel.SideCompactionRequired) {
+				u.failBTW(b, conversationmodel.SideCompactionRequired)
 				return true, nil
 			}
-			b.status, b.alert = p.Error.Message, true
+			b.Status, b.Alert = p.Error.Message, true
 		}
 	case "item/agentMessage/delta", "item/completed":
-		if b.closed || p.TurnID != b.turn {
+		if b.Closed || p.TurnID != b.Turn {
 			return true, nil
 		}
 		if m.Method == "item/completed" && p.Item.Type != "agentMessage" {
@@ -338,44 +319,13 @@ func (u *appServerUI) btwMessage(m appserver.Message, method string, b *appServe
 		if id == "" {
 			id = p.Item.ID
 		}
-		index := -1
-		for i := range b.answer {
-			if b.answer[i].id == id {
-				index = i
-				break
-			}
-		}
-		if index < 0 {
-			if len(b.answer) >= 256 {
-				b.truncated = true
-				return true, nil
-			}
-			b.answer = append(b.answer, btwAnswer{id: id})
-			index = len(b.answer) - 1
-		}
 		if m.Method == "item/completed" {
-			b.answer[index].text = ""
-			b.appendAnswer(index, p.Item.Text)
+			b.Append(id, p.Item.Text, true)
 		} else {
-			b.appendAnswer(index, p.Delta)
+			b.Append(id, p.Delta, false)
 		}
 	}
 	return true, nil
-}
-
-// The model's full context stays in Codex; the transient display is bounded.
-func (b *appServerBTW) appendAnswer(index int, text string) {
-	room := 256 << 10
-	for _, item := range b.answer {
-		room -= len(item.text)
-	}
-	if len(text) > room {
-		for room > 0 && !utf8.RuneStart(text[room]) {
-			room--
-		}
-		text, b.truncated = text[:room], true
-	}
-	b.answer[index].text += text
 }
 
 func (u *appServerUI) btwKey(key string) (bool, error) {
@@ -401,47 +351,12 @@ func (u *appServerUI) btwRows(width, height int) []string {
 	if b == nil || height < 1 {
 		return nil
 	}
-	color := u.view.painter.Theme.Accent()
-	if b.alert {
-		color = terminalui.Red
-	}
-	status := textsanitize.Safe(b.status, false)
-	if (b.busy || b.starting) && b.status == "Answering" && !b.alert && !b.started.IsZero() {
-		elapsed := max(time.Duration(0), u.now().Sub(b.started))
+	status := textsanitize.Safe(b.Status, false)
+	if (b.Busy || b.Starting) && b.Status == "Answering" && !b.Alert && !b.Started.IsZero() {
+		elapsed := max(time.Duration(0), u.now().Sub(b.Started))
 		status = activityui.ReasoningShimmer("Answering", elapsed, u.view.painter.Colors) + terminalui.Dim + " · " + activityui.FormatDuration(elapsed) + terminalui.Reset
 	}
-	label := " /btw · " + status
-	rows := []string{ansi.Truncate(color+"╭─"+label+terminalui.Reset, width, "…")}
-	inner := max(1, width-2)
-	question := terminalui.Wrap(textsanitize.Safe(b.question, false), inner, true)
-	for _, row := range question[:min(2, len(question))] {
-		rows = append(rows, ansi.Truncate(color+"│ "+terminalui.Reset+row, width, "…"))
-	}
-	if b.attachmentNotice != "" {
-		rows = append(rows, ansi.Truncate(terminalui.Red+"│ "+textsanitize.Safe(b.attachmentNotice, false)+terminalui.Reset, width, "…"))
-	}
-	var answer []string
-	for index, item := range b.answer {
-		u.view.painter.CopyScope = uint64(index + 1)
-		answer = append(answer, u.view.painter.Markdown(item.text, inner, false)...)
-	}
-	b.copyAnswer = answer
-	b.rows = max(0, height-len(rows)-1)
-	b.scroll = min(b.scroll, max(0, len(answer)-b.rows))
-	end := len(answer) - b.scroll
-	for _, row := range answer[max(0, end-b.rows):end] {
-		rows = append(rows, ansi.Truncate(color+"│ "+terminalui.Reset+row, width, ""))
-	}
-	hint := "╰─ /btw follow-up · Esc close"
-	if b.status == btwCompactionRequired {
-		hint = "╰─ Esc close · /compact Main, then retry /btw"
-	}
-	if len(answer) > b.rows {
-		hint += " · PgUp/PgDn scroll"
-	}
-	if b.truncated {
-		hint = "╰─ Display truncated · Esc close"
-	}
-	rows = append(rows, ansi.Truncate(terminalui.Dim+hint+terminalui.Reset, width, "…"))
-	return rows[:min(len(rows), height)]
+	frame := conversationui.Side(b.View(), &u.view.painter.Painter, status, width, height, b.scroll)
+	b.copyAnswer, b.rows, b.scroll = frame.CopyAnswer, frame.AnswerRows, frame.Scroll
+	return frame.Rows
 }

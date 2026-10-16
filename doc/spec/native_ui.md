@@ -545,61 +545,14 @@ available during a turn without interrupting it. The picker, selection Copy and 
 
 ### Side questions
 
-`/btw QUESTION` asks a temporary side question without switching away from Main,
-steering it, interrupting it, or adding side messages to its conversation. This is
-not `/fork` or `/side`: only the side question and streamed answer appear in a
-bounded Markdown dock above the composer, alongside queued input. While answering,
-its Answering label shimmers and shows elapsed time separated by a bullet, such as
-`Answering · 1m15s`; it stops when the side turn completes or fails. Ordinary
-composer input continues to target Main. `/btw QUESTION` after completion follows
-up in the same side conversation and replaces the dock's displayed exchange.
-While the side answer is running, another `/btw` remains an unsent draft with a
-notice. Bare `/btw` explains the required question rather than submitting input.
-When Codex requires compaction for a side turn, the request is rejected before
-a provider summary runs. Its pending question and
-attachments return ahead of any newer composer draft. Main remains untouched.
-The user can run `/compact` on Main, close the side panel, and retry on a new snapshot;
-the rejected side conversation cannot accept a follow-up. Admission uses Codex's
-actual compaction decision, not an estimate from the displayed context meter.
-
-Codex owns the ephemeral snapshot through `thread/fork` with `excludeTurns`.
-A main submission awaiting acknowledgement settles before the fork request;
-an already-active turn is neither awaited nor canceled. The boundary is the
-history Codex snapshots when it handles the fork, not the keystroke time or an
-unfinished streamed token. Later Main activity does not enter side follow-ups.
-The fork uses Main's effective model, reasoning effort and service tier, including
-live setting changes and resumed sessions, rather than launch-time defaults.
-The side turn asks for a context-only answer, disables environment access, and
-uses read-only permissions with no approvals. App-server does not expose a
-general no-tools policy; non-environment tools are not guaranteed to be absent.
-
-Side responses, errors, usage and server requests do not enter Main's transcript,
-status, questions, notifications or roster. Fork and submission failures stay in
-the dock. Rejected input returns ahead of any newer composer draft, preserving
-attachment tokens for editing; file omission notices remain visible in the dock.
-Main keeps its request history, settings and cache identity. Codex owns
-side cache affinity, which may share Main's key despite a distinct thread identity;
-actual cache reuse is provider-dependent. No router cache-key rewrite or reconstructed
-conversation is used to simulate a branch.
-
-Main and side threads inherit the invocation's disabled Codex-facing WebSocket
-capability, avoiding model prewarm and streaming turns to the router over HTTP.
-The fork does not replace provider transport settings. The router's upstream
-WebSocket support remains unchanged. No warmup response is fabricated or discarded.
-
-The question and visible answer are selectable through the shared Reference, Copy,
-and Clear actions, excluding the dock border, status and hints. Selected answer
-content uses the same source-aware Markdown copying as Main and child transcripts.
-PgUp/PgDn scroll the side answer while the dock is open. During selection,
-the question stays pinned while the frozen answer scrolls.
-Esc first clears a selection. After dismissing active questions or command menus,
-it closes the dock without changing the main
-draft or canceling Main. It cancels only a running side turn and unsubscribes its
-thread; delayed fork/start acknowledgements still finish that cleanup and cannot
-replace a newer dock. The display retains at most 256 KiB across 256 answer items
-and reports truncation; Codex retains the full side context for follow-ups.
-The dock is not persisted or restored on resume, and closing it makes the next
-`/btw` take a new snapshot. No processes or handles are replayed.
+[Side questions](../../modules/conversation/SPEC.md#side-questions) appear in a
+bounded Markdown dock above the composer. Its Answering label shimmers with
+elapsed time until completion or failure. Ordinary input still targets Main.
+The question and answer use shared Reference, Copy and Clear actions, excluding
+borders, status and hints; Markdown copying preserves source text. PgUp/PgDn
+scroll the answer, with the question pinned during frozen selection.
+Esc clears selection first, then dismisses active prompts or menus, then closes
+the dock. Truncation and attachment omissions remain visible.
 
 ### Running processes
 
@@ -850,25 +803,14 @@ While the new session starts, model-setting commands, shell commands, and side
 questions keep their drafts for retry rather than targeting the old thread.
 Late events from the previous session cannot repopulate the new transcript.
 
-Busy input follows Codex's composer queue. Enter while a turn runs steers it;
-Tab queues input for the next turn and, while idle, sends like Enter. Input that
-cannot be sent yet stacks locally instead of being refused: steers typed while
-another submission is unresolved, the turn is starting, settings are applying,
-or an interrupt is pending; and every queued entry. Each stack is sent as one
-message whose entries are separated by newlines, keeping each entry's
-attachments and tokens. Unsent steers go before queued input, and queued input
-starts only after the running turn ends. Waiting and uncommitted steers, then
-queued input, appear as one preview per stack above the composer (one arrow,
-at most three text rows per stack and
-half of Main) until Codex's completed user message commits them by
-`clientUserMessageId`, or by text when the server does not echo one. Alt+Up or
-Shift+Left removes all locally unsent steers and queued input together, returning
-them ahead of the current draft in send order and preserving its caret. Already-sent
-steers stay host-owned until committed or interrupted, rather than being duplicated
-in the editor.
-Consecutive user items in one turn appear as one prompt in the transcript,
-with each item's own navigation target retained.
-Stacked image files stay owned until sent.
+Enter steers a running turn; Tab queues input for the next turn and sends like
+Enter while idle. [Conversation queues](../../modules/conversation/SPEC.md#queued-and-submitted-input)
+retain waiting payloads and attachment snapshots. Waiting and uncommitted steers,
+then queued input, appear as one preview per stack above the composer, with one
+arrow and at most three text rows per stack and half of Main. Alt+Up or Shift+Left
+returns locally waiting input ahead of the draft, preserving its caret. Sent
+steers remain host-owned. Consecutive user items appear as one prompt with each
+item's navigation target retained.
 
 While a turn is active, Escape in the focused composer expedites pending or
 locally unsent steers rather than retracting them into the editor. It requests

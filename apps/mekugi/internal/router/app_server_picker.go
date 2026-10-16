@@ -12,8 +12,11 @@ import (
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	"github.com/yusing/mekugi/backends/codex/appserver"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+
 	"github.com/yusing/mekugi/modules/conversation/composer"
+
+	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
 // Source: codex-rs/tui/src/bottom_pane/chat_composer.rs:2094:2250,2744:2805
@@ -137,7 +140,7 @@ func (u *appServerUI) completionTarget() composerTarget {
 }
 
 func (u *appServerUI) refreshPicker() {
-	for _, stack := range [][]composerDraft{u.unsent, u.queued} {
+	for _, stack := range [][]conversationmodel.Input{u.conversation().Unsent, u.conversation().Queued} {
 		for i := range stack {
 			before := len(stack[i].Skills)
 			u.bindSkills(&stack[i], true)
@@ -161,7 +164,7 @@ func (u *appServerUI) refreshPicker() {
 	bindingOnly := false
 	if target.kind == 0 && p.modal == "" && (!p.skillsLoaded || p.skillsCwd != u.session.cwd) {
 		query := u.skillBindingQuery(draft, false)
-		for _, part := range slices.Concat(u.unsent, u.queued) {
+		for _, part := range slices.Concat(u.conversation().Unsent, u.conversation().Queued) {
 			if query == "" {
 				query = u.skillBindingQuery(part, true)
 			}

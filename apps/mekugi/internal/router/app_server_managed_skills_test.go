@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -51,10 +53,10 @@ func TestManagedSkillAttachmentContentsAndIdentity(t *testing.T) {
 	appServerTestKeys(t, u, "\x1b[200~use $review then $review please\x1b[201~\r")
 	// The manager owns this name even when Codex knows a same-named file.
 	replyManagedCatalog(t, u, w, `[{"name":"review","path":"/stale/SKILL.md","enabled":true}]`)
-	if len(u.inputPayloads[u.Submission().ID].Skills) != 2 || u.inputPayloads[u.Submission().ID].Skills[0].Path != "" {
-		t.Fatalf("managed identity lost: %+v", u.inputPayloads[u.Submission().ID])
+	if len(u.conversation().Submitted[u.Submission().ID].Skills) != 2 || u.conversation().Submitted[u.Submission().ID].Skills[0].Path != "" {
+		t.Fatalf("managed identity lost: %+v", u.conversation().Submitted[u.Submission().ID])
 	}
-	input := conversationbinding.Input(u.inputPayloads[u.Submission().ID].Draft)
+	input := conversationbinding.Input(u.conversation().Submitted[u.Submission().ID].Draft)
 	if len(input) != 2 || input[1]["type"] != "text" {
 		t.Fatalf("instructions missing or duplicated: %+v", input)
 	}
@@ -83,8 +85,8 @@ func TestManagedSkillQueuedSnapshotAndNativeManagement(t *testing.T) {
 	appServerTestKeys(t, u, "\x03")
 	u.Turn = "running"
 	appServerTestKeys(t, u, "\x1b[200~use $review please\x1b[201~\t")
-	if len(u.queued) != 1 || len(u.queued[0].Attachments) != 1 {
-		t.Fatalf("queue did not snapshot: %+v", u.queued)
+	if len(u.conversation().Queued) != 1 || len(u.conversation().Queued[0].Attachments) != 1 {
+		t.Fatalf("queue did not snapshot: %+v", u.conversation().Queued)
 	}
 	if err := os.Remove(filepath.Join(strings.TrimPrefix(u.skillEnvironment[0], "PATH="), "skills-mgr")); err != nil {
 		t.Fatal(err)
@@ -93,7 +95,7 @@ func TestManagedSkillQueuedSnapshotAndNativeManagement(t *testing.T) {
 	if err := u.flushInput(); err != nil {
 		t.Fatal(err)
 	}
-	frames, _ := attachments.Decode(u.inputPayloads[u.Submission().ID].Attachments[0])
+	frames, _ := attachments.Decode(u.conversation().Submitted[u.Submission().ID].Attachments[0])
 	if len(frames) != 1 || !strings.HasSuffix(frames[0], managedSkillInstructions) {
 		t.Fatalf("queue reopened source: %+v", frames)
 	}
@@ -108,12 +110,12 @@ func TestManagedSkillReadFailureIsExplicit(t *testing.T) {
 	testManagedSkills(t, u, `if [ "$1" = list ]; then printf '%s' '<skills><skill name="review"/></skills>'; else exit 1; fi`)
 	appServerTestKeys(t, u, "\x1b[200~use $review please\x1b[201~\r")
 	replyManagedCatalog(t, u, w, `[]`)
-	content, err := json.Marshal(conversationbinding.Input(u.inputPayloads[u.Submission().ID].Draft))
+	content, err := json.Marshal(conversationbinding.Input(u.conversation().Submitted[u.Submission().ID].Draft))
 	if err != nil {
 		t.Fatal(err)
 	}
 	blocks := appServerAttachmentBlocks(u.session.cwd, content)
-	if u.inputPayloads[u.Submission().ID].Text != "use $review please" || len(blocks) != 1 || blocks[0].Verb != "Attach failed" || !strings.Contains(blocks[0].Label, "review") {
+	if u.conversation().Submitted[u.Submission().ID].Text != "use $review please" || len(blocks) != 1 || blocks[0].Verb != "Attach failed" || !strings.Contains(blocks[0].Label, "review") {
 		t.Fatalf("failed skill lost prompt or receipt: %+v", blocks)
 	}
 }
@@ -123,8 +125,8 @@ func TestManagedSkillSourceFailuresRemainIndependent(t *testing.T) {
 	appServerTestKeys(t, u, "\x1b[200~use $review please\x1b[201~\r")
 	requests := pickerRequests(t, w)
 	appServerTestMessage(t, u, `{"id":`+strconv.Itoa(requests[0].ID)+`,"error":{"code":-1,"message":"native catalog unavailable"}}`)
-	if len(u.inputPayloads[u.Submission().ID].Attachments) != 1 || !u.feedback.Alert || !strings.Contains(u.feedback.Text, "native catalog unavailable") {
-		t.Fatalf("native failure discarded managed source: %+v %q", u.inputPayloads[u.Submission().ID], u.feedback.Text)
+	if len(u.conversation().Submitted[u.Submission().ID].Attachments) != 1 || !u.feedback.Alert || !strings.Contains(u.feedback.Text, "native catalog unavailable") {
+		t.Fatalf("native failure discarded managed source: %+v %q", u.conversation().Submitted[u.Submission().ID], u.feedback.Text)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -156,7 +158,7 @@ func TestManagedSkillMetadataPlaceholderResolvesInstructions(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			draft := composerDraft{Text: "$review", Skills: []composer.Token{{Start: 0, End: 7, Name: "review", Path: path}}}
+			draft := conversationmodel.Input{Text: "$review", Skills: []composer.Token{{Start: 0, End: 7, Name: "review", Path: path}}}
 			draft.SnapshotSkills(func(name, path string) ([]byte, error) {
 				data, _, err := readSkillAttachment(context.Background(), u.session.cwd, u.skillEnvironment, name, path)
 				return data, err

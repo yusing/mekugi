@@ -2,8 +2,8 @@
 
 ## Purpose
 
-Own editable drafts, question and approval presentation, and their semantic
-transitions independently of rendering and host request lifecycles.
+Own editable and submitted drafts, question and approval presentation, and
+bounded side answers independently of rendering and host request lifecycles.
 
 ## Scope
 
@@ -11,8 +11,8 @@ The composer API owns text, byte-based caret position, atomic attachment tokens,
 undo/redo, local input history, external-editor reconciliation, and draft joining.
 Main, question answers, approval reasons, queued input, and side questions use the
 same values. Terminal geometry, key decoding, clipboard acquisition, focus, and
-process launching remain renderer responsibilities. The application retains live request handles, compaction intent, submission ordering,
-and secret admission. The Codex binding maps protocol identities and answer formats
+process launching remain renderer responsibilities. The application retains live request handles, submission admission and settlement,
+and secret admission. Conversation retains queued compaction intent and payload ordering. The Codex binding maps protocol identities and answer formats
 to neutral question and approval records.
 
 ## Behavior
@@ -106,6 +106,42 @@ neutral draft state, views, answer records, or durable history. Skipping denies
 authentication, and retries use a new live authentication request. Live handles, sockets, response
 payloads, and secrets stay in adapters. No view or replay fact can revive them.
 
+### Queued and submitted input
+
+Unsent steers precede next-turn input. Ordinary entries join in send order; a
+question reply or compaction command remains its own submission. Deferred answers
+wait for generated tool input to finish; an ordinary prompt can pass them.
+Payload snapshots retain attachment bytes and neutral question identity while
+session control settles the corresponding host submission. Committed input is
+never restored or resent. Rejected or withdrawn input returns before newer drafts;
+a rejected shell command stays separate from prose and can be recalled from history.
+Confirmed session replacement preserves waiting input, retires submitted payloads,
+and closes the side conversation. Rejected replacement preserves them all.
+
+### Side questions
+
+`/btw QUESTION` opens a temporary conversation without changing Main's input,
+execution, transcript or settings. Follow-ups reuse its host snapshot and replace
+the displayed exchange. Pending Main input settles before the first snapshot;
+an already-running turn continues. Later Main activity does not enter follow-ups.
+The snapshot uses Main's effective model, reasoning effort and service tier.
+Codex owns its ephemeral history and context. The answer requests no tools,
+disables environment access, and uses read-only permissions without approvals;
+Codex does not guarantee that non-environment tools are unavailable.
+
+A running answer refuses another side submission without consuming the draft.
+Failures stay with the side answer. Rejected input and attachments return ahead
+of newer Main input. If Codex requires compaction, Main stays untouched and the
+side conversation refuses follow-ups: compact Main, close the side answer, and
+retry with a new snapshot. This follows Codex's decision, not a context estimate.
+Side events never enter Main's questions, roster, notifications or transcript.
+
+Closing discards the visible exchange and cancels only its side turn. Delayed
+fork/start responses finish cleanup without reviving the view or replacing a
+newer side answer. The transient display retains at most 256 KiB across 256 items
+and reports truncation; Codex retains the full context. Side answers are neither
+persisted nor restored on resume.
+
 ### Attachment snapshots
 
 Submission and queueing snapshot selected text files and directories from the
@@ -149,7 +185,9 @@ quoted attachments as Main.
 
 ## Lifecycle
 
-One attached-session editor owns the active draft and local input history. Parked
+Application-owned session stores retain conversation queues, submitted payloads and
+side presentation under the composed service. Dropping a scope cannot revive host
+requests. One attached-session editor owns the active draft and local input history. Parked
 editors and submitted payloads are detached values. Clipboard image and managed-skill process acquisition, plus image cleanup, stay
 with the session adapter. Cleanup accounts for active, parked, queued,
 undoable, and side-question drafts before reclaiming its unsubmitted files. User-owned

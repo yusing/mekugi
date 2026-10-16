@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -32,14 +34,14 @@ func TestUISnapshotAppServerArchive(t *testing.T) {
 			if len(requests) != 1 || requests[0].Method != "thread/archive" || requests[0].Params["threadId"] != "main" || u.quitRequested {
 				t.Fatalf("archive dispatch = %s, quit=%v", wire.String(), u.quitRequested)
 			}
-			u.queued = []composerDraft{{Text: "pending follow-up"}}
+			u.conversation().Queued = []conversationmodel.Input{{Text: "pending follow-up"}}
 			appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"turn","status":"completed"}}}`)
 			appServerTestKeys(t, u, "/resume other\r\x03")
 			if wire.Len() == 0 || len(pickerRequests(t, wire)) != 1 || u.AcceptsInput() || u.AcceptsShell() {
 				t.Fatal("archive admitted input or a session switch before acknowledgement")
 			}
 			appServerTestMessage(t, u, `{"id":1,"result":{}}`)
-			if !u.quitRequested || !u.archived || len(pickerRequests(t, wire)) != 1 || len(u.queued) != 1 {
+			if !u.quitRequested || !u.archived || len(pickerRequests(t, wire)) != 1 || len(u.conversation().Queued) != 1 {
 				t.Fatal("successful archive did not exit with waiting input retained")
 			}
 			var out bytes.Buffer

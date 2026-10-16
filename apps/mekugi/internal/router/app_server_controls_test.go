@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -20,7 +22,7 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 			case "starting":
 				u.AwaitingTurn = true
 			case "queued":
-				u.queued = []composerDraft{{Text: "next"}}
+				u.conversation().Queued = []conversationmodel.Input{{Text: "next"}}
 			}
 			appServerTestKeys(t, u, "/lock\r")
 			if !u.interruptLocked || u.Text != "" {
@@ -36,7 +38,7 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 			if wire.Len() != 0 || u.Interruption.BeforeStart || u.Interruption.Target != "" || !strings.Contains(u.feedback.Text, "/unlock") {
 				t.Fatalf("locked cancellation reached host: %s %+v", wire.Bytes(), u)
 			}
-			if state == "queued" && len(u.queued) != 1 {
+			if state == "queued" && len(u.conversation().Queued) != 1 {
 				t.Fatal("lock discarded queued input")
 			}
 			if !strings.Contains(ansi.Strip(u.shell.nativeStatus()), "Locked") {
@@ -47,7 +49,7 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 			if err != nil || u.interruptLocked {
 				t.Fatal("unlock did not restore keyboard handling")
 			}
-			if state == "running" && !strings.Contains(wire.String(), "turn/interrupt") || state == "starting" && !u.Interruption.BeforeStart || state == "idle" && !quit || state == "queued" && (len(u.queued) != 0 || u.Text != "next") {
+			if state == "running" && !strings.Contains(wire.String(), "turn/interrupt") || state == "starting" && !u.Interruption.BeforeStart || state == "idle" && !quit || state == "queued" && (len(u.conversation().Queued) != 0 || u.Text != "next") {
 				t.Fatalf("unlocked handling did not resume: quit=%v draft=%q wire=%s", quit, u.Text, wire.String())
 			}
 		})

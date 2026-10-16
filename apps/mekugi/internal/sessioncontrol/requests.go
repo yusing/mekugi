@@ -28,6 +28,7 @@ type Request[T any] struct {
 type Requests[T any] struct {
 	transport Transport
 	pending   map[string]Request[T]
+	sides     map[string]T
 }
 
 func NewRequests[T any](transport Transport) *Requests[T] {

@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
@@ -35,7 +37,7 @@ func TestSubmittedAttachmentHostSchema(t *testing.T) {
 	if !ok || !reflect.DeepEqual(spans, want) {
 		t.Fatalf("host spans=%+v", spans)
 	}
-	draft := composerDraft{Text: text, Skills: []composer.Token{{Start: 0, End: 21, Name: "batch-agent-sessions"}}, Files: []composer.Token{{Start: 22, End: 31, Path: "/work/FIXME.md"}}}
+	draft := conversationmodel.Input{Text: text, Skills: []composer.Token{{Start: 0, End: 21, Name: "batch-agent-sessions"}}, Files: []composer.Token{{Start: 22, End: 31, Path: "/work/FIXME.md"}}}
 	input := conversationbinding.Input(draft.Draft)
 	if _, old := input[0]["textElements"]; old {
 		t.Fatal("wrong camelCase enum field")
@@ -43,7 +45,7 @@ func TestSubmittedAttachmentHostSchema(t *testing.T) {
 	if _, ok := input[0]["text_elements"]; !ok {
 		t.Fatal("host field absent")
 	}
-	composer, _ := activityui.LayoutSpans(text, draft.displaySpans(), 80)
+	composer, _ := activityui.LayoutSpans(text, draftDisplaySpans(draft.Draft), 80)
 	submitted, _ := activityui.LayoutSpans(text, spans, 80)
 	if !reflect.DeepEqual(composer, submitted) {
 		t.Fatal("submitted tokens differ from composer styles")

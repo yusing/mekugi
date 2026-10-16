@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/modules/conversation/composer"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
@@ -52,7 +52,7 @@ func startThirdPartyResumeTerminal(t *testing.T, newCommand func(context.Context
 	if err != nil {
 		t.Fatal(err)
 	}
-	wait, err := startAppServerUI(composer.Service{}, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, newCommand(ctx), inner, inner, nil, nil, thread, true, nil, nil, argv, "", nil, false)
+	wait, err := startAppServerUI(new(conversationmodel.Service), new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, newCommand(ctx), inner, inner, nil, nil, thread, true, nil, nil, argv, "", nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}

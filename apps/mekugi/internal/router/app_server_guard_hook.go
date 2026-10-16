@@ -48,8 +48,8 @@ func (u *appServerUI) guardHookResponse(message appserver.Message) error {
 		err = shellhook.Validate(message.Result, u.session.cwd, u.guardHookCheck.hash)
 	}
 	if err != nil {
-		u.restoreDrafts(append(u.unsent, u.queued...)...)
-		u.unsent, u.queued = nil, nil
+		u.restoreDrafts(append(u.conversation().Unsent, u.conversation().Queued...)...)
+		u.conversation().Unsent, u.conversation().Queued = nil, nil
 		u.status = "Ready"
 		u.setNotice("Shell guard: "+err.Error(), true)
 		return nil

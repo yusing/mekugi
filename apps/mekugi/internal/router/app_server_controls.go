@@ -39,7 +39,7 @@ func (u *appServerUI) keyboardEscape() error {
 	}
 	// Completion can arrive before either acknowledgement. A repeated Escape
 	// must not restore the waiting input or interrupt its replacement turn.
-	if !u.PrepareEscape(len(u.unsent) > 0 && u.unsent[0].Text != "/compact") {
+	if !u.PrepareEscape(len(u.conversation().Unsent) > 0 && u.conversation().Unsent[0].Text != "/compact") {
 		return nil
 	}
 	err := u.interruptTurn()

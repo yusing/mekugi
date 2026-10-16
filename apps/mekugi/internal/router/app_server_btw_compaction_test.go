@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -49,7 +51,7 @@ func TestAppServerBTWCompactionRejectsBeforeProvider(t *testing.T) {
 	var output bytes.Buffer
 	err := executeRequest(t.Context(), t.Context(), request, headers, "side", provider, &output, nil, proxy)
 	compatibility, ok := errors.AsType[*requestCompatibilityError](err)
-	if !ok || compatibility.code != "btw_compaction_required" || compatibility.message != btwCompactionRequired {
+	if !ok || compatibility.code != "btw_compaction_required" || compatibility.message != conversationmodel.SideCompactionRequired {
 		t.Fatalf("rejection = %v", err)
 	}
 	if len(provider.forwarded) != 0 || output.Len() != 0 {
@@ -59,7 +61,7 @@ func TestAppServerBTWCompactionRejectsBeforeProvider(t *testing.T) {
 	httpRequest.Header = headers
 	recorder := httptest.NewRecorder()
 	responsesHandler(t.Context(), time.Second, provider, nil, proxy)(recorder, httpRequest)
-	if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), btwCompactionRequired) {
+	if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), conversationmodel.SideCompactionRequired) {
 		t.Fatalf("HTTP rejection: %d %s", recorder.Code, recorder.Body.String())
 	}
 	// Main compaction still goes to the provider while a side thread is registered.
@@ -90,15 +92,15 @@ func TestAppServerBTWCompactionRestoresAttachmentsOnce(t *testing.T) {
 			}
 			start := btwTestRequest(t, w, "turn/start", "side")
 			btwTestReply(t, u, start, `{"turn":{"id":"side-turn"}}`)
-			if len(u.btw.pending.Images) != 1 || u.btw.pending.Text == "" {
+			if len(u.btw.Pending.Images) != 1 || u.btw.Pending.Text == "" {
 				t.Fatal("start acknowledgement discarded retry input")
 			}
 			appServerTestKeys(t, u, "newer draft")
 			errorEvent := func() {
-				appServerTestNotify(t, u, "error", map[string]any{"threadId": "side", "error": map[string]any{"message": "HTTP 400: " + btwCompactionRequired}})
+				appServerTestNotify(t, u, "error", map[string]any{"threadId": "side", "error": map[string]any{"message": "HTTP 400: " + conversationmodel.SideCompactionRequired}})
 			}
 			completion := func() {
-				appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "side", "turn": map[string]any{"id": "side-turn", "status": "failed", "error": map[string]any{"message": btwCompactionRequired}}})
+				appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "side", "turn": map[string]any{"id": "side-turn", "status": "failed", "error": map[string]any{"message": conversationmodel.SideCompactionRequired}}})
 			}
 			if completionFirst {
 				completion()
@@ -113,7 +115,7 @@ func TestAppServerBTWCompactionRestoresAttachmentsOnce(t *testing.T) {
 			if u.Text != before || strings.Count(before, "/btw") != 1 || !strings.HasSuffix(before, "newer draft") || len(u.Images) != 1 || u.Images[0].Path != image {
 				t.Fatalf("restoration lost/duplicated input: %q images=%+v", u.Text, u.Images)
 			}
-			if u.btw.busy || u.btw.pending.Text != "" || u.btw.status != btwCompactionRequired || u.Turn != "main-turn" || u.status != "Working" {
+			if u.btw.Busy || u.btw.Pending.Text != "" || u.btw.Status != conversationmodel.SideCompactionRequired || u.Turn != "main-turn" || u.status != "Working" {
 				t.Fatalf("failure state = %+v Main=%s/%s", u.btw, u.Turn, u.status)
 			}
 			if err := u.submitBTW(); err != nil {
@@ -140,12 +142,12 @@ func TestAppServerBTWCompactionCloseRecreateIgnoresLateFailure(t *testing.T) {
 	btwTestReply(t, u, fork, `{"thread":{"id":"new-side"}}`)
 	start := btwTestRequest(t, w, "turn/start", "new-side")
 	btwTestReply(t, u, start, `{"turn":{"id":"new-turn"}}`)
-	appServerTestNotify(t, u, "error", map[string]any{"threadId": "side", "error": map[string]any{"message": btwCompactionRequired}})
+	appServerTestNotify(t, u, "error", map[string]any{"threadId": "side", "error": map[string]any{"message": conversationmodel.SideCompactionRequired}})
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "side", "turn": map[string]any{"id": "side-turn", "status": "failed"}})
 	btwTestReply(t, u, interrupt, `{}`)
 	unload := btwTestRequest(t, w, "thread/unsubscribe", "side")
 	btwTestReply(t, u, unload, `{}`)
-	if u.btw == old || u.btw.thread != "new-side" || !u.btw.busy || u.Text != "" || u.proxy.isBTWThread("side") || !u.proxy.isBTWThread("new-side") {
+	if u.btw == old || u.btw.Thread != "new-side" || !u.btw.Busy || u.Text != "" || u.proxy.isBTWThread("side") || !u.proxy.isBTWThread("new-side") {
 		t.Fatalf("late events crossed lifecycle: %+v draft=%q", u.btw, u.Text)
 	}
 }
@@ -157,10 +159,10 @@ func TestAppServerBTWCompactionBeforeStartAckDoesNotResend(t *testing.T) {
 	fork := btwTestRequest(t, w, "thread/fork", "main")
 	btwTestReply(t, u, fork, `{"thread":{"id":"side"}}`)
 	start := btwTestRequest(t, w, "turn/start", "side")
-	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "side", "turn": map[string]any{"id": "side-turn", "status": "failed", "error": map[string]any{"message": btwCompactionRequired}}})
+	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "side", "turn": map[string]any{"id": "side-turn", "status": "failed", "error": map[string]any{"message": conversationmodel.SideCompactionRequired}}})
 	before := u.Text
 	btwTestReply(t, u, start, `{"turn":{"id":"side-turn"}}`)
-	if w.Len() != 0 || u.btw.turn != "" || u.btw.busy || u.Text != before || !strings.Contains(before, "initial") {
+	if w.Len() != 0 || u.btw.Turn != "" || u.btw.Busy || u.Text != before || !strings.Contains(before, "initial") {
 		t.Fatalf("late start acknowledgement revived rejection: panel=%+v draft=%q sent=%q", u.btw, u.Text, w.String())
 	}
 }
@@ -168,7 +170,7 @@ func TestAppServerBTWCompactionBeforeStartAckDoesNotResend(t *testing.T) {
 func TestUISnapshotBTWCompactionRequired(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.view.painter.Theme = diffrender.DarkTheme
-	u.btw = &appServerBTW{question: "Why did this fail?", status: btwCompactionRequired, alert: true}
+	u.btw = &appServerBTW{SideAnswer: &conversationmodel.SideAnswer{Question: "Why did this fail?", Status: conversationmodel.SideCompactionRequired, Alert: true}}
 	for _, test := range []struct {
 		name  string
 		width int

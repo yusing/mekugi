@@ -16,7 +16,7 @@ func TestAppServerCompactIdleAndLifecycle(t *testing.T) {
 			u, w := newAppServerTestUI()
 			appServerTestKeys(t, u, "/compact\r")
 			r := appServerOneRequest(t, w, "thread/compact/start", "")
-			if !u.Compaction.AcknowledgementPending() || !u.Starting() || u.inputPayloads[u.Submission().ID].Text != "" || len(u.view.Entries) != 0 {
+			if !u.Compaction.AcknowledgementPending() || !u.Starting() || u.conversation().Submitted[u.Submission().ID].Text != "" || len(u.view.Entries) != 0 {
 				t.Fatalf("compact treated as conversation input: pending=%v starting=%v entries=%+v", u.Compaction.AcknowledgementPending(), u.Starting(), u.view.Entries)
 			}
 			if beforeAck {
@@ -40,13 +40,13 @@ func TestAppServerCompactBusyQueuesAheadOfLaterText(t *testing.T) {
 	appServerTestTurn(t, u, "work")
 	appServerTestKeys(t, u, "/compact\t")
 	appServerTestKeys(t, u, "after compact\r")
-	if got := appServerTurnRequests(t, w); len(got) != 0 || len(u.unsent) != 2 || u.Turn != "work" {
-		t.Fatalf("busy compact replaced turn or sent text: requests=%+v unsent=%+v", got, u.unsent)
+	if got := appServerTurnRequests(t, w); len(got) != 0 || len(u.conversation().Unsent) != 2 || u.Turn != "work" {
+		t.Fatalf("busy compact replaced turn or sent text: requests=%+v unsent=%+v", got, u.conversation().Unsent)
 	}
 	appServerTestTurnEnd(t, u, "work", "completed")
 	r := appServerOneRequest(t, w, "thread/compact/start", "")
-	if len(u.unsent) != 1 || u.unsent[0].Text != "after compact" {
-		t.Fatalf("input behind compact lost: %+v", u.unsent)
+	if len(u.conversation().Unsent) != 1 || u.conversation().Unsent[0].Text != "after compact" {
+		t.Fatalf("input behind compact lost: %+v", u.conversation().Unsent)
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID))
 	appServerTestTurn(t, u, "compact-turn")
@@ -172,8 +172,8 @@ func TestAppServerClearKeepsThreadCommandsUntilNewSessionReady(t *testing.T) {
 			appServerTestKeys(t, u, "/clear\r")
 			r := appServerOneRequest(t, w, "thread/start", "")
 			appServerTestKeys(t, u, command+"\r")
-			if strings.TrimSpace(u.Text) != command || u.Settings.Pending() || u.shellDraft.Text != "" || u.btw != nil || len(appServerTurnRequests(t, w)) != 0 {
-				t.Fatalf("command escaped while clearing: draft=%q settings=%v shell=%q btw=%+v", u.Text, u.Settings.Pending(), u.shellDraft.Text, u.btw)
+			if strings.TrimSpace(u.Text) != command || u.Settings.Pending() || u.conversation().Shell.Text != "" || u.btw != nil || len(appServerTurnRequests(t, w)) != 0 {
+				t.Fatalf("command escaped while clearing: draft=%q settings=%v shell=%q btw=%+v", u.Text, u.Settings.Pending(), u.conversation().Shell.Text, u.btw)
 			}
 			if accepted, err := u.updateSettings(map[string]any{"effort": "high"}); err != nil || accepted || w.Len() != 0 {
 				t.Fatalf("shortcut bypassed clear gate: accepted=%v err=%v wire=%s", accepted, err, w.String())
@@ -182,11 +182,31 @@ func TestAppServerClearKeepsThreadCommandsUntilNewSessionReady(t *testing.T) {
 			appServerTurnRequests(t, w)
 			appServerTestMessage(t, u, `{"method":"thread/settings/updated","params":{"threadId":"main","threadSettings":{"model":"stale"}}}`)
 			appServerTestTurn(t, u, "old-shell-turn")
-			if strings.TrimSpace(u.Text) != command || u.Turn != "" || u.Settings.Pending() || u.shellDraft.Text != "" {
+			if strings.TrimSpace(u.Text) != command || u.Turn != "" || u.Settings.Pending() || u.conversation().Shell.Text != "" {
 				t.Fatalf("old lifecycle affected fresh session: draft=%q turn=%q", u.Text, u.Turn)
 			}
 			appServerTestKeys(t, u, "\x03fresh prompt\r")
 			appServerOneRequest(t, w, "turn/start", "fresh prompt")
 		})
+	}
+}
+
+func TestAppServerClearTransfersWaitingConversationScope(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	appServerTestKeys(t, u, "/clear\r")
+	request := appServerOneRequest(t, wire, "thread/start", "")
+	appServerTestKeys(t, u, "first\rnext turn\tdraft")
+	previous := u.conversation()
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"fresh","cwd":"/tmp"}}}`, request.ID))
+	requests := appServerTurnRequests(t, wire)
+	found := false
+	for _, request := range requests {
+		if request.Method == "turn/start" {
+			found = request.Params.ThreadID == "fresh" && request.text() == "first\nnext turn"
+		}
+	}
+	current := u.conversation()
+	if !found || current == previous || u.Text != "draft" || len(current.Unsent)+len(current.Queued) != 0 || current.Submitted[u.Submission().ID].Text != "first\nnext turn" {
+		t.Fatalf("session replacement lost waiting input: requests=%+v draft=%q queued=%+v", requests, u.Text, current.Queued)
 	}
 }

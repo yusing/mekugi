@@ -10,6 +10,8 @@ import (
 	"slices"
 	"time"
 
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/inference"
 	"github.com/yusing/mekugi/modules/usage/accounting"
@@ -153,7 +155,7 @@ func (a *requestAttempt) prepare() error {
 			return err
 		}
 		if a.executor.mekugiCalls.isBTWThread(a.threadID) {
-			return &requestCompatibilityError{code: "btw_compaction_required", message: btwCompactionRequired}
+			return &requestCompatibilityError{code: "btw_compaction_required", message: conversationmodel.SideCompactionRequired}
 		}
 	}
 	if exchange, ok := a.executor.provider.(*webSocketExchange); ok && exchange.state != nil {
