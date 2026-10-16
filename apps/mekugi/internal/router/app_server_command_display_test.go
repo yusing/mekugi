@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/nativetrace"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
@@ -220,7 +222,7 @@ func TestAppServerImageViewLiveAndRestored(t *testing.T) {
 func TestAppServerCommandTimeoutInput(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	f := newNativeTraceFixture(t)
-	u.proxy = &mekugiProxy{nativeTrace: &nativeToolTrace{directory: f.root}}
+	u.proxy = &mekugiProxy{nativeTrace: nativetrace.New(f.root)}
 	for _, thread := range []string{"main", "child"} {
 		f.start(thread, thread, "outer", "source")
 		timeoutMS, wantTimeout := 12500, "12.5s"

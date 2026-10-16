@@ -21,9 +21,10 @@ type resolvedStockBaseline struct {
 // Host tracing confirms outcomes and repeated literal call sites. It never
 // learns a before-state after execution or inventories unresolved inputs.
 func resolveStockEdits(history *mekugiHistory, workspace string) {
-	if history.nativeCell == nil || !history.nativeCell.ended {
+	if !history.nativeCell.Ended() {
 		return
 	}
+	calls := history.nativeCell.Calls()
 	if original := history.ExecObservation; original != nil {
 		copy := *original
 		copy.Commands = slices.Clone(original.Commands)
@@ -31,11 +32,11 @@ func resolveStockEdits(history *mekugiHistory, workspace string) {
 		copy.CommandClasses = classes
 		history.ExecObservation = &copy
 		remaining := slices.Clone(original.Commands)
-		for _, tool := range history.nativeCell.tools {
-			if tool.Tool != nativeExecCommandToolName || !commandanalysis.LocalEnvironment(tool.environmentID) {
+		for _, tool := range calls {
+			if tool.Tool != nativeExecCommandToolName || !tool.LocalEnvironment {
 				continue
 			}
-			command := tool.command
+			command := tool.Command
 			if command.Workdir == "" {
 				command.Workdir = workspace
 			}
@@ -62,15 +63,15 @@ func resolveStockEdits(history *mekugiHistory, workspace string) {
 	literal := slices.Clone(history.NativePatches)
 	remaining := slices.Clone(literal)
 	history.NativePatches = slices.Clone(literal)
-	for _, tool := range history.nativeCell.tools {
+	for _, tool := range calls {
 		if tool.Tool != applyPatchToolName {
 			continue
 		}
-		if i := slices.IndexFunc(remaining, func(p changecapture.PatchObservation) bool { return p.Input == tool.input }); i >= 0 {
+		if i := slices.IndexFunc(remaining, func(p changecapture.PatchObservation) bool { return p.Input == tool.Input }); i >= 0 {
 			remaining = slices.Delete(remaining, i, i+1)
 			continue
 		}
-		if i := slices.IndexFunc(literal, func(p changecapture.PatchObservation) bool { return p.Input == tool.input }); i >= 0 {
+		if i := slices.IndexFunc(literal, func(p changecapture.PatchObservation) bool { return p.Input == tool.Input }); i >= 0 {
 			history.NativePatches = append(history.NativePatches, literal[i])
 		}
 	}

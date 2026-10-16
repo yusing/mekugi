@@ -1,6 +1,8 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/backends/codex/nativetrace"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
@@ -56,7 +58,7 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 				CodeMode: cmd.codeMode, Labels: []string{cmd.program}},
 		}
 		if cmd.codeMode {
-			history.HostResults = []nativeToolResult{
+			history.HostResults = []binding.ToolResult{
 				{CallID: cmd.item, Tool: nativeExecCommandToolName, Status: "completed"},
 				{CallID: "sibling-call", Tool: nativeExecCommandToolName, Status: "completed"},
 			}
@@ -277,7 +279,7 @@ func TestCodeModeCellEditReceipt(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
 	trace := newNativeTraceFixture(t)
-	proxy.nativeTrace = &nativeToolTrace{directory: trace.root}
+	proxy.nativeTrace = nativetrace.New(trace.root)
 	transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
 	transform.sessionShell = "bash"
 	target := filepath.Join(workspace, "file.txt")

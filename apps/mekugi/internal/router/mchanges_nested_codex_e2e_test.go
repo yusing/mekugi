@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/backends/codex/nativetrace"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
@@ -44,7 +46,7 @@ type mchangesNestedCodexProvider struct {
 	expectPending, sawPending bool
 	expectProcess             bool
 	processWait               bool
-	trace                     *nativeToolTrace
+	trace                     *nativetrace.Reader
 	store                     *mekugiReplayStore
 	workspace                 string
 }
@@ -113,8 +115,9 @@ func (p *mchangesNestedCodexProvider) forwardExecution(
 		}
 		terminal, _, _, cell := stockPatchResultState("exec", item.Output)
 		if terminal && p.expectProcess && !p.sawPending {
-			evidence := p.trace.readCell(p.threadID, p.callID, p.program)
-			if evidence == nil || !evidence.ended || !evidence.pending() || len(evidence.tools) != 1 {
+			evidence := p.trace.ReadCell(p.threadID, p.callID, p.program)
+			calls := evidence.Calls()
+			if !evidence.Ended() || !evidence.Pending() || len(calls) != 1 {
 				return nil, fmt.Errorf("expected a completed cell with a live nested process")
 			}
 			pendingCtx, release, err := p.store.beginSession(ctx, p.threadID, "")
@@ -126,7 +129,7 @@ func (p *mchangesNestedCodexProvider) forwardExecution(
 			if err != nil || list != "" {
 				return nil, fmt.Errorf("completed cell finalized a running process: %q, %v", list, err)
 			}
-			session, err := strconv.Atoi(evidence.tools[0].session)
+			session, err := strconv.Atoi(calls[0].Session)
 			if err != nil {
 				return nil, err
 			}
@@ -523,7 +526,7 @@ func runMChangesNestedCodexCell(
 	t.Setenv("CODEX_ROLLOUT_TRACE_ROOT", traceRoot)
 	proxy := newProxyWithSharedTestRegistry(t, registry)
 	proxy.replayStore = store
-	proxy.nativeTrace = &nativeToolTrace{directory: traceRoot}
+	proxy.nativeTrace = nativetrace.New(traceRoot)
 	provider.trace = proxy.nativeTrace
 	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, testCriticalErrors(), proxy))
 	defer server.Close()
@@ -548,11 +551,8 @@ func runMChangesNestedCodexCell(
 		t.Fatalf("nested exec acceptance: turns=%d result=%t\nstdout: %.8000s\nstderr: %.8000s",
 			provider.turns, provider.resultSeen, stdout.String(), stderr.String())
 	}
-	cell := proxy.nativeTrace.readCell(provider.threadID, provider.callID, provider.program)
+	cell := proxy.nativeTrace.ReadCell(provider.threadID, provider.callID, provider.program)
 	if cell == nil {
-		for name, bundle := range proxy.nativeTrace.bundles {
-			t.Logf("trace bundle %s: seq=%d err=%v cells=%d", name, bundle.seq, bundle.err, len(bundle.cells))
-		}
 		t.Fatalf("native trace cell unavailable; stdout=%s stderr=%s", stdout.String(), stderr.String())
 	}
 	return provider.threadID

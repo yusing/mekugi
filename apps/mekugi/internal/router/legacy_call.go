@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/libraries/diffmodel"
@@ -51,7 +52,7 @@ func legacyHistory(v legacycall.History) mekugiHistory {
 		ResolvedBaseline:     legacyPointer(v.ResolvedBaseline, legacyBaseline),
 		ExecObservation:      legacyPointer(v.ExecObservation, legacyObservation),
 		ExecOutcome:          legacyPointer(v.ExecOutcome, func(v legacycall.Outcome) changecapture.Outcome { return changecapture.Outcome(v) }),
-		HostResults:          legacySlice(v.HostResults, func(v legacycall.HostResult) nativeToolResult { return nativeToolResult(v) }),
+		HostResults:          legacySlice(v.HostResults, func(v legacycall.HostResult) binding.ToolResult { return binding.ToolResult(v) }),
 		CommandSegments:      v.CommandSegments,
 		CarrierName:          v.CarrierName,
 		CarrierKind:          codeModeCarrierKind(v.CarrierKind),

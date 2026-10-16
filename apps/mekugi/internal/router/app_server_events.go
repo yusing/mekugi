@@ -439,7 +439,7 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 			}
 		case "commandExecution", "webSearch":
 			if item.Type == "commandExecution" && u.proxy != nil {
-				if ms, known := u.proxy.nativeTrace.commandTimeout(p.ThreadID, id); known {
+				if ms, known := u.proxy.nativeTrace.CommandTimeout(p.ThreadID, id); known {
 					native.commandTimeout = strconv.FormatUint(ms/1000, 10)
 					if fraction := ms % 1000; fraction != 0 {
 						native.commandTimeout += "." + strings.TrimRight(fmt.Sprintf("%03d", fraction), "0")

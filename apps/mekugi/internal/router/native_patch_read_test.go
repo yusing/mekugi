@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/backends/codex/nativetrace"
+
 	"github.com/yusing/mekugi/libraries/legacycall"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
@@ -30,7 +32,7 @@ func TestCodeModeLiteralPatchRetainsNeutralReadersThroughReplay(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, proxy)
 			trace := newNativeTraceFixture(t)
-			proxy.nativeTrace = &nativeToolTrace{directory: trace.root}
+			proxy.nativeTrace = nativetrace.New(trace.root)
 			transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
 			transform.sessionShell = "bash"
 			target := filepath.Join(workspace, "file.txt")

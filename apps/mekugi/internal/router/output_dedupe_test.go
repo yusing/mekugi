@@ -3,6 +3,8 @@ package router
 import (
 	"bytes"
 
+	"github.com/yusing/mekugi/backends/codex/nativetrace"
+
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -505,7 +507,7 @@ func TestDuplicateOutputSummary(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	proxy.inputProjections = testInputProjections()
 	trace := newNativeTraceFixture(t)
-	proxy.nativeTrace = &nativeToolTrace{directory: trace.root}
+	proxy.nativeTrace = nativetrace.New(trace.root)
 	source := `text((await tools.exec_command({cmd:"b"})).output)`
 	trace.start("thread", "runtime", "b", source)
 	trace.tool("thread", "runtime", "nested", "exec_command", `{"cmd":"b"}`)

@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -42,7 +44,7 @@ func snapshotTestHistory() mekugiHistory {
 		}}}, {Input: "no files"}},
 		ReviewFiles: []diffmodel.ReviewFile{{BeforePath: "/w/text", AfterPath: "/w/text", Diff: "-old\n+new\n"},
 			{BeforePath: "/w/incomplete", Incomplete: "missing before"}},
-		HostResults: []nativeToolResult{{Tool: applyPatchToolName}},
+		HostResults: []binding.ToolResult{{Tool: applyPatchToolName}},
 	}
 }
 

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/backends/codex/nativetrace"
+
 	"github.com/yusing/mekugi/libraries/legacycall"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
@@ -265,13 +267,15 @@ func TestCodeModePatchWindowRecordsSharedPathsOnce(t *testing.T) {
 			if len(history.NativePatches) != 2 {
 				t.Fatalf("missing patch observations: %+v", history.NativePatches)
 			}
-			history.nativeCell = &nativeTraceCell{ended: true}
+			trace := newNativeTraceFixture(t)
+			trace.start("thread", "runtime", "cell", source.String())
 			for index, observation := range history.NativePatches {
-				history.nativeCell.tools = append(history.nativeCell.tools, &nativeTraceTool{
-					CallID: fmt.Sprintf("patch-%d", index), Tool: applyPatchToolName, Status: "completed",
-					input: observation.Input, terminal: true,
-				})
+				id := fmt.Sprintf("patch-%d", index)
+				trace.tool("thread", "runtime", id, applyPatchToolName, observation.Input)
+				trace.result("thread", id, "completed", nil)
 			}
+			trace.end("thread", "runtime")
+			history.nativeCell = nativetrace.New(trace.root).ReadCell("thread", "cell", source.String())
 			if err := proxy.finalizeNativePatches(t.Context(), workspace, "thread", "cell", history, responses.MustMarshalJSON("Script running with cell ID 7\nWall time 0.1 seconds\nOutput:\n")); err != nil {
 				t.Fatal(err)
 			}

@@ -13,6 +13,17 @@ import (
 // Source: internal/router/execution_continuation.go:165:265@[bb24aed2] execution evidence.
 // Source: internal/router/execution_continuation.go:396:412@[bb24aed2] annotation recognition.
 
+// Source: apps/mekugi/internal/router/native_tool_trace.go:51:57@[d428f9ae] nativeToolResult.
+
+// ToolResult is host outcome evidence independent of model-printed text.
+// Its retained field names preserve the historical change-record wire shape.
+type ToolResult struct {
+	CallID   string
+	Tool     string
+	Status   string
+	ExitCode *int `json:",omitempty"`
+}
+
 // ExecutionNextCall is advice encoded in a continuation annotation, not a request
 // to execute a tool. The application selects it from the current host catalog.
 type ExecutionNextCall struct {

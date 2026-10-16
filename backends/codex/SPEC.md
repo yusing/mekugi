@@ -2,7 +2,7 @@
 
 ## Purpose and ownership
 
-Own Codex process transport and rollout decoding. Codex remains the
+Own Codex process transport, native-trace observations and rollout decoding. Codex remains the
 execution, permission, agent, and session authority. The application chooses an
 invocation, interprets lifecycle facts, and owns session presentation and intent.
 The [Responses adapter](responses/SPEC.md) owns model-path adaptation; executable
@@ -141,13 +141,17 @@ handle, so unrelated text remains intact. The application chooses advice from th
 active tool catalog and tracks request-local provenance; the backend decoder never
 resumes a process or chooses a next call. Offline findings remain query policy.
 
-The application's bounded, incremental native-trace reader correlates executing
-thread, outer call and source, `exec` cell, and individual native tool results. Printed results
+The backend's bounded, incremental native-trace reader observes only the private
+directory selected for the invocation. It correlates executing thread, outer call
+and source, `exec` cell, and individual native tool results. Consumers receive
+decoded call and completion facts, including original command timeout metadata;
+private trace schemas and incremental state stay in the backend. Printed results
 cannot substitute for this provenance. Missing, ambiguous, unsupported or corrupt
 trace evidence cannot confirm success. Shell success requires terminal exit zero;
-completed dispatch and a yielded process remain unfinished. Matched receipts are
-retained with captured changes, independently of the temporary trace. Older
-observation-only captures remain reviewable without acquiring confirmed status.
+completed dispatch and a yielded process remain unfinished. Application consumers
+retain capture, pending-call and Activity policy. The
+[change-evidence contract](../../docs/contracts/change-evidence.md) owns durable
+receipts and the treatment of historical observation-only captures.
 
 ## Guidance projection
 

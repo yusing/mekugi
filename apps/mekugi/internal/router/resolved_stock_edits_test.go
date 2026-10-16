@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/backends/codex/nativetrace"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/libraries/diffmodel"
@@ -196,7 +198,7 @@ func TestResolvedRepeatedStockCallsRetainEveryOutcome(t *testing.T) {
 			trace.tool(f.thread, "runtime", "command-second", nativeExecCommandToolName, string(responses.MustMarshalJSON(map[string]any{"cmd": command})))
 			trace.result(f.thread, "command-second", "completed", map[string]any{"exit_code": 7})
 			trace.end(f.thread, "runtime")
-			history.nativeCell = (&nativeToolTrace{directory: trace.root}).readCell(f.thread, "repeated-cell", source)
+			history.nativeCell = nativetrace.New(trace.root).ReadCell(f.thread, "repeated-cell", source)
 			writeTestFile(t, filepath.Join(f.workspace, "repeated-patch.txt"), "after\n")
 			writeTestFile(t, filepath.Join(f.workspace, "repeated-command.txt"), "after")
 			resolveStockEdits(&history, f.workspace)
@@ -254,11 +256,11 @@ func TestResolvedLiteralReadLoopsDoNotInventWriters(t *testing.T) {
 		trace.result("author", id, "completed", map[string]any{"exit_code": 0})
 	}
 	trace.end("author", "runtime")
-	history := mekugiHistory{ExecObservation: observation, nativeCell: (&nativeToolTrace{directory: trace.root}).readCell("author", "read-loop", source)}
+	history := mekugiHistory{ExecObservation: observation, nativeCell: nativetrace.New(trace.root).ReadCell("author", "read-loop", source)}
 	resolveStockEdits(&history, workspace)
 	result := changecapture.Reconcile(t.Context(), *history.ExecObservation, changecapture.Comparison{})
 	reviews, complete, coverage := result.Files, result.Complete, result.Coverage
-	results, confirmed := history.nativeCell.commands(&history, workspace)
+	results, confirmed := history.nativeCell.Commands(history.ExecObservation.Commands, workspace)
 	if !complete || coverage != changecapture.CoverageExact || len(reviews) != 0 || history.ExecObservation.RepeatedPaths || !confirmed || len(results) != 3 {
 		t.Fatalf("read loop became an incomplete writer: %+v, complete=%v coverage=%s results=%v", history.ExecObservation, complete, coverage, results)
 	}
@@ -281,10 +283,17 @@ func TestResolvedLiteralProviderLoopsReusePreCallClassification(t *testing.T) {
 	// The provider source changed after capture. Its original classification
 	// must be reused; late source cannot explain the prior call occurrences.
 	writeTestFile(t, script, "print('read only now')\n")
-	history := mekugiHistory{ExecObservation: observation, nativeCell: &nativeTraceCell{ended: true, tools: []*nativeTraceTool{
-		{nativeToolResult: nativeToolResult{Tool: nativeExecCommandToolName}, command: commands[0], terminal: true},
-		{nativeToolResult: nativeToolResult{Tool: nativeExecCommandToolName}, command: commands[0], terminal: true},
-	}}}
+	trace := newNativeTraceFixture(t)
+	trace.start("thread", "runtime", "cell", source)
+	for index := range 2 {
+		id := fmt.Sprint(index)
+		trace.tool("thread", "runtime", id, nativeExecCommandToolName, string(responses.MustMarshalJSON(map[string]any{
+			"cmd": commands[0].Command, "workdir": commands[0].Workdir, "shell": commands[0].Shell,
+		})))
+		trace.result("thread", id, "completed", map[string]any{"exit_code": 0})
+	}
+	trace.end("thread", "runtime")
+	history := mekugiHistory{ExecObservation: observation, nativeCell: nativetrace.New(trace.root).ReadCell("thread", "cell", source)}
 	resolveStockEdits(&history, workspace)
 	result := changecapture.Reconcile(t.Context(), *history.ExecObservation, changecapture.Comparison{})
 	reviews, complete, coverage := result.Files, result.Complete, result.Coverage

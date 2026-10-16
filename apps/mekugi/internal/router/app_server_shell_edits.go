@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
@@ -101,7 +103,7 @@ func (u *appServerUI) observeShellEdit(thread, method string, item appServerItem
 	if item.AggregatedOutput != nil {
 		output = *item.AggregatedOutput
 	}
-	host := &nativeToolResult{CallID: item.ID, Tool: item.Source, Status: item.Status, ExitCode: item.ExitCode}
+	host := &binding.ToolResult{CallID: item.ID, Tool: item.Source, Status: item.Status, ExitCode: item.ExitCode}
 	if err := u.proxy.finalizeExecObservations(context.WithoutCancel(edit.ctx), edit.workspace,
 		[]execCompletion{{callID: edit.call, history: edit.history, output: responses.MustMarshalJSON(output), host: host}}); err != nil {
 		u.discardShellEdit(edit)

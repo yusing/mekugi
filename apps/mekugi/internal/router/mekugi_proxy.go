@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 
+	"github.com/yusing/mekugi/backends/codex/nativetrace"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 
 	"github.com/yusing/mekugi/contracts/inference"
@@ -39,7 +41,7 @@ type mekugiProxy struct {
 	execTrack        *execTrackHub // Set for the UI when command shells are tracked.
 	skillsManager    bool
 	execWindows      *execWindowRegistry
-	nativeTrace      *nativeToolTrace
+	nativeTrace      *nativetrace.Reader
 	approvalMu       sync.Mutex
 	approvalFeedback map[[2]string][]string // Live thread/turn feedback; no host steering.
 
@@ -477,7 +479,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 					source = history.Script
 				}
 			}
-			if commands := p.nativeTrace.readCell(activityThreadID, call, source).execCommands(); len(commands) > 0 {
+			if commands := p.nativeTrace.ReadCell(activityThreadID, call, source).ExecCommands(); len(commands) > 0 {
 				target = commands[len(commands)-1]
 			}
 			p.activity.collectEvent(activityEvent{thread: activityThreadID, source: "output-dedupe\x00" + call, kind: "output_dedupe", callID: target, text: label})

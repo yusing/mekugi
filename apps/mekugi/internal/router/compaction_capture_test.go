@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/backends/codex/nativetrace"
+
 	"github.com/yusing/mekugi/libraries/legacycall"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -50,7 +52,7 @@ func testCompactionCapture(t *testing.T, tool string, failed bool) {
 			var trace *nativeTraceFixture
 			if tool == "exec" {
 				trace = newNativeTraceFixture(t)
-				firstProxy.nativeTrace = &nativeToolTrace{directory: trace.root}
+				firstProxy.nativeTrace = nativetrace.New(trace.root)
 				transform, _, _, workspace = newMekugiTestTransformWithProxy(t, firstProxy)
 			} else {
 				transform = prepareNativeStockTransform(t, firstProxy, workspace, "before-compaction")
@@ -109,7 +111,7 @@ func testCompactionCapture(t *testing.T, tool string, failed bool) {
 			}
 			proxy := newManagedMekugiProxy(t)
 			if trace != nil {
-				proxy.nativeTrace = &nativeToolTrace{directory: trace.root}
+				proxy.nativeTrace = nativetrace.New(trace.root)
 			}
 			var err error
 			proxy.replayStore, err = openMekugiReplayStore(storeDirectory)

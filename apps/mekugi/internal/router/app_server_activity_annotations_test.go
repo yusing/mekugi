@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/backends/codex/nativetrace"
+
 	"github.com/charmbracelet/x/ansi"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -138,7 +140,7 @@ func TestAppServerUnreturnedCodeModeOutputIsNoted(t *testing.T) {
 	activity := newSubagentActivity()
 	activity.attachNativePane("main")
 	trace := newNativeTraceFixture(t)
-	proxy := &mekugiProxy{activity: activity, nativeTrace: &nativeToolTrace{directory: trace.root}}
+	proxy := &mekugiProxy{activity: activity, nativeTrace: nativetrace.New(trace.root)}
 	u.proxy = proxy
 	cells := []struct{ call, source, output string }{
 		{"silent", `await tools.exec_command({cmd: "git log"}); await tools.exec_command({cmd: "true"})`, `"Script completed\nWall time 0.1 seconds\nOutput:"`},

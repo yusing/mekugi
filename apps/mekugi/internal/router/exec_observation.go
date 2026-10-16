@@ -127,7 +127,7 @@ type execCompletion struct {
 	callID  string
 	history mekugiHistory
 	output  json.RawMessage
-	host    *nativeToolResult // Native Shell Mode has an item result, not a tool-output header.
+	host    *binding.ToolResult // Native Shell Mode has an item result, not a tool-output header.
 }
 
 func (c execCompletion) resultState() (terminal bool, exit *int, completed bool, text, pending string) {
@@ -312,7 +312,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		outcome.ScopeReason = strings.TrimPrefix(outcome.ScopeReason+"; intermediate writes unobserved (call-window comparison only)", "; ")
 	}
 	var reports, failureReports []string
-	var hostResults []nativeToolResult
+	var hostResults []binding.ToolResult
 	for index, member := range members {
 		_, exit, completed, resultText, _ := member.resultState()
 		status := changecapture.StatusCompleted
@@ -324,7 +324,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		case !completed:
 			status = changecapture.StatusFailed
 		}
-		if results, confirmed := member.history.nativeCell.commands(&member.history, workspace); confirmed {
+		if results, confirmed := member.history.nativeCell.Commands(member.history.ExecObservation.Commands, workspace); confirmed {
 			status = changecapture.StatusCompleted
 			hostResults = append(hostResults, results...)
 			for _, result := range results {

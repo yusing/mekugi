@@ -249,7 +249,7 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 	for index, observation := range history.NativePatches {
 		occurrence := occurrences[observation.Input]
 		occurrences[observation.Input]++
-		if tool := history.nativeCell.patchCall(observation.Input, occurrence); tool != nil && !tool.terminal {
+		if history.nativeCell.PatchPending(observation.Input, occurrence) {
 			continue // Outer completion cannot finish a still-running nested edit.
 		}
 		derivedCallID := legacycall.PatchCallID(callID, index)
@@ -274,7 +274,7 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 			}
 		}
 		success := history.ToolName == applyPatchToolName && reportedSuccess && complete
-		nested, confirmed := history.nativeCell.patch(observation.Input, occurrence)
+		nested, confirmed := history.nativeCell.Patch(observation.Input, occurrence)
 		if confirmed {
 			success = nested.Status == "completed" && complete
 		}
@@ -306,9 +306,12 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 			attempt.Report += "\nFile evidence spans the exec cell; shared paths are recorded once at their first patch observation, not as per-patch effects."
 		}
 		if confirmed {
-			attempt.HostResults = []nativeToolResult{nested}
+			attempt.HostResults = []binding.ToolResult{nested}
 			if nested.Status != "completed" {
-				attempt.TranslationError = nested.text()
+				attempt.TranslationError = "host tool " + nested.CallID + " " + nested.Tool + ": " + nested.Status
+				if nested.ExitCode != nil {
+					attempt.TranslationError += "; exit " + strconv.Itoa(*nested.ExitCode)
+				}
 			}
 		}
 		if history.ToolName == applyPatchToolName && !reportedSuccess {

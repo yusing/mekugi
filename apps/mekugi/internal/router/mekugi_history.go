@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/backends/codex/nativetrace"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
@@ -45,7 +47,7 @@ type mekugiHistory struct {
 	ResolvedBaseline *resolvedStockBaseline           `json:",omitempty"`
 	ExecObservation  *changecapture.Observation       `json:",omitempty"`
 	ExecOutcome      *changecapture.Outcome           `json:",omitempty"`
-	HostResults      []nativeToolResult               `json:",omitempty"`
+	HostResults      []binding.ToolResult             `json:",omitempty"`
 	CommandSegments  *legacycall.Segments             `json:",omitempty"`
 	CarrierName      string
 	CarrierKind      codeModeCarrierKind
@@ -65,7 +67,7 @@ type mekugiHistory struct {
 
 	bytes      int
 	confirmed  bool
-	nativeCell *nativeTraceCell
+	nativeCell *nativetrace.Cell
 	// sequence orders a request-visible view (or the bounded memory cache).
 	// It is never durable: replay derives recovery order from the input.
 	sequence uint64
@@ -484,7 +486,7 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *codexr
 			if source == "" {
 				source = completed.history.Script
 			}
-			completed.history.nativeCell = p.nativeTrace.readCell(completed.history.ExecutingThread, completed.callID, source)
+			completed.history.nativeCell = p.nativeTrace.ReadCell(completed.history.ExecutingThread, completed.callID, source)
 			resolveStockEdits(&completed.history, workspace)
 		}
 	}
@@ -493,7 +495,7 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *codexr
 		// A yielded command owns its continuing process, not the completed
 		// patches in its exec cell. Freeze those patches below before a
 		// later call can edit their files; only command capture waits here.
-		if completed.history.nativeCell.pending() {
+		if completed.history.nativeCell.Pending() {
 			continue
 		}
 		key := execSiblingKey(completed.history)

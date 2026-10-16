@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/backends/codex/nativetrace"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -29,7 +30,7 @@ func testCompletedPatchBeforeYieldedCommand(t *testing.T, exit int) {
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
 	trace := newNativeTraceFixture(t)
-	proxy.nativeTrace = &nativeToolTrace{directory: trace.root}
+	proxy.nativeTrace = nativetrace.New(trace.root)
 	transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
 	transform.sessionShell = "bash"
 	target := filepath.Join(workspace, "file.txt")

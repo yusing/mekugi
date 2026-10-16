@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/nativetrace"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
@@ -262,7 +264,7 @@ func RunSession(conversation *conversationmodel.Service, live *previewmodel.Serv
 		}
 		traceDirectory, traceErr := os.MkdirTemp("", "mekugi-native-trace-")
 		if traceErr == nil {
-			mekugiCalls.nativeTrace = &nativeToolTrace{directory: traceDirectory}
+			mekugiCalls.nativeTrace = nativetrace.New(traceDirectory)
 			defer func() { runErr = errors.Join(runErr, os.RemoveAll(traceDirectory)) }()
 		} else {
 			issues.addNotice("", "native_trace", "Nested tool confirmation unavailable: "+traceErr.Error())
@@ -399,7 +401,7 @@ func RunSession(conversation *conversationmodel.Service, live *previewmodel.Serv
 			return startAppServerUI(conversation, activity, service, prefs, segments.Reports, ctx, cmd, stdin, stdout, mekugiCalls, issues, resumeThread, faint, provider.serviceTiers, capture, resumeArgv, debugDirectory, provider.titleGenerator, approvals)
 		}
 		if mekugiCalls != nil && mekugiCalls.nativeTrace != nil {
-			session.NativeTraceDirectory = mekugiCalls.nativeTrace.directory
+			session.NativeTraceDirectory = mekugiCalls.nativeTrace.Directory()
 		}
 		if debug != nil {
 			session.AXReadOutput = debug.ReadLogPath()

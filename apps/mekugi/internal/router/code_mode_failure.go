@@ -58,7 +58,7 @@ func (p *mekugiProxy) observeCodeModeFailures(thread, codeModeToolName string, r
 				// The host ran the translated carrier, not the model's script.
 				source = cmp.Or(history.CarrierPayload, history.Script)
 			}
-			p.activity.noteUnreturned(thread, p.nativeTrace.readCell(thread, callID, source).execCommands())
+			p.activity.noteUnreturned(thread, p.nativeTrace.ReadCell(thread, callID, source).ExecCommands())
 		}
 	}
 }
