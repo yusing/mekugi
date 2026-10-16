@@ -180,7 +180,7 @@ func allowedImport(directory, pkg, imported string) error {
 		}
 		allowed := map[string][]string{
 			"commandanalysis":      {"sourceanalysis", "commandargs"},
-			"shellinstrumentation": {"commandanalysis"},
+			"shellinstrumentation": {"commandanalysis", "commandargs"},
 			"outputbudget":         {"sourceanalysis"},
 			"diffrender":           {"diffmodel", "pathdisplay"},
 			"terminalui":           {"diffrender", "pathdisplay"},

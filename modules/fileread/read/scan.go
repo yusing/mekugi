@@ -23,8 +23,8 @@ const retainedBytes = 16 << 20
 // Source: plugins/mcat.ts:166:310@[543de4f3] readLines
 // Scan the entire source even after admission stops. Neither an oversized row
 // nor omitted data can grow memory beyond the reader's recovery bounds.
-func scan(ctx context.Context, selection Selection, o commandargs.ReaderOptions) (command.Output, error) {
-	start, end, path := selection.start, selection.end, selection.Path
+func scan(ctx context.Context, selection commandargs.ReadSelection, o commandargs.ReaderOptions) (command.Output, error) {
+	start, end, path := selection.Start, selection.End, selection.Path
 	fail := func(err error) (command.Output, error) {
 		class := fileClass(err)
 		message := err.Error()

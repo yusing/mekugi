@@ -6,7 +6,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandargs"
+
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -48,7 +49,7 @@ func ShScript(tracker, script string) string {
 	if !ok {
 		return script
 	}
-	prefix := shPrefix + shellsyntax.Quote(tracker) + " ] || . " + shellsyntax.Quote(tracker) + "; "
+	prefix := shPrefix + commandargs.Quote(tracker) + " ] || . " + commandargs.Quote(tracker) + "; "
 	if len(segments) > 1 {
 		script = Rewrite(script, segments)
 	}
@@ -91,11 +92,11 @@ func ShOriginal(script string) string {
 // no coprocess, so the existing router also supplies control and ack FIFOs.
 func ShTracker(helper, channel, directory string) string {
 	return `if [ -z "${` + Guard + `+x}" ] && [ ! -e "/proc/$$/fd/3" ] && [ ! -e "/proc/$$/fd/4" ] && [ ! -e "/proc/$$/fd/7" ] && [ ! -e "/proc/$$/fd/8" ]; then
-  __mekugi_d=$(` + shellsyntax.Quote(helper) + ` --sh-open ` + shellsyntax.Quote(channel) + ` ` + shellsyntax.Quote(directory) + ` 2>/dev/null)
+  __mekugi_d=$(` + commandargs.Quote(helper) + ` --sh-open ` + commandargs.Quote(channel) + ` ` + commandargs.Quote(directory) + ` 2>/dev/null)
   if [ -n "$__mekugi_d" ]; then
     export ` + Guard + `=1
     if { command exec 7<>"$__mekugi_d/control" 8<>"$__mekugi_d/ack"; } 2>/dev/null; then
-      (trap 'printf "decline\n"' EXIT; command exec ` + shellsyntax.Quote(helper) + ` --sh-run ` + shellsyntax.Quote(channel) + ` ` + shellsyntax.Quote(directory) + ` "$__mekugi_d" 0<"$__mekugi_d/control") 3>&1 4>&2 1>&8 7>&- 8>&- 2>/dev/null &
+      (trap 'printf "decline\n"' EXIT; command exec ` + commandargs.Quote(helper) + ` --sh-run ` + commandargs.Quote(channel) + ` ` + commandargs.Quote(directory) + ` "$__mekugi_d" 0<"$__mekugi_d/control") 3>&1 4>&2 1>&8 7>&- 8>&- 2>/dev/null &
       IFS=' ' read -r __mekugi_m __mekugi_w <&8
       case $__mekugi_m in
       relay)

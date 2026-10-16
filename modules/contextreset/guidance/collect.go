@@ -13,6 +13,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/libraries/commandargs"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
@@ -192,7 +194,7 @@ func (s Service) Collect(ctx context.Context, input Input) *Guidance {
 		if source.tier == 2 {
 			command = "inspect_file "
 		}
-		read := command + shellsyntax.QuoteArgument(source.path)
+		read := command + commandargs.QuoteArgument(source.path)
 		body, err := "", ctx.Err()
 		if source.skill.Name != "" {
 			var data []byte
@@ -200,13 +202,13 @@ func (s Service) Collect(ctx context.Context, input Input) *Guidance {
 			if err == nil {
 				data, managed, err = s.readSkill(ctx, workspace, source.skill.Name, source.skill.Path)
 			}
-			read = "skills-mgr get --codex " + shellsyntax.QuoteArgument(source.skill.Name)
+			read = "skills-mgr get --codex " + commandargs.QuoteArgument(source.skill.Name)
 			body = "\nSkill: " + source.skill.Name + "\n"
 			if source.skill.Path != "" {
 				body = fmt.Sprintf("\nSkill: %s from %q\n", source.skill.Name, source.skill.Path)
 			}
 			if !managed {
-				read = "cat " + shellsyntax.QuoteArgument(source.skill.Path)
+				read = "cat " + commandargs.QuoteArgument(source.skill.Path)
 			}
 			body += string(data)
 		} else if err == nil {
@@ -301,7 +303,7 @@ func (s Service) reads(command commandanalysis.Command, home string) []string {
 				}
 			}
 		case "mcat":
-			if specs, _, err := s.reader.Parse(argv[1:]); err == nil {
+			if specs, _, err := commandargs.ParseReadBundle(argv[1:]); err == nil {
 				for _, spec := range specs {
 					paths = append(paths, spec.Path)
 				}

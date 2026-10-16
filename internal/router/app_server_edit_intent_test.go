@@ -5,7 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandargs"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -213,7 +214,7 @@ func TestAppServerSedStartsAsEditBeforeReceipt(t *testing.T) {
 
 func TestAppServerEditIntentLiveAndRestored(t *testing.T) {
 	const source = "mv b.go.new b.go\ncat > a.go <<'EOF'\nPRIVATE_NATIVE_SOURCE\nEOF\ngo test ./internal/router"
-	command := "/usr/bin/bash -lc " + shellsyntax.QuoteArgument(source)
+	command := "/usr/bin/bash -lc " + commandargs.QuoteArgument(source)
 	item := appServerItem{ID: "cmd", Type: "commandExecution", Command: command,
 		CommandActions: []appServerCommandAction{{Type: "unknown", Command: command}}}
 	for _, thread := range []string{"main", "child"} {

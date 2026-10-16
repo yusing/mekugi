@@ -206,11 +206,3 @@ func EnvArgs(args []*syntax.Word) ([]*syntax.Word, string) {
 func IsDigits(value string) bool {
 	return value != "" && strings.Trim(value, "0123456789") == ""
 }
-
-func QuoteArgument(value string) string {
-	quoted, err := syntax.Quote(value, syntax.LangBash)
-	if err == nil {
-		return quoted
-	}
-	return Quote(value)
-}

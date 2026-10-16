@@ -1,4 +1,4 @@
-package shellsyntax
+package commandargs
 
 import (
 	"os/exec"

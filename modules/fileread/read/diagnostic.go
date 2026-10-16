@@ -7,19 +7,11 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/contracts/command"
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 )
 
 func quotePath(path string) string {
 	quoted, _ := jsontext.AppendQuote(nil, path)
 	return string(quoted)
-}
-
-func retryCommand(args ...string) string {
-	for i, arg := range args {
-		args[i] = shellsyntax.QuoteArgument(arg)
-	}
-	return "mcat " + strings.Join(args, " ")
 }
 
 func failure(err error, class string) command.Output {

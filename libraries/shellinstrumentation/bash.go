@@ -3,7 +3,7 @@ package shellinstrumentation
 // Source: internal/execsegment/hook.go:1:168@[465a8ff3] Bash instrumentation
 
 import (
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandargs"
 )
 
 // Guard marks a shell that already decided whether to track its command, so
@@ -33,7 +33,7 @@ func Hook(tracker string) string {
     *)
       # Coprocesses and dynamic descriptors require Bash 4.1 or newer.
       if (( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 1) )); then
-        . ` + shellsyntax.Quote(tracker) + `
+        . ` + commandargs.Quote(tracker) + `
       fi ;;
     esac ;;
   esac
@@ -57,7 +57,7 @@ fi
 // whose first command fires that trap before it has any effect.
 func Tracker(helper, channel, directory string) string {
 	return `exec {__mekugi_o}>&1 {__mekugi_x}>&2
-coproc __MEKUGI_EXEC { exec ` + shellsyntax.Quote(helper) + ` ` + shellsyntax.Quote(channel) + ` ` + shellsyntax.Quote(directory) + ` "$BASH_EXECUTION_STRING" 3>&"$__mekugi_o" 4>&"$__mekugi_x" 2>/dev/null; } 2>/dev/null
+coproc __MEKUGI_EXEC { exec ` + commandargs.Quote(helper) + ` ` + commandargs.Quote(channel) + ` ` + commandargs.Quote(directory) + ` "$BASH_EXECUTION_STRING" 3>&"$__mekugi_o" 4>&"$__mekugi_x" 2>/dev/null; } 2>/dev/null
 __mekugi_c=${__MEKUGI_EXEC[1]-} __mekugi_a=${__MEKUGI_EXEC[0]-} __mekugi_m= __mekugi_d= __mekugi_p= __mekugi_y= __mekugi_z=
 [ -n "$__mekugi_a" ] && IFS=' ' read -r __mekugi_m __mekugi_d <&"$__mekugi_a"
 case $__mekugi_m in
@@ -155,7 +155,7 @@ func mktempHook(helper, control, setup string, bash bool) string {
       fi
       __mekugi_result=${__mekugi_result%.}
       if [ "$__mekugi_status" -eq 0 ]; then
-        ` + shellsyntax.Quote(helper) + ` --created-path "$__mekugi_result" 2>/dev/null 3>` + control + ` || :
+        ` + commandargs.Quote(helper) + ` --created-path "$__mekugi_result" 2>/dev/null 3>` + control + ` || :
       fi
       printf '%s' "$__mekugi_result"
       return "$__mekugi_status"

@@ -13,7 +13,7 @@ import (
 
 func executeBundle(
 	ctx context.Context,
-	specs []Selection,
+	specs []commandargs.ReadSelection,
 	budget int,
 	numbered bool,
 ) (command.Output, error) {
@@ -202,6 +202,6 @@ func bundleRowSpan(start uint64, text string) string {
 	return fmt.Sprintf("%d:%d", start, start+count-1)
 }
 
-func readBundleStart(spec Selection) uint64 {
-	return uint64(max(1, spec.start))
+func readBundleStart(spec commandargs.ReadSelection) uint64 {
+	return uint64(max(1, spec.Start))
 }

@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/commandargs"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"mvdan.cc/sh/v3/syntax"
@@ -62,14 +64,14 @@ func RewriteCommands(script, helper, directory, sudoDirectory, item string) (str
 }
 
 func pathPrefix(directory string) string {
-	return "PATH=" + shellsyntax.Quote(directory) + ":\"${PATH-/bin:/usr/bin}\" "
+	return "PATH=" + commandargs.Quote(directory) + ":\"${PATH-/bin:/usr/bin}\" "
 }
 
 func itemPathPrefix(directory, item string) string {
 	if item == "" {
 		return pathPrefix(directory)
 	}
-	return ItemEnvironment + "=" + shellsyntax.Quote(item) + " " + pathPrefix(directory)
+	return ItemEnvironment + "=" + commandargs.Quote(item) + " " + pathPrefix(directory)
 }
 
 func parseScript(script string) (*syntax.File, error) {
@@ -150,12 +152,12 @@ func (g *commandGuardSpec) helperPrefix(helper, directory string, sudoDirectory 
 	if defaultPath {
 		mode += "-default"
 	}
-	prefix := shellsyntax.Quote(helper) + " " + mode + " " + shellsyntax.Quote(directory) + " "
+	prefix := commandargs.Quote(helper) + " " + mode + " " + commandargs.Quote(directory) + " "
 	if g.mode == "--vcs-shell" && sudoDirectory != nil {
-		prefix += SudoDirectoryFlag + " " + shellsyntax.Quote(*sudoDirectory) + " "
+		prefix += SudoDirectoryFlag + " " + commandargs.Quote(*sudoDirectory) + " "
 	}
 	if item != "" {
-		prefix += ItemFlag + " " + shellsyntax.Quote(item) + " "
+		prefix += ItemFlag + " " + commandargs.Quote(item) + " "
 	}
 	return prefix
 }

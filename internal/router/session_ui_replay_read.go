@@ -17,11 +17,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/commandargs"
+
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
-
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 )
 
 // Replay uses retained semantic items, never shell execution or provider calls.
@@ -359,7 +359,7 @@ func replayItem(raw jsontext.Value) (appServerItem, bool, error) {
 			i.Command = args[2]
 		} else {
 			for j := range args {
-				args[j] = shellsyntax.QuoteArgument(args[j])
+				args[j] = commandargs.QuoteArgument(args[j])
 			}
 			i.Command = strings.Join(args, " ")
 		}

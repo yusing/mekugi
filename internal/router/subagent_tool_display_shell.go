@@ -10,8 +10,6 @@ import (
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
-	"github.com/yusing/mekugi/modules/fileread/read"
-
 	"github.com/yusing/mekugi/modules/symbolquery/query"
 
 	"github.com/yusing/mekugi/libraries/commandargs"
@@ -697,7 +695,7 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr, cwd string) (
 			add(label, value)
 		}
 	case "mcat":
-		specs, _, err := (read.Service{}).Parse(argv[1:])
+		specs, _, err := commandargs.ParseReadBundle(argv[1:])
 		if err != nil {
 			return "", false
 		}

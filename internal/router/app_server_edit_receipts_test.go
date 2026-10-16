@@ -2,6 +2,7 @@ package router
 
 import (
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv1 "encoding/json"
@@ -14,7 +15,6 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
@@ -84,7 +84,7 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "c", "item": map[string]any{
 		"id": "cat-call", "type": "commandExecution", "command": "cat unrelated.go", "exitCode": 0}})
 	assertCapturedCommand(t, u.agents, "child", "cat-call", "Read", 0)
-	sibling := appServerItem{ID: "sibling-call", Type: "commandExecution", Command: "/bin/bash -lc " + shellsyntax.QuoteArgument("rg needle src; python3 - <<'PY'\nopen('nested.go', 'w').write('PRIVATE_EDIT_SOURCE')\nPY"), ExitCode: new(0), DurationMS: new(int64(64))}
+	sibling := appServerItem{ID: "sibling-call", Type: "commandExecution", Command: "/bin/bash -lc " + commandargs.QuoteArgument("rg needle src; python3 - <<'PY'\nopen('nested.go', 'w').write('PRIVATE_EDIT_SOURCE')\nPY"), ExitCode: new(0), DurationMS: new(int64(64))}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "c", "item": sibling})
 	assertCapturedCommand(t, u.agents, "child", "sibling-call", "Search", 0)
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "c", "item": map[string]any{
@@ -350,7 +350,7 @@ func TestAppServerCapturedRemovalKeepsRunNeighbors(t *testing.T) {
 				if thread == "child" {
 					view = u.agents
 				}
-				item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "/bin/bash -lc " + shellsyntax.QuoteArgument(source), ExitCode: new(0), AggregatedOutput: new(" M tracked.go\n")}
+				item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "/bin/bash -lc " + commandargs.QuoteArgument(source), ExitCode: new(0), AggregatedOutput: new(" M tracked.go\n")}
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": item})
 				data := newLiveDiffData()
 				data.order = []string{"receipt"}

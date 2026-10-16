@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandargs"
 
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/internal/livediff"
@@ -79,7 +79,7 @@ func testAppServerEditorTerminalHandoff(t *testing.T, selectedFile bool) {
 	if err := os.WriteFile(editor, []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("EDITOR", shellsyntax.QuoteArgument(editor)+" --wait")
+	t.Setenv("EDITOR", commandargs.QuoteArgument(editor)+" --wait")
 	u, _ := newAppServerTestUI()
 	u.ctx = ctx
 	u.draft = "original"
@@ -226,7 +226,7 @@ func TestAppServerComposerEditorFailurePreservesRecovery(t *testing.T) {
 	if err := os.WriteFile(editor, []byte("#!/bin/sh\nprintf 'recover me' > \"$1\"\nexit 1\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("EDITOR", shellsyntax.QuoteArgument(editor))
+	t.Setenv("EDITOR", commandargs.QuoteArgument(editor))
 	output, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
 	if err != nil {
 		t.Fatal(err)

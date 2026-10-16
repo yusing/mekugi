@@ -10,10 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/commandargs"
+
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
 	"github.com/yusing/mekugi/internal/router"
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -93,7 +94,7 @@ func TestUISnapshotDebugHandoffAfterCodexExit(t *testing.T) {
 			if code := router.RunSessionInspection(testComposition(t).History, new(evidence.Service), new(transportcapture.Service), t.Context(), argv[1:], io.Discard, &diagnosticErrors); code != 0 {
 				t.Fatalf("printed diagnostic command failed: %d: %s", code, &diagnosticErrors)
 			}
-			normalized := strings.ReplaceAll(after, shellsyntax.Quote(argv[2]), "'/tmp/mekugi-debug-session'")
+			normalized := strings.ReplaceAll(after, commandargs.Quote(argv[2]), "'/tmp/mekugi-debug-session'")
 			uisnapshot.Assert(t, filepath.Join(fixtures, "debug-handoff.txt"), normalized)
 		})
 	}

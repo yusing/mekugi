@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/commandargs"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
@@ -26,7 +28,6 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 )
 
 func TestCodexArgsForcesExecutionFeatureToggles(t *testing.T) {
@@ -231,7 +232,7 @@ func TestFrontendScriptSudo(t *testing.T) {
 				t.Fatal(err)
 			}
 			script := filepath.Join(root, "script")
-			body := "#!/bin/bash\n. \"$BASH_ENV\"\nsudo 'bare argument'\n" + shellsyntax.Quote(filepath.Join(real, "sudo")) + " 'two words'\n" + shellsyntax.Quote(filepath.Join(real, "git")) + " push\n" + shellsyntax.Quote(filepath.Join(custom, "sudo")) + "\nexit 7\n"
+			body := "#!/bin/bash\n. \"$BASH_ENV\"\nsudo 'bare argument'\n" + commandargs.Quote(filepath.Join(real, "sudo")) + " 'two words'\n" + commandargs.Quote(filepath.Join(real, "git")) + " push\n" + commandargs.Quote(filepath.Join(custom, "sudo")) + "\nexit 7\n"
 			if err := os.WriteFile(script, []byte(body), 0o700); err != nil {
 				t.Fatal(err)
 			}
@@ -939,7 +940,7 @@ func TestFrontendNestedGuardOptOut(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"git", filepath.Join(real, "git")} {
-		cmd := exec.Command("/bin/bash", "-c", shellsyntax.Quote(name)+" push; printf ' %s' \"$USER_STARTUP\"")
+		cmd := exec.Command("/bin/bash", "-c", commandargs.Quote(name)+" push; printf ' %s' \"$USER_STARTUP\"")
 		cmd.Env = env
 		out, err := cmd.CombinedOutput()
 		if err != nil || string(out) != "REAL_GIT preserved" {

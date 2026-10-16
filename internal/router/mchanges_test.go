@@ -13,8 +13,6 @@ import (
 
 	"github.com/yusing/mekugi/libraries/commandargs"
 
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
-
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 )
@@ -149,7 +147,7 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 				t.Fatal(err)
 			}
 			command := "mchanges " + id + " " + view +
-				" -- 'old name.txt' " + shellsyntax.QuoteArgument(filepath.Join(workspace, "file.txt")) +
+				" -- 'old name.txt' " + commandargs.QuoteArgument(filepath.Join(workspace, "file.txt")) +
 				" ./file.txt 'new name.txt' absent.txt"
 			stdout, stderr, status := runShellWorkerTest(t, registry, interpreter, nil, command, nil, invocation)
 			move := `move "old name.txt"`

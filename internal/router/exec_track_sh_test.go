@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+	"github.com/yusing/mekugi/libraries/commandargs"
 
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 )
 
 func TestExecTrackDashMissingHelperRunsOriginal(t *testing.T) {
@@ -27,7 +27,7 @@ func TestExecTrackDashMissingHelperRunsOriginal(t *testing.T) {
 	// The first helper call succeeds but removes its own entrypoint before
 	// dash starts the reporting helper. Keep the real helper's direct parent.
 	entrypoint := filepath.Join(shell.root, "vanishing-helper")
-	if err := os.WriteFile(entrypoint, []byte("#!/bin/sh\nrm -- \"$0\"\nexec "+shellsyntax.Quote(helper)+" \"$@\"\n"), 0o700); err != nil {
+	if err := os.WriteFile(entrypoint, []byte("#!/bin/sh\nrm -- \"$0\"\nexec "+commandargs.Quote(helper)+" \"$@\"\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	tracker := filepath.Join(shell.root, "exec-track.sh")
@@ -36,7 +36,7 @@ func TestExecTrackDashMissingHelperRunsOriginal(t *testing.T) {
 	}
 	script := "printf 'ORIGINAL\\n'; printf 'STDERR\\n' >&2; false"
 	command := shellinstrumentation.ShScript(tracker, script)
-	shell.hub.start([3]string{"thread", "turn", "missing-helper"}, "/bin/sh -c "+shellsyntax.Quote(command))
+	shell.hub.start([3]string{"thread", "turn", "missing-helper"}, "/bin/sh -c "+commandargs.Quote(command))
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, execTrackShellExecutable(t, "sh"), "-c", command)
@@ -84,7 +84,7 @@ func TestExecTrackDashSegments(t *testing.T) {
 				t.Fatalf("envelope lost script: %q", original)
 			}
 			key := [3]string{"thread", "turn", script}
-			shell.hub.start(key, "/bin/sh -c "+shellsyntax.Quote(instrumented))
+			shell.hub.start(key, "/bin/sh -c "+commandargs.Quote(instrumented))
 			plain := runShell(t, shell.env, "sh", "-c", script)
 			tracked := runShell(t, shell.env, "sh", "-c", instrumented)
 			if tracked != plain {
@@ -122,7 +122,7 @@ func TestExecTrackShEnvelopeKeepsBash(t *testing.T) {
 	script := "printf first; false; printf last"
 	wrapped := shellinstrumentation.ShScript(filepath.Join(shell.root, "exec-track.sh"), script)
 	key := [3]string{"thread", "turn", "bash"}
-	shell.hub.start(key, "/bin/bash -c "+shellsyntax.Quote(wrapped))
+	shell.hub.start(key, "/bin/bash -c "+commandargs.Quote(wrapped))
 	plainEnv := slices.DeleteFunc(slices.Clone(shell.env), func(entry string) bool { return strings.HasPrefix(entry, "BASH_ENV=") })
 	plain := runShell(t, plainEnv, "bash", "-c", script)
 	if tracked := runShell(t, shell.env, "bash", "-c", wrapped); tracked != plain {

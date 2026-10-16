@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/commandargs"
+
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -30,7 +32,6 @@ import (
 	"github.com/yusing/mekugi/internal/router"
 
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"golang.org/x/term"
 )
 
@@ -137,7 +138,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		}
 		fmt.Fprintln(os.Stderr, "To diagnose this session, ask an agent to run:")
 		directory := filepath.Dir(debugPaths[0])
-		fmt.Fprintf(os.Stderr, "  mekugi inspect-session --debug-dir %s --field diagnostic\n", shellsyntax.Quote(directory))
+		fmt.Fprintf(os.Stderr, "  mekugi inspect-session --debug-dir %s --field diagnostic\n", commandargs.Quote(directory))
 	}()
 	go func() {
 		routerDone <- router.RunSession(frontends.History, frontends.Recovery, frontends.Segments, frontends.Changes, frontends.Usage, frontends.AgentMetrics, frontends.TransportDiagnostics, ctx, frontends.Commands, frontends.InputProjections, frontends.Guidance, frontends.Naming, frontends.Guards, options, issues, func(session router.Session) {
@@ -403,7 +404,7 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 	basePath = strings.Join(paths, string(os.PathListSeparator))
 	startup := frontendBashEnvMarker
 	if previous != "" {
-		startup += ". " + shellsyntax.Quote(previous) + "\n"
+		startup += ". " + commandargs.Quote(previous) + "\n"
 	}
 	guardDirectory, sudoDirectory := "", ""
 	for _, guard := range guards {
@@ -448,7 +449,7 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 	if sudoDirectory != "" {
 		front += string(os.PathListSeparator) + sudoDirectory
 	}
-	startup += "PATH=" + shellsyntax.Quote(front) + ":\"$PATH\"; export PATH\n"
+	startup += "PATH=" + commandargs.Quote(front) + ":\"$PATH\"; export PATH\n"
 	if guardDirectory != "" {
 		startup += shellinstrumentation.Functions(guardDirectory, shellinstrumentation.KnownPaths(basePath, commandanalysis.VCSTools), commandanalysis.VCSTools)
 	}

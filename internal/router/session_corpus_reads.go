@@ -4,10 +4,9 @@ import (
 	"encoding/json"
 	"math"
 	"path/filepath"
-	"strconv"
 	"strings"
 
-	"github.com/yusing/mekugi/modules/fileread/read"
+	"github.com/yusing/mekugi/libraries/commandargs"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -72,21 +71,14 @@ func corpusReadSelections(script string) []corpusReadSelection {
 		if len(args) < 2 || args[0] != "mcat" {
 			return false
 		}
-		specs, _, err := (read.Service{}).Parse(args[1:])
+		specs, _, err := commandargs.ParseReadBundle(args[1:])
 		if err != nil {
 			return false
 		}
 		for _, spec := range specs {
 			selection := corpusReadSelection{path: filepath.Clean(spec.Path), first: 1, last: math.MaxUint64}
 			if spec.Range != "" {
-				first, last, _ := strings.Cut(spec.Range, ":")
-				var e1, e2 error
-				selection.first, e1 = strconv.ParseUint(first, 10, 64)
-				selection.last, e2 = strconv.ParseUint(last, 10, 64)
-				if e1 != nil || e2 != nil || selection.first > selection.last {
-					return false
-				}
-				selection.first = max(1, selection.first)
+				selection.first, selection.last = uint64(spec.Start), uint64(spec.End)
 			}
 			selections = append(selections, selection)
 		}

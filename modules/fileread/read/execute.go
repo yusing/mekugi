@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/commandargs"
+
 	"github.com/yusing/mekugi/contracts/command"
 )
 
@@ -14,7 +16,7 @@ func (Service) Execute(ctx context.Context, request command.Request) (command.Ou
 	if err := ctx.Err(); err != nil {
 		return command.Output{}, err
 	}
-	specs, options, parseErr := parse(args)
+	specs, options, parseErr := commandargs.ParseReadBundle(args)
 	if parseErr != nil {
 		return command.Output{
 			Stderr:       "mcat: " + parseErr.Error() + "\n",

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandargs"
 )
 
 func TestResetGuidanceUnavailablePlatform(t *testing.T) {
@@ -38,7 +38,7 @@ func TestResetGuidanceUnavailablePlatform(t *testing.T) {
 	if got == nil || len(got.Commands) != 0 || got.Name != "" || got.Tool != "" {
 		t.Fatalf("unsupported snapshot admitted guidance: %+v", got)
 	}
-	if !strings.Contains(got.Text, "Unavailable: cat "+shellsyntax.QuoteArgument(path)) ||
+	if !strings.Contains(got.Text, "Unavailable: cat "+commandargs.QuoteArgument(path)) ||
 		!strings.Contains(got.Text, "link-safe guidance snapshots are unavailable on this platform") ||
 		strings.Contains(got.Text, "Platform policy.") {
 		t.Fatalf("missing platform-unavailable notice: %s", got.Text)
