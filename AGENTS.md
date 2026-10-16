@@ -28,7 +28,8 @@ acceptance cases, not a blanket request to implement every listed concern.
   Observation/display must not replay effects, replace results, or change exact tool input/identity.
   Startup cancellation belongs to the wrapper only until Codex takes the terminal. Keep overrides
   invocation-local and user configuration untouched. See [execution](doc/spec/execution.md),
-  [frontends](apps/mekugi/internal/frontends/SPEC.md), [MCP](libraries/mcptransport/SPEC.md), and [launch](apps/mekugi/internal/launch/SPEC.md).
+  [frontends](apps/mekugi/internal/frontends/SPEC.md), [MCP](libraries/mcptransport/SPEC.md),
+  [headless](apps/mekugi/internal/headless/SPEC.md), and [launch](apps/mekugi/internal/launch/SPEC.md).
 - **Change evidence:** `mchanges` owns retained edit evidence. Preserve ordinary editing/LiveDiff,
   including ignored known targets. Preview is provisional. Source recognition must not gate
   observed effects. Keep segment completion, observed file changes, and terminal host completion

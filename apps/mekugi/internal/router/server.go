@@ -78,7 +78,6 @@ type Session struct {
 	// StartAppUI starts the UI and returns its joined lifetime.
 	// Guards contains only the enabled, composed approval modules.
 	StartAppUI           func(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error)
-	StartHeadless        func(context.Context, *exec.Cmd, io.Reader, io.Writer) (func() error, error)
 	FrontendDirectory    string
 	NativeTraceDirectory string
 }
@@ -356,11 +355,6 @@ func RunSession(live *previewmodel.Service, activity *activitymodel.Service, ser
 	}()
 	if ready != nil && ctx.Err() == nil {
 		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: provider.grok != nil, GrokUnprefixed: grokEnabled, ThirdPartyOnly: provider.thirdPartyOnly, OpenCode: openCode, CodeModeEnabled: options.mode == "mekugi", Guards: guards, SkillsManagerAvailable: skillsManagerAvailable}
-		if mekugiCalls != nil {
-			session.StartHeadless = func(ctx context.Context, cmd *exec.Cmd, input io.Reader, output io.Writer) (func() error, error) {
-				return startHeadlessAppServer(ctx, cmd, input, output, mekugiCalls, issues)
-			}
-		}
 		session.StartAppUI = func(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
 			if mekugiCalls != nil && frontendDirectory != "" {
 				instrumentation := execInstrumentation{}

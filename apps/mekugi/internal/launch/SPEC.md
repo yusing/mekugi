@@ -50,9 +50,9 @@ are explicitly mapped; unsupported options fail rather than acquiring a differen
 meaning. `--yolo` disables host approval and sandbox prompts only when supplied.
 Resume retains the selected host thread and is unavailable to headless runs.
 
-`codex headless --yolo` runs one nonempty stdin prompt in a new thread, with JSONL
-host evidence on stdout and diagnostics on stderr. Its execution and failure
-contract remains in [headless behavior](../../../../doc/spec/router.md#headless-app-server-frontend).
+`codex headless --yolo` selects the [headless client](../headless/SPEC.md).
+Launch rejects resume, unsupported CLI options, and passthrough mode; explicit
+`--yolo` is required because the client cannot answer approvals.
 
 ## Host integration
 

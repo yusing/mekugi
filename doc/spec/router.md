@@ -3,6 +3,8 @@
 [Invocation launch](../../apps/mekugi/internal/launch/SPEC.md) owns command
 selection, private startup, host handoff, arguments, signals and shutdown.
 The [native UI contract](native_ui.md) owns interactive presentation.
+The [headless client](../../apps/mekugi/internal/headless/SPEC.md) owns JSONL
+automation and its host lifecycle.
 
 OpenAI auxiliary requests for standalone search, native image generation/editing,
 and history-note operations use authenticated endpoint forwarding. The router
@@ -224,19 +226,6 @@ is separate from sanitized metrics and debug evidence. The
 
 The [UI contract](native_ui.md) owns interactive app-server presentation
 and client behavior.
-
-### Headless app-server frontend
-
-`mekugi codex headless --yolo` runs one stdin prompt in a new thread for automation
-and offline comparisons. It reuses invocation-local routing and exits after a
-successful Main turn.
-Codex owns compaction and continuation within that turn.
-
-The frontend emits JSONL session evidence on stdout and diagnostics on stderr.
-It rejects empty/oversized prompts, resume and unsupported CLI options before
-launching the host. It fails on interactive host requests, failed or interrupted
-Main turns, lost host connections, output failure or cancellation. Codex retains
-execution authority. This frontend is not available in passthrough mode.
 
 ## Request acceptance
 

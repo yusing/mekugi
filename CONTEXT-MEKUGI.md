@@ -34,6 +34,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Selected-file editor handoff | `apps/mekugi/internal/router/native_file_editor.go`, `apps/mekugi/internal/router/terminal_ui.go`; shared editor runner and terminal restoration in `apps/mekugi/internal/router/app_server_composer_editor.go`, `apps/mekugi/internal/router/app_server_ui.go` |
 | Shared Diff syntax and word highlighting | `libraries/diffrender/source.go`, `libraries/diffrender/word_diff.go`, `libraries/diffrender/theme.go`; source previews in `modules/livepreview/terminalview/preview.go` |
 | Codex app-server stdio RPC and child-process lifecycle | `backends/codex/appserver` |
+| Noninteractive app-server client and JSONL session evidence | `apps/mekugi/internal/headless`; admission and process dispatch in `apps/mekugi/internal/launch` |
 | Codex execution-source and result recognition | `backends/codex/binding/execution_source.go` and `execution_evidence.go`; preview, continuation correlation, restored evidence and offline corpus inspection consume these facts without executing them |
 | Host-selected rollout identity, bounded context usage and resume settings | `backends/codex/rollout`; resume precedence in `modules/sessionpreferences`; Activity projection stays in router consumers |
 | Supplied rollout decoding, logical call identity and recorded command endpoints | `backends/codex/rollout/inspection.go`; query selection and retained-record joins stay in the inspection consumer, metric pairing in `modules/agentmetrics/evidence` |

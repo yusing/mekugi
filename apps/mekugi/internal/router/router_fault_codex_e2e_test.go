@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/headless"
+
 	diagnosticstore "github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
@@ -306,7 +308,7 @@ func TestRecoveredStreamDoesNotLeaveHeadlessNoticeNativeCodexE2E(t *testing.T) {
 		"-c", "features.plugins=false", "-c", "features.goals=false")
 	cmd.Env, cmd.Dir = routerFaultCodexEnvironment(t), t.TempDir()
 	var output bytes.Buffer
-	wait, err := startHeadlessAppServer(ctx, cmd, strings.NewReader("Complete after one stream interruption."), &output, proxy, issues)
+	wait, err := headless.Start(ctx, cmd, strings.NewReader("Complete after one stream interruption."), &output, issues.Notices)
 	if err != nil {
 		t.Fatal(err)
 	}

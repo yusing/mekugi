@@ -31,6 +31,7 @@ import (
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
+	headlessclient "github.com/yusing/mekugi/apps/mekugi/internal/headless"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/router"
 
@@ -267,10 +268,10 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	err = ctx.Err()
 	if err == nil {
 		if headless {
-			if session.StartHeadless == nil {
+			if !session.CodeModeEnabled {
 				err = errors.New("headless requires Mekugi mode")
 			} else {
-				waitCodex, err = session.StartHeadless(ctx, cmd, os.Stdin, os.Stdout)
+				waitCodex, err = headlessclient.Start(ctx, cmd, os.Stdin, os.Stdout, frontends.Notifications)
 			}
 		} else if appUI {
 			if session.StartAppUI != nil {

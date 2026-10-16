@@ -11,6 +11,7 @@ pjdoc:
     - ../../docs/contracts/provider-routing.md
     - router.md
     - ../../apps/mekugi/internal/launch/SPEC.md
+    - ../../apps/mekugi/internal/headless/SPEC.md
     - native_ui.md
     - transport.md
     - ../../modules/notifications/SPEC.md
@@ -49,6 +50,7 @@ resume evidence and renderer-keyed persistence.
 - [`REQ-CONTEXT-RESET-001`](../../modules/contextreset/SPEC.md): retained inactive instruction-file loading
 - [`REQ-MCP-001`](../../libraries/mcptransport/SPEC.md): reserved invocation-local MCP transport
 - [Invocation launch](../../apps/mekugi/internal/launch/SPEC.md): command selection and session-scoped Codex lifecycle
+- [Headless client](../../apps/mekugi/internal/headless/SPEC.md): single-prompt JSONL automation and host outcomes
 - [Session integration](router.md): request, storage and diagnostic integration
 - [`REQ-NATIVE-UI-001`](native_ui.md): UI presentation and client behavior
 - [`REQ-TRANSPORT-001`](transport.md): Codex-facing Responses transport
