@@ -20,21 +20,32 @@ untouched and unread. Explicit debug or failure inspection requires this module.
 
 ### Private debug bundles
 
-`--debug` creates a unique private bundle beneath the platform state directory's
-debug subtree. It collects request diagnostics, final projected instruction/tool
+`--debug` enables detailed operational logging and creates a unique private bundle
+under `$XDG_STATE_HOME/mekugi/debug`, defaulting to `~/.local/state/mekugi/debug`.
+It collects request diagnostics, final projected instruction/tool
 content and available capture, metrics, read-log and AX artifacts. Capture and AX
 remain independently optional. Explicit capture and read-log destinations take
 precedence; the bundle records those selections for later inspection.
 
 Bundles contain private content and are not sanitized. Error strings may include
-request bodies or credentials. Instruction records distinguish the final local
-projection from the outgoing provider subset; a prepared request does not claim
-successful provider acceptance. Ordinary messages and tool-call bodies are not
+request bodies or credentials. The adapter supplies final local projection and
+the prepared outgoing provider subset separately; a prepared request does not
+claim successful provider acceptance. Cached-prefix counts mean actual reuse;
+automatic successors have no prepared wire request, and Grok observations precede
+Chat Completions conversion. Ordinary messages and tool-call bodies are not
 separate instruction-dump fields. Repeated content may use file-local references;
 `mekugi.instructions.v2` references resolve within the same file, including
 content shared across projected and wire fields. Older
 inline records remain readable, and unresolved references are failures,
 not empty content. Existing bundles are never rewritten during inspection.
+
+`request_complete` records monotonic elapsed milliseconds and available immutable
+`capture_id`/`request_sequence`. Request-scoped debug and instruction records use
+that capture ID as `request_id`, or a local random ID without capture.
+`tool_observation` joins this identity to safe logical call identity and tool name
+at observation, not execution. AX and patch evidence join by call identity;
+neither transport receives a correlation header. Bounded stream and cancellation
+fields follow [transport diagnostics](../transportdiagnostics/SPEC.md#provider-and-stream-evidence).
 
 Generated directories use mode 0700 and files use mode 0600. Generated bundles expire after 14 days
 of inactivity since close or the last crash lease timestamp, with owner
@@ -43,8 +54,10 @@ unowned temporary directories. Copying a bundle outside managed storage retains
 it independently of cleanup. Generated bundles are separate from session-history
 quotas.
 
-The application reports one shell-quoted diagnosis command after shutdown and
-terminal restoration, including startup failures after bundle initialization.
+After the child and router stop and the terminal is restored, the application
+prints one `To diagnose this session, ask an agent to run:` heading and one
+shell-quoted `mekugi inspect-session --debug-dir DIR --field diagnostic` command
+to stderr, including startup failures after bundle initialization.
 Paths are not printed over the active interactive session. Bundle files survive
 normal shutdown.
 
@@ -90,10 +103,13 @@ Cancellation reports an incomplete query even when its selected files or record
 directory are empty.
 
 AX export combines one validated read-log snapshot with typed
-[session inspection](../sessioninspection/SPEC.md) facts. The application
-discovers rollout candidates under its shutdown bound; the backend establishes
-exact thread identity, and agent metrics calculates the report. Missing,
-ambiguous, incomplete or mismatched discovery remains explicit. Available read evidence survives unavailable rollout-dependent
+[session inspection](../sessioninspection/SPEC.md) facts. The application discovers
+candidates by filename suffix under `$CODEX_HOME/sessions` and `archived_sessions`,
+defaulting to `~/.codex`, within its shutdown bound. The backend establishes exact
+metadata identity, session inspection validates selected rollouts in full, and
+agent metrics calculates the report. Invalid or unreadable candidates make
+discovery incomplete. Missing, ambiguous, incomplete or mismatched discovery
+remains explicit. Available read evidence survives unavailable rollout-dependent
 metrics. Invalid read logs supply no partial counts; unavailable defect
 assessments remain unassessed. The AX report contains metrics and coverage,
 not scripts or command output. Whole-rollout evidence is distinct from work during this invocation;

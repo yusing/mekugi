@@ -68,6 +68,44 @@ bounded removal batches, and releases serialization between batches. Referring
 records retire before their dependencies regardless of filename order. Interrupted
 retirement preserves the catalog until its final batch, so restart is retryable.
 
+### Application integration
+
+Mekugi tool replay uses `$XDG_STATE_HOME/mekugi/replay`, defaulting to
+`~/.local/state/mekugi/replay`; a relative `XDG_STATE_HOME` is invalid. This private
+correctness state survives shutdown and restores model-visible tools on resume
+and fork. Initialization failure prevents launch. Passthrough opens storage only
+to retain failures and does not retain tool replay state.
+
+Cross-process leases cover active turns, host handoffs, workers and yielded calls.
+A delivered terminal without a tool handoff releases its turn lease independently
+of answer text or optional UI tracking; shutdown releases owned leases. Cleanup
+never stops host processes or changes continuation lifetimes.
+
+The application schedules age cleanup at startup and hourly without blocking
+startup, UI handling or request preparation. Admission coalesces pressure into
+prompt background work rather than waiting for the next age sweep. Response
+translation retains completed facts in memory while waiting cancellably up to
+30 seconds for maintenance, then retries persistence only. Insufficient space,
+stalled cleanup or timeout yields a capacity diagnostic, never a repeated host
+operation or upstream request. Age-cleanup failures issue invocation-wide notices
+without failing unrelated requests.
+User-only notices or worker stderr report removals; errors identify the cleanup
+phase and underlying cause without claiming complete reclamation. Shutdown
+cancels and joins maintenance, including a lazily opened failure-only store.
+Missing recovery references explain expiry or pressure without replaying effects.
+
+### Read-only storage inspection
+
+`mekugi inspect-storage` validates one explicitly selected retained call or
+snapshot object without opening writable storage, starting a router, acquiring
+storage locks, changing permissions or executing inputs. Its `mekugi.storage.v1`
+JSON reports target, decoded bytes, content hash and dependency count. Private
+text requires field selection; UTF-8-aligned windows are bounded to 64 KiB with
+a continuation offset. Missing objects, invalid references, corrupt compression,
+hash mismatches and invalid offsets produce target-qualified stderr and nonzero
+status. No scan of other sessions substitutes for unavailable selected evidence.
+Record owners remain responsible for decoding and validation.
+
 ## Codex connection
 
 None. Codex execution remains outside this module.

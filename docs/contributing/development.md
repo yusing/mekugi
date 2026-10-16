@@ -52,7 +52,7 @@ The [release workflow](../../.github/workflows/release.yml) packages Linux/macOS
 sanitized.** Inactive bundles expire after 14 days; copy elsewhere to keep one. Exit
 prints a diagnosis command. Codex tracing uses uncapped private temporary storage;
 shutdown removes it, forced kills may leave it. See [debug
-evidence](../../doc/spec/router.md#debug-evidence).
+evidence](../../modules/diagnostics/SPEC.md#private-debug-bundles).
 
 ### Inspect a session
 
@@ -84,7 +84,23 @@ repeatable timing; headless excludes terminal backpressure. See
 
 ## Profile live sessions and replay
 
-`make mekugi-pprof` builds the profiling binary and executor without installing them.
-Launch or replay with `bin/mekugi-pprof`; stderr prints a loopback URL for `go tool pprof`.
-Local callers can read private data; keep captures private. Instrumentation affects timing;
-profiles cover Mekugi, not separate Codex/executor processes. See [profiling](../../doc/spec/router.md#performance-profiling).
+`make mekugi-pprof` builds a separate optimized executable with symbols and the
+`pprof` build tag, plus its sibling executor, without installing or replacing the
+normal command. Launch arguments, worker dispatch and hooks retain their behavior.
+The normal build starts no profiling listener.
+
+Launch or [replay](../../modules/sessionreplay/SPEC.md) with `bin/mekugi-pprof`.
+Each invocation binds its own OS-assigned IPv4 loopback port and prints
+`mekugi-pprof: http://127.0.0.1:PORT/debug/pprof/` to stderr before UI handoff.
+Use that URL with `go tool pprof`. Workers and hooks start no listener; completion
+cancels active captures and closes only the invocation's listener.
+
+Standard routes expose CPU, heap, allocs, goroutine, block, mutex and execution
+trace data. CPU and trace collection start only on request. Block sampling uses
+a 1 ms blocked-time rate; mutex sampling records one in ten contention events.
+Instrumentation may perturb performance. Profiles cover the Mekugi process,
+including UI, routing and replay, not separate Codex, executor or worker processes.
+
+The routes have no additional authentication: local callers can read command-line
+arguments and other private process data. Keep captures private. Profiling is
+independent of sanitized metrics and debug evidence.

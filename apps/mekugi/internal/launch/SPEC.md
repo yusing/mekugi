@@ -73,8 +73,13 @@ when guarding is disabled. The host owns execution and permissions.
 
 The `--deduplicate-output` flag defaults to true and controls only the
 [model-input projection](../../../../modules/outputdeduplication/SPEC.md).
-Passthrough does not apply it. Runtime transport, storage and diagnostic behavior
-belong to [session integration](../../../../doc/spec/router.md).
+Passthrough does not apply it. Runtime contracts belong to
+[Responses integration](../../../../docs/contracts/responses-transport.md),
+[session history](../../../../modules/sessionhistory/SPEC.md), and
+[diagnostics](../../../../modules/diagnostics/SPEC.md). Debug launch passes its
+selected AX read-log path to the executor and authenticated worker manifest,
+preserving it across child environment changes. Explicit capture and
+`MEKUGI_AX_OUTPUT` paths take precedence.
 
 ## Lifecycle and failure
 
@@ -87,7 +92,8 @@ signal exits use `128 + signal`.
 
 Startup errors, launch failure, cancellation and child exit release owned services
 and temporary files. Cleanup failures are reported. Undelivered critical notices
-are printed after terminal restoration with control sequences removed. Debug
+and repetition summaries are printed after terminal restoration with control
+sequences removed and readable text preserved. Debug
 handoffs identify the retained private bundle without exposing its contents.
 Catalog preparation prints content-free stderr progress immediately and every
 ten seconds. Interactive output is width-bounded and cleared before handoff;

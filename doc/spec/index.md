@@ -4,12 +4,11 @@ pjdoc:
   kind: spec
   scope: root
   status: draft
-  revision: "73"
+  revision: "74"
   files:
     - ../../providers/grok/SPEC.md
     - ../../providers/opencode/SPEC.md
     - ../../docs/contracts/provider-routing.md
-    - router.md
     - ../../apps/mekugi/internal/launch/SPEC.md
     - ../../apps/mekugi/internal/headless/SPEC.md
     - native_ui.md
@@ -51,9 +50,8 @@ resume evidence and renderer-keyed persistence.
 - [`REQ-MCP-001`](../../libraries/mcptransport/SPEC.md): reserved invocation-local MCP transport
 - [Invocation launch](../../apps/mekugi/internal/launch/SPEC.md): command selection and session-scoped Codex lifecycle
 - [Headless client](../../apps/mekugi/internal/headless/SPEC.md): single-prompt JSONL automation and host outcomes
-- [Session integration](router.md): request, storage and diagnostic integration
 - [`REQ-NATIVE-UI-001`](native_ui.md): UI presentation and client behavior
-- [`REQ-TRANSPORT-001`](../../docs/contracts/responses-transport.md): Codex-facing Responses transport
+- [`REQ-TRANSPORT-001`](../../docs/contracts/responses-transport.md): Responses admission, transport, catalog and auxiliary integration
 - [OpenAI provider](../../providers/openai/SPEC.md): credential validation, model exchange, HTTP and WebSocket transport
 - [Provider routing](../../docs/contracts/provider-routing.md): native-agent continuity and cross-provider isolation
 - [Grok](../../providers/grok/SPEC.md): authentication, models and Codex adaptation policy

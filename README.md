@@ -139,7 +139,7 @@ Interactive launches open the [UI](#ui); noninteractive commands retain Codex's
 arguments/output/exit status. Ctrl-C cancels startup; exit prints resume/replay commands.
 Mekugi mode needs JavaScript `exec`. There is no daemon, fixed/custom endpoint, or `--oss`.
 See [launch limits](apps/mekugi/internal/launch/SPEC.md) and
-[request integration](doc/spec/router.md); invocation overrides leave config unchanged.
+[request integration](docs/contracts/responses-transport.md); invocation overrides leave config unchanged.
 
 ### Grok models
 
@@ -387,7 +387,7 @@ after **14 inactive days**; capacity cleanup removes oldest inactive sessions, n
 running work. **Codex chats/workspace files are never deleted.** Cleanup invalidates
 references; power loss can lose recent records. If retention fails, free space and retry
 retention, not the operation. Stop wrappers before moving storage aside. Use `mekugi
-inspect-storage`; see [storage details](doc/spec/router.md).
+inspect-storage`; see [storage details](modules/sessionhistory/SPEC.md).
 
 ## Metrics
 

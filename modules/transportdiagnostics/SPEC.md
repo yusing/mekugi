@@ -104,12 +104,43 @@ Older records with missing additive evidence remain valid but unavailable for
 that interpretation. Aggregate normalization may default missing categories to
 zero, so per-attempt evidence state remains visible separately.
 
-Stream diagnostics retain bounded metadata, allowlisted event/error categories,
-framing, receipt times, termination origin and pending-call counts. They retain
-neither tool arguments nor response text. At most 32 pending calls are tracked;
-truncation is visible. Upstream termination, downstream delivery failure,
-translation failure and host-control rejection stay distinct. A framing-complete
-body without a terminal response is not successful inference.
+Debug `request_complete` records include `response_stream` when stream copying
+was attempted: copy-stop category, last allowlisted event and receipt time,
+observed terminal, reader termination and its first observed origin (upstream,
+downstream, context or router processing). Outer readers cannot overwrite that
+origin. Actual upstream transport is separate from any synthetic HTTP status used
+by a WebSocket bridge. Bounded provider request/response IDs, numeric WebSocket
+close codes, event and decoded/adapted body-byte counts, last-byte/end times and
+an unterminated-event flag describe observations, not provider-internal causes.
+Body counts are not wire-byte measurements. HTTP evidence distinguishes complete
+length/chunked/HTTP-stream framing, connection-delimited ends and decompressed EOF.
+
+WebSocket evidence distinguishes read errors/closes from a stopped reader channel;
+cancellation never becomes synthetic upstream EOF. A reader publishes its actual
+terminal error into an available bounded slot before cancellation can discard it,
+without evicting queued messages or blocking shutdown on an abandoned consumer.
+Rejected controls retain their request-error classification and error delivery.
+Downstream write termination and its numeric close code remain separate from read
+termination. Translation faults, delivery failures and upstream termination stay
+distinct; framing completion or EOF alone cannot establish inference success.
+
+Pending calls retain safe item/call identities, received delta counts and UTF-8
+byte counts, and input-done observation, never arguments. Counts measure received
+deltas, not completed input size or model usage. At most 32 calls are retained;
+identity or capacity omissions explicitly truncate coverage. Unknown events and
+errors use fixed categories. Sanitized fields contain no raw event names, close
+reasons, response text, credentials, arbitrary headers or error strings; private
+diagnostic errors retain their separate unsanitized meaning.
+
+Cancellation evidence is independent of replay diagnostic references. Causes are
+`router_shutdown`, `response_start_timeout`, `upstream_idle_timeout`,
+`downstream_context_canceled`, `downstream_disconnected`,
+`downstream_deadline_exceeded`, `cancellation_unknown` and `deadline_unknown`.
+Start timeout requires its owned forwarding cause, not a later expired timer.
+An observed idle timeout remains recorded when downstream cancellation wins.
+Downstream context cancellation does not prove explicit user abort. These
+request-local, debug-only observations never change execution, translation,
+cancellation, error delivery or retry behavior.
 
 ### WebSocket boundaries
 
@@ -152,6 +183,8 @@ that recorder after provider teardown and final metrics publication, before debu
 shutdown and bundle release. Reader workers and offline readers acquire no
 recorder or output resources during composition. Restart restores no live metrics,
 keys, correlations or request clocks.
+Metrics belong to the invocation and expire on shutdown; completion and exit do
+not announce metrics paths. Sanitized capture remains independent of debug logging.
 
 ## Codex connection
 
@@ -160,7 +193,7 @@ termination categories. Observation never controls Codex operations or retries.
 
 ## Records
 
-Explicit capture appends sanitized schema-7 JSONL; metrics exports use
+`--capture-output PATH` appends sanitized schema-7 JSONL; metrics exports use
 `mekugi.capture.metrics.v7`. Code owns their schemas. Records contain bounded
 identity, timing, status, usage, byte counts, request kind/tool names and the
 allowlisted evidence above. They never contain credentials, prompts,

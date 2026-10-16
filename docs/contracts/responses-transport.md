@@ -15,7 +15,33 @@ connections, pooled inference and its pre-send-only fallback. Application
 integration owns downstream admission, dedicated socket lifetime, deadlines,
 accounting and delivery diagnostics.
 
+## Catalog and auxiliary exchanges
+
+`/v1/models` retains only the latest complete successful HTTP 200 catalog in
+invocation memory, bounded to 8 MiB, without disk persistence or an expiry timer.
+Authenticated requests with identical
+credentials, account, session header and query, including client version, reuse
+its exact body and forwarded headers; concurrent matches share the fetch.
+Invalid authentication cannot read the cache. An absent session header scopes
+reuse to the router lifetime. A successful different key replaces the entry.
+Router restart, including resume, clears it; forks and model switches reuse only
+a matching key. Failures are not cached: Codex receives the catalog error, and private
+diagnostics retain its complete cause, transport class or upstream HTTP status,
+reference and upstream/downstream statuses. Catalog refresh failures are not
+inference failures and queue no terminal notice.
+
+OpenAI standalone search, native image generation/editing and history-note
+operations use authenticated forwarding without projection or automatic retry.
+Their request bodies, response status, forwarded headers, output, streaming and
+encoding are preserved. Third-party-only launches disable these endpoints.
+The local base URL does not establish Codex backend-route eligibility;
+backend-specific workspace routing and experimental context activation remain
+unavailable until they can preserve session interception.
+
 ## Admission and projection
+
+Compressed HTTP Responses bodies are decoded before projection, applying the
+request budget to both encoded and decoded input. Auxiliary bodies stay encoded.
 
 One connection carries one unnamed response lane. A non-null `stream_id` fails;
 independent sessions require separate connections.
@@ -37,6 +63,14 @@ preamble wording. Malformed or duplicate tools, wrong-kind wrappers and partial
 execution catalogs fail admission.
 Nested editing/process tools retain their validated stock catalog; top-level
 `apply_patch` or `exec_command` are unsupported interfaces.
+Invalid native catalogs and forced incompatible tool choices return actionable
+HTTP 400 errors, not retryable upstream 502 errors.
+
+ChatGPT requests select `access_programs.cyber="standard"` for prewarming and
+continuations over either transport, overriding client Daybreak selection while
+preserving the model and other access programs. Grok and OpenCode are unchanged.
+This body selection cannot prevent an upstream eligibility-service failure
+during WebSocket upgrade before the body is sent.
 
 Projection never changes original tool arguments, host history or retained
 evidence. [Output deduplication](../../modules/outputdeduplication/SPEC.md) runs
@@ -87,6 +121,30 @@ non-control, non-ancillary event; steering acknowledgements do not satisfy it.
 `--stream-idle-timeout` bounds gaps during an active response, not quiet intervals
 after completion or while waiting for tool results. Idle completed connections
 remain available for queued steering. No transparent reconnect migrates their state.
+
+## Failure delivery
+
+Provider HTTP errors and WebSocket upgrade rejection bodies may be limited to
+8 KiB; a body-limit failure reports the bound rather than claiming complete
+evidence. Streaming projection and replay-persistence errors retain their safe
+operation or conflict class instead of a generic translation error. Complete
+private errors remain separate from sanitized metrics and capture.
+
+After a delivered `response.created`, a deterministic translation fault emits
+`response.failed` with `invalid_prompt` unless a terminal was already delivered
+or downstream is unwritable. Its message includes a safe cause and diagnostic
+reference, advising a model switch, passthrough, or a `--debug` relaunch and report,
+not retrying unchanged input. Pre-stream retryable provider failures retain their
+retry behavior. Protocol delivery does not acknowledge a user-visible
+[notice](../../modules/notifications/SPEC.md).
+
+A recognized downstream HTTP or WebSocket disconnect is cancellation, including
+write/flush failure before context cancellation and EOF wrapped by cancellation.
+Both transports preserve the original error and partial-write count. Unfinished
+tool input cannot replace that cause with a translation fault. Disconnects queue
+no critical restart notice and never replay the interrupted request; other write
+failures remain failures. Stream observations follow
+[transport diagnostics](../../modules/transportdiagnostics/SPEC.md#provider-and-stream-evidence).
 
 ## Acceptance
 

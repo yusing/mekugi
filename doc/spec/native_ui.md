@@ -43,7 +43,7 @@ establish original wall-time latency. Compare identical inputs, seed, speed and
 dimensions, using 1.0x for representative latency.
 
 Rendered-output snapshots cover running, paused, completed, fractional-speed and
-narrow states. The shared [diagnostic-build profiling listener](router.md#performance-profiling)
+narrow states. The shared [diagnostic-build profiling listener](../../docs/contributing/development.md#profile-live-sessions-and-replay)
 is opt-in; replay creates no automatic profile files.
 
 ### UI
