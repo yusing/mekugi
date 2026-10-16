@@ -109,16 +109,12 @@ func TestComposerFileAttachmentWireAndProviderPrefix(t *testing.T) {
 	if err := json.Unmarshal(attempt.forwardBody, &sent); err != nil || len(sent.Input) != 2 {
 		t.Fatalf("wire did not carry separate user messages: %v", err)
 	}
-	prefix, err := (providerHistory{confirmed: true}).append(sent.Input)
-	if err != nil {
-		t.Fatal(err)
-	}
 	for _, automatic := range []bool{false, true} {
 		request.Fields["input"] = raw
 		request.Fields["previous_response_id"] = responses.MustMarshalJSON("parent")
 		projectFileAttachments(&request)
-		exchange := &webSocketExchange{parentID: "parent", automatic: automatic, history: &webSocketHistory{parent: &webSocketHistory{providerHistory: prefix}}}
-		if err := exchange.reconcileProviderHistory(&request, responses.MustMarshalJSON(request.Fields)); err != nil {
+		exchange := confirmedHistoryExchange(t, sent.Input, automatic)
+		if _, err := exchange.Reconcile(&request, true); err != nil {
 			t.Fatal(err)
 		}
 		if request.CachedInput != 2 || request.RebaseInput {

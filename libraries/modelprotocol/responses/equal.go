@@ -28,9 +28,17 @@ func SameJSONValue(left, right []byte) bool {
 	if bytes.Equal(left, right) {
 		return true
 	}
-	var a, b any
-	if json.Unmarshal(left, &a, jsonv1.DefaultOptionsV1(), preserveNumbers) != nil {
+	a, err := DecodeJSONValue(left)
+	if err != nil {
 		return false
 	}
-	return json.Unmarshal(right, &b, jsonv1.DefaultOptionsV1(), preserveNumbers) == nil && reflect.DeepEqual(a, b)
+	b, err := DecodeJSONValue(right)
+	return err == nil && reflect.DeepEqual(a, b)
+}
+
+// DecodeJSONValue retains exact number spelling and permissive wire semantics.
+func DecodeJSONValue(raw []byte) (any, error) {
+	var value any
+	err := json.Unmarshal(raw, &value, jsonv1.DefaultOptionsV1(), preserveNumbers)
+	return value, err
 }

@@ -1,12 +1,13 @@
-package router
+package responses
+
+// Source: internal/router/provider_history.go:1:188@b3d178e3 provider-prefix evidence.
 
 import (
-	"bytes"
 	"crypto/sha256"
-	"encoding/json"
+	jsonv1 "encoding/json"
+	"encoding/json/jsontext"
+	json "encoding/json/v2"
 	"errors"
-
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
@@ -20,13 +21,11 @@ type providerHistory struct {
 	confirmed bool
 }
 
-func (h providerHistory) append(input []json.RawMessage) (providerHistory, error) {
+func (h providerHistory) append(input []jsontext.Value) (providerHistory, error) {
 	for _, raw := range input {
 		// Normalize JSON object order without rounding numbers or changing strings.
-		decoder := json.NewDecoder(bytes.NewReader(raw))
-		decoder.UseNumber()
-		var value any
-		if err := decoder.Decode(&value); err != nil {
+		value, err := responseevents.DecodeJSONValue(raw)
+		if err != nil {
 			return providerHistory{}, err
 		}
 		h.digest = sha256.Sum256(append(h.digest[:], responseevents.MustMarshalJSON(value)...))
@@ -37,21 +36,17 @@ func (h providerHistory) append(input []json.RawMessage) (providerHistory, error
 
 // All ordinary projections run before this decision. Native item counts and
 // feature-local invalidation hints cannot prove what a provider already holds.
-func (e *webSocketExchange) reconcileProviderHistory(request *codexresponses.Request, body []byte) error {
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(body, &fields); err != nil {
-		return err
-	}
+// Reconcile selects only the projected prefix confirmed on this connection.
+func (e *SessionExchange) Reconcile(request *Request, stateful bool) (string, error) {
+	fields := request.Fields
 	input, err := webSocketInput(fields["input"])
 	if err != nil {
-		return err
+		return "", err
 	}
 	request.CachedInput = 0
 	request.RebaseInput = false
-	e.reconciliationReason = "full_request"
-	if isChatCompletionsModel(request.Model()) {
-		e.reconciliationReason = "stateless_provider"
-		return nil
+	if !stateful {
+		return "stateless_provider", nil
 	}
 	parentID := responseevents.StringField(fields, "previous_response_id")
 	var cached providerHistory
@@ -61,22 +56,20 @@ func (e *webSocketExchange) reconcileProviderHistory(request *codexresponses.Req
 	if cached.confirmed {
 		cached, err = cached.append(e.steering)
 		if err != nil {
-			return err
+			return "", err
 		}
 	}
 	reason := "unconfirmed_provider"
 	if cached.confirmed && cached.count <= len(input) {
 		prefix, err := (providerHistory{}).append(input[:cached.count])
 		if err != nil {
-			return err
+			return "", err
 		}
 		if prefix.digest == cached.digest {
 			request.CachedInput = cached.count
-			e.reconciliationReason = "matching_prefix"
-			// An automatic successor has already started; none of this request
-			// will be sent. It cannot adopt additional projected items either.
+			// Automatic successors have already started and cannot adopt unsent items.
 			if !e.automatic || cached.count == len(input) {
-				return nil
+				return "matching_prefix", nil
 			}
 		}
 		reason = "changed_prefix"
@@ -84,19 +77,19 @@ func (e *webSocketExchange) reconcileProviderHistory(request *codexresponses.Req
 		reason = "shortened_prefix"
 	}
 	if e.automatic {
-		return errors.New("automatic WebSocket successor changed or lacks confirmed cached provider history")
+		return "", errors.New("automatic WebSocket successor changed or lacks confirmed cached provider history")
 	}
 	if parentID != "" {
 		request.CachedInput = 0
 		request.RebaseInput = true
-		e.reconciliationReason = reason
+		return reason, nil
 	}
-	return nil
+	return "full_request", nil
 }
 
 // Capture the submitted suffix and confirmed parent separately so steering
 // acknowledged after preparation can be incorporated at actual admission.
-func (e *webSocketExchange) beginProviderHistory(fields map[string]json.RawMessage) error {
+func (e *SessionExchange) BeginProvider(fields map[string]jsontext.Value) error {
 	input, err := webSocketInput(fields["input"])
 	if err != nil {
 		return err
@@ -115,7 +108,7 @@ func (e *webSocketExchange) beginProviderHistory(fields map[string]json.RawMessa
 	return e.setProviderInput(e.steering)
 }
 
-func (e *webSocketExchange) setProviderInput(steering []json.RawMessage) error {
+func (e *SessionExchange) setProviderInput(steering []jsontext.Value) error {
 	base := e.providerBase
 	var err error
 	if e.providerUsesParent {
@@ -130,20 +123,20 @@ func (e *webSocketExchange) setProviderInput(steering []json.RawMessage) error {
 	return err
 }
 
-func (e *webSocketExchange) observeProviderHistory(body []byte) error {
+func (e *SessionExchange) ObserveProvider(body []byte) error {
 	var event struct {
-		Type     string          `json:"type"`
-		Item     json.RawMessage `json:"item"`
+		Type     string         `json:"type"`
+		Item     jsontext.Value `json:"item"`
 		Response struct {
-			ID     string            `json:"id"`
-			Output []json.RawMessage `json:"output"`
+			ID     string           `json:"id"`
+			Output []jsontext.Value `json:"output"`
 		} `json:"response"`
 	}
-	if err := json.Unmarshal(body, &event); err != nil {
+	if err := json.Unmarshal(body, &event, jsonv1.DefaultOptionsV1()); err != nil {
 		return err
 	}
 	if event.Type == responseevents.Created {
-		var steering []json.RawMessage
+		var steering []jsontext.Value
 		for _, steer := range e.session.steers {
 			if steer.id != "" && steer.parent == e.parentID {
 				steering = append(steering, steer.input...)
@@ -154,7 +147,7 @@ func (e *webSocketExchange) observeProviderHistory(body []byte) error {
 		}
 	}
 	if event.Type == responseevents.OutputItemDone && len(event.Item) != 0 {
-		if err := e.session.retain([]json.RawMessage{event.Item}); err != nil {
+		if err := e.session.retain([]jsontext.Value{event.Item}); err != nil {
 			return err
 		}
 		e.providerOutput = append(e.providerOutput, event.Item)

@@ -225,10 +225,7 @@ func TestDuplicateOutputProviderPrefix(t *testing.T) {
 	if err := json.Unmarshal(first.Fields["input"], &original); err != nil {
 		t.Fatal(err)
 	}
-	state, err := (providerHistory{confirmed: true}).append(original)
-	if err != nil {
-		t.Fatal(err)
-	}
+
 	grownInput := append(slices.Clone(input), duplicateTestInput("cat again", "c", body)...)
 	// A later occurrence with a different part count must not change the prefix.
 	grown := project(append(grownInput, continuationTestOutput("b", duplicateTestHeader, body)))
@@ -236,9 +233,9 @@ func TestDuplicateOutputProviderPrefix(t *testing.T) {
 	if got := executionOutputTexts(items[len(items)-1]["output"]); len(got) != 2 || got[0] != duplicateTestHeader || got[1] != "[same as O1]\n" {
 		t.Fatalf("repeated output identity used the wrong part boundary: %q", got)
 	}
-	exchange := &webSocketExchange{parentID: "parent", history: &webSocketHistory{parent: &webSocketHistory{providerHistory: state}}}
+	exchange := confirmedHistoryExchange(t, original, false)
 	grown.Fields["previous_response_id"] = responses.MustMarshalJSON("parent")
-	if err := exchange.reconcileProviderHistory(grown, responses.MustMarshalJSON(grown.Fields)); err != nil {
+	if _, err := exchange.Reconcile(grown, true); err != nil {
 		t.Fatal(err)
 	}
 	if grown.CachedInput != len(original) || grown.RebaseInput {
@@ -384,17 +381,14 @@ func TestDuplicateOutputAttachmentsAndWirePrefix(t *testing.T) {
 				if err := json.Unmarshal(first, &prefix); err != nil {
 					t.Fatal(err)
 				}
-				state, err := (providerHistory{confirmed: true}).append(prefix)
-				if err != nil {
-					t.Fatal(err)
-				}
+
 				grown := wire(append(slices.Clone(input), attach(frame)))
 				if texts(duplicateTestItems(t, grown)[3]) != want {
 					t.Fatal("third snapshot referenced a generated marker")
 				}
-				exchange := &webSocketExchange{parentID: "parent", history: &webSocketHistory{parent: &webSocketHistory{providerHistory: state}}}
+				exchange := confirmedHistoryExchange(t, prefix, false)
 				grown.Fields["previous_response_id"] = responses.MustMarshalJSON("parent")
-				if err := exchange.reconcileProviderHistory(grown, responses.MustMarshalJSON(grown.Fields)); err != nil {
+				if _, err := exchange.Reconcile(grown, true); err != nil {
 					t.Fatal(err)
 				}
 				if grown.CachedInput != len(prefix) || grown.RebaseInput {

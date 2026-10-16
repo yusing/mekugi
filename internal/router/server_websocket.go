@@ -8,10 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"net"
 	"net/http"
-	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -45,7 +43,7 @@ func responsesWebSocketHandler(lifecycle context.Context, timeout time.Duration,
 			return
 		}
 		defer conn.CloseNow()
-		conn.SetReadLimit(responsesRequestBufferBytes)
+		conn.SetReadLimit(codexresponses.MaxRequestBytes)
 		ctx, cancel := context.WithCancel(r.Context())
 		defer cancel()
 		stop := context.AfterFunc(lifecycle, cancel)
@@ -53,7 +51,7 @@ func responsesWebSocketHandler(lifecycle context.Context, timeout time.Duration,
 		s := &responsesWebSocket{
 			ctx: ctx, downstream: conn, provider: provider, headers: r.Header.Clone(),
 			timeout: timeout, issues: issues, proxy: proxy,
-			clientMessages: readResponsesWebSocket(ctx, conn, cancel), histories: make(map[string]*webSocketHistory),
+			clientMessages: readResponsesWebSocket(ctx, conn, cancel),
 		}
 		defer func() {
 			if s.upstream != nil {
@@ -208,39 +206,8 @@ func readResponsesWebSocket(ctx context.Context, conn *websocket.Conn, disconnec
 	return messages
 }
 
-// Histories share their immutable ancestors rather than retaining quadratic
-// copies of a growing conversation. Native client-visible items are kept for
-// preparation; a separate bounded fingerprint records confirmed provider history.
-type webSocketHistory struct {
-	parent   *webSocketHistory
-	input    []json.RawMessage
-	output   []json.RawMessage
-	settings map[string]json.RawMessage
-	// Automatic steering successors execute the already-sent model contract.
-	providerModel     string
-	providerReasoning json.RawMessage
-	providerHistory   providerHistory
-}
-
-func (h *webSocketHistory) items() []json.RawMessage {
-	var ancestry []*webSocketHistory
-	for node := h; node != nil; node = node.parent {
-		ancestry = append(ancestry, node)
-	}
-	var items []json.RawMessage
-	for _, a := range slices.Backward(ancestry) {
-		items = append(items, a.input...)
-		items = append(items, a.output...)
-	}
-	return items
-}
-
-type webSocketSteer struct {
-	id, parent string
-	input      []json.RawMessage
-}
-
 type responsesWebSocket struct {
+	history          codexresponses.SessionHistory
 	ctx              context.Context
 	downstream       *websocket.Conn
 	upstream         *websocket.Conn
@@ -251,40 +218,8 @@ type responsesWebSocket struct {
 	timeout          time.Duration
 	issues           *CriticalErrors
 	proxy            *mekugiProxy
-	histories        map[string]*webSocketHistory
-	lastID           string
-	steers           []webSocketSteer
 	queuedCreate     []byte
 	errorDelivered   bool
-	retainedBytes    int
-}
-
-func (s *responsesWebSocket) retain(items []json.RawMessage) error {
-	for _, item := range items {
-		s.retainedBytes += len(item)
-	}
-	if s.retainedBytes > codexresponses.MaxResponseBytes {
-		return errors.New("responses WebSocket history exceeds the router buffer budget")
-	}
-	return nil
-}
-
-func webSocketInput(raw json.RawMessage) ([]json.RawMessage, error) {
-	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
-		return nil, nil
-	}
-	var text string
-	if json.Unmarshal(raw, &text) == nil {
-		return []json.RawMessage{responseevents.MustMarshalJSON(map[string]any{
-			"type": "message", "role": "user",
-			"content": []any{map[string]string{"type": "input_text", "text": text}},
-		})}, nil
-	}
-	var items []json.RawMessage
-	if err := json.Unmarshal(raw, &items); err != nil {
-		return nil, incompatibleRequest("invalid_websocket_request", "decode WebSocket input: "+err.Error())
-	}
-	return items, nil
 }
 
 func (s *responsesWebSocket) run() error {
@@ -347,14 +282,9 @@ func (s *responsesWebSocket) control(body []byte) error {
 		return incompatibleRequest("invalid_websocket_request", "send response.create before a WebSocket control message; Chat Completions providers do not support steering")
 	}
 	if responseevents.StringField(fields, "type") == responseevents.Steer {
-		input, err := webSocketInput(fields["input"])
-		if err != nil {
-			return err
+		if err := s.history.AddSteering(fields); err != nil {
+			return webSocketProtocolError(err)
 		}
-		if err := s.retain(input); err != nil {
-			return err
-		}
-		s.steers = append(s.steers, webSocketSteer{parent: responseevents.StringField(fields, "previous_response_id"), input: input})
 	}
 	// Steering is user input, not an inference request. Forward it exactly once,
 	// without changing its fields or treating an acknowledgement as completion.
@@ -365,52 +295,6 @@ func (s *responsesWebSocket) control(body []byte) error {
 		capturer.ObserveResponsesWebSocketControl(s.ctx, capturer.ResponsesWebSocketControlProvider, capturer.ResponsesWebSocketControlRequest, body)
 	}
 	return nil
-}
-
-func (s *responsesWebSocket) observeControl(body []byte) {
-	var event struct {
-		Type  string `json:"type"`
-		Steer struct {
-			ID     string `json:"id"`
-			Parent string `json:"previous_response_id"`
-		} `json:"steer"`
-	}
-	if json.Unmarshal(body, &event) != nil {
-		return
-	}
-	for index := range s.steers {
-		steer := &s.steers[index]
-		switch event.Type {
-		case responseevents.SteerAccepted:
-			if steer.id == "" && steer.parent == event.Steer.Parent {
-				steer.id = event.Steer.ID
-				return
-			}
-		case responseevents.SteerFailed:
-			if event.Steer.ID != "" && steer.id == event.Steer.ID ||
-				event.Steer.ID == "" && steer.id == "" && steer.parent == event.Steer.Parent {
-				s.steers = append(s.steers[:index], s.steers[index+1:]...)
-				return
-			}
-		}
-	}
-}
-
-// Acknowledgement/failure can arrive after a continuation was sent. Admission,
-// not preparation's snapshot, owns native history. Legal steering contains user
-// messages, never developer instruction or tool carriers.
-func (s *responsesWebSocket) commitSteering(history *webSocketHistory, parent string) {
-	var committed []json.RawMessage
-	remaining := s.steers[:0]
-	for _, steer := range s.steers {
-		if steer.id == "" || steer.parent != parent {
-			remaining = append(remaining, steer)
-		} else {
-			committed = append(committed, steer.input...)
-		}
-	}
-	s.steers = remaining
-	history.input = append(committed, history.input...)
 }
 
 func isWebSocketSteering(body []byte) bool {
@@ -427,7 +311,7 @@ func (s *responsesWebSocket) observeProvider(ctx context.Context, observation *c
 	} else {
 		observation.Message(body)
 	}
-	s.observeControl(body)
+	s.history.ObserveControl(body)
 }
 
 func (s *responsesWebSocket) providerControl(body []byte) error {
@@ -442,109 +326,20 @@ func (s *responsesWebSocket) providerControl(body []byte) error {
 }
 
 func (s *responsesWebSocket) execute(command, firstEvent []byte) error {
-	automatic := len(command) == 0
-	var fields map[string]json.RawMessage
-	if !automatic {
-		if err := json.Unmarshal(command, &fields); err != nil || fields == nil {
-			return incompatibleRequest("invalid_websocket_request", "invalid response.create")
-		}
-		if value := fields["stream_id"]; len(value) != 0 && string(value) != "null" {
-			return incompatibleRequest("invalid_websocket_request", "multiplexed Responses WebSocket lanes are not supported")
-		}
-	} else {
-		var event struct {
-			Response struct {
-				Parent string `json:"previous_response_id"`
-			} `json:"response"`
-		}
-		_ = json.Unmarshal(firstEvent, &event)
-		parent := event.Response.Parent
-		if parent == "" {
-			parent = s.lastID
-		}
-		fields = map[string]json.RawMessage{"previous_response_id": responseevents.MustMarshalJSON(parent)}
-	}
-	parentID := responseevents.StringField(fields, "previous_response_id")
-	var parent *webSocketHistory
-	if parentID != "" {
-		parent = s.histories[parentID]
-		if parent == nil {
-			if automatic {
-				return errors.New("provider automatic response names an unretained previous_response_id")
-			}
-			return incompatibleRequest("invalid_websocket_request", "previous_response_id is not retained on this Responses WebSocket")
-		}
-	}
-	if !automatic {
-		s.retainedBytes += len(command)
-		if s.retainedBytes > codexresponses.MaxResponseBytes {
-			return errors.New("responses WebSocket history exceeds the router buffer budget")
-		}
-	}
-	input, err := webSocketInput(fields["input"])
+	state, parsed, err := s.history.Prepare(command, firstEvent)
 	if err != nil {
-		return err
-	}
-	if err := s.retain(input); err != nil {
-		return err
-	}
-	var steering []json.RawMessage
-	for _, steer := range s.steers {
-		if steer.id != "" && steer.parent == parentID {
-			steering = append(steering, steer.input...)
-		}
-	}
-	settings := make(map[string]json.RawMessage)
-	if automatic && parent != nil {
-		maps.Copy(settings, parent.settings)
-	}
-	maps.Copy(settings, fields)
-	delete(settings, "type")
-	delete(settings, "input")
-	delete(settings, "previous_response_id")
-	// generate=false is a prewarm operation, never an inherited setting.
-	delete(settings, "generate")
-	requestFields := maps.Clone(settings)
-	if generate, ok := fields["generate"]; ok {
-		requestFields["generate"] = generate
-	}
-	var fullInput []json.RawMessage
-	if parent != nil {
-		fullInput = parent.items()
-	}
-	fullInput = append(fullInput, steering...)
-	fullInput = append(fullInput, input...)
-	requestFields["input"] = responseevents.MustMarshalJSON(fullInput)
-	requestFields["stream"] = json.RawMessage("true")
-	if parentID != "" {
-		requestFields["previous_response_id"] = responseevents.MustMarshalJSON(parentID)
-	}
-	body, err := responseevents.MarshalJSON(requestFields)
-	if err != nil {
-		return err
-	}
-	if len(body) > responsesRequestBufferBytes {
-		return errors.New("responses WebSocket reconstructed request exceeds the router buffer budget")
-	}
-	parsed, err := codexresponses.ParseRequest(body)
-	if err != nil {
-		if automatic {
-			return err
-		}
-		return incompatibleRequest("invalid_websocket_request", err.Error())
+		return webSocketProtocolError(err)
 	}
 	headers := s.headers.Clone()
 	var metadata map[string]json.RawMessage
-	if json.Unmarshal(requestFields["client_metadata"], &metadata) == nil {
+	if json.Unmarshal(parsed.Fields["client_metadata"], &metadata) == nil {
 		for _, key := range []string{codexresponses.TurnMetadataHeader, "x-codex-turn-state", codexresponses.ThreadIDHeader, codexresponses.WindowIDHeader, codexresponses.SubagentHeader} {
 			if value, ok := responseevents.DecodeString(metadata[key]); ok {
 				headers.Set(key, value)
 			}
 		}
 	}
-	history := &webSocketHistory{parent: parent, input: input, settings: settings}
-	exchange := &webSocketExchange{session: s, automatic: automatic, first: firstEvent, history: history, parentID: parentID}
-	exchange.steering = steering
+	exchange := &webSocketExchange{session: s, state: state, first: firstEvent}
 	captureCtx, clientObservation := capturer.BeginResponsesWebSocket(s.ctx, headers, command)
 	exchange.clientObservation = clientObservation
 	startCtx, executionCtx, cancel := requestContexts(captureCtx, s.ctx, s.timeout)
@@ -564,24 +359,15 @@ func (s *responsesWebSocket) execute(command, firstEvent []byte) error {
 }
 
 type webSocketExchange struct {
-	streamDiagnostics    *streamDiagnostics
-	session              *responsesWebSocket
-	ctx                  context.Context
-	automatic            bool
-	first                []byte
-	history              *webSocketHistory
-	parentID             string
-	clientObservation    *capturer.ResponsesWebSocket
-	observation          *capturer.WebSocketAttempt
-	buffer               bytes.Buffer
-	ended                bool
-	steering             []json.RawMessage
-	providerInput        providerHistory
-	providerBase         providerHistory
-	providerSuffix       []json.RawMessage
-	providerUsesParent   bool
-	providerOutput       []json.RawMessage
-	reconciliationReason string
+	streamDiagnostics *streamDiagnostics
+	session           *responsesWebSocket
+	state             *codexresponses.SessionExchange
+	ctx               context.Context
+	first             []byte
+	clientObservation *capturer.ResponsesWebSocket
+	observation       *capturer.WebSocketAttempt
+	buffer            bytes.Buffer
+	ended             bool
 }
 
 func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Context, body []byte, headers http.Header, cacheKey string) (*http.Response, error) {
@@ -592,8 +378,8 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 	}
 	// Retain the actual submitted projection, not the native history. A later
 	// terminal event is required before it can authorize incremental reuse.
-	if err := e.beginProviderHistory(fields); err != nil {
-		return nil, err
+	if err := e.state.BeginProvider(fields); err != nil {
+		return nil, webSocketProtocolError(err)
 	}
 	previous := fields["previous_response_id"]
 	delete(fields, "previous_response_id")
@@ -657,7 +443,7 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 		s.providerMessages = readResponsesWebSocket(s.ctx, conn, nil)
 	}
 	captured := payload
-	if e.automatic {
+	if e.state.Automatic() {
 		captured = nil
 	}
 	if e.streamDiagnostics != nil {
@@ -666,7 +452,7 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 		}
 	}
 	e.observation = capturer.BeginWebSocketAttempt(responseCtx, captured, handshake, responseHeaders)
-	if !e.automatic {
+	if !e.state.Automatic() {
 		if err := s.upstream.Write(startCtx, websocket.MessageText, payload); err != nil {
 			return nil, err
 		}
@@ -769,7 +555,7 @@ func (e *webSocketExchange) Read(buffer []byte) (int, error) {
 	var fields map[string]json.RawMessage
 	_ = json.Unmarshal(body, &fields)
 	kind := responseevents.StringField(fields, "type")
-	if err := e.observeProviderHistory(body); err != nil {
+	if err := e.state.ObserveProvider(body); err != nil {
 		e.streamDiagnostics.readEndedFrom(err, "router_history")
 		return 0, err
 	}
@@ -818,55 +604,16 @@ func (w *webSocketOutput) message(payload []byte) error {
 	e := w.exchange
 	s := e.session
 	var event struct {
-		Type     string `json:"type"`
-		Response struct {
-			ID     string            `json:"id"`
-			Output []json.RawMessage `json:"output"`
-		} `json:"response"`
+		Type string `json:"type"`
 	}
 	if err := json.Unmarshal(payload, &event); err != nil {
 		return err
 	}
+	if err := e.state.ObserveOutput(payload); err != nil {
+		return err
+	}
 	if event.Type == responseevents.Error {
 		s.errorDelivered = true
-	}
-	if event.Type == responseevents.OutputItemDone {
-		var item struct {
-			Item json.RawMessage `json:"item"`
-		}
-		if json.Unmarshal(payload, &item) == nil && len(item.Item) != 0 {
-			if err := s.retain([]json.RawMessage{item.Item}); err != nil {
-				return err
-			}
-			e.history.output = append(e.history.output, item.Item)
-		}
-	}
-	if event.Type == responseevents.Created {
-		// Creation commits queued steering. Never replay accepted input after
-		// this point, even if delivery or the successor subsequently fails.
-		s.commitSteering(e.history, e.parentID)
-	}
-	if responseevents.Kind(event.Type).Terminal() {
-		if event.Response.ID == "" {
-			return errors.New("provider terminal response has no id")
-		}
-		if len(event.Response.Output) != 0 {
-			// Terminal snapshots can omit completed streamed calls, especially
-			// when an empty provider output gains router commentary. Reconcile
-			// matching items without discarding the host's completed history.
-			output := mergeWebSocketOutput(e.history.output, event.Response.Output)
-			retained := s.retainedBytes
-			for _, item := range e.history.output {
-				s.retainedBytes -= len(item)
-			}
-			if err := s.retain(output); err != nil {
-				s.retainedBytes = retained
-				return err
-			}
-			e.history.output = output
-		}
-		s.histories[event.Response.ID] = e.history
-		s.lastID = event.Response.ID
 	}
 	if err := s.downstream.Write(e.ctx, websocket.MessageText, payload); err != nil {
 		return downstreamDisconnectError(err)
@@ -880,31 +627,10 @@ func (w *webSocketOutput) message(payload []byte) error {
 	return nil
 }
 
-// Keep delivered order while accepting final metadata for matching identities.
-// Items without an ID can only be deduplicated by their exact retained encoding.
-func mergeWebSocketOutput(streamed, terminal []json.RawMessage) []json.RawMessage {
-	output := slices.Clone(streamed)
-	positions := make(map[string]int, len(streamed)+len(terminal))
-	key := func(raw json.RawMessage) string {
-		var item struct {
-			ID string `json:"id"`
-		}
-		if json.Unmarshal(raw, &item) == nil && item.ID != "" {
-			return "id:" + item.ID
-		}
-		return "raw:" + string(raw)
+// Map backend admission failures to the application's compatibility diagnostic.
+func webSocketProtocolError(err error) error {
+	if invalid, ok := errors.AsType[*codexresponses.InvalidRequestError](err); ok {
+		return incompatibleRequest("invalid_websocket_request", invalid.Message)
 	}
-	for index, item := range streamed {
-		positions[key(item)] = index
-	}
-	for _, item := range terminal {
-		identity := key(item)
-		if index, exists := positions[identity]; exists {
-			output[index] = item
-		} else {
-			positions[identity] = len(output)
-			output = append(output, item)
-		}
-	}
-	return output
+	return err
 }

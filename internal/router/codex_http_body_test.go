@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	"github.com/klauspost/compress/zstd"
 )
 
@@ -53,10 +55,10 @@ func TestResponsesHandlerRejectsInvalidOrOversizedCodexHTTPBody(t *testing.T) {
 		{"unsupported codec", "gzip", func(*testing.T) io.Reader { return bytes.NewBufferString(`{"model":"gpt-test","input":"hello"}`) }, http.StatusUnsupportedMediaType},
 		{"invalid zstd", "zstd", func(*testing.T) io.Reader { return bytes.NewBufferString("not a zstd frame") }, http.StatusBadRequest},
 		{"encoded budget", "zstd", func(*testing.T) io.Reader {
-			return io.LimitReader(serverRepeatingReader{}, responsesRequestBufferBytes+1)
+			return io.LimitReader(serverRepeatingReader{}, codexresponses.MaxRequestBytes+1)
 		}, http.StatusRequestEntityTooLarge},
 		{"decoded budget", "zstd", func(t *testing.T) io.Reader {
-			return bytes.NewReader(codexZstdBody(t, bytes.Repeat([]byte(" "), responsesRequestBufferBytes+1)))
+			return bytes.NewReader(codexZstdBody(t, bytes.Repeat([]byte(" "), codexresponses.MaxRequestBytes+1)))
 		}, http.StatusRequestEntityTooLarge},
 	} {
 		t.Run(test.name, func(t *testing.T) {

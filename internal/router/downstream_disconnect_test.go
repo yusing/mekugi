@@ -208,7 +208,8 @@ func TestWebSocketOutputDisconnectBeforeReaderCancellation(t *testing.T) {
 	}
 	defer downstream.CloseNow()
 	output := &webSocketOutput{exchange: &webSocketExchange{
-		ctx: ctx, session: &responsesWebSocket{downstream: downstream},
+		state: confirmedHistoryExchange(t, nil, false),
+		ctx:   ctx, session: &responsesWebSocket{downstream: downstream},
 	}}
 	// A successful event must count as response-started for WebSocket output.
 	read := make(chan error, 1)

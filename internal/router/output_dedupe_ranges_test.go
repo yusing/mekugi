@@ -124,10 +124,7 @@ func TestDuplicateOutputNativeMCatThirdReadProviderPrefix(t *testing.T) {
 	if err := json.Unmarshal(prefix, &original); err != nil {
 		t.Fatal(err)
 	}
-	state, err := (providerHistory{confirmed: true}).append(original)
-	if err != nil {
-		t.Fatal(err)
-	}
+
 	read("5:14", "third")
 	grown := duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
 	items := duplicateTestItems(t, grown)
@@ -144,9 +141,9 @@ func TestDuplicateOutputNativeMCatThirdReadProviderPrefix(t *testing.T) {
 	if !responses.SameJSONValue(responses.MustMarshalJSON(projected[:len(original)]), prefix) {
 		t.Fatal("third read changed the already projected provider prefix")
 	}
-	exchange := &webSocketExchange{parentID: "parent", history: &webSocketHistory{parent: &webSocketHistory{providerHistory: state}}}
+	exchange := confirmedHistoryExchange(t, original, false)
 	grown.Fields["previous_response_id"] = responses.MustMarshalJSON("parent")
-	if err := exchange.reconcileProviderHistory(grown, responses.MustMarshalJSON(grown.Fields)); err != nil {
+	if _, err := exchange.Reconcile(grown, true); err != nil {
 		t.Fatal(err)
 	}
 	if grown.CachedInput != len(original) || grown.RebaseInput {

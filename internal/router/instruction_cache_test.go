@@ -200,9 +200,20 @@ func TestPrewarmProjectionMatchesFirstTurnPrefix(t *testing.T) {
 }
 
 func TestInstructionCacheAutomaticSuccessorCannotSilentlyDropChanges(t *testing.T) {
-	exchange := &webSocketExchange{automatic: true, history: &webSocketHistory{}}
-	request := &codexresponses.Request{CachedInput: 1}
-	err := exchange.reconcileProviderHistory(request, []byte(`{"input":[{"role":"developer","content":"changed"}]}`))
+	var session codexresponses.SessionHistory
+	parent, _, err := session.Prepare([]byte(`{"input":[]}`), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := parent.ObserveOutput([]byte(`{"type":"response.completed","response":{"id":"parent","output":[]}}`)); err != nil {
+		t.Fatal(err)
+	}
+	exchange, _, err := session.Prepare(nil, []byte(`{"type":"response.created","response":{"id":"next"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := &codexresponses.Request{CachedInput: 1, Fields: map[string]json.RawMessage{"input": json.RawMessage(`[{"role":"developer","content":"changed"}]`)}}
+	_, err = exchange.Reconcile(request, true)
 	if err == nil || !strings.Contains(err.Error(), "cached provider history") {
 		t.Fatalf("automatic successor silently accepted a different prefix: %v", err)
 	}

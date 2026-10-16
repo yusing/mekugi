@@ -33,7 +33,8 @@ func TestWebSocketOutputFragmentedWrites(t *testing.T) {
 	}
 	defer conn.CloseNow()
 	w := &webSocketOutput{exchange: &webSocketExchange{
-		ctx: t.Context(), session: &responsesWebSocket{downstream: conn},
+		state: confirmedHistoryExchange(t, nil, false),
+		ctx:   t.Context(), session: &responsesWebSocket{downstream: conn},
 	}}
 	want := []byte("{\"type\":\"response.output_text.delta\",\n\"delta\":\"hello 世界\"}")
 	event := ": ignored\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\ndata: \"delta\":\"hello 世界\"}\n\n"

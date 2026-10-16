@@ -8,6 +8,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	json "encoding/json/v2"
@@ -46,7 +48,7 @@ func (p *instantInterruptCodexProvider) serve(w http.ResponseWriter, r *http.Req
 		return
 	}
 	defer conn.CloseNow()
-	conn.SetReadLimit(responsesRequestBufferBytes)
+	conn.SetReadLimit(codexresponses.MaxRequestBytes)
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 	// Keep detecting peer cancellation while the model response is gated.

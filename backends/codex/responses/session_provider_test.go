@@ -1,10 +1,9 @@
-package router
+package responses
 
 import (
 	"encoding/json"
 	"testing"
 
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -42,9 +41,9 @@ func TestProviderHistoryReconciliation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			parentState := state
 			parentState.confirmed = tc.confirmed
-			exchange := &webSocketExchange{
+			exchange := &SessionExchange{
 				parentID: "parent", automatic: tc.automatic,
-				history: &webSocketHistory{parent: &webSocketHistory{providerHistory: parentState}},
+				history: &historyNode{parent: &historyNode{providerHistory: parentState}},
 			}
 			fields := map[string]json.RawMessage{"input": responses.MustMarshalJSON(tc.input)}
 			if tc.parent {
@@ -52,8 +51,8 @@ func TestProviderHistoryReconciliation(t *testing.T) {
 			}
 			// Stale native boundaries and feature-local rebase hints must not
 			// override complete provider evidence.
-			request := &codexresponses.Request{Fields: fields, CachedInput: 999, RebaseInput: true}
-			err := exchange.reconcileProviderHistory(request, responses.MustMarshalJSON(fields))
+			request := &Request{Fields: fields, CachedInput: 999, RebaseInput: true}
+			_, err := exchange.Reconcile(request, true)
 			if (err != nil) != tc.wantError {
 				t.Fatalf("reconcile error: %v", err)
 			}
@@ -85,18 +84,18 @@ func TestProviderHistoryJSONIdentity(t *testing.T) {
 func TestProviderHistoryRequiresRawTerminal(t *testing.T) {
 	for _, terminal := range []string{"response.completed", "response.failed", "response.incomplete", "error"} {
 		t.Run(terminal, func(t *testing.T) {
-			exchange := &webSocketExchange{session: &responsesWebSocket{}, history: &webSocketHistory{}}
-			if err := exchange.beginProviderHistory(map[string]json.RawMessage{"input": json.RawMessage(`[{"role":"user","content":"work"}]`)}); err != nil {
+			exchange := &SessionExchange{session: &SessionHistory{}, history: &historyNode{}}
+			if err := exchange.BeginProvider(map[string]json.RawMessage{"input": json.RawMessage(`[{"role":"user","content":"work"}]`)}); err != nil {
 				t.Fatal(err)
 			}
 			item := json.RawMessage(`{"type":"function_call","id":"item","call_id":"call","name":"lookup","arguments":"{}"}`)
-			if err := exchange.observeProviderHistory(responses.MustMarshalJSON(map[string]any{"type": "response.output_item.done", "item": item})); err != nil {
+			if err := exchange.ObserveProvider(responses.MustMarshalJSON(map[string]any{"type": "response.output_item.done", "item": item})); err != nil {
 				t.Fatal(err)
 			}
 			if exchange.history.providerHistory.confirmed {
 				t.Fatal("streamed output confirmed history before terminal")
 			}
-			if err := exchange.observeProviderHistory(responses.MustMarshalJSON(map[string]any{"type": terminal, "response": map[string]any{"id": "done", "output": []any{}}})); err != nil {
+			if err := exchange.ObserveProvider(responses.MustMarshalJSON(map[string]any{"type": terminal, "response": map[string]any{"id": "done", "output": []any{}}})); err != nil {
 				t.Fatal(err)
 			}
 			got := exchange.history.providerHistory
@@ -113,49 +112,18 @@ func TestProviderHistoryRequiresRawTerminal(t *testing.T) {
 	}
 }
 
-func TestProviderHistoryLateSteering(t *testing.T) {
-	parent, err := (providerHistory{confirmed: true}).append([]json.RawMessage{json.RawMessage(`{"role":"user","content":"first"}`)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	steer := json.RawMessage(`{"role":"user","content":"steer"}`)
-	suffix := json.RawMessage(`{"role":"user","content":"next"}`)
-	exchange := &webSocketExchange{
-		parentID: "parent", session: &responsesWebSocket{},
-		history: &webSocketHistory{parent: &webSocketHistory{providerHistory: parent}},
-	}
-	if err := exchange.beginProviderHistory(map[string]json.RawMessage{"previous_response_id": responses.MustMarshalJSON("parent"), "input": responses.MustMarshalJSON([]json.RawMessage{suffix})}); err != nil {
-		t.Fatal(err)
-	}
-	// Admission occurs after preparation and acknowledgement.
-	exchange.session.steers = []webSocketSteer{{id: "accepted", parent: "parent", input: []json.RawMessage{steer}}}
-	if err := exchange.observeProviderHistory([]byte(`{"type":"response.created","response":{"id":"next"}}`)); err != nil {
-		t.Fatal(err)
-	}
-	if err := exchange.observeProviderHistory([]byte(`{"type":"response.completed","response":{"id":"next","output":[]}}`)); err != nil {
-		t.Fatal(err)
-	}
-	want, err := parent.append([]json.RawMessage{steer, suffix})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if exchange.history.providerHistory != want {
-		t.Fatal("actual admitted steering missing or duplicated")
-	}
-}
-
 func TestProviderHistoryBranchAndFreshConnection(t *testing.T) {
 	input := []json.RawMessage{json.RawMessage(`{"role":"user","content":"ancestor"}`)}
 	state, err := (providerHistory{confirmed: true}).append(input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ancestor := &webSocketHistory{providerHistory: state}
-	branch := &webSocketExchange{history: &webSocketHistory{parent: ancestor}, parentID: "ancestor", session: &responsesWebSocket{}}
-	if err := branch.beginProviderHistory(map[string]json.RawMessage{"previous_response_id": responses.MustMarshalJSON("ancestor"), "input": json.RawMessage(`[{"role":"user","content":"branch"}]`)}); err != nil {
+	ancestor := &historyNode{providerHistory: state}
+	branch := &SessionExchange{history: &historyNode{parent: ancestor}, parentID: "ancestor", session: &SessionHistory{}}
+	if err := branch.BeginProvider(map[string]json.RawMessage{"previous_response_id": responses.MustMarshalJSON("ancestor"), "input": json.RawMessage(`[{"role":"user","content":"branch"}]`)}); err != nil {
 		t.Fatal(err)
 	}
-	if err := branch.observeProviderHistory([]byte(`{"type":"response.completed","response":{"id":"branch","output":[]}}`)); err != nil {
+	if err := branch.ObserveProvider([]byte(`{"type":"response.completed","response":{"id":"branch","output":[]}}`)); err != nil {
 		t.Fatal(err)
 	}
 	if ancestor.providerHistory != state {
@@ -163,10 +131,10 @@ func TestProviderHistoryBranchAndFreshConnection(t *testing.T) {
 	}
 	// Visible native history can survive restart, but transport confirmation
 	// cannot. An explicit full-history request remains usable on a fresh socket.
-	fresh := &webSocketExchange{history: &webSocketHistory{input: input}}
+	fresh := &SessionExchange{history: &historyNode{input: input}}
 	fields := map[string]json.RawMessage{"input": responses.MustMarshalJSON(input)}
-	request := &codexresponses.Request{Fields: fields}
-	if err := fresh.reconcileProviderHistory(request, responses.MustMarshalJSON(fields)); err != nil {
+	request := &Request{Fields: fields}
+	if _, err := fresh.Reconcile(request, true); err != nil {
 		t.Fatal(err)
 	}
 	if request.CachedInput != 0 || request.RebaseInput {

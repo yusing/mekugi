@@ -39,14 +39,13 @@ import (
 )
 
 const (
-	defaultListenAddress        = "127.0.0.1:0"
-	defaultRewriteMode          = "mekugi"
-	defaultRequestTimeout       = 10 * time.Minute
-	defaultStreamIdleTimeout    = 4 * time.Minute
-	requestBodyReadTimeout      = 30 * time.Second
-	shutdownTimeout             = 5 * time.Second
-	responsesRequestBufferBytes = 32 << 20
-	modelsResponseBufferBytes   = 8 << 20
+	defaultListenAddress      = "127.0.0.1:0"
+	defaultRewriteMode        = "mekugi"
+	defaultRequestTimeout     = 10 * time.Minute
+	defaultStreamIdleTimeout  = 4 * time.Minute
+	requestBodyReadTimeout    = 30 * time.Second
+	shutdownTimeout           = 5 * time.Second
+	modelsResponseBufferBytes = 8 << 20
 )
 
 var errUpstreamResponseWithoutTerminal = errors.New("upstream Responses response ended without a terminal state")

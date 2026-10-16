@@ -176,22 +176,18 @@ func TestExecutionContinuationCompletionKeepsProviderPrefix(t *testing.T) {
 			if err := json.Unmarshal(request.Fields["input"], &prefix); err != nil {
 				t.Fatal(err)
 			}
-			confirmed, err := (providerHistory{}).append(prefix)
-			if err != nil {
-				t.Fatal(err)
-			}
-			confirmed.confirmed = true
 
 			request.Fields["input"] = responses.MustMarshalJSON(append(nativeHistory, test.finishCall, continuationTestOutput("finish", test.finishOutput)))
 			request.Fields["previous_response_id"] = responses.MustMarshalJSON("parent")
 			projectExecutionContinuations(&request, continuationTestCatalog(), "exec", nil)
-			exchange := &webSocketExchange{parentID: "parent", history: &webSocketHistory{parent: &webSocketHistory{providerHistory: confirmed}}}
-			if err := exchange.reconcileProviderHistory(&request, responses.MustMarshalJSON(request.Fields)); err != nil {
+			exchange := confirmedHistoryExchange(t, prefix, false)
+			reason, err := exchange.Reconcile(&request, true)
+			if err != nil {
 				t.Fatal(err)
 			}
 			if request.RebaseInput || request.CachedInput != len(prefix) {
 				t.Fatalf("completed continuation rewrote provider history: reason=%s cached=%d rebase=%v",
-					exchange.reconciliationReason, request.CachedInput, request.RebaseInput)
+					reason, request.CachedInput, request.RebaseInput)
 			}
 			wire, err := request.IncrementalBody(responses.MustMarshalJSON(request.Fields), true)
 			if err != nil {

@@ -8,6 +8,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	json "encoding/json/v2"
@@ -44,7 +46,7 @@ func (p *answerInterruptCodexProvider) serve(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	defer conn.CloseNow()
-	conn.SetReadLimit(responsesRequestBufferBytes)
+	conn.SetReadLimit(codexresponses.MaxRequestBytes)
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 	messages := readResponsesWebSocket(ctx, conn, cancel)

@@ -16,7 +16,7 @@ Unknown Chat finish reasons cannot establish completion.
 
 JSON encoding used by protocol and retained-record consumers preserves legacy
 semantics, sorted keys, unescaped HTML, and the absence of a trailing newline.
-JSON-value comparison preserves number precision and spelling while ignoring
+JSON-value decoding preserves number precision and spelling. Comparison ignores
 object member order and equivalent string escapes. Duplicate names and invalid
 UTF-8 retain the wire's permissive decoding behavior.
 Event and item facts retain the protocol's exact identities, including recognized

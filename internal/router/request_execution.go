@@ -153,18 +153,9 @@ func (a *requestAttempt) prepare() error {
 			return &requestCompatibilityError{code: "btw_compaction_required", message: btwCompactionRequired}
 		}
 	}
-	if exchange, ok := a.executor.provider.(*webSocketExchange); ok && exchange.history != nil {
-		if exchange.automatic {
-			parent := exchange.history.parent
-			if parent == nil || parent.providerModel == "" {
-				return errors.New("automatic WebSocket successor has no retained provider model")
-			}
-			a.request.Fields["model"] = responses.MustMarshalJSON(parent.providerModel)
-			if len(parent.providerReasoning) == 0 {
-				delete(a.request.Fields, "reasoning")
-			} else {
-				a.request.Fields["reasoning"] = parent.providerReasoning
-			}
+	if exchange, ok := a.executor.provider.(*webSocketExchange); ok && exchange.state != nil {
+		if err := exchange.state.RestoreProviderModel(&a.request); err != nil {
+			return err
 		}
 	}
 	// Terra remains a selectable legacy Codex model, but all provider requests
@@ -172,9 +163,8 @@ func (a *requestAttempt) prepare() error {
 	if a.request.Model() == "gpt-5.6-terra" {
 		a.request.Fields["model"] = responses.MustMarshalJSON("gpt-6-sol")
 	}
-	if exchange, ok := a.executor.provider.(*webSocketExchange); ok && exchange.history != nil {
-		exchange.history.providerModel = a.request.Model()
-		exchange.history.providerReasoning = a.request.Fields["reasoning"]
+	if exchange, ok := a.executor.provider.(*webSocketExchange); ok && exchange.state != nil {
+		exchange.state.RememberProviderModel(a.request)
 	}
 	requestedTier := responses.StringField(a.request.Fields, "service_tier")
 	if tier := effectiveServiceTier(a.request.Model(), requestedTier, a.executor.serviceTiers, a.threadID); tier != requestedTier {
@@ -213,7 +203,7 @@ func (a *requestAttempt) prepare() error {
 		auto := a.executor.mekugiCalls.autoLiveDiff
 		auto.observe(a.mekugiTransform.directory, a.mekugiTransform.threadID, a.metadata)
 		exchange, webSocket := a.executor.provider.(*webSocketExchange)
-		if !webSocket || !exchange.automatic {
+		if !webSocket || !exchange.state.Automatic() {
 			auto.beginTurn(a.mekugiTransform.directory, a.mekugiTransform.threadID, a.metadata)
 		}
 	}
@@ -272,18 +262,19 @@ func (a *requestAttempt) prepareWire() error {
 	if err != nil {
 		return fmt.Errorf("encode native Responses request: %w", err)
 	}
-	if attachmentsProjected && len(nativeBody) > responsesRequestBufferBytes {
-		return fmt.Errorf("request with file attachments exceeds the %d-byte request limit; reduce attachments or conversation context", responsesRequestBufferBytes)
+	if attachmentsProjected && len(nativeBody) > codexresponses.MaxRequestBytes {
+		return fmt.Errorf("request with file attachments exceeds the %d-byte request limit; reduce attachments or conversation context", codexresponses.MaxRequestBytes)
 	}
 	a.forwardBody = nativeBody
 	if exchange, ok := a.executor.provider.(*webSocketExchange); ok {
 		started := time.Now()
-		if err := exchange.reconcileProviderHistory(&a.request, a.forwardBody); err != nil {
-			return err
+		reason, err := exchange.state.Reconcile(&a.request, !isChatCompletionsModel(a.request.Model()))
+		if err != nil {
+			return webSocketProtocolError(err)
 		}
 		a.debug.event(map[string]any{
 			"event": "provider_history_reconciliation", "request_id": a.debugID,
-			"reason": exchange.reconciliationReason, "reused_input_items": a.request.CachedInput,
+			"reason": reason, "reused_input_items": a.request.CachedInput,
 			"duration_us": time.Since(started).Microseconds(),
 		})
 	}
@@ -291,7 +282,7 @@ func (a *requestAttempt) prepareWire() error {
 	if err != nil {
 		return err
 	}
-	if exchange, ok := a.executor.provider.(*webSocketExchange); ok && exchange.automatic {
+	if exchange, ok := a.executor.provider.(*webSocketExchange); ok && exchange.state.Automatic() {
 		capturer.ObserveProjectedRequest(a.startCtx, nil)
 	} else {
 		capturer.ObserveProjectedRequest(a.startCtx, nativeWire)
@@ -313,7 +304,7 @@ func (a *requestAttempt) forward() error {
 		return err
 	}
 	debugWire := a.forwardBody
-	if exchange, ok := a.executor.provider.(*webSocketExchange); ok && exchange.automatic {
+	if exchange, ok := a.executor.provider.(*webSocketExchange); ok && exchange.state.Automatic() {
 		debugWire = nil
 	}
 	a.debug.instructions(projectedBody, debugWire, a.headers, a.sessionID, a.debugID, a.request.CachedInput)

@@ -5,8 +5,8 @@
 Adapt Codex's Responses requests and native tool identities to a selected Chat
 Completions, Messages, or Responses endpoint, then emit the Responses lifecycle
 Codex consumes. The caller supplies resolved provider policy and diagnostics.
-Provider authentication, model selection, HTTP transport, history reconciliation,
-and native tool execution remain with their existing owners.
+Provider authentication, model selection, HTTP transport and native tool execution
+remain with their existing owners.
 
 ## Request envelopes and catalogs
 
@@ -24,8 +24,8 @@ apply its own admission policy. Raw tool fields are authoritative, including unk
 
 Incremental encoding slices only the workflow-supplied cached prefix and
 can remove its previous-response dependency when rebasing. The caller selects
-whether its provider uses that connection-local cache. Provider-history
-reconciliation, execution admission and guidance policy remain
+whether its provider uses that connection-local cache. Connection-local history
+supplies the confirmed prefix; execution admission and guidance policy remain
 with the consuming workflow.
 
 ## Request and stream behavior
@@ -85,6 +85,27 @@ follows successful writes and flushes. Non-stream callers stage and validate the
 result before exposing headers or confirming delivery. The application owns body
 closure, provider-failure reporting, accounting and byte-receipt diagnostics;
 these responsibilities do not change protocol framing or tool execution.
+
+## Connection-local history
+
+Each connection has one synchronous owner for native ancestry, steering admission,
+request reconstruction and provider-confirmed prefixes. Its state is memory only;
+retained user history cannot restore provider confirmation on a fresh connection.
+The application owns sockets, deadlines, provider selection and execution dispatch.
+
+Accepted steering remains pending until successor creation, including acknowledgements
+that arrive after request preparation. Creation commits the accepted input before
+downstream delivery, preventing a failed delivery from replaying it. Automatic
+successors inherit the parent model and reasoning contract and send no new request.
+Their projected input must match all already-admitted provider input. Explicit
+continuations may rebase changed or unconfirmed prefixes with a full request.
+
+Raw provider terminals confirm transport history independently of transformed
+native output. Completed streamed items survive partial terminal snapshots, with
+matching item identities updated in place. Native records and temporary provider
+output share the connection's conservative 64 MiB budget; reconstructed requests
+are limited to 32 MiB. An overflowing native terminal replacement preserves the
+previous retained output and budget. No history is evicted to make a request fit.
 
 ## Ownership and acceptance
 

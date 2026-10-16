@@ -49,7 +49,7 @@ func providerSocketWrite(ctx context.Context, conn *websocket.Conn, value any) e
 func providerSocketRead(ctx context.Context, conn *websocket.Conn) (map[string]json.RawMessage, error) {
 	// Protocol fixtures include the full instruction/tool catalog. Use the
 	// production budgets rather than the WebSocket library's 32 KiB default.
-	conn.SetReadLimit(max(responsesRequestBufferBytes, codexresponses.MaxResponseBytes))
+	conn.SetReadLimit(max(codexresponses.MaxRequestBytes, codexresponses.MaxResponseBytes))
 	_, body, err := conn.Read(ctx)
 	if err != nil {
 		return nil, err
@@ -271,38 +271,6 @@ func TestResponsesWebSocketPendingAndPrewarm(t *testing.T) {
 	_ = socketRead(t, ctx, conn)
 	if got := socketRead(t, ctx, conn); responses.StringField(got, "type") != "response.completed" {
 		t.Fatalf("completion = %s", responses.MustMarshalJSON(got))
-	}
-}
-
-func TestResponsesWebSocketSteeringAdmissionHistory(t *testing.T) {
-	input := func(text string) []json.RawMessage {
-		items, err := webSocketInput(responses.MustMarshalJSON(text))
-		if err != nil {
-			t.Fatal(err)
-		}
-		return items
-	}
-	s := &responsesWebSocket{steers: []webSocketSteer{
-		{id: "rejected", parent: "parent", input: input("must not be retained")},
-		{parent: "parent", input: input("accepted after continuation send")},
-		{id: "other", parent: "other-parent", input: input("different parent")},
-	}}
-	history := &webSocketHistory{input: input("tool continuation")}
-	s.observeControl([]byte(`{"type":"response.steer.failed","steer":{"id":"rejected","previous_response_id":"parent"}}`))
-	s.observeControl([]byte(`{"type":"response.steer.accepted","steer":{"id":"late","previous_response_id":"parent"}}`))
-	s.commitSteering(history, "parent")
-	got := string(responses.MustMarshalJSON(history.input))
-	if strings.Contains(got, "must not be retained") || strings.Contains(got, "different parent") ||
-		!strings.Contains(got, "accepted after continuation send") || len(history.input) != 2 {
-		t.Fatalf("admitted history = %s", got)
-	}
-	if len(s.steers) != 1 || s.steers[0].id != "other" {
-		t.Fatalf("wrong steering submissions consumed: %#v", s.steers)
-	}
-	again := &webSocketHistory{}
-	s.commitSteering(again, "parent")
-	if len(again.input) != 0 {
-		t.Fatal("accepted steering replayed twice")
 	}
 }
 

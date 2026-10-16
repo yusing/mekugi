@@ -63,8 +63,10 @@ catalogs fail as unsupported execution interfaces.
 Request preparation and response restoration retain stock tool identity,
 replay, and native execution behavior. The
 [backend envelope contract](../../backends/codex/responses/SPEC.md#request-envelopes-and-catalogs)
-owns parsing, tool catalogs and byte-preserving projection. Connection-local native history supplies ordinary
-projection and durable replay. Separately, the transport fingerprints the complete
+owns parsing, tool catalogs and byte-preserving projection. The backend
+[connection-local history owner](../../backends/codex/responses/SPEC.md#connection-local-history)
+reconstructs native input for projection within the owning connection. Durable replay
+uses retained records independently. Separately, the transport fingerprints the complete
 provider input plus raw completed output, reconciling streamed items with terminal
 snapshots before any client-facing transformation. Only a successful, steered, or interrupted
 provider terminal confirms that fingerprint. These fixed-size fingerprints are not
@@ -144,7 +146,8 @@ The [OpenAI provider contract](../../providers/openai/SPEC.md) owns pooled
 WebSocket inference, HTTP fallback, retry, and upstream connection lifetime.
 [Codex request shaping](../../backends/codex/responses/SPEC.md#openai-request-shaping)
 owns headers, full-input framing, and per-request metadata. Dedicated Codex
-WebSocket session semantics remain above.
+WebSocket socket lifecycle and application integration remain above; the backend
+owns connection-local protocol history.
 
 The [backend delivery contract](../../backends/codex/responses/SPEC.md#response-delivery)
 owns JSON/SSE framing and ordered transformation. Application integration retains

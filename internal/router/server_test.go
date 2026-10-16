@@ -349,7 +349,7 @@ func TestResponsesHandlerRejectsBackgroundBeforeUpstream(t *testing.T) {
 }
 
 func TestResponsesHandlerRejectsBodyBeyondRouterBufferBudget(t *testing.T) {
-	request := httptest.NewRequest(http.MethodPost, "/v1/responses", io.LimitReader(serverRepeatingReader{}, responsesRequestBufferBytes+1))
+	request := httptest.NewRequest(http.MethodPost, "/v1/responses", io.LimitReader(serverRepeatingReader{}, codexresponses.MaxRequestBytes+1))
 	recorder := httptest.NewRecorder()
 	provider := &serverFakeProvider{}
 
