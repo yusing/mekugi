@@ -114,7 +114,8 @@ Main and child messages and public reasoning share one interpretation across liv
 observations, restored history and simulated replay. The application supplies
 [Conversation's](../conversation/SPEC.md) user-text, attachment and question-reply
 interpretation and retains input settlement. Activity correlates transcript facts
-within the attachment, without keeping another transcript.
+within the attachment, without keeping another transcript. Completed public-summary
+bodies follow feed retention; observation correlation does not extend their lifetime.
 
 Historical projection preserves item identity and order without replacing live
 state or promoting older-page commentary. The [presentation contract](CONTRACT.md#authored-content)

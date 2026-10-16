@@ -20,7 +20,7 @@ type pending struct {
 // their existing owners and attachment lifetime.
 // Source: apps/mekugi/internal/router/app_server_events.go:567:637@[453772ac].
 type State struct {
-	reasoning map[observation.ItemRef]string
+	reasoning map[observation.ItemRef]string // Active bodies; completed identities retain empty tombstones.
 	thinking  map[observation.ItemRef]time.Time
 	pending   map[string]pending
 	messages  map[string]observation.TextUpdate
@@ -99,6 +99,7 @@ func (s *State) TurnCompleted(thread, turn, status string, at time.Time) []obser
 			phase = "discarded"
 		}
 		updates = append(updates, observation.TextUpdate{Ref: key, Kind: "reasoning", Phase: phase, Text: text, Observed: at, Thought: at.Sub(s.thinking[key]), Live: true})
+		s.reasoning[key] = ""
 		delete(s.thinking, key)
 	}
 	if last, ok := s.messages[thread]; ok && !s.finals[thread] && status == "completed" && last.Ref.TurnID == turn {
@@ -186,6 +187,9 @@ func (s *State) item(e observation.TextEvent, main, completed bool) []observatio
 		s.reasoning[item.Ref] = u.Text
 		if completed || strings.TrimSpace(u.Text) != "" || u.Replaces != "" {
 			updates = append(updates, u)
+		}
+		if completed {
+			s.reasoning[item.Ref] = ""
 		}
 	case "agentMessage":
 		if !main && !completed {
