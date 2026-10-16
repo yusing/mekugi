@@ -45,3 +45,9 @@ func Environment(config Config) (Config, error) {
 	}
 	return config, nil
 }
+
+// Source: apps/mekugi/internal/router/opencode.go:7:9@[8877886e].
+// IsModel recognizes OpenCode namespaces, including unsupported model IDs.
+func IsModel(model string) bool {
+	return strings.HasPrefix(model, "opencode-go:") || strings.HasPrefix(model, "opencode-zen:")
+}

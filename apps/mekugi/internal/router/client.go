@@ -9,6 +9,9 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/yusing/mekugi/providers/grok"
+	"github.com/yusing/mekugi/providers/opencode"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	"github.com/yusing/mekugi/providers/openai"
@@ -54,7 +57,7 @@ func (c *providerClient) forwardExecution(startCtx, responseCtx context.Context,
 	if err := json.Unmarshal(body, &model); err != nil {
 		return nil, errors.New("invalid provider request")
 	}
-	if isOpenCodeModel(model.Model) {
+	if opencode.IsModel(model.Model) {
 		prefix, _, _ := strings.Cut(model.Model, ":")
 		client := c.opencode[prefix]
 		if client == nil {
@@ -62,7 +65,7 @@ func (c *providerClient) forwardExecution(startCtx, responseCtx context.Context,
 		}
 		return client.forwardExecution(startCtx, responseCtx, body, headers)
 	}
-	if isGrokModel(model.Model) {
+	if grok.IsModel(model.Model) {
 		if c.grok == nil {
 			return nil, incompatibleRequest("grok_not_enabled", "Grok models require authenticated standalone mekugi or mekugi grok")
 		}

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
+
 	"github.com/yusing/mekugi/contracts/inference"
 
 	"github.com/yusing/mekugi/providers/opencode"
@@ -54,7 +56,7 @@ func TestOpenCodeCatalogConsumers(t *testing.T) {
 		if err := catalog.Refresh(t.Context(), true); err != nil {
 			t.Fatal(err)
 		}
-		body, err := ProviderModelCatalog([]byte(`{"models":[{"slug":"gpt-5.6-sol","multi_agent_version":"v2"}]}`), Session{OpenCode: config})
+		body, err := modelcatalog.Build([]byte(`{"models":[{"slug":"gpt-5.6-sol","multi_agent_version":"v2"}]}`), modelcatalog.Selection{OpenCode: config})
 		if err != nil || !strings.Contains(string(body), `"description":"Upstream description"`) || !strings.Contains(string(body), `"effort":"max"`) || !strings.Contains(string(body), `"default_reasoning_level":null`) {
 			t.Fatalf("catalog projection: %s %v", body, err)
 		}

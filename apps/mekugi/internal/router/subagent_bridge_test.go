@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/providers/grok"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
@@ -36,7 +38,7 @@ func TestSubagentBridgeProjectsAndRestoresPlaintext(t *testing.T) {
 			t.Fatal(err)
 		}
 		data := responses.MustMarshalJSON(request.Fields)
-		for _, model := range grokModels {
+		for _, model := range grok.Models() {
 			if !bytes.Contains(data, []byte("grok:"+model)) {
 				t.Fatalf("model missing from projected override guidance: %s", model)
 			}
@@ -116,39 +118,6 @@ func TestSubagentBridgeLeavesRecordedDispatchInstructionUnchanged(t *testing.T) 
 	}
 }
 
-func TestGrokCatalogPreservesNativeMetadata(t *testing.T) {
-	catalog := []byte(`{"models":[{"slug":"gpt-5.6-sol","multi_agent_version":"v2","use_responses_lite":true,"model_messages":{"instructions_template":"native instructions"},"unknown_future_field":42}],"extra":"keep"}`)
-	result, err := ProviderModelCatalog(catalog, Session{GrokEnabled: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var parsed struct {
-		Models []map[string]json.RawMessage `json:"models"`
-		Extra  string                       `json:"extra"`
-	}
-	if err := json.Unmarshal(result, &parsed); err != nil {
-		t.Fatal(err)
-	}
-	if len(parsed.Models) != 5 || parsed.Extra != "keep" || responses.StringField(parsed.Models[0], "slug") != "gpt-5.6-sol" || responses.StringField(parsed.Models[2], "slug") != grokModel || string(parsed.Models[1]["unknown_future_field"]) != "42" {
-		t.Fatalf("catalog=%s", result)
-	}
-	for index, id := range grokModels {
-		if got := responses.StringField(parsed.Models[index+1], "slug"); got != "grok:"+id {
-			t.Fatalf("catalog model %d = %q", index+1, got)
-		}
-	}
-	if responses.StringField(parsed.Models[2], "visibility") != "list" || string(parsed.Models[2]["supported_in_api"]) != "true" {
-		t.Fatal("Grok is not available in the main-agent model picker")
-	}
-	if string(parsed.Models[2]["use_responses_lite"]) != "false" {
-		t.Fatal("inherited OpenAI lite transport")
-	}
-	repeated, err := ProviderModelCatalog(result, Session{GrokEnabled: true})
-	if err != nil || !bytes.Equal(result, repeated) {
-		t.Fatalf("catalog changed when pinning a cached Grok entry: %v", err)
-	}
-}
-
 func TestSubagentBridgePreservesScalarOpenAIInput(t *testing.T) {
 	for _, withTools := range []bool{false, true} {
 		request := bridgeTestRequest(t, false)
@@ -162,31 +131,6 @@ func TestSubagentBridgePreservesScalarOpenAIInput(t *testing.T) {
 		}
 		if string(request.Fields["input"]) != `"hello"` {
 			t.Fatal("scalar input was rewritten")
-		}
-	}
-}
-func TestGrokCatalogRequiresAnActualV2Template(t *testing.T) {
-	for _, fallback := range []bool{false, true} {
-		models := []any{map[string]any{"slug": "gpt-5.6-sol", "multi_agent_version": "v1", "marker": "wrong"}}
-		if fallback {
-			models = append(models, map[string]any{"slug": "other", "multi_agent_version": "v2", "marker": "correct"})
-		}
-		result, err := ProviderModelCatalog(mustTestJSON(t, map[string]any{"models": models}), Session{GrokEnabled: true})
-		if !fallback {
-			if err == nil {
-				t.Fatal("accepted non-v2 catalog")
-			}
-			continue
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		var catalog struct {
-			Models []map[string]json.RawMessage `json:"models"`
-		}
-		json.Unmarshal(result, &catalog)
-		if responses.StringField(catalog.Models[len(catalog.Models)-1], "marker") != "correct" {
-			t.Fatal("selected non-v2 template")
 		}
 	}
 }
@@ -208,24 +152,6 @@ func TestModelsHandlerPreservesNativeCatalogWithGrokEnabled(t *testing.T) {
 	modelsHandler(provider, nil)(response, request)
 	if response.Code != http.StatusOK || response.Body.String() != body || response.Header().Get("ETag") != `"native-etag"` {
 		t.Fatalf("native catalog was rewritten: status=%d body=%s etag=%s", response.Code, response.Body.String(), response.Header().Get("ETag"))
-	}
-}
-
-func TestGrokCatalogRebuildsCachedMetadata(t *testing.T) {
-	body := []byte(`{"models":[{"slug":"grok:grok-4.6","multi_agent_version":"v2","apply_patch_tool_type":null},{"slug":"gpt-5.6-sol","multi_agent_version":"v2","apply_patch_tool_type":"freeform","shell_type":"unified_exec"}]}`)
-	result, err := ProviderModelCatalog(body, Session{GrokEnabled: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var catalog struct {
-		Models []map[string]json.RawMessage
-	}
-	if err := json.Unmarshal(result, &catalog); err != nil || len(catalog.Models) != 5 {
-		t.Fatalf("rebuilt catalog: %v", err)
-	}
-	grok := catalog.Models[2]
-	if responses.StringField(grok, "slug") != grokModel || responses.StringField(grok, "apply_patch_tool_type") != "freeform" || responses.StringField(grok, "shell_type") != "unified_exec" {
-		t.Fatalf("cached Grok tool metadata was not rebuilt: %s", result)
 	}
 }
 
@@ -289,7 +215,7 @@ func TestSubagentBridgeSpawnArgumentGuidancePreservesNativeContract(t *testing.T
 					t.Fatalf("%s guidance = %q", name, description)
 				}
 				if name == "model" {
-					for _, model := range grokModels {
+					for _, model := range grok.Models() {
 						if strings.Count(description, "`grok:"+model+"`") != 1 {
 							t.Fatalf("missing or duplicated Grok model %q in guidance: %q", model, description)
 						}

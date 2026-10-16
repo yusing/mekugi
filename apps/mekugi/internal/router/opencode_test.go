@@ -10,8 +10,6 @@ import (
 
 	"github.com/yusing/mekugi/providers/opencode"
 
-	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
-
 	json "encoding/json/v2"
 	"errors"
 	"io"
@@ -40,48 +38,6 @@ func openCodeTestRequest(t *testing.T, service opencode.Service, stream bool) []
 		"input": []any{map[string]string{"role": "user", "content": "Hello"}},
 		"tools": []any{map[string]string{"type": "custom", "name": "exec"}},
 	})
-}
-
-func TestOpenCodeCatalog(t *testing.T) {
-	config := opencode.Config{Go: opencode.ServiceConfig{APIKey: "go"}, Zen: opencode.ServiceConfig{APIKey: "zen"}}
-	body := []byte(`{"models":[{"slug":"gpt-5.6-sol","multi_agent_version":"v2","shell_type":"unified_exec","apply_patch_tool_type":"freeform","model_messages":{"instructions_template":"native"},"unknown_future":42}]}`)
-	catalog, err := ProviderModelCatalog(body, Session{OpenCode: config})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var result struct {
-		Models []map[string]jsontext.Value `json:"models"`
-	}
-	if err := json.Unmarshal(catalog, &result); err != nil || len(result.Models) != 1+len(config.Services()[0].Models())+len(config.Services()[1].Models()) {
-		t.Fatalf("model registration: %v", err)
-	}
-	var levels []map[string]string
-	var foundDescription, foundReasoning bool
-	for _, model := range result.Models[1:] {
-		if string(model["description"]) != `""` {
-			foundDescription = true
-		}
-		levels = nil
-		if err := json.Unmarshal(model["supported_reasoning_levels"], &levels); err != nil {
-			t.Fatal(err)
-		}
-		foundReasoning = foundReasoning || len(levels) != 0
-		if string(model["shell_type"]) != `"unified_exec"` || string(model["unknown_future"]) != "42" ||
-			string(model["use_responses_lite"]) != "false" || string(model["default_reasoning_level"]) != `null` {
-			t.Fatalf("inherited incorrect host/provider metadata: %s", responses.MustMarshalJSON(model))
-		}
-	}
-	if !foundDescription || !foundReasoning {
-		t.Fatal("embedded provider metadata was not projected")
-	}
-	again, err := ProviderModelCatalog(catalog, Session{OpenCode: config})
-	if err != nil || !bytes.Equal(catalog, again) {
-		t.Fatalf("catalog not idempotent: %v", err)
-	}
-	disabled, err := ProviderModelCatalog(catalog, Session{GrokEnabled: true})
-	if err != nil || bytes.Contains(disabled, []byte("opencode-")) {
-		t.Fatalf("stale disabled providers retained: %v", err)
-	}
 }
 
 func TestOpenCodeRoutesAndCredentials(t *testing.T) {

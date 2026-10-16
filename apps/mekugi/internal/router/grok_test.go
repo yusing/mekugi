@@ -27,6 +27,8 @@ import (
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
+const grokModel = "grok:grok-4.6"
+
 func grokTestRequest(t *testing.T, stream bool) []byte {
 	t.Helper()
 	return mustTestJSON(t, map[string]any{"model": grokModel, "stream": stream, "instructions": "test instructions", "reasoning": map[string]string{"effort": "low"}, "tools": []any{map[string]any{"type": "custom", "name": "exec", "description": "Run exact input"}}, "input": []any{map[string]any{"type": "agent_message", "author": "/root", "recipient": "/root/probe", "content": []any{map[string]string{"type": "input_text", "text": "Run the probe"}}}}})
@@ -231,7 +233,7 @@ func TestGrokDisabledAndUnknownModelFailBeforeProvider(t *testing.T) {
 }
 
 func TestGrokModelRoutingAndBuildFastCredentialBoundary(t *testing.T) {
-	for _, model := range grokModels {
+	for _, model := range grok.Models() {
 		t.Run(model, func(t *testing.T) {
 			var calls int
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

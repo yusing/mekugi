@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/providers/grok"
+
 	"github.com/yusing/mekugi/providers/opencode"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -112,17 +114,17 @@ func translateProviderRequest(body []byte, service *opencode.Service) (_ *provid
 	if err != nil {
 		return nil, err
 	}
-	model, supported := grokProviderModel(request.Model())
+	model := strings.TrimPrefix(request.Model(), "grok:")
 	format := "chat"
 	if service == nil {
-		if !supported {
+		if !slices.Contains(grok.Models(), model) {
 			return nil, errors.New("unsupported Grok model")
 		}
 		policy = grokTranslationPolicy()
 	} else {
 		var ok bool
 		model, ok = strings.CutPrefix(request.Model(), service.Prefix+":")
-		_, supported = service.Model(model)
+		_, supported := service.Model(model)
 		if !ok || !supported {
 			return nil, errors.New("unsupported OpenCode model")
 		}

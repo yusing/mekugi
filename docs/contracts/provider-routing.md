@@ -10,9 +10,10 @@ implementations own credentials, metadata and inference transport. The
 stream normalization. No provider adapter creates an agent runtime, decrypts
 foreign history or substitutes its own transcript or registry.
 
-[Launch](../../apps/mekugi/internal/launch/SPEC.md) owns private catalog preparation
-and invocation model namespaces. Disabled or wrong-mode routes fail locally before
-inference. Enabling a third-party route does not change ordinary OpenAI request
+[Launch](../../apps/mekugi/internal/launch/SPEC.md#model-catalog) owns private
+catalog assembly, preparation and invocation model namespaces. Routing consumes
+provider metadata independently of that startup projection. Disabled or wrong-mode
+routes fail locally before inference. Enabling a third-party route does not change ordinary OpenAI request
 handling. Third-party continuation sends complete history over HTTP; WebSocket
 prewarm does not generate inference, and disconnect cancels provider work.
 

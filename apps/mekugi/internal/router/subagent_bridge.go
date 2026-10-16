@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/yusing/mekugi/providers/grok"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
@@ -21,7 +23,7 @@ type subagentBridge struct {
 }
 
 func prepareSubagentBridge(request *codexresponses.Request, grokEnabled, grokUnprefixed bool, openCode ...string) (*subagentBridge, error) {
-	grokModelNote := strings.ReplaceAll(grokModelInstruction, "%MODELS%", "`grok:"+strings.Join(grokModels, "`, `grok:")+"`")
+	grokModelNote := strings.ReplaceAll(grokModelInstruction, "%MODELS%", "`grok:"+strings.Join(grok.Models(), "`, `grok:")+"`")
 	if grokUnprefixed {
 		grokModelNote = strings.ReplaceAll(grokModelNote, "grok:", "")
 	}

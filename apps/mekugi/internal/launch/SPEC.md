@@ -32,17 +32,6 @@ built-in OpenAI provider capabilities, including native tools, reasoning updates
 and internal request metadata. Stock WebSockets and prewarming remain available;
 Codex owns retries and HTTP fallback. Third-party launches disable OpenAI
 requests and use provider-owned credentials. Configuration files remain untouched.
-Third-party catalogs use the selected provider metadata and `codex debug models
---bundled`, requiring its native v2 template without authenticated OpenAI discovery.
-The application pins the private `model_catalog_json` path in the final invocation
-layer, independent of user catalogs and other processes' shared caches. Profiles
-and `exec --ignore-user-config` retain host-owned selection semantics. Invalid
-catalogs, command failure or private-file failure prevent the main host launch.
-Preparation is bounded to one minute and 8 MiB; its directory is private (0700)
-and file mode is 0600, with both removed on exit or launch failure. The application
-does not rewrite user configuration or shared caches. Codex retains its catalog
-command behavior, and `/v1/models` remains unchanged rather than injecting models
-or synthetic ETags.
 
 Noninteractive `exec resume` and `exec fork` receive the same automatic startup
 default as new launches. Stock exec's provider override skips saved-model merging;
@@ -72,6 +61,26 @@ Codex-owned execution or explicitly invoked change-history tools.
 `codex headless --yolo` selects the [headless client](../headless/SPEC.md).
 Launch rejects resume, unsupported CLI options, and passthrough mode; explicit
 `--yolo` is required because the client cannot answer approvals.
+
+## Model catalog
+
+Launch assembles a private third-party catalog from selected provider metadata
+and `codex debug models --bundled`, without authenticated OpenAI discovery.
+The catalog contains only enabled Grok/OpenCode models in the selected invocation
+namespace. Rebuilding removes stale entries and disabled providers. Entries combine
+provider model IDs and supported capabilities with native v2 instruction/executor
+metadata, preserving unknown catalog fields. Missing native v2 support
+fails startup. OpenAI-only transport, search, service tiers and upgrade schedules
+are excluded from third-party entries.
+
+The private `model_catalog_json` path is pinned in the final invocation layer,
+independent of user catalogs and other processes' shared caches. Profiles and
+`exec --ignore-user-config` retain host-owned selection semantics. Invalid
+catalogs, command failure or private-file failure prevent the main host launch.
+Preparation is bounded to one minute and 8 MiB; its directory is private (0700)
+and file mode is 0600, with both removed on exit or launch failure. User
+configuration and shared caches remain untouched. Codex retains its catalog
+command behavior, and `/v1/models` preserves its native body and ETag.
 
 ## Host integration
 
@@ -162,8 +171,10 @@ commands retain Codex's own exit output.
 
 ## Acceptance
 
-Actual subprocess and PTY fixtures cover authentication and catalog selection,
-argument preservation, private frontend dispatch, independent invocations,
+Catalog assembly tests cover native v2 selection, unknown metadata, idempotent
+rebuilding, provider exclusion and invocation namespaces. Actual subprocess and
+PTY fixtures cover authentication, catalog selection, argument preservation,
+private frontend dispatch, independent invocations,
 startup cancellation and terminal handoff, signals, host failure and exit codes,
 cleanup, native versus redirected launch, headless rejection, and debug handoff.
 The executable entrypoint calls this same dispatcher; snapshot fixtures belong to

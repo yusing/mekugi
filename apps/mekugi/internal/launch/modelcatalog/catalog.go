@@ -1,37 +1,37 @@
-package router
+// Source: apps/mekugi/internal/router/grok_catalog.go:22:119@[8877886e] catalog assembly.
+package modelcatalog
 
 import (
-	"encoding/json"
+	jsonv1 "encoding/json"
+	json "encoding/json/v2"
 	"errors"
 	"maps"
-	"slices"
-	"strings"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/providers/grok"
+	"github.com/yusing/mekugi/providers/opencode"
 )
 
-const grokModel = "grok:grok-4.6"
-
-var grokModels = []string{"grok-4.7", "grok-4.6", "grok-4.5", "grok-4.7-build-fast"}
-
-func grokProviderModel(slug string) (string, bool) {
-	model := strings.TrimPrefix(slug, "grok:")
-	return model, slices.Contains(grokModels, model)
+// Selection is the invocation's enabled third-party providers and model namespace.
+type Selection struct {
+	GrokEnabled    bool
+	GrokUnprefixed bool
+	OpenCode       opencode.Config
 }
 
-// ProviderModelCatalog adds only configured providers to the private catalog.
-// It rebuilds cached provider entries from a native v2 template, preserving
-// other models and Codex’s evolving instruction and executor metadata.
-func ProviderModelCatalog(body []byte, session Session) ([]byte, error) {
-	var catalog map[string]json.RawMessage
-	if json.Unmarshal(body, &catalog) != nil || catalog == nil {
+// Build replaces the bundled model list with the selected third-party models,
+// preserving native v2 instruction/executor metadata and unknown catalog fields.
+func Build(body []byte, selection Selection) ([]byte, error) {
+	// Preserve the bundled catalog's existing JSON compatibility and stable bytes.
+	var catalog map[string]jsonv1.RawMessage
+	if json.Unmarshal(body, &catalog, jsonv1.DefaultOptionsV1()) != nil || catalog == nil {
 		return nil, errors.New("invalid Codex model catalog")
 	}
-	var models []map[string]json.RawMessage
-	if json.Unmarshal(catalog["models"], &models) != nil {
+	var models []map[string]jsonv1.RawMessage
+	if json.Unmarshal(catalog["models"], &models, jsonv1.DefaultOptionsV1()) != nil {
 		return nil, errors.New("codex model catalog is missing models")
 	}
-	var template map[string]json.RawMessage
+	var template map[string]jsonv1.RawMessage
 	for _, model := range models {
 		if responses.StringField(model, "slug") == "gpt-6-sol" && responses.StringField(model, "multi_agent_version") == "v2" {
 			template = model
@@ -39,7 +39,8 @@ func ProviderModelCatalog(body []byte, session Session) ([]byte, error) {
 	}
 	if template == nil {
 		for _, model := range models {
-			if !isChatCompletionsModel(responses.StringField(model, "slug")) && responses.StringField(model, "multi_agent_version") == "v2" {
+			slug := responses.StringField(model, "slug")
+			if !grok.IsModel(slug) && !opencode.IsModel(slug) && responses.StringField(model, "multi_agent_version") == "v2" {
 				template = model
 				break
 			}
@@ -58,7 +59,7 @@ func ProviderModelCatalog(body []byte, session Session) ([]byte, error) {
 	}
 	model := maps.Clone(template)
 	for key, value := range map[string]any{
-		"slug": grokModel, "display_name": grokModel, "description": "",
+		"description":    "",
 		"context_window": 500000, "max_context_window": 500000,
 		"visibility": "list", "supported_in_api": true, "priority": 100, "default_reasoning_level": "high",
 		"supported_reasoning_levels": []map[string]string{{"effort": "low", "description": "Low reasoning"}, {"effort": "medium", "description": "Medium reasoning"}, {"effort": "high", "description": "High reasoning"}, {"effort": "xhigh", "description": "Extra-high reasoning"}},
@@ -70,18 +71,12 @@ func ProviderModelCatalog(body []byte, session Session) ([]byte, error) {
 	}
 	// Do not inherit account-gated OpenAI scheduling or model-upgrade defaults.
 	delete(model, "multi_agent_reasoning_effort")
-	if session.ThirdPartyOnly {
-		models = nil
-	} else {
-		models = slices.DeleteFunc(models, func(model map[string]json.RawMessage) bool {
-			return isChatCompletionsModel(responses.StringField(model, "slug"))
-		})
-	}
-	if session.GrokEnabled {
-		for i, id := range grokModels {
+	models = nil
+	if selection.GrokEnabled {
+		for i, id := range grok.Models() {
 			entry := maps.Clone(model)
 			slug := "grok:" + id
-			if session.GrokUnprefixed {
+			if selection.GrokUnprefixed {
 				slug = id
 			}
 			entry["slug"] = responses.MustMarshalJSON(slug)
@@ -90,7 +85,7 @@ func ProviderModelCatalog(body []byte, session Session) ([]byte, error) {
 			models = append(models, entry)
 		}
 	}
-	for _, service := range session.OpenCode.Services() {
+	for _, service := range selection.OpenCode.Services() {
 		for _, definition := range service.Models() {
 			entry := maps.Clone(model)
 			levels := []map[string]string{}
@@ -108,12 +103,12 @@ func ProviderModelCatalog(body []byte, session Session) ([]byte, error) {
 				entry[key] = responses.MustMarshalJSON(value)
 			}
 			if definition.Context == 0 {
-				entry["context_window"] = json.RawMessage("null")
-				entry["max_context_window"] = json.RawMessage("null")
+				entry["context_window"] = jsonv1.RawMessage("null")
+				entry["max_context_window"] = jsonv1.RawMessage("null")
 			}
 			models = append(models, entry)
 		}
 	}
 	catalog["models"] = responses.MustMarshalJSON(models)
-	return json.Marshal(catalog)
+	return json.Marshal(&catalog, jsonv1.DefaultOptionsV1())
 }

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
 	"github.com/yusing/mekugi/apps/mekugi/internal/router"
 	"golang.org/x/term"
 )
@@ -64,7 +65,7 @@ func prepareProviderCatalog(ctx context.Context, executable string, args []strin
 	if waitErr != nil {
 		return "", "", fmt.Errorf("codex debug models failed: %w; check that Codex supports this command and its catalog configuration is valid", waitErr)
 	}
-	body, err = router.ProviderModelCatalog(body, session)
+	body, err = modelcatalog.Build(body, modelcatalog.Selection{GrokEnabled: session.GrokEnabled, GrokUnprefixed: session.GrokUnprefixed, OpenCode: session.OpenCode})
 	if err != nil {
 		return "", "", fmt.Errorf("prepare provider model catalog: %w", err)
 	}

@@ -2,8 +2,8 @@
 
 ## Ownership
 
-Own API-key selection, OAuth credential reads, trusted discovery, token refresh,
-credential publication, and authenticated inference transport. The application
+Own model IDs, API-key selection, OAuth credential reads, trusted discovery,
+token refresh, credential publication and authenticated inference transport. The application
 selects the credential path and configured HTTP transport. Grok owns interactive
 login. The application applies the routing and Codex adaptation policy below. Shared
 authority and failure semantics belong to [provider routing](../../docs/contracts/provider-routing.md).
@@ -23,12 +23,12 @@ The application adds the standalone namespace. Automatic defaults do not overwri
 saved models during interactive resume or switching; explicit selections do.
 Noninteractive resume/fork defaults follow the [launch contract](../../apps/mekugi/internal/launch/SPEC.md).
 
-The private Codex catalog uses bundled native v2 instruction/executor metadata,
-text/image input, a 500,000-token context window, and low/medium/high/xhigh effort
-with high as default. It excludes OpenAI entries and does not inherit Responses
-Lite, hosted search, service tiers or upgrade schedules. Existing Grok entries are
-rebuilt rather than duplicated. Spawn guidance preserves native argument and role
-constraints under the shared routing contract.
+[Launch](../../apps/mekugi/internal/launch/SPEC.md#model-catalog) assembles the
+private Codex catalog. Grok entries advertise text/image input, a 500,000-token
+context window, and low/medium/high/xhigh effort with high as default. The same
+provider model IDs drive catalog entries, spawn guidance and inference admission.
+Spawn guidance preserves native argument and role constraints under the shared
+routing contract.
 
 ## Authentication
 

@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 
+	"github.com/yusing/mekugi/providers/grok"
+	"github.com/yusing/mekugi/providers/opencode"
+
 	"github.com/yusing/mekugi/backends/codex/nativetrace"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
@@ -410,7 +413,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 	}
 	if activityThreadID != "" {
 		model := request.Model()
-		p.activity.beginResponse(activityThreadID, isGrokModel(model) || isOpenCodeModel(model))
+		p.activity.beginResponse(activityThreadID, grok.IsModel(model) || opencode.IsModel(model))
 	}
 	transform := &mekugiResponseTransform{
 		ctx:              ctx,

@@ -19,6 +19,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
@@ -88,7 +90,7 @@ func TestThirdPartyResumeModelNativeCodexE2E(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			catalog, err := ProviderModelCatalog(bundled, Session{GrokEnabled: true, GrokUnprefixed: unprefixed, ThirdPartyOnly: true})
+			catalog, err := modelcatalog.Build(bundled, modelcatalog.Selection{GrokEnabled: true, GrokUnprefixed: unprefixed})
 			if err != nil {
 				t.Fatal(err)
 			}

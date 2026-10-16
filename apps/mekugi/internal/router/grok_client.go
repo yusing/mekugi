@@ -6,7 +6,6 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"net/http"
-	"strings"
 	"time"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -87,8 +86,4 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 type grokResponseBody struct {
 	*codexresponses.ResponseBody
 	openCodePrice *opencode.Price
-}
-
-func isGrokModel(model string) bool {
-	return strings.HasPrefix(model, "grok:") || strings.HasPrefix(model, "grok-")
 }

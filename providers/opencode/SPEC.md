@@ -75,7 +75,8 @@ Codex response framing and price accounting remain with their respective owners.
 
 ## Codex adaptation and accounting
 
-The private catalog removes disabled services and advertises supported online
+[Launch](../../apps/mekugi/internal/launch/SPEC.md#model-catalog) projects the
+selected services into the private Codex catalog, advertising supported online
 `reasoning_options` efforts without inventing a default. Explicit supported values
 pass as Chat `reasoning_effort`, Responses `reasoning.effort` or Messages
 `output_config.effort`; structured output can coexist with effort. An absent or

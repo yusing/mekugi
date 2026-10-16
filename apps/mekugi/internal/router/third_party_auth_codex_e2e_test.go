@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
+
 	"github.com/yusing/mekugi/providers/openai"
 
 	"github.com/yusing/mekugi/libraries/httptransport"
@@ -59,7 +61,7 @@ func TestThirdPartyAuthenticationNativeCodexE2E(t *testing.T) {
 				if err != nil {
 					t.Fatalf("read installed Codex bundled catalog: %v", err)
 				}
-				catalog, err := ProviderModelCatalog(bundled, Session{GrokEnabled: true, GrokUnprefixed: unprefixed, ThirdPartyOnly: true})
+				catalog, err := modelcatalog.Build(bundled, modelcatalog.Selection{GrokEnabled: true, GrokUnprefixed: unprefixed})
 				if err != nil {
 					t.Fatal(err)
 				}

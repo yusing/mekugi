@@ -6,6 +6,9 @@ import (
 	json "encoding/json/v2"
 	"net/http"
 	"testing"
+
+	"github.com/yusing/mekugi/providers/grok"
+	"github.com/yusing/mekugi/providers/opencode"
 )
 
 func TestRequestCyberAccessOptOut(t *testing.T) {
@@ -28,7 +31,7 @@ func TestRequestCyberAccessOptOut(t *testing.T) {
 				if !bytes.Equal(sent["input"], input) || string(sent["model"]) != `"`+model+`"` {
 					t.Fatal("opt-out changed input or model")
 				}
-				if isGrokModel(model) || isOpenCodeModel(model) {
+				if grok.IsModel(model) || opencode.IsModel(model) {
 					if string(sent["access_programs"]) != raw {
 						t.Fatalf("third-party programs changed: %s", sent["access_programs"])
 					}

@@ -10,6 +10,9 @@ import (
 	"slices"
 	"time"
 
+	"github.com/yusing/mekugi/providers/grok"
+	"github.com/yusing/mekugi/providers/opencode"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -220,7 +223,7 @@ func (a *requestAttempt) prepare() error {
 
 func (a *requestAttempt) prepareWire() error {
 	var err error
-	if !isGrokModel(a.request.Model()) && !isOpenCodeModel(a.request.Model()) {
+	if !grok.IsModel(a.request.Model()) && !opencode.IsModel(a.request.Model()) {
 		programs, err := standardCyberAccess(a.request.Fields["access_programs"])
 		if err != nil {
 			return err

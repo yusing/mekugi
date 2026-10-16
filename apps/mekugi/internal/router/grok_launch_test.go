@@ -8,46 +8,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/yusing/mekugi/libraries/httptransport"
 
 	"github.com/yusing/mekugi/providers/grok"
 )
-
-func TestGrokLaunchCatalogNamespaces(t *testing.T) {
-	for _, unprefixed := range []bool{false, true} {
-		t.Run(fmt.Sprint(unprefixed), func(t *testing.T) {
-			session := Session{GrokEnabled: true, GrokUnprefixed: unprefixed, ThirdPartyOnly: true}
-			body, err := ProviderModelCatalog([]byte(`{"models":[{"slug":"gpt-6-sol","multi_agent_version":"v2","shell_type":"unified_exec","apply_patch_tool_type":"freeform"}]}`), session)
-			if err != nil {
-				t.Fatal(err)
-			}
-			var catalog struct {
-				Models []struct {
-					Slug  string `json:"slug"`
-					Shell string `json:"shell_type"`
-				} `json:"models"`
-			}
-			if err := json.Unmarshal(body, &catalog); err != nil || len(catalog.Models) != len(grokModels) {
-				t.Fatalf("third-party-only catalog: %s, %v", body, err)
-			}
-			for i, entry := range catalog.Models {
-				want := grokModels[i]
-				if !unprefixed {
-					want = "grok:" + want
-				}
-				if entry.Slug != want || entry.Shell != "unified_exec" {
-					t.Fatalf("catalog model = %+v, want %s", entry, want)
-				}
-			}
-			repeated, err := ProviderModelCatalog(body, session)
-			if err != nil || !bytes.Equal(body, repeated) {
-				t.Fatalf("session catalog is not idempotent: %v", err)
-			}
-		})
-	}
-}
 
 func TestGrokLaunchRejectsWrongNamespacesAndOpenAI(t *testing.T) {
 	for _, unprefixed := range []bool{false, true} {
@@ -75,7 +43,7 @@ func TestGrokDedicatedSpawnGuidance(t *testing.T) {
 	if _, err := prepareSubagentBridge(&request, true, true); err != nil {
 		t.Fatal(err)
 	}
-	for _, model := range grokModels {
+	for _, model := range grok.Models() {
 		if !bytes.Contains(request.Fields["tools"], []byte("`"+model+"`")) {
 			t.Fatalf("dedicated Grok model missing from spawn guidance: %s", model)
 		}
@@ -144,7 +112,7 @@ func TestUISnapshotGrokLaunchModelPicker(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.view.Painter.Theme = diffrender.DarkTheme
-			body, err := ProviderModelCatalog([]byte(`{"models":[{"slug":"gpt-6-sol","multi_agent_version":"v2"}]}`), Session{GrokEnabled: true, GrokUnprefixed: unprefixed, ThirdPartyOnly: true})
+			body, err := modelcatalog.Build([]byte(`{"models":[{"slug":"gpt-6-sol","multi_agent_version":"v2"}]}`), modelcatalog.Selection{GrokEnabled: true, GrokUnprefixed: unprefixed})
 			if err != nil {
 				t.Fatal(err)
 			}
