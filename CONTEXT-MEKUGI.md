@@ -31,6 +31,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Codex app-server stdio RPC and child-process lifecycle | `backends/codex/appserver` |
 | Transparent Codex JavaScript source recognition | `backends/codex/binding/execution_source.go`; preview, continuation correlation and offline corpus inspection consume its literal candidates without executing them |
 | Host-selected rollout identity, bounded context usage and resume settings | `backends/codex/rollout`; display precedence and Activity projection stay in router consumers |
+| Supplied rollout decoding, logical call identity and recorded command endpoints | `backends/codex/rollout/inspection.go`; query selection and retained-record joins stay in the inspection consumer, metric pairing in `modules/agentmetrics/evidence` |
 | Router lifecycle, launch flags, modes, and HTTP endpoints | `internal/router/server.go`, `internal/router/flags.go` |
 | Invocation-local Mekugi TOML configuration and service-tier selection | `internal/router/config.go`, `internal/router/service_tier.go`; OpenCode service configuration in `providers/opencode` |
 | Third-party native-agent projection and Codex model metadata | `internal/router/subagent_bridge.go`, `internal/router/grok_catalog.go` |

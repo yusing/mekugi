@@ -1,38 +1,16 @@
 package router
 
-import (
-	"encoding/json"
-	"strings"
+import "github.com/yusing/mekugi/backends/codex/rollout"
 
-	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
-)
-
-const axCarrierCallIDPrefix = "# mekugi:ax:call_id="
-
-// Read explicit router-owned invocation metadata, not arbitrary environment
-// assignments. Historical outer markers remain readable for retained rollouts.
-// This is local correlation evidence, not authentication of a supplied rollout.
-func inspectionAXCallID(encoded json.RawMessage) string {
-	var command string
-	if json.Unmarshal(encoded, &command) != nil {
-		var argv []string
-		if json.Unmarshal(encoded, &argv) != nil || len(argv) != 3 ||
-			(shellInterpreterName(argv[0]) != "bash" && shellInterpreterName(argv[0]) != "sh") ||
-			(argv[1] != "-c" && argv[1] != "-lc") {
-			return ""
+func (observations *sessionAXInput) observe(event rollout.InspectionEvent) error {
+	switch event.Kind {
+	case "item_started", "item_completed":
+		if event.Kind == "item_completed" && event.PersistedTimes {
+			return observations.Commands.ObserveCompleted(event.ItemID, event.CallID, event.Started, event.Completed, event.ExitCode)
 		}
-		command = argv[2]
+		return observations.Commands.Observe(event.Kind, event.ItemID, event.CallID, event.At, event.ExitCode)
+	case "task_started", "task_complete", "turn_started", "turn_complete":
+		observations.Completion.Observe(event.Kind, event.TurnID, event.At)
 	}
-	metadata, body, newline := strings.Cut(command, "\n")
-	identity, marked := strings.CutPrefix(metadata, axCarrierCallIDPrefix)
-	if marked {
-		if !newline || !evidence.ValidAXIdentity(identity) {
-			return ""
-		}
-		command = body
-	}
-	if marked {
-		return identity
-	}
-	return ""
+	return nil
 }
