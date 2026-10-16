@@ -86,6 +86,8 @@ sessions. Debug selection excludes rollout, replay-store, failure-reference, wor
 call and AX-generation selectors. Failure lookup excludes rollout, AX, workspace,
 call and text selectors. Exit codes are 0 for success, 2 for invalid options and
 1 for evidence or output errors.
+Cancellation reports an incomplete query even when its selected files or record
+directory are empty.
 
 AX export combines one validated read-log snapshot with typed
 [session inspection](../sessioninspection/SPEC.md) facts. The application

@@ -249,6 +249,9 @@ func selectFields(row map[string]jsontext.Value, keys []string) map[string]jsont
 }
 
 func readArtifact(ctx context.Context, path string, lines bool, observe func(int, map[string]jsontext.Value)) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	file, err := sourceparse.Open(path)
 	if err != nil {
 		return err
@@ -300,5 +303,5 @@ func readArtifact(ctx context.Context, path string, lines bool, observe func(int
 	if reader.N == 0 {
 		return errors.New("debug artifact exceeds 64 MiB")
 	}
-	return nil
+	return ctx.Err()
 }
