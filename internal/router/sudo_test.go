@@ -336,3 +336,86 @@ func main() { fmt.Println(os.Args[0]) }
 		})
 	}
 }
+
+func TestSudoNestedShellPreservesGuardResources(t *testing.T) {
+	for _, tc := range []struct {
+		name               string
+		clean, path, allow bool
+	}{
+		{name: "ordinary", allow: true},
+		{name: "clean-environment-denial", clean: true},
+		{name: "clean-environment-approval", clean: true, allow: true},
+		{name: "path-trampoline", path: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			shell, sudoDirectory, real := newSudoShell(t)
+			helper, err := execTrackHelper()
+			if err != nil {
+				t.Fatal(err)
+			}
+			guardDirectory, _ := vcsguard.Paths(filepath.Join(shell.root, "bin"))
+			if err := os.Mkdir(guardDirectory, 0700); err != nil {
+				t.Fatal(err)
+			}
+			trampoline := filepath.Join(guardDirectory, "sh")
+			if err := os.Symlink(helper, trampoline); err != nil {
+				t.Fatal(err)
+			}
+			executable := filepath.Join(real, "sudo")
+			if err := os.WriteFile(executable, []byte("#!/bin/sh\nprintf '%s\n' \"$@\"\nexit 23\n"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			body := quoteShellWord(executable) + " -n probe 'arg with spaces'"
+			cmd := exec.CommandContext(t.Context(), trampoline, "-c", body)
+			cmd.Env = []string{"PATH=" + execTrackPath()}
+			if !tc.path {
+				nativeShell := execTrackShellExecutable(t, "sh")
+				script := quoteShellWord(nativeShell) + " -c " + quoteShellWord(body)
+				if tc.clean {
+					script = "env -i " + script
+				}
+				rewritten, err := shellinstrumentation.RewriteCommands(script, helper, guardDirectory, sudoDirectory, "nested-command")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if displayed := shellinstrumentation.DisplayScript(rewritten, func(path string) bool { return path == guardDirectory || path == sudoDirectory }); displayed != script {
+					t.Fatalf("display changed authored shell: %q want %q", displayed, script)
+				}
+				cmd = exec.CommandContext(t.Context(), nativeShell, "-c", rewritten)
+				cmd.Env = []string{"PATH=" + execTrackPath(), sudoask.DirectoryEnvironment + "=" + sudoDirectory}
+			}
+			result := make(chan execTrackRun, 1)
+			go func() {
+				output, err := cmd.CombinedOutput()
+				code := 0
+				if err != nil {
+					code = cmd.ProcessState.ExitCode()
+				}
+				result <- execTrackRun{stdout: string(output), code: code}
+			}()
+			select {
+			case request := <-shell.guard.requests:
+				if request.kind != "sudo" || request.executable != executable || !slices.Equal(request.argv, []string{executable, "-n", "probe", "arg with spaces"}) || !tc.path && request.item != "nested-command" {
+					t.Fatalf("nested approval lost command identity: %#v", request)
+				}
+				request.reply <- vcsguard.Reply{OK: tc.allow, Reason: "nested fixture denial"}
+			case got := <-result:
+				t.Fatalf("nested sudo ran without approval: %+v", got)
+			case <-time.After(10 * time.Second):
+				t.Fatal("nested sudo did not request approval")
+			}
+			select {
+			case got := <-result:
+				if tc.allow {
+					if got.code != 23 || got.stdout != "-n\nprobe\narg with spaces\n" {
+						t.Fatalf("approved command changed: %+v", got)
+					}
+				} else if got.code != 1 || got.stdout != "mekugi: sudo command denied: nested fixture denial\n" {
+					t.Fatalf("denied command ran: %+v", got)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("nested sudo did not finish")
+			}
+		})
+	}
+}

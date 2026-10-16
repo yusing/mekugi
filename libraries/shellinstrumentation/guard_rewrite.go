@@ -53,7 +53,7 @@ func RewriteCommands(script, helper, directory, sudoDirectory, item string) (str
 				edits = append(edits, sourceEdit{start, start, prefix})
 			}
 		} else {
-			prefix := guard.helperPrefix(helper, commandDirectory, item, defaultPath)
+			prefix := guard.helperPrefix(helper, commandDirectory, &sudoDirectory, item, defaultPath)
 			edits = append(edits, sourceEdit{start, end, prefix + script[start:end]})
 		}
 		return true
@@ -101,6 +101,9 @@ type sourceEdit struct {
 	text       string
 }
 
+// SudoDirectoryFlag carries the second guard resource through clean environments.
+const SudoDirectoryFlag = "--sudo-directory"
+
 var Shells = []string{"sh", "bash", "dash", "ksh"}
 
 // commandGuards owns executable recognition, runtime directory names and helper
@@ -142,12 +145,15 @@ func IsGuardDirectory(directory string) bool {
 	return false
 }
 
-func (g *commandGuardSpec) helperPrefix(helper, directory, item string, defaultPath bool) string {
+func (g *commandGuardSpec) helperPrefix(helper, directory string, sudoDirectory *string, item string, defaultPath bool) string {
 	mode := g.mode
 	if defaultPath {
 		mode += "-default"
 	}
 	prefix := shellsyntax.Quote(helper) + " " + mode + " " + shellsyntax.Quote(directory) + " "
+	if g.mode == "--vcs-shell" && sudoDirectory != nil {
+		prefix += SudoDirectoryFlag + " " + shellsyntax.Quote(*sudoDirectory) + " "
+	}
 	if item != "" {
 		prefix += ItemFlag + " " + shellsyntax.Quote(item) + " "
 	}

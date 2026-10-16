@@ -530,6 +530,8 @@ UI, the installed `mekugi-exec` helper and access to its local approval channel;
 headless and passthrough commands retain their existing behavior. Direct sudo
 names and executable paths through supported command wrappers are instrumented
 by the native command hook. Shell functions keep their existing lookup.
+Supported nested shell command strings retain sudo guarding through environment-
+clearing wrappers, including absolute sudo paths.
 Inside script files, inherited PATH guards cover bare sudo names. Bash startup
 also covers direct known absolute sudo paths when shell guarding is enabled.
 Scripts keep their original bytes, interpreter, arguments and exit status;

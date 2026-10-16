@@ -77,6 +77,13 @@ func main() {
 		return
 	}
 	if len(os.Args) >= 4 && (strings.TrimSuffix(os.Args[1], "-default") == "--vcs-command" || strings.TrimSuffix(os.Args[1], "-default") == "--vcs-shell") {
+		if strings.TrimSuffix(os.Args[1], "-default") == "--vcs-shell" && len(os.Args) >= 6 && os.Args[3] == shellinstrumentation.SudoDirectoryFlag {
+			if err := os.Setenv(sudoask.DirectoryEnvironment, os.Args[4]); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			os.Args = append(os.Args[:3], os.Args[5:]...)
+		}
 		if os.Args[3] == shellinstrumentation.ItemFlag && len(os.Args) >= 6 {
 			if err := os.Setenv(shellinstrumentation.ItemEnvironment, os.Args[4]); err != nil {
 				fmt.Fprintln(os.Stderr, err)

@@ -71,6 +71,15 @@ func DisplayScript(script string, isGuardDirectory func(string) bool) string {
 			return true
 		}
 		target := i + 3
+		var sudoDirectory *string
+		if flag, _ := shellsyntax.StaticWord(call.Args[target]); flag == SudoDirectoryFlag && target+2 < len(call.Args) {
+			value, literal := shellsyntax.StaticWord(call.Args[target+1])
+			if !literal || value != "" && !isGuardDirectory(value) {
+				return true
+			}
+			sudoDirectory = new(value)
+			target += 2
+		}
 		item := ""
 		if flag, _ := shellsyntax.StaticWord(call.Args[target]); flag == ItemFlag && target+2 < len(call.Args) {
 			item, static = shellsyntax.StaticWord(call.Args[target+1])
@@ -86,7 +95,7 @@ func DisplayScript(script string, isGuardDirectory func(string) bool) string {
 			return true
 		}
 		start, end := int(call.Args[i].Pos().Offset()), int(word.Pos().Offset())
-		prefix := guard.helperPrefix(helper, directory, item, mode == guard.mode+"-default")
+		prefix := guard.helperPrefix(helper, directory, sudoDirectory, item, mode == guard.mode+"-default")
 		if script[start:end] == prefix {
 			edits = append(edits, sourceEdit{start: start, end: end})
 		}
