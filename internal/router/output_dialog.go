@@ -16,7 +16,7 @@ import (
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	"github.com/yusing/mekugi/libraries/terminalui"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // outputDialog shows an operation's whole source and retained output over
@@ -264,7 +264,7 @@ func (d *outputDialog) tabRow(width int) string {
 		block := d.pages[i]
 		name := block.Verb
 		if d.processes != nil {
-			name = activityui.AgentDisplayName(block.Owner)
+			name = terminalui.AgentDisplayName(block.Owner)
 		}
 		label := fmt.Sprintf(" %d %s", i+1, name)
 		path := block.Path
@@ -272,7 +272,7 @@ func (d *outputDialog) tabRow(width int) string {
 			path = block.Reads[0].Path
 		}
 		if path != "" {
-			label += " " + activityui.Path(activityui.TruncatePath(path, cell-ansi.StringWidth(label)-2))
+			label += " " + terminalui.StyledPath(activityui.TruncatePath(path, cell-ansi.StringWidth(label)-2))
 		} else if block.Code != "" {
 			label += " " + strings.SplitN(block.Code, "\n", 2)[0]
 		}
@@ -440,7 +440,7 @@ func (d *outputDialog) layout(width int) {
 	}
 	d.laid, d.laidKey = d.view.painter.DialogPage(block, width), key
 	if d.filePath != "" {
-		d.laid.Lines = append([]activityui.DialogLine{{Text: activityui.Path(textsanitize.Safe(d.filePath, false)), Wrap: true}, {}}, d.laid.Lines...)
+		d.laid.Lines = append([]activityui.DialogLine{{Text: terminalui.StyledPath(textsanitize.Safe(d.filePath, false)), Wrap: true}, {}}, d.laid.Lines...)
 		if block.Kind != "error" {
 			d.laid.Text = d.fileText
 			for i := range d.laid.Lines {
@@ -794,7 +794,7 @@ func (d *outputDialog) footer(width int) string {
 	}
 	footer := dim + strings.Join(keys, " · ") + undim
 	if d.missed {
-		footer = activityui.Amber + "no match" + terminalui.Reset + dim + " · " + undim + footer
+		footer = terminalui.Amber + "no match" + terminalui.Reset + dim + " · " + undim + footer
 	}
 	if ansi.StringWidth(footer) > width-6 {
 		footer = dim + "↑↓ scroll · / find · y copy · esc" + undim

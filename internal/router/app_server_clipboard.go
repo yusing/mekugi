@@ -21,7 +21,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 type composerImage struct {

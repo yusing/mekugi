@@ -11,7 +11,7 @@ import (
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/modules/notifications/notice"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // Successful feedback is transient; actionable errors remain until editing.
@@ -49,7 +49,7 @@ func (u *appServerUI) stateLabel(now time.Time) string {
 		}
 	}
 	if u.shellMode() {
-		label = activityui.Red + "Shell Mode" + terminalui.Reset + " · " + label
+		label = terminalui.Red + "Shell Mode" + terminalui.Reset + " · " + label
 	}
 	if count := u.runningProcessCount(); count > 0 {
 		if label != "" {
@@ -62,7 +62,7 @@ func (u *appServerUI) stateLabel(now time.Time) string {
 	case notice == "":
 		return label
 	case u.feedback.Alert:
-		notice = activityui.Red + "✗ " + activityui.ErrorPreview(u.feedback.Text) + terminalui.Reset
+		notice = terminalui.Red + "✗ " + activityui.ErrorPreview(u.feedback.Text) + terminalui.Reset
 	default:
 		notice = "\x1b[39m" + notice + terminalui.Reset
 	}
@@ -99,7 +99,7 @@ func (u *appServerUI) composerNoticeBorder(width, row int, color string) string 
 	// In compact panes the error takes precedence over the session caption.
 	plain := ansi.Strip(label)
 	if mark := strings.Index(plain, "✗ "); mark >= 0 && ansi.StringWidth(plain[:mark])+4 > room {
-		label = activityui.Red + "✗ " + activityui.ErrorPreview(full) + terminalui.Reset
+		label = terminalui.Red + "✗ " + activityui.ErrorPreview(full) + terminalui.Reset
 	}
 	details := activityui.ErrorHasDetails(activityui.Block{Body: full})
 	if details && !strings.HasSuffix(ansi.Strip(label), "…") {
@@ -111,7 +111,7 @@ func (u *appServerUI) composerNoticeBorder(width, row int, color string) string 
 		u.noticeDetails = terminalRect{3, row, ansi.StringWidth(label), 1}
 	}
 	u.noticeDismiss = terminalRect{width - 6, row, 3, 1}
-	return composerBorder("╭", "╮", label, activityui.Green+"[✓]"+terminalui.Reset, width, color)
+	return composerBorder("╭", "╮", label, terminalui.Green+"[✓]"+terminalui.Reset, width, color)
 }
 
 func (u *appServerUI) composerNoticeMouse(button, x, y int, release bool) bool {

@@ -19,7 +19,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // These are retained host observations, not guesses from the shell text. The

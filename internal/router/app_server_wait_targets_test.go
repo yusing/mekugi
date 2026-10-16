@@ -8,8 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	"github.com/charmbracelet/x/ansi"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 func waitTargetTestAgent(t *testing.T, u *appServerUI, id, path string, running bool) {
@@ -69,7 +70,7 @@ func TestAppServerWaitTargetsSnapshotAndRender(t *testing.T) {
 		t.Fatalf("wait leaked into transcript: %q", rendered)
 	}
 	rendered, _ := u.agents.current(activityPaneAgent{Name: "/root"}, time.Now())
-	if !strings.Contains(rendered, activityui.DimColor("/root/alpha")+"alpha") || !strings.Contains(rendered, activityui.DimColor("/root/alpha/nested")+"alpha/nested") {
+	if !strings.Contains(rendered, terminalui.DimAgentColor("/root/alpha")+"alpha") || !strings.Contains(rendered, terminalui.DimAgentColor("/root/alpha/nested")+"alpha/nested") {
 		t.Fatalf("missing muted targets: %q", rendered)
 	}
 	frame := ansi.Strip(rendered)
@@ -151,7 +152,7 @@ func TestAppServerWaitTargetsDurableReplay(t *testing.T) {
 		t.Fatalf("restored wait leaked into transcript: %q", rendered)
 	}
 	rendered, _ := restored.agents.current(activityPaneAgent{Name: "/root"}, time.Now())
-	if !strings.Contains(rendered, activityui.DimColor("/root/alpha")+"alpha") {
+	if !strings.Contains(rendered, terminalui.DimAgentColor("/root/alpha")+"alpha") {
 		t.Fatalf("restored wait lost color: %q", rendered)
 	}
 	restored.session.registerThread(appServerThreadInfo{ID: "a", AgentNickname: "alpha"})

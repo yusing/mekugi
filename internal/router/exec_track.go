@@ -19,7 +19,7 @@ import (
 	"github.com/yusing/mekugi/internal/execscope"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 	"mvdan.cc/sh/v3/syntax"
 )

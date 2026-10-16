@@ -10,12 +10,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
@@ -352,7 +353,7 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 		t.Fatalf("concurrent frame lost attribution: %q", frame)
 	}
 	// Child callers keep the agents pane's color for the same canonical path.
-	if !strings.Contains(frame, activityui.Color("/root/editor")+"editor") || !strings.Contains(frame, "STREAM · v diff") {
+	if !strings.Contains(frame, terminalui.AgentColor("/root/editor")+"editor") || !strings.Contains(frame, "STREAM · v diff") {
 		t.Fatalf("concurrent frame lost attribution: %q", frame)
 	}
 	for i := 101; i <= 150; i++ {

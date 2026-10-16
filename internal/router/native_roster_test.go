@@ -10,7 +10,6 @@ import (
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/libraries/terminalui"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
@@ -315,9 +314,9 @@ func TestNativeRosterLineCountColorsAndZeros(t *testing.T) {
 	}{
 		{diffmodel.Counts{}, "", ""},
 		{diffmodel.Counts{Added: -1, Removed: -1}, "", ""},
-		{diffmodel.Counts{Added: 3}, activityui.Green + "+3\x1b[39m", ""},
-		{diffmodel.Counts{Removed: 2}, "", activityui.Red + "-2\x1b[39m"},
-		{diffmodel.Counts{Added: 3, Removed: 2}, activityui.Green + "+3\x1b[39m", activityui.Red + "-2\x1b[39m"},
+		{diffmodel.Counts{Added: 3}, terminalui.Green + "+3\x1b[39m", ""},
+		{diffmodel.Counts{Removed: 2}, "", terminalui.Red + "-2\x1b[39m"},
+		{diffmodel.Counts{Added: 3, Removed: 2}, terminalui.Green + "+3\x1b[39m", terminalui.Red + "-2\x1b[39m"},
 	} {
 		added, removed := v.lineCountParts(tt.count)
 		if added != tt.added || removed != tt.removed {

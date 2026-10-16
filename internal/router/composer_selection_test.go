@@ -16,7 +16,7 @@ import (
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func TestComposerSelectionMentionIsOneToken(t *testing.T) {

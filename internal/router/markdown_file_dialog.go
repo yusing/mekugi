@@ -16,9 +16,9 @@ import (
 	"github.com/yusing/mekugi/libraries/terminalui"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourcekind"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // markdownFileTarget shares existence and workspace resolution between painting

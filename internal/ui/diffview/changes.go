@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -14,7 +16,6 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
@@ -172,7 +173,7 @@ func (l *liveDiffChanges) Rebuild(view *livediff.View, workspace string) {
 func liveDiffChangeMatches(origin livediff.Origin, query string) bool {
 	caller := "unknown"
 	if origin.Caller != "" {
-		caller = strings.ToLower(activityui.AgentDisplayName(origin.Caller))
+		caller = strings.ToLower(terminalui.AgentDisplayName(origin.Caller))
 	}
 	if name, ok := strings.CutPrefix(query, "@"); ok {
 		return strings.Contains(caller, name)
@@ -222,10 +223,10 @@ func CallerStyle(theme diffrender.Theme) func(string) (string, string) {
 		if caller == "" || caller == livediff.UnknownCaller {
 			return "unknown", diffrender.Subtle
 		}
-		if color := activityui.Color(caller); color != "" {
-			return activityui.AgentDisplayName(caller), color
+		if color := terminalui.AgentColor(caller); color != "" {
+			return terminalui.AgentDisplayName(caller), color
 		}
-		return activityui.AgentDisplayName(caller), theme.Accent()
+		return terminalui.AgentDisplayName(caller), theme.Accent()
 	}
 }
 

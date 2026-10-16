@@ -13,8 +13,8 @@ import (
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // Derive receipts from the submitted envelope, never from current filesystem

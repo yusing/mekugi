@@ -81,7 +81,7 @@ input cost. An omitted cache-write field is zero for older providers; explicit n
 invalid, or contradictory evidence is not known zero. Unknown model/service-tier pricing
 or inconsistent usage makes the affected thread's cost unavailable, without hiding known
 token counts or presenting a partial cost as complete. Display behavior belongs to
-[activity display](../../doc/spec/activity_display.md).
+[activity display](../activity/CONTRACT.md).
 
 ### Output throughput
 

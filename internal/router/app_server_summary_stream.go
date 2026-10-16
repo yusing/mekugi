@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // appServerSummaryRun uses the output stream's bounded rolling cursor, while

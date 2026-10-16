@@ -14,7 +14,7 @@ modal views and the full multiline composer take precedence. The welcome is
 presentation only, not conversation history.
 
 Operation-row formatting and feed controls are specified by
-[native activity presentation](activity_display.md); shared classification belongs to
+[native activity presentation](../../modules/activity/CONTRACT.md); shared classification belongs to
 [activity observation](activity.md), and router cost totals to [usage reporting](../../modules/usage/SPEC.md).
 
 ### UI
@@ -595,7 +595,7 @@ Main's composer row shows a breathing `N running processes` label while at least
 one observed command is running in the active thread or its children. At zero,
 the label is absent. Running commands remain ordinary scrollable transcript rows.
 
-`/ps` opens the shared [output dialog](activity_display.md) over every running
+`/ps` opens the shared [output dialog](../../modules/activity/CONTRACT.md) over every running
 command, in start order. Each page is one whole invocation: its display source,
 without Mekugi instrumentation as in its transcript row, and its retained output,
 streamed live and following its tail until the reader scrolls up. A tab row,
@@ -746,7 +746,7 @@ saved Diff rows retain their gutters and change attribution. Static selections
 retain their existing dismissal behavior. Resizing or resuming editing dismisses
 the selection. Recognized Markdown file links in Main, child transcripts, and shared
 dialogs open local source with the path, content, and read errors copyable, as
-specified by [activity display](activity_display.md). HTTP(S) links still copy
+specified by [activity display](../../modules/activity/CONTRACT.md). HTTP(S) links still copy
 their destinations in Main and child transcripts; clicking them inside a dialog still
 does nothing. Missing local file destinations are not clickable.
 Clipboard availability is controlled by the user's terminal.
@@ -1107,7 +1107,7 @@ states, such as sending and interrupting, breathe smoothly together from dim to 
 color ramp until terminal colors are reported. Successful steering returns to
 the active turn state rather than remaining in Sending.
 Composer status (including Waiting), agent timers, and relative response ages use
-shared compact duration formatting from [Activity](activity_display.md): `82s` displays as `1m22s`, and `3682s` as `1h1m22s`.
+shared compact duration formatting from [Activity](../../modules/activity/CONTRACT.md): `82s` displays as `1m22s`, and `3682s` as `1h1m22s`.
 Trailing zero units are omitted (`5m`, `1h`), while elapsed timers start at `0s`;
 response ages under two seconds remain `just now`.
 Successful completion shows the frozen elapsed turn time in hours, minutes, and

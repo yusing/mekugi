@@ -16,9 +16,9 @@ import (
 	"github.com/yusing/mekugi/libraries/terminalui"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // Live edits temporarily replace their caller's transcript, never another pane.
@@ -440,7 +440,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	b.WriteString("\x1b[?2026l")
 	frame := b.String()
 	if !u.faint {
-		frame = activityui.FaintFallback(frame)
+		frame = terminalui.FaintFallback(frame)
 	}
 	_, err := io.WriteString(out, frame)
 	if err == nil {
@@ -486,18 +486,18 @@ func (u *terminalUI) nativeStatus() string {
 	}
 	diffBadge := ""
 	if u.diffUnseen {
-		diffBadge = activityui.Amber + " ●" + "\x1b[39m"
+		diffBadge = terminalui.Amber + " ●" + "\x1b[39m"
 	}
 	responding, _ := u.agents.statusCounts(u.agents.roster())
 	agentsBadge := ""
 	if responding > 0 {
-		agentsBadge = activityui.Amber + superscript(responding) + "\x1b[39m"
+		agentsBadge = terminalui.Amber + superscript(responding) + "\x1b[39m"
 	}
 	tab(1, "Main", "", !u.agents.only)
 	tab(2, "Diff", diffBadge, u.diffOpen)
 	tab(3, "Agents", agentsBadge, true)
 	if u.main != nil && u.main.interruptLocked {
-		tabs.WriteString("  " + activityui.Amber + "Locked · /unlock" + terminalui.Reset)
+		tabs.WriteString("  " + terminalui.Amber + "Locked · /unlock" + terminalui.Reset)
 	}
 	filter := "child"
 	if u.agents.only {

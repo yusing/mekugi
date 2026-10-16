@@ -6,7 +6,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/terminalui"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func TestDiffOutputSectionSourceSelection(t *testing.T) {

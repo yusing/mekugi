@@ -6,8 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	"github.com/charmbracelet/x/ansi"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 func TestAppServerShellSubmission(t *testing.T) {
@@ -145,7 +146,7 @@ func TestAppServerShellComposer(t *testing.T) {
 	if strings.Join(redraw, "\n") != text {
 		t.Fatal("redrawing the shell composer changed its text or cursor")
 	}
-	if !strings.Contains(ansi.Strip(text), "Shell Mode") || !strings.Contains(text, activityui.Red+"╭") || !strings.Contains(text, activityui.Red+"│") {
+	if !strings.Contains(ansi.Strip(text), "Shell Mode") || !strings.Contains(text, terminalui.Red+"╭") || !strings.Contains(text, terminalui.Red+"│") {
 		t.Fatalf("shell notice/frame missing: %q", text)
 	}
 	u.deleteDraftRange(0, 1)

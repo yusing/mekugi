@@ -14,8 +14,8 @@ import (
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 type terminalSelection struct {

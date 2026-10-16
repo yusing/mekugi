@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/x/vt"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func outputSelectionFixture(text string, live bool) (*terminalUI, *activitymodel.Output) {

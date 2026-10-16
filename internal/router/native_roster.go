@@ -11,8 +11,8 @@ import (
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/terminalui"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // nativeRosterItem is one roster row: an agent, or the fold of finished ones.
@@ -63,10 +63,10 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	}
 	detail := terminalui.Dim + fmt.Sprintf("%d", len(rows)) + terminalui.Undim
 	if responding > 0 {
-		detail += terminalui.Dim + " · " + terminalui.Undim + activityui.Amber + fmt.Sprintf("%d working", responding) + terminalui.Reset
+		detail += terminalui.Dim + " · " + terminalui.Undim + terminalui.Amber + fmt.Sprintf("%d working", responding) + terminalui.Reset
 	}
 	if errors > 0 {
-		detail += terminalui.Dim + " · " + terminalui.Undim + activityui.Red + fmt.Sprintf("%d error", errors) + terminalui.Reset
+		detail += terminalui.Dim + " · " + terminalui.Undim + terminalui.Red + fmt.Sprintf("%d error", errors) + terminalui.Reset
 	}
 	var totals []string
 	if v.netCounts != nil {
@@ -147,9 +147,9 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		if item.finished != nil {
 			var names []string
 			for _, row := range item.finished {
-				names = append(names, activityui.Color(row.agent.Name)+activityui.AgentDisplayName(row.agent.Name)+terminalui.Reset)
+				names = append(names, terminalui.AgentColor(row.agent.Name)+terminalui.AgentDisplayName(row.agent.Name)+terminalui.Reset)
 			}
-			line := " " + activityui.Green + "✓" + terminalui.Reset + " " + terminalui.Dim + fmt.Sprintf("%d finished · ", len(item.finished)) + terminalui.Undim + strings.Join(names, terminalui.Dim+", "+terminalui.Undim)
+			line := " " + terminalui.Green + "✓" + terminalui.Reset + " " + terminalui.Dim + fmt.Sprintf("%d finished · ", len(item.finished)) + terminalui.Undim + strings.Join(names, terminalui.Dim+", "+terminalui.Undim)
 			laid = append(laid, agentLine{finishedLine: ansi.Truncate(line, width, "…")})
 			continue
 		}
@@ -158,11 +158,11 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		tree, _ := rosterTree(rows, index, 0)
 		tree = strings.TrimRight(liveActivityMiddle(tree, nameWidth), " ")
 		split := strings.LastIndexAny(tree, " /") + 1
-		color := activityui.Color(row.agent.Name)
+		color := terminalui.AgentColor(row.agent.Name)
 		if color == "" {
 			color = "\x1b[1m" + v.painter.Theme.Accent()
 		}
-		name := activityui.DimColor(row.agent.Name) + tree[:split] + terminalui.Undim + color + v.hoverName(tree[split:], row.agent.Name) + terminalui.Reset
+		name := terminalui.DimAgentColor(row.agent.Name) + tree[:split] + terminalui.Undim + color + v.hoverName(tree[split:], row.agent.Name) + terminalui.Reset
 		gap := "  "
 		if focused {
 			gap += strings.Repeat(" ", max(0, nameWidth-ansi.StringWidth(tree)))
@@ -330,10 +330,10 @@ func (v *liveActivityView) lineCountParts(count diffmodel.Counts) (string, strin
 	}
 	var added, removed string
 	if count.Added > 0 {
-		added = activityui.Green + fmt.Sprintf("+%d", count.Added) + "\x1b[39m"
+		added = terminalui.Green + fmt.Sprintf("+%d", count.Added) + "\x1b[39m"
 	}
 	if count.Removed > 0 {
-		removed = activityui.Red + fmt.Sprintf("-%d", count.Removed) + "\x1b[39m"
+		removed = terminalui.Red + fmt.Sprintf("-%d", count.Removed) + "\x1b[39m"
 	}
 	return added, removed
 }
@@ -429,7 +429,7 @@ func (v *liveActivityView) nativeGlyph(agent activityPaneAgent) string {
 	if role := liveActivityRole(agent); role != "" {
 		return v.glyph(agent)
 	}
-	color := activityui.Color(agent.Name)
+	color := terminalui.AgentColor(agent.Name)
 	if color == "" {
 		color = v.painter.Theme.Accent()
 	}
@@ -437,9 +437,9 @@ func (v *liveActivityView) nativeGlyph(agent activityPaneAgent) string {
 	case '◐':
 		return color + "◐" + terminalui.Reset
 	case '!':
-		return activityui.Red + "!" + terminalui.Reset
+		return terminalui.Red + "!" + terminalui.Reset
 	case '✓':
-		return activityui.Green + "✓" + terminalui.Reset
+		return terminalui.Green + "✓" + terminalui.Reset
 	}
 	return color + "●" + terminalui.Reset
 }
@@ -461,7 +461,7 @@ func (v *liveActivityView) agentState(agent activityPaneAgent, width int, now ti
 	}
 	switch {
 	case kind == "error":
-		return activityui.Red + "error" + terminalui.Reset
+		return terminalui.Red + "error" + terminalui.Reset
 	case !agent.Responding && agent.Final:
 		return terminalui.Dim + "done" + terminalui.Undim
 	case !agent.Responding:

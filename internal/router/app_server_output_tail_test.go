@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func TestAppServerOutputTailKeepsFinalLines(t *testing.T) {

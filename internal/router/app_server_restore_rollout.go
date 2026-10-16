@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // Bound restoration I/O per thread independently of transcript size. Older

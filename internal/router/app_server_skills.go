@@ -9,7 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // Source: codex-rs/tui/src/chatwidget/skills.rs:29:136 and

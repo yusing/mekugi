@@ -6,12 +6,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -103,7 +105,7 @@ func TestNativeNavigationBatchDiffBadgeCells(t *testing.T) {
 	}
 	color := vt.NewEmulator(1, 1)
 	defer color.Close()
-	if _, err := color.Write([]byte(activityui.Amber + "●")); err != nil {
+	if _, err := color.Write([]byte(terminalui.Amber + "●")); err != nil {
 		t.Fatal(err)
 	}
 	if screen.CellAt(dot, 23).Style.Fg != color.CellAt(0, 0).Style.Fg {

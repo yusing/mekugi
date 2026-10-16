@@ -13,7 +13,7 @@ import (
 	"github.com/charmbracelet/x/vt"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func TestConversationJoinsConsecutiveUserMessagesInTurn(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/diffrender"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 

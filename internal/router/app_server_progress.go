@@ -3,7 +3,7 @@ package router
 import (
 	"slices"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 type appServerAgentState struct {

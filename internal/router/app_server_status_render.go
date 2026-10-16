@@ -8,8 +8,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
-
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 // A compact instrument panel: model settings, quota gauges, then account and
@@ -72,7 +70,7 @@ func (u *appServerUI) statusPanelFrame(width, height int) []string {
 			}
 			label, value, detail := pickerText(field.label), pickerText(field.value), pickerText(field.detail)
 			if field.path {
-				value = activityui.Path(value)
+				value = terminalui.StyledPath(value)
 			}
 			if field.remaining != nil {
 				percent := max(0, min(100, *field.remaining))

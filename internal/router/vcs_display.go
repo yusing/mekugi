@@ -23,7 +23,7 @@ import (
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 
 	"github.com/charmbracelet/x/ansi"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"mvdan.cc/sh/v3/syntax"
 )
 

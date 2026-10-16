@@ -25,8 +25,8 @@ import (
 	"github.com/yusing/mekugi/contracts/inference"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	terminalui "github.com/yusing/mekugi/libraries/terminalui"

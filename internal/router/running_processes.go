@@ -6,7 +6,7 @@ import (
 	"maps"
 	"slices"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // Only live host commands enter this map. A completed command can stay there

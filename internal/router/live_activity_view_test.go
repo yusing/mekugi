@@ -15,7 +15,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	terminalui "github.com/yusing/mekugi/libraries/terminalui"
 )
@@ -26,10 +26,10 @@ func TestEditHoverDecoratesOnlyPointedText(t *testing.T) {
 		v.conversation = main
 		v.feedTop, v.feedLeft, v.feedRight = 1, 1, 100
 		target := liveActivitySnippet{run: 1, block: editNavigationSnippet}
-		bar := activityui.Green + "━━━━━━━━" + activityui.Red + "\x1b[39m" + terminalui.Dim + terminalui.Undim
+		bar := terminalui.Green + "━━━━━━━━" + terminalui.Red + "\x1b[39m" + terminalui.Dim + terminalui.Undim
 		feed := liveActivityFeed{
 			lines: []string{
-				"│ " + activityui.Green + "Edited" + terminalui.Reset + "  src/a ━━━━━━━━.go   +15 -1  " + bar,
+				"│ " + terminalui.Green + "Edited" + terminalui.Reset + "  src/a ━━━━━━━━.go   +15 -1  " + bar,
 				"└         ─file.go   +30     " + bar,
 			},
 			heads: []int{0, 0}, snippets: []liveActivitySnippet{target, target}, questions: []uint64{0, 0},
@@ -349,7 +349,7 @@ func TestLiveActivityHoverClearsWhenRosterMoves(t *testing.T) {
 func TestLiveActivityPainterColors(t *testing.T) {
 	var painter activityui.Painter
 	run := strings.Join(painter.Block(activityui.Block{Kind: "op", Verb: "Run", Label: "`go test`"}, 60), "\n")
-	if !strings.HasPrefix(run, activityui.Amber) || !strings.Contains(run, "Ran") {
+	if !strings.HasPrefix(run, terminalui.Amber) || !strings.Contains(run, "Ran") {
 		t.Fatalf("run verb = %q", run)
 	}
 	read := strings.Join(painter.Block(activityui.Block{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "dir/a.go", Ranges: []string{"1:2"}}}}, 60), "\n")
@@ -357,7 +357,7 @@ func TestLiveActivityPainterColors(t *testing.T) {
 		t.Fatalf("read path = %q", read)
 	}
 	failure := strings.Join(painter.Block(activityui.Block{Kind: "error", Body: "boom"}, 60), "\n")
-	if !strings.Contains(failure, activityui.Red) {
+	if !strings.Contains(failure, terminalui.Red) {
 		t.Fatalf("error = %q", failure)
 	}
 }
@@ -380,7 +380,7 @@ func TestLiveActivityLinksAndCommandExit(t *testing.T) {
 		{activityui.Block{Kind: "op", Verb: "Run", Code: "false\necho done", Lang: "bash", Fenced: true, ExitCode: 2}, "       · exit 2"},
 	} {
 		rows := painter.Block(tc.block, 80)
-		if !strings.Contains(strings.Join(plainLines(rows), "\n"), tc.want) || !strings.Contains(strings.Join(rows, "\n"), activityui.Red) {
+		if !strings.Contains(strings.Join(plainLines(rows), "\n"), tc.want) || !strings.Contains(strings.Join(rows, "\n"), terminalui.Red) {
 			t.Fatalf("run rows = %q", rows)
 		}
 	}
@@ -395,7 +395,7 @@ func TestLiveActivityViewAppliesExitToMatchingRun(t *testing.T) {
 	}})
 	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 3, Agent: "/root/a", CallID: "call-1", Kind: "exit", Text: "1", Observed: now}}})
 	got := strings.Join(plainLines(view.render(90, 15, now)), "\n")
-	if !strings.Contains(got, "▎ Ran false · exit 1\n▎ Ran true") || !strings.Contains(strings.Join(view.render(90, 15, now), "\n"), activityui.Red+"\x1b[1mRan") {
+	if !strings.Contains(got, "▎ Ran false · exit 1\n▎ Ran true") || !strings.Contains(strings.Join(view.render(90, 15, now), "\n"), terminalui.Red+"\x1b[1mRan") {
 		t.Fatalf("exit rendering = %s", got)
 	}
 }
@@ -449,20 +449,20 @@ func TestLiveActivityInterpreterPreviewAndSearchColor(t *testing.T) {
 	search := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: "Search `create(MCat|MSymbol)|description:` in `plugins/mrun.ts`"})[0]
 	colored := strings.Join(painter.Block(search, 110), "\n")
 	if !strings.Contains(colored, painter.Theme.Accent()+"create(MCat|MSymbol)|description:\x1b[39m") ||
-		!strings.Contains(colored, activityui.Path("plugins/mrun.ts")) ||
+		!strings.Contains(colored, terminalui.StyledPath("plugins/mrun.ts")) ||
 		!strings.Contains(colored, activityui.VerbColor("Search")+"\x1b[1mSearch") {
 		t.Fatalf("search query/path colors = %q", colored)
 	}
 	search = parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell(`rg needle src/a.go 'lib/with space.go'`)})[0]
 	colored = strings.Join(painter.Block(search, 110), "\n")
-	if !strings.Contains(colored, activityui.Path("src/a.go")) ||
-		!strings.Contains(colored, activityui.Path("lib/with space.go")) {
+	if !strings.Contains(colored, terminalui.StyledPath("src/a.go")) ||
+		!strings.Contains(colored, terminalui.StyledPath("lib/with space.go")) {
 		t.Fatalf("multiple search targets lost emphasis: %q", colored)
 	}
 	search = parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell(`rg -n 'create(MCat|MSymbol|InspectFile|MRead|MRun)|description:|--max-tokens' plugins/mrun.ts plugins/msymbol.ts plugins/inspect_file.ts`)})[0]
 	colored = strings.Join(painter.Block(search, 130), "\n")
 	for _, name := range []string{"mrun.ts", "msymbol.ts", "inspect_file.ts"} {
-		if !strings.Contains(colored, activityui.Path("plugins/"+name)) {
+		if !strings.Contains(colored, terminalui.StyledPath("plugins/"+name)) {
 			t.Fatalf("search target %s is not styled as a path: %q", name, colored)
 		}
 	}

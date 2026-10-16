@@ -278,7 +278,7 @@ Esc resumes following; `Ctrl-B o` loads older child history. The roster shows ac
 throughput, usage, estimated API cost, and composed captured edits. Usage/rates survive
 resume while retained; `≥` marks lower bounds, `?` uncertain edits, unavailable metrics stay blank.
 Main's throughput appears beside composer context. Herdr is optional; redirected
-sessions keep Codex input/output. See [activity details](doc/spec/activity_display.md).
+sessions keep Codex input/output. See [activity details](modules/activity/CONTRACT.md).
 
 ### Output dialog
 
@@ -287,7 +287,7 @@ Supported Bash/dash-backed sh lists show per-command output/status/time; missing
 are labeled combined. Host-omitted text cannot be recovered. Left/Right switches tabs;
 `/` searches, `n`/`N` moves matches, `y` copies, Esc/`q` closes. Select text to copy portions.
 Local links read current UTF-8 files up to 8 MiB; relative paths use the workspace,
-`:line` scrolls, reopening rereads. See [dialog controls](doc/spec/activity_display.md)
+`:line` scrolls, reopening rereads. See [dialog controls](modules/activity/CONTRACT.md)
 and [command tracking](doc/spec/execution.md).
 
 ## Recoverable output and change review

@@ -4,7 +4,7 @@ pjdoc:
   kind: spec
   scope: root
   status: draft
-  revision: "72"
+  revision: "73"
   files:
     - router.md
     - native_ui.md
@@ -14,7 +14,7 @@ pjdoc:
     - opencode.md
     - ../../modules/notifications/SPEC.md
     - activity.md
-    - activity_display.md
+    - ../../modules/activity/CONTRACT.md
     - plugin.md
     - ../../modules/agentmetrics/SPEC.md
     - ../../modules/sessioninspection/SPEC.md
@@ -54,7 +54,7 @@ resume evidence and renderer-keyed persistence.
 - [`REQ-OPENCODE-001`](opencode.md): OpenCode Go and Zen provider routes
 - [Notifications](../../modules/notifications/SPEC.md): native diagnostic delivery and recovery
 - [`REQ-ACTIVITY-001`](activity.md): observed tool classification
-- [`REQ-ACTIVITY-DISPLAY-001`](activity_display.md): native operation rows and agent feeds
+- [Activity presentation](../../modules/activity/CONTRACT.md): native operation rows and agent feeds
 - [`REQ-USAGE-001`](../../modules/usage/SPEC.md): per-thread provider accounting and reference costs
 - [File reading](../../modules/fileread/SPEC.md): authenticated raw-row reading
 - [Managed continuation](../../modules/outputrecovery/SPEC.md): retained-output paging
