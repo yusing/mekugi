@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	"context"
 	"encoding/json/v2"
 	"os"
 	"path/filepath"
@@ -396,5 +397,28 @@ func TestSessionInspectionDebugInvalidOptions(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), t.Context(), []string{"--session", "unused", "--request-id", "req-b"}, &stdout, &stderr); code != 2 {
 		t.Fatalf("request-id without debug-dir: code=%d stderr=%s", code, &stderr)
+	}
+}
+
+func TestDiagnosticInspectionCanceledEmptyEvidence(t *testing.T) {
+	for _, mode := range []string{"bundle", "failure-directory", "missing-failure-directory"} {
+		t.Run(mode, func(t *testing.T) {
+			directory := t.TempDir()
+			args := []string{"--failures", "--replay-dir", directory}
+			if mode == "bundle" {
+				writeDebugInspectionFixture(t, filepath.Join(directory, "router.jsonl"), "")
+				writeDebugInspectionFixture(t, filepath.Join(directory, "instructions.jsonl"), "")
+				args = []string{"--debug-dir", directory}
+			} else if mode == "missing-failure-directory" {
+				args[2] = filepath.Join(directory, "missing")
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			cancel()
+			var stdout, stderr bytes.Buffer
+			code := RunSessionInspection(testInspector(nil, nil), testDiagnostics(nil, nil), ctx, args, &stdout, &stderr)
+			if code != 1 || !strings.Contains(stderr.String(), context.Canceled.Error()) {
+				t.Fatalf("canceled inspection: code=%d stderr=%q stdout=%q", code, &stderr, &stdout)
+			}
+		})
 	}
 }

@@ -73,6 +73,9 @@ func (*Service) RetainFailure(ctx context.Context, store *history.Store, writes 
 	})
 }
 func (*Service) ReadFailures(ctx context.Context, directory, reference string) ([]Failure, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	entries, err := os.ReadDir(directory)
 	if errors.Is(err, os.ErrNotExist) {
 		entries, err = nil, nil
@@ -102,6 +105,9 @@ func (*Service) ReadFailures(ctx context.Context, directory, reference string) (
 		if reference == "" || reference == record.Reference {
 			records = append(records, record)
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	if reference != "" && len(records) == 0 {
 		return nil, fmt.Errorf("failure reference %q not found (it may have expired)", reference)
