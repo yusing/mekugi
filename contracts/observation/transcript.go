@@ -39,7 +39,8 @@ type TextUpdate struct {
 // capabilities. Historical projection is deliberately separate from live state.
 type Transcript interface {
 	TurnStarted(thread string)
-	TurnCompleted(thread, turn, status string, at time.Time) []TextUpdate
+	// current is false only when the application knows another turn is active.
+	TurnCompleted(thread, turn, status string, at time.Time, current bool) []TextUpdate
 	Observe(TextEvent, bool) []TextUpdate
 	ProviderStarted(thread string, at time.Time) []TextUpdate
 	OtherItemStarted(thread string) []TextUpdate

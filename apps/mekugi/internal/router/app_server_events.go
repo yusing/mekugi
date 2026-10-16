@@ -313,6 +313,9 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 		agent := s.agent(s.path(p.ThreadID))
 		agent.WorkTimer.update(true, now)
 		agent.Responding, agent.Final = true, false
+		if !main {
+			agent.turn = p.Turn.ID
+		}
 		if agent.Started.IsZero() {
 			agent.Started = now
 		}
@@ -326,11 +329,18 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 				delete(s.waits, key)
 			}
 		}
-		entries = append(entries, u.transcriptUpdates(s.transcript.TurnCompleted(p.ThreadID, p.Turn.ID, p.Turn.Status, now), true)...)
 		agent := s.agent(s.path(p.ThreadID))
-		agent.WorkTimer.update(false, now)
-		agent.Responding, agent.LastResponse = false, now
-		agent.Final = p.Turn.Status == "completed"
+		active := u.Turn
+		if !main {
+			active = agent.turn
+		}
+		current := active == "" || active == p.Turn.ID
+		entries = append(entries, u.transcriptUpdates(s.transcript.TurnCompleted(p.ThreadID, p.Turn.ID, p.Turn.Status, now, current), true)...)
+		if current {
+			agent.WorkTimer.update(false, now)
+			agent.Responding, agent.LastResponse = false, now
+			agent.Final, agent.turn = p.Turn.Status == "completed", ""
+		}
 		u.observeCost(p.ThreadID, agent)
 
 	case "item/commandExecution/outputDelta":

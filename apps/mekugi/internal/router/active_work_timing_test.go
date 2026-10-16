@@ -72,12 +72,20 @@ func TestAppServerActiveWorkTurnEndsAndLateUsage(t *testing.T) {
 				u, at := newActiveWorkTestUI(t)
 				appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "first"}})
 				*at = at.Add(19 * time.Second)
+				appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "old", "status": "completed"}})
+				assertAgentWork(t, u, thread, *at, 19*time.Second, true)
+				agent := u.session.agent(u.session.paths[thread])
+				if !agent.Responding || agent.Final {
+					t.Fatalf("old completion changed current roster state: %+v", agent)
+				}
 				appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "first", "status": outcome}})
 				assertAgentWork(t, u, thread, *at, 19*time.Second, false)
+				if agent.Responding || agent.Final != (outcome == "completed") {
+					t.Fatalf("current completion did not settle roster state: %+v", agent)
+				}
 				*at = at.Add(2 * time.Hour)
 				appServerTestNotify(t, u, "thread/tokenUsage/updated", map[string]any{"threadId": thread, "tokenUsage": map[string]any{"total": map[string]any{"inputTokens": 100, "outputTokens": 10}}})
 				assertAgentWork(t, u, thread, *at, 19*time.Second, false)
-				agent := u.session.agent(u.session.paths[thread])
 				if !agent.LastResponse.Equal(*at) {
 					t.Fatal("late usage did not update the independent response-age clock")
 				}

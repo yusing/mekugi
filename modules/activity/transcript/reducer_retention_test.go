@@ -23,7 +23,7 @@ func TestTranscriptCompletionReleasesReasoningBody(t *testing.T) {
 			event.At = at.Add(3 * time.Second)
 			var updates []observation.TextUpdate
 			if completion == "turn" {
-				updates = state.TurnCompleted(ref.ThreadID, ref.TurnID, "completed", event.At)
+				updates = state.TurnCompleted(ref.ThreadID, ref.TurnID, "completed", event.At, true)
 			} else {
 				event.Kind = observation.ItemCompleted
 				if completion == "completion-only" {

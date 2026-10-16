@@ -81,12 +81,15 @@ func (s *State) start(update *observation.TextUpdate, at time.Time) {
 	}
 }
 
-func (s *State) TurnCompleted(thread, turn, status string, at time.Time) []observation.TextUpdate {
+func (s *State) TurnCompleted(thread, turn, status string, at time.Time, current bool) []observation.TextUpdate {
 	s.init()
-	updates := s.drop(thread)
+	var updates []observation.TextUpdate
+	if current {
+		updates = s.drop(thread)
+	}
 	var keys []observation.ItemRef
 	for key := range s.thinking {
-		if key.ThreadID == thread {
+		if key.ThreadID == thread && key.TurnID == turn {
 			keys = append(keys, key)
 		}
 	}
@@ -102,11 +105,13 @@ func (s *State) TurnCompleted(thread, turn, status string, at time.Time) []obser
 		s.reasoning[key] = ""
 		delete(s.thinking, key)
 	}
-	if last, ok := s.messages[thread]; ok && !s.finals[thread] && status == "completed" && last.Ref.TurnID == turn {
-		last.Kind, last.Phase = "final", "item/completed"
-		updates = append(updates, last)
+	if last, ok := s.messages[thread]; current && ok && last.Ref.TurnID == turn {
+		if !s.finals[thread] && status == "completed" {
+			last.Kind, last.Phase = "final", "item/completed"
+			updates = append(updates, last)
+		}
+		delete(s.messages, thread)
 	}
-	delete(s.messages, thread)
 	return updates
 }
 

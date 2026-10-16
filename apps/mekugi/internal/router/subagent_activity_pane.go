@@ -34,6 +34,7 @@ type activityPaneEntry struct {
 
 type activityPaneAgent struct {
 	thread       string // Stable host identity; caller names remain presentation labels.
+	turn         string // Current child turn; Main's identity stays with session control.
 	settings     preferences.Evidence
 	settingsLive bool
 	WorkTimer    activeWorkTimer `json:",omitzero"`

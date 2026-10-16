@@ -61,6 +61,53 @@ func TestAppServerPublicSummaryNotifications(t *testing.T) {
 	}
 }
 
+func TestAppServerOldTurnCompletionPreservesCurrentTranscript(t *testing.T) {
+	u, at := newActiveWorkTestUI(t)
+	activity := newSubagentActivity()
+	activity.attachNativePane("main")
+	activity.observe("child", "main", "/root/worker", true)
+	u.proxy = &mekugiProxy{activity: activity}
+	u.agents.setDisplayFilter(false, "/root/worker")
+	wait := appServerItem{ID: "old-wait", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress"}
+	reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "old", "item": wait})
+	activity.beginResponse("child", true)
+	activity.starts[0].at = at.Add(-3 * time.Second)
+	u.applyObservedActivity()
+	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "current"}})
+	oldEnd := map[string]any{"threadId": "child", "turn": map[string]any{"id": "old", "status": "completed"}}
+	reasoningTestNotify(t, u, "turn/completed", oldEnd)
+	if got := ansi.Strip(strings.Join(u.agents.RenderFeed(90, 40).Lines, "\n")); !strings.Contains(got, "Thinking") {
+		t.Fatalf("old completion removed current provider placeholder: %q", got)
+	}
+	if old := u.agents.Entries[0].Source; old.Text != "Wait ended" || old.native.phase != "turn/completed" {
+		t.Fatalf("old completion did not settle its wait: %+v", old)
+	}
+	*at = at.Add(2 * time.Second)
+	assertAgentWork(t, u, "child", *at, 2*time.Second, true)
+	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "current", "itemId": "summary", "delta": "First"})
+	reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "current", "item": map[string]any{"id": "answer", "type": "agentMessage", "text": "Current answer"}})
+	reasoningTestNotify(t, u, "turn/completed", oldEnd)
+	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "current", "itemId": "summary", "delta": " continued"})
+	reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "current", "status": "completed"}})
+	var summary, final bool
+	for _, entry := range u.agents.Entries {
+		if entry.Source.Kind == "reasoning" {
+			summary = entry.Source.Text == "First continued" && entry.Source.native.phase == "item/completed" && entry.Source.native.thought == 5*time.Second
+		}
+		final = final || entry.Source.Kind == "final" && entry.Source.Text == "Current answer"
+	}
+	if !summary || !final {
+		t.Fatalf("matching turn did not settle its summary and final: summary=%v final=%v entries=%+v", summary, final, u.agents.Entries)
+	}
+	assertAgentWork(t, u, "child", *at, 2*time.Second, false)
+	activity.beginResponse("child", true)
+	u.applyObservedActivity()
+	reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "without-start", "status": "interrupted"}})
+	if got := ansi.Strip(strings.Join(u.agents.RenderFeed(90, 40).Lines, "\n")); strings.Contains(got, "Thinking") {
+		t.Fatalf("completion without a start left provider thinking: %q", got)
+	}
+}
+
 func TestAppServerRestorePublicSummaries(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	var turns []appServerHistoryTurn

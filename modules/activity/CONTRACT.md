@@ -335,7 +335,9 @@ For providers streaming untitled reasoning, an observed request start supplies
 Thinking progress until public text takes over. Other output or turn end removes
 an empty placeholder; a previous item's late completion cannot remove a newer one.
 Timing prefers request start, then item start, then first visible summary. Turn end
-settles unfinished summaries. Raw/encrypted reasoning is never a substitute.
+settles that turn's unfinished summaries; an older turn's completion preserves a
+known newer turn's thinking and final-answer selection. Raw/encrypted reasoning
+is never a substitute.
 Roster status uses collapsed section labels without body or duration, retaining
 short text when it fits and Thinking/Thought otherwise. Only live waiting/reasoning
 animates; completion and history do not restart it.
@@ -424,9 +426,11 @@ operation and remaining count. Agent colors derive solely from canonical paths.
 
 Active-work timers start on the first turn, not registration, accumulate observed
 work intervals and exclude idle gaps. Stopped/error/interrupted/unloaded agents
-keep totals; later work resumes them. History uses known turn endpoints, never
-thread metadata or invented duration. Response age advances independently of late
-usage. Available timestamps fit beside narrative headings; unknown ones stay absent.
+keep totals; later work resumes them. An older turn's completion leaves a known
+newer turn's responding state and work timer intact. History uses known turn
+endpoints, never thread metadata or invented duration. Response age advances
+independently of late usage. Available timestamps fit beside narrative headings;
+unknown ones stay absent.
 
 Metrics show context, active time/age, attributed captured edits, tokens, estimated
 cost and provider roundtrips. Tokens/cost use [canonical usage](../usage/SPEC.md),

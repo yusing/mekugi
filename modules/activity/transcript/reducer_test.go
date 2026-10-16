@@ -42,7 +42,7 @@ func TestTranscriptPublicSummaryLifecycle(t *testing.T) {
 	if late := state.Observe(e, false); len(late) != 0 {
 		t.Fatalf("late delta reopened summary: %+v", late)
 	}
-	if ended := state.TurnCompleted("child", "turn", "completed", e.At); len(ended) != 0 {
+	if ended := state.TurnCompleted("child", "turn", "completed", e.At, true); len(ended) != 0 {
 		t.Fatalf("completed summary repeated: %+v", ended)
 	}
 }
@@ -59,7 +59,7 @@ func TestTranscriptTurnEndAndOtherOutputRetireThinking(t *testing.T) {
 	if updates := state.Observe(e, false); len(updates) != 0 {
 		t.Fatalf("empty start became visible: %+v", updates)
 	}
-	done := state.TurnCompleted("child", "turn", "interrupted", at.Add(time.Second))
+	done := state.TurnCompleted("child", "turn", "interrupted", at.Add(time.Second), true)
 	if len(done) != 1 || done[0].Phase != "discarded" {
 		t.Fatalf("empty turn end: %+v", done)
 	}
@@ -76,7 +76,7 @@ func TestTranscriptChildFinalIsScopedToCompletedTurn(t *testing.T) {
 	if message := state.Observe(e, false); len(message) != 1 || message[0].Kind != "text" {
 		t.Fatalf("message: %+v", message)
 	}
-	final := state.TurnCompleted("child", "turn", "completed", e.At)
+	final := state.TurnCompleted("child", "turn", "completed", e.At, true)
 	if len(final) != 1 || final[0].Kind != "final" || final[0].Ref != e.Item.Ref {
 		t.Fatalf("final: %+v", final)
 	}
@@ -85,12 +85,12 @@ func TestTranscriptChildFinalIsScopedToCompletedTurn(t *testing.T) {
 	if updates := state.Observe(e, false); len(updates) != 0 {
 		t.Fatalf("question entered text: %+v", updates)
 	}
-	if updates := state.TurnCompleted("child", "turn", "completed", e.At); len(updates) != 0 {
+	if updates := state.TurnCompleted("child", "turn", "completed", e.At, true); len(updates) != 0 {
 		t.Fatalf("question promoted: %+v", updates)
 	}
 	e.Item.AsyncQuestion, e.Item.Final = false, true
 	state.Observe(e, false)
-	if updates := state.TurnCompleted("child", "turn", "completed", e.At); len(updates) != 0 {
+	if updates := state.TurnCompleted("child", "turn", "completed", e.At, true); len(updates) != 0 {
 		t.Fatalf("explicit final promoted again: %+v", updates)
 	}
 }
