@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -14,6 +15,19 @@ import (
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 )
+
+func TestSessionInspectionCanceledEmptySource(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rollout.jsonl")
+	writeStockRollout(t, path)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	var stdout, stderr bytes.Buffer
+	code := RunSessionInspection(testHistory(), nil, nil, ctx,
+		[]string{"--session", path, "--replay-dir", t.TempDir()}, &stdout, &stderr)
+	if code != 1 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "context canceled") {
+		t.Fatalf("canceled inspection: code=%d stdout=%q stderr=%q", code, &stdout, &stderr)
+	}
+}
 
 func writeStockRollout(t *testing.T, path string, records ...map[string]any) {
 	t.Helper()
