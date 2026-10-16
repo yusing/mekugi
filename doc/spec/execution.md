@@ -216,9 +216,11 @@ Accepted tracking in Bash and sh also defines a `mktemp` shell function, unless
 the shell already has one. It runs the utility once and keeps its output,
 diagnostics, and status, then reports the existing file or directory it named,
 including from command substitutions, subshells, and pipelines. Reporting can
-neither fail nor change the command. Bash also reports `mktemp` invoked by an
-absolute path in `PATH`, `/bin`, or `/usr/bin`, and, when the script text names
-both `command` and `mktemp`, through `command`. Only then does Bash wrap
+neither fail nor change the command. Bash also reports direct absolute `mktemp`
+paths found in `PATH`, `/bin`, or `/usr/bin` when the executable path contains
+only ASCII letters, digits, and `/._+-`. Other direct absolute paths execute
+unchanged without a creation report. When the script text names both `command`
+and `mktemp`, Bash also reports invocations through `command`. Only then does Bash wrap
 `command`, because the wrapper moves the line number in diagnostics from other
 commands run through it. Dash cannot name functions by path or see the script,
 so tracked sh reports bare `mktemp` only. `mktemp` run by another program is not
