@@ -34,6 +34,9 @@ const (
 	// checkpoint. A first or slow snapshot keeps warming in the background.
 	workspaceSnapshotWait = time.Second
 	workspaceSnapshotWarm = 2 * time.Minute
+	// Allow scheduled pipe readers to finish after Git exits, while bounding
+	// inherited descriptors or cancellation cleanup.
+	workspaceSnapshotDrain = time.Second
 	// A failed warmup is retried by a checkpoint after workspaceSnapshotRetry.
 	workspaceSnapshotRetry = 30 * time.Second
 	// Without a Git repository there are no authoritative ignore rules. The
@@ -390,7 +393,7 @@ func (r *workspaceSnapshotRepo) setup(ctx context.Context) error {
 	userEnv := workspaceSnapshotUserEnv()
 	query := exec.CommandContext(ctx, git, "-c", "core.fsmonitor=false", "-C", r.workspace,
 		"rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir", "--git-path", "index")
-	query.Env, query.WaitDelay = userEnv, 100*time.Millisecond
+	query.Env, query.WaitDelay = userEnv, workspaceSnapshotDrain
 	r.worktree, r.pathspec, r.plain, r.exclude, r.objects, r.seed = r.workspace, ".", true, "", "", ""
 	if output, err := query.Output(); err == nil {
 		lines := strings.Split(strings.TrimSpace(string(output)), "\n")
@@ -405,7 +408,7 @@ func (r *workspaceSnapshotRepo) setup(ctx context.Context) error {
 	// Snapshot commands ignore user configuration, so the configured global
 	// excludes file is passed explicitly; Git finds the default one itself.
 	configured := exec.CommandContext(ctx, git, "-C", r.workspace, "config", "--path", "--get", "core.excludesFile")
-	configured.Env, configured.WaitDelay = userEnv, 100*time.Millisecond
+	configured.Env, configured.WaitDelay = userEnv, workspaceSnapshotDrain
 	r.excludes = ""
 	if output, err := configured.Output(); err == nil {
 		r.excludes = strings.TrimSpace(string(output))
@@ -416,7 +419,7 @@ func (r *workspaceSnapshotRepo) setup(ctx context.Context) error {
 		}
 		init := exec.CommandContext(ctx, git, "init", "--bare", "--quiet", r.gitDir)
 		init.Env = append(workspaceSnapshotUserEnv(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
-		init.WaitDelay = 100 * time.Millisecond
+		init.WaitDelay = workspaceSnapshotDrain
 		if output, err := init.CombinedOutput(); err != nil {
 			return fmt.Errorf("git init: %w: %s", err, bytes.TrimSpace(output))
 		}
@@ -563,7 +566,7 @@ func (r *workspaceSnapshotRepo) command(ctx context.Context, stdin io.Reader, ar
 	command := exec.CommandContext(ctx, r.git, append(flags, args...)...)
 	command.Dir = r.worktree
 	command.Stdin = stdin
-	command.WaitDelay = 100 * time.Millisecond
+	command.WaitDelay = workspaceSnapshotDrain
 	// User and system configuration could run filters or hooks; the private
 	// directory and index replace any inherited repository selection.
 	command.Env = append(workspaceSnapshotUserEnv(),
