@@ -21,8 +21,8 @@ import (
 
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
-	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 type corpusCallRef struct {
@@ -39,17 +39,17 @@ type corpusFinding struct {
 }
 
 type corpusSession struct {
-	Path              string                   `json:"path"`
-	ThreadID          string                   `json:"thread_id"`
-	Class             string                   `json:"classification"`
-	Models            []string                 `json:"models"`
-	SelectedCalls     int                      `json:"selected_calls"`
-	MatchedCalls      int                      `json:"matched_replay_calls"`
-	UnavailableCalls  int                      `json:"unavailable_replay_calls"`
-	MissingTimestamps int                      `json:"missing_timestamps"`
-	Findings          []corpusFinding          `json:"findings"`
-	OmittedFindings   int                      `json:"omitted_findings"`
-	ProviderUsage     capturer.UsageInspection `json:"provider_usage"`
+	Path              string                           `json:"path"`
+	ThreadID          string                           `json:"thread_id"`
+	Class             string                           `json:"classification"`
+	Models            []string                         `json:"models"`
+	SelectedCalls     int                              `json:"selected_calls"`
+	MatchedCalls      int                              `json:"matched_replay_calls"`
+	UnavailableCalls  int                              `json:"unavailable_replay_calls"`
+	MissingTimestamps int                              `json:"missing_timestamps"`
+	Findings          []corpusFinding                  `json:"findings"`
+	OmittedFindings   int                              `json:"omitted_findings"`
+	ProviderUsage     transportcapture.UsageInspection `json:"provider_usage"`
 }
 
 type corpusUnavailable struct {
@@ -73,7 +73,7 @@ type sessionCorpus struct {
 
 // RunSessionCorpusInspection is read-only. Counts are per rollout: inherited
 // calls in forks are not summed into an invented global workload.
-func RunSessionCorpusInspection(service *history.Service, agentMetrics *evidence.Service, ctx context.Context, args []string, stdout, stderr io.Writer) int {
+func RunSessionCorpusInspection(service *history.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("inspect-sessions", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	directory := flags.String("sessions-dir", "", "Codex rollout directory (default CODEX_HOME/sessions)")
@@ -102,6 +102,10 @@ func RunSessionCorpusInspection(service *history.Service, agentMetrics *evidence
 		return 2
 	}
 	fail := func(err error) int { fmt.Fprintln(stderr, "mekugi inspect-sessions:", err); return 1 }
+	if *capture != "" && diagnostics == nil {
+		return fail(errors.New("transport diagnostics are unavailable"))
+	}
+
 	if *directory == "" {
 		codexDirectory := os.Getenv("CODEX_HOME")
 		if codexDirectory == "" {
@@ -191,7 +195,7 @@ func RunSessionCorpusInspection(service *history.Service, agentMetrics *evidence
 				threads[session.ThreadID] = true
 			}
 		}
-		usage, err := capturer.InspectProviderUsage(ctx, *capture, capturer.UsageInspectionFilter{
+		usage, err := diagnostics.InspectProviderUsage(ctx, *capture, transportcapture.UsageInspectionFilter{
 			Since: since, Until: until, Model: *model, ExcludeModel: *exclude, Threads: threads})
 		if err != nil {
 			return fail(err)
@@ -234,7 +238,7 @@ func classifyCorpusSession(observation sessionAXInput) string {
 
 func inspectCorpusSession(ctx context.Context, path string, calls []sessionInspectionCall, observation sessionAXInput, store *mekugiReplayStore, since, until time.Time, model string, limit int) (corpusSession, error) {
 	session := corpusSession{Path: path, ThreadID: observation.ThreadID, Models: observation.Models, Findings: []corpusFinding{},
-		ProviderUsage: capturer.UsageInspection{State: "unavailable"}}
+		ProviderUsage: transportcapture.UsageInspection{State: "unavailable"}}
 	var findings []corpusFinding
 	var previous *sessionInspectionCall
 	var previousReads []corpusReadSelection

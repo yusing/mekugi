@@ -12,6 +12,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+
 	"github.com/gofrs/flock"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 )
@@ -33,7 +35,7 @@ func TestFailureReferencePersistsWithoutDebugAndResolvesAfterReopen(t *testing.T
 	failure := &requestFinalization{
 		sessionID: "routing-session", threadID: "thread-failure-store",
 		failurePhase: requestFailureTransform,
-		streamDiagnostics: &streamDiagnostics{
+		streamDiagnostics: &transportcapture.Stream{
 			Transport: "http", BodyBytes: 128, Events: 2, LastEvent: "response.created",
 			CopyStop: "translation_error",
 		},
@@ -74,7 +76,7 @@ func TestFailureReferencePersistsWithoutDebugAndResolvesAfterReopen(t *testing.T
 		t.Fatal(err)
 	}
 	var stdout, stderr bytes.Buffer
-	status := RunSessionInspection(testHistory(), new(evidence.Service), t.Context(), []string{
+	status := RunSessionInspection(testHistory(), new(evidence.Service), new(transportcapture.Service), t.Context(), []string{
 		"--failures", "--replay-dir", directory, failure.diagnosticReference,
 	}, &stdout, &stderr)
 	if status != 0 {
@@ -90,7 +92,7 @@ func TestFailureReferencePersistsWithoutDebugAndResolvesAfterReopen(t *testing.T
 
 	stdout.Reset()
 	stderr.Reset()
-	status = RunSessionInspection(testHistory(), new(evidence.Service), t.Context(), []string{"--failures", "--replay-dir", directory}, &stdout, &stderr)
+	status = RunSessionInspection(testHistory(), new(evidence.Service), new(transportcapture.Service), t.Context(), []string{"--failures", "--replay-dir", directory}, &stdout, &stderr)
 	if status != 0 || stderr.Len() != 0 {
 		t.Fatalf("inspect-session --failures status=%d stderr=%q", status, stderr.String())
 	}
@@ -172,7 +174,7 @@ func TestInspectFailuresRejectsSessionInspectionOptionCombinations(t *testing.T)
 		t.Run(test.name, func(t *testing.T) {
 			args := append([]string{"--failures", "--replay-dir", directory}, test.extra...)
 			var stdout, stderr bytes.Buffer
-			status := RunSessionInspection(testHistory(), new(evidence.Service), t.Context(), args, &stdout, &stderr)
+			status := RunSessionInspection(testHistory(), new(evidence.Service), new(transportcapture.Service), t.Context(), args, &stdout, &stderr)
 			if status != 2 {
 				t.Fatalf("status=%d, want usage error 2; stdout=%q stderr=%q", status, stdout.String(), stderr.String())
 			}

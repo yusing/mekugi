@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
@@ -367,7 +369,7 @@ func TestSessionUIReplayPTYWheelSpeedQuitAndRestore(t *testing.T) {
 			done := make(chan int, 1)
 			finished := false
 			go func() {
-				done <- RunSessionUIReplay(testHistory(), ctx, []string{"--session", "root", "--from", "1s"}, slave, slave, stderr)
+				done <- RunSessionUIReplay(testHistory(), new(transportcapture.Service), ctx, []string{"--session", "root", "--from", "1s"}, slave, slave, stderr)
 			}()
 			defer func() {
 				cancel()

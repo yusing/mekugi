@@ -65,7 +65,7 @@ acceptance cases, not a blanket request to implement every listed concern.
   bounded. Remove generated history by provenance, not text resemblance. Keep secrets/content out
   of sanitized metrics and credentials isolated by provider. Provider usage, local estimates, and
   transport expansion are distinct measures. See [activity](doc/spec/activity.md),
-  [notices](doc/spec/notices.md), [metrics](doc/spec/metrics.md), and [providers](doc/spec/third_party.md).
+  [notices](doc/spec/notices.md), [metrics](modules/transportdiagnostics/SPEC.md), and [providers](doc/spec/third_party.md).
 
 ## Validation and installation
 

@@ -63,11 +63,11 @@ func run() (exitCode int) {
 		}
 		switch operation {
 		case "inspect-sessions":
-			return router.RunSessionCorpusInspection(frontends.History, frontends.AgentMetrics, ctx, os.Args[2:], os.Stdout, os.Stderr)
+			return router.RunSessionCorpusInspection(frontends.History, frontends.AgentMetrics, frontends.TransportDiagnostics, ctx, os.Args[2:], os.Stdout, os.Stderr)
 		case "replay-session":
-			return router.RunSessionUIReplay(frontends.History, ctx, os.Args[2:], os.Stdin, os.Stdout, os.Stderr)
+			return router.RunSessionUIReplay(frontends.History, frontends.TransportDiagnostics, ctx, os.Args[2:], os.Stdin, os.Stdout, os.Stderr)
 		case "inspect-session":
-			return router.RunSessionInspection(frontends.History, frontends.AgentMetrics, ctx, os.Args[2:], os.Stdout, os.Stderr)
+			return router.RunSessionInspection(frontends.History, frontends.AgentMetrics, frontends.TransportDiagnostics, ctx, os.Args[2:], os.Stdout, os.Stderr)
 		case "inspect-storage":
 			return router.RunStorageInspection(frontends.History, frontends.Segments.Reports, ctx, os.Args[2:], os.Stdout, os.Stderr)
 		}

@@ -19,7 +19,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/creack/pty"
-	"github.com/yusing/mekugi/capturer"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 type btwPrewarmRequest struct {
@@ -123,7 +123,7 @@ func testAppServerBuiltInOpenAI(t *testing.T, fallback bool) {
 	provider := &btwPrewarmProvider{requests: make(chan btwPrewarmRequest, 32), release: make(chan struct{})}
 	upstream := httptest.NewServer(http.HandlerFunc(provider.serve))
 	defer upstream.Close()
-	capture, err := capturer.New(capturer.Config{Mode: "mekugi"})
+	capture, err := new(transportcapture.Service).Open(transportcapture.Config{Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}

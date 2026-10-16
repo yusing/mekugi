@@ -1,7 +1,7 @@
 package router
 
 import (
-	"strings"
+	modelresponses "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 // Tool observations are operational debug evidence, not capture metrics.
@@ -14,20 +14,13 @@ type toolObservationTrace struct {
 	sessionID string
 }
 
-func safeDiagnosticIdentity(value string) bool {
-	return value != "" && len(value) <= 256 && !strings.Contains(value, "://") && strings.IndexFunc(value, func(r rune) bool {
-		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' ||
-			r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.' || r == ':' || r == '/')
-	}) == -1
-}
-
 func (trace toolObservationTrace) toolCall(callID, tool string) {
-	if trace.debug == nil || !safeDiagnosticIdentity(callID) || !safeDiagnosticIdentity(tool) {
+	if trace.debug == nil || !modelresponses.SafeDiagnosticIdentity(callID) || !modelresponses.SafeDiagnosticIdentity(tool) {
 		return
 	}
 	fields := map[string]any{"event": "tool_observation", "schema_version": 1, "call_id": callID, "tool": tool}
 	for key, value := range map[string]string{"request_id": trace.requestID, "thread_id": trace.threadID, "session_id": trace.sessionID} {
-		if safeDiagnosticIdentity(value) {
+		if modelresponses.SafeDiagnosticIdentity(value) {
 			fields[key] = value
 		}
 	}

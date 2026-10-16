@@ -16,6 +16,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -106,7 +108,7 @@ type sessionInspectionCall struct {
 
 // RunSessionInspection is an offline, read-only entry point. It deliberately does
 // not open the writable replay store or install a router/runtime.
-func RunSessionInspection(service *history.Service, agentMetrics *evidence.Service, ctx context.Context, args []string, stdout, stderr io.Writer) int {
+func RunSessionInspection(service *history.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("inspect-session", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	session := flags.String("session", "", "Codex rollout JSONL file")
@@ -152,7 +154,7 @@ func RunSessionInspection(service *history.Service, agentMetrics *evidence.Servi
 			flags.Usage()
 			return 2
 		}
-		return inspectDebugSession(agentMetrics, ctx, *debugDir, *requestID, *field, *offset, *limit, *textBytes, stdout, stderr)
+		return inspectDebugSession(agentMetrics, diagnostics, ctx, *debugDir, *requestID, *field, *offset, *limit, *textBytes, stdout, stderr)
 	}
 	if *requestID != "" {
 		flags.Usage()

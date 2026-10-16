@@ -16,9 +16,9 @@ import (
 
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
-	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/libraries/persistence"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 // Debug output is separate from sanitized capture. Failure events include the
@@ -34,7 +34,7 @@ type debugOutput struct {
 	log                      *os.File
 	dump                     *os.File
 	paths                    []string
-	metricsPath              string
+	capturePath, metricsPath string
 	axThreads                map[string]bool
 	axDroppedThreads         bool
 	err                      error
@@ -42,7 +42,7 @@ type debugOutput struct {
 
 type debugContextKey struct{}
 
-func openDebugOutput(service *history.Service, agentMetrics *evidence.Service, enabled bool, capturePath string) (*debugOutput, error) {
+func openDebugOutput(service *history.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, enabled bool, capturePath string) (*debugOutput, error) {
 	if !enabled {
 		return nil, nil
 	}
@@ -59,14 +59,17 @@ func openDebugOutput(service *history.Service, agentMetrics *evidence.Service, e
 			}
 		}
 	}()
-	if capturePath == "" {
-		capturePath = filepath.Join(directory, "capture.jsonl")
+	capture, metrics := "", ""
+	if diagnostics != nil {
+		if capturePath == "" {
+			capturePath = filepath.Join(directory, "capture.jsonl")
+		}
+		capture, err = filepath.Abs(capturePath)
+		if err != nil {
+			return nil, err
+		}
+		metrics = filepath.Join(directory, "metrics.json")
 	}
-	capture, err := filepath.Abs(capturePath)
-	if err != nil {
-		return nil, err
-	}
-	metrics := filepath.Join(directory, "metrics.json")
 	readLog := ""
 	if agentMetrics != nil {
 		readLog = os.Getenv(evidence.AXReadOutputEnvironment)
@@ -82,16 +85,20 @@ func openDebugOutput(service *history.Service, agentMetrics *evidence.Service, e
 	}
 	// Replay consumes the standard bundle path even when capture output was
 	// explicitly selected elsewhere. Keep one capture writer and one record.
-	if bundleCapture := filepath.Join(directory, "capture.jsonl"); capture != bundleCapture {
+	if bundleCapture := filepath.Join(directory, "capture.jsonl"); capture != "" && capture != bundleCapture {
 		if err := os.Symlink(capture, bundleCapture); err != nil {
 			return nil, fmt.Errorf("link debug capture: %w", err)
 		}
 	}
+	instructionsPath := filepath.Join(directory, "instructions.jsonl")
+	paths := []string{filepath.Join(directory, "router.jsonl")}
+	if diagnostics != nil {
+		paths = append(paths, capture, metrics)
+	}
+	paths = append(paths, instructionsPath)
 	d = &debugOutput{history: service, agentMetrics: agentMetrics,
-		writes: new(persistence.Counter), release: release,
-		paths: []string{filepath.Join(directory, "router.jsonl"), capture, metrics,
-			filepath.Join(directory, "instructions.jsonl")},
-		metricsPath: metrics,
+		writes: new(persistence.Counter), release: release, paths: paths,
+		capturePath: capture, metricsPath: metrics,
 	}
 	if agentMetrics != nil {
 		d.axReadPath, d.axReportPath = readLog, filepath.Join(directory, "ax.json")
@@ -100,7 +107,7 @@ func openDebugOutput(service *history.Service, agentMetrics *evidence.Service, e
 	}
 	d.log, err = os.OpenFile(d.paths[0], os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err == nil {
-		d.dump, err = os.OpenFile(d.paths[3], os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		d.dump, err = os.OpenFile(instructionsPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("initialize debug artifacts in %s: %w", directory, errors.Join(err, d.close()))
@@ -246,7 +253,7 @@ func debugRequest(ctx context.Context) (*debugOutput, string) {
 	if d == nil {
 		return nil, ""
 	}
-	if captureID, _ := capturer.RequestCorrelation(ctx); captureID != "" {
+	if captureID, _ := transportcapture.RequestCorrelation(ctx); captureID != "" {
 		return d, captureID
 	}
 	return d, rand.Text()

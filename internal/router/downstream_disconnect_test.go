@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
 	"github.com/coder/websocket"
@@ -245,15 +247,15 @@ func TestWebSocketOutputDisconnectBeforeReaderCancellation(t *testing.T) {
 
 func TestDownstreamWriteDiagnostics(t *testing.T) {
 	original := websocket.CloseError{Code: websocket.StatusGoingAway, Reason: "private reason"}
-	d := &streamDiagnostics{ReadOrigin: "upstream", ReadTermination: "upstream_eof"}
-	d.copyStopped(errors.Join(codexresponses.ErrWrite, downstreamDisconnectError(original)))
+	d := &transportcapture.Stream{ReadOrigin: "upstream", ReadTermination: "upstream_eof"}
+	recordStreamCopyStop(d, errors.Join(codexresponses.ErrWrite, downstreamDisconnectError(original)))
 	if d.WriteTermination != "downstream_websocket_close_1001" || d.WriteWebSocketCloseCode != 1001 {
 		t.Fatalf("missing write cause: %+v", d)
 	}
 	if d.ReadOrigin != "upstream" || d.ReadTermination != "upstream_eof" {
 		t.Fatal("write diagnostics overwrote read evidence")
 	}
-	if strings.Contains(string(responses.MustMarshalJSON(d.snapshot())), "private") {
+	if strings.Contains(string(responses.MustMarshalJSON(d.Snapshot())), "private") {
 		t.Fatal("diagnostics leaked close reason")
 	}
 }
@@ -262,7 +264,7 @@ func TestDownstreamDisconnectDuringAnswerStreaming(t *testing.T) {
 	transform, _, _ := newSubagentCommentaryTestTransform(t, nil)
 	reader := strings.NewReader(finalAnswerTestWire(finalAnswerTestEvents(t, "final_answer")))
 	disconnected := downstreamDisconnectError(websocket.CloseError{Code: websocket.StatusGoingAway, Reason: "private"})
-	diagnostics := &streamDiagnostics{}
+	diagnostics := &transportcapture.Stream{}
 	_, err := copySSETransformed(serverErrorWriter{err: disconnected}, reader, transform, &responseHooks{streamDiagnostics: diagnostics})
 	f := &requestFinalization{}
 	f.classifyCopyError(err)

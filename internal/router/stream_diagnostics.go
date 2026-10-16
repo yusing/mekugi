@@ -1,102 +1,20 @@
 package router
 
 import (
-	"cmp"
-	"encoding/json"
 	"errors"
 	"io"
-	"net/http"
-	"slices"
-	"strings"
 	"time"
 
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-
-	"github.com/yusing/mekugi/providers/openai"
-
-	"github.com/yusing/mekugi/libraries/httptransport"
-
 	"github.com/coder/websocket"
-	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/libraries/httptransport"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
-
-// streamDiagnostics retains bounded metadata only. It neither assembles tool
-// input nor participates in translation, retry, or transport ownership.
-type streamDiagnostics struct {
-	Transport               string    `json:"transport,omitempty"`
-	HTTPFraming             string    `json:"http_framing,omitempty"`
-	BodyDecoded             bool      `json:"body_decoded,omitempty"`
-	HTTPContentLength       *int64    `json:"http_content_length,omitzero"`
-	ProviderErrorCode       string    `json:"provider_error_code,omitempty"`
-	ProviderResponseID      string    `json:"provider_response_id,omitempty"`
-	BodyBytes               uint64    `json:"body_bytes"`
-	Events                  uint64    `json:"events"`
-	LastByteAt              time.Time `json:"last_byte_at,omitzero"`
-	ReadEndedAt             time.Time `json:"read_ended_at,omitzero"`
-	EndReason               string    `json:"end_reason,omitempty"`
-	UnterminatedEvent       bool      `json:"unterminated_event,omitempty"`
-	WriteTermination        string    `json:"write_termination,omitempty"`
-	WriteWebSocketCloseCode int       `json:"write_websocket_close_code,omitempty"`
-	CopyStop                string    `json:"copy_stop,omitempty"`
-	LastEvent               string    `json:"last_event,omitempty"`
-	LastEventAt             time.Time `json:"last_event_at,omitzero"`
-	TerminalEvent           string    `json:"terminal_event,omitempty"`
-	ReadOrigin              string    `json:"read_origin,omitempty"`
-	ReadTermination         string    `json:"read_termination,omitempty"`
-	WebSocketCloseCode      int       `json:"websocket_close_code,omitempty"`
-	ProviderRequestID       string    `json:"provider_request_id,omitempty"`
-	Truncated               bool      `json:"pending_calls_truncated,omitempty"`
-	pending                 map[string]*streamCallDiagnostic
-}
-
-type streamCallDiagnostic struct {
-	ItemID     string `json:"item_id"`
-	CallID     string `json:"call_id,omitempty"`
-	Fragments  uint64 `json:"fragments"`
-	InputBytes uint64 `json:"input_bytes"`
-	InputDone  bool   `json:"input_done"`
-}
-
-func (d *streamDiagnostics) responseStarted(response *http.Response) {
-	if d == nil {
-		return
-	}
-	d.BodyDecoded = response.Uncompressed
-	switch response.ProtoMajor {
-	case 1:
-		d.Transport = "http1"
-	case 2:
-		d.Transport = "http2"
-	case 3:
-		d.Transport = "http3"
-	default:
-		switch response.Body.(type) {
-		case *openai.WebSocketBody, *webSocketExchange:
-			d.Transport = "websocket"
-		case *grokResponseBody:
-			d.Transport = "chat_response_bridge"
-		default:
-			d.Transport = "unknown"
-		}
-		return
-	}
-	switch {
-	case slices.Contains(response.TransferEncoding, "chunked"):
-		d.HTTPFraming = "chunked"
-	case response.ContentLength >= 0:
-		d.HTTPFraming = "content_length"
-		d.HTTPContentLength = new(response.ContentLength)
-	case response.ProtoMajor >= 2:
-		d.HTTPFraming = "stream_end"
-	default:
-		d.HTTPFraming = "connection_close"
-	}
-}
 
 // Observe decoded/adapted body delivery, not wire bytes, without buffering content.
 type diagnosticStreamReader struct {
 	reader      io.Reader
-	diagnostics *streamDiagnostics
+	diagnostics *transportcapture.Stream
 	receivedAt  *time.Time
 }
 
@@ -105,141 +23,10 @@ func (r diagnosticStreamReader) Read(buffer []byte) (int, error) {
 	if n > 0 {
 		at := time.Now()
 		*r.receivedAt = at
-		if r.diagnostics != nil {
-			r.diagnostics.BodyBytes += uint64(n)
-			r.diagnostics.LastByteAt = at.UTC()
-		}
+		r.diagnostics.ReadBytes(n, at)
 	}
-	r.diagnostics.readEnded(err)
+	recordStreamReadEnd(r.diagnostics, err, "")
 	return n, err
-}
-
-const maxStreamDiagnosticCalls = 32
-
-func (d *streamDiagnostics) observe(payload []byte) {
-	if d == nil {
-		return
-	}
-	d.Events++
-	d.LastEventAt = time.Now().UTC()
-	var event struct {
-		Response struct {
-			ID string `json:"id"`
-		} `json:"response"`
-		Type   responses.Kind `json:"type"`
-		ItemID string         `json:"item_id"`
-		Delta  string         `json:"delta"`
-		Item   struct {
-			Status string `json:"status"`
-			Type   string `json:"type"`
-			ID     string `json:"id"`
-			CallID string `json:"call_id"`
-		} `json:"item"`
-	}
-	if json.Unmarshal(payload, &event) != nil {
-		d.LastEvent = "invalid_json"
-		if string(payload) == "[DONE]" {
-			d.LastEvent = "done_marker"
-		}
-		return
-	}
-	if (event.Type == responses.Created || event.Type == responses.InProgress || event.Type.Terminal()) && safeDiagnosticIdentity(event.Response.ID) {
-		d.ProviderResponseID = event.Response.ID
-	}
-	switch event.Type {
-	case responses.Created, responses.Completed, responses.Failed, responses.Incomplete,
-		responses.InProgress, responses.OutputItemAdded, responses.OutputItemDone,
-		responses.FunctionArgumentsDelta, responses.FunctionArgumentsDone,
-		responses.CustomInputDelta, responses.CustomInputDone, responses.OutputTextDelta,
-		responses.OutputTextDone, responses.ContentPartAdded, responses.ContentPartDone,
-		responses.Error, responses.Metadata, responses.RateLimits, responses.WebSocketTiming:
-		d.LastEvent = string(event.Type)
-	default:
-		d.LastEvent = "other"
-	}
-	if event.Type.EndsExchange() {
-		d.TerminalEvent = d.LastEvent
-	}
-	if event.Type == responses.Error || event.Type == responses.Failed {
-		var failure struct {
-			Code  string `json:"code"`
-			Error struct {
-				Code string `json:"code"`
-			} `json:"error"`
-			Response struct {
-				Error struct {
-					Code string `json:"code"`
-				} `json:"error"`
-			} `json:"response"`
-		}
-		if json.Unmarshal(payload, &failure) == nil {
-			code := cmp.Or(failure.Error.Code, failure.Response.Error.Code, failure.Code)
-			// Only known protocol codes are safe; arbitrary strings can echo
-			// request content even when they look like identifiers.
-			switch code {
-			case "rate_limit_exceeded", "insufficient_quota", "invalid_api_key",
-				"invalid_request_error", "context_length_exceeded", "server_error",
-				"internal_server_error", "model_not_found", "invalid_encrypted_content",
-				"previous_response_not_found":
-				d.ProviderErrorCode = code
-			default:
-				d.ProviderErrorCode = "other"
-			}
-		}
-	}
-	if event.Type == responses.Metadata || event.Type == responses.Error {
-		var metadata struct {
-			Headers map[string]json.RawMessage `json:"headers"`
-		}
-		if json.Unmarshal(payload, &metadata) == nil {
-			for key, raw := range metadata.Headers {
-				if http.CanonicalHeaderKey(key) == "X-Request-Id" {
-					var id string
-					if json.Unmarshal(raw, &id) == nil && safeDiagnosticIdentity(id) {
-						d.ProviderRequestID = id
-					}
-				}
-			}
-		}
-	}
-	switch event.Type {
-	case responses.OutputItemAdded:
-		if event.Item.Type != "custom_tool_call" && event.Item.Type != "function_call" {
-			return
-		}
-		if !safeDiagnosticIdentity(event.Item.ID) {
-			d.Truncated = true
-			return
-		}
-		if _, exists := d.pending[event.Item.ID]; exists {
-			return
-		}
-		if len(d.pending) >= maxStreamDiagnosticCalls {
-			d.Truncated = true
-			return
-		}
-		if d.pending == nil {
-			d.pending = make(map[string]*streamCallDiagnostic)
-		}
-		call := &streamCallDiagnostic{ItemID: event.Item.ID}
-		if safeDiagnosticIdentity(event.Item.CallID) {
-			call.CallID = event.Item.CallID
-		}
-		d.pending[event.Item.ID] = call
-	case responses.CustomInputDelta, responses.FunctionArgumentsDelta:
-		if call := d.pending[event.ItemID]; call != nil {
-			call.Fragments++
-			call.InputBytes += uint64(len(event.Delta))
-		}
-	case responses.CustomInputDone, responses.FunctionArgumentsDone:
-		if call := d.pending[event.ItemID]; call != nil {
-			call.InputDone = true
-		}
-	case responses.OutputItemDone:
-		if event.Item.Status == "" || event.Item.Status == "completed" {
-			delete(d.pending, event.Item.ID)
-		}
-	}
 }
 
 // Request rejections pass through transport classification unchanged.
@@ -253,95 +40,30 @@ func streamTerminationCode(err error) string {
 	return ""
 }
 
-func (d *streamDiagnostics) readEnded(err error) {
-	if d == nil || err == nil || d.ReadTermination != "" {
-		return
-	}
-	d.ReadEndedAt = time.Now().UTC()
-	if d.ReadOrigin == "" {
-		d.ReadOrigin = "upstream"
-	}
-	d.ReadTermination = streamTerminationCode(err)
-	if errors.Is(err, httptransport.ErrStreamIdleTimeout) {
-		d.ReadTermination = "upstream_idle_timeout"
-	}
-	if d.ReadOrigin != "upstream" {
-		d.ReadTermination = d.ReadOrigin + "_" + strings.TrimPrefix(d.ReadTermination, "upstream_")
-	}
-	if code := websocket.CloseStatus(err); code != -1 {
-		d.WebSocketCloseCode = int(code)
-	}
-}
-
-func (d *streamDiagnostics) readEndedFrom(err error, origin string) {
-	if d == nil || d.ReadTermination != "" {
-		return
-	}
-	d.ReadOrigin = origin
-	d.readEnded(err)
-}
-
-func (d *streamDiagnostics) writeStopped(err error) {
+func recordStreamReadEnd(d *transportcapture.Stream, err error, origin string) {
 	if d == nil || err == nil {
 		return
 	}
-	d.WriteTermination = "downstream_" + strings.TrimPrefix(streamTerminationCode(err), "upstream_")
-	if code := websocket.CloseStatus(err); code != -1 {
-		d.WriteWebSocketCloseCode = int(code)
+	code := streamTerminationCode(err)
+	if errors.Is(err, httptransport.ErrStreamIdleTimeout) {
+		code = "upstream_idle_timeout"
 	}
+	d.ReadEnded(time.Now(), code, origin, int(websocket.CloseStatus(err)))
 }
 
-func (d *streamDiagnostics) copyStopped(err error) {
+func recordStreamCopyStop(d *transportcapture.Stream, err error) {
 	if d == nil {
 		return
 	}
+	category := ""
 	switch {
 	case errors.Is(err, codexresponses.ErrWrite):
-		d.CopyStop = "downstream_write_error"
-		d.writeStopped(err)
+		category = "downstream_write_error"
+		d.WriteStopped(streamTerminationCode(err), int(websocket.CloseStatus(err)))
 	case errors.Is(err, codexresponses.ErrTransform):
-		d.CopyStop = "translation_error"
+		category = "translation_error"
 	case err != nil:
-		d.CopyStop = "read_error"
-	case d.TerminalEvent != "":
-		d.CopyStop = "terminal_event"
-	default:
-		d.CopyStop = "eof_without_terminal"
+		category = "read_error"
 	}
-	d.classifyEnd()
-}
-
-func (d *streamDiagnostics) classifyEnd() {
-	d.EndReason = d.ReadTermination
-	if d.TerminalEvent != "" || d.ReadTermination != "upstream_eof" {
-		return
-	}
-	if d.BodyDecoded {
-		d.EndReason = "http_decoded_body_ended_without_terminal"
-		return
-	}
-	switch d.HTTPFraming {
-	case "content_length", "chunked", "stream_end":
-		d.EndReason = "http_body_complete_without_terminal"
-	case "connection_close":
-		d.EndReason = "http_connection_closed_without_terminal"
-	default:
-		if d.Transport == "websocket" {
-			d.EndReason = "websocket_eof_without_terminal"
-		} else {
-			d.EndReason = "stream_eof_without_terminal"
-		}
-	}
-}
-
-func (d *streamDiagnostics) snapshot() any {
-	calls := make([]streamCallDiagnostic, 0, len(d.pending))
-	for _, call := range d.pending {
-		calls = append(calls, *call)
-	}
-	slices.SortFunc(calls, func(a, b streamCallDiagnostic) int { return cmp.Compare(a.ItemID, b.ItemID) })
-	return struct {
-		*streamDiagnostics
-		PendingCalls []streamCallDiagnostic `json:"pending_calls"`
-	}{d, calls}
+	d.CopyStopped(category)
 }

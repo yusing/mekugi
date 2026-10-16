@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/capturer"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 func TestCaptureModelOutputThroughRouterCommentary(t *testing.T) {
@@ -35,7 +35,7 @@ func TestCaptureModelOutputThroughRouterCommentary(t *testing.T) {
 				stream.WriteString("\n\n")
 				payload = stream.Bytes()
 			}
-			recorder, err := capturer.New(capturer.Config{Mode: "mekugi"})
+			recorder, err := new(transportcapture.Service).Open(transportcapture.Config{Mode: "mekugi"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -59,7 +59,7 @@ func TestCaptureModelOutputThroughRouterCommentary(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				capturer.ObserveProviderUsage(request.Context(), capturer.ProviderUsage{InputTokens: 20, OutputTokens: 5})
+				transportcapture.ObserveProviderUsage(request.Context(), transportcapture.ProviderUsage{InputTokens: 20, OutputTokens: 5})
 				body, err := io.ReadAll(response.Body)
 				_ = response.Body.Close()
 				if err != nil {

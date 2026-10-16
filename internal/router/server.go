@@ -23,12 +23,12 @@ import (
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
-	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/httptransport"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/libraries/persistence"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	"github.com/yusing/mekugi/providers/grok"
 	"github.com/yusing/mekugi/providers/openai"
 	"github.com/yusing/mekugi/providers/opencode"
@@ -75,7 +75,10 @@ type Session struct {
 
 // RunSession owns the private router for one wrapped Codex process.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func RunSession(service *history.Service, recovered *recovery.Service, segments *segmentservice.Service, changes changes.Service, usage *accounting.Service, agentMetrics *evidence.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, guards []binding.ShellApproval, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
+func RunSession(service *history.Service, recovered *recovery.Service, segments *segmentservice.Service, changes changes.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, guards []binding.ShellApproval, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
+	if diagnostics == nil && options.captureOutput != "" {
+		return errors.New("transport diagnostics are unavailable")
+	}
 	if options.mode == "" {
 		return errors.New("session configuration has not been parsed")
 	}
@@ -97,7 +100,7 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 			return err
 		}
 	}
-	debug, err := openDebugOutput(service, agentMetrics, options.debug, options.captureOutput)
+	debug, err := openDebugOutput(service, agentMetrics, diagnostics, options.debug, options.captureOutput)
 	if err != nil {
 		return err
 	}
@@ -126,14 +129,17 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 	}
 	capturePath := options.captureOutput
 	if debug != nil {
-		capturePath = debug.paths[1]
+		capturePath = debug.capturePath
 	}
-	capture, err := capturer.New(capturer.Config{Output: capturePath, Mode: options.mode, Writes: writes})
-	if err != nil {
-		return fmt.Errorf("initialize capture: %w", err)
+	var capture *transportcapture.Recorder
+	if diagnostics != nil {
+		capture, err = diagnostics.Open(transportcapture.Config{Output: capturePath, Mode: options.mode, Writes: writes})
+		if err != nil {
+			return fmt.Errorf("initialize capture: %w", err)
+		}
 	}
 	var metricsFile *os.File
-	if debug != nil {
+	if debug != nil && capture != nil {
 		metricsFile, err = os.OpenFile(debug.metricsPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 		if err != nil {
 			return errors.Join(fmt.Errorf("open metrics output: %w", err), capture.Close())
@@ -143,10 +149,14 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 		if metricsFile != nil {
 			runErr = errors.Join(runErr, capture.WriteMetrics(writes.Writer(metricsFile)), metricsFile.Close())
 		}
-		runErr = errors.Join(runErr, capture.Close())
+		if capture != nil {
+			runErr = errors.Join(runErr, capture.Close())
+		}
 	}()
 	openaiHTTP := httptransport.Client(nil)
-	openaiHTTP.Transport = capture.Transport(openaiHTTP.Transport)
+	if capture != nil {
+		openaiHTTP.Transport = capture.Transport(openaiHTTP.Transport)
+	}
 	provider := newProviderClient(openai.BaseURL, openaiHTTP)
 	provider.thirdPartyOnly = grokEnabled || standalone
 	provider.openai.StreamIdleTimeout = options.streamIdleTimeout
@@ -169,7 +179,9 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 		auth := grok.NewAuth(path, apiKey, httptransport.Client(nil))
 		if _, authErr := auth.Credentials(ctx); authErr == nil {
 			client := httptransport.Client(nil)
-			client.Transport = capture.Transport(client.Transport)
+			if capture != nil {
+				client.Transport = capture.Transport(client.Transport)
+			}
 			provider.grok = &grokClient{httpClient: client, auth: auth, unprefixed: grokEnabled, streamIdleTimeout: options.streamIdleTimeout}
 		} else if grokEnabled {
 			return authErr
@@ -192,7 +204,9 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 	provider.opencode = make(map[string]*grokClient)
 	for _, service := range openCode.Services() {
 		client := httptransport.Client(nil)
-		client.Transport = capture.Transport(client.Transport)
+		if capture != nil {
+			client.Transport = capture.Transport(client.Transport)
+		}
 		provider.opencode[service.Prefix] = &grokClient{httpClient: client, openCode: &service, streamIdleTimeout: options.streamIdleTimeout}
 	}
 	var frontendDirectory string
@@ -305,7 +319,9 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 	}
 	defer func() { runErr = errors.Join(runErr, stopProfiling()) }()
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/metrics", capture.ServeHTTP)
+	if capture != nil {
+		mux.HandleFunc("GET /api/metrics", capture.ServeHTTP)
+	}
 	mux.HandleFunc("GET /v1/models", modelsHandler(provider, issues))
 	registerCodexAuxiliaryRoutes(mux, ctx, options.timeout, provider)
 
@@ -314,10 +330,14 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 	mux.Handle("GET /v1/responses", webSocketEndpoint)
 	mux.HandleFunc("POST /v1/responses", responsesHandler(ctx, options.timeout, provider, issues, mekugiCalls))
 
+	var handler http.Handler = debug.handler(mux)
+	if capture != nil {
+		handler = capture.Handler(handler)
+	}
 	server := &http.Server{
 		ErrorLog:          log.New(io.Discard, "", 0), // Disable net/http terminal diagnostics while Codex owns it.
 		Addr:              defaultListenAddress,
-		Handler:           capture.Handler(debug.handler(mux)),
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       requestBodyReadTimeout,
 		IdleTimeout:       2 * time.Minute,
@@ -641,7 +661,7 @@ type requestFinalization struct {
 	diagnosticMessage     string
 	diagnosticError       string
 	diagnosticNotice      *criticalNotice
-	streamDiagnostics     *streamDiagnostics
+	streamDiagnostics     *transportcapture.Stream
 	failurePhase          requestFailurePhase
 	upstreamStatusCode    int
 	providerFailure       error

@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+
 	"github.com/yusing/mekugi/backends/codex/shellhook"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 )
@@ -262,7 +264,7 @@ func TestRouterTransformFaultNativeCodexE2E(t *testing.T) {
 		t.Fatalf("reopen failure store after native Codex exits: %v", err)
 	}
 	var inspected, diagnostic bytes.Buffer
-	status := RunSessionInspection(testHistory(), new(evidence.Service), t.Context(), []string{
+	status := RunSessionInspection(testHistory(), new(evidence.Service), new(transportcapture.Service), t.Context(), []string{
 		"--failures", "--replay-dir", replayDirectory, reference,
 	}, &inspected, &diagnostic)
 	if status != 0 {

@@ -11,6 +11,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 )
 
@@ -48,7 +50,7 @@ func writeDebugInspectionFixture(t *testing.T, path, data string) {
 func runDebugInspection(t *testing.T, dir string, options ...string) (debugSessionInspection, int, string, string) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	code := RunSessionInspection(testHistory(), new(evidence.Service), t.Context(), append([]string{"--debug-dir", dir}, options...), &stdout, &stderr)
+	code := RunSessionInspection(testHistory(), new(evidence.Service), new(transportcapture.Service), t.Context(), append([]string{"--debug-dir", dir}, options...), &stdout, &stderr)
 	var result debugSessionInspection
 	if code != 2 {
 		if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
@@ -325,7 +327,7 @@ func TestSessionInspectionDebugRejectsInvalidArtifacts(t *testing.T) {
 				var stdout, stderr bytes.Buffer
 				var code int
 				go func() {
-					code = RunSessionInspection(testHistory(), new(evidence.Service), t.Context(), []string{"--debug-dir", dir}, &stdout, &stderr)
+					code = RunSessionInspection(testHistory(), new(evidence.Service), new(transportcapture.Service), t.Context(), []string{"--debug-dir", dir}, &stdout, &stderr)
 					close(done)
 				}()
 				select {
@@ -390,7 +392,7 @@ func TestSessionInspectionDebugInvalidOptions(t *testing.T) {
 		})
 	}
 	var stdout, stderr bytes.Buffer
-	if code := RunSessionInspection(testHistory(), new(evidence.Service), t.Context(), []string{"--session", "unused", "--request-id", "req-b"}, &stdout, &stderr); code != 2 {
+	if code := RunSessionInspection(testHistory(), new(evidence.Service), new(transportcapture.Service), t.Context(), []string{"--session", "unused", "--request-id", "req-b"}, &stdout, &stderr); code != 2 {
 		t.Fatalf("request-id without debug-dir: code=%d stderr=%s", code, &stderr)
 	}
 }

@@ -64,7 +64,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Shared Go tokenizer | `./libraries/outputbudget/tokenizer`, `./modules/outputdeduplication/...` |
 | Duplicate-output projection and submitted attachment codec | `./modules/outputdeduplication/... ./libraries/modelprotocol/attachments ./backends/codex/binding`, plus router duplicate-output, attachment, continuation, and provider-prefix consumers |
 | Per-thread provider accounting, pricing and retained throughput | `./modules/usage/... ./contracts/inference ./backends/codex/responses`, plus router `ThreadUsage`, `TokenUsage`, `TokenCost`, `OutputThroughput`, `Roster` and naming consumers |
-| Capture metrics | `./capturer` |
+| Transport capture and stream diagnostics | `./modules/transportdiagnostics/...`, plus router HTTP/WebSocket, stream failure, debug, metrics, corpus and replay consumers |
 | Agent-experience evidence | `./modules/agentmetrics/...`, plus router compiled-reader, inspection and debug consumers |
 | Semantic symbol queries | `./modules/symbolquery/...`, plus router symbol/activity/AX and recovery consumers |
 | Structural inspection | `./modules/sourceoutline/... ./libraries/sourceanalysis/...`, then authenticated router frontend/recovery tests |

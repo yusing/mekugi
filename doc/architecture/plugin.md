@@ -49,4 +49,4 @@ process policy stays with the symbol-query owner.
 
 Host effects and change evidence belong to
 [CTR-EXECUTION-001](execution.md); measurements belong to
-[CTR-METRICS-001](metrics.md).
+[transport diagnostics](../../modules/transportdiagnostics/SPEC.md).

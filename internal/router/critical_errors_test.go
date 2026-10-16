@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 
 	"github.com/coder/websocket"
@@ -192,7 +194,7 @@ func TestForwardFailureDiagnostics(t *testing.T) {
 			t.Setenv("TMPDIR", t.TempDir())
 			flags := newRouterFlags(io.Discard)
 			flags.debug = true
-			debug, err := openDebugOutput(testHistory(), new(evidence.Service), flags.debug, flags.captureOutput)
+			debug, err := openDebugOutput(testHistory(), new(evidence.Service), new(transportcapture.Service), flags.debug, flags.captureOutput)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -262,7 +264,7 @@ func TestCriticalSynthesizedDiagnosticCodes(t *testing.T) {
 			t.Setenv("TMPDIR", t.TempDir())
 			flags := newRouterFlags(io.Discard)
 			flags.debug = true
-			debug, err := openDebugOutput(testHistory(), new(evidence.Service), flags.debug, flags.captureOutput)
+			debug, err := openDebugOutput(testHistory(), new(evidence.Service), new(transportcapture.Service), flags.debug, flags.captureOutput)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -5,7 +5,7 @@
 Presentation consumes observations and user intent. It does not become an execution,
 capture, accounting, or replay authority. Observable terminal behavior belongs to the
 [UI contract](../spec/native_ui.md); the session dialog consumes the
-[capture-owned metrics contract](metrics.md).
+[capture-owned metrics contract](../../modules/transportdiagnostics/SPEC.md).
 
 Storage and observation work must leave input, cancellation, rendering, and unrelated
 lifecycle delivery responsive. Running work outside the UI loop is insufficient if a

@@ -164,6 +164,6 @@ it is not attributed to individual friction findings. Missing records and incomp
 responses are explicit, duplicate provider attempts reject, and local payload bytes
 never substitute for provider-reported token counts.
 
-Capture completeness follows [REQ-METRICS-001](metrics.md). Legacy normalized
+Capture completeness follows [transport diagnostics](../../modules/transportdiagnostics/SPEC.md). Legacy normalized
 counters count as incomplete with `unknown_completeness_records`, not observed
 zero-token responses.

@@ -15,9 +15,9 @@ import (
 	"github.com/yusing/mekugi/modules/usage/accounting"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/libraries/httptransport"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 type responseProvider interface {
@@ -90,7 +90,7 @@ func newRequestAttempt(
 	sessionID string,
 ) *requestAttempt {
 	debug, debugID := debugRequest(startCtx)
-	hooks := &responseHooks{streamDiagnostics: &streamDiagnostics{}}
+	hooks := &responseHooks{streamDiagnostics: transportcapture.NewStream(startCtx)}
 	if exchange, ok := executor.provider.(*webSocketExchange); ok {
 		exchange.streamDiagnostics = hooks.streamDiagnostics
 	}
@@ -140,7 +140,7 @@ func (a *requestAttempt) prepare() error {
 	}
 	a.metadata, a.metadataValid = decodeCodexTurnMetadata(a.headers)
 	if a.metadataValid {
-		capturer.ObserveRequestKind(a.startCtx, string(a.metadata.RequestKind))
+		transportcapture.ObserveRequestKind(a.startCtx, string(a.metadata.RequestKind))
 	}
 	a.threadID = codexThreadID(a.headers)
 	if a.metadataValid && a.metadata.RequestKind == responses.Turn {
@@ -286,9 +286,9 @@ func (a *requestAttempt) prepareWire() error {
 		return err
 	}
 	if exchange, ok := a.executor.provider.(*webSocketExchange); ok && exchange.state.Automatic() {
-		capturer.ObserveProjectedRequest(a.startCtx, nil)
+		transportcapture.ObserveProjectedRequest(a.startCtx, nil)
 	} else {
-		capturer.ObserveProjectedRequest(a.startCtx, nativeWire)
+		transportcapture.ObserveProjectedRequest(a.startCtx, nativeWire)
 	}
 
 	return nil
@@ -412,7 +412,7 @@ func (a *requestAttempt) prepareResponse() error {
 		if a.usageTracker != nil {
 			throughput = a.usageTracker.Throughput
 		}
-		capturer.ObserveProviderUsage(a.executionCtx, capturer.ProviderUsage{
+		transportcapture.ObserveProviderUsage(a.executionCtx, transportcapture.ProviderUsage{
 			OutputThroughput: throughput,
 			EvidenceComplete: new(!counts.Incomplete && !counts.Inconsistent),
 			InputTokens:      counts.InputTokens,
@@ -562,7 +562,7 @@ func (a *requestAttempt) finish(requestErr error) error {
 		"upstream_status":   a.finalization.upstreamStatusCode,
 		"duration_ms":       time.Since(a.started).Milliseconds(),
 	}
-	if captureID, sequence := capturer.RequestCorrelation(a.startCtx); captureID != "" {
+	if captureID, sequence := transportcapture.RequestCorrelation(a.startCtx); captureID != "" {
 		fields["capture_id"], fields["request_sequence"] = captureID, sequence
 	}
 	if cause := requestCancellationCause(a.executionCtx, requestErr); cause != "" {
@@ -573,7 +573,7 @@ func (a *requestAttempt) finish(requestErr error) error {
 	}
 
 	if a.hooks.streamDiagnostics != nil && a.hooks.streamDiagnostics.CopyStop != "" {
-		fields["response_stream"] = a.hooks.streamDiagnostics.snapshot()
+		fields["response_stream"] = a.hooks.streamDiagnostics.Snapshot()
 	}
 	if a.finalization.diagnosticReference != "" {
 		fields["diagnostic_reference"] = a.finalization.diagnosticReference

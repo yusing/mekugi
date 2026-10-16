@@ -12,6 +12,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 )
 
@@ -78,7 +80,7 @@ func TestSessionUIReplayNormalizesItemsAndRecordedTiming(t *testing.T) {
 		replayTestItem("root", "turn", replayTestEpoch+18000, replayTestEpoch+19000, map[string]any{"type": "FutureItem", "id": "unknown"}),
 	)
 	path := replayTestWrite(t, dir, "root.jsonl", records...)
-	r, err := readSessionUIReplay(testHistory(), t.Context(), path, "", 17)
+	r, err := readSessionUIReplay(testHistory(), new(transportcapture.Service), t.Context(), path, "", 17)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +172,7 @@ func TestSessionUIReplayDiscoversSiblingThreadsAndFiltersProviders(t *testing.T)
 		map[string]any{"boundary": "provider", "thread_id": "unrelated", "captured_at": time.UnixMilli(replayTestEpoch + 9000), "duration_ms": 200},
 		map[string]any{"boundary": "command", "thread_id": "root", "captured_at": time.UnixMilli(replayTestEpoch + 9000), "duration_ms": 200},
 	)
-	r, err := readSessionUIReplay(testHistory(), t.Context(), root, debugDir, 3)
+	r, err := readSessionUIReplay(testHistory(), new(transportcapture.Service), t.Context(), root, debugDir, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +215,7 @@ func TestSessionUIReplayRejectsInvalidEvidence(t *testing.T) {
 			record := replayTestItem("root", "turn", replayTestEpoch, replayTestEpoch+100, map[string]any{"type": "ContextCompaction", "id": "item"})
 			tc.mutate(record["payload"].(map[string]any))
 			path := replayTestWrite(t, t.TempDir(), "root.jsonl", replayTestMeta("root"), record)
-			if _, err := readSessionUIReplay(testHistory(), t.Context(), path, "", 1); err == nil || !strings.Contains(err.Error(), path+":2:") {
+			if _, err := readSessionUIReplay(testHistory(), new(transportcapture.Service), t.Context(), path, "", 1); err == nil || !strings.Contains(err.Error(), path+":2:") {
 				t.Fatalf("invalid evidence lacks source-qualified error: %v", err)
 			}
 		})
@@ -237,7 +239,7 @@ func TestSessionUIReplayRejectsInvalidEvidence(t *testing.T) {
 			if writeErr != nil || closeErr != nil {
 				t.Fatalf("fixture write: %v, close: %v", writeErr, closeErr)
 			}
-			if _, err := readSessionUIReplay(testHistory(), t.Context(), path, "", 1); err == nil || !strings.Contains(err.Error(), path+":2:") {
+			if _, err := readSessionUIReplay(testHistory(), new(transportcapture.Service), t.Context(), path, "", 1); err == nil || !strings.Contains(err.Error(), path+":2:") {
 				t.Fatalf("invalid evidence lacks source-qualified error: %v", err)
 			}
 		})
@@ -257,7 +259,7 @@ func TestSessionUIReplaySimulatedDeltasPreserveUTF8AndSeed(t *testing.T) {
 	)
 	read := func(seed uint64) *sessionUIReplay {
 		t.Helper()
-		r, err := readSessionUIReplay(testHistory(), t.Context(), path, "", seed)
+		r, err := readSessionUIReplay(testHistory(), new(transportcapture.Service), t.Context(), path, "", seed)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -321,7 +323,7 @@ func TestSessionUIReplayChildInheritedHistoryDoesNotDuplicateAncestor(t *testing
 		replayTestItem("child", "child-turn", replayTestEpoch+2100, replayTestEpoch+2900, map[string]any{"type": "AgentMessage", "id": "answer", "content": []map[string]any{{"text": "child response"}}}),
 		replayTestRecord("event_msg", replayTestEpoch+3000, map[string]any{"type": "task_complete", "turn_id": "child-turn"}),
 	)
-	r, err := readSessionUIReplay(testHistory(), t.Context(), root, "", 1)
+	r, err := readSessionUIReplay(testHistory(), new(transportcapture.Service), t.Context(), root, "", 1)
 	if err != nil {
 		t.Fatal(err)
 	}

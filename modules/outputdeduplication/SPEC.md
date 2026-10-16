@@ -80,7 +80,7 @@ These pinned GPT-5 estimates are never exact provider input or billed tokens.
 An unavailable estimate leaves projection and repetition receipts intact and is
 counted as unmeasured. Tokenization is initialized only when measuring changed
 input, not when composing a frontend worker. Unchanged input has zero savings.
-The [metrics contract](../../doc/spec/metrics.md) owns invocation aggregation and
+The [metrics contract](../transportdiagnostics/SPEC.md) owns invocation aggregation and
 presentation of these receipts.
 
 ## Lifecycle

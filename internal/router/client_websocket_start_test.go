@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/yusing/mekugi/capturer"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 func TestProviderWebSocketAncillaryResponseStatus(t *testing.T) {
@@ -51,7 +51,7 @@ func TestProviderWebSocketAncillaryResponseStatus(t *testing.T) {
 					_, _, _ = conn.Read(r.Context())
 				}))
 				defer upstream.Close()
-				recorder, err := capturer.New(capturer.Config{Mode: "passthrough"})
+				recorder, err := new(transportcapture.Service).Open(transportcapture.Config{Mode: "passthrough"})
 				if err != nil {
 					t.Fatal(err)
 				}

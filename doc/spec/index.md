@@ -19,7 +19,7 @@ pjdoc:
     - ../../modules/agentmetrics/SPEC.md
     - session.md
     - session_replay.md
-    - metrics.md
+    - ../../modules/transportdiagnostics/SPEC.md
     - changes.md
     - execution.md
 ---
@@ -60,7 +60,7 @@ policy; the native UI contract owns manual name-save interaction and rendering.
 - [Agent metrics](../../modules/agentmetrics/SPEC.md): runtime reads and evidence-backed AX reporting
 - [`REQ-SESSION-001`](session.md): offline logical session inspection
 - [`REQ-SESSION-REPLAY-001`](session_replay.md): timed offline UI replay and profiling
-- [`REQ-METRICS-001`](metrics.md): in-process captured Responses metrics
+- [Transport diagnostics](../../modules/transportdiagnostics/SPEC.md): in-process captured Responses metrics
 - [`REQ-CHANGES-001`](changes.md): observed stock edits and command effects, durable change IDs, and bounded review reads
 - [`REQ-EXECUTION-001`](execution.md): stock editing, execution, and executable frontends
 - [`REQ-EXECUTION-002`](execution.md): Bash and Linux dash-backed sh command timing and per-segment list tracking

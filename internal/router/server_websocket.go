@@ -21,8 +21,8 @@ import (
 	"github.com/yusing/mekugi/libraries/httptransport"
 
 	"github.com/coder/websocket"
-	"github.com/yusing/mekugi/capturer"
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 // A downstream socket owns a dedicated provider socket. In particular it never
@@ -267,7 +267,7 @@ func (s *responsesWebSocket) run() error {
 
 func (s *responsesWebSocket) control(body []byte) error {
 	if isWebSocketSteering(body) {
-		capturer.ObserveResponsesWebSocketControl(s.ctx, capturer.ResponsesWebSocketControlCodex, capturer.ResponsesWebSocketControlRequest, body)
+		transportcapture.ObserveResponsesWebSocketControl(s.ctx, transportcapture.ResponsesWebSocketControlCodex, transportcapture.ResponsesWebSocketControlRequest, body)
 	}
 	var fields map[string]json.RawMessage
 	_ = json.Unmarshal(body, &fields)
@@ -292,7 +292,7 @@ func (s *responsesWebSocket) control(body []byte) error {
 		return err
 	}
 	if isWebSocketSteering(body) {
-		capturer.ObserveResponsesWebSocketControl(s.ctx, capturer.ResponsesWebSocketControlProvider, capturer.ResponsesWebSocketControlRequest, body)
+		transportcapture.ObserveResponsesWebSocketControl(s.ctx, transportcapture.ResponsesWebSocketControlProvider, transportcapture.ResponsesWebSocketControlRequest, body)
 	}
 	return nil
 }
@@ -305,9 +305,9 @@ func isWebSocketSteering(body []byte) bool {
 	return responseevents.Kind(event.Type).Steering()
 }
 
-func (s *responsesWebSocket) observeProvider(ctx context.Context, observation *capturer.WebSocketAttempt, body []byte) {
+func (s *responsesWebSocket) observeProvider(ctx context.Context, observation *transportcapture.WebSocketAttempt, body []byte) {
 	if isWebSocketSteering(body) {
-		capturer.ObserveResponsesWebSocketControl(ctx, capturer.ResponsesWebSocketControlProvider, capturer.ResponsesWebSocketControlResponse, body)
+		transportcapture.ObserveResponsesWebSocketControl(ctx, transportcapture.ResponsesWebSocketControlProvider, transportcapture.ResponsesWebSocketControlResponse, body)
 	} else {
 		observation.Message(body)
 	}
@@ -320,7 +320,7 @@ func (s *responsesWebSocket) providerControl(body []byte) error {
 		return err
 	}
 	if isWebSocketSteering(body) {
-		capturer.ObserveResponsesWebSocketControl(s.ctx, capturer.ResponsesWebSocketControlCodex, capturer.ResponsesWebSocketControlResponse, body)
+		transportcapture.ObserveResponsesWebSocketControl(s.ctx, transportcapture.ResponsesWebSocketControlCodex, transportcapture.ResponsesWebSocketControlResponse, body)
 	}
 	return nil
 }
@@ -340,7 +340,7 @@ func (s *responsesWebSocket) execute(command, firstEvent []byte) error {
 		}
 	}
 	exchange := &webSocketExchange{session: s, state: state, first: firstEvent}
-	captureCtx, clientObservation := capturer.BeginResponsesWebSocket(s.ctx, headers, command)
+	captureCtx, clientObservation := transportcapture.BeginResponsesWebSocket(s.ctx, headers, command)
 	exchange.clientObservation = clientObservation
 	startCtx, executionCtx, cancel := requestContexts(captureCtx, s.ctx, s.timeout)
 	defer cancel()
@@ -359,13 +359,13 @@ func (s *responsesWebSocket) execute(command, firstEvent []byte) error {
 }
 
 type webSocketExchange struct {
-	streamDiagnostics *streamDiagnostics
+	streamDiagnostics *transportcapture.Stream
 	session           *responsesWebSocket
 	state             *codexresponses.SessionExchange
 	ctx               context.Context
 	first             []byte
-	clientObservation *capturer.ResponsesWebSocket
-	observation       *capturer.WebSocketAttempt
+	clientObservation *transportcapture.ResponsesWebSocket
+	observation       *transportcapture.WebSocketAttempt
 	buffer            bytes.Buffer
 	ended             bool
 }
@@ -423,7 +423,7 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 		conn, response, dialErr := s.provider.openai.Dial(startCtx, handshake)
 
 		if rejected := response; rejected != nil && rejected.StatusCode != http.StatusSwitchingProtocols {
-			attempt := capturer.BeginWebSocketAttempt(responseCtx, nil, handshake, rejected.Header)
+			attempt := transportcapture.BeginWebSocketAttempt(responseCtx, nil, handshake, rejected.Header)
 			body := attempt.HTTPErrorBody(rejected.Body, rejected.StatusCode, rejected.Header.Get("Content-Type"), rejected.Header.Get("Content-Encoding"))
 			// A truncated error body cannot erase an already-known status used
 			// by Codex for authentication recovery or rate-limit handling.
@@ -447,11 +447,11 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 		captured = nil
 	}
 	if e.streamDiagnostics != nil {
-		if id := responseHeaders.Get("X-Request-Id"); safeDiagnosticIdentity(id) {
+		if id := responseHeaders.Get("X-Request-Id"); responseevents.SafeDiagnosticIdentity(id) {
 			e.streamDiagnostics.ProviderRequestID = id
 		}
 	}
-	e.observation = capturer.BeginWebSocketAttempt(responseCtx, captured, handshake, responseHeaders)
+	e.observation = transportcapture.BeginWebSocketAttempt(responseCtx, captured, handshake, responseHeaders)
 	if !e.state.Automatic() {
 		if err := s.upstream.Write(startCtx, websocket.MessageText, payload); err != nil {
 			return nil, err
@@ -496,7 +496,7 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 				continue
 			}
 			if responseevents.Kind(responseevents.StringField(fields, "type")).Ancillary() {
-				e.streamDiagnostics.observe(message.body)
+				e.streamDiagnostics.Observe(message.body)
 				e.observation.Message(message.body)
 				e.clientObservation.Message(message.body)
 				if err := s.providerControl(message.body); err != nil {
@@ -530,22 +530,22 @@ func (e *webSocketExchange) Read(buffer []byte) (int, error) {
 	for len(body) == 0 {
 		select {
 		case <-e.ctx.Done():
-			e.streamDiagnostics.readEndedFrom(e.ctx.Err(), "context")
+			recordStreamReadEnd(e.streamDiagnostics, e.ctx.Err(), "context")
 			return 0, e.ctx.Err()
 		case <-idle:
 			return 0, httptransport.ErrStreamIdleTimeout
 		case message := <-s.clientMessages:
 			if err := webSocketMessageReadError(e.ctx, message); err != nil {
-				e.streamDiagnostics.readEndedFrom(err, "downstream")
+				recordStreamReadEnd(e.streamDiagnostics, err, "downstream")
 				return 0, err
 			}
 			if err := s.control(message.body); err != nil {
-				e.streamDiagnostics.readEndedFrom(err, "router_control")
+				recordStreamReadEnd(e.streamDiagnostics, err, "router_control")
 				return 0, err
 			}
 		case message := <-s.providerMessages:
 			if err := webSocketMessageReadError(e.ctx, message); err != nil {
-				e.streamDiagnostics.readEndedFrom(err, "upstream")
+				recordStreamReadEnd(e.streamDiagnostics, err, "upstream")
 				return 0, err
 			}
 			body = message.body
@@ -556,7 +556,7 @@ func (e *webSocketExchange) Read(buffer []byte) (int, error) {
 	_ = json.Unmarshal(body, &fields)
 	kind := responseevents.StringField(fields, "type")
 	if err := e.state.ObserveProvider(body); err != nil {
-		e.streamDiagnostics.readEndedFrom(err, "router_history")
+		recordStreamReadEnd(e.streamDiagnostics, err, "router_history")
 		return 0, err
 	}
 	e.ended = responseevents.Kind(kind).EndsExchange()
@@ -620,7 +620,7 @@ func (w *webSocketOutput) message(payload []byte) error {
 	}
 	w.committed = true
 	if isWebSocketSteering(payload) {
-		capturer.ObserveResponsesWebSocketControl(e.ctx, capturer.ResponsesWebSocketControlCodex, capturer.ResponsesWebSocketControlResponse, payload)
+		transportcapture.ObserveResponsesWebSocketControl(e.ctx, transportcapture.ResponsesWebSocketControlCodex, transportcapture.ResponsesWebSocketControlResponse, payload)
 	} else {
 		e.clientObservation.Message(payload)
 	}

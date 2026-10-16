@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+
 	"github.com/yusing/mekugi/providers/openai"
 
 	"github.com/yusing/mekugi/libraries/httptransport"
@@ -40,12 +42,12 @@ func TestStreamDiagnosticsReadTermination(t *testing.T) {
 		{"unknown", errors.New("secret transport"), "upstream_transport_unknown", 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			d := &streamDiagnostics{}
+			d := &transportcapture.Stream{}
 			_, _ = copySSETransformed(io.Discard, diagnosticErrorReader{tc.err}, nil, &responseHooks{streamDiagnostics: d})
 			if d.ReadTermination != tc.want || d.WebSocketCloseCode != tc.closeCode {
 				t.Fatalf("classification: %+v", d)
 			}
-			if strings.Contains(string(responses.MustMarshalJSON(d.snapshot())), "secret") {
+			if strings.Contains(string(responses.MustMarshalJSON(d.Snapshot())), "secret") {
 				t.Fatal("error contents leaked")
 			}
 		})
@@ -55,42 +57,6 @@ func TestStreamDiagnosticsReadTermination(t *testing.T) {
 type diagnosticErrorReader struct{ err error }
 
 func (r diagnosticErrorReader) Read([]byte) (int, error) { return 0, r.err }
-
-func TestStreamDiagnosticsBoundsAndCompletion(t *testing.T) {
-	d := &streamDiagnostics{}
-	for i := range maxStreamDiagnosticCalls + 1 {
-		d.observe([]byte(fmt.Sprintf(`{"type":"response.output_item.added","item":{"type":"function_call","id":"item_%02d","call_id":"call_%02d"}}`, i, i)))
-	}
-	if len(d.pending) != maxStreamDiagnosticCalls || !d.Truncated {
-		t.Fatal("pending diagnostics are not bounded")
-	}
-	d.observe([]byte(`{"type":"response.function_call_arguments.delta","item_id":"item_00","delta":"secret"}`))
-	d.observe([]byte(`{"type":"response.function_call_arguments.done","item_id":"item_00","arguments":"secret"}`))
-	if !d.pending["item_00"].InputDone {
-		t.Fatal("input completion missing")
-	}
-	d.observe([]byte(`{"type":"response.output_item.done","item":{"id":"item_00"}}`))
-	if d.pending["item_00"] != nil {
-		t.Fatal("completed call retained")
-	}
-	d.observe([]byte(`{"type":"secret event"}`))
-	if d.LastEvent != "other" {
-		t.Fatal("unknown event leaked")
-	}
-	d.observe([]byte(`{"type":"codex.response.metadata","headers":{"x-request-id":"req_456","authorization":"secret"}}`))
-	d.observe([]byte(`{"type":"response.completed","response":{"status":"completed"}}`))
-	d.copyStopped(nil)
-	if d.TerminalEvent != "response.completed" || d.CopyStop != "terminal_event" || d.ProviderRequestID != "req_456" {
-		t.Fatalf("terminal metadata: %+v", d)
-	}
-	if strings.Contains(string(responses.MustMarshalJSON(d.snapshot())), "secret") {
-		t.Fatal("content leaked")
-	}
-	var disabled *streamDiagnostics
-	disabled.observe([]byte(`{"type":"error"}`))
-	disabled.readEnded(io.EOF)
-	disabled.copyStopped(nil)
-}
 
 func TestStreamDiagnosticsRequestLog(t *testing.T) {
 	for _, stream := range []string{"", "data: {\"type\":\"response.in_progress\"}\n\n"} {
@@ -103,7 +69,14 @@ func TestStreamDiagnosticsRequestLog(t *testing.T) {
 				Header:     http.Header{"Content-Type": {"text/event-stream"}},
 				Body:       io.NopCloser(strings.NewReader(stream)),
 			}}}}
-			_ = executeRequest(ctx, ctx, request, serverMetadataHeaders(t, "turn", nil), "diagnostic-session", provider, io.Discard, NewCriticalErrors(), nil)
+			recorder, err := new(transportcapture.Service).Open(transportcapture.Config{Mode: "passthrough"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = recorder.Close() })
+			recorder.Handler(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				_ = executeRequest(r.Context(), r.Context(), request, serverMetadataHeaders(t, "turn", nil), "diagnostic-session", provider, io.Discard, NewCriticalErrors(), nil)
+			})).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{}`)).WithContext(ctx))
 			data, err := os.ReadFile(debug.paths[0])
 			if err != nil {
 				t.Fatal(err)
@@ -118,7 +91,7 @@ func TestStreamDiagnosticsRequestLog(t *testing.T) {
 					continue
 				}
 				found = true
-				var diagnostic streamDiagnostics
+				var diagnostic transportcapture.Stream
 				if err := json.Unmarshal(event["response_stream"], &diagnostic); err != nil {
 					t.Fatal(err)
 				}
@@ -164,12 +137,12 @@ func TestStreamDiagnosticsWebSocketClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := &streamDiagnostics{}
+	d := &transportcapture.Stream{}
 	_, err = copyUpstreamBodyTransformed(io.Discard, response, true, nil, &responseHooks{streamDiagnostics: d})
-	if err == nil || d.WebSocketCloseCode != 1001 || d.ProviderRequestID != "req_ws" || d.pending["item_ws"] == nil || d.pending["item_ws"].InputBytes != 13 {
+	if err == nil || d.WebSocketCloseCode != 1001 || d.ProviderRequestID != "req_ws" || len(d.Snapshot().PendingCalls) != 1 || d.Snapshot().PendingCalls[0].InputBytes != 13 {
 		t.Fatalf("missing websocket evidence: %+v, %v", d, err)
 	}
-	if strings.Contains(string(responses.MustMarshalJSON(d.snapshot())), "private") {
+	if strings.Contains(string(responses.MustMarshalJSON(d.Snapshot())), "private") {
 		t.Fatal("payload leaked")
 	}
 }
@@ -178,7 +151,7 @@ func TestStreamDiagnosticsNativeDownstreamClose(t *testing.T) {
 	messages := make(chan webSocketMessage, 1)
 	closeErr := websocket.CloseError{Code: websocket.StatusGoingAway, Reason: "private downstream"}
 	messages <- webSocketMessage{err: closeErr}
-	d := &streamDiagnostics{}
+	d := &transportcapture.Stream{}
 	exchange := &webSocketExchange{
 		ctx: t.Context(), streamDiagnostics: d,
 		session: &responsesWebSocket{provider: newProviderClient("http://unused.invalid", nil), clientMessages: messages},
@@ -215,9 +188,14 @@ func TestStreamDiagnosticsNativeMetadata(t *testing.T) {
 	defer upstream.Close()
 	endpoint := responsesWebSocketHandler(ctx, 5*time.Second, newProviderClient(upstream.URL, upstream.Client()), nil, nil)
 	defer endpoint.Close()
-	router := httptest.NewServer(debug.handler(endpoint))
+	recorder, err := new(transportcapture.Service).Open(transportcapture.Config{Mode: "passthrough"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer recorder.Close()
+	router := httptest.NewServer(recorder.Handler(debug.handler(endpoint)))
 	defer router.Close()
-	conn, _, err := websocket.Dial(ctx, router.URL, &websocket.DialOptions{HTTPHeader: codexAuthHeaders()})
+	conn, _, err := websocket.Dial(ctx, router.URL+"/v1/responses", &websocket.DialOptions{HTTPHeader: codexAuthHeaders()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +217,7 @@ func TestStreamDiagnosticsNativeMetadata(t *testing.T) {
 		if json.Unmarshal(line, &event) != nil || responses.StringField(event, "event") != "request_complete" {
 			continue
 		}
-		var diagnostic streamDiagnostics
+		var diagnostic transportcapture.Stream
 		if err := json.Unmarshal(event["response_stream"], &diagnostic); err != nil {
 			t.Fatal(err)
 		}
@@ -285,7 +263,7 @@ func TestStreamDiagnosticsHTTPBodyEnd(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			d := &streamDiagnostics{}
+			d := &transportcapture.Stream{}
 			state, err := copyUpstreamBodyTransformed(io.Discard, response, true, nil, &responseHooks{streamDiagnostics: d})
 			if state != responses.TerminalPending {
 				t.Fatalf("incomplete response accepted: %v", state)
@@ -309,7 +287,7 @@ func TestStreamDiagnosticsHTTPBodyEnd(t *testing.T) {
 				d.LastByteAt.IsZero() || d.ReadEndedAt.Before(d.LastByteAt) {
 				t.Fatalf("missing end evidence: %+v", d)
 			}
-			if strings.Contains(string(responses.MustMarshalJSON(d.snapshot())), "private") {
+			if strings.Contains(string(responses.MustMarshalJSON(d.Snapshot())), "private") {
 				t.Fatal("diagnostic leaked response text or arbitrary headers")
 			}
 		})
@@ -317,11 +295,11 @@ func TestStreamDiagnosticsHTTPBodyEnd(t *testing.T) {
 }
 
 func TestStreamDiagnosticsPreserveEndOrigin(t *testing.T) {
-	d := &streamDiagnostics{}
-	d.readEndedFrom(io.EOF, "downstream")
-	d.readEndedFrom(context.Canceled, "context")
-	d.readEnded(io.EOF)
-	d.copyStopped(nil)
+	d := &transportcapture.Stream{}
+	recordStreamReadEnd(d, io.EOF, "downstream")
+	recordStreamReadEnd(d, context.Canceled, "context")
+	recordStreamReadEnd(d, io.EOF, "")
+	recordStreamCopyStop(d, nil)
 	if d.ReadOrigin != "downstream" || d.ReadTermination != "downstream_eof" || d.EndReason != "downstream_eof" {
 		t.Fatalf("first observed cause was overwritten: %+v", d)
 	}
@@ -329,7 +307,7 @@ func TestStreamDiagnosticsPreserveEndOrigin(t *testing.T) {
 
 func TestStreamDiagnosticsUnterminatedEventAndDecodedBody(t *testing.T) {
 	const stream = "data: {\"type\":\"response.in_progress\"}"
-	d := &streamDiagnostics{}
+	d := &transportcapture.Stream{}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Content-Encoding", "gzip")
@@ -363,7 +341,7 @@ func TestStreamDiagnosticsNativeReaderShutdown(t *testing.T) {
 				if canceled {
 					cancel()
 				}
-				d := &streamDiagnostics{}
+				d := &transportcapture.Stream{}
 				session := &responsesWebSocket{ctx: ctx, provider: newProviderClient("http://unused.invalid", nil)}
 				if origin == "upstream" {
 					session.providerMessages = messages
