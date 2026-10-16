@@ -183,6 +183,16 @@ func TestHeadlessAppServerIgnoresStaleCompletionAndRejectsFailedTurn(t *testing.
 	}
 }
 
+func TestHeadlessAppServerIgnoresUnidentifiedCompletion(t *testing.T) {
+	h := &client{thread: "main"}
+	if err := headlessTestMessage(t, h, "turn/completed", `{"threadId":"main","turn":{"status":"completed"}}`); err != nil {
+		t.Fatal(err)
+	}
+	if h.completed {
+		t.Fatal("completion without a turn identity completed Main")
+	}
+}
+
 func TestHeadlessAppServerEmitJSONLAndOutputFailure(t *testing.T) {
 	var output bytes.Buffer
 	h := &client{output: jsontext.NewEncoder(&output)}

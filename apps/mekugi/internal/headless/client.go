@@ -206,7 +206,7 @@ func (h *client) message(m appserver.Message) error {
 			h.turn, h.completed = event.Turn.ID, false
 			return nil
 		}
-		if event.Turn.ID != h.turn {
+		if h.turn == "" || event.Turn.ID != h.turn {
 			return nil
 		}
 		if event.Turn.Status != "completed" {
