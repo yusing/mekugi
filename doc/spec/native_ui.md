@@ -1130,7 +1130,10 @@ Summaries containing standalone Markdown headings, bold titles, or short plain
 titles followed by blank-line-separated paragraphs form separate collapsible
 sections. Plain titles are limited to 60 display columns and eight words, omit
 sentence-ending punctuation, and are not list, table, or code content. Fenced
-content does not introduce sections. Each titled section uses its title as its
+content does not introduce sections. Closing code fences use the opening marker,
+at least its length, at most three leading spaces, and only spaces or tabs after
+the marker. Rendering, source copying and section detection agree on that boundary.
+Each titled section uses its title as its
 streaming and collapsed header. Untitled longer summaries use `• Thinking…`
 while streaming and `• Thought` after completion. The latest three body rows
 remain visible, with `· +N lines` counting the rows above them.
