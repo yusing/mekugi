@@ -5,6 +5,9 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
+
 	commandsegments "github.com/yusing/mekugi/modules/commandsegments/segments"
 
 	"github.com/yusing/mekugi/modules/conversation/completion"
@@ -280,7 +283,6 @@ func startAppServerUI(conversation *conversationmodel.Service, activity *activit
 			}
 		}()
 		defer u.cancelPickerScan()
-		defer u.shell.diff.close()
 		defer u.shell.diffScreen.Close()
 		defer func() { u.commits.Close() }()
 		if proxy != nil {
@@ -315,7 +317,7 @@ func startAppServerUI(conversation *conversationmodel.Service, activity *activit
 					case <-ctx.Done():
 						return ctx.Err()
 					case <-autoChanged:
-						u.shell.diff.workspace = review.Workspace()
+						u.shell.diff.SetWorkspace(review.Workspace())
 						u.dirty = true
 					case <-diffGap:
 						resubscribe()
@@ -334,10 +336,6 @@ func startAppServerUI(conversation *conversationmodel.Service, activity *activit
 						if err := u.finishRestoredContent(); err != nil {
 							return err
 						}
-						u.dirty = true
-					case <-u.shell.diff.escapeC:
-						u.shell.diff.escapeC = nil
-						u.shell.diff.escapeKey()
 						u.dirty = true
 					case result := <-u.picker.scanResults:
 						u.applyPickerScan(result)
@@ -1658,9 +1656,8 @@ func (u *appServerUI) ensureShell() {
 	}
 	u.agents.Bare = true
 	shell := &terminalUI{main: u, agents: u.agents, review: review, diffScreen: new(terminalsession.DiffScreen)}
-	shell.diff = newLiveDiffTerminalController(store, "", os.Stdout)
-	shell.diff.stdout = shell.diffScreen
-	shell.diff.size = func() (int, int, error) { return max(1, shell.layout.Diff.W), max(3, shell.layout.Diff.H), nil }
+	shell.diff = changeview.NewPane("", diffrender.EnvironmentTheme(os.Getenv("COLORFGBG")))
+	shell.saved = savedDiff{store: store, data: newLiveDiffData(), coverage: "CONNECTING"}
 	u.shell = shell
 }
 

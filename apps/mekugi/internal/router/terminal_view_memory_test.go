@@ -13,7 +13,7 @@ func TestTerminalViewMemory(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ctx = t.Context()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diffScreen.Close(); u.shell.diff.close() })
+	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	if err := u.paint(io.Discard, 120, 32); err != nil {
 		t.Fatal(err)
 	}
@@ -25,8 +25,7 @@ func TestTerminalViewMemory(t *testing.T) {
 	}
 	u.modelsLoading = true
 	u.shell.DiffOpen = true
-	u.shell.diff.view.Merge(presentation.GroupCaptures([]presentation.Chunk{liveDiffCapture("main", "main.go", 1, "old\n", "new é\n", presentation.Origin{})}))
-	u.shell.diff.view.RefreshVisible()
+	u.shell.diff.Update(presentation.GroupCaptures([]presentation.Chunk{liveDiffCapture("main", "main.go", 1, "old\n", "new é\n", presentation.Origin{})}), "")
 	var first string
 	for _, width := range []int{120, 100, 120} {
 		if err := u.paint(io.Discard, width, 32); err != nil {

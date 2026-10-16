@@ -97,24 +97,6 @@ func TestLiveDiffBackgroundTheme(t *testing.T) {
 	}
 }
 
-func TestLiveDiffOSCReplyBound(t *testing.T) {
-	for _, payload := range []string{"11;rgb:ff/ff/ff\a", "11;rgb:11/11/11\x1b\\", "0;qFnp\a", strings.Repeat("x", 1024) + "\x1b\\"} {
-		var osc OSC
-		osc.Consume(']')
-		var reply string
-		var complete bool
-		for _, key := range []byte(payload) {
-			reply, complete = osc.Consume(key)
-			if len(osc.Reply) > 128 {
-				t.Fatal("unbounded terminal response")
-			}
-		}
-		if !complete || osc.Active || len(reply) > 129 {
-			t.Fatalf("reply did not finish cleanly: %+v %q", osc, reply)
-		}
-	}
-}
-
 func TestLiveDiffThemeContrast(t *testing.T) {
 	luminance := func(rgb [3]float64) float64 {
 		for i, value := range rgb {

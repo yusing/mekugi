@@ -18,7 +18,7 @@ func TestNativeUIRunningChildRemovalReleasesDock(t *testing.T) {
 	broker := newLivePreview(t.Context())
 	scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"child": true}}}
 	setLiveScope(broker, scope)
-	u.shell.diff.scope = scope
+	u.shell.saved.scope = scope
 	sub := testReview(broker).Subscribe()
 	deliver := func() {
 		for _, event := range testReview(broker).TakePreviews(sub) {

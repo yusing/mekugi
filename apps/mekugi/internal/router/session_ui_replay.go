@@ -83,7 +83,6 @@ func (p *uiReplayPlayback) reset() {
 
 func (p *uiReplayPlayback) close() {
 	p.ui.commits.Close()
-	p.ui.shell.diff.close()
 	p.ui.shell.diffScreen.Close()
 	p.ui.session.state = scope.Store{}
 	p.ui.session.threadStates = nil

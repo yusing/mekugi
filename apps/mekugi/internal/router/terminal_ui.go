@@ -1,12 +1,12 @@
 package router
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/diffrender"
+	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
 
 	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 
@@ -21,7 +21,8 @@ type terminalUI struct {
 	diffFailure   string
 	output        *outputDialog // Open over both panes, taking every key.
 	diffScreen    *terminalsession.DiffScreen
-	diff          *liveDiffTerminalController
+	diff          *changeview.Pane
+	saved         savedDiff
 	agents        *activityAdapter
 	main          *appServerUI
 	review        *savedReview
@@ -156,17 +157,16 @@ func (u *terminalUI) resize(key string) {
 	}
 	u.Panes.Resize(key, u.width)
 	if key == "[" || key == "]" {
-		n := &u.diff.navigation
-		if n.Columns == 0 {
-			n.Columns = max(25, u.layout.Diff.W/4)
+		columns := u.diff.NavigatorColumns()
+		if columns == 0 {
+			columns = max(25, u.layout.Diff.W/4)
 		}
 		if key == "[" {
-			n.Columns -= 2
+			columns -= 2
 		} else {
-			n.Columns += 2
+			columns += 2
 		}
-		n.Columns = max(16, n.Columns)
-		u.diff.dirty = true
+		u.diff.SetNavigatorColumns(max(16, columns))
 	}
 }
 
@@ -196,8 +196,7 @@ func (u *terminalUI) terminalColor(reply string) {
 		}
 	}
 	if u.diff != nil {
-		u.diff.theme, u.diff.background, u.diff.backgrounded = theme, bg, true
-		u.diff.dirty = true
+		u.diff.SetTheme(theme)
 	}
 }
 
@@ -308,32 +307,24 @@ func (u *terminalUI) send(s string) error {
 		}
 		return nil
 	}
-	if u.Focus == 1 && s == "\x1b" {
-		u.diff.escapeKey()
+	if u.Focus == 1 {
+		if s == "e" && u.main != nil {
+			if path := u.diff.EditorPath(); path != "" {
+				return &openFileEditor{path: path}
+			}
+		}
+		if u.diff.Key(s) {
+			u.DiffOpen, u.Focus = false, 0
+		}
 		return nil
 	}
 	for _, key := range []byte(s) {
-		if u.Focus == 1 {
-			if key == 'e' && u.main != nil && !u.diff.help && u.diff.escape == "" {
-				n := &u.diff.navigation
-				if n.Focused && !n.Filtering && !n.ChangesTab && n.Cursor >= 0 && n.Cursor < len(n.Entries) {
-					if file := n.Entries[n.Cursor].File; file >= 0 && file < len(u.diff.files) {
-						return &openFileEditor{path: u.diff.files[file].Path}
-					}
-				}
-			}
-			if u.diff.handleKey(key) {
-				u.DiffOpen = false
-				u.Focus = 0
-			}
-		} else {
-			only, selected := u.agents.displayingChild(), u.agents.Selected
-			var quit bool
-			u.agentEscape, quit = u.agents.HandleRosterKey(u.agentEscape, key)
-			u.showRosterPick(only, selected)
-			if quit {
-				u.Focus = 0
-			}
+		only, selected := u.agents.displayingChild(), u.agents.Selected
+		var quit bool
+		u.agentEscape, quit = u.agents.HandleRosterKey(u.agentEscape, key)
+		u.showRosterPick(only, selected)
+		if quit {
+			u.Focus = 0
 		}
 	}
 	return nil
@@ -443,11 +434,11 @@ func (u *terminalUI) mouse(s string) error {
 	}
 	navigatorWidth := 0
 	if u.diff != nil {
-		navigatorWidth = u.diff.navigation.Width(u.layout.Diff.W)
+		navigatorWidth = u.diff.NavigatorWidth(u.layout.Diff.W)
 	}
 	if handled, columns := u.Panes.Drag(pointer, u.layout, navigatorWidth); handled {
 		if columns != 0 {
-			u.diff.navigation.Columns, u.diff.dirty = columns, true
+			u.diff.SetNavigatorColumns(columns)
 		}
 		return nil
 	}
@@ -485,14 +476,13 @@ func (u *terminalUI) mouse(s string) error {
 	if pane < 0 {
 		return nil
 	}
-	if pane != 1 && u.diff != nil && u.diff.clearHover() {
-		u.diff.dirty = true
+	if pane != 1 && u.diff != nil {
+		u.diff.ClearHover()
 	}
 
 	if button&^28 == 0 && !release {
 		u.Focus = pane
 	}
-	translated := fmt.Sprintf("\x1b[<%d;%d;%dM", button, x-r.X+1, y-r.Y+1)
 	if pane == 0 {
 		if !release {
 			action := byte(0)
@@ -515,12 +505,6 @@ func (u *terminalUI) mouse(s string) error {
 	if release {
 		return nil
 	}
-	if pane == 1 {
-		for _, key := range []byte(translated) {
-			u.diff.handleKey(key)
-		}
-		return nil
-	}
 	action := byte(0)
 	switch button &^ 28 {
 	case 0:
@@ -531,6 +515,10 @@ func (u *terminalUI) mouse(s string) error {
 		action = 'k'
 	case 65:
 		action = 'j'
+	}
+	if pane == 1 {
+		u.diff.Mouse(action, y-r.Y+1, x-r.X+1)
+		return nil
 	}
 	if pane == 3 {
 		if action == 'j' {

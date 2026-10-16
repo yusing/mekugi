@@ -344,7 +344,7 @@ func TestAppServerStatusPanelVisual(t *testing.T) {
 	if err := u.paint(screen, 160, 48); err != nil {
 		t.Fatal(err)
 	}
-	defer u.shell.diff.close()
+
 	defer u.shell.diffScreen.Close()
 	rendered := screen.String()
 	for _, want := range []string{"Session status", "gpt-6-sol", "78% left", "17% left", "━━", "Esc close"} {
@@ -394,7 +394,7 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 			if err := u.paint(screen, 160, 48); err != nil {
 				t.Fatal(err)
 			}
-			defer u.shell.diff.close()
+
 			defer u.shell.diffScreen.Close()
 			x, y := -1, -1
 			for i, row := range strings.Split(screen.String(), "\n") {

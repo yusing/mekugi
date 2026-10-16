@@ -1,17 +1,16 @@
-package router
+package terminalview
 
 import (
 	"slices"
 	"strings"
 	"unicode/utf8"
 
-	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
-
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
 )
 
-func (c *liveDiffTerminalController) revealFile() {
+// Source: apps/mekugi/internal/router/live_diff_navigation.go:14:426@[fc0514ff]
+func (c *Pane) revealFile() {
 	n := &c.navigation
 	if len(c.view.Files) == 0 {
 		return
@@ -45,7 +44,7 @@ func (c *liveDiffTerminalController) revealFile() {
 	}
 }
 
-func (c *liveDiffTerminalController) stepFile(direction int) {
+func (c *Pane) stepFile(direction int) {
 	n := &c.navigation
 	if len(n.Matches) == 0 {
 		return
@@ -63,7 +62,7 @@ func (c *liveDiffTerminalController) stepFile(direction int) {
 	c.revealFile()
 }
 
-func (c *liveDiffTerminalController) openNavEntry() {
+func (c *Pane) openNavEntry() {
 	n := &c.navigation
 	if len(n.Entries) == 0 {
 		return
@@ -81,12 +80,12 @@ func (c *liveDiffTerminalController) openNavEntry() {
 	c.view.Open(entry.File)
 	n.Focused = false
 	n.Filtering = false
-	c.back = liveDiffBack{kind: 'f'}
+	c.back = paneBack{kind: 'f'}
 }
 
 // openChangeRow toggles a change and opens its first file, opens a file row,
 // or filters to the caller of a branch row.
-func (c *liveDiffTerminalController) openChangeRow() {
+func (c *Pane) openChangeRow() {
 	l := &c.navigation.Changes
 	if l.Cursor >= len(l.Rows) {
 		return
@@ -100,11 +99,11 @@ func (c *liveDiffTerminalController) openChangeRow() {
 			caller = ""
 		}
 		c.filterCaller(caller)
-		c.back = liveDiffBack{kind: 'b', caller: previous}
+		c.back = paneBack{kind: 'b', caller: previous}
 	case row.Kind == 'c' && len(node.Files) == 1, row.Kind == 'f':
 		c.openChange(node.Change, node.Files[row.File].File)
 		c.navigation.Focused, c.navigation.Filtering = false, false
-		c.back = liveDiffBack{kind: 'f'}
+		c.back = paneBack{kind: 'f'}
 	case row.Kind == 'c':
 		if l.Expanded == nil {
 			l.Expanded = make(map[string]bool)
@@ -120,7 +119,7 @@ func (c *liveDiffTerminalController) openChangeRow() {
 
 // previewChangeRow shows the file under the Changes cursor while the list
 // keeps focus; a change shows its first file.
-func (c *liveDiffTerminalController) previewChangeRow() {
+func (c *Pane) previewChangeRow() {
 	l := &c.navigation.Changes
 	if l.Cursor >= len(l.Rows) {
 		return
@@ -136,7 +135,7 @@ func (c *liveDiffTerminalController) previewChangeRow() {
 }
 
 // openChange opens one file of a change at its header.
-func (c *liveDiffTerminalController) openChange(change string, file int) {
+func (c *Pane) openChange(change string, file int) {
 	if file < 0 || file >= len(c.view.Files) {
 		return
 	}
@@ -146,7 +145,7 @@ func (c *liveDiffTerminalController) openChange(change string, file int) {
 }
 
 // stepChange opens the next or previous file of a change, in capture order.
-func (c *liveDiffTerminalController) stepChange(direction int) {
+func (c *Pane) stepChange(direction int) {
 	l := &c.navigation.Changes
 	var targets []presentation.ChangeTarget
 	var files []int
@@ -182,7 +181,7 @@ func (c *liveDiffTerminalController) stepChange(direction int) {
 }
 
 // filterCaller shows only one caller's changes; an empty caller shows all.
-func (c *liveDiffTerminalController) filterCaller(caller string) {
+func (c *Pane) filterCaller(caller string) {
 	c.view.FilterCaller(caller)
 	c.navigation.Changes.Target = presentation.ChangeTarget{}
 	c.refreshChanges()
@@ -190,7 +189,7 @@ func (c *liveDiffTerminalController) filterCaller(caller string) {
 
 // refreshChanges rebuilds what the navigator derives from captures: the
 // Changes tab, caller marks, and the filter shown in the Files heading.
-func (c *liveDiffTerminalController) refreshChanges() {
+func (c *Pane) refreshChanges() {
 	c.files = make([]presentation.File, len(c.view.Files))
 	for i, file := range c.view.Files {
 		c.files[i] = c.view.Visible[file.Key()]
@@ -202,13 +201,13 @@ func (c *liveDiffTerminalController) refreshChanges() {
 }
 
 // cycleCaller steps the caller filter through all, then each caller.
-func (c *liveDiffTerminalController) cycleCaller() {
+func (c *Pane) cycleCaller() {
 	callers := append([]string{""}, presentation.Callers(&c.view.View)...)
 	next := (slices.Index(callers, c.view.Caller) + 1) % len(callers)
 	c.filterCaller(callers[next])
 }
 
-func (c *liveDiffTerminalController) editFilter(key byte) {
+func (c *Pane) editFilter(key byte) {
 	n := &c.navigation
 	query := &n.Query
 	if n.ChangesTab {
@@ -222,7 +221,7 @@ func (c *liveDiffTerminalController) editFilter(key byte) {
 		if *query != "" {
 			if n.ChangesTab {
 				// Accepting opens the first match's first file without toggling it.
-				if first := slices.IndexFunc(n.Changes.Rows, func(row changeview.ChangeRow) bool { return row.Kind == 'c' }); first >= 0 {
+				if first := slices.IndexFunc(n.Changes.Rows, func(row ChangeRow) bool { return row.Kind == 'c' }); first >= 0 {
 					if node := n.Changes.Nodes[n.Changes.Rows[first].Node]; len(node.Files) > 0 {
 						c.openChange(node.Change, node.Files[0].File)
 						n.Changes.FocusChange(node.Change, c.navRows)
@@ -260,7 +259,7 @@ func (c *liveDiffTerminalController) editFilter(key byte) {
 	}
 }
 
-func (c *liveDiffTerminalController) navigationKey(key byte) bool {
+func (c *Pane) navigationKey(key byte) bool {
 	n := &c.navigation
 	if key == 21 && (n.Query != "" && !n.ChangesTab || n.Changes.Query != "" && n.ChangesTab) {
 		c.editFilter(key)
@@ -370,7 +369,7 @@ func (c *liveDiffTerminalController) navigationKey(key byte) bool {
 }
 
 // changesKey moves through the Changes tab while it has focus.
-func (c *liveDiffTerminalController) changesKey(key byte) bool {
+func (c *Pane) changesKey(key byte) bool {
 	l := &c.navigation.Changes
 	last := max(0, len(l.Rows)-1)
 	cursor := l.Cursor

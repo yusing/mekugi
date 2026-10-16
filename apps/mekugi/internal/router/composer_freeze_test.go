@@ -20,7 +20,7 @@ func TestComposerPastePausedTranscriptThenReference(t *testing.T) {
 	image := pasteTestImage(t)
 	u, wire := newAppServerTestUI()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.Turn = "active"
 	u.view.Following = false
 	composerShellKeys(t, u, "\x1b[200~'"+image+"'\x1b[201~")
@@ -54,7 +54,7 @@ func TestComposerPastePausedTranscriptThenReference(t *testing.T) {
 func TestComposerPasteTerminatorBypassesSelection(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	composerShellKeys(t, u, "\x1b[200~payload")
 	// A selection must not consume any byte of the opaque end marker.
 	u.shell.selection = &terminalSelection{Selection: selectedTerminalText("selected")}
@@ -67,7 +67,7 @@ func TestComposerPasteTerminatorBypassesSelection(t *testing.T) {
 func TestUISnapshotComposerPasteAndReferenceOnScrollback(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.view.Following = false
 	composerShellKeys(t, u, "\x1b[200~'"+pasteTestImage(t)+"'\x1b[201~")
 	u.shell.selection = &terminalSelection{Selection: selectedTerminalText("quote"), mention: "message"}

@@ -105,7 +105,7 @@ func TestTerminalSourceSelectionCodeLiteralDecoration(t *testing.T) {
 func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.btw = &appServerBTW{SideAnswer: &conversationmodel.SideAnswer{Question: "side question", Status: "completed", Answer: []conversationmodel.Answer{{Text: "**side answer**"}}}}
 	var wire bytes.Buffer
 	if err := u.paint(&wire, 80, 30); err != nil {
@@ -192,7 +192,7 @@ func TestUISnapshotBTWCopyDock(t *testing.T) {
 func TestTerminalSourceScrolledMainReply(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	// Scroll back to the original reply above a long trailing tool run.
 	u.Turn = "running"
 	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "**original reply**", Observed: time.Now()}, {Seq: 2, Agent: "Main", Kind: "tool", Text: "Run: go test\n" + strings.Repeat("output\n", 100), Observed: time.Now()}}})
@@ -234,7 +234,7 @@ func TestTerminalSourceRenderedTables(t *testing.T) {
 			for _, reverse := range []bool{false, true} {
 				u, _ := newAppServerTestUI()
 				u.ensureShell()
-				t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+				t.Cleanup(func() { u.shell.diffScreen.Close() })
 				view := u.view
 				if activity {
 					view = u.agents
@@ -281,7 +281,7 @@ func TestTerminalSourceRenderedTables(t *testing.T) {
 func TestTerminalSourceActivityCodeTabs(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.agents.Agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
 	u.shell.DiffOpen = false
 	applyTranscriptFixture(u.agents, true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "```\n\tx := 1  \n```"})

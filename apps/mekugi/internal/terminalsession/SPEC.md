@@ -11,6 +11,9 @@ selected targets and intents to their owners.
 [Session presentation](../sessionpresentation/SPEC.md) owns displayed identity and
 Main admission; [session control](../sessioncontrol/SPEC.md) issues host operations.
 Feature views own disclosure, navigation and animation.
+The [saved-Diff view](../../../../modules/changehistory/SPEC.md#saved-review-presentation)
+supplies interaction and source-selection values; this attachment owns its terminal
+emulation surface and final frame delivery.
 
 Storage and observation work must not stall input, cancellation, rendering or
 unrelated lifecycle delivery, including through shared queues or locks. Missing

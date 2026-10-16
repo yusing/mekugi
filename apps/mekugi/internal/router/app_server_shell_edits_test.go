@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/modules/changehistory/presentation"
-
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/legacycall"
@@ -104,9 +102,9 @@ func TestAppServerShellEditsRevertApplyReplay(t *testing.T) {
 		if err != nil || len(data.order) != index+2 {
 			t.Fatalf("Changes history: %+v, %v", data, err)
 		}
-		u.shell.diff.data = data
-		u.shell.diff.view.Files = data.files()
-		counts := presentation.NetCounts(&u.shell.diff.view.View)
+		u.shell.saved.data = data
+		u.shell.diff.Update(data.files(), "")
+		_, counts := u.shell.diff.Counts()
 		if counts == nil || index == 0 && (counts.Added != 0 || counts.Removed != 0) || index == 1 && (counts.Added != 1 || counts.Removed != 1) {
 			t.Fatalf("saved Diff after %s: files=%+v counts=%+v", mutation, data.files(), counts)
 		}

@@ -27,7 +27,7 @@ func TestComposerEscapeExpeditesSteersInHostEventOrder(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/rejected=%v", order, rejectedSteer), func(t *testing.T) {
 				u, wire := newAppServerTestUI()
 				u.ensureShell()
-				t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+				t.Cleanup(func() { u.shell.diffScreen.Close() })
 				appServerTestTurn(t, u, "t")
 				appServerTestKeys(t, u, "older\r")
 				older := appServerOneRequest(t, wire, "turn/steer", "older")
@@ -80,7 +80,7 @@ func TestComposerEscapeCommittedSteerIsNotResent(t *testing.T) {
 		t.Run(fmt.Sprint(unsent), func(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.ensureShell()
-			t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+			t.Cleanup(func() { u.shell.diffScreen.Close() })
 			appServerTestTurn(t, u, "t")
 			appServerTestKeys(t, u, "first\r")
 			steer := appServerOneRequest(t, wire, "turn/steer", "first")
@@ -111,7 +111,7 @@ func TestComposerEscapeRejectedInterruptDoesNotResend(t *testing.T) {
 		t.Run(fmt.Sprint(completionFirst), func(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.ensureShell()
-			t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+			t.Cleanup(func() { u.shell.diffScreen.Close() })
 			appServerTestTurn(t, u, "t")
 			appServerTestKeys(t, u, "first\r")
 			steer := appServerOneRequest(t, wire, "turn/steer", "first")
@@ -136,7 +136,7 @@ func TestComposerEscapeRejectedInterruptDoesNotResend(t *testing.T) {
 func TestComposerEscapeExpeditesAttachments(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	appServerTestTurn(t, u, "t")
 	u.insertImage("first.png")
 	u.insertSelection("message", "exact quote", "")
@@ -164,7 +164,7 @@ func TestComposerCtrlCCancelsEscapeDelivery(t *testing.T) {
 		t.Run(fmt.Sprint(completionFirst), func(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.ensureShell()
-			t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+			t.Cleanup(func() { u.shell.diffScreen.Close() })
 			appServerTestTurn(t, u, "t")
 			appServerTestKeys(t, u, "first\r")
 			steer := appServerOneRequest(t, wire, "turn/steer", "first")
@@ -192,7 +192,7 @@ func TestComposerEscapeContextPrecedesSteerDelivery(t *testing.T) {
 		t.Run(context, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.ensureShell()
-			t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+			t.Cleanup(func() { u.shell.diffScreen.Close() })
 			appServerTestTurn(t, u, "t")
 			appServerTestKeys(t, u, "first\r")
 			steer := appServerOneRequest(t, wire, "turn/steer", "first")
@@ -218,7 +218,7 @@ func TestComposerEscapeContextPrecedesSteerDelivery(t *testing.T) {
 func TestComposerEscapeExpeditesOnlyLocallyWaitingSteer(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	appServerTestTurn(t, u, "t")
 	u.Settings.BeginLive()
 	appServerTestKeys(t, u, "first\rdraft")
@@ -245,7 +245,7 @@ func TestComposerEscapeExpeditesOnlyLocallyWaitingSteer(t *testing.T) {
 func TestUISnapshotNativeExpeditedSteer(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.view.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) }
 	appServerTestTurn(t, u, "t")

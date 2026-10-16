@@ -230,40 +230,32 @@ func (u *terminalUI) selectionDocument(s *terminalSelection) {
 // divider; each row's text starts after its gutter and line number.
 func (u *terminalUI) diffSelection(x, y int) *terminalSelection {
 	c, pane := u.diff, u.layout.Diff
-	if c == nil || u.diffFailure != "" || len(c.painted) <= c.sourceY || len(u.frame.Rows) != u.height {
+	if c == nil || u.diffFailure != "" || len(u.frame.Rows) != u.height || !pane.Contains(x, y) {
 		return nil
 	}
-	// Rows above sourceY are the title or a stacked navigator and its rule.
-	rect := terminalsession.Rect{pane.X + c.sourceX, pane.Y + c.sourceY, pane.W - c.sourceX, min(pane.H, len(c.painted)) - c.sourceY}
+	source := c.Selection(x-pane.X, y-pane.Y)
+	rect := terminalsession.Rect{pane.X + source.X, pane.Y + source.Y, min(pane.W-source.X, source.Width), min(pane.H-source.Y, len(source.Painted))}
 	if !rect.Contains(x, y) {
 		return nil
 	}
 	rows, _ := terminalsession.Screen(u.width, u.height, u.frame.Rows, x, y)
 	contentLeft := make([]int, rect.Y+rect.H)
 	sources := make([]diffrender.LineSource, rect.Y+rect.H)
-	for row, source := range c.painted[c.sourceY : c.sourceY+rect.H] {
-		contentLeft[rect.Y+row] = rect.X + source.Content
-		sources[rect.Y+row] = source
+	for row, line := range source.Painted[:rect.H] {
+		contentLeft[rect.Y+row] = rect.X + line.Content
+		sources[rect.Y+row] = line
 	}
-	s := &terminalSelection{Selection: terminalsession.NewSelection(terminalsession.Surface{Rect: rect, Rows: rows, ContentLeft: contentLeft}, x, y), pane: pane, diff: sources, workspace: c.workspace}
-	if len(c.lines) > rect.H {
-		lines, sources := c.lines, c.rendering.Sources
-		fixed := 0
-		if len(c.view.Files) > c.view.Selected && c.offset > c.rendering.Starts[c.view.Selected] {
-			heading := c.rendering.Starts[c.view.Selected]
-			lines = append([]string{lines[heading]}, lines...)
-			sources = append([]diffrender.LineSource{sources[heading]}, sources...)
-			fixed = 1
-		}
-		s.Document(lines, c.offset, fixed)
+	s := &terminalSelection{Selection: terminalsession.NewSelection(terminalsession.Surface{Rect: rect, Rows: rows, ContentLeft: contentLeft}, x, y), pane: pane, diff: sources, workspace: source.Workspace}
+	if len(source.Document)-source.Fixed > rect.H {
+		s.Document(source.Document, source.Offset, source.Fixed)
 		s.ContentLeft = make([]int, len(s.Rows))
 		s.diff = make([]diffrender.LineSource, len(s.Rows))
-		for i, source := range sources {
+		for i, line := range source.Sources {
 			if rect.Y+i >= len(s.Rows) {
 				break
 			}
-			s.ContentLeft[rect.Y+i] = rect.X + source.Content
-			s.diff[rect.Y+i] = source
+			s.ContentLeft[rect.Y+i] = rect.X + line.Content
+			s.diff[rect.Y+i] = line
 		}
 	}
 	return s

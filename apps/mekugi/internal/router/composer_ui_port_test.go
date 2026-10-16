@@ -94,7 +94,7 @@ func TestComposerPasteBoundariesAndImages(t *testing.T) {
 	for _, payload := range []string{"plain\x1b", "plain\x1b[", "plain\x1b]8;;link", "plain\x1b[20", "plain\x02\x03\x16"} {
 		u, _ := newAppServerTestUI()
 		u.ensureShell()
-		t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+		t.Cleanup(func() { u.shell.diffScreen.Close() })
 		feed := func(text string) {
 			t.Helper()
 			for _, b := range []byte(text) {
@@ -133,7 +133,7 @@ func TestComposerImagePastePTYLifecycle(t *testing.T) {
 	defer cancel()
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	ready := make(chan struct{})
 	done := make(chan error, 1)
 	// Scrollback must not consume the ESC byte of either paste terminator.

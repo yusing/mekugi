@@ -31,7 +31,7 @@ func TestSessionMetricsWrappedDirectoryCopy(t *testing.T) {
 		if err := u.paint(screen, width, 24); err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+		t.Cleanup(func() { u.shell.diffScreen.Close() })
 		x1, y1, x2, y2 := -1, -1, -1, -1
 		for y, row := range strings.Split(screen.String(), "\n") {
 			if before, _, ok := strings.Cut(row, "/tmp/"); ok {

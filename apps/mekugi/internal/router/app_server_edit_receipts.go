@@ -55,11 +55,11 @@ func (u *appServerUI) applyCapturedEdits() {
 			})
 		})
 	})
-	if u.shell == nil || u.shell.diff.data == nil {
+	if u.shell == nil || u.shell.saved.data == nil {
 		return
 	}
-	u.view.applyCapturedEdits(u.shell.diff.data)
-	u.agents.applyCapturedEdits(u.shell.diff.data)
+	u.view.applyCapturedEdits(u.shell.saved.data)
+	u.agents.applyCapturedEdits(u.shell.saved.data)
 }
 
 // Both audiences reconcile using exact thread/tool identities, regardless of

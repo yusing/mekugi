@@ -1,4 +1,4 @@
-package router
+package terminalview
 
 import (
 	"bytes"
@@ -20,9 +20,8 @@ func TestUISnapshotLiveDiffFocus(t *testing.T) {
 				})
 				c.navigation.Focused = focused
 				var output bytes.Buffer
-				c.stdout = &output
-				c.frame(t)
-				left, right := c.nativeTitle()
+				c.paintTo(t, &output)
+				left, right := c.Title()
 				rows := []string{left + " | " + right}
 				for row := 1; row <= 18; row++ {
 					rows = append(rows, liveDiffFrameRow(output.String(), row))

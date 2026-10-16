@@ -27,10 +27,11 @@ func TestUISnapshotMoveActivityAndDialog(t *testing.T) {
 		rows = append(rows, u.view.Painter.Block(block, 100)...)
 	}
 	uisnapshot.Assert(t, "testdata/snapshots/move-paths-activity.txt", strings.Join(rows, "\n")+"\n")
-	c := liveDiffChangesController(t, 100, 24, nil)
-	c.workspace, c.data = workspace, newLiveDiffData()
-	c.data.order = []string{"move"}
-	c.data.attempts["move"] = liveDiffAttempt{thread: "main", correlation: "move\x000", chunks: []presentation.Chunk{{Workspace: workspace, Review: file}}}
+	c := liveDiffChangesPane(t, 100, 24, nil)
+	c.SetWorkspace(workspace)
+	u.shell.saved.data = newLiveDiffData()
+	u.shell.saved.data.order = []string{"move"}
+	u.shell.saved.data.attempts["move"] = liveDiffAttempt{thread: "main", correlation: "move\x000", chunks: []presentation.Chunk{{Workspace: workspace, Review: file}}}
 	u.shell.diff = c
 	if !u.shell.openActivityEdit(u.view, 1, pathdisplay.Move(workspace, file.BeforePath, file.AfterPath)) {
 		t.Fatal("compressed move endpoint did not open exact captured dialog")

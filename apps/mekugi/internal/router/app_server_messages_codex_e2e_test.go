@@ -66,7 +66,7 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 	defer client.Close()
 	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, history: testHistory(), client: client, proxy: proxy, view: newActivityAdapter(), agents: newActivityAdapter(), requests: sessioncontrol.NewRequests[appServerRequest](client), ctx: ctx}
 	u.ensureShell()
-	defer u.shell.diff.close()
+
 	defer u.shell.diffScreen.Close()
 	if err := u.request("initialize", nil); err != nil {
 		t.Fatal(err)

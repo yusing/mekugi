@@ -91,15 +91,11 @@ func testAppServerEditorTerminalHandoff(t *testing.T, selectedFile bool) {
 			t.Fatal(err)
 		}
 		c := u.shell.diff
-		c.workspace = dir
-		c.files = []presentation.File{{Path: path, Chunks: []presentation.Chunk{
+		c.SetWorkspace(dir)
+		c.Update([]presentation.File{{Path: path, Chunks: []presentation.Chunk{
 			liveDiffCapture("selected", path, 1, "before\n", "original file\n", presentation.Origin{}),
-		}}}
-		c.view.Files = c.files
-		c.view.RefreshVisible()
-		c.navigation.Rebuild(c.files, dir)
-		c.navigation.Cursor = navigationEntryIndex(c.navigation.Entries, "f:"+path)
-		c.navigation.Focused = true
+		}}}, "")
+		c.Key("s")
 		u.shell.Focus, u.shell.DiffOpen = 1, true
 	}
 	done := make(chan error, 1)
@@ -207,7 +203,7 @@ func testAppServerEditorTerminalHandoff(t *testing.T, selectedFile bool) {
 	}
 	if selectedFile {
 		data, err := os.ReadFile(path)
-		if err != nil || string(data) != "edited from terminal" || u.Text != "original" || u.shell.Focus != 1 || !u.shell.diff.navigation.Focused {
+		if err != nil || string(data) != "edited from terminal" || u.Text != "original" || u.shell.Focus != 1 || u.shell.diff.EditorPath() != path {
 			t.Fatalf("file=%q draft=%q focus=%d error=%v", data, u.Text, u.shell.Focus, err)
 		}
 	} else if u.Text != "edited from terminalx" {

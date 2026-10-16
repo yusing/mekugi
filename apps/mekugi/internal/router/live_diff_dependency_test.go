@@ -75,11 +75,14 @@ func TestUISnapshotSavedDiffDependencyHistory(t *testing.T) {
 			for _, file := range data.files() {
 				captures = append(captures, file.Chunks...)
 			}
-			c := liveDiffChangesController(t, 100, 25, captures)
-			c.theme = diffrender.DarkTheme
-			c.frame(t)
-			uisnapshot.Assert(t, fmt.Sprintf("testdata/snapshots/saved-diff-dependency-%t.txt", confirmed), strings.Join(c.lines, "\n")+"\n")
-			for _, file := range c.view.Visible {
+			c := liveDiffChangesPane(t, 100, 25, captures)
+			c.SetTheme(diffrender.DarkTheme)
+			paintSavedDiff(t, c, 100, 25)
+			uisnapshot.Assert(t, fmt.Sprintf("testdata/snapshots/saved-diff-dependency-%t.txt", confirmed), strings.Join(c.Selection(99, 24).Document, "\n")+"\n")
+			view := presentation.View{}
+			view.Merge(data.files())
+			view.RefreshVisible()
+			for _, file := range view.Visible {
 				if file.Path == "/w/plugins/node_modules" && len(file.Chunks) != 1 {
 					t.Fatalf("confirmed directory captures not collapsed: %+v", file)
 				}

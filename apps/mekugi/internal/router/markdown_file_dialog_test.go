@@ -71,7 +71,6 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 func TestUISnapshotMarkdownFileLinkExistence(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
-	t.Cleanup(u.shell.diff.close)
 	u.session.cwd = t.TempDir()
 	if err := os.WriteFile(filepath.Join(u.session.cwd, "sample.go"), []byte("package sample\n"), 0600); err != nil {
 		t.Fatal(err)

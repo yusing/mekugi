@@ -13,7 +13,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
@@ -137,7 +136,7 @@ func (u *terminalUI) applyDiff(ctx context.Context, event reviewEvent) {
 	case "preview":
 		preview := event.Preview
 		if preview == nil ||
-			preview.Workspace != "" && !u.diff.scope.Workspaces[preview.Workspace][preview.Thread] {
+			preview.Workspace != "" && !u.saved.scope.Workspaces[preview.Workspace][preview.Thread] {
 			return
 		}
 		u.preview(*preview, event.Resync)
@@ -173,8 +172,14 @@ func (u *terminalUI) applyDiff(ctx context.Context, event reviewEvent) {
 	if u.diffFailure != "" {
 		return
 	}
-	if _, err := u.diff.applyEvent(ctx, event); err != nil {
+	if changed, err := u.saved.applyEvent(ctx, event); err != nil {
 		u.diffFailure = err.Error()
+	} else if changed {
+		if event.Kind == "coverage" {
+			u.diff.SetCoverage(u.saved.coverage)
+		} else {
+			u.diff.Update(u.saved.data.files(), u.saved.coverage)
+		}
 	}
 	if u.main != nil && (event.Kind == "scope" || event.Kind == "change") {
 		u.main.applyCapturedEdits()
@@ -221,16 +226,15 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	now := u.main.now()
 	u.agents.FeedOnly, u.agents.Focused = true, u.Focus == 3
 	u.liveDock.Motion.Enabled = true
-	u.liveDock.Motion.Canvas = u.diff.theme.Canvas()
-	if u.diff.backgrounded {
-		u.liveDock.Motion.Canvas.Background = u.diff.background
+	u.liveDock.Motion.Canvas = u.diff.Theme().Canvas()
+	if u.agents.Painter.Colors.HasBackground {
+		u.liveDock.Motion.Canvas.Background = u.agents.Painter.Colors.Background
 	}
 	caller := u.main.transcriptCaller()
 	mainEdit := !u.liveHidden && slices.Contains(u.liveDock.Callers(), caller)
 	u.agents.LivePreviews = nil
 	if u.diff != nil {
-		u.agents.LineCounts = u.diff.callerCounts
-		u.agents.NetCounts = u.diff.netCounts
+		u.agents.LineCounts, u.agents.NetCounts = u.diff.Counts()
 	}
 	roster := u.agents.NativeRoster(width, u.Panes.RosterLimit(height), now, u.Focus == 3)
 	l, left, right, framed, rosterRows := u.Panes.Geometry(width, height, len(roster))
@@ -255,7 +259,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		dockAt, dockRows := dockRect.Y, dockRect.H
 		rules := map[int]string{}
 		if dockRows > 0 && dockAt+dockRows <= len(body) {
-			dock, err := u.liveDock.RenderBatch(ctx, caller, u.main.session.cwd, u.diff.theme, iw, dockRows, 15)
+			dock, err := u.liveDock.RenderBatch(ctx, caller, u.main.session.cwd, u.diff.Theme(), iw, dockRows, 15)
 			if err != nil {
 				return err
 			}
@@ -303,26 +307,17 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		focused := u.Focus == 1
 		var body []string
 		var title, label string
-		diffRows := content
-		if u.diffScreen.Emulator == nil {
-			u.diffScreen.Emulator = vt.NewEmulator(iw, max(1, diffRows))
-			u.diff.dirty = true
-		} else if u.diffScreen.Width() != iw || u.diffScreen.Height() != diffRows {
-			u.diffScreen.Resize(iw, max(1, diffRows))
-			u.diff.dirty = true
-		}
-		u.layout = l // The diff controller sizes itself from the layout.
 		if u.diffFailure == "" {
-			if err := u.diff.renderFrame(ctx); err != nil {
+			var err error
+			body, err = u.diffScreen.Paint(ctx, u.diff, iw, content)
+			if err != nil {
 				u.diffFailure = err.Error()
 			}
 		}
 		if u.diffFailure != "" {
 			body = []string{"Diff unavailable", textsanitize.Safe(u.diffFailure, false), "Use mchanges to review captured edits."}
-		} else {
-			body = strings.Split(u.diffScreen.Render(), "\n")
 		}
-		summary, state := u.diff.nativeTitle()
+		summary, state := u.diff.Title()
 		title, label = terminalui.PaneTitle(2, "Diff", "saved · "+summary, u.Focus == 1), state
 		u.diffUnseen = false
 		body = append(body[:min(len(body), content)], make([]string, max(0, content-len(body)))...)
@@ -399,7 +394,7 @@ func (u *terminalUI) nativeStatus() string {
 		return tabs.String() + "  " + hints.Render()
 	case u.Focus == 1:
 		hints = terminalui.Hints{{"s", "files", 0}, {"tab", "changes", 0}, {"[ ]", "hunks", 0}, {"a", "caller", 0}, {"?", "help", 0}}
-		if u.diff.back.kind != 0 {
+		if u.diff.Back() {
 			hints = append(terminalui.Hints{{"esc", "back", 0}}, hints...)
 		}
 	case u.Focus == 3:

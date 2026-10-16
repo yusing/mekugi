@@ -29,6 +29,7 @@ import (
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/contracts/inference"
+	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -79,12 +80,6 @@ func TestNativeUIPreview(t *testing.T) {
 			select {
 			case <-t.Context().Done():
 				return t.Context().Err()
-			case <-p.ui.shell.diff.escapeC:
-				p.ui.shell.diff.escapeC = nil
-				p.ui.shell.diff.escapeKey()
-				if err := paint(); err != nil {
-					return err
-				}
 			case <-tick.C:
 				now := time.Now()
 				if err := p.ui.drainKeys(keys); err != nil || p.ui.quitRequested {
@@ -271,11 +266,8 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	if err := p.ui.shell.key('\t'); err != nil {
 		t.Fatal(err)
 	}
-	if !p.ui.shell.diff.navigation.Focused || !p.ui.shell.diff.navigation.ChangesTab {
-		t.Fatal("Tab did not focus the change list")
-	}
-	render("saved diff changes", "Unsubscribe", "─────")
-	if p.ui.shell.diff.stack == 0 {
+	render("saved diff changes", "Unsubscribe", "Changes", "files focus", "─────")
+	if source := p.ui.shell.diff.Selection(p.ui.shell.layout.Diff.W-1, p.ui.shell.layout.Diff.H-1); source.Y == 0 || len(source.Painted) == 0 {
 		t.Fatal("Tab replaced the stacked list with a full-pane picker")
 	}
 	for _, key := range []byte{'\t', 's'} {
@@ -284,7 +276,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		}
 	}
 	render("saved diff hidden list", "Unsubscribe")
-	if p.ui.shell.diff.stack != 0 || !p.ui.shell.diff.navigation.Hidden {
+	if source := p.ui.shell.diff.Selection(p.ui.shell.layout.Diff.W-1, p.ui.shell.layout.Diff.H-1); source.Y != 0 || len(source.Painted) == 0 {
 		t.Fatal("s did not hide the focused stacked list")
 	}
 	// Picking an agent in the roster shows its Activity instead of the diff.
@@ -501,12 +493,9 @@ func newNativePreview(t *testing.T) *nativePreview {
 		t.Fatal(err)
 	}
 	u.ensureShell()
-	u.shell.diff.close()
-	u.shell.diff = newLiveDiffTerminalController(store, workspace, os.Stdout)
-	u.shell.diff.stdout = u.shell.diffScreen
-	u.shell.diff.size = func() (int, int, error) {
-		return max(1, u.shell.layout.Diff.W), max(3, u.shell.layout.Diff.H), nil
-	}
+
+	u.shell.diff = changeview.NewPane(workspace, diffrender.EnvironmentTheme(os.Getenv("COLORFGBG")))
+	u.shell.saved = savedDiff{store: store, data: newLiveDiffData(), coverage: "CONNECTING"}
 	u.session.start("main", workspace)
 	p := &nativePreview{t: t, ui: u, input: input, store: store, usage: usage, workspace: workspace, delay: "0", active: make(map[string]string), assignments: make(map[string]string), models: map[string]string{"t-explorer": nativePreviewGrokModel}}
 	store.liveDiff = func(changes []reviewChange) {
@@ -525,7 +514,6 @@ func newNativePreview(t *testing.T) *nativePreview {
 
 func (p *nativePreview) close() {
 	p.ui.cancelPickerScan()
-	p.ui.shell.diff.close()
 	p.ui.shell.diffScreen.Close()
 }
 
@@ -1241,65 +1229,109 @@ func TestNativeDiffNavigatorPointerMovesAndBack(t *testing.T) {
 	}
 	keys("\x02" + "2\t")
 	frame := render()
-	l := &d.navigation.Changes
-	single := slices.IndexFunc(l.Rows, func(row changeview.ChangeRow) bool { return row.Kind == 'c' && len(l.Nodes[row.Node].Files) == 1 })
-	if single < 0 || strings.Contains(frame, " 1f ") || !strings.Contains(frame, "broker_race_test.go") {
+	if strings.Contains(frame, " 1f ") || !strings.Contains(frame, "broker_race_test.go") {
 		t.Fatalf("a single-file change does not name its file:\n%s", frame)
 	}
-	// The pointer underlines the row it rests on.
-	r := shell.layout.Diff
-	keys(fmt.Sprintf("\x1b[<35;%d;%dM", r.X+3, r.Y+3+single-l.Top))
-	if l.Hover != single+1 {
-		t.Fatalf("hover = %d, want row %d", l.Hover, single)
+	selectedPath := func() string {
+		t.Helper()
+		source := d.Selection(shell.layout.Diff.W-1, shell.layout.Diff.H-1)
+		for _, row := range source.Painted {
+			if row.Path != "" {
+				return row.Path
+			}
+		}
+		t.Fatal("Diff has no painted source attribution")
+		return ""
 	}
-	keys(fmt.Sprintf("\x1b[<35;%d;%dM", 2, 2))
-	if l.Hover != 0 {
-		t.Fatal("leaving the diff pane kept its hover")
+	focused := func() bool {
+		_, right := d.Title()
+		return strings.Contains(right, "files focus")
+	}
+	escape := func() {
+		t.Helper()
+		keys("\x1b")
+		ageTerminalEscape(shell)
+		if err := p.ui.drainKeys(make(chan byte)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Find a visible navigator row through the composed terminal frame.
+	navigatorRow := func(frame, label string) int {
+		t.Helper()
+		r := shell.layout.Diff
+		source := d.Selection(shell.layout.Diff.W-1, shell.layout.Diff.H-1)
+		for row, text := range strings.Split(frame, "\n") {
+			if row < r.Y || row >= r.Y+source.Y {
+				continue
+			}
+			if strings.Contains(ansi.Cut(text, r.X, r.X+r.W), label) {
+				return row
+			}
+		}
+		t.Fatalf("navigator has no visible %q row:\n%s", label, frame)
+		return -1
 	}
 	// Moving the cursor shows its file while the list keeps focus.
-	keys("G")
-	for l.Cursor != single {
-		keys("k")
+	keys("g")
+	for range 40 {
+		render()
+		if strings.HasSuffix(selectedPath(), "/broker_race_test.go") {
+			break
+		}
+		keys("j")
 	}
-	if want := l.Nodes[l.Rows[single].Node].Files[0].File; d.view.Selected != want || !d.navigation.Focused {
-		t.Fatalf("moving to a change showed file %d, want %d", d.view.Selected, want)
+	render()
+	if !strings.HasSuffix(selectedPath(), "/broker_race_test.go") || !focused() {
+		t.Fatal("moving to a change did not preview its source while retaining list focus")
 	}
 	// Enter opens the file; Esc returns to the list.
 	keys("\r")
-	if d.navigation.Focused || d.back.kind != 'f' {
+	if focused() || !d.Back() {
 		t.Fatal("Enter on a single-file change did not open its file")
 	}
-	d.escapeKey()
-	if !d.navigation.Focused || l.Cursor != single {
+	escape()
+	render()
+	if !focused() || !strings.HasSuffix(selectedPath(), "/broker_race_test.go") {
 		t.Fatal("Esc did not return to the list")
 	}
-	// Enter on a branch filters its caller; Esc restores the previous filter.
-	branch := slices.IndexFunc(l.Rows, func(row changeview.ChangeRow) bool { return row.Kind == 'b' })
-	if branch < 0 {
-		t.Fatal("no branch row")
+	// Pointer activation uses the displayed change row and preserves its source.
+	frame = render()
+	row := navigatorRow(frame, "broker_race_test.go")
+	r := shell.layout.Diff
+	keys(fmt.Sprintf("\x1b[<35;%d;%dM", r.X+4, row+1))
+	keys(fmt.Sprintf("\x1b[<0;%d;%dM", r.X+4, row+1))
+	render()
+	if !focused() || !strings.HasSuffix(selectedPath(), "/broker_race_test.go") || !d.Back() {
+		t.Fatal("pointer activation lost the selected change, list focus or back action")
 	}
-	for l.Cursor < branch {
-		keys("j")
+	// Clicking a branch filters its caller; Esc restores the previous filter.
+	keys("g")
+	frame = render()
+	row = navigatorRow(frame, "╮ tester")
+	keys(fmt.Sprintf("\x1b[<0;%d;%dM", r.X+4, row+1))
+	render()
+	_, title := d.Title()
+	if !strings.Contains(title, "@tester") || !d.Back() {
+		t.Fatal("clicking a branch did not filter its caller")
 	}
-	keys("\r")
-	if d.view.Caller == "" {
-		t.Fatal("Enter on a branch did not filter its caller")
-	}
-	d.escapeKey()
-	if d.view.Caller != "" || !d.navigation.Focused {
+	escape()
+	render()
+	_, title = d.Title()
+	if strings.Contains(title, "@tester") || !focused() {
 		t.Fatal("Esc did not restore the caller filter")
 	}
 	// The file tree previews files the same way.
 	keys("\t")
-	n := &d.navigation
-	selected := d.view.Selected
-	for range len(n.Entries) {
+	render()
+	selected := selectedPath()
+	for range 40 {
 		keys("j")
-		if d.view.Selected != selected {
+		render()
+		if selectedPath() != selected {
 			break
 		}
 	}
-	if d.view.Selected == selected || n.Entries[n.Cursor].File != d.view.Selected {
+	if selectedPath() == selected || d.EditorPath() != selectedPath() || !focused() {
 		t.Fatal("moving through the tree did not show the file under the cursor")
 	}
 }
@@ -1400,12 +1432,12 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 			}
 			paint()
 			found := false
-			for _, attempt := range u.shell.diff.data.attempts {
+			for _, attempt := range u.shell.saved.data.attempts {
 				if attempt.correlation != item+"\x000" {
 					continue
 				}
 				for _, chunk := range attempt.chunks {
-					if u.shell.output.pages[u.shell.output.Page].Code == chunk.Review.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(u.shell.diff.workspace, chunk.Review.BeforePath), pathdisplay.ForWorkspace(u.shell.diff.workspace, chunk.Review.AfterPath)) {
+					if u.shell.output.pages[u.shell.output.Page].Code == chunk.Review.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(u.shell.diff.Workspace(), chunk.Review.BeforePath), pathdisplay.ForWorkspace(u.shell.diff.Workspace(), chunk.Review.AfterPath)) {
 						found = true
 					}
 				}

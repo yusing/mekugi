@@ -34,7 +34,7 @@ func newAppServerSessionTestUI(t *testing.T, workspace string) *appServerUI {
 	u.segments = testReports()
 	t.Cleanup(func() { awaitCommandSegments(t, u) })
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.session.start("main", workspace)
 	return u
 }
@@ -148,7 +148,7 @@ func TestAppServerSessionDocksSharedPreviewsByCaller(t *testing.T) {
 		t.Fatal(err)
 	}
 	u := newAppServerSessionTestUI(t, workspace)
-	u.shell.diff.scope = previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}}
+	u.shell.saved.scope = previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}}
 	// The router captures the source before host execution. App-server may
 	// deliver its notifications only after the workspace has already changed.
 	preview := projectStockPatchPreview(t.Context(), workspace, previewmodel.Preview{
@@ -178,7 +178,7 @@ func TestAppServerSessionDocksSharedPreviewsByCaller(t *testing.T) {
 	}
 	for _, status := range []string{"failed", "declined"} {
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "patch", "type": "fileChange", "status": status, "changes": []any{change}}})
-		title := ansi.Strip(u.shell.liveDock.Views["patch"].Title(workspace, u.shell.diff.theme, 120))
+		title := ansi.Strip(u.shell.liveDock.Views["patch"].Title(workspace, u.shell.diff.Theme(), 120))
 		if strings.Contains(title, "✓") || !strings.Contains(title, "· preview") {
 			t.Fatalf("%s patch presented as applied: %s", status, title)
 		}

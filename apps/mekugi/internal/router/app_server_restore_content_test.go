@@ -77,7 +77,7 @@ func TestAppServerRestoreRosterAndActivityFromObservationalHistory(t *testing.T)
 	u.ctx = t.Context()
 	u.agents = newActivityAdapter()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.session.start("main", workspace)
 	u.resumeThread = "main"
 	root := appServerThreadInfo{ID: "main", Cwd: workspace, Turns: []appServerHistoryTurn{{ID: "root-turn", Status: "completed", Items: []appServerItem{
@@ -142,7 +142,7 @@ func TestAppServerRestoreWrongChildIdentityContinues(t *testing.T) {
 	u.ctx = t.Context()
 	u.agents = newActivityAdapter()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.session.start("main", t.TempDir())
 	u.resumeThread = "main"
 	if err := u.restorePaneContent(appServerThreadInfo{ID: "main", Cwd: u.session.cwd}); err != nil {
@@ -165,7 +165,7 @@ func TestAppServerRestoreChildReadErrorContinues(t *testing.T) {
 	u.ctx = t.Context()
 	u.agents = newActivityAdapter()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.session.start("main", t.TempDir())
 	u.resumeThread = "main"
 	if err := u.restorePaneContent(appServerThreadInfo{ID: "main", Cwd: u.session.cwd}); err != nil {
@@ -272,7 +272,7 @@ func TestAppServerRestoreWaitsForDurableDiffBeforeInput(t *testing.T) {
 			auto := newLivePreview(t.Context())
 			defer auto.Close()
 			auto.Enable()
-			u.shell.diff.store = store
+			u.shell.saved.store = store
 			u.shell.review = testReview(auto)
 			sub := testReview(auto).Subscribe()
 			if err := u.restorePaneContent(appServerThreadInfo{ID: "main", Cwd: workspace}); err != nil {
@@ -282,7 +282,7 @@ func TestAppServerRestoreWaitsForDurableDiffBeforeInput(t *testing.T) {
 			restoreContentReply(t, u, 1, map[string]any{"data": []any{}})
 			u.Text = "next turn"
 			appServerTestKeys(t, u, "\r")
-			if u.restoring == nil || len(u.shell.diff.data.files()) != 0 || len(restoreContentRequests(t, w)) != 2 {
+			if u.restoring == nil || len(u.shell.saved.data.files()) != 0 || len(restoreContentRequests(t, w)) != 2 {
 				t.Fatal("input unlocked before the Diff controller consumed the restored scope")
 			}
 			if viaPreviews {
@@ -300,7 +300,7 @@ func TestAppServerRestoreWaitsForDurableDiffBeforeInput(t *testing.T) {
 					}
 				}
 			}
-			if u.restoring != nil || len(u.shell.diff.data.files()) != 1 || u.shell.diffFailure != "" {
+			if u.restoring != nil || len(u.shell.saved.data.files()) != 1 || u.shell.diffFailure != "" {
 				t.Fatalf("durable Diff not hydrated: %s", u.shell.diffFailure)
 			}
 			appServerTestKeys(t, u, "\r")

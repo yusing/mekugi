@@ -1,6 +1,7 @@
 package terminalsession
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/libraries/terminalui"
+	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
 )
 
 // Frame retains the last successfully painted cells and their source metadata.
@@ -71,6 +73,22 @@ func Screen(width, height int, source []string, x, y int) ([]string, string) {
 
 // DiffScreen allocates its emulator only when the saved Diff pane is painted.
 type DiffScreen struct{ *vt.Emulator }
+
+// Paint keeps the saved pane's ANSI surface separate from final frame delivery.
+func (s *DiffScreen) Paint(ctx context.Context, pane *changeview.Pane, width, height int) ([]string, error) {
+	width, height = max(1, width), max(1, height)
+	if s.Emulator == nil {
+		s.Emulator = vt.NewEmulator(width, height)
+		pane.Invalidate()
+	} else if s.Width() != width || s.Height() != height {
+		s.Resize(width, height)
+		pane.Invalidate()
+	}
+	if err := pane.Paint(ctx, s, width, height); err != nil {
+		return nil, err
+	}
+	return strings.Split(s.Render(), "\n"), nil
+}
 
 func (s *DiffScreen) Close() error {
 	if s.Emulator == nil {

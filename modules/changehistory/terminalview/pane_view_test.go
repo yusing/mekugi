@@ -1,4 +1,4 @@
-package router
+package terminalview
 
 import (
 	"path/filepath"
@@ -11,7 +11,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
-	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
 )
 
 func TestLiveDiffRenderAllFiles(t *testing.T) {
@@ -25,7 +24,7 @@ func TestLiveDiffRenderAllFiles(t *testing.T) {
 			Review: diffmodel.ReviewFile{AfterPath: path, Diff: diff},
 		}}})
 	}
-	render, err := new(changeview.Renderer).Render(t.Context(), diffrender.TerminalTheme, files, workspace, 90)
+	render, err := new(Renderer).Render(t.Context(), diffrender.TerminalTheme, files, workspace, 90)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,11 +44,11 @@ func TestLiveDiffRenderAllFiles(t *testing.T) {
 }
 
 func TestLiveDiffScrollAcrossFiles(t *testing.T) {
-	view := changeview.View{
-		Files:  []presentation.File{{Path: "first"}, {Path: "second"}},
+	view := View{
+		View:   presentation.View{Files: []presentation.File{{Path: "first"}, {Path: "second"}}},
 		Scroll: make(map[string]int),
 	}
-	render := changeview.Render{Lines: make([]string, 20), Starts: []int{0, 10}}
+	render := Render{Layout: diffrender.Layout{Lines: make([]string, 20)}, Starts: []int{0, 10}}
 	for _, tc := range []struct {
 		offset, file, local int
 	}{
@@ -64,6 +63,3 @@ func TestLiveDiffScrollAcrossFiles(t *testing.T) {
 		t.Fatal("scrolling another file lost the first file's saved position")
 	}
 }
-
-// Exercise the native renderer through the real terminal consumer, with
-// two populated files in a single capture. Both must appear in the same frame.

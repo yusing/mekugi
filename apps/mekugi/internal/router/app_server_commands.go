@@ -223,7 +223,8 @@ func (u *appServerUI) resetDiffScope() {
 	if u.shell == nil || u.shell.review == nil {
 		return
 	}
-	u.shell.diff.resetScope()
+	u.shell.saved.reset()
+	u.shell.diff.Reset()
 	u.shell.liveDock, u.shell.diffFailure, u.shell.diffUnseen = previewview.PreviewPane{}, "", false
 	u.shell.review.ResetScope()
 }

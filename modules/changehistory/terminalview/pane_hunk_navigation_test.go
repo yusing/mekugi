@@ -1,4 +1,4 @@
-package router
+package terminalview
 
 import (
 	"testing"
@@ -9,8 +9,7 @@ import (
 )
 
 func TestLiveDiffHunkNavigationAndFileMemory(t *testing.T) {
-	c := newLiveDiffTerminalController(nil, "", nil)
-	defer c.close()
+	c := NewPane("", diffrender.DarkTheme)
 	c.files = []presentation.File{{Path: "a.go", Chunks: []presentation.Chunk{{Key: "a", Review: diffmodel.ReviewFile{BeforePath: "a.go", AfterPath: "a.go", Diff: "@@ -1 +1 @@\n-old\n+new\n@@ -20 +20 @@\n-before\n+after\n"}}}}, {Path: "b.go", Chunks: []presentation.Chunk{{Key: "b", Review: diffmodel.RenderReviewFile("", "b.go", "", "second\n")}}}}
 	c.view.Files = c.files
 	var err error
@@ -23,24 +22,24 @@ func TestLiveDiffHunkNavigationAndFileMemory(t *testing.T) {
 	}
 	c.navigation.Rebuild(c.files, "")
 	c.lines, c.rows = c.rendering.Lines, 8
-	c.handleKey(']')
+	c.Key(string(']'))
 	first := c.view.Scroll[c.files[0].Key()]
 	if first != c.rendering.Hunks[0] {
 		t.Fatalf("next hunk at %d, want %d", first, c.rendering.Hunks[0])
 	}
 	c.offset = first
-	c.handleKey(']')
+	c.Key(string(']'))
 	second := c.view.Scroll[c.files[0].Key()]
 	if second != c.rendering.Hunks[1] {
 		t.Fatalf("second hunk at %d", second)
 	}
-	c.handleKey('n')
-	c.handleKey('p')
+	c.Key(string('n'))
+	c.Key(string('p'))
 	if c.view.Selected != 0 || c.view.Scroll[c.files[0].Key()] != second {
 		t.Fatal("file switching lost scroll memory")
 	}
 	c.offset = second
-	c.handleKey('[')
+	c.Key(string('['))
 	if c.view.Scroll[c.files[0].Key()] != first {
 		t.Fatal("previous hunk missed anchor")
 	}

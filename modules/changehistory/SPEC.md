@@ -12,7 +12,8 @@ retained review and mutation semantics, frozen read selections, semantic retirem
 and saved-review presentation. The application binds selected caller/workspace
 authority and decoded host completion to capture, then publishes immutable evidence
 before its change membership. Host execution and provisional live previews remain
-separate. The terminal view paints saved-review values over the shared diff renderer.
+separate. The terminal view owns the saved-Diff pane over the shared diff renderer;
+application evidence loading remains independent of terminal interaction.
 
 ## Behavior
 
@@ -202,12 +203,13 @@ composed outcome; caller totals describe known captured edit activity. Captures
 outside their owning workspace contribute neither project total. No selected
 project evidence remains distinct from a known zero net result.
 
-Shared file status and source attribution remain available to command output,
-file and change navigation, rendered rows and source-copy consumers. Terminal
-viewport positions, focus, wrapping and scroll anchors belong to
-the terminal view. The [terminal session](../../apps/mekugi/internal/terminalsession/SPEC.md) owns pane composition
-and selection; the [diff renderer](../../libraries/diffrender/SPEC.md) owns source
-painting and terminal geometry.
+The terminal view owns Files/Changes navigation, focus, filters, viewport anchors
+and painting. It supplies source-selection snapshots with the same file identity,
+attribution and pinned headings as the displayed content. The application supplies
+retained evidence and performs selected editor actions; painting never reads the
+workspace or retained store. [Terminal-session](../../apps/mekugi/internal/terminalsession/SPEC.md)
+input, composition and selection consume these values over the shared
+[diff renderer](../../libraries/diffrender/SPEC.md).
 
 ### Terminal review
 

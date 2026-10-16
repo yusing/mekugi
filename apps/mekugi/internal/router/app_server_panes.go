@@ -8,7 +8,7 @@ import (
 )
 
 func (u *terminalUI) paneState() terminalsession.Preferences {
-	state := terminalsession.Preferences{Focus: u.Focus, Split: u.Split, DiffOpen: u.DiffOpen, NavigatorColumns: u.diff.navigation.Columns}
+	state := terminalsession.Preferences{Focus: u.Focus, Split: u.Split, DiffOpen: u.DiffOpen, NavigatorColumns: u.diff.NavigatorColumns()}
 	if u.main != nil {
 		state.InterruptLocked = u.main.interruptLocked
 	}
@@ -59,7 +59,7 @@ func (p *nativePreferences) open(u *terminalUI, workspace, thread string, resume
 	layout := state.layout
 	u.Panes.Restore(layout)
 	u.main.interruptLocked = layout.InterruptLocked
-	u.diff.navigation.Columns = layout.NavigatorColumns
+	u.diff.SetNavigatorColumns(layout.NavigatorColumns)
 	state.Presentation, err = p.encoding.Encode(u.paneState())
 	if err != nil {
 		return err

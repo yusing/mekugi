@@ -21,11 +21,11 @@ func (u *terminalUI) activityEditPages(view *activityAdapter, seq uint64, path s
 			continue
 		}
 		var order []string
-		if u.diff != nil && u.diff.data != nil {
-			order = u.diff.data.order
+		if u.diff != nil && u.saved.data != nil {
+			order = u.saved.data.order
 		}
 		for _, key := range order {
-			attempt := u.diff.data.attempts[key]
+			attempt := u.saved.data.attempts[key]
 			call, _, _ := strings.Cut(attempt.correlation, "\x00")
 			match := attempt.thread == entry.Source.native.thread && call == entry.Source.native.item
 			if receipt := attempt.receipt; receipt != nil {
@@ -37,7 +37,7 @@ func (u *terminalUI) activityEditPages(view *activityAdapter, seq uint64, path s
 			var pages []activityui.Block
 			for _, chunk := range attempt.chunks {
 				target := cmp.Or(chunk.Review.AfterPath, chunk.Review.BeforePath)
-				workspace := cmp.Or(chunk.Workspace, u.diff.workspace)
+				workspace := cmp.Or(chunk.Workspace, u.diff.Workspace())
 				display := pathdisplay.ForWorkspace(workspace, target)
 				if chunk.Review.Action().Title() == "Move" && path == pathdisplay.Move(workspace, chunk.Review.BeforePath, chunk.Review.AfterPath) {
 					path = display

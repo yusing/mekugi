@@ -45,12 +45,13 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 	u := newAppServerSessionTestUI(t, workspace)
 	u.agents.Agents = []activityPaneAgent{{Name: "/root"}, {Name: "/root/worker"}}
 	u.shell.Focus = 3
-	u.shell.diff.store = store
+	u.shell.saved.store = store
 	scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}}
 	refresh := func() {
 		t.Helper()
-		if _, err := u.shell.diff.applyEvent(t.Context(), reviewEvent{Kind: "scope", Scope: &scope, Resync: true}); err != nil {
-			t.Fatal(err)
+		u.shell.applyDiff(t.Context(), reviewEvent{Kind: "scope", Scope: &scope, Resync: true})
+		if u.shell.diffFailure != "" {
+			t.Fatal(u.shell.diffFailure)
 		}
 	}
 	refresh()
@@ -121,15 +122,18 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 
 	// A new store reader and controller projection can restore the outcome
 	// without any live parent, command execution, or workspace source files.
-	u.shell.diff.store = testReplayStore(mekugiReplayStore{directory: store.directory})
-	u.shell.diff.resetScope()
+	u.shell.saved.store = testReplayStore(mekugiReplayStore{directory: store.directory})
+	u.shell.saved.reset()
+	u.shell.diff.Reset()
 	refresh()
-	u.shell.diff.view.FilterCaller("/root/worker")
+	u.shell.diff.Key("a")
+	u.shell.diff.Key("a")
 	refresh()
 	if frame := paint(160); !strings.Contains(frame, "+3 -1") {
 		t.Fatalf("replay or caller filter changed overall outcome:\n%s", frame)
 	}
-	u.shell.diff.resetScope()
+	u.shell.saved.reset()
+	u.shell.diff.Reset()
 	scope.Workspaces[workspace] = map[string]bool{"new-thread": true}
 	refresh()
 	if frame := paint(160); strings.Contains(frame, "+3 -1") || strings.Contains(frame, "+4 -1") || strings.Contains(frame, "+3 -4") {

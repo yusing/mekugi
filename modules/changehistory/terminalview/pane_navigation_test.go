@@ -1,4 +1,4 @@
-package router
+package terminalview
 
 import (
 	"strings"
@@ -9,7 +9,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
-	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
 )
 
 func navigationFile(path string) presentation.File {
@@ -39,7 +38,7 @@ func TestLiveDiffNavigationTreeAndFlatOrdering(t *testing.T) {
 		navigationFile("src/pkg/only/a.go"),
 	}
 
-	var nav changeview.Navigation
+	var nav Navigation
 	nav.Rebuild(files, "")
 	if len(nav.Entries) != 6 {
 		t.Fatalf("tree should contain two folders and four files, got %#v", nav.Entries)
@@ -78,7 +77,7 @@ func TestLiveDiffNavigationFilterAndStableRows(t *testing.T) {
 		navigationFile("pkg/b.go"),
 		navigationFile("pkg/c.go"),
 	}
-	c := &liveDiffTerminalController{files: files, workspace: "/workspace", rows: 6}
+	c := &Pane{files: files, workspace: "/workspace", rows: 6}
 	c.navigation.Rebuild(files, c.workspace)
 	c.navigation.Cursor = navigationEntryIndex(c.navigation.Entries, "d:pkg")
 	c.navigation.Top = navigationEntryIndex(c.navigation.Entries, "d:pkg")
@@ -122,9 +121,9 @@ func TestLiveDiffNavigationViewportAndFileSelection(t *testing.T) {
 	for i := range files {
 		files[i] = navigationFile(string(rune('a'+i)) + ".go")
 	}
-	c := &liveDiffTerminalController{
+	c := &Pane{
 		files: files, workspace: "/workspace", rows: 6,
-		view: changeview.View{Files: files, Selected: 0},
+		view: View{View: presentation.View{Files: files, Selected: 0}},
 	}
 	c.navigation.Flat = true
 	c.navigation.Rebuild(files, c.workspace)
@@ -152,19 +151,19 @@ func TestLiveDiffNavigationRenderIsSafeAndWidthBounded(t *testing.T) {
 	for _, tc := range []struct{ terminal, want int }{
 		{99, 0}, {100, 25}, {120, 30}, {144, 34}, {200, 34},
 	} {
-		var nav changeview.Navigation
+		var nav Navigation
 		if got := nav.Width(tc.terminal); got != tc.want {
 			t.Errorf("navigator width at terminal width %d: got %d, want %d", tc.terminal, got, tc.want)
 		}
 	}
-	hidden := changeview.Navigation{Hidden: true}
+	hidden := Navigation{Hidden: true}
 	if got := hidden.Width(160); got != 0 {
 		t.Fatalf("explicitly hidden navigator still occupies %d columns", got)
 	}
 
 	path := "docs/界面/\x1b]0;not-a-terminal-title\x07guide.go"
 	files := []presentation.File{navigationFile(path)}
-	var nav changeview.Navigation
+	var nav Navigation
 	nav.Flat = true
 	nav.Rebuild(files, "")
 	rendered := nav.Render(files, []diffmodel.Counts{{Added: -1, Removed: -1}}, 0, 32, 6, diffrender.DarkTheme)
@@ -187,7 +186,7 @@ func TestLiveDiffNavigationRenderIsSafeAndWidthBounded(t *testing.T) {
 
 func TestLiveDiffNavigationExternalAbsolutePaths(t *testing.T) {
 	files := []presentation.File{navigationFile("/a.go"), navigationFile("/tmp/a.go"), navigationFile("/var/b.go")}
-	c := &liveDiffTerminalController{files: files, workspace: "/workspace", rows: 12, view: changeview.View{Files: files, Selected: 2}}
+	c := &Pane{files: files, workspace: "/workspace", rows: 12, view: View{View: presentation.View{Files: files, Selected: 2}}}
 	n := &c.navigation
 	n.Rebuild(files, c.workspace)
 	if n.Entries[0].File != -1 || n.Entries[0].Folder != "/" || n.Entries[0].Label != "/" {
@@ -206,7 +205,7 @@ func TestLiveDiffNavigationExternalAbsolutePaths(t *testing.T) {
 
 func TestLiveDiffNavigationFilteredRevealPreservesTree(t *testing.T) {
 	files := []presentation.File{navigationFile("pkg/a.go"), navigationFile("pkg/b.go"), navigationFile("z.go")}
-	c := &liveDiffTerminalController{files: files, rows: 12, view: changeview.View{Files: files, Selected: 2}}
+	c := &Pane{files: files, rows: 12, view: View{View: presentation.View{Files: files, Selected: 2}}}
 	n := &c.navigation
 	n.Collapsed = map[string]bool{"pkg": true}
 	n.Rebuild(files, "")
@@ -215,7 +214,7 @@ func TestLiveDiffNavigationFilteredRevealPreservesTree(t *testing.T) {
 		c.editFilter(key)
 	}
 	c.openNavEntry()
-	c.revealFile() // renderFrame reveals a newly selected file after Enter.
+	c.revealFile() // Paint reveals a newly selected file after Enter.
 	if !n.Collapsed["pkg"] {
 		t.Fatal("filtered selection expanded saved tree")
 	}
@@ -230,7 +229,7 @@ func TestLiveDiffNavigationFilteredRevealPreservesTree(t *testing.T) {
 
 func TestLiveDiffNavigationScrollbarPreservesCounts(t *testing.T) {
 	files := []presentation.File{navigationFile("a.go"), navigationFile("b.go"), navigationFile("c.go")}
-	var nav changeview.Navigation
+	var nav Navigation
 	nav.Rebuild(files, "")
 	rows := nav.Render(files, []diffmodel.Counts{{Added: 123, Removed: 456}}, 0, 28, 3, diffrender.DarkTheme)
 	row := ansi.Strip(rows[2])
@@ -250,7 +249,7 @@ func TestLiveDiffNavigationColoredInlineStatusAndStats(t *testing.T) {
 	files[1].Highlighted = true
 	files[2].Chunks[0].Review.AfterPath = ""
 	files[3].Chunks[0].Review = diffmodel.RenderReviewFile("was.go", "renamed.go", "a\n", "b\n")
-	var nav changeview.Navigation
+	var nav Navigation
 	nav.Flat = true
 	nav.Rebuild(files, "")
 	counts := []diffmodel.Counts{{Added: 5, Removed: 2}, {Added: 3, Removed: 0}, {Added: 0, Removed: 7}, {Added: 1, Removed: 1}}
@@ -274,7 +273,7 @@ func TestLiveDiffNavigationColoredInlineStatusAndStats(t *testing.T) {
 
 func TestLiveDiffNavigationDockAndPickerKeys(t *testing.T) {
 	files := []presentation.File{navigationFile("a.go")}
-	c := &liveDiffTerminalController{files: files, lastWidth: 120, view: changeview.View{Files: files}}
+	c := &Pane{files: files, lastWidth: 120, view: View{View: presentation.View{Files: files}}}
 	c.navigation.Rebuild(files, "")
 	c.navigationKey('/')
 	c.editFilter('\r')
@@ -309,7 +308,7 @@ func TestLiveDiffNavigationDockAndPickerKeys(t *testing.T) {
 
 func TestLiveDiffNavigationFolderArrow(t *testing.T) {
 	files := []presentation.File{navigationFile("pkg/a.go")}
-	var nav changeview.Navigation
+	var nav Navigation
 	nav.Rebuild(files, "")
 	row := nav.Render(files, nil, 0, 25, 4, diffrender.DarkTheme)[2]
 	if !strings.Contains(ansi.Strip(row), "▼ pkg (1)") || !strings.Contains(row, "\x1b[38;2;") {
@@ -324,7 +323,7 @@ func TestLiveDiffNavigationFolderArrow(t *testing.T) {
 
 func TestLiveDiffNavigationSelectionUsesRowFill(t *testing.T) {
 	files := []presentation.File{navigationFile("a.go"), navigationFile("b.go")}
-	var nav changeview.Navigation
+	var nav Navigation
 	nav.Flat = true
 	nav.Rebuild(files, "")
 	nav.Focused = true
@@ -356,7 +355,7 @@ func TestLiveDiffNavigationSelectionUsesRowFill(t *testing.T) {
 // A compacted folder chain that splits keeps its new ancestor in view, and
 // rows are never scrolled off while space remains below.
 func TestLiveDiffNavigationChainSplitKeepsAncestor(t *testing.T) {
-	var nav changeview.Navigation
+	var nav Navigation
 	files := []presentation.File{navigationFile("/w/internal/broker/a.go"), navigationFile("/w/internal/broker/b.go")}
 	nav.Rebuild(files, "/w")
 	if got := nav.Entries[0].Label; got != "internal/broker" {
@@ -375,34 +374,29 @@ func TestLiveDiffNavigationChainSplitKeepsAncestor(t *testing.T) {
 
 func TestLiveDiffIndependentFocusArrows(t *testing.T) {
 	for _, width := range []int{70, 120} {
-		c := newLiveDiffTerminalController(nil, "", nil)
+		c := NewPane("", diffrender.DarkTheme)
 		c.lastWidth = width
 		c.files = []presentation.File{navigationFile("a.go"), navigationFile("b.go")}
 		c.view.Merge(c.files)
 		c.navigation.Flat = true
 		c.navigation.Rebuild(c.files, "")
 		c.navigationKey('s')
-		for _, key := range []byte("\x1b[B") {
-			c.handleKey(key)
-		}
+		c.Key("\x1b[B")
 		if !c.navigation.Focused || c.navigation.Cursor != 1 || c.view.Selected != 1 || c.offset != 0 {
 			t.Fatalf("width %d: arrows did not navigate files independently: %+v", width, c.navigation)
 		}
-		c.handleKey('\r')
+		c.Key(string('\r'))
 		if c.navigation.Focused {
 			t.Fatal("Enter did not focus diff")
 		}
-		for _, key := range []byte("\x1b[A") {
-			c.handleKey(key)
-		}
+		c.Key("\x1b[A")
 		if c.navigation.Cursor != 1 {
 			t.Fatal("diff arrow moved file cursor")
 		}
-		c.escapeKey()
+		c.Key("\x1b")
 		if !c.navigation.Focused {
 			t.Fatal("Esc did not return to files")
 		}
-		c.close()
 	}
 }
 
@@ -411,7 +405,7 @@ func TestLiveDiffUpdatesPreserveManualChoice(t *testing.T) {
 		liveDiffCapture("one", "a.go", 1, "", strings.Repeat("first\n", 40), presentation.Origin{}),
 		liveDiffCapture("two", "b.go", 2, "", "second\n", presentation.Origin{}),
 	})
-	c.handleKey('j')
+	c.Key(string('j'))
 	c.frame(t)
 	selected, offset := c.view.Selected, c.offset
 	files := append([]presentation.File(nil), c.view.Files...)
@@ -419,7 +413,7 @@ func TestLiveDiffUpdatesPreserveManualChoice(t *testing.T) {
 	c.view.Merge(files)
 	c.view.RefreshVisible()
 	c.frame(t)
-	c.handleKey('r')
+	c.Key(string('r'))
 	c.frame(t)
 	if c.view.Selected != selected || c.offset != offset {
 		t.Fatalf("incoming edit or removed shortcut moved choice: file=%d offset=%d", c.view.Selected, c.offset)

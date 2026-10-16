@@ -61,7 +61,7 @@ func TestNativeUIDiffStandaloneEscapeBeforeNextKey(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		u, wire := newAppServerTestUI()
 		u.ensureShell()
-		defer u.shell.diff.close()
+
 		u.shell.Focus = 1
 		for _, key := range []byte("?\x1b") {
 			if err := u.shell.key(key); err != nil {
@@ -72,14 +72,14 @@ func TestNativeUIDiffStandaloneEscapeBeforeNextKey(t *testing.T) {
 		if err := u.drainKeys(make(chan byte)); err != nil {
 			t.Fatal(err)
 		}
-		if u.shell.diff.help {
+		if strings.Contains(strings.Join(paintSavedDiff(t, u.shell.diff, 80, 24), "\n"), "Diff navigation") {
 			t.Fatal("settled Escape did not close Diff help")
 		}
 		if err := u.shell.key('?'); err != nil {
 			t.Fatal(err)
 		}
-		if !u.shell.diff.help || wire.Len() != 0 {
-			t.Fatalf("following key did not reopen Diff help: help=%v host=%q", u.shell.diff.help, wire.String())
+		if !strings.Contains(strings.Join(paintSavedDiff(t, u.shell.diff, 80, 24), "\n"), "Diff navigation") || wire.Len() != 0 {
+			t.Fatalf("following key did not reopen Diff help: help=%v host=%q", strings.Contains(strings.Join(paintSavedDiff(t, u.shell.diff, 80, 24), "\n"), "Diff navigation"), wire.String())
 		}
 	})
 }

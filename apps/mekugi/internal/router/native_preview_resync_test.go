@@ -18,7 +18,7 @@ func TestNativePreviewMailboxKeepsNewestFile(t *testing.T) {
 	}
 	attach := func() *appServerUI {
 		u := nativeBatchFixture(t)
-		u.shell.diff.store = store
+		u.shell.saved.store = store
 		return u
 	}
 	broker := newLivePreview(t.Context())

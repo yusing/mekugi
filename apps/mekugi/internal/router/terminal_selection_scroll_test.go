@@ -21,7 +21,7 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 		t.Run(surface, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.ensureShell()
-			t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+			t.Cleanup(func() { u.shell.diffScreen.Close() })
 			u.shell.DiffOpen = false
 			var lines []string
 			for i := range 60 {
@@ -166,26 +166,30 @@ func TestOutputSelectionScrollBeyondViewport(t *testing.T) {
 
 func TestDiffSelectionScrollFromEOFAndRestart(t *testing.T) {
 	const width, height = 130, 12
-	c := liveDiffChangesController(t, width, height, []presentation.Chunk{
+	c := liveDiffChangesPane(t, width, height, []presentation.Chunk{
 		liveDiffCapture("a", "a.go", 1, "", liveDiffLinesFile("a.go", 40), presentation.Origin{Change: "amber1", Caller: "/root", Source: "apply_patch"}),
 	})
-	c.view.Open(0)
-	c.frame(t)
-	c.view.ScrollTo(c.rendering, len(c.lines)-1)
+	c.Key("g")
+	for range len(c.Selection(width-2, height-1).Document) {
+		c.Key("j")
+	}
 	screen := vt.NewEmulator(width, height)
 	defer screen.Close()
-	c.stdout, c.dirty = screen, true
-	c.frame(t)
+	c.Invalidate()
+	if err := c.Paint(t.Context(), screen, width, height); err != nil {
+		t.Fatal(err)
+	}
+	source := c.Selection(width-2, height-1)
 	u := selectionTestUI(strings.Split(screen.Render(), "\n")...)
 	u.width, u.frame.Width = width, width
 	u.layout = terminalsession.Layout{Diff: terminalsession.Rect{0, 0, width, height}}
 	u.diff = c
-	u.selectionMouse(0, width-2, c.sourceY+1, false)
+	u.selectionMouse(0, width-2, source.Y+1, false)
 	s := u.selection
-	if s == nil || s.Top() != c.offset {
+	if s == nil || s.Top() != source.Offset {
 		t.Fatal("EOF offset was not preserved")
 	}
-	u.selectionMouse(64, width-2, c.sourceY+1, false)
+	u.selectionMouse(64, width-2, source.Y+1, false)
 	s.ScrollKey("\x1b[H")
 	first := -1
 	for row := s.Rect.Y; row < s.Rect.Y+s.Rect.H; row++ {
@@ -197,8 +201,8 @@ func TestDiffSelectionScrollFromEOFAndRestart(t *testing.T) {
 	if first < 0 {
 		t.Fatal("first diff line not visible after Home")
 	}
-	u.selectionMouse(32, c.sourceX, first, false)
-	u.selectionMouse(0, c.sourceX, first, true)
+	u.selectionMouse(32, source.X, first, false)
+	u.selectionMouse(0, source.X, first, true)
 	var want []string
 	for i := range 40 {
 		want = append(want, fmt.Sprintf("+a.go_line_%02d", i))
@@ -209,7 +213,7 @@ func TestDiffSelectionScrollFromEOFAndRestart(t *testing.T) {
 	if description, _ := s.mentionDescription(); description != "diff hunk @amber1:1-40" {
 		t.Fatalf("EOF reference = %q", description)
 	}
-	u.selectionMouse(0, c.sourceX, first, false)
+	u.selectionMouse(0, source.X, first, false)
 	u.selectionMouse(32, width-2, first+1, false)
 	u.selectionMouse(0, width-2, first+1, true)
 	if got := u.selection.Text(); got != strings.Join(want[:2], "\n") {
@@ -220,7 +224,7 @@ func TestDiffSelectionScrollFromEOFAndRestart(t *testing.T) {
 func TestSelectionScrolledClickUsesDocumentTarget(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "reader"}})
 	for i := range 40 {
 		text := fmt.Sprintf("prompt %02d", i)

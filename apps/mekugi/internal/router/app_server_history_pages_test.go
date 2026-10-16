@@ -18,7 +18,7 @@ func newPagedHistoryUI(t *testing.T) (*appServerUI, *appServerTestInput) {
 	u.ctx = t.Context()
 	u.agents = newActivityAdapter()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.session.start("main", t.TempDir())
 	u.resumeThread = "main"
 	if err := u.restorePaneContent(appServerThreadInfo{ID: "main", Cwd: u.session.cwd}); err != nil {
@@ -367,7 +367,7 @@ func TestAppServerAnchoredHistoryArchivedChild(t *testing.T) {
 	u.ctx = t.Context()
 	u.agents = newActivityAdapter()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.session.start("main", t.TempDir())
 	u.resumeThread = "main"
 	if err := u.restorePaneContent(appServerThreadInfo{ID: "main", Cwd: u.session.cwd}); err != nil {

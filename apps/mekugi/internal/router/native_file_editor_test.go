@@ -15,22 +15,35 @@ func TestNativeFileEditorSelectionAndFilter(t *testing.T) {
 	u.ensureShell()
 	defer u.shell.diffScreen.Close()
 	c := u.shell.diff
-	c.files = []presentation.File{navigationFile("src/selected.go"), navigationFile("other.go")}
-	c.navigation.Rebuild(c.files, "")
-	c.navigation.Focused = true
+	c.SetWorkspace("/w")
+	c.Update(presentation.GroupCaptures([]presentation.Chunk{
+		liveDiffCapture("selected", "src/selected.go", 1, "old\n", "new\n", presentation.Origin{}),
+		liveDiffCapture("other", "other.go", 2, "old\n", "new\n", presentation.Origin{}),
+	}), "")
 	u.shell.Focus = 1
+	for _, key := range []byte("sg") {
+		if err := u.shell.key(key); err != nil {
+			t.Fatal(err)
+		}
+	}
 	// The folder cursor must not open the previously selected diff file.
 	if err := u.shell.key('e'); err != nil {
 		t.Fatal(err)
 	}
-	c.navigation.Cursor = navigationEntryIndex(c.navigation.Entries, "f:src/selected.go")
+	if err := u.shell.key('j'); err != nil {
+		t.Fatal(err)
+	}
 	var request *openFileEditor
-	if err := u.shell.key('e'); !errors.As(err, &request) || request.path != "src/selected.go" {
+	if err := u.shell.key('e'); !errors.As(err, &request) || request.path != "/w/src/selected.go" {
 		t.Fatalf("selected file request: %v", err)
 	}
-	c.navigation.Filtering = true
-	if err := u.shell.key('e'); err != nil || c.navigation.Query != "e" {
-		t.Fatalf("filter input: %q %v", c.navigation.Query, err)
+	for _, key := range []byte("/e") {
+		if err := u.shell.key(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if frame := strings.Join(paintSavedDiff(t, c, 120, 20), "\n"); !strings.Contains(frame, "/ e") {
+		t.Fatalf("filter input missing:\n%s", frame)
 	}
 	u.shell.Focus = 0
 	if err := u.shell.key('e'); err != nil || u.Text != "e" {

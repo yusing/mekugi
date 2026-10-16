@@ -211,28 +211,3 @@ func colorComponents(reply, code string) (rgb [3]float64, ok bool) {
 	}
 	return rgb, true
 }
-
-// Consume OSC replies separately from navigation. The payload is bounded even
-// for malformed/unterminated replies, and an ST terminator may span input reads.
-type OSC struct {
-	Active  bool
-	Escaped bool
-	Reply   string
-}
-
-func (osc *OSC) Consume(key byte) (reply string, complete bool) {
-	if !osc.Active {
-		osc.Active, osc.Reply = true, "\x1b]"
-		return "", false
-	}
-	if key == '\a' || osc.Escaped && key == '\\' {
-		reply = osc.Reply + string(key)
-		*osc = OSC{}
-		return reply, true
-	}
-	osc.Escaped = key == 27
-	if len(osc.Reply) < 128 {
-		osc.Reply += string(key)
-	}
-	return "", false
-}

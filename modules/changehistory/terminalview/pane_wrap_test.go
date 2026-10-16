@@ -1,4 +1,4 @@
-package router
+package terminalview
 
 import (
 	"strings"
@@ -9,7 +9,6 @@ import (
 	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
-	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
 )
 
 func TestLiveDiffWrapAndResize(t *testing.T) {
@@ -18,7 +17,7 @@ func TestLiveDiffWrapAndResize(t *testing.T) {
 		"@@ -1,2 +1,2 @@\n "+source+"\n-old\n+new\n")
 	chunk.Status = ""
 	files := []presentation.File{{Path: "file.txt", Chunks: []presentation.Chunk{chunk}}}
-	wrapped, err := new(changeview.Renderer).Render(t.Context(), diffrender.DarkTheme, files, "", 22)
+	wrapped, err := new(Renderer).Render(t.Context(), diffrender.DarkTheme, files, "", 22)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,11 +36,11 @@ func TestLiveDiffWrapAndResize(t *testing.T) {
 	if restored.String() != source {
 		t.Fatalf("wrapped source changed: %q, want %q", restored.String(), source)
 	}
-	wide, err := new(changeview.Renderer).Render(t.Context(), diffrender.DarkTheme, files, "", 200)
+	wide, err := new(Renderer).Render(t.Context(), diffrender.DarkTheme, files, "", 200)
 	if err != nil {
 		t.Fatal(err)
 	}
-	view := changeview.View{Files: files, Scroll: map[string]int{"file.txt": wrapped.RowStarts[1] + 2}}
+	view := View{View: presentation.View{Files: files}, Scroll: map[string]int{"file.txt": wrapped.RowStarts[1] + 2}}
 	view.Reflow(wrapped, wide)
 	if view.Scroll["file.txt"] != wide.RowStarts[1] {
 		t.Fatal("widening lost the logical source row")
@@ -57,7 +56,7 @@ func TestLiveDiffWrappedSyntax(t *testing.T) {
 		"@@ -0,0 +1 @@\n+\""+strings.Repeat("abcdefgh", 15)+"\"\n")
 	chunk.Status = ""
 	chunk.Highlighted = true
-	render, err := new(changeview.Renderer).Render(t.Context(), diffrender.DarkTheme,
+	render, err := new(Renderer).Render(t.Context(), diffrender.DarkTheme,
 		[]presentation.File{{Path: "file.go", Chunks: []presentation.Chunk{chunk}}}, "", 30)
 	if err != nil {
 		t.Fatal(err)
@@ -80,18 +79,18 @@ func TestLiveDiffResizeReflowsSavedFiles(t *testing.T) {
 		chunk.Status = strings.Repeat("prepared status ", 8)
 		files = append(files, presentation.File{Path: path, Chunks: []presentation.Chunk{chunk}})
 	}
-	wide, err := new(changeview.Renderer).Render(t.Context(), diffrender.DarkTheme, files, "", 90)
+	wide, err := new(Renderer).Render(t.Context(), diffrender.DarkTheme, files, "", 90)
 	if err != nil {
 		t.Fatal(err)
 	}
-	narrow, err := new(changeview.Renderer).Render(t.Context(), diffrender.DarkTheme, files, "", 22)
+	narrow, err := new(Renderer).Render(t.Context(), diffrender.DarkTheme, files, "", 22)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(wide.RowStarts) != len(narrow.RowStarts) {
 		t.Fatal("wrapped headings or status changed logical row identities")
 	}
-	view := changeview.View{Files: files, Selected: 1, Scroll: make(map[string]int)}
+	view := View{View: presentation.View{Files: files, Selected: 1}, Scroll: make(map[string]int)}
 	for i, file := range files {
 		end := len(wide.Lines)
 		if i+1 < len(files) {

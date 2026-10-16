@@ -31,5 +31,5 @@ func (u *appServerUI) openSelectedFileEditor(path string, stdin, stdout *os.File
 		u.setNotice("Open editor: "+err.Error(), true)
 		return
 	}
-	u.setNotice("Editor closed: "+pathdisplay.ForWorkspace(u.shell.diff.workspace, path), false)
+	u.setNotice("Editor closed: "+pathdisplay.ForWorkspace(u.shell.diff.Workspace(), path), false)
 }

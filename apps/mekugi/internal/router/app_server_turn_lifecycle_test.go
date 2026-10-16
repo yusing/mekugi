@@ -61,7 +61,7 @@ func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 	u.proxy = &mekugiProxy{review: testReview(auto), execWindows: &execWindowRegistry{}}
 	workspace := u.session.cwd
 	setLiveScope(auto, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}})
-	u.shell.diff.scope = testReview(auto).Scope()
+	u.shell.saved.scope = testReview(auto).Scope()
 	sub := testReview(auto).Subscribe()
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "turn"}})
 	main := previewmodel.Preview{ID: "edit", Workspace: workspace, Thread: "main", Turn: "turn", Caller: "/root", Status: previewmodel.PreviewRunning, Input: "observed edit"}

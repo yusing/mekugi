@@ -98,7 +98,7 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	data := newLiveDiffData()
 	data.order = []string{"receipt"}
 	data.attempts["receipt"] = liveDiffAttempt{receipt: receipt}
-	u.shell.diff.data = data
+	u.shell.saved.data = data
 	// Completed tracked edit segments must receive the same captured counts
 	// as untracked commands while the neighboring test keeps its own state.
 	for i := range u.view.Entries {
@@ -112,7 +112,7 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	}
 	// The observer finishes the edit before the command's test and before
 	// the next model request can supply durable outer-cell evidence.
-	u.shell.diff.data = newLiveDiffData()
+	u.shell.saved.data = newLiveDiffData()
 	u.shell.preview(previewmodel.Preview{ID: "observed", Workspace: workspace, Thread: "main", Complete: true,
 		HostItems: []string{"cmd"}, EditReceipt: receipt.text, Files: history.ReviewFiles}, false)
 	if err := u.paint(slave, width, height); err != nil {
@@ -148,7 +148,7 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 		"id": "cmd", "type": "commandExecution", "command": command, "exitCode": 2}})
 	history.ReviewFiles = history.ReviewFiles[2:]
 	data.attempts["receipt"] = liveDiffAttempt{receipt: capturedEditActivity(workspace, history)}
-	u.shell.diff.data = data
+	u.shell.saved.data = data
 	u.applyCapturedEdits()
 	if err := u.paint(slave, width, height); err != nil {
 		t.Fatal(err)

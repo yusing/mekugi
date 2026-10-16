@@ -344,7 +344,7 @@ func TestAppServerBTWRenderAndScroll(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.btw = &appServerBTW{SideAnswer: &conversationmodel.SideAnswer{Question: "SIDE_QUESTION", Status: "Answering", Answer: []conversationmodel.Answer{{ID: "a", Text: "**FIRST_ANSWER**\n\n" + strings.Repeat("middle line\n\n", 30) + "LAST_ANSWER"}}}}
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	shell := u.shell
 	rows := u.btwRows(60, 10)
 	if text := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(text, "LAST_ANSWER") || strings.Contains(text, "FIRST_ANSWER") {

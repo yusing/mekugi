@@ -110,13 +110,13 @@ func TestTerminalUIDiffSelectionMentionsChangeLines(t *testing.T) {
 	rows := []string{"  a.go +2 -1", "  42│+new", "  43│-old", "  44│ ctx", "  9│+other"}
 	u := selectionTestUI(rows...)
 	u.layout = terminalsession.Layout{Diff: terminalsession.Rect{0, 0, 40, len(rows)}}
-	u.diff = &liveDiffTerminalController{workspace: "/w", painted: []diffrender.LineSource{
+	sources := []diffrender.LineSource{
 		{Path: "/w/a.go", Content: 2},
 		{Change: "amber1", Path: "/w/a.go", Line: 42, Content: 5},
 		{Change: "amber1", Path: "/w/a.go", Line: 43, Content: 5},
 		{Change: "amber1", Path: "/w/a.go", Line: 44, Content: 5},
 		{Change: "amber2", Path: "/w/b.go", Line: 9, Content: 4},
-	}}
+	}
 	for _, tt := range []struct {
 		y1, y2              int
 		description, source string
@@ -127,12 +127,13 @@ func TestTerminalUIDiffSelectionMentionsChangeLines(t *testing.T) {
 		{0, 0, "diff", "a.go", "a.go +2 -1"},
 		{2, 4, "diff hunks @amber1 +1", "", "-old\n ctx\n+other"},
 	} {
-		if u.selectionMouse(0, 0, tt.y1, false) {
-			t.Fatal("diff press was not passed through to the diff pane")
+		left := make([]int, len(sources))
+		for i, source := range sources {
+			left[i] = source.Content
 		}
-		if !u.selectionMouse(32, 39, tt.y2, false) || !u.selectionMouse(0, 39, tt.y2, true) || u.selection == nil {
-			t.Fatal("diff drag was not selected")
-		}
+		u.selection = &terminalSelection{Selection: terminalsession.NewSelection(terminalsession.Surface{Rect: u.layout.Diff, Rows: rows, ContentLeft: left}, 0, tt.y1), pane: u.layout.Diff, diff: sources, workspace: "/w"}
+		u.selection.Move(39, tt.y2, true)
+
 		if got := u.selection.Text(); got != tt.text {
 			t.Fatalf("diff selection text = %q, want %q", got, tt.text)
 		}
@@ -152,12 +153,15 @@ func TestTerminalUIDiffSelectionUsesRenderedPane(t *testing.T) {
 			liveDiffCapture("a", "a.go", 1, "", liveDiffLinesFile("a.go", 8), presentation.Origin{Change: "amber1", Caller: "/root", Source: "apply_patch"}),
 			liveDiffCapture("b", "b.go", 2, "", liveDiffLinesFile("b.go", 2), presentation.Origin{Change: "amber2", Caller: "/root", Source: "apply_patch"}),
 		}
-		c := liveDiffChangesController(t, width, 16, captures)
-		c.view.Open(0)
+		c := liveDiffChangesPane(t, width, 16, captures)
+		c.Key("g")
 		screen := vt.NewEmulator(width, 16)
 		defer screen.Close()
-		c.stdout = screen
-		c.frame(t)
+		c.Invalidate()
+		if err := c.Paint(t.Context(), screen, width, 16); err != nil {
+			t.Fatal(err)
+		}
+		sourceView := c.Selection(width-2, 15)
 		rows := strings.Split(screen.Render(), "\n")
 		find := func(text string) int {
 			for y, row := range rows {
@@ -169,17 +173,17 @@ func TestTerminalUIDiffSelectionUsesRenderedPane(t *testing.T) {
 			return -1
 		}
 		first, last := find("a.go_line_02"), find("a.go_line_04")
-		if (c.sourceX > 0) != (width > 100) || (c.sourceY > 0) != (width < 100) {
-			t.Fatalf("width %d: source column %d row %d", width, c.sourceX, c.sourceY)
+		if (sourceView.X > 0) != (width > 100) || (sourceView.Y > 0) != (width < 100) {
+			t.Fatalf("width %d: source column %d row %d", width, sourceView.X, sourceView.Y)
 		}
 		u := selectionTestUI(rows...)
 		u.width, u.frame.Width = width, width
 		u.layout = terminalsession.Layout{Diff: terminalsession.Rect{0, 0, width, 16}}
 		u.diff = c
-		if c.sourceY > 0 && u.diffSelection(c.sourceX, 0) != nil {
+		if sourceView.Y > 0 && u.diffSelection(sourceView.X, 0) != nil {
 			t.Fatal("stacked navigator was selectable")
 		}
-		u.selectionMouse(0, c.sourceX, first, false)
+		u.selectionMouse(0, sourceView.X, first, false)
 		if !u.selectionMouse(32, width-2, last, false) || !u.selectionMouse(0, width-2, last, true) || u.selection == nil {
 			t.Fatalf("rendered diff was not selectable (width %d)", width)
 		}
@@ -277,22 +281,18 @@ func TestComposerSelectionReviewEdges(t *testing.T) {
 func TestTerminalUIDiffSelectionEdges(t *testing.T) {
 	u := selectionTestUI("  1│-a", "  2│-b", "  7│+c", "  8│ d")
 	u.layout = terminalsession.Layout{Diff: terminalsession.Rect{0, 0, 40, 4}}
-	u.diff = &liveDiffTerminalController{sourceY: 1, painted: []diffrender.LineSource{
-		{},
-		{Change: "amber1", Line: 2, Deleted: true, Content: 4},
-		{Change: "amber1", Line: 7, Content: 4},
-		{Change: "amber1", Line: 8, Content: 4},
-	}}
-	if u.diffSelection(0, 0) != nil {
-		t.Fatal("rows above the diff source were selectable")
+	sources := []diffrender.LineSource{
+		{}, {Change: "amber1", Line: 2, Deleted: true, Content: 4},
+		{Change: "amber1", Line: 7, Content: 4}, {Change: "amber1", Line: 8, Content: 4},
 	}
+
 	for _, tt := range []struct {
 		y1, y2 int
 		want   string
 	}{{1, 3, "diff hunk @amber1:7-8"}, {1, 1, "diff hunk @amber1:2"}} {
-		u.selectionMouse(0, 0, tt.y1, false)
-		u.selectionMouse(32, 39, tt.y2, false)
-		u.selectionMouse(0, 39, tt.y2, true)
+		u.selection = &terminalSelection{Selection: terminalsession.NewSelection(terminalsession.Surface{Rect: u.layout.Diff, Rows: u.frame.Rows, ContentLeft: []int{0, 4, 4, 4}}, 0, tt.y1), diff: sources}
+		u.selection.Move(39, tt.y2, true)
+
 		if got, _ := u.selection.mentionDescription(); got != tt.want {
 			t.Fatalf("mention = %q, want %q", got, tt.want)
 		}

@@ -132,7 +132,7 @@ func TestSavedReviewWithoutLivePreview(t *testing.T) {
 	}
 	u := newAppServerSessionTestUI(t, workspace)
 	// Reopen retained evidence instead of relying on the publishing process cache.
-	u.shell.diff.store = testReplayStore(mekugiReplayStore{directory: writer.directory})
+	u.shell.saved.store = testReplayStore(mekugiReplayStore{directory: writer.directory})
 	review := u.shell.review
 	writer.liveDiff = review.Publish
 	sub := review.Subscribe()
@@ -147,7 +147,7 @@ func TestSavedReviewWithoutLivePreview(t *testing.T) {
 	}
 	paths := func() []string {
 		var result []string
-		for _, file := range u.shell.diff.data.files() {
+		for _, file := range u.shell.saved.data.files() {
 			result = append(result, filepath.Base(file.Path))
 		}
 		slices.Sort(result)

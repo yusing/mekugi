@@ -134,7 +134,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	baseline.agents = newActivityAdapter()
 	baseline.ctx = t.Context()
 	baseline.ensureShell()
-	t.Cleanup(func() { baseline.shell.diff.close(); baseline.shell.diffScreen.Close() })
+	t.Cleanup(func() { baseline.shell.diffScreen.Close() })
 	baseline.session.start("main", workspace)
 	baseline.session.registerThread(appServerThreadInfo{ID: thread, AgentNickname: "worker", AgentRole: "worker"})
 	projectionStarted := time.Now()
@@ -147,7 +147,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	u.ctx = t.Context()
 	u.agents = newActivityAdapter()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.session.start("main", workspace)
 	u.resumeThread = "main"
 	u.session.registerThread(appServerThreadInfo{ID: thread, AgentNickname: "worker", AgentRole: "worker"})
