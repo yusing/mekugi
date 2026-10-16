@@ -57,7 +57,7 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 		t.Fatal("router errors did not open on click")
 	}
 	drawOutputDialog(u.shell)
-	if u.shell.output.laid.Text != before {
+	if u.shell.output.Document.Text != before {
 		t.Fatal("router details lost a scoped error")
 	}
 	first.finish(true)

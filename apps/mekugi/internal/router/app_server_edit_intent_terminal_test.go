@@ -138,7 +138,7 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 			break
 		}
 	}
-	if u.shell.output == nil || !strings.Contains(u.shell.output.pages[u.shell.output.page].Code, "+second") {
+	if u.shell.output == nil || !strings.Contains(u.shell.output.pages[u.shell.output.Page].Code, "+second") {
 		t.Fatal("observed Edited row did not open its exact source while the test was running")
 	}
 	u.shell.outputKey("\x1b")

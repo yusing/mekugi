@@ -27,6 +27,6 @@ func (u *terminalUI) openErrors() {
 	}
 	if len(pages) > 0 {
 		u.openBlocks(view, pages)
-		u.output.showPage(len(u.output.pages) - 1)
+		u.output.ShowPage(len(u.output.pages) - 1)
 	}
 }

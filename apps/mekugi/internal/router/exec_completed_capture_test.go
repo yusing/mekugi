@@ -160,7 +160,7 @@ func TestExecCompletedReceiptKeepsPythonValidation(t *testing.T) {
 		segments:     []commandSegment{{source: writer, text: execSegmentText(writer)}, {source: check, text: execSegmentText(check)}},
 		capturedEdit: &capturedActivityEdit{thread: "main", calls: []string{"cmd"}, text: "Edit `source.go` +1 -1 · cat"},
 	}}
-	blocks := commandSegmentBlocks(entry, false)
+	blocks := commandSegmentBlocks(commandPresentation(entry))
 	if !slices.ContainsFunc(blocks, func(block activityui.Block) bool {
 		return block.Code == check || strings.Contains(block.Label, "assert True")
 	}) {

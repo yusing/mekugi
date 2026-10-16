@@ -95,7 +95,7 @@ func TestUISnapshotReasoningDialog(t *testing.T) {
 			for i := range page.Lines {
 				rows = append(rows, page.Rows(i, width-4)...)
 			}
-			frame := DialogFrame{Page: page, Rows: rows, Total: len(rows), Footer: "esc close · ↑↓ scroll · c copy"}
+			frame := terminalui.DialogFrame{Page: page, Rows: rows, Total: len(rows), Footer: "esc close · ↑↓ scroll · c copy"}
 			uisnapshot.Assert(t, "testdata/snapshots/reasoning_dialog_"+name+".txt", strings.Join(p.Dialog(frame, width, 28), "\n")+"\n")
 		})
 	}

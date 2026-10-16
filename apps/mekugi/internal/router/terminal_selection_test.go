@@ -34,6 +34,16 @@ func selectionTestUI(rows ...string) *terminalUI {
 	return &terminalUI{main: main, width: 40, height: len(painted), frame: terminalsession.Frame{Width: 40, Rows: painted}, layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 40, len(rows)}}}
 }
 
+func selectionTestSnapshot(u *terminalUI) *terminalsession.Selection {
+	if u.output != nil {
+		return u.output.Selection
+	}
+	if u.selection != nil {
+		return u.selection.Selection
+	}
+	return nil
+}
+
 func selectionTestDrag(t *testing.T, u *terminalUI, x1, y1, x2, y2 int) {
 	t.Helper()
 	if !u.selectionMouse(0, x1, y1, false) || !u.selectionMouse(32, x2, y2, false) || !u.selectionMouse(0, x2, y2, true) {
@@ -87,12 +97,14 @@ func TestTerminalSelectionSyntaxColors(t *testing.T) {
 						t.Fatalf("selection changed syntax or lost fill at %d: before=%+v after=%+v", at, old, got)
 					}
 				}
-				if before.CellAt(x+len(source)+1, y).Style != after.CellAt(x+len(source)+1, y).Style || u.selection.Text() != source {
+				if before.CellAt(x+len(source)+1, y).Style != after.CellAt(x+len(source)+1, y).Style || selectionTestSnapshot(u).Text() != source {
 					t.Fatal("selection changed adjacent styles or copied text")
 				}
 				if dialog {
-					u.selection = nil
-					u.output.query, u.output.match = "green", 0
+					u.output.Selection = nil
+					for _, key := range []string{"/", "green", "\r"} {
+						u.outputKey(key)
+					}
 					searched := paint()
 					at := x + strings.Index(source, "green")
 					if searched.CellAt(at, y).Style.Fg != before.CellAt(at, y).Style.Fg || searched.CellAt(at, y).Style.Bg != after.CellAt(at, y).Style.Bg {
@@ -208,13 +220,14 @@ func TestTerminalUISelectionActions(t *testing.T) {
 				if key == "question" {
 					u.main.questions.Active = &prompt.Call{Questions: []prompt.Question{{}}}
 				}
-				selected := u.selection
+				selected := selectionTestSnapshot(u)
 				action := key
 				if strings.Contains(key, "click") || key == "separator" {
 					x, y := map[string]int{"reference click": 1, "copy click": 15, "clear click": 28, "separator": 12}[key], u.height-1
 					if dialog {
-						x += u.output.rect.X + 3
-						y = u.output.rect.Y + u.output.rect.H - 1
+						rect := dialogFrameRect(t, outputDialogScreen(u))
+						x += rect.X + 3
+						y = rect.Y + rect.H - 1
 					}
 					if err := u.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", x+1, y+1)); err != nil {
 						t.Fatal(err)
@@ -235,13 +248,13 @@ func TestTerminalUISelectionActions(t *testing.T) {
 					}
 				}
 				if action == "separator" {
-					if u.selection != selected {
+					if selectionTestSnapshot(u) != selected {
 						t.Fatal("separator changed selection")
 					}
 					return
 				}
 				reference := action == "r" || action == "R"
-				if u.selection != nil || dialog && (u.output == nil) != reference {
+				if selectionTestSnapshot(u) != nil || dialog && (u.output == nil) != reference {
 					t.Fatal("wrong selection or dialog lifetime")
 				}
 				if reference {
@@ -471,21 +484,6 @@ func TestTerminalUISelectionComposer(t *testing.T) {
 		want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("你好")) + "\x07"
 		if u.shell.frame.Clipboard != want {
 			t.Fatalf("clipboard %q", u.shell.frame.Clipboard)
-		}
-	}
-}
-
-func TestTerminalHintsRenderingAndHitRegions(t *testing.T) {
-	hints := terminalHints{{"ctrl+c", "copy", 'c'}, {"esc", "clear", 27}}
-	if got := hints.render(); got != "\x1b[1mctrl+c\x1b[22m copy · \x1b[1mesc\x1b[22m clear" {
-		t.Fatalf("render %q", got)
-	}
-	for _, tc := range []struct {
-		x, width int
-		want     byte
-	}{{0, 40, 'c'}, {10, 40, 'c'}, {11, 40, 0}, {14, 40, 27}, {14, 16, 0}} {
-		if got := hints.actionAt(tc.x, tc.width); got != tc.want {
-			t.Fatalf("%+v: %d", tc, got)
 		}
 	}
 }

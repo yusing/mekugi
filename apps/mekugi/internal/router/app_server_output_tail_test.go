@@ -160,7 +160,7 @@ func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 		t.Fatal("command did not open output dialog")
 	}
 	terminal.output.layout(76)
-	if got := terminal.output.laid.Text; got != "ok 1\nok 2\nPASS" {
+	if got := terminal.output.Document.Text; got != "ok 1\nok 2\nPASS" {
 		t.Fatalf("dialog output = %q", got)
 	}
 	terminal.outputKey("\x1b")
@@ -192,8 +192,8 @@ func TestAppServerSingleLineOutputStaysVisible(t *testing.T) {
 			t.Fatal("single output line has no dialog target")
 		}
 		terminal.output.layout(76)
-		if terminal.output.laid.Text != "done" {
-			t.Fatalf("dialog output = %q", terminal.output.laid.Text)
+		if terminal.output.Document.Text != "done" {
+			t.Fatalf("dialog output = %q", terminal.output.Document.Text)
 		}
 	}
 }
@@ -248,7 +248,7 @@ func TestAppServerMixedCommandOutputFollowsFinalRead(t *testing.T) {
 				t.Fatal("final Read did not open output dialog")
 			}
 			terminal.output.layout(80)
-			if got := terminal.output.laid.Text; got != "first\nsecond" {
+			if got := terminal.output.Document.Text; got != "first\nsecond" {
 				t.Fatalf("read dialog output = %q", got)
 			}
 		})
@@ -386,7 +386,7 @@ func TestAppServerMainClipsLongCommandSourceUntilOpened(t *testing.T) {
 		t.Fatal("clipped source did not open output dialog")
 	}
 	terminal.output.layout(76)
-	if got := terminal.output.laid; strings.Count(ansi.Strip(fmt.Sprint(got.Lines)), "print('row')") != 30 || got.Text != "boom" {
+	if got := terminal.output.Document; strings.Count(ansi.Strip(fmt.Sprint(got.Lines)), "print('row')") != 30 || got.Text != "boom" {
 		t.Fatalf("dialog lost source or output: %+v", got)
 	}
 	terminal.outputKey("q")
@@ -501,7 +501,7 @@ func TestAppServerCollapsedReadsMerge(t *testing.T) {
 			}
 			for i := range 3 {
 				terminal.output.layout(80)
-				if page := terminal.output.laid.Text; !strings.Contains(page, fmt.Sprintf("read-%d\nmore-%d", i, i)) {
+				if page := terminal.output.Document.Text; !strings.Contains(page, fmt.Sprintf("read-%d\nmore-%d", i, i)) {
 					t.Fatalf("read page %d = %q", i, page)
 				}
 				if i < 2 {

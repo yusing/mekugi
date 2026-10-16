@@ -31,7 +31,7 @@ func TestUISnapshotDiffOutputSections(t *testing.T) {
 			for i := range page.Lines {
 				body = append(body, page.Rows(i, tc.width-4)...)
 			}
-			rows = append(rows, p.Dialog(DialogFrame{Page: page, Rows: body, Total: len(body), Footer: "esc close"}, tc.width, len(body)+7)...)
+			rows = append(rows, p.Dialog(terminalui.DialogFrame{Page: page, Rows: body, Total: len(body), Footer: "esc close"}, tc.width, len(body)+7)...)
 			uisnapshot.Assert(t, "testdata/snapshots/diff_output_"+tc.text+".txt", strings.Join(rows, "\n")+"\n")
 			uisnapshot.AssertTerminal(t, "testdata/snapshots/diff_output_styles_"+tc.name+".txt", append(rows, "plain after diff"), tc.width)
 		})
@@ -51,7 +51,7 @@ func TestDiffOutputSourceAndLayout(t *testing.T) {
 			t.Fatal("raw output changed")
 		}
 		for i, line := range page.Lines {
-			if line.copySource == nil {
+			if line.CopySource == nil {
 				continue
 			}
 			var parts []terminalui.CopyFragment

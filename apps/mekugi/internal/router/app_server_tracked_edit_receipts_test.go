@@ -177,7 +177,7 @@ func TestUISnapshotTrackedEditReceiptOutputSourceOnlyInDialog(t *testing.T) {
 	if want := []string{"Edited `a.go` 1s", "Run  2s", "Edited `b.go` 3s"}; !slices.Equal(outputs, want) {
 		t.Fatalf("output placement = %q, want %q", outputs, want)
 	}
-	pages := u.agents.commandOutputPages(1)
+	pages := activityui.Disclosure(nil).Blocks(commandPresentation(u.agents.Entries[0].Source).DetailValues())
 	if len(pages) != 3 || pages[0].Code != "cat > a.go" || pages[2].Code != "cat > b.go" {
 		t.Fatalf("edit output dialog: %+v", pages)
 	}

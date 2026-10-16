@@ -58,7 +58,7 @@ func TestNativeEditClickOpensExactCapturedDiffDialog(t *testing.T) {
 				if err := u.paint(&bytes.Buffer{}, 120, 28); err != nil {
 					t.Fatal(err)
 				}
-				page := u.shell.output.laid.Text
+				page := u.shell.output.Document.Text
 				if !strings.Contains(page, "target-new") || strings.Contains(page, "wrong-new") {
 					t.Fatalf("wrong invocation diff: %q", page)
 				}
@@ -126,7 +126,7 @@ func TestNativeCompletedBatchEditOpensBeforeSiblingCommandExits(t *testing.T) {
 			if err := u.paint(screen, 160, 40); err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(u.shell.output.laid.Text, "+after_batch") || u.shell.output.view != view {
+			if !strings.Contains(u.shell.output.Document.Text, "+after_batch") || u.shell.output.view != view {
 				t.Fatalf("wrong edit opened:\n%s", screen.String())
 			}
 			if u.session.commands[[3]string{thread, "batch", "slow-sibling"}] == nil {
@@ -147,7 +147,7 @@ func TestNativeHostEditNavigationRequiresCompletedSuccessfulItem(t *testing.T) {
 	}
 	item := appServerItem{Changes: []appServerFileChange{{Path: "first.go", Diff: "+first\n"}, {Path: "second.go", Diff: "+second\n"}}}
 	u.view.Entries = []liveActivityRecord{{Source: activityPaneEntry{Seq: 2, native: &liveActivityNativeItem{thread: "main", item: "patch", editPages: appServerEditPages(item, u.session.cwd, "item/completed")}}}}
-	if u.shell.openActivityEdit(u.view, 2, "missing.go") || !u.shell.openActivityEdit(u.view, 2, "second.go") || u.shell.output.page != 1 {
+	if u.shell.openActivityEdit(u.view, 2, "missing.go") || !u.shell.openActivityEdit(u.view, 2, "second.go") || u.shell.output.Page != 1 {
 		t.Fatal("host diff did not resolve the exact clicked path")
 	}
 }
@@ -187,7 +187,7 @@ func TestNativeEditDialogShowsHistoricalHunkNotLaterCapture(t *testing.T) {
 	if err := u.paint(&bytes.Buffer{}, 120, 24); err != nil {
 		t.Fatal(err)
 	}
-	if got := u.shell.output.laid.Text; !strings.Contains(got, "clicked_hunk") || !strings.Contains(got, "target_line_70") || !strings.Contains(got, "target_line_90") || strings.Contains(got, "later_hunk") || strings.Contains(got, "unrelated_workspace_content") {
+	if got := u.shell.output.Document.Text; !strings.Contains(got, "clicked_hunk") || !strings.Contains(got, "target_line_70") || !strings.Contains(got, "target_line_90") || strings.Contains(got, "later_hunk") || strings.Contains(got, "unrelated_workspace_content") {
 		t.Fatalf("dialog did not show historical capture: %q", got)
 	}
 	u.shell.outputKey("\x1b")

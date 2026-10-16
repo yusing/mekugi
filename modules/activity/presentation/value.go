@@ -3,6 +3,7 @@ package presentation
 import (
 	"time"
 
+	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 	"github.com/yusing/mekugi/modules/activity/feed"
 )
 
@@ -64,6 +65,13 @@ type ChangeRow struct {
 	Added, Removed          int
 	Note                    string
 	Footer                  bool
+}
+
+// EditPath returns the unshortened target of an edit row, when known.
+// Source: modules/activity/terminalview/blocks.go:225:229@6d403a5a.
+func (b Value) EditPath() string {
+	path, _, _ := markdownsyntax.CodeSpan(b.Label, 0)
+	return path
 }
 
 // ReadOutput reports a file or skill read, whose output is what the agent

@@ -144,3 +144,17 @@ func TestOutputContextBoundsWithoutFullSnapshot(t *testing.T) {
 		t.Fatalf("released context = %+v, limited=%t", context, limited)
 	}
 }
+
+func TestOutputContentDoesNotMaterializeSnapshot(t *testing.T) {
+	for _, text := range []string{"", " \n\t\n", "unfinished", "\nretained\n\n"} {
+		var output Output
+		output.Write(text)
+		if output.HasContent() != (strings.TrimSpace(text) != "") || output.snapshot != nil {
+			t.Fatalf("content check changed retained bytes or materialized %q", text)
+		}
+		output.Release()
+		if output.HasContent() {
+			t.Fatal("released output still claims retained content")
+		}
+	}
+}

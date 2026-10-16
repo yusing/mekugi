@@ -6,17 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/backends/codex/binding"
-
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
-	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	"github.com/yusing/mekugi/libraries/terminalui"
-	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-
-	"mvdan.cc/sh/v3/syntax"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
@@ -30,64 +24,22 @@ func appServerDuration(item appServerItem) time.Duration {
 
 // Host timing and exit facts describe a single command or explicitly combined
 // output, never individual rows reconstructed from a command list.
-func setCommandFacts(blocks []activityui.Block, entry activityPaneEntry) {
-	if entry.native == nil {
-		return
-	}
-	compound := commandTimingIsCompound(blocks, entry)
+func setCommandFacts(blocks []activityui.Block, command activitypresentation.Command) {
+	values := activityui.Values(blocks)
+	command.ApplyFacts(values)
 	for i := range blocks {
-		block := &blocks[i]
-		if (block.Kind != "op" && block.Kind != "reads") || block.Skipped || compound && !block.BatchExit {
-			continue
-		}
-		if entry.native.exit != nil {
-			block.ExitCode, block.Exited = *entry.native.exit, true
-		}
-		block.Duration, block.Started, block.Ended = entry.native.duration, entry.native.commandStarted, entry.native.commandEnded
-		block.NotificationTiming = true
-		if entry.native.running && block.Started.IsZero() {
-			block.Started = entry.Observed
-		}
+		blocks[i].Value = values[i]
 	}
-}
-
-func commandTimingIsCompound(blocks []activityui.Block, entry activityPaneEntry) bool {
-	compound := len(blocks) > 1 || len(entry.native.segments) > 0
-	if compound || entry.native.command == "" {
-		return compound
-	}
-	command := entry.native.command
-	if script, ok := binding.CommandScript(command); ok {
-		command = script
-	} else {
-		// Offline replay retains a tracked script without its shell argv;
-		// the tracking envelope is not authored compound work.
-		command = shellinstrumentation.ShOriginal(command)
-	}
-	if program, err := syntax.NewParser().Parse(strings.NewReader(command), ""); err == nil {
-		// A setup script is deliberately one full-source Run event, so its
-		// invocation clock belongs to that row, not a second shell batch row.
-		if len(blocks) == 1 && blocks[0].Verb == "Run" &&
-			blocks[0].Code == textsanitize.Safe(toolActivityShellSource(command), false) && shellinstrumentation.HasShellSetup(program) {
-			return compound
-		}
-		compound = compound || len(program.Stmts) > 1
-		if len(program.Stmts) == 1 {
-			if binary, ok := program.Stmts[0].Cmd.(*syntax.BinaryCmd); ok {
-				compound = compound || binary.Op == syntax.AndStmt || binary.Op == syntax.OrStmt
-			}
-		}
-	}
-	return compound
 }
 
 func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
+	command := commandPresentation(entry)
 	defer func() {
 		defer func() { identifyActivityBlocks(blocks, entry.Seq) }()
 		// An unsupported batch has one host clock, not a clock per classified
 		// operation. Keep that total visible and its output on one explicit row.
 		if n := entry.native; entry.Kind == "tool" && n != nil && n.command != "" &&
-			(len(n.segments) == 0 && (n.running || n.duration > 0) && commandTimingIsCompound(blocks, entry) || n.approval != "" && len(blocks) > 1) &&
+			(len(n.segments) == 0 && (n.running || n.duration > 0) && command.Compound(activityui.Values(blocks)) || n.approval != "" && len(blocks) > 1) &&
 			!slices.ContainsFunc(blocks, func(b activityui.Block) bool { return b.BatchExit }) {
 			batch := activityui.Block{Kind: "op", Verb: "Run", Label: "shell batch", BatchExit: true, Running: n.running, Output: retainedOutputID(n.output, 1), Tail: entry.outputTail, TailOmitted: entry.outputOmit}
 			if len(n.segments) == 0 {
@@ -106,7 +58,9 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 				}
 			}
 		}
-		setCommandFacts(blocks, entry)
+		if entry.native != nil {
+			setCommandFacts(blocks, command)
+		}
 		if entry.native != nil && len(blocks) > 0 {
 			setApprovalBlocks(blocks, entry.native.approval)
 		}
@@ -193,9 +147,9 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		return []activityui.Block{{Kind: "compaction", Body: text}}
 	case "tool":
 		if entry.native != nil && len(entry.native.segments) > 0 {
-			return commandSegmentBlocks(entry, false)
+			return commandSegmentBlocks(command)
 		}
-		blocks := activityui.FoldStages(toolOperationBlocks(text))
+		blocks := activityui.FoldStages(activityui.Disclosure(nil).Blocks(activitypresentation.Operations(text)))
 		if len(blocks) == 1 && blocks[0].Verb == "Search" && entry.native != nil {
 			if entry.native.searchResults != nil {
 				blocks[0].Results = new(*entry.native.searchResults)
@@ -223,28 +177,11 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 	return []activityui.Block{{Kind: "text", Body: source}}
 }
 
-// toolOperationBlocks attaches terminal blocks to parsed invocation content,
-// merging adjacent targets without inventing separate invocation pages.
-func toolOperationBlocks(text string) []activityui.Block {
-	content := activitymodel.ParseOperations(text)
-	blocks := make([]activityui.Block, len(content))
-	for i, value := range content {
-		blocks[i] = activityui.Block{Content: value, Operation: i + 1}
-	}
-	blocks = activityui.MergeLiveActivityReads(blocks)
-	// These targets share one invocation's aggregate. Dialog pages are
-	// formed only when separate invocations merge later in the feed.
-	for i := range blocks {
-		blocks[i].Members = nil
-	}
-	return blocks
-}
-
 // instantOperations reports tool text whose every operation prints what it
 // reads at once, so its output shows whole rather than rolling through.
 func instantOperations(text string) bool {
-	blocks := toolOperationBlocks(textsanitize.Safe(text, false))
-	return len(blocks) > 0 && !slices.ContainsFunc(blocks, func(block activityui.Block) bool { return !block.Instant() })
+	blocks := activitypresentation.Operations(textsanitize.Safe(text, false))
+	return len(blocks) > 0 && !slices.ContainsFunc(blocks, func(block activitypresentation.Value) bool { return !block.Instant() })
 }
 
 // retainBatchResult preserves the outcome and output across receipt reparses,
@@ -308,114 +245,9 @@ func commandExitBlocks(blocks []activityui.Block, code int, tail []string, omitt
 	return blocks
 }
 
-// commandSegmentBlocks shows each segment of a tracked command as its own
-// operations, with that segment's state, exit status, and output after its
-// last operation. Without per-segment output, the host's combined output
-// follows the last segment shown. A captured edit's output and timing follow
-// an Edited row naming its paths; only dialog pages carry the edit's source.
-func commandSegmentBlocks(entry activityPaneEntry, dialog bool) []activityui.Block {
-	var blocks []activityui.Block
-	receipt := entry.native.capturedEdit
-	if receipt != nil && len(receipt.calls) > 0 && receipt.calls[0] == entry.native.item {
-		// Counts belong to the capture as a whole, not any individual segment.
-		blocks = append(blocks, toolOperationBlocks(textsanitize.Safe(receipt.text, false))...)
-	}
-	edited := func(paths []string, source string) activityui.Block {
-		block := activityui.Block{Kind: "op", Verb: "Edited", Label: strings.Join(paths, ", ")}
-		if dialog {
-			block.Code, block.Lang, block.Fenced = textsanitize.Safe(source, false), "bash", true
-		}
-		return block
-	}
-	// Classify decoration in the full script, not as a standalone segment.
-	// Keep failed headings visible, and retain every segment for replay/output.
-	command := entry.native.command
-	if script, ok := binding.CommandScript(command); ok {
-		command = script
-	}
-	_, classified := activitypresentation.ClassifyShell(command, "")
-	for segmentIndex, segment := range entry.native.segments {
-		if classified && !segment.skipped && segment.exit == 0 {
-			if activitypresentation.ShellSeparator(segment.source) {
-				continue
-			}
-		}
-		operations := toolOperationBlocks(textsanitize.Safe(segment.text, false))
-		if receipt != nil && !segment.running && !segment.skipped && segment.exit == 0 {
-			writer := execSegmentEdits(segment.source)
-			var paths []string
-			operations = slices.DeleteFunc(operations, func(block activityui.Block) bool {
-				edit := slices.Contains([]string{"Edit", "Create", "Delete", "Move"}, block.Verb)
-				if path := activityui.EditPath(block); edit && path != "" {
-					paths = append(paths, "`"+path+"`")
-				}
-				return edit || writer && block.Verb == "Run"
-			})
-			// The capture replaces edit intent, never the host's output.
-			hasOutput := len(segment.tail) > 0 || segment.omit > 0
-			if segment.output != nil {
-				output := segment.output.View()
-				hasOutput = hasOutput || len(output.Lines) > 0 || output.Dropped > 0 || output.Released
-			}
-			if len(operations) == 0 && hasOutput {
-				// Its own row keeps output clicks on the output, not the diff.
-				operations = []activityui.Block{edited(paths, segment.source)}
-			}
-		}
-		for i := range operations {
-			operations[i].Running, operations[i].Skipped = segment.running, segment.skipped
-			if block := &operations[i]; !segment.running && strings.HasSuffix(block.EditSource, " (requested)") {
-				// A segment boundary confirms execution, not a file change.
-				// Captured evidence alone replaces intent with applied counts.
-				status := "ran"
-				if segment.skipped {
-					status = "skipped"
-				} else if segment.exit != 0 {
-					status = "failed"
-				}
-				block.EditSource = strings.TrimSuffix(block.EditSource, " (requested)")
-				block.Label = strings.TrimSuffix(block.Label, " (requested)")
-				block.EditOutcome = status
-			}
-		}
-		if len(operations) == 0 {
-			continue
-		}
-		last := &operations[len(operations)-1]
-		last.ExitCode, last.Segment = segment.exit, true
-		last.Operation = segmentIndex + 1
-		last.Exited = !segment.running && !segment.skipped
-		if !segment.skipped {
-			last.Started, last.Ended = segment.timing.Started, segment.timing.Ended
-			last.Duration = time.Duration(segment.timing.ElapsedNS)
-		}
-		last.Tail, last.TailOmitted, last.Output = segment.tail, segment.omit, retainedOutputID(segment.output, segmentIndex+2)
-		last.Changes = segment.changes
-		blocks = append(blocks, operations...)
-	}
-	singleOutput := len(entry.native.segments) == 1 && entry.native.segments[0].output == nil && entry.native.output != nil
-	hasCombinedOutput := singleOutput || len(entry.outputTail) > 0 || entry.outputOmit > 0
-	if len(blocks) == 0 && entry.native.output != nil {
-		output := entry.native.output.View()
-		hasCombinedOutput = hasCombinedOutput || len(output.Lines) > 0 || output.Dropped > 0 || output.Released
-	}
-	if hasCombinedOutput {
-		// Grouped sibling edits may have no remaining intent rows, while
-		// terminal/lossy tracking still supplies invocation-level output.
-		if len(blocks) == 0 && receipt != nil {
-			blocks = append(blocks, edited(nil, command))
-		} else if len(blocks) == 0 {
-			blocks = append(blocks, activityui.Block{Kind: "op", Verb: "Run", Code: textsanitize.Safe(command, false), Lang: "bash", Fenced: true})
-		}
-		for i := len(blocks) - 1; i >= 0; i-- {
-			if !blocks[i].Skipped {
-				blocks[i].Tail, blocks[i].TailOmitted, blocks[i].Output = entry.outputTail, entry.outputOmit, retainedOutputID(entry.native.output, 1)
-				blocks[i].Changes = entry.native.changes
-				break
-			}
-		}
-	}
-	blocks = activityui.FoldStages(blocks)
+// commandSegmentBlocks adds terminal disclosure to admitted segment values.
+func commandSegmentBlocks(command activitypresentation.Command) []activityui.Block {
+	blocks := activityui.Disclosure(nil).Blocks(command.SegmentValues(false))
 	for i := range blocks {
 		blocks[i].Collapsed = blocks[i].ReadOutput() && blocks[i].Collapsible()
 	}

@@ -8,7 +8,6 @@ import (
 	"github.com/rivo/uniseg"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // Surface is a frozen painted document, including source-copy annotations and
@@ -47,6 +46,9 @@ const (
 	SelectionReference SelectionIntent = 'r'
 	SelectionCopy      SelectionIntent = 'c'
 )
+
+// SelectionHints share complete visible action labels between panes and dialogs.
+var SelectionHints = terminalui.Hints{{"r", "reference", 'r'}, {"ctrl+c", "copy", 'c'}, {"esc", "clear", 27}}
 
 // Key applies selection-local navigation and exposes source actions for the
 // application to bind to its editor, clipboard and dialog lifetime.
@@ -303,7 +305,7 @@ func (s *Selection) Move(x, y int, release bool) {
 func (s *Selection) Row(y int, theme diffrender.Theme) string {
 	row := s.Rows[y]
 	if left, right := s.Bounds(y); s.moved && right > left {
-		return ansi.Cut(row, 0, left) + activityui.TextSelection(ansi.Cut(row, left, right), theme) + ansi.Cut(row, right, ansi.StringWidth(row))
+		return ansi.Cut(row, 0, left) + terminalui.TextSelection(ansi.Cut(row, left, right), theme) + ansi.Cut(row, right, ansi.StringWidth(row))
 	}
 	return row
 }

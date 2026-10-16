@@ -14,6 +14,7 @@ import (
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourcekind"
@@ -92,9 +93,8 @@ func (u *terminalUI) openMarkdownFile(view *activityAdapter, target string) bool
 		pages = []activityui.Block{rendered, block}
 	}
 	u.openBlocks(view, pages)
-	u.output.filePath, u.output.pendingLine = display, first
-	u.output.fileFirst, u.output.fileLast = first, last
-	u.output.fileText = source
+	u.output.file = &activitypresentation.DetailFile{Path: display, Source: source, First: first, Last: last}
+	u.output.RevealLine(first)
 	return true
 }
 

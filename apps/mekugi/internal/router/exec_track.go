@@ -111,7 +111,7 @@ func execSegmentEdits(source string) bool {
 	if writes {
 		return true
 	}
-	for _, block := range toolOperationBlocks(execSegmentText(source)) {
+	for _, block := range activitypresentation.Operations(execSegmentText(source)) {
 		if slices.Contains([]string{"Edit", "Create", "Delete", "Move"}, block.Verb) {
 			return true
 		}

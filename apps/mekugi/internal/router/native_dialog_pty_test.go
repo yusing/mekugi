@@ -92,9 +92,9 @@ func TestNativeDialogPTYCloseAndResize(t *testing.T) {
 			t.Fatalf("%v diff lost token colors or row fill", size)
 		}
 	}
-	rect := u.shell.output.rect
+	x, y := dialogFramePoint(t, strings.Split(paint(160, 40), "\n"), "[×]")
 	for _, end := range []string{"M", "m"} {
-		if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", rect.X+rect.W-5, rect.Y+1, end)); err != nil {
+		if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", x+1, y+1, end)); err != nil {
 			t.Fatal(err)
 		}
 	}

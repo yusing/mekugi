@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
 
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -39,7 +40,7 @@ func TestUISnapshotHookRuns(t *testing.T) {
 				for i := range page.Lines {
 					body = append(body, page.Rows(i, width-4)...)
 				}
-				rows = append(rows, p.Dialog(DialogFrame{Page: page, Rows: body, Total: len(body), Footer: "esc close"}, width, 10)...)
+				rows = append(rows, p.Dialog(terminalui.DialogFrame{Page: page, Rows: body, Total: len(body), Footer: "esc close"}, width, 10)...)
 			}
 		}
 		uisnapshot.Assert(t, fmt.Sprintf("testdata/snapshots/hooks_%d.txt", width), strings.Join(rows, "\n")+"\n")

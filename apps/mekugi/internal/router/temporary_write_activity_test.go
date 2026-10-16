@@ -7,6 +7,8 @@ import (
 	"time"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
 
@@ -66,7 +68,7 @@ func TestTemporaryWriteActivityIntent(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			command := temporaryPlanCommand(tc.setup, tc.source)
-			blocks := toolOperationBlocks(toolActivityShell(command))
+			blocks := activityui.Disclosure(nil).Blocks(activitypresentation.Operations(toolActivityShell(command)))
 			var workspace, run bool
 			for _, block := range blocks {
 				workspace = workspace || block.Verb == "Edit" && strings.Contains(block.Label, "workspace.go")

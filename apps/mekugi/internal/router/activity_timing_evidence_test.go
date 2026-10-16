@@ -147,7 +147,7 @@ func TestActivityTimingRealShellBoundariesAndRestart(t *testing.T) {
 		if segments[3].timing != (segmenttransport.Timing{}) {
 			t.Fatalf("skipped acquired timing: %+v", segments[3].timing)
 		}
-		blocks := commandSegmentBlocks(entry.Source, false)
+		blocks := commandSegmentBlocks(commandPresentation(entry.Source))
 		for _, block := range blocks {
 			if block.Code == "sleep .04" && block.Duration != time.Duration(short) {
 				t.Fatalf("short block duration: %+v", block)
@@ -180,7 +180,7 @@ func TestActivityTimingKeepsSeparateClassifiedReadCommands(t *testing.T) {
 		{source: "cat first.txt", text: "Read `first.txt`", timing: first},
 		{source: "cat second.txt", text: "Read `second.txt`", timing: second},
 	}}}
-	blocks := commandSegmentBlocks(entry, false)
+	blocks := commandSegmentBlocks(commandPresentation(entry))
 	if len(blocks) != 2 || blocks[0].Duration != 8*time.Millisecond || blocks[1].Duration != 21*time.Millisecond || blocks[0].Started != first.Started || blocks[1].Ended != second.Ended {
 		t.Fatalf("classified reads merged or mistimed: %+v", blocks)
 	}

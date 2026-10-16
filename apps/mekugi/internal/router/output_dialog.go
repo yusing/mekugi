@@ -1,108 +1,39 @@
 package router
 
 import (
-	"cmp"
-	"fmt"
-	"slices"
-	"sort"
-	"strings"
-	"time"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-
-	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
-
-	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffrender"
-	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	"github.com/yusing/mekugi/libraries/terminalui"
-	"github.com/yusing/mekugi/libraries/textsanitize"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
-// outputDialog shows an operation's whole source and retained output over
-// both panes: a command, a tool result, or each read a merged row stands for,
-// paged with ←→. Live output follows its latest rows until the reader scrolls
-// up; End follows again. It holds the blocks as they were opened; retained
-// output keeps them current.
+// outputDialog binds admitted feature content to the terminal's dialog controller.
+// Direct output handles stay here so feed aging does not retire an open document.
 type outputDialog struct {
-	view      *activityAdapter // Supplies the painter's theme and colors.
-	pages     []activityui.Block
-	origins   []outputOrigin                                    // Original invocation members, including merged feed rows.
-	processes func(pages []activityui.Block) []activityui.Block // Rebuilds /ps pages in place of origins.
-	states    map[outputPageKey]outputPageState
-	active    outputPageKey
-	pageReady bool
-	page      int
-	top       int  // First body row shown.
-	follow    bool // Live output keeps its latest rows in view.
-	rows      int  // Body rows in the last frame.
-	rect      terminalsession.Rect
-	body      []string // Last visible body, used as the drag snapshot.
-	indents   []int
-	tabs      []outputTab
-
-	typing              bool   // The footer reads a search query.
-	draft               string // Query being typed.
-	query               string // Confirmed query, lowercased.
-	match               int    // Line of the current match, or -1.
-	missed              bool   // The confirmed query matched nothing.
-	filePath            string // Copyable path for a Markdown file link.
-	fileText            string // Original file bytes for explicit whole-source copying.
-	pendingLine         int    // Source line to reveal after the first layout.
-	fileFirst, fileLast int    // Included Markdown link source range, inclusive.
-
-	// Layout of the last frame, rebuilt when its page, width, theme or output changes.
-	laid    activityui.DialogPage
-	laidKey outputDialogKey
-	starts  []int // Each line's first body row, then the total row count.
-
-	// Segmented documents share one scroll surface, not per-item tabs.
-	segments           []activityui.Block
-	segmentLines       [][2]int
-	pendingSegment     int // Segment index plus one, resolved after layout.
-	pendingFlash       bool
-	flashFrom, flashTo int // Logical line range, exclusive end.
-	flashUntil         time.Time
+	terminalsession.Dialog
+	view      *activityAdapter
+	pages     []outputPage
+	processes bool
+	file      *activitypresentation.DetailFile
+	laidKey   outputDialogKey
 }
 
-type outputPageKey struct {
-	output int
-	source uint64
-	index  int // Distinguishes output-less pages such as skipped commands.
-}
-
-type outputPageState struct {
-	top, match             int
-	follow, typing, missed bool
-	draft, query           string
-}
-
-type outputTab struct {
-	page, from, to int
+type outputPage struct {
+	activitypresentation.DetailPage
+	output *activitymodel.Output
 }
 
 type outputDialogKey struct {
-	page, width, version int
-	output               *activitymodel.Output
-	theme                diffrender.Theme
-	body                 string
-	approval             string
-	live                 bool
-	tail                 string
-	omitted, exit        int
-	running, exited      bool
+	id             string
+	revision       uint64
+	width, version int
+	output         *activitymodel.Output
+	theme          diffrender.Theme
+	file           *activitypresentation.DetailFile
 }
-
-// Outside a narrow terminal, the dialog takes at most this share of each
-// dimension.
-const (
-	outputDialogShare     = .9
-	outputDialogFullWidth = 60 // Below this many columns it takes the whole screen.
-	outputDialogWheelRows = 3
-)
 
 // openOutput opens the operation a snippet names in the dialog, reporting
 // whether it names one.
@@ -131,7 +62,6 @@ func (u *terminalUI) openOutput(view *activityAdapter, snippet activityui.Snippe
 		}
 	}
 	u.openBlocks(view, pages)
-	u.output.refreshPages()
 	page := 0
 	if block.Output != 0 && (len(block.Members) == 0 || block.Kind == "op") {
 		for i, command := range u.output.pages {
@@ -141,31 +71,18 @@ func (u *terminalUI) openOutput(view *activityAdapter, snippet activityui.Snippe
 			}
 		}
 	}
-	u.output.showPage(page)
+	u.output.ShowPage(page)
 	return true
 }
 
 // openBlocks is the shared modal entry point. It never changes pane navigation.
 func (u *terminalUI) openBlocks(view *activityAdapter, pages []activityui.Block) {
-	var originals []activityui.Block
-	for _, page := range pages {
-		if len(page.Members) == 0 {
-			originals = append(originals, page)
-			continue
-		}
-		for _, value := range activitypresentation.Originals(page.Value) {
-			originals = append(originals, activityui.Block{Value: value})
-		}
-	}
-	pages = originals
 	if len(pages) == 0 {
 		return
 	}
 	u.selection = nil
-	u.output = &outputDialog{view: view, pages: pages, match: -1}
-	u.output.replaceOrigins(pages)
-	u.output.refreshPages()
-	u.output.showPage(0)
+	u.output = &outputDialog{view: view}
+	u.output.refreshPages(pages)
 }
 
 func (u *terminalUI) openEntry(view *activityAdapter, seq uint64) bool {
@@ -186,131 +103,6 @@ func (u *terminalUI) openEntry(view *activityAdapter, seq uint64) bool {
 	return false
 }
 
-// commandOutputPages uses only observed segment boundaries, never output text.
-func (v *activityAdapter) commandOutputPages(source uint64) []activityui.Block {
-	if source == 0 {
-		return nil
-	}
-	for _, entry := range v.Entries {
-		if entry.Source.Seq != source || entry.Source.native == nil || entry.Source.native.command == "" && len(entry.Source.native.segments) == 0 {
-			continue
-		}
-		// PTY, restored and lossy reports have no trustworthy output split.
-		separate := len(entry.Source.native.segments) == 1 || len(entry.Source.native.segments) > 1 && len(entry.Source.outputTail) == 0
-		for _, segment := range entry.Source.native.segments {
-			if len(entry.Source.native.segments) > 1 && !segment.skipped && segment.output == nil {
-				separate = false
-			}
-		}
-		if !separate {
-			operations := toolOperationBlocks(entry.Source.Text)
-			if len(entry.Source.native.segments) < 2 && len(operations) < 2 && (len(operations) == 0 || len(operations[0].Reads) < 2) {
-				return nil
-			}
-			pages := []activityui.Block{{Source: source, Kind: "op", Verb: "Run", Label: "combined output", BatchExit: true, Code: toolActivityShellSource(appServerDisplayCommand(entry.Source.native.command)), Lang: "bash", Output: retainedOutputID(entry.Source.native.output, 1), Tail: entry.Source.outputTail, TailOmitted: entry.Source.outputOmit, Running: entry.Source.native.running, Body: "Per-command output boundaries were not retained for this invocation."}}
-			// Keep edit source out of Run pages just as the feed does. The
-			// operations describe intent; only the batch owns output and exit.
-			classified := toolOperationBlocks(activitypresentation.ShellSource(toolActivityShellSource(appServerDisplayCommand(entry.Source.native.command)), entry.Source.native.commandCwd))
-			if slices.ContainsFunc(classified, func(block activityui.Block) bool { return block.EditSource != "" }) {
-				if segments, ok := shellinstrumentation.Split(pages[0].Code); ok {
-					classified = nil
-					for _, segment := range segments {
-						classified = append(classified, toolOperationBlocks(execSegmentTextInDirectory(segment.Source, entry.Source.native.commandCwd))...)
-					}
-				}
-				for i := range classified {
-					classified[i].Requested = true
-					if classified[i].Verb == "Run" {
-						classified[i].Label += " · requested"
-					}
-				}
-				pages[0].Code = ""
-				for _, block := range classified {
-					pages[0].RequestedOperations = append(pages[0].RequestedOperations, block.Value)
-				}
-			}
-			setCommandFacts(pages, entry.Source)
-			pages[0].Approval = entry.Source.native.approval
-			return pages
-		}
-		var pages []activityui.Block
-		for _, grouped := range commandSegmentBlocks(entry.Source, true) {
-			for _, value := range activitypresentation.Originals(grouped.Value) {
-				if value.Segment {
-					value.Source = source
-					pages = append(pages, activityui.Block{Value: value})
-				}
-			}
-		}
-		slices.SortStableFunc(pages, func(a, b activityui.Block) int { return cmp.Compare(a.Operation, b.Operation) })
-		setCommandFacts(pages, entry.Source)
-		if len(pages) > 0 {
-			pages[0].Approval = entry.Source.native.approval
-		}
-		return pages
-	}
-	return nil
-}
-
-func (d *outputDialog) chrome() int {
-	if d.tabbed() {
-		return activityui.DialogChrome + 1
-	}
-	return activityui.DialogChrome
-}
-
-// tabbed reports a tab row: several pages, or any /ps process, whose tab
-// names its owning agent.
-func (d *outputDialog) tabbed() bool {
-	return len(d.pages) > 1 || d.processes != nil && d.pages[0].Source != 0
-}
-
-// tabRow keeps the active command and its nearest neighbors visible.
-func (d *outputDialog) tabRow(width int) string {
-	d.tabs = nil
-	if !d.tabbed() {
-		return ""
-	}
-	count := min(len(d.pages), max(1, width/24))
-	first := max(0, min(d.page-count/2, len(d.pages)-count))
-	cell := max(1, width/count)
-	var out strings.Builder
-	for i := first; i < first+count; i++ {
-		block := d.pages[i]
-		name := block.Verb
-		if d.processes != nil {
-			name = terminalui.AgentDisplayName(block.Owner)
-		}
-		label := fmt.Sprintf(" %d %s", i+1, name)
-		path := block.Path
-		if path == "" && len(block.Reads) == 1 {
-			path = block.Reads[0].Path
-		}
-		if path != "" {
-			label += " " + terminalui.StyledPath(activityui.TruncatePath(path, cell-ansi.StringWidth(label)-2))
-		} else if block.Code != "" {
-			label += " " + strings.SplitN(block.Code, "\n", 2)[0]
-		}
-		label += " "
-		if d.filePath != "" {
-			label = " Markdown "
-			if i == 1 {
-				label = " File "
-			}
-		}
-		label = ansi.Truncate(label, cell, "…")
-		label += strings.Repeat(" ", max(0, cell-ansi.StringWidth(label)))
-		if i == d.page {
-			label = d.view.Painter.Theme.Accent() + "\x1b[7m" + label + terminalui.Reset
-		} else {
-			label = terminalui.Dim + label + terminalui.Undim
-		}
-		d.tabs = append(d.tabs, outputTab{i, (i - first) * cell, (i - first + 1) * cell})
-		out.WriteString(label)
-	}
-	return out.String()
-}
-
 // openRequested opens an operation the view's pointer handling clicked.
 func (u *terminalUI) openRequested(view *activityAdapter) {
 	if snippet := view.Opening; snippet != (activityui.Snippet{}) {
@@ -323,511 +115,144 @@ func (u *terminalUI) openRequested(view *activityAdapter) {
 	}
 }
 
-func (d *outputDialog) pageKey(page int) outputPageKey {
-	block := d.pages[page]
-	if block.Output != 0 {
-		return outputPageKey{source: block.Source, output: block.Output}
+// refreshPages joins selected sources once, then binds their detached detail
+// values to app-owned output handles. Missing feed entries retain their last page.
+func (d *outputDialog) refreshPages(blocks []activityui.Block) {
+	previous := make(map[string]outputPage, len(d.pages))
+	details := make([]activitypresentation.DetailPage, len(d.pages))
+	for i, page := range d.pages {
+		previous[page.ID], details[i] = page, page.DetailPage
 	}
-	index := block.Operation
-	if block.Kind == "summary" {
-		index = block.Section + 1
+	if blocks != nil {
+		details = activitypresentation.DetailPages(activityui.Values(blocks))
 	}
-	if index == 0 {
-		index = page + 1
+	selected := make(map[uint64]bool)
+	for _, page := range details {
+		selected[page.Source] = true
 	}
-	return outputPageKey{source: block.Source, index: index}
-}
-
-func (d *outputDialog) showPage(page int) {
-	if d.states == nil {
-		d.states = make(map[outputPageKey]outputPageState)
-	}
-	if d.pageReady {
-		d.states[d.active] = outputPageState{d.top, d.match, d.follow, d.typing, d.missed, d.draft, d.query}
-	}
-	d.page, d.active, d.pageReady = page, d.pageKey(page), true
-	state, exists := d.states[d.active]
-	if !exists {
-		block := d.pages[page]
-		state.match = -1
-		state.follow = block.Live || block.Running
-		if output := d.retainedOutput(block); output != nil {
-			state.follow = state.follow || !output.View().Done
-		}
-		if d.filePath != "" && page == 1 {
-			d.pendingLine = d.fileFirst
-		}
-	}
-	d.top, d.match, d.follow, d.typing, d.missed, d.draft, d.query = state.top, state.match, state.follow, state.typing, state.missed, state.draft, state.query
-}
-
-func (d *outputDialog) refreshPages() {
-	if d.processes != nil {
-		pages := d.processes(d.pages)
-		d.replaceOrigins(pages)
-		d.setPages(pages)
-		return
-	}
-	if len(d.origins) == 0 {
-		return
-	}
-	var pages []activityui.Block
-	seen := make(map[uint64]bool)
-	for originIndex := range d.origins {
-		origin := d.origins[originIndex].block
-		if origin.Source != 0 && seen[origin.Source] {
+	sources := make(map[uint64]activitypresentation.DetailSource)
+	outputs := make(map[uint64]map[int]*activitymodel.Output)
+	for _, entry := range d.view.Entries {
+		if !selected[entry.Source.Seq] {
 			continue
 		}
-		commands := d.view.commandOutputPages(origin.Source)
-		if len(commands) == 0 {
-			if origin.Source != 0 {
-				for index, entry := range d.view.Entries {
-					if entry.Source.Seq != origin.Source {
-						continue
-					}
-					if entry.Source.native != nil {
-						origin.Approval = entry.Source.native.approval
-					}
-					if origin.Hook != nil && len(entry.Values) == 1 {
-						current := d.view.blocks(index)[0]
-						current.Source = origin.Source
-						origin = current
-					} else if (origin.Kind == "op" || origin.Kind == "reads") && entry.Source.native != nil {
-						timed := []activityui.Block{origin}
-						setCommandFacts(timed, entry.Source)
-						origin = timed[0]
-						origin.Running = entry.Source.native.running
-						if origin.Output == 0 && len(entry.Values) > 0 {
-							// Compound output pages were rebuilt above. A single
-							// operation follows the projected record, including
-							// output attached by a separate host-exit observation.
-							origin.Tail, origin.TailOmitted = entry.Values[0].Tail, entry.Values[0].TailOmitted
-						}
-					} else if origin.Kind != "op" && origin.Kind != "reads" {
-						if origin.Kind != "summary" && len(d.view.Entries[index].Values) == 1 || origin.Kind == "summary" && origin.Section < len(d.view.Entries[index].Values) {
-							section := 0
-							if origin.Kind == "summary" {
-								section = origin.Section
-							}
-							current := d.view.blocks(index)[section]
-							current.Source = origin.Source
-							if current.Verb == "" {
-								current.Verb = origin.Verb
-							}
-							origin = current
-						}
-						if entry.Source.native != nil && entry.Source.native.live {
-							origin.Live = entry.Source.native.phase == "summary" || entry.Source.native.phase == "item/started" || entry.Source.native.phase == "item/agentMessage/delta"
-						}
-					}
-					break
-				}
+		source := activitypresentation.DetailSource{Entry: entry.Publish()}
+		if n := entry.Source.native; n != nil {
+			command := commandPresentation(entry.Source)
+			source.Command = &command
+			source.Streaming = n.phase == "summary" || n.phase == "item/started" || n.phase == "item/agentMessage/delta"
+			retained := map[int]*activitymodel.Output{1: n.output}
+			for i, segment := range n.segments {
+				retained[i+2] = segment.output
 			}
-			d.origins[originIndex].block = origin // Keep the last readable snapshot if the source ages out.
-			pages = append(pages, origin)
-		} else {
-			seen[origin.Source] = true
-			pages = append(pages, commands...)
+			outputs[entry.Source.Seq] = retained
 		}
+		sources[entry.Source.Seq] = source
 	}
-	d.replaceOrigins(pages)
-	d.setPages(pages)
-}
-
-// setPages keeps the active page selected by identity across a rebuild.
-func (d *outputDialog) setPages(pages []activityui.Block) {
+	if !d.processes {
+		details = activitypresentation.RefreshDetails(details, sources)
+	}
+	pages := make([]outputPage, len(details))
+	tabs := make([]terminalsession.DialogTab, len(details))
+	for i, detail := range details {
+		detail.Revision = sources[detail.Source].Revision
+		if detail.Revision == 0 {
+			detail.Revision = previous[detail.ID].Revision
+		}
+		output := outputs[detail.Source][detail.Output]
+		if output == nil {
+			output = previous[detail.ID].output
+		}
+		pages[i] = outputPage{detail, output}
+		tab := terminalsession.DialogTab{ID: detail.ID, Name: detail.Verb, Path: detail.Path, Code: detail.Code, Live: detail.Live || detail.Running}
+		if output != nil {
+			state, _ := output.Context(0)
+			tab.Live = tab.Live || !state.Done
+		}
+		if tab.Path == "" && len(detail.Reads) == 1 {
+			tab.Path = detail.Reads[0].Path
+		}
+		if d.processes {
+			tab.Name = terminalui.AgentDisplayName(detail.Owner)
+		}
+		if d.file != nil {
+			tab.Name, tab.Exact = "Markdown", true
+			if i == 1 || len(details) == 1 {
+				tab.Name = "File"
+			}
+			tab.Line = d.file.First
+		}
+		tabs[i] = tab
+	}
 	d.pages = pages
-	page := min(d.page, len(pages)-1)
-	for i := range pages {
-		if d.pageKey(i) == d.active {
-			page = i
-			break
-		}
+	d.Navigation = "command"
+	if d.processes {
+		d.Navigation = "process"
 	}
-	if d.pageReady {
-		d.showPage(page)
+	if d.file != nil {
+		d.Navigation = "view"
 	}
+	d.ForceTabs = d.processes && len(pages) > 0 && pages[0].Source != 0
+	d.SetPages(tabs)
 }
 
-// layout rebuilds the page for a body width when anything it shows changed.
+// layout renders the current retained snapshot without owning output lifetime.
 func (d *outputDialog) layout(width int) {
-	d.refreshPages()
-	block := d.pages[d.page]
-	retained := d.retainedOutput(block)
-	key := outputDialogKey{page: d.page, width: width, output: retained, theme: d.view.Painter.Theme, body: block.Body, approval: block.Approval, live: block.Live}
-	if retained != nil {
-		key.version = retained.Version()
-	} else {
-		key.tail, key.omitted = strings.Join(block.Tail, "\n"), block.TailOmitted
-		key.running, key.exited, key.exit = block.Running, block.Exited, block.ExitCode
+	if !d.processes {
+		d.refreshPages(nil)
 	}
-	if key == d.laidKey && d.starts != nil {
-		d.laid.Title = d.view.Painter.DialogPageTitle(snapshotOutput(block, retained), d.view.Now(), width)
+	page := d.pages[d.Page]
+	key := outputDialogKey{id: page.ID, revision: page.Revision, width: width, output: page.output, theme: d.view.Painter.Theme, file: d.file}
+	var output *activitymodel.OutputView
+	if page.output != nil {
+		key.version = page.output.Version()
+		snapshot := page.output.View()
+		output = &snapshot
+	}
+	if key == d.laidKey {
+		d.Document.Title = d.view.Painter.DialogPageTitle(activityui.Block{Value: page.Value, OutputSnapshot: output}, d.view.Now(), width)
 		return
 	}
-	d.laid, d.laidKey = d.view.Painter.DialogPage(snapshotOutput(block, retained), width), key
-	if d.filePath != "" {
-		d.laid.Lines = append([]activityui.DialogLine{{Text: terminalui.StyledPath(textsanitize.Safe(d.filePath, false)), Wrap: true}, {}}, d.laid.Lines...)
-		if block.Kind != "error" {
-			d.laid.Text = d.fileText
-			for i := range d.laid.Lines {
-				line := &d.laid.Lines[i]
-				if line.Number > 0 && line.Number >= d.fileFirst && line.Number <= d.fileLast {
-					line.GutterStyle = d.view.Painter.Theme.Accent() + d.view.Painter.Theme.SelectionBackground()
-				}
-			}
-		}
-	}
-	if len(d.segments) > 0 {
-		flashed := slices.IndexFunc(d.segmentLines, func(lines [2]int) bool {
-			return lines[0] == d.flashFrom && lines[1] == d.flashTo
-		})
-		d.laid.Lines, d.segmentLines = nil, nil
-		var texts []string
-		for _, segment := range d.segments {
-			if len(d.laid.Lines) > 0 {
-				d.laid.Lines = append(d.laid.Lines, activityui.DialogLine{})
-			}
-			first := len(d.laid.Lines)
-			page := d.view.Painter.DialogPage(segment, width)
-			heading := terminalui.Dim + "─ " + segment.Label + " "
-			heading += strings.Repeat("─", max(0, width-ansi.StringWidth(heading))) + terminalui.Undim
-			d.laid.Lines = append(d.laid.Lines, activityui.DialogLine{Text: heading})
-			d.laid.Lines = append(d.laid.Lines, page.Lines...)
-			d.segmentLines = append(d.segmentLines, [2]int{first, len(d.laid.Lines)})
-			texts = append(texts, segment.Label+"\n"+page.Text)
-		}
-		d.laid.Text = strings.Join(texts, "\n\n")
-		if flashed >= 0 {
-			d.flashFrom, d.flashTo = d.segmentLines[flashed][0], d.segmentLines[flashed][1]
-		}
-	}
-	d.starts = make([]int, len(d.laid.Lines)+1)
-	for i := range d.laid.Lines {
-		d.starts[i+1] = d.starts[i] + d.laid.RowCount(i, width)
-	}
+	d.SetDocument(d.view.Painter.DetailDocument(page.DetailPage, output, d.file, width), width)
+	d.laidKey = key
 }
 
-func (d *outputDialog) total() int {
-	if len(d.starts) == 0 {
-		return 0
-	}
-	return d.starts[len(d.starts)-1]
-}
-
-func (d *outputDialog) bottom() int { return max(0, d.total()-d.rows) }
-
-// navigate is the shared row-target navigation for links and search results.
-// Flash is opt-in and starts only once the destination has been laid out.
-func (d *outputDialog) navigate(first, last int, flash bool) {
-	if first < 0 || first >= len(d.laid.Lines) {
-		return
-	}
-	d.top, d.follow = min(d.starts[first], d.bottom()), false
-	d.flashFrom, d.flashTo, d.flashUntil = 0, 0, time.Time{}
-	if flash {
-		d.flashFrom, d.flashTo = first, min(last, len(d.laid.Lines))
-		d.flashUntil = time.Now().Add(700 * time.Millisecond)
-	}
-}
-
-func (d *outputDialog) expireFlash(now time.Time) bool {
-	if d.flashUntil.IsZero() || now.Before(d.flashUntil) {
-		return false
-	}
-	d.flashFrom, d.flashTo, d.flashUntil = 0, 0, time.Time{}
-	return true
-}
-
-// scroll moves the body by rows; reaching the bottom of live output follows it.
-func (d *outputDialog) scroll(rows int) {
-	d.top = max(0, min(d.top+rows, d.bottom()))
-	d.follow = d.laid.Live && d.top >= d.bottom()
-}
-
-// find moves to the next line matching the query after the current match, or
-// the previous one before it, wrapping around.
-func (d *outputDialog) find(step int) {
-	if d.query == "" || len(d.laid.Lines) == 0 {
-		return
-	}
-	n := len(d.laid.Lines)
-	from := d.match
-	if from < 0 {
-		// The first search starts at the top of the view.
-		from = sort.SearchInts(d.starts[:n], d.top+1) - 1
-		if step < 0 {
-			from++
-		} else {
-			from--
-		}
-	}
-	for k := 1; k <= n; k++ {
-		i := ((from+step*k)%n + n) % n
-		if row, found := d.laid.MatchRow(i, d.laidKey.width, d.query); found {
-			d.match, d.missed = i, false
-			d.navigate(i, i+1, false)
-			d.top = max(0, min(d.starts[i]+row-d.rows/3, d.bottom()))
-			return
-		}
-	}
-	d.match, d.missed = -1, true
-}
-
-// outputKey handles a key while the dialog is open; every key belongs to it.
-func (u *terminalUI) outputKey(key string) {
-	d := u.output
-	if u.selectionKey(key) {
-		return
-	}
-	// Navigation clears the snapshot before moving the page.
-	u.selection = nil
-	if d.typing {
-		switch key {
-		case "\x1b", "\x03":
-			d.typing = false
-		case "\r":
-			d.typing, d.query, d.match = false, strings.ToLower(d.draft), -1
-			d.find(1)
-		case "\x7f", "\b":
-			if r := []rune(d.draft); len(r) > 0 {
-				d.draft = string(r[:len(r)-1])
-			}
-		default:
-			if !strings.HasPrefix(key, "\x1b") && key >= " " {
-				d.draft += key
-			}
-		}
-		return
-	}
-	switch key {
-	case "\x1b", "q", "\x03":
-		u.output = nil
-	case "\x1b[A", "k":
-		d.scroll(-1)
-	case "\x1b[B", "j", "\r":
-		d.scroll(1)
-	case "\x1b[5~", "b":
-		d.scroll(-max(1, d.rows-1))
-	case "\x1b[6~", " ":
-		d.scroll(max(1, d.rows-1))
-	case "\x1b[H", "\x1b[1~", "g":
-		d.top, d.follow = 0, false
-	case "\x1b[F", "\x1b[4~", "G":
-		d.top, d.follow = d.bottom(), d.laid.Live
-	case "\x1b[D", "h":
-		if d.page > 0 {
-			d.showPage(d.page - 1)
-		}
-	case "\x1b[C", "l":
-		if d.page < len(d.pages)-1 {
-			d.showPage(d.page + 1)
-		}
-	case "/":
-		d.typing, d.draft = true, ""
-	case "n":
-		d.find(1)
-	case "N":
-		d.find(-1)
-	case "y":
-		if d.laid.Text != "" {
-			u.copyText(d.laid.Text)
-		}
-	}
-}
-
-// outputMouse handles a pointer event while the dialog is open. The wheel
-// scrolls the dialog wherever the pointer is, never the feed behind it; a
-// press outside closes it.
+func (u *terminalUI) outputKey(key string) { u.outputIntent(u.output.Key(key)) }
 func (u *terminalUI) outputMouse(button, x, y int, release bool) {
-	d := u.output
-	if u.selectionMouse(button, x, y, release) {
-		return
-	}
-	if release {
-		return
-	}
-	switch button &^ 28 {
-	case 64:
-		d.scroll(-outputDialogWheelRows)
-	case 65:
-		d.scroll(outputDialogWheelRows)
-	case 0:
-		if d.tabbed() && y == d.rect.Y+2 {
-			for _, tab := range d.tabs {
-				if x-d.rect.X-2 >= tab.from && x-d.rect.X-2 < tab.to {
-					d.showPage(tab.page)
-					return
-				}
-			}
+	u.outputIntent(u.output.Mouse(button, x, y, release))
+}
+
+func (u *terminalUI) outputIntent(intent terminalsession.DialogIntent) {
+	switch intent.Action {
+	case terminalsession.DialogClose:
+		u.output = nil
+	case terminalsession.DialogCopy:
+		u.copyText(intent.Text)
+	case terminalsession.DialogReference:
+		if u.main.composerReadOnly() {
+			u.selectNativePane(0)
 		}
-		if !d.rect.Contains(x, y) || y == d.rect.Y && x >= d.rect.X+d.rect.W-activityui.DialogCloseWidth-3 && x < d.rect.X+d.rect.W-3 {
-			u.output = nil
-		}
+		u.main.insertSelection("dialog", intent.Text, "")
+		u.main.refreshPicker()
+		u.main.Run = composer.NoRun
+		u.Focus = 0
+		u.output = nil
+	case terminalsession.DialogOpenLink:
+		u.openMarkdownFile(u.output.view, intent.Text)
 	}
 }
 
-// paintOutput draws the dialog over the faded screen above the status row: at
-// most nine tenths of each dimension, fitted to its content, and the whole
-// screen when the terminal is narrow.
 func (u *terminalUI) paintOutput(rows []string, width, height int) {
 	d := u.output
-	w, h := width, height
-	if width >= outputDialogFullWidth {
-		w, h = int(float64(width)*outputDialogShare), int(float64(height)*outputDialogShare)
-	}
-	if w < 12 || h < d.chrome()+1 {
-		d.rect, u.selection = terminalsession.Rect{}, nil
+	bodyWidth := d.Prepare(width, height)
+	if bodyWidth == 0 {
 		return
 	}
-	if u.selection != nil && (d.rect.W != w || d.rect.H > h) {
-		u.selection = nil
-	}
-	if u.selection == nil {
-		d.layout(w - 4)
-	}
-	if width >= outputDialogFullWidth {
-		h = min(h, max(d.chrome()+3, d.chrome()+d.total()))
-	}
-	if u.selection != nil && d.rect != (terminalsession.Rect{(width - w) / 2, (height - h) / 2, w, h}) {
-		u.selection = nil
-	}
-	d.rows = h - d.chrome()
-	if d.pendingLine > 0 {
-		for i, line := range d.laid.Lines {
-			if line.Number == d.pendingLine {
-				d.navigate(i, i+1, false)
-				break
-			}
+	if d.Selection == nil {
+		if d.processes {
+			d.refreshPages(u.main.processPages(d.pages))
 		}
-		d.pendingLine = 0
+		d.layout(bodyWidth)
 	}
-	if d.pendingSegment > 0 && d.pendingSegment <= len(d.segmentLines) {
-		target := d.segmentLines[d.pendingSegment-1]
-		d.navigate(target[0], target[1], d.pendingFlash)
-		d.pendingSegment = 0
-	}
-	if d.follow {
-		d.top = d.bottom()
-	}
-	d.top = max(0, min(d.top, d.bottom()))
-	var body []string
-	var indents []int
-	var gutterStyles []string
-	for i := sort.SearchInts(d.starts[1:], d.top+1); i < len(d.laid.Lines) && len(body) < d.rows; i++ {
-		lines := d.laid.Rows(i, w-4)
-		if skip := d.top - d.starts[i]; skip > 0 {
-			lines = lines[min(skip, len(lines)):]
-		}
-		for _, line := range lines {
-			line = d.highlight(line, d.laid.Indent(i), i == d.match)
-			if i >= d.flashFrom && i < d.flashTo && time.Now().Before(d.flashUntil) {
-				fill := d.view.Painter.Theme.SelectionBackground()
-				line = fill + strings.ReplaceAll(line, terminalui.Reset, terminalui.Reset+fill) + "\x1b[49m"
-			}
-			body = append(body, line)
-			indents = append(indents, d.laid.Indent(i))
-			gutterStyles = append(gutterStyles, d.laid.Lines[i].GutterStyle)
-		}
-	}
-	body = body[:min(len(body), d.rows)]
-	indents = indents[:len(body)]
-	for len(body) < d.rows {
-		body = append(body, "")
-		indents = append(indents, 0)
-	}
-	d.body, d.indents = body, indents
-	if selected := u.selection; selected != nil {
-		body = slices.Clone(body)
-		for i := range body {
-			body[i] = selected.Row(selected.DocumentY(i), d.view.Painter.Theme)
-		}
-	}
-	frame := activityui.DialogFrame{Tabs: d.tabRow(w - 4), Page: d.laid, Paused: d.laid.Live && !d.follow, Rows: body, GutterStyles: gutterStyles, Top: d.top, Total: d.total(), Footer: d.footer(w)}
-	if u.selection != nil {
-		frame.Footer = selectionHints.render()
-	}
-	if len(d.pages) > 1 {
-		frame.Position = fmt.Sprintf("%d / %d", d.page+1, len(d.pages))
-	}
-	x, y := (width-w)/2, (height-h)/2
-	d.rect = terminalsession.Rect{x, y, w, h}
-	for i := range rows {
-		rows[i] = activityui.Backdrop(rows[i])
-	}
-	for i, line := range d.view.Painter.Dialog(frame, w, h) {
-		if y+i < len(rows) {
-			rows[y+i] += fmt.Sprintf("\x1b[%dG\x1b[0m%s\x1b[0m", x+1, line)
-		}
-	}
-}
-
-// highlight marks the query's matches on a body row after its indent cells,
-// the current match's line more strongly.
-func (d *outputDialog) highlight(row string, indent int, current bool) string {
-	if d.query == "" {
-		return row
-	}
-	text := ansi.Cut(row, indent, ansi.StringWidth(row))
-	plain := strings.ToLower(ansi.Strip(text))
-	mark, unmark := "\x1b[4m", "\x1b[24m"
-	out := ansi.Cut(row, 0, indent)
-	cell := 0 // Cells of text copied so far.
-	for offset := 0; ; {
-		i := strings.Index(plain[offset:], d.query)
-		if i < 0 {
-			break
-		}
-		from := ansi.StringWidth(plain[:offset+i])
-		to := from + ansi.StringWidth(d.query)
-		match := ansi.Cut(text, from, to)
-		if current {
-			match = activityui.TextSelection(match, d.view.Painter.Theme)
-		} else {
-			match = mark + strings.ReplaceAll(match, terminalui.Reset, terminalui.Reset+mark) + unmark
-		}
-		out += ansi.Cut(text, cell, from) + match
-		cell, offset = to, offset+i+len(d.query)
-	}
-	if cell == 0 {
-		return row
-	}
-	return out + ansi.Cut(text, cell, ansi.StringWidth(text))
-}
-
-// footer is the dialog's controls, or the search being typed.
-func (d *outputDialog) footer(width int) string {
-	dim, undim := terminalui.Dim, terminalui.Undim
-	if d.typing {
-		return "/" + d.draft + "▏" + dim + "  enter find · esc cancel" + undim
-	}
-	keys := []string{"↑↓ PgUp/PgDn g/G scroll"}
-	navigation := "←→ command"
-	if d.filePath != "" {
-		navigation = "←→ view"
-	} else if d.processes != nil {
-		navigation = "←→ process"
-	}
-	if len(d.pages) > 1 {
-		keys = append(keys, navigation)
-	}
-	keys = append(keys, "/ find")
-	if d.query != "" {
-		keys[len(keys)-1] = "/ n N find"
-	}
-	keys = append(keys, "y copy", "esc")
-	if d.laid.Live && !d.follow {
-		keys = append([]string{"End follows"}, keys...)
-	}
-	footer := dim + strings.Join(keys, " · ") + undim
-	if d.missed {
-		footer = terminalui.Amber + "no match" + terminalui.Reset + dim + " · " + undim + footer
-	}
-	if ansi.StringWidth(footer) > width-6 {
-		footer = dim + "↑↓ scroll · / find · y copy · esc" + undim
-		if len(d.pages) > 1 {
-			footer = dim + navigation + " · ↑↓ scroll · y copy · esc" + undim
-		}
-	}
-	return footer
+	d.Paint(rows, width, height, &d.view.Painter.Painter)
 }

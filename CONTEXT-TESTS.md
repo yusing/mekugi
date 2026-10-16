@@ -47,6 +47,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Module descriptors, lifetimes, or contribution slots | `./apps/mekugi/internal/composition ./apps/mekugi/internal/launch`, including real frontend composition and startup, plus affected module acceptance |
 | Captured diff model, composition, merge and status | `./libraries/diffmodel/...`, plus affected router and terminal consumers |
 | Activity rendering, diff navigation/previews, terminal input, or session metrics dialog | `./modules/activity/terminalview ./modules/changehistory/terminalview ./modules/livepreview/terminalview`, plus affected router integration tests |
+| Shared content dialogs and detail pages | `./libraries/terminalui ./apps/mekugi/internal/terminalsession ./modules/activity/presentation ./modules/activity/terminalview`, plus router output-dialog, process, local-file, selection/copy and replay consumers; preserve wrapped search, page identity, retained output after feed aging and actual rendered frames |
 | Neutral activity content, source interpretation and retained output | `./modules/activity/... ./contracts/scope ./libraries/sourceanalysis/markdownsyntax ./libraries/commandargs ./libraries/commandanalysis/shellsyntax`, plus symbol execution, router live/restored/replay command/receipt/segment/dialog and terminal operation-group/tail consumers |
 | Message and public-reasoning projection | `./contracts/scope ./backends/codex/binding ./modules/activity/transcript ./modules/activity/codexbinding ./modules/activity/terminalview`, plus router live/child/history/paging and replay consumers, no-start/closed-turn admission and attachment retirement; compile tagged app fixtures after observation API changes |
 | VCS activity summaries and immutable-commit enrichment | `./modules/activity/presentation ./modules/activity/terminalview`, plus router VCS, command/segment, restored Activity and replay consumers; cover attachment cancellation, directory/hash isolation and rendered change rows |
@@ -164,7 +165,7 @@ Saved Diff rows, navigation and change graphs live in
 `modules/changehistory/terminalview/testdata/snapshots/`; streaming and native-batch
 previews live in `modules/livepreview/terminalview/testdata/snapshots/`.
 Launcher debug handoffs live in `apps/mekugi/internal/launch/testdata/snapshots/`.
-Shared Markdown, links and Mermaid fixtures live in `libraries/terminalui/testdata/snapshots/`.
+Shared Markdown, links, Mermaid and dialog-surface fixtures live in `libraries/terminalui/testdata/snapshots/`.
 Shared source syntax styles live in `libraries/diffrender/testdata/snapshots/`.
 Other owners keep fixtures in their own `testdata/snapshots/` directories.
 

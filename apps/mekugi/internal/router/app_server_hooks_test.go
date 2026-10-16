@@ -117,17 +117,19 @@ func TestAppServerHookOpenDialogTracksCompletion(t *testing.T) {
 			}
 			d := u.shell.output
 			d.layout(80)
-			d.query, d.draft, d.follow = "policy", "policy", false
+			for _, key := range []string{"g", "/", "policy"} {
+				u.shell.outputKey(key)
+			}
 			appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.session.cwd, status)})
 			d.layout(80)
 			want := "Hook Ran"
 			if status == "failed" {
 				want = "Hook Failed"
 			}
-			if !strings.Contains(d.laid.Text, "feedback: policy checked") || !strings.Contains(ansi.Strip(d.laid.Title), want) || d.laid.Live {
-				t.Fatalf("open dialog retained the start snapshot: %+v", d.laid)
+			if !strings.Contains(d.Document.Text, "feedback: policy checked") || !strings.Contains(ansi.Strip(d.Document.Title), want) || d.Document.Live {
+				t.Fatalf("open dialog retained the start snapshot: %+v", d.Document)
 			}
-			if d.query != "policy" || d.draft != "policy" || d.follow {
+			if !strings.Contains(drawOutputDialog(u.shell), "/policy▏") {
 				t.Fatal("hook completion reset dialog navigation")
 			}
 		})

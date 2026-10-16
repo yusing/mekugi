@@ -381,7 +381,7 @@ func TestAppServerThinkingFolds(t *testing.T) {
 			if !u.shell.openOutput(view, feed.Snippets[row]) {
 				t.Fatal("folded thinking did not request dialog")
 			}
-			page := view.Painter.DialogPage(u.shell.output.pages[0], 80)
+			page := view.Painter.DetailDocument(u.shell.output.pages[0].DetailPage, nil, nil, 80)
 			if page.Text != body || len(page.Lines) < 4 {
 				t.Fatalf("dialog lost full reasoning: %+v", page)
 			}

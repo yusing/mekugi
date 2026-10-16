@@ -216,7 +216,7 @@ func TestConversationConsecutiveReasoning(t *testing.T) {
 			if !shell.openOutput(v, snippet) {
 				t.Fatal("reasoning did not request dialog")
 			}
-			page := v.Painter.DialogPage(shell.output.pages[0], 80)
+			page := v.Painter.DetailDocument(shell.output.pages[0].DetailPage, nil, nil, 80)
 			if page.Text != v.Entries[opened].Source.Text {
 				t.Fatalf("wrong item opened: %q", page.Text)
 			}

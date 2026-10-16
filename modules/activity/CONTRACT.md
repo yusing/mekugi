@@ -10,7 +10,7 @@ classification, parsing and output retention.
 displayed-thread identity, input admission and bounded child history; the
 [terminal session](../../apps/mekugi/internal/terminalsession/SPEC.md) owns pane layout, input routing and
 dialog interaction. `presentation` owns the retained
-feed records, roster derivation, neutral values and canonical group membership;
+feed records, roster derivation, detail-page membership and neutral values;
 `terminalview` owns transcript and roster state, disclosure, pacing, geometry,
 painting and navigation targets. Application adapters supply typed observations,
 host reconciliation and detached displayed-thread admission; the
@@ -357,23 +357,15 @@ and clears unread counts; paused views offer Back to bottom above the composer.
 The composer shows a live count only while commands from Main or admitted children
 are running. `/ps` opens the shared dialog with one tab per whole invocation in start
 order, including a single-command tab. Each page retains owning agent, original
-display source, output and outcome. Live pages follow until scrolled away; new
-commands join while open, and completed pages remain until closing. Empty state is
+display source, output and outcome. New commands join while open, and completed
+pages remain until closing. Empty state is
 explicit. Yielded commands remain running until host completion; restored history
 never revives them. Session switching closes the dialog. Reading or closing it
 neither interrupts work nor submits model input.
 
 ## Content dialog
 
-The dialog captures input above both panes and leaves transcript follow unchanged.
-It uses at most 90% of each dimension, or available width below 60 columns, over
-faint uncolored panes. A theme-aware fill and accent frame retain content syntax,
-diff and selection colors. Close uses the top-right button, Esc/q or outside click.
-Arrows/j/k, page keys, b/space, g/G and Home/End scroll; the wheel affects only it.
-Left/Right or clickable tabs choose results/commands. Tab paths retain nearby
-directories and filename rather than an indistinguishable prefix.
-
-Each page keeps its own scroll, search, output/status and copy target. New tracked
+Detail pages preserve original operation identity through feed grouping. New tracked
 segments appear while open. Missing boundaries label combined output explicitly,
 preserving requested source, actual edits and invocation outcome independently.
 The header shows target, result position, ranges, retained line count and known
@@ -383,33 +375,15 @@ color path/line/source separately, and search titles retain pattern/path colors.
 Skill reads render retained Markdown without line numbers; skill programs remain
 literal command output. Copies preserve retained source, not painting.
 
-Live output is visibly marked. Live pages follow until scrolled away; End or
-returning to bottom resumes.
-Narrative pages refresh from their source while preserving navigation. `/` starts
-case-insensitive substring search, Enter finds and n/N advances, revealing the
-matching wrapped row. `y` copies current
-retained output, or source when no output exists. The terminal's
-[shared selection controls](../../apps/mekugi/internal/terminalsession/SPEC.md#selection-and-source-copy)
-govern frozen content, scrolling, Reference/Copy/Clear and dismissal. Reference
-uses [Conversation's attachment pipeline](../conversation/SPEC.md#attachment-snapshots),
-including active question answers. Feed aging does not invalidate an open page.
+Live output is visibly marked. Narrative pages refresh from their source without
+changing page identity; feed aging does not invalidate an open page. The terminal owns
+[dialog controls](../../apps/mekugi/internal/terminalsession/SPEC.md#content-dialogs)
+and source-selection actions.
 
 Inline diagnostics use a bounded first-line preview. Elided errors open full
 retained literal text, including restored JavaScript failures. A complete
 single-line diagnostic may wrap without a details link.
-Ctrl-B ! opens the newest displayed error; arrows page its retained errors.
 Display/copy sanitize controls without changing retained host evidence.
-
-Recognized existing regular local links open current UTF-8 contents, up to 8 MiB.
-Relative paths require session workspace metadata; absolute paths and local file
-URLs are accepted. Workspace paths display relatively, external paths absolutely.
-Line/range suffixes remain in titles, reveal the first line and highlight its
-number including left padding but not gutter. Markdown defaults to rendered view
-with a File tab; tabs keep independent navigation and copy original bytes. Other
-files and errors have one File view. A selectable path precedes syntax-colored
-content. Binary, oversized and unreadable content shows copyable errors. Reopening
-rereads, without monitoring. Missing links retain labels without click targets;
-HTTP(S) links copy destinations in transcripts and do nothing on dialog click.
 
 ## Agents roster and navigation
 

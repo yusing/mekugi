@@ -71,7 +71,7 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 				t.Fatal("truncated error did not open")
 			}
 			drawOutputDialog(u.shell)
-			if u.shell.output.laid.Text != textsanitize.Safe(full, false) {
+			if u.shell.output.Document.Text != textsanitize.Safe(full, false) {
 				t.Fatal("details lost full error")
 			}
 			u.shell.outputKey("q")

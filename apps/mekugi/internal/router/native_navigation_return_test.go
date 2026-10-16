@@ -36,7 +36,7 @@ func TestNativeReplyDialogPreservesScrolledDiff(t *testing.T) {
 	if err := u.paint(&bytes.Buffer{}, 120, 28); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(u.shell.output.laid.Text, "Reply body.") {
+	if !strings.Contains(u.shell.output.Document.Text, "Reply body.") {
 		t.Fatal("dialog lost selected reply")
 	}
 	u.shell.outputKey("\x1b")

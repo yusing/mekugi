@@ -6,9 +6,11 @@ Provide terminal input, raw-mode lifetime, Markdown painting and source-aware co
 fragments without feature state or backend control. Consumers own pane composition,
 key bindings, selection lifetime, file-link authorization and backend interaction.
 
-Choice-list drawing shares visible-row column measurement, selection styling and
-viewport hit geometry. Consumers supply item text and retain selection meaning,
-headers, actions and key interpretation.
+Choice lists measure columns from visible rows. Shared list and dialog drawing
+preserves supplied syntax and source-copy annotations while sharing wrapping,
+selection styling and hit geometry.
+Consumers supply content, headers and actions; they own navigation and effect
+dispatch. Rendering neither reads files nor opens links.
 
 ## Behavior
 
@@ -89,6 +91,6 @@ and width, including quotes/replay. The port derives from
 PTY tests cover cancellation, descriptor lifetime and terminal restoration.
 Input tests cover mouse decoding and scrolling. Mermaid fixtures cover supported
 directions, labels, crossings, bounds and unsupported input. Actual-renderer
-snapshots cover Markdown styles, wrapping, links and responsive tables; selection
-tests reconstruct their source. Native-session and offline-replay acceptance cover
+snapshots cover Markdown styles, wrapping, links, responsive tables and dialog
+surfaces; selection tests reconstruct their source. Native-session and offline-replay acceptance cover
 composed frames and consumer-owned selection lifetimes.

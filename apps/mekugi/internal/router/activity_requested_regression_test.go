@@ -82,7 +82,7 @@ func TestUISnapshotUnresolvedEditCommand(t *testing.T) {
 					t.Fatal("unresolved edit has no ordinary command dialog")
 				}
 				// The interpreter projection is the original source, not a made-up edit.
-				page := u.view.Painter.DialogPage(u.shell.output.pages[0], 100)
+				page := u.view.Painter.DetailDocument(u.shell.output.pages[0].DetailPage, nil, nil, 100)
 				var source string
 				for _, line := range page.Lines {
 					source += ansi.Strip(line.Text) + "\n"

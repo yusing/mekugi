@@ -163,6 +163,16 @@ func (o *Output) Version() int {
 	return o.version
 }
 
+// HasContent checks for nonblank retained text without copying the full stream.
+func (o *Output) HasContent() bool {
+	for _, line := range o.lines {
+		if strings.TrimSpace(line) != "" {
+			return true
+		}
+	}
+	return len(o.buffer.Line) > 0 && strings.TrimSpace(LineText(o.buffer.Line, OutputLineBytes)) != ""
+}
+
 func (o *Output) changed() {
 	o.version++
 	o.snapshot = nil

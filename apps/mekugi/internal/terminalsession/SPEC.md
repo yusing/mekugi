@@ -155,6 +155,35 @@ Unavailable backend versions are omitted. It remains while composing the first
 prompt, including six-row Main frames, yielding to history, live edits, modals and
 the full multiline composer.
 
+## Content dialogs
+
+A dialog captures input above both panes without changing transcript follow. It
+uses at most 90% of each dimension, or available width below 60 columns, over faint
+uncolored panes. Its theme-aware fill and accent frame preserve syntax, diff and
+selection colors. Close uses the top-right button, Esc/q or outside click.
+
+Arrows/j/k, page keys, b/space, g/G and Home/End scroll; the wheel affects only the
+dialog. Left/Right or clickable tabs choose pages. Tab paths retain nearby
+directories and filenames. Each page keeps independent scroll, search and follow
+state. Live pages follow until scrolled away; End or returning to bottom resumes.
+`/` starts case-insensitive substring search, Enter finds and n/N advances,
+revealing the matching wrapped row. `y` copies retained output, or source when
+output is absent. [Selection controls](#selection-and-source-copy) govern frozen
+content and Reference/Copy/Clear. Ctrl-B ! opens the newest displayed error;
+arrows page its retained errors.
+
+Recognized regular local links open current UTF-8 contents, up to 8 MiB. Relative
+paths require session workspace metadata; absolute paths and local file URLs are
+accepted. Workspace paths display relatively, external paths absolutely. A
+selectable path precedes syntax-colored content. Line/range suffixes remain in
+titles, reveal the first line and highlight its number and left padding, not the
+gutter. Markdown opens rendered content with a separate File tab; other files and
+errors have one File view. Tabs keep independent navigation and copy original
+bytes. Binary, oversized or unreadable content shows copyable errors. Reopening
+rereads without monitoring. Missing links retain labels without click targets.
+HTTP(S) links copy destinations in transcripts and do nothing on dialog click.
+The application resolves and reads files; rendering receives their content or error.
+
 ## Selection and source copy
 
 Dragging across text in the displayed transcript, the composer, a side-question dock, the
@@ -190,11 +219,8 @@ Scrolling after releasing the drag leaves the selected range unchanged. Newly
 exposed rows retain source-aware Markdown copying and their original click targets;
 saved Diff rows retain their gutters and change attribution. Static selections
 retain their existing dismissal behavior. Resizing or resuming editing dismisses
-the selection. Recognized Markdown file links in Main, child transcripts, and shared
-dialogs open local source with the path, content, and read errors copyable, as
-specified by [activity display](../../../../modules/activity/CONTRACT.md). HTTP(S) links still copy
-their destinations in Main and child transcripts; clicking them inside a dialog still
-does nothing. Missing local file destinations are not clickable.
+the selection. Local links in Main, child transcripts and shared dialogs follow
+the [content-dialog contract](#content-dialogs).
 Clipboard availability is controlled by the user's terminal.
 
 The application binds Reference to the [conversation attachment pipeline](../../../../modules/conversation/SPEC.md#attachment-snapshots)

@@ -110,7 +110,7 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("PTY reply frame did not complete")
 	}
-	if !strings.Contains(screen.String(), "The requested reply.") || !strings.Contains(u.shell.output.laid.Text, "End of requested reply.") || strings.Contains(u.shell.output.laid.Text, "An earlier unrelated reply") {
+	if !strings.Contains(screen.String(), "The requested reply.") || !strings.Contains(u.shell.output.Document.Text, "End of requested reply.") || strings.Contains(u.shell.output.Document.Text, "An earlier unrelated reply") {
 		t.Fatalf("dialog did not reach exact full reply:\n%s", screen.String())
 	}
 	u.shell.outputKey("\x1b")

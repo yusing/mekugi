@@ -1405,7 +1405,7 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 					continue
 				}
 				for _, chunk := range attempt.chunks {
-					if u.shell.output.pages[u.shell.output.page].Code == chunk.Review.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(u.shell.diff.workspace, chunk.Review.BeforePath), pathdisplay.ForWorkspace(u.shell.diff.workspace, chunk.Review.AfterPath)) {
+					if u.shell.output.pages[u.shell.output.Page].Code == chunk.Review.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(u.shell.diff.workspace, chunk.Review.BeforePath), pathdisplay.ForWorkspace(u.shell.diff.workspace, chunk.Review.AfterPath)) {
 						found = true
 					}
 				}

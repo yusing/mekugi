@@ -14,6 +14,7 @@ import (
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
+	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
@@ -183,7 +184,7 @@ func TestLiveActivityAttachmentDialogs(t *testing.T) {
 					if !u.openOutput(v, v.Opening) {
 						t.Fatal("attachment click did not open shared dialog")
 					}
-					page := v.Painter.DialogPage(u.output.pages[0], 80)
+					page := v.Painter.DetailDocument(u.output.pages[0].DetailPage, nil, nil, 80)
 					if page.Text != textsanitize.Safe(body, false) {
 						t.Fatalf("dialog changed submitted content: got %d bytes, want %d", len(page.Text), len(body))
 					}
@@ -233,7 +234,7 @@ func TestUISnapshotAttachmentDialogs(t *testing.T) {
 		for line := range page.Lines {
 			rows = append(rows, page.Rows(line, 72)...)
 		}
-		frame := activityui.DialogFrame{Page: page, Rows: rows, Total: len(rows), Footer: "escape close · scroll"}
+		frame := terminalui.DialogFrame{Page: page, Rows: rows, Total: len(rows), Footer: "escape close · scroll"}
 		uisnapshot.Assert(t, "testdata/snapshots/attachment-dialog-"+name+".txt", strings.Join(v.Painter.Dialog(frame, 80, 14), "\n")+"\n")
 	}
 }
@@ -261,7 +262,7 @@ func TestUISnapshotDirectoryAttachment(t *testing.T) {
 	for line := range page.Lines {
 		rows = append(rows, page.Rows(line, 72)...)
 	}
-	frame := activityui.DialogFrame{Page: page, Rows: rows, Total: len(rows), Footer: "escape close · scroll"}
+	frame := terminalui.DialogFrame{Page: page, Rows: rows, Total: len(rows), Footer: "escape close · scroll"}
 	uisnapshot.Assert(t, "testdata/snapshots/directory-attachment-dialog.txt", strings.Join(v.Painter.Dialog(frame, 80, 14), "\n")+"\n")
 }
 

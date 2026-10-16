@@ -123,7 +123,7 @@ func (v *activityAdapter) apply(event activityPaneEvent) bool {
 				if v0.Source.Agent == entry.Agent && v0.Source.CallID == entry.CallID && entry.CallID != "" {
 					code, _ := strconv.Atoi(entry.Text)
 					blocks := commandExitBlocks(v.blocks(i), code, entry.outputTail, entry.outputOmit)
-					setCommandFacts(blocks, v0.Source)
+					setCommandFacts(blocks, commandPresentation(v0.Source))
 					v.replaceEntry(i, v0.Source, blocks)
 					break
 				}

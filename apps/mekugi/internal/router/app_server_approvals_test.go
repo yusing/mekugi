@@ -655,7 +655,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 			}
 			rows = make([]string, 18)
 			u.shell.paintOutput(rows, 80, len(rows))
-			if !strings.Contains(u.shell.output.laid.Title, color+label+terminalui.Reset) {
+			if !strings.Contains(u.shell.output.Document.Title, color+label+terminalui.Reset) {
 				t.Fatalf("dialog lost the decision: %q", rows)
 			}
 			assertNativeUISnapshot(t, "approval-dialog-"+tc.name, rows)

@@ -644,43 +644,7 @@ func fitPath(path string, width int) string {
 	if width < 16 {
 		return path
 	}
-	return TruncatePath(path, width)
-}
-
-// TruncatePath uses the feed's path elision in single-line controls, including
-// widths where feed rows would wrap instead. It keeps nearby directories and
-// the filename, or the filename's start and extension when it cannot fit.
-func TruncatePath(path string, width int) string {
-	if width <= 0 {
-		return ""
-	}
-	if ansi.StringWidth(path) <= width {
-		return path
-	}
-	i := strings.LastIndex(strings.TrimSuffix(path, "/"), "/")
-	base := path[i+1:]
-	if i >= 0 && ansi.StringWidth(base)+2 <= width {
-		// The last separator always fits, so this finds a cut.
-		for cut := 1; cut <= i; cut++ {
-			if path[cut] == '/' && 1+ansi.StringWidth(path[cut:]) <= width {
-				return "…" + path[cut:]
-			}
-		}
-	}
-	// The name alone is too wide: keep its start and its extension.
-	if i >= 0 && width > 4 {
-		return "…/" + elideMiddle(base, width-2)
-	}
-	return elideMiddle(path, width)
-}
-
-func elideMiddle(text string, width int) string {
-	total := ansi.StringWidth(text)
-	if total <= width {
-		return text
-	}
-	tail := (width - 1) / 2
-	return ansi.Truncate(text, width-1-tail, "") + "…" + ansi.TruncateLeft(text, total-tail, "")
+	return terminalui.TruncatePath(path, width)
 }
 
 // lineRanges shows read spans as line numbers: 25:46 reads as L25–46.
@@ -1038,25 +1002,6 @@ func (p *Painter) Event(block Block, width int) []string {
 		return p.Flash(block, p.Markdown(block.Body, width, false))
 	}
 	return p.Flash(block, p.Block(block, width))
-}
-
-// TextSelection replaces backgrounds while retaining syntax colors. Clear
-// reverse-video carets and restore the fill after resets and code/diff fills.
-func TextSelection(text string, theme diffrender.Theme) string {
-	fill := theme.SelectionBackground() + "\x1b[27m"
-	var out strings.Builder
-	out.WriteString(fill)
-	var state byte
-	for text != "" {
-		seq, _, n, next := ansi.DecodeSequence(text, state, nil)
-		out.WriteString(seq)
-		if strings.HasPrefix(seq, "\x1b[") && strings.HasSuffix(seq, "m") {
-			out.WriteString(fill)
-		}
-		text, state = text[n:], next
-	}
-	out.WriteString("\x1b[49m")
-	return out.String()
 }
 
 // Flash highlights the text of a flashed block's rows, leaving padding and

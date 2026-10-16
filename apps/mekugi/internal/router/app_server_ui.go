@@ -387,9 +387,6 @@ func startAppServerUI(conversation *conversationmodel.Service, activity *activit
 							u.dirty = true
 						}
 						now := u.now()
-						if u.shell.output != nil && u.shell.output.expireFlash(now) {
-							u.dirty = true
-						}
 						if settleActivity(now, u.view, u.agents) {
 							u.dirty = true
 						}

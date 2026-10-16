@@ -45,11 +45,11 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 			}
 			u.width, u.height = 80, 18
 			frame := drawOutputDialog(u)
-			if u.output.filePath != "src/source #1?%.go" || u.output.fileFirst > 0 && (u.output.top == 0 || !strings.Contains(frame, "package target")) {
+			if u.output.file.Path != "src/source #1?%.go" || u.output.file.First > 0 && !strings.Contains(frame, "package target") {
 				t.Fatalf("path or line destination lost: %q", frame)
 			}
-			if u.output.fileFirst > 0 {
-				if !strings.Contains(ansi.Strip(u.output.laid.Title), target[strings.LastIndexByte(target, ':'):]) {
+			if u.output.file.First > 0 {
+				if !strings.Contains(ansi.Strip(u.output.Document.Title), target[strings.LastIndexByte(target, ':'):]) {
 					t.Fatal("title lost the original location")
 				}
 				return // Copy and drag share one path after destination resolution.
@@ -118,7 +118,7 @@ func TestMarkdownFileDialogSanitizesDisplayKeepsSourceCopy(t *testing.T) {
 
 func TestMarkdownFileDialogViews(t *testing.T) {
 	workspace := t.TempDir()
-	content := "# Heading\n\n**bold** and [source](sample.go:1)\n\n" + strings.Repeat("more content\n", 40)
+	content := "# Heading\n\n**bold** and [source](sample.go:1)\n\n" + strings.Repeat("more content\n", 25) + "source target\n" + strings.Repeat("more content\n", 14)
 	path := filepath.Join(workspace, "sample.md")
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		t.Fatal(err)
@@ -133,18 +133,18 @@ func TestMarkdownFileDialogViews(t *testing.T) {
 	drawOutputDialog(u)
 	x, y := outputSelectionPoint(t, u, "bold")
 	outputSelectionDrag(u, x, y, x+3, y)
-	if u.selection == nil || u.selection.Text() != "**bold**" {
+	if u.output.Selection == nil || u.output.Selection.Text() != "**bold**" {
 		t.Fatal("rendered selection lost Markdown source formatting")
 	}
 	u.outputKey("\x1b") // Clear the selection.
 	u.outputKey("/")
 	u.outputKey("bold")
 	u.outputKey("\r")
-	markdownTop := u.output.top
-	tab := u.output.tabs[1]
-	u.outputMouse(0, u.output.rect.X+2+tab.from, u.output.rect.Y+2, false)
-	drawOutputDialog(u)
-	if u.output.page != 1 || u.output.top == 0 || u.output.query != "" {
+	markdownFrame := drawOutputDialog(u)
+	tabX, tabY := dialogFramePoint(t, outputDialogScreen(u), " File ")
+	u.outputMouse(0, tabX, tabY, false)
+	fileFrame := drawOutputDialog(u)
+	if u.output.Page != 1 || !strings.Contains(fileFrame, "source target") || strings.Contains(fileFrame, "**bold**") || strings.Contains(fileFrame, "/ n N find") {
 		t.Fatal("File tab did not reveal the source location with separate search state")
 	}
 	for _, key := range []string{"y", "\x1b[D", "y"} {
@@ -154,13 +154,13 @@ func TestMarkdownFileDialogViews(t *testing.T) {
 			t.Fatal("view copy changed source bytes")
 		}
 	}
-	if u.output.query != "bold" || u.output.top != markdownTop {
+	if drawOutputDialog(u) != markdownFrame {
 		t.Fatal("view switching lost navigation")
 	}
 	x, y = outputSelectionPoint(t, u, "source")
 	u.outputMouse(0, x, y, false)
 	u.outputMouse(0, x, y, true)
-	if u.output.filePath != "sample.go" || len(u.output.pages) != 1 {
+	if u.output.file.Path != "sample.go" || len(u.output.pages) != 1 {
 		t.Fatal("rendered local link did not open the source file")
 	}
 }
@@ -205,13 +205,13 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 	x, y = outputSelectionPoint(t, u, "sample.go:1")
 	u.outputMouse(0, x, y, false)
 	u.outputMouse(0, x, y, true)
-	if u.output == before || u.output.filePath != "sample.go" {
+	if u.output == before || u.output.file.Path != "sample.go" {
 		t.Fatal("dialog link did not open the file")
 	}
 	drawOutputDialog(u)
 	x, y = outputSelectionPoint(t, u, "sample.go")
 	outputSelectionDrag(u, x, y, x+8, y)
-	if u.selection == nil || u.selection.Text() != "sample.go" {
+	if u.output.Selection == nil || u.output.Selection.Text() != "sample.go" {
 		t.Fatal("displayed path is not selectable")
 	}
 	for _, target := range []string{"missing.go", "sample.go:0", "sample.go:2-1", "sample.go:1-", workspace, "file://remote" + workspace + "/sample.go", "https://example.com", "#section"} {
@@ -227,14 +227,14 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 		t.Fatal("relative file resolved without workspace metadata")
 	}
 	path := filepath.Join(workspace, "sample.go")
-	if !u.openMarkdownFile(main.view, path) || u.output.filePath != path {
+	if !u.openMarkdownFile(main.view, path) || u.output.file.Path != path {
 		t.Fatal("external absolute path was shortened")
 	}
 	path += ":1-2"
 	if err := os.WriteFile(path, []byte("literal file name\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if !u.openMarkdownFile(main.view, path) || u.output.filePath != path || u.output.fileFirst != 0 {
+	if !u.openMarkdownFile(main.view, path) || u.output.file.Path != path || u.output.file.First != 0 {
 		t.Fatal("location parsing took precedence over an exact file name")
 	}
 }
@@ -267,7 +267,7 @@ func TestUISnapshotMarkdownFileDialog(t *testing.T) {
 			u.paintOutput(rows, u.width, u.height)
 			uisnapshot.AssertTerminal(t, "testdata/snapshots/"+test.name+".txt", append(rows, "plain after file dialog"), u.width)
 			if failure {
-				if ansi.Strip(u.output.laid.Lines[2].Text) != "file is not UTF-8 text" {
+				if ansi.Strip(u.output.Document.Lines[2].Text) != "file is not UTF-8 text" {
 					t.Fatal("read error literal content changed")
 				}
 				u.outputKey("y")

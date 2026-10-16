@@ -6,6 +6,7 @@ import (
 	"time"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
 
@@ -208,7 +209,7 @@ func TestUISnapshotGuardCommandOutputDialog(t *testing.T) {
 		ID: "cmd", Type: "commandExecution", Command: command, AggregatedOutput: &output, ExitCode: new(1),
 	}}}})
 	entry := u.view.Entries[0]
-	pages := u.view.commandOutputPages(entry.Source.Seq)
+	pages := activityui.Disclosure(nil).Blocks(commandPresentation(entry.Source).DetailValues())
 	if len(pages) != 1 || pages[0].Code != source || entry.Source.native.command != command || u.view.retainedOutput(pages[0]) != entry.Source.native.output {
 		t.Fatalf("combined output pages = %+v; want original command display and unchanged host output", pages)
 	}

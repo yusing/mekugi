@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -139,7 +140,7 @@ func TestUISnapshotActivityOutputDialog(t *testing.T) {
 			for i := range page.Lines {
 				body = append(body, page.Rows(i, tc.width-4)...)
 			}
-			frame := DialogFrame{Page: page, Position: tc.position, Paused: tc.paused, Top: tc.top, Total: len(body), Rows: body[tc.top:], Footer: "esc close · ↑↓ scroll · c copy"}
+			frame := terminalui.DialogFrame{Page: page, Position: tc.position, Paused: tc.paused, Top: tc.top, Total: len(body), Rows: body[tc.top:], Footer: "esc close · ↑↓ scroll · c copy"}
 			uisnapshot.Assert(t, "testdata/snapshots/activity_dialog_"+tc.name+".txt", strings.Join(p.Dialog(frame, tc.width, tc.height), "\n")+"\n")
 		})
 	}

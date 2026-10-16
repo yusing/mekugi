@@ -63,7 +63,7 @@ func TestNativeSentMessagesBecomeExcerptsOutOfView(t *testing.T) {
 	if err := u.paint(&bytes.Buffer{}, 120, 28); err != nil {
 		t.Fatal(err)
 	}
-	if full := u.shell.output.laid.Text; !strings.Contains(full, "Follow last line.") {
+	if full := u.shell.output.Document.Text; !strings.Contains(full, "Follow last line.") {
 		t.Fatalf("dialog lost the full follow-up:\n%s", full)
 	}
 	u.shell.outputKey("\x1b")
@@ -216,9 +216,9 @@ func TestUISnapshotMainBatchWithFailedCommand(t *testing.T) {
 				}
 			}
 			if u.shell.output == nil || len(u.shell.output.pages) != 6 ||
-				!slices.ContainsFunc(u.shell.output.pages, func(b activityui.Block) bool { return b.ExitCode == 2 }) ||
-				!slices.ContainsFunc(u.shell.output.pages, func(b activityui.Block) bool { return b.Lang == "diff" && strings.Contains(b.Code, "+new") }) ||
-				!slices.ContainsFunc(u.shell.output.pages, func(b activityui.Block) bool { return b.Lang == "diff" && strings.Contains(b.Code, "+other") }) {
+				!slices.ContainsFunc(u.shell.output.pages, func(b outputPage) bool { return b.ExitCode == 2 }) ||
+				!slices.ContainsFunc(u.shell.output.pages, func(b outputPage) bool { return b.Lang == "diff" && strings.Contains(b.Code, "+new") }) ||
+				!slices.ContainsFunc(u.shell.output.pages, func(b outputPage) bool { return b.Lang == "diff" && strings.Contains(b.Code, "+other") }) {
 				t.Fatal("rendered batch click did not open failed-command and edit details")
 			}
 		})

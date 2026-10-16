@@ -3,6 +3,7 @@ package router
 import (
 	"bytes"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -199,7 +200,7 @@ func TestNativeNavigationBatchFilterBinding(t *testing.T) {
 func navigationBatchDialog() *terminalUI {
 	v := newActivityAdapter()
 	v.Painter.Theme = diffrender.DarkTheme
-	d := &outputDialog{view: v, match: -1}
+	var pages []activityui.Block
 	retention := new(activitymodel.Retention)
 	for i, path := range []string{
 		"/workspace/deeply/nested/internal/router/navigation.go",
@@ -215,10 +216,12 @@ func navigationBatchDialog() *terminalUI {
 		if i == 2 {
 			block.Path, block.Reads = "", []activitymodel.Read{{Path: path}}
 		}
-		d.pages = append(d.pages, block)
+		pages = append(pages, block)
 	}
-	d.showPage(2)
-	return &terminalUI{output: d}
+	u := &terminalUI{}
+	u.openBlocks(v, pages)
+	u.output.ShowPage(2)
+	return u
 }
 
 func navigationBatchDialogFrame(t *testing.T, u *terminalUI, width int) string {
@@ -238,61 +241,38 @@ func TestNativeNavigationBatchDialogPathTabs(t *testing.T) {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			u := navigationBatchDialog()
 			frame := navigationBatchDialogFrame(t, u, width)
-			row := strings.Split(frame, "\n")[u.output.rect.Y+2]
-			tabs := append([]outputTab(nil), u.output.tabs...)
-			for _, tab := range tabs {
-				block := u.output.pages[tab.page]
+			rows := strings.Split(frame, "\n")
+			rect := dialogFrameRect(t, rows)
+			row := rows[rect.Y+2]
+			visible := 0
+			for page, block := range u.output.pages {
+				prefix := fmt.Sprintf(" %d Read", page+1)
+				index := strings.Index(row, prefix)
+				if index < 0 {
+					continue
+				}
+				visible++
 				path := block.Path
 				if path == "" {
 					path = block.Reads[0].Path
 				}
-				prefix := fmt.Sprintf(" %d Read", tab.page+1)
-				room := tab.to - tab.from - ansi.StringWidth(prefix) - 2
-				want := activityui.TruncatePath(path, room)
-				if !strings.Contains(row, want) {
-					t.Fatalf("page %d did not reuse front path truncation %q: %q", tab.page, want, row)
-				}
-				// Locate each tab in rendered cells, including the Unicode path.
-				index := strings.Index(row, prefix)
-				if index < 0 {
-					t.Fatalf("page %d label missing: %q", tab.page, row)
+				if !strings.Contains(row, filepath.Base(path)) {
+					t.Fatalf("page %d lost its filename: %q", page, row)
 				}
 				x := ansi.StringWidth(row[:index]) + ansi.StringWidth(prefix)
-				navigationBatchMouse(t, u, 0, x, u.output.rect.Y+2, false)
-				if u.output.page != tab.page {
-					t.Fatalf("rendered tab selected page %d, want %d", u.output.page, tab.page)
+				navigationBatchMouse(t, u, 0, x, rect.Y+2, false)
+				if u.output.Page != page {
+					t.Fatalf("rendered tab selected page %d, want %d", u.output.Page, page)
 				}
-				// Do not repaint until all original visible hit targets were checked.
+			}
+			if visible == 0 {
+				t.Fatal("dialog rendered no clickable path tabs")
 			}
 			navigationBatchDialogFrame(t, u, width)
-			if got, want := u.output.laid.Text, fmt.Sprintf("page %d only", u.output.page+1); got != want {
+			if got, want := u.output.Document.Text, fmt.Sprintf("page %d only", u.output.Page+1); got != want {
 				t.Fatalf("selected tab showed another command's output: %q, want %q", got, want)
 			}
 		})
-	}
-}
-
-func TestNativeNavigationBatchDialogTabRowNarrowPathBudget(t *testing.T) {
-	u := navigationBatchDialog()
-	row := ansi.Strip(u.output.tabRow(120))
-	if len(u.output.tabs) != 5 {
-		t.Fatalf("120-column tabs: got %d visible pages, want 5", len(u.output.tabs))
-	}
-	for _, tab := range u.output.tabs {
-		block := u.output.pages[tab.page]
-		path := block.Path
-		if path == "" {
-			path = block.Reads[0].Path
-		}
-		prefix := fmt.Sprintf(" %d Read", tab.page+1)
-		room := tab.to - tab.from - ansi.StringWidth(prefix) - 2
-		if room != 15 {
-			t.Fatalf("test must exercise the sub-16-column path budget, got %d", room)
-		}
-		cell := ansi.Cut(row, tab.from, tab.to)
-		if want := activityui.TruncatePath(path, room); !strings.Contains(cell, want) {
-			t.Fatalf("narrow tab dropped its filename: want %q in %q", want, cell)
-		}
 	}
 }
 

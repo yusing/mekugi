@@ -160,12 +160,12 @@ func TestRunningProcessesInteraction(t *testing.T) {
 		if err := u.shell.send("\x1b[C"); err != nil {
 			t.Fatal(err)
 		}
-		if got := drawOutputDialog(u.shell); d.page != 1 || !strings.Contains(got, "sleep 2") || !strings.Contains(got, "2 / 20") {
+		if got := drawOutputDialog(u.shell); d.Page != 1 || !strings.Contains(got, "sleep 2") || !strings.Contains(got, "2 / 20") {
 			t.Fatalf("Right did not select the next process: %s", got)
 		}
-		tab := d.tabs[len(d.tabs)-1]
-		u.shell.outputMouse(0, d.rect.X+2+tab.from, d.rect.Y+2, false)
-		if d.page != tab.page {
+		x, y := dialogFramePoint(t, outputDialogScreen(u.shell), "1 main")
+		u.shell.outputMouse(0, x, y, false)
+		if d.Page != 0 {
 			t.Fatal("tab click did not select its process")
 		}
 		if err := u.shell.send(closeKey); err != nil {

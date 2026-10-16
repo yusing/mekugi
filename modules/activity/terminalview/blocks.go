@@ -222,12 +222,6 @@ func editCounts(added, removed int) string {
 // Receipts write "`path` +A -R"; app-server rows write "`path` · +A −R".
 var editStatPattern = regexp.MustCompile(`^(?: ·)? \+(\d+) [-−](\d+)((?: · [^` + "`" + `]*)?)$`)
 
-// EditPath returns the unshortened target of an edit row, when known.
-func EditPath(block Block) string {
-	path, _, _ := markdownsyntax.CodeSpan(block.Label, 0)
-	return path
-}
-
 var directoryDeletionPattern = regexp.MustCompile(`^ • [0-9]+ files?(?: · .*)?$`)
 
 // DirectoryDeletion reports a captured directory removal summary.

@@ -9,6 +9,8 @@ import (
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -21,7 +23,7 @@ func TestUISnapshotMoveActivityAndDialog(t *testing.T) {
 	u.view.Painter.Theme = diffrender.DarkTheme
 	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: text, native: &liveActivityNativeItem{thread: "main", item: "move"}}}})
 	var rows []string
-	for _, block := range toolOperationBlocks(text) {
+	for _, block := range activityui.Disclosure(nil).Blocks(activitypresentation.Operations(text)) {
 		rows = append(rows, u.view.Painter.Block(block, 100)...)
 	}
 	uisnapshot.Assert(t, "testdata/snapshots/move-paths-activity.txt", strings.Join(rows, "\n")+"\n")
@@ -104,7 +106,7 @@ func TestUISnapshotHostMoveDialogSyntax(t *testing.T) {
 			continue
 		}
 		found := false
-		for _, line := range u.shell.output.laid.Lines {
+		for _, line := range u.shell.output.Document.Lines {
 			if line.Text == row {
 				found = true
 				break
@@ -114,7 +116,7 @@ func TestUISnapshotHostMoveDialogSyntax(t *testing.T) {
 			t.Fatalf("compressed move label lost source token colors: missing %q", row)
 		}
 	}
-	if pages[0].Verb != "Move" || u.shell.output.laid.Text != change.Diff {
+	if pages[0].Verb != "Move" || u.shell.output.Document.Text != change.Diff {
 		t.Fatal("move action or copied source changed")
 	}
 	uisnapshot.Assert(t, "testdata/snapshots/host-move-dialog-syntax.txt", frame+"\n")

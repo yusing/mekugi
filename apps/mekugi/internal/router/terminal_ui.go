@@ -433,7 +433,7 @@ func (u *terminalUI) mouse(s string) error {
 		r.X += u.layout.Main.X
 		r.Y += u.layout.Main.Y
 		if r.Contains(x, y) {
-			delta := outputDialogWheelRows
+			delta := 3
 			if button&1 != 0 {
 				delta = -delta
 			}

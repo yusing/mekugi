@@ -13,7 +13,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
-	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
@@ -38,12 +37,8 @@ func (u *terminalUI) selectionKey(key string) bool {
 	if s == nil {
 		return false
 	}
-	intent, handled := s.Key(key, u.output != nil)
-	if intent == terminalsession.SelectionScroll {
-		if d := u.output; d != nil {
-			d.top, d.follow = s.Top(), false
-		}
-	} else {
+	intent, handled := s.Key(key, false)
+	if intent != terminalsession.SelectionScroll {
 		u.selectionAction(intent)
 	}
 	return handled
@@ -76,52 +71,32 @@ func (u *terminalUI) selectionAction(action terminalsession.SelectionIntent) {
 
 func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 	previous := u.selection
-	d := u.output
-	body := terminalsession.Rect{}
 	footer := terminalsession.Rect{0, u.height - 1, u.width, 1}
-	mouseX, mouseY := x, y
-	if d != nil {
-		body = terminalsession.Rect{d.rect.X + 2, d.rect.Y + d.chrome() - 1, d.rect.W - 4, d.rows}
-		mouseX, mouseY = x-body.X, y-body.Y
-		footer = terminalsession.Rect{d.rect.X, d.rect.Y + d.rect.H - 1, d.rect.W, 1}
-	}
 	if s := previous; s != nil {
-		if s.Mouse(button, mouseX, mouseY, release) {
-			if d != nil {
-				d.top = s.Top()
-				if s.Moved() {
-					d.follow = false
-				}
-			}
-			if release {
-				if !s.Moved() {
-					u.selection = nil
-					if s.link != "" {
-						view := s.view
-						if d != nil {
-							view = d.view
+		if s.Mouse(button, x, y, release) {
+			if release && !s.Moved() {
+				u.selection = nil
+				if s.link != "" {
+					if !u.openMarkdownFile(s.view, s.link) {
+						link := s.link
+						if parsed, err := url.Parse(link); err == nil && parsed.Scheme == "file" {
+							link = parsed.Path
 						}
-						if !u.openMarkdownFile(view, s.link) && d == nil {
-							link := s.link
-							if parsed, err := url.Parse(link); err == nil && parsed.Scheme == "file" {
-								link = parsed.Path
-							}
-							u.copyText(link)
+						u.copyText(link)
+					}
+				} else {
+					index := s.PressRow() - s.Rect.Y
+					if index >= 0 && index < len(s.questions) && s.questions[index] != 0 {
+						if s.view == u.main.view && u.openActivityReply(s.questions[index]) {
+							return true
 						}
-					} else if d == nil {
-						index := s.PressRow() - s.Rect.Y
-						if index >= 0 && index < len(s.questions) && s.questions[index] != 0 {
-							if s.view == u.main.view && u.openActivityReply(s.questions[index]) {
-								return true
-							}
-							u.openEntry(s.view, s.questions[index])
-						} else if index >= 0 && index < len(s.snippets) && s.snippets[index] != (activityui.Snippet{}) {
-							snippet := s.snippets[index]
-							if snippet.Block == activityui.EditNavigationSnippet {
-								u.openActivityEdit(s.view, snippet.Run, snippet.Path)
-							} else if !u.openOutput(s.view, snippet) {
-								u.openEntry(s.view, snippet.Run)
-							}
+						u.openEntry(s.view, s.questions[index])
+					} else if index >= 0 && index < len(s.snippets) && s.snippets[index] != (activityui.Snippet{}) {
+						snippet := s.snippets[index]
+						if snippet.Block == activityui.EditNavigationSnippet {
+							u.openActivityEdit(s.view, snippet.Run, snippet.Path)
+						} else if !u.openOutput(s.view, snippet) {
+							u.openEntry(s.view, snippet.Run)
 						}
 					}
 				}
@@ -129,57 +104,12 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 			return true
 		}
 		if !s.Dragging() && button == 0 && !release && footer.Contains(x, y) {
-			at, capacity := x, u.width
-			if d != nil {
-				at, capacity = x-d.rect.X-3, d.rect.W-6
-				if ansi.StringWidth(selectionHints.render()) > capacity {
-					capacity-- // The dialog renderer reserves its last cell for an ellipsis.
-				}
-			}
-			u.selectionAction(terminalsession.SelectionIntent(selectionHints.actionAt(at, capacity)))
+			u.selectionAction(terminalsession.SelectionIntent(terminalsession.SelectionHints.ActionAt(x, u.width)))
 			return true
 		}
-		dismiss := button&64 != 0 || button == 0 && !release
-		if d != nil {
-			pressed := button &^ 28
-			dismiss = !release && (pressed == 0 || pressed == 64 || pressed == 65)
-		}
-		if dismiss {
+		if button&64 != 0 || button == 0 && !release {
 			u.selection = nil
 		}
-	}
-	if d != nil {
-		if button&^28 != 0 || release || !body.Contains(x, y) || len(d.body) == 0 {
-			return false
-		}
-		s := &terminalSelection{Selection: terminalsession.NewSelection(terminalsession.Surface{Rect: terminalsession.Rect{0, 0, body.W, len(d.body)}, Rows: d.body, ContentLeft: d.indents}, mouseX, mouseY), mention: "dialog"}
-		_, s.link = terminalsession.Screen(u.width, u.height, d.body, mouseX, mouseY)
-		var lines []string
-		var indents []int
-		for i := range d.laid.Lines {
-			for _, row := range d.laid.Rows(i, body.W) {
-				lines = append(lines, d.highlight(row, d.laid.Indent(i), i == d.match))
-				indents = append(indents, d.laid.Indent(i))
-			}
-		}
-		s.Document(lines, d.top, 0)
-		if s.ScreenRows() != 0 {
-			s.ContentLeft = indents
-		} else {
-			// document already extracts source annotations for scrollable output.
-			// Short output needs numbered diff headings too, while Markdown bodies
-			// retain their existing rendered-text selection.
-			s.Rows = make([]string, len(d.body))
-			s.CopySource = make([][]terminalui.CopySpan, len(d.body))
-			for i, row := range d.body {
-				s.Rows[i] = row
-				if i < len(d.indents) && d.indents[i] > 0 {
-					s.Rows[i], s.CopySource[i] = terminalui.ExtractCopy(row)
-				}
-			}
-		}
-		u.selection = s
-		return true
 	}
 	if button != 0 || release || u.Dragging() || u.main == nil || u.main.keybindings {
 		return false
@@ -406,6 +336,6 @@ func (u *terminalUI) paintSelection(rows []string) {
 		rows[y] += fmt.Sprintf("\x1b[%dG\x1b[0m%s\x1b[0m", s.Rect.X+1, line)
 	}
 	if !s.Dragging() {
-		rows[len(rows)-1] = "\x1b[1G\x1b[0m" + ansi.Truncate(selectionHints.render(), u.width, "")
+		rows[len(rows)-1] = "\x1b[1G\x1b[0m" + ansi.Truncate(terminalsession.SelectionHints.Render(), u.width, "")
 	}
 }

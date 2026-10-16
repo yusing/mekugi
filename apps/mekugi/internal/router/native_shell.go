@@ -72,7 +72,7 @@ func (u *terminalUI) preview(preview previewmodel.Preview, restored bool) {
 			for _, paragraph := range activitymodel.Paragraphs(receipt.text) {
 				block := activityui.Block{Content: activitymodel.ParseOperation(paragraph)}
 				if block.Lang == "diff" && block.Code != "" {
-					block.Path = activityui.EditPath(block)
+					block.Path = block.EditPath()
 					receipt.pages = append(receipt.pages, block)
 				}
 			}
@@ -392,28 +392,28 @@ func (u *terminalUI) nativeStatus() string {
 	if u.agents.displayingChild() {
 		filter = "Main"
 	}
-	var hints terminalHints
+	var hints terminalui.Hints
 	switch {
 	case u.prefix:
-		hints = terminalHints{{"ctrl+b 1-3", "select", 0}, {"2", "toggle diff", 0}, {"o", "older child history", 0}, {"e", "next live", 0}, {"←→", "resize", 0}, {"PgUp/PgDn", "history", 0}}
-		return tabs.String() + "  " + hints.render()
+		hints = terminalui.Hints{{"ctrl+b 1-3", "select", 0}, {"2", "toggle diff", 0}, {"o", "older child history", 0}, {"e", "next live", 0}, {"←→", "resize", 0}, {"PgUp/PgDn", "history", 0}}
+		return tabs.String() + "  " + hints.Render()
 	case u.Focus == 1:
-		hints = terminalHints{{"s", "files", 0}, {"tab", "changes", 0}, {"[ ]", "hunks", 0}, {"a", "caller", 0}, {"?", "help", 0}}
+		hints = terminalui.Hints{{"s", "files", 0}, {"tab", "changes", 0}, {"[ ]", "hunks", 0}, {"a", "caller", 0}, {"?", "help", 0}}
 		if u.diff.back.kind != 0 {
-			hints = append(terminalHints{{"esc", "back", 0}}, hints...)
+			hints = append(terminalui.Hints{{"esc", "back", 0}}, hints...)
 		}
 	case u.Focus == 3:
-		hints = terminalHints{{"j/k", "agent", 0}, {"a", filter, 0}, {"esc", "back", 0}}
+		hints = terminalui.Hints{{"j/k", "agent", 0}, {"a", filter, 0}, {"esc", "back", 0}}
 	}
 	if u.liveDock.Live() > 1 {
-		hints = append(hints, terminalHint{"^B e", "next live", 0})
+		hints = append(hints, terminalui.Hint{"^B e", "next live", 0})
 	}
-	hints = append(hints, terminalHint{"^B 1-3", "views", 0})
+	hints = append(hints, terminalui.Hint{"^B 1-3", "views", 0})
 	if u.Focus == 0 {
 		expansion := u.main.transcriptView().Expansion
-		hints = append(hints, terminalHint{"^E", [3]string{"expand events", "expand all", "default"}[expansion], 0})
+		hints = append(hints, terminalui.Hint{"^E", [3]string{"expand events", "expand all", "default"}[expansion], 0})
 	}
-	return tabs.String() + "  " + hints.render()
+	return tabs.String() + "  " + hints.Render()
 }
 
 // selectNativePane gives status-bar clicks and Ctrl-B digits the same action.

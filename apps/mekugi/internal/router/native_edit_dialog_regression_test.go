@@ -72,8 +72,8 @@ func TestNativeEditDialogRegressionActionsCopyAndSyntax(t *testing.T) {
 				if block.Verb != tc.verb {
 					t.Fatalf("verb = %q, want %q", block.Verb, tc.verb)
 				}
-				if block.Code != wantText || u.output.laid.Text != wantText {
-					t.Fatalf("plain bytes changed: code %q, copy %q, want %q", block.Code, u.output.laid.Text, wantText)
+				if block.Code != wantText || u.output.Document.Text != wantText {
+					t.Fatalf("plain bytes changed: code %q, copy %q, want %q", block.Code, u.output.Document.Text, wantText)
 				}
 				u.outputKey("y")
 				if want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(wantText)) + "\x07"; u.frame.Clipboard != want {
@@ -108,13 +108,13 @@ func TestNativeEditDialogRegressionActionsCopyAndSyntax(t *testing.T) {
 						wantLine = diffrender.SourceLine(diffrender.DarkTheme, ansi.StringWidth(wantLine)+4, "", wantLine, side.kind)
 					}
 					found := false
-					for _, line := range u.output.laid.Lines {
+					for _, line := range u.output.Document.Lines {
 						if line.Text == wantLine {
 							found = true
 						}
 					}
 					if !found {
-						t.Fatalf("dialog missing exact pane token colors for %q: want %q, lines %+v", side.source, wantLine, u.output.laid.Lines)
+						t.Fatalf("dialog missing exact pane token colors for %q: want %q, lines %+v", side.source, wantLine, u.output.Document.Lines)
 					}
 				}
 			})

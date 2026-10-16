@@ -29,8 +29,9 @@ func TestDiffOutputSectionSourceSelection(t *testing.T) {
 	u, _ = outputSelectionFixture(source, false)
 	_, heading := outputSelectionPoint(t, u, "A a new.go")
 	_, last := outputSelectionPoint(t, u, "+var answer")
-	outputSelectionDrag(u, u.output.rect.X+2, heading-1, u.output.rect.X+u.output.rect.W-3, last)
-	if got := u.selection.Text(); got != source {
+	rect := dialogFrameRect(t, outputDialogScreen(u))
+	outputSelectionDrag(u, rect.X+2, heading-1, rect.X+rect.W-3, last)
+	if got := u.output.Selection.Text(); got != source {
 		t.Fatalf("dialog copied=%q", got)
 	}
 }

@@ -9,39 +9,15 @@ import (
 	"time"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	"github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
 	markdownsyntax "github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 	"github.com/yusing/mekugi/libraries/terminalui"
 
-	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 )
-
-// DialogPage is one invocation's source and output as the output dialog
-// shows them. Lines stay unwrapped, so a long live stream costs a layout only
-// for the rows in view.
-type DialogPage struct {
-	Title  string // Styled verb and target.
-	Live   bool   // Output is still streaming.
-	Detail string // Styled facts: line spans, line count, exit.
-	Lines  []DialogLine
-	Text   string // Plain output, or source without output, for copying.
-	digits int    // Width of the line-number column.
-}
-
-// DialogLine is one numbered source/output line, a logical unnumbered error
-// line, or a pre-laid-out row such as a note or rendered Markdown.
-type DialogLine struct {
-	Wrap        bool                     // Keep an unnumbered logical line intact for search; wrap only for display.
-	Number      int                      // Zero leaves the number column blank.
-	Gutter      string                   // "│" before source, "┆" before output, empty for other rows.
-	GutterStyle string                   // Optional number style, including wrapped rows and their left padding.
-	Text        string                   // Styled.
-	copySource  *terminalui.CopyFragment // Original output behind a generated file heading.
-}
 
 // dialogHighlightBytes bounds the content the dialog colors; larger content
 // shows plain rather than stalling a frame.
@@ -51,7 +27,7 @@ const dialogHighlightBytes = 256 << 10
 // the code gutter and output the dashed one, as in the feed; a read's content
 // is source, numbered from the first line it read. Markdown bodies wrap to
 // width; numbered lines wrap as they are shown.
-func (p *Painter) DialogPage(block Block, width int) DialogPage {
+func (p *Painter) DialogPage(block Block, width int) terminalui.DialogPage {
 	width = max(8, width)
 	view := activitymodel.OutputView{Lines: block.Tail, Dropped: block.TailOmitted, Done: !block.Running, Exited: block.Exited, Exit: block.ExitCode}
 	if block.Hook != nil {
@@ -64,7 +40,7 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 		}
 		block.Running = !view.Done
 	}
-	page := DialogPage{Title: p.DialogPageTitle(block, p.now(), width), Live: block.Live || !view.Done}
+	page := terminalui.DialogPage{Title: p.DialogPageTitle(block, p.now(), width), Live: block.Live || !view.Done}
 	var detail []string
 	if block.Hook != nil {
 		detail = append(detail, textsanitize.Safe(block.Hook.HandlerType, false))
@@ -91,24 +67,19 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 	if block.Skipped {
 		page.Detail = terminalui.Dim + "skipped" + terminalui.Undim
 	}
-	add := func(line DialogLine) {
-		page.Lines = append(page.Lines, line)
-		if line.Number > 0 {
-			page.digits = max(page.digits, len(strconv.Itoa(line.Number)))
-		}
-	}
+	add := page.Add
 	if block.Approval != "" {
 		label := approvalLabel(block.Approval)
 		if label != "" {
-			add(DialogLine{Text: terminalui.Dim + "Approval: " + terminalui.Undim + label})
+			add(terminalui.DialogLine{Text: terminalui.Dim + "Approval: " + terminalui.Undim + label})
 		}
 		if ansi.Strip(label) != block.Approval {
-			add(DialogLine{Text: terminalui.Dim + textsanitize.Safe(block.Approval, false) + terminalui.Undim, Wrap: true})
+			add(terminalui.DialogLine{Text: terminalui.Dim + textsanitize.Safe(block.Approval, false) + terminalui.Undim, Wrap: true})
 		}
 	}
 	gap := func() {
 		if len(page.Lines) > 0 {
-			add(DialogLine{})
+			add(terminalui.DialogLine{})
 		}
 	}
 
@@ -120,7 +91,7 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 			colored = p.dialogHighlight(block, code)
 		}
 		for i, line := range colored {
-			add(DialogLine{Number: i + 1, Gutter: "│", Text: line})
+			add(terminalui.DialogLine{Number: i + 1, Gutter: "│", Text: line})
 		}
 		page.Text = code
 	}
@@ -132,7 +103,7 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 		gap()
 		if block.Kind == "error" {
 			for line := range strings.SplitSeq(page.Text, "\n") {
-				add(DialogLine{Text: terminalui.Red + line + terminalui.Reset, Wrap: true})
+				add(terminalui.DialogLine{Text: terminalui.Red + line + terminalui.Reset, Wrap: true})
 			}
 		} else {
 			var rows []string
@@ -148,7 +119,7 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 			}
 			rows = append(rows, p.Markdown(block.Body, width, block.Kind == "summary")...)
 			for _, row := range rows {
-				add(DialogLine{Text: row})
+				add(terminalui.DialogLine{Text: row})
 			}
 		}
 	}
@@ -172,7 +143,7 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 	}
 	for _, note := range notes {
 		for _, row := range terminalui.Wrap(terminalui.Dim+note+terminalui.Undim, width, false) {
-			add(DialogLine{Text: row})
+			add(terminalui.DialogLine{Text: row})
 		}
 	}
 	if len(view.Lines) == 0 {
@@ -182,7 +153,7 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 	page.Text = content
 	if block.MarkdownOutput() {
 		for _, row := range p.Markdown(content, width, false) {
-			add(DialogLine{Text: row})
+			add(terminalui.DialogLine{Text: row})
 		}
 		return page
 	}
@@ -203,9 +174,9 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 		identity = terminalui.CopyID(content, p.CopyScope)
 	}
 	for i, line := range colored {
-		row := DialogLine{Number: first + i, Gutter: gutter, Text: line}
+		row := terminalui.DialogLine{Number: first + i, Gutter: gutter, Text: line}
 		if p.CopySource && !p.LayoutOnly && ansi.Strip(line) != view.Lines[i] {
-			row.copySource = &terminalui.CopyFragment{ID: terminalui.CopyID(strconv.Itoa(i), identity), Prefix: view.Lines[i]}
+			row.CopySource = &terminalui.CopyFragment{ID: terminalui.CopyID(strconv.Itoa(i), identity), Prefix: view.Lines[i]}
 		}
 		add(row)
 	}
@@ -293,250 +264,6 @@ func dialogTarget(p *Painter, block Block) string {
 	return strings.TrimSpace(p.Label(block.Verb, block.Label))
 }
 
-// textWidth is the width numbered lines wrap within.
-func (d DialogPage) textWidth(width int) int {
-	if d.digits == 0 {
-		return max(1, width)
-	}
-	return max(1, width-d.digits-3)
-}
-
-// Indent is the cells line i's rows spend on its number and gutter.
-func (d DialogPage) Indent(i int) int {
-	if d.Lines[i].Gutter == "" {
-		return 0
-	}
-	return d.digits + 3
-}
-
-// RowCount is how many rows line i takes at width.
-func (d DialogPage) RowCount(i, width int) int {
-	line := d.Lines[i]
-	if line.Gutter == "" {
-		if line.Wrap {
-			return wrappedRows(line.Text, max(1, width))
-		}
-		return 1 // Notes and Markdown rows are laid out already.
-	}
-	return wrappedRows(line.Text, d.textWidth(width))
-}
-
-// wrappedRows counts the rows Wrap's hard wrap gives text, without laying them
-// out: a character that does not fit its row starts the next.
-func wrappedRows(text string, width int) int {
-	rows, column := 1, 0
-	var state byte
-	for len(text) > 0 {
-		_, cells, n, next := ansi.DecodeSequence(text, state, nil)
-		if cells > 0 {
-			if column+cells > width {
-				rows, column = rows+1, 0
-			}
-			column += cells
-		}
-		text, state = text[n:], next
-	}
-	return rows
-}
-
-// Rows lays out line i at width: numbered lines wrap under their gutter, and
-// continuation rows leave the number blank.
-func (d DialogPage) Rows(i, width int) []string {
-	line := d.Lines[i]
-	if line.Gutter == "" {
-		if line.Wrap {
-			return terminalui.Wrap(line.Text, max(1, width), true)
-		}
-		return []string{line.Text}
-	}
-	parts := terminalui.Wrap(line.Text, d.textWidth(width), true)
-	rows := make([]string, len(parts))
-	for k, part := range parts {
-		if line.copySource != nil {
-			fragment := *line.copySource
-			fragment.Width = ansi.StringWidth(part)
-			part = terminalui.AttachCopy(part, []terminalui.CopySpan{{CopyFragment: fragment}})
-		}
-		number := ""
-		if k == 0 && line.Number > 0 {
-			number = strconv.Itoa(line.Number)
-		}
-		style, end := terminalui.Dim, terminalui.Undim
-		gutter := line.Gutter
-		if line.GutterStyle != "" {
-			style, end = line.GutterStyle, terminalui.Reset
-			gutter = "\x1b[49m" + gutter
-		}
-		rows[k] = style + strings.Repeat(" ", d.digits-len(number)) + number + " " + gutter + end + " " + part
-	}
-	return rows
-}
-
-// MatchRow finds a case-insensitive substring in a logical line and locates
-// its first display row. Search must not lose text at visual wrap boundaries.
-func (d DialogPage) MatchRow(i, width int, query string) (int, bool) {
-	line := d.Lines[i]
-	text := strings.ToLower(ansi.Strip(line.Text))
-	at := strings.Index(text, strings.ToLower(query))
-	if at < 0 {
-		return 0, false
-	}
-	if line.Gutter != "" {
-		width = d.textWidth(width)
-	}
-	if line.Wrap || line.Gutter != "" {
-		for _, first := range text[at:] {
-			return wrappedRows(text[:at]+string(first), max(1, width)) - 1, true
-		}
-	}
-	return 0, true
-}
-
-// DialogFrame is one frame of the output dialog, before layout.
-type DialogFrame struct {
-	Tabs         string // Styled command selector, empty for a single result.
-	Page         DialogPage
-	Position     string   // Page position among a merged row's invocations, such as "2 / 4".
-	Paused       bool     // Live output the reader scrolled away from.
-	Rows         []string // Visible body rows.
-	GutterStyles []string // Optional styles for visible rows' left padding.
-	Top          int      // Index of the first visible body row, for the scroll thumb.
-	Total        int      // Body rows in all.
-	Footer       string   // Styled controls.
-}
-
-// Backdrop fades a screen row the dialog is drawn over: its colors and
-// attributes give way to faint text, and cursor moves stay in place.
-func Backdrop(row string) string {
-	var out strings.Builder
-	out.WriteString(terminalui.Dim)
-	var state byte
-	for row != "" {
-		seq, _, n, next := ansi.DecodeSequence(row, state, nil)
-		if !strings.HasPrefix(seq, "\x1b[") || !strings.HasSuffix(seq, "m") {
-			out.WriteString(seq)
-		}
-		row, state = row[n:], next
-	}
-	return out.String()
-}
-
-// DialogChrome is the rows a dialog frame takes beyond its body: the top
-// edge, the detail row, its rule and the bottom edge.
-const DialogChrome = 4
-
-const DialogClose = "[×]"
-const DialogCloseWidth = 3
-
-// Dialog boxes a frame width by height: the title and page position on the
-// top edge, the detail row and a rule, the body with a scroll thumb on its
-// right edge, and controls on the bottom edge.
-func (p *Painter) Dialog(f DialogFrame, width, height int) []string {
-	if width < 12 || height < DialogChrome+1 {
-		return nil
-	}
-	// Accent edges and an opaque surface separate the modal from the panes.
-	edge := func(s string) string { return p.Theme.Accent() + s + terminalui.Reset }
-	inner := width - 4
-	right := f.Position
-	if f.Page.Live {
-		live := terminalui.Green + "● live" + terminalui.Reset
-		if f.Paused {
-			live += terminalui.Dim + " · paused" + terminalui.Undim
-		}
-		right = strings.TrimSpace(live + " " + right)
-	}
-	if right != "" {
-		right += " "
-	}
-	right += DialogClose
-	right = " " + right + " "
-	room := width - 6 - ansi.StringWidth(right)
-	if room < 1 {
-		right, room = " "+DialogClose+" ", width-8-DialogCloseWidth
-	}
-	title := ansi.Truncate(f.Page.Title, room, "…") + terminalui.Reset
-	fill := max(0, width-6-ansi.StringWidth(title)-ansi.StringWidth(right))
-	lines := []string{edge("╭─ ") + title + " " + edge(strings.Repeat("─", fill)) + right + edge("─╮")}
-	row := func(text string, thumb bool, gutterStyle string) string {
-		text = ansi.Truncate(text, inner, "…")
-		closing := edge("│")
-		if thumb {
-			closing = p.Theme.Accent() + "▌" + terminalui.Reset
-		}
-		return edge("│") + gutterStyle + " " + terminalui.Reset + text + terminalui.Reset + strings.Repeat(" ", max(0, inner-ansi.StringWidth(text))) + " " + closing
-	}
-	lines = append(lines, row(f.Page.Detail, false, ""))
-	body := height - DialogChrome
-	if f.Tabs != "" {
-		lines = append(lines, row(f.Tabs, false, ""))
-		body--
-	}
-	lines = append(lines, edge("├"+strings.Repeat("─", width-2)+"┤"))
-	thumbFrom, thumbTo := 0, -1
-	if f.Total > body && body > 0 {
-		size := max(1, body*body/f.Total)
-		thumbFrom = (body - size) * f.Top / max(1, f.Total-body)
-		thumbTo = thumbFrom + size - 1
-	}
-	for i := range body {
-		text := ""
-		gutterStyle := ""
-		if i < len(f.Rows) {
-			text = f.Rows[i]
-		}
-		if i < len(f.GutterStyles) {
-			gutterStyle = f.GutterStyles[i]
-		}
-		lines = append(lines, row(text, i >= thumbFrom && i <= thumbTo, gutterStyle))
-	}
-	footer := ansi.Truncate(f.Footer, max(0, width-6), "…")
-	lines = append(lines, edge("╰─ ")+footer+terminalui.Reset+" "+edge(strings.Repeat("─", max(0, width-5-ansi.StringWidth(footer)))+"╯"))
-	background, ink := p.CodeBackground(), "\x1b[38;2;230;237;243m"
-	if background == "" {
-		background = "\x1b[48;2;32;35;40m"
-	}
-	if p.Theme == diffrender.LightTheme {
-		ink = "\x1b[38;2;31;41;55m"
-	}
-	for i, line := range lines {
-		lines[i] = dialogSurface(line, ink, background)
-	}
-	return lines
-}
-
-// Restore the surface after any SGR color reset, including combined resets,
-// without overwriting explicit syntax colors, diff fills, or selection styles.
-func dialogSurface(row, ink, fill string) string {
-	var out strings.Builder
-	out.WriteString(terminalui.Reset + ink + fill)
-	var style uv.Style
-	parser := ansi.GetParser()
-	defer func() { parser.SetHandler(ansi.Handler{}); ansi.PutParser(parser) }()
-	parser.SetHandler(ansi.Handler{HandleCsi: func(cmd ansi.Cmd, params ansi.Params) {
-		if cmd == 'm' {
-			uv.ReadStyle(params, &style)
-		}
-	}})
-	var state byte
-	for row != "" {
-		seq, _, n, next := ansi.DecodeSequence(row, state, nil)
-		out.WriteString(seq)
-		if strings.HasPrefix(seq, "\x1b[") && strings.HasSuffix(seq, "m") {
-			parser.Parse([]byte(seq))
-			if style.Fg == nil {
-				out.WriteString(ink)
-			}
-			if style.Bg == nil {
-				out.WriteString(fill)
-			}
-		}
-		row, state = row[n:], next
-	}
-	out.WriteString(terminalui.Reset)
-	return out.String()
-}
-
 func (p *Painter) DialogPageTitle(block Block, now time.Time, width int) string {
 	if block.OutputSnapshot != nil {
 		block.Running = !block.OutputSnapshot.Done
@@ -568,4 +295,24 @@ func (p *Painter) DialogPageTitle(block Block, now time.Time, width int) string 
 		title += terminalui.Dim + " · " + elapsed + terminalui.Undim
 	}
 	return title
+}
+
+// DetailDocument paints an admitted page and optional local-file source metadata.
+// Source: apps/mekugi/internal/router/output_dialog.go:453:480@563f0c37.
+func (p *Painter) DetailDocument(detail presentation.DetailPage, output *activitymodel.OutputView, file *presentation.DetailFile, width int) terminalui.DialogPage {
+	page := p.DialogPage(Block{Value: detail.Value, OutputSnapshot: output}, width)
+	if file == nil {
+		return page
+	}
+	page.Lines = append([]terminalui.DialogLine{{Text: terminalui.StyledPath(textsanitize.Safe(file.Path, false)), Wrap: true}, {}}, page.Lines...)
+	if detail.Kind != "error" {
+		page.Text = file.Source
+		for i := range page.Lines {
+			line := &page.Lines[i]
+			if line.Number > 0 && line.Number >= file.First && line.Number <= file.Last {
+				line.GutterStyle = p.Theme.Accent() + p.Theme.SelectionBackground()
+			}
+		}
+	}
+	return page
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/gofrs/flock"
@@ -263,7 +264,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 			if names := view.ActiveSkills()[entry.Agent]; len(names) != 1 || names[0] != filepath.Base(filepath.Dir(path)) {
 				t.Fatalf("restored successful skill segment lost: %v", names)
 			}
-			pages := view.commandOutputPages(entry.Seq)
+			pages := activityui.Disclosure(nil).Blocks(commandPresentation(entry).DetailValues())
 			if len(pages) != 4 || pages[0].Output == pages[1].Output {
 				t.Fatalf("per-command pages lost: %+v", pages)
 			}
@@ -357,7 +358,7 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 			u.session.retainOutput(entry.native, item)
 			u.restoreCommandSegments(&entry, item, workspace)
 			u.view.Entries = []liveActivityRecord{{Source: entry}}
-			pages := u.view.commandOutputPages(1)
+			pages := activityui.Disclosure(nil).Blocks(commandPresentation(entry).DetailValues())
 			if len(pages) != 1 || pages[0].Label != "combined output" || u.view.retainedOutput(pages[0]).View().Exit != 1 || strings.Join(u.view.retainedOutput(pages[0]).View().Lines, "\n") != "one" {
 				t.Fatalf("missing evidence fabricated output: %+v", pages)
 			}
@@ -380,13 +381,12 @@ func TestCombinedOutputDialogUnwrapsOnlyLiteralShell(t *testing.T) {
 	} {
 		view := newActivityAdapter()
 		view.Entries = []liveActivityRecord{{Source: activityPaneEntry{Seq: 1, Text: "Read `a.go`\n\nRead `b.go`", native: &liveActivityNativeItem{command: command}}}}
-		pages := view.commandOutputPages(1)
+		pages := activityui.Disclosure(nil).Blocks(commandPresentation(view.Entries[0].Source).DetailValues())
 		if len(pages) != 1 || pages[0].Code != appServerDisplayCommand(command) || view.Entries[0].Source.native.command != command {
 			t.Fatalf("combined display changed execution or leaked wrapper: %+v", pages)
 		}
-		ui := &terminalUI{output: &outputDialog{view: view, pages: pages, match: -1}}
-		ui.output.replaceOrigins(pages)
-		ui.output.showPage(0)
+		ui := &terminalUI{}
+		ui.openBlocks(view, pages)
 		frame := drawOutputDialog(ui)
 		if strings.Contains(frame, "/usr/bin/bash") != strings.Contains(command, "> output") || !strings.Contains(frame, "combined output") {
 			t.Fatalf("wrong rendered shell display: %s", frame)
@@ -414,7 +414,7 @@ func TestCommandSegmentsRestoreRichChangeRows(t *testing.T) {
 	// History starts collapsed; inspect the expanded retained command.
 	var rows []string
 	for _, restored := range u.view.Entries {
-		for _, block := range commandSegmentBlocks(restored.Source, false) {
+		for _, block := range commandSegmentBlocks(commandPresentation(restored.Source)) {
 			block.Collapsed = false
 			rows = append(rows, u.view.Painter.Block(block, 90)...)
 		}

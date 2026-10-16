@@ -39,9 +39,8 @@ func (u *appServerUI) showRunningProcesses() {
 	u.deleteDraftRange(0, len(u.Text))
 	u.ensureShell()
 	u.shell.selection = nil
-	u.shell.output = &outputDialog{view: u.agents, match: -1, processes: u.processPages}
-	u.shell.output.refreshPages()
-	u.shell.output.showPage(0)
+	u.shell.output = &outputDialog{view: u.agents, processes: true}
+	u.shell.output.refreshPages(u.processPages(nil))
 }
 
 // processPages rebuilds the /ps pages from Activity, which retains every
@@ -49,11 +48,11 @@ func (u *appServerUI) showRunningProcesses() {
 // its display source and retained output, not a feed row's projection of it.
 // Live commands join in start order; a completed one keeps its page until the
 // dialog closes, as last seen if its row ages out.
-func (u *appServerUI) processPages(pages []activityui.Block) []activityui.Block {
+func (u *appServerUI) processPages(pages []outputPage) []activityui.Block {
 	bySource := make(map[uint64]activityui.Block)
 	for _, page := range pages {
 		if page.Source != 0 {
-			bySource[page.Source] = page
+			bySource[page.Source] = activityui.Block{Value: page.Value}
 		}
 	}
 	for entry := range u.session.runningProcesses() {

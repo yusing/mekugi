@@ -89,13 +89,13 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 func assertErrorDialog(t *testing.T, u *terminalUI, full string) {
 	t.Helper()
 	drawOutputDialog(u)
-	if u.output.laid.Text != full {
+	if u.output.Document.Text != full {
 		t.Fatal("dialog copy target is not the complete sanitized error")
 	}
 	u.outputKey("/")
 	u.outputKey("forced cleanup")
 	u.outputKey("\r")
-	if u.output.match < 0 {
+	if frame := drawOutputDialog(u); strings.Contains(frame, "no match") || !strings.Contains(frame, "forced cleanup") {
 		t.Fatal("could not search the decisive suffix beyond the inline preview")
 	}
 	u.outputKey("y")
@@ -155,16 +155,16 @@ func TestErrorDetailsKeyboardPaginationAndFiltering(t *testing.T) {
 	}})
 	u.agents.setDisplayFilter(true, "/root/a")
 	u.shell.openErrors()
-	if u.shell.output == nil || len(u.shell.output.pages) != 2 || u.shell.output.page != 1 {
+	if u.shell.output == nil || len(u.shell.output.pages) != 2 || u.shell.output.Page != 1 {
 		t.Fatal("keyboard error details lost selection or filter")
 	}
 	drawOutputDialog(u.shell)
-	if u.shell.output.laid.Text != "new error" {
+	if u.shell.output.Document.Text != "new error" {
 		t.Fatal("keyboard did not open newest error")
 	}
 	u.shell.outputKey("\x1b[D")
 	drawOutputDialog(u.shell)
-	if u.shell.output.laid.Text != "old error" {
+	if u.shell.output.Document.Text != "old error" {
 		t.Fatal("could not navigate to earlier error")
 	}
 }
@@ -181,20 +181,16 @@ func TestErrorDetailsSearchAcrossVisualWraps(t *testing.T) {
 	u.shell.outputKey("/")
 	u.shell.outputKey(query)
 	u.shell.outputKey("\r")
-	d := u.shell.output
-	if d.match != 0 || d.top == 0 {
-		t.Fatal("search spanning visual wraps did not navigate to its late match")
-	}
-	drawOutputDialog(u.shell)
-	if !strings.Contains(strings.Join(d.body, "\n"), "qqqq") {
+	first := drawOutputDialog(u.shell)
+	if !strings.Contains(first, "qqqq") {
 		t.Fatal("matched text was not scrolled into view")
 	}
 	u.shell.outputKey("n")
-	if d.match != 1 {
+	if next := drawOutputDialog(u.shell); next == first || !strings.Contains(next, "qqqq") {
 		t.Fatal("next did not reach the next logical match")
 	}
 	u.shell.outputKey("N")
-	if d.match != 0 {
+	if drawOutputDialog(u.shell) != first {
 		t.Fatal("previous did not return to the wrapped match")
 	}
 	assertErrorDialog(t, u.shell, full)

@@ -221,7 +221,7 @@ func replayTime(d time.Duration) string {
 // never execute recorded commands, answer questions, or launch external tools.
 func (p *uiReplayPlayback) key(key byte) (bool, error) {
 	shell := p.ui.shell
-	if key != 3 && shell.output != nil && (shell.output.typing || !strings.ContainsRune("p+-=[]r", rune(key))) {
+	if key != 3 && shell.output != nil && (shell.output.Typing || !strings.ContainsRune("p+-=[]r", rune(key))) {
 		navigation := terminalsession.ReplayNavigation(key)
 		if navigation == "" {
 			navigation = string(key)

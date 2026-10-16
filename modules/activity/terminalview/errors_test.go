@@ -6,6 +6,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
@@ -131,7 +132,7 @@ func TestUISnapshotActivityErrorDialog(t *testing.T) {
 			for i := range page.Lines {
 				rows = append(rows, page.Rows(i, tc.width-4)...)
 			}
-			frame := DialogFrame{Page: page, Rows: rows, Total: len(rows), Footer: "esc close · ↑↓ scroll · y copy"}
+			frame := terminalui.DialogFrame{Page: page, Rows: rows, Total: len(rows), Footer: "esc close · ↑↓ scroll · y copy"}
 			uisnapshot.Assert(t, "testdata/snapshots/activity_error_dialog_"+tc.name+".txt", strings.Join(p.Dialog(frame, tc.width, tc.height), "\n")+"\n")
 		})
 	}

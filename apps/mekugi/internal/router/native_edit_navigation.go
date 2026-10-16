@@ -45,7 +45,7 @@ func (u *terminalUI) activityEditPages(view *activityAdapter, seq uint64, path s
 				pages = append(pages, activityui.Block{Kind: "op", Verb: chunk.Review.Action().Title(), Path: display, Code: chunk.Review.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(workspace, chunk.Review.BeforePath), pathdisplay.ForWorkspace(workspace, chunk.Review.AfterPath)), Lang: "diff", Fenced: true})
 			}
 			for _, block := range view.Disclosure.Blocks(entry.Values) {
-				if block.DirectoryDeletion() && activityui.EditPath(block) == path {
+				if block.DirectoryDeletion() && block.EditPath() == path {
 					for _, page := range pages {
 						if strings.HasPrefix(page.Path, strings.TrimSuffix(path, "/")+"/") {
 							return pages, page.Path
@@ -72,7 +72,7 @@ func (u *terminalUI) openEditPages(view *activityAdapter, pages []activityui.Blo
 	for i, page := range pages {
 		if path == "" || page.Path == path {
 			u.openBlocks(view, pages)
-			u.output.showPage(i)
+			u.output.ShowPage(i)
 			return true
 		}
 	}

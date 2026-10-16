@@ -1436,7 +1436,7 @@ func (v *View) renderRun(first uint64, agent string, observed time.Time, blocks 
 			part = append(part[:limit-1:limit-1], hint.String())
 		}
 		if block.EditSource != "" {
-			snippet = Snippet{Run: block.Source, Block: EditNavigationSnippet, Path: EditPath(block)}
+			snippet = Snippet{Run: block.Source, Block: EditNavigationSnippet, Path: block.EditPath()}
 		}
 		switch {
 		case tree:
