@@ -251,7 +251,6 @@ func (c *CriticalErrors) record(f *requestFinalization, err error) {
 	}
 	for _, notice := range c.entries {
 		if f.turnID != "" && notice.thread == f.threadID && notice.turn == f.turnID && notice.reference == f.diagnosticReference {
-			f.diagnosticNotice = notice
 			return
 		}
 	}
@@ -259,7 +258,6 @@ func (c *CriticalErrors) record(f *requestFinalization, err error) {
 		if notice.session == f.sessionID && notice.category == category {
 			notice.count++
 			notice.thread, notice.turn, notice.reference = f.threadID, f.turnID, f.diagnosticReference
-			f.diagnosticNotice = notice
 			return
 		}
 	}
@@ -267,10 +265,10 @@ func (c *CriticalErrors) record(f *requestFinalization, err error) {
 		c.overflow++
 		return
 	}
-	f.diagnosticNotice = &criticalNotice{session: f.sessionID, category: category, message: message,
+	notice := &criticalNotice{session: f.sessionID, category: category, message: message,
 		thread: f.threadID, turn: f.turnID, reference: f.diagnosticReference,
 		id: noticeID, count: 1, awaitTurn: awaitTurn}
-	c.entries = append(c.entries, f.diagnosticNotice)
+	c.entries = append(c.entries, notice)
 }
 
 // Request attempts do not establish whether Codex can recover the turn. Keep
