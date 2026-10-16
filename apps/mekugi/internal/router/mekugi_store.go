@@ -71,14 +71,15 @@ func durableHistory(h mekugiHistory) mekugiHistory {
 	return h
 }
 
-func defaultMekugiReplayDirectory() (string, error) {
+// ReplayDirectory resolves the invocation default for retained session records.
+func ReplayDirectory() (string, error) {
 	base, err := history.StateDirectory()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(base, "replay"), nil
 }
-func openReplayStore(ctx context.Context, service *history.Service, directory string) (*mekugiReplayStore, error) {
+func openReplayStore(ctx context.Context, service *history.Service, captured *changecapture.Service, directory string) (*mekugiReplayStore, error) {
 	publication, err := service.Open(ctx, directory)
 	if err != nil {
 		return nil, err
@@ -87,7 +88,15 @@ func openReplayStore(ctx context.Context, service *history.Service, directory st
 	if err != nil {
 		return nil, err
 	}
-	return &mekugiReplayStore{directory: directory, maxBytes: defaultReplayStorageBytes, maxCommentaryBytes: 16 << 20, snapshots: changecapture.NewWorkspaces(directory), publication: publication}, nil
+	snapshots, err := captured.Checkpoints(directory)
+	if err != nil {
+		return nil, err
+	}
+	store := &mekugiReplayStore{directory: directory, maxBytes: defaultReplayStorageBytes, maxCommentaryBytes: 16 << 20, snapshots: snapshots, publication: publication}
+	if captured != nil {
+		store.changes = captured.Service
+	}
+	return store, nil
 }
 func (s *mekugiReplayStore) locked(ctx context.Context, fn func(*mekugiReplayStore) error) error {
 	if s.transaction != nil {

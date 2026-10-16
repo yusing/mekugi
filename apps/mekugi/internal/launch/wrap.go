@@ -115,7 +115,14 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	defer signal.Stop(interrupts)
 	stopStartupInterrupts := watchStartupInterrupts(ctx, cancel, interrupts)
 	defer stopStartupInterrupts()
-	frontends, err := composition.Frontends(ctx, appUI && options.FrontendsEnabled())
+	var captureDirectory string
+	if options.FrontendsEnabled() {
+		captureDirectory, err = router.ReplayDirectory()
+		if err != nil {
+			return 1, fmt.Errorf("initialize replay storage: %w", err)
+		}
+	}
+	frontends, err := composition.Frontends(ctx, appUI && options.FrontendsEnabled(), captureDirectory)
 	if err != nil {
 		return 1, err
 	}

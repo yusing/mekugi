@@ -57,7 +57,7 @@ func TestExecCompletedCaptureOwnershipRetryAndWithdrawal(t *testing.T) {
 			capture := &execPreviewCapture{registry: registry, ref: "cell", observation: observation}
 			preview := previewmodel.Preview{Workspace: workspace, Thread: "main", Turn: "turn"}
 			if scenario == "snapshot retry" || scenario == "unrelated overlap" {
-				capture.snapshots = changecapture.NewWorkspaces(t.TempDir())
+				capture.snapshots = testCaptureWorkspaces(t)
 				defer capture.snapshots.Close()
 				capture.observation.Tree = capture.snapshots.Checkpoint(t.Context(), workspace)
 				if capture.observation.Tree == "" {

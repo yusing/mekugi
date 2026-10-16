@@ -149,7 +149,7 @@ func TestAppServerHookPagedChildWithoutTurns(t *testing.T) {
 
 func TestHookObservationRestartResumeAndReplay(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	directory, err := defaultMekugiReplayDirectory()
+	directory, err := ReplayDirectory()
 	if err != nil {
 		t.Fatal(err)
 	}

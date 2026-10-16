@@ -38,7 +38,11 @@ func TestFrontendsRunSessionLivePreviewInputProjection(t *testing.T) {
 			}
 			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 			defer cancel()
-			runtime, err := Frontends(ctx, false)
+			directory, err := router.ReplayDirectory()
+			if err != nil {
+				t.Fatal(err)
+			}
+			runtime, err := Frontends(ctx, false, directory)
 			if err != nil {
 				t.Fatal(err)
 			}

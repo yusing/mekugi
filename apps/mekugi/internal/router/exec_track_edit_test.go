@@ -68,7 +68,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			}
 			var snapshots *changecapture.Workspaces
 			if opaque {
-				snapshots = changecapture.NewWorkspaces(t.TempDir())
+				snapshots = testCaptureWorkspaces(t)
 				defer snapshots.Close()
 			}
 			observation, ok := changecapture.Capture(t.Context(), []commandanalysis.Command{{Command: script, Workdir: workspace, Shell: "bash"}}, false, false, changecapture.Options{PreviewOnly: !opaque, Directory: workspace, Workspaces: snapshots})

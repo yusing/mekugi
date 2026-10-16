@@ -29,6 +29,6 @@ func replayTestService(t *testing.T, diagnostics *transportcapture.Service) *pla
 }
 func replayReadTest(t *testing.T, diagnostics *transportcapture.Service, ctx context.Context, path, debug string, seed uint64) (*playback.Source, error) {
 	t.Helper()
-	directory, _ := defaultMekugiReplayDirectory()
+	directory, _ := ReplayDirectory()
 	return replayTestService(t, diagnostics).Read(ctx, playback.ReadOptions{Path: path, HistoryDirectory: directory, DebugDirectory: debug, Seed: seed})
 }

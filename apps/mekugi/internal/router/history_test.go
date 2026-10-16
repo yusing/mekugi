@@ -12,6 +12,7 @@ import (
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/changehistory"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
@@ -33,9 +34,16 @@ func testHistory() *history.Service {
 }
 
 func openMekugiReplayStore(directory string) (*mekugiReplayStore, error) {
-	store, err := openReplayStore(context.Background(), testHistory(), directory)
+	captured, err := newTestCapture(context.Background(), directory)
+	if err != nil {
+		return nil, err
+	}
+	store, err := openReplayStore(context.Background(), testHistory(), captured, directory)
+	if err != nil {
+		_ = captured.Stop(context.Background())
+	}
 	if store != nil {
-		store.recovery, store.changes = testRecovery(), testChanges()
+		store.recovery = testRecovery()
 	}
 	return store, err
 }
@@ -99,4 +107,63 @@ func testChanges() changes.Service {
 		panic(err)
 	}
 	return service
+}
+
+func newTestCapture(ctx context.Context, directory string) (*changecapture.Service, error) {
+	service, err := changehistory.Module.New(changehistory.Deps{History: testHistory(), Directory: directory}, module.Slots{})
+	if err == nil {
+		err = changehistory.Module.Start(ctx, service)
+	}
+	return service, err
+}
+
+func testCapture(t *testing.T, directory string) *changecapture.Service {
+	t.Helper()
+	service, err := newTestCapture(t.Context(), directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := service.Stop(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
+	return service
+}
+
+func testCaptureWorkspaces(t *testing.T) *changecapture.Workspaces {
+	t.Helper()
+	directory := t.TempDir()
+	snapshots, err := testCapture(t, directory).Checkpoints(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return snapshots
+}
+
+func TestReplayStoreBorrowsCaptureLifetime(t *testing.T) {
+	directory := t.TempDir()
+	captured := testCapture(t, directory)
+	snapshots, err := captured.Checkpoints(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := openReplayStore(t.Context(), testHistory(), captured, directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.snapshots != snapshots || store.changes != captured.Service {
+		t.Fatal("replay store replaced the composed capture owner")
+	}
+	reopened, err := openReplayStore(t.Context(), testHistory(), captured, directory)
+	if err != nil || reopened.snapshots != snapshots {
+		t.Fatalf("reopened capture owner: %v", err)
+	}
+	if _, err := openReplayStore(t.Context(), testHistory(), captured, t.TempDir()); err == nil {
+		t.Fatal("capture crossed retained directories")
+	}
+	retained, err := openReplayStore(t.Context(), testHistory(), nil, directory)
+	if err != nil || retained.snapshots != nil || retained.changes != nil {
+		t.Fatalf("unselected capture acquired resources: %+v %v", retained, err)
+	}
 }

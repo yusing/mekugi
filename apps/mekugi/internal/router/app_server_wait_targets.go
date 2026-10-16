@@ -29,11 +29,11 @@ func (u *appServerUI) openWaitStore(store *mekugiReplayStore) error {
 		ctx = context.Background()
 	}
 	if store == nil {
-		directory, err := defaultMekugiReplayDirectory()
+		directory, err := ReplayDirectory()
 		if err != nil {
 			return err
 		}
-		store, err = openReplayStore(ctx, u.history, directory)
+		store, err = openReplayStore(ctx, u.history, nil, directory)
 		if err != nil {
 			return err
 		}

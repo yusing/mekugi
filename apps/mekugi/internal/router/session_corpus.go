@@ -65,7 +65,7 @@ func RunSessionCorpusInspection(inspector *query.Service, ctx context.Context, a
 	}
 	if *replay == "" {
 		var err error
-		*replay, err = defaultMekugiReplayDirectory()
+		*replay, err = ReplayDirectory()
 		if err != nil {
 			return fail(err)
 		}

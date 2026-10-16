@@ -91,7 +91,7 @@ func RunSessionInspection(inspector *query.Service, diagnostics *diagnostic.Serv
 		}
 		if *replayDir == "" {
 			var err error
-			*replayDir, err = defaultMekugiReplayDirectory()
+			*replayDir, err = ReplayDirectory()
 			if err != nil {
 				return fail(err)
 			}
@@ -116,7 +116,7 @@ func RunSessionInspection(inspector *query.Service, diagnostics *diagnostic.Serv
 	}
 	if *replayDir == "" {
 		var err error
-		*replayDir, err = defaultMekugiReplayDirectory()
+		*replayDir, err = ReplayDirectory()
 		if err != nil {
 			return fail(err)
 		}

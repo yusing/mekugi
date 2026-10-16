@@ -31,7 +31,7 @@ func openDebugOutput(service *diagnostic.Service, enabled bool, capturePath stri
 	if err != nil {
 		return nil, err
 	}
-	replay, err := defaultMekugiReplayDirectory()
+	replay, err := ReplayDirectory()
 	if err != nil {
 		return nil, err
 	}

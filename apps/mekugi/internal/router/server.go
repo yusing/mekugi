@@ -39,7 +39,7 @@ import (
 	"github.com/yusing/mekugi/libraries/httptransport"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/libraries/persistence"
-	"github.com/yusing/mekugi/modules/changehistory/changes"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	"github.com/yusing/mekugi/providers/grok"
 	"github.com/yusing/mekugi/providers/openai"
@@ -86,7 +86,7 @@ type Session struct {
 
 // RunSession owns the private router for one wrapped Codex process.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func RunSession(conversation composer.Service, live *previewmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, recovered *recovery.Service, segments *segmentservice.Service, changes changes.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, guards []binding.ShellApproval, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
+func RunSession(conversation composer.Service, live *previewmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, recovered *recovery.Service, segments *segmentservice.Service, changes *changecapture.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, guards []binding.ShellApproval, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
 	if diagnostics == nil && options.captureOutput != "" {
 		return errors.New("transport diagnostics are unavailable")
 	}
@@ -229,7 +229,7 @@ func RunSession(conversation composer.Service, live *previewmodel.Service, activ
 		issues.writes = writes
 	}
 	if options.mode == "mekugi" {
-		replayDirectory, err := defaultMekugiReplayDirectory()
+		replayDirectory, err := ReplayDirectory()
 		if err != nil {
 			return fmt.Errorf("initialize replay storage: %w", err)
 		}
@@ -245,15 +245,14 @@ func RunSession(conversation composer.Service, live *previewmodel.Service, activ
 			runErr = errors.Join(runErr, registry.Close())
 		}()
 		frontendDirectory = registry.FrontendDirectory
-		replayStore, err := openReplayStore(ctx, service, replayDirectory)
+		replayStore, err := openReplayStore(ctx, service, changes, replayDirectory)
 		if replayStore != nil {
-			replayStore.recovery, replayStore.changes = recovered, changes
+			replayStore.recovery = recovered
 		}
 		if err != nil {
 			return fmt.Errorf("initialize replay storage: %w", err)
 		}
 		replayStore.writes = writes
-		defer replayStore.snapshots.Close()
 		if !options.duplicateOutput {
 			projections = nil
 		}

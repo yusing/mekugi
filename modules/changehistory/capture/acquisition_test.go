@@ -17,7 +17,7 @@ func TestCapturePreviewAndNeutralCommandsSkipCheckpoints(t *testing.T) {
 				command = "printf after > source.txt"
 			}
 			writeTestFile(t, filepath.Join(workspace, "source.txt"), "before\n")
-			snapshots := NewWorkspaces(t.TempDir())
+			snapshots := newWorkspaces(t.Context(), t.TempDir())
 			t.Cleanup(snapshots.Close)
 			observation, observed := Capture(t.Context(), []commandanalysis.Command{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false,
 				Options{Directory: workspace, Workspaces: snapshots, PreviewOnly: preview})
@@ -33,7 +33,7 @@ func TestCaptureWorkspaceFallbackAndUnavailableComparison(t *testing.T) {
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "source.txt")
 	writeTestFile(t, path, "before\n")
-	snapshots := NewWorkspaces(t.TempDir())
+	snapshots := newWorkspaces(t.Context(), t.TempDir())
 	t.Cleanup(snapshots.Close)
 	observation, observed := Capture(t.Context(), []commandanalysis.Command{{Command: "custom-generator", Workdir: workspace, Shell: "bash"}}, false, false,
 		Options{Directory: workspace, Workspaces: snapshots})

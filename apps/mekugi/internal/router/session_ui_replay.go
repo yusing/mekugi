@@ -322,7 +322,7 @@ func RunSessionUIReplay(activity *activitymodel.Service, service *playback.Servi
 	if len(paths) != 1 {
 		return fail(fmt.Errorf("session %q has multiple rollouts in Codex sessions or archived_sessions", *session))
 	}
-	directory, _ := defaultMekugiReplayDirectory()
+	directory, _ := ReplayDirectory()
 	source, err := service.Read(ctx, playback.ReadOptions{Path: paths[0], HistoryDirectory: directory, DebugDirectory: *debug, Seed: *seed})
 	if err != nil {
 		return fail(err)

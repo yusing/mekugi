@@ -206,5 +206,10 @@ func testRunSession(service *history.Service, recovered *recovery.Service, ctx c
 		return err
 	}
 	defer usage.Close()
-	return RunSession(composer.Service{}, new(previewmodel.Service), new(activitymodel.Service), service, testPreferences(), recovered, &segmentservice.Service{Reports: testReports()}, testChanges(), usage, new(evidence.Service), new(transportcapture.Service), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), ctx, commands, testInputProjections(), testGuidance(), testNaming(), testGuards(), options, issues, ready, artifacts)
+	captured, err := newTestCapture(ctx, "")
+	if err != nil {
+		return err
+	}
+	defer captured.Stop(context.Background())
+	return RunSession(composer.Service{}, new(previewmodel.Service), new(activitymodel.Service), service, testPreferences(), recovered, &segmentservice.Service{Reports: testReports()}, captured, usage, new(evidence.Service), new(transportcapture.Service), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), ctx, commands, testInputProjections(), testGuidance(), testNaming(), testGuards(), options, issues, ready, artifacts)
 }

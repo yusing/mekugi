@@ -209,10 +209,13 @@ painting and terminal geometry.
 
 ## Lifecycle
 
-The composed retained service is stateless over supplied records. The application
-opens capture workspace owners with its replay store and closes them at invocation
-shutdown; closing cancels and joins background checkpoint warm-ups. Capture workers
-remain independently bounded so slow reads cannot hold host forwarding. Saved-review models and terminal
+The composed invocation service owns private workspace checkpoints and their
+background warm-ups. Composition binds their retained directory explicitly, starts
+the owner after construction and binding, and stops it after application observation
+windows finish. Shutdown cancels and joins warm-ups. Command workers and offline
+readers select retained operations without acquiring checkpoint resources. Replay
+stores borrow the selected owner and cannot create or close another one. Capture
+workers remain independently bounded so slow reads cannot hold host forwarding. Saved-review models and terminal
 viewports are attachment-local and restore no transient state on replay.
 Composition supplies session history;
 callers select the retained namespace, thread, and workspace explicitly. No

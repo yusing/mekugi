@@ -38,7 +38,7 @@ import (
 
 // Frontends composes feature-owned commands and records for the authenticated
 // frontend host. Host observation records remain application contributions.
-func Frontends(ctx context.Context, liveReports bool) (*Runtime, error) {
+func Frontends(ctx context.Context, liveReports bool, captureDirectory string) (*Runtime, error) {
 	c := Composition{LegacyRecordKinds: router.RetainedRecordKinds()}
 	live := c.Add(livepreview.Module, func() livepreview.Deps { return livepreview.Deps{} })
 	conversation := c.Add(conversation.Module, func() conversation.Deps { return conversation.Deps{} })
@@ -50,7 +50,9 @@ func Frontends(ctx context.Context, liveReports bool) (*Runtime, error) {
 	replay := c.Add(sessionreplay.Module, func() sessionreplay.Deps { return sessionreplay.Deps{History: history.Value()} })
 	prefs := c.Add(sessionpreferences.Module, func() sessionpreferences.Deps { return sessionpreferences.Deps{History: history.Value()} })
 	usage := c.Add(usage.Module, func() usage.Deps { return usage.Deps{History: history.Value()} })
-	changes := c.Add(changehistory.Module, func() changehistory.Deps { return changehistory.Deps{History: history.Value()} })
+	changes := c.Add(changehistory.Module, func() changehistory.Deps {
+		return changehistory.Deps{History: history.Value(), Directory: captureDirectory}
+	})
 	segments := c.Add(commandsegments.Module, func() commandsegments.Deps { return commandsegments.Deps{History: history.Value(), Live: liveReports} })
 	recovery := c.Add(outputrecovery.Module, func() outputrecovery.Deps { return outputrecovery.Deps{History: history.Value()} })
 	c.Add(boundedcommand.Module, func() boundedcommand.Deps { return boundedcommand.Deps{} })

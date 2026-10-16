@@ -25,7 +25,7 @@ func (c *CriticalErrors) persistFailure(f *requestFinalization) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	if store == nil {
-		directory, err := defaultMekugiReplayDirectory()
+		directory, err := ReplayDirectory()
 		if err == nil {
 			store, err = service.OpenFailures(ctx, directory)
 		}

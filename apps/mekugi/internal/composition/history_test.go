@@ -9,6 +9,8 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/contracts/recordkind"
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+	"github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/sessionhistory"
 )
@@ -30,7 +32,7 @@ func TestFrontendsRetainedSegmentsWithoutTransport(t *testing.T) {
 				}
 			}
 			t.Setenv("TMPDIR", temp)
-			runtime, err := Frontends(t.Context(), live)
+			runtime, err := Frontends(t.Context(), live, "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -102,7 +104,7 @@ func TestCompositionCollectsRecordKindsBeforeHostConstruction(t *testing.T) {
 }
 
 func TestFrontendsExposesConstructedHistoryHost(t *testing.T) {
-	runtime, err := Frontends(t.Context(), false)
+	runtime, err := Frontends(t.Context(), false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,4 +128,43 @@ func TestFrontendsExposesConstructedHistoryHost(t *testing.T) {
 		t.Fatalf("command segment contribution: kind=%+v found=%v err=%v", kind, found, err)
 	}
 
+}
+
+func TestFrontendsOwnsWorkspaceCapture(t *testing.T) {
+	directory := t.TempDir()
+	runtime, err := Frontends(t.Context(), false, directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := runtime.Close(t.Context()); err != nil {
+			t.Error(err)
+		}
+	}()
+	snapshots, err := runtime.Changes.Checkpoints(directory)
+	if err != nil || snapshots == nil {
+		t.Fatalf("composed checkpoints: %v %v", snapshots, err)
+	}
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "source.txt")
+	if err := os.WriteFile(path, []byte("before\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	observation, observed := capture.Capture(t.Context(), []commandanalysis.Command{{Command: "custom-generator", Workdir: workspace}}, false, false, capture.Options{Directory: workspace, Workspaces: snapshots})
+	if !observed || observation == nil || observation.Tree == "" {
+		t.Fatalf("composed baseline: %+v", observation)
+	}
+	if err := os.WriteFile(path, []byte("after\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	result := capture.Reconcile(t.Context(), *observation, capture.Comparison{Workspace: workspace, Workspaces: snapshots})
+	if result.SnapshotError != nil || len(result.Files) != 1 || !strings.Contains(result.Files[0].Diff, "+after") {
+		t.Fatalf("composed result: %+v", result)
+	}
+	if err := runtime.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.Changes.Checkpoints(directory); err == nil {
+		t.Fatal("composition left capture owner available")
+	}
 }

@@ -252,7 +252,7 @@ func TestFailureStoreLockTimeoutDoesNotBlockCriticalNoticeAccess(t *testing.T) {
 	stateHome := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", stateHome)
 	synctest.Test(t, func(t *testing.T) {
-		directory, err := defaultMekugiReplayDirectory()
+		directory, err := ReplayDirectory()
 		if err != nil {
 			t.Fatal(err)
 		}

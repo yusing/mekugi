@@ -73,7 +73,7 @@ func RunStorageInspection(service *history.Service, segments *reports.Service, c
 	}
 	if *replayDir == "" {
 		var err error
-		*replayDir, err = defaultMekugiReplayDirectory()
+		*replayDir, err = ReplayDirectory()
 		if err != nil {
 			return fail(err)
 		}

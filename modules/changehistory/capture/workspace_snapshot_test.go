@@ -11,7 +11,7 @@ import (
 
 func TestWorkspaceSnapshotRecoversFromPrunedState(t *testing.T) {
 	isolateSnapshotGit(t)
-	snapshots := NewWorkspaces(t.TempDir())
+	snapshots := newWorkspaces(t.Context(), t.TempDir())
 	t.Cleanup(snapshots.Close)
 	workspace := t.TempDir()
 	writeTestFile(t, filepath.Join(workspace, "a.txt"), "a\n")
@@ -32,7 +32,7 @@ func TestWorkspaceSnapshotRetriesAFailedWarmup(t *testing.T) {
 	store := t.TempDir()
 	blocker := filepath.Join(store, workspaceSnapshotDirectory)
 	writeTestFile(t, blocker, "not a directory\n")
-	snapshots := NewWorkspaces(store)
+	snapshots := newWorkspaces(t.Context(), store)
 	t.Cleanup(snapshots.Close)
 	workspace := t.TempDir()
 	writeTestFile(t, filepath.Join(workspace, "a.txt"), "a\n")
@@ -73,7 +73,7 @@ func TestWorkspaceSnapshotIgnoredIndexEntryIsNotDeletion(t *testing.T) {
 	writeTestFile(t, tracked, "before\n")
 	runGit("add", "tracked.log")
 	writeTestFile(t, filepath.Join(workspace, "build/cache.bin"), strings.Repeat("\x00", MaxFileBytes+1))
-	snapshots := NewWorkspaces(t.TempDir())
+	snapshots := newWorkspaces(t.Context(), t.TempDir())
 	t.Cleanup(snapshots.Close)
 	tree := snapshots.Checkpoint(t.Context(), workspace)
 	if tree == "" {

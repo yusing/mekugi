@@ -31,7 +31,7 @@ import (
 	"github.com/yusing/mekugi/contracts/reference"
 	"github.com/yusing/mekugi/contracts/replaytiming"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
-	"github.com/yusing/mekugi/modules/changehistory/changes"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/commandsegments/segments"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -266,7 +266,7 @@ type Runtime struct {
 	Naming               *binding.SessionNaming
 	Guidance             *binding.Guidance
 	InputProjections     []binding.InputProjection
-	Changes              changes.Service
+	Changes              *changecapture.Service
 	Segments             *segments.Service
 	Recovery             *recovery.Service
 	History              *history.Service

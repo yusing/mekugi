@@ -81,8 +81,8 @@ type Workspaces struct {
 	repos   map[string]*workspaceSnapshotRepo
 }
 
-func NewWorkspaces(storeDirectory string) *Workspaces {
-	ctx, cancel := context.WithCancel(context.Background())
+func newWorkspaces(ctx context.Context, storeDirectory string) *Workspaces {
+	ctx, cancel := context.WithCancel(ctx)
 	return &Workspaces{directory: filepath.Join(storeDirectory, workspaceSnapshotDirectory), ctx: ctx, cancel: cancel, repos: make(map[string]*workspaceSnapshotRepo)}
 }
 
