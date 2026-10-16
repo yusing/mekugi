@@ -61,7 +61,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Router behavior | `./apps/mekugi/internal/router` |
 | Bounded notices, feedback and recovery | `./modules/notifications/...`, plus router `Critical`, `Notice`, `Notification`, request-fault, cleanup and title consumers |
 | Applied settings and renderer preferences | `./modules/sessionpreferences/...`, plus router `NativePaneState`, `AppliedSettings`, resume, controls and settings consumers |
-| Session publication, namespaces, leases, and retention | `./modules/sessionhistory/...`, plus affected router persistence/fork/recovery integration |
+| Session publication, namespaces, leases, and retention | `./modules/sessionhistory/... ./modules/activity/waittargets ./libraries/legacycall`, plus composition record contributions and router persistence/fork/recovery, commentary provenance and wait-target restoration |
 | Cross-owner evidence and fork publication | `./apps/mekugi/internal/recordtransactions`, plus router `RecordTransactions`, retained-input/fork, change/recovery failure, snapshot-lease and retention consumers |
 | Command-segment report transport and retained reports | `./modules/commandsegments/...`, plus router `ExecTrack`, `CommandSegments`, `StorageInspection`, timing and restored-activity consumers |
 | Composed approval policy and grants | `./modules/remotewriteapproval/... ./modules/sudoapproval/... ./backends/codex/binding ./apps/mekugi/internal/composition`, plus launcher `SelectedGuards` and router `ShellApprovalComposition`, `NativeApprovalGuard`, `Sudo` consumers |

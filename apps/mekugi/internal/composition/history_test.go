@@ -10,6 +10,8 @@ import (
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/libraries/commandanalysis"
+	"github.com/yusing/mekugi/libraries/legacycall"
+	"github.com/yusing/mekugi/modules/activity/waittargets"
 	"github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/sessionhistory"
@@ -73,9 +75,8 @@ func TestFrontendsRetainedSegmentsWithoutTransport(t *testing.T) {
 }
 
 func TestCompositionCollectsRecordKindsBeforeHostConstruction(t *testing.T) {
-	legacy := recordkind.Spec{ID: "legacy", Match: func(name string) bool { return name == "legacy.json" }}
 	later := recordkind.Spec{ID: "later", Match: func(name string) bool { return name == "later.json" }, Keep: true}
-	c := Composition{LegacyRecordKinds: []recordkind.Spec{legacy}}
+	var c Composition
 	host := c.Add(sessionhistory.Module, func() sessionhistory.Deps { return sessionhistory.Deps{} })
 	contributor := descriptor("later")
 	contributor.Contributes.RecordKinds = []recordkind.Spec{later}
@@ -95,11 +96,9 @@ func TestCompositionCollectsRecordKindsBeforeHostConstruction(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	for _, want := range []recordkind.Spec{legacy, later} {
-		kind, found, err := host.Value().Kind(want.ID + ".json")
-		if err != nil || !found || kind.ID != want.ID || kind.Keep != want.Keep {
-			t.Fatalf("collected %s: kind=%+v found=%v err=%v", want.ID, kind, found, err)
-		}
+	kind, found, err := host.Value().Kind("later.json")
+	if err != nil || !found || kind.ID != later.ID || kind.Keep != later.Keep {
+		t.Fatalf("collected later: kind=%+v found=%v err=%v", kind, found, err)
 	}
 }
 
@@ -116,14 +115,41 @@ func TestFrontendsExposesConstructedHistoryHost(t *testing.T) {
 	if runtime.History == nil {
 		t.Fatal("application omitted the history host")
 	}
-	kind, found, err := runtime.History.Kind("call-" + strings.Repeat("a", 64) + ".json")
-	if err != nil || !found || kind.ID != "call" || kind.Dependencies == nil {
-		t.Fatalf("legacy call contribution: kind=%+v found=%v err=%v", kind, found, err)
+	for _, tc := range []struct{ name, id string }{
+		{legacycall.Name("/workspace", "call", false), "call"},
+		{legacycall.Name("/workspace", "commentary", true), "commentary"},
+		{legacycall.SnapshotName([]byte("snapshot")), "snapshot"},
+		{waittargets.Name("/workspace", "thread", "turn", "item"), "wait"},
+	} {
+		kind, found, err := runtime.History.Kind(tc.name)
+		if err != nil || !found || kind.ID != tc.id {
+			t.Fatalf("%s contribution: kind=%+v found=%v err=%v", tc.id, kind, found, err)
+		}
+		if kind.SeparateBudget != (tc.id == "commentary") || tc.id == "commentary" && kind.Limit != 16<<20 {
+			t.Fatalf("%s budget changed: %+v", tc.id, kind)
+		}
+		if tc.id == "call" {
+			if kind.Dependencies == nil {
+				t.Fatal("call contribution omitted snapshot dependency validation")
+			}
+			ref := legacycall.SnapshotName([]byte("snapshot"))
+			data := []byte(`{"Version":2,"Workspace":"/workspace","CallID":"call","Snapshots":{"ExecFiles":"` + ref + `"}}`)
+			deps, err := kind.Dependencies(recordkind.Record{Name: tc.name, Data: data})
+			if err != nil || len(deps) != 1 || deps[0] != ref {
+				t.Fatalf("call dependencies: %v, %v", deps, err)
+			}
+		}
+		prefix, suffix, _ := strings.Cut(tc.name, "-")
+		for _, invalid := range []string{"../" + tc.name, prefix + "-" + strings.Repeat("A", 64) + suffix[64:], prefix + "-" + strings.Repeat("g", 64) + suffix[64:], strings.Replace(tc.name, "-", "-a", 1), tc.name + ".tmp"} {
+			if kind.Match(invalid) {
+				t.Fatalf("invalid record %q recognized as %s", invalid, kind.ID)
+			}
+		}
 	}
 	if runtime.Segments == nil {
 		t.Fatal("application omitted the command-segment owner")
 	}
-	kind, found, err = runtime.History.Kind(reports.Name("/workspace", reports.ID("turn", "item")))
+	kind, found, err := runtime.History.Kind(reports.Name("/workspace", reports.ID("turn", "item")))
 	if err != nil || !found || kind.ID != "commandsegments" {
 		t.Fatalf("command segment contribution: kind=%+v found=%v err=%v", kind, found, err)
 	}

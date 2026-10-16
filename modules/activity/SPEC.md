@@ -177,12 +177,24 @@ consumer-owned.
 
 ## Records and Codex connection
 
-The module stores no durable records and registers no Codex mechanism. Its
-application adapter supplies original typed observations; restored observations
-come from host history and command-segment records. One record owns each source,
-its neutral values and its revision through replacement, mutation, removal and
-history reordering. Publication sequence and display order are independent.
-Retention keeps the newest 2,000 records while protecting live invocations.
+Activity owns immutable start-time wait-target snapshots and their retained codec.
+The application binds proven workspace, caller, turn and item identity;
+[session history](../sessionhistory/SPEC.md) supplies publication, ordinary retention
+and active leases. Activity registers no Codex mechanism. Its adapter supplies
+original typed observations; other restored observations come from host history
+and command-segment records.
+
+Explicit wait targets and reported states remain authoritative. When receivers
+are absent at start, the application snapshots currently running descendants and
+retains those names through completion; absent state never claims success or
+continued work. Resume may restore recorded names but cannot infer old targets
+from today's roster or revive waits. Storage failures report a notice without
+blocking live display.
+
+One feed record owns each source, its neutral values and its revision through
+replacement, mutation, removal and history reordering. Publication sequence and
+display order are independent. Feed retention keeps the newest 2,000 records while
+protecting live invocations.
 
 The model derives canonical roster order, observed status, latest activity and
 active skills. Missing parents promote their children without reordering siblings.

@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/modules/activity"
 	"github.com/yusing/mekugi/modules/changehistory"
+	"github.com/yusing/mekugi/modules/sessionhistory"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
@@ -34,7 +37,7 @@ func TestMChangesRecoveryPublicationFailurePreservesOutput(t *testing.T) {
 			}
 			f.publish(t, id, "change", "change-call", mekugiHistory{ReviewFiles: files})
 			// Reject only recovery publication, after the real frontend has admitted output.
-			kinds := append(RetainedRecordKinds(), recovery.RecordKinds()...)
+			kinds := slices.Concat(sessionhistory.Module.Contributes.RecordKinds, activity.Module.Contributes.RecordKinds, recovery.RecordKinds())
 			for i := range kinds {
 				if kinds[i].ID == "output" {
 					kinds[i].MaxRecordBytes = 1

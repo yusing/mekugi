@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -10,12 +11,15 @@ import (
 
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/module"
+	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/contracts/scope"
+	"github.com/yusing/mekugi/modules/activity"
 	"github.com/yusing/mekugi/modules/changehistory"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
+	"github.com/yusing/mekugi/modules/sessionhistory"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 )
@@ -26,7 +30,14 @@ func retainedScope(ctx context.Context, directory string) scope.Retained {
 }
 
 func testHistory() *history.Service {
-	service, err := history.NewService(append(append(append(append(append(RetainedRecordKinds(), diagnostic.Failures, history.HookRecord), accounting.RecordKinds()...), changehistory.Module.Contributes.RecordKinds...), recovery.RecordKinds()...), reports.RecordKinds()...))
+	service, err := history.NewService(slices.Concat(
+		sessionhistory.Module.Contributes.RecordKinds,
+		activity.Module.Contributes.RecordKinds,
+		[]recordkind.Spec{diagnostic.Failures},
+		accounting.RecordKinds(),
+		changehistory.Module.Contributes.RecordKinds,
+		recovery.RecordKinds(), reports.RecordKinds(),
+	))
 	if err != nil {
 		panic(err)
 	}

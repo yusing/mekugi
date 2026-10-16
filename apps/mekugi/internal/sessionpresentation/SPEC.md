@@ -159,13 +159,8 @@ progress animates; restored/completed progress does not restart. Completion free
 elapsed time, using Activity's shared compact duration grammar.
 
 Agent waits update only the caller's latest roster status, never transcript or Main
-composer progress. Explicit targets and reported states remain authoritative. When
-receivers are absent at start, the application snapshots currently running
-descendants and retains those names through completion; absent state never claims
-success or continued work. Managed records scope that presentation snapshot by
-workspace, caller, turn and item, using ordinary session retention and active leases.
-Resume may restore recorded names but cannot infer old targets from today's roster
-or revive waits. Storage failures report a notice without blocking live display.
+composer progress. [Activity](../../../../modules/activity/SPEC.md#records-and-codex-connection)
+owns the immutable target snapshots used for live display and restoration.
 
 Router errors remain composer feedback, not transcript or provider-response edits.
 Editing/dismissal clears actionable feedback. Elided feedback opens complete retained

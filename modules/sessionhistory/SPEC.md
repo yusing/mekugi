@@ -13,8 +13,8 @@ records and potentially shared dependencies. Retained facts do not restore host
 processes, live grants, or operation authority.
 
 The invocation composes this owner for live sessions, authenticated frontend
-workers, and offline inspection. Feature codecs remain in their current owners
-until those modules are extracted.
+workers, and offline inspection. Each descriptor contributes its own record kinds;
+feature owners supply their codecs without application compatibility registration.
 
 ## Behavior
 
@@ -113,8 +113,15 @@ None. Codex execution remains outside this module.
 ## Records
 
 Session catalogs, durable namespace identity, allocation high-water marks and
-published host-hook facts belong here. Hook records bind exact workspace and
-thread identity, preserve recorded output/outcomes, and disclose dropped earlier
+published host facts belong here. Retained calls, their historical snapshot
+dependencies and generated-commentary provenance use the shared frozen
+[historical codec](../../libraries/legacycall), preserving identity and encoding.
+Commentary keeps its independent budget. Application adapters retain request-local
+translation and publication integration; the historical schema is not extended
+for new feature records.
+
+Hook records bind exact workspace and thread identity, preserve recorded
+output/outcomes, and disclose dropped earlier
 observations. Read-only attachment neither creates storage nor revives unfinished
 hooks. The retained codec preserves published records; the live hook schema
 belongs to the Codex backend. Other owners supply their record kinds, dependency inspection, and

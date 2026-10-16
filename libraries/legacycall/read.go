@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 )
 
 // Source: internal/router/mekugi_store.go:123:201@[ff834f05] record identity and read
@@ -22,6 +23,22 @@ func Name(workspace, callID string, commentary bool) string {
 	}
 	return prefix + fmt.Sprintf("%x.json", sha256.Sum256(fmt.Appendf(nil, "%t\x00%s\x00%s", commentary, workspace, callID)))
 }
+
+// ValidName recognizes a retained call or commentary filename, not a path.
+// Source: apps/mekugi/internal/router/retained_record_kinds.go:35:50@[29de53cc] hashedRecordName
+func ValidName(name string, commentary bool) bool {
+	prefix := "call-"
+	if commentary {
+		prefix = "commentary-"
+	}
+	hash, ok := strings.CutPrefix(name, prefix)
+	if !ok {
+		return false
+	}
+	hash, ok = strings.CutSuffix(hash, ".json")
+	return ok && len(hash) == 64 && strings.Trim(hash, "0123456789abcdef") == ""
+}
+
 func Read(directory, workspace, callID string, commentary bool, limit int) (Record, bool, error) {
 	name := filepath.Join(directory, Name(workspace, callID, commentary))
 	info, err := os.Lstat(name)

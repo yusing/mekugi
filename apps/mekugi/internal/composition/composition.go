@@ -74,9 +74,8 @@ type entry struct {
 }
 
 type Composition struct {
-	LegacyRecordKinds []recordkind.Spec
-	entries           []entry
-	sealed            bool
+	entries []entry
+	sealed  bool
 }
 
 // Add declares a factory, without constructing or starting it. The typed
@@ -295,7 +294,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 	}
 	c.sealed = true
 	runtime := new(Runtime)
-	records := slices.Clone(c.LegacyRecordKinds)
+	var records []recordkind.Spec
 	var inspections []inspection.Contribution
 	var replayTiming []replaytiming.Reader
 	var diagnostics []diagnosticsection.Contribution

@@ -14,7 +14,6 @@ import (
 
 	"github.com/yusing/mekugi/modules/diagnostics"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/router"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/agentguidance"
 	"github.com/yusing/mekugi/modules/agentmetrics"
@@ -37,9 +36,9 @@ import (
 )
 
 // Frontends composes feature-owned commands and records for the authenticated
-// frontend host. Host observation records remain application contributions.
+// frontend host, including retained host facts and Activity snapshots.
 func Frontends(ctx context.Context, liveReports bool, captureDirectory string) (*Runtime, error) {
-	c := Composition{LegacyRecordKinds: router.RetainedRecordKinds()}
+	var c Composition
 	live := c.Add(livepreview.Module, func() livepreview.Deps { return livepreview.Deps{} })
 	conversation := c.Add(conversation.Module, func() conversation.Deps { return conversation.Deps{} })
 	activity := c.Add(activity.Module, func() activity.Deps { return activity.Deps{} })

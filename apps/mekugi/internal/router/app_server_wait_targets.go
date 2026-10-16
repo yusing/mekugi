@@ -3,21 +3,12 @@ package router
 import (
 	"cmp"
 	"context"
-	"crypto/sha256"
-	json "encoding/json/v2"
-	"errors"
-	"fmt"
-	"io"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
-)
 
-type appServerWaitTarget struct {
-	Thread string `json:"thread"`
-	Name   string `json:"name"`
-}
+	"github.com/yusing/mekugi/modules/activity/waittargets"
+)
 
 func (u *appServerUI) openWaitStore(store *mekugiReplayStore) error {
 	if u.waitRelease != nil {
@@ -56,7 +47,7 @@ func (u *appServerUI) waitItem(item appServerItem, thread, turn, id string, star
 	}
 	s := &u.session
 	if s.waits == nil {
-		s.waits = make(map[[3]string][]appServerWaitTarget)
+		s.waits = make(map[[3]string][]waittargets.Target)
 	}
 	key := [3]string{thread, turn, id}
 	targets, known := s.waits[key]
@@ -77,16 +68,16 @@ func (u *appServerUI) waitItem(item appServerItem, thread, turn, id string, star
 		}
 		slices.Sort(extra)
 		for _, target := range append(receivers, extra...) {
-			targets = append(targets, appServerWaitTarget{Thread: target, Name: cmp.Or(s.paths[target], target)})
+			targets = append(targets, waittargets.Target{Thread: target, Name: cmp.Or(s.paths[target], target)})
 		}
 		if len(targets) == 0 && len(item.AgentsStates) == 0 {
 			prefix := s.path(thread) + "/"
 			for target, name := range s.paths {
 				if agent := s.agent(name); agent != nil && agent.Responding && strings.HasPrefix(name, prefix) {
-					targets = append(targets, appServerWaitTarget{Thread: target, Name: name})
+					targets = append(targets, waittargets.Target{Thread: target, Name: name})
 				}
 			}
-			slices.SortFunc(targets, func(a, b appServerWaitTarget) int { return strings.Compare(a.Name, b.Name) })
+			slices.SortFunc(targets, func(a, b waittargets.Target) int { return strings.Compare(a.Name, b.Name) })
 		}
 		if err := s.writeWaitTargets(key, targets); err != nil {
 			u.setNotice("Wait targets could not be retained: "+err.Error(), true)
@@ -121,42 +112,20 @@ func (u *appServerUI) waitItem(item appServerItem, thread, turn, id string, star
 }
 
 func (s *appServerSession) waitTargetsPath(key [3]string) string {
-	identity := s.cwd + "\x00" + strings.Join(key[:], "\x00")
-	return filepath.Join(s.waitStore.directory, fmt.Sprintf("wait-%x.json", sha256.Sum256([]byte(identity))))
+	return filepath.Join(s.waitStore.directory, waittargets.Name(s.cwd, key[0], key[1], key[2]))
 }
 
-func (s *appServerSession) readWaitTargets(key [3]string) (targets []appServerWaitTarget, found bool, err error) {
+func (s *appServerSession) readWaitTargets(key [3]string) (targets []waittargets.Target, found bool, err error) {
 	err = s.waitStore.locked(s.waitContext, func(store *mekugiReplayStore) error {
 		path := s.waitTargetsPath(key)
-		info, err := os.Lstat(path)
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		if !info.Mode().IsRegular() {
-			return errors.New("wait targets are not a regular file")
-		}
-		f, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		data, err := io.ReadAll(io.LimitReader(f, maxNativeActivityMessageBytes+1))
-		if err != nil {
-			return err
-		}
-		if len(data) > maxNativeActivityMessageBytes {
-			return errors.New("wait targets exceed size limit")
-		}
-		if err := json.Unmarshal(data, &targets, json.RejectUnknownMembers(true)); err != nil {
+		var err error
+		targets, found, err = waittargets.Read(path)
+		if err != nil || !found {
 			return err
 		}
 		if err := store.retainFiles(filepath.Base(path)); err != nil {
 			return err
 		}
-		found = true
 		return nil
 	})
 	if err != nil {
@@ -165,16 +134,13 @@ func (s *appServerSession) readWaitTargets(key [3]string) (targets []appServerWa
 	return targets, found, nil
 }
 
-func (s *appServerSession) writeWaitTargets(key [3]string, targets []appServerWaitTarget) error {
+func (s *appServerSession) writeWaitTargets(key [3]string, targets []waittargets.Target) error {
 	if s.waitStore == nil {
 		return nil
 	}
-	data, err := json.Marshal(&targets)
+	data, err := waittargets.Encode(targets)
 	if err != nil {
 		return err
-	}
-	if len(data) > maxNativeActivityMessageBytes {
-		return errors.New("wait targets exceed size limit")
 	}
 	return s.waitStore.locked(s.waitContext, func(store *mekugiReplayStore) error {
 		return store.writeManagedFile(filepath.Base(s.waitTargetsPath(key)), "wait-pending-", data)

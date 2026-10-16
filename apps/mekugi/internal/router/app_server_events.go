@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/modules/activity/waittargets"
+
 	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 
 	"github.com/yusing/mekugi/contracts/scope"
@@ -52,7 +54,7 @@ type appServerSession struct {
 	state           scope.Store
 	threadStates    map[string]*scope.Store
 	cwd             string
-	waits           map[[3]string][]appServerWaitTarget // Start-time targets by thread, turn, item.
+	waits           map[[3]string][]waittargets.Target // Start-time targets by thread, turn, item.
 	waitStore       *mekugiReplayStore
 	waitContext     context.Context
 
@@ -156,7 +158,7 @@ func (s *appServerSession) start(thread, cwd string) {
 	s.metadata = make(map[string]string)
 	s.commands = make(map[[3]string]*appServerCommandRun)
 	s.summaries = make(map[[3]string]*appServerSummaryRun)
-	s.waits = make(map[[3]string][]appServerWaitTarget)
+	s.waits = make(map[[3]string][]waittargets.Target)
 	s.waitStore, s.waitContext = nil, nil
 	s.cwd = cwd
 }
