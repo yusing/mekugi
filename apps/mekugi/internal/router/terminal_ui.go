@@ -308,6 +308,10 @@ func (u *terminalUI) send(s string) error {
 		}
 		return nil
 	}
+	if u.Focus == 1 && s == "\x1b" {
+		u.diff.escapeKey()
+		return nil
+	}
 	for _, key := range []byte(s) {
 		if u.Focus == 1 {
 			if key == 'e' && u.main != nil && !u.diff.help && u.diff.escape == "" {

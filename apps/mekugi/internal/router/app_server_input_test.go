@@ -5,6 +5,8 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"testing/synctest"
+	"time"
 )
 
 func TestNativeUIQueuedEscapeContinuation(t *testing.T) {
@@ -53,6 +55,33 @@ func TestNativeUIInputDrainPreservesStandaloneEscape(t *testing.T) {
 	if u.Text != "keep me" || u.Interruption.Target != "active" {
 		t.Fatal("standalone Escape did not preserve interrupt behavior")
 	}
+}
+
+func TestNativeUIDiffStandaloneEscapeBeforeNextKey(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		u, wire := newAppServerTestUI()
+		u.ensureShell()
+		defer u.shell.diff.close()
+		u.shell.Focus = 1
+		for _, key := range []byte("?\x1b") {
+			if err := u.shell.key(key); err != nil {
+				t.Fatal(err)
+			}
+		}
+		time.Sleep(40 * time.Millisecond)
+		if err := u.drainKeys(make(chan byte)); err != nil {
+			t.Fatal(err)
+		}
+		if u.shell.diff.help {
+			t.Fatal("settled Escape did not close Diff help")
+		}
+		if err := u.shell.key('?'); err != nil {
+			t.Fatal(err)
+		}
+		if !u.shell.diff.help || wire.Len() != 0 {
+			t.Fatalf("following key did not reopen Diff help: help=%v host=%q", u.shell.diff.help, wire.String())
+		}
+	})
 }
 
 func TestNativeUIInputDrainBoundedAndClosed(t *testing.T) {
