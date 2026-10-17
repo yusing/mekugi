@@ -76,8 +76,8 @@ func (u *appServerUI) renderMainFrame(width, height, dock int) terminalsession.M
 }
 
 func (u *terminalUI) paintSelection(rows []string) {
-	if !u.frame.PaintSelection(u.frameInput(), rows) {
-		u.selection = nil
+	if !u.Frame.PaintSelection(u.frameInput(), rows) {
+		u.Selection = nil
 	}
 }
 

@@ -73,7 +73,7 @@ func questionTestPaint(t *testing.T, u *appServerUI, width int) string {
 	if err := u.testPaint(io.Discard, width+2, 31); err != nil {
 		t.Fatal(err)
 	}
-	return strings.Join(u.shell.frame.Rows, "\n")
+	return strings.Join(u.shell.Frame.Rows, "\n")
 }
 
 func TestNativeQuestionSyncAnswerEncoding(t *testing.T) {

@@ -34,14 +34,3 @@ func (u *appServerUI) keyboardInterrupt() error {
 	view := u.publishPresentation(u.now())
 	return u.interruptSession(sessionpresentation.InterruptIntent{Version: view.Version, Target: view.Interrupt, Mode: sessioncontrol.RestoreWaiting})
 }
-
-// Escape expedites pending steers like Codex: interrupt, then submit the
-// uncommitted input after the host confirms the turn ended. Ctrl-C restores it.
-func (u *appServerUI) keyboardEscape() error {
-	if u.mainView.InterruptLocked {
-		u.lockNotice()
-		return nil
-	}
-	view := u.publishPresentation(u.now())
-	return u.interruptSession(sessionpresentation.InterruptIntent{Version: view.Version, Target: view.Interrupt, Mode: sessioncontrol.ExpediteSteers})
-}

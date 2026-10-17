@@ -76,3 +76,15 @@ func renderActivityFeed(source *sessionpresentation.ActivitySource, view *activi
 		view.Hydrate(source.ResolveOutputDemands(demands))
 	}
 }
+
+// openRequested opens an operation the view's pointer handling clicked.
+func (u *terminalUI) openRequested(view *activityui.View) {
+	if snippet := view.Opening; snippet != (activityui.Snippet{}) {
+		view.Opening = activityui.Snippet{}
+		if snippet.Block == activityui.EditNavigationSnippet {
+			u.openActivityEdit(view, snippet.Run, snippet.Path)
+		} else if !u.openOutput(view, snippet) {
+			u.openEntry(view, snippet.Run)
+		}
+	}
+}

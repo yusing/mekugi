@@ -62,7 +62,7 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 			}
 			paint()
 			x, y := -1, -1
-			for row, spans := range u.shell.frame.Copy {
+			for row, spans := range u.shell.Frame.Copy {
 				for _, span := range spans {
 					if span.Text == "row 59" {
 						x, y = span.Column+5, row
@@ -83,7 +83,7 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 				}
 			}
 			mouse(0, x, y, false)
-			s := u.shell.selection
+			s := u.shell.Selection
 			if s == nil || s.ScreenRows() == 0 {
 				t.Fatal("selection did not retain off-screen source")
 			}
@@ -127,11 +127,11 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 			if err := u.shell.send("\x1b[6~"); err != nil {
 				t.Fatal(err)
 			}
-			if u.shell.selection != s || s.Top() == 0 || s.Text() != want {
+			if u.shell.Selection != s || s.Top() == 0 || s.Text() != want {
 				t.Fatal("page scrolling lost completed selection")
 			}
 			u.shell.selectionAction('c')
-			if want := base64.StdEncoding.EncodeToString([]byte(want)); !strings.Contains(u.shell.frame.Clipboard, want) {
+			if want := base64.StdEncoding.EncodeToString([]byte(want)); !strings.Contains(u.shell.Frame.Clipboard, want) {
 				t.Fatal("clipboard did not include the whole selection")
 			}
 		})
@@ -186,11 +186,11 @@ func TestDiffSelectionScrollFromEOFAndRestart(t *testing.T) {
 	}
 	source := c.Selection(width-2, height-1)
 	u := selectionTestUI(strings.Split(screen.Render(), "\n")...)
-	u.width, u.frame.Width = width, width
+	u.width, u.Frame.Width = width, width
 	u.Layout = terminalsession.Layout{Diff: terminalsession.Rect{0, 0, width, height}}
 	u.Auxiliary = c
 	u.selectionMouse(0, width-2, source.Y+1, false)
-	s := u.selection
+	s := u.Selection
 	if s == nil || s.Top() != source.Offset {
 		t.Fatal("EOF offset was not preserved")
 	}
@@ -221,7 +221,7 @@ func TestDiffSelectionScrollFromEOFAndRestart(t *testing.T) {
 	u.selectionMouse(0, source.X, first, false)
 	u.selectionMouse(32, width-2, first+1, false)
 	u.selectionMouse(0, width-2, first+1, true)
-	if got := u.selection.Text(); got != strings.Join(want[:2], "\n") {
+	if got := u.Selection.Text(); got != strings.Join(want[:2], "\n") {
 		t.Fatalf("restart selected underlying viewport: %q", got)
 	}
 }
@@ -252,7 +252,7 @@ func TestSelectionScrolledClickUsesDocumentTarget(t *testing.T) {
 	r := u.shell.Layout.Main
 	x, y := r.X+u.agents.FeedLeft, r.Y+u.agents.FeedTop
 	selectionTestDrag(t, u.shell, x, y, x+1, y)
-	s := u.shell.selection
+	s := u.shell.Selection
 	if !s.ScrollKey("\x1b[H") {
 		t.Fatal("Home did not scroll frozen selection")
 	}

@@ -200,7 +200,7 @@ func TestComposerEscapeContextPrecedesSteerDelivery(t *testing.T) {
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"t"}}`, steer.ID))
 			switch context {
 			case "selection":
-				u.shell.selection = &terminalsession.SourceSelection{Selection: selectedTerminalText("selected")}
+				u.shell.Selection = &terminalsession.SourceSelection{Selection: selectedTerminalText("selected")}
 			case "scrollback":
 				u.view.Following = false
 			case "picker":

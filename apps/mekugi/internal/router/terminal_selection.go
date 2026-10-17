@@ -8,66 +8,6 @@ import (
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
-// selectionKey owns scrolling and action dispatch for both selection surfaces.
-// Callers retain navigation dismissal and their surrounding Escape priority.
-func (u *terminalUI) selectionKey(key string) bool {
-	s := u.selection
-	if s == nil {
-		return false
-	}
-	intent, handled := s.Key(key, false)
-	if intent != terminalsession.SelectionScroll {
-		u.selectionAction(intent)
-	}
-	return handled
-}
-
-func (u *terminalUI) selectionAction(action terminalsession.SelectionIntent) {
-	s := u.selection
-	if s == nil || s.Dragging() && action != 27 {
-		return
-	}
-	switch action {
-	case 'r':
-		description, source := s.MentionDescription()
-		if !u.main.referenceInput(u.main.mainView.Reference(description, s.Text(), source)) {
-			return
-		}
-		u.Focus = 0
-		u.closeOutput()
-	case 'c':
-		u.copyText(s.Text())
-	case 27:
-	default:
-		return
-	}
-	u.selection = nil
-}
-
-func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
-	if u.main == nil {
-		return false
-	}
-	for {
-		result := u.frame.SelectionMouse(u.frameInput(), u.selection, terminalsession.Mouse{Button: button, X: x, Y: y, Release: release})
-		if len(result.Demands) > 0 {
-			source := u.main.activitySource(result.Selection.View)
-			if source == nil {
-				u.main.setNotice(sessionpresentation.ErrStaleIntent.Error(), true)
-				return true
-			}
-			result.Selection.View.Hydrate(source.ResolveOutputDemands(result.Demands))
-			continue
-		}
-		u.selection = result.Selection
-		if result.Action != 0 {
-			u.selectionAction(result.Action)
-		}
-		u.openSelectionTarget(result.Target)
-		return result.Handled
-	}
-}
-
 func (u *terminalUI) openSelectionTarget(target terminalsession.SelectionTarget) {
 	if target.Link == "" && target.Entry == 0 && target.Snippet == (activityui.Snippet{}) {
 		return

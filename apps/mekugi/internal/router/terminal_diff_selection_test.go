@@ -1,8 +1,8 @@
 package router
 
 import (
-"github.com/yusing/mekugi/libraries/legacycall"
 	"fmt"
+	"github.com/yusing/mekugi/libraries/legacycall"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -74,7 +74,7 @@ func TestTerminalUIDiffSelectionUsesLastPaintedEvidence(t *testing.T) {
 				refresh()
 				r := u.shell.Layout.Diff
 				keys(fmt.Sprintf("\x1b[<0;%d;%dM", r.X+r.W-2, r.Y+2))
-				if s := u.shell.selection; s == nil {
+				if s := u.shell.Selection; s == nil {
 					t.Fatal("visible empty Diff did not accept the pointer press")
 				} else {
 					for _, source := range s.Diff {
@@ -93,7 +93,7 @@ func TestTerminalUIDiffSelectionUsesLastPaintedEvidence(t *testing.T) {
 			r := u.shell.Layout.Diff
 			x, y, text := -1, -1, ""
 			for row := r.Y; row < r.Y+r.H; row++ {
-				line := ansi.Strip(u.shell.frame.Rows[row])
+				line := ansi.Strip(u.shell.Frame.Rows[row])
 				if at := strings.Index(line, "a_line_"); at >= r.X {
 					x, y, text = ansi.StringWidth(line[:at]), row, line[at:at+len("a_line_00")]
 					break
@@ -109,7 +109,7 @@ func TestTerminalUIDiffSelectionUsesLastPaintedEvidence(t *testing.T) {
 			}
 			// Press and drag through the shared decoder before another paint tick.
 			keys(fmt.Sprintf("\x1b[<0;%d;%dM\x1b[<32;%d;%dM\x1b[<0;%d;%dm", x+1, y+1, x+len(text), y+1, x+len(text), y+1))
-			if s := u.shell.selection; s == nil || !strings.Contains(s.Text(), text) {
+			if s := u.shell.Selection; s == nil || !strings.Contains(s.Text(), text) {
 				t.Fatalf("selection no longer copies the displayed %q: %+v", text, s)
 			} else {
 				var line int

@@ -52,7 +52,7 @@ func TestTerminalSourceSelectionDirectionsAndActions(t *testing.T) {
 						}
 					}
 					u := selectionTestUI(rows...)
-					u.frame.Copy = append(meta, nil)
+					u.Frame.Copy = append(meta, nil)
 					if activity {
 						u.agents = activityui.NewView()
 						u.agents.FeedLeft, u.agents.FeedTop = 1, 1
@@ -70,14 +70,14 @@ func TestTerminalSourceSelectionDirectionsAndActions(t *testing.T) {
 						a, b = b, a
 					}
 					selectionTestDrag(t, u, a, y, b, y)
-					if got := u.selection.Text(); got != tc.want {
+					if got := u.Selection.Text(); got != tc.want {
 						t.Fatalf("selected=%q", got)
 					}
 					u.selectionAction(terminalsession.SelectionIntent(action))
 					if action == 'c' {
 						want := base64.StdEncoding.EncodeToString([]byte(tc.want))
-						if !strings.Contains(u.frame.Clipboard, want) {
-							t.Fatal(u.frame.Clipboard)
+						if !strings.Contains(u.Frame.Clipboard, want) {
+							t.Fatal(u.Frame.Clipboard)
 						}
 					} else if len(u.main.Selections) != 1 || u.main.Selections[0].Text != tc.want {
 						t.Fatalf("reference=%+v", u.main.Selections)
@@ -97,12 +97,12 @@ func TestTerminalSourceSelectionCodeLiteralDecoration(t *testing.T) {
 		rows[i], meta[i] = terminalui.ExtractCopy(row)
 	}
 	u := selectionTestUI(rows...)
-	u.frame.Copy = append(meta, nil)
+	u.Frame.Copy = append(meta, nil)
 	selectionTestDrag(t, u, 0, 0, 39, len(rows)-1)
-	if got := u.selection.Text(); got != "│ literal  \n\n\n  tail" {
+	if got := u.Selection.Text(); got != "│ literal  \n\n\n  tail" {
 		t.Fatalf("copy=%q", got)
 	}
-	left, _ := u.selection.Bounds(0)
+	left, _ := u.Selection.Bounds(0)
 	if left != 1 {
 		t.Fatalf("literal code gutter stripped: %d", left)
 	}
@@ -126,7 +126,7 @@ func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 	y := -1
 	x := -1
 	for row := rect.Y; row < rect.Y+rect.H; row++ {
-		for _, span := range u.shell.frame.Copy[row] {
+		for _, span := range u.shell.Frame.Copy[row] {
 			if span.Text == "side answer" {
 				x, y = span.Column, row
 				break
@@ -138,23 +138,23 @@ func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 		t.Fatalf("no dock: %+v", rect)
 	}
 	selectionTestDrag(t, u.shell, x, y, x+10, y)
-	if got := u.shell.selection.Text(); got != "**side answer**" {
+	if got := u.shell.Selection.Text(); got != "**side answer**" {
 		t.Fatalf("btw copied=%q", got)
 	}
 	if err := u.shell.send("\x1b"); err != nil {
 		t.Fatal(err)
 	}
-	if u.side == nil || u.shell.selection != nil {
+	if u.side == nil || u.shell.Selection != nil {
 		t.Fatal("Escape closed dock before selection")
 	}
 	selectionTestDrag(t, u.shell, x, y, x+10, y)
 	if err := u.shell.key(3); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(u.shell.frame.Clipboard, base64.StdEncoding.EncodeToString([]byte("**side answer**"))) {
+	if !strings.Contains(u.shell.Frame.Clipboard, base64.StdEncoding.EncodeToString([]byte("**side answer**"))) {
 		t.Fatal("btw clipboard missing")
 	}
-	if u.side == nil || u.shell.selection != nil {
+	if u.side == nil || u.shell.Selection != nil {
 		t.Fatal("copy closed the dock or retained selection")
 	}
 	u.Text, u.CursorBack = "before after", len("after")
@@ -162,7 +162,7 @@ func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 	if err := u.shell.key('r'); err != nil {
 		t.Fatal(err)
 	}
-	if u.side == nil || u.shell.selection != nil || u.shell.Focus != 0 || u.Text != "before [Selected side answer] after" || len(u.Selections) != 1 || u.Selections[0].Text != "**side answer**" {
+	if u.side == nil || u.shell.Selection != nil || u.shell.Focus != 0 || u.Text != "before [Selected side answer] after" || len(u.Selections) != 1 || u.Selections[0].Text != "**side answer**" {
 		t.Fatalf("btw reference: draft=%q selections=%+v dock=%v", u.Text, u.Selections, u.side != nil)
 	}
 }
@@ -209,7 +209,7 @@ func TestTerminalSourceScrolledMainReply(t *testing.T) {
 		t.Fatal(err)
 	}
 	x, y := -1, -1
-	for row, spans := range u.shell.frame.Copy {
+	for row, spans := range u.shell.Frame.Copy {
 		for _, s := range spans {
 			if s.Text == "original reply" {
 				x, y = s.Column, row
@@ -224,7 +224,7 @@ func TestTerminalSourceScrolledMainReply(t *testing.T) {
 		t.Fatalf("no original reply source: %s", screen.String())
 	}
 	selectionTestDrag(t, u.shell, u.shell.Layout.Main.X, y-1, x+13, y)
-	if got := u.shell.selection.Text(); got != "**original reply**" {
+	if got := u.shell.Selection.Text(); got != "**original reply**" {
 		t.Fatalf("original reply copy=%q", got)
 	}
 }
@@ -256,7 +256,7 @@ func TestTerminalSourceRenderedTables(t *testing.T) {
 					t.Fatal(err)
 				}
 				first, last, left, right := -1, -1, 0, 0
-				for y, spans := range u.shell.frame.Copy {
+				for y, spans := range u.shell.Frame.Copy {
 					for _, span := range spans {
 						if span.Table != 0 {
 							if first < 0 {
@@ -276,7 +276,7 @@ func TestTerminalSourceRenderedTables(t *testing.T) {
 				}
 				selectionTestDrag(t, u.shell, ax, ay, bx, by)
 				expected := want
-				if got := u.shell.selection.Text(); got != expected {
+				if got := u.shell.Selection.Text(); got != expected {
 					t.Fatalf("activity=%v width=%d reverse=%v: %q want %q", activity, width, reverse, got, expected)
 				}
 			}
@@ -296,11 +296,11 @@ func TestTerminalSourceActivityCodeTabs(t *testing.T) {
 	if err := u.testPaint(&wire, 120, 40); err != nil {
 		t.Fatal(err)
 	}
-	for y, spans := range u.shell.frame.Copy {
+	for y, spans := range u.shell.Frame.Copy {
 		for _, span := range spans {
 			if span.Code {
 				selectionTestDrag(t, u.shell, span.Column, y, span.Column+span.Width-1, y)
-				if got := u.shell.selection.Text(); got != "\tx := 1  " {
+				if got := u.shell.Selection.Text(); got != "\tx := 1  " {
 					t.Fatalf("activity source code=%q", got)
 				}
 				return

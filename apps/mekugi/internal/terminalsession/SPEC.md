@@ -78,6 +78,12 @@ the decoder still consumes their terminator. Terminal replies never reach the
 composer or pane shortcuts. A lone Escape waits 40 milliseconds for continuation;
 queued continuation bytes are drained before expiration is applied.
 
+The terminal owns outer input precedence across dialogs, frozen selection, panes,
+prompts, menus and Main. It returns targeted effects to application integration;
+an effect settles and publishes before interpretation continues. Terminal-local
+navigation needs no application callback. Source hydration pauses only the current
+input operation and resumes against the same pointer target.
+
 The terminal buffers and sanitizes a completed paste against its original
 attachment, editor and menu. Unrelated publication updates do not discard it;
 replacing that input destination rejects it with feedback. Application integration

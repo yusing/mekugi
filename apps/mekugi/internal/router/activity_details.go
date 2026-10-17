@@ -8,7 +8,7 @@ import (
 )
 
 func (u *terminalUI) openDetailSelection(view *activityui.View, pages []activitypresentation.DetailPage, processes bool) {
-	u.selection = nil
+	u.Selection = nil
 	u.main.fileReads = nil
 	id := u.main.session.OpenDetails(u.main.sessionPresentation().View().Version, u.main.activitySource(view), pages, processes)
 	u.output = &terminalsession.ContentDialog{ID: id, View: view, Processes: processes}

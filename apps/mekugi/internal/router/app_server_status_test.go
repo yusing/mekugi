@@ -261,7 +261,7 @@ func TestAppServerStatusTerminalPasteCanClose(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if u.statusPanel == nil || u.Text != "" || shell.input.Pasting() {
+	if u.statusPanel == nil || u.Text != "" || shell.Decoder.Pasting() {
 		t.Fatal("paste affected panel or composer")
 	}
 	if err := shell.key('q'); err != nil {
@@ -418,8 +418,8 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 						}
 					}
 				}
-				if u.shell.selection == nil || u.shell.selection.Text() != "gpt-6-sol" {
-					t.Fatalf("wrong status selection: %+v", u.shell.selection)
+				if u.shell.Selection == nil || u.shell.Selection.Text() != "gpt-6-sol" {
+					t.Fatalf("wrong status selection: %+v", u.shell.Selection)
 				}
 			}
 			drag()
@@ -433,7 +433,7 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 				t.Fatal(err)
 			}
 			want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("gpt-6-sol")) + "\x07"
-			if u.shell.frame.Clipboard != want || u.statusPanel == nil || u.Turn != "active" || u.shell.selection != nil {
+			if u.shell.Frame.Clipboard != want || u.statusPanel == nil || u.Turn != "active" || u.shell.Selection != nil {
 				t.Fatal("copy failed or dismissed/interrupted status")
 			}
 			if err := u.testPaint(screen, 160, 48); err != nil {
@@ -443,14 +443,14 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 			if err := u.shell.send("\x1b"); err != nil {
 				t.Fatal(err)
 			}
-			if u.shell.selection != nil || u.statusPanel == nil {
+			if u.shell.Selection != nil || u.statusPanel == nil {
 				t.Fatal("first Escape must clear selection only")
 			}
 			drag()
 			if err := u.shell.send("q"); err != nil {
 				t.Fatal(err)
 			}
-			if u.statusPanel != nil || u.shell.selection != nil {
+			if u.statusPanel != nil || u.shell.Selection != nil {
 				t.Fatal("closing retained panel selection")
 			}
 			if err := u.testPaint(screen, 160, 48); err != nil {
@@ -475,7 +475,7 @@ func (u *appServerUI) statusPanelKey(key string) bool {
 	}
 	action, clear := u.mainView.Panel.Key(key)
 	if clear && u.shell != nil {
-		u.shell.selection = nil
+		u.shell.Selection = nil
 	}
 	u.applyPanelAction(action)
 	u.dirty = true

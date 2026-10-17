@@ -61,7 +61,7 @@ func (u *appServerUI) refreshPicker() {
 		u.picker.Open = false
 		return
 	}
-	if u.mainView.Pasting() || u.shell != nil && u.shell.input.Pending() || !utf8.ValidString(u.Text) {
+	if u.mainView.Pasting() || u.shell != nil && u.shell.Decoder.Pending() || !utf8.ValidString(u.Text) {
 		return
 	}
 	p := &u.picker

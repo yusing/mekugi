@@ -88,7 +88,7 @@ func (u *appServerUI) composerVacant() bool {
 	if u.Text != "" || len(u.Images) > 0 || len(u.Files) > 0 || len(u.Skills) > 0 || len(u.Selections) > 0 || u.mainView.Pasting() || u.pickerVisible() || u.mainView.Keybindings || u.statusPanel != nil || u.resumePicker != nil || u.approvals.Open {
 		return false
 	}
-	return u.shell == nil || u.shell.Focus == 0 && !u.shell.input.Pasting() && !u.shell.input.Pending()
+	return u.shell == nil || u.shell.Focus == 0 && !u.shell.Decoder.Pasting() && !u.shell.Decoder.Pending()
 }
 func (u *appServerUI) openQuestionCall(c *sessioncontrol.Question) {
 	if u.questions.Active != nil {
@@ -109,7 +109,7 @@ func (u *appServerUI) focusPrompt() {
 	u.cancelPickerScan()
 	if u.shell != nil {
 		u.shell.Focus = 0
-		u.shell.selection = nil
+		u.shell.Selection = nil
 	}
 }
 func (u *appServerUI) hideQuestions() {

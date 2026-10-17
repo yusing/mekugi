@@ -85,7 +85,7 @@ func TestNativeDisplayedThreadIndependentOfRosterFocus(t *testing.T) {
 	u.agents.Selected = "/root/second"
 	u.testActivity(u.agents).testKeepSelection()
 	view := u.sessionPresentation().View()
-	if view.Displayed.ID != "first" || view.Input.ID != "main" || !u.composerReadOnly() || u.transcriptCaller() != "/root/first" {
+	if view.Displayed.ID != "first" || view.Input.ID != "main" || !u.composerReadOnly() || view.Displayed.Caller != "/root/first" {
 		t.Fatalf("roster focus changed display or admission: %+v", view)
 	}
 	if !u.testActivity(u.agents).testVisible(sessionpresentation.ActivityEntry{Agent: "/root/first", Kind: "text"}) || u.testActivity(u.agents).testVisible(sessionpresentation.ActivityEntry{Agent: "/root/second", Kind: "text"}) {
@@ -169,7 +169,7 @@ func TestMainFrameConsumesPublishedMetadata(t *testing.T) {
 	if err := u.paint(io.Discard, 100, 24); err != nil {
 		t.Fatal(err)
 	}
-	outer := strings.Join(u.shell.frame.Rows, "\n")
+	outer := strings.Join(u.shell.Frame.Rows, "\n")
 	if !strings.Contains(outer, "Published title") || !strings.Contains(outer, "codex v1.2.3") || strings.Contains(outer, "Unpublished") {
 		t.Fatalf("outer frame consulted unpublished owners: %s", outer)
 	}

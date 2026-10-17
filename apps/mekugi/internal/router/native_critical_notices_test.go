@@ -69,7 +69,7 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	if err := u.testPaint(io.Discard, 100, 16); err != nil {
 		t.Fatal(err)
 	}
-	first.finish(u.shell.frame.Notices)
+	first.finish(u.shell.Frame.Notices)
 	if len(issues.Notices.Pending()) != 4 {
 		t.Fatal("dialog acknowledged a hidden composer batch")
 	}
@@ -82,7 +82,7 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	if err := u.testPaint(io.Discard, 100, 16); err != nil {
 		t.Fatal(err)
 	}
-	retry.finish(u.shell.frame.Notices)
+	retry.finish(u.shell.Frame.Notices)
 	if len(issues.Notices.Pending()) != 1 || u.applyCriticalNotices() != nil {
 		t.Fatalf("paint acknowledged unrelated root or queued duplicate: %v", issues.Notices.Pending())
 	}
@@ -294,7 +294,9 @@ func TestNativeCriticalNoticeMixedBatchDismissal(t *testing.T) {
 	if pending := u.issues.Notices.Pending(); len(pending) != 1 || !strings.Contains(pending[0], "cleanup progress") {
 		t.Fatalf("mixed batch acknowledged the wrong surface: %v", pending)
 	}
-	u.composerNoticeMouse(0, u.mainView.NoticeDismiss.X, u.mainView.NoticeDismiss.Y, false)
+	if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", u.mainView.NoticeDismiss.X+u.shell.Layout.Main.X+1, u.mainView.NoticeDismiss.Y+u.shell.Layout.Main.Y+1)); err != nil {
+		t.Fatal(err)
+	}
 	retry := u.applyCriticalNotices()
 	if u.feedback.Text != "" || len(u.source.Entries) != 1 {
 		t.Fatal("dismissed error returned or progress duplicated")
@@ -333,7 +335,7 @@ func TestNativeNoticeChildFrameCannotAcknowledgeMainProgress(t *testing.T) {
 	if err := u.testPaint(io.Discard, 100, 24); err != nil {
 		t.Fatal(err)
 	}
-	delivery.finish(u.shell.frame.Notices)
+	delivery.finish(u.shell.Frame.Notices)
 	if len(u.issues.Notices.Pending()) != 1 {
 		t.Fatal("child transcript acknowledged hidden Main progress")
 	}
@@ -345,7 +347,7 @@ func TestNativeNoticeChildFrameCannotAcknowledgeMainProgress(t *testing.T) {
 	if err := u.testPaint(io.Discard, 100, 24); err != nil {
 		t.Fatal(err)
 	}
-	retry.finish(u.shell.frame.Notices)
+	retry.finish(u.shell.Frame.Notices)
 	if len(u.issues.Notices.Pending()) != 0 || len(u.source.Entries) != 1 {
 		t.Fatal("visible Main retry was lost or duplicated")
 	}

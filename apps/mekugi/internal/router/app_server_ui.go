@@ -331,9 +331,10 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 						if !ok {
 							return io.EOF
 						}
-						err := u.shell.key(key)
-						if err != nil || u.quitRequested {
-							return err
+						if event := u.shell.Decoder.Feed(key, time.Now()); event.Kind != terminalsession.NoInput {
+							if err := u.shell.applyInput(u.shell.frameInput().Dispatch(&u.shell.Interaction, event)); err != nil || u.quitRequested {
+								return err
+							}
 						}
 						u.dirty = true
 					case <-tick.C:
@@ -395,7 +396,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 								notices.finish(terminalsession.NoticeReceipt{})
 								return err
 							}
-							notices.finish(u.shell.frame.Notices)
+							notices.finish(u.shell.Frame.Notices)
 							u.dirty = false
 						}
 						u.writeTerminalTitle(u.now())
@@ -869,8 +870,8 @@ func (u *appServerUI) observedEvent(method string, p binding.Notification) error
 	return nil
 }
 
-// key interprets one complete terminal key. Framing belongs to terminalsession.Decoder.
-func (u *appServerUI) key(key string) (bool, error) {
+// applyMainKey settles typed Main effects before resuming terminal interpretation.
+func (u *appServerUI) applyMainKey(next terminalsession.KeyContinuation) (bool, error) {
 	defer u.settlePresentation()
 	if !u.prepareComposerInput() {
 		return false, nil
@@ -887,7 +888,7 @@ func (u *appServerUI) key(key string) (bool, error) {
 		}
 	}()
 	focused := u.shell == nil || u.shell.Focus == 0
-	input := u.mainView.BeginKey(key, &u.prompts, u.transcriptView(), focused)
+	input := u.mainView.ContinueKey(next, &u.prompts, u.transcriptView(), focused)
 	for {
 		refresh = refresh || input.Regular
 		switch {
@@ -897,7 +898,7 @@ func (u *appServerUI) key(key string) (bool, error) {
 			}
 		case input.Panel != nil:
 			if input.ClearSelection && u.shell != nil {
-				u.shell.selection = nil
+				u.shell.Selection = nil
 			}
 			u.applyPanelAction(*input.Panel)
 			u.dirty = true

@@ -76,23 +76,6 @@ func (u *terminalUI) openEntry(view *activityui.View, seq uint64) bool {
 	return false
 }
 
-// openRequested opens an operation the view's pointer handling clicked.
-func (u *terminalUI) openRequested(view *activityui.View) {
-	if snippet := view.Opening; snippet != (activityui.Snippet{}) {
-		view.Opening = activityui.Snippet{}
-		if snippet.Block == activityui.EditNavigationSnippet {
-			u.openActivityEdit(view, snippet.Run, snippet.Path)
-		} else if !u.openOutput(view, snippet) {
-			u.openEntry(view, snippet.Run)
-		}
-	}
-}
-
-func (u *terminalUI) outputKey(key string) { u.outputIntent(u.output.Key(key)) }
-func (u *terminalUI) outputMouse(button, x, y int, release bool) {
-	u.outputIntent(u.output.Mouse(button, x, y, release))
-}
-
 func (u *terminalUI) outputIntent(intent terminalsession.DialogIntent) {
 	switch intent.Action {
 	case terminalsession.DialogClose:

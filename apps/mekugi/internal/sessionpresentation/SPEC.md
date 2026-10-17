@@ -223,6 +223,9 @@ requests or manufactures host-resumable history.
 
 ## Ordinary input
 
+Interruption availability is published from control and pending-input state,
+independently of the visible queue payloads.
+
 Ordinary draft edits and submission name the attached view and draft revision.
 Editor actions name the ordinary draft or active prompt identity and revision.
 Admission precedes text, caret or history mutation; the same source-coordinate

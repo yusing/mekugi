@@ -3,7 +3,6 @@ package router
 import (
 	"context"
 	"io"
-	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -28,10 +27,6 @@ func (u *terminalUI) openActivityReply(seq uint64) bool {
 	return false
 }
 
-func (u *appServerUI) transcriptCaller() string {
-	return u.sessionPresentation().View().Displayed.Caller
-}
-
 func (u *appServerUI) composerReadOnly() bool {
 	return u.sessionPresentation().View().ReadOnly != sessionpresentation.Editable
 }
@@ -53,14 +48,14 @@ func (u *terminalUI) frameInput() terminalsession.FrameInput {
 		Agents: u.agents,
 		Shell:  &u.Shell, Dialog: u.output, Diff: u.diffScreen, Live: &u.liveDock,
 		Width: u.width, Height: u.height, Version: mekugiVersion(),
-		LiveHidden: u.liveHidden, DiffUnseen: u.diffUnseen, Prefix: u.prefix,
+		LiveHidden: u.liveHidden, DiffUnseen: u.diffUnseen, Prefix: u.Prefix,
 	}
 	if u.main != nil {
 		in.Main, in.Prompts, in.Transcript, in.Now = &u.main.mainView, &u.main.prompts, u.main.view, u.main.now()
 	}
-	if u.selection != nil {
-		in.Selection, in.SelectionPane = u.selection.Selection, u.selection.Pane
-		in.SelectionSource = terminalsession.SourceContext{Attachment: u.selection.Attachment, Thread: u.selection.Thread, Workspace: u.selection.Workspace}
+	if u.Selection != nil {
+		in.Selection, in.SelectionPane = u.Selection.Selection, u.Selection.Pane
+		in.SelectionSource = terminalsession.SourceContext{Attachment: u.Selection.Attachment, Thread: u.Selection.Thread, Workspace: u.Selection.Workspace}
 	}
 	if u.main != nil && u.main.replay != nil {
 		in.Playback, in.PlaybackBar = true, u.main.replay.bar(u.width)
@@ -71,7 +66,7 @@ func (u *terminalUI) frameInput() terminalsession.FrameInput {
 func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	in := u.frameInput()
 	for {
-		frame, err := u.frame.Render(ctx, in)
+		frame, err := u.Frame.Render(ctx, in)
 		if err != nil {
 			return err
 		}
@@ -84,9 +79,9 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			u.diffUnseen = false
 		}
 		if !frame.SelectionRetained {
-			u.selection = nil
+			u.Selection = nil
 		}
-		if err := u.frame.Write(out, frame, u.width, u.faint); err != nil {
+		if err := u.Frame.Write(out, frame, u.width, u.faint); err != nil {
 			return err
 		}
 		if frame.PromptVisible {
@@ -94,33 +89,4 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		}
 		return nil
 	}
-}
-
-// selectNativePane gives status-bar clicks and Ctrl-B digits the same action.
-func (u *terminalUI) selectNativePane(pane int) {
-	if pane == 0 {
-		view := u.main.sessionPresentation().View()
-		u.main.displaySession(sessionpresentation.DisplayIntent{Version: view.Version, Thread: view.Main})
-	}
-	u.Shell.Select(pane)
-	u.selection = nil
-}
-
-// showRosterPick switches presentation only; Main retains its composer and host identity.
-func (u *terminalUI) showRosterPick(only bool, selected string) {
-	if intent := u.main.takeDisplayIntent(); intent != nil && u.main.displaySession(*intent) && intent.Thread.Caller != "/root" {
-		u.agents.Selected = intent.Thread.Caller
-	}
-	if u.main != nil && (u.main.sessionPresentation().DisplayingChild() != only || u.agents.Selected != selected) {
-		u.selection = nil
-		u.agents.Runs = nil
-	}
-}
-
-// flushEscape sends a lone Esc once no sequence followed it.
-func (u *terminalUI) flushEscape() error {
-	if !u.input.Escape(time.Now()) {
-		return nil
-	}
-	return u.send("\x1b")
 }

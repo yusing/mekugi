@@ -38,28 +38,29 @@ type MainInfo struct {
 }
 
 type View struct {
-	Info        MainInfo
-	Menu        *MenuView
-	Resume      *ResumeView
-	Version     Version
-	Main        Thread
-	Displayed   Thread
-	Input       Thread
-	ReadOnly    ReadOnly
-	Loading     string
-	Status      MainStatus
-	Caption     Caption
-	Questions   prompt.QuestionDockView
-	Approvals   prompt.ApprovalDockView
-	Pending     conversationmodel.PendingView
-	Draft       conversationmodel.DraftView
-	PromptDraft conversationmodel.PromptDraftView
-	Admission   InputAdmission
-	History     HistoryDock
-	Interrupt   sessioncontrol.InterruptTarget
-	Side        *conversationmodel.SideView
-	SideRunning bool
-	Panel       *PanelView
+	Info               MainInfo
+	Menu               *MenuView
+	Resume             *ResumeView
+	Version            Version
+	Main               Thread
+	Displayed          Thread
+	Input              Thread
+	ReadOnly           ReadOnly
+	Loading            string
+	Status             MainStatus
+	Caption            Caption
+	Questions          prompt.QuestionDockView
+	Approvals          prompt.ApprovalDockView
+	Pending            conversationmodel.PendingView
+	Draft              conversationmodel.DraftView
+	PromptDraft        conversationmodel.PromptDraftView
+	Admission          InputAdmission
+	History            HistoryDock
+	Interrupt          sessioncontrol.InterruptTarget
+	InterruptAvailable bool
+	Side               *conversationmodel.SideView
+	SideRunning        bool
+	Panel              *PanelView
 }
 
 type DisplayIntent struct {

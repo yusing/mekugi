@@ -64,13 +64,13 @@ func TestAppServerCopyPicker(t *testing.T) {
 		t.Fatalf("frame=%s", frame)
 	}
 	appServerTestKeys(t, u, "\x1b[200~pasted\rtext\x1b[201~")
-	if u.Text != "" || u.shell.frame.Clipboard != "" || u.picker.modal != "copy" {
+	if u.Text != "" || u.shell.Frame.Clipboard != "" || u.picker.modal != "copy" {
 		t.Fatal("paste changed draft or copied a choice")
 	}
 	appServerTestKeys(t, u, "\x1b[B\r")
 	want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("printf '界'  \n")) + "\x07"
-	if u.shell.frame.Clipboard != want || u.picker.Open || u.Turn != "new" || wire.Len() != 0 {
-		t.Fatalf("clipboard=%q picker=%+v wire=%s", u.shell.frame.Clipboard, u.picker, wire.Bytes())
+	if u.shell.Frame.Clipboard != want || u.picker.Open || u.Turn != "new" || wire.Len() != 0 {
+		t.Fatalf("clipboard=%q picker=%+v wire=%s", u.shell.Frame.Clipboard, u.picker, wire.Bytes())
 	}
 	if u.feedback.Alert || u.feedback.Text != "Copy sent to terminal clipboard" {
 		t.Fatalf("feedback=%q", u.feedback.Text)
@@ -80,7 +80,7 @@ func TestAppServerCopyPicker(t *testing.T) {
 	if err := u.testPaint(screen, 100, 30); err != nil {
 		t.Fatal(err)
 	}
-	if u.shell.frame.Clipboard != "" {
+	if u.shell.Frame.Clipboard != "" {
 		t.Fatal("clipboard request not consumed by paint")
 	}
 }
@@ -89,7 +89,7 @@ func TestAppServerCopyEmptyCancelAndRestore(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.ensureShell()
 	appServerTestKeys(t, u, "/copy\r")
-	if u.feedback.Text != "No agent response to copy" || u.shell.frame.Clipboard != "" || wire.Len() != 0 {
+	if u.feedback.Text != "No agent response to copy" || u.shell.Frame.Clipboard != "" || wire.Len() != 0 {
 		t.Fatalf("empty notice=%q wire=%s", u.feedback.Text, wire.Bytes())
 	}
 	u.startSession("main", "")
@@ -100,7 +100,7 @@ func TestAppServerCopyEmptyCancelAndRestore(t *testing.T) {
 	}
 	u.pickerKey("\x1b")
 	u.refreshPicker()
-	if u.picker.Open || u.shell.frame.Clipboard != "" || u.Text != "" {
+	if u.picker.Open || u.shell.Frame.Clipboard != "" || u.Text != "" {
 		t.Fatal("cancel copied or reopened")
 	}
 	u.Thread = "different"
@@ -115,16 +115,16 @@ func TestTerminalClipboardSharedSelection(t *testing.T) {
 		u, wire := newAppServerTestUI()
 		u.ensureShell()
 		u.Turn = "active"
-		u.shell.selection = &terminalsession.SourceSelection{Selection: selectedTerminalText("same text")}
+		u.shell.Selection = &terminalsession.SourceSelection{Selection: selectedTerminalText("same text")}
 		if err := u.shell.key(key); err != nil {
 			t.Fatal(err)
 		}
-		selected := u.shell.frame.Clipboard
-		u.shell.frame.Clipboard = ""
+		selected := u.shell.Frame.Clipboard
+		u.shell.Frame.Clipboard = ""
 		applyTranscriptFixture(u.testActivity(u.view), true, "", "main", "main", "t", "a", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "same text"})
 		appServerTestKeys(t, u, "/copy\r\r")
-		if selected == "" || u.shell.frame.Clipboard != selected || u.Turn != "active" || wire.Len() != 0 {
-			t.Fatalf("key=%d selected=%q copy=%q wire=%s", key, selected, u.shell.frame.Clipboard, wire.Bytes())
+		if selected == "" || u.shell.Frame.Clipboard != selected || u.Turn != "active" || wire.Len() != 0 {
+			t.Fatalf("key=%d selected=%q copy=%q wire=%s", key, selected, u.shell.Frame.Clipboard, wire.Bytes())
 		}
 	}
 }

@@ -53,10 +53,10 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 			u := selectionTestUI(row)
 			u.main.cwd = workspace
 			u.main.publishPresentation(u.main.now())
-			u.frame.Source = selectionTestSource(u.main)
+			u.Frame.Source = selectionTestSource(u.main)
 			u.selectionMouse(0, 1, 0, false)
 			u.selectionMouse(0, 1, 0, true)
-			if u.output == nil || u.frame.Clipboard != "" || u.selection != nil {
+			if u.output == nil || u.Frame.Clipboard != "" || u.Selection != nil {
 				t.Fatal("file click did not open a clean dialog")
 			}
 			awaitMarkdownFile(t, u)
@@ -72,15 +72,15 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 				return // Copy and drag share one path after destination resolution.
 			}
 			u.outputKey("y")
-			if u.frame.Clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte(content))+"\x07" {
+			if u.Frame.Clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte(content))+"\x07" {
 				t.Fatal("whole-file copy changed source or trailing newlines")
 			}
 			u = selectionTestUI(row)
 			u.main.cwd = workspace
 			u.main.publishPresentation(u.main.now())
-			u.frame.Source = selectionTestSource(u.main)
+			u.Frame.Source = selectionTestSource(u.main)
 			selectionTestDrag(t, u, 0, 0, 5, 0)
-			if u.output != nil || u.frame.Clipboard != "" || u.selection.Text() != "source" {
+			if u.output != nil || u.Frame.Clipboard != "" || u.Selection.Text() != "source" {
 				t.Fatal("drag activated the file link")
 			}
 		})
@@ -98,7 +98,7 @@ func TestMarkdownSelectionClickRetainsWorkspace(t *testing.T) {
 			u := selectionTestUI(painter.Inline("[source](source.go)"))
 			u.main.cwd = workspace
 			u.main.publishPresentation(u.main.now())
-			u.frame.Source = selectionTestSource(u.main)
+			u.Frame.Source = selectionTestSource(u.main)
 			if change == "workspace before press" {
 				u.main.cwd = t.TempDir()
 				u.main.publishPresentation(u.main.now())
@@ -176,7 +176,7 @@ func TestMarkdownFileDialogSanitizesDisplayKeepsSourceCopy(t *testing.T) {
 			t.Fatal("file emitted a clipboard control in the rendered frame")
 		}
 		u.outputKey("y")
-		if u.frame.Clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte(content))+"\x07" {
+		if u.Frame.Clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte(content))+"\x07" {
 			t.Fatal("explicit source copy changed original bytes")
 		}
 	}
@@ -218,7 +218,7 @@ func TestMarkdownFileDialogViews(t *testing.T) {
 	for _, key := range []string{"y", "\x1b[D", "y"} {
 		u.outputKey(key)
 		drawOutputDialog(u)
-		if key == "y" && u.frame.Clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte(content))+"\x07" {
+		if key == "y" && u.Frame.Clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte(content))+"\x07" {
 			t.Fatal("view copy changed source bytes")
 		}
 	}
@@ -272,7 +272,7 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 	x, y := outputSelectionPoint(t, u, "remote")
 	u.outputMouse(0, x, y, false)
 	u.outputMouse(0, x, y, true)
-	if u.output != before || u.frame.Clipboard != "" {
+	if u.output != before || u.Frame.Clipboard != "" {
 		t.Fatal("non-file dialog link behavior changed")
 	}
 	x, y = outputSelectionPoint(t, u, "sample.go:1")
@@ -310,7 +310,7 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 			t.Fatalf("local read failure did not settle to an error: %q", target)
 		}
 		u.outputKey("y")
-		if u.frame.Clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte(errorText))+"\x07" {
+		if u.Frame.Clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte(errorText))+"\x07" {
 			t.Fatalf("local read error is not copyable: %q", target)
 		}
 	}
@@ -374,7 +374,7 @@ func TestUISnapshotMarkdownFileDialog(t *testing.T) {
 					t.Fatal("read error literal content changed")
 				}
 				u.outputKey("y")
-				if u.frame.Clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte("file is not UTF-8 text"))+"\x07" {
+				if u.Frame.Clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte("file is not UTF-8 text"))+"\x07" {
 					t.Fatal("read error is not copyable")
 				}
 			}

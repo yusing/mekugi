@@ -147,7 +147,7 @@ func TestOutputDialogSearchAndCopyRetainedText(t *testing.T) {
 	u.outputKey("n")
 	u.outputKey("N")
 	u.outputKey("y")
-	if u.frame.Clipboard == "" || !strings.Contains(u.frame.Clipboard, "\x1b]52;c;") {
+	if u.Frame.Clipboard == "" || !strings.Contains(u.Frame.Clipboard, "\x1b]52;c;") {
 		t.Fatal("copy did not send retained output to terminal clipboard")
 	}
 	u.outputKey("q")
@@ -430,7 +430,7 @@ func TestOutputDialogTerminalKeyDecoderOwnsPrefixAndPaging(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if u.Focus != 0 || u.prefix {
+	if u.Focus != 0 || u.Prefix {
 		t.Fatal("modal Ctrl+B pane number changed background pane")
 	}
 	for _, seq := range []string{"\x02\x1b[5~", "\x02\x1b[6~"} {

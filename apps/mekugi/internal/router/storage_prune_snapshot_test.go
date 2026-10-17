@@ -56,7 +56,7 @@ func TestUISnapshotBackgroundStorageCleanup(t *testing.T) {
 		if err := u.testPaint(io.Discard, 100, 30); err != nil {
 			t.Fatal(err)
 		}
-		delivery.finish(u.shell.frame.Notices)
+		delivery.finish(u.shell.Frame.Notices)
 	}
 	if err := store.cleanupSessions(t.Context()); err != nil {
 		t.Fatal(err)

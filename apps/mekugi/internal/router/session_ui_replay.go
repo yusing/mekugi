@@ -262,7 +262,7 @@ func (p *uiReplayPlayback) key(key byte) (bool, error) {
 		} else if key == terminalui.PaneWheelDown {
 			navigation = "j"
 		}
-		shell.outputKey(navigation)
+		shell.outputIntent(shell.output.Key(navigation))
 		return false, nil
 	}
 	if key == 'q' || key == 3 || key == 27 {
@@ -271,15 +271,15 @@ func (p *uiReplayPlayback) key(key byte) (bool, error) {
 	if p.prefix {
 		p.prefix = false
 		if key == '1' || key == '2' {
-			p.ui.shell.selectNativePane(int(key - '1'))
+			return false, shell.applyInput(shell.frameInput().SelectPane(&shell.Interaction, int(key-'1')))
 		}
 		if key == '3' {
-			p.ui.shell.selectNativePane(3)
+			return false, shell.applyInput(shell.frameInput().SelectPane(&shell.Interaction, 3))
 		}
 		return false, nil
 	}
 	if key == 5 {
-		return false, shell.send("\x05")
+		return false, shell.applyInput(shell.frameInput().Send(&shell.Interaction, "\x05"))
 	}
 	switch key {
 	case 2:
@@ -347,7 +347,7 @@ func (p *uiReplayPlayback) run(keys <-chan byte, paint func() error, headless bo
 			default:
 				input.ExpireEscape()
 				if p.ui.shell.output != nil {
-					p.ui.shell.outputKey("\x1b")
+					p.ui.shell.outputIntent(p.ui.shell.output.Key("\x1b"))
 					if err := paint(); err != nil {
 						return err
 					}

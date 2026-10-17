@@ -127,7 +127,7 @@ func TestOutputDialogSelectionPendingDrag(t *testing.T) {
 		if err := u.key(key); err != nil {
 			t.Fatal(err)
 		}
-		if u.output == nil || u.output.Selection != selected || !selected.Dragging() || u.frame.Clipboard != "" || u.main.Text != "" {
+		if u.output == nil || u.output.Selection != selected || !selected.Dragging() || u.Frame.Clipboard != "" || u.main.Text != "" {
 			t.Fatalf("key %d acted before drag completion", key)
 		}
 	}
@@ -233,8 +233,8 @@ func TestOutputDialogSkillMarkdownSearchSelectionAndCopy(t *testing.T) {
 		t.Fatalf("skill Markdown not rendered in dialog: %q", frame)
 	}
 	u.outputKey("y")
-	if want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(source)) + "\x07"; u.frame.Clipboard != want {
-		t.Fatalf("whole-page copy changed source: %q", u.frame.Clipboard)
+	if want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(source)) + "\x07"; u.Frame.Clipboard != want {
+		t.Fatalf("whole-page copy changed source: %q", u.Frame.Clipboard)
 	}
 	u.outputKey("/")
 	for _, key := range []string{"c", "a", "r", "e", "f", "u", "l", "\r"} {
@@ -250,8 +250,8 @@ func TestOutputDialogSkillMarkdownSearchSelectionAndCopy(t *testing.T) {
 		t.Fatal("selection did not match rendered skill text")
 	}
 	u.outputKey("y")
-	if want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("careful steps")) + "\x07"; u.frame.Clipboard != want {
-		t.Fatalf("selection copy changed visible text: %q", u.frame.Clipboard)
+	if want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("careful steps")) + "\x07"; u.Frame.Clipboard != want {
+		t.Fatalf("selection copy changed visible text: %q", u.Frame.Clipboard)
 	}
 }
 
@@ -303,7 +303,7 @@ func TestOutputDialogSelectionFooterClippedHints(t *testing.T) {
 			u.outputMouse(0, rect.X+3+tt.at, rect.Y+rect.H-1, false)
 			switch tt.action {
 			case 0:
-				if u.output == nil || u.output.Selection != selection || u.frame.Clipboard != "" || u.main.Text != "" {
+				if u.output == nil || u.output.Selection != selection || u.Frame.Clipboard != "" || u.main.Text != "" {
 					t.Fatal("clipped hint executed a selection action")
 				}
 			case 'r':
@@ -311,11 +311,11 @@ func TestOutputDialogSelectionFooterClippedHints(t *testing.T) {
 					t.Fatal("fully visible Reference hint did not insert the selected text")
 				}
 			case 'c':
-				if u.output == nil || u.output.Selection != nil || u.frame.Clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte("alpha"))+"\x07" {
+				if u.output == nil || u.output.Selection != nil || u.Frame.Clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte("alpha"))+"\x07" {
 					t.Fatal("fully visible Copy hint did not copy the selected text")
 				}
 			case 27:
-				if u.output == nil || u.output.Selection != nil || u.frame.Clipboard != "" || u.main.Text != "" {
+				if u.output == nil || u.output.Selection != nil || u.Frame.Clipboard != "" || u.main.Text != "" {
 					t.Fatal("fully visible Clear hint did not clear only the selection")
 				}
 			}

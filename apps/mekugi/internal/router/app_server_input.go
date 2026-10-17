@@ -2,6 +2,7 @@ package router
 
 import (
 	"io"
+	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -20,11 +21,16 @@ func (u *appServerUI) drainKeys(keys <-chan byte) error {
 				return io.EOF
 			}
 			u.dirty = true
-			if err := u.shell.key(key); err != nil || u.quitRequested {
-				return err
+			if event := u.shell.Decoder.Feed(key, time.Now()); event.Kind != terminalsession.NoInput {
+				if err := u.shell.applyInput(u.shell.frameInput().Dispatch(&u.shell.Interaction, event)); err != nil || u.quitRequested {
+					return err
+				}
 			}
 		default:
-			return u.shell.flushEscape()
+			if u.shell.Decoder.Escape(time.Now()) {
+				return u.shell.applyInput(u.shell.frameInput().Send(&u.shell.Interaction, "\x1b"))
+			}
+			return nil
 		}
 	}
 	return nil
@@ -52,7 +58,7 @@ func (u *appServerUI) input(event terminalsession.Input) (bool, error) {
 	defer u.settlePresentation()
 	switch event.Kind {
 	case terminalsession.KeyInput:
-		return u.key(event.Text)
+		return u.applyMainKey(terminalsession.KeyEvent(event.Text))
 	case terminalsession.PasteStart, terminalsession.PasteInput, terminalsession.PasteEnd:
 		if event.Kind == terminalsession.PasteStart {
 			u.mainView.CancelPaste()

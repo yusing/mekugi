@@ -97,7 +97,7 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	if err := u.shell.send("\x1b"); err != nil {
 		t.Fatal(err)
 	}
-	if u.Text != "retained draft" || u.picker.Open || u.shell.input.Pasting() || u.quitRequested || u.Turn != "active" || w.Len() != 0 {
+	if u.Text != "retained draft" || u.picker.Open || u.shell.Decoder.Pasting() || u.quitRequested || u.Turn != "active" || w.Len() != 0 {
 		t.Fatal("read-only composer accepted editing, paste, submission or interruption")
 	}
 	u.Turn = ""

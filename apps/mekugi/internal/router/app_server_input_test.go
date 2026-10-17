@@ -99,8 +99,8 @@ func TestNativeUIQueuedEscapeContinuation(t *testing.T) {
 			if err := u.drainKeys(keys); err != nil {
 				t.Fatal(err)
 			}
-			if u.Text != tc.want || wire.Len() != 0 || u.shell.input.Pasting() {
-				t.Fatalf("draft=%q want=%q wire=%q paste=%v", u.Text, tc.want, wire.String(), u.shell.input.Pasting())
+			if u.Text != tc.want || wire.Len() != 0 || u.shell.Decoder.Pasting() {
+				t.Fatalf("draft=%q want=%q wire=%q paste=%v", u.Text, tc.want, wire.String(), u.shell.Decoder.Pasting())
 			}
 		})
 	}
@@ -164,7 +164,7 @@ func TestNativeUIInputDrainBoundedAndClosed(t *testing.T) {
 	if err := u.drainKeys(keys); err != nil {
 		t.Fatal(err)
 	}
-	if len(keys) != 2 || !u.shell.input.Pending() {
+	if len(keys) != 2 || !u.shell.Decoder.Pending() {
 		t.Fatal("input budget did not preserve pending sequence")
 	}
 	ageTerminalEscape(u.shell)

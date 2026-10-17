@@ -77,7 +77,7 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 	}
 	screen := vt.NewEmulator(120, 28)
 	defer screen.Close()
-	u.shell.frame.Rows = nil
+	u.shell.Frame.Rows = nil
 	master, slave, err := pty.Open()
 	if err != nil {
 		t.Fatal(err)

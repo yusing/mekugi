@@ -20,9 +20,9 @@ func TestDiffOutputSectionSourceSelection(t *testing.T) {
 		rows[i], meta[i] = terminalui.ExtractCopy(row)
 	}
 	u := selectionTestUI(rows...)
-	u.frame.Copy = append(meta, nil)
+	u.Frame.Copy = append(meta, nil)
 	selectionTestDrag(t, u, 0, 0, 39, len(rows)-1)
-	if got := u.selection.Text(); got != source {
+	if got := u.Selection.Text(); got != source {
 		t.Fatalf("transcript copied=%q", got)
 	}
 

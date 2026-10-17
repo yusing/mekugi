@@ -98,7 +98,7 @@ func TestNativePromptSelectionVisibility(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				if u.shell.selection == nil || !u.shell.selection.Moved() {
+				if u.shell.Selection == nil || !u.shell.Selection.Moved() {
 					t.Fatal("pointer drag did not freeze the preceding frame")
 				}
 				if err := u.testPaint(screen, 80, 20); err != nil {

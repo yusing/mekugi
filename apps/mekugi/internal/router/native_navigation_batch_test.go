@@ -23,7 +23,7 @@ import (
 func navigationBatchPaint(t *testing.T, u *appServerUI, width, height int) *vt.Emulator {
 	t.Helper()
 	var frame bytes.Buffer
-	u.shell.frame.Rows = nil
+	u.shell.Frame.Rows = nil
 	if err := u.testPaint(&frame, width, height); err != nil {
 		t.Fatal(err)
 	}
@@ -70,10 +70,10 @@ func TestNativeNavigationBatchStatusClicks(t *testing.T) {
 				for x := left; x < right; x++ {
 					u.shell.Focus = (target.pane + 1) % 4
 					u.shell.DiffOpen = false
-					u.shell.prefix = true
+					u.shell.Prefix = true
 					navigationBatchMouse(t, u.shell, 0, x, 23, false)
-					if u.shell.Focus != target.pane || u.shell.prefix {
-						t.Fatalf("selector %q at cell %d: focus=%d prefix=%v, footer=%q", target.prefix, x, u.shell.Focus, u.shell.prefix, footer)
+					if u.shell.Focus != target.pane || u.shell.Prefix {
+						t.Fatalf("selector %q at cell %d: focus=%d prefix=%v, footer=%q", target.prefix, x, u.shell.Focus, u.shell.Prefix, footer)
 					}
 					if target.pane == 1 && !u.shell.DiffOpen || target.pane == 2 && u.shell.DiffOpen {
 						t.Fatalf("selector %q did not open its pane", target.prefix)

@@ -39,6 +39,8 @@ type KeyContinuation struct {
 	regular bool
 }
 
+func KeyEvent(key string) KeyContinuation { return KeyContinuation{key: key} }
+
 const (
 	mainKeyPrompt uint8 = iota
 	mainKeyPrelude
@@ -53,10 +55,6 @@ type MainKeyInput struct {
 	Composer                *ComposerInput
 	Next                    *KeyContinuation
 	Regular, ClearSelection bool
-}
-
-func (m *Main) BeginKey(key string, prompts *Prompts, transcript *activityui.View, focused bool) MainKeyInput {
-	return m.ContinueKey(KeyContinuation{key: key}, prompts, transcript, focused)
 }
 
 // ContinueKey owns Main's keyboard ordering, including Meta normalization and

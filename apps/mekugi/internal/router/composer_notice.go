@@ -7,8 +7,6 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/modules/notifications/notice"
-
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // Successful feedback is transient; actionable errors remain until editing.
@@ -22,25 +20,6 @@ func (u *appServerUI) expireNotice(now time.Time) bool {
 		return false
 	}
 	u.mainView.NoticeDetails, u.mainView.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
-	return true
-}
-
-func (u *appServerUI) composerNoticeMouse(button, x, y int, release bool) bool {
-	details, dismiss := u.mainView.NoticeDetails.Contains(x, y), u.mainView.NoticeDismiss.Contains(x, y)
-	if (!details && !dismiss) || terminalsession.MainStatusDetails(u.sessionPresentation().View().Status) == "" {
-		return false
-	}
-	if !release && button == 0 {
-		if dismiss {
-			u.setNotice("", false)
-			if u.sessionPresentation().Status.Alert {
-				u.sessionPresentation().Status.Set("", false)
-			}
-		} else {
-			u.shell.openBlocks(u.view, []activityui.Block{{Kind: "error", Body: terminalsession.MainStatusDetails(u.sessionPresentation().View().Status)}})
-		}
-		u.dirty = true
-	}
 	return true
 }
 

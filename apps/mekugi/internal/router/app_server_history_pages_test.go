@@ -254,7 +254,7 @@ func TestUISnapshotNativeAnchoredHistory(t *testing.T) {
 			if err := u.shell.paintNative(t.Context(), io.Discard); err != nil {
 				t.Fatal(err)
 			}
-			uisnapshot.Assert(t, "testdata/snapshots/native-anchored-history-"+state+".txt", strings.Join(u.shell.frame.Rows, "\n")+"\n")
+			uisnapshot.Assert(t, "testdata/snapshots/native-anchored-history-"+state+".txt", strings.Join(u.shell.Frame.Rows, "\n")+"\n")
 		})
 	}
 }

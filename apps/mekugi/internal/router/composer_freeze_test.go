@@ -25,10 +25,10 @@ func TestComposerPastePausedTranscriptThenReference(t *testing.T) {
 	u.Turn = "active"
 	u.view.Following = false
 	composerShellKeys(t, u, "\x1b[200~'"+image+"'\x1b[201~")
-	if u.shell.input.Pasting() || len(u.Images) != 1 || u.Text != "[Image 1] " || u.view.Following {
-		t.Fatalf("paste on scrollback: draft=%q image=%v paste=%v following=%v", u.Text, u.Images, u.shell.input.Pasting(), u.view.Following)
+	if u.shell.Decoder.Pasting() || len(u.Images) != 1 || u.Text != "[Image 1] " || u.view.Following {
+		t.Fatalf("paste on scrollback: draft=%q image=%v paste=%v following=%v", u.Text, u.Images, u.shell.Decoder.Pasting(), u.view.Following)
 	}
-	u.shell.selection = &terminalsession.SourceSelection{Selection: selectedTerminalText("quote"), Mention: "message"}
+	u.shell.Selection = &terminalsession.SourceSelection{Selection: selectedTerminalText("quote"), Mention: "message"}
 	composerShellKeys(t, u, "rtyped")
 	if u.Text != "[Image 1] [Selected message] typed" || len(u.Selections) != 1 || u.Selections[0].Text != "quote" {
 		t.Fatalf("reference or typing frozen: %q %+v", u.Text, u.Selections)
@@ -58,10 +58,10 @@ func TestComposerPasteTerminatorBypassesSelection(t *testing.T) {
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	composerShellKeys(t, u, "\x1b[200~payload")
 	// A selection must not consume any byte of the opaque end marker.
-	u.shell.selection = &terminalsession.SourceSelection{Selection: selectedTerminalText("selected")}
+	u.shell.Selection = &terminalsession.SourceSelection{Selection: selectedTerminalText("selected")}
 	composerShellKeys(t, u, "\x1b[201~typed")
-	if u.Text != "payloadtyped" || u.shell.input.Pasting() || wire.Len() != 0 {
-		t.Fatalf("selection consumed paste boundary: draft=%q paste=%v", u.Text, u.shell.input.Pasting())
+	if u.Text != "payloadtyped" || u.shell.Decoder.Pasting() || wire.Len() != 0 {
+		t.Fatalf("selection consumed paste boundary: draft=%q paste=%v", u.Text, u.shell.Decoder.Pasting())
 	}
 }
 
@@ -71,7 +71,7 @@ func TestUISnapshotComposerPasteAndReferenceOnScrollback(t *testing.T) {
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.view.Following = false
 	composerShellKeys(t, u, "\x1b[200~'"+pasteTestImage(t)+"'\x1b[201~")
-	u.shell.selection = &terminalsession.SourceSelection{Selection: selectedTerminalText("quote"), Mention: "message"}
+	u.shell.Selection = &terminalsession.SourceSelection{Selection: selectedTerminalText("quote"), Mention: "message"}
 	composerShellKeys(t, u, "rtyped")
 	rows, _ := u.testMainFrame(80, 10, 0)
 	uisnapshot.Assert(t, "testdata/snapshots/composer-paste-reference-scrollback.txt", strings.Join(rows, "\n")+"\n")

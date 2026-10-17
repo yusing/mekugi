@@ -105,7 +105,7 @@ func assertErrorDialog(t *testing.T, u *terminalUI, full string) {
 	}
 	u.outputKey("y")
 	want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(full)) + "\x07"
-	if u.frame.Clipboard != want {
+	if u.Frame.Clipboard != want {
 		t.Fatal("whole-error copy dropped retained evidence")
 	}
 }

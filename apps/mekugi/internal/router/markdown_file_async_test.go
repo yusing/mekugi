@@ -57,7 +57,7 @@ func TestUISnapshotMarkdownFileLoading(t *testing.T) {
 				t.Fatal(err)
 			}
 			u.outputKey("y")
-			if u.frame.Clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte(content))+"\x07" {
+			if u.Frame.Clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte(content))+"\x07" {
 				t.Fatal("source copy reread the changed file")
 			}
 			u.main.openMarkdownFile(u, main.view, "sample."+extension)
@@ -154,7 +154,7 @@ func TestMarkdownFileCapacityAndReadErrors(t *testing.T) {
 		}
 		text := u.output.Document.Text
 		u.outputKey("y")
-		if text == "" || u.frame.Clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte(text))+"\x07" {
+		if text == "" || u.Frame.Clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte(text))+"\x07" {
 			t.Fatalf("%s error was not copyable", name)
 		}
 	}

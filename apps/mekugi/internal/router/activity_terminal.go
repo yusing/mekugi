@@ -50,15 +50,3 @@ func (u *appServerUI) activitySource(view *activityui.View) *sessionpresentation
 	}
 	return nil
 }
-
-func (u *appServerUI) takeDisplayIntent() *sessionpresentation.DisplayIntent {
-	intent := u.agents.DisplayRequest
-	if intent == nil {
-		return nil
-	}
-	u.agents.DisplayRequest = nil
-	return &sessionpresentation.DisplayIntent{
-		Version: sessionpresentation.Version{Attachment: intent.Attachment, Revision: intent.Revision},
-		Thread:  u.sessionPresentation().ActivityTarget(intent.Caller, u.childSource),
-	}
-}

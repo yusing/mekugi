@@ -164,7 +164,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		t.Helper()
 		screen := vt.NewEmulator(160, 48)
 		defer screen.Close()
-		p.ui.shell.frame.Rows = nil // A new screen needs every row.
+		p.ui.shell.Frame.Rows = nil // A new screen needs every row.
 		rollCommandOutput(p.ui)
 		finishPacing(p.ui.testActivity(p.ui.view), p.ui.testActivity(p.ui.agents))
 		if err := p.ui.testPaint(screen, 160, 48); err != nil {
@@ -383,7 +383,7 @@ func TestNativeUIPreviewSessionControlsRendered(t *testing.T) {
 		t.Helper()
 		screen := vt.NewEmulator(100, 28)
 		defer screen.Close()
-		p.ui.shell.frame.Rows = nil
+		p.ui.shell.Frame.Rows = nil
 		finishPacing(p.ui.testActivity(p.ui.view), p.ui.testActivity(p.ui.agents))
 		if err := p.ui.testPaint(screen, 100, 28); err != nil {
 			t.Fatal(err)
@@ -1240,7 +1240,7 @@ func TestNativeDiffNavigatorPointerMovesAndBack(t *testing.T) {
 		t.Helper()
 		screen := vt.NewEmulator(160, 48)
 		defer screen.Close()
-		shell.frame.Rows = nil
+		shell.Frame.Rows = nil
 		if err := p.ui.testPaint(screen, 160, 48); err != nil {
 			t.Fatal(err)
 		}
@@ -1440,7 +1440,7 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 				t.Fatal(err)
 			}
 			paint()
-			if !strings.Contains(u.shell.frame.Rows[y-1], "\x1b[4m") {
+			if !strings.Contains(u.shell.Frame.Rows[y-1], "\x1b[4m") {
 				t.Fatal("edit has no hover underline")
 			}
 			for _, ending := range []string{"M", "m"} {

@@ -24,7 +24,7 @@ func (u *appServerUI) openComposerEditor(intent sessionpresentation.ComposerInte
 	// Leaving the alternate screen discards its contents. The next paint must
 	// restore every row, including unchanged panes and failed editor launches.
 	if u.shell != nil {
-		u.shell.frame.Rows = nil
+		u.shell.Frame.Rows = nil
 	}
 	if err := u.sessionPresentation().AdmitAcquiredInput(intent, u.conversation()); err != nil {
 		u.setNotice(err.Error(), true)

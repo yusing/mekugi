@@ -166,7 +166,7 @@ func (u *appServerUI) resumePickerFailed(problem string) {
 func (u *appServerUI) closeResumePicker() {
 	u.resumePicker = nil
 	if u.shell != nil {
-		u.shell.selection = nil
+		u.shell.Selection = nil
 	}
 }
 
