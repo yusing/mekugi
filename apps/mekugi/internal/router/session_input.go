@@ -22,11 +22,7 @@ func (u *appServerUI) submitInput(intent sessionpresentation.SubmitIntent) error
 		return nil
 	}
 	input := u.prepareDraft(draft)
-	if plan.Queued {
-		u.conversation().Queued = append(u.conversation().Queued, input)
-	} else {
-		u.conversation().Unsent = append(u.conversation().Unsent, input)
-	}
+	u.conversation().QueueInput(input, plan.Queued)
 	u.pruneDraftImages()
 	u.setNotice("", false)
 	if !plan.Flush {

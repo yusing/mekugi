@@ -32,7 +32,7 @@ For conversation input, Enter steers an active turn; Tab queues for the next tur
 and submits while idle. Shell commands use their immediate-submission behavior below.
 Alt-Up/Shift-Left restores only locally waiting input; transmitted steers remain
 host-owned. Starting input appears provisionally and reconciles with the host echo
-without duplication. The adapter matches text only when the host omits client
+without duplication. Conversation matches text only when the host omits client
 identity. Acknowledgement/completion races retain submission order. Rejection
 restores input before later drafts, preserving attachments. An interrupted,
 uncommitted first start returns to Ready with its draft restored. Interruption
@@ -47,6 +47,10 @@ only restores input. Ctrl-C likewise restores uncommitted and queued input befor
 the draft without automatic resubmission. Committed input is never restored or resent.
 `instant_interrupt` remains Codex-owned: launch forwards its toggle, and ordinary
 steering uses the same host path without aborting turns or replaying tools.
+
+Prepared input dispatch uses the same request ledger as other control operations.
+Its captured turn identity selects start versus steer and only starts include the
+selected service tier. No second input-request map or transport retry is created.
 
 ### Compaction
 

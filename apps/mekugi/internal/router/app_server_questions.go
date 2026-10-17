@@ -105,7 +105,6 @@ func (u *appServerUI) loadQuestionEditor(e questionEditor) {
 }
 func (u *appServerUI) currentQuestion() *prompt.Question { return u.questions.Current() }
 func (u *appServerUI) questionCount() int                { return u.questions.Count(u.Thread) }
-func (u *appServerUI) waitingQuestion() bool             { return u.questions.Waiting(u.Thread) }
 func (u *appServerUI) openQuestions() {
 	if c := u.questions.Next(); c != nil {
 		u.openQuestionCall(u.questions.handles[c])
@@ -492,22 +491,6 @@ func pendingQuestionReplies(parts []conversationmodel.Input) []conversationmodel
 		pending = append(pending, part)
 	}
 	return pending
-}
-func (u *appServerUI) rejectQuestionParts(parts []conversationmodel.Input) []conversationmodel.Input {
-	var ordinary []conversationmodel.Input
-	for _, p := range parts {
-		c := p.Question
-		if c == nil || c.Sync {
-			ordinary = append(ordinary, p)
-			continue
-		}
-		if c.Reject() {
-			if handle := u.questions.handles[c]; handle != nil {
-				u.renderQuestionRecord(handle)
-			}
-		}
-	}
-	return ordinary
 }
 func (u *appServerUI) renderQuestionRecord(c *nativeQuestionCall) {
 	if c.sudo != nil {

@@ -184,6 +184,13 @@ local queue is separate from immediate host readiness. Attachment preparation an
 the existing control gates run before transport issuance, preserving rejection
 restoration, pending prompts, skill acquisition and provisional echo ordering.
 
+The session workflow selects eligible batches, stages their control identity and
+settles acknowledgement, commitment and turn completion separately. Conversation
+owns payload consequences; Session Control keeps the single host-request ledger.
+Effects returned to the renderer identify pending input and changed prompt records,
+without embedding cursor positions, painted sequences or host response handles.
+Acquisition and transport remain outside the serialized presentation transition.
+
 ## Session title and progress
 
 `/title NAME` immediately names Main without interrupting work or submitting model

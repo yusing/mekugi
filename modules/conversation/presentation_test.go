@@ -31,10 +31,10 @@ func TestConversationScopedPayloads(t *testing.T) {
 	parts[0].Text = "[Image 1] first"
 	parts[0].Images = []composer.Token{{Start: 0, End: 9, Path: "owned.png"}}
 	parts[0].Attachments = []string{"immutable file bytes"}
-	m.Stage("submission", presentation.Submission{Draft: presentation.Join(parts...).Draft, Parts: parts, Echo: 7})
+	m.Stage("submission", presentation.Submission{Draft: presentation.Join(parts...).Draft, Parts: parts})
 	parts[0].Images[0].Path = "changed.png"
 	parts[0].Attachments[0] = "reopened file bytes"
-	if got := m.Submitted["submission"]; got.Echo != 7 || got.Images[0].Path != "owned.png" || got.Attachments[0] != "immutable file bytes" {
+	if got := m.Submitted["submission"]; got.Images[0].Path != "owned.png" || got.Attachments[0] != "immutable file bytes" {
 		t.Fatalf("submitted payload changed: %+v", got)
 	}
 	m.Unsent = rest
@@ -61,6 +61,33 @@ func TestConversationScopedPayloads(t *testing.T) {
 	store = scope.Store{}
 	if service.Session(&store) == m || len(service.Session(&store).Submitted) != 0 {
 		t.Fatal("replacement revived payloads")
+	}
+}
+
+func TestConversationRestoreInputPreservesPromptEditor(t *testing.T) {
+	for _, approval := range []bool{false, true} {
+		service := moduletest.New(t, conversation.Module, conversation.Deps{}, module.Slots{}, new(moduletest.Scripted))
+		var store scope.Store
+		m := service.Session(&store)
+		m.Editor.Replace(composer.Draft{Text: "ordinary draft"})
+		m.PromptEditor.Open(&m.Editor, composer.State{})
+		m.Editor.Replace(composer.Draft{Text: "unfinished prompt answer", CursorBack: 3})
+		if approval {
+			m.Approvals.Add(&prompt.Approval{ID: "approval", Choices: []prompt.Choice{{Deny: true}}})
+			m.Approvals.Show()
+		} else {
+			call := &prompt.Call{ID: "question", Questions: []prompt.Question{{Question: "Continue?"}}}
+			m.Questions.Add(call, false)
+			m.Questions.Open(call)
+		}
+		restored := m.RestoreInput(presentation.Input{Text: "withdrawn input"})
+		if !restored.Parked || !restored.Changed || m.Editor.Text != "unfinished prompt answer" || m.Editor.CursorBack != 3 {
+			t.Fatalf("active prompt changed: approval=%v %+v", approval, restored)
+		}
+		m.PromptEditor.Close(&m.Editor)
+		if m.Editor.Text != "withdrawn input\nordinary draft" {
+			t.Fatalf("Main restoration: %q", m.Editor.Text)
+		}
 	}
 }
 

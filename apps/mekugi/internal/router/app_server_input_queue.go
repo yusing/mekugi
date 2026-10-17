@@ -2,12 +2,10 @@ package router
 
 import (
 	"crypto/rand"
-	"fmt"
-	"slices"
 	"strings"
-	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -41,10 +39,6 @@ func (u *appServerUI) bindConversation() {
 	u.questions.Questions, u.approvals.Approvals = &m.Questions, &m.Approvals
 }
 
-func (u *appServerUI) pruneInputPayloads() {
-	u.conversation().Retain(append([]string{u.Submission().ID, u.PendingStart()}, u.Steers()...))
-}
-
 // takeDraft empties the composer. The caller stacks the draft, which keeps its
 // image files until sent.
 func (u *appServerUI) takeDraft() conversationmodel.Input {
@@ -63,28 +57,29 @@ func (u *appServerUI) prepareDraft(draft composer.Draft) conversationmodel.Input
 
 // restoreDrafts returns input to the composer ahead of the current draft.
 func (u *appServerUI) restoreDrafts(parts ...conversationmodel.Input) {
-	parts = u.rejectQuestionParts(parts)
-	if u.approvals.Open && u.pendingApprovals()[0].DenialChoice() >= 0 {
-		u.hideApprovals()
-		u.restoreDrafts(parts...)
-		u.openApprovals()
-		return
+	u.applyInputRestoration(u.conversation().RestoreInput(parts...))
+}
+
+func (u *appServerUI) applyInputRestoration(restored conversationmodel.InputRestoration) {
+	for _, id := range restored.Rejected {
+		for _, call := range u.questionCalls() {
+			if call.ID == id {
+				u.renderQuestionRecord(call)
+				break
+			}
+		}
 	}
-	if u.activeQuestionCall() != nil {
-		c, index := u.activeQuestionCall(), u.questions.Index
-		u.hideQuestions()
-		u.restoreDrafts(parts...)
-		u.mainView.PromptColumn = u.mainView.CursorColumn
-		u.promptEditor.Open(u.Editor, composer.State{})
-		u.questions.Active, u.questions.Index = c.Call, index
-		u.resumeQuestion(u.currentQuestion())
-		return
+	if restored.Parked {
+		if restored.Changed {
+			u.mainView.PromptColumn = nil
+		}
+		if u.approvals.Open {
+			u.approvals.painted = false
+			u.focusPrompt()
+		}
+	} else if restored.Changed {
+		u.mainView.CursorColumn = nil
 	}
-	if len(parts) == 0 {
-		return
-	}
-	u.Editor.Restore(conversationmodel.Drafts(parts)...)
-	u.mainView.CursorColumn = nil
 }
 
 // editQueued returns all locally waiting input to the composer as one stack.
@@ -108,55 +103,24 @@ func (u *appServerUI) flushInput() error {
 			return err
 		}
 	}
-	compactSteer := len(u.conversation().Unsent) > 0 && u.conversation().Unsent[0].Text == "/compact" && !u.conversation().Unsent[0].Compact.WaitForIdle
-	if u.waitingQuestion() && !compactSteer {
+	emitting := u.proxy != nil && u.proxy.control.EmittingToolInput(u.session.cwd, u.Thread)
+	next := u.sessionPresentation().NextInput(&u.Live, u.conversation(), emitting)
+	if next.Interrupt {
+		return u.interruptTurn()
+	}
+	if len(next.Batch.Parts) == 0 {
 		return nil
 	}
-	if u.Turn == "" {
-		if text := u.Compaction.Continue(len(u.conversation().Unsent)+len(u.conversation().Queued) != 0); text != "" {
-			u.conversation().Unsent = append(u.conversation().Unsent, conversationmodel.Input{Text: text})
-		}
-	}
-	var parts []conversationmodel.Input
-	fromUnsent := len(u.conversation().Unsent) > 0
-	steer := u.Turn != ""
-	switch {
-	case len(u.conversation().Unsent) > 0:
-		// Answers must not preempt an unfinished tool input. Once input is
-		// complete, steer normally, even if the host command is still running.
-		if steer && u.conversation().Unsent[0].Question != nil && u.proxy != nil && u.proxy.control.EmittingToolInput(u.session.cwd, u.Thread) {
-			// Explicit prompts retain instant interruption even when an answer
-			// ahead of them is waiting for generation to finish.
-			if !u.conversation().AdvancePrompt() {
-				return nil
-			}
-		}
-		if steer && u.conversation().Unsent[0].Text == "/compact" {
-			if u.Compaction.InterruptBefore(sessioncontrol.CompactIntent(u.conversation().Unsent[0].Compact), u.Turn) {
-				return u.interruptTurn()
-			}
-			return nil
-		}
-		parts, u.conversation().Unsent = conversationmodel.Batch(u.conversation().Unsent)
-	case !steer && len(u.conversation().Queued) > 0:
-		parts, u.conversation().Queued = conversationmodel.Batch(u.conversation().Queued)
-	default:
-		return nil
-	}
-	if u.waitForSkillBindings(parts) {
-		if fromUnsent {
-			u.conversation().Unsent = append(parts, u.conversation().Unsent...)
-		} else {
-			u.conversation().Queued = append(parts, u.conversation().Queued...)
-		}
+	if u.waitForSkillBindings(next.Batch.Parts) {
+		u.conversation().ReturnBatch(next.Batch)
 		u.refreshPicker()
 		return nil
 	}
-	return u.send(parts, steer)
+	return u.send(next.Batch.Parts, next.Steer)
 }
 
 func (u *appServerUI) send(parts []conversationmodel.Input, steer bool) error {
-	defer u.pruneInputPayloads()
+	defer u.sessionPresentation().PruneInput(&u.Live, u.conversation())
 	if len(parts) == 1 && parts[0].Text == "/compact" {
 		u.Compaction.Begin(sessioncontrol.CompactIntent(parts[0].Compact))
 		u.sessionPresentation().Status.SetText("Compacting context" + "…")
@@ -165,9 +129,10 @@ func (u *appServerUI) send(parts []conversationmodel.Input, steer bool) error {
 	for i := range parts {
 		u.bindSkills(&parts[i], true)
 		u.snapshotDraftSkills(&parts[i])
+		parts[i].ReplyCount = len(binding.QuestionReplies(parts[i].Text))
 	}
 	s := conversationmodel.Submission{Draft: composer.Join(conversationmodel.Drafts(parts)...), Parts: parts}
-	id, turn := rand.Text(), ""
+	id := rand.Text()
 	input := conversationbinding.Input(s.Draft)
 	textBytes := 0
 	for _, part := range input {
@@ -179,20 +144,15 @@ func (u *appServerUI) send(parts []conversationmodel.Input, steer bool) error {
 		u.setNotice("Input with attachments exceeds the safe 1 MiB text limit. Reduce the draft or attachments and retry.", true)
 		return nil
 	}
-	params := map[string]any{"threadId": u.Thread, "input": input, "clientUserMessageId": id}
-	method := "turn/start"
+	request := sessioncontrol.InputRequest{Thread: u.Thread, ID: id, Input: input}
 	if steer {
-		// The pending-input preview shows a steer until Codex commits it.
-		method, turn = "turn/steer", u.Turn
-		params["expectedTurnId"] = u.Turn
+		request.Turn = u.Turn
 	} else {
-		if tier := u.selectedServiceTier(); tier != "" {
-			params["serviceTier"] = tier
-		}
+		request.Tier = u.selectedServiceTier()
 		if len(binding.QuestionReplies(s.Text)) == 0 {
-			s.Echo = u.view.LastSeq + 1
-			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: s.Echo, Agent: "You", Kind: "text", Text: s.Text, Observed: u.now(),
-				native: &liveActivityNativeItem{thread: u.Thread, item: fmt.Sprintf("input/%d", s.Echo), phase: "input/pending", spans: terminalsession.DraftSpans(s.Draft)}}}})
+			echo := u.view.LastSeq + 1
+			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: echo, Agent: "You", Kind: "text", Text: s.Text, Observed: u.now(),
+				native: &liveActivityNativeItem{thread: u.Thread, item: "input/" + id, phase: "input/pending", spans: terminalsession.DraftSpans(s.Draft)}}}})
 		}
 	}
 	for _, image := range s.Images {
@@ -201,12 +161,10 @@ func (u *appServerUI) send(parts []conversationmodel.Input, steer bool) error {
 	for _, path := range s.AnswerImages {
 		delete(u.ownedImages, path)
 	}
-	u.conversation().Stage(id, s)
-	u.Submit(id, turn)
+	u.sessionPresentation().StageInput(&u.Live, u.conversation(), id, s, steer)
 	if !steer {
 		u.guardHookCheck.readyThread = ""
 	}
-	u.sessionPresentation().Status.Set("Sending…", false)
 	if s.AttachmentNotice != "" {
 		notice := s.AttachmentNotice
 		if strings.HasPrefix(u.feedback.Text, "Skill attachment unavailable:") || strings.HasPrefix(u.feedback.Text, "Skill catalog incomplete:") {
@@ -214,8 +172,8 @@ func (u *appServerUI) send(parts []conversationmodel.Input, steer bool) error {
 		}
 		u.setNotice(notice, true)
 	}
-	if err := u.request(method, params); err != nil {
-		u.applyInputResult(u.SubmissionFailed())
+	if _, err := u.requests.SendInput(request, appServerRequest{}); err != nil {
+		u.applyInputEffects(u.sessionPresentation().ApplyInputResult(&u.Live, u.conversation(), u.SubmissionFailed()))
 		return err
 	}
 	for _, part := range parts {
@@ -226,106 +184,32 @@ func (u *appServerUI) send(parts []conversationmodel.Input, steer bool) error {
 	return nil
 }
 
-// withdraw returns a rejected or interrupted submission to the composer.
-func (u *appServerUI) withdraw(result sessioncontrol.InputResult) {
-	s := u.conversation().Submitted[result.Submission.ID]
-	if result.Submission.Turn != "" {
-		u.restoreDrafts(s.Parts...)
-		return
-	}
-	u.view.removePendingInput(s.Echo)
-	if result.Submission.Interrupted && len(u.view.Entries) == 0 {
-		u.sessionPresentation().Status.Started = time.Time{}
-		u.sessionPresentation().Status.SetText("Ready")
-	}
-	if result.KeepWaiting {
-		u.restoreDrafts(s.Parts...)
-		return
-	}
-	u.restoreDrafts(slices.Concat(s.Parts, u.conversation().Unsent, u.conversation().Queued)...)
-	u.conversation().Unsent, u.conversation().Queued = nil, nil
-}
-
 func (u *appServerUI) submissionResponse(method string, failure *appserver.Error) {
-	defer u.pruneInputPayloads()
-	id := u.Submission().ID
-	s := u.conversation().Submitted[id]
-	if failure == nil {
-		for i, part := range s.Parts {
-			if !part.InHistory {
-				u.rememberInput(part)
-				s.Parts[i].InHistory = true
-			}
-		}
+	message := ""
+	if failure != nil {
+		message = failure.Message
 	}
-	result := u.AcknowledgeInput(failure != nil, len(s.Parts) == 1 && s.Parts[0].Question != nil, len(u.conversation().Unsent) > 0)
-	if result.Action == sessioncontrol.InputRejected {
-		u.sessionPresentation().Status.Set(method+": "+failure.Message, true)
-	}
-	u.applyInputResult(result)
+	u.applyInputEffects(u.sessionPresentation().AcknowledgeInput(&u.Live, u.conversation(), method, message, failure != nil))
 }
 
-func (u *appServerUI) applyInputResult(result sessioncontrol.InputResult) {
-	switch result.Action {
-	case sessioncontrol.InputAccepted, sessioncontrol.InputStale:
-		if u.sessionPresentation().Status.Text == "Sending…" && !u.sessionPresentation().Status.Alert {
-			if u.Turn != "" {
-				u.sessionPresentation().Status.SetText("Working")
-			} else if u.Starting() {
-				u.sessionPresentation().Status.SetText("Starting turn…")
-			}
-		}
-		if result.Action != sessioncontrol.InputStale {
-			return
-		}
-		u.restoreDrafts(u.conversation().Submitted[result.Submission.ID].Parts...)
-		u.setNotice("Turn ended before the steer · restored to the composer", false)
-	case sessioncontrol.InputRejected, sessioncontrol.InputWithdrawn:
-		u.withdraw(result)
-	case sessioncontrol.InputSettled:
-		u.applySteerResult(result.Steers)
+func (u *appServerUI) applyInputEffects(effects sessionpresentation.InputEffects) {
+	if effects.Withdrawn != "" {
+		u.view.removePendingInput(effects.Withdrawn)
+		u.sessionPresentation().SettleWithdrawnInput(effects, len(u.view.Model.Entries) > 0)
+	}
+	u.applyInputRestoration(effects.Restored)
+	if effects.Notice != "" {
+		u.setNotice(effects.Notice, false)
 	}
 }
 
-// Host messages without a client ID retain payload matching at the composer.
-// Only the resulting canonical identity crosses into session control.
 func (u *appServerUI) commitSteer(item binding.ThreadItem) {
-	defer u.pruneInputPayloads()
-	if item.ClientID != "" {
-		u.CommitInput(item.ClientID)
-		return
-	}
 	text, _, _ := appServerUserText(item.Content)
-	if id := u.PendingStart(); id != "" && u.conversation().Submitted[id].Text == text {
-		u.CommitInput(id)
-	}
-	for _, id := range append([]string{u.Submission().ID}, u.Steers()...) {
-		if id != "" && u.conversation().Submitted[id].Text == text {
-			u.CommitInput(id)
-			return
-		}
-	}
+	u.sessionPresentation().CommitInput(&u.Live, u.conversation(), item.ClientID, text)
 }
 
 func (u *appServerUI) settleInput(turn string, interrupted bool) {
-	defer u.pruneInputPayloads()
-	for _, result := range u.SettleInput(turn, interrupted, len(u.conversation().Unsent) > 0) {
-		u.applyInputResult(result)
-	}
-}
-
-func (u *appServerUI) applySteerResult(result sessioncontrol.SteerResult) {
-	steers := u.conversation().Parts(result.IDs)
-	switch result.Action {
-	case sessioncontrol.SteersRestore:
-		u.restoreDrafts(steers...)
-	case sessioncontrol.SteersRequeue:
-		u.conversation().Unsent = slices.Concat(steers, u.conversation().Unsent)
-	case sessioncontrol.SteersRestoreAll:
-		u.restoreDrafts(slices.Concat(steers, u.conversation().Unsent, u.conversation().Queued)...)
-		u.conversation().Unsent, u.conversation().Queued = nil, nil
-	case sessioncontrol.SteersUnconfirmed:
-		u.restoreDrafts(steers...)
-		u.setNotice("Unconfirmed steer restored to the composer", false)
+	for _, effects := range u.sessionPresentation().SettleInput(&u.Live, u.conversation(), turn, interrupted) {
+		u.applyInputEffects(effects)
 	}
 }

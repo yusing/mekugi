@@ -1,8 +1,6 @@
 package router
 
 import (
-	"slices"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 )
@@ -29,18 +27,11 @@ func (u *appServerUI) interruptTurn() error {
 }
 
 func (u *appServerUI) applyInterruption(intent sessioncontrol.Interrupt) error {
-	if intent.RestoreWaiting {
-		u.restoreDrafts(slices.Concat(u.conversation().Unsent, u.conversation().Queued)...)
-		u.conversation().Unsent, u.conversation().Queued = nil, nil
-	}
-	if intent.Pending {
-		u.sessionPresentation().Status.SetText("Interrupting…")
-	}
+	u.applyInputRestoration(u.sessionPresentation().RestoreInterruptedInput(u.conversation(), intent))
 	if intent.Turn == "" {
 		return nil
 	}
 	u.endSyncQuestions(intent.Turn)
-	u.sessionPresentation().Status.SetText("Interrupting…")
 	_, err := u.requests.Send("turn/interrupt", map[string]any{"threadId": u.Thread, "turnId": intent.Turn}, "main", appServerRequest{label: intent.Label})
 	if err != nil && intent.Label == "steer/interrupt" {
 		u.SteerInterruptAckPending = false

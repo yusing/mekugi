@@ -36,7 +36,6 @@ type Input struct {
 type Submission struct {
 	composer.Draft
 	Parts []Input
-	Echo  uint64
 }
 
 type Session struct {
