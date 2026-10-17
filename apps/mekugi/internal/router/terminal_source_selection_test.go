@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/binding"
 
@@ -107,7 +109,7 @@ func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
-	u.btw = &appServerBTW{SideAnswer: &conversationmodel.SideAnswer{Question: "side question", Status: "completed", Answer: []conversationmodel.Answer{{Text: "**side answer**"}}}}
+	setSideTest(u, &sessioncontrol.Side{SideAnswer: &conversationmodel.SideAnswer{Question: "side question", Status: "completed", Answer: []conversationmodel.Answer{{Text: "**side answer**"}}}})
 	var wire bytes.Buffer
 	if err := u.testPaint(&wire, 80, 30); err != nil {
 		t.Fatal(err)
@@ -139,7 +141,7 @@ func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 	if err := u.shell.send("\x1b"); err != nil {
 		t.Fatal(err)
 	}
-	if u.btw == nil || u.shell.selection != nil {
+	if u.side == nil || u.shell.selection != nil {
 		t.Fatal("Escape closed dock before selection")
 	}
 	selectionTestDrag(t, u.shell, x, y, x+10, y)
@@ -149,7 +151,7 @@ func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 	if !strings.Contains(u.shell.frame.Clipboard, base64.StdEncoding.EncodeToString([]byte("**side answer**"))) {
 		t.Fatal("btw clipboard missing")
 	}
-	if u.btw == nil || u.shell.selection != nil {
+	if u.side == nil || u.shell.selection != nil {
 		t.Fatal("copy closed the dock or retained selection")
 	}
 	u.Text, u.CursorBack = "before after", len("after")
@@ -157,8 +159,8 @@ func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 	if err := u.shell.key('r'); err != nil {
 		t.Fatal(err)
 	}
-	if u.btw == nil || u.shell.selection != nil || u.shell.Focus != 0 || u.Text != "before [Selected side answer] after" || len(u.Selections) != 1 || u.Selections[0].Text != "**side answer**" {
-		t.Fatalf("btw reference: draft=%q selections=%+v dock=%v", u.Text, u.Selections, u.btw != nil)
+	if u.side == nil || u.shell.selection != nil || u.shell.Focus != 0 || u.Text != "before [Selected side answer] after" || len(u.Selections) != 1 || u.Selections[0].Text != "**side answer**" {
+		t.Fatalf("btw reference: draft=%q selections=%+v dock=%v", u.Text, u.Selections, u.side != nil)
 	}
 }
 
@@ -167,15 +169,15 @@ func TestAppServerBTWShimmerElapsed(t *testing.T) {
 	start := time.Date(2026, 9, 30, 0, 0, 0, 0, time.UTC)
 	now := start.Add(75 * time.Second)
 	u.clock = func() time.Time { return now }
-	u.btw = &appServerBTW{Busy: true, SideAnswer: &conversationmodel.SideAnswer{Status: "Answering", Started: start}}
+	setSideTest(u, &sessioncontrol.Side{Busy: true, SideAnswer: &conversationmodel.SideAnswer{Status: "Answering", Started: start}})
 	a := u.btwRows(80, 8)[0]
 	now = now.Add(100 * time.Millisecond)
 	b := u.btwRows(80, 8)[0]
 	if a == b || ansi.Strip(a) != ansi.Strip(b) || !strings.Contains(ansi.Strip(a), "Answering · 1m15s") || !u.publishPresentation(u.now()).Status.Animating {
 		t.Fatalf("status=%q / %q", a, b)
 	}
-	u.btw.Busy = false
-	u.btw.Status = "completed"
+	u.side.Busy = false
+	u.side.Status = "completed"
 	if strings.Contains(ansi.Strip(u.btwRows(80, 8)[0]), "Answering") {
 		t.Fatal("completed answer still shimmers")
 	}
@@ -186,7 +188,7 @@ func TestUISnapshotBTWCopyDock(t *testing.T) {
 	start := time.Date(2026, 9, 30, 0, 0, 0, 0, time.UTC)
 	u.clock = func() time.Time { return start.Add(75 * time.Second) }
 	u.view.Painter.Theme = diffrender.DarkTheme
-	u.btw = &appServerBTW{Busy: true, SideAnswer: &conversationmodel.SideAnswer{Status: "Answering", Started: start, Question: "Which option?", Answer: []conversationmodel.Answer{{Text: "Name | Value\n--- | ---\n**alpha** | `x`"}}}}
+	setSideTest(u, &sessioncontrol.Side{Busy: true, SideAnswer: &conversationmodel.SideAnswer{Status: "Answering", Started: start, Question: "Which option?", Answer: []conversationmodel.Answer{{Text: "Name | Value\n--- | ---\n**alpha** | `x`"}}}})
 	uisnapshot.Assert(t, "testdata/snapshots/btw-copy-dock.txt", strings.Join(u.btwRows(60, 12), "\n")+"\n")
 }
 

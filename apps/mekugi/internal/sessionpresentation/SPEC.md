@@ -14,6 +14,10 @@ The session retains the latest complete publication after each observation or
 semantic intent, including failed operations and restoration. Reading it neither
 refreshes owner state nor advances its version. Repeated publication of unchanged
 facts keeps the version; nested values returned to consumers are detached copies.
+The current side answer and its running state share this publication. Closing
+the side removes its visible exchange immediately while Control retains any
+pending host acknowledgement and cleanup. Scrolling and copy geometry remain
+renderer-local.
 Clock-driven changes settle on explicit maintenance or replay transitions.
 Publication and prompt admission do not acknowledge display. Only successful
 terminal delivery makes a newly opened dock eligible for keyboard input.

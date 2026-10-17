@@ -32,21 +32,23 @@ type Version struct {
 }
 
 type View struct {
-	Version   Version
-	Main      Thread
-	Displayed Thread
-	Input     Thread
-	ReadOnly  ReadOnly
-	Loading   string
-	Status    MainStatus
-	Caption   Caption
-	Questions prompt.QuestionDockView
-	Approvals prompt.ApprovalDockView
-	Pending   conversationmodel.PendingView
-	Draft     conversationmodel.DraftView
-	Admission InputAdmission
-	History   HistoryDock
-	Interrupt sessioncontrol.InterruptTarget
+	Version     Version
+	Main        Thread
+	Displayed   Thread
+	Input       Thread
+	ReadOnly    ReadOnly
+	Loading     string
+	Status      MainStatus
+	Caption     Caption
+	Questions   prompt.QuestionDockView
+	Approvals   prompt.ApprovalDockView
+	Pending     conversationmodel.PendingView
+	Draft       conversationmodel.DraftView
+	Admission   InputAdmission
+	History     HistoryDock
+	Interrupt   sessioncontrol.InterruptTarget
+	Side        *conversationmodel.SideView
+	SideRunning bool
 }
 
 type DisplayIntent struct {
@@ -115,6 +117,11 @@ func (m *Model) View() View {
 // cloneView keeps both retained publications and subsequent readers isolated
 // from mutable values supplied by another owner or a previous consumer.
 func cloneView(v View) View {
+	if v.Side != nil {
+		side := *v.Side
+		side.Answer = slices.Clone(side.Answer)
+		v.Side = &side
+	}
 	v.Caption.Items = slices.Clone(v.Caption.Items)
 	if v.Questions.Call != nil {
 		call := *v.Questions.Call

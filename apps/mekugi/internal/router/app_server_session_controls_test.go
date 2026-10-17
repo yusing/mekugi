@@ -172,8 +172,8 @@ func TestAppServerClearKeepsThreadCommandsUntilNewSessionReady(t *testing.T) {
 			appServerTestKeys(t, u, "/clear\r")
 			r := appServerOneRequest(t, w, "thread/start", "")
 			appServerTestKeys(t, u, command+"\r")
-			if strings.TrimSpace(u.Text) != command || u.Settings.Pending() || u.conversation().Shell.Text != "" || u.btw != nil || len(appServerTurnRequests(t, w)) != 0 {
-				t.Fatalf("command escaped while clearing: draft=%q settings=%v shell=%q btw=%+v", u.Text, u.Settings.Pending(), u.conversation().Shell.Text, u.btw)
+			if strings.TrimSpace(u.Text) != command || u.Settings.Pending() || u.conversation().Shell.Text != "" || u.side != nil || len(appServerTurnRequests(t, w)) != 0 {
+				t.Fatalf("command escaped while clearing: draft=%q settings=%v shell=%q btw=%+v", u.Text, u.Settings.Pending(), u.conversation().Shell.Text, u.side)
 			}
 			if accepted, err := u.updateSettings(map[string]any{"effort": "high"}); err != nil || accepted || w.Len() != 0 {
 				t.Fatalf("shortcut bypassed clear gate: accepted=%v err=%v wire=%s", accepted, err, w.String())

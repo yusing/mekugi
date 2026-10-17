@@ -44,8 +44,8 @@ func (u *appServerUI) pruneDraftImages() {
 	for _, image := range u.Images {
 		used[image.Path] = true
 	}
-	if u.btw != nil {
-		for _, image := range u.btw.Pending.Images {
+	if u.side != nil {
+		for _, image := range u.side.Pending.Images {
 			used[image.Path] = true
 		}
 	}

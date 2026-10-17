@@ -74,7 +74,8 @@ type appServerUI struct {
 	names                   sessioncontrol.Names
 	titleGenerator          *sessionNaming
 	titleUpdates            <-chan sessionTitleUpdate
-	btw                     *appServerBTW
+	btw                     *sideDock
+	side                    *sessioncontrol.Side
 	notifications           *nativeNotifications
 	promptEditor            *prompt.Editor
 	questions               nativeQuestionDock
@@ -458,7 +459,6 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 // and title saves retain their own completion and cleanup across that boundary.
 type appServerRequest struct {
 	label  string
-	side   *appServerBTW
 	title  *sessioncontrol.NameSave
 	status *appServerStatusReport
 }
@@ -486,8 +486,16 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	}
 	defer u.refreshPicker()
 	// Side-thread traffic never reaches Main's lifecycle, questions or roster.
-	if handled, err := u.btwMessage(m, response.Method, response.Owner.side); handled {
-		return err
+	if update, err := u.requests.ObserveSide(m, response, u.Thread, u.controlObservations); update.Handled {
+		u.dirty = true
+		u.applySideUpdate(update)
+		if err != nil {
+			return err
+		}
+		if update.Flush {
+			return u.flushBTW()
+		}
+		return nil
 	}
 	if u.retiredSessionEvent(m) {
 		return nil
@@ -1254,8 +1262,8 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalsess
 		in.ApprovalLayout = u.approvals.layout(u.approvals.handles[u.approvals.Pending[0]])
 		in.ApprovalAgent = u.approvalAgent(presentation.Approvals.Approval.Thread)
 	}
-	if b := u.btw; b != nil {
-		in.Side = &terminalsession.SideInput{View: b.View(), Running: b.Busy || b.Starting, Scroll: b.scroll}
+	if b := u.btw; b != nil && presentation.Side != nil {
+		in.Side = &terminalsession.SideInput{View: *presentation.Side, Running: presentation.SideRunning, Scroll: b.scroll}
 	}
 	frame := u.mainView.Layout(in, &u.view.Painter, width, height, dock)
 	transcript.Conversation, transcript.FeedOnly, transcript.StatusLabel = true, true, textsanitize.Safe(terminalsession.StatusText(presentation.Status.State), false)

@@ -31,7 +31,7 @@ func (u *appServerUI) publishPresentation(now time.Time) sessionpresentation.Vie
 	}
 	return m.Publish(sessionpresentation.MainInputs{
 		Control: &u.Live, Feedback: &u.feedback, Conversation: u.conversation(), Restoring: u.restoring != nil,
-		SideRunning: u.btw != nil && (u.btw.Busy || u.btw.Starting), Processes: u.runningProcessCount(), History: u.historyViews(),
+		SideRunning: u.side != nil && (u.side.Busy || u.side.Starting), Processes: u.runningProcessCount(), History: u.historyViews(),
 	}, caption, now)
 }
 

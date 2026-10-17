@@ -24,6 +24,7 @@ type Request[T any] struct {
 	Method string
 	Scope  string
 	Owner  T
+	Side   *Side
 }
 
 // Requests is the sole request ledger for one application client. Its event-loop
@@ -31,7 +32,7 @@ type Request[T any] struct {
 type Requests[T any] struct {
 	transport Transport
 	pending   map[string]Request[T]
-	sides     map[string]T
+	sides     map[string]*Side
 }
 
 func NewRequests[T any](transport Transport) *Requests[T] {

@@ -58,6 +58,7 @@ func TestNonTerminalPublicationRetainsDetachedCurrentValue(t *testing.T) {
 	c.conversation.Approvals.Add(&prompt.Approval{ID: "approval", Details: []string{"detail"}, Choices: []prompt.Choice{{Label: "allow"}}})
 	c.conversation.Unsent = []conversationmodel.Input{{Text: "waiting"}}
 	c.conversation.Queued = []conversationmodel.Input{{Text: "queued"}}
+	c.conversation.Side = &conversationmodel.SideAnswer{Question: "side", Answer: []conversationmodel.Answer{{ID: "answer", Text: "original"}}}
 	caption := sessionpresentation.Caption{Items: []presentationcontract.Item{{Text: "caption"}}}
 	v := c.publish(caption)
 	want := c.model().View()
@@ -71,6 +72,8 @@ func TestNonTerminalPublicationRetainsDetachedCurrentValue(t *testing.T) {
 	v.Approvals.Approval.Choices[0].Label = "changed"
 	v.Pending.Waiting[0].Text = "changed"
 	v.Pending.Queued[0].Text = "changed"
+	v.Side.Answer[0].Text = "changed by reader"
+	c.conversation.Side.Answer[0].Text = "changed by owner"
 	caption.Items[0].Text = "changed"
 	c.model().Status.Set("new state", false)
 	c.now = c.now.Add(time.Hour)
@@ -92,6 +95,10 @@ func TestNonTerminalPublicationRetainsDetachedCurrentValue(t *testing.T) {
 	history[0].Thread = "changed again"
 	if !reflect.DeepEqual(c.model().View(), want) {
 		t.Fatal("draft or history publication aliases mutable storage")
+	}
+	c.conversation.Side = nil
+	if c.publish(caption).Side != nil {
+		t.Fatal("closed side remains in the current publication")
 	}
 }
 

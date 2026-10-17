@@ -109,6 +109,11 @@ func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) (v View) 
 	v.Admission = m.inputAdmission(in.Control, v.Draft.Available, in.Restoring)
 	v.History = m.HistoryView(in.History)
 	v.Interrupt = in.Control.InterruptTarget()
+	v.Side, v.SideRunning = nil, false
+	if in.Conversation.Side != nil {
+		side := in.Conversation.Side.View()
+		v.Side, v.SideRunning = &side, in.SideRunning
+	}
 	s := &v.Status
 	state, control := m.Status, in.Control
 	s.Session = Label{Text: state.Text, Alert: state.Alert, Failure: state.failure, FailureKnown: state.failureKnown,

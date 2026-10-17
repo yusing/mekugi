@@ -118,6 +118,12 @@ fork/start responses and cleanup settle. A later start acknowledgement cannot re
 a completed turn. Interruption/unsubscription targets only that side thread;
 its notifications never become Main observations. Closing the dock drops its
 visible exchange, not pending host correlation.
+The existing request ledger correlates side replies and notifications to the
+side operation, independently of any renderer. That operation borrows
+Conversation's current exchange and owns fork/start validation, effective fork
+settings, side classification before sampling, and delayed cleanup. Acquisition
+prepares attachments before dispatch; restoration returns the existing input
+value to the application without retaining another draft or side registry.
 
 Invocation-local observations bridge provider generation and interactive control.
 Session control owns authenticated ancestry and the attached audience used for
