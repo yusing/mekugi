@@ -6,7 +6,7 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/observation"
-	"github.com/yusing/mekugi/modules/activity/transcript"
+	"github.com/yusing/mekugi/modules/conversation/transcript"
 )
 
 func (s *appServerSession) observeTranscript(e observation.TextEvent, main bool) []observation.TextUpdate {

@@ -203,7 +203,7 @@ func TestHookObservationRestartResumeAndReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	playback := newUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
+	playback := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
 	t.Cleanup(playback.close)
 	if err := playback.advance(playback.Until); err != nil {
 		t.Fatal(err)

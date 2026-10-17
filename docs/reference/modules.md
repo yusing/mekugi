@@ -17,8 +17,7 @@ Own host-operation feeds, roster derivation and retained output
 - Contributes: `record-kinds`.
 - Hosts: `activity-details`.
 - Records: `wait`.
-- Codex connections: `observation`.
-- Capabilities: `observation` (required).
+- Codex connections: none.
 
 ## [agentguidance](../../modules/agentguidance/SPEC.md)
 
@@ -85,11 +84,12 @@ Collect bounded instruction sources for future context reset
 
 ## [conversation](../../modules/conversation/SPEC.md)
 
-Own conversation drafts, prompts, queues, and side answers
+Own conversation drafts, transcripts, prompts, queues, and side answers
 
 - Composition: selected; lifetime: `attached-session`.
 - Requires: none.
-- Codex connections: none.
+- Codex connections: `observation`.
+- Capabilities: `observation` (required).
 
 ## [diagnostics](../../modules/diagnostics/SPEC.md)
 

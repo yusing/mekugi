@@ -19,8 +19,6 @@ import (
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/activity/waittargets"
 
-	activitybinding "github.com/yusing/mekugi/modules/activity/codexbinding"
-
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/rollout"
@@ -111,10 +109,6 @@ func (s *appServerSession) start(thread, cwd string) {
 	s.paths = map[string]string{thread: "/root"}
 	s.Start(thread)
 	s.agents = []activityPaneAgent{{thread: thread, Name: "/root", Role: "main"}}
-	if s.observations == nil {
-		observations := activitybinding.Codex.Observation(s.activity)
-		s.observations = &observations
-	}
 	s.transcript = s.observations.NewTranscript(s.Scope())
 	s.metadata = make(map[string]string)
 	s.commands = make(map[[3]string]*appServerCommandRun)

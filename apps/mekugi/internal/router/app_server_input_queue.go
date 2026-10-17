@@ -30,9 +30,6 @@ import (
 // @86be5320b068ef67b56348b02aa8c33706955da6.
 
 func (u *appServerUI) conversation() *conversationmodel.Session {
-	if u.conversationState == nil {
-		u.conversationState = new(conversationmodel.Service)
-	}
 	return u.conversationState.Session(u.session.Scope())
 }
 

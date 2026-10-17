@@ -151,7 +151,7 @@ func TestAppServerSettingsCatalogNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, history: testHistory(), client: client, requests: sessioncontrol.NewRequests[appServerRequest](client), view: newActivityAdapter(), agents: newActivityAdapter()}
+	u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, history: testHistory(), client: client, requests: sessioncontrol.NewRequests[appServerRequest](client), view: newActivityAdapter(), agents: newActivityAdapter()})
 	if err := u.request("initialize", nil); err != nil {
 		t.Fatal(err)
 	}

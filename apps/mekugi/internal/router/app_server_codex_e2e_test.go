@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -155,7 +157,9 @@ func runAppServerPreviewWith(t *testing.T, provider inferencegateway.Forwarder, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	wait, err := startAppServerUI(new(conversationmodel.Service), new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, cmd, terminal, terminal, proxy, nil, "", true, nil, nil, nil, "", nil, nil, options.approvals)
+	conversation := new(conversationmodel.Service)
+	observations := conversationbinding.Codex.Observation(conversation)
+	wait, err := startAppServerUI(conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, cmd, terminal, terminal, proxy, nil, "", true, nil, nil, nil, "", nil, &observations, options.approvals)
 	if err != nil {
 		t.Fatal(err)
 	}

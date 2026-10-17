@@ -6,16 +6,14 @@ import (
 
 	"github.com/yusing/mekugi/contracts/activitydetail"
 	"github.com/yusing/mekugi/contracts/scope"
-	"github.com/yusing/mekugi/modules/activity/transcript"
 )
 
 // Service accesses activity state owned by the application's attachment store.
 // It holds no per-session map, host resources or background work.
 type Service struct {
-	details    []activitydetail.Provider
-	outputs    scope.Key[Retention]
-	model      scope.Key[any]
-	transcript scope.Key[transcript.State]
+	details []activitydetail.Provider
+	outputs scope.Key[Retention]
+	model   scope.Key[any]
 }
 
 func New(details []activitydetail.Provider) (*Service, error) {
@@ -42,8 +40,6 @@ func (s *Service) ActivityDetail(store *scope.Store, request activitydetail.Requ
 	}
 	return activitydetail.Result{}
 }
-
-func (s *Service) Transcript(store *scope.Store) *transcript.State { return s.transcript.Value(store) }
 
 // Outputs returns the attachment's shared retention, or nil when activity is absent.
 func (s *Service) Outputs(store *scope.Store) *Retention {

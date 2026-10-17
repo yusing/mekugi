@@ -2,9 +2,14 @@ package router
 
 import (
 	"bytes"
+	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
+
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/modules/sessionreplay/playback"
@@ -49,7 +54,7 @@ func replayPlaybackTestSource() *playback.Source {
 
 func replayPlaybackTestNew(t *testing.T) *uiReplayPlayback {
 	t.Helper()
-	p := newUIReplayPlayback(new(activitymodel.Service), t.Context(), replayPlaybackTestSource(), 1)
+	p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), replayPlaybackTestSource(), 1)
 	t.Cleanup(p.close)
 	p.ui.view.Painter.Theme, p.ui.agents.Painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
 	return p
@@ -260,4 +265,16 @@ func TestUISnapshotSessionUIReplay(t *testing.T) {
 		p.Paused = true
 		uisnapshot.Assert(t, "testdata/snapshots/session-ui-replay-narrow-paused-bar.txt", p.bar(42)+"\n")
 	})
+}
+
+func newTestUIReplayPlayback(activity *activitymodel.Service, ctx context.Context, source *playback.Source, speed float64) *uiReplayPlayback {
+	conversation := new(conversationmodel.Service)
+	observations := conversationbinding.Codex.Observation(conversation)
+	return newUIReplayPlayback(conversation, &observations, activity, ctx, source, speed)
+}
+
+func runTestSessionUIReplay(activity *activitymodel.Service, service *playback.Service, ctx context.Context, args []string, stdin, stdout, stderr *os.File) int {
+	conversation := new(conversationmodel.Service)
+	observations := conversationbinding.Codex.Observation(conversation)
+	return RunSessionUIReplay(conversation, &observations, activity, service, ctx, args, stdin, stdout, stderr)
 }

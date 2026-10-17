@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	json "encoding/json/v2"
@@ -218,7 +220,9 @@ func TestAppServerSavedReviewHydrationKeepsTerminalResponsive(t *testing.T) {
 		return strings.HasPrefix(value, shellhook.Environment+"=")
 	}), helper+"=1")
 	cmd.ExtraFiles = []*os.File{control}
-	wait, err := startAppServerUI(new(conversationmodel.Service), new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, cmd, terminal, terminal, proxy, nil, "", true, nil, nil, nil, "", nil, nil, false)
+	conversation := new(conversationmodel.Service)
+	observations := conversationbinding.Codex.Observation(conversation)
+	wait, err := startAppServerUI(conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, cmd, terminal, terminal, proxy, nil, "", true, nil, nil, nil, "", nil, &observations, false)
 	if err != nil {
 		t.Fatal(err)
 	}

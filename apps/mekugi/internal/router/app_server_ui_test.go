@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"encoding/json/jsontext"
 
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/yusing/mekugi/libraries/terminalui"
@@ -88,8 +91,7 @@ func (*appServerTestInput) Close() error { return nil }
 func newAppServerTestUI() (*appServerUI, *appServerTestInput) {
 	w := new(appServerTestInput)
 	client := &appserver.Client{Input: w}
-	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, issues: testCriticalErrors(), history: testHistory(), client: client, view: newActivityAdapter(), requests: sessioncontrol.NewRequests[appServerRequest](appServerTestTransport{client, w}), Thread: "main"}
-	u.session.transcript = u.session.activity.Transcript(u.session.Scope())
+	u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, issues: testCriticalErrors(), history: testHistory(), client: client, view: newActivityAdapter(), requests: sessioncontrol.NewRequests[appServerRequest](appServerTestTransport{client, w}), Thread: "main"})
 	u.approvals.initGuards(testGuards())
 	u.view.Painter.FileLink = u.markdownFileAllowed
 	return u, w
@@ -455,4 +457,13 @@ func TestNativeUIEscapeInterruptPreservesDraft(t *testing.T) {
 			t.Fatal("Escape swallowed subsequent input")
 		}
 	}
+}
+
+// appServerTestFeatures supplies the same core owner to the composer and transcript.
+func appServerTestFeatures(u *appServerUI) *appServerUI {
+	u.conversationState = new(conversationmodel.Service)
+	observations := conversationbinding.Codex.Observation(u.conversationState)
+	u.session.observations = &observations
+	u.session.transcript = observations.NewTranscript(u.session.Scope())
+	return u
 }

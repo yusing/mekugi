@@ -4,7 +4,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/contracts/scope"
-	"github.com/yusing/mekugi/modules/activity/transcript"
+	"github.com/yusing/mekugi/modules/conversation/transcript"
 )
 
 // applyTranscriptFixture feeds the real projector and reducer for view fixtures

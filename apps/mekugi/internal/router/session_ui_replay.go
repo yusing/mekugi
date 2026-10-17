@@ -21,13 +21,12 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
-	activitybinding "github.com/yusing/mekugi/modules/activity/codexbinding"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/contracts/observation"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/sessionreplay/playback"
 	"golang.org/x/term"
 
@@ -38,21 +37,23 @@ import (
 
 type uiReplayPlayback struct {
 	*playback.Player
-	activity  *activitymodel.Service
-	paintedAt time.Time
-	ui        *appServerUI
-	prefix    bool
-	frames    []time.Duration
-	writeTime time.Duration
-	ctx       context.Context
+	conversation *conversationmodel.Service
+	observations *binding.Observation
+	activity     *activitymodel.Service
+	paintedAt    time.Time
+	ui           *appServerUI
+	prefix       bool
+	frames       []time.Duration
+	writeTime    time.Duration
+	ctx          context.Context
 }
 
 type replayDiscard struct{ io.Writer }
 
 func (replayDiscard) Close() error { return nil }
 
-func newUIReplayPlayback(activity *activitymodel.Service, ctx context.Context, source *playback.Source, speed float64) *uiReplayPlayback {
-	p := &uiReplayPlayback{activity: activity, ctx: ctx, Player: playback.NewPlayer(source, speed)}
+func newUIReplayPlayback(conversation *conversationmodel.Service, observations *binding.Observation, activity *activitymodel.Service, ctx context.Context, source *playback.Source, speed float64) *uiReplayPlayback {
+	p := &uiReplayPlayback{conversation: conversation, observations: observations, activity: activity, ctx: ctx, Player: playback.NewPlayer(source, speed)}
 	p.reset()
 	return p
 }
@@ -67,8 +68,7 @@ func (p *uiReplayPlayback) reset() {
 	// The real message/projector/render path, but no app-server process, router,
 	// replay store, filesystem observers, input submission, or notification sink.
 	client := &appserver.Client{Input: replayDiscard{io.Discard}}
-	observations := activitybinding.Codex.Observation(p.activity)
-	u := &appServerUI{session: appServerSession{activity: p.activity, observations: &observations}, ctx: p.ctx, client: client, view: newActivityAdapter(), agents: newActivityAdapter(), Thread: p.Source.Thread, requests: sessioncontrol.NewRequests[appServerRequest](client), clock: func() time.Time { return p.At }, replay: p}
+	u := &appServerUI{conversationState: p.conversation, session: appServerSession{activity: p.activity, observations: p.observations}, ctx: p.ctx, client: client, view: newActivityAdapter(), agents: newActivityAdapter(), Thread: p.Source.Thread, requests: sessioncontrol.NewRequests[appServerRequest](client), clock: func() time.Time { return p.At }, replay: p}
 	u.sessionPresentation().Status.Set("Replay", false)
 	u.view.Clock, u.agents.Clock = u.clock, u.clock
 	u.session.start(p.Source.Thread, p.Source.Cwd)
@@ -374,7 +374,7 @@ func (p *uiReplayPlayback) run(keys <-chan byte, paint func() error, headless bo
 
 // RunSessionUIReplay is an offline entry point. It shares the native presenter,
 // but constructs no host, upstream connection, execution capability, or store.
-func RunSessionUIReplay(activity *activitymodel.Service, service *playback.Service, ctx context.Context, args []string, stdin, stdout, stderr *os.File) (code int) {
+func RunSessionUIReplay(conversation *conversationmodel.Service, observations *binding.Observation, activity *activitymodel.Service, service *playback.Service, ctx context.Context, args []string, stdin, stdout, stderr *os.File) (code int) {
 	f := flag.NewFlagSet("replay-session", flag.ContinueOnError)
 	f.SetOutput(stderr)
 	session := f.String("session", "", "Codex session ID (required; searches CODEX_HOME or ~/.codex)")
@@ -425,7 +425,7 @@ func RunSessionUIReplay(activity *activitymodel.Service, service *playback.Servi
 		return fail(err)
 	}
 	duration := source.End.Sub(source.Start)
-	p := newUIReplayPlayback(activity, ctx, source, *speed)
+	p := newUIReplayPlayback(conversation, observations, activity, ctx, source, *speed)
 	defer p.close()
 	if err = p.Bounds(*from, *until); err != nil {
 		return fail(err)

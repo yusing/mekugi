@@ -41,7 +41,7 @@ func TestActivityAbsenceKeepsHostOutput(t *testing.T) {
 }
 
 func TestActivityAbsenceKeepsOfflineReplay(t *testing.T) {
-	p := newUIReplayPlayback(nil, t.Context(), replayPlaybackTestSource(), 1)
+	p := newTestUIReplayPlayback(nil, t.Context(), replayPlaybackTestSource(), 1)
 	defer p.close()
 	if err := p.seek(p.Until); err != nil {
 		t.Fatal(err)

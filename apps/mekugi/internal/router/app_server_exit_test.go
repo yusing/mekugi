@@ -44,7 +44,7 @@ func TestUISnapshotAppServerExitSummaryOptionalCounts(t *testing.T) {
 		{name: "cached exceeds input", usage: appServerTokenUsage{TotalTokens: 15, InputTokens: 10, CachedInputTokens: 20, OutputTokens: 5}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, Thread: tc.thread, exitUsage: tc.usage}
+			u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, Thread: tc.thread, exitUsage: tc.usage})
 			if tc.name == "startup failure" {
 				u.resumeArgv = []string{"mekugi", "--debug", "codex", "--yolo"}
 				u.replayDebugDirectory = "/tmp/debug"
@@ -56,7 +56,7 @@ func TestUISnapshotAppServerExitSummaryOptionalCounts(t *testing.T) {
 			uisnapshot.Assert(t, "testdata/snapshots/native-exit-"+strings.ReplaceAll(tc.name, " ", "-")+".txt", out.String())
 		})
 	}
-	if err := (&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, Thread: "main"}).writeExitSummary(exitFailWriter{}, false); !errors.Is(err, io.ErrClosedPipe) {
+	if err := (appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, Thread: "main"})).writeExitSummary(exitFailWriter{}, false); !errors.Is(err, io.ErrClosedPipe) {
 		t.Fatalf("write error = %v", err)
 	}
 }
@@ -66,7 +66,7 @@ type exitFailWriter struct{}
 func (exitFailWriter) Write([]byte) (int, error) { return 0, io.ErrClosedPipe }
 
 func TestAppServerExitSummaryHighlight(t *testing.T) {
-	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, Thread: "saved"}
+	u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, Thread: "saved"})
 	var out bytes.Buffer
 	if err := u.writeExitSummary(&out, true); err != nil {
 		t.Fatal(err)
@@ -78,7 +78,7 @@ func TestAppServerExitSummaryHighlight(t *testing.T) {
 }
 
 func TestUISnapshotAppServerExitSummaryOriginalArgv(t *testing.T) {
-	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, Thread: "saved", resumeArgv: []string{"/opt/my tools/mekugi", "--debug", "codex", "--yolo", "--enable", "instant_interrupt", "--high", "-c", "model='custom'"}, replayDebugDirectory: "/tmp/debug directory"}
+	u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, Thread: "saved", resumeArgv: []string{"/opt/my tools/mekugi", "--debug", "codex", "--yolo", "--enable", "instant_interrupt", "--high", "-c", "model='custom'"}, replayDebugDirectory: "/tmp/debug directory"})
 	var out bytes.Buffer
 	if err := u.writeExitSummary(&out, false); err != nil {
 		t.Fatal(err)
@@ -88,7 +88,7 @@ func TestUISnapshotAppServerExitSummaryOriginalArgv(t *testing.T) {
 
 func TestAppServerExitSummaryArgvRoundTrip(t *testing.T) {
 	argv := []string{"/opt/my tools/mekugi", "codex", "--yolo", "--high", "-c", "quoted='value'", "", "$(false); `false`", "tab\tline\n\x1b[2J"}
-	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, Thread: "saved", resumeArgv: argv, replayDebugDirectory: "/tmp/debug 'quoted'; $(false)"}
+	u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, Thread: "saved", resumeArgv: argv, replayDebugDirectory: "/tmp/debug 'quoted'; $(false)"})
 	var out bytes.Buffer
 	if err := u.writeExitSummary(&out, false); err != nil {
 		t.Fatal(err)

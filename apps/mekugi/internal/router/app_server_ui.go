@@ -21,7 +21,6 @@ import (
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
-	activitybinding "github.com/yusing/mekugi/modules/activity/codexbinding"
 
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 
@@ -153,11 +152,10 @@ type appServerUI struct {
 // StartAppServerUI starts the native terminal frontend without router observers.
 // Codex app-server owns execution; the launcher
 // still owns routing, environment, invocation-local configuration and cancellation.
-func StartAppServerUI(conversation *conversationmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, notices *notice.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
+func StartAppServerUI(conversation *conversationmodel.Service, observations *binding.Observation, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, notices *notice.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
 	faint, _ := terminalui.SupportsFaint(ctx, "auto")
 	issues := NewCriticalErrors(notices)
-	observations := activitybinding.Codex.Observation(activity)
-	return startAppServerUI(conversation, activity, service, prefs, nil, ctx, cmd, stdin, stdout, nil, issues, resumeThread, faint, nil, nil, resumeArgv, "", nil, &observations, approvals)
+	return startAppServerUI(conversation, activity, service, prefs, nil, ctx, cmd, stdin, stdout, nil, issues, resumeThread, faint, nil, nil, resumeArgv, "", nil, observations, approvals)
 }
 
 // Codex approval policy and the invocation-local Shell guard are independent.

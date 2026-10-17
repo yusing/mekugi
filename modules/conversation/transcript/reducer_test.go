@@ -6,8 +6,8 @@ import (
 
 	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/contracts/scope"
-	"github.com/yusing/mekugi/modules/activity/feed"
-	"github.com/yusing/mekugi/modules/activity/transcript"
+	"github.com/yusing/mekugi/modules/conversation/presentation"
+	"github.com/yusing/mekugi/modules/conversation/transcript"
 )
 
 func TestTranscriptPublicSummaryLifecycle(t *testing.T) {
@@ -99,7 +99,7 @@ func TestTranscriptChildFinalIsScopedToCompletedTurn(t *testing.T) {
 }
 
 func TestTranscriptHistoryAndAttachmentsAreIsolated(t *testing.T) {
-	var service feed.Service
+	var service presentation.Service
 	var first, second scope.Store
 	live := service.Transcript(&first)
 	stores, otherStores := transcriptScopes(), transcriptScopes()

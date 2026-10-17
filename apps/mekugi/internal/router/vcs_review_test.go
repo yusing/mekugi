@@ -184,7 +184,7 @@ func TestSessionUIReplayVCSKeepsRetainedEvidenceAcrossReset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := newUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
+	p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
 	t.Cleanup(p.close)
 	for range 2 {
 		if err := p.seek(3 * time.Second); err != nil {

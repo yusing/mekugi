@@ -7,10 +7,16 @@ import (
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
+	"github.com/yusing/mekugi/modules/conversation/transcript"
 )
 
 // Service accesses only conversation-owned entries in application scope stores.
-type Service struct{ session scope.Key[Session] }
+type Service struct {
+	session    scope.Key[Session]
+	transcript scope.Key[transcript.State]
+}
+
+func (s *Service) Transcript(store *scope.Store) *transcript.State { return s.transcript.Value(store) }
 
 func (s *Service) Session(store *scope.Store) *Session { return s.session.Value(store) }
 

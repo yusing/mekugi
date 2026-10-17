@@ -56,7 +56,7 @@ func TestSessionUIReplayTranscriptAttachmentQuestionSeek(t *testing.T) {
 		t.Fatal(err)
 	}
 	source.Cwd = cwd
-	p := newUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
+	p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
 	t.Cleanup(p.close)
 	var outgoing bytes.Buffer
 	p.ui.client.Input = replayDiscard{Writer: &outgoing}
@@ -179,7 +179,7 @@ func TestSessionUIReplayTranscriptMessageDeltaRetiresProviderThinking(t *testing
 		{Event: observation.Event{At: start.Add(time.Second), Kind: observation.ProviderStarted, ThreadID: "root", TurnID: "turn"}},
 		{Event: observation.Event{At: start.Add(2 * time.Second), Kind: observation.AgentDelta, ThreadID: "root", TurnID: "turn", ItemID: "answer", Item: observation.Item{ID: "answer", Type: "agentMessage"}, Delta: "Arrived without an item start"}},
 	}}
-	p := newUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
+	p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
 	t.Cleanup(p.close)
 	var outgoing bytes.Buffer
 	p.ui.client.Input = replayDiscard{Writer: &outgoing}

@@ -85,7 +85,7 @@ func TestCommandSegmentsBatchMixedCandidates(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(store.directory, legacycall.Name(workspace, reports.ID(turn.ID, corrupt.ID), false)), []byte("broken"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, segments: testReports(), ctx: t.Context(), Thread: "unrelated-current-thread", proxy: &mekugiProxy{replayStore: store}}
+	u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, segments: testReports(), ctx: t.Context(), Thread: "unrelated-current-thread", proxy: &mekugiProxy{replayStore: store}})
 	got := u.prepareCommandSegments("fork", workspace, turn)
 	catalog, err := store.publication.ReadCatalog(history.SessionName("fork"))
 	if err != nil {
@@ -127,7 +127,7 @@ func TestCommandSegmentsBatchRejectsUnretainedRecords(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(store.directory, history.SessionName("fork")), []byte("broken"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, segments: testReports(), ctx: t.Context(), proxy: &mekugiProxy{replayStore: store}}
+	u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, segments: testReports(), ctx: t.Context(), proxy: &mekugiProxy{replayStore: store}})
 	if got := u.prepareCommandSegments("fork", workspace, turn); got[item.ID] != nil {
 		t.Fatal("published a record without durable target ownership")
 	}
@@ -219,7 +219,7 @@ func BenchmarkCommandSegmentsBatchLargeHistory(b *testing.B) {
 			if err := store.put(b.Context(), workspace, histories); err != nil {
 				b.Fatal(err)
 			}
-			u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, segments: testReports(), ctx: b.Context(), proxy: &mekugiProxy{replayStore: store}}
+			u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, segments: testReports(), ctx: b.Context(), proxy: &mekugiProxy{replayStore: store}})
 			b.ReportAllocs()
 			iteration := 0
 			for b.Loop() {

@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/contracts/scope"
+	"github.com/yusing/mekugi/modules/activity"
+	"github.com/yusing/mekugi/modules/conversation"
 	"github.com/yusing/mekugi/modules/sessionhistory"
 	"github.com/yusing/mekugi/modules/sessionreplay"
 	"github.com/yusing/mekugi/modules/sessionreplay/playback"
@@ -57,5 +60,28 @@ func TestCompositionReplayRolloutAndOptionalTiming(t *testing.T) {
 				t.Fatalf("provider intervals=%d", source.Providers)
 			}
 		})
+	}
+}
+
+func TestCompositionConversationTranscriptWithoutActivity(t *testing.T) {
+	for _, withActivity := range []bool{false, true} {
+		var c Composition
+		conversation := c.Add(conversation.Module, func() conversation.Deps { return conversation.Deps{} })
+		if withActivity {
+			c.Add(activity.Module, func() activity.Deps { return activity.Deps{} })
+		}
+		runtime, err := c.Activate(t.Context(), new(binding.Registry))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := runtime.Close(t.Context()); err != nil {
+				t.Error(err)
+			}
+		})
+		var store scope.Store
+		if runtime.Observation == nil || runtime.Observation.NewTranscript(&store) != conversation.Value().Transcript(&store) {
+			t.Fatalf("Activity=%v: transcript did not use composed Conversation", withActivity)
+		}
 	}
 }

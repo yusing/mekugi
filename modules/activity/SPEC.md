@@ -111,23 +111,12 @@ Git or inheriting live enrichment caches. Rendering and disclosure remain termin
 
 ### Transcript observations
 
-Main and child messages and public reasoning share one interpretation across live
-observations, restored history and simulated replay. The application supplies
-[Conversation's](../conversation/SPEC.md) user-text, attachment and question-reply
-interpretation and retains input settlement. Activity correlates live facts within
-application-owned thread and turn scopes. Completion releases turn correlation;
-completed public-summary bodies follow feed retention instead.
-
-Provider thinking may precede a known turn, and item observations may arrive without
-a start event. Closed-turn starts and deltas cannot revive correlation. Authoritative
-late completions can update their original feed identities without consuming a newer
-turn's thinking or changing its answer selection. Historical projection is stateless.
-
-History preserves item identity and order without replacing live state or promoting
-older-page commentary. The [presentation contract](CONTRACT.md#authored-content)
-owns child-answer selection, public-summary disclosure and terminal pacing;
-[replay](../sessionreplay/SPEC.md#recorded-clock-and-synthetic-streaming) owns seek
-and reset behavior.
+Activity consumes [Conversation's transcript publications](../conversation/SPEC.md#transcript-observations)
+for Main and child messages and public reasoning across live observations, restored
+history and simulated replay. Conversation owns correlation and historical
+interpretation; the application retains input settlement. The
+[presentation contract](CONTRACT.md#authored-content) owns child-answer selection,
+public-summary disclosure and terminal pacing.
 
 ### Edit evidence
 

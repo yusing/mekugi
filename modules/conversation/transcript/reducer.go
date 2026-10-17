@@ -1,4 +1,5 @@
-// Package transcript reduces admitted text facts into the existing Activity feed.
+// Package transcript reduces admitted text facts into shared transcript publications.
+// Source: modules/activity/transcript/reducer.go:1:290@[7669af93]
 package transcript
 
 import (

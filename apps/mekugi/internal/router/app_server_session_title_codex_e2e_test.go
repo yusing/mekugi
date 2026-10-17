@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
@@ -135,7 +137,9 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 		if err := pty.Setsize(outer, &pty.Winsize{Cols: 160, Rows: 30}); err != nil {
 			t.Fatal(err)
 		}
-		wait, err := startAppServerUI(new(conversationmodel.Service), new(activitymodel.Service), testHistory(), testPreferences(), testReports(), runCtx, command(runCtx), inner, inner, nil, nil, resume, true, nil, nil, nil, "", naming, nil, false)
+		conversation := new(conversationmodel.Service)
+		observations := conversationbinding.Codex.Observation(conversation)
+		wait, err := startAppServerUI(conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), runCtx, command(runCtx), inner, inner, nil, nil, resume, true, nil, nil, nil, "", naming, &observations, false)
 		if err != nil {
 			t.Fatal(err)
 		}

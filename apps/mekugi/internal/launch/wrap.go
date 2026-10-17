@@ -288,7 +288,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 			if session.StartAppUI != nil {
 				waitCodex, err = session.StartAppUI(ctx, cmd, os.Stdin, os.Stdout, resumeThread, resumeArgv, approvals)
 			} else {
-				waitCodex, err = router.StartAppServerUI(frontends.Conversation, frontends.Activity, frontends.History, frontends.Preferences, frontends.Notifications, ctx, cmd, os.Stdin, os.Stdout, resumeThread, resumeArgv, approvals)
+				waitCodex, err = router.StartAppServerUI(frontends.Conversation, frontends.Observation, frontends.Activity, frontends.History, frontends.Preferences, frontends.Notifications, ctx, cmd, os.Stdin, os.Stdout, resumeThread, resumeArgv, approvals)
 			}
 		} else {
 			err = cmd.Start()

@@ -1,7 +1,7 @@
 # Conversation
 
-Conversation owns editable drafts, attachment identity, question and approval
-records, queued payload ordering and bounded side answers. Main, question answers,
+Conversation owns editable drafts, attachment identity, message and public-reasoning
+interpretation, question and approval records, queued payload ordering and bounded side answers. Main, question answers,
 approval reasons, queued input and side questions share the composer model.
 
 [Terminal session](../../apps/mekugi/internal/terminalsession/SPEC.md) owns geometry,
@@ -12,6 +12,27 @@ input, retains live requests and performs acquisition; [session control](../../a
 issues and settles host operations. Codex owns execution, acknowledgements and
 durable input history; the backend owns response encoding. Displaying a child
 transcript does not transfer Main's input or prompt ownership.
+
+## Transcript observations
+
+Main and child messages and public reasoning share one interpretation across live
+observations, restored history and simulated replay. Conversation correlates admitted
+facts in application-owned attachment, thread and turn scopes. Its composed Codex
+binding supplies the same transcript owner to native startup and offline replay;
+Activity consumes the resulting publications without owning conversation state.
+
+Completion releases turn correlation; completed public-summary bodies follow feed
+retention. Provider thinking may precede a known turn, and observations may arrive
+without a start event. Closed-turn starts and deltas cannot revive correlation.
+Authoritative late completions update their original identities without consuming a
+newer turn's thinking or changing its answer selection.
+
+Historical projection is stateless and preserves item identity and order without
+replacing live state or promoting older-page commentary. The Activity
+[presentation contract](../activity/CONTRACT.md#authored-content) owns child-answer
+selection, public-summary disclosure and terminal pacing;
+[replay](../sessionreplay/SPEC.md#recorded-clock-and-synthetic-streaming) owns seek
+and reset behavior. Omitting Activity's retention does not remove the transcript.
 
 ## Drafts and history
 

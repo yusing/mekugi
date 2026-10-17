@@ -373,7 +373,7 @@ func TestSessionUIReplayPTYWheelSpeedQuitAndRestore(t *testing.T) {
 			done := make(chan int, 1)
 			finished := false
 			go func() {
-				done <- RunSessionUIReplay(new(activitymodel.Service), replayTestService(t, new(transportcapture.Service)), ctx, []string{"--session", "root", "--from", "1s"}, slave, slave, stderr)
+				done <- runTestSessionUIReplay(new(activitymodel.Service), replayTestService(t, new(transportcapture.Service)), ctx, []string{"--session", "root", "--from", "1s"}, slave, slave, stderr)
 			}()
 			defer func() {
 				cancel()

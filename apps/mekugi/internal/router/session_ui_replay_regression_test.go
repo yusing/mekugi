@@ -37,7 +37,7 @@ func TestSessionUIReplayRetainsQuestionAnswerWait(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := newUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 4)
+	p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 4)
 	t.Cleanup(p.close)
 	var wire bytes.Buffer
 	p.ui.client.Input = replayDiscard{Writer: &wire}
@@ -71,7 +71,7 @@ func TestSessionUIReplayReasoningUsesRecordedItemStart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := newUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
+	p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
 	t.Cleanup(p.close)
 	for _, step := range []struct {
 		at   time.Duration
@@ -122,7 +122,7 @@ func TestSessionUIReplayRustAgentStatusShapesReachFinalWaitDisplay(t *testing.T)
 			t.Errorf("%s normalized status = %q, want %q", id, normalized[id].Status, status)
 		}
 	}
-	p := newUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
+	p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
 	t.Cleanup(p.close)
 	if err := p.advance(p.Until); err != nil {
 		t.Fatal(err)
@@ -204,7 +204,7 @@ func TestSessionUIReplayItemlessForkTurnUsesSettingsBoundary(t *testing.T) {
 			t.Fatalf("incorrect turn owner: %+v", event)
 		}
 	}
-	p := newUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
+	p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
 	t.Cleanup(p.close)
 	if err := p.advance(2 * time.Second); err != nil {
 		t.Fatal(err)
@@ -237,7 +237,7 @@ func TestSessionUIReplayEndPaintSettlesQueuedCommandOutput(t *testing.T) {
 		{Event: observation.Event{At: start.Add(500 * time.Millisecond), Kind: "item/commandExecution/outputDelta", ThreadID: "root", TurnID: "turn", ItemID: command.ID, Delta: output}},
 		{Event: observation.Event{At: end, Kind: "item/completed", ThreadID: "root", TurnID: "turn", ItemID: command.ID, Item: completed}},
 	}}
-	p := newUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
+	p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
 	t.Cleanup(p.close)
 	p.ui.view.Painter.Theme, p.ui.agents.Painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
 	if err := p.advance(500 * time.Millisecond); err != nil {

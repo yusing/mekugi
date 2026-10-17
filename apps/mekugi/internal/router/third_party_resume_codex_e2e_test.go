@@ -19,6 +19,8 @@ import (
 	"testing"
 	"time"
 
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
@@ -56,7 +58,9 @@ func startThirdPartyResumeTerminal(t *testing.T, newCommand func(context.Context
 	if err != nil {
 		t.Fatal(err)
 	}
-	wait, err := startAppServerUI(new(conversationmodel.Service), new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, newCommand(ctx), inner, inner, nil, nil, thread, true, nil, nil, argv, "", nil, nil, false)
+	conversation := new(conversationmodel.Service)
+	observations := conversationbinding.Codex.Observation(conversation)
+	wait, err := startAppServerUI(conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, newCommand(ctx), inner, inner, nil, nil, thread, true, nil, nil, argv, "", nil, &observations, false)
 	if err != nil {
 		t.Fatal(err)
 	}
