@@ -105,7 +105,7 @@ func (p *uiReplayPlayback) apply(e playback.Event) error {
 		}
 		result := p.ui.projectSessionEvent(e.Event, sessionEventFacts{})
 		if result.publish {
-			p.ui.applyActivity(result.entries, slices.Clone(p.ui.session.agents))
+			p.ui.applyActivity(result.entries, p.ui.session.roster())
 		}
 		// Playback selects recorded turns without creating or settling live
 		// control operations. Status uses the same admitted observation clock.

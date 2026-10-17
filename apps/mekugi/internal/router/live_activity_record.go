@@ -19,11 +19,8 @@ func (v *activityAdapter) sourceValues(index int) []activitypresentation.Value {
 // attachActivity transfers the initial adapter feed into the composed attachment.
 // Later frames retain the same model pointers; changing attachments drops both feeds.
 func (u *appServerUI) attachActivity() {
-	state := u.session.activity.Model[activitypresentation.Session[activityPaneEntry, activityPaneAgent]](u.session.Scope())
-	if state == nil {
-		return
-	}
-	if state.Commits == nil && u.replay == nil {
+	state := activitypresentation.Attached[activityPaneEntry, activityPaneAgent](u.session.Scope())
+	if state.Commits == nil && u.session.activity != nil && u.replay == nil {
 		ctx := u.ctx
 		if ctx == nil {
 			ctx = context.Background()

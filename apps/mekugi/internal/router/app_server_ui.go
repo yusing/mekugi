@@ -762,7 +762,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			u.restoreUsage(result.Thread)
 			u.observeCost(u.Thread, u.session.agent("/root"))
 			if u.agents != nil {
-				u.agents.apply(activityPaneEvent{Kind: "agents", Agents: slices.Clone(u.session.agents)})
+				u.agents.apply(activityPaneEvent{Kind: "agents", Agents: u.session.roster()})
 			}
 			if u.proxy != nil {
 				u.proxy.activity.attachNativePane(u.Thread)
@@ -776,7 +776,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 						u.Turn = turn.ID
 						u.sessionPresentation().Status.Started = u.now()
 						u.sessionPresentation().Status.SetText("Working")
-						u.session.agent("/root").Responding = true
+						u.session.lifecycle(u.Thread).ResumeActive()
 					}
 				}
 			}
@@ -1364,7 +1364,7 @@ func (u *appServerUI) applyObservedActivity() {
 		}
 	}
 	if usageChanged {
-		u.agents.apply(activityPaneEvent{Kind: "agents", Agents: slices.Clone(u.session.agents)})
+		u.agents.apply(activityPaneEvent{Kind: "agents", Agents: u.session.roster()})
 		u.dirty = true
 	}
 	entries := u.proxy.activity.takeNativeActivity(u.Thread)

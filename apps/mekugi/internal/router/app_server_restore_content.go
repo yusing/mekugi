@@ -13,7 +13,6 @@ import (
 
 	json "encoding/json/v2"
 	"fmt"
-	"slices"
 	"strconv"
 	"time"
 
@@ -145,8 +144,7 @@ func (u *appServerUI) readRestoredChildren() error {
 		info := r.threads[id]
 		u.session.registerThread(info)
 		u.restoreDiffThread(info, false)
-		agent := u.session.agent(u.session.paths[id])
-		agent.RestoreTiming(restoredAgentIntervals(info.Turns))
+		u.session.lifecycle(id).RestoreTiming(restoredAgentIntervals(info.Turns))
 	}
 	u.readRestoredRollouts()
 	for _, turn := range r.root.Turns {
@@ -164,7 +162,7 @@ func (u *appServerUI) readRestoredChildren() error {
 			}
 		}
 	}
-	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: slices.Clone(u.session.agents)})
+	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: u.session.roster()})
 	return u.readNextRestoredChild()
 }
 
@@ -280,7 +278,7 @@ func (u *appServerUI) applyRestoredActivity(entries []activityPaneEntry) {
 	for i := range entries {
 		entries[i].Agent = paneActivityAgent(entries[i])
 	}
-	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: entries, Agents: slices.Clone(u.session.agents)})
+	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: entries, Agents: u.session.roster()})
 	u.applyCapturedEdits()
 }
 
@@ -304,10 +302,12 @@ func (u *appServerUI) restoreActivityThread(info binding.ThreadInfo, olderPage b
 	agent := s.agent(name)
 	u.restoreContextUsage(agent, info)
 	u.restoreUsage(info)
-	agent.RestoreTiming(restoredAgentIntervals(info.Turns))
-	agent.Turns, agent.Responding = uint64(len(info.Turns)), false
+	page := u.restoring != nil && u.restoring.paging
+	if !page {
+		s.lifecycle(info.ID).Restore(restoredAgentIntervals(info.Turns), uint64(len(info.Turns)), false)
+	}
 	u.observeCost(info.ID, agent)
-	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: slices.Clone(s.agents)})
+	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: s.roster()})
 	var r *appServerActivityRestore
 	var itemAt map[string]time.Time
 	byTurn := make(map[int][]*restoredPlacement)
@@ -358,8 +358,9 @@ func (u *appServerUI) restoreActivityThread(info binding.ThreadInfo, olderPage b
 			}
 			place(slots[i+1])
 		}
-		agent = s.agent(name)
-		agent.Final = turn.Status == "completed"
+		if !page {
+			s.lifecycle(info.ID).RestoreFinal(turn.Status == "completed")
+		}
 		if !olderPage && (turn.Status == "failed" || turn.Status == "interrupted" || turn.Status == "inProgress") {
 			text := "Recorded turn: " + turn.Status + " (history only)"
 			if turn.Error != nil {

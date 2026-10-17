@@ -13,7 +13,6 @@ import (
 type Service struct {
 	details []activitydetail.Provider
 	outputs scope.Key[Retention]
-	model   scope.Key[any]
 }
 
 func New(details []activitydetail.Provider) (*Service, error) {
@@ -47,17 +46,4 @@ func (s *Service) Outputs(store *scope.Store) *Retention {
 		return nil
 	}
 	return s.outputs.Value(store)
-}
-
-// Model returns the binding's typed feed state for this attachment. A binding uses
-// one model type throughout an attachment. The store retires it with the outputs.
-func (s *Service) Model[T any](store *scope.Store) *T {
-	if s == nil {
-		return nil
-	}
-	slot := s.model.Value(store)
-	if *slot == nil {
-		*slot = new(T)
-	}
-	return (*slot).(*T)
 }

@@ -2,7 +2,6 @@ package router
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -84,7 +83,7 @@ func (u *appServerUI) hookEvent(method string, event binding.Notification) error
 		previousOutput.Release()
 	}
 	entry.Seq = s.next()
-	u.applyActivity([]activityPaneEntry{entry}, slices.Clone(s.agents))
+	u.applyActivity([]activityPaneEntry{entry}, s.roster())
 	return nil
 }
 

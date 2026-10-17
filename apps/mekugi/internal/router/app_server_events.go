@@ -120,7 +120,22 @@ func (s *appServerSession) agent(path string) *activityPaneAgent {
 	if index < 0 {
 		return nil
 	}
-	return &s.agents[index]
+	agent := &s.agents[index]
+	agent.AgentLifecycle = *s.lifecycle(agent.thread)
+	return agent
+}
+
+func (s *appServerSession) lifecycle(thread string) *activitypresentation.AgentLifecycle {
+	return activitypresentation.Attached[activityPaneEntry, activityPaneAgent](s.Scope()).Lifecycle(s.Thread(thread))
+}
+
+// roster publishes detached lifecycle values alongside the existing host and
+// usage metadata. Mutating a published value cannot change thread state.
+func (s *appServerSession) roster() []activityPaneAgent {
+	for i := range s.agents {
+		s.agents[i].AgentLifecycle = *s.lifecycle(s.agents[i].thread)
+	}
+	return slices.Clone(s.agents)
 }
 
 // path names a thread by its canonical agent path. A thread seen before its
@@ -220,7 +235,7 @@ func (u *appServerUI) sessionEvent(method string, p binding.Notification) (bool,
 		}
 	}
 	if result.publish {
-		u.applyActivity(result.entries, slices.Clone(s.agents))
+		u.applyActivity(result.entries, s.roster())
 	}
 	return result.handled, nil
 }
@@ -261,7 +276,8 @@ func (u *appServerUI) projectSessionEvent(p observation.Event, facts sessionEven
 		u.renameThreadActivity(old, s.paths[info.ID])
 
 	case "thread/status/changed":
-		agent := s.agent(s.path(p.ThreadID))
+		s.path(p.ThreadID)
+		agent := s.lifecycle(p.ThreadID)
 		switch p.ThreadStatus {
 		case "active":
 			agent.ObserveActive(true, now)
@@ -270,7 +286,7 @@ func (u *appServerUI) projectSessionEvent(p observation.Event, facts sessionEven
 		}
 	case "thread/tokenUsage/updated":
 		agent := s.agent(s.path(p.ThreadID))
-		agent.LastResponse = now // Usage arrives once per provider response.
+		s.lifecycle(p.ThreadID).Response(now)
 		agent.ContextWindow, agent.ContextKnown, agent.ContextTokens = p.Context.Window, p.Context.Known, p.Context.Tokens
 	case "turn/started", "turn/completed":
 		agent := s.agent(s.path(p.ThreadID))
@@ -279,7 +295,7 @@ func (u *appServerUI) projectSessionEvent(p observation.Event, facts sessionEven
 			active = agent.turn
 		}
 		updates := s.ObserveTurn(sessionpresentation.TurnModels{
-			Transcript: s.transcript, Waits: &s.waits, Agent: &agent.AgentLifecycle, Selected: active,
+			Transcript: s.transcript, Waits: &s.waits, Agent: s.lifecycle(p.ThreadID), Selected: active,
 		}, sessionpresentation.TurnObservation{
 			Kind: observation.Kind(method), Thread: p.ThreadID, Turn: p.TurnID,
 			Status: p.TurnStatus, At: now,

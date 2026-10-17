@@ -248,13 +248,10 @@ func (u *appServerUI) restoreMainHistory(turns []binding.HistoryTurn, placements
 			u.sessionPresentation().Status.SetText("Working")
 		}
 	}
-	root := u.session.agent("/root")
-	root.RestoreTiming(restoredAgentIntervals(turns))
-	root.Turns = uint64(len(turns))
-	root.Responding = u.Turn != ""
+	u.session.lifecycle(u.Thread).Restore(restoredAgentIntervals(turns), uint64(len(turns)), u.Turn != "")
 	// Keep future activity sequence numbers ahead of the hydrated transcript.
 	u.session.seq = max(u.session.seq, u.view.LastSeq)
-	u.applyActivity(nil, u.session.agents)
+	u.applyActivity(nil, u.session.roster())
 }
 
 func (u *appServerUI) applyRestoredMain(placements []*restoredPlacement) {

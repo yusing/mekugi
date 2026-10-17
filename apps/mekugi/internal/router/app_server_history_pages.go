@@ -328,7 +328,7 @@ func (u *appServerUI) renderChildHistoryPage(h *appServerChildHistory, turn bind
 	agent := *u.session.agent(name)
 	u.restoreActivityThread(info, page.Older)
 	*u.session.agent(name) = agent
-	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: slices.Clone(u.session.agents)})
+	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: u.session.roster()})
 	first := uint64(0)
 	for _, entry := range u.agents.Entries {
 		if entry.Source.Seq > before {
@@ -369,16 +369,16 @@ func (u *appServerUI) renderChildHistoryPage(h *appServerChildHistory, turn bind
 func (u *appServerUI) hydrateChildHistoryMetadata(h *appServerChildHistory) {
 	agent := u.session.agent(u.session.path(h.info.ID))
 	if !h.state.View(h.info.ID).Live {
-		agent.RestoreTiming(restoredAgentIntervals(h.info.Turns))
-		agent.Turns = max(agent.Turns, uint64(len(h.info.Turns)))
+		var final *bool
 		if len(h.info.Turns) > 0 {
-			agent.Final = h.info.Turns[len(h.info.Turns)-1].Status == "completed"
+			final = new(h.info.Turns[len(h.info.Turns)-1].Status == "completed")
 		}
+		u.session.lifecycle(h.info.ID).RestorePage(restoredAgentIntervals(h.info.Turns), uint64(len(h.info.Turns)), final)
 	}
 	u.restoreContextUsage(agent, h.info)
 	u.restoreUsage(h.info)
 	u.observeCost(h.info.ID, agent)
-	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: slices.Clone(u.session.agents)})
+	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: u.session.roster()})
 }
 
 // Insert the admitted source page through the shared model and terminal owners.

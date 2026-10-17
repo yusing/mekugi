@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/contracts/inference"
+	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
@@ -70,6 +71,27 @@ type Model[S Source, A AgentSource] struct {
 type Session[S Source, A AgentSource] struct {
 	Main, Children Model[S, A]
 	Commits        *CommitReader
+	agents         scope.Key[AgentLifecycle]
+}
+
+var attachedSession scope.Key[any]
+
+// Attached returns the existing presentation session for this attachment. A
+// binding uses one source/agent type pair throughout its attachment. Native
+// transcript and wait facts remain available without optional output retention.
+// Source: modules/activity/feed/service.go:52:63@1bcbdd5a.
+func Attached[S Source, A AgentSource](store *scope.Store) *Session[S, A] {
+	slot := attachedSession.Value(store)
+	if *slot == nil {
+		*slot = new(Session[S, A])
+	}
+	return (*slot).(*Session[S, A])
+}
+
+// Lifecycle owns admitted observations in the supplied thread scope. Copies
+// published into roster records remain detached from this authoritative value.
+func (s *Session[S, A]) Lifecycle(thread *scope.Store) *AgentLifecycle {
+	return s.agents.Value(thread)
 }
 
 const FeedLimit = 2000

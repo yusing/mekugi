@@ -216,9 +216,11 @@ detached bounded or expanded snapshots; the renderer has no retained handle.
 
 ## Lifecycle and integration
 
-The composed activity service keeps feed models, roster state and output retention
-in the application's attached session store. Main and children have distinct feeds
-and share output retention; separate attachments and offline
+The presentation session keeps feed models in the application's attached session
+store and agent lifecycle state in its thread stores. Adapters publish detached
+roster values; those values do not own lifecycle transitions. The optional composed
+service supplies output retention and asynchronous enrichment. Main and children
+have distinct feeds and share output retention; separate attachments and offline
 replay resets receive distinct stores. Confirmed replacement retires the old store;
 a failed replacement keeps it. Child display changes neither work scopes nor host
 operations. The application serializes access and retires thread/turn correlation
@@ -280,6 +282,8 @@ access to completed evidence.
 Output bounds disclose truncation or release. Omitting the composition entry stops
 attached output retention; host execution, command outcomes and bounded display
 tails continue. Retention does not introduce a second transcript or execution path.
+Admitted lifecycle observations still supply native wait-target selection and
+Conversation integration when the optional roster and retention are absent.
 
 ## Acceptance
 

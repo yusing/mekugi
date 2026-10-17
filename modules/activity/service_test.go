@@ -4,14 +4,24 @@ import (
 	"reflect"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi/contracts/activitydetail"
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/activity"
 	"github.com/yusing/mekugi/modules/activity/feed"
+	"github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/testsupport/moduletest"
 )
+
+type serviceSource struct{ presentation.Facts }
+
+func (s serviceSource) ActivityFacts() presentation.Facts { return s.Facts }
+
+type serviceAgent struct{ presentation.AgentFacts }
+
+func (a serviceAgent) ActivityAgent() presentation.AgentFacts { return a.AgentFacts }
 
 func TestServiceAttachmentOutputs(t *testing.T) {
 	if activity.Module.Lifetime != module.AttachedSession {
@@ -52,11 +62,24 @@ func TestServiceAttachmentOutputs(t *testing.T) {
 	if got := service.ActivityDetail(&mainAttachment, activitydetail.Request{}); len(got.Pages) != 0 || got.Selected != "" {
 		t.Fatalf("zero-provider host returned detail: %+v", got)
 	}
-	type model struct{ value string }
-	mainModel := service.Model[model](&mainAttachment)
-	mainModel.value = "retained model"
-	if service.Model[model](&mainAttachment) != mainModel || service.Model[model](&separateAttachment) == mainModel || service.Model[model](&separateAttachment).value != "" {
-		t.Fatal("zero-provider host lost attachment-local model state")
+	attached := presentation.Attached[serviceSource, serviceAgent](&mainAttachment)
+	var mainThread, childThread scope.Store
+	live := attached.Lifecycle(&mainThread)
+	live.TurnStarted(time.Unix(100, 0))
+	snapshot := *live
+	attached.Main.Agents = []serviceAgent{{presentation.AgentFacts{Name: "/root", Responding: snapshot.Responding}}}
+	live.TurnCompleted(true, time.Unix(105, 0))
+	if !snapshot.Responding || snapshot.Final || attached.Main.Status(attached.Main.Agents[0]) != "responding" {
+		t.Fatal("later lifecycle mutated a detached roster publication")
+	}
+	if same := presentation.Attached[serviceSource, serviceAgent](&mainAttachment); same != attached || same.Lifecycle(&mainThread) != live || !live.Final || live.Responding || live.WorkTimer.At(time.Unix(200, 0)) != 5*time.Second {
+		t.Fatal("attachment replaced its authoritative thread lifecycle")
+	}
+	if child := attached.Lifecycle(&childThread); child == live || child.Turns != 0 {
+		t.Fatal("child borrowed Main lifecycle")
+	}
+	if other := presentation.Attached[serviceSource, serviceAgent](&separateAttachment); other == attached || other.Lifecycle(&mainThread).Turns != 0 || len(other.Main.Agents) != 0 {
+		t.Fatal("separate attachment reused presentation state")
 	}
 }
 

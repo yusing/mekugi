@@ -3,8 +3,6 @@ package router
 import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 
-	"slices"
-
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
@@ -43,7 +41,7 @@ func (u *appServerUI) applyThreadMetadata(m appserver.Message) bool {
 		old := u.session.path(thread)
 		u.session.registerThread(info)
 		u.renameThreadActivity(old, u.session.paths[thread])
-		u.applyActivity(nil, slices.Clone(u.session.agents))
+		u.applyActivity(nil, u.session.roster())
 		return true
 	}
 	return false

@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/contracts/scope"
-	"github.com/yusing/mekugi/modules/activity/feed"
 )
 
 type modelSource struct {
@@ -79,9 +78,8 @@ func TestModelRosterAndSummary(t *testing.T) {
 }
 
 func TestModelSkillsAndAttachmentLifetime(t *testing.T) {
-	service := new(feed.Service)
 	var first, second scope.Store
-	model := &service.Model[Session[modelSource, modelAgent]](&first).Children
+	model := &Attached[modelSource, modelAgent](&first).Children
 	model.Append(modelSource{Facts: Facts{Seq: 1, Agent: "/root/a", Live: true}}, []Value{{Kind: "op", Verb: "Attached skill", Label: "review"}})
 	model.Trim(0)
 	if !slices.Equal(model.ActiveSkills()["/root/a"], SkillSet{"review"}) {
@@ -106,11 +104,11 @@ func TestModelSkillsAndAttachmentLifetime(t *testing.T) {
 	if model.NeedsSkillHistory("/root/b") || len(model.ActiveSkills()["/root/b"]) != 0 {
 		t.Fatal("known-empty restoration was lost")
 	}
-	same := service.Model[Session[modelSource, modelAgent]](&first)
+	same := Attached[modelSource, modelAgent](&first)
 	if &same.Children != model {
 		t.Fatal("attachment duplicated its model")
 	}
-	if other := service.Model[Session[modelSource, modelAgent]](&second); other == same || len(other.Children.Entries) != 0 {
+	if other := Attached[modelSource, modelAgent](&second); other == same || len(other.Children.Entries) != 0 {
 		t.Fatal("separate attachment reused feed state")
 	}
 }

@@ -99,7 +99,7 @@ func TestAppServerWaitTargetsCallerTurnAndItemIsolation(t *testing.T) {
 	if !slices.Equal(child.WaitTargets, []activitypresentation.WaitTarget{{Name: "/root/alpha/nested"}}) {
 		t.Fatalf("child borrowed self, idle, or sibling targets: %+v", child)
 	}
-	u.session.agent("/root/alpha/nested").Responding = false
+	appServerTestNotify(t, u, "thread/status/changed", map[string]any{"threadId": "nested", "status": map[string]any{"type": "idle"}})
 	waitTargetTestAgent(t, u, "later", "/root/alpha/later", true)
 	for _, key := range [][2]string{{"next", "w"}, {"t", "other"}} {
 		_, got, _ := u.itemProgress(item.Observation(), "a", key[0], key[1], "item/started", true)
@@ -130,56 +130,72 @@ func TestAppServerWaitTargetsExplicitStatusMapping(t *testing.T) {
 }
 
 func TestAppServerWaitTargetsDurableReplay(t *testing.T) {
-	workspace, store := t.TempDir(), waitTargetTestOpenStore(t)
-	first := newAppServerSessionTestUI(t, workspace)
-	waitTargetTestStore(t, first, store)
-	waitTargetTestAgent(t, first, "a", "/root/alpha", true)
-	waitTargetTestAgent(t, first, "nested", "/root/alpha/nested", true)
-	for _, caller := range []string{"main", "a"} {
-		waitTargetTestEvent(t, first, "item/started", caller, "t", "w")
-	}
-	history := []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{{ID: "w", Type: "collabAgentToolCall", Tool: "wait", Status: "completed"}}}}
-	restored := newAppServerSessionTestUI(t, workspace)
-	waitTargetTestStore(t, restored, store)
-	restored.restoreHistory(history)
-	if restored.view.Entries[0].Source.native.wait == nil {
-		t.Fatal("restored wait lacks structured roster status")
-	}
-	if got := restored.view.Entries[0].Source.Text; got != "Finished waiting · alpha, alpha/nested" {
-		t.Fatalf("main replay lost targets: %q", got)
-	}
-	if rendered := restored.view.RenderFeed(120, 30).Lines; len(rendered) != 0 {
-		t.Fatalf("restored wait leaked into transcript: %q", rendered)
-	}
-	rendered, _ := restored.agents.testCurrent(activityPaneAgent{Name: "/root"}, time.Now())
-	if !strings.Contains(rendered, terminalui.DimAgentColor("/root/alpha")+"alpha") {
-		t.Fatalf("restored wait lost color: %q", rendered)
-	}
-	restored.session.registerThread(binding.ThreadInfo{ID: "a", AgentNickname: "alpha"})
-	restored.restoreActivityThread(binding.ThreadInfo{ID: "a", Turns: history}, false)
-	if got := restored.agents.Entries[0].Source.Text; got != "Finished waiting · alpha/nested" {
-		t.Fatalf("child replay lost targets: %q", got)
-	}
-	if restored.Turn != "" {
-		t.Fatal("replay revived main turn")
-	}
-	for _, agent := range restored.session.agents {
-		if agent.Responding {
-			t.Fatalf("replay revived agent: %+v", agent)
-		}
-	}
-	for _, dir := range []string{t.TempDir(), workspace} {
-		fresh := newAppServerSessionTestUI(t, dir)
-		freshStore := store
-		if dir == workspace {
-			freshStore = waitTargetTestOpenStore(t)
-		}
-		waitTargetTestStore(t, fresh, freshStore)
-		waitTargetTestAgent(t, fresh, "today", "/root/today", true)
-		fresh.restoreHistory(history)
-		if got := fresh.view.Entries[0].Source.Text; got != "Finished waiting" {
-			t.Fatalf("missing scoped evidence inferred targets: %q", got)
-		}
+	for _, absent := range []bool{false, true} {
+		t.Run(map[bool]string{false: "present", true: "absent"}[absent], func(t *testing.T) {
+			workspace, store := t.TempDir(), waitTargetTestOpenStore(t)
+			first := newAppServerSessionTestUI(t, workspace)
+			if absent {
+				first.session.activity = nil
+			}
+			waitTargetTestStore(t, first, store)
+			waitTargetTestAgent(t, first, "a", "/root/alpha", true)
+			waitTargetTestAgent(t, first, "nested", "/root/alpha/nested", true)
+			waitTargetTestAgent(t, first, "idle", "/root/idle", true)
+			appServerTestNotify(t, first, "thread/status/changed", map[string]any{"threadId": "idle", "status": map[string]any{"type": "idle"}})
+			for _, caller := range []string{"main", "a"} {
+				waitTargetTestEvent(t, first, "item/started", caller, "t", "w")
+			}
+			appServerTestNotify(t, first, "turn/completed", map[string]any{"threadId": "a", "turn": map[string]any{"id": "work", "status": "completed"}})
+			history := []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{{ID: "w", Type: "collabAgentToolCall", Tool: "wait", Status: "completed"}}}}
+			restored := newAppServerSessionTestUI(t, workspace)
+			if absent {
+				restored.session.activity = nil
+			}
+			waitTargetTestStore(t, restored, store)
+			restored.restoreHistory(history)
+			if restored.view.Entries[0].Source.native.wait == nil {
+				t.Fatal("restored wait lacks structured roster status")
+			}
+			if got := restored.view.Entries[0].Source.Text; got != "Finished waiting · alpha, alpha/nested" {
+				t.Fatalf("main replay lost targets: %q", got)
+			}
+			if rendered := restored.view.RenderFeed(120, 30).Lines; len(rendered) != 0 {
+				t.Fatalf("restored wait leaked into transcript: %q", rendered)
+			}
+			rendered, _ := restored.agents.testCurrent(activityPaneAgent{Name: "/root"}, time.Now())
+			if !strings.Contains(rendered, terminalui.DimAgentColor("/root/alpha")+"alpha") {
+				t.Fatalf("restored wait lost color: %q", rendered)
+			}
+			restored.session.registerThread(binding.ThreadInfo{ID: "a", AgentNickname: "alpha"})
+			restored.restoreActivityThread(binding.ThreadInfo{ID: "a", Turns: history}, false)
+			if got := restored.agents.Entries[0].Source.Text; got != "Finished waiting · alpha/nested" {
+				t.Fatalf("child replay lost targets: %q", got)
+			}
+			if restored.Turn != "" {
+				t.Fatal("replay revived main turn")
+			}
+			for _, agent := range restored.session.agents {
+				if agent.Responding {
+					t.Fatalf("replay revived agent: %+v", agent)
+				}
+			}
+			for _, dir := range []string{t.TempDir(), workspace} {
+				fresh := newAppServerSessionTestUI(t, dir)
+				if absent {
+					fresh.session.activity = nil
+				}
+				freshStore := store
+				if dir == workspace {
+					freshStore = waitTargetTestOpenStore(t)
+				}
+				waitTargetTestStore(t, fresh, freshStore)
+				waitTargetTestAgent(t, fresh, "today", "/root/today", true)
+				fresh.restoreHistory(history)
+				if got := fresh.view.Entries[0].Source.Text; got != "Finished waiting" {
+					t.Fatalf("missing scoped evidence inferred targets: %q", got)
+				}
+			}
+		})
 	}
 }
 

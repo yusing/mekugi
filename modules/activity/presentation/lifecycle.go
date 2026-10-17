@@ -43,6 +43,35 @@ func (a *AgentLifecycle) TurnCompleted(completed bool, at time.Time) {
 	a.Responding, a.LastResponse, a.Final = false, at, completed
 }
 
+// Response records provider response age independently of the active work clock.
+// Source: apps/mekugi/internal/router/app_server_events.go:335@1bcbdd5a.
+func (a *AgentLifecycle) Response(at time.Time) { a.LastResponse = at }
+
+// ResumeActive keeps host-confirmed input admission without reviving a clock.
+// Source: apps/mekugi/internal/router/app_server_ui.go:780@1bcbdd5a.
+func (a *AgentLifecycle) ResumeActive() { a.Responding = true }
+
+// Restore replaces admitted history without replaying turn transitions.
+// Source: apps/mekugi/internal/router/app_server_resume.go:252:254@1bcbdd5a.
+func (a *AgentLifecycle) Restore(intervals iter.Seq2[time.Time, time.Time], turns uint64, responding bool) {
+	a.RestoreTiming(intervals)
+	a.Turns, a.Responding = turns, responding
+}
+
+// Source: apps/mekugi/internal/router/app_server_restore_content.go:362@1bcbdd5a.
+func (a *AgentLifecycle) RestoreFinal(completed bool) { a.Final = completed }
+
+// RestorePage extends known history; the caller excludes pages superseded by
+// live observations. Missing final evidence does not clear an existing outcome.
+// Source: apps/mekugi/internal/router/app_server_history_pages.go:372:376@1bcbdd5a.
+func (a *AgentLifecycle) RestorePage(intervals iter.Seq2[time.Time, time.Time], turns uint64, final *bool) {
+	a.RestoreTiming(intervals)
+	a.Turns = max(a.Turns, turns)
+	if final != nil {
+		a.Final = *final
+	}
+}
+
 // RestoreTiming replaces observed endpoints and closed work intervals without
 // changing response state or reviving a live clock. The caller supplies decoded
 // start/end instants and keeps its live-versus-historical admission policy.
