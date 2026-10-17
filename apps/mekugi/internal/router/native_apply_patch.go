@@ -40,7 +40,7 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 			continue // Outer completion cannot finish a still-running nested edit.
 		}
 		derivedCallID := legacycall.PatchCallID(callID, index)
-		if retained, found, err := p.replayStore.lookup(ctx, workspace, derivedCallID); err != nil {
+		if retained, found, err := p.retained.Store.LookupHostCall(ctx, workspace, derivedCallID); err != nil {
 			return err
 		} else if found {
 			if retained.CorrelationID != callID+"\x00"+strconv.Itoa(index) || retained.Script != observation.Input {
@@ -53,9 +53,9 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 		// Attempts remain durable, but IDs select actual or incomplete file
 		// evidence, not successful no-ops or rejected patches with no effects.
 		changeID := ""
-		if len(reviews) != 0 && p.replayStore != nil {
+		if len(reviews) != 0 && p.retained.Store != nil {
 			var err error
-			changeID, err = p.replayStore.changes.Reserve(ctx, p.replayStore.scoped(ctx).changeScope(), workspace, thread, correlation)
+			changeID, err = p.changeSource.Reserve(ctx, observationScope(ctx, p.retained), workspace, thread, correlation)
 			if err != nil {
 				return changeError(err)
 			}
@@ -110,11 +110,11 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 		if !complete && attempt.Report != "" {
 			attempt.Report += "\nMekugi could not capture complete file evidence."
 		}
-		if err := p.replayStore.put(context.WithoutCancel(ctx), workspace, map[string]mekugiHistory{derivedCallID: attempt}); err != nil {
+		if err := publishObservations(context.WithoutCancel(ctx), p.retained, p.changeSource, p.publishChanges, workspace, map[string]mekugiHistory{derivedCallID: attempt}); err != nil {
 			return changeError(err)
 		}
 		if len(reviews) != 0 {
-			_ = p.replayStore.publishEditReceipt(context.WithoutCancel(ctx), workspace, thread, derivedCallID, p.activity, responses.StringField(history.UpstreamItem, "id"))
+			_ = publishEditReceipt(context.WithoutCancel(ctx), p.retained, p.changeSource, workspace, thread, derivedCallID, p.activity, responses.StringField(history.UpstreamItem, "id"))
 		}
 	}
 	return nil

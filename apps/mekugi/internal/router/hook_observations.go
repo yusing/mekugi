@@ -36,7 +36,7 @@ func (s *appServerSession) retainHook(thread string, observation history.HookObs
 			if err != nil {
 				return err
 			}
-			if len(data) <= maxReplayRecordBytes {
+			if len(data) <= history.MaxRecordBytes {
 				return writeRetainedRecord(tx, s.waitThread, s.waitLimits, history.HookObservationsName(s.cwd, thread), "hooks-pending-", data)
 			}
 			if len(r.Runs) < 2 {

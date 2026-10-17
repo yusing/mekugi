@@ -194,7 +194,7 @@ func TestAppServerSavedReviewHydrationKeepsTerminalResponsive(t *testing.T) {
 	release := sync.OnceFunc(func() { close(blocked.release) })
 	defer release()
 	proxy := newManagedMekugiProxy(t)
-	proxy.replayStore = store
+	setTestProxyStore(proxy, store)
 	proxy.review.IncludeThread(workspace, "main", true)
 
 	master, terminal, err := pty.Open()

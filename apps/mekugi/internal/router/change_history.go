@@ -8,9 +8,6 @@ import (
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 )
 
-func (s *mekugiReplayStore) changeScope() changes.Scope {
-	return changes.Scope{Store: s.publication, Namespace: s.session.Namespace, Thread: s.session.Thread, Limits: s.retentionLimits(), Writes: s.writes}
-}
 func changePublications(histories map[string]mekugiHistory) map[string]changes.Publication {
 	result := make(map[string]changes.Publication, len(histories))
 	for id, value := range histories {
@@ -28,8 +25,8 @@ func changeError(err error) error {
 	}
 	return err
 }
-func (s *mekugiReplayStore) notifyChanges(updates []changes.Update) {
-	if s.liveDiff != nil && len(updates) != 0 {
-		s.liveDiff(updates)
+func notifyChanges(publish func([]changes.Update), updates []changes.Update) {
+	if publish != nil && len(updates) != 0 {
+		publish(updates)
 	}
 }

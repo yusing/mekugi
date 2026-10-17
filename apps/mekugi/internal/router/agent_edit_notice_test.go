@@ -65,11 +65,11 @@ func assertEditNotice(t *testing.T, ctx context.Context, proxy *mekugiProxy, wor
 		}
 		return
 	}
-	record, found, err := proxy.replayStore.lookup(ctx, workspace, recordCall)
+	record, found, err := testProxyStore(proxy).lookup(ctx, workspace, recordCall)
 	if err != nil || !found || record.ChangeID == "" {
 		t.Fatalf("missing durable change for %s: %+v found=%v err=%v", recordCall, record, found, err)
 	}
-	summary, err := proxy.replayStore.changes.Read(ctx, proxy.replayStore.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{record.ChangeID}, View: "summary"})
+	summary, err := testProxyStore(proxy).changes.Read(ctx, testProxyStore(proxy).scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{record.ChangeID}, View: "summary"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +211,7 @@ func TestAgentEditNoticeRetainsAllIDsWhenStatisticsTruncate(t *testing.T) {
 	var ids []string
 	for index := range 2 {
 		call := legacycall.PatchCallID("many-patches", index)
-		id, err := proxy.replayStore.changes.Reserve(t.Context(), proxy.replayStore.scoped(t.Context()).changeScope(), workspace, "author", call)
+		id, err := testProxyStore(proxy).changes.Reserve(t.Context(), testProxyStore(proxy).scoped(t.Context()).changeScope(), workspace, "author", call)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -221,13 +221,13 @@ func TestAgentEditNoticeRetainsAllIDsWhenStatisticsTruncate(t *testing.T) {
 			path := fmt.Sprintf("%d-%d-%s", index, number, strings.Repeat("x", 600))
 			files = append(files, diffmodel.ReviewFile{AfterPath: path, Diff: "add \"\" -> \"" + path + "\"\n"})
 		}
-		if err := proxy.replayStore.put(t.Context(), workspace, map[string]mekugiHistory{call: {
+		if err := testProxyStore(proxy).put(t.Context(), workspace, map[string]mekugiHistory{call: {
 			ChangeID: id, CorrelationID: call, ReviewFiles: files,
 		}}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	notice, err := proxy.replayStore.agentEditNotice(t.Context(), workspace, "many-patches", mekugiHistory{NativePatches: make([]changecapture.PatchObservation, 2)})
+	notice, err := testProxyStore(proxy).agentEditNotice(t.Context(), workspace, "many-patches", mekugiHistory{NativePatches: make([]changecapture.PatchObservation, 2)})
 	if err != nil {
 		t.Fatal(err)
 	}

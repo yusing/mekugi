@@ -5,17 +5,17 @@ import (
 	"slices"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
-
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 )
 
 // Source: apps/mekugi/internal/router/mekugi_response_transform.go:340:385@470b8a37.
-func executionCaptureEnvironment(ctx context.Context, directory string, store *mekugiReplayStore, patches []changecapture.PatchObservation) changecapture.Options {
+func executionCaptureEnvironment(ctx context.Context, directory string, selected changes.Scope, source changes.Service, snapshots *changecapture.Workspaces, patches []changecapture.PatchObservation) changecapture.Options {
 	env := changecapture.Options{Directory: directory}
-	if store != nil {
-		env.Changes = storeChangeResolver(ctx, store)
-		env.Workspaces = store.snapshots
+	if selected.Store != nil {
+		env.Changes = storeChangeResolver(ctx, selected, source)
+		env.Workspaces = snapshots
 	}
 	for _, patch := range patches {
 		for _, file := range patch.Files {

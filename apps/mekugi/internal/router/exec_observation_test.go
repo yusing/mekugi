@@ -303,7 +303,7 @@ func retainCommandObservation(t *testing.T, transform *mekugiResponseTransform, 
 	if !ok {
 		t.Fatal("invalid retained command fixture")
 	}
-	observation, observed := changecapture.Capture(transform.ctx, []commandanalysis.Command{command}, false, false, executionCaptureEnvironment(transform.ctx, transform.directory, transform.retained, nil))
+	observation, observed := changecapture.Capture(transform.ctx, []commandanalysis.Command{command}, false, false, executionCaptureEnvironment(transform.ctx, transform.directory, transform.retained, transform.changeSource, transform.snapshots, nil))
 	if !observed {
 		return
 	}
@@ -370,7 +370,7 @@ func TestNativeExecCommandRecordsDeclaredEffects(t *testing.T) {
 			if test.yielded {
 				items = append(items, map[string]any{"type": "function_call_output", "call_id": "exec-call", "output": nativeExecOutput("Process running with session ID 9")})
 				reconcileExecItems(t, proxy, workspace, items)
-				if _, found, _ := proxy.replayStore.lookup(t.Context(), workspace, "exec-call:exec:1"); found {
+				if _, found, _ := testProxyStore(proxy).lookup(t.Context(), workspace, "exec-call:exec:1"); found {
 					t.Fatal("a running session was finalized")
 				}
 				items = append(items,
@@ -381,7 +381,7 @@ func TestNativeExecCommandRecordsDeclaredEffects(t *testing.T) {
 				items = append(items, map[string]any{"type": "function_call_output", "call_id": "exec-call", "output": nativeExecOutput("Process exited with code " + test.exit)})
 			}
 			next := reconcileExecItems(t, proxy, workspace, items)
-			history, found, err := proxy.replayStore.lookup(t.Context(), workspace, "exec-call:exec:1")
+			history, found, err := testProxyStore(proxy).lookup(t.Context(), workspace, "exec-call:exec:1")
 			if err != nil || !found || history.ChangeID == "" || len(history.ReviewFiles) != 1 {
 				t.Fatalf("derived record = %+v found=%v err=%v", history, found, err)
 			}
@@ -392,7 +392,7 @@ func TestNativeExecCommandRecordsDeclaredEffects(t *testing.T) {
 				if history.ExecOutcome.OutputRef == "" {
 					t.Fatal("failed host result has no durable mread reference")
 				}
-				store, err := openMekugiReplayStore(proxy.replayStore.directory)
+				store, err := openMekugiReplayStore(testProxyStore(proxy).directory)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -401,7 +401,7 @@ func TestNativeExecCommandRecordsDeclaredEffects(t *testing.T) {
 					t.Fatalf("failed output reference is not readable after restart: %+v, %v", output, err)
 				}
 			}
-			changes, err := proxy.replayStore.changes.Read(next.ctx, proxy.replayStore.scoped(next.ctx).changeScope(), changes.Query{
+			changes, err := testProxyStore(proxy).changes.Read(next.ctx, testProxyStore(proxy).scoped(next.ctx).changeScope(), changes.Query{
 				Workspace: workspace, IDs: []string{history.ChangeID}, View: "history", MaxTokens: 4000,
 			})
 			if err != nil || !strings.Contains(changes, "-gone") || !strings.Contains(changes, "exec_command input:\nrm a.txt") ||
@@ -410,7 +410,7 @@ func TestNativeExecCommandRecordsDeclaredEffects(t *testing.T) {
 			}
 			// Replay of the same visible input neither re-reads nor re-allocates.
 			reconcileExecItems(t, proxy, workspace, items)
-			again, _, _ := proxy.replayStore.lookup(t.Context(), workspace, "exec-call:exec:1")
+			again, _, _ := testProxyStore(proxy).lookup(t.Context(), workspace, "exec-call:exec:1")
 			if again.ChangeID != history.ChangeID {
 				t.Fatalf("replay reallocated change %s -> %s", history.ChangeID, again.ChangeID)
 			}
@@ -432,7 +432,7 @@ func TestNativeExecCommandWithoutEffectAllocatesNoChange(t *testing.T) {
 		map[string]any{"type": "function_call", "call_id": "exec-call", "name": nativeExecCommandToolName, "arguments": arguments},
 		map[string]any{"type": "function_call_output", "call_id": "exec-call", "output": nativeExecOutput("Process exited with code 0")},
 	})
-	history, found, err := proxy.replayStore.lookup(t.Context(), workspace, "exec-call:exec:1")
+	history, found, err := testProxyStore(proxy).lookup(t.Context(), workspace, "exec-call:exec:1")
 	if err != nil || !found || history.ChangeID != "" || len(history.ReviewFiles) != 0 {
 		t.Fatalf("empty observation = %+v found=%v err=%v", history, found, err)
 	}
@@ -472,7 +472,7 @@ func TestReadCommandFormsAllocateNoChanges(t *testing.T) {
 					if _, err := proxy.reconcileVisibleInput(transform.ctx, &request, workspace, transform.historySessionID); err != nil {
 						t.Fatal(err)
 					}
-					index, err := proxy.replayStore.changes.Inspect(proxy.replayStore.changeScope(), workspace)
+					index, err := testProxyStore(proxy).changes.Inspect(testProxyStore(proxy).changeScope(), workspace)
 					if err != nil || len(index.Changes) != 0 {
 						t.Fatalf("read-only exec command allocated changes: %+v, %v", index, err)
 					}
@@ -485,7 +485,7 @@ func TestReadCommandFormsAllocateNoChanges(t *testing.T) {
 						map[string]any{"type": "function_call", "call_id": "exec-call", "name": nativeExecCommandToolName, "arguments": arguments},
 						map[string]any{"type": "function_call_output", "call_id": "exec-call", "output": nativeExecOutput("Process exited with code 0")},
 					})
-					index, err := proxy.replayStore.changes.Inspect(proxy.replayStore.changeScope(), workspace)
+					index, err := testProxyStore(proxy).changes.Inspect(testProxyStore(proxy).changeScope(), workspace)
 					if err != nil || len(index.Changes) != 0 {
 						t.Fatalf("read-only native command allocated changes: %+v, %v", index, err)
 					}
@@ -520,7 +520,7 @@ func TestCodeModeExecCommandRecordsUnconfirmedEffects(t *testing.T) {
 	if _, err := proxy.reconcileVisibleInput(transform.ctx, &request, workspace, transform.historySessionID); err != nil {
 		t.Fatal(err)
 	}
-	history, found, err := proxy.replayStore.lookup(t.Context(), workspace, "code-call:effects")
+	history, found, err := testProxyStore(proxy).lookup(t.Context(), workspace, "code-call:effects")
 	if err != nil || !found || history.ChangeID == "" || len(history.ReviewFiles) != 1 {
 		t.Fatalf("exec record = %+v found=%v err=%v", history, found, err)
 	}
@@ -534,7 +534,7 @@ func TestCodeModeExecCommandRecordsUnconfirmedEffects(t *testing.T) {
 		stockRolloutItem(call),
 	)
 	var stdout, stderr strings.Builder
-	if code := inspectioncli.RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), t.Context(), []string{"--session", rollout, "--replay-dir", proxy.replayStore.directory}, &stdout, &stderr); code != 0 {
+	if code := inspectioncli.RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), t.Context(), []string{"--session", rollout, "--replay-dir", testProxyStore(proxy).directory}, &stdout, &stderr); code != 0 {
 		t.Fatalf("inspection: %d %s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), `"outcome":"unconfirmed"`) ||

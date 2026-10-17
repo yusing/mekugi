@@ -26,7 +26,7 @@ func TestStorageCompletionIndependentOfAnswerPresentation(t *testing.T) {
 					t.Fatal(err)
 				}
 				proxy := newManagedMekugiProxy(t)
-				proxy.replayStore = store
+				setTestProxyStore(proxy, store)
 				request := activityAdmissionRequest(t, nil)
 				transform, err := proxy.prepareRequest(t.Context(), &request, "routing", "thread", codexresponses.TurnMetadata{RequestKind: "turn", ThreadID: "thread", Directories: map[string]json.RawMessage{t.TempDir(): nil}}, true)
 				if err != nil {

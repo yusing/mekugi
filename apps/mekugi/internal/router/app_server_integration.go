@@ -5,7 +5,10 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/nativetrace"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 	segments "github.com/yusing/mekugi/modules/commandsegments/segments"
+	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 )
 
@@ -18,7 +21,11 @@ type appServerIntegration struct {
 	review              *sessionreview.Review
 	execWindows         *execWindowRegistry
 	nativeTrace         *nativetrace.Reader
-	retained            *mekugiReplayStore
+	retained            changes.Scope
+	changeSource        changes.Service
+	snapshots           *changecapture.Workspaces
+	recovered           *recovery.Service
+	publishChanges      func([]changes.Update)
 	captureNotice       func(string, string, string, string)
 	guard               *sessioncontrol.ShellApprovals
 	guards              []binding.ShellApproval

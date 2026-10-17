@@ -4,15 +4,18 @@ import (
 	"context"
 	"errors"
 
+	"github.com/yusing/mekugi/libraries/persistence"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
-func (s *mekugiReplayStore) prepareHandleScope(ctx context.Context, metadata codexresponses.TurnMetadata) (context.Context, error) {
-	if s == nil {
+func prepareHandleScope(ctx context.Context, store *history.Store, writes *persistence.Counter, metadata codexresponses.TurnMetadata) (context.Context, error) {
+	if store == nil {
 		return ctx, nil
 	}
 	identity, _ := ctx.Value(storageSessionKey{}).(storageSessionIdentity)
-	err := s.locked(ctx, func(s *mekugiReplayStore) error {
+	err := store.Transaction(ctx, writes, func(*history.Transaction) error {
 		if metadata.ThreadID != "" && metadata.ThreadID != identity.Thread ||
 			metadata.SubagentKind != "" && metadata.ParentThreadID == "" {
 			return nil // Invalid auxiliary ancestry cannot change a retained binding.
@@ -26,7 +29,7 @@ func (s *mekugiReplayStore) prepareHandleScope(ctx context.Context, metadata cod
 				return errors.New("handle scope parent cannot refer to itself")
 			}
 			var err error
-			identity.Namespace, err = s.publication.NamespaceForThread(identity.Parent)
+			identity.Namespace, err = store.NamespaceForThread(identity.Parent)
 			return err
 		}
 		if metadata.SubagentKind == "" {

@@ -38,10 +38,10 @@ func validateProviderContext(input jsonv1.RawMessage) error {
 // Compaction can carry the first completed host result for an observed edit.
 // Retain that evidence without projecting changes into the provider request.
 func (p *mekugiProxy) observeCompactionInput(ctx context.Context, request *codexresponses.Request, session, thread string, metadata codexresponses.TurnMetadata) error {
-	if p == nil || p.replayStore == nil || thread == "" {
+	if p == nil || p.retained.Store == nil || thread == "" {
 		return nil
 	}
-	ctx, release, err := beginRetainedSession(ctx, p.replayStore.publication, p.replayStore.writes, p.replayStore.retentionLimits(), thread, session)
+	ctx, release, err := beginRetainedSession(ctx, p.retained.Store, p.retained.Writes, p.retained.Limits, thread, session)
 	if err != nil {
 		return err
 	}
@@ -51,15 +51,15 @@ func (p *mekugiProxy) observeCompactionInput(ctx context.Context, request *codex
 		return errors.New("compaction observation requires one valid workspace")
 	}
 	if workspace == "" {
-		err = p.replayStore.locked(ctx, func(store *mekugiReplayStore) error {
-			workspace, err = store.retainedCallWorkspace(thread)
+		err = p.retained.Store.Transaction(ctx, p.retained.Writes, func(*history.Transaction) error {
+			workspace, err = retainedCallWorkspace(p.retained.Store, thread)
 			return err
 		})
 		if err != nil {
 			return err
 		}
 	}
-	ctx, err = p.replayStore.prepareHandleScope(ctx, metadata)
+	ctx, err = prepareHandleScope(ctx, p.retained.Store, p.retained.Writes, metadata)
 	if err != nil {
 		return err
 	}
@@ -71,8 +71,8 @@ func (p *mekugiProxy) observeCompactionInput(ctx context.Context, request *codex
 
 // The selected thread's retained call catalog supplies observation scope only.
 // It cannot supply an execution directory or authorize an unrelated thread.
-func (s *mekugiReplayStore) retainedCallWorkspace(thread string) (string, error) {
-	session, err := s.publication.ReadCatalog(history.SessionName(thread))
+func retainedCallWorkspace(store *history.Store, thread string) (string, error) {
+	session, err := store.ReadCatalog(history.SessionName(thread))
 	if err != nil {
 		return "", err
 	}
@@ -81,11 +81,11 @@ func (s *mekugiReplayStore) retainedCallWorkspace(thread string) (string, error)
 		if !strings.HasPrefix(name, "call-") {
 			continue
 		}
-		data, err := history.ReadRecord(filepath.Join(s.directory, name))
+		data, err := history.ReadRecord(filepath.Join(store.Directory(), name))
 		if err != nil {
 			return "", err
 		}
-		var record replayRecord
+		var record legacycall.Record
 		// Persisted command hashes use the version-1 numeric byte-array format.
 		if json.Unmarshal(data, &record, jsonv1.FormatByteArrayAsArray(true)) != nil ||
 			(record.Version != 1 && record.Version != 2) || record.Commentary || legacycall.Name(record.Workspace, record.CallID, false) != name {

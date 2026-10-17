@@ -30,7 +30,7 @@ type commandSegmentWrite struct {
 }
 
 func (u *appServerUI) retainCommandSegments(entry activityPaneEntry, item observation.Item, view execTrackView) {
-	if u.segments == nil || u.retained == nil || item.AggregatedOutput == nil || item.ExitCode == nil {
+	if u.segments == nil || u.retained.Store == nil || item.AggregatedOutput == nil || item.ExitCode == nil {
 		return
 	}
 	script, ok := binding.CommandScript(item.Command)
@@ -65,7 +65,7 @@ func (u *appServerUI) retainCommandSegments(entry activityPaneEntry, item observ
 	id := reports.ID(entry.native.turn, entry.native.item)
 	key := [3]string{entry.native.thread, entry.native.turn, entry.native.item}
 	store := u.retained
-	scope := reports.Scope{Store: store.publication, Workspace: u.session.cwd, Thread: entry.native.thread, Limits: store.retentionLimits(), Writes: store.writes}
+	scope := reports.Scope{Store: store.Store, Workspace: u.session.cwd, Thread: entry.native.thread, Limits: store.Limits, Writes: store.Writes}
 	if u.commandSegmentWrites == nil {
 		u.commandSegmentWrites = make(chan commandSegmentWrite, commandSegmentRetentionLimit)
 	}
@@ -112,7 +112,7 @@ func (u *appServerUI) finishCommandSegments() {
 // Restore only real, terminal observations that agree with visible host
 // history. Missing, corrupt or mismatched records leave the aggregate intact.
 func (u *appServerUI) restoreCommandSegments(entry *activityPaneEntry, item binding.ThreadItem, workspace string) {
-	if item.Type != "commandExecution" || item.ExitCode == nil || item.AggregatedOutput == nil || u.retained == nil {
+	if item.Type != "commandExecution" || item.ExitCode == nil || item.AggregatedOutput == nil || u.retained.Store == nil {
 		return
 	}
 	var record *reports.Report
@@ -155,11 +155,11 @@ func (u *appServerUI) restoreCommandSegments(entry *activityPaneEntry, item bind
 // Decode host facts before the report owner validates and adopts each batch.
 func (u *appServerUI) prepareCommandSegments(thread, workspace string, turn binding.HistoryTurn) map[string]*reports.Report {
 	result := make(map[string]*reports.Report)
-	if u.segments == nil || u.retained == nil {
+	if u.segments == nil || u.retained.Store == nil {
 		return result
 	}
 	store := u.retained
-	scope := reports.Scope{Store: store.publication, Workspace: workspace, Thread: thread, Limits: store.retentionLimits(), Writes: store.writes}
+	scope := reports.Scope{Store: store.Store, Workspace: workspace, Thread: thread, Limits: store.Limits, Writes: store.Writes}
 	for items := range slices.Chunk(turn.Items, 64) {
 		var completed []reports.Completed
 		for _, item := range items {

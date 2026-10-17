@@ -52,7 +52,7 @@ func TestCodeModeLiteralPatchRetainsNeutralReadersThroughReplay(t *testing.T) {
 			}
 			lookup := func(p *mekugiProxy, id string) mekugiHistory {
 				t.Helper()
-				history, found, err := p.replayStore.lookup(transform.ctx, workspace, id)
+				history, found, err := testProxyStore(p).lookup(transform.ctx, workspace, id)
 				if err != nil || !found {
 					t.Fatalf("lookup %s: found=%v err=%v", id, found, err)
 				}
@@ -102,7 +102,7 @@ func TestCodeModeLiteralPatchRetainsNeutralReadersThroughReplay(t *testing.T) {
 			if patchHistory.ChangeID == "" || patchHistory.TranslationError != "" || len(patchHistory.ReviewFiles) != 1 {
 				t.Fatalf("real patch evidence missing: %+v", patchHistory)
 			}
-			diff, err := proxy.replayStore.changes.Read(transform.ctx, proxy.replayStore.scoped(transform.ctx).changeScope(), changes.Query{
+			diff, err := testProxyStore(proxy).changes.Read(transform.ctx, testProxyStore(proxy).scoped(transform.ctx).changeScope(), changes.Query{
 				Workspace: workspace, IDs: []string{patchHistory.ChangeID}, MaxTokens: 4000,
 			})
 			if err != nil || !strings.Contains(diff, "-before") || !strings.Contains(diff, "+after") {
@@ -124,7 +124,7 @@ func TestCodeModeLiteralPatchRetainsNeutralReadersThroughReplay(t *testing.T) {
 					strings.Contains(command.ExecOutcome.ScopeReason, "intermediate writes") {
 					t.Fatalf("reader repetition lost results or invented intermediate writes: %+v", command)
 				}
-				index, err := p.replayStore.scoped(transform.ctx).changes.Inspect(p.replayStore.scoped(transform.ctx).changeScope(), workspace)
+				index, err := testProxyStore(p).scoped(transform.ctx).changes.Inspect(testProxyStore(p).scoped(transform.ctx).changeScope(), workspace)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -136,7 +136,8 @@ func TestCodeModeLiteralPatchRetainsNeutralReadersThroughReplay(t *testing.T) {
 
 			// Resume in a fresh proxy/store without live native trace or in-memory history.
 			resumed := newManagedMekugiProxy(t)
-			resumed.replayStore, err = openMekugiReplayStore(proxy.replayStore.directory)
+			reopenedStore, err := openMekugiReplayStore(testProxyStore(proxy).directory)
+			setTestProxyStore(resumed, reopenedStore)
 			if err != nil {
 				t.Fatal(err)
 			}

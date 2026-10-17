@@ -209,7 +209,7 @@ func TestMChangesRevertIsRecordedAndRevertable(t *testing.T) {
 			map[string]any{"type": "function_call", "call_id": callID, "name": nativeExecCommandToolName, "arguments": arguments},
 			map[string]any{"type": "function_call_output", "call_id": callID, "output": nativeExecOutput("Process exited with code 0")},
 		})
-		history, found, err := proxy.replayStore.lookup(t.Context(), workspace, callID+":exec:1")
+		history, found, err := testProxyStore(proxy).lookup(t.Context(), workspace, callID+":exec:1")
 		if err != nil || !found || history.ChangeID == "" {
 			t.Fatalf("%q record = %+v found=%v err=%v", command, history, found, err)
 		}
@@ -221,7 +221,7 @@ func TestMChangesRevertIsRecordedAndRevertable(t *testing.T) {
 	var output string
 	revert := run("revert-call", "mchanges revert "+edit.ChangeID, func(ctx context.Context) {
 		var status int
-		output, status = mutateTestChanges(t, ctx, proxy.replayStore, workspace, "revert", edit.ChangeID)
+		output, status = mutateTestChanges(t, ctx, testProxyStore(proxy), workspace, "revert", edit.ChangeID)
 		if status != 0 {
 			t.Fatalf("revert status %d: %q", status, output)
 		}
@@ -234,7 +234,7 @@ func TestMChangesRevertIsRecordedAndRevertable(t *testing.T) {
 	}
 	run("undo-call", "mchanges revert "+revert.ChangeID, func(ctx context.Context) {
 		var status int
-		output, status = mutateTestChanges(t, ctx, proxy.replayStore, workspace, "revert", revert.ChangeID)
+		output, status = mutateTestChanges(t, ctx, testProxyStore(proxy), workspace, "revert", revert.ChangeID)
 		if status != 0 {
 			t.Fatalf("undo status %d: %q", status, output)
 		}

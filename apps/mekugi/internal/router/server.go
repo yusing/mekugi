@@ -63,6 +63,7 @@ import (
 	// Source: main.go:20:551 HTTP lifecycle and Responses proxy execution.
 
 	terminalui "github.com/yusing/mekugi/libraries/terminalui"
+	changehistory "github.com/yusing/mekugi/modules/changehistory/changes"
 )
 
 const (
@@ -126,7 +127,9 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 	}
 	var mekugiCalls *mekugiProxy
 	var registry *frontends.Registry
-	var retained *mekugiReplayStore
+	var retained changehistory.Scope
+	var changeSource changehistory.Service
+	var checkpoints *changecapture.Workspaces
 	var calls *history.CallCache
 	var audience *sessioncontrol.Audience
 	var review *sessionreview.Review
@@ -260,21 +263,25 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 			runErr = errors.Join(runErr, registry.Close())
 		}()
 		frontendDirectory = registry.FrontendDirectory
-		replayStore, err := openReplayStore(ctx, service, changes, replayDirectory)
-		if replayStore != nil {
-			replayStore.recovery = recovered
-		}
+		retained.Store, err = service.Open(ctx, replayDirectory)
 		if err != nil {
 			return fmt.Errorf("initialize replay storage: %w", err)
 		}
-		replayStore.writes = writes
+		checkpoints, err = changes.Checkpoints(retained.Store.Directory())
+		if err != nil {
+			return fmt.Errorf("initialize replay checkpoints: %w", err)
+		}
+		if changes != nil {
+			changeSource = changes.Service
+		}
+		retained.Writes = writes
+		retained.Limits = history.Limits{Total: history.DefaultStorageBytes, Kinds: map[string]int64{"commentary": 16 << 20}}
 		if !options.DeduplicateOutput {
 			projections = nil
 		}
 		calls = service.Calls()
 		audience = sessioncontrol.NewAudience(func(category, message string) { issues.AddThreadNotice("", "", category, message) })
 		windows = &execWindowRegistry{}
-		retained = replayStore
 		if titleGenerator != nil {
 			titleGenerator.usage = usage
 		}
@@ -285,18 +292,14 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 		} else {
 			issues.AddNotice("", "native_trace", "Nested tool confirmation unavailable: "+traceErr.Error())
 		}
-		replayStore.storageNotice = func(session, thread, phase, message string) {
-			issues.CleanupNotice(session, thread, phase, message)
-		}
 		review = sessionreview.New(ctx, live, func(category, message string) { issues.AddNotice("", category, message) })
 		defer review.Close()
-		replayStore.liveDiff = review.Publish
-		mekugiCalls = &mekugiProxy{registry: registry, inputProjections: slices.Clone(projections), usage: usage, review: review, activity: audience, execWindows: windows, nativeTrace: nativeTrace, control: &control, calls: calls, replayStore: replayStore, noticeSink: issues.AddThreadNotice, previewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}}
-		usage.Configure(replayStore.directory, replayStore.writes, replayStore.retentionLimits(), func(thread string, err error) {
+		mekugiCalls = &mekugiProxy{registry: registry, inputProjections: slices.Clone(projections), usage: usage, review: review, activity: audience, execWindows: windows, nativeTrace: nativeTrace, control: &control, calls: calls, retained: retained, changeSource: changeSource, snapshots: checkpoints, recovered: recovered, publishChanges: review.Publish, noticeSink: issues.AddThreadNotice, previewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}}
+		usage.Configure(retained.Store.Directory(), retained.Writes, retained.Limits, func(thread string, err error) {
 			issues.AddThreadNotice("", thread, "usage_storage", "Provider usage could not be retained or restored: "+err.Error())
 		})
 		if issues != nil {
-			issues.Configure(requestexecution.FailureStorage{Diagnostics: diagnosis, Writes: writes, Store: replayStore.publication, Limits: replayStore.retentionLimits()})
+			issues.Configure(requestexecution.FailureStorage{Diagnostics: diagnosis, Writes: writes, Store: retained.Store, Limits: retained.Limits})
 		}
 		defer func() {
 			calls.StopAdmission()
@@ -323,7 +326,7 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 			defer close(retentionDone)
 			runStorageRetention(retentionCtx, diagnosis, func() retentionScope {
 				if mekugiCalls != nil {
-					return retained.retentionScope(retentionCtx)
+					return retentionScope{store: retained.Store, writes: retained.Writes, limits: retained.Limits, thread: retained.Thread, notice: func(phase, message string) { issues.CleanupNotice("", "", phase, message) }}
 				}
 				storage := issues.Storage()
 				return retentionScope{store: storage.Store, writes: storage.Writes, limits: storage.Limits, notice: func(phase, message string) { issues.CleanupNotice("", "", phase, message) }}
@@ -418,7 +421,7 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 			if debug != nil {
 				debugDirectory = filepath.Dir(debug.Paths()[0])
 			}
-			return startAppServerUI(terminalViews, changes, views, conversation, activity, service, prefs, segments.Reports, ctx, cmd, stdin, stdout, appServerIntegration{controlObservations: &control, usage: usage, audience: audience, review: review, execWindows: windows, nativeTrace: nativeTrace, retained: retained, captureNotice: issues.AddThreadNotice, guard: guardServer, guards: guards, execTrack: reportObserver, skillsManager: skillsManagerAvailable}, issues, resumeThread, faint, serviceTiers, capture, resumeArgv, debugDirectory, titleGenerator, observations, approvals)
+			return startAppServerUI(terminalViews, changes, views, conversation, activity, service, prefs, segments.Reports, ctx, cmd, stdin, stdout, appServerIntegration{controlObservations: &control, usage: usage, audience: audience, review: review, execWindows: windows, nativeTrace: nativeTrace, retained: retained, changeSource: changeSource, snapshots: checkpoints, recovered: recovered, publishChanges: review.Publish, captureNotice: issues.AddThreadNotice, guard: guardServer, guards: guards, execTrack: reportObserver, skillsManager: skillsManagerAvailable}, issues, resumeThread, faint, serviceTiers, capture, resumeArgv, debugDirectory, titleGenerator, observations, approvals)
 		}
 		if mekugiCalls != nil && nativeTrace != nil {
 			session.NativeTraceDirectory = nativeTrace.Directory()

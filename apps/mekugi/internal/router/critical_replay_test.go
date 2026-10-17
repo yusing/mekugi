@@ -46,7 +46,7 @@ func TestPreviouslyGeneratedNoticeReplayUsesDurableExactProvenance(t *testing.T)
 		t.Fatal(err)
 	}
 	fresh := newManagedMekugiProxy(t)
-	fresh.replayStore = store
+	setTestProxyStore(fresh, store)
 	replay := serverRequest(t, func(fields map[string]any) {
 		input := fields["input"].([]any)
 		fields["input"] = append([]any{

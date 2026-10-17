@@ -17,14 +17,14 @@ type appServerShellEdits struct {
 }
 
 func (u *appServerUI) captureShellEdit(command string) *shellObservation {
-	if u.retained == nil || u.replay != nil {
+	if u.retained.Store == nil || u.replay != nil {
 		return nil
 	}
 	ctx := u.session.waitContext
 	if ctx == nil {
 		ctx = u.ctx
 	}
-	edit := prepareShellObservation(ctx, u.retained, u.execWindows, u.audience, u.captureNotice, shellObservationInput{
+	edit := prepareShellObservation(ctx, u.retained, u.changeSource, u.snapshots, u.recovered, u.publishChanges, u.execWindows, u.audience, u.captureNotice, shellObservationInput{
 		Thread: u.Thread, Turn: u.Turn, Namespace: u.session.waitNamespace,
 		Workspace: u.session.cwd, Caller: u.session.path(u.Thread), Command: command, Shell: u.shellEdits.shell,
 	})

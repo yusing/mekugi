@@ -19,6 +19,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 func TestResponseTranslationRetriesPersistenceAfterBackgroundCleanup(t *testing.T) {
@@ -28,7 +29,7 @@ func TestResponseTranslationRetriesPersistenceAfterBackgroundCleanup(t *testing.
 			synctest.Test(t, func(t *testing.T) {
 				proxy := newManagedMekugiProxy(t)
 				attachTestReplayStore(t, proxy)
-				store := proxy.replayStore
+				store := testProxyStore(proxy)
 				workspace := t.TempDir()
 				old, releaseOld := retentionTestSession(t, store, "old", 0)
 				if err := store.put(old, workspace, map[string]mekugiHistory{
@@ -60,6 +61,13 @@ func TestResponseTranslationRetriesPersistenceAfterBackgroundCleanup(t *testing.
 					upstream.Header = http.Header{"Content-Type": []string{"text/event-stream"}}
 					upstream.Body = io.NopCloser(strings.NewReader(body))
 				}
+				files, err := store.testFileSizes()
+				if err != nil {
+					t.Fatal(err)
+				}
+				used, _ := store.publication.Usage(store.retentionLimits(), files, "", 0)
+				store.maxBytes = used + (64 << 10)
+				setTestProxyStore(proxy, store)
 				provider := &responseStoragePressureProvider{
 					serverFakeProvider: serverFakeProvider{results: []serverForwardResult{{response: upstream}}},
 					fill: func() {
@@ -69,7 +77,20 @@ func TestResponseTranslationRetriesPersistenceAfterBackgroundCleanup(t *testing.
 						if err != nil {
 							t.Fatal(err)
 						}
-						store.maxBytes, _ = store.publication.Usage(store.retentionLimits(), files, "", 0)
+						used, _ := store.publication.Usage(store.retentionLimits(), files, "", 0)
+						// Grow an already-managed inactive record with valid JSON
+						// whitespace. Limits are fixed before request preparation.
+						name := legacycall.Name(workspace, "old-call", false)
+						data, err := os.ReadFile(filepath.Join(store.directory, name))
+						if err != nil {
+							t.Fatal(err)
+						}
+						data = append(data, strings.Repeat(" ", int(store.maxBytes-used))...)
+						if err := store.publication.Transaction(t.Context(), store.writes, func(tx *history.Transaction) error {
+							return tx.Write(name, "pressure-", data)
+						}); err != nil {
+							t.Fatal(err)
+						}
 						startResponseRetentionWorker(t, store)
 					},
 				}

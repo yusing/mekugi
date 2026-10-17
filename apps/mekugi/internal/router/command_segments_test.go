@@ -47,7 +47,7 @@ func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing
 			t.Fatal(err)
 		}
 		u := newAppServerSessionTestUI(t, workspace)
-		setTestAppServerIntegration(u, &mekugiProxy{replayStore: store})
+		setTestAppServerIntegration(u, testProxyWithStore(store))
 		key := [3]string{"main", "turn", "command"}
 		first, second := u.session.activity.Outputs(u.session.Scope()).New(), u.session.activity.Outputs(u.session.Scope()).New()
 		first.Finish(new("first\n"), new(0))
@@ -97,7 +97,7 @@ func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing
 			t.Fatal(err)
 		}
 		restored := newAppServerSessionTestUI(t, workspace)
-		setTestAppServerIntegration(restored, &mekugiProxy{replayStore: reopened})
+		setTestAppServerIntegration(restored, testProxyWithStore(reopened))
 		entry.native = &liveActivityNativeItem{thread: "fork", turn: key[1], item: key[2]}
 		restored.restoreCommandSegments(&entry, item, workspace)
 		if len(entry.native.segments) != 2 {
@@ -128,7 +128,7 @@ func TestCommandSegmentsPendingRetentionIsBoundedAndCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	u.ctx = ctx
 	defer cancel()
-	setTestAppServerIntegration(u, &mekugiProxy{replayStore: store})
+	setTestAppServerIntegration(u, testProxyWithStore(store))
 	lock := flock.New(filepath.Join(store.directory, "store.lock"))
 	if err := lock.Lock(); err != nil {
 		t.Fatal(err)
@@ -215,7 +215,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 	if result.stdout != "first\n" || result.stderr != "second\n" || result.code != 1 {
 		t.Fatalf("stock command changed: %+v", result)
 	}
-	setTestAppServerIntegration(u, &mekugiProxy{replayStore: store})
+	setTestAppServerIntegration(u, testProxyWithStore(store))
 	item.Status, item.ExitCode, item.AggregatedOutput = "failed", new(1), new(result.stdout+result.stderr)
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": key[0], "turnId": key[1], "item": item})
 	awaitMain(t, u, "skipped")
@@ -234,7 +234,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 	for _, target := range []string{"main", "fork", "child", "child-other-workspace", "child-missing-workspace"} {
 		t.Run(target, func(t *testing.T) {
 			restored := newAppServerSessionTestUI(t, workspace)
-			setTestAppServerIntegration(restored, &mekugiProxy{replayStore: store})
+			setTestAppServerIntegration(restored, testProxyWithStore(store))
 			turns := []binding.HistoryTurn{{ID: key[1], Status: "completed", Items: []binding.ThreadItem{item}}}
 			view := restored.view
 			if strings.HasPrefix(target, "child") {
@@ -300,7 +300,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 	for _, mismatch := range []string{"workspace", "turn", "item", "command", "output", "exit"} {
 		t.Run(mismatch, func(t *testing.T) {
 			restored := newAppServerSessionTestUI(t, workspace)
-			setTestAppServerIntegration(restored, &mekugiProxy{replayStore: store})
+			setTestAppServerIntegration(restored, testProxyWithStore(store))
 			copy := item
 			entry := activityPaneEntry{native: &liveActivityNativeItem{thread: "unrelated", turn: key[1], item: key[2]}}
 			scope := workspace
@@ -335,8 +335,11 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if mode == "storage-failure" {
+				store.maxBytes = 1
+			}
 			u := newAppServerSessionTestUI(t, workspace)
-			setTestAppServerIntegration(u, &mekugiProxy{replayStore: store})
+			setTestAppServerIntegration(u, testProxyWithStore(store))
 			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc 'echo one; false'", AggregatedOutput: new("one\n"), ExitCode: new(1)}
 			entry := activityPaneEntry{Seq: 1, Text: "Run `echo one`\n\nRun `false`", native: &liveActivityNativeItem{thread: "main", turn: "t", item: item.ID, command: item.Command}}
 			first, second := u.session.activity.Outputs(u.session.Scope()).New(), u.session.activity.Outputs(u.session.Scope()).New()
@@ -359,8 +362,6 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 				view.complete = false
 			case "wrong-exit":
 				view.code = 0
-			case "storage-failure":
-				store.maxBytes = 1
 			}
 			if mode != "missing" {
 				u.retainCommandSegments(entry, item.Observation(), view)
@@ -424,7 +425,7 @@ func TestCommandSegmentsRestoreRichChangeRows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	setTestAppServerIntegration(u, &mekugiProxy{replayStore: store})
+	setTestAppServerIntegration(u, testProxyWithStore(store))
 	listing := "amber1..amber5 +343 -658\namber6 +158 -81\n"
 	item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc 'echo before; mchanges --list'", ExitCode: new(0), AggregatedOutput: new("before\n" + listing)}
 	entry := activityPaneEntry{native: &liveActivityNativeItem{thread: "main", turn: "t", item: item.ID}}

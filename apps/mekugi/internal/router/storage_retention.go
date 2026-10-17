@@ -14,12 +14,11 @@ import (
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/libraries/persistence"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
+	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
-
-const sessionRetention = history.SessionRetention
-const defaultReplayStorageBytes = history.DefaultStorageBytes
 
 type storageSessionKey struct{}
 
@@ -32,15 +31,11 @@ type storageSessionIdentity struct {
 	Initialize bool
 }
 
-func (s *mekugiReplayStore) scoped(ctx context.Context) *mekugiReplayStore {
-	if s == nil {
-		return nil
-	}
-	copy := *s
+func observationScope(ctx context.Context, selected changes.Scope) changes.Scope {
 	if identity, ok := ctx.Value(storageSessionKey{}).(storageSessionIdentity); ok {
-		copy.session = identity
+		selected.Thread, selected.Namespace = identity.Thread, identity.Namespace
 	}
-	return &copy
+	return selected
 }
 
 // Application scope carries routing authority without giving it to the store.
@@ -59,27 +54,18 @@ func beginRetainedSession(ctx context.Context, store *history.Store, writes *per
 	return context.WithValue(ctx, storageSessionKey{}, identity), release, nil
 }
 
-// Called under store.lock. Ownership is recorded before publishing a capability.
-// Reading inherited history adds another owner instead of transferring ownership.
-func (s *mekugiReplayStore) retentionLimits() history.Limits {
-	return history.Limits{Total: s.maxBytes, Kinds: map[string]int64{"commentary": s.maxCommentaryBytes}}
-}
-
 var retainedReadReference = regexp.MustCompile(`(?:\b|\\[nr])mread(?:[ \t]|\\t)+([a-z]+[0-9]*\b(?:(?:[ \t]|\\t)+[a-z]+[0-9]*\b)*)`)
 
 // Retain the complete visible history in one locked catalog update. A fork
 // shares immutable records with its source; removing either chat keeps facts
 // referenced by the other. Invalid input never establishes an ownership claim.
-func (s *mekugiReplayStore) retainInput(ctx context.Context, workspace string, raw json.RawMessage, histories map[string]mekugiHistory, releaseSnapshot func()) error {
-	if s == nil {
+func retainObservationInput(ctx context.Context, selected changes.Scope, source changes.Service, recovered *recovery.Service, workspace string, raw json.RawMessage, histories map[string]mekugiHistory, releaseSnapshot func()) error {
+	if selected.Store == nil {
 		return nil
 	}
-	s = s.scoped(ctx)
-	if s.session.Thread == "" {
+	selected = observationScope(ctx, selected)
+	if selected.Thread == "" {
 		return nil
-	}
-	if s.transaction != nil {
-		return errors.New("nested replay publication transaction")
 	}
 	input := recordtransactions.Input{Workspace: workspace, ReleaseSnapshot: releaseSnapshot}
 	for call, item := range histories {
@@ -96,10 +82,10 @@ func (s *mekugiReplayStore) retainInput(ctx context.Context, workspace string, r
 	for _, match := range retainedReadReference.FindAllStringSubmatch(string(raw), -1) {
 		input.References = append(input.References, strings.Fields(strings.ReplaceAll(match[1], `\t`, " "))...)
 	}
-	if identity := s.session; identity.Initialize {
+	if identity, _ := ctx.Value(storageSessionKey{}).(storageSessionIdentity); identity.Initialize {
 		input.Initialize = &history.Scope{Thread: identity.Thread, Namespace: identity.Namespace, Parent: identity.Parent, Fork: identity.Fork}
 	}
-	err := recordtransactions.RetainInput(ctx, s.changeScope(), s.changes, s.recovery, input)
+	err := recordtransactions.RetainInput(ctx, selected, source, recovered, input)
 	if retention, ok := errors.AsType[*recordtransactions.RetentionError](err); ok {
 		return requestexecution.StoragePublicationError(retention.Err)
 	}
@@ -111,8 +97,8 @@ func (s *mekugiReplayStore) retainInput(ctx context.Context, workspace string, r
 // Keep completed response facts in memory while the existing maintenance worker
 // frees space. Every attempt revalidates and publishes under store.lock; neither
 // that lock nor a host operation is held or repeated while waiting.
-func (s *mekugiReplayStore) putAfterMaintenance(ctx context.Context, workspace string, histories map[string]mekugiHistory) error {
-	err := s.put(ctx, workspace, histories)
+func publishAfterMaintenance(ctx context.Context, selected changes.Scope, source changes.Service, publish func([]changes.Update), workspace string, histories map[string]mekugiHistory) error {
+	err := publishObservations(ctx, selected, source, publish, workspace, histories)
 	pressure, ok := errors.AsType[*history.PressureError](err)
 	if !ok {
 		return err
@@ -120,14 +106,14 @@ func (s *mekugiReplayStore) putAfterMaintenance(ctx context.Context, workspace s
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	for {
-		if waitErr := s.waitForStorageMaintenance(ctx); waitErr != nil {
+		if waitErr := waitForStorageMaintenance(ctx, selected.Store, selected.Writes); waitErr != nil {
 			return errors.Join(err, waitErr)
 		}
 		var used int64
-		if checkErr := s.locked(ctx, func(s *mekugiReplayStore) error {
-			files, err := s.transaction.FileSizes()
+		if checkErr := selected.Store.Transaction(ctx, selected.Writes, func(tx *history.Transaction) error {
+			files, err := tx.FileSizes()
 			if err == nil {
-				used, _ = s.publication.Usage(s.retentionLimits(), files, pressure.Name, files[pressure.Name])
+				used, _ = selected.Store.Usage(selected.Limits, files, pressure.Name, files[pressure.Name])
 			}
 			return err
 		}); checkErr != nil {
@@ -139,7 +125,7 @@ func (s *mekugiReplayStore) putAfterMaintenance(ctx context.Context, workspace s
 		if used >= pressure.Used {
 			return err
 		}
-		err = s.put(ctx, workspace, histories)
+		err = publishObservations(ctx, selected, source, publish, workspace, histories)
 		next, ok := errors.AsType[*history.PressureError](err)
 		if !ok {
 			return err
@@ -148,14 +134,14 @@ func (s *mekugiReplayStore) putAfterMaintenance(ctx context.Context, workspace s
 	}
 }
 
-func (s *mekugiReplayStore) waitForStorageMaintenance(ctx context.Context) error {
+func waitForStorageMaintenance(ctx context.Context, store *history.Store, writes *persistence.Counter) error {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		var pending bool
-		err := s.locked(ctx, func(s *mekugiReplayStore) error {
+		err := store.Transaction(ctx, writes, func(tx *history.Transaction) error {
 			var err error
-			pending, err = s.transaction.PendingCleanup()
+			pending, err = tx.PendingCleanup()
 			return err
 		})
 		if err != nil {
@@ -184,16 +170,6 @@ func writeRetainedRecord(tx *history.Transaction, thread string, limits history.
 	return requestexecution.StorageIOError(tx.Write(name, pattern, data))
 }
 
-// Readers acquire this lease before store.lock; cleanup only tries it without
-// waiting while holding store.lock. Thus input validation can span several
-// reads without allowing another router to retire its not-yet-adopted history.
-func (s *mekugiReplayStore) lockStorageSnapshot(ctx context.Context) (func(), error) {
-	if s == nil {
-		return func() {}, nil
-	}
-	return s.publication.SnapshotLease(ctx)
-}
-
 // Age-based cleanup is router maintenance, not part of any request's replay
 // view. An unrelated catalog must not prevent a new thread from starting.
 type retentionScope struct {
@@ -204,14 +180,6 @@ type retentionScope struct {
 	notice func(string, string)
 }
 
-func (s *mekugiReplayStore) retentionScope(ctx context.Context) retentionScope {
-	s = s.scoped(ctx)
-	return retentionScope{store: s.publication, writes: s.writes, limits: s.retentionLimits(), thread: s.session.Thread, notice: func(phase, message string) {
-		if s.storageNotice != nil {
-			s.storageNotice("", "", phase, message)
-		}
-	}}
-}
 func runStorageRetention(ctx context.Context, diagnostics *diagnostic.Service, store func() retentionScope, notice func(error)) {
 	var debugSweep, sessionSweep time.Time
 	cleanup := func() {

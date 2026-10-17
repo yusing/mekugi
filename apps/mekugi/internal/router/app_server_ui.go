@@ -3,32 +3,6 @@ package router
 import (
 	"cmp"
 	"context"
-
-	"github.com/yusing/mekugi/libraries/persistence"
-
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
-
-	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
-
-	"github.com/yusing/mekugi/libraries/diffrender"
-	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
-	"github.com/yusing/mekugi/modules/usage/accounting"
-
-	commandsegments "github.com/yusing/mekugi/modules/commandsegments/segments"
-	"github.com/yusing/mekugi/modules/conversation/completion"
-
-	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
-
-	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
-
-	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/backends/codex/nativetrace"
-	"github.com/yusing/mekugi/modules/conversation/composer"
-	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
-	"github.com/yusing/mekugi/modules/conversation/prompt"
-
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -40,27 +14,40 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/backends/codex/nativetrace"
 	"github.com/yusing/mekugi/backends/codex/shellhook"
 	"github.com/yusing/mekugi/contracts/scope"
-	"github.com/yusing/mekugi/libraries/textsanitize"
-
-	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-	"github.com/yusing/mekugi/modules/notifications/notice"
-
-	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
-
+	"github.com/yusing/mekugi/libraries/diffrender"
 	terminalui "github.com/yusing/mekugi/libraries/terminalui"
-
+	"github.com/yusing/mekugi/libraries/textsanitize"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
+	commandsegments "github.com/yusing/mekugi/modules/commandsegments/segments"
+	"github.com/yusing/mekugi/modules/conversation/completion"
+	"github.com/yusing/mekugi/modules/conversation/composer"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+	"github.com/yusing/mekugi/modules/conversation/prompt"
+	"github.com/yusing/mekugi/modules/notifications/notice"
+	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
+	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
-	"golang.org/x/term"
-
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+	"github.com/yusing/mekugi/modules/usage/accounting"
+	"golang.org/x/term"
 )
 
 type appServerUI struct {
@@ -111,7 +98,11 @@ type appServerUI struct {
 	review                  *sessionreview.Review
 	execWindows             *execWindowRegistry
 	nativeTrace             *nativetrace.Reader
-	retained                *mekugiReplayStore
+	retained                changes.Scope
+	changeSource            changes.Service
+	snapshots               *changecapture.Workspaces
+	recovered               *recovery.Service
+	publishChanges          func([]changes.Update)
 	captureNotice           func(string, string, string, string)
 	guard                   *sessioncontrol.ShellApprovals
 	execTrack               *commandsegments.Observer // Per-segment command reports; nil when not tracking.
@@ -194,7 +185,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 	if err != nil {
 		return nil, err
 	}
-	u := &appServerUI{terminalViews: terminalViews, reviewSource: reviewSource, presentationState: views, conversationState: conversation, session: appServerSession{activity: activity, observations: observations}, history: service, segments: segments, client: c, view: newTranscriptAdapter(activityui.NewView()), agents: newTranscriptAdapter(terminalViews.NewThreadView()), controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, captureNotice: integration.captureNotice, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
+	u := &appServerUI{terminalViews: terminalViews, reviewSource: reviewSource, presentationState: views, conversationState: conversation, session: appServerSession{activity: activity, observations: observations}, history: service, segments: segments, client: c, view: newTranscriptAdapter(activityui.NewView()), agents: newTranscriptAdapter(terminalViews.NewThreadView()), controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, changeSource: integration.changeSource, snapshots: integration.snapshots, recovered: integration.recovered, publishChanges: integration.publishChanges, captureNotice: integration.captureNotice, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
 	u.attachPresentation()
 	u.sessionPresentation().Status.Set("Connecting…", false)
 	u.attachActivity()
@@ -763,14 +754,8 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 					return err
 				}
 			}
-			if u.retained != nil || u.panes != nil {
-				var store *history.Store
-				var writes *persistence.Counter
-				var limits history.Limits
-				if u.retained != nil {
-					store, writes, limits = u.retained.publication, u.retained.writes, u.retained.retentionLimits()
-				}
-				if err := u.openWaitStore(store, writes, limits); err != nil {
+			if u.retained.Store != nil || u.panes != nil {
+				if err := u.openWaitStore(u.retained.Store, u.retained.Writes, u.retained.Limits); err != nil {
 					u.setNotice("Wait targets could not be retained: "+err.Error(), true)
 				}
 			}
@@ -1347,8 +1332,8 @@ func (u *appServerUI) ensureShell() {
 	label, attachment := u.terminalViews.Attach(shell.Theme)
 	shell.AuxiliaryLabel, shell.Auxiliary, shell.preparePane = label, attachment.Pane, attachment.Prepare
 	shell.saved = sessionreview.Projection{Data: new(changepresentation.Snapshot), Coverage: "CONNECTING"}
-	if store != nil {
-		shell.saved.Changes, shell.saved.Retained = store.changes, store.changeScope()
+	if store.Store != nil {
+		shell.saved.Changes, shell.saved.Retained = u.changeSource, store
 	}
 	u.shell = shell
 }

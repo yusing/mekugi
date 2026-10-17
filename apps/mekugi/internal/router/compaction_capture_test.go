@@ -47,7 +47,7 @@ func testCompactionCapture(t *testing.T, tool string, failed bool) {
 			workspace := t.TempDir()
 			firstProxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, firstProxy)
-			storeDirectory := firstProxy.replayStore.directory
+			storeDirectory := testProxyStore(firstProxy).directory
 			var transform *mekugiResponseTransform
 			var trace *nativeTraceFixture
 			if tool == "exec" {
@@ -98,7 +98,7 @@ func testCompactionCapture(t *testing.T, tool string, failed bool) {
 				}
 				derivedCallID = legacycall.ExecCallID("exec-call", false)
 			}
-			if _, found, err := firstProxy.replayStore.lookup(t.Context(), workspace, derivedCallID); err != nil || found {
+			if _, found, err := testProxyStore(firstProxy).lookup(t.Context(), workspace, derivedCallID); err != nil || found {
 				t.Fatalf("terminal evidence existed before the host result: found=%t err=%v", found, err)
 			}
 			transform.Close()
@@ -114,11 +114,12 @@ func testCompactionCapture(t *testing.T, tool string, failed bool) {
 				proxy.nativeTrace = nativetrace.New(trace.root)
 			}
 			var err error
-			proxy.replayStore, err = openMekugiReplayStore(storeDirectory)
+			reopenedStore, err := openMekugiReplayStore(storeDirectory)
+			setTestProxyStore(proxy, reopenedStore)
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(proxy.replayStore.snapshots.Close)
+			t.Cleanup(testProxyStore(proxy).snapshots.Close)
 			request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 				"model": "gpt-test", "stream": true,
 				"access_programs": map[string]string{"cyber": "standard"},
@@ -183,7 +184,7 @@ func testCompactionCapture(t *testing.T, tool string, failed bool) {
 					t.Fatal(err)
 				}
 				t.Cleanup(release)
-				proxy.replayStore = reopened
+				setTestProxyStore(proxy, reopened)
 				reopened = reopened.scoped(readCtx)
 				history, found, err := reopened.lookup(readCtx, workspace, derivedCallID)
 				if err != nil || !found {

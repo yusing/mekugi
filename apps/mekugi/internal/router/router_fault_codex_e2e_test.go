@@ -228,7 +228,7 @@ func TestRouterTransformFaultNativeCodexE2E(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	proxy.replayStore = store
+	setTestProxyStore(proxy, store)
 	issues := testCriticalErrors()
 	issues.Configure(requestexecution.FailureStorage{Store: store.publication, Limits: store.retentionLimits(), Diagnostics: testDiagnostics(nil, nil)})
 	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, issues, proxy))

@@ -434,7 +434,7 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 	setLiveScope(auto, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
 	sub := testReview(auto).Subscribe()
 	proxy := &mekugiProxy{execWindows: &execWindowRegistry{tracker: hub.Observer}, review: testReview(auto)}
-	transform := &mekugiResponseTransform{control: proxy.control, review: proxy.review, execWindows: proxy.execWindows, calls: proxy.calls, retained: proxy.replayStore, previewTiming: proxy.previewTiming, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
+	transform := &mekugiResponseTransform{control: proxy.control, review: proxy.review, execWindows: proxy.execWindows, calls: proxy.calls, retained: proxy.retained, changeSource: proxy.changeSource, snapshots: proxy.snapshots, recovered: proxy.recovered, publishChanges: proxy.publishChanges, previewTiming: proxy.previewTiming, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
 	transform.openExecWindow("cell", observation, nil)
 	defer proxy.execWindows.close("cell")
 	firstItem := map[string]any{"id": "first", "type": "commandExecution", "command": "/bin/bash -lc " + quoteShellWord(first), "status": "inProgress"}
@@ -506,7 +506,7 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 			setLiveScope(auto, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
 			sub := testReview(auto).Subscribe()
 			proxy := &mekugiProxy{execWindows: &execWindowRegistry{tracker: hub.Observer}, review: testReview(auto)}
-			transform := &mekugiResponseTransform{control: proxy.control, review: proxy.review, execWindows: proxy.execWindows, calls: proxy.calls, retained: proxy.replayStore, previewTiming: proxy.previewTiming, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
+			transform := &mekugiResponseTransform{control: proxy.control, review: proxy.review, execWindows: proxy.execWindows, calls: proxy.calls, retained: proxy.retained, changeSource: proxy.changeSource, snapshots: proxy.snapshots, recovered: proxy.recovered, publishChanges: proxy.publishChanges, previewTiming: proxy.previewTiming, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
 			transform.openExecWindow("cell", observation, nil)
 			defer proxy.execWindows.close("cell")
 			item := map[string]any{"id": "edit", "type": "commandExecution", "command": "/tmp/vcs-guard/" + shell + " -c " + quoteShellWord(script), "status": "inProgress"}
@@ -637,7 +637,7 @@ func TestExecTrackPreviewDoesNotAdoptOlderInvocation(t *testing.T) {
 			setLiveScope(auto, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
 			sub := testReview(auto).Subscribe()
 			proxy := &mekugiProxy{execWindows: &execWindowRegistry{tracker: hub.Observer}, review: testReview(auto)}
-			transform := &mekugiResponseTransform{control: proxy.control, review: proxy.review, execWindows: proxy.execWindows, calls: proxy.calls, retained: proxy.replayStore, previewTiming: proxy.previewTiming, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
+			transform := &mekugiResponseTransform{control: proxy.control, review: proxy.review, execWindows: proxy.execWindows, calls: proxy.calls, retained: proxy.retained, changeSource: proxy.changeSource, snapshots: proxy.snapshots, recovered: proxy.recovered, publishChanges: proxy.publishChanges, previewTiming: proxy.previewTiming, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
 			transform.openExecWindow("new", observation, nil)
 			defer proxy.execWindows.close("new")
 			if lateReport {
@@ -690,7 +690,7 @@ func TestExecTrackSiblingWindowsCannotShareFutureReport(t *testing.T) {
 	setLiveScope(auto, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
 	sub := testReview(auto).Subscribe()
 	proxy := &mekugiProxy{execWindows: &execWindowRegistry{tracker: hub.Observer}, review: testReview(auto)}
-	transform := &mekugiResponseTransform{control: proxy.control, review: proxy.review, execWindows: proxy.execWindows, calls: proxy.calls, retained: proxy.replayStore, previewTiming: proxy.previewTiming, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
+	transform := &mekugiResponseTransform{control: proxy.control, review: proxy.review, execWindows: proxy.execWindows, calls: proxy.calls, retained: proxy.retained, changeSource: proxy.changeSource, snapshots: proxy.snapshots, recovered: proxy.recovered, publishChanges: proxy.publishChanges, previewTiming: proxy.previewTiming, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
 	script := "cat > source.go <<'EOF'\nafter\nEOF\ngo test ./..."
 	for _, id := range []string{"one", "two"} {
 		directory := filepath.Join(workspace, id)

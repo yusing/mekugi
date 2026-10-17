@@ -130,7 +130,7 @@ func TestStreamedCodeModeObservedCallCommitsAtInputAndItemCompletion(t *testing.
 		}
 		t.Fatalf("expected a live observed file: exists=%v class=%q paths=%v stamps=%v omitted=%d", exists, history.ExecObservation.Class, paths, stamps, len(history.ExecObservation.Omitted))
 	}
-	if _, found, err := proxy.replayStore.lookup(t.Context(), workspace, "call"); err != nil || !found {
+	if _, found, err := testProxyStore(proxy).lookup(t.Context(), workspace, "call"); err != nil || !found {
 		t.Fatalf("input completion was not durable: found=%v err=%v", found, err)
 	}
 	visible, err := transform.TransformSSE(mustTestJSON(t, map[string]any{
@@ -139,7 +139,7 @@ func TestStreamedCodeModeObservedCallCommitsAtInputAndItemCompletion(t *testing.
 	if err != nil || len(visible) != 1 {
 		t.Fatalf("item completion conflicted with retained input: events=%d err=%v", len(visible), err)
 	}
-	retained, found, err := proxy.replayStore.lookup(t.Context(), workspace, "call")
+	retained, found, err := testProxyStore(proxy).lookup(t.Context(), workspace, "call")
 	if err != nil || !found || responses.StringField(retained.UpstreamItem, "input") != source ||
 		retained.ExecObservation == nil || len(retained.ExecObservation.Files) == 0 ||
 		retained.ExecObservation.Files[0].WatchStamp != "" {
@@ -225,7 +225,7 @@ func TestCodeModeStockBatchPassesThroughUnchanged(t *testing.T) {
 	if history, found := transform.local["batch-call"]; !found || len(history.NativePatches) != 1 {
 		t.Fatalf("stock batch was not retained before exposure: found=%v history=%+v", found, history)
 	}
-	history, found, err := transform.retained.lookup(transform.ctx, workspace, "batch-call")
+	history, found, err := testResponseStore(transform).lookup(transform.ctx, workspace, "batch-call")
 	if err != nil || !found || len(history.NativePatches) != 1 || history.NativePatches[0].Input != patch {
 		t.Fatalf("stock batch observation = %+v, found=%v, err=%v", history.NativePatches, found, err)
 	}

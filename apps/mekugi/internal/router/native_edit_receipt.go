@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 
+	sessionhistory "github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
@@ -20,16 +22,15 @@ import (
 // publishEditReceipt reads committed filesystem changes. It never accepts a
 // caller-supplied diff or participates in edit execution. Command exit status
 // does not change the filesystem effects that this receipt describes.
-func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, thread, callID string, activity *sessioncontrol.Audience, displayID string) error {
-	s = s.scoped(ctx)
-	return s.locked(ctx, func(s *mekugiReplayStore) error {
-		if scope, found, err := s.publication.ReadScope(thread); err != nil {
+func publishEditReceipt(ctx context.Context, selected changes.Scope, source changes.Service, workspace, thread, callID string, activity *sessioncontrol.Audience, displayID string) error {
+	selected = observationScope(ctx, selected)
+	return selected.Store.Transaction(ctx, selected.Writes, func(*sessionhistory.Transaction) error {
+		if scope, found, err := selected.Store.ReadScope(thread); err != nil {
 			return err
 		} else if found {
-			s.
-				session.Namespace = scope.Namespace
+			selected.Namespace = scope.Namespace
 		}
-		record, found, err := s.read(workspace, callID, false)
+		record, found, err := selected.Store.ReadHostCall(workspace, callID, false)
 		if err != nil {
 			return err
 		}
@@ -37,7 +38,7 @@ func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, t
 			record.History.ExecutingThread != thread {
 			return fmt.Errorf("edit receipt not found")
 		}
-		index, err := s.changes.Inspect(s.changeScope(), workspace)
+		index, err := source.Inspect(selected, workspace)
 		if err != nil {
 			return err
 		}
@@ -47,7 +48,7 @@ func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, t
 				continue
 			}
 			if len(record.History.ReviewFiles) != 0 {
-				if receipt := changepresentation.ReceiptText(workspace, receiptEvidence(record.History)); receipt != "" {
+				if receipt := changepresentation.ReceiptText(workspace, receiptEvidence(legacyHistory(record.History))); receipt != "" {
 					// The observed receipt and the invocation share one display identity.
 					// An opaque command stays Run until its actual effects are known.
 					identity := displayID
@@ -65,7 +66,8 @@ func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, t
 
 // agentEditNotice is projected only after observation records are durable. The
 // original host result remains a separate content part and is retained verbatim.
-func (s *mekugiReplayStore) agentEditNotice(ctx context.Context, workspace, callID string, history mekugiHistory) (string, error) {
+func agentEditNotice(ctx context.Context, selected changes.Scope, source changes.Service, workspace, callID string, history mekugiHistory) (string, error) {
+	selected = observationScope(ctx, selected)
 	var calls []string
 	for index := range history.NativePatches {
 		calls = append(calls, legacycall.PatchCallID(callID, index))
@@ -76,9 +78,8 @@ func (s *mekugiReplayStore) agentEditNotice(ctx context.Context, workspace, call
 	if history.ResolvedBaseline != nil {
 		// Dynamic nested calls are unknown in the immutable pre-cell carrier.
 		// Find their durable derived attempts, not the disposable native trace.
-		scoped := s.scoped(ctx)
-		if err := scoped.locked(ctx, func(scoped *mekugiReplayStore) error {
-			index, err := scoped.changes.Inspect(scoped.changeScope(), workspace)
+		if err := selected.Store.Transaction(ctx, selected.Writes, func(*sessionhistory.Transaction) error {
+			index, err := source.Inspect(selected, workspace)
 			if err != nil {
 				return err
 			}
@@ -99,7 +100,7 @@ func (s *mekugiReplayStore) agentEditNotice(ctx context.Context, workspace, call
 	var ids []string
 	seen := make(map[string]bool)
 	for _, derived := range calls {
-		record, found, err := s.lookup(ctx, workspace, derived)
+		record, found, err := selected.Store.LookupHostCall(ctx, workspace, derived)
 		if err != nil {
 			return "", err
 		}
@@ -107,16 +108,16 @@ func (s *mekugiReplayStore) agentEditNotice(ctx context.Context, workspace, call
 			continue
 		}
 		if record.ExecOutcome != nil && record.ExecOutcome.SharedWith != "" {
-			record, found, err = s.lookup(ctx, workspace, record.ExecOutcome.SharedWith)
+			record, found, err = selected.Store.LookupHostCall(ctx, workspace, record.ExecOutcome.SharedWith)
 			if err != nil {
 				return "", err
 			}
 		}
-		record = authoredChangeHistory(record)
-		if len(record.ReviewFiles) == 0 {
+		authored := authoredChangeHistory(legacyHistory(record))
+		if len(authored.ReviewFiles) == 0 {
 			continue
 		}
-		id := record.ChangeID
+		id := authored.ChangeID
 		if !found || id == "" || seen[id] {
 			continue
 		}
@@ -128,7 +129,7 @@ func (s *mekugiReplayStore) agentEditNotice(ctx context.Context, workspace, call
 	}
 	// Put every ID before the bounded statistics, including multi-patch cells.
 	header := "mchanges " + strings.Join(ids, " ") + " --summary\n"
-	summary, err := s.changes.Read(ctx, s.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: ids, View: "summary"})
+	summary, err := source.Read(ctx, selected, changes.Query{Workspace: workspace, IDs: ids, View: "summary"})
 	if err != nil {
 		return "", err
 	}

@@ -23,7 +23,7 @@ func newShellEditTestUI(t *testing.T) *appServerUI {
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
 	setTestAppServerIntegration(u, proxy)
-	if err := u.openWaitStore(u.retained.publication, u.retained.writes, u.retained.retentionLimits()); err != nil {
+	if err := u.openWaitStore(u.retained.Store, u.retained.Writes, u.retained.Limits); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(u.waitRelease)
@@ -65,7 +65,7 @@ func completeShellEditTestCommand(t *testing.T, u *appServerUI, item string, exi
 
 func TestAppServerShellEditsRevertApplyReplay(t *testing.T) {
 	u := newShellEditTestUI(t)
-	workspace, store := u.session.cwd, u.retained
+	workspace, store := u.session.cwd, testUIStore(u)
 	ctx := context.WithValue(u.session.waitContext, storageSessionKey{}, storageSessionIdentity{Thread: u.session.waitThread, Namespace: u.session.waitNamespace})
 	path := filepath.Join(workspace, "ignored.txt")
 	// Source-named mchanges targets must not depend on workspace snapshot admission.
@@ -140,7 +140,7 @@ func TestAppServerShellEditsFailedWriterAndNoEffect(t *testing.T) {
 		if u.feedback.Alert {
 			t.Fatal(u.feedback.Text)
 		}
-		history, found, err := u.retained.lookup(u.session.waitContext, u.session.cwd, legacycall.ExecCallID(edit.call, false))
+		history, found, err := testUIStore(u).lookup(u.session.waitContext, u.session.cwd, legacycall.ExecCallID(edit.call, false))
 		if err != nil || !found || history.ExecOutcome.Exit == nil || *history.ExecOutcome.Exit != exit {
 			t.Fatalf("shell outcome: %+v, %v, %v", history, found, err)
 		}
@@ -161,7 +161,7 @@ func TestAppServerShellEditsFailedWriterAndNoEffect(t *testing.T) {
 
 func TestAppServerShellObservationKeepsOriginalOwnersAfterSwitch(t *testing.T) {
 	u := newShellEditTestUI(t)
-	thread, workspace, retained := u.Thread, u.session.cwd, u.retained
+	thread, workspace, retained := u.Thread, u.session.cwd, testUIStore(u)
 	path := filepath.Join(workspace, "selected.txt")
 	writeTestFile(t, path, "before\n")
 	edit := startShellEditTestCommand(t, u, "printf 'after\\n' > selected.txt", "shell-original")
@@ -173,7 +173,8 @@ func TestAppServerShellObservationKeepsOriginalOwnersAfterSwitch(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(other.snapshots.Close)
-	u.retained, u.Thread = other, "other-thread"
+	setTestUIStore(u, other)
+	u.Thread = "other-thread"
 	u.session.start(u.Thread, t.TempDir())
 	if err := u.openWaitStore(other.publication, other.writes, other.retentionLimits()); err != nil {
 		t.Fatal(err)

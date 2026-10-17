@@ -139,7 +139,7 @@ func TestLiveDiffJSONBatchKeepsFollowAndRecency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	proxy.replayStore = store
+	setTestProxyStore(proxy, store)
 	broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{
 		Workspaces: map[string]map[string]bool{workspace: {transform.shellThreadID: true}},
 	})

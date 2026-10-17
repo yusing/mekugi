@@ -31,7 +31,7 @@ func TestCommentaryReplayFilteringRequiresExactRetainedID(t *testing.T) {
 			assistantCommentaryMessage(unknown, "model-authored"),
 		}),
 	}}
-	proxy := &mekugiProxy{replayStore: store}
+	proxy := testProxyWithStore(store)
 	if _, err := proxy.reconcileVisibleInput(t.Context(), request, "workspace", "session"); err != nil {
 		t.Fatal(err)
 	}

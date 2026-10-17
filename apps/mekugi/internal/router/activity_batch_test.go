@@ -237,7 +237,7 @@ func TestActivityBatchRestoresVCSRows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	setTestAppServerIntegration(u, &mekugiProxy{replayStore: store})
+	setTestAppServerIntegration(u, testProxyWithStore(store))
 	output := "2\t1\ta.go\n"
 	item := binding.ThreadItem{ID: "vcs", Type: "commandExecution", Command: "bash -lc 'echo before; git diff --numstat'", ExitCode: new(0), AggregatedOutput: new("before\n" + output)}
 	entry := activityPaneEntry{native: &liveActivityNativeItem{thread: "main", turn: "t", item: item.ID}}

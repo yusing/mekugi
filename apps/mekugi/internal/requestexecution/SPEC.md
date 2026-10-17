@@ -19,6 +19,12 @@ Invocation startup owns their construction and shutdown; request cleanup closes
 only that response's observations. Preview timing is supplied by the selected
 frontend rather than importing its renderer into response observation.
 
+Retained reads, snapshot leases and publication transactions use Session History
+directly. Application observation converts working capture facts to neutral call
+records at publication; change membership and input adoption use the existing
+cross-owner transaction coordinator. Operation scope carries the selected thread,
+namespace and limits without a second storage owner or transaction wrapper.
+
 Native shell observation retains its admitted thread, namespace and workspace
 through host completion, independently of the displayed session. The terminal
 binds host identity and supplies completion facts to an opaque operation; capture

@@ -3,38 +3,32 @@ package router
 import (
 	"bytes"
 	"context"
-
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
-
-	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
-
-	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
-	previewbinding "github.com/yusing/mekugi/modules/livepreview/codexbinding"
-
-	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
-	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/backends/codex/nativetrace"
-	"github.com/yusing/mekugi/contracts/inference"
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
-	"github.com/yusing/mekugi/modules/usage/accounting"
-	"github.com/yusing/mekugi/providers/grok"
-	"github.com/yusing/mekugi/providers/opencode"
-
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-
 	jsonv1 "encoding/json"
-
 	json "encoding/json/v2"
 	"errors"
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	"github.com/yusing/mekugi/backends/codex/binding"
-
-	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
-
+	"github.com/yusing/mekugi/backends/codex/nativetrace"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/contracts/inference"
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	previewbinding "github.com/yusing/mekugi/modules/livepreview/codexbinding"
+	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+	"github.com/yusing/mekugi/modules/usage/accounting"
+	"github.com/yusing/mekugi/providers/grok"
+	"github.com/yusing/mekugi/providers/opencode"
 )
 
 const applyPatchToolName = "apply_patch"
@@ -50,7 +44,11 @@ type mekugiProxy struct {
 	control          *sessioncontrol.Observations
 	previewTiming    previewbinding.Timing
 	calls            *history.CallCache
-	replayStore      *mekugiReplayStore
+	retained         changes.Scope
+	changeSource     changes.Service
+	snapshots        *changecapture.Workspaces
+	recovered        *recovery.Service
+	publishChanges   func([]changes.Update)
 	noticeSink       func(string, string, string, string)
 }
 
@@ -81,7 +79,11 @@ type mekugiResponseTransform struct {
 	review           *sessionreview.Review
 	execWindows      *execWindowRegistry
 	calls            *history.CallCache
-	retained         *mekugiReplayStore
+	retained         changes.Scope
+	changeSource     changes.Service
+	snapshots        *changecapture.Workspaces
+	recovered        *recovery.Service
+	publishChanges   func([]changes.Update)
 	previewTiming    previewbinding.Timing
 	sessionID        string
 	shellTurnID      string
@@ -224,8 +226,8 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 		return nil, err
 	}
 	release := func() {}
-	if store := p.replayStore; store != nil {
-		ctx, release, err = beginRetainedSession(ctx, store.publication, store.writes, store.retentionLimits(), threadID, sessionID)
+	if store := p.retained; store.Store != nil {
+		ctx, release, err = beginRetainedSession(ctx, store.Store, store.Writes, store.Limits, threadID, sessionID)
 	}
 	if err == nil {
 		err = retained.BindLease(release)
@@ -234,7 +236,9 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 		retained.Finish(false)
 		return nil, requestexecution.StorageIOError(err)
 	}
-	ctx, err = p.replayStore.prepareHandleScope(ctx, metadata)
+	if store := p.retained; store.Store != nil {
+		ctx, err = prepareHandleScope(ctx, store.Store, store.Writes, metadata)
+	}
 	if err != nil {
 		retained.Finish(false)
 		return nil, err
@@ -277,12 +281,12 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 		p.activity.BeginResponse(activityThreadID, grok.IsModel(model) || opencode.IsModel(model), time.Now())
 	}
 	transform := &mekugiResponseTransform{
-		ctx:              ctx,
-		control:          p.control,
-		review:           p.review,
-		execWindows:      p.execWindows,
-		calls:            p.calls,
-		retained:         p.replayStore,
+		ctx:         ctx,
+		control:     p.control,
+		review:      p.review,
+		execWindows: p.execWindows,
+		calls:       p.calls,
+		retained:    p.retained, changeSource: p.changeSource, snapshots: p.snapshots, recovered: p.recovered, publishChanges: p.publishChanges,
 		previewTiming:    p.previewTiming,
 		sessionID:        sessionID,
 		shellTurnID:      metadata.TurnID,

@@ -194,7 +194,7 @@ func TestTerminalResponseReplayPersistenceFailureIsClassified(t *testing.T) {
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	transform.local["completed-call"] = mekugiHistory{Script: "completed"}
 	if err := os.Symlink(filepath.Join(t.TempDir(), "absent"),
-		filepath.Join(proxy.replayStore.directory, legacycall.Name(transform.directory, "completed-call", false))); err != nil {
+		filepath.Join(testProxyStore(proxy).directory, legacycall.Name(transform.directory, "completed-call", false))); err != nil {
 		t.Fatal(err)
 	}
 	_, err := transform.TransformSSE([]byte(`{"type":"response.completed","response":{"status":"completed","output":[]}}`))

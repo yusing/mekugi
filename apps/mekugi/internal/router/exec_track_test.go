@@ -221,7 +221,7 @@ func TestExecTrackCapturesMktempCreation(t *testing.T) {
 					map[string]any{"type": "function_call", "id": call + "-item", "call_id": call, "name": nativeExecCommandToolName, "arguments": arguments},
 					map[string]any{"type": "function_call_output", "call_id": call, "output": nativeExecOutput("Process exited with code 0") + got.stdout},
 				})
-				history, found, err := proxy.replayStore.lookup(t.Context(), workspace, call+":exec:1")
+				history, found, err := testProxyStore(proxy).lookup(t.Context(), workspace, call+":exec:1")
 				if err != nil || !found || history.ChangeID == "" || len(history.ReviewFiles) != 1 {
 					t.Fatalf("%s evidence: %+v, %v, %v", call, history, found, err)
 				}
@@ -238,7 +238,7 @@ func TestExecTrackCapturesMktempCreation(t *testing.T) {
 			if file := deletion.ReviewFiles[0]; file.AfterPath != "" || !strings.HasPrefix(file.BeforePath, created.stdout) {
 				t.Fatalf("deletion endpoint: %+v", file)
 			}
-			resumed, err := openMekugiReplayStore(proxy.replayStore.directory)
+			resumed, err := openMekugiReplayStore(testProxyStore(proxy).directory)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -747,7 +747,7 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	setTestAppServerIntegration(u, &mekugiProxy{replayStore: store})
+	setTestAppServerIntegration(u, testProxyWithStore(store))
 	cwd := t.TempDir()
 	script := "mcat " + quoteShellWord(cwd+"/a.go") + "; rg needle " + quoteShellWord(cwd+"/src")
 	item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc " + quoteShellWord(script), Cwd: cwd, Status: "inProgress"}
@@ -774,7 +774,7 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 	}
 	awaitCommandSegments(t, u)
 	restored := newAppServerSessionTestUI(t, u.session.cwd)
-	setTestAppServerIntegration(restored, &mekugiProxy{replayStore: store})
+	setTestAppServerIntegration(restored, testProxyWithStore(store))
 	restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 	segments := restored.view.Entries[0].Source.native.segments
 	if len(segments) != 2 || segments[0].text != "Read `a.go`" || segments[1].text != "Search `needle` in `src`" || segments[0].source != "mcat "+quoteShellWord(cwd+"/a.go") {
@@ -791,7 +791,7 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 	// Child history can omit command cwd while retaining its own workspace.
 	item.Cwd = ""
 	child := newAppServerSessionTestUI(t, u.session.cwd)
-	setTestAppServerIntegration(child, &mekugiProxy{replayStore: store})
+	setTestAppServerIntegration(child, testProxyWithStore(store))
 	child.session.path("child")
 	child.restoreActivityThread(binding.ThreadInfo{ID: "child", Cwd: cwd, Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
 	parts := child.agents.Entries[0].Source.native.segments

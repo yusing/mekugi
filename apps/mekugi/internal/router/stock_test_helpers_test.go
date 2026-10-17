@@ -76,7 +76,7 @@ func attachTestReplayStore(t *testing.T, proxy *mekugiProxy) {
 		t.Fatal(err)
 	}
 	t.Cleanup(store.snapshots.Close)
-	proxy.replayStore = store
+	setTestProxyStore(proxy, store)
 }
 
 func newMekugiTestTransform(t *testing.T) (*mekugiResponseTransform, *mekugiProxy, *codexresponses.Request, string) {

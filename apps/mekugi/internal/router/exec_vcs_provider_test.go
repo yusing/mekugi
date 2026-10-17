@@ -343,7 +343,7 @@ func TestVCSReadSiblingKeepsUnnamedInterpreterEdit(t *testing.T) {
 	attachTestReplayStore(t, proxy)
 	command := "git -c core.fsmonitor=false status --short; python3 -c " + commandargs.QuoteArgument("from pathlib import Path; name='authored'; name += '.txt'; Path(name).write_text('after\\n')")
 	history, ctx := runSnapshotExec(t, proxy, workspace, "vcs-read", command, func() { writeTestFile(t, filepath.Join(workspace, "authored.txt"), "after\n") })
-	list, err := proxy.replayStore.changes.Read(ctx, proxy.replayStore.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{history.ChangeID}, View: "list"})
+	list, err := testProxyStore(proxy).changes.Read(ctx, testProxyStore(proxy).scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{history.ChangeID}, View: "list"})
 	if err != nil || list != history.ChangeID+" +1 -1\n" {
 		t.Fatalf("read-only VCS hid interpreter edit: %q, %v", list, err)
 	}
@@ -355,7 +355,7 @@ func TestVCSOutputFilesStayOutOfAuthoredCounts(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
 	history, ctx := runSnapshotExec(t, proxy, workspace, "vcs-output", "git diff --output=export.patch", func() { gitTestRun(t, workspace, "diff", "--output=export.patch") })
-	list, err := proxy.replayStore.changes.Read(ctx, proxy.replayStore.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{history.ChangeID}, View: "list"})
+	list, err := testProxyStore(proxy).changes.Read(ctx, testProxyStore(proxy).scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{history.ChangeID}, View: "list"})
 	if err != nil || list != "" {
 		t.Fatalf("VCS output counted as authored: %q, %v", list, err)
 	}

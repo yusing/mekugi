@@ -314,7 +314,7 @@ func TestCodeModeCellEditReceipt(t *testing.T) {
 	if _, err := proxy.reconcileVisibleInput(transform.ctx, &request, workspace, transform.historySessionID); err != nil {
 		t.Fatal(err)
 	}
-	record, found, err := proxy.replayStore.lookup(t.Context(), workspace, legacycall.ExecCallID("cell", true))
+	record, found, err := testProxyStore(proxy).lookup(t.Context(), workspace, legacycall.ExecCallID("cell", true))
 	if err != nil || !found || record.ChangeID == "" || record.ExecOutcome.Status != changecapture.StatusCompleted {
 		t.Fatalf("exec record: found=%v err=%v record=%+v", found, err, record)
 	}
@@ -326,7 +326,7 @@ func TestCodeModeCellEditReceipt(t *testing.T) {
 		t.Fatalf("host results = %+v", record.HostResults)
 	}
 
-	store := testReplayStore(mekugiReplayStore{directory: proxy.replayStore.directory})
+	store := testReplayStore(mekugiReplayStore{directory: testProxyStore(proxy).directory})
 	snapshot, err := store.liveDiffSnapshot(t.Context(), previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"thread-1": true}}})
 	if err != nil {
 		t.Fatal(err)

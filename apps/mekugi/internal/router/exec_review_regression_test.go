@@ -154,7 +154,7 @@ func TestNativeExecResultFinalizesAfterReplayProxyReconstruction(t *testing.T) {
 	}
 	t.Cleanup(store.snapshots.Close)
 	firstProxy := newManagedMekugiProxy(t)
-	firstProxy.replayStore = store
+	setTestProxyStore(firstProxy, store)
 	workspace := t.TempDir()
 	target := filepath.Join(workspace, "a.txt")
 	writeTestFile(t, target, "gone\n")
@@ -186,7 +186,7 @@ func TestNativeExecResultFinalizesAfterReplayProxyReconstruction(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(freshStore.snapshots.Close)
-	freshProxy.replayStore = freshStore
+	setTestProxyStore(freshProxy, freshStore)
 	items := []any{
 		map[string]any{"type": "function_call", "call_id": "exec-call", "name": nativeExecCommandToolName, "arguments": arguments},
 		map[string]any{"type": "function_call_output", "call_id": "exec-call", "output": nativeExecOutput("Process exited with code 0")},

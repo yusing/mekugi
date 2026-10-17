@@ -72,7 +72,7 @@ func runSnapshotExec(t *testing.T, proxy *mekugiProxy, workspace, callID, comman
 		map[string]any{"type": "function_call", "call_id": callID, "name": nativeExecCommandToolName, "arguments": arguments},
 		map[string]any{"type": "function_call_output", "call_id": callID, "output": nativeExecOutput("Process exited with code 0")},
 	})
-	history, _, err := proxy.replayStore.lookup(t.Context(), workspace, legacycall.ExecCallID(callID, false))
+	history, _, err := testProxyStore(proxy).lookup(t.Context(), workspace, legacycall.ExecCallID(callID, false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestWorkspaceSnapshotRecordsUnnamedEditsWithinIgnoreRules(t *testing.T) {
 	if strings.Contains(paths, "node_modules") || len(history.ReviewFiles) != 4 {
 		t.Fatalf("ignored or extra paths were recorded:\n%s", paths)
 	}
-	net, err := proxy.replayStore.changes.Read(ctx, proxy.replayStore.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{history.ChangeID}, View: "net"})
+	net, err := testProxyStore(proxy).changes.Read(ctx, testProxyStore(proxy).scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{history.ChangeID}, View: "net"})
 	if err != nil || !strings.Contains(net, "-func old() {}") || !strings.Contains(net, "+func renamed() {}") {
 		t.Fatalf("net review: %q, %v", net, err)
 	}
@@ -165,7 +165,7 @@ func TestWorkspaceSnapshotRetainedIgnoredPathDoesNotBecomeDeletion(t *testing.T)
 	if paths := strings.Join(reviewPaths(history), "\n"); strings.Contains(paths, "cache.bin") || !strings.Contains(paths, "tracked.log") || len(history.ReviewFiles) != 2 {
 		t.Fatalf("ignore transition review: %s", paths)
 	}
-	if _, err := proxy.replayStore.changes.Read(ctx, proxy.replayStore.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{history.ChangeID}, View: "net"}); err != nil {
+	if _, err := testProxyStore(proxy).changes.Read(ctx, testProxyStore(proxy).scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{history.ChangeID}, View: "net"}); err != nil {
 		t.Fatalf("ignored artifact made the net diff incomplete: %v", err)
 	}
 	// Source-named edits retain coverage even when their path is ignored.
@@ -202,7 +202,7 @@ func TestWorkspaceSnapshotPlainWorkspaceBoundsNewTrees(t *testing.T) {
 func TestWorkspaceSnapshotOverlappingCallsRecordAnEffectOnce(t *testing.T) {
 	isolateSnapshotGit(t)
 	f := newMChangesSliceFixture(t, "snapshot-overlap")
-	proxy := &mekugiProxy{replayStore: f.store, execWindows: &execWindowRegistry{}}
+	proxy := testProxyWithStore(f.store, &execWindowRegistry{})
 	target := filepath.Join(f.workspace, "shared.txt")
 	writeTestFile(t, target, "one\n")
 	observe := func(ref string) mekugiHistory {
@@ -215,7 +215,7 @@ func TestWorkspaceSnapshotOverlappingCallsRecordAnEffectOnce(t *testing.T) {
 			ExecObservation: &changecapture.Observation{Commands: []commandanalysis.Command{{Command: ref}}, Class: execscope.Opaque.String(), Roots: []string{f.workspace}, Tree: tree}}
 	}
 	finalize := func(ref string, history mekugiHistory) mekugiHistory {
-		if err := finalizeExecObservations(proxy.replayStore, proxy.execWindows, proxy.activity, proxy.noticeSink, f.ctx, f.workspace, []execCompletion{{callID: ref, history: history, result: binding.DecodeExecutionResult(history.ToolName, responses.MustMarshalJSON(nativeExecOutput("Process exited with code 0")))}}); err != nil {
+		if err := finalizeExecObservations(proxy.retained, proxy.changeSource, proxy.snapshots, proxy.recovered, proxy.publishChanges, proxy.execWindows, proxy.activity, proxy.noticeSink, f.ctx, f.workspace, []execCompletion{{callID: ref, history: history, result: binding.DecodeExecutionResult(history.ToolName, responses.MustMarshalJSON(nativeExecOutput("Process exited with code 0")))}}); err != nil {
 			t.Fatal(err)
 		}
 		record, _, err := f.store.lookup(f.ctx, f.workspace, legacycall.ExecCallID(ref, false))
@@ -311,7 +311,7 @@ func TestWorkspaceSnapshotClaimsStayWithinTheirWorkspace(t *testing.T) {
 	inner := filepath.Join(f.workspace, "pkg")
 	writeTestFile(t, filepath.Join(f.workspace, "README"), "one\n")
 	writeTestFile(t, filepath.Join(inner, "code.go"), "package pkg\n")
-	proxy := &mekugiProxy{replayStore: f.store, execWindows: &execWindowRegistry{}}
+	proxy := testProxyWithStore(f.store, &execWindowRegistry{})
 	observe := func(ref, workspace string) mekugiHistory {
 		tree := f.store.snapshots.Checkpoint(f.ctx, workspace)
 		if tree == "" {
@@ -327,7 +327,7 @@ func TestWorkspaceSnapshotClaimsStayWithinTheirWorkspace(t *testing.T) {
 		ref, workspace string
 		history        mekugiHistory
 	}{{"outer", f.workspace, outer}, {"nested", inner, nested}} {
-		if err := finalizeExecObservations(proxy.replayStore, proxy.execWindows, proxy.activity, proxy.noticeSink, f.ctx, call.workspace, []execCompletion{{callID: call.ref, history: call.history, result: binding.DecodeExecutionResult(call.history.ToolName, responses.MustMarshalJSON(nativeExecOutput("Process exited with code 0")))}}); err != nil {
+		if err := finalizeExecObservations(proxy.retained, proxy.changeSource, proxy.snapshots, proxy.recovered, proxy.publishChanges, proxy.execWindows, proxy.activity, proxy.noticeSink, f.ctx, call.workspace, []execCompletion{{callID: call.ref, history: call.history, result: binding.DecodeExecutionResult(call.history.ToolName, responses.MustMarshalJSON(nativeExecOutput("Process exited with code 0")))}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -372,7 +372,7 @@ func TestWorkspaceSnapshotVCSChangesStayOutOfAuthoredTotals(t *testing.T) {
 				t.Fatalf("VCS history lost evidence: %+v", history)
 			}
 			// A new store reads durable provenance, without command re-execution.
-			resumed, err := openMekugiReplayStore(proxy.replayStore.directory)
+			resumed, err := openMekugiReplayStore(testProxyStore(proxy).directory)
 			if err != nil {
 				t.Fatal(err)
 			}

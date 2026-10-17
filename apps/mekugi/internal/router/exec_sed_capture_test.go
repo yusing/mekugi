@@ -46,11 +46,11 @@ func TestNativeExecSedInPlaceCapturesEdit(t *testing.T) {
 		map[string]any{"type": "function_call_output", "call_id": "sed-call", "output": nativeExecOutput("Process exited with code 0")},
 	}
 	next := reconcileExecItems(t, proxy, workspace, items)
-	history, found, err := proxy.replayStore.lookup(t.Context(), workspace, "sed-call:exec:1")
+	history, found, err := testProxyStore(proxy).lookup(t.Context(), workspace, "sed-call:exec:1")
 	if err != nil || !found || history.ChangeID == "" || len(history.ReviewFiles) != 1 {
 		t.Fatalf("persisted sed edit = %+v, found = %v, err = %v", history, found, err)
 	}
-	changes, err := proxy.replayStore.changes.Read(next.ctx, proxy.replayStore.scoped(next.ctx).changeScope(), changes.Query{
+	changes, err := testProxyStore(proxy).changes.Read(next.ctx, testProxyStore(proxy).scoped(next.ctx).changeScope(), changes.Query{
 		Workspace: workspace, IDs: []string{history.ChangeID}, View: "history", MaxTokens: 4000,
 	})
 	if err != nil {

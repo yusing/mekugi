@@ -48,7 +48,7 @@ func TestUISnapshotDirectoryDeletion(t *testing.T) {
 				map[string]any{"type": "function_call", "call_id": "delete-call", "name": nativeExecCommandToolName, "arguments": arguments},
 				map[string]any{"type": "function_call_output", "call_id": "delete-call", "output": nativeExecOutput("Process exited with code 0")},
 			})
-			store := testReplayStore(mekugiReplayStore{directory: proxy.replayStore.directory})
+			store := testReplayStore(mekugiReplayStore{directory: testProxyStore(proxy).directory})
 			data, err := store.liveDiffSnapshot(t.Context(), previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"stock-thread": true}}})
 			if err != nil {
 				t.Fatal(err)

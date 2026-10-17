@@ -23,14 +23,14 @@ func TestExecExplicitSiblingsShareDurableRecord(t *testing.T) {
 	}
 	writeTestFile(t, filepath.Join(workspace, "generated"), "generated\n")
 	reconcileExecItems(t, proxy, workspace, items)
-	first, found, err := proxy.replayStore.lookup(t.Context(), workspace, "first:exec:1")
+	first, found, err := testProxyStore(proxy).lookup(t.Context(), workspace, "first:exec:1")
 	if err != nil || !found || first.ChangeID == "" || first.ExecOutcome.Coverage != changecapture.CoverageExact {
 		t.Fatalf("shared record: %+v %v", first, err)
 	}
 	if len(first.ReviewFiles) != 1 || !strings.Contains(first.Script, "printf second > generated") {
 		t.Fatalf("missing merged evidence: %+v", first)
 	}
-	second, found, err := proxy.replayStore.lookup(t.Context(), workspace, "second:exec:1")
+	second, found, err := testProxyStore(proxy).lookup(t.Context(), workspace, "second:exec:1")
 	if err != nil || !found || second.ChangeID != "" || second.ExecOutcome.SharedWith != "first:exec:1" {
 		t.Fatalf("sibling linkage: %+v %v", second, err)
 	}
@@ -38,7 +38,7 @@ func TestExecExplicitSiblingsShareDurableRecord(t *testing.T) {
 	writeTestFile(t, filepath.Join(workspace, "unrelated"), "later\n")
 	reconcileExecItems(t, proxy, workspace, items)
 	reconcileExecItems(t, proxy, workspace, items[2:])
-	again, _, _ := proxy.replayStore.lookup(t.Context(), workspace, "first:exec:1")
+	again, _, _ := testProxyStore(proxy).lookup(t.Context(), workspace, "first:exec:1")
 	if len(again.ReviewFiles) != 1 || again.ChangeID != first.ChangeID {
 		t.Fatal("replay changed retained evidence")
 	}
@@ -63,11 +63,11 @@ func TestExecYieldedSiblingFinishesAfterOtherMemberWasSaved(t *testing.T) {
 	}
 	writeTestFile(t, filepath.Join(workspace, "first.txt"), "first")
 	reconcileExecItems(t, proxy, workspace, items)
-	first, found, err := proxy.replayStore.lookup(t.Context(), workspace, "first:exec:1")
+	first, found, err := testProxyStore(proxy).lookup(t.Context(), workspace, "first:exec:1")
 	if err != nil || !found || first.ChangeID == "" || len(first.ReviewFiles) != 1 {
 		t.Fatalf("first terminal member was not saved: %+v found=%v err=%v", first, found, err)
 	}
-	if _, found, err := proxy.replayStore.lookup(t.Context(), workspace, "second:exec:1"); err != nil || found {
+	if _, found, err := testProxyStore(proxy).lookup(t.Context(), workspace, "second:exec:1"); err != nil || found {
 		t.Fatalf("yielded member finalized before host completion: found=%v err=%v", found, err)
 	}
 	writeTestFile(t, filepath.Join(workspace, "second.txt"), "second")
@@ -76,7 +76,7 @@ func TestExecYieldedSiblingFinishesAfterOtherMemberWasSaved(t *testing.T) {
 		map[string]any{"type": "function_call_output", "call_id": "stdin-second", "output": nativeExecOutput("Process exited with code 0")},
 	)
 	reconcileExecItems(t, proxy, workspace, items)
-	second, found, err := proxy.replayStore.lookup(t.Context(), workspace, "second:exec:1")
+	second, found, err := testProxyStore(proxy).lookup(t.Context(), workspace, "second:exec:1")
 	if err != nil || !found || second.ChangeID == "" || second.ChangeID == first.ChangeID || len(second.ReviewFiles) != 1 ||
 		!strings.Contains(second.ReviewFiles[0].Diff, "+second") {
 		t.Fatalf("later terminal member lost its own saved edit: %+v found=%v err=%v", second, found, err)
@@ -84,8 +84,8 @@ func TestExecYieldedSiblingFinishesAfterOtherMemberWasSaved(t *testing.T) {
 	writeTestFile(t, filepath.Join(workspace, "unrelated.txt"), "later")
 	reconcileExecItems(t, proxy, workspace, items)
 	reconcileExecItems(t, proxy, workspace, items[2:])
-	firstAgain, _, _ := proxy.replayStore.lookup(t.Context(), workspace, "first:exec:1")
-	secondAgain, _, _ := proxy.replayStore.lookup(t.Context(), workspace, "second:exec:1")
+	firstAgain, _, _ := testProxyStore(proxy).lookup(t.Context(), workspace, "first:exec:1")
+	secondAgain, _, _ := testProxyStore(proxy).lookup(t.Context(), workspace, "second:exec:1")
 	if firstAgain.ChangeID != first.ChangeID || secondAgain.ChangeID != second.ChangeID || len(secondAgain.ReviewFiles) != 1 {
 		t.Fatalf("replay recaptured or reallocated sibling edits: first=%+v second=%+v", firstAgain, secondAgain)
 	}

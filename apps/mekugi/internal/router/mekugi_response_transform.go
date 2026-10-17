@@ -308,7 +308,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responseevents.Item)
 		execs, dynamic := commandanalysis.LiteralExecCommands(originalInput, t.directory, t.sessionShell)
 		// Source-resolved edit operands acquire baselines; a cell that may write
 		// elsewhere, including a dynamic one, is bounded by a workspace snapshot.
-		observation, observed := changecapture.Capture(t.ctx, execs, dynamic, true, executionCaptureEnvironment(t.ctx, t.directory, t.retained, patches))
+		observation, observed := changecapture.Capture(t.ctx, execs, dynamic, true, executionCaptureEnvironment(t.ctx, t.directory, t.retained, t.changeSource, t.snapshots, patches))
 		previewOpened := t.openStockExecWindow(callID, observation, patches, execs, dynamic, true)
 		if len(patches) == 0 && !observed && !previewOpened {
 			return false, nil
@@ -344,7 +344,7 @@ func (t *mekugiResponseTransform) openExecWindow(callID string, observation *cha
 		t.execGroup = rand.Text()
 	}
 	window := &execWindow{ref: callID, thread: t.shellThreadID, turn: t.shellTurnID, group: t.execGroup}
-	admitExecutionWindow(t.execWindows, t.review, window, observation, patches, executionCaptureEnvironment(t.ctx, t.directory, t.retained, patches), t.threadID, t.operationCaller())
+	admitExecutionWindow(t.execWindows, t.review, window, observation, patches, executionCaptureEnvironment(t.ctx, t.directory, t.retained, t.changeSource, t.snapshots, patches), t.threadID, t.operationCaller())
 }
 
 // Display baselines are process-local. They preserve running LiveDiff without
@@ -352,7 +352,7 @@ func (t *mekugiResponseTransform) openExecWindow(callID string, observation *cha
 func (t *mekugiResponseTransform) openStockExecWindow(callID string, authored *changecapture.Observation, patches []changecapture.PatchObservation, commands []commandanalysis.Command, dynamic, codeMode bool) bool {
 	display := authored
 	if (authored == nil || authored.Class == execscope.Opaque.String()) && t.review.Preview().Enabled() {
-		env := executionCaptureEnvironment(t.ctx, t.directory, t.retained, patches)
+		env := executionCaptureEnvironment(t.ctx, t.directory, t.retained, t.changeSource, t.snapshots, patches)
 		env.PreviewOnly = true
 		if preview, ok := changecapture.Capture(t.ctx, commands, dynamic, codeMode, env); ok {
 			if authored != nil {

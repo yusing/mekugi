@@ -30,7 +30,7 @@ func TestAppServerRestoreChildContentNativeCodex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	proxy.replayStore = store
+	setTestProxyStore(proxy, store)
 	provider := &appServerDirectedMessageProvider{
 		turns: make(map[string]int), assignment: "Inspect the child message and report one finding.",
 		message: "Restored child finding.",
@@ -72,7 +72,8 @@ func TestAppServerRestoreChildContentNativeCodex(t *testing.T) {
 
 	liveDiffScopeCapture(t, store, workspace, root, "saved-root-edit", filepath.Join(workspace, "restored.go"), "before", "after")
 	restoredProxy := newManagedMekugiProxy(t)
-	restoredProxy.replayStore, err = openMekugiReplayStore(store.directory)
+	reopenedStore, err := openMekugiReplayStore(store.directory)
+	setTestProxyStore(restoredProxy, reopenedStore)
 	if err != nil {
 		t.Fatal(err)
 	}

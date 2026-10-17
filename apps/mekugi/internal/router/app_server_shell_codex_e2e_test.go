@@ -7,6 +7,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -32,11 +33,11 @@ func TestAppServerShellNativeCodex(t *testing.T) {
 	p := new(shellPreviewProvider)
 	f := newMChangesSliceFixture(t, "shell-native")
 	proxy := newProxyWithSharedTestRegistry(t, f.registry)
-	proxy.replayStore = f.store
 	auto := newLivePreview(t.Context())
 	defer auto.Close()
 	f.store.liveDiff = testReview(auto).Publish
 	proxy.review = testReview(auto)
+	setTestProxyStore(proxy, f.store)
 	target := filepath.Join(t.TempDir(), "shell-edit.txt")
 	startup := filepath.Join(t.TempDir(), "frontends.bash")
 	writeTestFile(t, startup, "export PATH="+quoteShellWord(f.registry.FrontendDirectory)+":\"$PATH\"\n")
@@ -89,7 +90,9 @@ func TestAppServerShellNativeCodex(t *testing.T) {
 			t.Fatal("idle shell invoked the model")
 		}
 	}
-	runAppServerPreviewWith(t, p, proxy, appServerPreview{environment: []string{routerTestWorkerEnvironment + "=1", "BASH_ENV=" + startup}, beforePrompt: before})
+	// The standalone host harness must supply both parts of launch's frontend
+	// environment, including inherited PATH before any shell snapshot is made.
+	runAppServerPreviewWith(t, p, proxy, appServerPreview{environment: []string{routerTestWorkerEnvironment + "=1", "PATH=" + f.registry.FrontendDirectory + string(os.PathListSeparator) + execTrackPath(), "BASH_ENV=" + startup}, beforePrompt: before})
 	if !p.sawOutput.Load() {
 		t.Fatal("next user input did not carry native shell output")
 	}

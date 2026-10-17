@@ -23,7 +23,7 @@ func TestQuestionAnswerWaitsForToolInput(t *testing.T) {
 			u.session.cwd = t.TempDir()
 			// Installed Codex may omit cwd in provider requests. Native thread
 			// identity must still protect the matching UI's question answer.
-			transform := &mekugiResponseTransform{control: proxy.control, review: proxy.review, execWindows: proxy.execWindows, calls: proxy.calls, retained: proxy.replayStore, previewTiming: proxy.previewTiming, threadID: u.Thread}
+			transform := &mekugiResponseTransform{control: proxy.control, review: proxy.review, execWindows: proxy.execWindows, calls: proxy.calls, retained: proxy.retained, changeSource: proxy.changeSource, snapshots: proxy.snapshots, recovered: proxy.recovered, publishChanges: proxy.publishChanges, previewTiming: proxy.previewTiming, threadID: u.Thread}
 			defer transform.Close()
 			item := map[string]any{"id": "emitting", "type": kind, "name": "unobserved", "call_id": "call", "status": "in_progress"}
 			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": item})
@@ -63,7 +63,7 @@ func TestToolInputEmissionDoesNotBlockNormalPromptsOrOtherSessions(t *testing.T)
 			proxy := newManagedMekugiProxy(t)
 			setTestAppServerIntegration(u, proxy)
 			u.Turn = "turn"
-			transform := &mekugiResponseTransform{control: proxy.control, review: proxy.review, execWindows: proxy.execWindows, calls: proxy.calls, retained: proxy.replayStore, previewTiming: proxy.previewTiming, threadID: tc.thread, directory: tc.workspace}
+			transform := &mekugiResponseTransform{control: proxy.control, review: proxy.review, execWindows: proxy.execWindows, calls: proxy.calls, retained: proxy.retained, changeSource: proxy.changeSource, snapshots: proxy.snapshots, recovered: proxy.recovered, publishChanges: proxy.publishChanges, previewTiming: proxy.previewTiming, threadID: tc.thread, directory: tc.workspace}
 			defer transform.Close()
 			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": map[string]any{"id": "emitting", "type": "custom_tool_call"}})
 			if tc.answer {
@@ -81,7 +81,7 @@ func TestToolInputEmissionClearsOnItemDoneOrResponseClose(t *testing.T) {
 	for _, closeResponse := range []bool{false, true} {
 		t.Run(map[bool]string{false: "item done", true: "response close"}[closeResponse], func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
-			transform := &mekugiResponseTransform{control: proxy.control, review: proxy.review, execWindows: proxy.execWindows, calls: proxy.calls, retained: proxy.replayStore, previewTiming: proxy.previewTiming, threadID: "main", directory: "/workspace"}
+			transform := &mekugiResponseTransform{control: proxy.control, review: proxy.review, execWindows: proxy.execWindows, calls: proxy.calls, retained: proxy.retained, changeSource: proxy.changeSource, snapshots: proxy.snapshots, recovered: proxy.recovered, publishChanges: proxy.publishChanges, previewTiming: proxy.previewTiming, threadID: "main", directory: "/workspace"}
 			defer transform.Close()
 			item := map[string]any{"id": "emitting", "type": "custom_tool_call", "status": "incomplete"}
 			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": item})
@@ -105,7 +105,7 @@ func TestNormalPromptBypassesDeferredQuestionAnswer(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	setTestAppServerIntegration(u, proxy)
 	u.Turn = "turn"
-	transform := &mekugiResponseTransform{control: proxy.control, review: proxy.review, execWindows: proxy.execWindows, calls: proxy.calls, retained: proxy.replayStore, previewTiming: proxy.previewTiming, threadID: u.Thread, directory: u.session.cwd}
+	transform := &mekugiResponseTransform{control: proxy.control, review: proxy.review, execWindows: proxy.execWindows, calls: proxy.calls, retained: proxy.retained, changeSource: proxy.changeSource, snapshots: proxy.snapshots, recovered: proxy.recovered, publishChanges: proxy.publishChanges, previewTiming: proxy.previewTiming, threadID: u.Thread, directory: u.session.cwd}
 	defer transform.Close()
 	emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": map[string]any{"id": "emitting", "type": "custom_tool_call"}})
 	questionTestAsync(t, u, "question", "Who receives it?")

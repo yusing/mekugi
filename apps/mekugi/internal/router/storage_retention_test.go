@@ -627,7 +627,7 @@ func TestStorageStaleTerminalPreservesNewerHandoff(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := newManagedMekugiProxy(t)
-	p.replayStore = store
+	setTestProxyStore(p, store)
 	workspace := t.TempDir()
 	start := func() *mekugiResponseTransform {
 		t.Helper()
@@ -713,7 +713,7 @@ func TestNewRequestDoesNotReadUnrelatedRetentionCatalog(t *testing.T) {
 	t.Parallel()
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
-	store := proxy.replayStore
+	store := testProxyStore(proxy)
 	name := retainedhistory.SessionName("unrelated-thread")
 	invalid := retainedhistory.Catalog{
 		Version: 1, Thread: "unrelated-thread", LastUsed: time.Now().Add(-15 * 24 * time.Hour),

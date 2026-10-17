@@ -71,7 +71,7 @@ func TestActivitySingleCommandActualTime(t *testing.T) {
 				t.Fatal(err)
 			}
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			setTestAppServerIntegration(u, &mekugiProxy{replayStore: store})
+			setTestAppServerIntegration(u, testProxyWithStore(store))
 			item := binding.ThreadItem{ID: key[2], Type: "commandExecution", Command: "bash -lc " + quoteShellWord(script), ExitCode: new(got.code), AggregatedOutput: new(got.stdout + got.stderr)}
 			u.retainCommandSegments(entry, item.Observation(), view)
 			u.finishCommandSegments()
@@ -94,7 +94,8 @@ func TestActivityTimingRealShellBoundariesAndRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	u := newAppServerSessionTestUI(t, workspace)
-	u.execTrack, u.retained = shell.hub.Observer, store
+	u.execTrack = shell.hub.Observer
+	setTestUIStore(u, store)
 	shell.hub.ui = u
 	script := "sleep .04; sleep .12; false && echo never"
 	item := binding.ThreadItem{ID: "timed", Type: "commandExecution", Command: "/usr/bin/bash -lc " + quoteShellWord(script), Status: "inProgress"}
@@ -130,7 +131,7 @@ func TestActivityTimingRealShellBoundariesAndRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	restored := newAppServerSessionTestUI(t, workspace)
-	setTestAppServerIntegration(restored, &mekugiProxy{replayStore: store})
+	setTestAppServerIntegration(restored, testProxyWithStore(store))
 	restored.restoreHistory([]binding.HistoryTurn{{ID: key[1], Status: "completed", Items: []binding.ThreadItem{item}}})
 	for _, entry := range restored.view.Entries {
 		if entry.Source.CallID != item.ID || entry.Source.native == nil {

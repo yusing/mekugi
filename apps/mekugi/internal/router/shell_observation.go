@@ -12,6 +12,8 @@ import (
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 )
 
 type shellObservationInput struct {
@@ -25,15 +27,19 @@ type shellObservation struct {
 	call, workspace, thread, turn string
 	history                       mekugiHistory
 	options                       changecapture.Options
-	retained                      *mekugiReplayStore
+	retained                      changes.Scope
+	changeSource                  changes.Service
+	snapshots                     *changecapture.Workspaces
+	recovered                     *recovery.Service
+	publishChanges                func([]changes.Update)
 	windows                       *execWindowRegistry
 	audience                      *sessioncontrol.Audience
 	notice                        func(string, string, string, string)
 }
 
-func prepareShellObservation(ctx context.Context, retained *mekugiReplayStore, windows *execWindowRegistry, audience *sessioncontrol.Audience, notice func(string, string, string, string), input shellObservationInput) *shellObservation {
+func prepareShellObservation(ctx context.Context, retained changes.Scope, source changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publish func([]changes.Update), windows *execWindowRegistry, audience *sessioncontrol.Audience, notice func(string, string, string, string), input shellObservationInput) *shellObservation {
 	ctx = context.WithValue(ctx, storageSessionKey{}, storageSessionIdentity{Thread: input.Thread, Namespace: input.Namespace})
-	options := executionCaptureEnvironment(ctx, input.Workspace, retained, nil)
+	options := executionCaptureEnvironment(ctx, input.Workspace, retained, source, snapshots, nil)
 	command := commandanalysis.Command{Command: input.Command, Workdir: input.Workspace, Shell: input.Shell}
 	observation, observed := changecapture.Capture(ctx, []commandanalysis.Command{command}, false, false, options)
 	if !observed {
@@ -41,7 +47,7 @@ func prepareShellObservation(ctx context.Context, retained *mekugiReplayStore, w
 	}
 	return &shellObservation{ctx: ctx, call: "shell:" + rand.Text(), workspace: input.Workspace, thread: input.Thread, turn: input.Turn,
 		history: mekugiHistory{ToolName: nativeExecCommandToolName, ExecObservation: observation, ExecutingThread: input.Thread, Caller: input.Caller},
-		options: options, retained: retained, windows: windows, audience: audience, notice: notice,
+		options: options, retained: retained, changeSource: source, snapshots: snapshots, recovered: recovered, publishChanges: publish, windows: windows, audience: audience, notice: notice,
 	}
 }
 
@@ -64,7 +70,7 @@ func (o *shellObservation) Discard() {
 }
 
 func (o *shellObservation) Complete(host binding.ToolResult, output string) error {
-	err := finalizeExecObservations(o.retained, o.windows, o.audience, o.notice, context.WithoutCancel(o.ctx), o.workspace,
+	err := finalizeExecObservations(o.retained, o.changeSource, o.snapshots, o.recovered, o.publishChanges, o.windows, o.audience, o.notice, context.WithoutCancel(o.ctx), o.workspace,
 		[]execCompletion{{callID: o.call, history: o.history, result: binding.ExecutionResult{Terminal: true, Succeeded: host.Status == "completed" && host.ExitCode != nil && *host.ExitCode == 0, ExitCode: host.ExitCode, Text: output}, host: &host}})
 	if err != nil {
 		o.Discard()
