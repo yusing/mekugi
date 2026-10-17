@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
@@ -36,7 +38,7 @@ func TestLiveActivityElapsedFormatting(t *testing.T) {
 				}
 			}
 			v := newActivityAdapter()
-			agent := activityPaneAgent{Name: "/root/worker", Started: start, Responding: true, WorkTimer: activeWorkTimer{Known: true, Since: start}}
+			agent := activityPaneAgent{Name: "/root/worker", Started: start, Responding: true, WorkTimer: activitypresentation.WorkTimer{Known: true, Since: start}}
 			// Before its first response, the agent's last activity is its start.
 			last := tc.want + " ago"
 			if tc.age < 2*time.Second {
@@ -49,7 +51,7 @@ func TestLiveActivityElapsedFormatting(t *testing.T) {
 			if _, got := v.testCurrent(agent, now); got != tc.want+" · 1m ago" {
 				t.Fatalf("responded agent timer = %q", got)
 			}
-			agent.WorkTimer.update(false, now)
+			agent.ObserveActive(false, now)
 			agent.Responding, agent.LastResponse = false, now
 			if _, got := v.testCurrent(agent, now.Add(time.Minute)); got != tc.want+" · 1m ago" {
 				t.Fatalf("finished agent timer = %q", got)

@@ -2,6 +2,7 @@ package router
 
 import (
 	"cmp"
+	"iter"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -142,8 +143,7 @@ func (u *appServerUI) readRestoredChildren() error {
 		u.session.registerThread(info)
 		u.restoreDiffThread(info, false)
 		agent := u.session.agent(u.session.paths[id])
-		agent.Started, agent.LastResponse = restoredAgentTimes(info)
-		agent.WorkTimer = restoredAgentWork(info)
+		agent.RestoreTiming(restoredAgentIntervals(info.Turns))
 	}
 	u.readRestoredRollouts()
 	for _, turn := range r.root.Turns {
@@ -294,30 +294,14 @@ func (u *appServerUI) applyRestoredActivity(entries []activityPaneEntry) {
 	u.applyCapturedEdits()
 }
 
-func restoredAgentTimes(info binding.ThreadInfo) (start, last time.Time) {
-	for _, turn := range info.Turns {
-		if at := historyTime(turn.StartedAt); !at.IsZero() && (start.IsZero() || at.Before(start)) {
-			start = at
-		}
-		if at := historyTime(turn.CompletedAt); at.After(last) {
-			last = at
+func restoredAgentIntervals(turns []binding.HistoryTurn) iter.Seq2[time.Time, time.Time] {
+	return func(yield func(time.Time, time.Time) bool) {
+		for _, turn := range turns {
+			if !yield(historyTime(turn.StartedAt), historyTime(turn.CompletedAt)) {
+				return
+			}
 		}
 	}
-	return start, last
-}
-
-// Restore only closed host intervals. Missing completion timing cannot prove
-// work duration, and an old in-progress turn must not revive a live clock.
-func restoredAgentWork(info binding.ThreadInfo) (timer activeWorkTimer) {
-	for _, turn := range info.Turns {
-		start, end := historyTime(turn.StartedAt), historyTime(turn.CompletedAt)
-		if start.IsZero() || end.IsZero() || end.Before(start) {
-			continue
-		}
-		timer.Known = true
-		timer.ElapsedNS += int64(end.Sub(start))
-	}
-	return timer
 }
 
 // Observational history never opens previews, resumes children, or fabricates
@@ -330,8 +314,7 @@ func (u *appServerUI) restoreActivityThread(info binding.ThreadInfo, olderPage b
 	agent := s.agent(name)
 	u.restoreContextUsage(agent, info)
 	u.restoreUsage(info)
-	agent.Started, agent.LastResponse = restoredAgentTimes(info)
-	agent.WorkTimer = restoredAgentWork(info)
+	agent.RestoreTiming(restoredAgentIntervals(info.Turns))
 	agent.Turns, agent.Responding = uint64(len(info.Turns)), false
 	u.observeCost(info.ID, agent)
 	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: slices.Clone(s.agents)})

@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -211,7 +213,7 @@ func TestRequestedRosterMetricSlotsStableAcrossAvailabilityAndFormat(t *testing.
 	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
 	view := liveActivityTestView("/root/a")
 	view.Agents[0].Started = now.Add(-52 * time.Second)
-	view.Agents[0].WorkTimer = activeWorkTimer{Known: true, ElapsedNS: int64(52 * time.Second)}
+	view.Agents[0].WorkTimer = activitypresentation.WorkTimer{Known: true, ElapsedNS: int64(52 * time.Second)}
 	view.Agents[0].LastResponse = now
 	view.Agents[0].InputTokens, view.Agents[0].OutputTokens = 140_600, 789
 	view.Agents[0].Turns, view.Agents[0].Roundtrips, view.Agents[0].Cost, view.Agents[0].CostKnown = 7, 7, .5171, true

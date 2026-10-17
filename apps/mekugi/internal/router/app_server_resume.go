@@ -248,8 +248,7 @@ func (u *appServerUI) restoreMainHistory(turns []binding.HistoryTurn, placements
 		}
 	}
 	root := u.session.agent("/root")
-	root.Started, root.LastResponse = restoredAgentTimes(binding.ThreadInfo{Turns: turns})
-	root.WorkTimer = restoredAgentWork(binding.ThreadInfo{Turns: turns})
+	root.RestoreTiming(restoredAgentIntervals(turns))
 	root.Turns = uint64(len(turns))
 	root.Responding = u.Turn != ""
 	// Keep future activity sequence numbers ahead of the hydrated transcript.

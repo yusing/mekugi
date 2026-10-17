@@ -362,8 +362,7 @@ func (u *appServerUI) renderChildHistoryPage(h *appServerChildHistory, turn bind
 func (u *appServerUI) hydrateChildHistoryMetadata(h *appServerChildHistory) {
 	agent := u.session.agent(u.session.path(h.info.ID))
 	if !h.state.View(h.info.ID).Live {
-		agent.Started, agent.LastResponse = restoredAgentTimes(h.info)
-		agent.WorkTimer = restoredAgentWork(h.info)
+		agent.RestoreTiming(restoredAgentIntervals(h.info.Turns))
 		agent.Turns = max(agent.Turns, uint64(len(h.info.Turns)))
 		if len(h.info.Turns) > 0 {
 			agent.Final = h.info.Turns[len(h.info.Turns)-1].Status == "completed"

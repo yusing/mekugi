@@ -33,18 +33,13 @@ type activityPaneEntry struct {
 }
 
 type activityPaneAgent struct {
+	activitypresentation.AgentLifecycle
 	thread       string // Stable host identity; caller names remain presentation labels.
 	turn         string // Current child turn; Main's identity stays with session control.
 	settings     preferences.Evidence
 	settingsLive bool
-	WorkTimer    activeWorkTimer `json:",omitzero"`
 	Name         string
-	Role         string    `json:",omitzero"`
-	Responding   bool      `json:",omitzero"`
-	Final        bool      `json:",omitzero"`
-	Started      time.Time `json:",omitzero"`
-	LastResponse time.Time `json:",omitzero"`
-	Turns        uint64    `json:",omitzero"`
+	Role         string `json:",omitzero"`
 	// Provider requests forwarded for the agent, shown as T+N.
 	Roundtrips  uint64  `json:",omitzero"`
 	Cost        float64 `json:",omitzero"`

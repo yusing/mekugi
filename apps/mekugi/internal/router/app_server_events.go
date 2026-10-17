@@ -245,14 +245,9 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 		agent := s.agent(s.path(p.ThreadID))
 		switch p.Status.Type {
 		case "active":
-			// Status alone does not establish the first turn's start.
-			if !agent.Started.IsZero() {
-				agent.WorkTimer.update(true, now)
-				agent.Responding, agent.Final = true, false
-			}
+			agent.ObserveActive(true, now)
 		case "idle", "notLoaded", "systemError":
-			agent.WorkTimer.update(false, now)
-			agent.Responding = false
+			agent.ObserveActive(false, now)
 		}
 	case "thread/tokenUsage/updated":
 		if main {
@@ -275,15 +270,10 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 			u.proxy.review.Preview().SetTurn(p.ThreadID, p.Turn.ID, true)
 		}
 		agent := s.agent(s.path(p.ThreadID))
-		agent.WorkTimer.update(true, now)
-		agent.Responding, agent.Final = true, false
+		agent.TurnStarted(now)
 		if !main {
 			agent.turn = p.Turn.ID
 		}
-		if agent.Started.IsZero() {
-			agent.Started = now
-		}
-		agent.Turns++
 	case "turn/completed":
 		u.endTurnPreviews(p.ThreadID, p.Turn.ID)
 		entries = append(entries, u.endTurnWaits(p.ThreadID, p.Turn.ID, now)...)
@@ -304,9 +294,8 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 			s.CloseTurn(p.ThreadID, p.Turn.ID)
 		}
 		if current {
-			agent.WorkTimer.update(false, now)
-			agent.Responding, agent.LastResponse = false, now
-			agent.Final, agent.turn = p.Turn.Status == "completed", ""
+			agent.TurnCompleted(p.Turn.Status == "completed", now)
+			agent.turn = ""
 		}
 		u.observeCost(p.ThreadID, agent)
 

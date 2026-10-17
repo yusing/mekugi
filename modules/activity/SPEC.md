@@ -209,6 +209,10 @@ Reordering preserves source identity independently of publication order.
 
 The model derives canonical roster order, observed status, latest activity and
 active skills. Missing parents promote their children without reordering siblings.
+Activity also owns admitted agent lifecycle transitions and active-work timing.
+Live observations, offline replay and restored history use that same policy;
+the application admits thread/turn identities before applying transitions and
+retains host operation authority. Historical timing never resumes a live clock.
 Main and child identities stay distinct; Main's roster summary reads its existing
 feed rather than copying it. Loaded skills come from confirmed reads or submitted
 attachments. Failed/declined segments load nothing; independently successful

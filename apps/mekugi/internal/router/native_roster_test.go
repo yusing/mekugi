@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/charmbracelet/x/ansi"
@@ -150,9 +152,9 @@ func TestNativeRosterUnfocusedMetricsRightAligned(t *testing.T) {
 	v := newActivityAdapter()
 	now := time.Now()
 	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
-		{Name: "/root", Responding: true, Started: now.Add(-13 * time.Second), WorkTimer: activeWorkTimer{Known: true, Since: now.Add(-13 * time.Second)}, ContextKnown: true, ContextTokens: 47_600, ContextWindow: 200_000, InputTokens: 182_000, OutputTokens: 2_100, Turns: 1, Roundtrips: 1},
-		{Name: "/root/tester", Responding: true, Started: now.Add(-10 * time.Second), WorkTimer: activeWorkTimer{Known: true, Since: now.Add(-10 * time.Second)}},
-		{Name: "/root/explorer_agent", Responding: true, Started: now.Add(-10 * time.Second), WorkTimer: activeWorkTimer{Known: true, Since: now.Add(-10 * time.Second)}, ContextKnown: true, ContextTokens: 27_600, ContextWindow: 200_000},
+		{Name: "/root", Responding: true, Started: now.Add(-13 * time.Second), WorkTimer: activitypresentation.WorkTimer{Known: true, Since: now.Add(-13 * time.Second)}, ContextKnown: true, ContextTokens: 47_600, ContextWindow: 200_000, InputTokens: 182_000, OutputTokens: 2_100, Turns: 1, Roundtrips: 1},
+		{Name: "/root/tester", Responding: true, Started: now.Add(-10 * time.Second), WorkTimer: activitypresentation.WorkTimer{Known: true, Since: now.Add(-10 * time.Second)}},
+		{Name: "/root/explorer_agent", Responding: true, Started: now.Add(-10 * time.Second), WorkTimer: activitypresentation.WorkTimer{Known: true, Since: now.Add(-10 * time.Second)}, ContextKnown: true, ContextTokens: 27_600, ContextWindow: 200_000},
 	}})
 	lines := v.NativeRoster(150, 8, now, false)
 	var rows []string
@@ -181,8 +183,8 @@ func TestNativeRosterMetricsAlignParts(t *testing.T) {
 	v := newActivityAdapter()
 	now := time.Now()
 	agents := []activityPaneAgent{
-		{Name: "/root", Started: now.Add(-37 * time.Minute), WorkTimer: activeWorkTimer{Known: true, ElapsedNS: int64(37 * time.Minute)}, ContextKnown: true, ContextTokens: 171_300, ContextWindow: 285_000, InputTokens: 7_500_000, OutputTokens: 30_000, Turns: 3, Roundtrips: 3},
-		{Name: "/root/a", Started: now.Add(-94 * time.Second), WorkTimer: activeWorkTimer{Known: true, ElapsedNS: int64(94 * time.Second)}, ContextKnown: true, ContextTokens: 24_400, ContextWindow: 285_000, InputTokens: 411_600, OutputTokens: 4_000, Turns: 1, Roundtrips: 1},
+		{Name: "/root", Started: now.Add(-37 * time.Minute), WorkTimer: activitypresentation.WorkTimer{Known: true, ElapsedNS: int64(37 * time.Minute)}, ContextKnown: true, ContextTokens: 171_300, ContextWindow: 285_000, InputTokens: 7_500_000, OutputTokens: 30_000, Turns: 3, Roundtrips: 3},
+		{Name: "/root/a", Started: now.Add(-94 * time.Second), WorkTimer: activitypresentation.WorkTimer{Known: true, ElapsedNS: int64(94 * time.Second)}, ContextKnown: true, ContextTokens: 24_400, ContextWindow: 285_000, InputTokens: 411_600, OutputTokens: 4_000, Turns: 1, Roundtrips: 1},
 	}
 	v.apply(activityPaneEvent{Kind: "snapshot", Agents: agents})
 	var parts [][activityui.MetricParts]string

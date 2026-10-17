@@ -21,7 +21,7 @@ func newActiveWorkTestUI(t *testing.T) (*appServerUI, *time.Time) {
 func assertAgentWork(t *testing.T, u *appServerUI, thread string, at time.Time, want time.Duration, running bool) {
 	t.Helper()
 	agent := u.session.agent(u.session.paths[thread])
-	if got := agent.WorkTimer.at(at); got != want {
+	if got := agent.WorkTimer.At(at); got != want {
 		t.Fatalf("%s active work = %s, want %s", thread, got, want)
 	}
 	if got := !agent.WorkTimer.Since.IsZero(); got != running {

@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/charmbracelet/x/ansi"
@@ -188,12 +190,12 @@ func TestLiveActivityCombinedRosterShowsTimerCostAndUsage(t *testing.T) {
 	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
 	view := liveActivityTestView("/root/a", "/root/b")
 	view.Agents[0].Started = now.Add(-8 * time.Minute)
-	view.Agents[0].WorkTimer = activeWorkTimer{Known: true, ElapsedNS: int64(7*time.Minute + 57*time.Second)}
+	view.Agents[0].WorkTimer = activitypresentation.WorkTimer{Known: true, ElapsedNS: int64(7*time.Minute + 57*time.Second)}
 	view.Agents[0].LastResponse = now.Add(-3 * time.Second)
 	view.Agents[0].InputTokens, view.Agents[0].OutputTokens = 1_000, 0
 	view.Agents[0].Turns, view.Agents[0].Roundtrips, view.Agents[0].Cost, view.Agents[0].CostKnown = 2, 2, 1.2, true
 	view.Agents[1].Started = now.Add(-7 * time.Minute)
-	view.Agents[1].WorkTimer = activeWorkTimer{Known: true, ElapsedNS: int64(5 * time.Minute)}
+	view.Agents[1].WorkTimer = activitypresentation.WorkTimer{Known: true, ElapsedNS: int64(5 * time.Minute)}
 	view.Agents[1].LastResponse = now.Add(-2 * time.Minute)
 	view.Agents[1].InputTokens, view.Agents[1].OutputTokens = 500, 0
 	view.Agents[1].Turns, view.Agents[1].Roundtrips, view.Agents[1].Cost, view.Agents[1].CostKnown = 1, 1, 0, false
