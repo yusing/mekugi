@@ -88,7 +88,7 @@ func (v *activityAdapter) applyCapturedEdits(receipts []*changepresentation.Rece
 					native.capturedEdit = nil
 					entry.native = &native
 					entry.Text = activitypresentation.ShellSource(toolActivityShellSource(appServerDisplayCommand(native.command)), native.commandCwd)
-					v.Model.Replace(i, entry, activityValues(entry))
+					v.Model.Replace(i, entry, activitypresentation.RetainAnnotations(activityValues(entry), v.Entries[i].Values))
 				}
 				continue
 			}
@@ -159,7 +159,7 @@ func (v *activityAdapter) applyCapturedEdits(receipts []*changepresentation.Rece
 				if batch != nil {
 					blocks = activitypresentation.RetainBatchResult(blocks, *batch)
 				}
-				v.Model.Replace(i, entry, blocks)
+				v.Model.Replace(i, entry, activitypresentation.RetainAnnotations(blocks, v.Entries[i].Values))
 			}
 		}
 	}

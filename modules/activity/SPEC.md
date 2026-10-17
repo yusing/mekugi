@@ -47,7 +47,9 @@ do not repeat the error, and the model receives its original result unchanged.
 If a finished cell returned only its host header and optional script error, its
 trace-correlated command rows with output say `output not returned to the model`.
 Yielded cells and cells that printed content receive no note. These notes remain
-for the live router session and are not reconstructed on resume.
+for the live router session and are not reconstructed on resume. Reclassifying
+an operation or replacing/withdrawing its capture receipt preserves its existing
+repetition and unreturned-output notes without duplicating them.
 
 Wait/input observations retain typed host command/item identity; an uncorrelated
 poll cannot name a guessed command. A turn ending before its wait item completes

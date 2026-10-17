@@ -155,7 +155,7 @@ func (v *activityAdapter) mergeNative(entry activityPaneEntry) bool {
 			current.native = &native
 			blocks := v.sourceValues(i)
 			if native.command != "" && len(blocks) > 1 && !slices.ContainsFunc(blocks, func(b activitypresentation.Value) bool { return b.BatchExit }) {
-				blocks = activityValues(current)
+				blocks = activitypresentation.RetainAnnotations(activityValues(current), blocks)
 			} else {
 				activitypresentation.ApplyApproval(blocks, native.approval)
 			}
@@ -176,14 +176,7 @@ func (v *activityAdapter) mergeNative(entry activityPaneEntry) bool {
 		entry.Seq, entry.Observed = previous.Source.Seq, previous.Source.Observed
 		entry.native.question = previous.Source.native.question
 		blocks := activityValues(entry)
-		for _, annotation := range v.sourceValues(i) {
-			if annotation.Repeated != "" && len(blocks) > 0 {
-				blocks[len(blocks)-1].Repeated = annotation.Repeated
-			}
-			if annotation.Kind == "filter" {
-				blocks = append(blocks, annotation)
-			}
-		}
+		blocks = activitypresentation.RetainAnnotations(blocks, v.Entries[i].Values)
 		v.Model.Replace(i, entry, blocks)
 		return true
 	}
