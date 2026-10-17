@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/backends/codex/shellhook"
-
 	"github.com/charmbracelet/x/vt"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/backends/codex/shellhook"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -22,7 +22,7 @@ func TestNativeApprovalDenialSameTurnCodexE2E(t *testing.T) {
 	shell := execTrackShellExecutable(t, "bash")
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
-	var original codexTurnMetadata
+	var original codexresponses.TurnMetadata
 	requests := 0
 	provider := &toolFrontendCodexProvider{
 		program:   `const result = await tools.exec_command({cmd:"echo APPROVAL_COMMAND_RAN",shell:` + string(responses.MustMarshalJSON(shell)) + `,login:false,sandbox_permissions:"require_escalated",justification:"Exercise isolated native command denial"}); text(result.output);`,
@@ -30,7 +30,7 @@ func TestNativeApprovalDenialSameTurnCodexE2E(t *testing.T) {
 		finalText: "Recovered after a retry.",
 		observeRequest: func(body []byte, headers http.Header) error {
 			requests++
-			metadata, ok := decodeCodexTurnMetadata(headers)
+			metadata, ok := codexresponses.DecodeTurnMetadata(headers)
 			if !ok || metadata.ThreadID == "" || metadata.TurnID == "" {
 				return fmt.Errorf("missing native thread/turn identity")
 			}

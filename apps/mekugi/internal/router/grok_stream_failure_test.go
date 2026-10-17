@@ -10,12 +10,10 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/libraries/httptransport"
-
-	"github.com/yusing/mekugi/providers/grok"
-
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/providers/grok"
 )
 
 func TestGrokStreamFailureTerminal(t *testing.T) {
@@ -37,8 +35,8 @@ func TestGrokStreamFailureTerminal(t *testing.T) {
 				events = append(events, event)
 				return nil
 			})
-			diagnostic, ok := errors.AsType[*criticalDiagnosticError](err)
-			if state != responses.TerminalFailed || !ok || diagnostic.code != test.code {
+			diagnostic, ok := errors.AsType[*requestexecution.DiagnosticError](err)
+			if state != responses.TerminalFailed || !ok || diagnostic.Code != test.code {
 				t.Fatalf("state=%v err=%v", state, err)
 			}
 			created := events[0]["response"].(map[string]any)
@@ -57,14 +55,12 @@ func TestGrokStreamFailureTerminal(t *testing.T) {
 				}
 			}
 			notices := testCriticalErrors()
-			finalization := &requestFinalization{sessionID: "test", failurePhase: requestFailureInspectResponse,
-				observation: requestObservation{outcome: requestOutcomeFailed}}
-			notices.record(finalization, err)
-			if finalization.diagnosticCode != test.code {
-				t.Fatalf("unclassified request failure: %s", finalization.diagnosticCode)
+			finalization := notices.Report(requestexecution.Failure{Session: "test", Phase: "inspect_response"}, err)
+			if finalization.Code != test.code {
+				t.Fatalf("unclassified request failure: %s", finalization.Code)
 			}
 			pending := strings.Join(notices.Notices.Pending(), "\n")
-			want := diagnostic.summary
+			want := diagnostic.Summary
 			if test.name == "provider error" {
 				want = "private-provider-content"
 			}
@@ -81,7 +77,7 @@ func TestGrokStreamFailureTerminal(t *testing.T) {
 func TestGrokStreamWriteFailureDoesNotRetry(t *testing.T) {
 	for _, failAt := range []int{1, 2, 4} {
 		writes := 0
-		failure := staticCriticalDiagnostic("test_write", "consumer write failed")
+		failure := requestexecution.StaticError("test_write", "consumer write failed")
 		_, err := readGrokTestEvents(t, grokTestRequest(t, true), strings.NewReader(grokTextStream()), func(map[string]any) error {
 			writes++
 			if writes >= failAt {
@@ -101,20 +97,20 @@ func TestGrokClientDeliversFailureBeforeReadError(t *testing.T) {
 		io.WriteString(w, "data: {\"error\":{\"message\":\"private-provider-content\"}}\n\n")
 	}))
 	defer server.Close()
-	client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), HTTPClient: grokTestHTTPClient(t, server), Auth: grok.NewAuth("", "xai-test", httptransport.Client(nil))}
+	client := &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), HTTPClient: grokTestHTTPClient(t, server), Auth: grok.NewAuth("", "xai-test", httptransport.Client(nil))}
 	response, err := client.ForwardExecution(t.Context(), t.Context(), grokTestRequest(t, true), grokTestHeaders())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer response.Body.Close()
 	var output bytes.Buffer
-	state, err := copyUpstreamBodyTransformed(&output, response.Response, true, nil, nil)
+	state, err := requestexecution.CopyResponse(&output, response.Response, true, nil, nil)
 	body := output.Bytes()
 	if state != responses.TerminalFailed {
 		t.Fatalf("terminal = %v", state)
 	}
-	diagnostic, ok := errors.AsType[*criticalDiagnosticError](err)
-	if !ok || diagnostic.code != "grok_stream_provider_error" {
+	diagnostic, ok := errors.AsType[*requestexecution.DiagnosticError](err)
+	if !ok || diagnostic.Code != "grok_stream_provider_error" {
 		t.Fatalf("lost producer failure: %v", err)
 	}
 	if !bytes.Contains(body, []byte("event: response.failed\n")) ||
@@ -146,7 +142,7 @@ type grokFailureReader struct{ err error }
 func (r grokFailureReader) Read([]byte) (int, error) { return 0, r.err }
 
 func TestGrokClientFailedTerminalRetainsTimeoutAccounting(t *testing.T) {
-	client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), Auth: grok.NewAuth("", "test", httptransport.Client(nil)), HTTPClient: &http.Client{
+	client := &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), Auth: grok.NewAuth("", "test", httptransport.Client(nil)), HTTPClient: &http.Client{
 		Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 			return &http.Response{StatusCode: http.StatusOK,
 				Header: http.Header{"Content-Type": []string{"text/event-stream"}},
@@ -158,15 +154,9 @@ func TestGrokClientFailedTerminalRetainsTimeoutAccounting(t *testing.T) {
 		t.Fatal(err)
 	}
 	var output bytes.Buffer
-	state, err := copyUpstreamBodyTransformed(&output, response.Response, true, nil, nil)
+	state, err := requestexecution.CopyResponse(&output, response.Response, true, nil, nil)
 	if state != responses.TerminalFailed || !errors.Is(err, httptransport.ErrStreamIdleTimeout) {
 		t.Fatalf("state=%v err=%v", state, err)
 	}
-	finalization := &requestFinalization{upstreamTerminalState: state}
-	finalization.classifyCopyError(err)
-	finalization.finish(t.Context(), err, &output, testCriticalErrors())
-	if finalization.observation.outcome != requestOutcomeStreamIdleTimedOut ||
-		finalization.failurePhase != requestFailureStreamIdleTimeout {
-		t.Fatalf("timeout accounting lost: %+v", finalization)
-	}
+
 }

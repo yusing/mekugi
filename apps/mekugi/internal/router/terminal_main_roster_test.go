@@ -12,7 +12,7 @@ func TestMainResponseUsageIsolationAtRequestBoundary(t *testing.T) {
 	p.activity.observe("child", "thread", "/root/child", true)
 	p.activity.observe("other", "", "/root", false)
 	counts := inference.Usage{InputTokens: 100, UncachedInputTokens: 100, OutputTokens: 20}
-	root.observeResponseUsage(counts)
+	root.ObserveUsage(counts)
 	root.Close()
 	if report, ok := p.usage.Snapshot("thread"); !ok || report.InputTokens != 100 || report.OutputTokens != 20 {
 		t.Fatalf("main usage not reflected in the canonical usage owner: %+v", report)

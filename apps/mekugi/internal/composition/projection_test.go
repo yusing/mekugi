@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+
 	json "encoding/json/v2"
 	"io"
 	"net"
@@ -15,9 +18,8 @@ import (
 
 	history "github.com/yusing/mekugi/modules/sessionhistory/history"
 
-	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
-
 	"github.com/coder/websocket"
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 	"github.com/yusing/mekugi/apps/mekugi/internal/router"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/outputdeduplication"
@@ -108,7 +110,7 @@ func TestFrontendsRunSessionLivePreviewInputProjection(t *testing.T) {
 			done := make(chan error, 1)
 			go func() {
 				defer close(done)
-				done <- router.RunSession(runtime.Terminal, runtime.Presentation, runtime.Conversation, runtime.LivePreview, runtime.Activity, runtime.History, runtime.Preferences, runtime.Recovery, runtime.Segments, runtime.Changes, runtime.Usage, runtime.AgentMetrics, runtime.TransportDiagnostics, runtime.Diagnostics, ctx, runtime.Commands, runtime.InputProjections, runtime.Guidance, runtime.Naming, runtime.Observation, runtime.Guards, options, router.NewCriticalErrors(runtime.Notifications), func(session router.Session) { ready <- session }, nil)
+				done <- router.RunSession(runtime.Terminal, runtime.Presentation, runtime.Conversation, runtime.LivePreview, runtime.Activity, runtime.History, runtime.Preferences, runtime.Recovery, runtime.Segments, runtime.Changes, runtime.Usage, runtime.AgentMetrics, runtime.TransportDiagnostics, runtime.Diagnostics, ctx, runtime.Commands, runtime.InputProjections, runtime.Guidance, runtime.Naming, runtime.Observation, runtime.Guards, options, requestexecution.NewFailures(runtime.Notifications), func(session router.Session) { ready <- session }, nil)
 			}()
 			defer func() {
 				cancel()

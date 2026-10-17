@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/gofrs/flock"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
 func TestStorageCompletionIndependentOfAnswerPresentation(t *testing.T) {
@@ -27,7 +28,7 @@ func TestStorageCompletionIndependentOfAnswerPresentation(t *testing.T) {
 				proxy := newManagedMekugiProxy(t)
 				proxy.replayStore = store
 				request := activityAdmissionRequest(t, nil)
-				transform, err := proxy.prepareRequest(t.Context(), &request, "routing", "thread", codexTurnMetadata{RequestKind: "turn", ThreadID: "thread", Directories: map[string]json.RawMessage{t.TempDir(): nil}}, true)
+				transform, err := proxy.prepareRequest(t.Context(), &request, "routing", "thread", codexresponses.TurnMetadata{RequestKind: "turn", ThreadID: "thread", Directories: map[string]json.RawMessage{t.TempDir(): nil}}, true)
 				if err != nil {
 					t.Fatal(err)
 				}

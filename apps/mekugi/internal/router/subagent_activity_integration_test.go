@@ -23,7 +23,7 @@ func prepareActivityModelTest(t *testing.T, proxy *mekugiProxy, model, session, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	metadata := codexTurnMetadata{RequestKind: "turn", ThreadID: thread, ParentThreadID: parent, AgentName: name}
+	metadata := codexresponses.TurnMetadata{RequestKind: "turn", ThreadID: thread, ParentThreadID: parent, AgentName: name}
 	if parent != "" {
 		metadata.SubagentKind = "thread_spawn"
 	}

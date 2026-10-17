@@ -2,6 +2,9 @@ package router
 
 import (
 	"bytes"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+
 	json "encoding/json/v2"
 	"io"
 	"net/http"
@@ -15,7 +18,6 @@ import (
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
-
 	"github.com/yusing/mekugi/providers/opencode"
 )
 
@@ -76,12 +78,10 @@ func TestTerminalProviderErrorCompletenessAndCaptureIsolation(t *testing.T) {
 	issues := testCriticalErrors()
 	for _, message := range []string{"first cause", "second cause", "first cause"} {
 		body := []byte(`{"type":"error","error":{"message":"` + message + `"}}`)
-		issues.record(&requestFinalization{
-			sessionID: "same", failurePhase: requestFailureTerminalValidation,
-			upstreamTerminalState: responseevents.TerminalFailed,
-			observation:           requestObservation{outcome: requestOutcomeFailed},
-			providerFailure:       inferencegateway.TerminalProviderError(body, true),
-		}, nil)
+		issues.Report(requestexecution.Failure{
+			Session: "same", Phase: "terminal_validation",
+			Terminal: responseevents.TerminalFailed,
+		}, inferencegateway.TerminalProviderError(body, true))
 	}
 	notices := issues.Notices.Pending()
 	if len(notices) != 2 || !strings.Contains(notices[0], "first cause") ||
@@ -105,7 +105,7 @@ func TestAdaptedProviderErrorDelivery(t *testing.T) {
 					payload = `{"type":"response.failed","response":{"status":"failed","error":{"code":"invalid_request_error","message":"actual rejection provider-secret caller-secret"}}}`
 				}
 				provider := newTestProviderClient("http://unused.invalid", nil)
-				provider.OpenCode = map[string]*inferencegateway.ThirdPartyClient{service.Prefix: {Diagnostics: providerCodecDiagnostics(),
+				provider.OpenCode = map[string]*inferencegateway.ThirdPartyClient{service.Prefix: {Diagnostics: requestexecution.ProviderDiagnostics(),
 					OpenCode: &service, HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 						return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}},
 							Body: io.NopCloser(strings.NewReader("data: " + payload + "\n\n"))}, nil

@@ -3,11 +3,12 @@ package router
 import (
 	"bytes"
 
-	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
-
-	"github.com/yusing/mekugi/modules/conversation/composer"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/modules/conversation/composer"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -15,7 +16,6 @@ import (
 	jsonv1 "encoding/json"
 
 	json "encoding/json/v2"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -69,7 +69,7 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 		t.Fatalf("attachment became naming text: %q", question)
 	}
 	request := codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": raw}}
-	projectFileAttachments(&request)
+	requestexecution.ProjectFileAttachments(&request)
 	var messages []struct {
 		Role    string              `json:"role"`
 		Content []map[string]string `json:"content"`
@@ -81,7 +81,7 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 		t.Fatalf("projection did not preserve prompt/media and separate file: %+v", messages)
 	}
 	first := bytes.Clone(request.Fields["input"])
-	projectFileAttachments(&request)
+	requestexecution.ProjectFileAttachments(&request)
 	if !bytes.Equal(first, request.Fields["input"]) {
 		t.Fatal("projection is not idempotent")
 	}
@@ -90,7 +90,7 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 		t.Fatal(err)
 	}
 	replayed := codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": raw}}
-	projectFileAttachments(&replayed)
+	requestexecution.ProjectFileAttachments(&replayed)
 	if !responses.SameJSONValue(first, replayed.Fields["input"]) {
 		t.Fatal("replay changed submitted snapshot")
 	}
@@ -103,20 +103,21 @@ func TestComposerFileAttachmentWireAndProviderPrefix(t *testing.T) {
 		map[string]any{"type": "input_text", "text": attachments.Encode([]string{"Attached file /work/example:\nexact content"})},
 	}}})
 	request.Fields["input"] = raw
-	attempt := newRequestAttempt(requestExecutor{provider: &serverFakeProvider{}}, t.Context(), t.Context(), request, http.Header{}, "")
-	if err := attempt.prepareWire(); err != nil {
+	requestexecution.ProjectFileAttachments(&request)
+	body, err := request.WireBody(request.Fields)
+	if err != nil {
 		t.Fatal(err)
 	}
 	var sent struct {
 		Input []jsonv1.RawMessage `json:"input"`
 	}
-	if err := json.Unmarshal(attempt.forwardBody, &sent); err != nil || len(sent.Input) != 2 {
+	if err := json.Unmarshal(body, &sent); err != nil || len(sent.Input) != 2 {
 		t.Fatalf("wire did not carry separate user messages: %v", err)
 	}
 	for _, automatic := range []bool{false, true} {
 		request.Fields["input"] = raw
 		request.Fields["previous_response_id"] = responses.MustMarshalJSON("parent")
-		projectFileAttachments(&request)
+		requestexecution.ProjectFileAttachments(&request)
 		exchange := confirmedHistoryExchange(t, sent.Input, automatic)
 		if _, err := exchange.Reconcile(&request, true); err != nil {
 			t.Fatal(err)
@@ -200,7 +201,7 @@ func TestComposerFileAttachmentProjectionLeavesLookalikes(t *testing.T) {
 	} {
 		raw := responses.MustMarshalJSON([]any{item})
 		request := codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": raw}}
-		projectFileAttachments(&request)
+		requestexecution.ProjectFileAttachments(&request)
 		if !bytes.Equal(raw, request.Fields["input"]) {
 			t.Fatal("changed non-attachment input")
 		}
@@ -240,7 +241,7 @@ func TestSkillAttachmentProjectionMatchesSuccessfulSource(t *testing.T) {
 					map[string]any{"role": "user", "content": content},
 					map[string]any{"role": "user", "content": []map[string]string{{"type": "input_text", "text": attachments.Encode(frames)}}},
 				})}}
-				projectFileAttachments(&request)
+				requestexecution.ProjectFileAttachments(&request)
 				var messages []map[string]jsonv1.RawMessage
 				if err := json.Unmarshal(request.Fields["input"], &messages); err != nil {
 					t.Fatal(err)
@@ -262,7 +263,7 @@ func TestSkillAttachmentProjectionMatchesSuccessfulSource(t *testing.T) {
 
 func TestComposerFileAttachmentOversizedInputRestoresDraft(t *testing.T) {
 	u, w := newAppServerTestUI()
-	d := conversationmodel.Input{Text: strings.Repeat("x", composerTextLimit), Attachments: []string{attachments.Encode([]string{"Attached file data"})}}
+	d := conversationmodel.Input{Text: strings.Repeat("x", codexresponses.UserTextLimit), Attachments: []string{attachments.Encode([]string{"Attached file data"})}}
 	if err := u.send([]conversationmodel.Input{d}, false); err != nil {
 		t.Fatal(err)
 	}

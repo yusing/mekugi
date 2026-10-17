@@ -12,27 +12,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
-
-	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
-
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
-
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
-
-	"github.com/yusing/mekugi/testsupport/moduletest"
-
-	"github.com/yusing/mekugi/modules/symbolquery/query"
-
-	"github.com/yusing/mekugi/modules/fileread/read"
-	"github.com/yusing/mekugi/modules/sourceoutline/outline"
-
-	"github.com/yusing/mekugi/contracts/command"
-	"github.com/yusing/mekugi/modules/boundedcommand/run"
-
 	"github.com/dlclark/regexp2/v2"
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+	"github.com/yusing/mekugi/modules/boundedcommand/run"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/fileread/read"
+	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+	"github.com/yusing/mekugi/modules/sourceoutline/outline"
+	"github.com/yusing/mekugi/modules/symbolquery/query"
+	"github.com/yusing/mekugi/testsupport/moduletest"
 )
 
 type proxyRegistryFixture struct {
@@ -71,7 +63,7 @@ func buildToolRegistryForTest(
 		return nil, err
 	}
 	var axReadOutput string
-	if debug, _ := ctx.Value(debugContextKey{}).(*debugOutput); debug != nil {
+	if debug, _ := requestexecution.DebugRequest(ctx); debug != nil {
 		axReadOutput = debug.ReadLogPath()
 	}
 	return frontends.New(ctx, frontends.Config{Commands: testCommands(), Guidance: testGuidance(), RuntimeDirectory: filepath.Join(directory, "runtime"), ReplayDirectory: filepath.Join(directory, "replay"), AXReadOutput: axReadOutput})

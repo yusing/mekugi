@@ -3,11 +3,11 @@ package router
 import (
 	"bytes"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/nativetrace"
-
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
-	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
@@ -18,7 +18,6 @@ import (
 
 	json "encoding/json/v2"
 	"fmt"
-	"net/http"
 	"slices"
 	"strings"
 	"testing"
@@ -45,7 +44,7 @@ func duplicateTestInput(command, id, body string) []any {
 	}
 }
 
-func duplicateTestPrepare(t *testing.T, proxy *mekugiProxy, input []any, metadata codexTurnMetadata) *codexresponses.Request {
+func duplicateTestPrepare(t *testing.T, proxy *mekugiProxy, input []any, metadata codexresponses.TurnMetadata) *codexresponses.Request {
 	t.Helper()
 	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 		"model": "gpt-test", "input": input, "tools": testExecResponsesTools(),
@@ -85,7 +84,7 @@ func TestDuplicateOutputPreparedMatching(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
 			proxy.inputProjections = testInputProjections()
 			input := append(duplicateTestInput(tc.command, "a", tc.before), duplicateTestInput("new command", "b", tc.after)...)
-			request := duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
+			request := duplicateTestPrepare(t, proxy, input, codexresponses.TurnMetadata{})
 			items := duplicateTestItems(t, request)
 			if got := responses.StringField(items[3], "output"); got != duplicateTestHeader+tc.want {
 				t.Fatalf("output = %q, want %q", got, duplicateTestHeader+tc.want)
@@ -97,7 +96,7 @@ func TestDuplicateOutputPreparedMatching(t *testing.T) {
 				t.Fatal("original host input changed")
 			}
 			projected := bytes.Clone(request.Fields["input"])
-			fresh := duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
+			fresh := duplicateTestPrepare(t, proxy, input, codexresponses.TurnMetadata{})
 			if !bytes.Equal(projected, fresh.Fields["input"]) {
 				t.Fatal("same original input projected differently")
 			}
@@ -157,7 +156,7 @@ func TestDuplicateOutputEvidenceConsumersReadOriginal(t *testing.T) {
 	failure := "Script error:\n" + strings.Repeat("full failure detail\n", 20)
 	input := duplicateTestInput("previous", "source", failure)
 	input = append(input, continuationTestCall("exec", "failed", "broken()"), continuationTestOutput("failed", "Script failed\nWall time 0.1 seconds\nOutput:\n", failure))
-	request := duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
+	request := duplicateTestPrepare(t, proxy, input, codexresponses.TurnMetadata{})
 	items := duplicateTestItems(t, request)
 	if !strings.Contains(string(items[3]["output"]), "same as") {
 		t.Fatal("failure body was not projected")
@@ -186,7 +185,7 @@ func TestDuplicateOutputPreparedContinuationAndScope(t *testing.T) {
 				proxy.inputProjections = testInputProjections()
 			}
 			input := duplicateTestInput("earlier", "a", body)
-			metadata := codexTurnMetadata{}
+			metadata := codexresponses.TurnMetadata{}
 			if scope == "compacted" {
 				input = nil
 			}
@@ -220,7 +219,7 @@ func TestDuplicateOutputProviderPrefix(t *testing.T) {
 	project := func(input []any) *codexresponses.Request {
 		proxy := newManagedMekugiProxy(t)
 		proxy.inputProjections = testInputProjections()
-		return duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
+		return duplicateTestPrepare(t, proxy, input, codexresponses.TurnMetadata{})
 	}
 	// The source must already have its anchor before the first repeat arrives.
 	first := project(input[:2])
@@ -344,15 +343,12 @@ func TestDuplicateOutputAttachmentsAndWirePrefix(t *testing.T) {
 					proxy.inputProjections = testInputProjections()
 				}
 				wire := func(input []any) *codexresponses.Request {
-					request := duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
-					if fresh := duplicateTestPrepare(t, proxy, input, codexTurnMetadata{}); !bytes.Equal(request.Fields["input"], fresh.Fields["input"]) {
+					request := duplicateTestPrepare(t, proxy, input, codexresponses.TurnMetadata{})
+					if fresh := duplicateTestPrepare(t, proxy, input, codexresponses.TurnMetadata{}); !bytes.Equal(request.Fields["input"], fresh.Fields["input"]) {
 						t.Fatal("same original attachment input projected differently")
 					}
-					attempt := newRequestAttempt(requestExecutor{provider: &serverFakeProvider{}, mekugiCalls: proxy}, t.Context(), t.Context(), *request, http.Header{}, "")
-					if err := attempt.prepareWire(); err != nil {
-						t.Fatal(err)
-					}
-					return &attempt.request
+					requestexecution.ProjectFileAttachments(request)
+					return request
 				}
 				request := wire(input)
 				items := duplicateTestItems(t, request)
@@ -458,18 +454,15 @@ func TestDuplicateOutputAttachmentDeliveredShape(t *testing.T) {
 		input = append(input, duplicateTestInput("later body", "later", body)...)
 		proxy := newManagedMekugiProxy(t)
 		proxy.inputProjections = testInputProjections()
-		request := duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
-		attempt := newRequestAttempt(requestExecutor{provider: &serverFakeProvider{}, mekugiCalls: proxy}, t.Context(), t.Context(), *request, http.Header{}, "")
-		if err := attempt.prepareWire(); err != nil {
-			t.Fatal(err)
-		}
-		items := duplicateTestItems(t, &attempt.request)
+		request := duplicateTestPrepare(t, proxy, input, codexresponses.TurnMetadata{})
+		requestexecution.ProjectFileAttachments(request)
+		items := duplicateTestItems(t, request)
 		// Unsupported shapes must not become invisible sources. Supported
 		// envelopes move after ordinary parts, which must stay full and earlier.
 		_, array := content.([]any)
 		supported := array && len(content.([]any)) == 2
 		if strings.Contains(responses.StringField(items[len(items)-1], "output"), "[same as") != supported {
-			t.Fatalf("wrong source eligibility for %T: %s", content, attempt.request.Fields["input"])
+			t.Fatalf("wrong source eligibility for %T: %s", content, request.Fields["input"])
 		}
 		if supported {
 			var parts []struct {
@@ -512,7 +505,7 @@ func TestDuplicateOutputSummary(t *testing.T) {
 	trace.tool("thread", "runtime", "nested", "exec_command", `{"cmd":"b"}`)
 	trace.result("thread", "nested", "completed", map[string]any{"exit_code": 0})
 	trace.end("thread", "runtime")
-	duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
+	duplicateTestPrepare(t, proxy, input, codexresponses.TurnMetadata{})
 	proxy.activity.attachNativePane("thread")
 	found := false
 	for _, event := range proxy.activity.takeNativeActivity("thread") {

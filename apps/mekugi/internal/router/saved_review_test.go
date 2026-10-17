@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
@@ -204,8 +205,8 @@ func TestSavedReviewWithoutLivePreview(t *testing.T) {
 		t.Fatal("root switch retained old mailbox")
 	}
 	u.restoreDiffThread(binding.ThreadInfo{ID: "next", Cwd: workspace}, true)
-	observeReview(review, workspace, "old-child", codexTurnMetadata{RequestKind: "turn", ParentThreadID: "main", SubagentKind: "review"})
-	observeReview(review, workspace, "new-child", codexTurnMetadata{RequestKind: "turn", ParentThreadID: "next", SubagentKind: "review"})
+	observeReview(review, workspace, "old-child", codexresponses.TurnMetadata{RequestKind: "turn", ParentThreadID: "main", SubagentKind: "review"})
+	observeReview(review, workspace, "new-child", codexresponses.TurnMetadata{RequestKind: "turn", ParentThreadID: "next", SubagentKind: "review"})
 	sub = review.Subscribe()
 	apply()
 	if got := paths(); !slices.Equal(got, []string{"next.go"}) {

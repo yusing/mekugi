@@ -13,11 +13,11 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-
-	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 func TestProviderErrorEventIsFailedNotMissingTerminal(t *testing.T) {
@@ -57,18 +57,16 @@ func TestGrokEncryptedHistoryCompatibility(t *testing.T) {
 		t.Run(input, func(t *testing.T) {
 			body := []byte(`{"model":"grok:grok-4.6","input":` + input + `}`)
 			// No auth or HTTP client: rejection must happen before either is used.
-			client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics()}
+			client := &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics()}
 			_, err := client.ForwardExecution(t.Context(), t.Context(), body, grokTestHeaders())
-			err = fmt.Errorf("execute request: %w", forwardCriticalDiagnostic(err))
+			err = fmt.Errorf("execute request: %w", requestexecution.ForwardError(err))
 			compatibility, ok := errors.AsType[*inferencegateway.CompatibilityError](err)
 			if !ok || compatibility.Code != "grok_encrypted_history" {
 				t.Fatalf("wrong classification: %v", err)
 			}
 			issues := testCriticalErrors()
-			finalization := &requestFinalization{sessionID: "grok-session", failurePhase: requestFailureForward,
-				observation: requestObservation{outcome: requestOutcomeFailed}}
-			issues.record(finalization, err)
-			if finalization.diagnosticCode != "grok_encrypted_history" ||
+			finalization := issues.Report(requestexecution.Failure{Session: "grok-session", Phase: "forward"}, err)
+			if finalization.Code != "grok_encrypted_history" ||
 				strings.Contains(strings.Join(issues.Notices.Pending(), ""), "transport") ||
 				!strings.Contains(strings.Join(issues.Notices.Pending(), ""), "fresh") {
 				t.Fatalf("wrong diagnostic: %+v, %v", finalization, issues.Notices.Pending())
@@ -172,7 +170,7 @@ func TestResponsesWebSocketGrokEncryptedHistoryStatus(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	provider := newTestProviderClient("http://unused.invalid", nil)
-	provider.Grok = &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics()}
+	provider.Grok = &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics()}
 	endpoint := testWebSocketEndpoint(ctx, time.Second, provider, nil, nil)
 	defer endpoint.Close()
 	server := httptest.NewServer(endpoint)

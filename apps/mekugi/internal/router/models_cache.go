@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"net/http"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/providers/openai"
 )
 
@@ -30,7 +31,7 @@ func modelsRequestCacheKey(request *http.Request) (modelsCacheKey, bool) {
 	return modelsCacheKey{
 		authorization: sha256.Sum256([]byte(authorization)),
 		account:       account,
-		session:       request.Header.Get(sessionIDHeader),
+		session:       request.Header.Get(codexresponses.RoutingSessionHeader),
 		query:         request.URL.RawQuery,
 	}, true
 }

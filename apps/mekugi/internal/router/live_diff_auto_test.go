@@ -2,6 +2,8 @@ package router
 
 import (
 	"testing"
+
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
 func TestSavedReviewScopeEligibility(t *testing.T) {
@@ -12,15 +14,15 @@ func TestSavedReviewScopeEligibility(t *testing.T) {
 		name       string
 		workspace  string
 		thread     string
-		metadata   codexTurnMetadata
+		metadata   codexresponses.TurnMetadata
 		wantScoped bool
 	}{
-		{name: "root turn", workspace: t.TempDir(), thread: "root", metadata: codexTurnMetadata{RequestKind: "turn"}, wantScoped: true},
-		{name: "child turn is scoped", workspace: t.TempDir(), thread: "child", metadata: codexTurnMetadata{RequestKind: "turn", SubagentKind: "review"}, wantScoped: true},
-		{name: "auxiliary request", workspace: t.TempDir(), thread: "root", metadata: codexTurnMetadata{RequestKind: "compact"}},
-		{name: "invalid activity identity", workspace: t.TempDir(), thread: "root", metadata: codexTurnMetadata{RequestKind: "turn", activityIdentityInvalid: true}},
-		{name: "empty workspace", thread: "root", metadata: codexTurnMetadata{RequestKind: "turn"}},
-		{name: "empty thread", workspace: t.TempDir(), metadata: codexTurnMetadata{RequestKind: "turn"}},
+		{name: "root turn", workspace: t.TempDir(), thread: "root", metadata: codexresponses.TurnMetadata{RequestKind: "turn"}, wantScoped: true},
+		{name: "child turn is scoped", workspace: t.TempDir(), thread: "child", metadata: codexresponses.TurnMetadata{RequestKind: "turn", SubagentKind: "review"}, wantScoped: true},
+		{name: "auxiliary request", workspace: t.TempDir(), thread: "root", metadata: codexresponses.TurnMetadata{RequestKind: "compact"}},
+		{name: "invalid activity identity", workspace: t.TempDir(), thread: "root", metadata: codexresponses.TurnMetadata{RequestKind: "turn", ActivityIdentityInvalid: true}},
+		{name: "empty workspace", thread: "root", metadata: codexresponses.TurnMetadata{RequestKind: "turn"}},
+		{name: "empty thread", workspace: t.TempDir(), metadata: codexresponses.TurnMetadata{RequestKind: "turn"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			a := newSavedReview(t.Context(), nil)

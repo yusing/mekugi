@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
@@ -101,7 +102,7 @@ func TestRecordTransactionsInterruptedForkRetriesBeforeScopePublication(t *testi
 		t.Fatal(err)
 	}
 	fork, _ := retentionTestSession(t, store, "fork", 0)
-	fork, err = store.prepareHandleScope(fork, codexTurnMetadata{ThreadID: "fork", ForkedFromThreadID: "parent"})
+	fork, err = store.prepareHandleScope(fork, codexresponses.TurnMetadata{ThreadID: "fork", ForkedFromThreadID: "parent"})
 	if err != nil {
 		t.Fatal(err)
 	}

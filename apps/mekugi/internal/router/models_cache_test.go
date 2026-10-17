@@ -13,12 +13,14 @@ import (
 	"testing"
 	"testing/iotest"
 	"time"
+
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
 func catalogCacheRequest() *http.Request {
 	r := httptest.NewRequest(http.MethodGet, "/v1/models?client_version=0.157.1", nil)
 	r.Header = codexAuthHeaders()
-	r.Header.Set(sessionIDHeader, "session-one")
+	r.Header.Set(codexresponses.RoutingSessionHeader, "session-one")
 	return r
 }
 
@@ -51,7 +53,7 @@ func TestModelsHandlerCacheReplaysBodyAndHeaders(t *testing.T) {
 }
 
 func TestModelsHandlerCachePartitionsAndReplacesLatestEntry(t *testing.T) {
-	for _, field := range []string{"Authorization", "ChatGPT-Account-ID", sessionIDHeader, "query"} {
+	for _, field := range []string{"Authorization", "ChatGPT-Account-ID", codexresponses.RoutingSessionHeader, "query"} {
 		t.Run(field, func(t *testing.T) {
 			calls := 0
 			handler := modelsHandler(newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {

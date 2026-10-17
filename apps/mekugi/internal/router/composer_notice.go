@@ -67,7 +67,7 @@ func (u *appServerUI) applyCriticalNotices() *nativeCriticalNoticeDelivery {
 	if u.proxy != nil {
 		activity = u.proxy.activity
 	}
-	claim := u.issues.takeNative(u.Thread, activity)
+	claim := claimNativeNotices(u.issues, u.Thread, activity)
 	if claim == nil {
 		return nil
 	}

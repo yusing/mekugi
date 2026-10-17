@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
@@ -39,7 +40,7 @@ func TestModelsHandlerPreservesNativeCatalogWithGrokEnabled(t *testing.T) {
 		}, nil
 	})}
 	provider := newTestProviderClient(testProviderBaseURL, client)
-	provider.Grok = &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics()}
+	provider.Grok = &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics()}
 	request := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 	request.Header = codexAuthHeaders()
 	response := httptest.NewRecorder()

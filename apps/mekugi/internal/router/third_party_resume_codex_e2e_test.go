@@ -4,9 +4,11 @@ package router
 
 import (
 	"context"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+
 	json "encoding/json/v2"
 	"fmt"
-	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -20,24 +22,21 @@ import (
 	"testing"
 	"time"
 
-	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/providers/openai"
-
-	"github.com/yusing/mekugi/libraries/httptransport"
-
-	"github.com/yusing/mekugi/providers/grok"
-
 	"github.com/creack/pty"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/libraries/httptransport"
+	"github.com/yusing/mekugi/providers/grok"
+	"github.com/yusing/mekugi/providers/openai"
 	"golang.org/x/term"
 )
 
@@ -125,7 +124,7 @@ func TestThirdPartyResumeModelNativeCodexE2E(t *testing.T) {
 			defer upstream.Close()
 			provider := newTestProviderClient("http://unused.invalid", nil)
 			provider.ThirdPartyOnly = true
-			provider.Grok = &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), HTTPClient: grokTestHTTPClient(t, upstream), Auth: grok.NewAuth("", "resume-fixture-only", httptransport.Client(nil)), Unprefixed: unprefixed}
+			provider.Grok = &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), HTTPClient: grokTestHTTPClient(t, upstream), Auth: grok.NewAuth("", "resume-fixture-only", httptransport.Client(nil)), Unprefixed: unprefixed}
 			handler := testResponsesHandler(t.Context(), time.Minute, provider, nil, nil)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Header.Get("Authorization") != "" || r.Header.Get(openai.AccountIDHeader) != "" {

@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -58,7 +60,7 @@ func requireNoLiveDiffTurnEvent(t *testing.T, sub *reviewSubscription) {
 func TestAutoLiveDiffTurnTransitionsAreIdentityBound(t *testing.T) {
 	const workspace, thread = "/work", "root"
 	auto, sub := newLiveDiffTurnTest(t, workspace, thread)
-	valid := codexTurnMetadata{RequestKind: "turn", ThreadID: thread, TurnID: "one"}
+	valid := codexresponses.TurnMetadata{RequestKind: "turn", ThreadID: thread, TurnID: "one"}
 
 	beginLiveDiffTurn(auto, workspace, thread, valid)
 	requireLiveDiffTurnEvent(t, sub, "active")
@@ -86,16 +88,16 @@ func TestAutoLiveDiffTurnTransitionsAreIdentityBound(t *testing.T) {
 func TestAutoLiveDiffTurnRejectsInvalidRequests(t *testing.T) {
 	const workspace, thread = "/work", "root"
 	auto, sub := newLiveDiffTurnTest(t, workspace, thread)
-	for _, metadata := range []codexTurnMetadata{
+	for _, metadata := range []codexresponses.TurnMetadata{
 		{RequestKind: "prewarm", ThreadID: thread, TurnID: "prewarm"},
 		{RequestKind: "turn", SubagentKind: "thread_spawn", ThreadID: thread, TurnID: "child"},
 		{RequestKind: "turn", ThreadID: "other", TurnID: "mismatch"},
 		{RequestKind: "turn", ThreadID: thread},
-		{RequestKind: "turn", ThreadID: thread, TurnID: "invalid", activityIdentityInvalid: true},
+		{RequestKind: "turn", ThreadID: thread, TurnID: "invalid", ActivityIdentityInvalid: true},
 	} {
 		beginLiveDiffTurn(auto, workspace, thread, metadata)
 	}
-	beginLiveDiffTurn(auto, "/unobserved", thread, codexTurnMetadata{RequestKind: "turn", ThreadID: thread, TurnID: "unobserved"})
+	beginLiveDiffTurn(auto, "/unobserved", thread, codexresponses.TurnMetadata{RequestKind: "turn", ThreadID: thread, TurnID: "unobserved"})
 	requireNoLiveDiffTurnEvent(t, sub)
 }
 
@@ -106,13 +108,8 @@ func TestRequestPreparationBeginsOnlyNewRootTurn(t *testing.T) {
 	auto, sub := newLiveDiffTurnTest(t, workspace, thread)
 
 	proxy.review = testReview(auto)
-	executor := requestExecutor{
-		provider:    &serverFakeProvider{},
-		issues:      testCriticalErrors(),
-		mekugiCalls: proxy,
-	}
 	headers := func(turnID string) http.Header {
-		metadata := codexTurnMetadata{
+		metadata := codexresponses.TurnMetadata{
 			RequestKind: "turn", ThreadID: thread, TurnID: turnID,
 			Directories: map[string]json.RawMessage{workspace: nil},
 		}
@@ -121,17 +118,16 @@ func TestRequestPreparationBeginsOnlyNewRootTurn(t *testing.T) {
 		headers.Set(codexresponses.ThreadIDHeader, thread)
 		return headers
 	}
-	prepare := func(ctx context.Context, turnID string) *requestAttempt {
-		attempt := newRequestAttempt(executor, ctx, ctx, serverRequest(t, nil), headers(turnID), "session")
-		if err := attempt.prepare(); err != nil {
+	prepare := func(ctx context.Context, turnID string) {
+		request := serverRequest(t, nil)
+		metadata, valid := codexresponses.DecodeTurnMetadata(headers(turnID))
+		prepared, err := proxy.Prepare(ctx, &request, requestexecution.Preparation{Session: "session", Thread: thread, Metadata: metadata, MetadataValid: valid})
+		if err != nil {
 			t.Fatalf("prepare %s: %v", turnID, err)
 		}
-		t.Cleanup(func() {
-			if attempt.mekugiTransform != nil {
-				attempt.mekugiTransform.Close()
-			}
-		})
-		return attempt
+		if prepared != nil {
+			t.Cleanup(prepared.Close)
+		}
 	}
 
 	prepare(t.Context(), "one")
@@ -154,7 +150,7 @@ func TestLiveDiffTerminalCompletesAfterTransformedDelivery(t *testing.T) {
 				proxy.review = testReview(auto)
 				transform.shellTurnID = "host-turn"
 				transform.subagentTurn = child
-				beginLiveDiffTurn(auto, workspace, transform.threadID, codexTurnMetadata{
+				beginLiveDiffTurn(auto, workspace, transform.threadID, codexresponses.TurnMetadata{
 					RequestKind: "turn", ThreadID: transform.threadID, TurnID: transform.shellTurnID,
 				})
 				requireLiveDiffTurnEvent(t, sub, "active")
@@ -211,7 +207,7 @@ func TestLiveDiffCompletionOnlyForSuccessfulFinal(t *testing.T) {
 				auto, sub := newLiveDiffTurnTest(t, workspace, transform.shellThreadID)
 
 				proxy.review = testReview(auto)
-				beginLiveDiffTurn(auto, workspace, transform.shellThreadID, codexTurnMetadata{
+				beginLiveDiffTurn(auto, workspace, transform.shellThreadID, codexresponses.TurnMetadata{
 					RequestKind: "turn", ThreadID: transform.shellThreadID, TurnID: turnID,
 				})
 				requireLiveDiffTurnEvent(t, sub, "active")

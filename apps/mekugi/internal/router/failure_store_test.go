@@ -2,6 +2,9 @@ package router
 
 import (
 	"bytes"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -13,14 +16,13 @@ import (
 	"time"
 
 	inspectioncli "github.com/yusing/mekugi/apps/mekugi/internal/inspectioncli"
-	history "github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
-
-	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+	history "github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/gofrs/flock"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 func TestFailureInspectionHelpDisclosesPrivateErrors(t *testing.T) {
@@ -41,23 +43,21 @@ func TestFailureReferencePersistsWithoutDebugAndResolvesAfterReopen(t *testing.T
 
 	// No debug output is configured. The ordinary replay store retains the error.
 	issues := testCriticalErrors()
-	issues.failureStore = store.publication
-	issues.failureLimits = store.retentionLimits()
-	issues.diagnostics = testDiagnostics(nil, nil)
+	issues.Configure(requestexecution.FailureStorage{Store: store.publication, Limits: store.retentionLimits(), Diagnostics: testDiagnostics(nil, nil)})
 	const secret = "Authorization Bearer failure-store-secret"
 	const prompt = "private request body retained in the error"
 	wrapped := fmt.Errorf("translate prompt %q: %w", prompt,
-		criticalDiagnostic(errors.New(secret), "mekugi_sse:invalid_json", "the response could not be translated", false))
-	failure := &requestFinalization{
-		sessionID: "routing-session", threadID: "thread-failure-store",
-		failurePhase: requestFailureTransform,
-		streamDiagnostics: &transportcapture.Stream{
+		requestexecution.Classify(errors.New(secret), "mekugi_sse:invalid_json", "the response could not be translated", false))
+	failure := requestexecution.Failure{
+		Session: "routing-session", Thread: "thread-failure-store",
+		Phase: "transform",
+		Stream: &transportcapture.Stream{
 			Transport: "http", BodyBytes: 128, Events: 2, LastEvent: "response.created",
 			CopyStop: "translation_error",
 		},
 	}
-	failure.finish(t.Context(), wrapped, &bytes.Buffer{}, issues)
-	if failure.diagnosticReference == "" {
+	result := issues.Report(failure, wrapped)
+	if result.Reference == "" {
 		t.Fatal("failed request did not produce a diagnostic reference")
 	}
 
@@ -73,8 +73,8 @@ func TestFailureReferencePersistsWithoutDebugAndResolvesAfterReopen(t *testing.T
 	if err := json.Unmarshal(files[0], &record); err != nil {
 		t.Fatal(err)
 	}
-	if record.Version != 1 || record.Thread != failure.threadID || record.Phase != string(requestFailureTransform) ||
-		record.Code != "mekugi_sse:invalid_json" || record.Reference != failure.diagnosticReference || record.Time.IsZero() ||
+	if record.Version != 1 || record.Thread != failure.Thread || record.Phase != string("transform") ||
+		record.Code != "mekugi_sse:invalid_json" || record.Reference != result.Reference || record.Time.IsZero() ||
 		record.Error != wrapped.Error() || !strings.Contains(record.Error, secret) || !strings.Contains(record.Error, prompt) {
 		t.Fatalf("persisted failure metadata = %+v", record)
 	}
@@ -87,13 +87,13 @@ func TestFailureReferencePersistsWithoutDebugAndResolvesAfterReopen(t *testing.T
 	}
 
 	// Reopening the directory models a fresh router/store instance: lookup must
-	// rely on retained files, not the original CriticalErrors or store object.
+	// rely on retained files, not the original requestexecution.Failures or store object.
 	if _, err := openMekugiReplayStore(directory); err != nil {
 		t.Fatal(err)
 	}
 	var stdout, stderr bytes.Buffer
 	status := inspectioncli.RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), t.Context(), []string{
-		"--failures", "--replay-dir", directory, failure.diagnosticReference,
+		"--failures", "--replay-dir", directory, result.Reference,
 	}, &stdout, &stderr)
 	if status != 0 {
 		t.Fatalf("inspect-session --failures REF status=%d stderr=%q", status, stderr.String())
@@ -102,7 +102,7 @@ func TestFailureReferencePersistsWithoutDebugAndResolvesAfterReopen(t *testing.T
 	if err := json.Unmarshal(stdout.Bytes(), &resolved); err != nil {
 		t.Fatalf("resolve output is not JSON: %s: %v", stdout.String(), err)
 	}
-	if len(resolved) != 1 || resolved[0].Reference != failure.diagnosticReference || resolved[0].Error != wrapped.Error() {
+	if len(resolved) != 1 || resolved[0].Reference != result.Reference || resolved[0].Error != wrapped.Error() {
 		t.Fatalf("resolved failures = %+v", resolved)
 	}
 
@@ -113,7 +113,7 @@ func TestFailureReferencePersistsWithoutDebugAndResolvesAfterReopen(t *testing.T
 		t.Fatalf("inspect-session --failures status=%d stderr=%q", status, stderr.String())
 	}
 	var listed []diagnostic.Failure
-	if err := json.Unmarshal(stdout.Bytes(), &listed); err != nil || len(listed) != 1 || listed[0].Reference != failure.diagnosticReference {
+	if err := json.Unmarshal(stdout.Bytes(), &listed); err != nil || len(listed) != 1 || listed[0].Reference != result.Reference {
 		t.Fatalf("listed failures = %s, err=%v", stdout.String(), err)
 	}
 }
@@ -133,7 +133,7 @@ func TestFailureRetentionExpiresInactiveButProtectsActiveSession(t *testing.T) {
 		}
 		record := diagnostic.Failure{
 			Version: 1, Time: time.Now().UTC(), Thread: thread,
-			Phase: string(requestFailureForward), Code: "upstream_transport_unknown",
+			Phase: string("forward"), Code: "upstream_transport_unknown",
 			Reference: "reference-" + thread,
 		}
 		if err := testDiagnostics(nil, nil).RetainFailure(t.Context(), store.publication, store.writes, store.retentionLimits(), record); err != nil {
@@ -198,14 +198,12 @@ func TestFailurePersistenceLazilyOpensStateDirectory(t *testing.T) {
 	stateHome := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", stateHome)
 	issues := testCriticalErrors()
-	issues.diagnostics = testDiagnostics(nil, nil)
-	failure := failureStoreTestFinalization("lazy-open-reference")
+	issues.Configure(requestexecution.FailureStorage{Diagnostics: testDiagnostics(nil, nil)})
+	failure := failureStoreTestFailure()
 
-	issues.persistFailure(failure)
+	result := issues.Report(failure, requestexecution.ForwardError(errors.New("retained test failure")))
 
-	issues.mu.Lock()
-	store := issues.failureStore
-	issues.mu.Unlock()
+	store := issues.Storage().Store
 	if store == nil {
 		t.Fatal("failure persistence did not lazily open the configured state directory")
 	}
@@ -220,8 +218,8 @@ func TestFailurePersistenceLazilyOpensStateDirectory(t *testing.T) {
 	if err := json.Unmarshal(files[0], &record); err != nil {
 		t.Fatal(err)
 	}
-	if record.Reference != failure.diagnosticReference {
-		t.Fatalf("persisted reference = %q, want %q", record.Reference, failure.diagnosticReference)
+	if record.Reference != result.Reference {
+		t.Fatalf("persisted reference = %q, want %q", record.Reference, result.Reference)
 	}
 }
 
@@ -232,14 +230,12 @@ func TestFailurePersistenceOpenFailureRetainsOnlyNotice(t *testing.T) {
 	}
 	t.Setenv("XDG_STATE_HOME", stateHome)
 	issues := testCriticalErrors()
-	issues.diagnostics = testDiagnostics(nil, nil)
-	failure := failureStoreTestFinalization("failed-open-reference")
+	issues.Configure(requestexecution.FailureStorage{Diagnostics: testDiagnostics(nil, nil)})
+	failure := failureStoreTestFailure()
 
-	issues.persistFailure(failure)
+	issues.Report(failure, requestexecution.ForwardError(errors.New("retained test failure")))
 
-	issues.mu.Lock()
-	store := issues.failureStore
-	issues.mu.Unlock()
+	store := issues.Storage().Store
 	if store != nil {
 		t.Fatal("failed state-directory open was cached as a usable failure store")
 	}
@@ -269,13 +265,13 @@ func TestFailureStoreLockTimeoutDoesNotBlockCriticalNoticeAccess(t *testing.T) {
 		}
 
 		issues := testCriticalErrors()
-		issues.diagnostics = testDiagnostics(nil, nil)
-		failure := failureStoreTestFinalization("lock-timeout-reference")
+		issues.Configure(requestexecution.FailureStorage{Diagnostics: testDiagnostics(nil, nil)})
+		failure := failureStoreTestFailure()
 		done := make(chan struct{})
 		started := time.Now()
 		persistDeadline := time.After(5 * time.Second)
 		go func() {
-			issues.persistFailure(failure)
+			issues.Report(failure, requestexecution.ForwardError(errors.New("retained test failure")))
 			close(done)
 		}()
 		defer func() {
@@ -292,7 +288,7 @@ func TestFailureStoreLockTimeoutDoesNotBlockCriticalNoticeAccess(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 		accessed := make(chan struct{})
 		go func() {
-			issues.addNotice("session", "concurrent-access", "notice access remained available")
+			issues.AddNotice("session", "concurrent-access", "notice access remained available")
 			_ = issues.Notices.Pending()
 			close(accessed)
 		}()
@@ -320,12 +316,8 @@ func TestFailureStoreLockTimeoutDoesNotBlockCriticalNoticeAccess(t *testing.T) {
 	})
 }
 
-func failureStoreTestFinalization(reference string) *requestFinalization {
-	return &requestFinalization{
-		sessionID: "failure-store-test-session", threadID: "failure-store-test-thread",
-		failurePhase: requestFailureForward, diagnosticCode: "upstream_transport_unknown",
-		diagnosticReference: reference,
-	}
+func failureStoreTestFailure() requestexecution.Failure {
+	return requestexecution.Failure{Session: "failure-store-test-session", Thread: "failure-store-test-thread", Phase: "forward"}
 }
 
 func failureRecordFiles(directory string) ([][]byte, error) {

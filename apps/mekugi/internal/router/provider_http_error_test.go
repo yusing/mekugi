@@ -5,10 +5,9 @@ import (
 	"context"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-
-	"github.com/yusing/mekugi/providers/opencode"
-
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/providers/opencode"
 
 	json "encoding/json/v2"
 	"errors"
@@ -42,14 +41,13 @@ func TestProviderHTTPErrorDetails(t *testing.T) {
 			if !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("missing detail: %v", err)
 			}
-			diagnostic, ok := errors.AsType[*criticalDiagnosticError](forwardCriticalDiagnostic(err))
-			if !ok || diagnostic.code != "upstream_provider_http_403" || strings.Contains(diagnostic.summary, test.want) {
+			diagnostic, ok := errors.AsType[*requestexecution.DiagnosticError](requestexecution.ForwardError(err))
+			if !ok || diagnostic.Code != "upstream_provider_http_403" || strings.Contains(diagnostic.Summary, test.want) {
 				t.Fatalf("unsafe diagnostic: %#v", diagnostic)
 			}
 			issues := testCriticalErrors()
-			finalization := &requestFinalization{sessionID: "provider", upstreamStatusCode: 403,
-				failurePhase: requestFailureForward, observation: requestObservation{outcome: requestOutcomeFailed}}
-			issues.record(finalization, diagnostic)
+			issues.Report(requestexecution.Failure{Session: "provider", UpstreamStatus: 403,
+				Phase: "forward"}, diagnostic)
 			notices := issues.Notices.Pending()
 			if len(notices) != 1 || !strings.Contains(notices[0], test.want) || strings.Contains(notices[0], "authentication") {
 				t.Fatalf("provider detail hidden: %v", notices)
@@ -70,7 +68,7 @@ func TestOpenCodeHTTPErrorDelivery(t *testing.T) {
 			service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "provider-secret"}}).Services()[0]
 			calls := 0
 			provider := newTestProviderClient("http://unused.invalid", nil)
-			provider.OpenCode = map[string]*inferencegateway.ThirdPartyClient{service.Prefix: {Diagnostics: providerCodecDiagnostics(),
+			provider.OpenCode = map[string]*inferencegateway.ThirdPartyClient{service.Prefix: {Diagnostics: requestexecution.ProviderDiagnostics(),
 				OpenCode: &service, HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 					calls++
 					return &http.Response{StatusCode: status, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(
@@ -128,7 +126,7 @@ func (b *providerErrorBody) Close() error { b.closed = true; return nil }
 func TestOpenCodeHTTPErrorBodyLimit(t *testing.T) {
 	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
 	body := &providerErrorBody{Reader: strings.NewReader(strings.Repeat("x", (8<<10)+100))}
-	client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), OpenCode: &service, HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
+	client := &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), OpenCode: &service, HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 403, Header: http.Header{}, Body: body}, nil
 	})}}
 	_, err := client.ForwardExecution(t.Context(), t.Context(), openCodeTestRequest(t, service, false), grokTestHeaders())
@@ -141,9 +139,9 @@ func TestProviderHTTPErrorNoticesStayDistinct(t *testing.T) {
 	issues := testCriticalErrors()
 	for _, detail := range []string{"first failure", "second failure", "first failure"} {
 		err := inferencegateway.NewProviderHTTPError("OpenCode Go", 403, []byte(detail))
-		issues.record(&requestFinalization{sessionID: "same", upstreamStatusCode: 403,
-			failurePhase: requestFailureForward, observation: requestObservation{outcome: requestOutcomeFailed}},
-			forwardCriticalDiagnostic(err))
+		issues.Report(requestexecution.Failure{Session: "same", UpstreamStatus: 403,
+			Phase: "forward"},
+			requestexecution.ForwardError(err))
 	}
 	notices := issues.Notices.Pending()
 	if len(notices) != 2 || !strings.Contains(notices[0], "first failure") ||
@@ -155,7 +153,7 @@ func TestProviderHTTPErrorNoticesStayDistinct(t *testing.T) {
 func TestOpenCodeHTTPErrorReadFailure(t *testing.T) {
 	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
 	body := &providerErrorBody{Reader: iotest.ErrReader(errors.New("private transport detail"))}
-	client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), OpenCode: &service, HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
+	client := &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), OpenCode: &service, HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 403, Header: http.Header{}, Body: body}, nil
 	})}}
 	_, err := client.ForwardExecution(t.Context(), t.Context(), openCodeTestRequest(t, service, false), grokTestHeaders())
@@ -169,7 +167,7 @@ func TestOpenCodeHTTPErrorStalledBody(t *testing.T) {
 		service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
 		reader, writer := io.Pipe()
 		defer writer.Close()
-		client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), OpenCode: &service, HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
+		client := &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), OpenCode: &service, HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 			return &http.Response{StatusCode: 403, Header: http.Header{}, Body: reader}, nil
 		})}}
 		start := time.Now()
@@ -187,7 +185,7 @@ func TestOpenCodeHTTPErrorReadCancellation(t *testing.T) {
 		defer writer.Close()
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), OpenCode: &service, HTTPClient: &http.Client{Transport: grokTestTransport(func(request *http.Request) (*http.Response, error) {
+		client := &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), OpenCode: &service, HTTPClient: &http.Client{Transport: grokTestTransport(func(request *http.Request) (*http.Response, error) {
 			context.AfterFunc(request.Context(), func() { _ = writer.CloseWithError(request.Context().Err()) })
 			return &http.Response{StatusCode: 403, Header: http.Header{}, Body: reader}, nil
 		})}}

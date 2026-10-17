@@ -15,30 +15,24 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+
 	history "github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
-
-	"github.com/yusing/mekugi/libraries/textsanitize"
-
+	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/backends/codex/shellhook"
 	"github.com/yusing/mekugi/libraries/commandargs"
-
+	"github.com/yusing/mekugi/libraries/textsanitize"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 
-	"github.com/yusing/mekugi/backends/codex/binding"
-
-	"github.com/yusing/mekugi/backends/codex/shellhook"
-
-	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
-
+	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
 	headlessclient "github.com/yusing/mekugi/apps/mekugi/internal/headless"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/router"
-
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	"golang.org/x/term"
 )
@@ -130,7 +124,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	if err != nil {
 		return 1, err
 	}
-	issues := router.NewCriticalErrors(frontends.Notifications)
+	issues := requestexecution.NewFailures(frontends.Notifications)
 	defer func() {
 		for _, message := range issues.Notices.Pending() {
 			fmt.Fprintln(os.Stderr, textsanitize.Safe(message, false))

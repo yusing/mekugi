@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/providers/grok"
 )
 
@@ -36,7 +36,7 @@ func TestGrokOAuthRetryRetainsTransportCause(t *testing.T) {
 				cause = context.Canceled
 			}
 			calls := 0
-			client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), Auth: auth, HTTPClient: &http.Client{Transport: grokTestTransport(func(r *http.Request) (*http.Response, error) {
+			client := &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), Auth: auth, HTTPClient: &http.Client{Transport: grokTestTransport(func(r *http.Request) (*http.Response, error) {
 				calls++
 				if calls == 1 {
 					response := serverHTTPResponse("rejected token")

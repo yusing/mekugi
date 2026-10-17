@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
@@ -39,7 +41,7 @@ func TestStripRequestInstructionOmissions(t *testing.T) {
 						map[string]string{"type": "function_call_output", "call_id": "call", "output": block},
 					}),
 				}}
-				if err := projectRequestInstructions(&request, testGuidance().BeforePreparation); err != nil {
+				if err := requestexecution.ProjectInstructions(&request, testGuidance().BeforePreparation); err != nil {
 					t.Fatal(err)
 				}
 				if got := responses.StringField(request.Fields, "instructions"); got != "base" {
@@ -54,7 +56,7 @@ func TestStripRequestInstructionOmissions(t *testing.T) {
 					t.Fatalf("input = %s, want %s", request.Fields["input"], wantInput)
 				}
 				before := string(request.Fields["input"])
-				if err := projectRequestInstructions(&request, testGuidance().BeforePreparation); err != nil || string(request.Fields["input"]) != before {
+				if err := requestexecution.ProjectInstructions(&request, testGuidance().BeforePreparation); err != nil || string(request.Fields["input"]) != before {
 					t.Fatalf("repeat changed input: %v", err)
 				}
 			})
@@ -67,7 +69,7 @@ func TestStripDirectorylessAgentInstructions(t *testing.T) {
 	request := codexresponses.Request{Fields: map[string]json.RawMessage{
 		"input": responses.MustMarshalJSON([]any{map[string]string{"role": "user", "content": text}}),
 	}}
-	if err := projectRequestInstructions(&request, testGuidance().BeforePreparation); err != nil {
+	if err := requestexecution.ProjectInstructions(&request, testGuidance().BeforePreparation); err != nil {
 		t.Fatal(err)
 	}
 	want := responses.MustMarshalJSON([]any{map[string]string{"role": "user", "content": "# AGENTS.md instructions\n<INSTRUCTIONS>keep</INSTRUCTIONS>"}})

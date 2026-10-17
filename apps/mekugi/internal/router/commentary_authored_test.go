@@ -30,7 +30,7 @@ func TestFunctionToolCallsPassThrough(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			transform, err := proxy.prepareRequest(t.Context(), &prepared, "passthrough", original.shellThreadID, codexTurnMetadata{
+			transform, err := proxy.prepareRequest(t.Context(), &prepared, "passthrough", original.shellThreadID, codexresponses.TurnMetadata{
 				RequestKind: "turn", ThreadID: original.shellThreadID, Directories: map[string]json.RawMessage{workspace: nil},
 			}, true)
 			if err != nil {

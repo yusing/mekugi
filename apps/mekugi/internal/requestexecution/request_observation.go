@@ -1,4 +1,5 @@
-package router
+// Source: apps/mekugi/internal/router/request_observation.go:1:41@b9679c93.
+package requestexecution
 
 import "github.com/yusing/mekugi/contracts/inference"
 

@@ -7,7 +7,6 @@ import (
 	"context"
 	json "encoding/json/v2"
 	"errors"
-	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"io"
 	"io/fs"
 	"net/http"
@@ -21,6 +20,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 
@@ -60,7 +61,7 @@ func (p *appResumeProvider) ForwardExecution(_, _ context.Context, body []byte, 
 	}
 	thread := headers.Get(codexresponses.ThreadIDHeader)
 	if thread == "" {
-		metadata, _ := decodeCodexTurnMetadata(headers)
+		metadata, _ := codexresponses.DecodeTurnMetadata(headers)
 		thread = metadata.ThreadID
 	}
 	p.mu.Lock()

@@ -1,4 +1,4 @@
-package router
+package requestexecution
 
 import (
 	"bytes"
@@ -12,7 +12,7 @@ import (
 )
 
 func TestRequestCyberAccessOptOut(t *testing.T) {
-	for _, model := range []string{"gpt-6-sol", "gpt-6-astra", "gpt-6-luna", grokModel, "opencode-go:test"} {
+	for _, model := range []string{"gpt-6-sol", "gpt-6-astra", "gpt-6-luna", "grok:grok-4.6", "opencode-go:test"} {
 		for _, raw := range []string{"", "null", `{}`, `{"cyber":"daybreak_blue"}`, `{"cyber":"daybreak_red","other":{"id":9007199254740993}}`, `{"cyber":"standard"}`} {
 			t.Run(model+"/"+raw, func(t *testing.T) {
 				request := modelTestRequest(t, model)
@@ -20,7 +20,7 @@ func TestRequestCyberAccessOptOut(t *testing.T) {
 					request.Fields["access_programs"] = []byte(raw)
 				}
 				input := bytes.Clone(request.Fields["input"])
-				attempt := newRequestAttempt(requestExecutor{provider: &serverFakeProvider{}}, t.Context(), t.Context(), request, http.Header{}, "")
+				attempt := newRequestAttempt(Executor{}, t.Context(), t.Context(), request, http.Header{}, "")
 				if err := attempt.prepareWire(); err != nil {
 					t.Fatal(err)
 				}

@@ -65,7 +65,7 @@ func (p *mchangesNestedCodexProvider) ForwardExecution(
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.turns++
-	metadata, _ := decodeCodexTurnMetadata(headers)
+	metadata, _ := codexresponses.DecodeTurnMetadata(headers)
 	thread := headers.Get(codexresponses.ThreadIDHeader)
 	if thread == "" {
 		thread = metadata.ThreadID

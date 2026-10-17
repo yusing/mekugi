@@ -6,6 +6,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/jsontext"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+
 	json "encoding/json/v2"
 	"io"
 	"net/http"
@@ -18,18 +21,15 @@ import (
 	"testing"
 	"time"
 
-	inspectioncli "github.com/yusing/mekugi/apps/mekugi/internal/inspectioncli"
-
-	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/headless"
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	inspectioncli "github.com/yusing/mekugi/apps/mekugi/internal/inspectioncli"
 
 	diagnosticstore "github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 
-	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
-
 	"github.com/yusing/mekugi/backends/codex/shellhook"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 type routerFaultCodexProvider struct {
@@ -230,9 +230,7 @@ func TestRouterTransformFaultNativeCodexE2E(t *testing.T) {
 	}
 	proxy.replayStore = store
 	issues := testCriticalErrors()
-	issues.failureStore = store.publication
-	issues.failureLimits = store.retentionLimits()
-	issues.diagnostics = testDiagnostics(nil, nil)
+	issues.Configure(requestexecution.FailureStorage{Store: store.publication, Limits: store.retentionLimits(), Diagnostics: testDiagnostics(nil, nil)})
 	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, issues, proxy))
 	defer server.Close()
 
@@ -282,8 +280,8 @@ func TestRouterTransformFaultNativeCodexE2E(t *testing.T) {
 	if err := json.Unmarshal(inspected.Bytes(), &records); err != nil {
 		t.Fatalf("failure lookup output is invalid: %s: %v", inspected.String(), err)
 	}
-	if len(records) != 1 || records[0].Reference != reference || records[0].Phase != string(requestFailureTransform) || records[0].Code != "mekugi_sse" {
-		t.Fatalf("post-run lookup did not resolve the sanitized transform failure: %+v", records)
+	if len(records) != 1 || records[0].Reference != reference || records[0].Phase != "transform" || records[0].Code != "mekugi_sse:inconsistent_stock_call" {
+		t.Fatalf("post-run lookup did not resolve the classified transform failure: %+v", records)
 	}
 }
 
@@ -295,9 +293,7 @@ func TestRecoveredStreamDoesNotLeaveHeadlessNoticeNativeCodexE2E(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	issues.failureStore = store.publication
-	issues.failureLimits = store.retentionLimits()
-	issues.diagnostics = testDiagnostics(nil, nil)
+	issues.Configure(requestexecution.FailureStorage{Store: store.publication, Limits: store.retentionLimits(), Diagnostics: testDiagnostics(nil, nil)})
 	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, issues, proxy))
 	defer server.Close()
 	codex, err := exec.LookPath("codex")

@@ -9,8 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -67,7 +68,7 @@ func TestAnswerSSEFraming(t *testing.T) {
 				}
 				var output bytes.Buffer
 				chain := codexresponses.Compose(transform, &webSocketCountingTransform{})
-				_, err := copySSETransformed(&output, reader, chain, &responseHooks{onUsage: transform.observeResponseUsage})
+				_, err := copySSETransformed(&output, reader, chain, &requestexecution.ResponseHooks{OnUsage: transform.ObserveUsage})
 				switch stop {
 				case "read_error":
 					if !errors.Is(err, disconnected) {

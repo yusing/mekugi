@@ -12,15 +12,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/modules/sessioninspection/query"
-
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
-
-	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+	"github.com/yusing/mekugi/modules/sessioninspection/query"
 
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 func TestDebugSessionArtifacts(t *testing.T) {
@@ -98,38 +97,6 @@ func TestDebugCustomCaptureBundleSupportsReplay(t *testing.T) {
 	replay, err := replayReadTest(t, new(transportcapture.Service), t.Context(), rollout, debugDir, 1)
 	if err != nil || replay == nil || replay.Providers != 1 {
 		t.Fatalf("custom capture replay: %v, error=%v", replay, err)
-	}
-}
-
-func TestDebugInstructionSelection(t *testing.T) {
-	t.Setenv("TMPDIR", t.TempDir())
-	d, err := openDebugOutput(testDiagnostics(new(evidence.Service), new(transportcapture.Service)), true, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := []byte(`{"model":"test","instructions":"exact\n  text\t","input":[{"role":"developer","content":[{"type":"input_text","text":"inherited"}]},{"type":"additional_tools","tools":[{"name":"shell","description":"exact tool"}]},{"role":"user","content":"excluded user"},{"type":"custom_tool_call","input":"excluded script"}]}`)
-	headers := http.Header{"Authorization": {"excluded credential"}, "X-Client-Request-Id": {"client-1"}}
-	d.instructions(body, body, headers, "session-1", "request-1", 1)
-	dump, _ := os.ReadFile(d.Paths()[3])
-	var got struct {
-		Instructions   string            `json:"instructions"`
-		Developers     []json.RawMessage `json:"developer_messages"`
-		Additional     []json.RawMessage `json:"additional_tools"`
-		Cached         int               `json:"cached_input_items"`
-		Scope          string            `json:"scope"`
-		WireDevelopers []json.RawMessage `json:"wire_developer_messages"`
-	}
-	if err := json.Unmarshal(dump, &got); err != nil || got.Instructions != "exact\n  text\t" || len(got.Developers) != 1 || len(got.Additional) != 1 || got.Cached != 1 {
-		t.Fatalf("instruction selection: %+v, %v", got, err)
-	}
-	if bytes.Contains(dump, []byte("excluded")) {
-		t.Fatal("dump retained data outside instruction scope")
-	}
-	if got.Scope != "projected_responses_request" || !responses.SameJSONValue(responses.MustMarshalJSON(got.WireDevelopers), responses.MustMarshalJSON(got.Developers)) {
-		t.Fatal("dump does not distinguish projection from wire instructions")
-	}
-	if err := d.Close(); err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -260,10 +227,10 @@ func TestDebugWebSocketInheritedInstructions(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	endpoint := testWebSocketEndpoint(ctx, 10*time.Second, newTestProviderClient(upstream.URL, upstream.Client()), nil, proxy)
 	t.Cleanup(endpoint.Close)
-	server := httptest.NewServer(d.handler(endpoint))
+	server := httptest.NewServer(d.Handler(endpoint))
 	t.Cleanup(server.Close)
 	headers := codexAuthHeaders()
-	headers.Set(sessionIDHeader, "debug-session")
+	headers.Set(codexresponses.RoutingSessionHeader, "debug-session")
 	maps.Copy(headers, serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil}))
 	conn, _, err := websocket.Dial(ctx, server.URL, &websocket.DialOptions{HTTPHeader: headers})
 	if err != nil {

@@ -10,13 +10,15 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/libraries/httptransport"
+
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/providers/grok"
 )
 
 func newTestProviderClient(baseURL string, client *http.Client) *inferencegateway.Client {
-	return inferencegateway.NewClient(baseURL, client, providerCodecDiagnostics())
+	return inferencegateway.NewClient(baseURL, client, requestexecution.ProviderDiagnostics())
 }
 
 func testGatewayResponse(response *http.Response, err error) (*inferencegateway.Response, error) {
@@ -26,19 +28,23 @@ func testGatewayResponse(response *http.Response, err error) (*inferencegateway.
 	return &inferencegateway.Response{Response: response}, err
 }
 
-func testRequestExecutor(provider inferencegateway.Forwarder, issues *CriticalErrors, proxy *mekugiProxy) requestExecutor {
-	executor := requestExecutor{provider: provider, issues: issues, mekugiCalls: proxy}
-	executor.client, _ = provider.(*inferencegateway.Client)
-	executor.exchange, _ = provider.(*inferencegateway.Exchange)
+func testRequestExecutor(provider inferencegateway.Forwarder, issues *requestexecution.Failures, proxy *mekugiProxy) requestexecution.Executor {
+	executor := requestexecution.Executor{Provider: provider, Issues: issues}
+	if proxy != nil {
+		executor.Observations, executor.Guidance = proxy, proxy.registry.Guidance
+		executor.SkillsManager, executor.Control, executor.Usage = proxy.skillsManager, &proxy.control, proxy.usage
+	}
+	executor.Client, _ = provider.(*inferencegateway.Client)
+	executor.Exchange, _ = provider.(*inferencegateway.Exchange)
 	return executor
 }
 
-func testResponsesHandler(ctx context.Context, timeout time.Duration, provider inferencegateway.Forwarder, issues *CriticalErrors, proxy *mekugiProxy) http.HandlerFunc {
+func testResponsesHandler(ctx context.Context, timeout time.Duration, provider inferencegateway.Forwarder, issues *requestexecution.Failures, proxy *mekugiProxy) http.HandlerFunc {
 	return responsesHandler(ctx, timeout, testRequestExecutor(provider, issues, proxy))
 }
 
-func testWebSocketEndpoint(ctx context.Context, timeout time.Duration, provider *inferencegateway.Client, issues *CriticalErrors, proxy *mekugiProxy) *inferencegateway.WebSocketEndpoint {
-	return inferencegateway.NewWebSocketEndpoint(ctx, timeout, provider, testRequestExecutor(provider, issues, proxy).executeWebSocket)
+func testWebSocketEndpoint(ctx context.Context, timeout time.Duration, provider *inferencegateway.Client, issues *requestexecution.Failures, proxy *mekugiProxy) *inferencegateway.WebSocketEndpoint {
+	return inferencegateway.NewWebSocketEndpoint(ctx, timeout, provider, testRequestExecutor(provider, issues, proxy).ExecuteWebSocket)
 }
 
 // Exercise application consumers through the same translated HTTP response that
@@ -48,7 +54,7 @@ func readGrokTestEvents(t *testing.T, request []byte, source io.Reader, observe 
 	path := filepath.Join(t.TempDir(), "auth.json")
 	grokWriteTestAuth(t, path, time.Now().Add(time.Hour))
 	client := &inferencegateway.ThirdPartyClient{
-		Auth: grok.NewAuth(path, "", httptransport.Client(nil)), Diagnostics: providerCodecDiagnostics(),
+		Auth: grok.NewAuth(path, "", httptransport.Client(nil)), Diagnostics: requestexecution.ProviderDiagnostics(),
 		HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(source)}, nil
 		})},
@@ -57,7 +63,7 @@ func readGrokTestEvents(t *testing.T, request []byte, source io.Reader, observe 
 	if err != nil {
 		return responseevents.TerminalUnknown, err
 	}
-	return copyUpstreamBodyTransformed(io.Discard, response.Response, true, testProviderEvents(observe), nil)
+	return requestexecution.CopyResponse(io.Discard, response.Response, true, testProviderEvents(observe), nil)
 }
 
 type testProviderEvents func(map[string]any) error

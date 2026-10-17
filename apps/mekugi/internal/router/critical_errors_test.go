@@ -16,20 +16,18 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/modules/notifications/notice"
 
+	"github.com/coder/websocket"
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
-	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
-
-	"github.com/coder/websocket"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
-func queueCritical(c *CriticalErrors, session string) {
-	c.record(&requestFinalization{sessionID: session, threadID: session, failurePhase: requestFailurePrepare,
-		observation: requestObservation{outcome: requestOutcomeFailed}}, inferencegateway.IncompatibleRequest("unsupported_tool_catalog", "Enable supported tools."))
+func queueCritical(c *requestexecution.Failures, session string) {
+	c.Report(requestexecution.Failure{Session: session, Thread: session, Phase: "prepare"}, inferencegateway.IncompatibleRequest("unsupported_tool_catalog", "Enable supported tools."))
 }
 
 func TestCriticalErrorsDeduplicateReserveAndRetainUntilDelivery(t *testing.T) {
@@ -39,12 +37,12 @@ func TestCriticalErrorsDeduplicateReserveAndRetainUntilDelivery(t *testing.T) {
 	if pending := c.Notices.Pending(); len(pending) != 1 || !strings.Contains(pending[0], "2 times") {
 		t.Fatalf("pending = %v", pending)
 	}
-	first := c.takeNative("one", nil)
-	if first == nil || len(first.Errors.Messages) != 1 || c.takeNative("two", nil) != nil || c.takeNative("one", nil) != nil {
+	first := claimNativeNotices(c, "one", nil)
+	if first == nil || len(first.Errors.Messages) != 1 || claimNativeNotices(c, "two", nil) != nil || claimNativeNotices(c, "one", nil) != nil {
 		t.Fatal("notice crossed a session or concurrent response")
 	}
 	first.Errors.Finish(false)
-	retry := c.takeNative("one", nil)
+	retry := claimNativeNotices(c, "one", nil)
 	if len(retry.Errors.Messages) != 1 || !strings.Contains(retry.Errors.Messages[0].Text, "Enable supported tools.") {
 		t.Fatal("failed delivery lost notice")
 	}
@@ -53,61 +51,11 @@ func TestCriticalErrorsDeduplicateReserveAndRetainUntilDelivery(t *testing.T) {
 		t.Fatal("delivered notice still pending")
 	}
 	queueCritical(c, "one")
-	if c.takeNative("one", nil) != nil {
+	if claimNativeNotices(c, "one", nil) != nil {
 		t.Fatal("repeat flooded the session")
 	}
 	if pending := c.Notices.Pending(); len(pending) != 1 || !strings.Contains(pending[0], "3 times") {
 		t.Fatalf("repeat summary = %v", pending)
-	}
-}
-
-func TestCriticalErrorsIdentifyEveryGenericFailurePhaseWithCompleteCauses(t *testing.T) {
-	for _, test := range []struct {
-		phase requestFailurePhase
-		label string
-	}{
-		{requestFailureForward, "upstream request forwarding"},
-		{requestFailureInspectResponse, "upstream response inspection"},
-		{requestFailureWriteResponse, "downstream response writing"},
-	} {
-		t.Run(string(test.phase), func(t *testing.T) {
-			c := testCriticalErrors()
-			record := func(err error) {
-				c.record(&requestFinalization{sessionID: "one", failurePhase: test.phase,
-					observation: requestObservation{outcome: requestOutcomeFailed}}, err)
-			}
-			first := errors.New("Authorization Bearer firstsecret")
-			record(first)
-			record(first)
-			record(errors.New("plain secondsecret prompt"))
-			if len(c.Notices.Pending()) != 2 || !strings.Contains(c.Notices.Pending()[0], "occurred 2 times") || strings.Contains(c.Notices.Pending()[1], "occurred") {
-				t.Fatalf("non-transform causes collapsed or did not deduplicate: %+v", c.Notices.Pending())
-			}
-			pending := strings.Join(c.Notices.Pending(), "\n")
-			if !strings.Contains(pending, first.Error()) || !strings.Contains(pending, "plain secondsecret prompt") ||
-				strings.Count(pending, "Failure phase: "+test.label+".") != 2 ||
-				strings.Count(pending, "Diagnostic reference:") != 2 {
-				t.Fatalf("generic notices omitted causes or phases: %s", pending)
-			}
-		})
-	}
-
-	terminal := testCriticalErrors()
-	terminal.record(&requestFinalization{sessionID: "one", failurePhase: requestFailureTerminalValidation,
-		observation: requestObservation{outcome: requestOutcomeFailed}}, fmt.Errorf("validate response: %w", errUpstreamResponseWithoutTerminal))
-	terminalNotice := strings.Join(terminal.Notices.Pending(), "\n")
-	if !strings.Contains(terminalNotice, "Failure phase: terminal response validation.") ||
-		!strings.Contains(terminalNotice, "ended without a completed or failed terminal state") {
-		t.Fatalf("known terminal cause was hidden: %s", terminalNotice)
-	}
-
-	prepare := testCriticalErrors()
-	prepare.record(&requestFinalization{sessionID: "one", failurePhase: requestFailurePrepare,
-		observation: requestObservation{outcome: requestOutcomeFailed}}, errors.New("plain preparesecret"))
-	prepareNotice := strings.Join(prepare.Notices.Pending(), "\n")
-	if strings.Contains(prepareNotice, "check the request error") || !strings.Contains(prepareNotice, "preparesecret") ||
-		!strings.Contains(prepareNotice, "Failure phase: request preparation.") {
-		t.Fatalf("prepare notice was not self-contained: %s", prepareNotice)
 	}
 }
 
@@ -116,32 +64,22 @@ func TestCriticalErrorsNativeOwnershipAndRouterWideNotice(t *testing.T) {
 	queueCritical(c, "one")
 	queueCritical(c, "two")
 	queueCritical(c, "child")
-	c.addNotice("", "router-capacity", "router-wide capacity warning")
+	c.AddNotice("", "router-capacity", "router-wide capacity warning")
 	activity := newSubagentActivity()
 	if !activity.observe("one", "", "/root", false) || !activity.observe("child", "one", "/root/child", true) {
 		t.Fatal("failed to establish ancestry")
 	}
-	child := c.takeNative("child", activity)
+	child := claimNativeNotices(c, "child", activity)
 	if child != nil {
 		t.Fatal("child stole native root notices")
 	}
-	root := c.takeNative("one", activity)
+	root := claimNativeNotices(c, "one", activity)
 	if root == nil || len(root.Errors.Messages) != 3 {
 		t.Fatalf("root notices = %d, want own, child, and router-wide", len(root.Errors.Messages))
 	}
 	root.Errors.Finish(true)
 	if len(c.Notices.Pending()) != 1 {
 		t.Fatalf("unrelated session notice was acknowledged: %v", c.Notices.Pending())
-	}
-}
-
-func TestCriticalErrorsSuccessAndCancellationSilent(t *testing.T) {
-	c := testCriticalErrors()
-	for _, outcome := range []requestOutcome{requestOutcomeCompleted, requestOutcomeCanceledBeforeResponse, requestOutcomeCanceledAfterResponse} {
-		c.record(&requestFinalization{observation: requestObservation{outcome: outcome}}, context.Canceled)
-	}
-	if len(c.Notices.Pending()) != 0 {
-		t.Fatal("success or cancellation emitted a notice")
 	}
 }
 
@@ -158,7 +96,7 @@ func TestInvalidNativeCatalogIsBadRequestBeforeForwarding(t *testing.T) {
 		parsed := serverRequest(t, func(fields map[string]any) { fields["input"] = []any{}; fields["tools"] = tools })
 		request := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(string(requestTestBody(t, parsed))))
 		request.Header = serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
-		request.Header.Set(sessionIDHeader, "one")
+		request.Header.Set(codexresponses.RoutingSessionHeader, "one")
 		output := httptest.NewRecorder()
 		testResponsesHandler(t.Context(), time.Minute, provider, testCriticalErrors(), proxy)(output, request)
 		if output.Code != 400 || len(provider.forwarded) != 0 {
@@ -195,7 +133,7 @@ func TestForwardFailureDiagnostics(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = debug.Close() })
-			ctx := context.WithValue(t.Context(), debugContextKey{}, debug)
+			ctx := requestexecution.WithDebug(t.Context(), debug)
 			request, err := codexresponses.ParseRequest(mustTestJSON(t, titleRequestFields()))
 			if err != nil {
 				t.Fatal(err)
@@ -263,7 +201,7 @@ func TestCriticalSynthesizedDiagnosticCodes(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = debug.Close() })
-			ctx := context.WithValue(t.Context(), debugContextKey{}, debug)
+			ctx := requestexecution.WithDebug(t.Context(), debug)
 			request, err := codexresponses.ParseRequest(mustTestJSON(t, titleRequestFields()))
 			if err != nil {
 				t.Fatal(err)
@@ -297,4 +235,6 @@ func TestCriticalSynthesizedDiagnosticCodes(t *testing.T) {
 	}
 }
 
-func testCriticalErrors() *CriticalErrors { return NewCriticalErrors(new(notice.Service)) }
+func testCriticalErrors() *requestexecution.Failures {
+	return requestexecution.NewFailures(new(notice.Service))
+}

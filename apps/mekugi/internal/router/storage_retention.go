@@ -10,14 +10,12 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/recordtransactions"
-	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
-
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/libraries/legacycall"
-	"github.com/yusing/mekugi/libraries/persistence"
-
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
-
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/libraries/persistence"
+	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 const sessionRetention = history.SessionRetention
@@ -138,12 +136,12 @@ func (s *mekugiReplayStore) retainFiles(names ...string) error {
 func storagePublicationError(err error) error {
 	if conflict, ok := errors.AsType[*history.HostConflict](err); ok {
 		if conflict.Field == "" {
-			return criticalDiagnostic(err, "replay_translation_conflict", "a completed tool call conflicted with its retained replay translation", true)
+			return requestexecution.Classify(err, "replay_translation_conflict", "a completed tool call conflicted with its retained replay translation", true)
 		}
-		return criticalDiagnostic(err, "replay_item_conflict", "a completed tool call changed a retained replay item field", true)
+		return requestexecution.Classify(err, "replay_item_conflict", "a completed tool call changed a retained replay item field", true)
 	}
 	if capacity, ok := errors.AsType[*history.CapacityError](err); ok {
-		return criticalDiagnostic(err, "storage_capacity", capacity.Error(), false)
+		return requestexecution.Classify(err, "storage_capacity", capacity.Error(), false)
 	}
 	return storageIOError(err)
 }
@@ -259,7 +257,7 @@ func storageIOError(err error) error {
 	if err == nil {
 		return nil
 	}
-	return criticalDiagnostic(err, "storage_io", "Mekugi could not persist session data; check available disk space and storage permissions before retrying", false)
+	return requestexecution.Classify(err, "storage_io", "Mekugi could not persist session data; check available disk space and storage permissions before retrying", false)
 }
 
 func (s *mekugiReplayStore) maintainStorage(replacement string, size int64) error {

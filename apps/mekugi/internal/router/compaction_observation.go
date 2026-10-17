@@ -37,7 +37,7 @@ func validateProviderContext(input jsonv1.RawMessage) error {
 
 // Compaction can carry the first completed host result for an observed edit.
 // Retain that evidence without projecting changes into the provider request.
-func (p *mekugiProxy) observeCompactionInput(ctx context.Context, request *codexresponses.Request, session, thread string, metadata codexTurnMetadata) error {
+func (p *mekugiProxy) observeCompactionInput(ctx context.Context, request *codexresponses.Request, session, thread string, metadata codexresponses.TurnMetadata) error {
 	if p == nil || p.replayStore == nil || thread == "" {
 		return nil
 	}

@@ -35,7 +35,7 @@ func prepareNativeStockTransform(t *testing.T, proxy *mekugiProxy, workspace, se
 	if err != nil {
 		t.Fatal(err)
 	}
-	transform, err := proxy.prepareRequest(t.Context(), &request, session, "stock-thread", codexTurnMetadata{
+	transform, err := proxy.prepareRequest(t.Context(), &request, session, "stock-thread", codexresponses.TurnMetadata{
 		RequestKind: "turn", Directories: map[string]json.RawMessage{workspace: nil},
 	}, true)
 	if err != nil {
@@ -73,7 +73,7 @@ func reconcileNativePatchResult(t *testing.T, proxy *mekugiProxy, workspace, pat
 	if err != nil {
 		t.Fatal(err)
 	}
-	transform, err := proxy.prepareRequest(t.Context(), &request, "stock-session-next", "stock-thread", codexTurnMetadata{
+	transform, err := proxy.prepareRequest(t.Context(), &request, "stock-session-next", "stock-thread", codexresponses.TurnMetadata{
 		RequestKind: "turn", Directories: map[string]json.RawMessage{workspace: nil},
 	}, true)
 	if err != nil {

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -57,7 +58,7 @@ func TestStockSearchOutputPassesThroughRequestPreparation(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, proxy)
 			for range 2 { // Historical results remain identical on subsequent requests.
-				transform, err := proxy.prepareRequest(t.Context(), &request, "session", "thread", codexTurnMetadata{
+				transform, err := proxy.prepareRequest(t.Context(), &request, "session", "thread", codexresponses.TurnMetadata{
 					RequestKind: "turn", Directories: map[string]json.RawMessage{workspace: nil},
 				}, true)
 				if err != nil {
@@ -174,9 +175,9 @@ func TestCompletedCodeModeCallInputChangeHasSafeDiagnostic(t *testing.T) {
 		"item": map[string]any{"type": "custom_tool_call", "id": "item", "call_id": "call",
 			"name": "exec", "input": "changed private input", "status": "completed"},
 	}))
-	diagnostic, ok := errors.AsType[*criticalDiagnosticError](err)
-	if !ok || diagnostic.code != "mekugi_sse:code_mode_call_input_changed" ||
-		strings.Contains(diagnostic.summary, "private input") {
+	diagnostic, ok := errors.AsType[*requestexecution.DiagnosticError](err)
+	if !ok || diagnostic.Code != "mekugi_sse:code_mode_call_input_changed" ||
+		strings.Contains(diagnostic.Summary, "private input") {
 		t.Fatalf("completed call diagnostic = %#v, error = %v", diagnostic, err)
 	}
 }

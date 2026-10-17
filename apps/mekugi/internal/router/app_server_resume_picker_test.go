@@ -11,6 +11,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
 )
 
@@ -373,8 +374,8 @@ func TestLiveDiffResetScopeResynchronizes(t *testing.T) {
 	if got := paths(); !slices.Equal(got, []string{"old.go"}) {
 		t.Fatalf("initial scope files: %v", got)
 	}
-	child := func(thread, parent string) codexTurnMetadata {
-		return codexTurnMetadata{ThreadID: thread, ParentThreadID: parent, SubagentKind: "thread_spawn", RequestKind: "turn"}
+	child := func(thread, parent string) codexresponses.TurnMetadata {
+		return codexresponses.TurnMetadata{ThreadID: thread, ParentThreadID: parent, SubagentKind: "thread_spawn", RequestKind: "turn"}
 	}
 	observeReview(testReview(auto), workspace, "old-child", child("old-child", "old"))
 	stale := <-sub.Events() // Queued before the switch; the UI loop may still read it.
@@ -468,7 +469,7 @@ func TestAppServerResumeSwitchWaitsForDiffResync(t *testing.T) {
 	appServerTestKeys(t, u, "/clear\r")
 	start := resumeTestOne(t, w, "thread/start")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"fresh","cwd":%q}}}`, start.ID, workspace))
-	observeReview(testReview(auto), workspace, "fresh-child", codexTurnMetadata{ThreadID: "fresh-child", ParentThreadID: "fresh", SubagentKind: "thread_spawn", RequestKind: "turn"})
+	observeReview(testReview(auto), workspace, "fresh-child", codexresponses.TurnMetadata{ThreadID: "fresh-child", ParentThreadID: "fresh", SubagentKind: "thread_spawn", RequestKind: "turn"})
 	admitted := testReview(auto).Scope().Workspaces[workspace]["fresh"] && testReview(auto).Scope().Workspaces[workspace]["fresh-child"]
 	if !admitted {
 		t.Fatal("session cleared after a switch never entered the Diff")

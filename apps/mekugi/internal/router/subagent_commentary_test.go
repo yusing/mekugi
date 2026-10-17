@@ -13,7 +13,7 @@ func TestChildCompletionsPreserveTerminalEvents(t *testing.T) {
 
 	for _, status := range []string{"failed", "incomplete"} {
 		t.Run(status, func(t *testing.T) {
-			metadata := codexTurnMetadata{SubagentKind: "thread_spawn"}
+			metadata := codexresponses.TurnMetadata{SubagentKind: "thread_spawn"}
 			transform, _, _ := newSubagentCommentaryTestTransformWithMetadata(t, nil, metadata)
 			terminal := mustTestJSON(t, map[string]any{
 				"type": "response." + status,
@@ -45,7 +45,7 @@ func observeTestResponseUsage(t *testing.T, transform *mekugiResponseTransform, 
 	if !observed {
 		t.Fatal("test response has no provider usage")
 	}
-	transform.observeResponseUsage(counts)
+	transform.ObserveUsage(counts)
 }
 
 func newSubagentCommentaryTestTransform(
@@ -53,13 +53,13 @@ func newSubagentCommentaryTestTransform(
 	conversation []any,
 ) (*mekugiResponseTransform, *mekugiProxy, *codexresponses.Request) {
 	t.Helper()
-	return newSubagentCommentaryTestTransformWithMetadata(t, conversation, codexTurnMetadata{})
+	return newSubagentCommentaryTestTransformWithMetadata(t, conversation, codexresponses.TurnMetadata{})
 }
 
 func newSubagentCommentaryTestTransformWithMetadata(
 	t *testing.T,
 	conversation []any,
-	metadata codexTurnMetadata,
+	metadata codexresponses.TurnMetadata,
 ) (*mekugiResponseTransform, *mekugiProxy, *codexresponses.Request) {
 	t.Helper()
 	additional := testCodeModeAdditionalTools(testCodeModeDescription)

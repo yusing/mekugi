@@ -6,7 +6,7 @@ import (
 	"encoding/json/jsontext"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 
 	json "encoding/json/v2"
@@ -16,8 +16,8 @@ import (
 	"strings"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-
 	"github.com/yusing/mekugi/contracts/inference"
+
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/providers/openai"
 )
@@ -63,11 +63,11 @@ func namingCompletion(provider inferencegateway.Forwarder, totals *accounting.Se
 			return "", err
 		}
 		collector := new(sessionTitleCollector)
-		hooks := &responseHooks{transport: response.Transport}
+		hooks := &requestexecution.ResponseHooks{Transport: response.Transport}
 		if usage != nil {
-			hooks.onUsage = usage.Observe
+			hooks.OnUsage = usage.Observe
 		}
-		state, err := copyUpstreamBodyTransformed(io.Discard, response.Response, stream, collector, hooks)
+		state, err := requestexecution.CopyResponse(io.Discard, response.Response, stream, collector, hooks)
 		if err != nil {
 			return "", err
 		}

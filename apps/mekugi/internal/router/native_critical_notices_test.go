@@ -1,6 +1,7 @@
 package router
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 )
 
 func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) {
@@ -22,7 +24,7 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	queueCritical(issues, "main")
 	queueCritical(issues, "child")
 	queueCritical(issues, "other")
-	issues.addNotice("", "capacity", "router-wide capacity warning")
+	issues.AddNotice("", "capacity", "router-wide capacity warning")
 	u, _ := newAppServerTestUI()
 	u.issues = issues
 	u.proxy = &mekugiProxy{activity: activity}
@@ -85,8 +87,8 @@ func TestNativeRequestNoticesWaitForHostTurnOutcome(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.issues = testCriticalErrors()
 			record := func(cause string) {
-				u.issues.record(&requestFinalization{sessionID: "session", threadID: "main", turnID: "turn",
-					failurePhase: requestFailureInspectResponse, observation: requestObservation{outcome: requestOutcomeFailed}}, fmt.Errorf("upstream closed: %s", cause))
+				u.issues.Report(requestexecution.Failure{Session: "session", Thread: "main", Turn: "turn",
+					Phase: "inspect_response"}, fmt.Errorf("upstream closed: %s", cause))
 			}
 			record("StatusServiceRestart")
 			if delivery := u.applyCriticalNotices(); delivery != nil || u.feedback.Alert {
@@ -120,8 +122,8 @@ func TestNativeRequestNoticeChildOutcomeKeepsOtherTurnsPending(t *testing.T) {
 	activity.observe("child", "main", "/root/worker", true)
 	u.proxy = &mekugiProxy{activity: activity}
 	for _, thread := range []string{"main", "child", "other"} {
-		u.issues.record(&requestFinalization{sessionID: "session", threadID: thread, turnID: "turn",
-			failurePhase: requestFailureInspectResponse, observation: requestObservation{outcome: requestOutcomeFailed}}, fmt.Errorf("upstream closed for %s", thread))
+		u.issues.Report(requestexecution.Failure{Session: "session", Thread: thread, Turn: "turn",
+			Phase: "inspect_response"}, fmt.Errorf("upstream closed for %s", thread))
 	}
 	queueCritical(u.issues, "main") // Auxiliary/unidentified failures stay immediate.
 	delivery := u.applyCriticalNotices()
@@ -148,9 +150,11 @@ func TestFailureStorageNoticeReachesOwningNativeRootBeforeShutdown(t *testing.T)
 	}
 	t.Setenv("XDG_STATE_HOME", stateHome)
 	issues := testCriticalErrors()
-	issues.diagnostics = testDiagnostics(nil, nil)
-	failure := failureStoreTestFinalization("native-storage-failure")
-	issues.persistFailure(failure)
+	issues.Configure(requestexecution.FailureStorage{Diagnostics: testDiagnostics(nil, nil)})
+	failure := failureStoreTestFailure()
+	failure.Turn = "completed-host-turn"
+	issues.Report(failure, errors.New("retained test failure"))
+	issues.Notices.ObserveTurn(failure.Thread, failure.Turn, "completed")
 
 	other, _ := newAppServerTestUI()
 	other.Thread = "unrelated-root"
@@ -160,7 +164,7 @@ func TestFailureStorageNoticeReachesOwningNativeRootBeforeShutdown(t *testing.T)
 	}
 
 	owner, _ := newAppServerTestUI()
-	owner.Thread = failure.threadID
+	owner.Thread = failure.Thread
 	owner.issues = issues
 	owner.view.Conversation = true
 	delivery := owner.applyCriticalNotices()
@@ -227,7 +231,7 @@ func TestNativeCleanupNoticeTranscriptReplacement(t *testing.T) {
 	for _, delivered := range []bool{false, true} {
 		t.Run(fmt.Sprintf("delivered=%t", delivered), func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.issues.cleanupNotice("", "", "planning", "pending cleanup plan")
+			u.issues.CleanupNotice("", "", "planning", "pending cleanup plan")
 			first := u.applyCriticalNotices()
 			u.ensureShell()
 			defer u.shell.diffScreen.Close()
@@ -269,8 +273,8 @@ func TestNativeCleanupNoticeTranscriptReplacement(t *testing.T) {
 func TestNativeCriticalNoticeMixedBatchDismissal(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.issues = testCriticalErrors()
-	u.issues.addNotice("", "capacity", "router error")
-	u.issues.cleanupNotice("", "", "planning", "cleanup progress")
+	u.issues.AddNotice("", "capacity", "router error")
+	u.issues.CleanupNotice("", "", "planning", "cleanup progress")
 	delivery := u.applyCriticalNotices()
 	u.ensureShell()
 	defer u.shell.diffScreen.Close()

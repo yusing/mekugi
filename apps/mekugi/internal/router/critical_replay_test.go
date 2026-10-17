@@ -14,7 +14,7 @@ func TestCriticalNoticeNeverEntersProviderResponses(t *testing.T) {
 		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
 			issues := testCriticalErrors()
 			queueCritical(issues, "session")
-			claim := issues.takeNative("session", nil)
+			claim := claimNativeNotices(issues, "session", nil)
 			noticeID := claim.Errors.Messages[0].ID
 			claim.Errors.Finish(false)
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: criticalTestResponse(stream)}}}

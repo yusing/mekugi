@@ -17,19 +17,17 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/contracts/inference"
 
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
+	"github.com/coder/websocket"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/libraries/httptransport"
+	"github.com/yusing/mekugi/providers/grok"
 	"github.com/yusing/mekugi/providers/openai"
 
-	"github.com/yusing/mekugi/libraries/httptransport"
-
-	"github.com/yusing/mekugi/providers/grok"
-
-	"github.com/coder/websocket"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
@@ -171,7 +169,7 @@ func TestProviderWebSocketPoisonedLeasesAreNotReplayed(t *testing.T) {
 			}
 			if scenario != "close during read" {
 				if scenario == "cancel" {
-					_, err = copyUpstreamBodyTransformed(io.Discard, response.Response, true, nil, nil)
+					_, err = requestexecution.CopyResponse(io.Discard, response.Response, true, nil, nil)
 				} else {
 					_, err = io.ReadAll(response.Body)
 				}
@@ -182,13 +180,7 @@ func TestProviderWebSocketPoisonedLeasesAreNotReplayed(t *testing.T) {
 					if !errors.Is(err, context.Canceled) {
 						t.Fatalf("request cancellation lost its cause: %v", err)
 					}
-					issues := testCriticalErrors()
-					f := &requestFinalization{}
-					f.classifyCopyError(err)
-					f.finish(responseCtx, err, &trackedResponseWriter{committed: true}, issues)
-					if f.observation.outcome != requestOutcomeCanceledAfterResponse || len(issues.Notices.Pending()) != 0 {
-						t.Fatalf("host interruption reported as failure: outcome=%v notices=%v", f.observation.outcome, issues.Notices.Pending())
-					}
+
 				}
 				if scenario == "idle timeout" {
 					close(release)
@@ -359,7 +351,7 @@ func TestProviderWebSocketNonstreamReconstructsOutput(t *testing.T) {
 	var output bytes.Buffer
 	transform := &webSocketCountingTransform{}
 	usage := inference.Usage{}
-	state, err := copyUpstreamBodyTransformed(&output, response.Response, false, transform, &responseHooks{onUsage: func(counts inference.Usage) { usage = counts }})
+	state, err := requestexecution.CopyResponse(&output, response.Response, false, transform, &requestexecution.ResponseHooks{OnUsage: func(counts inference.Usage) { usage = counts }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -470,7 +462,7 @@ func TestRunSessionUsesProviderWebSocketsByDefault(t *testing.T) {
 		}
 		request.Header = codexAuthHeaders()
 		request.Header.Set(codexresponses.ThreadIDHeader, "thread")
-		request.Header.Set(sessionIDHeader, "session")
+		request.Header.Set(codexresponses.RoutingSessionHeader, "session")
 		response, err := (&http.Client{Timeout: 5 * time.Second}).Do(request)
 		if err != nil {
 			t.Fatal(err)
@@ -637,7 +629,7 @@ func TestProviderWebSocketLeavesGrokOnHTTP(t *testing.T) {
 	client := newTestProviderClient("http://127.0.0.1:1", nil)
 	client.OpenAI.EnableWebSockets(t.Context())
 	defer client.OpenAI.Close()
-	client.Grok = &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), HTTPClient: grokTestHTTPClient(t, upstream), Auth: grok.NewAuth("", "grok-test", httptransport.Client(nil))}
+	client.Grok = &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), HTTPClient: grokTestHTTPClient(t, upstream), Auth: grok.NewAuth("", "grok-test", httptransport.Client(nil))}
 	response, err := client.ForwardExecution(t.Context(), t.Context(), grokTestRequest(t, false), grokTestHeaders(), "session")
 	if err != nil {
 		t.Fatal(err)

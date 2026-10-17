@@ -1,4 +1,5 @@
-package router
+// Source: apps/mekugi/internal/router/response_delivery.go:1:44@b9679c93.
+package requestexecution
 
 import (
 	"fmt"
@@ -9,25 +10,25 @@ import (
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
-func copyUpstreamBodyTransformed(writer io.Writer, response *http.Response, streamResponse bool, transformer codexresponses.Transformer, hooks *responseHooks) (responseevents.TerminalState, error) {
-	if streamResponse && hooks != nil && hooks.streamDiagnostics != nil {
-		transport := hooks.transport
+func CopyResponse(writer io.Writer, response *http.Response, streamResponse bool, transformer codexresponses.Transformer, hooks *ResponseHooks) (responseevents.TerminalState, error) {
+	if streamResponse && hooks != nil && hooks.StreamDiagnostics != nil {
+		transport := hooks.Transport
 		if transport == "" {
 			transport = "unknown"
 		}
-		hooks.streamDiagnostics.ResponseStarted(response, transport)
+		hooks.StreamDiagnostics.ResponseStarted(response, transport)
 		if id := response.Header.Get("X-Request-Id"); responseevents.SafeDiagnosticIdentity(id) {
-			hooks.streamDiagnostics.ProviderRequestID = id
+			hooks.StreamDiagnostics.ProviderRequestID = id
 		}
 	}
 	defer response.Body.Close()
 	var reader io.Reader = response.Body
 	if streamResponse && hooks != nil {
-		reader = diagnosticStreamReader{reader: reader, diagnostics: hooks.streamDiagnostics, receivedAt: &hooks.receivedAt}
+		reader = diagnosticStreamReader{reader: reader, diagnostics: hooks.StreamDiagnostics, receivedAt: &hooks.ReceivedAt}
 	}
 	terminalState, err := codexresponses.CopyBody(writer, reader, streamResponse, transformer, hooks)
 	if streamResponse && hooks != nil {
-		recordStreamCopyStop(hooks.streamDiagnostics, err)
+		recordStreamCopyStop(hooks.StreamDiagnostics, err)
 	}
 	// The response bridge emits a failed terminal before closing its local pipe.
 	// SSE copying stops at that terminal, so retrieve its producer error without

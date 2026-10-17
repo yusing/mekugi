@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/contracts/inference"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -76,7 +76,7 @@ func TestFinalAnswerStreamCodexCompletion(t *testing.T) {
 		for _, phase := range []string{"final_answer", ""} {
 			t.Run(map[bool]string{false: "root", true: "child"}[child]+"/"+phase, func(t *testing.T) {
 
-				metadata := codexTurnMetadata{}
+				metadata := codexresponses.TurnMetadata{}
 				if child {
 					metadata.SubagentKind = threadSpawnSubagentKind
 				}
@@ -85,7 +85,7 @@ func TestFinalAnswerStreamCodexCompletion(t *testing.T) {
 				terminal := finalAnswerTestTerminal(t, "completed", true)
 				var output bytes.Buffer
 				state, err := copySSETransformed(&output, strings.NewReader(finalAnswerTestWire(append(slices.Clone(answer), terminal))),
-					transform, &responseHooks{onUsage: transform.observeResponseUsage})
+					transform, &requestexecution.ResponseHooks{OnUsage: transform.ObserveUsage})
 				if err != nil || state != responses.TerminalCompleted {
 					t.Fatalf("state=%v, error=%v", state, err)
 				}
@@ -199,7 +199,7 @@ func TestFinalAnswerStreamFlushesWithoutUsage(t *testing.T) {
 			var output bytes.Buffer
 			// Include a real downstream transform to exercise composed draining.
 			chain := codexresponses.Compose(transform, &webSocketCountingTransform{})
-			_, err := copySSETransformed(&output, reader, chain, &responseHooks{onUsage: transform.observeResponseUsage})
+			_, err := copySSETransformed(&output, reader, chain, &requestexecution.ResponseHooks{OnUsage: transform.ObserveUsage})
 			if stop == "read_error" {
 				if !errors.Is(err, failure) {
 					t.Fatalf("lost upstream error: %v", err)
@@ -243,7 +243,7 @@ func TestAnswerStreamsWithoutUsageCommentary(t *testing.T) {
 			request := serverRequest(t, func(fields map[string]any) { fields["stream"] = true })
 			headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 			if child {
-				var metadata codexTurnMetadata
+				var metadata codexresponses.TurnMetadata
 				if err := json.Unmarshal([]byte(headers.Get(codexresponses.TurnMetadataHeader)), &metadata); err != nil {
 					t.Fatal(err)
 				}

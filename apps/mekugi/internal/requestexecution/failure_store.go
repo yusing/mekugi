@@ -1,4 +1,5 @@
-package router
+// Source: apps/mekugi/internal/router/failure_store.go:1:57@b9679c93.
+package requestexecution
 
 import (
 	"context"
@@ -11,7 +12,7 @@ import (
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 )
 
-func (c *CriticalErrors) persistFailure(f *requestFinalization) {
+func (c *Failures) persistFailure(f *requestFinalization) {
 	if c == nil || f.diagnosticReference == "" {
 		return
 	}
@@ -52,6 +53,6 @@ func (c *CriticalErrors) persistFailure(f *requestFinalization) {
 		}
 	}
 	if err != nil {
-		c.addThreadNotice(f.sessionID, f.threadID, "failure_storage", "Mekugi could not retain the failure reference. Relaunch with --debug to capture a future failure.")
+		c.AddThreadNotice(f.sessionID, f.threadID, "failure_storage", "Mekugi could not retain the failure reference. Relaunch with --debug to capture a future failure.")
 	}
 }

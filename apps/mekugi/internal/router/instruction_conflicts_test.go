@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -47,7 +49,7 @@ func TestRecordedInstructionCleanupBoundaries(t *testing.T) {
 				map[string]any{"role": "developer", "content": []any{map[string]string{"type": "input_text", "text": source}}},
 			}),
 		}}
-		if err := projectRequestInstructions(&request, testGuidance().ForExecution); err != nil {
+		if err := requestexecution.ProjectInstructions(&request, testGuidance().ForExecution); err != nil {
 			t.Fatal(err)
 		}
 		if got := responses.StringField(request.Fields, "instructions"); got != want {
@@ -82,7 +84,7 @@ func TestConflictRewriteOnlyInstructionCarriers(t *testing.T) {
 			map[string]string{"type": "function_call_output", "output": progress},
 		}),
 	}}
-	if err := projectRequestInstructions(&request, testGuidance().ForExecution); err != nil {
+	if err := requestexecution.ProjectInstructions(&request, testGuidance().ForExecution); err != nil {
 		t.Fatal(err)
 	}
 	base := responses.StringField(request.Fields, "instructions")
@@ -109,7 +111,7 @@ func TestConflictRewriteOnlyInstructionCarriers(t *testing.T) {
 		}
 	}
 	before := responses.MustMarshalJSON(request.Fields)
-	if err := projectRequestInstructions(&request, testGuidance().ForExecution); err != nil || !responses.SameJSONValue(before, responses.MustMarshalJSON(request.Fields)) {
+	if err := requestexecution.ProjectInstructions(&request, testGuidance().ForExecution); err != nil || !responses.SameJSONValue(before, responses.MustMarshalJSON(request.Fields)) {
 		t.Fatalf("conflict rewrite not idempotent: %v", err)
 	}
 }
@@ -132,7 +134,7 @@ func TestSolLunaInstructionConflictRewrite(t *testing.T) {
 				map[string]string{"role": "system", "content": source},
 			}),
 		}}
-		if err := projectRequestInstructions(&request, testGuidance().ForExecution); err != nil {
+		if err := requestexecution.ProjectInstructions(&request, testGuidance().ForExecution); err != nil {
 			t.Fatal(err)
 		}
 		if got := responses.StringField(request.Fields, "instructions"); got != replacement+suffix {
@@ -149,7 +151,7 @@ func TestSolLunaInstructionConflictRewrite(t *testing.T) {
 			t.Fatalf("input rewrite = %s", request.Fields["input"])
 		}
 		before := responses.MustMarshalJSON(request.Fields)
-		if err := projectRequestInstructions(&request, testGuidance().ForExecution); err != nil || !responses.SameJSONValue(before, responses.MustMarshalJSON(request.Fields)) {
+		if err := requestexecution.ProjectInstructions(&request, testGuidance().ForExecution); err != nil || !responses.SameJSONValue(before, responses.MustMarshalJSON(request.Fields)) {
 			t.Fatalf("conflict rewrite not idempotent: %v", err)
 		}
 	}
@@ -168,7 +170,7 @@ func TestConflictRewriteLeavesOrdinaryStockAdvice(t *testing.T) {
 			"- When you made a plan, update it after having performed one of the sub-tasks that you shared on the plan." + newline +
 			"- Use the plan tool to explain the work" + newline + delegation + newline
 		request := codexresponses.Request{Fields: map[string]json.RawMessage{"instructions": responses.MustMarshalJSON(input)}}
-		if err := projectRequestInstructions(&request, testGuidance().ForExecution); err != nil {
+		if err := requestexecution.ProjectInstructions(&request, testGuidance().ForExecution); err != nil {
 			t.Fatal(err)
 		}
 		output := responses.StringField(request.Fields, "instructions")
@@ -197,7 +199,7 @@ func TestConflictRewriteRestoresWaitGuidance(t *testing.T) {
 						map[string]string{"role": "system", "content": source},
 					}),
 				}}
-				if err := projectRequestInstructions(&request, testGuidance().ForExecution); err != nil {
+				if err := requestexecution.ProjectInstructions(&request, testGuidance().ForExecution); err != nil {
 					t.Fatal(err)
 				}
 				if got := responses.StringField(request.Fields, "instructions"); got != test.want+suffix {
@@ -212,7 +214,7 @@ func TestConflictRewriteRestoresWaitGuidance(t *testing.T) {
 					t.Error("developer conflict unresolved or unrelated carriers changed")
 				}
 				before := responses.MustMarshalJSON(request.Fields)
-				if err := projectRequestInstructions(&request, testGuidance().ForExecution); err != nil || !responses.SameJSONValue(before, responses.MustMarshalJSON(request.Fields)) {
+				if err := requestexecution.ProjectInstructions(&request, testGuidance().ForExecution); err != nil || !responses.SameJSONValue(before, responses.MustMarshalJSON(request.Fields)) {
 					t.Fatalf("conflict rewrite not idempotent: %v", err)
 				}
 			}
@@ -231,7 +233,7 @@ func TestCompletionConflictCleanupPreservesCallerQualifications(t *testing.T) {
 			"instructions": responses.MustMarshalJSON(conflict),
 			"input":        responses.MustMarshalJSON([]any{map[string]string{"role": "developer", "content": conflict}}),
 		}}
-		if err := projectRequestInstructions(&request, testGuidance().ForExecution); err != nil {
+		if err := requestexecution.ProjectInstructions(&request, testGuidance().ForExecution); err != nil {
 			t.Fatal(err)
 		}
 		if got := responses.StringField(request.Fields, "instructions"); got != "" {
@@ -246,7 +248,7 @@ func TestCompletionConflictCleanupPreservesCallerQualifications(t *testing.T) {
 		}
 		qualified := conflict + " Caller qualification."
 		request.Fields["instructions"] = responses.MustMarshalJSON(qualified)
-		if err := projectRequestInstructions(&request, testGuidance().ForExecution); err != nil || responses.StringField(request.Fields, "instructions") != qualified {
+		if err := requestexecution.ProjectInstructions(&request, testGuidance().ForExecution); err != nil || responses.StringField(request.Fields, "instructions") != qualified {
 			t.Fatalf("caller qualification changed: %v", err)
 		}
 	}
@@ -263,7 +265,7 @@ func TestCachedStockProgressConflicts(t *testing.T) {
 		for _, newline := range []string{"\n", "\r\n"} {
 			suffix := newline + conflict + " Caller qualification." + newline + "```text" + newline + conflict + newline + "```"
 			request := codexresponses.Request{Fields: map[string]json.RawMessage{"instructions": responses.MustMarshalJSON(conflict + suffix)}}
-			if err := projectRequestInstructions(&request, testGuidance().ForExecution); err != nil {
+			if err := requestexecution.ProjectInstructions(&request, testGuidance().ForExecution); err != nil {
 				t.Fatal(err)
 			}
 			if got := responses.StringField(request.Fields, "instructions"); got != suffix {

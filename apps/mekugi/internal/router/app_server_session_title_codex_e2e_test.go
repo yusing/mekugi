@@ -4,7 +4,6 @@ package router
 
 import (
 	"context"
-	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -16,19 +15,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/providers/openai"
-
-	"github.com/yusing/mekugi/backends/codex/binding"
-
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
+	"github.com/yusing/mekugi/backends/codex/binding"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/providers/openai"
 )
 
 // The installed host owns name persistence; both model requests terminate at
@@ -107,7 +108,7 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 	defer release()
 	provider := newTestProviderClient(upstream.URL, upstream.Client())
 	generator := newTestSessionNaming(ctx, provider)
-	handler := responsesHandler(ctx, time.Minute, requestExecutor{provider: provider, client: provider, titleGenerator: generator})
+	handler := responsesHandler(ctx, time.Minute, requestexecution.Executor{Provider: provider, Client: provider, Naming: generator})
 	threads := make(chan string, 8)
 	router := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Fixture authentication is added only at the local router boundary.
@@ -244,7 +245,7 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 	quit()
 	// A fresh generator and host process restore only durable title metadata.
 	fresh := newTestSessionNaming(ctx, provider)
-	handler = responsesHandler(ctx, time.Minute, requestExecutor{provider: provider, client: provider, titleGenerator: fresh})
+	handler = responsesHandler(ctx, time.Minute, requestexecution.Executor{Provider: provider, Client: provider, Naming: fresh})
 	awaitResume, sendResume, quitResume := start(thread, fresh)
 	awaitResume("persisted title after fresh app-server resume", func(frame string) bool { return headerHasTitle(frame) && strings.Contains(frame, "Ready") })
 	if fresh.acceptCandidate(thread) {

@@ -14,7 +14,7 @@ func TestMainCompletionPreservesPriorTotalsWithoutCurrentUsage(t *testing.T) {
 		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
 			prior, _ := prepareActivityTest(t, proxy, "before", "thread", "", "/root", nil)
-			prior.observeResponseUsage(inference.Usage{InputTokens: 20, UncachedInputTokens: 8, OutputTokens: 5, ReasoningTokens: 3})
+			prior.ObserveUsage(inference.Usage{InputTokens: 20, UncachedInputTokens: 8, OutputTokens: 5, ReasoningTokens: 3})
 			prior.Close()
 			final, _ := prepareActivityTest(t, proxy, "after", "thread", "", "/root", nil)
 			response := map[string]any{
@@ -57,7 +57,7 @@ func TestMainCompletionDoesNotExportTokenMetrics(t *testing.T) {
 			t.Setenv("TMPDIR", directory)
 			proxy := newManagedMekugiProxy(t)
 			main, _ := prepareActivityTest(t, proxy, "session", "thread", "", "/root", nil)
-			main.observeResponseUsage(inference.Usage{InputTokens: 100, UncachedInputTokens: 40, OutputTokens: 10})
+			main.ObserveUsage(inference.Usage{InputTokens: 100, UncachedInputTokens: 40, OutputTokens: 10})
 			response := []byte(`{"id":"main-response","status":"completed","output":[{"type":"message","id":"answer","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"Actual answer"}]}]}`)
 			var output []byte
 			if stream {

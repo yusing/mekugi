@@ -256,7 +256,7 @@ func TestCodexCacheAffinityE2E(t *testing.T) {
 		if got := headers.Get(codexresponses.SessionIDHeader); got != keys[index] {
 			t.Fatalf("upstream attempt %d Session_id = %q, want prompt_cache_key %q", index+1, got, keys[index])
 		}
-		if got := headers.Get(sessionIDHeader); got != "" {
+		if got := headers.Get(codexresponses.RoutingSessionHeader); got != "" {
 			t.Fatalf("upstream attempt %d Session-Id = %q, want empty", index+1, got)
 		}
 		for _, name := range codexRequestHeaderNames {

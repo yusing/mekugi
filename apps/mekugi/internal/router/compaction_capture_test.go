@@ -128,7 +128,7 @@ func testCompactionCapture(t *testing.T, tool string, failed bool) {
 				t.Fatal(err)
 			}
 			headers := serverCompactionMetadataHeaders(t)
-			metadata, ok := decodeCodexTurnMetadata(headers)
+			metadata, ok := codexresponses.DecodeTurnMetadata(headers)
 			if !ok {
 				t.Fatal("invalid compaction metadata")
 			}
@@ -138,7 +138,7 @@ func testCompactionCapture(t *testing.T, tool string, failed bool) {
 			headers.Set(codexresponses.ThreadIDHeader, thread)
 			request.Fields["input"] = mustTestJSON(t, append(items, map[string]any{"role": "user", "content": "Summarize."}))
 			if missingWorkspace {
-				metadata, _ := decodeCodexTurnMetadata(headers)
+				metadata, _ := codexresponses.DecodeTurnMetadata(headers)
 				metadata.Directories = nil
 				headers.Set(codexresponses.TurnMetadataHeader, string(mustTestJSON(t, metadata)))
 			}

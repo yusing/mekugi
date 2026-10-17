@@ -6,13 +6,12 @@ import (
 	"encoding/json/jsontext"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
-
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	json "encoding/json/v2"
@@ -86,8 +85,8 @@ func TestUISnapshotNativeConfiguredServiceTier(t *testing.T) {
 			}
 			request := serverRequest(t, func(fields map[string]any) { fields["model"], fields["service_tier"] = tc.model, tc.requested })
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
-			executor := requestExecutor{provider: provider, output: &bytes.Buffer{}, serviceTiers: inferencegateway.NewTiers(config.ServiceTiers)}
-			if err := executor.execute(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", nil), "tier"); err != nil {
+			executor := requestexecution.Executor{Provider: provider, Output: &bytes.Buffer{}, ServiceTiers: inferencegateway.NewTiers(config.ServiceTiers)}
+			if err := executor.Execute(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", nil), "tier"); err != nil {
 				t.Fatal(err)
 			}
 			forwarded, err := codexresponses.ParseRequest(provider.forwarded[0])
@@ -206,10 +205,10 @@ func TestServiceTierPickerSelectionUpdatesEffectiveTier(t *testing.T) {
 			}
 			request := serverRequest(t, func(fields map[string]any) { fields["model"], fields["service_tier"] = u.model, u.serviceTier })
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
-			executor := requestExecutor{provider: provider, output: &bytes.Buffer{}, serviceTiers: u.serviceTiers}
+			executor := requestexecution.Executor{Provider: provider, Output: &bytes.Buffer{}, ServiceTiers: u.serviceTiers}
 			headers := serverMetadataHeaders(t, "turn", nil)
 			headers.Set(codexresponses.ThreadIDHeader, u.Thread)
-			if err := executor.execute(t.Context(), t.Context(), request, headers, "tier"); err != nil {
+			if err := executor.Execute(t.Context(), t.Context(), request, headers, "tier"); err != nil {
 				t.Fatal(err)
 			}
 			forwarded, err := codexresponses.ParseRequest(provider.forwarded[0])
@@ -267,12 +266,12 @@ func TestServiceTierOverrideAcrossTransports(t *testing.T) {
 			}))
 			defer upstream.Close()
 			client := newTestProviderClient(upstream.URL, upstream.Client())
-			executor := requestExecutor{provider: client, client: client, serviceTiers: inferencegateway.NewTiers(map[string]string{"gpt-6-astra": "priority"})}
+			executor := requestexecution.Executor{Provider: client, Client: client, ServiceTiers: inferencegateway.NewTiers(map[string]string{"gpt-6-astra": "priority"})}
 			request := serverRequest(t, func(fields map[string]any) {
 				fields["model"], fields["service_tier"], fields["stream"] = "gpt-6-astra", "default", transport != "http"
 			})
 			if transport == "websocket" {
-				endpoint := inferencegateway.NewWebSocketEndpoint(ctx, 10*time.Second, client, executor.executeWebSocket)
+				endpoint := inferencegateway.NewWebSocketEndpoint(ctx, 10*time.Second, client, executor.ExecuteWebSocket)
 				defer endpoint.Close()
 				server := httptest.NewServer(endpoint)
 				defer server.Close()
@@ -315,8 +314,9 @@ func TestServiceTierOverrideUsesEffectiveModel(t *testing.T) {
 			request := serverRequest(t, func(fields map[string]any) { fields["model"], fields["service_tier"] = model, "flex" })
 			headers := serverMetadataHeaders(t, "turn", nil)
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
-			executor := requestExecutor{provider: provider, output: &bytes.Buffer{}, mekugiCalls: proxy, serviceTiers: inferencegateway.NewTiers(map[string]string{"gpt-6-sol": "fast"})}
-			if err := executor.execute(t.Context(), t.Context(), request, headers, "tier"); err != nil {
+			executor := testRequestExecutor(provider, nil, proxy)
+			executor.Output, executor.ServiceTiers = &bytes.Buffer{}, inferencegateway.NewTiers(map[string]string{"gpt-6-sol": "fast"})
+			if err := executor.Execute(t.Context(), t.Context(), request, headers, "tier"); err != nil {
 				t.Fatal(err)
 			}
 			forwarded, err := codexresponses.ParseRequest(provider.forwarded[0])
@@ -363,7 +363,7 @@ func TestServiceTierChildRequestAndRootNotice(t *testing.T) {
 	headers := serverMetadataHeaders(t, "turn", nil)
 	headers.Set(codexresponses.SubagentHeader, threadSpawnSubagent)
 	headers.Set(codexresponses.ThreadIDHeader, "child")
-	headers.Set(codexresponses.TurnMetadataHeader, string(mustTestJSON(t, codexTurnMetadata{
+	headers.Set(codexresponses.TurnMetadataHeader, string(mustTestJSON(t, codexresponses.TurnMetadata{
 		RequestKind: "turn", ThreadID: "child", ParentThreadID: "root",
 		AgentName: "/root/tier-test", SubagentKind: "thread_spawn",
 	})))
@@ -371,11 +371,9 @@ func TestServiceTierChildRequestAndRootNotice(t *testing.T) {
 		fields["model"], fields["service_tier"] = "gpt-5.6-sol", "flex"
 	})
 	provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"id":"tier-response","status":"completed","output":[],"usage":{"input_tokens":50000}}`)}}}
-	executor := requestExecutor{
-		provider: provider, output: &bytes.Buffer{}, mekugiCalls: proxy,
-		serviceTiers: inferencegateway.NewTiers(map[string]string{"gpt-5.6-sol": "fast"}),
-	}
-	if err := executor.execute(t.Context(), t.Context(), request, headers, "child-session"); err != nil {
+	executor := testRequestExecutor(provider, nil, proxy)
+	executor.Output, executor.ServiceTiers = &bytes.Buffer{}, inferencegateway.NewTiers(map[string]string{"gpt-5.6-sol": "fast"})
+	if err := executor.Execute(t.Context(), t.Context(), request, headers, "child-session"); err != nil {
 		t.Fatal(err)
 	}
 	if len(provider.forwarded) != 1 {
@@ -405,8 +403,8 @@ func TestServiceTierRequestAliases(t *testing.T) {
 				}
 			})
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
-			executor := requestExecutor{provider: provider, output: &bytes.Buffer{}}
-			if err := executor.execute(t.Context(), t.Context(), request, http.Header{}, "alias"); err != nil {
+			executor := requestexecution.Executor{Provider: provider, Output: &bytes.Buffer{}}
+			if err := executor.Execute(t.Context(), t.Context(), request, http.Header{}, "alias"); err != nil {
 				t.Fatal(err)
 			}
 			forwarded, err := codexresponses.ParseRequest(provider.forwarded[0])

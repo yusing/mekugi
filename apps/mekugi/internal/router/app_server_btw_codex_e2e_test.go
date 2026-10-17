@@ -5,6 +5,9 @@ package router
 import (
 	"bytes"
 	"context"
+
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	json "encoding/json/v2"
 	"io"
 	"net/http"
@@ -157,7 +160,7 @@ func TestAppServerBTWNativeCodexE2E(t *testing.T) {
 			main := next()
 			terminal.await("completed")
 			if scenario == "resumed" {
-				metadata, _ := decodeCodexTurnMetadata(main.headers)
+				metadata, _ := codexresponses.DecodeTurnMetadata(main.headers)
 				terminal.stopCanceled()
 				terminal = startAppResumeTerminalWithProxy(t, command, metadata.ThreadID, proxy)
 				terminal.await("Ready")
@@ -175,8 +178,8 @@ func TestAppServerBTWNativeCodexE2E(t *testing.T) {
 			}
 			terminal.send("/btw Side question\r")
 			side := next()
-			mainMetadata, _ := decodeCodexTurnMetadata(main.headers)
-			sideMetadata, _ := decodeCodexTurnMetadata(side.headers)
+			mainMetadata, _ := codexresponses.DecodeTurnMetadata(main.headers)
+			sideMetadata, _ := codexresponses.DecodeTurnMetadata(side.headers)
 			if side.key == "" || main.key == "" || sideMetadata.ThreadID == "" || sideMetadata.ThreadID == mainMetadata.ThreadID {
 				t.Fatalf("fork identities: main=%q side=%q", mainMetadata.ThreadID, sideMetadata.ThreadID)
 			}

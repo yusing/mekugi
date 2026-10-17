@@ -4,23 +4,20 @@ import (
 	"bytes"
 	"context"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+
 	previewbinding "github.com/yusing/mekugi/modules/livepreview/codexbinding"
 
-	segments "github.com/yusing/mekugi/modules/commandsegments/segments"
-
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-
-	"github.com/yusing/mekugi/providers/grok"
-	"github.com/yusing/mekugi/providers/opencode"
-
 	"github.com/yusing/mekugi/backends/codex/nativetrace"
-
-	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
-
 	"github.com/yusing/mekugi/contracts/inference"
+	segments "github.com/yusing/mekugi/modules/commandsegments/segments"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/usage/accounting"
+	"github.com/yusing/mekugi/providers/grok"
+	"github.com/yusing/mekugi/providers/opencode"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
@@ -28,7 +25,6 @@ import (
 
 	json "encoding/json/v2"
 	"errors"
-	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -125,7 +121,7 @@ type mekugiTranslationState struct {
 
 type mekugiResponseTransform struct {
 	generation       sessioncontrol.Generation
-	toolTrace        toolObservationTrace
+	toolTrace        requestexecution.Trace
 	ctx              context.Context
 	proxy            *mekugiProxy
 	sessionID        string
@@ -179,8 +175,8 @@ func (t *mekugiResponseTransform) Close() {
 	}
 }
 
-// observeResponseUsage records provider-authoritative token usage for this response.
-func (t *mekugiResponseTransform) observeResponseUsage(counts inference.Usage) {
+// ObserveUsage records provider-authoritative token usage for this response.
+func (t *mekugiResponseTransform) ObserveUsage(counts inference.Usage) {
 	if t.usageObserved {
 		return
 	}
@@ -188,88 +184,14 @@ func (t *mekugiResponseTransform) observeResponseUsage(counts inference.Usage) {
 	t.usageObserved = true
 }
 
-func validateMekugiCompactionRequest(request *codexresponses.Request, metadata codexTurnMetadata) error {
-	var compaction struct {
-		Trigger        string `json:"trigger"`
-		Reason         string `json:"reason"`
-		Implementation string `json:"implementation"`
-		Phase          string `json:"phase"`
-		Strategy       string `json:"strategy"`
-	}
-	if err := jsonv1.Unmarshal(metadata.Compaction, &compaction); err != nil || slices.ContainsFunc(
-		[]string{compaction.Trigger, compaction.Reason, compaction.Implementation, compaction.Phase, compaction.Strategy},
-		func(value string) bool { return strings.TrimSpace(value) == "" },
-	) {
-		return errors.New("mekugi rewrite requires valid compaction metadata")
-	}
-	if !request.Stream {
-		return errors.New("mekugi compaction bypass requires a streaming request")
-	}
-	v2 := compaction.Implementation == "responses_compaction_v2"
-
-	var tools []jsonv1.RawMessage
-	if rawTools, exists := request.Fields["tools"]; exists {
-		if err := jsonv1.Unmarshal(rawTools, &tools); err != nil {
-			return fmt.Errorf("decode compaction tools: %w", err)
-		}
-	}
-	if !v2 && len(tools) != 0 {
-		return errors.New("mekugi compaction request cannot expose tools")
-	}
-
-	var items []jsonv1.RawMessage
-	if err := jsonv1.Unmarshal(request.Fields["input"], &items); err != nil {
-		return fmt.Errorf("decode compaction input: %w", err)
-	}
-	if len(items) == 0 {
-		return errors.New("mekugi compaction request requires nonempty input")
-	}
-	triggers := 0
-	for index, rawItem := range items {
-		var item map[string]jsonv1.RawMessage
-		if err := jsonv1.Unmarshal(rawItem, &item); err != nil || item == nil {
-			return errors.New("mekugi compaction request contains a malformed input item")
-		}
-		if responseevents.StringField(item, "type") == "compaction_trigger" {
-			triggers++
-			if !v2 || index != len(items)-1 {
-				return errors.New("mekugi compaction trigger must end a V2 request")
-			}
-		}
-		if responseevents.StringField(item, "type") != "additional_tools" {
-			continue
-		}
-		var additionalTools []jsonv1.RawMessage
-		if err := jsonv1.Unmarshal(item["tools"], &additionalTools); err != nil {
-			return fmt.Errorf("decode compaction additional tools: %w", err)
-		}
-		if !v2 && len(additionalTools) != 0 {
-			return errors.New("mekugi compaction request cannot expose tools")
-		}
-	}
-	if v2 && triggers != 1 {
-		return errors.New("mekugi V2 compaction requires one final trigger")
-	}
-
-	var toolChoice string
-	if jsonv1.Unmarshal(request.Fields["tool_choice"], &toolChoice) != nil || toolChoice != "auto" {
-		return errors.New("mekugi compaction request requires automatic tool choice")
-	}
-	var parallelToolCalls bool
-	if err := jsonv1.Unmarshal(request.Fields["parallel_tool_calls"], &parallelToolCalls); err != nil || !v2 && parallelToolCalls {
-		return errors.New("mekugi compaction request has incompatible parallel tool calls")
-	}
-	return nil
-}
-
 // Prewarm shares model projection but cannot initialize execution, replay, or
 // agent lifecycle state. Only the non-generating WebSocket path selects it.
-func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexresponses.Request, sessionID, threadID string, metadata codexTurnMetadata, metadataValid, prewarm bool) (*mekugiResponseTransform, error) {
+func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexresponses.Request, sessionID, threadID string, metadata codexresponses.TurnMetadata, metadataValid, prewarm bool) (*mekugiResponseTransform, error) {
 	if err := validateProviderContext(request.Fields["input"]); err != nil {
 		return nil, err
 	}
 	if metadataValid && metadata.RequestKind == responseevents.Compaction {
-		if err := validateMekugiCompactionRequest(request, metadata); err != nil {
+		if err := codexresponses.ValidateCompaction(request, metadata); err != nil {
 			return nil, err
 		}
 		if err := p.observeCompactionInput(ctx, request, sessionID, threadID, metadata); err != nil {
@@ -316,7 +238,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 		}
 	}
 	if p.registry.Guidance != nil {
-		if err := projectRequestInstructions(request, p.registry.Guidance.ForExecution); err != nil {
+		if err := requestexecution.ProjectInstructions(request, p.registry.Guidance.ForExecution); err != nil {
 			return nil, err
 		}
 	}
@@ -325,7 +247,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 	if metadata.SubagentKind == "" {
 		recipient = "/root"
 	}
-	if metadata.SubagentKind != "" && metadata.activityIdentityInvalid {
+	if metadata.SubagentKind != "" && metadata.ActivityIdentityInvalid {
 		recipient = ""
 	}
 
@@ -374,7 +296,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 	}
 	// Only accepted requests may change retained ancestry or collect activity.
 	activityThreadID := ""
-	if metadata.activityIdentityInvalid || metadata.ThreadID != "" && metadata.ThreadID != threadID {
+	if metadata.ActivityIdentityInvalid || metadata.ThreadID != "" && metadata.ThreadID != threadID {
 		p.activity.invalidate(threadID)
 	} else {
 		name := metadata.AgentName
@@ -423,7 +345,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 		directory:                 directory,
 		nativeExecCalls:           make(map[string]map[string]jsonv1.RawMessage),
 		local:                     make(map[string]mekugiHistory),
-		commentaryAuthor:          metadata.commentaryAuthor(),
+		commentaryAuthor:          metadata.CommentaryAuthor(),
 		subagentTurn:              metadata.SubagentKind != "",
 		usageTracker:              p.usage.Observation(threadID, metadata.ThreadID, request.Model(), codexresponses.UsageServiceTier(request.Fields["service_tier"])),
 		codeModeToolName:          codeModeToolName,

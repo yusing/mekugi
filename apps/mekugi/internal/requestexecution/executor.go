@@ -1,4 +1,5 @@
-package router
+// Source: apps/mekugi/internal/router/request_execution.go:1:583@b9679c93.
+package requestexecution
 
 import (
 	"bytes"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	"github.com/yusing/mekugi/providers/grok"
 	"github.com/yusing/mekugi/providers/opencode"
@@ -27,39 +29,44 @@ import (
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
-// requestExecutor owns the services used to execute a request.
-type requestExecutor struct {
-	titleGenerator *sessionNaming
-	serviceTiers   *inferencegateway.Tiers
-	provider       inferencegateway.Forwarder
-	client         *inferencegateway.Client
-	exchange       *inferencegateway.Exchange
-	output         io.Writer
-	issues         *CriticalErrors
-	mekugiCalls    *mekugiProxy
+// Executor runs attempts using borrowed application services. Each invocation
+// keeps its original capture, usage, control and retained-publication owners.
+type Executor struct {
+	Naming        Naming
+	ServiceTiers  *inferencegateway.Tiers
+	Provider      inferencegateway.Forwarder
+	Client        *inferencegateway.Client
+	Exchange      *inferencegateway.Exchange
+	Output        io.Writer
+	Issues        *Failures
+	Observations  Preparer
+	Guidance      *binding.Guidance
+	SkillsManager bool
+	Control       *sessioncontrol.Observations
+	Usage         *accounting.Service
 }
 
 type requestAttempt struct {
-	executor     requestExecutor
+	executor     Executor
 	startCtx     context.Context
 	executionCtx context.Context
 	request      codexresponses.Request
 	headers      http.Header
 	sessionID    string
 
-	hooks        *responseHooks
+	hooks        *ResponseHooks
 	finalization requestFinalization
-	debug        *debugOutput
+	debug        *Debug
 	debugID      string
 	started      time.Time
-	trace        toolObservationTrace
+	trace        Trace
 
-	metadata      codexTurnMetadata
+	metadata      codexresponses.TurnMetadata
 	metadataValid bool
 	threadID      string
 	prewarm       bool
 
-	mekugiTransform *mekugiResponseTransform
+	prepared        Prepared
 	bridge          codexresponses.Transformer
 	forwardBody     []byte
 	usageTracker    *accounting.Observation
@@ -71,20 +78,20 @@ type requestAttempt struct {
 	finishUsage       bool
 }
 
-func (e requestExecutor) executeWebSocket(startCtx, executionCtx context.Context, request codexresponses.Request, headers http.Header, exchange *inferencegateway.Exchange, output io.Writer) error {
-	e.provider, e.exchange, e.output = exchange, exchange, output
-	return e.execute(startCtx, executionCtx, request, headers, routingSessionID(headers, request))
+func (e Executor) ExecuteWebSocket(startCtx, executionCtx context.Context, request codexresponses.Request, headers http.Header, exchange *inferencegateway.Exchange, output io.Writer) error {
+	e.Provider, e.Exchange, e.Output = exchange, exchange, output
+	return e.Execute(startCtx, executionCtx, request, headers, codexresponses.RoutingSessionID(headers, request))
 }
 
-func (e requestExecutor) execute(
+func (e Executor) Execute(
 	startCtx context.Context,
 	executionCtx context.Context,
 	request codexresponses.Request,
 	headers http.Header,
 	sessionID string,
 ) (requestErr error) {
-	if e.issues == nil {
-		e.issues = NewCriticalErrors(nil)
+	if e.Issues == nil {
+		e.Issues = NewFailures(nil)
 	}
 	attempt := newRequestAttempt(e, startCtx, executionCtx, request, headers, sessionID)
 	defer func() { requestErr = attempt.finish(requestErr) }()
@@ -92,25 +99,25 @@ func (e requestExecutor) execute(
 }
 
 func newRequestAttempt(
-	executor requestExecutor,
+	executor Executor,
 	startCtx context.Context,
 	executionCtx context.Context,
 	request codexresponses.Request,
 	headers http.Header,
 	sessionID string,
 ) *requestAttempt {
-	debug, debugID := debugRequest(startCtx)
-	hooks := &responseHooks{streamDiagnostics: transportcapture.NewStream(startCtx)}
-	if exchange := executor.exchange; exchange != nil {
-		exchange.StreamDiagnostics = hooks.streamDiagnostics
-		exchange.ReadEnd = func(err error, origin string) { recordStreamReadEnd(hooks.streamDiagnostics, err, origin) }
+	debug, debugID := DebugRequest(startCtx)
+	hooks := &ResponseHooks{StreamDiagnostics: transportcapture.NewStream(startCtx)}
+	if exchange := executor.Exchange; exchange != nil {
+		exchange.StreamDiagnostics = hooks.StreamDiagnostics
+		exchange.ReadEnd = func(err error, origin string) { recordStreamReadEnd(hooks.StreamDiagnostics, err, origin) }
 	}
-	trace := toolObservationTrace{
+	trace := Trace{
 		debug: debug, requestID: debugID,
-		threadID: codexThreadID(headers), sessionID: sessionID,
+		threadID: codexresponses.ThreadID(headers), sessionID: sessionID,
 	}
 
-	finalization := requestFinalization{failurePhase: requestFailurePrepare, streamDiagnostics: hooks.streamDiagnostics}
+	finalization := requestFinalization{failurePhase: requestFailurePrepare, streamDiagnostics: hooks.StreamDiagnostics}
 	if sessionID != "" {
 		finalization.sessionID = sessionID
 	}
@@ -149,25 +156,25 @@ func (a *requestAttempt) prepare() error {
 			a.finalization.providerFailure = inferencegateway.TerminalProviderError(payload, stream)
 		}
 	}
-	a.metadata, a.metadataValid = decodeCodexTurnMetadata(a.headers)
+	a.metadata, a.metadataValid = codexresponses.DecodeTurnMetadata(a.headers)
 	if a.metadataValid {
 		transportcapture.ObserveRequestKind(a.startCtx, string(a.metadata.RequestKind))
 	}
-	a.threadID = codexThreadID(a.headers)
-	if a.metadataValid && a.metadata.RequestKind == responses.Turn {
-		a.executor.titleGenerator.observeInput(a.threadID, a.request.Fields["input"])
+	a.threadID = codexresponses.ThreadID(a.headers)
+	if a.executor.Naming != nil && a.metadataValid && a.metadata.RequestKind == responses.Turn {
+		a.executor.Naming.ObserveInput(a.threadID, a.request.Fields["input"])
 	}
 	a.finalization.threadID = a.threadID
 	a.finalization.turnID = a.metadata.TurnID
-	if a.executor.mekugiCalls != nil && a.metadataValid && a.metadata.RequestKind == responses.Compaction {
-		if err := validateMekugiCompactionRequest(&a.request, a.metadata); err != nil {
+	if a.executor.Observations != nil && a.metadataValid && a.metadata.RequestKind == responses.Compaction {
+		if err := codexresponses.ValidateCompaction(&a.request, a.metadata); err != nil {
 			return err
 		}
-		if a.executor.mekugiCalls.control.IsSideThread(a.threadID) {
+		if a.executor.Control.IsSideThread(a.threadID) {
 			return inferencegateway.IncompatibleRequest("btw_compaction_required", conversationmodel.SideCompactionRequired)
 		}
 	}
-	if exchange := a.executor.exchange; exchange != nil && exchange.State != nil {
+	if exchange := a.executor.Exchange; exchange != nil && exchange.State != nil {
 		if err := exchange.State.RestoreProviderModel(&a.request); err != nil {
 			return err
 		}
@@ -177,17 +184,17 @@ func (a *requestAttempt) prepare() error {
 	if model := inferencegateway.RoutedModel(a.request.Model()); model != a.request.Model() {
 		a.request.Fields["model"] = responses.MustMarshalJSON(model)
 	}
-	if exchange := a.executor.exchange; exchange != nil && exchange.State != nil {
+	if exchange := a.executor.Exchange; exchange != nil && exchange.State != nil {
 		exchange.State.RememberProviderModel(a.request)
 	}
 	requestedTier := responses.StringField(a.request.Fields, "service_tier")
-	if tier := a.executor.serviceTiers.Effective(a.request.Model(), requestedTier, a.threadID); tier != requestedTier {
+	if tier := a.executor.ServiceTiers.Effective(a.request.Model(), requestedTier, a.threadID); tier != requestedTier {
 		a.request.Fields["service_tier"] = responses.MustMarshalJSON(tier)
 	}
 
-	if a.executor.mekugiCalls != nil {
-		if guidance := a.executor.mekugiCalls.registry.Guidance; guidance != nil {
-			if err := projectRequestInstructions(&a.request, guidance.BeforePreparation); err != nil {
+	if a.executor.Observations != nil {
+		if guidance := a.executor.Guidance; guidance != nil {
+			if err := ProjectInstructions(&a.request, guidance.BeforePreparation); err != nil {
 				return err
 			}
 		}
@@ -195,35 +202,21 @@ func (a *requestAttempt) prepare() error {
 
 	// Only the WebSocket provider guarantees non-generating warmup for every
 	// supported model. HTTP requests retain ordinary preparation checks.
-	webSocketRequest := a.executor.exchange != nil
+	webSocketRequest := a.executor.Exchange != nil
 	a.prewarm = webSocketRequest && a.metadataValid &&
 		a.metadata.RequestKind == responses.Prewarm && string(a.request.Fields["generate"]) == "false"
-	if a.executor.mekugiCalls != nil {
+	if a.executor.Observations != nil {
+		automatic := a.executor.Exchange != nil && a.executor.Exchange.State != nil && a.executor.Exchange.State.Automatic()
 		var err error
-		a.mekugiTransform, err = a.executor.mekugiCalls.prepareModelRequest(
-			a.startCtx,
-			&a.request,
-			a.sessionID,
-			codexThreadID(a.headers),
-			a.metadata,
-			a.metadataValid,
-			a.prewarm,
-		)
+		a.prepared, err = a.executor.Observations.Prepare(a.startCtx, &a.request, Preparation{
+			Session: a.sessionID, Thread: a.threadID, Metadata: a.metadata,
+			MetadataValid: a.metadataValid, Prewarm: a.prewarm, Automatic: automatic, Trace: a.trace,
+		})
 		if err != nil {
 			return fmt.Errorf("prepare mekugi response proxy: %w", err)
 		}
 	}
-	if a.mekugiTransform != nil && a.metadataValid {
-		auto := a.executor.mekugiCalls.review.Preview()
-		observeReview(a.executor.mekugiCalls.review, a.mekugiTransform.directory, a.mekugiTransform.threadID, a.metadata)
-		exchange := a.executor.exchange
-		if exchange == nil || !exchange.State.Automatic() {
-			beginLiveDiffTurn(auto, a.mekugiTransform.directory, a.mekugiTransform.threadID, a.metadata)
-		}
-	}
-	if a.mekugiTransform != nil {
-		a.mekugiTransform.toolTrace = a.trace
-	}
+
 	return nil
 }
 
@@ -238,24 +231,24 @@ func (a *requestAttempt) prepareWire() error {
 	}
 	var guidance codexresponses.CollaborationGuidance
 	var providerGuidance bool
-	if a.executor.client != nil {
-		guidance, providerGuidance = a.executor.client.CollaborationGuidance()
+	if a.executor.Client != nil {
+		guidance, providerGuidance = a.executor.Client.CollaborationGuidance()
 	}
 	// Compaction keeps request-wide projections but never gains collaboration
 	// tools or their instructions.
 	compaction := a.metadataValid && a.metadata.RequestKind == responses.Compaction
-	if !compaction && (a.mekugiTransform != nil || a.prewarm && a.executor.mekugiCalls != nil || providerGuidance) {
+	if !compaction && (a.prepared != nil || a.prewarm && a.executor.Observations != nil || providerGuidance) {
 		a.bridge, err = codexresponses.PrepareCollaboration(&a.request, guidance)
 		if err != nil {
 			return fmt.Errorf("prepare collaboration bridge: %w", err)
 		}
 	}
-	attachmentsProjected := projectFileAttachments(&a.request)
+	attachmentsProjected := ProjectFileAttachments(&a.request)
 	// Match attachment sources before compact skill rewriting drops native paths.
-	if a.executor.mekugiCalls != nil {
-		if guidance := a.executor.mekugiCalls.registry.Guidance; guidance != nil {
-			if err := projectRequestInstructions(&a.request, func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
-				return guidance.AfterAttachments(input, a.executor.mekugiCalls.skillsManager)
+	if a.executor.Observations != nil {
+		if guidance := a.executor.Guidance; guidance != nil {
+			if err := ProjectInstructions(&a.request, func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
+				return guidance.AfterAttachments(input, a.executor.SkillsManager)
 			}); err != nil {
 				return err
 			}
@@ -269,7 +262,7 @@ func (a *requestAttempt) prepareWire() error {
 		return fmt.Errorf("request with file attachments exceeds the %d-byte request limit; reduce attachments or conversation context", codexresponses.MaxRequestBytes)
 	}
 	a.forwardBody = nativeBody
-	if exchange := a.executor.exchange; exchange != nil {
+	if exchange := a.executor.Exchange; exchange != nil {
 		started := time.Now()
 		reason, err := exchange.State.Reconcile(&a.request, !inferencegateway.IsThirdPartyModel(a.request.Model()))
 		if err != nil {
@@ -287,7 +280,7 @@ func (a *requestAttempt) prepareWire() error {
 	if err != nil {
 		return err
 	}
-	if exchange := a.executor.exchange; exchange != nil && exchange.State.Automatic() {
+	if exchange := a.executor.Exchange; exchange != nil && exchange.State.Automatic() {
 		transportcapture.ObserveProjectedRequest(a.startCtx, nil)
 	} else {
 		transportcapture.ObserveProjectedRequest(a.startCtx, nativeWire)
@@ -309,15 +302,15 @@ func (a *requestAttempt) forward() error {
 		return err
 	}
 	debugWire := a.forwardBody
-	if exchange := a.executor.exchange; exchange != nil && exchange.State.Automatic() {
+	if exchange := a.executor.Exchange; exchange != nil && exchange.State.Automatic() {
 		debugWire = nil
 	}
 	a.debug.instructions(projectedBody, debugWire, a.headers, a.sessionID, a.debugID, a.request.CachedInput)
 	if !a.prewarm {
-		if a.mekugiTransform != nil {
-			a.usageTracker = a.mekugiTransform.usageTracker
-		} else if a.executor.mekugiCalls != nil && a.metadataValid {
-			a.usageTracker = a.executor.mekugiCalls.usage.Observation(
+		if a.prepared != nil {
+			a.usageTracker = a.prepared.Usage()
+		} else if a.executor.Observations != nil && a.metadataValid {
+			a.usageTracker = a.executor.Usage.Observation(
 				a.threadID,
 				a.metadata.ThreadID,
 				a.request.Model(),
@@ -331,7 +324,7 @@ func (a *requestAttempt) forward() error {
 	} else {
 		a.providerStarted = time.Now()
 	}
-	a.response, err = a.executor.provider.ForwardExecution(
+	a.response, err = a.executor.Provider.ForwardExecution(
 		a.startCtx,
 		a.executionCtx,
 		a.forwardBody,
@@ -354,25 +347,18 @@ func (a *requestAttempt) forward() error {
 	}
 	if err != nil {
 		err = inferencegateway.WithRequestStartCause(a.startCtx, err)
-		return fmt.Errorf("execute request: %w", forwardCriticalDiagnostic(err))
+		return fmt.Errorf("execute request: %w", ForwardError(err))
 	}
 	if a.usageTracker != nil {
-		a.usageTracker.Price = pinnedOpenCodePrice(a.response.Price)
+		a.usageTracker.Price = PinnedOpenCodePrice(a.response.Price)
 	}
-	a.hooks.transport = a.response.Transport
+	a.hooks.Transport = a.response.Transport
 	a.finalization.upstreamStatusCode = a.response.StatusCode
 	a.finalization.failurePhase = requestFailureInspectResponse
-	if a.mekugiTransform != nil {
-		// Drop the response-start deadline, not the prepared storage identity
-		// and turn lease. Child changes share their parent's handle namespace.
-		ctx := a.executionCtx
-		for _, key := range []any{storageSessionKey{}, storageTurnKey{}} {
-			if value := a.mekugiTransform.ctx.Value(key); value != nil {
-				ctx = context.WithValue(ctx, key, value)
-			}
-		}
-		a.mekugiTransform.ctx = ctx
+	if a.prepared != nil {
+		a.prepared.BindExecution(a.executionCtx)
 	}
+
 	a.streamResponse, err = codexresponses.PrepareBody(a.response.Response, a.request.Stream)
 	if err != nil {
 		a.response.Body.Close()
@@ -387,31 +373,31 @@ func (a *requestAttempt) prepareResponse() error {
 		if a.bridge != nil {
 			a.responseTransform = codexresponses.Compose(a.responseTransform, a.bridge)
 		}
-		if a.mekugiTransform != nil {
-			a.responseTransform = codexresponses.Compose(a.responseTransform, a.mekugiTransform)
+		if a.prepared != nil {
+			a.responseTransform = codexresponses.Compose(a.responseTransform, a.prepared)
 		}
 	}
-	if a.mekugiTransform != nil && a.responseTransform == nil {
+	if a.prepared != nil && a.responseTransform == nil {
 		a.finalization.failurePhase = requestFailureTransform
-		if err := a.mekugiTransform.Finish(false); err != nil {
+		if err := a.prepared.Finish(false); err != nil {
 			a.response.Body.Close()
 			return fmt.Errorf("record mekugi request overhead: %w", err)
 		}
 	}
-	a.hooks.onUsage = func(counts inference.Usage) {
+	a.hooks.OnUsage = func(counts inference.Usage) {
 		a.finalization.observation.usageCounts = counts
 		a.finalization.observation.usageObserved = true
 		if a.usageTracker != nil {
-			a.usageTracker.ReceivedAt = a.hooks.receivedAt
+			a.usageTracker.ReceivedAt = a.hooks.ReceivedAt
 		}
 		if a.response.StatusCode >= http.StatusOK && a.response.StatusCode < http.StatusMultipleChoices {
-			if a.mekugiTransform != nil {
-				a.mekugiTransform.observeResponseUsage(counts)
+			if a.prepared != nil {
+				a.prepared.ObserveUsage(counts)
 			} else {
 				a.usageTracker.Observe(counts)
 			}
 		}
-		throughput := accounting.MeasureThroughput(counts, a.providerStarted, a.hooks.receivedAt)
+		throughput := accounting.MeasureThroughput(counts, a.providerStarted, a.hooks.ReceivedAt)
 		if a.usageTracker != nil {
 			throughput = a.usageTracker.Throughput
 		}
@@ -432,7 +418,7 @@ func (a *requestAttempt) deliver() error {
 	if !a.streamResponse {
 		var staged bytes.Buffer
 		var err error
-		a.finalization.upstreamTerminalState, err = copyUpstreamBodyTransformed(
+		a.finalization.upstreamTerminalState, err = CopyResponse(
 			&staged,
 			a.response.Response,
 			false,
@@ -450,9 +436,9 @@ func (a *requestAttempt) deliver() error {
 		a.response.StatusCode >= http.StatusOK && a.response.StatusCode < http.StatusMultipleChoices &&
 		!a.finalization.upstreamTerminalState.Terminal() {
 		a.finalization.failurePhase = requestFailureTerminalValidation
-		return fmt.Errorf("execute request: %w", errUpstreamResponseWithoutTerminal)
+		return fmt.Errorf("execute request: %w", ErrMissingTerminal)
 	}
-	if writer, ok := a.executor.output.(http.ResponseWriter); ok {
+	if writer, ok := a.executor.Output.(http.ResponseWriter); ok {
 		for name, values := range a.response.Header {
 			if http.CanonicalHeaderKey(name) != "Content-Length" {
 				writer.Header()[name] = slices.Clone(values)
@@ -461,7 +447,7 @@ func (a *requestAttempt) deliver() error {
 		writer.WriteHeader(a.response.StatusCode)
 	}
 	if a.streamResponse {
-		if writer, ok := a.executor.output.(http.ResponseWriter); ok {
+		if writer, ok := a.executor.Output.(http.ResponseWriter); ok {
 			a.finalization.failurePhase = requestFailureWriteResponse
 			if err := http.NewResponseController(writer).Flush(); err != nil {
 				a.response.Body.Close()
@@ -471,15 +457,15 @@ func (a *requestAttempt) deliver() error {
 	}
 	if stagedBody != nil {
 		a.finalization.failurePhase = requestFailureWriteResponse
-		if _, err := a.executor.output.Write(stagedBody); err != nil {
+		if _, err := a.executor.Output.Write(stagedBody); err != nil {
 			return fmt.Errorf("execute request: copy upstream response: %w", err)
 		}
 		codexresponses.ConfirmDelivery(a.responseTransform, stagedBody)
 	} else {
 		var err error
 		a.finalization.failurePhase = requestFailureInspectResponse
-		a.finalization.upstreamTerminalState, err = copyUpstreamBodyTransformed(
-			a.executor.output,
+		a.finalization.upstreamTerminalState, err = CopyResponse(
+			a.executor.Output,
 			a.response.Response,
 			a.streamResponse,
 			a.responseTransform,
@@ -496,7 +482,7 @@ func (a *requestAttempt) deliver() error {
 		a.response.StatusCode >= http.StatusOK && a.response.StatusCode < http.StatusMultipleChoices &&
 		!a.finalization.upstreamTerminalState.Terminal() {
 		a.finalization.failurePhase = requestFailureTerminalValidation
-		return fmt.Errorf("execute request: %w", errUpstreamResponseWithoutTerminal)
+		return fmt.Errorf("execute request: %w", ErrMissingTerminal)
 	}
 	a.finalization.failurePhase = ""
 	switch {
@@ -518,10 +504,10 @@ func (a *requestAttempt) deliver() error {
 }
 
 func (a *requestAttempt) observeTitleSuccess() {
-	if a.metadataValid && a.metadata.RequestKind == responses.Turn && !a.prewarm &&
+	if a.executor.Naming != nil && a.metadataValid && a.metadata.RequestKind == responses.Turn && !a.prewarm &&
 		a.response.StatusCode >= 200 && a.response.StatusCode < 300 &&
 		a.finalization.upstreamTerminalState == responses.TerminalCompleted {
-		a.executor.titleGenerator.completed(a.threadID, a.headers)
+		a.executor.Naming.Completed(a.threadID, a.headers)
 	}
 }
 
@@ -529,11 +515,11 @@ func (a *requestAttempt) finish(requestErr error) error {
 	if a.finishUsage {
 		a.usageTracker.Finish()
 	}
-	if a.mekugiTransform != nil {
-		a.mekugiTransform.Close()
+	if a.prepared != nil {
+		a.prepared.Close()
 	}
 
-	a.finalization.finish(a.executionCtx, requestErr, a.executor.output, a.executor.issues)
+	a.finalization.finish(a.executionCtx, requestErr, a.executor.Output, a.executor.Issues)
 	_, compatibilityFault := errors.AsType[*inferencegateway.CompatibilityError](requestErr)
 	if (a.finalization.failurePhase == requestFailureTransform || a.finalization.failurePhase == requestFailurePrepare && compatibilityFault) &&
 		a.hooks.deliveredResponseID != "" && !a.hooks.deliveredTerminal &&
@@ -545,13 +531,13 @@ func (a *requestAttempt) finish(requestErr error) error {
 				"error": map[string]any{"code": "invalid_prompt", "message": a.finalization.diagnosticMessage},
 			},
 		})
-		deliveryErr := codexresponses.WriteEvent(a.executor.output, payload)
+		deliveryErr := codexresponses.WriteEvent(a.executor.Output, payload)
 		requestErr = errors.Join(requestErr, deliveryErr)
 	}
 	fields := map[string]any{
 		"event": "request_complete", "request_id": a.debugID,
 		"client_request_id": a.headers.Get("x-client-request-id"),
-		"thread_id":         codexThreadID(a.headers),
+		"thread_id":         codexresponses.ThreadID(a.headers),
 		"session_id":        a.sessionID,
 		"outcome":           a.finalization.observation.outcome.String(),
 		"phase":             a.finalization.failurePhase,
@@ -568,8 +554,8 @@ func (a *requestAttempt) finish(requestErr error) error {
 		fields["idle_timeout_observed"] = true
 	}
 
-	if a.hooks.streamDiagnostics != nil && a.hooks.streamDiagnostics.CopyStop != "" {
-		fields["response_stream"] = a.hooks.streamDiagnostics.Snapshot()
+	if a.hooks.StreamDiagnostics != nil && a.hooks.StreamDiagnostics.CopyStop != "" {
+		fields["response_stream"] = a.hooks.StreamDiagnostics.Snapshot()
 	}
 	if a.finalization.diagnosticReference != "" {
 		fields["diagnostic_reference"] = a.finalization.diagnosticReference

@@ -65,7 +65,7 @@ func newManagedMekugiProxy(t *testing.T) *mekugiProxy {
 	return newProxyWithSharedTestRegistry(t, sharedProxyTestRegistry(t))
 }
 
-func (p *mekugiProxy) prepareRequest(ctx context.Context, request *codexresponses.Request, sessionID, threadID string, metadata codexTurnMetadata, metadataValid bool) (*mekugiResponseTransform, error) {
+func (p *mekugiProxy) prepareRequest(ctx context.Context, request *codexresponses.Request, sessionID, threadID string, metadata codexresponses.TurnMetadata, metadataValid bool) (*mekugiResponseTransform, error) {
 	return p.prepareModelRequest(ctx, request, sessionID, threadID, metadata, metadataValid, false)
 }
 
@@ -93,7 +93,7 @@ func newMekugiTestTransformWithProxy(t *testing.T, proxy *mekugiProxy) (*mekugiR
 	if err != nil {
 		t.Fatal(err)
 	}
-	transform, err := proxy.prepareRequest(t.Context(), &request, "session-1", "thread-1", codexTurnMetadata{
+	transform, err := proxy.prepareRequest(t.Context(), &request, "session-1", "thread-1", codexresponses.TurnMetadata{
 		RequestKind: "turn", Directories: map[string]json.RawMessage{workspace: nil},
 	}, true)
 	if err != nil {
@@ -113,7 +113,7 @@ func newTopLevelMekugiTestTransformWithProxy(t *testing.T, proxy *mekugiProxy) (
 	if err != nil {
 		t.Fatal(err)
 	}
-	transform, err := proxy.prepareRequest(t.Context(), &request, "native-session", "native-thread", codexTurnMetadata{
+	transform, err := proxy.prepareRequest(t.Context(), &request, "native-session", "native-thread", codexresponses.TurnMetadata{
 		RequestKind: "turn", Directories: map[string]json.RawMessage{workspace: nil},
 	}, true)
 	if err != nil {
@@ -204,7 +204,7 @@ func prependToolFrontendPath(environment []string, frontendDirectory string) []s
 func bindTestHandleScope(t *testing.T, store *mekugiReplayStore, ctx context.Context, parent, fork string) context.Context {
 	t.Helper()
 	thread := store.scoped(ctx).session.Thread
-	metadata := codexTurnMetadata{ThreadID: thread, ParentThreadID: parent, ForkedFromThreadID: fork}
+	metadata := codexresponses.TurnMetadata{ThreadID: thread, ParentThreadID: parent, ForkedFromThreadID: fork}
 	if parent != "" {
 		metadata.SubagentKind = "thread_spawn"
 	}

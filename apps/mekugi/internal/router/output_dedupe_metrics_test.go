@@ -36,7 +36,7 @@ func TestDuplicateOutputMeasuredReceiptReachesCapture(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			transform, err := proxy.prepareRequest(r.Context(), &request, "session", "thread", codexTurnMetadata{RequestKind: "turn"}, true)
+			transform, err := proxy.prepareRequest(r.Context(), &request, "session", "thread", codexresponses.TurnMetadata{RequestKind: "turn"}, true)
 			if err != nil {
 				t.Fatal(err)
 			}

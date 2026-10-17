@@ -14,7 +14,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
@@ -23,10 +25,10 @@ import (
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
-	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-
 	"github.com/yusing/mekugi/contracts/command"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 
@@ -198,7 +200,7 @@ func TestRunSessionPropagatesShellGuard(t *testing.T) {
 }
 
 // Existing router fixtures select raw arguments; production passes parsed values.
-func testRunSession(service *history.Service, recovered *recovery.Service, ctx context.Context, commands []command.Contribution, args []string, issues *CriticalErrors, ready func(Session), artifacts func([]string)) error {
+func testRunSession(service *history.Service, recovered *recovery.Service, ctx context.Context, commands []command.Contribution, args []string, issues *requestexecution.Failures, ready func(Session), artifacts func([]string)) error {
 	options, err := launchoptions.Parse(args)
 	if errors.Is(err, flag.ErrHelp) {
 		return nil

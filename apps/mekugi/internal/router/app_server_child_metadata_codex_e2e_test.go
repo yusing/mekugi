@@ -115,7 +115,7 @@ type appServerChildMetadataProvider struct {
 }
 
 func (p *appServerChildMetadataProvider) ForwardExecution(_, _ context.Context, _ []byte, headers http.Header, _ string) (*inferencegateway.Response, error) {
-	metadata, _ := decodeCodexTurnMetadata(headers)
+	metadata, _ := codexresponses.DecodeTurnMetadata(headers)
 	thread := headers.Get(codexresponses.ThreadIDHeader)
 	if thread == "" {
 		thread = metadata.ThreadID

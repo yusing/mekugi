@@ -5,12 +5,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
-func diagnosticDebugOutput(t *testing.T) *debugOutput {
+func diagnosticDebugOutput(t *testing.T) *requestexecution.Debug {
 	t.Helper()
 	d, err := openDebugOutput(testDiagnostics(new(evidence.Service), new(transportcapture.Service)), true, "")
 	if err != nil {

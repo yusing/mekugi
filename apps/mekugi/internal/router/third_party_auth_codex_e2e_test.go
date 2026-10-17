@@ -5,6 +5,9 @@ package router
 import (
 	"bytes"
 	"context"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+
 	json "encoding/json/v2"
 	"io"
 	"net/http"
@@ -19,14 +22,10 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
-
-	"github.com/yusing/mekugi/providers/openai"
-
 	"github.com/yusing/mekugi/libraries/httptransport"
-
 	"github.com/yusing/mekugi/providers/grok"
+	"github.com/yusing/mekugi/providers/openai"
 )
 
 func TestThirdPartyAuthenticationNativeCodexE2E(t *testing.T) {
@@ -85,7 +84,7 @@ func TestThirdPartyAuthenticationNativeCodexE2E(t *testing.T) {
 				defer upstream.Close()
 				provider := newTestProviderClient("http://unused.invalid", nil)
 				provider.ThirdPartyOnly = true
-				provider.Grok = &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), HTTPClient: grokTestHTTPClient(t, upstream), Auth: grok.NewAuth("", "grok-fixture-only", httptransport.Client(nil)), Unprefixed: unprefixed}
+				provider.Grok = &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), HTTPClient: grokTestHTTPClient(t, upstream), Auth: grok.NewAuth("", "grok-fixture-only", httptransport.Client(nil)), Unprefixed: unprefixed}
 				mux := http.NewServeMux()
 				endpoint := testWebSocketEndpoint(ctx, time.Minute, provider, nil, nil)
 				defer endpoint.Close()

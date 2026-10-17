@@ -3,11 +3,13 @@ package router
 import (
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffrender"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
@@ -79,7 +81,7 @@ func TestComposerSelectionSubmitsQuotedFrames(t *testing.T) {
 	content, _ := json.Marshal([]map[string]string{{"type": "input_text", "text": "explain [Selected diff hunk @amber1:42-45] "}, {"type": "input_text", "text": envelope}})
 	items, _ := json.Marshal([]map[string]jsontext.Value{{"type": []byte(`"message"`), "role": []byte(`"user"`), "content": content}})
 	request := &codexresponses.Request{Fields: map[string]jsontext.Value{"input": items}}
-	if !projectFileAttachments(request) || !strings.Contains(string(request.Fields["input"]), `+new\n-old`) || strings.Contains(string(request.Fields["input"]), "mekugi-file-attachments") {
+	if !requestexecution.ProjectFileAttachments(request) || !strings.Contains(string(request.Fields["input"]), `+new\n-old`) || strings.Contains(string(request.Fields["input"]), "mekugi-file-attachments") {
 		t.Fatalf("projected input = %s", request.Fields["input"])
 	}
 	// The host echo keeps the concise label as one styled token.

@@ -6,6 +6,9 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	json "encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +22,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/creack/pty"
+
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
@@ -225,7 +229,7 @@ func testAppServerBuiltInOpenAI(t *testing.T, fallback bool) {
 	for key, value := range firstRequest.ClientMetadata {
 		headers.Set(key, value)
 	}
-	metadata, valid := decodeCodexTurnMetadata(headers)
+	metadata, valid := codexresponses.DecodeTurnMetadata(headers)
 	directory, selected := usableRoutingDirectory(metadata.Directories)
 	if !valid || !selected || directory != workspace {
 		t.Fatalf("selected workspace metadata missing: valid=%t selected=%t directory=%q want=%q", valid, selected, directory, workspace)

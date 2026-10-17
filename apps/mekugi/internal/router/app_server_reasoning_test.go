@@ -72,7 +72,7 @@ func TestAppServerOldTurnCompletionPreservesCurrentTranscript(t *testing.T) {
 	u.agents.setDisplayFilter(false, "/root/worker")
 	wait := binding.ThreadItem{ID: "old-wait", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress"}
 	reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "old", "item": wait})
-	activity.beginResponse("child", true, at.Add(-3 * time.Second))
+	activity.beginResponse("child", true, at.Add(-3*time.Second))
 	u.applyObservedActivity()
 	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "current"}})
 	oldEnd := map[string]any{"threadId": "child", "turn": map[string]any{"id": "old", "status": "completed"}}

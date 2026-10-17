@@ -13,22 +13,22 @@ func TestAuxiliaryAncestryMetadataFailsClosedWithoutRejectingTurn(t *testing.T) 
 		`{"request_kind":"turn","agent_name":"/root/a","subagent_kind":"thread_spawn","thread_id":[]}`,
 	} {
 		headers := http.Header{codexresponses.TurnMetadataHeader: []string{raw}}
-		metadata, valid := decodeCodexTurnMetadata(headers)
-		if !valid || !metadata.activityIdentityInvalid || metadata.AgentName != "/root/a" {
+		metadata, valid := codexresponses.DecodeTurnMetadata(headers)
+		if !valid || !metadata.ActivityIdentityInvalid || metadata.AgentName != "/root/a" {
 			t.Fatal(metadata, valid)
 		}
 	}
 	headers := http.Header{codexresponses.TurnMetadataHeader: []string{`{"request_kind":"turn","thread_id":"child","parent_thread_id":"parent","agent_name":"/root/a","subagent_kind":"thread_spawn"}`}}
-	metadata, valid := decodeCodexTurnMetadata(headers)
-	if !valid || metadata.activityIdentityInvalid || metadata.ThreadID != "child" || metadata.ParentThreadID != "parent" {
+	metadata, valid := codexresponses.DecodeTurnMetadata(headers)
+	if !valid || metadata.ActivityIdentityInvalid || metadata.ThreadID != "child" || metadata.ParentThreadID != "parent" {
 		t.Fatal(metadata, valid)
 	}
 }
 
 func TestMalformedAgentAuthorIsAuxiliary(t *testing.T) {
 	for _, author := range []string{"42", "[]", "null", "{}"} {
-		metadata, valid := decodeCodexTurnMetadata(http.Header{codexresponses.TurnMetadataHeader: []string{`{"request_kind":"turn","agent_name":` + author + `,"subagent_kind":"thread_spawn"}`}})
-		if !valid || !metadata.activityIdentityInvalid || metadata.AgentName != "" || metadata.commentaryAuthor() != "" {
+		metadata, valid := codexresponses.DecodeTurnMetadata(http.Header{codexresponses.TurnMetadataHeader: []string{`{"request_kind":"turn","agent_name":` + author + `,"subagent_kind":"thread_spawn"}`}})
+		if !valid || !metadata.ActivityIdentityInvalid || metadata.AgentName != "" || metadata.CommentaryAuthor() != "" {
 			t.Fatal(metadata, valid)
 		}
 		proxy := newManagedMekugiProxy(t)

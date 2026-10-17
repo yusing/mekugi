@@ -112,12 +112,12 @@ func TestFinalAnswerTransportStreamsBeforeTerminal(t *testing.T) {
 						downstream := httptest.NewServer(handler)
 						defer downstream.Close()
 						headers := serverMetadataHeaders(t, "turn", nil)
-						metadata := codexTurnMetadata{RequestKind: "turn", Directories: map[string]jsonv1.RawMessage{t.TempDir(): nil}}
+						metadata := codexresponses.TurnMetadata{RequestKind: "turn", Directories: map[string]jsonv1.RawMessage{t.TempDir(): nil}}
 						if child {
 							metadata.SubagentKind = threadSpawnSubagentKind
 						}
 						headers.Set(codexresponses.TurnMetadataHeader, string(mustTestJSON(t, metadata)))
-						headers.Set(sessionIDHeader, "answer-stream-session")
+						headers.Set(codexresponses.RoutingSessionHeader, "answer-stream-session")
 						headers.Set("Authorization", "Bearer test")
 						headers.Set(openai.AccountIDHeader, "account")
 						request := serverRequest(t, func(fields map[string]any) { fields["stream"] = true })

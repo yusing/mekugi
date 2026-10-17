@@ -3,9 +3,10 @@ package router
 import (
 	"bytes"
 
-	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	"github.com/yusing/mekugi/modules/conversation/composer"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
@@ -255,7 +256,7 @@ func TestDirectoryAttachmentSnapshotAndProviderReplay(t *testing.T) {
 		map[string]any{"type": "input_text", "text": input[1].Text},
 	}}})
 	request := codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": raw}}
-	projectFileAttachments(&request)
+	requestexecution.ProjectFileAttachments(&request)
 	var messages []struct {
 		Role    string `json:"role"`
 		Content []struct {
@@ -269,7 +270,7 @@ func TestDirectoryAttachmentSnapshotAndProviderReplay(t *testing.T) {
 		t.Fatalf("provider directory projection = %+v", messages)
 	}
 	first := bytes.Clone(request.Fields["input"])
-	projectFileAttachments(&request)
+	requestexecution.ProjectFileAttachments(&request)
 	if !bytes.Equal(first, request.Fields["input"]) {
 		t.Fatal("directory projection is not idempotent")
 	}
@@ -277,7 +278,7 @@ func TestDirectoryAttachmentSnapshotAndProviderReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	replayed := codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": raw}}
-	projectFileAttachments(&replayed)
+	requestexecution.ProjectFileAttachments(&replayed)
 	if !responses.SameJSONValue(first, replayed.Fields["input"]) {
 		t.Fatal("provider replay reopened directory instead of retaining submitted snapshot")
 	}

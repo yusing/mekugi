@@ -9,11 +9,9 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
-
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/contracts/inference"
-
 	"github.com/yusing/mekugi/providers/opencode"
 )
 
@@ -56,17 +54,17 @@ func TestOpenCodeCatalogConsumers(t *testing.T) {
 		t.Fatalf("catalog projection: %s %v", body, err)
 	}
 	m, _ := service.Model("new-model")
-	cost := estimateOpenCodeCost(m.Cost, "", inference.Usage{InputTokens: 100, UncachedInputTokens: 80, CacheWriteTokens: 10, OutputTokens: 20})
+	cost := requestexecution.EstimateOpenCodeCost(m.Cost, "", inference.Usage{InputTokens: 100, UncachedInputTokens: 80, CacheWriteTokens: 10, OutputTokens: 20})
 	if !cost.Known || math.Abs(cost.UncachedInput-90.0/1e6) > 1e-12 || cost.CachedInput != 0 || cost.Output != 100.0/1e6 {
 		t.Fatalf("online pricing: %+v", cost)
 	}
 	free := opencode.Price{Input: new(0.0), Output: new(0.0)}
 	counts := inference.Usage{InputTokens: 10, UncachedInputTokens: 10, OutputTokens: 2}
-	if !estimateOpenCodeCost(free, "", counts).Known {
+	if !requestexecution.EstimateOpenCodeCost(free, "", counts).Known {
 		t.Fatal("explicit zero price is not free")
 	}
 	counts.UncachedInputTokens = 5
-	if estimateOpenCodeCost(free, "", counts).Known || estimateOpenCodeCost(opencode.Price{}, "", counts).Known || estimateOpenCodeCost(free, "priority", inference.Usage{}).Known {
+	if requestexecution.EstimateOpenCodeCost(free, "", counts).Known || requestexecution.EstimateOpenCodeCost(opencode.Price{}, "", counts).Known || requestexecution.EstimateOpenCodeCost(free, "priority", inference.Usage{}).Known {
 		t.Fatal("missing rates or unsupported tier priced")
 	}
 }
@@ -77,7 +75,7 @@ func TestOpenCodeInflightPriceSurvivesRemoval(t *testing.T) {
 			models := map[string]opencode.Metadata{"glm-5.3-flash": {Format: "chat", Cost: opencode.Price{Input: new(1.0), Output: new(2.0)}}}
 			catalog := openCodeTestCatalog(t, func() map[string]opencode.Metadata { return models })
 			service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}, Catalog: catalog}).Services()[0]
-			client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), OpenCode: &service, HTTPClient: &http.Client{
+			client := &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), OpenCode: &service, HTTPClient: &http.Client{
 				Transport: grokTestTransport(func(request *http.Request) (*http.Response, error) {
 					// Another request refreshes/removes the model after this
 					// request selected its format and prices, before completion.
@@ -98,7 +96,7 @@ func TestOpenCodeInflightPriceSurvivesRemoval(t *testing.T) {
 			defer response.Body.Close()
 			usage := newTestUsage(t)
 			observation := usage.Observation("thread", "", "opencode-go:glm-5.3-flash", "")
-			observation.Price = pinnedOpenCodePrice(response.Price)
+			observation.Price = requestexecution.PinnedOpenCodePrice(response.Price)
 			if _, err := io.ReadAll(response.Body); err != nil {
 				t.Fatal(err)
 			}

@@ -28,7 +28,7 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 	incoming := []any{base[0], map[string]string{"type": "message", "role": "developer", "content": "Follow the task.\n" + conflictingProgress + "\n" + stock + "\n" + instructionOmitStart + "omitted-rtk-policy" + instructionOmitEnd}}
 	ids := []string{"warm", "turn", "next", "astra", "astra-next"}
 	headers := codexAuthHeaders()
-	headers.Set(sessionIDHeader, "instruction-cache-session")
+	headers.Set(codexresponses.RoutingSessionHeader, "instruction-cache-session")
 	directory := t.TempDir()
 	conn := testResponsesSocket(t, ctx, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upstream, err := websocket.Accept(w, r, nil)
@@ -90,7 +90,7 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 			model = "gpt-6-astra"
 		}
 		request := map[string]any{"type": "response.create", "model": model}
-		metadata := codexTurnMetadata{RequestKind: "turn", Directories: map[string]json.RawMessage{directory: nil}}
+		metadata := codexresponses.TurnMetadata{RequestKind: "turn", Directories: map[string]json.RawMessage{directory: nil}}
 		if index == 0 {
 			metadata.RequestKind = "prewarm"
 			request["generate"] = false
@@ -138,14 +138,14 @@ func TestPrewarmProjectionMatchesFirstTurnPrefix(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if transform, err := proxy.prepareModelRequest(t.Context(), &warm, "", "", codexTurnMetadata{RequestKind: "prewarm"}, true, true); err != nil || transform != nil {
+			if transform, err := proxy.prepareModelRequest(t.Context(), &warm, "", "", codexresponses.TurnMetadata{RequestKind: "prewarm"}, true, true); err != nil || transform != nil {
 				t.Fatalf("prewarm projection: %v, %v", transform, err)
 			}
 			turn, err := codexresponses.ParseRequest(mustTestJSON(t, fields(append(slices.Clone(leading), map[string]any{"type": "message", "role": "user", "content": "task"}))))
 			if err != nil {
 				t.Fatal(err)
 			}
-			transform, err := proxy.prepareRequest(t.Context(), &turn, "prefix-session", "prefix-thread", codexTurnMetadata{
+			transform, err := proxy.prepareRequest(t.Context(), &turn, "prefix-session", "prefix-thread", codexresponses.TurnMetadata{
 				RequestKind: "turn", Directories: map[string]json.RawMessage{t.TempDir(): nil},
 			}, true)
 			if err != nil {
@@ -224,7 +224,7 @@ func TestPrewarmUnsupportedCatalogRemainsNative(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := responses.MustMarshalJSON(request.Fields)
-	transform, err := proxy.prepareModelRequest(t.Context(), &request, "", "", codexTurnMetadata{RequestKind: "prewarm"}, true, true)
+	transform, err := proxy.prepareModelRequest(t.Context(), &request, "", "", codexresponses.TurnMetadata{RequestKind: "prewarm"}, true, true)
 	if err != nil || transform != nil {
 		t.Fatalf("native handshake initialized execution or failed: %v, %v", transform, err)
 	}
@@ -240,7 +240,7 @@ func TestPrewarmMalformedCatalogRejectsWithoutPanic(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := proxy.prepareModelRequest(t.Context(), &request, "", "", codexTurnMetadata{RequestKind: "prewarm"}, true, true); err == nil {
+		if _, err := proxy.prepareModelRequest(t.Context(), &request, "", "", codexresponses.TurnMetadata{RequestKind: "prewarm"}, true, true); err == nil {
 			t.Fatalf("malformed catalog accepted: %s", catalog)
 		}
 	}

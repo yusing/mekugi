@@ -1,0 +1,35 @@
+package router
+
+import (
+	"context"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/modules/usage/accounting"
+)
+
+func (p *mekugiProxy) Prepare(ctx context.Context, request *codexresponses.Request, input requestexecution.Preparation) (requestexecution.Prepared, error) {
+	t, err := p.prepareModelRequest(ctx, request, input.Session, input.Thread, input.Metadata, input.MetadataValid, input.Prewarm)
+	if err != nil || t == nil {
+		return nil, err
+	}
+	if input.MetadataValid {
+		observeReview(p.review, t.directory, t.threadID, input.Metadata)
+		if !input.Automatic {
+			beginLiveDiffTurn(p.review.Preview(), t.directory, t.threadID, input.Metadata)
+		}
+	}
+	t.toolTrace = input.Trace
+	return t, nil
+}
+
+func (t *mekugiResponseTransform) Usage() *accounting.Observation { return t.usageTracker }
+
+func (t *mekugiResponseTransform) BindExecution(ctx context.Context) {
+	for _, key := range []any{storageSessionKey{}, storageTurnKey{}} {
+		if value := t.ctx.Value(key); value != nil {
+			ctx = context.WithValue(ctx, key, value)
+		}
+	}
+	t.ctx = ctx
+}

@@ -16,14 +16,13 @@ import (
 	"testing"
 	"time"
 
-	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
-
-	"github.com/yusing/mekugi/providers/openai"
-
-	"github.com/yusing/mekugi/libraries/httptransport"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	"github.com/coder/websocket"
+	"github.com/yusing/mekugi/libraries/httptransport"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+	"github.com/yusing/mekugi/providers/openai"
 )
 
 func TestStreamDiagnosticsReadTermination(t *testing.T) {
@@ -43,7 +42,7 @@ func TestStreamDiagnosticsReadTermination(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			d := &transportcapture.Stream{}
-			_, _ = copySSETransformed(io.Discard, diagnosticErrorReader{tc.err}, nil, &responseHooks{streamDiagnostics: d})
+			_, _ = copySSETransformed(io.Discard, diagnosticErrorReader{tc.err}, nil, &requestexecution.ResponseHooks{StreamDiagnostics: d})
 			if d.ReadTermination != tc.want || d.WebSocketCloseCode != tc.closeCode {
 				t.Fatalf("classification: %+v", d)
 			}
@@ -62,7 +61,7 @@ func TestStreamDiagnosticsRequestLog(t *testing.T) {
 	for _, stream := range []string{"", "data: {\"type\":\"response.in_progress\"}\n\n"} {
 		t.Run(fmt.Sprintf("bytes_%d", len(stream)), func(t *testing.T) {
 			debug := diagnosticDebugOutput(t)
-			ctx := context.WithValue(t.Context(), debugContextKey{}, debug)
+			ctx := requestexecution.WithDebug(t.Context(), debug)
 			request := serverRequest(t, func(fields map[string]any) { fields["stream"] = true })
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: &http.Response{
 				StatusCode: http.StatusOK,
@@ -138,7 +137,7 @@ func TestStreamDiagnosticsWebSocketClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := &transportcapture.Stream{}
-	_, err = copyUpstreamBodyTransformed(io.Discard, response.Response, true, nil, &responseHooks{streamDiagnostics: d, transport: response.Transport})
+	_, err = requestexecution.CopyResponse(io.Discard, response.Response, true, nil, &requestexecution.ResponseHooks{StreamDiagnostics: d, Transport: response.Transport})
 	if err == nil || d.WebSocketCloseCode != 1001 || d.ProviderRequestID != "req_ws" || len(d.Snapshot().PendingCalls) != 1 || d.Snapshot().PendingCalls[0].InputBytes != 13 {
 		t.Fatalf("missing websocket evidence: %+v, %v", d, err)
 	}
@@ -183,7 +182,7 @@ func TestStreamDiagnosticsNativeMetadata(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer recorder.Close()
-			router := httptest.NewServer(recorder.Handler(debug.handler(endpoint)))
+			router := httptest.NewServer(recorder.Handler(debug.Handler(endpoint)))
 			defer router.Close()
 			conn, _, err := websocket.Dial(ctx, router.URL+"/v1/responses", &websocket.DialOptions{HTTPHeader: codexAuthHeaders()})
 			if err != nil {
@@ -278,7 +277,7 @@ func TestStreamDiagnosticsHTTPBodyEnd(t *testing.T) {
 				t.Fatal(err)
 			}
 			d := &transportcapture.Stream{}
-			state, err := copyUpstreamBodyTransformed(io.Discard, response, true, nil, &responseHooks{streamDiagnostics: d})
+			state, err := requestexecution.CopyResponse(io.Discard, response, true, nil, &requestexecution.ResponseHooks{StreamDiagnostics: d})
 			if state != responses.TerminalPending {
 				t.Fatalf("incomplete response accepted: %v", state)
 			}
@@ -308,17 +307,6 @@ func TestStreamDiagnosticsHTTPBodyEnd(t *testing.T) {
 	}
 }
 
-func TestStreamDiagnosticsPreserveEndOrigin(t *testing.T) {
-	d := &transportcapture.Stream{}
-	recordStreamReadEnd(d, io.EOF, "downstream")
-	recordStreamReadEnd(d, context.Canceled, "context")
-	recordStreamReadEnd(d, io.EOF, "")
-	recordStreamCopyStop(d, nil)
-	if d.ReadOrigin != "downstream" || d.ReadTermination != "downstream_eof" || d.EndReason != "downstream_eof" {
-		t.Fatalf("first observed cause was overwritten: %+v", d)
-	}
-}
-
 func TestStreamDiagnosticsUnterminatedEventAndDecodedBody(t *testing.T) {
 	const stream = "data: {\"type\":\"response.in_progress\"}"
 	d := &transportcapture.Stream{}
@@ -338,7 +326,7 @@ func TestStreamDiagnosticsUnterminatedEventAndDecodedBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = copyUpstreamBodyTransformed(io.Discard, response, true, nil, &responseHooks{streamDiagnostics: d})
+	_, err = requestexecution.CopyResponse(io.Discard, response, true, nil, &requestexecution.ResponseHooks{StreamDiagnostics: d})
 	if err != nil || !d.UnterminatedEvent || d.EndReason != "http_decoded_body_ended_without_terminal" {
 		t.Fatalf("decoded EOF was presented as validated HTTP framing: %+v, %v", d, err)
 	}

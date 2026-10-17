@@ -344,7 +344,7 @@ func reconcileExecItems(t *testing.T, proxy *mekugiProxy, workspace string, item
 	if err != nil {
 		t.Fatal(err)
 	}
-	transform, err := proxy.prepareRequest(t.Context(), &request, "exec-session-next", "stock-thread", codexTurnMetadata{
+	transform, err := proxy.prepareRequest(t.Context(), &request, "exec-session-next", "stock-thread", codexresponses.TurnMetadata{
 		RequestKind: "turn", Directories: map[string]json.RawMessage{workspace: nil},
 	}, true)
 	if err != nil {

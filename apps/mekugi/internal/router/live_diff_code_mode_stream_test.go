@@ -111,7 +111,7 @@ func TestLiveDiffCodeModeSSEStreamsEditWithoutChangingEvents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	transform, err := proxy.prepareRequest(t.Context(), &request, "stream-session", "thread", codexTurnMetadata{
+	transform, err := proxy.prepareRequest(t.Context(), &request, "stream-session", "thread", codexresponses.TurnMetadata{
 		RequestKind: "turn", Directories: map[string]json.RawMessage{workspace: nil},
 	}, true)
 	if err != nil {

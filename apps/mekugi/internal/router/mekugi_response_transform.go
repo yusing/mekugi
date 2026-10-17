@@ -10,8 +10,10 @@ import (
 	"maps"
 	"slices"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
+
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -35,11 +37,11 @@ func translationDiagnostic(err error, code, summary string) error {
 	if err == nil {
 		return nil
 	}
-	if inner, ok := errors.AsType[*criticalDiagnosticError](err); ok {
-		code += ":" + inner.code
-		summary = inner.summary
+	if inner, ok := errors.AsType[*requestexecution.DiagnosticError](err); ok {
+		code += ":" + inner.Code
+		summary = inner.Summary
 	}
-	return &criticalDiagnosticError{err: err, code: code, summary: summary, distinct: true}
+	return &requestexecution.DiagnosticError{Cause: err, Code: code, Summary: summary, Distinct: true}
 }
 
 func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte, error) {
@@ -98,7 +100,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 			if responseevents.StringField(addedFields, "type") == "custom_tool_call" {
 				addedCallID := responseevents.StringField(addedFields, "call_id")
 				if addedCallID != "" && envelope.CallID != "" && addedCallID != envelope.CallID {
-					return nil, staticCriticalDiagnostic("changed_code_mode_call", "the upstream changed a exec call identity")
+					return nil, requestexecution.StaticError("changed_code_mode_call", "the upstream changed a exec call identity")
 				}
 				callID := cmp.Or(addedCallID, envelope.CallID)
 				t.finishPreview(envelope.ItemID, envelope.Input)
@@ -154,7 +156,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 			expectedType, expectedName := responseevents.StringField(addedFields, "type"), responseevents.StringField(addedFields, "name")
 			if item.Type != expectedType || item.Name != expectedName || expectedCallID != "" && expectedCallID != callID {
 				t.endPreview(item.ID)
-				return nil, staticCriticalDiagnostic("inconsistent_stock_call", "the upstream completed an inconsistent stock tool call")
+				return nil, requestexecution.StaticError("inconsistent_stock_call", "the upstream completed an inconsistent stock tool call")
 			}
 		}
 		if item.Input != nil {
@@ -168,7 +170,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		delete(t.nativeExecCalls, itemID)
 		changed, err := t.transformOutputItem(&item)
 		if err != nil {
-			return nil, criticalDiagnostic(err, "output_item_projection", "Mekugi could not project a completed upstream output item", true)
+			return nil, requestexecution.Classify(err, "output_item_projection", "Mekugi could not project a completed upstream output item", true)
 		}
 		if err := t.commitLocalCall(callID); err != nil {
 			return nil, err
@@ -178,11 +180,11 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		}
 		transformed, err := responseevents.MarshalJSON(item)
 		if err != nil {
-			return nil, criticalDiagnostic(err, "output_item_encode", "Mekugi could not encode a completed output item", true)
+			return nil, requestexecution.Classify(err, "output_item_encode", "Mekugi could not encode a completed output item", true)
 		}
 		event, err := responseevents.ReplaceField(payload, "item", transformed)
 		if err != nil {
-			return nil, criticalDiagnostic(err, "output_item_event_projection", "Mekugi could not project a completed output-item event", true)
+			return nil, requestexecution.Classify(err, "output_item_event_projection", "Mekugi could not project a completed output-item event", true)
 		}
 		return [][]byte{event}, nil
 
@@ -304,7 +306,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responseevents.Item)
 		item.Type == "custom_tool_call" {
 		callID := item.CallID
 		if callID == "" {
-			return false, staticCriticalDiagnostic("code_mode_call_missing_id", "the upstream exec call had no call ID")
+			return false, requestexecution.StaticError("code_mode_call_missing_id", "the upstream exec call had no call ID")
 		}
 		var originalInput string
 		if item.Input != nil {
@@ -312,7 +314,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responseevents.Item)
 		}
 		if retained, exists := t.local[callID]; exists && retained.ToolName == name {
 			if retained.Script != originalInput {
-				return false, criticalDiagnostic(fmt.Errorf("exec call %q changed input", callID),
+				return false, requestexecution.Classify(fmt.Errorf("exec call %q changed input", callID),
 					"code_mode_call_input_changed", "the completed exec call changed its earlier input", true)
 			}
 			retained.UpstreamItem = item.CloneFields()

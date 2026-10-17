@@ -13,13 +13,13 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	usagepresentation "github.com/yusing/mekugi/modules/usage/presentation"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	usagepresentation "github.com/yusing/mekugi/modules/usage/presentation"
 
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-
 	"github.com/yusing/mekugi/contracts/inference"
 	"github.com/yusing/mekugi/libraries/diffrender"
 
@@ -88,7 +88,7 @@ func TestOutputThroughputProviderRequestJSONAndSSE(t *testing.T) {
 						}
 					}
 					headers := serverMetadataHeaders(t, "turn", nil)
-					headers.Set(sessionIDHeader, "transport-session")
+					headers.Set(codexresponses.RoutingSessionHeader, "transport-session")
 					req := serverRequest(t, func(f map[string]any) { f["stream"] = stream; f["model"] = "gpt-6-sol" })
 					terminal := `{"id":"tps-response","status":"completed","output":[],"usage":{"input_tokens":10,"output_tokens":80,"input_tokens_details":{"cached_tokens":0},"output_tokens_details":{"reasoning_tokens":20}}}`
 					wire := terminal
@@ -224,7 +224,7 @@ func TestUISnapshotOutputThroughputStreamingRetainsMeasuredRate(t *testing.T) {
 				out := httptest.NewRecorder()
 				httpRequest := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(mustTestJSON(t, request.Fields)))
 				httpRequest.Header = serverMetadataHeaders(t, "turn", nil)
-				httpRequest.Header.Set(sessionIDHeader, "transport-session")
+				httpRequest.Header.Set(codexresponses.RoutingSessionHeader, "transport-session")
 				done := make(chan struct{})
 				go func() {
 					testResponsesHandler(t.Context(), launchoptions.DefaultRequestTimeout, provider, nil, proxy)(out, httpRequest)

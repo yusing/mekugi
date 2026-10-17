@@ -4,26 +4,24 @@ import (
 	"cmp"
 	"context"
 
-	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	commandsegments "github.com/yusing/mekugi/modules/commandsegments/segments"
-
 	"github.com/yusing/mekugi/modules/conversation/completion"
-
-	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
-	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
-
-	"github.com/yusing/mekugi/modules/conversation/prompt"
-
 	"github.com/yusing/mekugi/modules/conversation/composer"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+	"github.com/yusing/mekugi/modules/conversation/prompt"
 
 	json "encoding/json/v2"
 	"errors"
@@ -36,13 +34,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/backends/codex/shellhook"
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/backends/codex/appserver"
-	"github.com/yusing/mekugi/backends/codex/shellhook"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	"github.com/yusing/mekugi/modules/notifications/notice"
 
@@ -54,7 +52,6 @@ import (
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
-
 	"golang.org/x/term"
 
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
@@ -107,7 +104,7 @@ type appServerUI struct {
 	execTrack               *commandsegments.Observer // Per-segment command reports; nil when not tracking.
 	shellEdits              appServerShellEdits
 	pendingEditReceipts     []*changepresentation.Receipt // Observed edits can precede their host Activity item.
-	issues                  *CriticalErrors
+	issues                  *requestexecution.Failures
 	shell                   *terminalUI
 	summaryStream           activityui.ReasoningStream
 	session                 appServerSession
@@ -144,12 +141,12 @@ type appServerUI struct {
 // still owns routing, environment, invocation-local configuration and cancellation.
 func StartAppServerUI(terminalViews terminalsession.Views, reviewSource *changecapture.Service, views *sessionpresentation.Service, conversation *conversationmodel.Service, observations *binding.Observation, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, notices *notice.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
 	faint, _ := terminalui.SupportsFaint(ctx, "auto")
-	issues := NewCriticalErrors(notices)
+	issues := requestexecution.NewFailures(notices)
 	return startAppServerUI(terminalViews, reviewSource, views, conversation, activity, service, prefs, nil, ctx, cmd, stdin, stdout, nil, issues, resumeThread, faint, nil, nil, resumeArgv, "", nil, observations, approvals)
 }
 
 // Codex approval policy and the invocation-local Shell guard are independent.
-func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changecapture.Service, views *sessionpresentation.Service, conversation *conversationmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *inferencegateway.Tiers, capture *transportcapture.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, observations *binding.Observation, approvals bool) (func() error, error) {
+func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changecapture.Service, views *sessionpresentation.Service, conversation *conversationmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *requestexecution.Failures, resumeThread string, faint bool, serviceTiers *inferencegateway.Tiers, capture *transportcapture.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, observations *binding.Observation, approvals bool) (func() error, error) {
 	guardHash := ""
 	for _, entry := range cmd.Environ() {
 		if hash, ok := strings.CutPrefix(entry, shellhook.Environment+"="); ok {
@@ -468,7 +465,7 @@ func (u *appServerUI) request(method string, params any) error {
 }
 
 func (u *appServerUI) message(m appserver.Message) (err error) {
-	u.issues.observeTurnCompletion(m.Method, m.Params)
+	u.issues.ObserveTurnCompletion(m.Method, m.Params)
 	u.observeShellMessage(m)
 	var response sessioncontrol.Request[appServerRequest]
 	var correlated bool

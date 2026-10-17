@@ -7,11 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	"github.com/yusing/mekugi/backends/codex/binding"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/backends/codex/binding"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
@@ -173,7 +174,7 @@ func (u *appServerUI) send(parts []conversationmodel.Input, steer bool) error {
 		text, _ := part["text"].(string)
 		textBytes += len(text)
 	}
-	if (len(s.Attachments) > 0 || len(s.Skills) > 0) && textBytes > composerTextLimit {
+	if (len(s.Attachments) > 0 || len(s.Skills) > 0) && textBytes > codexresponses.UserTextLimit {
 		u.restoreDrafts(parts...)
 		u.setNotice("Input with attachments exceeds the safe 1 MiB text limit. Reduce the draft or attachments and retry.", true)
 		return nil

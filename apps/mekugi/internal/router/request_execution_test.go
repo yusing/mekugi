@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 
@@ -21,17 +22,24 @@ func TestDeprecatedTerraRoutesToSol(t *testing.T) {
 	request := modelTestRequest(t, "gpt-5.6-terra")
 	headers := serverMetadataHeaders(t, "turn", nil)
 	headers.Set(codexresponses.ThreadIDHeader, "terra-thread")
-	attempt := newRequestAttempt(requestExecutor{provider: &serverFakeProvider{}, issues: testCriticalErrors()}, t.Context(), t.Context(), request, headers, "")
-	if err := attempt.prepare(); err != nil {
+	provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
+	executor := testRequestExecutor(provider, testCriticalErrors(), nil)
+	executor.Output = io.Discard
+	if err := executor.Execute(t.Context(), t.Context(), request, headers, ""); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.TrimSpace(attempt.request.Model() + " " + attempt.request.ReasoningEffort()); got != "gpt-6-sol medium" {
+	forwarded, err := codexresponses.ParseRequest(provider.forwarded[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(forwarded.Model() + " " + forwarded.ReasoningEffort()); got != "gpt-6-sol medium" {
 		t.Fatalf("route=%q", got)
 	}
+
 }
 
 // executeRequest preserves the direct attempt setup used throughout the package
-// tests while production code owns stable services through requestExecutor.
+// tests while production code owns stable services through requestexecution.Executor.
 func executeRequest(
 	ctx context.Context,
 	executionCtx context.Context,
@@ -40,12 +48,12 @@ func executeRequest(
 	sessionID string,
 	provider inferencegateway.Forwarder,
 	output io.Writer,
-	issues *CriticalErrors,
+	issues *requestexecution.Failures,
 	mekugiCalls *mekugiProxy,
 ) error {
 	executor := testRequestExecutor(provider, issues, mekugiCalls)
-	executor.output = output
-	return executor.execute(ctx, executionCtx, request, headers, sessionID)
+	executor.Output = output
+	return executor.Execute(ctx, executionCtx, request, headers, sessionID)
 }
 
 // Source: codex-rs/core/src/responses_metadata.rs:325:426. Canonical
@@ -78,7 +86,7 @@ func TestResponsesPreserveConfiguredModelAndReasoning(t *testing.T) {
 					headers := serverMetadataHeaders(t, "turn", nil)
 					if child {
 						headers.Set(codexresponses.SubagentHeader, threadSpawnSubagent)
-						headers.Set(codexresponses.TurnMetadataHeader, string(mustTestJSON(t, codexTurnMetadata{RequestKind: "turn", SubagentKind: threadSpawnSubagentKind})))
+						headers.Set(codexresponses.TurnMetadataHeader, string(mustTestJSON(t, codexresponses.TurnMetadata{RequestKind: "turn", SubagentKind: threadSpawnSubagentKind})))
 					}
 					// Repeated completed responses exceed every old schedule threshold.
 					body := `{"id":"result","status":"completed","output":[{"type":"function_call"},{"type":"function_call"},{"type":"function_call"},{"type":"message","role":"assistant"},{"type":"message","role":"assistant"}],"usage":{"input_tokens":100000}}`

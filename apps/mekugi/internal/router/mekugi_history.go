@@ -11,10 +11,10 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/nativetrace"
 
-	"github.com/yusing/mekugi/backends/codex/binding"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -392,7 +392,7 @@ func appendToolOutputWarning(raw json.RawMessage, warning string) (json.RawMessa
 }
 
 func (t *mekugiResponseTransform) recordLocal(callID string, history *mekugiHistory) {
-	t.toolTrace.toolCall(callID, history.ToolName)
+	t.toolTrace.ToolCall(callID, history.ToolName)
 	t.localSequence++
 	history.sequence = t.localSequence
 	t.local[callID] = *history
@@ -403,10 +403,10 @@ func (t *mekugiResponseTransform) commitHistory() error {
 		return nil
 	}
 	if err := t.proxy.replayStore.putAfterMaintenance(t.ctx, t.directory, t.local); err != nil {
-		return criticalDiagnostic(err, "replay_history_commit", "Mekugi could not persist completed response history", true)
+		return requestexecution.Classify(err, "replay_history_commit", "Mekugi could not persist completed response history", true)
 	}
 	if err := t.proxy.calls.Remember(t.historySessionID, orderedCalls(t.local)); err != nil && t.proxy.replayStore == nil {
-		return criticalDiagnostic(err, "replay_history_commit", "Mekugi could not retain completed response history", true)
+		return requestexecution.Classify(err, "replay_history_commit", "Mekugi could not retain completed response history", true)
 	}
 	t.historyCommitted = true
 	return nil
@@ -418,10 +418,10 @@ func (t *mekugiResponseTransform) commitLocalCall(callID string) error {
 		return nil
 	}
 	if err := t.proxy.replayStore.putAfterMaintenance(t.ctx, t.directory, map[string]mekugiHistory{callID: history}); err != nil {
-		return criticalDiagnostic(err, "replay_call_commit", "Mekugi could not persist a completed tool call", true)
+		return requestexecution.Classify(err, "replay_call_commit", "Mekugi could not persist a completed tool call", true)
 	}
 	if err := t.proxy.calls.Remember(t.historySessionID, orderedCalls(map[string]mekugiHistory{callID: history})); err != nil && t.proxy.replayStore == nil {
-		return criticalDiagnostic(err, "replay_call_commit", "Mekugi could not retain a completed tool call", true)
+		return requestexecution.Classify(err, "replay_call_commit", "Mekugi could not retain a completed tool call", true)
 	}
 	return nil
 }

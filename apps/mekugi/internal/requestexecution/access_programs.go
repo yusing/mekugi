@@ -1,4 +1,5 @@
-package router
+// Source: apps/mekugi/internal/router/access_programs.go:1:23@b9679c93.
+package requestexecution
 
 import (
 	"encoding/json/jsontext"

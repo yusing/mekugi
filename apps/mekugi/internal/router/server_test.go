@@ -20,13 +20,12 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/providers/openai"
-
 	"github.com/yusing/mekugi/libraries/httptransport"
-
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/providers/openai"
 )
 
 type serverForwardResult struct {
@@ -90,7 +89,7 @@ func serverRequest(t *testing.T, mutate func(map[string]any)) codexresponses.Req
 
 func serverMetadataHeaders(t *testing.T, requestKind string, workspaces map[string]json.RawMessage) http.Header {
 	t.Helper()
-	encoded, err := json.Marshal(codexTurnMetadata{RequestKind: responses.RequestKind(requestKind), Directories: workspaces})
+	encoded, err := json.Marshal(codexresponses.TurnMetadata{RequestKind: responses.RequestKind(requestKind), Directories: workspaces})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -426,7 +425,7 @@ func TestResponsesHandlerDoesNotLogClientCancellationAsOperationalEvent(t *testi
 		t.Fatal(err)
 	}
 	request.Header = serverCompactionMetadataHeaders(t)
-	request.Header.Set(sessionIDHeader, "session")
+	request.Header.Set(codexresponses.RoutingSessionHeader, "session")
 	response, err := server.Client().Do(request)
 	if err != nil {
 		t.Fatal(err)
@@ -468,7 +467,7 @@ func TestExecuteRequestSuccessfulStreamLifecycle(t *testing.T) {
 	response.Header.Set("Content-Type", "text/event-stream")
 	provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
 	recorder := httptest.NewRecorder()
-	writer := &trackedResponseWriter{ResponseWriter: recorder}
+	writer := &inferencegateway.ResponseWriter{ResponseWriter: recorder}
 	issues := testCriticalErrors()
 	err := executeRequest(
 		t.Context(), t.Context(),
@@ -492,20 +491,14 @@ func TestExecuteRequestTerminalOutcomes(t *testing.T) {
 	failedResponse := serverHTTPResponse("event: response.failed\ndata: " + string(failed) + "\n\n")
 	failedResponse.Header.Set("Content-Type", "text/event-stream")
 	tests := []struct {
-		name             string
-		response         *http.Response
-		mutate           func(map[string]any)
-		wantOutcome      requestOutcome
-		wantUsage        uint64
-		wantFailurePhase requestFailurePhase
+		name     string
+		response *http.Response
+		mutate   func(map[string]any)
 	}{
 		{
-			name:             "upstream terminal failure",
-			response:         failedResponse,
-			mutate:           func(request map[string]any) { request["stream"] = true },
-			wantOutcome:      requestOutcomeFailed,
-			wantUsage:        9,
-			wantFailurePhase: requestFailureTerminalValidation,
+			name:     "upstream terminal failure",
+			response: failedResponse,
+			mutate:   func(request map[string]any) { request["stream"] = true },
 		},
 		{
 			name: "non-2xx upstream response",
@@ -515,8 +508,6 @@ func TestExecuteRequestTerminalOutcomes(t *testing.T) {
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
 				Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"unavailable"}}`)),
 			},
-			wantOutcome:      requestOutcomeFailed,
-			wantFailurePhase: requestFailureTerminalValidation,
 		},
 	}
 	for _, test := range tests {
@@ -689,7 +680,7 @@ func TestExecuteRequestStreamIdleTimeoutLifecycle(t *testing.T) {
 		}
 		provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
 		recorder := httptest.NewRecorder()
-		writer := &trackedResponseWriter{ResponseWriter: recorder}
+		writer := &inferencegateway.ResponseWriter{ResponseWriter: recorder}
 		issues := testCriticalErrors()
 		result := make(chan error, 1)
 		go func() {
@@ -761,7 +752,7 @@ func TestExecuteRequestCancellationAfterResponseLifecycle(t *testing.T) {
 	})
 	ctx, cancel := context.WithCancel(t.Context())
 	recorder := httptest.NewRecorder()
-	writer := &trackedResponseWriter{ResponseWriter: recorder}
+	writer := &inferencegateway.ResponseWriter{ResponseWriter: recorder}
 	issues := testCriticalErrors()
 	result := make(chan error, 1)
 	go func() {
@@ -821,7 +812,7 @@ func TestExecuteRequestCompletesAtTerminalEventBeforeStreamEOF(t *testing.T) {
 	})
 	recorder := httptest.NewRecorder()
 	downstream := &serverCancelAfterTerminalResponseWriter{ResponseWriter: recorder, cancel: cancel}
-	writer := &trackedResponseWriter{ResponseWriter: downstream}
+	writer := &inferencegateway.ResponseWriter{ResponseWriter: downstream}
 	issues := testCriticalErrors()
 
 	err := executeRequest(
@@ -1010,9 +1001,9 @@ func TestModelsHandlerReportsCompleteForwardFailure(t *testing.T) {
 	issues := testCriticalErrors()
 	request := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 	request.Header = codexAuthHeaders()
-	request.Header.Set(sessionIDHeader, "models-session")
+	request.Header.Set(codexresponses.RoutingSessionHeader, "models-session")
 	debug := diagnosticDebugOutput(t)
-	request = request.WithContext(context.WithValue(request.Context(), debugContextKey{}, debug))
+	request = request.WithContext(requestexecution.WithDebug(request.Context(), debug))
 	recorder := httptest.NewRecorder()
 
 	modelsHandler(newTestProviderClient(testProviderBaseURL, httpClient), issues)(recorder, request)
@@ -1083,11 +1074,9 @@ func TestInferenceHTTPRejectionRetainsCompleteError(t *testing.T) {
 				t.Fatal(err)
 			}
 			issues := testCriticalErrors()
-			issues.failureStore = store.publication
-			issues.failureLimits = store.retentionLimits()
-			issues.diagnostics = testDiagnostics(nil, nil)
+			issues.Configure(requestexecution.FailureStorage{Store: store.publication, Limits: store.retentionLimits(), Diagnostics: testDiagnostics(nil, nil)})
 			debug := diagnosticDebugOutput(t)
-			ctx := context.WithValue(t.Context(), debugContextKey{}, debug)
+			ctx := requestexecution.WithDebug(t.Context(), debug)
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: &http.Response{
 				StatusCode: http.StatusBadRequest,
 				Header:     http.Header{"Content-Type": {"application/json"}},
@@ -1154,9 +1143,8 @@ func TestModelsHandlerCatalogFailuresDoNotProduceTerminalNotices(t *testing.T) {
 			if notices := issues.Notices.Pending(); len(notices) != 0 {
 				t.Fatalf("catalog failure produced terminal notices: %v", notices)
 			}
-			issues.record(&requestFinalization{
-				failurePhase: requestFailureForward,
-				observation:  requestObservation{outcome: requestOutcomeFailed},
+			issues.Report(requestexecution.Failure{
+				Phase: "forward",
 			}, errors.New("inference forward failed"))
 			if notices := issues.Notices.Pending(); len(notices) != 1 {
 				t.Fatalf("inference failure lost its terminal notice: %v", notices)
@@ -1172,8 +1160,8 @@ func TestProviderClientForwardsCodexAuthenticationAndRequestHeaders(t *testing.T
 	headers.Set("User-Agent", "caller-agent")
 	headers.Set("X-Unrelated-Caller-Data", "not-forwarded")
 
-	headers.Add(sessionIDHeader, "session-primary")
-	headers.Add(sessionIDHeader, "session-secondary")
+	headers.Add(codexresponses.RoutingSessionHeader, "session-primary")
+	headers.Add(codexresponses.RoutingSessionHeader, "session-secondary")
 	headers.Set(codexresponses.ThreadIDHeader, "thread")
 	headers.Set(codexresponses.ClientRequestIDHeader, "client-request")
 	headers.Set(codexresponses.WindowIDHeader, "window:0")
@@ -1203,8 +1191,8 @@ func TestProviderClientForwardsCodexAuthenticationAndRequestHeaders(t *testing.T
 		if got := request.Header[codexresponses.SessionIDHeader]; !slices.Equal(got, []string{"cache-key"}) {
 			t.Errorf("%s = %q, want cache key", codexresponses.SessionIDHeader, got)
 		}
-		if got := request.Header.Get(sessionIDHeader); got != "" {
-			t.Errorf("%s = %q, want empty", sessionIDHeader, got)
+		if got := request.Header.Get(codexresponses.RoutingSessionHeader); got != "" {
+			t.Errorf("%s = %q, want empty", codexresponses.RoutingSessionHeader, got)
 		}
 		if got := request.Header.Values("X-Unrelated-Caller-Data"); len(got) != 0 {
 			t.Errorf("unrelated caller header was forwarded: %q", got)
@@ -1294,7 +1282,7 @@ func TestProviderClientOmitsUnsafeCodexCacheKey(t *testing.T) {
 //nolint:canonicalheader // Exact lowercase names match Codex's observed wire headers.
 func TestProviderClientPreservesCodexRequestHeadersAcrossRetries(t *testing.T) {
 	headers := codexAuthHeaders()
-	headers.Set(sessionIDHeader, "session")
+	headers.Set(codexresponses.RoutingSessionHeader, "session")
 	headers.Set(codexresponses.ThreadIDHeader, "thread")
 	headers.Set(codexresponses.ClientRequestIDHeader, "client-request")
 	headers.Set(codexresponses.WindowIDHeader, "window:0")
@@ -1329,8 +1317,8 @@ func TestProviderClientPreservesCodexRequestHeadersAcrossRetries(t *testing.T) {
 		if got := forwarded[codexresponses.SessionIDHeader]; !slices.Equal(got, []string{"cache-key"}) {
 			t.Errorf("attempt %d %s = %q, want cache key", attempt+1, codexresponses.SessionIDHeader, got)
 		}
-		if got := forwarded.Get(sessionIDHeader); got != "" {
-			t.Errorf("attempt %d %s = %q, want empty", attempt+1, sessionIDHeader, got)
+		if got := forwarded.Get(codexresponses.RoutingSessionHeader); got != "" {
+			t.Errorf("attempt %d %s = %q, want empty", attempt+1, codexresponses.RoutingSessionHeader, got)
 		}
 		for _, name := range []string{codexresponses.ThreadIDHeader, codexresponses.ClientRequestIDHeader, codexresponses.WindowIDHeader, codexresponses.BetaFeaturesHeader, codexresponses.ResponsesLiteHeader, codexresponses.TurnMetadataHeader, "x-codex-turn-state"} {
 			if got, want := forwarded.Values(name), headers.Values(name); !slices.Equal(got, want) {
@@ -1343,7 +1331,7 @@ func TestProviderClientPreservesCodexRequestHeadersAcrossRetries(t *testing.T) {
 //nolint:canonicalheader // Exact lowercase names match Codex's observed wire headers.
 func TestProviderClientCancelsRequestWithCodexRequestHeaders(t *testing.T) {
 	headers := codexAuthHeaders()
-	headers.Set(sessionIDHeader, "session")
+	headers.Set(codexresponses.RoutingSessionHeader, "session")
 	started := make(chan http.Header, 1)
 	httpClient := &http.Client{Transport: serverRoundTripper(func(request *http.Request) (*http.Response, error) {
 		started <- request.Header.Clone()
@@ -1367,8 +1355,8 @@ func TestProviderClientCancelsRequestWithCodexRequestHeaders(t *testing.T) {
 	if got := forwarded[codexresponses.SessionIDHeader]; !slices.Equal(got, []string{"cache-key"}) {
 		t.Fatalf("forwarded %s = %q, want cache key", codexresponses.SessionIDHeader, got)
 	}
-	if got := forwarded.Get(sessionIDHeader); got != "" {
-		t.Fatalf("forwarded %s = %q, want empty", sessionIDHeader, got)
+	if got := forwarded.Get(codexresponses.RoutingSessionHeader); got != "" {
+		t.Fatalf("forwarded %s = %q, want empty", codexresponses.RoutingSessionHeader, got)
 	}
 	cancel()
 	select {

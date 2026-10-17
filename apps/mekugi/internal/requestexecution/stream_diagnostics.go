@@ -1,4 +1,5 @@
-package router
+// Source: apps/mekugi/internal/router/stream_diagnostics.go:1:71@b9679c93.
+package requestexecution
 
 import (
 	"errors"
@@ -36,8 +37,8 @@ func streamTerminationCode(err error) string {
 	if rejection, ok := errors.AsType[*inferencegateway.CompatibilityError](err); ok {
 		return rejection.Code
 	}
-	if diagnostic, ok := errors.AsType[*criticalDiagnosticError](forwardCriticalDiagnostic(err)); ok {
-		return diagnostic.code
+	if diagnostic, ok := errors.AsType[*DiagnosticError](ForwardError(err)); ok {
+		return diagnostic.Code
 	}
 	return ""
 }

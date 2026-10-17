@@ -159,7 +159,7 @@ func (p *appServerDirectedMessageProvider) completed() bool {
 }
 
 func (p *appServerDirectedMessageProvider) ForwardExecution(_, _ context.Context, body []byte, headers http.Header, _ string) (*inferencegateway.Response, error) {
-	metadata, _ := decodeCodexTurnMetadata(headers)
+	metadata, _ := codexresponses.DecodeTurnMetadata(headers)
 	thread := headers.Get(codexresponses.ThreadIDHeader)
 	if thread == "" {
 		thread = metadata.ThreadID

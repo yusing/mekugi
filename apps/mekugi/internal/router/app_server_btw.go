@@ -4,8 +4,10 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	json "encoding/json/v2"
@@ -113,7 +115,7 @@ func (u *appServerUI) flushBTW() error {
 		text, _ := part["text"].(string)
 		textBytes += len(text)
 	}
-	if (len(b.Pending.Attachments) > 0 || len(b.Pending.Skills) > 0) && textBytes > composerTextLimit {
+	if (len(b.Pending.Attachments) > 0 || len(b.Pending.Skills) > 0) && textBytes > codexresponses.UserTextLimit {
 		u.failBTW(b, "Input with attachments exceeds the safe 1 MiB text limit. Reduce the draft or attachments and retry.")
 		return nil
 	}

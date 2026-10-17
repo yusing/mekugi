@@ -5,7 +5,6 @@ package router
 import (
 	"bytes"
 	"context"
-	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"io"
 	"net/http/httptest"
 	"os/exec"
@@ -15,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 

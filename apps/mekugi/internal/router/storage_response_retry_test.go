@@ -16,9 +16,8 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/libraries/legacycall"
-
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -176,7 +175,7 @@ func TestResponsePersistencePressureStopsWithoutReclaimableData(t *testing.T) {
 	ctx, cancel := context.WithTimeout(current, 3*time.Second)
 	defer cancel()
 	err = store.putAfterMaintenance(ctx, "/w", map[string]mekugiHistory{"new": {ToolName: "shell", Script: "true"}})
-	if diagnostic, ok := errors.AsType[*criticalDiagnosticError](err); !ok || diagnostic.code != "storage_capacity" || errors.Is(err, context.DeadlineExceeded) {
+	if diagnostic, ok := errors.AsType[*requestexecution.DiagnosticError](err); !ok || diagnostic.Code != "storage_capacity" || errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("protected storage must fail without endlessly retrying: %v", err)
 	}
 	retentionTestExists(t, store, "/w", "existing", true)
@@ -203,7 +202,7 @@ func TestResponsePersistenceMaintenanceWaitIsCancellable(t *testing.T) {
 		if !errors.Is(err, context.DeadlineExceeded) {
 			t.Fatalf("maintenance wait ignored cancellation: %v", err)
 		}
-		if diagnostic, ok := errors.AsType[*criticalDiagnosticError](err); !ok || diagnostic.code != "storage_capacity" {
+		if diagnostic, ok := errors.AsType[*requestexecution.DiagnosticError](err); !ok || diagnostic.Code != "storage_capacity" {
 			t.Fatalf("wait lost original capacity diagnostic: %v", err)
 		}
 		retentionTestExists(t, store, "/w", "existing", true)

@@ -1,4 +1,5 @@
-package router
+// Source: apps/mekugi/internal/router/response_hooks.go:1:75@b9679c93.
+package requestexecution
 
 import (
 	jsonv1 "encoding/json"
@@ -13,40 +14,40 @@ import (
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
-// responseHooks observes the provider boundary before rewriting. It never emits
+// ResponseHooks observes the provider boundary before rewriting. It never emits
 // payloads or owns a transformer, transport, subscription, or background task.
-type responseHooks struct {
+type ResponseHooks struct {
 	onProviderFailure   func([]byte, bool)
 	upstreamStatus      int
-	transport           string
-	streamDiagnostics   *transportcapture.Stream
-	onUsage             func(inference.Usage)
-	receivedAt          time.Time // Body read time, before buffered events are transformed.
+	Transport           string
+	StreamDiagnostics   *transportcapture.Stream
+	OnUsage             func(inference.Usage)
+	ReceivedAt          time.Time // Body read time, before buffered events are transformed.
 	deliveredResponseID string
 	deliveredTerminal   bool
 }
 
-func (h *responseHooks) Observe(payload []byte, stream bool) {
+func (h *ResponseHooks) Observe(payload []byte, stream bool) {
 	if h == nil || stream && len(payload) == 0 {
 		return
 	}
 	if stream {
-		h.streamDiagnostics.Observe(payload)
+		h.StreamDiagnostics.Observe(payload)
 	} else {
-		h.receivedAt = time.Now()
+		h.ReceivedAt = time.Now()
 	}
 	if h.onProviderFailure != nil &&
 		(!stream && h.upstreamStatus >= 400 || responses.ObserveTerminal(payload, stream) == responses.TerminalFailed) {
 		h.onProviderFailure(payload, stream)
 	}
-	if h.onUsage != nil {
+	if h.OnUsage != nil {
 		if usage, ok := codexresponses.UsageFromPayload(payload, stream); ok {
-			h.onUsage(usage)
+			h.OnUsage(usage)
 		}
 	}
 }
 
-func (h *responseHooks) Delivered(payload []byte) {
+func (h *ResponseHooks) Delivered(payload []byte) {
 	if h == nil {
 		return
 	}
@@ -64,12 +65,12 @@ func (h *responseHooks) Delivered(payload []byte) {
 	}
 }
 
-func (h *responseHooks) ReadEnded(err error, unterminated bool) {
+func (h *ResponseHooks) ReadEnded(err error, unterminated bool) {
 	if h == nil {
 		return
 	}
-	recordStreamReadEnd(h.streamDiagnostics, err, "")
-	if h.streamDiagnostics != nil {
-		h.streamDiagnostics.UnterminatedEvent = unterminated
+	recordStreamReadEnd(h.StreamDiagnostics, err, "")
+	if h.StreamDiagnostics != nil {
+		h.StreamDiagnostics.UnterminatedEvent = unterminated
 	}
 }

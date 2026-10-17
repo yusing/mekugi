@@ -21,7 +21,7 @@ func TestChildCompletionPreservesRootAnswer(t *testing.T) {
 				if missing {
 					child.usageTracker.Finish()
 				} else {
-					child.observeResponseUsage(inference.Usage{InputTokens: 120, UncachedInputTokens: 40, OutputTokens: 30, ReasoningTokens: 20})
+					child.ObserveUsage(inference.Usage{InputTokens: 120, UncachedInputTokens: 40, OutputTokens: 30, ReasoningTokens: 20})
 				}
 				response := []byte(`{"id":"child-response","status":"completed","output":[{"type":"message","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"Child result."}]}]}`)
 				var output []byte
@@ -49,7 +49,7 @@ func TestChildCompletionPreservesRootAnswer(t *testing.T) {
 				child.Close()
 				root, _ = prepareActivityTest(t, proxy, "remapped", "root", "", "/root", nil)
 				root.usageTracker = proxy.usage.Observation("root", "root", "gpt-6-astra", "")
-				root.observeResponseUsage(inference.Usage{InputTokens: 100, UncachedInputTokens: 50, OutputTokens: 10, ReasoningTokens: 5})
+				root.ObserveUsage(inference.Usage{InputTokens: 100, UncachedInputTokens: 50, OutputTokens: 10, ReasoningTokens: 5})
 				if stream {
 					events, err := root.TransformSSE([]byte(`{"type":"response.created","response":{"id":"root-response"}}`))
 					if err != nil {

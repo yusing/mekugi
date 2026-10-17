@@ -65,13 +65,13 @@ func (g *sessionNaming) acceptCandidate(thread string) bool {
 	return entry == nil || entry.AcceptCandidate()
 }
 
-func (g *sessionNaming) observeInput(thread string, input []byte) {
+func (g *sessionNaming) ObserveInput(thread string, input []byte) {
 	if entry := g.scope(thread); entry != nil {
 		entry.ObserveInput(input)
 	}
 }
 
-func (g *sessionNaming) completed(thread string, headers http.Header) {
+func (g *sessionNaming) Completed(thread string, headers http.Header) {
 	entry := g.scope(thread)
 	if entry == nil {
 		return

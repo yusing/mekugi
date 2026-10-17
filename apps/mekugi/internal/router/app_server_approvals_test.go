@@ -550,9 +550,9 @@ func TestNativeApprovalFeedbackWebSocketContinuation(t *testing.T) {
 		t.Fatal(err)
 	}
 	headers := codexAuthHeaders()
-	headers.Set(sessionIDHeader, "approval-session")
+	headers.Set(codexresponses.RoutingSessionHeader, "approval-session")
 	headers.Set(codexresponses.ThreadIDHeader, "thread-1")
-	headers.Set(codexresponses.TurnMetadataHeader, string(responses.MustMarshalJSON(codexTurnMetadata{
+	headers.Set(codexresponses.TurnMetadataHeader, string(responses.MustMarshalJSON(codexresponses.TurnMetadata{
 		RequestKind: "turn", TurnID: "turn", Directories: map[string]jsontext.Value{t.TempDir(): nil},
 	})))
 	conn := testResponsesSocket(t, ctx, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -12,11 +12,13 @@ import (
 	"testing"
 	"time"
 
-	history "github.com/yusing/mekugi/modules/sessionhistory/history"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	history "github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 )
 
@@ -199,8 +201,8 @@ func TestTerminalResponseReplayPersistenceFailureIsClassified(t *testing.T) {
 	if err == nil {
 		t.Fatal("terminal response claimed successful persistence")
 	}
-	diagnostic, ok := errors.AsType[*criticalDiagnosticError](err)
-	if !ok || diagnostic.code != "mekugi_sse:replay_history_commit" || diagnostic.summary != "Mekugi could not persist completed response history" {
+	diagnostic, ok := errors.AsType[*requestexecution.DiagnosticError](err)
+	if !ok || diagnostic.Code != "mekugi_sse:replay_history_commit" || diagnostic.Summary != "Mekugi could not persist completed response history" {
 		t.Fatalf("terminal persistence diagnostic = %#v, wrapped = %v", diagnostic, err)
 	}
 	if transform.historyCommitted {
@@ -432,11 +434,9 @@ func TestReplayItemConflictReportsSafeCause(t *testing.T) {
 		t.Fatal("accepted changed tool input")
 	}
 	issues := testCriticalErrors()
-	finalization := &requestFinalization{failurePhase: requestFailureTransform,
-		observation: requestObservation{outcome: requestOutcomeFailed}}
-	issues.record(finalization, err)
+	finalization := issues.Report(requestexecution.Failure{Phase: "transform"}, err)
 	notice := strings.Join(issues.Notices.Pending(), "\n")
-	if finalization.diagnosticCode != "replay_item_conflict" ||
+	if finalization.Code != "replay_item_conflict" ||
 		!strings.Contains(notice, "changed a retained replay item field") ||
 		strings.Contains(notice, "private") || strings.Contains(notice, "not safe for display") {
 		t.Fatalf("unsafe or missing replay conflict diagnostic: %s", notice)

@@ -3,6 +3,7 @@ package router
 import (
 	"bytes"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
@@ -80,7 +81,7 @@ func TestDuplicateOutputNativeMCatRanges(t *testing.T) {
 			input := append(duplicateTestInput(firstCommand, "first", first), duplicateTestInput(secondCommand, "second", second)...)
 			proxy := newManagedMekugiProxy(t)
 			proxy.inputProjections = testInputProjections()
-			request := duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
+			request := duplicateTestPrepare(t, proxy, input, codexresponses.TurnMetadata{})
 			items := duplicateTestItems(t, request)
 			if got := responses.StringField(items[3], "output"); got != duplicateTestHeader+want {
 				t.Fatalf("projected reader output = %q, want %q", got, duplicateTestHeader+want)
@@ -114,7 +115,7 @@ func TestDuplicateOutputNativeMCatThirdReadProviderPrefix(t *testing.T) {
 	proxy.inputProjections = testInputProjections()
 	read("1:10", "first")
 	read("7:16", "second")
-	first := duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
+	first := duplicateTestPrepare(t, proxy, input, codexresponses.TurnMetadata{})
 	firstItems := duplicateTestItems(t, first)
 	if got, want := responses.StringField(firstItems[3], "output"), duplicateTestHeader+"[O2]\n[same as O1 L7-10]\n"+strings.Join(rows[10:], ""); got != want {
 		t.Fatalf("second read = %q, want %q", got, want)
@@ -126,7 +127,7 @@ func TestDuplicateOutputNativeMCatThirdReadProviderPrefix(t *testing.T) {
 	}
 
 	read("5:14", "third")
-	grown := duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
+	grown := duplicateTestPrepare(t, proxy, input, codexresponses.TurnMetadata{})
 	items := duplicateTestItems(t, grown)
 	// Rows 11-14 are verbatim at L2-5 of the second projected body, after
 	// its overlap became one marker. The third read must address those rows.

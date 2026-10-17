@@ -18,15 +18,13 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/providers/openai"
-
 	"github.com/yusing/mekugi/libraries/httptransport"
-
-	"github.com/yusing/mekugi/providers/grok"
-
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/providers/grok"
+	"github.com/yusing/mekugi/providers/openai"
 )
 
 const grokModel = "grok:grok-4.6"
@@ -116,7 +114,7 @@ func TestGrokClientIsolationStreamingJSONAndCancellation(t *testing.T) {
 				io.WriteString(w, grokTextStream())
 			}))
 			defer server.Close()
-			client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), HTTPClient: grokTestHTTPClient(t, server), Auth: grok.NewAuth("", "xai-test", httptransport.Client(nil)), StreamIdleTimeout: time.Second}
+			client := &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), HTTPClient: grokTestHTTPClient(t, server), Auth: grok.NewAuth("", "xai-test", httptransport.Client(nil)), StreamIdleTimeout: time.Second}
 			response, err := client.ForwardExecution(t.Context(), t.Context(), grokTestRequest(t, stream), grokTestHeaders())
 			if err != nil {
 				t.Fatal(err)
@@ -158,7 +156,7 @@ func TestGrokClientIsolationStreamingJSONAndCancellation(t *testing.T) {
 		close(canceled)
 	}))
 	defer server.Close()
-	client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), HTTPClient: grokTestHTTPClient(t, server), Auth: grok.NewAuth("", "xai-test", httptransport.Client(nil))}
+	client := &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), HTTPClient: grokTestHTTPClient(t, server), Auth: grok.NewAuth("", "xai-test", httptransport.Client(nil))}
 	ctx, cancel := context.WithCancel(t.Context())
 	response, err := client.ForwardExecution(ctx, ctx, grokTestRequest(t, true), grokTestHeaders())
 	if err != nil {
@@ -210,7 +208,7 @@ func TestGrokUnauthorizedRefreshRetriesOnceWithoutCredentialLeak(t *testing.T) {
 		io.WriteString(w, grokTextStream())
 	}))
 	defer server.Close()
-	client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), HTTPClient: grokTestHTTPClient(t, server), Auth: auth}
+	client := &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), HTTPClient: grokTestHTTPClient(t, server), Auth: auth}
 	response, err := client.ForwardExecution(t.Context(), t.Context(), grokTestRequest(t, false), grokTestHeaders())
 	if err != nil {
 		t.Fatal(err)
@@ -229,7 +227,7 @@ func TestGrokDisabledAndUnknownModelFailBeforeProvider(t *testing.T) {
 		t.Fatalf("disabled route=%v", err)
 	}
 	body := bytes.Replace(grokTestRequest(t, true), []byte(grokModel), []byte("grok:unknown"), 1)
-	if _, err := (&inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics()}).ForwardExecution(t.Context(), t.Context(), body, grokTestHeaders()); err == nil {
+	if _, err := (&inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics()}).ForwardExecution(t.Context(), t.Context(), body, grokTestHeaders()); err == nil {
 		t.Fatal("accepted unknown model")
 	}
 }
@@ -251,7 +249,7 @@ func TestGrokModelRoutingAndBuildFastCredentialBoundary(t *testing.T) {
 				io.WriteString(w, grokTextStream())
 			}))
 			defer server.Close()
-			client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), HTTPClient: grokTestHTTPClient(t, server), Auth: grok.NewAuth("", "xai-test", httptransport.Client(nil))}
+			client := &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), HTTPClient: grokTestHTTPClient(t, server), Auth: grok.NewAuth("", "xai-test", httptransport.Client(nil))}
 			body := mustTestJSON(t, map[string]any{"model": "grok:" + model, "input": []any{}})
 			response, err := client.ForwardExecution(t.Context(), t.Context(), body, grokTestHeaders())
 			if model == "grok-4.7-build-fast" {
@@ -277,7 +275,7 @@ func TestGrokModelRoutingAndBuildFastCredentialBoundary(t *testing.T) {
 		io.WriteString(w, grokTextStream())
 	}))
 	defer server.Close()
-	client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), HTTPClient: grokTestHTTPClient(t, server), Auth: grok.NewAuth(path, "", httptransport.Client(nil))}
+	client := &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), HTTPClient: grokTestHTTPClient(t, server), Auth: grok.NewAuth(path, "", httptransport.Client(nil))}
 	body := mustTestJSON(t, map[string]any{"model": "grok:grok-4.7-build-fast", "input": []any{}})
 	response, err := client.ForwardExecution(t.Context(), t.Context(), body, grokTestHeaders())
 	if err != nil {
@@ -307,7 +305,7 @@ func grokTestHTTPClient(t *testing.T, server *httptest.Server) *http.Client {
 func TestGrokCloseUnblocksUpstreamRead(t *testing.T) {
 	upstream, writer := io.Pipe()
 	defer writer.Close()
-	client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), Auth: grok.NewAuth("", "test", httptransport.Client(nil)), HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
+	client := &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), Auth: grok.NewAuth("", "test", httptransport.Client(nil)), HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: upstream}, nil
 	})}}
 	response, err := client.ForwardExecution(t.Context(), t.Context(), grokTestRequest(t, true), grokTestHeaders())
@@ -351,7 +349,7 @@ func TestGrokAPIKeyStartupWithoutHome(t *testing.T) {
 }
 
 func TestGrokOutputBudgetRejectedBeforeInference(t *testing.T) {
-	client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), Auth: grok.NewAuth("", "test", httptransport.Client(nil)), HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
+	client := &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), Auth: grok.NewAuth("", "test", httptransport.Client(nil)), HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 		t.Error("unsupported budget reached provider")
 		return nil, fmt.Errorf("unexpected inference")
 	})}}

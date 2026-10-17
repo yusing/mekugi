@@ -37,7 +37,7 @@ func TestAppServerBTWCompactionRejectsBeforeProvider(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		metadata, ok := decodeCodexTurnMetadata(serverCompactionMetadataHeaders(t))
+		metadata, ok := codexresponses.DecodeTurnMetadata(serverCompactionMetadataHeaders(t))
 		if !ok {
 			t.Fatal("invalid fixture metadata")
 		}

@@ -6,7 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/backends/codex/binding"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
@@ -21,7 +23,7 @@ func TestRewriteRequestSelectedSkillInstructions(t *testing.T) {
 			map[string]string{"role": "user", "content": "quote " + selected},
 		}),
 	}}
-	if err := projectRequestInstructions(&request, func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
+	if err := requestexecution.ProjectInstructions(&request, func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
 		return testGuidance().AfterAttachments(input, true)
 	}); err != nil {
 		t.Fatal(err)
@@ -35,7 +37,7 @@ func TestRewriteRequestSelectedSkillInstructions(t *testing.T) {
 		t.Fatalf("input = %s, want %s", request.Fields["input"], wantInput)
 	}
 	before := string(request.Fields["input"])
-	if err := projectRequestInstructions(&request, func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
+	if err := requestexecution.ProjectInstructions(&request, func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
 		return testGuidance().AfterAttachments(input, true)
 	}); err != nil || string(request.Fields["input"]) != before {
 		t.Fatalf("repeat changed input: %v", err)
@@ -47,7 +49,7 @@ func TestRewriteRequestSelectedSkillInstructionsDisabled(t *testing.T) {
 		"role": "user", "content": "<skill>\n<name>demo</name>\n<path>/tmp/demo/SKILL.md</path>\nbody\n</skill>",
 	}})
 	request := codexresponses.Request{Fields: map[string]json.RawMessage{"input": input}}
-	if err := projectRequestInstructions(&request, func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
+	if err := requestexecution.ProjectInstructions(&request, func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
 		return testGuidance().AfterAttachments(input, false)
 	}); err != nil || !responses.SameJSONValue(request.Fields["input"], input) {
 		t.Fatalf("disabled rewrite changed input: %v, %s", err, request.Fields["input"])

@@ -80,6 +80,12 @@ failure returns an error instead of a successful response.
 
 ## OpenAI request shaping
 
+Turn metadata decoding retains the host's permissive object decoding while
+requiring one distinct, nonblank ASCII metadata value. Malformed auxiliary
+ancestry disables attribution without invalidating otherwise usable routing
+metadata. Header thread identity and routing affinity remain separate; metadata
+does not authorize filesystem access.
+
 The adapter selects the existing Codex identity, capability, and routing headers.
 Unrelated caller headers are excluded. Full-input WebSocket requests omit HTTP's
 stream field and reject incremental previous-response dependencies. Existing

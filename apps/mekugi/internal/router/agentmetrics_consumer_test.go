@@ -12,15 +12,17 @@ import (
 	"strings"
 	"testing"
 
-	inspectioncli "github.com/yusing/mekugi/apps/mekugi/internal/inspectioncli"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
+	inspectioncli "github.com/yusing/mekugi/apps/mekugi/internal/inspectioncli"
 	"github.com/yusing/mekugi/libraries/legacycall"
-	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
-	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
+
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
@@ -95,7 +97,7 @@ func TestAgentMetricsReaderAuthenticatedDestinationPrecedesEnvironment(t *testin
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = bundle.Close() })
-	ctx := context.WithValue(t.Context(), debugContextKey{}, &debugOutput{bundle})
+	ctx := requestexecution.WithDebug(t.Context(), &requestexecution.Debug{bundle})
 	registry, err := buildToolRegistryForTest(t, ctx)
 	if err != nil {
 		t.Fatal(err)

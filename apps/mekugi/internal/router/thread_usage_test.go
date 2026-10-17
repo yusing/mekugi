@@ -13,14 +13,14 @@ import (
 func TestThreadUsageSurvivesRoundTripsAndSessionRemapping(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	first, _ := prepareActivityTest(t, proxy, "session-a", "root-thread", "", "/root", nil)
-	first.observeResponseUsage(inference.Usage{InputTokens: 10, UncachedInputTokens: 4, OutputTokens: 3, ReasoningTokens: 2})
-	first.observeResponseUsage(inference.Usage{InputTokens: 10, UncachedInputTokens: 4, OutputTokens: 3, ReasoningTokens: 2})
+	first.ObserveUsage(inference.Usage{InputTokens: 10, UncachedInputTokens: 4, OutputTokens: 3, ReasoningTokens: 2})
+	first.ObserveUsage(inference.Usage{InputTokens: 10, UncachedInputTokens: 4, OutputTokens: 3, ReasoningTokens: 2})
 	first.Close()
 	child, _ := prepareActivityTest(t, proxy, "session-a", "child-thread", "root-thread", "/root/child", nil)
-	child.observeResponseUsage(inference.Usage{InputTokens: 500})
+	child.ObserveUsage(inference.Usage{InputTokens: 500})
 	next, _ := prepareActivityTest(t, proxy, "session-remapped", "root-thread", "", "/root", nil)
 	second := inference.Usage{InputTokens: 20, UncachedInputTokens: 5, OutputTokens: 7, ReasoningTokens: 6}
-	next.observeResponseUsage(second)
+	next.ObserveUsage(second)
 	got, valid := proxy.usage.Snapshot("root-thread")
 	if !valid || got.Usage != (inference.Usage{InputTokens: 30, UncachedInputTokens: 9, OutputTokens: 10, ReasoningTokens: 8}) {
 		t.Fatal("root lifetime counts changed across round trips", got, valid)
@@ -39,7 +39,7 @@ func TestThreadUsageSurvivesRoundTripsAndSessionRemapping(t *testing.T) {
 func TestThreadUsageIncludesCompactionWithoutRewritingIt(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	first, _ := prepareActivityTest(t, proxy, "before", "root-thread", "", "/root", nil)
-	first.observeResponseUsage(inference.Usage{InputTokens: 10, UncachedInputTokens: 4, OutputTokens: 3, ReasoningTokens: 2})
+	first.ObserveUsage(inference.Usage{InputTokens: 10, UncachedInputTokens: 4, OutputTokens: 3, ReasoningTokens: 2})
 	first.Close()
 	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 		"model": "gpt-test", "input": []any{map[string]any{"type": "message", "role": "user", "content": "compact this"}},
@@ -71,7 +71,7 @@ func TestThreadUsageIncludesCompactionWithoutRewritingIt(t *testing.T) {
 		t.Fatal("compaction usage accounting rewrote provider output", output.String())
 	}
 	next, _ := prepareActivityTest(t, proxy, "after-remap", "root-thread", "", "/root", nil)
-	next.observeResponseUsage(inference.Usage{InputTokens: 1, UncachedInputTokens: 1})
+	next.ObserveUsage(inference.Usage{InputTokens: 1, UncachedInputTokens: 1})
 	if got, valid := proxy.usage.Snapshot("root-thread"); !valid || got.Usage != (inference.Usage{InputTokens: 23, UncachedInputTokens: 12, OutputTokens: 10, ReasoningTokens: 5}) {
 		t.Fatal("compaction tokens missing from lifetime total", got, valid)
 	}

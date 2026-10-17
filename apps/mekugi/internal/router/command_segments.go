@@ -10,11 +10,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/observation"
-
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
+
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
 
@@ -87,13 +88,13 @@ func (u *appServerUI) commandSegmentRetentionFailed(key [3]string, err error) {
 		return
 	}
 	message := fmt.Sprintf("Command segment history could not be retained for item %s (turn %s). Live output remains available, but this report cannot be restored after restart. Error: %v", key[2], key[1], err)
-	if diagnostic, ok := errors.AsType[*criticalDiagnosticError](err); ok && !strings.Contains(message, diagnostic.summary) {
-		message += "\n" + diagnostic.summary
+	if diagnostic, ok := errors.AsType[*requestexecution.DiagnosticError](err); ok && !strings.Contains(message, diagnostic.Summary) {
+		message += "\n" + diagnostic.Summary
 	}
 	// Use the native notice owner for full, wrapped transcript errors and
 	// launcher recovery. Distinct items and causes must not collapse together.
 	category := fmt.Sprintf("command_segment_retention:%x", sha256.Sum256([]byte(message)))
-	u.issues.addThreadNotice("", key[0], category, message)
+	u.issues.AddThreadNotice("", key[0], category, message)
 	u.dirty = true
 }
 

@@ -3,9 +3,11 @@ package router
 import (
 	"context"
 	"errors"
+
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
-func (s *mekugiReplayStore) prepareHandleScope(ctx context.Context, metadata codexTurnMetadata) (context.Context, error) {
+func (s *mekugiReplayStore) prepareHandleScope(ctx context.Context, metadata codexresponses.TurnMetadata) (context.Context, error) {
 	if s == nil {
 		return ctx, nil
 	}

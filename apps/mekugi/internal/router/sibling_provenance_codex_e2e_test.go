@@ -554,11 +554,11 @@ type nativeSiblingProvenanceProvider struct {
 
 type nativeSiblingProvenanceRequest struct {
 	body     []byte
-	metadata codexTurnMetadata
+	metadata codexresponses.TurnMetadata
 }
 
 func (p *nativeSiblingProvenanceProvider) forwardExecution(ctx context.Context, body []byte, headers http.Header) (*http.Response, error) {
-	metadata, ok := decodeCodexTurnMetadata(headers)
+	metadata, ok := codexresponses.DecodeTurnMetadata(headers)
 	if !ok {
 		return nil, fmt.Errorf("native fixture lacks authenticated turn metadata")
 	}
@@ -617,7 +617,7 @@ func (p *nativeSiblingProvenanceProvider) forwardExecution(ctx context.Context, 
 	return routerFaultCodexSuccessResponse(), nil
 }
 
-func (p *nativeSiblingProvenanceProvider) receiverResponse(ctx context.Context, body []byte, metadata codexTurnMetadata, count int, call func(string, any) *http.Response) (*http.Response, error) {
+func (p *nativeSiblingProvenanceProvider) receiverResponse(ctx context.Context, body []byte, metadata codexresponses.TurnMetadata, count int, call func(string, any) *http.Response) (*http.Response, error) {
 	select {
 	case p.requests <- nativeSiblingProvenanceRequest{body: body, metadata: metadata}:
 	case <-ctx.Done():

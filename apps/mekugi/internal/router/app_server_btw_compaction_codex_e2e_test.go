@@ -30,7 +30,7 @@ type btwCompactionProvider struct {
 func (p *btwCompactionProvider) ForwardExecution(_, _ context.Context, _ []byte, headers http.Header, _ string) (*inferencegateway.Response, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	metadata, _ := decodeCodexTurnMetadata(headers)
+	metadata, _ := codexresponses.DecodeTurnMetadata(headers)
 	thread := headers.Get(codexresponses.ThreadIDHeader)
 	if thread == "" {
 		thread = metadata.ThreadID
@@ -78,7 +78,7 @@ func TestAppServerBTWCompactionNativeCodexE2E(t *testing.T) {
 	rejectedSideCompactions := 0
 	handler := testResponsesHandler(t.Context(), time.Minute, provider, nil, proxy)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		metadata, valid := decodeCodexTurnMetadata(r.Header)
+		metadata, valid := codexresponses.DecodeTurnMetadata(r.Header)
 		thread := r.Header.Get(codexresponses.ThreadIDHeader)
 		if thread == "" {
 			thread = metadata.ThreadID

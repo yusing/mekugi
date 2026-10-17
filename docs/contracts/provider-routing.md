@@ -45,8 +45,10 @@ select fresh context and supply a self-contained assignment.
 
 The gateway resolves provider capabilities before calling the backend codec.
 Request preparation, execution admission, retained evidence, accounting and notices
-remain application consumers. Socket execution uses that same request pipeline;
-transport does not acquire a second execution or observation authority.
+remain application consumers. The shared application
+[request executor](../../apps/mekugi/internal/requestexecution/SPEC.md) runs both
+HTTP and socket attempts; transport does not acquire a second execution or
+observation authority.
 
 The gateway owns invocation-local service-tier selection. Confirmed choices are
 scoped by host thread and routed model, ahead of configured model defaults and

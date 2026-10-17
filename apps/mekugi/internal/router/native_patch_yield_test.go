@@ -119,7 +119,7 @@ func testCompletedPatchBeforeYieldedCommand(t *testing.T, exit int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	transform, err = proxy.prepareRequest(t.Context(), &request, "session-1", "thread-1", codexTurnMetadata{
+	transform, err = proxy.prepareRequest(t.Context(), &request, "session-1", "thread-1", codexresponses.TurnMetadata{
 		RequestKind: "turn", Directories: map[string]jsonv1.RawMessage{workspace: nil},
 	}, true)
 	if err != nil {

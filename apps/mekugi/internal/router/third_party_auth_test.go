@@ -3,6 +3,9 @@ package router
 import (
 	"bytes"
 	"context"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+
 	json "encoding/json/v2"
 	"io"
 	"net/http"
@@ -16,11 +19,9 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/providers/openai"
-
 	"github.com/yusing/mekugi/libraries/httptransport"
-
 	"github.com/yusing/mekugi/providers/grok"
+	"github.com/yusing/mekugi/providers/openai"
 	"github.com/yusing/mekugi/providers/opencode"
 )
 
@@ -64,7 +65,7 @@ func TestThirdPartyGrokExecutionWithoutCodexAuthentication(t *testing.T) {
 			}))
 			defer server.Close()
 			provider := newTestProviderClient("http://unused.invalid", nil)
-			provider.Grok = &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), HTTPClient: grokTestHTTPClient(t, server), Auth: grok.NewAuth("", "grok-only", httptransport.Client(nil))}
+			provider.Grok = &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), HTTPClient: grokTestHTTPClient(t, server), Auth: grok.NewAuth("", "grok-only", httptransport.Client(nil))}
 			var request map[string]any
 			if err := json.Unmarshal(grokTestRequest(t, stream), &request); err != nil {
 				t.Fatal(err)
@@ -103,7 +104,7 @@ func TestThirdPartyOpenCodeExecutionWithoutCodexAuthentication(t *testing.T) {
 			}))
 			defer server.Close()
 			provider := newTestProviderClient("http://unused.invalid", nil)
-			provider.OpenCode = map[string]*inferencegateway.ThirdPartyClient{service.Prefix: {Diagnostics: providerCodecDiagnostics(), HTTPClient: grokTestHTTPClient(t, server), OpenCode: &service}}
+			provider.OpenCode = map[string]*inferencegateway.ThirdPartyClient{service.Prefix: {Diagnostics: requestexecution.ProviderDiagnostics(), HTTPClient: grokTestHTTPClient(t, server), OpenCode: &service}}
 			response, err := provider.ForwardExecution(t.Context(), t.Context(), openCodeTestRequest(t, service, false), thirdPartyUnauthenticatedHeaders(), "")
 			if err != nil {
 				t.Fatal(err)
@@ -123,7 +124,7 @@ func TestThirdPartyConfigurationDoesNotBypassOpenAIAuthentication(t *testing.T) 
 		return serverHTTPResponse("{}"), nil
 	})}
 	provider := newTestProviderClient("http://unused.invalid", client)
-	provider.Grok = &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), HTTPClient: client, Auth: grok.NewAuth("", "grok-only", httptransport.Client(nil))}
+	provider.Grok = &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), HTTPClient: client, Auth: grok.NewAuth("", "grok-only", httptransport.Client(nil))}
 	_, err := provider.ForwardExecution(t.Context(), t.Context(), []byte(`{"model":"gpt-5.6-sol","input":[]}`), http.Header{}, "")
 	if err == nil || !strings.Contains(err.Error(), "Authorization") {
 		t.Fatalf("expected OpenAI authentication rejection, got %v", err)

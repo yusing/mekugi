@@ -11,14 +11,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/legacycall"
-
-	retainedhistory "github.com/yusing/mekugi/modules/sessionhistory/history"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/gofrs/flock"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	retainedhistory "github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 func (s *mekugiReplayStore) runRetentionSweeps(ctx context.Context, notice func(error)) {
@@ -628,7 +627,7 @@ func TestStorageStaleTerminalPreservesNewerHandoff(t *testing.T) {
 	start := func() *mekugiResponseTransform {
 		t.Helper()
 		request := activityAdmissionRequest(t, nil)
-		transform, err := p.prepareRequest(t.Context(), &request, "routing", "thread", codexTurnMetadata{
+		transform, err := p.prepareRequest(t.Context(), &request, "routing", "thread", codexresponses.TurnMetadata{
 			RequestKind: "turn", ThreadID: "thread", Directories: map[string]json.RawMessage{workspace: nil},
 		}, true)
 		if err != nil {

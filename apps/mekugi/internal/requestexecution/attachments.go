@@ -1,4 +1,5 @@
-package router
+// Source: apps/mekugi/internal/router/composer_file_attachment.go:1:116@b9679c93.
+package requestexecution
 
 import (
 	"bytes"
@@ -12,11 +13,9 @@ import (
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 )
 
-const composerTextLimit = 1 << 20 // Codex MAX_USER_INPUT_TEXT_CHARS; bytes are conservative.
-
-// projectFileAttachments splits only complete versioned text parts. Malformed
+// ProjectFileAttachments splits only complete versioned text parts. Malformed
 // lookalikes remain ordinary user text; non-user messages are never interpreted.
-func projectFileAttachments(request *codexresponses.Request) bool {
+func ProjectFileAttachments(request *codexresponses.Request) bool {
 	if !bytes.Contains(request.Fields["input"], []byte("mekugi-file-attachments-v1")) {
 		return false
 	}

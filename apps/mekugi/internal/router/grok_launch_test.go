@@ -1,6 +1,8 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+
 	json "encoding/json/v2"
 	"fmt"
 	"net/http"
@@ -8,12 +10,9 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
 	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/yusing/mekugi/libraries/httptransport"
-
 	"github.com/yusing/mekugi/providers/grok"
 )
 
@@ -21,7 +20,7 @@ func TestGrokLaunchRejectsWrongNamespacesAndOpenAI(t *testing.T) {
 	for _, unprefixed := range []bool{false, true} {
 		provider := newTestProviderClient("http://unused.invalid", nil)
 		provider.ThirdPartyOnly = true
-		provider.Grok = &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), Unprefixed: unprefixed, Auth: grok.NewAuth("", "test", httptransport.Client(nil)), HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
+		provider.Grok = &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), Unprefixed: unprefixed, Auth: grok.NewAuth("", "test", httptransport.Client(nil)), HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 			t.Fatal("wrong-mode model reached a provider")
 			return nil, nil
 		})}}

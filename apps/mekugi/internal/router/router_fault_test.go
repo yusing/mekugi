@@ -1,18 +1,18 @@
 package router
 
 import (
-	"bytes"
 	"io"
 
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv1 "encoding/json"
 	"encoding/json/jsontext"
 
 	json "encoding/json/v2"
-	"errors"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -81,7 +81,7 @@ func TestRouterTransformFaultAfterCreatedEmitsActionableTerminalFailure(t *testi
 	upstream.Header.Set("Content-Type", "text/event-stream")
 	provider := &serverFakeProvider{results: []serverForwardResult{{response: upstream}}}
 	issues := testCriticalErrors()
-	metadata := codexTurnMetadata{
+	metadata := codexresponses.TurnMetadata{
 		RequestKind: "turn", ThreadID: "router-fault-thread", TurnID: "router-fault-turn",
 		Directories: map[string]jsonv1.RawMessage{workspace: nil},
 	}
@@ -90,7 +90,7 @@ func TestRouterTransformFaultAfterCreatedEmitsActionableTerminalFailure(t *testi
 	headers.Set(codexresponses.TurnMetadataHeader, string(mustTestJSON(t, metadata)))
 	recorder := httptest.NewRecorder()
 	err = executeRequest(t.Context(), t.Context(), request, headers, "router-fault-session",
-		provider, &trackedResponseWriter{ResponseWriter: recorder}, issues, proxy)
+		provider, &inferencegateway.ResponseWriter{ResponseWriter: recorder}, issues, proxy)
 	if err == nil {
 		t.Fatal("malformed intercepted event unexpectedly completed")
 	}
@@ -163,73 +163,36 @@ func TestRouterTransformFaultAfterCreatedEmitsActionableTerminalFailure(t *testi
 
 func TestRouterFaultNoticeDeduplicatesWithinTurnButSeparatesTurns(t *testing.T) {
 	issues := testCriticalErrors()
-	makeFault := func(turn string) requestFinalization {
-		return requestFinalization{
-			sessionID: "fault-session", threadID: "fault-thread", turnID: turn,
-			failurePhase: requestFailureTransform,
-			observation:  requestObservation{outcome: requestOutcomeFailed},
+	makeFault := func(turn string) requestexecution.Failure {
+		return requestexecution.Failure{
+			Session: "fault-session", Thread: "fault-thread", Turn: turn,
+			Phase: "transform",
 		}
 	}
-	fault := translationDiagnostic(staticCriticalDiagnostic(
+	fault := translationDiagnostic(requestexecution.StaticError(
 		"inconsistent_stock_call", "the upstream completed an inconsistent stock tool call"),
 		"mekugi_sse", "Mekugi response translation failed while processing an upstream streaming event")
 
 	first := makeFault("turn-one")
-	issues.record(&first, fault)
+	firstResult := issues.Report(first, fault)
 	retry := makeFault("turn-one")
-	issues.record(&retry, fault)
-	if first.diagnosticReference == "" || retry.diagnosticReference != first.diagnosticReference || len(issues.Notices.Pending()) != 1 || strings.Contains(issues.Notices.Pending()[0], "occurred") {
+	retryResult := issues.Report(retry, fault)
+	if firstResult.Reference == "" || retryResult.Reference != firstResult.Reference || len(issues.Notices.Pending()) != 1 || strings.Contains(issues.Notices.Pending()[0], "occurred") {
 		t.Fatalf("same-turn retry was not deduplicated: first=%+v retry=%+v entries=%+v", first, retry, issues.Notices.Pending())
 	}
 
 	nextTurn := makeFault("turn-two")
-	issues.record(&nextTurn, fault)
-	if nextTurn.diagnosticReference != first.diagnosticReference || len(issues.Notices.Pending()) != 2 ||
+	nextTurnResult := issues.Report(nextTurn, fault)
+	if nextTurnResult.Reference != firstResult.Reference || len(issues.Notices.Pending()) != 2 ||
 		strings.Contains(issues.Notices.Pending()[0], "occurred") || strings.Contains(issues.Notices.Pending()[1], "occurred") ||
-		first.diagnosticReference == "" {
+		firstResult.Reference == "" {
 		t.Fatalf("same fault on a new turn did not receive a distinct notice: %+v", issues.Notices.Pending())
 	}
 	issues.Notices.ObserveTurn("fault-thread", "turn-one", "failed")
 	issues.Notices.ObserveTurn("fault-thread", "turn-two", "failed")
-	claim := issues.takeNative("fault-thread", nil)
+	claim := claimNativeNotices(issues, "fault-thread", nil)
 	if claim == nil || len(claim.Errors.Messages) != 2 || claim.Errors.Messages[0].ID == claim.Errors.Messages[1].ID {
 		t.Fatalf("distinct turns lost notice identities: %+v", claim)
 	}
 	claim.Errors.Finish(false)
-}
-
-func TestRequestAttemptFinishDoesNotDuplicateDeliveredTerminal(t *testing.T) {
-	output := new(bytes.Buffer)
-	for _, event := range []string{
-		`{"type":"response.created","response":{"id":"already-failed-response","status":"in_progress"}}`,
-		`{"type":"response.failed","response":{"id":"already-failed-response","status":"failed","error":{"code":"invalid_prompt","message":"prior terminal failure"}}}`,
-	} {
-		if err := codexresponses.WriteEvent(output, []byte(event)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	attempt := &requestAttempt{
-		executor:       requestExecutor{output: output, issues: testCriticalErrors()},
-		startCtx:       t.Context(),
-		executionCtx:   t.Context(),
-		hooks:          &responseHooks{deliveredResponseID: "already-failed-response", deliveredTerminal: true},
-		streamResponse: true,
-		finalization: requestFinalization{
-			sessionID: "already-failed-session", threadID: "already-failed-thread", turnID: "already-failed-turn",
-			failurePhase: requestFailureTransform,
-		},
-	}
-	if err := attempt.finish(errors.New("a transform fault arrived after terminal delivery")); err == nil {
-		t.Fatal("request finish lost the transform fault")
-	}
-	events := routerFaultEvents(t, output.String())
-	failed := 0
-	for _, event := range events {
-		if routerFaultEventString(event, "type") == "response.failed" {
-			failed++
-		}
-	}
-	if failed != 1 {
-		t.Fatalf("response.failed count = %d, want no duplicate terminal: %s", failed, output.String())
-	}
 }

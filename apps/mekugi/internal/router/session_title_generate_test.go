@@ -14,19 +14,16 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
-
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/providers/openai"
-
-	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
-
 	"github.com/yusing/mekugi/backends/codex/binding"
-
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/providers/openai"
 )
 
 const generatedTitleResponse = `{"id":"title","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Improve session naming"}]}]}`
@@ -75,9 +72,9 @@ func TestSessionTitleGenerationRequest(t *testing.T) {
 			headers := sessionTitleAuthHeaders()
 			headers.Set(codexresponses.TurnMetadataHeader, "private-turn")
 			headers.Set(codexresponses.ThreadIDHeader, "main")
-			g.observeInput("main", responses.MustMarshalJSON("First request"))
-			g.observeInput("main", responses.MustMarshalJSON("Later request"))
-			g.completed("main", headers)
+			g.ObserveInput("main", responses.MustMarshalJSON("First request"))
+			g.ObserveInput("main", responses.MustMarshalJSON("Later request"))
+			g.Completed("main", headers)
 			update := awaitSessionTitle(t, g)
 			if update.name != "Improve session naming" || update.thread != "main" {
 				t.Fatalf("update = %+v", update)
@@ -97,22 +94,22 @@ func TestSessionTitleGenerationEligibility(t *testing.T) {
 		g.register(binding.ThreadInfo{ID: "resumed", Turns: []binding.HistoryTurn{{ID: "old"}}})
 		g.register(binding.ThreadInfo{ID: "fork", Name: "Inherited title"})
 		for _, thread := range []string{"saved", "resumed", "fork", "child", "side"} {
-			g.observeInput(thread, responses.MustMarshalJSON("Question"))
-			g.completed(thread, sessionTitleAuthHeaders())
+			g.ObserveInput(thread, responses.MustMarshalJSON("Question"))
+			g.Completed(thread, sessionTitleAuthHeaders())
 		}
 		synctest.Wait()
 		g.register(binding.ThreadInfo{ID: "fresh"})
-		g.observeInput("fresh", responses.MustMarshalJSON("Question"))
+		g.ObserveInput("fresh", responses.MustMarshalJSON("Question"))
 		if calls.Load() != 0 {
 			t.Fatal("generation preceded successful upstream completion")
 		}
-		g.observeInput("fresh", responses.MustMarshalJSON("Question"))
-		g.completed("fresh", sessionTitleAuthHeaders())
+		g.ObserveInput("fresh", responses.MustMarshalJSON("Question"))
+		g.Completed("fresh", sessionTitleAuthHeaders())
 		awaitSessionTitle(t, g)
 		g.register(binding.ThreadInfo{ID: "fresh"})
 		for range 3 {
-			g.observeInput("fresh", responses.MustMarshalJSON("Follow-up"))
-			g.completed("fresh", sessionTitleAuthHeaders())
+			g.ObserveInput("fresh", responses.MustMarshalJSON("Follow-up"))
+			g.Completed("fresh", sessionTitleAuthHeaders())
 		}
 		synctest.Wait()
 		if calls.Load() != 1 {
@@ -146,8 +143,8 @@ func TestSessionTitleGenerationFailures(t *testing.T) {
 			return nil, responseCtx.Err()
 		}))
 		g.register(binding.ThreadInfo{ID: "main"})
-		g.observeInput("main", responses.MustMarshalJSON("Question"))
-		g.completed("main", sessionTitleAuthHeaders())
+		g.ObserveInput("main", responses.MustMarshalJSON("Question"))
+		g.Completed("main", sessionTitleAuthHeaders())
 		<-started
 		cancel()
 		synctest.Wait()
@@ -181,8 +178,8 @@ func TestSessionTitleUpstreamCompletionTrigger(t *testing.T) {
 				provider := serverProviderFunc(func(_, _ context.Context, _ []byte, _ http.Header, _ string) (*http.Response, error) {
 					return serverHTTPResponse(response), nil
 				})
-				executor := requestExecutor{provider: provider, output: io.Discard, titleGenerator: g}
-				_ = executor.execute(t.Context(), t.Context(), request, headers, "main")
+				executor := requestexecution.Executor{Provider: provider, Output: io.Discard, Naming: g}
+				_ = executor.Execute(t.Context(), t.Context(), request, headers, "main")
 				if status == "completed" {
 					if update := awaitSessionTitle(t, g); update.name != "Improve session naming" {
 						t.Fatal("wrong title update", update)
@@ -250,7 +247,7 @@ func TestSessionTitleHTTPConsumer(t *testing.T) {
 	provider := newTestProviderClient(upstream.URL, upstream.Client())
 	g := newTestSessionNaming(t.Context(), provider)
 	g.register(binding.ThreadInfo{ID: "main"})
-	handler := responsesHandler(t.Context(), launchoptions.DefaultRequestTimeout, requestExecutor{provider: provider, client: provider, titleGenerator: g})
+	handler := responsesHandler(t.Context(), launchoptions.DefaultRequestTimeout, requestexecution.Executor{Provider: provider, Client: provider, Naming: g})
 	request := modelTestRequest(t, "gpt-6-sol")
 	request.Fields["input"] = mustTestJSON(t, []any{map[string]any{"role": "user", "content": []any{
 		map[string]any{"type": "input_text", "text": "Private host instructions"},
@@ -346,10 +343,10 @@ func TestSessionTitleSkipsWithoutCodexAccess(t *testing.T) {
 				g := newTestSessionNaming(t.Context(), provider)
 				g.usage = newTestUsage(t)
 				g.register(binding.ThreadInfo{ID: "main"})
-				g.observeInput("main", responses.MustMarshalJSON("First request"))
-				g.completed("main", tc.headers)
-				g.observeInput("main", responses.MustMarshalJSON("Later request"))
-				g.completed("main", sessionTitleAuthHeaders())
+				g.ObserveInput("main", responses.MustMarshalJSON("First request"))
+				g.Completed("main", tc.headers)
+				g.ObserveInput("main", responses.MustMarshalJSON("Later request"))
+				g.Completed("main", sessionTitleAuthHeaders())
 				synctest.Wait()
 				if calls.Load() != 0 || len(g.updates) != 0 {
 					t.Fatal("skipped naming called a provider or emitted a title update")
@@ -395,11 +392,11 @@ func TestSessionTitleUnavailableLunaSkipsSilently(t *testing.T) {
 					return response, nil
 				}))
 				g.register(binding.ThreadInfo{ID: "main"})
-				g.observeInput("main", responses.MustMarshalJSON("Question"))
-				g.completed("main", sessionTitleAuthHeaders())
+				g.ObserveInput("main", responses.MustMarshalJSON("Question"))
+				g.Completed("main", sessionTitleAuthHeaders())
 				synctest.Wait()
-				g.observeInput("main", responses.MustMarshalJSON("Follow-up"))
-				g.completed("main", sessionTitleAuthHeaders())
+				g.ObserveInput("main", responses.MustMarshalJSON("Follow-up"))
+				g.Completed("main", sessionTitleAuthHeaders())
 				synctest.Wait()
 				if calls.Load() != 1 || len(g.updates) != 0 {
 					t.Fatal("unavailable Luna emitted an update, retried, or fell back")
@@ -423,14 +420,14 @@ func TestSessionTitleThirdPartyRequestWithoutCodexAuth(t *testing.T) {
 		headers.Set("Authorization", "Bearer third-party-fixture")
 		const primary = `{"id":"primary","status":"completed","output":[]}`
 		var output strings.Builder
-		executor := requestExecutor{titleGenerator: g, output: &output, provider: serverProviderFunc(func(_, _ context.Context, body []byte, _ http.Header, _ string) (*http.Response, error) {
+		executor := requestexecution.Executor{Naming: g, Output: &output, Provider: serverProviderFunc(func(_, _ context.Context, body []byte, _ http.Header, _ string) (*http.Response, error) {
 			forwarded, err := codexresponses.ParseRequest(body)
 			if err != nil || forwarded.Model() != "opencode-go:test" {
 				t.Error("primary session model was changed")
 			}
 			return serverHTTPResponse(primary), nil
 		})}
-		if err := executor.execute(t.Context(), t.Context(), request, headers, "main"); err != nil {
+		if err := executor.Execute(t.Context(), t.Context(), request, headers, "main"); err != nil {
 			t.Fatal(err)
 		}
 		synctest.Wait()
@@ -456,8 +453,8 @@ func TestSessionTitleFailedManualRenameSurvivesResume(t *testing.T) {
 	}))
 	u.titleGenerator = g
 	g.register(binding.ThreadInfo{ID: "main"})
-	g.observeInput("main", responses.MustMarshalJSON("First request"))
-	g.completed("main", sessionTitleAuthHeaders())
+	g.ObserveInput("main", responses.MustMarshalJSON("First request"))
+	g.Completed("main", sessionTitleAuthHeaders())
 	select {
 	case <-started:
 	case <-time.After(5 * time.Second):

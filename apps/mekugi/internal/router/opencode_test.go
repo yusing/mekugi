@@ -6,10 +6,10 @@ import (
 	"encoding/json/jsontext"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/providers/openai"
-
 	"github.com/yusing/mekugi/providers/opencode"
 
 	json "encoding/json/v2"
@@ -47,7 +47,7 @@ func TestOpenCodeRoutesAndCredentials(t *testing.T) {
 		t.Run(service.Prefix, func(t *testing.T) {
 			for _, stream := range []bool{false, true} {
 				seen := false
-				client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), OpenCode: &service, HTTPClient: &http.Client{
+				client := &inferencegateway.ThirdPartyClient{Diagnostics: requestexecution.ProviderDiagnostics(), OpenCode: &service, HTTPClient: &http.Client{
 					Transport: grokTestTransport(func(request *http.Request) (*http.Response, error) {
 						seen = true
 						if request.URL.String() != service.Endpoint || request.Header.Get("Authorization") != "Bearer "+service.APIKey {
@@ -101,7 +101,7 @@ func TestOpenCodeWebSocketPrewarmContinuationAndDisconnect(t *testing.T) {
 	started := make(chan []byte, 1)
 	stopped := make(chan struct{})
 	provider := newTestProviderClient("http://unused.invalid", nil)
-	provider.OpenCode = map[string]*inferencegateway.ThirdPartyClient{service.Prefix: {Diagnostics: providerCodecDiagnostics(), OpenCode: &service, HTTPClient: &http.Client{
+	provider.OpenCode = map[string]*inferencegateway.ThirdPartyClient{service.Prefix: {Diagnostics: requestexecution.ProviderDiagnostics(), OpenCode: &service, HTTPClient: &http.Client{
 		Transport: grokTestTransport(func(request *http.Request) (*http.Response, error) {
 			body, _ := io.ReadAll(request.Body)
 			started <- body
