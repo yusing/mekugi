@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	history "github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -165,7 +167,8 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	case session = <-ready:
 	}
 	if session.ThirdPartyOnly {
-		catalogDirectory, catalogPath, err := prepareProviderCatalog(ctx, executable, args, session)
+		selectedModels := modelcatalog.Selection{GrokEnabled: session.GrokEnabled, GrokUnprefixed: session.GrokUnprefixed, OpenCode: session.OpenCode}
+		catalogDirectory, catalogPath, err := prepareProviderCatalog(ctx, executable, args, selectedModels)
 		if err != nil {
 			return stopFailedStartup(err)
 		}
@@ -180,7 +183,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 			index = len(args)
 		}
 		args = slices.Insert(slices.Clone(args), index, "-c", fmt.Sprintf("model_catalog_json=%q", catalogPath))
-		args, err = thirdPartyDefaultArgs(args, session)
+		args, err = thirdPartyDefaultArgs(args, selectedModels)
 		if err != nil {
 			return stopFailedStartup(err)
 		}

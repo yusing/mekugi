@@ -7,7 +7,7 @@ import (
 
 	"github.com/yusing/mekugi/providers/opencode"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/router"
+	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
 )
 
 func TestPrepareOpenCodeCatalog(t *testing.T) {
@@ -16,7 +16,7 @@ func TestPrepareOpenCodeCatalog(t *testing.T) {
 		Go:  opencode.ServiceConfig{APIKey: "go-private"},
 		Zen: opencode.ServiceConfig{APIKey: "zen-private"},
 	}
-	directory, path, err := prepareProviderCatalog(t.Context(), executable, nil, router.Session{ThirdPartyOnly: true, OpenCode: config})
+	directory, path, err := prepareProviderCatalog(t.Context(), executable, nil, modelcatalog.Selection{OpenCode: config})
 	if err != nil {
 		t.Fatal(err)
 	}

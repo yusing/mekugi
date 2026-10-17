@@ -19,7 +19,7 @@ import (
 	"github.com/yusing/mekugi/providers/opencode"
 
 	"github.com/creack/pty"
-	"github.com/yusing/mekugi/apps/mekugi/internal/router"
+	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
 )
 
 const testNativeModelCatalog = `{"models":[{"slug":"gpt-5.6-sol","multi_agent_version":"v2","shell_type":"unified_exec","apply_patch_tool_type":"freeform","model_messages":{"instructions_template":"native instructions"}}]}`
@@ -121,7 +121,7 @@ func cancelWhenCatalogReady(t *testing.T) context.Context {
 func TestPrepareGrokCatalogExpiredDeadline(t *testing.T) {
 	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
 	defer cancel()
-	directory, path, err := prepareProviderCatalog(ctx, "not-launched", nil, router.Session{GrokEnabled: true, GrokUnprefixed: true, ThirdPartyOnly: true})
+	directory, path, err := prepareProviderCatalog(ctx, "not-launched", nil, modelcatalog.Selection{GrokEnabled: true, GrokUnprefixed: true})
 	if !errors.Is(err, context.DeadlineExceeded) || directory != "" || path != "" || strings.Contains(err.Error(), "configuration") {
 		t.Fatalf("deadline result = %q, %q, %v", directory, path, err)
 	}
@@ -133,7 +133,7 @@ func TestPrepareGrokCatalog(t *testing.T) {
 	t.Setenv("MEKUGI_TEST_CATALOG_ARGS", record)
 	cwd := t.TempDir()
 	directory, path, err := prepareProviderCatalog(t.Context(), executable,
-		[]string{"resume", "thread", "-C", cwd, "-c", `model_catalog_json="custom.json"`, "--", "prompt"}, router.Session{GrokEnabled: true, GrokUnprefixed: true, ThirdPartyOnly: true})
+		[]string{"resume", "thread", "-C", cwd, "-c", `model_catalog_json="custom.json"`, "--", "prompt"}, modelcatalog.Selection{GrokEnabled: true, GrokUnprefixed: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestPrepareGrokCatalogFailure(t *testing.T) {
 			if mode == "wait" {
 				ctx = cancelWhenCatalogReady(t)
 			}
-			directory, path, err := prepareProviderCatalog(ctx, executable, nil, router.Session{GrokEnabled: true, GrokUnprefixed: true, ThirdPartyOnly: true})
+			directory, path, err := prepareProviderCatalog(ctx, executable, nil, modelcatalog.Selection{GrokEnabled: true, GrokUnprefixed: true})
 			if err == nil || directory != "" || path != "" || strings.Contains(err.Error(), "private bootstrap diagnostic") {
 				t.Fatalf("failure result = %q, %q, %v", directory, path, err)
 			}
@@ -202,9 +202,9 @@ func TestPrepareProviderCatalogAcceptsHostConfigSelectors(t *testing.T) {
 	record := filepath.Join(t.TempDir(), "args.json")
 	t.Setenv("MEKUGI_TEST_CATALOG_ARGS", record)
 	cwd := t.TempDir()
-	for _, session := range []router.Session{
-		{GrokEnabled: true, GrokUnprefixed: true, ThirdPartyOnly: true},
-		{ThirdPartyOnly: true, OpenCode: opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}},
+	for _, session := range []modelcatalog.Selection{
+		{GrokEnabled: true, GrokUnprefixed: true},
+		{OpenCode: opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}},
 	} {
 		directory, _, err := prepareProviderCatalog(t.Context(), executable,
 			[]string{"exec", "--ignore-user-config", "--profile", "work", "-C", cwd, "-c", "model=chosen"}, session)
@@ -237,7 +237,7 @@ func TestPrepareGrokCatalogUsesAbsolutePath(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(cwd, "temporary"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	directory, path, err := prepareProviderCatalog(t.Context(), executable, []string{"-C", cwd}, router.Session{GrokEnabled: true, GrokUnprefixed: true, ThirdPartyOnly: true})
+	directory, path, err := prepareProviderCatalog(t.Context(), executable, []string{"-C", cwd}, modelcatalog.Selection{GrokEnabled: true, GrokUnprefixed: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +304,7 @@ func TestCatalogProgressOutput(t *testing.T) {
 				output <- body
 			}()
 			ctx := cancelWhenCatalogReady(t)
-			_, _, err = prepareProviderCatalog(ctx, executable, nil, router.Session{GrokEnabled: true, GrokUnprefixed: true, ThirdPartyOnly: true})
+			_, _, err = prepareProviderCatalog(ctx, executable, nil, modelcatalog.Selection{GrokEnabled: true, GrokUnprefixed: true})
 			writer.Close()
 			body := string(<-output)
 			if !errors.Is(err, context.Canceled) {
@@ -419,7 +419,7 @@ func TestPrepareCatalogSucceedsWithBrokenProgress(t *testing.T) {
 	original := os.Stderr
 	os.Stderr = stderr
 	defer func() { os.Stderr = original }()
-	directory, path, err := prepareProviderCatalog(t.Context(), executable, nil, router.Session{GrokEnabled: true, GrokUnprefixed: true, ThirdPartyOnly: true})
+	directory, path, err := prepareProviderCatalog(t.Context(), executable, nil, modelcatalog.Selection{GrokEnabled: true, GrokUnprefixed: true})
 	if err != nil {
 		t.Fatalf("auxiliary output failure replaced catalog result: %v", err)
 	}

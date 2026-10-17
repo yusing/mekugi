@@ -12,12 +12,12 @@ import (
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 
 	"github.com/BurntSushi/toml"
-	"github.com/yusing/mekugi/apps/mekugi/internal/router"
+	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
 )
 
 // Explicit invocation models win over Grok's default, which wins over the
 // latest standard model. Codex's own configured default is not a Grok default.
-func thirdPartyDefaultArgs(args []string, session router.Session) ([]string, error) {
+func thirdPartyDefaultArgs(args []string, selection modelcatalog.Selection) ([]string, error) {
 	if launchoptions.HasModelOverride(args) {
 		return args, nil
 	}
@@ -26,10 +26,10 @@ func thirdPartyDefaultArgs(args []string, session router.Session) ([]string, err
 		index = len(args)
 	}
 	model := ""
-	if session.GrokEnabled {
+	if selection.GrokEnabled {
 		model = "grok-4.7"
 	}
-	if home, err := os.UserHomeDir(); err == nil && session.GrokEnabled {
+	if home, err := os.UserHomeDir(); err == nil && selection.GrokEnabled {
 		var config struct {
 			Models struct {
 				Default string `toml:"default"`
@@ -45,12 +45,12 @@ func thirdPartyDefaultArgs(args []string, session router.Session) ([]string, err
 	}
 	if model != "" {
 		model = strings.TrimPrefix(model, "grok:")
-		if !session.GrokUnprefixed {
+		if !selection.GrokUnprefixed {
 			model = "grok:" + model
 		}
 	}
 	if model == "" {
-		model = session.OpenCode.DefaultModel()
+		model = selection.OpenCode.DefaultModel()
 		if model == "" {
 			return nil, errors.New("authenticated third-party providers have no available models")
 		}

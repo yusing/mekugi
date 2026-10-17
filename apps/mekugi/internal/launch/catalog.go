@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
-	"github.com/yusing/mekugi/apps/mekugi/internal/router"
 	"golang.org/x/term"
 )
 
@@ -20,7 +19,7 @@ import (
 // without depending on Codex login.
 // The launched session uses a private static catalog instead of rereading the
 // provider-neutral models cache that other Codex processes can replace.
-func prepareProviderCatalog(ctx context.Context, executable string, args []string, session router.Session) (directory, path string, err error) {
+func prepareProviderCatalog(ctx context.Context, executable string, args []string, selection modelcatalog.Selection) (directory, path string, err error) {
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	stopProgress := startCatalogProgress(ctx, os.Stderr, term.IsTerminal(int(os.Stderr.Fd())))
@@ -65,7 +64,7 @@ func prepareProviderCatalog(ctx context.Context, executable string, args []strin
 	if waitErr != nil {
 		return "", "", fmt.Errorf("codex debug models failed: %w; check that Codex supports this command and its catalog configuration is valid", waitErr)
 	}
-	body, err = modelcatalog.Build(body, modelcatalog.Selection{GrokEnabled: session.GrokEnabled, GrokUnprefixed: session.GrokUnprefixed, OpenCode: session.OpenCode})
+	body, err = modelcatalog.Build(body, selection)
 	if err != nil {
 		return "", "", fmt.Errorf("prepare provider model catalog: %w", err)
 	}

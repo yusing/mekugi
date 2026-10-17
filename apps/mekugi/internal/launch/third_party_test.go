@@ -12,7 +12,7 @@ import (
 	"github.com/yusing/mekugi/providers/opencode"
 
 	"github.com/BurntSushi/toml"
-	"github.com/yusing/mekugi/apps/mekugi/internal/router"
+	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
 )
 
 func TestThirdPartyDefaultModelSelection(t *testing.T) {
@@ -36,7 +36,7 @@ func TestThirdPartyDefaultModelSelection(t *testing.T) {
 			if tc.config != "" {
 				writeGrokConfig(t, directory, tc.config)
 			}
-			args, err := thirdPartyDefaultArgs(tc.args, router.Session{GrokEnabled: true, GrokUnprefixed: tc.unprefixed, ThirdPartyOnly: true})
+			args, err := thirdPartyDefaultArgs(tc.args, modelcatalog.Selection{GrokEnabled: true, GrokUnprefixed: tc.unprefixed})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -63,12 +63,12 @@ func TestThirdPartyExplicitModelSkipsGrokConfig(t *testing.T) {
 		{"-m", "grok-4.5"}, {"--model=grok-4.5"}, {"-mgrok-4.5"},
 		{"-c", `model="grok-4.5"`}, {"--config=model='grok-4.5'"}, {"-cmodel='grok-4.5'"},
 	} {
-		got, err := thirdPartyDefaultArgs(args, router.Session{GrokEnabled: true, GrokUnprefixed: true})
+		got, err := thirdPartyDefaultArgs(args, modelcatalog.Selection{GrokEnabled: true, GrokUnprefixed: true})
 		if err != nil || !slices.Equal(got, args) {
 			t.Fatalf("explicit model changed: %q, %v", got, err)
 		}
 	}
-	if _, err := thirdPartyDefaultArgs(nil, router.Session{GrokEnabled: true}); err == nil || !strings.Contains(err.Error(), "select a model with -m") {
+	if _, err := thirdPartyDefaultArgs(nil, modelcatalog.Selection{GrokEnabled: true}); err == nil || !strings.Contains(err.Error(), "select a model with -m") {
 		t.Fatalf("invalid default config was not actionable: %v", err)
 	}
 }
@@ -92,7 +92,7 @@ func TestThirdPartyOpenCodeDefault(t *testing.T) {
 		{opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}, Zen: opencode.ServiceConfig{APIKey: "test"}}, "opencode-go:"},
 		{opencode.Config{Zen: opencode.ServiceConfig{APIKey: "test"}}, "opencode-zen:"},
 	} {
-		args, err := thirdPartyDefaultArgs(nil, router.Session{ThirdPartyOnly: true, OpenCode: tc.providers})
+		args, err := thirdPartyDefaultArgs(nil, modelcatalog.Selection{OpenCode: tc.providers})
 		var config struct{ Model string }
 		if err != nil {
 			t.Fatal(err)
@@ -156,7 +156,7 @@ func TestThirdPartyDefaultsKeepUserResumeProvenance(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			args, err = thirdPartyDefaultArgs(args, router.Session{GrokEnabled: true, GrokUnprefixed: mode == "grok"})
+			args, err = thirdPartyDefaultArgs(args, modelcatalog.Selection{GrokEnabled: true, GrokUnprefixed: mode == "grok"})
 			if err != nil || !launchoptions.HasModelOverride(args) {
 				t.Fatalf("startup model missing: %q, %v", args, err)
 			}
