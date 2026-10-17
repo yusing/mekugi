@@ -79,9 +79,8 @@ type appServerUI struct {
 	replay                  *uiReplayPlayback // Offline transport controls; nil for live sessions.
 	clock                   func() time.Time  // Optional presentation clock for offline replay.
 	backendVersion          string
-	title                   string            // Host-confirmed thread name, independent of naming work.
-	pendingTitle            string            // Manual name entered before the host thread exists.
-	titleRenames            map[string]string // Latest manual name awaiting host confirmation, by thread.
+	title                   string // Host-confirmed thread name, independent of naming work.
+	names                   sessioncontrol.Names
 	titleGenerator          *sessionNaming
 	titleUpdates            <-chan sessionTitleUpdate
 	btw                     *appServerBTW
@@ -463,7 +462,7 @@ func startAppServerUI(views *sessionpresentation.Service, conversation *conversa
 type appServerRequest struct {
 	label  string
 	side   *appServerBTW
-	title  *sessionTitleRequest
+	title  *sessioncontrol.NameSave
 	status *appServerStatusReport
 }
 
@@ -733,10 +732,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			u.sessionPresentation().Status.SetText("Ready")
 			u.title = result.Thread.Name
 			u.titleGenerator.register(result.Thread)
-			if u.pendingTitle != "" {
-				name := u.pendingTitle
-				u.pendingTitle = ""
-				u.renameSessionTitle(name)
+			if name := u.names.Attach(u.Thread); name != "" {
+				u.titleGenerator.nameChanged(u.Thread, name)
+				u.requestSessionTitle(u.names.Next(u.Thread))
 			}
 			u.model, u.reasoningEffort, u.serviceTier = result.Model, result.ReasoningEffort, result.ServiceTier
 			if method == "thread/resume" {

@@ -180,8 +180,8 @@ func TestAppServerSessionTitleComposerRename(t *testing.T) {
 				t.Fatal("manual title not immediately visible")
 			}
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, request.ID))
-			if u.title != "修復 session title" || len(u.titleRenames) != 0 {
-				t.Fatalf("manual title not confirmed: title=%q pending=%v", u.title, u.titleRenames)
+			if u.title != "修復 session title" || u.names.Pending("main") != "" {
+				t.Fatalf("manual title not confirmed: title=%q pending=%v", u.title, u.names.Pending("main"))
 			}
 			u.persistSessionTitle(sessionTitleUpdate{thread: "main", name: "Late generated title"})
 			if wire.Len() != 0 {
@@ -216,8 +216,8 @@ func TestAppServerSessionTitleBeforeSessionStart(t *testing.T) {
 			u.Thread, u.resumeThread = "", "saved"
 			u.titleGenerator = newTestSessionNaming(t.Context(), nil)
 			appServerTestKeys(t, u, "/title First name\r/title Final name\r")
-			if wire.Len() != 0 || u.pendingTitle != "Final name" || !strings.Contains(u.mainHeaderRight(120, true), "Final name") {
-				t.Fatalf("pre-session title: pending=%q wire=%q", u.pendingTitle, wire.String())
+			if wire.Len() != 0 || u.names.Pending("") != "Final name" || !strings.Contains(u.mainHeaderRight(120, true), "Final name") {
+				t.Fatalf("pre-session title: pending=%q wire=%q", u.names.Pending(""), wire.String())
 			}
 			appServerTestRequest(t, u, "100", method)
 			appServerTestMessage(t, u, `{"id":100,"result":{"thread":{"id":"saved","name":""}}}`)
@@ -229,7 +229,7 @@ func TestAppServerSessionTitleBeforeSessionStart(t *testing.T) {
 			if len(requests) != wantRequests || requests[0].Method != "thread/name/set" || requests[0].Params.ThreadID != "saved" || requests[0].Params.Name != "Final name" || requests[1].Method != "model/list" {
 				t.Fatalf("start title persistence: %+v", requests)
 			}
-			if u.pendingTitle != "" || u.titleGenerator.acceptCandidate("saved") || !strings.Contains(u.mainHeaderRight(120, true), "Final name") {
+			if u.names.Pending("") != "" || u.titleGenerator.acceptCandidate("saved") || !strings.Contains(u.mainHeaderRight(120, true), "Final name") {
 				t.Fatal("thread creation lost the manual title or enabled generation")
 			}
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, requests[0].ID))
@@ -272,8 +272,8 @@ func TestAppServerSessionTitleManualSaveFailure(t *testing.T) {
 				request := sessionTitleTestOne(t, wire)
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"unavailable"}}`, request.ID))
 			}
-			if u.title != "Saved title" || len(u.titleRenames) != 0 || appServerTestPendingTitle(u) || u.feedback.Text == "" || u.feedback.Alert || !u.dirty || u.Turn != "active-turn" || u.sessionPresentation().Status.Text != "Working" {
-				t.Fatalf("manual save failure: title=%q pending=%v notice=%q turn=%q status=%q", u.title, u.titleRenames, u.feedback.Text, u.Turn, u.sessionPresentation().Status.Text)
+			if u.title != "Saved title" || u.names.Pending("main") != "" || appServerTestPendingTitle(u) || u.feedback.Text == "" || u.feedback.Alert || !u.dirty || u.Turn != "active-turn" || u.sessionPresentation().Status.Text != "Working" {
+				t.Fatalf("manual save failure: title=%q pending=%v notice=%q turn=%q status=%q", u.title, u.names.Pending("main"), u.feedback.Text, u.Turn, u.sessionPresentation().Status.Text)
 			}
 		})
 	}
@@ -310,7 +310,7 @@ func TestAppServerSessionTitleSerializesManualRenames(t *testing.T) {
 					t.Fatal("older confirmation overwrote pending manual display")
 				}
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, latest.ID))
-				if u.title != "Latest name" || len(u.titleRenames) != 0 {
+				if u.title != "Latest name" || u.names.Pending("main") != "" {
 					t.Fatal("latest title not confirmed")
 				}
 			})
@@ -324,12 +324,12 @@ func TestAppServerSessionTitleManualThreadIsolation(t *testing.T) {
 	request := sessionTitleTestOne(t, wire)
 	u.Thread, u.title, u.dirty = "replacement", "Replacement name", false
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, request.ID))
-	if u.title != "Replacement name" || u.dirty || len(u.titleRenames) != 0 {
+	if u.title != "Replacement name" || u.dirty || u.names.Pending("main") != "" {
 		t.Fatal("old manual rename changed the replacement thread")
 	}
 	u.Replacement.Clear()
 	appServerTestKeys(t, u, "/title During replacement\r")
-	if u.Text != "/title During replacement" || wire.Len() != 0 || len(u.titleRenames) != 0 {
+	if u.Text != "/title During replacement" || wire.Len() != 0 || u.names.Pending("main") != "" {
 		t.Fatal("replacement rename targeted the previous thread or lost the command")
 	}
 }

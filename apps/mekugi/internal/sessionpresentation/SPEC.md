@@ -135,11 +135,10 @@ requests or manufactures host-resumable history.
 ## Session title and progress
 
 `/title NAME` immediately names Main without interrupting work or submitting model
-input, then saves through `thread/name/set`. Empty names only show usage. Before
-host identity exists the latest name waits; during replacement the command keeps
-its draft for the new session. Manual names suppress automatic naming immediately
-and survive resume/fork. Ordered saves prevent pending generated names from
-overwriting them. Failure restores the last confirmed name with nonfatal feedback.
+input, then saves through [session control](../sessioncontrol/SPEC.md#thread-names).
+Empty names only show usage; during replacement the command keeps its draft for
+the new session. The header shows the latest pending manual name, falling back
+to the confirmed name on failure. Confirmed names survive resume/fork.
 [Session naming](../../../../modules/sessionnaming/SPEC.md) owns automatic eligibility
 and generation; candidates remain hidden until host confirmation.
 

@@ -106,6 +106,20 @@ a completed turn. Interruption/unsubscription targets only that side thread;
 its notifications never become Main observations. Closing the dock drops its
 visible exchange, not pending host correlation.
 
+## Thread names
+
+Manual names entered before host identity wait for the admitted thread. Once
+identified, each thread serializes its name saves and retains only the latest
+queued manual name. Manual input suppresses optional generation before persistence,
+including a failed save. A generated candidate cannot pass a pending manual name.
+
+The request ledger owns wire correlation; name control retains semantic admission
+and settlement only. Acknowledgement releases the next queued name. Failure keeps
+the confirmed name and produces nonfatal feedback unless a newer name is pending.
+Responses and host name notifications remain scoped to their original thread and
+cannot rename a displayed replacement. Name saves remain independent of Main's
+turn, input settlement and session replacement.
+
 ## Applied settings
 
 `/model`, `/effort` (alias `/reasoning`) and `/tier` accept explicit values or show

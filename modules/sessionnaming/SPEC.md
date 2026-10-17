@@ -48,8 +48,9 @@ from host metadata and never revives an operation.
 The binding registers a per-thread naming factory. Application dispatch supplies
 accepted metadata, original request input, name updates, and successful upstream
 exchange completion at their existing sites. Completion is not inferred from a
-turn-completed notification. The application's name-save path issues every
-`thread/name/set` request and reconciles acknowledgement, ordering, and failure.
+turn-completed notification. The application's
+[name control](../../apps/mekugi/internal/sessioncontrol/SPEC.md#thread-names) issues
+every `thread/name/set` request and reconciles acknowledgement, ordering and failure.
 
 The inference adapter captures authentication from the successful triggering
 exchange and attributes accounting to its originating thread. Authentication,

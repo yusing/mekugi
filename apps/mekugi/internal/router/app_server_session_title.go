@@ -4,15 +4,12 @@ import (
 	json "encoding/json/v2"
 	"strings"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/libraries/terminalui"
 )
-
-type sessionTitleRequest struct {
-	sessionTitleUpdate
-	manual bool
-}
 
 func (u *appServerUI) titleCommand(text string) bool {
 	if fields := strings.Fields(text); len(fields) == 0 || fields[0] != "/title" {
@@ -35,66 +32,47 @@ func (u *appServerUI) titleCommand(text string) bool {
 
 func (u *appServerUI) renameSessionTitle(name string) {
 	u.dirty = true
+	u.names.Manual(u.Thread, name)
 	if u.Thread == "" {
-		u.pendingTitle = name
 		return
 	}
-	if u.titleRenames == nil {
-		u.titleRenames = make(map[string]string)
-	}
-	u.titleRenames[u.Thread] = name
-	// Stop naming before persistence, including a result already in flight.
+	// Suppress generation before persistence, even if transport rejects the save.
 	u.titleGenerator.nameChanged(u.Thread, name)
-	u.flushTitleRename(u.Thread)
+	u.requestSessionTitle(u.names.Next(u.Thread))
 }
 
-func (u *appServerUI) flushTitleRename(thread string) {
-	name := u.titleRenames[thread]
-	if name == "" {
+// Automatic candidates become visible only after host confirmation.
+func (u *appServerUI) persistSessionTitle(update sessionTitleUpdate) {
+	if !u.names.AllowsGenerated(update.thread) || !u.titleGenerator.acceptCandidate(update.thread) {
 		return
 	}
-	for _, request := range u.requests.All() {
-		if request.Owner.title != nil && request.Owner.title.thread == thread {
-			return // Serialize writes so an older name cannot win at the host.
-		}
-	}
-	if !u.requestSessionTitle(sessionTitleUpdate{thread: thread, name: name}, true) {
-		delete(u.titleRenames, thread)
-	}
+	u.requestSessionTitle(u.names.Generated(update.thread, update.name))
 }
 
-// Automatic naming results are displayed only after host confirmation.
-func (u *appServerUI) persistSessionTitle(update sessionTitleUpdate) {
-	if u.titleRenames[update.thread] != "" || !u.titleGenerator.acceptCandidate(update.thread) {
-		return // A host rename won the race against automatic naming.
+func (u *appServerUI) requestSessionTitle(save *sessioncontrol.NameSave) {
+	if save == nil {
+		return
 	}
-	u.requestSessionTitle(update, false)
-}
-
-func (u *appServerUI) requestSessionTitle(update sessionTitleUpdate, manual bool) bool {
-	_, err := u.requests.Send("thread/name/set", map[string]any{"threadId": update.thread, "name": update.name}, "", appServerRequest{title: &sessionTitleRequest{sessionTitleUpdate: update, manual: manual}})
+	_, err := u.requests.Send("thread/name/set", map[string]any{"threadId": save.Thread, "name": save.Name}, "", appServerRequest{title: save})
 	if err != nil {
+		u.names.Complete(*save)
 		u.setNotice("Session title could not be saved", false)
 		u.dirty = true
-		return false
 	}
-	return true
 }
 
-func (u *appServerUI) sessionTitleMessage(m appserver.Message, update *sessionTitleRequest) bool {
+func (u *appServerUI) sessionTitleMessage(m appserver.Message, update *sessioncontrol.NameSave) bool {
 	if update != nil {
-		if update.manual && u.titleRenames[update.thread] == update.name {
-			delete(u.titleRenames, update.thread)
-		}
+		latest := u.names.Complete(*update)
 		if m.Error != nil {
-			if update.thread == u.Thread && u.titleRenames[update.thread] == "" {
+			if update.Thread == u.Thread && latest {
 				u.setNotice("Session title could not be saved: "+m.Error.Message, false)
 				u.dirty = true
 			}
 		} else {
-			u.confirmSessionTitle(update.thread, update.name)
+			u.confirmSessionTitle(update.Thread, update.Name)
 		}
-		u.flushTitleRename(update.thread)
+		u.requestSessionTitle(u.names.Next(update.Thread))
 		return true
 	}
 	if m.Method != "thread/name/updated" {
@@ -125,9 +103,7 @@ func (u *appServerUI) confirmSessionTitle(thread, name string) {
 func (u *appServerUI) mainHeaderRight(width int, focused bool) string {
 	scroll := scrollLabel(u.view)
 	name := u.title
-	if u.Thread == "" && u.pendingTitle != "" {
-		name = u.pendingTitle
-	} else if pending := u.titleRenames[u.Thread]; pending != "" {
+	if pending := u.names.Pending(u.Thread); pending != "" {
 		name = pending
 	}
 	title := strings.Join(strings.Fields(pickerText(name)), " ")
