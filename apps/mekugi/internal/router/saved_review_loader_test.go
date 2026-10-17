@@ -241,4 +241,14 @@ func TestSavedReviewLoaderOfflineHasNoWorker(t *testing.T) {
 		t.Fatal("offline Diff allocated a storage worker or update channel")
 	}
 	loader.close()
+	u, _ := newAppServerTestUI()
+	u.ensureShell()
+	u.shell.applyDiff(t.Context(), savedReviewLoaderScope("/workspace", true, "main"))
+	if u.shell.diffFailure != "" || !u.shell.saved.scope.Workspaces["/workspace"]["main"] || u.shell.saved.data.Publication.Counts.Net != nil {
+		t.Fatal("attachment without retained storage rejected scope or claimed known counts")
+	}
+	u.shell.applyDiff(t.Context(), reviewEvent{Kind: "change", Changes: []reviewChange{{Workspace: "/workspace", Thread: "main", ID: "amber1", Calls: []string{"call"}}}})
+	if u.shell.diffFailure == "" {
+		t.Fatal("referencing change without storage did not report unavailable evidence")
+	}
 }

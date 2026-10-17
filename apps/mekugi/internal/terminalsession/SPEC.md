@@ -28,6 +28,9 @@ responsive. Restored input that depends on retained evidence waits for loading t
 settle. Successful views replace the previous retained view together; missing
 evidence or exhausted read capacity reports unavailability instead of empty
 history. Attachment replacement rejects stale results without waiting for storage.
+Attachments without a retained-review source still accept scope and lifecycle
+updates. They expose no saved evidence; a referencing change cannot be loaded
+without its source.
 
 ## Input
 

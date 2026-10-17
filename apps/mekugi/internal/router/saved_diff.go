@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"errors"
 
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
 
@@ -45,8 +46,10 @@ func (c *savedDiff) applyEvent(ctx context.Context, events ...reviewEvent) (bool
 		case "coverage":
 			next.coverage, changed = event.Status, true
 		case "scope":
-			if err := reconcileReview(ctx, next.store, builder, *event.Scope); err != nil {
-				return false, err
+			if next.store != nil {
+				if err := reconcileReview(ctx, next.store, builder, *event.Scope); err != nil {
+					return false, err
+				}
 			}
 			next.scope, next.coverage = *event.Scope, event.Status
 			changed, content = true, true
@@ -54,6 +57,9 @@ func (c *savedDiff) applyEvent(ctx context.Context, events ...reviewEvent) (bool
 			for _, change := range event.Changes {
 				if !next.scope.Workspaces[change.Workspace][change.Thread] {
 					continue
+				}
+				if next.store == nil {
+					return false, errors.New("saved change evidence is unavailable")
 				}
 				if err := hydrateReview(ctx, next.store, builder, change); err != nil {
 					return false, err
