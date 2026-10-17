@@ -171,7 +171,7 @@ func TestNativeCapturedBatchKeepsSingleElapsedResult(t *testing.T) {
 					for _, block := range u.view.Disclosure.Blocks(entry.Values) {
 						if block.BatchExit {
 							count++
-							if block.Duration != time.Second || block.ExitCode != exit || block.Output == 0 || strings.Join(u.view.retainedOutput(block).View().Lines, "\n") != "retained batch output" {
+							if block.Duration != time.Second || block.ExitCode != exit || block.Output == 0 || strings.Join(u.view.retainedOutput(block.Source, block.Output).View().Lines, "\n") != "retained batch output" {
 								t.Fatalf("receipt lost batch timing, exit or output: %+v", block)
 							}
 						} else if block.Duration != 0 || block.ExitCode != 0 {

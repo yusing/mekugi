@@ -1,7 +1,7 @@
 package router
 
 import (
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	json "encoding/json/v2"
 	"fmt"
@@ -127,7 +127,7 @@ func (u *appServerUI) bindSkills(d *conversationmodel.Input, final bool) {
 			catalog = append(catalog, composer.Token{Name: choice.Name, Path: choice.Path})
 		}
 	}
-	spans := terminalsession.DraftSpans(d.Draft)
+	spans := sessionpresentation.DraftSpans(d.Draft)
 	for _, binding := range unambiguousSkillBindings(d.Text, catalog, nil) {
 		if !final && binding.End == len(d.Text) {
 			continue // A still-growing word stays editable.
@@ -146,7 +146,7 @@ func (u *appServerUI) skillBindingQuery(d conversationmodel.Input, final bool) s
 		return ""
 	}
 	at := 0
-	spans := terminalsession.DraftSpans(d.Draft)
+	spans := sessionpresentation.DraftSpans(d.Draft)
 	for word := range strings.FieldsSeq(d.Text) {
 		start := at + strings.Index(d.Text[at:], word)
 		at = start + len(word)

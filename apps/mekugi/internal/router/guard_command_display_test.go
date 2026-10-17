@@ -213,7 +213,7 @@ func TestUISnapshotGuardCommandOutputDialog(t *testing.T) {
 	}}}})
 	entry := u.view.Entries[0]
 	pages := activityui.Disclosure(nil).Blocks(commandPresentation(entry.Source).DetailValues())
-	if len(pages) != 1 || pages[0].Code != source || entry.Source.native.command != command || u.view.retainedOutput(pages[0]) != entry.Source.native.output {
+	if len(pages) != 1 || pages[0].Code != source || entry.Source.native.command != command || u.view.retainedOutput(pages[0].Source, pages[0].Output) != entry.Source.native.output {
 		t.Fatalf("combined output pages = %+v; want original command display and unchanged host output", pages)
 	}
 	terminal := &terminalUI{main: u}

@@ -57,25 +57,6 @@ func (v *activityAdapter) publishActivity() {
 	v.View.Update(publication, activityui.Display{Caller: display.Displayed.Caller, Attachment: display.Version.Attachment, Revision: display.Version.Revision})
 }
 
-// resolveOutputDemands reads admitted source handles without accessing a renderer.
-// Application integration delivers the detached results to the requesting view.
-func (v *activityAdapter) resolveOutputDemands(demands []activityui.OutputDemand) []activityui.OutputResult {
-	results := make([]activityui.OutputResult, 0, len(demands))
-	for _, demand := range demands {
-		result := activityui.OutputResult{Demand: demand}
-		output := v.retainedOutput(activityui.Block{Source: demand.Source, Output: demand.Output})
-		if output == nil {
-			result.View.Released = true
-		} else if demand.Mode == activityui.OutputExpanded {
-			result.View = output.View()
-		} else {
-			result.View, result.Limited = output.Context(activityui.OutputContextBytes)
-		}
-		results = append(results, result)
-	}
-	return results
-}
-
 func (v *activityAdapter) Render(width, height int, now time.Time) []string {
 	v.publishActivity()
 	for {

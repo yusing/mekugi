@@ -225,9 +225,10 @@ or release. Consumers can use the output version to avoid rebuilding unchanged
 views. Restored output comes from retained host aggregates or validated segment
 reports, never reconstructed unrecorded streams.
 
-Terminal output requests name their source, output and version. Application
-integration resolves them against the attached retention owner and returns
-detached bounded or expanded snapshots; the renderer has no retained handle.
+Output requests are renderer-neutral values naming source, output, version and a
+byte bound, or the complete retained snapshot. Application integration resolves
+them against the attached retention owner and returns detached snapshots; the
+renderer chooses its syntax-context bound and has no retained handle.
 
 ## Lifecycle and integration
 

@@ -34,7 +34,7 @@ func (v *View) discloseBlock(block Block) Block {
 		block.Collapsed = false
 		block.Expanded = true
 		block.SourceRows, block.TailRows = 0, 0
-		if result, exists := v.output(block, OutputExpanded); exists && !result.View.Released {
+		if result, exists := v.output(block, 0); exists && !result.View.Released {
 			block.Tail, block.TailOmitted = result.View.Lines, result.View.Dropped
 		}
 	}

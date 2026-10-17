@@ -1,9 +1,9 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"bytes"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	json "encoding/json/v2"
 	"fmt"
@@ -43,7 +43,7 @@ func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 	questionTestPaint(t, u, 70)
 	first, second := answerImageFixture(t), answerImageFixture(t)
 	appServerTestKeys(t, u, "\x1b[200~"+first+"\x1b[201~")
-	if u.Text != "[Image 1] " || len(u.Images) != 1 || len(terminalsession.DraftSpans(u.draftSnapshot().Draft)) != 1 {
+	if u.Text != "[Image 1] " || len(u.Images) != 1 || len(sessionpresentation.DraftSpans(u.draftSnapshot().Draft)) != 1 {
 		t.Fatalf("answer did not reuse composer: %q %+v", u.Text, u.Images)
 	}
 	u.insertSelection("message", "first quote", "")

@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"bytes"
 	"context"
 	"encoding/json/jsontext"
@@ -14,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/charmbracelet/x/ansi"
@@ -50,7 +50,7 @@ func TestSubmittedAttachmentHostSchema(t *testing.T) {
 	if _, ok := input[0]["text_elements"]; !ok {
 		t.Fatal("host field absent")
 	}
-	composer, _ := activityui.LayoutSpans(text, terminalsession.DraftSpans(draft.Draft), 80)
+	composer, _ := activityui.LayoutSpans(text, sessionpresentation.DraftSpans(draft.Draft), 80)
 	submitted, _ := activityui.LayoutSpans(text, spans, 80)
 	if !reflect.DeepEqual(composer, submitted) {
 		t.Fatal("submitted tokens differ from composer styles")

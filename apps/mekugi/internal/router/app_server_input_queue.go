@@ -6,7 +6,6 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -152,7 +151,7 @@ func (u *appServerUI) send(parts []conversationmodel.Input, steer bool) error {
 		if len(binding.QuestionReplies(s.Text)) == 0 {
 			echo := u.view.LastSeq + 1
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: echo, Agent: "You", Kind: "text", Text: s.Text, Observed: u.now(),
-				native: &liveActivityNativeItem{thread: u.Thread, item: "input/" + id, phase: "input/pending", spans: terminalsession.DraftSpans(s.Draft)}}}})
+				native: &liveActivityNativeItem{thread: u.Thread, item: "input/" + id, phase: "input/pending", spans: sessionpresentation.DraftSpans(s.Draft)}}}})
 		}
 	}
 	for _, image := range s.Images {

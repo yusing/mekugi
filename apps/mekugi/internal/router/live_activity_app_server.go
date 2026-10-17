@@ -1,9 +1,9 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"encoding/json/jsontext"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	json "encoding/json/v2"
 	"fmt"
@@ -122,7 +122,7 @@ func appServerUserText(content jsontext.Value) (string, []activitypresentation.T
 	}
 	draft := conversationmodel.Input{Text: text}
 	draft.Skills = unambiguousSkillBindings(text, composerContentSkills(contents), spans)
-	for _, span := range terminalsession.DraftSpans(draft.Draft) {
+	for _, span := range sessionpresentation.DraftSpans(draft.Draft) {
 		if !slices.ContainsFunc(spans, func(existing activitypresentation.TextSpan) bool {
 			return span.Start < existing.End && span.End > existing.Start
 		}) {

@@ -195,6 +195,10 @@ Effects returned to the renderer identify pending input and changed prompt recor
 without embedding cursor positions, painted sequences or host response handles.
 Acquisition and transport remain outside the serialized presentation transition.
 
+Draft token annotations are shared between submission projection and terminal
+editing. Session Presentation maps Conversation's existing atomic spans to source
+annotations; wrapping, painting and cursor geometry remain terminal-owned.
+
 Compaction, interruption and settings acknowledgements apply their control
 dispositions to the same Conversation queues without a renderer. Rejected compact
 starts restore the command before waiting input; rejected prerequisite interrupts

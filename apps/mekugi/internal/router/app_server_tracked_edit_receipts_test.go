@@ -126,7 +126,7 @@ func TestAppServerTrackedEditReceiptPreservesSegments(t *testing.T) {
 					switch {
 					case block.Code == sources[0]:
 						t.Fatalf("successful edit source leaked into Activity: %+v", block)
-					case block.Verb == "Edited" && view.retainedOutput(block) == output:
+					case block.Verb == "Edited" && view.retainedOutput(block.Source, block.Output) == output:
 						outputKept = block.ExitCode == 0 && block.Segment && block.Label == "`a.go`" && block.EditSource == ""
 					case block.Verb == "Run" && block.Code == sources[2]:
 						testKept = block.ExitCode == 2 && strings.Join(block.Tail, "") == "test failed"
@@ -266,7 +266,7 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 				restored.applyCapturedEdits()
 				assertTrackedReceiptStats(t, view, 0)
 				last := view.blocks(0)[len(view.blocks(0))-1]
-				if last.Verb != "Run" || last.ExitCode != 2 || last.Output == 0 || strings.Join(view.retainedOutput(last).View().Lines, "\n") != "test failed" {
+				if last.Verb != "Run" || last.ExitCode != 2 || last.Output == 0 || strings.Join(view.retainedOutput(last.Source, last.Output).View().Lines, "\n") != "test failed" {
 					t.Fatalf("restored neighbor lost retained failure/output: %+v", last)
 				}
 			}
@@ -291,10 +291,10 @@ func TestAppServerTrackedEditReceiptKeepsSiblingCombinedOutput(t *testing.T) {
 		for range 2 {
 			u.view.applyCapturedEdits(data)
 			blocks := u.view.blocks(0)
-			if len(blocks) != 1 || blocks[0].Verb != "Edited" || blocks[0].Code != "" || u.view.retainedOutput(blocks[0]) != output || !reflect.DeepEqual(blocks[0].Tail, tail) {
+			if len(blocks) != 1 || blocks[0].Verb != "Edited" || blocks[0].Code != "" || u.view.retainedOutput(blocks[0].Source, blocks[0].Output) != output || !reflect.DeepEqual(blocks[0].Tail, tail) {
 				t.Fatalf("grouped sibling lost combined host output: %+v", blocks)
 			}
-			if page := u.view.Painter.DialogPage(snapshotOutput(blocks[0], u.view.retainedOutput(blocks[0])), 100); page.Text != "host diagnostic" {
+			if page := u.view.Painter.DialogPage(snapshotOutput(blocks[0], u.view.retainedOutput(blocks[0].Source, blocks[0].Output)), 100); page.Text != "host diagnostic" {
 				t.Fatalf("combined output dialog lost content: %q", page.Text)
 			}
 		}

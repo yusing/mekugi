@@ -66,7 +66,7 @@ func TestTrackedCompletionPrecedesReportSettlement(t *testing.T) {
 			awaitMain(t, u, "Running echo last")
 			seq := u.view.Entries[0].Source.Seq
 			target := activityui.Block{Source: seq, Output: 2}
-			retained := u.view.retainedOutput(target)
+			retained := u.view.retainedOutput(target.Source, target.Output)
 			if retained == nil || strings.Join(retained.View().Lines, "\n") != "first" {
 				t.Fatal("running segment output was not retained")
 			}
@@ -81,7 +81,7 @@ func TestTrackedCompletionPrecedesReportSettlement(t *testing.T) {
 					t.Fatalf("neutral consumer lost completed aggregate: %+v", entry.Values)
 				}
 			}
-			if u.runningProcessCount() != 0 || u.view.retainedOutput(target) != retained {
+			if u.runningProcessCount() != 0 || u.view.retainedOutput(target.Source, target.Output) != retained {
 				t.Fatal("report wait revived execution or retired the displayed segment target")
 			}
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.session.next(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", native: &liveActivityNativeItem{thread: "main", item: "cmd"}}}})

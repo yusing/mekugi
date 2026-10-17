@@ -263,7 +263,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 			}
 			if target == "child-missing-workspace" {
 				pages := activityui.Disclosure(nil).Blocks(commandPresentation(entry).DetailValues())
-				if len(entry.native.segments) != 0 || len(pages) != 1 || pages[0].Label != "combined output" || strings.Join(view.retainedOutput(pages[0]).View().Lines, "\n") != "first\nsecond" {
+				if len(entry.native.segments) != 0 || len(pages) != 1 || pages[0].Label != "combined output" || strings.Join(view.retainedOutput(pages[0].Source, pages[0].Output).View().Lines, "\n") != "first\nsecond" {
 					t.Fatalf("missing workspace borrowed a report or lost combined output: %+v", entry)
 				}
 				if _, err := store.publication.ReadCatalog(history.SessionName(target)); !os.IsNotExist(err) {
@@ -383,7 +383,7 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 			u.restoreCommandSegments(&entry, item, workspace)
 			u.view.Entries = []liveActivityRecord{{Source: entry}}
 			pages := activityui.Disclosure(nil).Blocks(commandPresentation(entry).DetailValues())
-			if len(pages) != 1 || pages[0].Label != "combined output" || u.view.retainedOutput(pages[0]).View().Exit != 1 || strings.Join(u.view.retainedOutput(pages[0]).View().Lines, "\n") != "one" {
+			if len(pages) != 1 || pages[0].Label != "combined output" || u.view.retainedOutput(pages[0].Source, pages[0].Output).View().Exit != 1 || strings.Join(u.view.retainedOutput(pages[0].Source, pages[0].Output).View().Lines, "\n") != "one" {
 				t.Fatalf("missing evidence fabricated output: %+v", pages)
 			}
 			wantStates := mode == "lossy" || mode == "released" || mode == "truncated" || mode == "long-line"

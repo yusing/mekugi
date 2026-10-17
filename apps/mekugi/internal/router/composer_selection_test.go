@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"encoding/json/jsontext"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
@@ -37,7 +38,7 @@ func TestComposerSelectionMentionIsOneToken(t *testing.T) {
 	if want := "see [Selected message] [Selected message 2] "; u.Text != want {
 		t.Fatalf("draft = %q, want %q", u.Text, want)
 	}
-	spans := terminalsession.DraftSpans(u.draftSnapshot().Draft)
+	spans := sessionpresentation.DraftSpans(u.draftSnapshot().Draft)
 	if len(spans) != 2 || spans[0].Kind != activitypresentation.SelectionToken || u.Text[spans[1].Start:spans[1].End] != "[Selected message 2]" {
 		t.Fatalf("spans = %+v", spans)
 	}

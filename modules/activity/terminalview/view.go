@@ -41,8 +41,8 @@ type View struct {
 	MainSummary    []Block
 	DisplayRequest *DisplayIntent
 	outputVersions map[outputIdentity]int
-	outputCache    map[OutputDemand]OutputResult
-	outputDemands  []OutputDemand
+	outputCache    map[activitypresentation.OutputDemand]activitypresentation.OutputResult
+	outputDemands  []activitypresentation.OutputDemand
 	completed      map[uint64]time.Time
 	commandFrames  map[uint64]*heldCommandFrame
 	collapsed      map[uint64]bool

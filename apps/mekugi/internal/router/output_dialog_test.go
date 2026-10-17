@@ -234,13 +234,13 @@ func TestOutputDialogNativeMergeKeepsRetainedOutputIdentity(t *testing.T) {
 	if len(u.view.Entries) != 1 || len(u.view.blocks(0)) == 0 {
 		t.Fatal("start did not create command block")
 	}
-	retained := u.view.retainedOutput(u.view.blocks(0)[len(u.view.blocks(0))-1])
+	retained := u.view.retainedOutput(u.view.blocks(0)[len(u.view.blocks(0))-1].Source, u.view.blocks(0)[len(u.view.blocks(0))-1].Output)
 	if retained == nil {
 		t.Fatal("started command has no retained output")
 	}
 	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "cmd", "delta": "streamed\n"})
 	u.flushStreamOutput()
-	if got := u.view.retainedOutput(u.view.blocks(0)[len(u.view.blocks(0))-1]); got != retained {
+	if got := u.view.retainedOutput(u.view.blocks(0)[len(u.view.blocks(0))-1].Source, u.view.blocks(0)[len(u.view.blocks(0))-1].Output); got != retained {
 		t.Fatal("delta changed retained output identity")
 	}
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, "aggregate\nfinal\n"
@@ -819,7 +819,7 @@ func TestOutputDialogFoldedStageKeepsSegmentPages(t *testing.T) {
 		t.Fatal("feed lost folded stage membership")
 	}
 	pages := activityui.Disclosure(nil).Blocks(commandPresentation(entry).DetailValues())
-	if len(pages) != 2 || pages[0].Verb != "Stage" || pages[1].Verb != "Commit" || view.retainedOutput(pages[0]) != stage || view.retainedOutput(pages[1]) != commit {
+	if len(pages) != 2 || pages[0].Verb != "Stage" || pages[1].Verb != "Commit" || view.retainedOutput(pages[0].Source, pages[0].Output) != stage || view.retainedOutput(pages[1].Source, pages[1].Output) != commit {
 		t.Fatalf("stage pages = %+v", pages)
 	}
 	ui := &terminalUI{}

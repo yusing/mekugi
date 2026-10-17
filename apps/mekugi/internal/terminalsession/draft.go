@@ -6,37 +6,19 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/libraries/textsanitize"
-	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
-
-// DraftSpans supplies the same atomic token annotations for editing and display.
-func DraftSpans(d composer.Draft) []activitypresentation.TextSpan {
-	var spans []activitypresentation.TextSpan
-	for _, span := range d.Spans() {
-		kind := activitypresentation.ImageToken
-		switch span.Kind {
-		case composer.File:
-			kind = activitypresentation.FileToken
-		case composer.Skill:
-			kind = activitypresentation.SkillToken
-		case composer.Selection:
-			kind = activitypresentation.SelectionToken
-		}
-		spans = append(spans, activitypresentation.TextSpan{Start: span.Start, End: span.End, Kind: kind})
-	}
-	return spans
-}
 
 // Layout and navigation share the same atomic-span layout as submitted input.
 func DraftLayout(d composer.Draft, width int) ([]string, []activityui.TextPoint) {
 	if width == 0 {
 		width = 80
 	}
-	rows, points := activityui.LayoutSpans(d.Text, DraftSpans(d), width)
+	rows, points := activityui.LayoutSpans(d.Text, sessionpresentation.DraftSpans(d), width)
 	last := points[len(points)-1]
 	if width > 1 && last.Column >= width {
 		rows = append(rows, "")
