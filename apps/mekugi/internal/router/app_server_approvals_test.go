@@ -333,11 +333,11 @@ func TestNativeApprovalGuardedWrite(t *testing.T) {
 
 func TestNativeApprovalThreadPermissions(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	if got := u.threadPermissions(map[string]any{}); got["approvalPolicy"] != "never" || got["sandbox"] != "danger-full-access" {
+	if got := sessioncontrol.ThreadPermissions(map[string]any{}, u.approvalMode); got["approvalPolicy"] != "never" || got["sandbox"] != "danger-full-access" {
 		t.Fatalf("yolo params = %v", got)
 	}
 	u.approvalMode = true
-	if got := u.threadPermissions(map[string]any{}); len(got) != 0 {
+	if got := sessioncontrol.ThreadPermissions(map[string]any{}, u.approvalMode); len(got) != 0 {
 		t.Fatalf("approval-mode params = %v", got)
 	}
 }

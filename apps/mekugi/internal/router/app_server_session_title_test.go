@@ -146,7 +146,7 @@ func TestAppServerSessionTitleStartResumeMetadata(t *testing.T) {
 		for _, name := range []string{"Saved host title", ""} {
 			t.Run(method+"/"+name, func(t *testing.T) {
 				u, _ := newAppServerTestUI()
-				u.title, u.resumeThread = "Previous thread title", "saved"
+				u.title, u.startup.Thread = "Previous thread title", "saved"
 				appServerTestRequest(t, u, "1", method)
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":1,"result":{"thread":{"id":"saved","name":%q}}}`, name))
 				if u.Thread != "saved" || u.title != name {
@@ -213,7 +213,7 @@ func TestAppServerSessionTitleBeforeSessionStart(t *testing.T) {
 	for _, method := range []string{"thread/start", "thread/resume"} {
 		t.Run(method, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
-			u.Thread, u.resumeThread = "", "saved"
+			u.Thread, u.startup.Thread = "", "saved"
 			u.titleGenerator = newTestSessionNaming(t.Context(), nil)
 			appServerTestKeys(t, u, "/title First name\r/title Final name\r")
 			if wire.Len() != 0 || u.names.Pending("") != "Final name" || !strings.Contains(u.mainHeaderRight(120, true), "Final name") {

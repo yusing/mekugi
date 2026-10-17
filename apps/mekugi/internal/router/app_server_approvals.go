@@ -52,15 +52,6 @@ func (d *nativeApprovalDock) layout(a *sessioncontrol.Approval) *conversationui.
 	return d.layouts[a.Approval]
 }
 
-// threadPermissions keeps --yolo's policy on thread requests. Approval mode
-// leaves both settings to Codex configuration and invocation overrides.
-func (u *appServerUI) threadPermissions(params map[string]any) map[string]any {
-	if !u.approvalMode {
-		params["approvalPolicy"], params["sandbox"] = "never", "danger-full-access"
-	}
-	return params
-}
-
 func (u *appServerUI) approvalAgent(thread string) string {
 	path := u.session.paths[thread]
 	if path == "" || path == "/root" {

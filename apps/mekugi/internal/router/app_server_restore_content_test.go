@@ -83,7 +83,7 @@ func TestAppServerRestoreRosterAndActivityFromObservationalHistory(t *testing.T)
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.session.start("main", workspace)
-	u.resumeThread = "main"
+	u.startup.Thread = "main"
 	root := binding.ThreadInfo{ID: "main", Cwd: workspace, Turns: []binding.HistoryTurn{{ID: "root-turn", Status: "completed", Items: []binding.ThreadItem{
 		{ID: "spawn", Type: "collabAgentToolCall", Status: "completed", Tool: "spawnAgent", SenderThreadID: "main", ReceiverThreadIDs: []string{"child"}, Prompt: "Inspect the change."},
 		{ID: "followup", Type: "collabAgentToolCall", Status: "completed", Tool: "followupTask", SenderThreadID: "main", ReceiverThreadIDs: []string{"child"}, Prompt: "Check again."},
@@ -148,7 +148,7 @@ func TestAppServerRestoreWrongChildIdentityContinues(t *testing.T) {
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.session.start("main", t.TempDir())
-	u.resumeThread = "main"
+	u.startup.Thread = "main"
 	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: u.session.cwd}); err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestAppServerRestoreChildReadErrorContinues(t *testing.T) {
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.session.start("main", t.TempDir())
-	u.resumeThread = "main"
+	u.startup.Thread = "main"
 	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: u.session.cwd}); err != nil {
 		t.Fatal(err)
 	}

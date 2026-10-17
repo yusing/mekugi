@@ -152,7 +152,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.session.start("main", workspace)
-	u.resumeThread = "main"
+	u.startup.Thread = "main"
 	u.session.registerThread(binding.ThreadInfo{ID: thread, AgentNickname: "worker", AgentRole: "worker"})
 	u.restoring = &appServerActivityRestore{root: binding.ThreadInfo{ID: "main", Cwd: workspace}, state: restoredDiscoveryTestState("main", thread), pane: make(map[string][]*restoredPlacement), itemAt: make(map[string]map[string]time.Time)}
 	started = time.Now()

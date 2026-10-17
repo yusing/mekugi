@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/terminalui"
 
@@ -23,11 +24,10 @@ import (
 // @68e1a421. Codex lists saved sessions page by page and filters loaded rows
 // locally; it never searches rendered transcript text.
 const (
-	resumePickerStartup = "--pick"             // resumeThread sentinel for a bare `resume`.
-	resumePickerList    = "thread/list#picker" // Request label, distinct from --last and restore listings.
-	resumePickerPage    = 25
-	resumePickerNear    = 5    // Rows below the selection that trigger the next page.
-	resumePickerScan    = 1000 // Sessions a search loads before it stops fetching.
+	resumePickerList = "thread/list#picker" // Request label, distinct from --last and restore listings.
+	resumePickerPage = 25
+	resumePickerNear = 5    // Rows below the selection that trigger the next page.
+	resumePickerScan = 1000 // Sessions a search loads before it stops fetching.
 )
 
 type appServerResumeRow struct {
@@ -96,7 +96,7 @@ func (u *appServerUI) resumeCommand(text string) error {
 func (u *appServerUI) openResumePicker(startup bool) error {
 	cwd := u.session.cwd
 	if startup {
-		cwd = u.resumeCwd
+		cwd = u.startup.Workspace
 	}
 	u.cancelPickerScan()
 	u.picker.Open = false
@@ -110,7 +110,7 @@ func (u *appServerUI) loadResumePage(reset bool) error {
 		p.rows, p.seen, p.cursor, p.selected, p.top = nil, make(map[string]bool), "", 0, 0
 		p.loadedAt = time.Now()
 	}
-	params := resumableThreads(resumePickerPage)
+	params := sessioncontrol.ResumableThreads(resumePickerPage)
 	if !p.all {
 		params["cwd"] = p.cwd
 	}
@@ -210,7 +210,7 @@ func (u *appServerUI) resumeSession(id string) error {
 		return nil
 	}
 	u.Replacement.Resume(id)
-	if err := u.requestResume(id); err != nil {
+	if err := u.openSession(); err != nil {
 		u.Replacement.Finish()
 		return err
 	}
@@ -230,11 +230,6 @@ func (u *appServerUI) resumeSessionFailed(message string) error {
 	return u.replayResumePending()
 }
 
-func (u *appServerUI) startThread() error {
-	u.sessionPresentation().Status.SetText("Starting thread…")
-	return u.request("thread/start", u.threadPermissions(map[string]any{}))
-}
-
 // resumePickerKey handles every key while the picker is open.
 func (u *appServerUI) resumePickerKey(key string) error {
 	p := u.resumePicker
@@ -250,8 +245,8 @@ func (u *appServerUI) resumePickerKey(key string) error {
 		}
 		u.closeResumePicker()
 		if p.startup {
-			u.resumeThread = ""
-			return u.startThread()
+			u.startup.Thread = ""
+			return u.openSession()
 		}
 		return nil
 	case "\x03":
@@ -284,8 +279,8 @@ func (u *appServerUI) resumePickerKey(key string) error {
 		id := rows[p.selected].id
 		u.closeResumePicker()
 		if p.startup {
-			u.resumeThread = id
-			return u.requestResume(id)
+			u.startup.Thread = id
+			return u.openSession()
 		}
 		return u.resumeSession(id)
 	case "\x7f", "\b":

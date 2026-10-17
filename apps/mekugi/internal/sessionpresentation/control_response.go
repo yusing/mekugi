@@ -5,6 +5,21 @@ import (
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
 
+const ResumeSettingsUnavailable = "Saved model settings unavailable; using Codex defaults and explicit flags"
+
+func (m *Model) BeginOpening(opening sessioncontrol.Opening) {
+	switch opening {
+	case sessioncontrol.OpeningFresh:
+		m.Status.SetText("Starting thread…")
+	case sessioncontrol.OpeningResume:
+		m.Status.SetText("Resuming thread…")
+	case sessioncontrol.OpeningLatest:
+		m.Status.SetText("Finding latest thread…")
+	case sessioncontrol.OpeningPicker:
+		m.Status.SetText("Choose a session")
+	}
+}
+
 // AcknowledgeCompaction restores the command before later waiting input on
 // rejection. Host acknowledgement and compact-turn completion remain separate.
 // Source: apps/mekugi/internal/router/app_server_ui.go:610:619@a4869fd4.

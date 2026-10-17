@@ -35,8 +35,8 @@ func appliedSettingsTestNotify(t *testing.T, u *appServerUI, model, effort, tier
 
 func appliedSettingsTestResume(t *testing.T, u *appServerUI, w *appServerTestInput, info binding.ThreadInfo) (map[string]any, int) {
 	t.Helper()
-	u.resumeThread = info.ID
-	if err := u.requestResume(info.ID); err != nil {
+	u.startup.Thread = info.ID
+	if err := u.openSession(); err != nil {
 		t.Fatal(err)
 	}
 	read := resumeTestOne(t, w, "thread/read")
@@ -71,7 +71,7 @@ func TestAppServerAppliedSettingsFreshOwnerResumeBeforeFirstTurn(t *testing.T) {
 			}
 			// No live writer, parent, rollout, or previous UI is needed for recovery.
 			fresh, w := appliedSettingsTestUI(t, "/workspace", "other")
-			fresh.resumeConfig = map[string]any{"model_provider": "routed"}
+			fresh.startup.Config = map[string]any{"model_provider": "routed"}
 			params, _ := appliedSettingsTestResume(t, fresh, w, binding.ThreadInfo{ID: "saved", Cwd: "/workspace"})
 			wantConfig := map[string]any{"model": "saved-model", "model_provider": "routed", "model_reasoning_effort": "high"}
 			var wantTier any = "priority"
@@ -93,7 +93,7 @@ func TestAppServerAppliedSettingsFlagsOverridePerField(t *testing.T) {
 			u, _ := appliedSettingsTestUI(t, "/workspace", "saved")
 			appliedSettingsTestNotify(t, u, "saved-model", "high", "priority")
 			fresh, w := appliedSettingsTestUI(t, "/workspace", "other")
-			fresh.resumeConfig = map[string]any{field: "explicit"}
+			fresh.startup.Config = map[string]any{field: "explicit"}
 			params, _ := appliedSettingsTestResume(t, fresh, w, binding.ThreadInfo{ID: "saved", Cwd: "/workspace"})
 			want := map[string]any{"model": "saved-model", "model_reasoning_effort": "high"}
 			var tier any = "priority"
@@ -102,8 +102,8 @@ func TestAppServerAppliedSettingsFlagsOverridePerField(t *testing.T) {
 			} else {
 				want[field] = "explicit"
 			}
-			if !reflect.DeepEqual(params["config"], want) || params["serviceTier"] != tier || !reflect.DeepEqual(fresh.resumeConfig, map[string]any{field: "explicit"}) {
-				t.Fatalf("per-field precedence or immutable launch flags lost: %#v flags=%#v", params, fresh.resumeConfig)
+			if !reflect.DeepEqual(params["config"], want) || params["serviceTier"] != tier || !reflect.DeepEqual(fresh.startup.Config, map[string]any{field: "explicit"}) {
+				t.Fatalf("per-field precedence or immutable launch flags lost: %#v flags=%#v", params, fresh.startup.Config)
 			}
 		})
 	}

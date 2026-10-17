@@ -3,6 +3,7 @@ package router
 import (
 	"encoding/json/jsontext"
 	"fmt"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -103,7 +104,7 @@ func newResumeSessionTestUI(t *testing.T) (*appServerUI, *appServerTestInput) {
 
 func TestAppServerResumePickerStartup(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.Thread, u.resumeThread, u.resumeCwd = "", resumePickerStartup, "/work"
+	u.Thread, u.startup.Thread, u.startup.Workspace = "", sessioncontrol.ResumePicker, "/work"
 	u.agents = newActivityAdapter()
 	appServerTestRequest(t, u, "0", "initialize")
 	appServerTestMessage(t, u, `{"id":0,"result":{}}`)
@@ -139,8 +140,8 @@ func TestAppServerResumePickerStartup(t *testing.T) {
 	}
 	resumeTestKeys(t, u, "\x1b[B", "\r")
 	resume := resumeTestPrepared(t, u, w)
-	if resume.Params.ThreadID != "named" || u.resumePicker != nil || u.resumeThread != "named" {
-		t.Fatalf("picker resumed %+v; state resume=%q", resume.Params, u.resumeThread)
+	if resume.Params.ThreadID != "named" || u.resumePicker != nil || u.startup.Thread != "named" {
+		t.Fatalf("picker resumed %+v; state resume=%q", resume.Params, u.startup.Thread)
 	}
 	// Once a thread is chosen, early events wait for its history as usual.
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"named","turnId":"old","item":{"type":"agentMessage","id":"answer","text":"Saved answer"}}}`)
@@ -153,7 +154,7 @@ func TestAppServerResumePickerStartup(t *testing.T) {
 
 func TestAppServerResumePickerStartupEscapeAndQuit(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.Thread, u.resumeThread, u.resumeCwd = "", resumePickerStartup, "/work"
+	u.Thread, u.startup.Thread, u.startup.Workspace = "", sessioncontrol.ResumePicker, "/work"
 	if err := u.openResumePicker(true); err != nil {
 		t.Fatal(err)
 	}
@@ -163,13 +164,13 @@ func TestAppServerResumePickerStartupEscapeAndQuit(t *testing.T) {
 		t.Fatal("first Escape must only clear the search")
 	}
 	resumeTestKeys(t, u, "\x1b")
-	if u.resumePicker != nil || u.resumeThread != "" {
+	if u.resumePicker != nil || u.startup.Thread != "" {
 		t.Fatal("Escape did not leave the picker")
 	}
 	resumeTestOne(t, w, "thread/start")
 
 	u, w = newAppServerTestUI()
-	u.Thread, u.resumeThread = "", resumePickerStartup
+	u.Thread, u.startup.Thread = "", sessioncontrol.ResumePicker
 	if err := u.openResumePicker(true); err != nil {
 		t.Fatal(err)
 	}

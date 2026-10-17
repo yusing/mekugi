@@ -7,6 +7,7 @@ import (
 	"context"
 	json "encoding/json/v2"
 	"errors"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"io"
 	"io/fs"
 	"net/http"
@@ -471,7 +472,7 @@ func TestAppServerResumePickerNativeCodex(t *testing.T) {
 		t.Fatalf("switched input did not reach the chosen thread: %q", threads)
 	}
 
-	third := startAppResumeTerminal(t, newCommand, resumePickerStartup)
+	third := startAppResumeTerminal(t, newCommand, sessioncontrol.ResumePicker)
 	third.await("Resume a previous session")
 	third.await("esc start new")
 	// The follow-up made the first session the most recently updated.

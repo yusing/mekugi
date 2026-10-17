@@ -60,9 +60,9 @@ func TestThirdPartyAutomaticModelPreservesSavedResumeSettings(t *testing.T) {
 				cmdArgs := []string{"codex", "app-server", "-c", fmt.Sprintf("model=%q", chosen), "-c", `model_provider="mekugi_wrap"`}
 				u, input := newAppServerTestUI()
 				info := resumeSettingsRollout(t, fmt.Sprintf(`{"type":"turn_context","payload":{"model":%q,"effort":"high"}}`, model), "")
-				u.Thread, u.resumeThread = "", info.ID
-				u.resumeConfig = appServerResumeConfig(cmdArgs, argv)
-				if err := u.requestResume(info.ID); err != nil {
+				u.Thread, u.startup.Thread = "", info.ID
+				u.startup.Config = appServerResumeConfig(cmdArgs, argv)
+				if err := u.openSession(); err != nil {
 					t.Fatal(err)
 				}
 				read := resumeTestOne(t, input, "thread/read")

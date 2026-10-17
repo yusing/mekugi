@@ -71,7 +71,7 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 	u.agents = u.shell.agents
 	activity := sessioncontrol.NewAudience(nil)
 	setTestAppServerIntegration(u, &observationFixture{activity: activity})
-	u.resumeThread = "main"
+	u.startup.Thread = "main"
 
 	rootRecords := []map[string]any{
 		rolloutRecord(1, "event_msg", map[string]any{"type": "task_started", "turn_id": "r1"}),
@@ -233,7 +233,7 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 // interrupt target meanwhile, and router observations follow the history.
 func TestAppServerResumeDefersHistoryButKeepsActiveTurn(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.Thread, u.resumeThread = "", "saved"
+	u.Thread, u.startup.Thread = "", "saved"
 	u.agents = newActivityAdapter()
 	appServerTestRequest(t, u, "1", "thread/resume")
 	appServerTestMessage(t, u, `{"id":1,"result":{"thread":{"id":"saved","turns":[{"id":"active","status":"inProgress","items":[{"type":"userMessage","id":"q","content":[{"type":"text","text":"Still running"}]}]}]}}}`)

@@ -23,7 +23,7 @@ func newPagedHistoryUI(t *testing.T) (*appServerUI, *appServerTestInput) {
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.session.start("main", t.TempDir())
-	u.resumeThread = "main"
+	u.startup.Thread = "main"
 	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: u.session.cwd}); err != nil {
 		t.Fatal(err)
 	}
@@ -373,7 +373,7 @@ func TestAppServerAnchoredHistoryArchivedChild(t *testing.T) {
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.session.start("main", t.TempDir())
-	u.resumeThread = "main"
+	u.startup.Thread = "main"
 	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: u.session.cwd}); err != nil {
 		t.Fatal(err)
 	}

@@ -94,6 +94,14 @@ and thread through later presentation switches. Replay starts no observation win
 
 ### Session replacement and exit
 
+Startup selection and resume preparation belong to Control, including initialized
+notification ordering, latest-session lookup, identity validation, invocation
+overrides and the target's nullable-effort repair. Preference and rollout owners
+supply saved evidence before resume dispatch. Accepted identity is validated before
+retiring the old attachment; preference recovery is retained before corrective
+settings dispatch. A picker remains an application presentation choice, and
+startup failure never silently starts a fresh session.
+
 Confirmed replacement retires Main's source operations together, preserving queued
 input and the target's restoration intent. Rejection leaves source operations
 intact. Independent side cleanup and title saves retain their owners; forgetting

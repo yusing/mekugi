@@ -1,7 +1,6 @@
 package router
 
 import (
-	"cmp"
 	"context"
 	json "encoding/json/v2"
 	"errors"
@@ -62,85 +61,82 @@ type appServerUI struct {
 	history      *history.Service
 	segments     *reports.Service
 	sessioncontrol.Live
-	conversationState       *conversationmodel.Service
-	resumeThread, resumeCwd string
-	resumeConfig            map[string]any
-	resumeEvidence          preferences.Evidence
-	resumePending           []appserver.Message
-	replay                  *uiReplayPlayback // Offline transport controls; nil for live sessions.
-	clock                   func() time.Time  // Optional presentation clock for offline replay.
-	backendVersion          string
-	title                   string // Host-confirmed thread name, independent of naming work.
-	names                   sessioncontrol.Names
-	titleGenerator          *sessionNaming
-	titleUpdates            <-chan sessionTitleUpdate
-	btw                     *sideDock
-	side                    *sessioncontrol.Side
-	notifications           *nativeNotifications
-	promptEditor            *prompt.Editor
-	questions               nativeQuestionDock
-	approvals               nativeApprovalDock
-	approvalMode            bool // Codex's configured policy applies, not --yolo's.
-	guardHookCheck          approvalHookCheck
-	statusPanel             *appServerStatusReport
-	sessionCapture          *transportcapture.Recorder
-	resumePicker            *appServerResumePicker
-	statusConfig            appServerStatusConfig
-	picker                  composerPicker
-	skillEnvironment        []string
-	commits                 *activitypresentation.CommitReader // Attached Activity enrichment owner.
-	commandSegmentWrites    chan commandSegmentWrite           // Completed replay writes, consumed only by the UI.
-	commandSegmentPending   int
-	restoredSegments        map[string]*reports.Report // Turn-local, validated and adopted history.
-	client                  *appserver.Client
-	view                    *activityAdapter
-	agents                  *activityAdapter
-	controlObservations     *sessioncontrol.Observations
-	usage                   *accounting.Service
-	audience                *sessioncontrol.Audience
-	review                  *sessionreview.Review
-	execWindows             *executionobservation.Windows
-	nativeTrace             *nativetrace.Reader
-	retained                changes.Scope
-	changeSource            changes.Service
-	snapshots               *changecapture.Workspaces
-	recovered               *recovery.Service
-	publishChanges          func([]changes.Update)
-	captureNotice           func(string, string, string, string)
-	guard                   *sessioncontrol.ShellApprovals
-	execTrack               *commandsegments.Observer // Per-segment command reports; nil when not tracking.
-	shellEdits              appServerShellEdits
-	pendingEditReceipts     []*changepresentation.Receipt // Observed edits can precede their host Activity item.
-	issues                  *requestexecution.Failures
-	shell                   *terminalUI
-	summaryStream           activityui.ReasoningStream
-	session                 appServerSession
-	ctx                     context.Context
-	quitRequested           bool
-	archived                bool
-	interruptLocked         bool
-	exitUsage               binding.TokenUsage
-	resumeArgv              []string
-	replayDebugDirectory    string
-	model, reasoningEffort  string
-	serviceTier             string
-	serviceTiers            *inferencegateway.Tiers // Invocation defaults and confirmed thread/model choices.
-	models                  []appServerModel
-	modelsLoading           bool
-	reasoningKey            *bool
-	settingsChoices         string
-	requests                *sessioncontrol.Requests[appServerRequest]
-	retiredThreads          map[string]string
-	ownedImages             map[string]bool
-	pasted                  []byte // Non-nil while collecting an admitted, already-framed paste.
-	dirty                   bool
-	keybindings             bool
-	resumeNotice            string // Settings fallback survives the old session's presentation reset.
-	panes                   *nativePreferences
-	waitRelease             func()
-	restoring               *appServerActivityRestore
-	presentationState       *sessionpresentation.Service
-	childHistoryState       scope.Key[*appServerChildHistory]
+	conversationState      *conversationmodel.Service
+	startup                sessioncontrol.Startup
+	resumePending          []appserver.Message
+	replay                 *uiReplayPlayback // Offline transport controls; nil for live sessions.
+	clock                  func() time.Time  // Optional presentation clock for offline replay.
+	backendVersion         string
+	title                  string // Host-confirmed thread name, independent of naming work.
+	names                  sessioncontrol.Names
+	titleGenerator         *sessionNaming
+	titleUpdates           <-chan sessionTitleUpdate
+	btw                    *sideDock
+	side                   *sessioncontrol.Side
+	notifications          *nativeNotifications
+	promptEditor           *prompt.Editor
+	questions              nativeQuestionDock
+	approvals              nativeApprovalDock
+	approvalMode           bool // Codex's configured policy applies, not --yolo's.
+	guardHookCheck         approvalHookCheck
+	statusPanel            *appServerStatusReport
+	sessionCapture         *transportcapture.Recorder
+	resumePicker           *appServerResumePicker
+	statusConfig           appServerStatusConfig
+	picker                 composerPicker
+	skillEnvironment       []string
+	commits                *activitypresentation.CommitReader // Attached Activity enrichment owner.
+	commandSegmentWrites   chan commandSegmentWrite           // Completed replay writes, consumed only by the UI.
+	commandSegmentPending  int
+	restoredSegments       map[string]*reports.Report // Turn-local, validated and adopted history.
+	client                 *appserver.Client
+	view                   *activityAdapter
+	agents                 *activityAdapter
+	controlObservations    *sessioncontrol.Observations
+	usage                  *accounting.Service
+	audience               *sessioncontrol.Audience
+	review                 *sessionreview.Review
+	execWindows            *executionobservation.Windows
+	nativeTrace            *nativetrace.Reader
+	retained               changes.Scope
+	changeSource           changes.Service
+	snapshots              *changecapture.Workspaces
+	recovered              *recovery.Service
+	publishChanges         func([]changes.Update)
+	captureNotice          func(string, string, string, string)
+	guard                  *sessioncontrol.ShellApprovals
+	execTrack              *commandsegments.Observer // Per-segment command reports; nil when not tracking.
+	shellEdits             appServerShellEdits
+	pendingEditReceipts    []*changepresentation.Receipt // Observed edits can precede their host Activity item.
+	issues                 *requestexecution.Failures
+	shell                  *terminalUI
+	summaryStream          activityui.ReasoningStream
+	session                appServerSession
+	ctx                    context.Context
+	quitRequested          bool
+	archived               bool
+	interruptLocked        bool
+	exitUsage              binding.TokenUsage
+	resumeArgv             []string
+	replayDebugDirectory   string
+	model, reasoningEffort string
+	serviceTier            string
+	serviceTiers           *inferencegateway.Tiers // Invocation defaults and confirmed thread/model choices.
+	models                 []appServerModel
+	modelsLoading          bool
+	reasoningKey           *bool
+	settingsChoices        string
+	requests               *sessioncontrol.Requests[appServerRequest]
+	retiredThreads         map[string]string
+	ownedImages            map[string]bool
+	pasted                 []byte // Non-nil while collecting an admitted, already-framed paste.
+	dirty                  bool
+	keybindings            bool
+	panes                  *nativePreferences
+	waitRelease            func()
+	restoring              *appServerActivityRestore
+	presentationState      *sessionpresentation.Service
+	childHistoryState      scope.Key[*appServerChildHistory]
 }
 
 // StartAppServerUI starts the native terminal frontend without router observers.
@@ -164,7 +160,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 		return nil, errors.New("Shell guard approval channel is unavailable")
 	}
 	var resumeCwd string
-	if resumeThread == "--last" || resumeThread == resumePickerStartup {
+	if resumeThread == "--last" || resumeThread == sessioncontrol.ResumePicker {
 		var err error
 		resumeCwd, err = filepath.Abs(cmd.Dir)
 		if err != nil {
@@ -188,7 +184,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 	if err != nil {
 		return nil, err
 	}
-	u := &appServerUI{terminalViews: terminalViews, reviewSource: reviewSource, presentationState: views, conversationState: conversation, session: appServerSession{activity: activity, observations: observations}, history: service, segments: segments, client: c, view: newTranscriptAdapter(activityui.NewView()), agents: newTranscriptAdapter(terminalViews.NewThreadView()), controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, changeSource: integration.changeSource, snapshots: integration.snapshots, recovered: integration.recovered, publishChanges: integration.publishChanges, captureNotice: integration.captureNotice, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
+	u := &appServerUI{terminalViews: terminalViews, reviewSource: reviewSource, presentationState: views, conversationState: conversation, session: appServerSession{activity: activity, observations: observations}, history: service, segments: segments, client: c, view: newTranscriptAdapter(activityui.NewView()), agents: newTranscriptAdapter(terminalViews.NewThreadView()), controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, changeSource: integration.changeSource, snapshots: integration.snapshots, recovered: integration.recovered, publishChanges: integration.publishChanges, captureNotice: integration.captureNotice, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), dirty: true, ctx: ctx, startup: sessioncontrol.Startup{Thread: resumeThread}, serviceTiers: serviceTiers, approvalMode: approvals}
 	u.attachPresentation()
 	u.sessionPresentation().Status.Set("Connecting…", false)
 	u.attachActivity()
@@ -208,9 +204,9 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 	u.resumeArgv = slices.Clone(resumeArgv)
 	u.replayDebugDirectory = debugDirectory
 	u.sessionCapture = capture
-	u.resumeConfig = appServerResumeConfig(cmd.Args, resumeArgv)
+	u.startup.Config = appServerResumeConfig(cmd.Args, resumeArgv)
 	u.notifications = &nativeNotifications{out: stdout, focused: true}
-	u.resumeCwd = resumeCwd
+	u.startup.Workspace = resumeCwd
 	if prefs != nil {
 		u.panes = &nativePreferences{service: prefs}
 	}
@@ -522,7 +518,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	if held, err := u.holdOlderHistoryEvent(m); held || err != nil {
 		return err
 	}
-	resuming := u.resumeThread != "" && u.resumeThread != resumePickerStartup && (u.Thread == "" || u.restoring != nil)
+	resuming := u.startup.Thread != "" && u.startup.Thread != sessioncontrol.ResumePicker && (u.Thread == "" || u.restoring != nil)
 	if (resuming || u.Replacement.Target != "") && m.Method != "" {
 		if hold, keep := u.holdResumeEvent(m, resuming); hold {
 			if !keep {
@@ -574,7 +570,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		if u.pickerMessage(method, m) {
 			return nil
 		}
-		if method == "thread/list" && u.resumeThread == "--last" {
+		if method == "thread/list" && u.startup.Thread == "--last" {
 			return u.resumeLastResponse(m)
 		}
 		if handled, err := u.settingsMessage(method, m); handled || err != nil {
@@ -648,55 +644,25 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			if json.Unmarshal(m.Result, &initialized) == nil {
 				u.backendVersion = backendVersion(initialized.UserAgent)
 			}
-			if err := u.requests.Notify("initialized", map[string]any{}); err != nil {
+			if err := u.requests.Initialized(u.execWindows != nil); err != nil {
 				return err
 			}
-			if u.execWindows != nil {
-				if err := u.request("environment/info", map[string]any{"environmentId": "local"}); err != nil {
-					return err
-				}
-			}
-			if u.resumeThread == resumePickerStartup {
-				u.sessionPresentation().Status.SetText("Choose a session")
-				return u.openResumePicker(true)
-			}
-			if u.resumeThread != "" {
-				if u.resumeThread == "--last" {
-					u.sessionPresentation().Status.SetText("Finding latest thread…")
-					params := resumableThreads(1)
-					params["cwd"] = u.resumeCwd
-					return u.request("thread/list", params)
-				}
-				return u.requestResume(u.resumeThread)
-			}
-			return u.startThread()
+			return u.openSession()
 		case "thread/start", "thread/resume":
-			var result struct {
-				Model             string             `json:"model"`
-				ReasoningEffort   string             `json:"reasoningEffort"`
-				ServiceTier       string             `json:"serviceTier"`
-				CollaborationMode map[string]any     `json:"collaborationMode"`
-				Thread            binding.ThreadInfo `json:"thread"`
-			}
-			if err := json.Unmarshal(m.Result, &result); err != nil {
+			result, err := u.startup.Accept(&u.Live, method, m.Result)
+			if err != nil {
 				return err
-			}
-			if result.Thread.ID == "" {
-				return fmt.Errorf("%s returned no thread identity", method)
-			}
-			if method == "thread/resume" && result.Thread.ID != cmp.Or(u.Replacement.Target, u.resumeThread) {
-				return errors.New("thread/resume returned a different thread identity")
 			}
 			if u.Replacement.Pending() {
 				if err := u.clearSessionPresentation(); err != nil {
 					return err
 				}
 				u.LeaveThread()
-				u.resumeThread, u.resumeCwd = "", ""
+				u.startup.Thread, u.startup.Workspace = "", ""
 				u.releaseRetired(result.Thread.ID)
 				if method == "thread/resume" {
 					// Restoration below replays events buffered during the switch.
-					u.resumeThread = result.Thread.ID
+					u.startup.Thread = result.Thread.ID
 					u.resetDiffScope()
 				} else {
 					// Seed the Diff's lineage; after a switch, requests alone cannot.
@@ -769,40 +735,28 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				u.paneError(u.panes.open(u.shell, result.Thread.Cwd, u.Thread, method == "thread/resume"))
 			}
 			if method == "thread/resume" {
-				if u.Settings.RestoreEffort {
-					// effort:null means no change in the host RPC. Its complete
-					// collaboration-mode snapshot can express a nullable effort,
-					// without replacing the host's mode or developer instructions.
-					settings, ok := result.CollaborationMode["settings"].(map[string]any)
-					if !ok {
-						if u.reasoningEffort != "" {
-							return errors.New("Codex did not return the settings needed to restore default reasoning")
+				repair, err := result.RepairDefaultEffort(&u.Live)
+				if err != nil {
+					return err
+				}
+				u.reasoningEffort = result.ReasoningEffort
+				if repair != nil {
+					// Preserve saved null intent before a corrective dispatch can fail.
+					if u.panes != nil && u.panes.attachment != nil && u.startup.Evidence.Model != "" {
+						if err := u.panes.stage(u.shell.paneState()); err != nil {
+							u.paneError(err)
+						} else {
+							u.panes.attachment.Recover(u.startup.Evidence, u.now())
+							u.paneError(u.panes.attachment.Save(u.now(), true))
 						}
-						u.Settings.RestoredEffort()
-					} else if settings["reasoning_effort"] != nil {
-						// Codex checkpoints resume defaults before this response.
-						// Do not let that transient effort replace saved null intent
-						// on a fresh-process retry if the corrective update fails.
-						if u.panes != nil && u.panes.attachment != nil && u.resumeEvidence.Model != "" {
-							if err := u.panes.stage(u.shell.paneState()); err != nil {
-								u.paneError(err)
-							} else {
-								u.panes.attachment.Recover(u.resumeEvidence, u.now())
-								u.paneError(u.panes.attachment.Save(u.now(), true))
-							}
-						}
-						settings["reasoning_effort"] = nil
-						if _, err := u.updateSettings(map[string]any{"collaborationMode": result.CollaborationMode}); err != nil {
-							return err
-						}
-					} else {
-						u.Settings.RestoredEffort()
-						u.reasoningEffort = ""
+					}
+					if _, err := u.updateSettings(repair); err != nil {
+						return err
 					}
 				}
-				if u.resumeNotice != "" {
-					u.setNotice(u.resumeNotice, true)
-					u.resumeNotice = ""
+				if u.startup.MissingSettings {
+					u.setNotice(sessionpresentation.ResumeSettingsUnavailable, true)
+					u.startup.MissingSettings = false
 				}
 				u.retainAppliedSettings()
 				return u.restorePaneContent(result.Thread)

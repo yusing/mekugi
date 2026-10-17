@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -63,7 +64,7 @@ func (u *appServerUI) sessionCommand(command string) error {
 	u.takeDraft()
 	u.Replacement.Clear()
 	u.sessionPresentation().Status.SetText("Starting new session…")
-	params := u.threadPermissions(map[string]any{"sessionStartSource": "clear"})
+	params := sessioncontrol.ThreadPermissions(map[string]any{"sessionStartSource": "clear"}, u.approvalMode)
 	if u.session.cwd != "" {
 		params["cwd"] = u.session.cwd
 	}

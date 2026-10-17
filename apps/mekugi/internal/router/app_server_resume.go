@@ -2,13 +2,14 @@ package router
 
 import (
 	"cmp"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/observation"
 
 	json "encoding/json/v2"
 	"fmt"
-	"maps"
 	"strconv"
 	"strings"
 	"time"
@@ -28,10 +29,16 @@ import (
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
-func (u *appServerUI) requestResume(thread string) error {
-	u.sessionPresentation().Status.SetText("Resuming thread…")
-	_, err := u.requests.Send("thread/read", map[string]any{"threadId": thread, "includeTurns": false}, "main", appServerRequest{label: "resume/settings"})
-	return err
+func (u *appServerUI) openSession() error {
+	opening, err := u.requests.OpenSession(&u.startup, &u.Live, u.approvalMode, appServerRequest{label: "resume/settings"})
+	u.sessionPresentation().BeginOpening(opening)
+	if err != nil {
+		return err
+	}
+	if opening == sessioncontrol.OpeningPicker {
+		return u.openResumePicker(true)
+	}
+	return nil
 }
 
 func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
@@ -44,7 +51,7 @@ func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 	if m.Error != nil {
 		return fail(m.Error.Message)
 	}
-	thread := cmp.Or(u.Replacement.Target, u.resumeThread)
+	thread := cmp.Or(u.Replacement.Target, u.startup.Thread)
 	info, err := binding.DecodeHistoryThread(m.Result, thread)
 	if err != nil {
 		return fail(err.Error())
@@ -52,10 +59,6 @@ func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 
 	// Codex skips persisted model/effort when the routing provider is explicit.
 	// Read settings before resume can write its new defaults into the rollout.
-	config := maps.Clone(u.resumeConfig)
-	if config == nil {
-		config = make(map[string]any)
-	}
 	var retained preferences.Snapshot
 	if u.panes != nil {
 		state, err := u.panes.read(info.Cwd, thread)
@@ -66,42 +69,12 @@ func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 		}
 	}
 	evidence, newerThan := retained.ResumeBaseline()
-	u.resumeEvidence = evidence.WithNewer(resumeSettingsEvidence(rollout.ResumeSettings(info.ID, info.Path, newerThan)))
-	saved := resumeSettingsConfig(u.resumeEvidence)
-	u.resumeNotice = ""
-	if len(saved) == 0 {
-		u.resumeNotice = "Saved model settings unavailable; using Codex defaults and explicit flags"
-		u.setNotice(u.resumeNotice, true)
+	evidence = evidence.WithNewer(resumeSettingsEvidence(rollout.ResumeSettings(info.ID, info.Path, newerThan)))
+	err = u.requests.Resume(&u.startup, &u.Live, evidence, u.approvalMode)
+	if u.startup.MissingSettings {
+		u.setNotice(sessionpresentation.ResumeSettingsUnavailable, true)
 	}
-	params := u.threadPermissions(map[string]any{"threadId": thread, "config": config, "modelProvider": config["model_provider"]})
-	u.ResumeEffort = false
-	for field, value := range saved {
-		if _, explicit := config[field]; explicit {
-			continue
-		}
-		if field == "model_reasoning_effort" && value == nil {
-			// TOML config cannot express null. Clear via the host settings API
-			// before any resumed input is accepted instead.
-			u.ResumeEffort = true
-		} else {
-			config[field] = value
-		}
-	}
-	if tier, ok := config["service_tier"]; ok {
-		params["serviceTier"] = tier
-		delete(config, "service_tier")
-	}
-	return u.request("thread/resume", params)
-}
-
-// resumableThreads lists the sessions `resume --last` and the picker choose
-// from: interactive and app-server sessions from every provider. Exec runs and
-// spawned agents are not resumable conversations.
-func resumableThreads(limit int) map[string]any {
-	return map[string]any{
-		"limit": limit, "sortKey": "updated_at", "archived": false,
-		"modelProviders": []string{}, "sourceKinds": []string{"cli", "vscode", "appServer"},
-	}
+	return err
 }
 
 // holdResumeEvent decides whether an event waits for a resuming thread's
@@ -123,7 +96,7 @@ func (u *appServerUI) holdResumeEvent(m appserver.Message, resuming bool) (hold,
 	if !resuming && (thread == "" || u.session.paths[thread] != "" || u.session.paths[p.Thread.ParentThreadID] != "") {
 		return false, false
 	}
-	root := cmp.Or(u.Replacement.Target, u.resumeThread)
+	root := cmp.Or(u.Replacement.Target, u.startup.Thread)
 	delta := strings.HasSuffix(m.Method, "/delta") || strings.HasSuffix(m.Method, "Delta")
 	return true, !delta || thread == "" || thread == root
 }
@@ -144,20 +117,10 @@ func (u *appServerUI) resumeLastResponse(m appserver.Message) error {
 	if m.Error != nil {
 		return fmt.Errorf("find latest thread: %s", m.Error.Message)
 	}
-	var result struct {
-		Data []binding.ThreadInfo `json:"data"`
+	if err := u.startup.Latest(m.Result); err != nil {
+		return err
 	}
-	if err := json.Unmarshal(m.Result, &result); err != nil {
-		return fmt.Errorf("find latest thread: %w", err)
-	}
-	if len(result.Data) == 0 {
-		return fmt.Errorf("no resumable thread found for %s", u.resumeCwd)
-	}
-	if result.Data[0].ID == "" {
-		return fmt.Errorf("thread/list returned no thread identity")
-	}
-	u.resumeThread = result.Data[0].ID
-	return u.requestResume(u.resumeThread)
+	return u.openSession()
 }
 
 // Codex merges saved model metadata after loading process CLI configuration.
@@ -352,21 +315,4 @@ func resumeSettingsEvidence(config map[string]any) preferences.Evidence {
 	evidence.Tier, _ = config["service_tier"].(string)
 	_, evidence.TierKnown = config["service_tier"]
 	return evidence
-}
-
-func resumeSettingsConfig(s preferences.Evidence) map[string]any {
-	if s.Model == "" {
-		return nil
-	}
-	config := map[string]any{"model": s.Model, "model_reasoning_effort": nil}
-	if s.Effort != "" {
-		config["model_reasoning_effort"] = s.Effort
-	}
-	if s.TierKnown {
-		config["service_tier"] = nil
-		if s.Tier != "" {
-			config["service_tier"] = s.Tier
-		}
-	}
-	return config
 }
