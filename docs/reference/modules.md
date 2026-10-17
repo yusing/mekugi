@@ -118,7 +118,7 @@ Read bounded logical source rows
 Project provisional source changes and publish bounded live view state
 
 - Composition: selected; lifetime: `attached-session`.
-- Requires: none.
+- Requires: `changehistory`.
 - Codex connections: none.
 
 ## [notifications](../../modules/notifications/SPEC.md)

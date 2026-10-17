@@ -19,6 +19,7 @@ import (
 	"github.com/yusing/mekugi/modules/agentmetrics"
 	"github.com/yusing/mekugi/modules/boundedcommand"
 	"github.com/yusing/mekugi/modules/changehistory"
+	"github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/commandsegments"
 	"github.com/yusing/mekugi/modules/fileread"
 	"github.com/yusing/mekugi/modules/outputdeduplication"
@@ -39,7 +40,6 @@ import (
 // frontend host, including retained host facts and Activity snapshots.
 func Frontends(ctx context.Context, liveReports bool, captureDirectory string) (*Runtime, error) {
 	var c Composition
-	live := c.Add(livepreview.Module, func() livepreview.Deps { return livepreview.Deps{} })
 	conversation := c.Add(conversation.Module, func() conversation.Deps { return conversation.Deps{} })
 	activity := c.Add(activity.Module, func() activity.Deps { return activity.Deps{} })
 	notifications := c.Add(notifications.Module, func() notifications.Deps { return notifications.Deps{} })
@@ -52,6 +52,7 @@ func Frontends(ctx context.Context, liveReports bool, captureDirectory string) (
 	changes := c.Add(changehistory.Module, func() changehistory.Deps {
 		return changehistory.Deps{History: history.Value(), Directory: captureDirectory}
 	})
+	live := c.Add(livepreview.Module, func() livepreview.Deps { return livepreview.Deps{ReadEndpoint: capture.ReadFile} })
 	segments := c.Add(commandsegments.Module, func() commandsegments.Deps { return commandsegments.Deps{History: history.Value(), Live: liveReports} })
 	recovery := c.Add(outputrecovery.Module, func() outputrecovery.Deps { return outputrecovery.Deps{History: history.Value()} })
 	c.Add(boundedcommand.Module, func() boundedcommand.Deps { return boundedcommand.Deps{} })

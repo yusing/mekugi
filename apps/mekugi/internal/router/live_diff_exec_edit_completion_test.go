@@ -159,7 +159,7 @@ func TestExecEditCompletionUsesCapturedBaseline(t *testing.T) {
 	if err := os.WriteFile(path, []byte("after\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	expected := execPreviewExpected(t.Context(), observation)
+	expected := previewmodel.Expected(t.Context(), observation)
 	if len(expected) != 1 || expected[path].Diff == "" || !strings.Contains(expected[path].Diff, "-before") || !strings.Contains(expected[path].Diff, "+after") {
 		t.Fatalf("expected edit must compare against pre-call capture, not current disk: %+v", expected)
 	}
@@ -172,13 +172,13 @@ func TestExecEditCompletionUsesCapturedBaseline(t *testing.T) {
 			copy := observation
 			copy.Files = append([]changecapture.File(nil), observation.Files...)
 			mutate(&copy)
-			if got := execPreviewExpected(t.Context(), copy); len(got) != 0 {
+			if got := previewmodel.Expected(t.Context(), copy); len(got) != 0 {
 				t.Fatalf("unsafe source yielded predicted edit: %+v", got)
 			}
 		})
 	}
 	testOnly := changecapture.Observation{Commands: []commandanalysis.Command{{Command: "env -u BASH_ENV go test ./...", Workdir: workspace, Shell: "bash"}}, Class: execscope.Opaque.String()}
-	if got := execPreviewExpected(t.Context(), testOnly); len(got) != 0 {
+	if got := previewmodel.Expected(t.Context(), testOnly); len(got) != 0 {
 		t.Fatalf("test-only command yielded predicted edit: %+v", got)
 	}
 }

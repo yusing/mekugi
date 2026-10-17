@@ -104,7 +104,7 @@ func TestLiveDiffRunningEditingToolAttribution(t *testing.T) {
 				t.Fatal("missing command observation")
 			}
 			programs := append([]execscope.Program(nil), observation.Programs...)
-			if tool := execPreviewTool(*observation); tool != tc.tool {
+			if tool := previewmodel.CaptureTool(*observation); tool != tc.tool {
 				t.Fatalf("exec=%v tool=%q, want %q; observation=%+v", codeMode, tool, tc.tool, observation)
 			}
 			if !slices.Equal(programs, observation.Programs) {
@@ -113,7 +113,7 @@ func TestLiveDiffRunningEditingToolAttribution(t *testing.T) {
 		}
 	}
 	for _, unknown := range []changecapture.Observation{{}, {Programs: []execscope.Program{{Label: "shell", Direct: true}}}} {
-		if tool := execPreviewTool(unknown); tool != "" {
+		if tool := previewmodel.CaptureTool(unknown); tool != "" {
 			t.Fatalf("unknown command guessed %q", tool)
 		}
 	}

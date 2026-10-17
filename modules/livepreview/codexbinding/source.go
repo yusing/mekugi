@@ -48,7 +48,7 @@ func projectStockPreview(ctx context.Context, input, workspace string, final boo
 	}
 	preview.Complete = final
 	preview.Tool = applyPatchToolName
-	projected := projection.AssessPatch(ctx, workspace, preview, readPatch)
+	projected := previewmodel.AssessPatch(ctx, workspace, preview, readPatch)
 	return projected, true
 }
 

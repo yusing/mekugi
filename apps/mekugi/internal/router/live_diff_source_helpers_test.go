@@ -6,7 +6,6 @@ import (
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	previewbinding "github.com/yusing/mekugi/modules/livepreview/codexbinding"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
-	"github.com/yusing/mekugi/modules/livepreview/projection"
 	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 )
 
@@ -23,5 +22,5 @@ func previewProjector(ctx context.Context, kind string) func(string, string, boo
 	}
 }
 func projectStockPatchPreview(ctx context.Context, workspace string, p previewmodel.Preview) previewmodel.Preview {
-	return projection.AssessPatch(ctx, workspace, p, changecapture.ReadPatchFile)
+	return previewmodel.AssessPatch(ctx, workspace, p, changecapture.ReadPatchFile)
 }

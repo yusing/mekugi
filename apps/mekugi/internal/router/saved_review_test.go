@@ -221,7 +221,7 @@ func TestSavedReviewWithoutLivePreview(t *testing.T) {
 }
 
 func TestSavedReviewSwitchRetiresOnlyPreviewAttachment(t *testing.T) {
-	review := newSavedReview(t.Context(), new(previewmodel.Service))
+	review := newSavedReview(t.Context(), previewmodel.New(changecapture.ReadFile))
 	defer review.Close()
 	review.IncludeThread("/workspace", "main", true)
 	old := review.Preview()

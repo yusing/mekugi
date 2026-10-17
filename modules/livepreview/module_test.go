@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/livepreview"
@@ -21,7 +23,7 @@ import (
 func TestLivePreviewFinalProjectionLifetime(t *testing.T) {
 	for _, lifetime := range []string{"transport", "attachment", "stream"} {
 		t.Run(lifetime, func(t *testing.T) {
-			service := moduletest.New(t, livepreview.Module, livepreview.Deps{}, module.Slots{}, nil)
+			service := moduletest.New(t, livepreview.Module, livepreview.Deps{ReadEndpoint: changecapture.ReadFile}, module.Slots{}, nil)
 			var attachment scope.Store
 			session := service.Attach(t.Context(), &attachment)
 			defer session.Close()
@@ -73,7 +75,7 @@ func TestLivePreviewFinalProjectionLifetime(t *testing.T) {
 }
 
 func TestLivePreviewStreamPublication(t *testing.T) {
-	service := moduletest.New(t, livepreview.Module, livepreview.Deps{}, module.Slots{}, nil)
+	service := moduletest.New(t, livepreview.Module, livepreview.Deps{ReadEndpoint: changecapture.ReadFile}, module.Slots{}, nil)
 	var attachment scope.Store
 	session := service.Attach(t.Context(), &attachment)
 	defer session.Close()
@@ -128,7 +130,7 @@ func TestLivePreviewStreamPublication(t *testing.T) {
 }
 
 func TestLivePreviewAttachmentOwnership(t *testing.T) {
-	service := moduletest.New(t, livepreview.Module, livepreview.Deps{}, module.Slots{}, nil)
+	service := moduletest.New(t, livepreview.Module, livepreview.Deps{ReadEndpoint: changecapture.ReadFile}, module.Slots{}, nil)
 	var first, other scope.Store
 	old := service.Attach(t.Context(), &first)
 	old.SetScope(preview.Scope{Workspaces: map[string]map[string]bool{"/work": {"main": true}}})

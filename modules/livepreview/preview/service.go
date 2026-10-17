@@ -6,6 +6,8 @@ import (
 	"slices"
 	"sync"
 	"sync/atomic"
+
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 )
 
 type Event struct {
@@ -26,6 +28,7 @@ type Subscription struct {
 // Session owns bounded provisional snapshots and their replaceable mailbox.
 // The application supplies admitted scope and delivers retained changes separately.
 type Session struct {
+	readEndpoint      func(string, *int) changecapture.File
 	ctx               context.Context
 	cancel            context.CancelFunc
 	enabled           atomic.Bool

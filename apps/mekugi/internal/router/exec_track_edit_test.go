@@ -81,7 +81,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 				if observation.Tree == "" {
 					t.Fatal("workspace baseline unavailable")
 				}
-				if files, _ := execPreviewProjected(t.Context(), *observation); len(files) != 0 {
+				if files, _ := previewmodel.ProjectCaptured(t.Context(), *observation); len(files) != 0 {
 					t.Fatal("regression must bypass source prediction")
 				}
 			} else if len(observation.Files) == 0 {
@@ -425,7 +425,7 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 	source := fmt.Sprintf("await tools.exec_command({cmd:%q,workdir:%q}); await tools.exec_command({cmd:%q,workdir:%q});", first, workspace, second, workspace)
 	commands, dynamic := commandanalysis.LiteralExecCommands(source, workspace, "bash")
 	observation, ok := changecapture.Capture(t.Context(), commands, dynamic, true, changecapture.Options{PreviewOnly: true, Directory: workspace})
-	if !ok || observation == nil || len(commands) != 2 || len(execPreviewExpected(t.Context(), *observation)) != 0 {
+	if !ok || observation == nil || len(commands) != 2 || len(previewmodel.Expected(t.Context(), *observation)) != 0 {
 		t.Fatal("fixture must capture two sequential edits in one exec cell")
 	}
 	auto := newLivePreview(t.Context())

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+
 	"github.com/yusing/mekugi/contracts/scope"
 )
 
@@ -117,4 +119,6 @@ func TestAdmittedScopeIsImmutable(t *testing.T) {
 	}
 }
 
-func newSession(ctx context.Context) *Session { return new(Service).Attach(ctx, new(scope.Store)) }
+func newSession(ctx context.Context) *Session {
+	return New(changecapture.ReadFile).Attach(ctx, new(scope.Store))
+}

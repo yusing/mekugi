@@ -72,7 +72,7 @@ func TestExecScopePreviewFooterDeduplicatesBoundedTargets(t *testing.T) {
 		},
 		Omitted: []changecapture.Omission{{Path: "/scope/also.txt", Reason: "fixture capture bound"}},
 	}
-	if got, want := execScopePreviewFooter(observation), "may write · 2 scoped paths · tracked.txt, also.txt · other writes unknown · bounded scope"; got != want {
+	if got, want := previewmodel.CaptureFooter(observation), "may write · 2 scoped paths · tracked.txt, also.txt · other writes unknown · bounded scope"; got != want {
 		t.Fatalf("bounded VCS scope footer = %q, want %q", got, want)
 	}
 }
@@ -278,7 +278,7 @@ func TestExecPreviewEditThenTestKeepsKnownTarget(t *testing.T) {
 	if observation.Class != execscope.Opaque.String() || !strings.Contains(observation.Reason, "go") {
 		t.Fatalf("test side effects incorrectly treated as fully scoped: %+v", observation)
 	}
-	footer := execScopePreviewFooter(*observation)
+	footer := previewmodel.CaptureFooter(*observation)
 	if !strings.Contains(footer, "source.go") || !strings.Contains(footer, "other writes unknown") {
 		t.Fatalf("footer confuses known edit with unknown test effects: %q", footer)
 	}

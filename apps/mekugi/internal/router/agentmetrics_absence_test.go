@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/v2"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	inspectioncli "github.com/yusing/mekugi/apps/mekugi/internal/inspectioncli"
 
@@ -49,7 +51,7 @@ func TestAgentMetricsAbsentDebugSession(t *testing.T) {
 	defer usage.Close()
 	var paths []string
 	ready := false
-	err = RunSession(terminalsession.Views{}, testPresentation(), new(conversationmodel.Service), new(previewmodel.Service), new(activitymodel.Service), history, testPreferences(), testRecovery(), &segmentservice.Service{Reports: testReports()}, testCapture(t, ""), usage, nil, new(transportcapture.Service), testDiagnostics(nil, new(transportcapture.Service)), ctx, testCommands(), testInputProjections(), testGuidance(), testNaming(), nil, testGuards(), options, nil, func(session Session) {
+	err = RunSession(terminalsession.Views{}, testPresentation(), new(conversationmodel.Service), previewmodel.New(changecapture.ReadFile), new(activitymodel.Service), history, testPreferences(), testRecovery(), &segmentservice.Service{Reports: testReports()}, testCapture(t, ""), usage, nil, new(transportcapture.Service), testDiagnostics(nil, new(transportcapture.Service)), ctx, testCommands(), testInputProjections(), testGuidance(), testNaming(), nil, testGuards(), options, nil, func(session Session) {
 		ready = true
 		if session.AXReadOutput != "" {
 			t.Errorf("absent metrics enabled AX output: %q", session.AXReadOutput)

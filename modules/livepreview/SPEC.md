@@ -122,6 +122,12 @@ attribution, shell success or test success. Unknown additional targets remain
 distinct from displayed files. Failed or partial host outcomes retain their observed
 effects under the change-evidence contract.
 
+The feature owns source-card admission, captured-baseline prediction and endpoint
+comparison state. Its composed capture dependency supplies the bounded endpoint
+reader. Application coordination supplies detached writer-settlement facts and
+continues intermediate evidence comparison after a source card settles; closing
+the card never closes a host observation window or its report subscription.
+
 ### Terminal live views
 
 The [terminal session contract](../../apps/mekugi/internal/terminalsession/SPEC.md#live-changes)

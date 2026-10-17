@@ -4,13 +4,15 @@ import (
 	"context"
 	"sync"
 
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
 var testLiveReviews sync.Map
 
 func newLivePreview(ctx context.Context) *previewmodel.Session {
-	review := newSavedReview(ctx, new(previewmodel.Service))
+	review := newSavedReview(ctx, previewmodel.New(changecapture.ReadFile))
 	session := review.Preview()
 	testLiveReviews.Store(session, review)
 	return session
