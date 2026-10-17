@@ -75,7 +75,7 @@ func TestAppServerLifecycleStartAdmission(t *testing.T) {
 func TestAppServerLifecycleSettingsRestoration(t *testing.T) {
 	h := Live{Thread: "main"}
 	h.Settings.RestoreEffort = true
-	h.Settings.Begin(map[string]any{"collaborationMode": "host snapshot"}, "")
+	h.Settings.Admit(SettingsPlan{Action: SettingsThread, Change: map[string]any{"collaborationMode": "host snapshot"}})
 	h.Settings.Finish() // A failed RPC cannot discharge restoration intent.
 	if h.AcceptsInput() || h.Settings.Pending() {
 		t.Fatal("failed settings operation lost the independent restoration gate")
@@ -107,7 +107,7 @@ func TestAppServerLifecycleReplacementRetiresOperations(t *testing.T) {
 	h.Compaction.Begin(CompactIntent{Continue: true})
 	h.Interrupt()
 	h.Shell.Begin("old-turn")
-	h.Settings.Begin(map[string]any{"effort": "high"}, "old-turn")
+	h.Settings.Admit(SettingsPlan{Action: SettingsThread, Change: map[string]any{"effort": "high"}, Turn: "old-turn"})
 	h.Settings.RestoreEffort = true
 	h.Replacement.Resume("new")
 	h.Submit("old-input", "")

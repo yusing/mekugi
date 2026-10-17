@@ -198,44 +198,6 @@ func (o *Shell) BlocksInput(turn string) bool {
 	return o.Pending || o.Standalone() || o.origin != nil && turn != *o.origin
 }
 
-type settingsPhase uint8
-
-const (
-	settingsIdle settingsPhase = iota
-	settingsThread
-	settingsTurn
-)
-
-type Settings struct {
-	phase         settingsPhase
-	Change        map[string]any
-	turn          string
-	RestoreEffort bool
-}
-
-func (o *Settings) Pending() bool     { return o.phase != settingsIdle }
-func (o *Settings) BlocksInput() bool { return o.Pending() || o.RestoreEffort }
-func (o *Settings) Begin(change map[string]any, turn string) {
-	o.phase, o.Change, o.turn = settingsThread, change, turn
-}
-func (o *Settings) BeginLive()      { o.phase = settingsTurn }
-func (o *Settings) Finish()         { o.phase, o.Change, o.turn = settingsIdle, nil, "" }
-func (o *Settings) RestoredEffort() { o.RestoreEffort = false }
-
-// Confirmed consumes an authoritative thread update. A live update may target
-// only the same turn that received the intent; a later turn must not inherit it.
-func (o *Settings) Confirmed(turn string) (change map[string]any, target string) {
-	if !o.Pending() || o.Change == nil {
-		return nil, ""
-	}
-	change, o.Change = o.Change, nil
-	if o.turn != "" && o.turn == turn {
-		return change, o.turn
-	}
-	o.Finish()
-	return change, ""
-}
-
 type replacementPhase uint8
 
 const (

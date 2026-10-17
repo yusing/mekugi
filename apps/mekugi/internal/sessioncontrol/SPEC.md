@@ -131,6 +131,11 @@ persistent configuration are unchanged.
 
 Settings wait for authoritative host confirmation before publication or dependent
 input. An unchanged default does not wait for a notification the host suppresses.
+Control classifies each admitted intent as unchanged, a thread update or an
+active-turn repair before transport issuance. The adapter commits that decision
+only after successful submission; transport failure cannot leave a new pending
+operation. Confirmed notifications settle the captured target and explicit
+default-restoration intent independently of picker or display state.
 An active-turn update targets only the turn that received the intent; if that turn
 is unavailable, the result reports next-turn-only success. Applied settings affect
 only subsequent captures. Applied values and recovery evidence belong to

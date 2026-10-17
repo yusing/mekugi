@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
@@ -18,7 +20,7 @@ import (
 func TestNativeUISessionLiveToggle(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.modelsLoading = true
-	u.Settings.BeginLive()
+	u.Settings.Admit(sessioncontrol.SettingsPlan{Action: sessioncontrol.SettingsTurn})
 	appServerTestKeys(t, u, "/live\r")
 	defer u.shell.diffScreen.Close()
 	if !u.shell.liveHidden || u.picker.Open || u.Text != "" || wire.Len() != 0 {

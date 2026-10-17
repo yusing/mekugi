@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	json "encoding/json/v2"
@@ -387,7 +388,7 @@ func TestUISnapshotNativeResumeReasoningRejected(t *testing.T) {
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "saved-model", "high"
 	u.Settings.RestoreEffort = true
-	u.Settings.BeginLive()
+	u.Settings.Admit(sessioncontrol.SettingsPlan{Action: sessioncontrol.SettingsTurn})
 	appServerTestRequest(t, u, "1", "thread/settings/update")
 	appServerTestKeys(t, u, "held input\r")
 	appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"host rejected update"}}`)

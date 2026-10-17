@@ -220,7 +220,7 @@ func TestComposerEscapeExpeditesOnlyLocallyWaitingSteer(t *testing.T) {
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	appServerTestTurn(t, u, "t")
-	u.Settings.BeginLive()
+	u.Settings.Admit(sessioncontrol.SettingsPlan{Action: sessioncontrol.SettingsTurn})
 	appServerTestKeys(t, u, "first\rdraft")
 	if wire.Len() != 0 {
 		t.Fatal("settings did not hold input")

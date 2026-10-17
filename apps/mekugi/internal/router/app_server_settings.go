@@ -3,6 +3,8 @@ package router
 import (
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+
 	"github.com/yusing/mekugi/modules/conversation/completion"
 
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
@@ -51,64 +53,43 @@ func (u *appServerUI) effortChoices() []string {
 // intent, never synthetic Responses items or writes to the user's config file.
 // Source: codex-rs/app-server-protocol/src/protocol/v2/{thread,turn}.rs
 func (u *appServerUI) updateSettings(change map[string]any) (bool, error) {
-	if u.restoring != nil || !u.AcceptsSettings() {
+	decision := u.PrepareSettings(preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, change, u.restoring != nil)
+	switch decision.Action {
+	case sessioncontrol.SettingsUnavailable:
 		u.setNotice("Wait for the thread or turn to finish starting", true)
 		return false, nil
-	}
-	if u.Settings.Pending() {
+	case sessioncontrol.SettingsAlreadyPending:
 		u.setNotice("Settings update pending", false)
 		return false, nil
-	}
-	unchanged := true
-	for field, value := range change {
-		switch field {
-		case "collaborationMode":
-			// Resume passes the host-returned snapshot with only its effort
-			// cleared. A changed complete mode requires host confirmation.
-			unchanged = false
-		case "model":
-			unchanged = unchanged && value == u.model
-		case "effort":
-			unchanged = unchanged && (value == u.reasoningEffort || value == nil && u.reasoningEffort == "")
-		case "serviceTier":
-			// Codex normalizes the legacy fast spelling to priority.
-			// Source: codex-rs/core/src/session/step_settings.rs:274:283@86be5320
-			unchanged = unchanged && (value == u.serviceTier || value == "fast" && u.serviceTier == "priority" || value == nil && (u.serviceTier == "" || u.serviceTier == "default"))
+	case sessioncontrol.SettingsThread, sessioncontrol.SettingsTurn:
+		params := map[string]any{"threadId": u.Thread}
+		maps.Copy(params, decision.Change)
+		method := "thread/settings/update"
+		if decision.Action == sessioncontrol.SettingsTurn {
+			method, params["turnId"] = "turn/settings/update", decision.Turn
 		}
-	}
-	params := map[string]any{"threadId": u.Thread}
-	maps.Copy(params, change)
-	// Codex suppresses unchanged thread/settings/updated notifications. A no-op
-	// needs no thread update, but can still repair a previously rejected live one.
-	if unchanged {
-		if u.Turn == "" {
-			if _, explicit := change["effort"]; explicit && u.Settings.RestoreEffort {
-				u.Settings.RestoredEffort()
-				u.retainAppliedSettings()
-			}
-			u.setNotice("Settings unchanged", false)
-			if _, explicit := change["serviceTier"]; explicit {
-				u.chooseServiceTier()
-				u.setNotice("Service tier updated", false)
-			}
-			return true, nil
-		}
-		params["turnId"] = u.Turn
-		if err := u.request("turn/settings/update", params); err != nil {
+		if err := u.request(method, params); err != nil {
 			return false, err
 		}
-		if _, explicit := change["serviceTier"]; explicit {
-			u.chooseServiceTier()
+	}
+	u.Settings.Admit(decision)
+	if decision.RestoreDefault {
+		u.retainAppliedSettings()
+	}
+	if decision.ChooseTier {
+		u.chooseServiceTier()
+	}
+	switch decision.Action {
+	case sessioncontrol.SettingsUnchanged:
+		u.setNotice("Settings unchanged", false)
+		if decision.ChooseTier {
+			u.setNotice("Service tier updated", false)
 		}
-		u.Settings.BeginLive()
+	case sessioncontrol.SettingsTurn:
 		u.setNotice("Updating active turn…", false)
-		return true, nil
+	case sessioncontrol.SettingsThread:
+		u.setNotice("Updating settings…", false)
 	}
-	if err := u.request("thread/settings/update", params); err != nil {
-		return false, err
-	}
-	u.Settings.Begin(change, u.Turn)
-	u.setNotice("Updating settings…", false)
 	return true, nil
 }
 
@@ -336,23 +317,22 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 		u.session.cwd = event.Settings.Cwd
 	}
 	u.model, u.reasoningEffort, u.serviceTier = event.Settings.Model, event.Settings.Effort, event.Settings.ServiceTier
-	if _, explicit := u.Settings.Change["serviceTier"]; explicit {
+	confirmation := u.Settings.Confirmed(u.Turn, u.reasoningEffort)
+	if confirmation.ChooseTier {
 		u.chooseServiceTier()
 	}
-	if _, explicit := u.Settings.Change["effort"]; explicit || u.reasoningEffort == "" {
-		u.Settings.RestoredEffort()
-	}
 	u.retainAppliedSettings()
-	change, target := u.Settings.Confirmed(u.Turn)
-	if change == nil {
+	if !confirmation.Requested {
 		return true, nil
 	}
-	if target != "" {
-		change["threadId"], change["turnId"] = u.Thread, target
+	decision := confirmation.Update
+	if decision.Action == sessioncontrol.SettingsTurn {
+		change := maps.Clone(decision.Change)
+		change["threadId"], change["turnId"] = u.Thread, decision.Turn
 		if err := u.request("turn/settings/update", change); err != nil {
 			return true, err
 		}
-		u.Settings.BeginLive()
+		u.Settings.Admit(decision)
 		u.setNotice("Settings saved · updating active turn…", false)
 	} else {
 		u.setNotice("Settings saved for next turn", false)

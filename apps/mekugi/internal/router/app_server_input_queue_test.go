@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -439,7 +441,7 @@ func TestAppServerInterruptBeforeFirstCommitRestoresCleanComposer(t *testing.T) 
 
 func TestAppServerInterruptLocallyStackedInputDoesNotQuit(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.Settings.BeginLive()
+	u.Settings.Admit(sessioncontrol.SettingsPlan{Action: sessioncontrol.SettingsTurn})
 	appServerTestKeys(t, u, "not sent\r")
 	quit, err := u.key("\x03")
 	if quit || err != nil || u.Text != "not sent" || len(u.conversation().Unsent) != 0 || w.Len() != 0 {
