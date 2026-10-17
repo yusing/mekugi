@@ -6,7 +6,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/conversation/composer"
-	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
 
 // editKey maps editing keys to source-coordinate actions without keeping another editor.
@@ -76,10 +75,9 @@ type ComposerInput struct {
 func (m *Main) ComposerKey(key string, prompts *Prompts, transcript *activityui.View) ComposerInput {
 	view := m.session
 	draft := view.Draft.Draft
-	target := conversationmodel.EditorTarget{Revision: view.Draft.Revision}
+	target := view.EditorTarget()
 	if prompt := view.PromptDraft; prompt.Call != "" || prompt.Request != "" {
 		draft = prompt.Draft
-		target = conversationmodel.EditorTarget{Call: prompt.Call, Question: prompt.Question, Request: prompt.Request, Revision: prompt.Revision}
 	}
 	var operation sessionpresentation.ComposerOperation
 	switch key {

@@ -19,6 +19,7 @@ import (
 // transcript, backend handles, or prompt records.
 type Main struct {
 	session                                                sessionpresentation.View
+	paste                                                  *pasteBuffer
 	Keybindings, InterruptLocked                           bool
 	Menu                                                   Menu
 	Side                                                   SideDock

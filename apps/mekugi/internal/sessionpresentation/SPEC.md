@@ -230,6 +230,9 @@ actions are usable without terminal keys. Composer operation intents use the sam
 version and editor target before submission, cancellation, waiting-input restore,
 clipboard acquisition, external editing or effort changes. Secret editor actions remain local to
 the terminal after prompt admission.
+Completed paste admission checks the originating editor and menu before text or
+attachment acquisition. A changed destination cannot redirect a paste that began
+in another draft, prompt, menu or attachment.
 Admission precedes taking the draft or reading attachment sources, so a stale
 intent cannot clear, capture or submit newer input. Main owns the input destination;
 a displayed child, replay or a prompt-owned editor cannot admit ordinary input.

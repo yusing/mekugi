@@ -84,7 +84,7 @@ func (u *appServerUI) composerVacant() bool {
 	if u.composerReadOnly() {
 		return false
 	}
-	if u.Text != "" || len(u.Images) > 0 || len(u.Files) > 0 || len(u.Skills) > 0 || len(u.Selections) > 0 || u.pasted != nil || u.pickerVisible() || u.mainView.Keybindings || u.statusPanel != nil || u.resumePicker != nil || u.approvals.Open {
+	if u.Text != "" || len(u.Images) > 0 || len(u.Files) > 0 || len(u.Skills) > 0 || len(u.Selections) > 0 || u.mainView.Pasting() || u.pickerVisible() || u.mainView.Keybindings || u.statusPanel != nil || u.resumePicker != nil || u.approvals.Open {
 		return false
 	}
 	return u.shell == nil || u.shell.Focus == 0 && !u.shell.input.Pasting() && !u.shell.input.Pending()

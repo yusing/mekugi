@@ -53,21 +53,22 @@ func (u *appServerUI) input(event terminalsession.Input) (bool, error) {
 	switch event.Kind {
 	case terminalsession.KeyInput:
 		return u.key(event.Text)
-	case terminalsession.PasteStart:
-		u.pasted = nil
-		if u.prepareComposerInput() {
-			u.mainView.Keybindings, u.Run = false, composer.NoRun
-			u.pasted = make([]byte, 0)
+	case terminalsession.PasteStart, terminalsession.PasteInput, terminalsession.PasteEnd:
+		if event.Kind == terminalsession.PasteStart {
+			u.mainView.CancelPaste()
+			if !u.prepareComposerInput() {
+				return false, nil
+			}
+			u.Run = composer.NoRun
 		}
-	case terminalsession.PasteInput:
-		if u.pasted != nil {
-			u.pasted = append(u.pasted, event.Text...)
+		if event.Kind != terminalsession.PasteInput {
+			u.publishPresentation(u.now())
 		}
-	case terminalsession.PasteEnd:
-		payload := u.pasted
-		u.pasted = nil
-		if payload != nil && !u.composerReadOnly() {
-			u.paste(payload)
+		pasted, err := u.mainView.PasteInput(event, &u.prompts)
+		if err != nil {
+			u.setNotice(err.Error(), true)
+		} else if pasted != nil {
+			u.applyPaste(*pasted)
 		}
 	}
 	return false, nil

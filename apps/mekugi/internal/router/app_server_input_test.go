@@ -7,7 +7,59 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/yusing/mekugi/modules/conversation/composer"
 )
+
+func TestPasteAdmissionPreservesOriginalDestination(t *testing.T) {
+	for _, change := range []string{"status", "draft", "menu", "prompt"} {
+		t.Run(change, func(t *testing.T) {
+			u, wire := newAppServerTestUI()
+			appServerTestKeys(t, u, "\x1b[200~payload")
+			switch change {
+			case "status":
+				u.setNotice("new status", false)
+			case "draft":
+				u.Editor.Replace(composer.Draft{Text: "replacement"})
+			case "menu":
+				u.openMenu("manage")
+			case "prompt":
+				questionTestSync(t, u, "replacement", false)
+				u.openQuestions()
+			}
+			appServerTestKeys(t, u, "\x1b[201~")
+			want := ""
+			if change == "status" {
+				want = "payload"
+			} else if change == "draft" {
+				want = "replacement"
+			}
+			if u.Text != want || u.picker.Query != "" || wire.Len() != 0 || u.mainView.Pasting() {
+				t.Fatalf("paste retargeted: draft=%q, query=%q, wire=%q", u.Text, u.picker.Query, wire.String())
+			}
+			if change != "status" && !u.feedback.Alert {
+				t.Fatal("rejected paste lacks feedback")
+			}
+		})
+	}
+}
+
+func TestSecretPasteRejectsReopenedEditor(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.Turn = "turn"
+	questionTestSync(t, u, "secret-paste", true)
+	questionTestPaint(t, u, 60)
+	appServerTestKeys(t, u, "\x1b[200~private\x1b[201~")
+	if u.prompts.Secret.Text != "private" || u.sessionPresentation().View().PromptDraft.Draft.Text != "" {
+		t.Fatal("secret paste was lost or published")
+	}
+	appServerTestKeys(t, u, "\x1b[200~stale")
+	u.prompts.Reopen()
+	appServerTestKeys(t, u, "\x1b[201~")
+	if u.prompts.Secret.Text != "private" || !u.feedback.Alert {
+		t.Fatal("reopened secret editor accepted an old paste")
+	}
+}
 
 func TestNativeUIQueuedEscapeContinuation(t *testing.T) {
 	for _, tc := range []struct{ name, suffix, want string }{

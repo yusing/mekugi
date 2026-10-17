@@ -144,7 +144,6 @@ type appServerUI struct {
 	requests               *sessioncontrol.Requests[appServerRequest]
 	retiredThreads         map[string]string
 	ownedImages            map[string]bool
-	pasted                 []byte // Non-nil while collecting an admitted, already-framed paste.
 	dirty                  bool
 	panes                  *nativePreferences
 	restoring              *appServerActivityRestore

@@ -18,9 +18,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/modules/conversation/composer"
-
-	"github.com/charmbracelet/x/ansi"
 )
 
 // attachImage takes ownership of a clipboard file for cleanup.
@@ -194,9 +194,16 @@ func clipboardImage(ctx context.Context) (string, error) {
 	return file.Name(), nil
 }
 
-// paste inserts an already-framed payload. Terminal control bytes never reach key handling.
-func (u *appServerUI) paste(payload []byte) {
-	text := string(pasteText(payload))
+func (u *appServerUI) applyPaste(paste terminalsession.PasteResult) {
+	if err := u.sessionPresentation().AdmitPaste(paste.Intent, u.conversation()); err != nil {
+		u.setNotice(err.Error(), true)
+		return
+	}
+	text := paste.Text
+	menu := sessionpresentation.MenuCompletion
+	if published := u.sessionPresentation().View().Menu; published != nil {
+		menu = published.Kind
+	}
 	switch {
 	case u.approvals.Open:
 		if a := u.pendingApprovals()[0]; a.DenialChoice() >= 0 && text != "" {
@@ -204,36 +211,12 @@ func (u *appServerUI) paste(payload []byte) {
 			u.insertDraft(text)
 			u.Run = composer.NoRun
 		}
-	case u.picker.modal == "manage":
+	case menu == sessionpresentation.MenuManageSkills:
 		u.picker.Query += text
-	case u.picker.modal == "menu" || u.picker.modal == "copy" || u.picker.modal == "settings" || u.picker.modal == "archive":
+	case menu == sessionpresentation.MenuSkills || menu == sessionpresentation.MenuCopy || menu == sessionpresentation.MenuSettings || menu == sessionpresentation.MenuArchive:
 	default:
 		u.finishPaste(text)
 	}
 	u.picker.Dismissed, u.picker.Open = u.completionTarget(), false
 	u.refreshPicker()
-}
-
-// Keep the composer's existing text-only paste contract, but sanitize only
-// after delimiting the payload. A partial escape can no longer eat its boundary.
-func pasteText(payload []byte) []byte {
-	var text []byte
-	for len(payload) > 0 {
-		b := payload[0]
-		if b == 27 && len(payload) > 1 && (payload[1] == '[' || payload[1] == ']') {
-			_, _, n, _ := ansi.DecodeSequence(payload, 0, nil)
-			if n > 0 {
-				payload = payload[n:]
-				continue
-			}
-		}
-		payload = payload[1:]
-		if b == '\r' {
-			b = '\n'
-		}
-		if b >= 32 || b == '\n' || b == '\t' {
-			text = append(text, b)
-		}
-	}
-	return text
 }

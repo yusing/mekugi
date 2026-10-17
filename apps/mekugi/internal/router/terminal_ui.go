@@ -56,7 +56,7 @@ func (u *terminalUI) key(key byte) error {
 			return nil
 		}
 		if u.output != nil || u.Focus != 0 || u.main.mainView.Panel.Open() || u.main.mainView.Resume.Open() || u.main.composerReadOnly() {
-			u.main.pasted = nil
+			u.main.mainView.CancelPaste()
 			return nil
 		}
 		if event.Kind == terminalsession.PasteStart && u.selection != nil && !u.selection.Dragging() {

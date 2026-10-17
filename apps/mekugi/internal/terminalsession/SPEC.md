@@ -78,6 +78,13 @@ the decoder still consumes their terminator. Terminal replies never reach the
 composer or pane shortcuts. A lone Escape waits 40 milliseconds for continuation;
 queued continuation bytes are drained before expiration is applied.
 
+The terminal buffers and sanitizes a completed paste against its original
+attachment, editor and menu. Unrelated publication updates do not discard it;
+replacing that input destination rejects it with feedback. Application integration
+admits the completed target before acquiring an image or changing input. Secret
+buffers and their revision checks remain terminal-local and never enter published
+views or retained records.
+
 Replay has read-only input admission. Its decoder consumes fragmented SGR,
 legacy mouse and navigation reports without treating their payload as playback
 commands. Ctrl-C remains available after an incomplete report; a new Escape

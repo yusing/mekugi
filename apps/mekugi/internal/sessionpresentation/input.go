@@ -81,6 +81,40 @@ type EditorIntent struct {
 	Action  composer.Action
 }
 
+func (v View) EditorTarget() conversationmodel.EditorTarget {
+	if p := v.PromptDraft; p.Call != "" || p.Request != "" {
+		return conversationmodel.EditorTarget{Call: p.Call, Question: p.Question, Request: p.Request, Revision: p.Revision}
+	}
+	return conversationmodel.EditorTarget{Revision: v.Draft.Revision}
+}
+
+// PasteIntent names a completed paste destination, never its payload.
+type PasteIntent struct {
+	Version Version
+	Target  conversationmodel.EditorTarget
+	Menu    uint64
+}
+
+func (m *Model) AdmitPaste(in PasteIntent, conversation *conversationmodel.Session) error {
+	if in.Version != m.view.Version {
+		return ErrStaleIntent
+	}
+	if m.View().ReadOnly != Editable {
+		return ErrInputUnavailable
+	}
+	if in.Target != conversation.EditorTarget() {
+		return conversationmodel.ErrDraftChanged
+	}
+	menu := uint64(0)
+	if m.view.Menu != nil {
+		menu = m.view.Menu.ID
+	}
+	if in.Menu != menu {
+		return ErrStaleIntent
+	}
+	return nil
+}
+
 func (m *Model) ApplyEditor(intent EditorIntent, conversation *conversationmodel.Session) (bool, error) {
 	if intent.Version != m.view.Version {
 		return false, ErrStaleIntent
