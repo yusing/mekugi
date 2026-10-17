@@ -20,6 +20,75 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+func TestSessionUIReplayRetainedCollaborationDelivery(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	records := []map[string]any{replayTestMeta("root"), replayTestRecord("event_msg", replayTestEpoch, map[string]any{"type": "task_started", "turn_id": "turn"})}
+	for i, tool := range []string{"spawn_agent", "send_input", "followup_task", "send_message", "send_message"} {
+		status, text := "completed", tool+" body"
+		if i == 4 {
+			status, text = "failed", "undelivered message"
+		}
+		records = append(records, replayTestItem("root", "turn", replayTestEpoch+int64(i*1000+100), replayTestEpoch+int64(i*1000+900), map[string]any{
+			"type": "CollabAgentToolCall", "id": fmt.Sprint(i), "tool": tool, "status": status,
+			"sender_thread_id": "root", "receiver_thread_ids": []string{"child"}, "prompt": text,
+			"model": "child-model", "reasoning_effort": "high",
+		}))
+	}
+	records = append(records, replayTestRecord("event_msg", replayTestEpoch+6000, map[string]any{"type": "task_complete", "turn_id": "turn"}))
+	path := replayTestWrite(t, dir, "rollout-root.jsonl", records...)
+	replayTestWrite(t, dir, "rollout-child.jsonl", replayTestMeta("child"))
+	source, err := replayReadTest(t, new(transportcapture.Service), t.Context(), path, "", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
+	t.Cleanup(p.close)
+	want := map[string]string{"0\x00child": "spawn_agent body", "1\x00child": "send_input body", "2\x00child": "followup_task body", "3\x00child": "send_message body"}
+	for pass := range 2 {
+		if pass > 0 {
+			if err := p.seek(0); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := p.advance(p.Until); err != nil {
+			t.Fatal(err)
+		}
+		got := make(map[string]string)
+		for _, entry := range p.ui.agents.Entries {
+			e := entry.Source
+			if e.assignment == nil && e.message == nil {
+				continue
+			}
+			if _, duplicate := got[e.native.item]; duplicate {
+				t.Fatalf("duplicate collaboration identity %q", e.native.item)
+			}
+			if e.assignment != nil {
+				got[e.native.item] = e.assignment.text
+			} else if e.message != nil {
+				got[e.native.item] = e.message.text
+			}
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("pass %d collaboration delivery = %#v, want %#v", pass, got, want)
+		}
+		child := p.ui.session.agent(p.ui.session.paths["child"])
+		if child == nil || child.settings.Model != "child-model" || child.settings.Effort != "high" {
+			t.Fatalf("spawn settings lost: %+v", child)
+		}
+		p.ui.agents.displayThread(child.Name)
+		frame := replayPlaybackTestPaint(t, p, 140, 45)
+		for _, text := range want {
+			if !strings.Contains(frame, text) {
+				t.Fatalf("pass %d rendered collaboration hides %q:\n%s", pass, text, frame)
+			}
+		}
+		if strings.Contains(frame, "undelivered message") {
+			t.Fatal("failed collaboration claimed delivery")
+		}
+	}
+}
+
 func TestSessionUIReplayRetainsQuestionAnswerWait(t *testing.T) {
 	t.Parallel()
 	path := replayTestWrite(t, t.TempDir(), "root.jsonl", replayTestMeta("root"),

@@ -12,6 +12,7 @@ func replayPresentationEvent(e observation.Event) appServerEvent {
 	item := binding.ThreadItem{ID: i.ID, Type: i.Type, Status: i.Status,
 		Phase: i.Phase, Cwd: i.Cwd, Kind: i.Kind, Path: i.Path, Command: i.Command, ProcessID: i.ProcessID,
 		ClientID: i.ClientID, AgentThreadID: i.AgentThreadID, AgentPath: i.AgentPath, Tool: i.Tool,
+		Prompt: i.Prompt, Model: i.Model, ReasoningEffort: i.ReasoningEffort,
 		SenderThreadID: i.SenderThreadID, ReceiverThreadIDs: i.ReceiverThreadIDs, DurationMS: i.DurationMS,
 		AggregatedOutput: i.AggregatedOutput, ExitCode: i.ExitCode}
 	for _, change := range i.Changes {

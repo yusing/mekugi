@@ -30,6 +30,9 @@ items and turn lifecycles retain their original ownership.
 
 Supported facts include messages, public reasoning summaries, command output,
 file changes, agent lifecycle and collaboration, compaction and image-view activity.
+Collaboration preserves recorded assignment/message bodies and supplied child model
+settings. Only successful completed calls claim delivered assignments or messages;
+missing facts remain unknown.
 Unsupported item kinds are counted. Retained hooks use each loaded workspace and
 thread; unavailable or dropped history is disclosed. Unfinished hook observations
 show an unknown outcome without becoming running work. Private/raw reasoning,

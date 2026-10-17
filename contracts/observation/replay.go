@@ -37,6 +37,7 @@ type Item struct {
 	ID, Type, Status, Text, Delivery, Phase, Cwd, Kind, Path string
 	Command, ProcessID, ClientID, AgentThreadID, AgentPath   string
 	Tool, SenderThreadID                                     string
+	Prompt, Model, ReasoningEffort                           string
 	ReceiverThreadIDs                                        []string
 	DurationMS                                               *int64
 	Summary                                                  []string
