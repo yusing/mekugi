@@ -1,212 +1,145 @@
 # Live preview
 
-## Purpose
+## Purpose and boundary
 
-Project provisional filesystem changes and maintain bounded live-view state before
-host completion. A preview never executes source, authorizes a read or write,
+Show provisional filesystem changes while edit source arrives, before host
+completion. A preview never writes or executes source, authorizes a read or write,
 finalizes a host call, allocates a change ID, or establishes durable evidence.
 
-## Scope
+The application supplies admitted workspace/thread scope and host-turn facts.
+[Change evidence](../../docs/contracts/change-evidence.md) owns capture, attribution
+and publication; [change history](../changehistory/SPEC.md#saved-review-presentation)
+owns retained review. Preview consumes those facts without deciding their authority
+or replacing their outcomes. Terminal behavior follows the
+[terminal session contract](../../apps/mekugi/internal/terminalsession/SPEC.md).
 
-`projection` owns literal shell/interpreter evaluation, patch projection,
-target-language boundaries, and per-call source baselines. `preview` owns plain
-snapshot values, consumption of admitted workspace/thread scope, root-turn transitions,
-thread/turn retirement, and the attached renderer's bounded mailbox.
+## Source projection
 
-The application adapts authenticated backend observations into these APIs. It
-retains streaming-tool argument decoding, input pacing, bounded observation
-workers, captured endpoint reconciliation and durable receipt loading. It joins
-captured scope with [command-segment observations](../commandsegments/SPEC.md#live-correlation)
-without treating a match as permission to publish changes.
-The always-on application review join owns scope admission and
-retained-change delivery, independently of this optional feature. It supplies an
-immutable admitted scope to preview and uses the existing change-history and
-command-segment owners. The module imports neither feature.
+Only arriving source with a producible hunk opens a live preview. Stock patches
+and literal `cat`/`tee` heredoc writes can stream, including nested stock commands.
+Supported Python, JavaScript and TypeScript writes use known literal paths and
+bounded source values. Independent writes within a call remain visible.
 
-`terminalview` owns terminal layout, source following, file windows,
-selection, reveal animation, and per-call settling timers. The
-[terminal session](../../apps/mekugi/internal/terminalsession/SPEC.md) owns pane composition and input routing. Saved
-review composition and durable changes remain outside this module.
-
-## Behavior
-
-### Eligible source and baselines
-
-Only arriving source content with a producible hunk opens a live card. Stock
-patches and literal `cat`/`tee` heredoc writes can stream, including nested stock
-commands. Independent writes in one call remain visible. Copies, moves, removals,
-formatter-only effects, generic commands, VCS effects, non-file targets, binary
-content, and metadata-only changes do not open source cards. Their observed
-effects remain available in Activity and saved Diff.
+Copies, moves, removals, formatter-only effects, generic commands, VCS effects,
+non-file targets, binary content and metadata-only changes do not open source
+previews. This limits prediction, not capture: their observed effects remain
+available through Activity and saved Diff under the change-evidence contract.
 
 Literal working directories and preceding literal `cd` steps resolve targets.
-Relative operands require an explicitly selected absolute directory. A computed
-directory cannot supply preview scope. Steps of an `a && b` chain are projected
-as if each succeeds; an unsupported preceding effect or a dependent earlier
-file operation prevents an invented result. Literal assignments and supported
-non-writing setup do not prevent projection.
+Relative operands require an explicitly selected absolute directory; computed
+directories cannot supply scope. An `a && b` chain is projected as if each step
+succeeds. Unsupported preceding effects or dependencies on an earlier file
+operation prevent an invented result. Literal assignments and supported non-writing
+setup do not prevent projection.
 
-A call keeps its first successful bounded source read per path and reader.
-Pre-execution capture can prime that baseline without replacing an earlier read.
-Captured-only projection rejects every uncaptured path instead of learning a
-baseline after execution. Read errors remain errors and can be retried while
-input arrives. Projection performs no write and never executes a script.
+Each call preserves its first successful bounded source read for a path and reader.
+Pre-execution capture may supply the baseline without replacing an earlier read.
+When only captured baselines are allowed, uncaptured paths are rejected rather
+than acquiring before-state after execution. Failed reads remain errors and may
+be retried while input arrives.
 
 ### Literal interpreter writes
 
-Supported Python, JavaScript, and TypeScript writes resolve only known literal
-paths and bounded source values. Python supports literal file reads/writes,
-path-based text methods, literal replacement, concatenation, bounded repetition,
-string-buffer `+=`, trimming, ASCII case conversion, splitting and joining.
-Known string lists, tuples, and insertion-ordered literal dictionaries support
-bounded synchronous iteration, including flat replacement-pair unpacking and
-`items`/`keys`/`values`. Nested loops share the same iteration budget. Collections
-can be passed to helpers; mutation and computed dictionary entries are excluded.
+Python projection supports literal file and path-based text operations, replacement,
+concatenation, bounded repetition, string-buffer append, trimming, ASCII case
+conversion, splitting and joining. Known string lists, tuples and insertion-ordered
+literal dictionaries support bounded synchronous iteration, including replacement
+pairs and dictionary entries, keys or values. Nested loops share the iteration
+bound. Top-level helpers accept plain/default parameters and collections, preserving
+local/global binding and definition-time defaults.
 
-Top-level helpers with plain/default parameters preserve Python local/global
-binding and definition-time defaults. Ordered writes compose predicted content;
-a later read sees an earlier predicted write, and path reassignment affects only
-later statements. One open handle appends in order; reopening in write mode
-truncates, including empty contexts. Closed handles and overlapping handles with
-a writer are not projected. Stop-only guards, assertions, and printing do not
-invent effects. Dynamic loops, loop `else`, `break`/`continue`, regex replacement,
-unsupported buffer mutations, and Unicode case conversion are not predicted.
+Predicted writes compose in source order: later reads see earlier predicted writes,
+and reassigned paths affect only later statements. Writes through one open handle
+append in order; reopening in write mode truncates, including empty contexts.
+Closed handles and overlapping handles with a writer are not projected. Collection
+mutation, computed dictionary entries, dynamic loops, loop `else`, `break`/`continue`,
+regex replacement, unsupported buffer mutations and Unicode case conversion are
+not predicted. Stop-only guards, assertions and printing do not invent effects.
 
-A Python edit script arriving through a heredoc previews its explicit target
-writes, not the transport script. Reads and in-memory transformations alone do
-not establish edit intent. While an unfinished script contains only imports,
-docstrings, `sys.path` setup, and literal/path assignments, its source stays
-hidden. Other source statements can reveal an ordinary script. A completed
-read-only script creation previews the script itself.
+A Python edit script arriving through a heredoc previews its explicit target writes,
+not the transport script. Reads and in-memory transformations alone do not establish
+edit intent. An unfinished script containing only imports, docstrings, `sys.path`
+setup and literal/path assignments stays hidden. Other source statements may reveal
+an ordinary script; a completed read-only script creation previews the script itself.
 
 ### Source boundaries and completion
 
-Interpreter predictions use the same in-memory patch projection as stock patches.
-Only exact ordered source matches establish a patch result. An unprojectable
-completed patch withdraws its earlier provisional card; the host result reports
-execution failure. An unfinished patch/header retains the preceding established
-projection until it has source to replace it.
+Only exact ordered source matches establish a projected patch result. An
+unprojectable completed patch withdraws its earlier provisional preview; the host
+result remains authoritative for execution failure. An unfinished patch or header
+retains the preceding established projection until source can replace it.
 
-Arriving target content reveals complete decoded lines and supported statement
-boundaries. Go, JavaScript, TypeScript, Python, and Bash/sh buffer unfinished
-syntax; complete statements inside open blocks can appear independently.
-Delimiters inside strings do not release partial statements. Open object, array,
-and call literals remain one unit. Unknown formats use complete lines. Final
-input releases an unterminated or malformed tail without implying success.
-Completed input publishes its authoritative full source and completion state
-together, so coalescing cannot leave a truncated final frame. Interrupted input
-never fabricates a final script.
-Patch representation omits carriage returns and missing-final-newline differences;
-a path that cannot be expressed in a patch header has no projected card.
+Target content reveals complete decoded lines and supported statement boundaries.
+Go, JavaScript, TypeScript, Python and Bash/sh buffer unfinished syntax while allowing
+complete statements inside open blocks to appear independently. Delimiters inside
+strings cannot release partial statements; open object, array and call literals
+remain one unit. Unknown formats use complete lines. Final input releases an
+unterminated or malformed tail without implying success. Full source and input
+completion arrive together, so coalescing cannot leave a truncated final view.
+Interrupted input never fabricates a final script.
 
-Input pacing belongs to the application worker. It follows recent arrival rate,
-bounds lag, preserves distinct reveals, and drains a completed call within its
-existing bounded settling window. Completion-only shell/JavaScript projections
-never manufacture an active stream. Source-card clipping preserves a bounded
-suffix of the actual diff, never the transporting command text.
+Patch representation omits carriage returns and missing-final-newline differences.
+A path that cannot be expressed in a patch header has no projected preview. Clipping
+retains a bounded suffix of the actual diff, never transporting command text.
+Arrival-paced reveals bound lag and drain completed input within the display's
+settling interval. Projection first received at completion cannot invent an active
+stream. Finished input remains labelled preview, not success.
 
-### Publication, scope, and retirement
+## Scope, visibility and continuity
 
-The application admits only observed or authorized-restored threads in the
-selected attachment. A session switch invalidates the review mailbox and requires
-admitted lineage for later observations. The module consumes that scope without
-performing a second admission decision. Root host-turn identity alone controls live/saved
-view transitions; child turns and stale completions cannot change the current
-root view. Thread/turn retirement removes only matching previews and rejects
-late frames, including completed frames already queued for display.
+Only observed or authorized-restored threads in the selected attachment are eligible.
+Session switching invalidates the old scope; later observations require admitted
+lineage. Root host-turn identity controls live/saved transitions. Child turns and
+stale completions cannot change the current root view. Thread/turn retirement removes
+only matching previews and rejects late updates, including queued completed updates.
 
-The service publishes without waiting for the renderer. Active calls keep
-first-observation order; replaceable updates coalesce in place per call. The
-application drains retained change notifications and scope barriers before sampled previews, so a
-new thread's preview cannot overtake its membership or delay a retained receipt.
-An overflow invalidates the subscription rather than silently losing evidence.
-A replacement subscription starts with a complete scope/membership barrier,
-retained root-turn status, and current provisional snapshots with restoration
-provenance. Cleanup of an old subscriber cannot detach its replacement.
+Preview visibility belongs to the displayed thread. Child edits cannot take over
+Main, and previews never replace saved review. Hiding presentation leaves updates,
+capture and execution active; showing it reveals only current previews. Omitting
+the feature leaves retained change publication, Activity receipts and saved review
+available.
 
-Renderer resynchronization preserves surviving pinned files, source windows,
-and original completion deadlines. It cannot reveal previously unseen completed
-work or reopen expired calls. Already displayed completions can finish their
-original settling interval. Scope withdrawal and absent unfinished calls retire
-from the live view. Preview clipping never clips retained edit receipts.
+Active calls retain first-observation order; replaceable updates coalesce per call
+without waiting for a viewer. Scope/membership and retained changes precede sampled
+previews, so a thread's preview cannot overtake its membership or delay a retained
+receipt. Overflow requires resynchronization rather than silent loss. A replacement
+view receives current admitted scope, root-turn state and provisional snapshots
+distinguished from newly arriving source. Retiring an old view cannot detach its
+replacement.
 
-The application supplies running observations from captured scope, not a workspace
-sweep. Recognized edits can finish their cards when observed endpoints match the
-projection or uniquely matched writer segments finish, independently of following
-tests. Such cards say `observed`; they do not claim the shell or tests succeeded.
-Unknown additional targets remain distinct from known displayed files. Terminal
-host outcomes and the capture owner remain authoritative for effects and status.
+Resynchronization preserves surviving pinned files, source windows and original
+completion deadlines. It cannot reveal previously unseen completed work or reopen
+expired calls. Already displayed completions may finish their original settling
+interval. Scope withdrawal and absent unfinished calls retire from view. Each call
+settles independently of running siblings and newer edits; clipping never clips
+retained edit receipts.
+
+Running observations use captured scope, not workspace sweeps. Recognized edits may
+settle when observed endpoints match the projection or uniquely matched
+[writer segments](../commandsegments/SPEC.md#live-correlation) finish, independently
+of later tests. Their `observed` label describes differences, not exclusive
+attribution, shell success or test success. Unknown additional targets remain
+distinct from displayed files. Failed or partial host outcomes retain their observed
+effects under the change-evidence contract.
 
 ### Terminal live views
 
-`/live` toggles presentation; `on`/`off` apply explicitly. It defaults on at every
-launch, including resume, and lasts only for that frontend. Hiding reserves no
-space and does not stop updates or capture; showing it reveals only current cards.
-Eligible source replaces only its owner's selected transcript above Main's composer,
-never saved Diff. Child edits cannot take over Main. Prompt/picker/help docks take
-precedence over live source.
+The [terminal session contract](../../apps/mekugi/internal/terminalsession/SPEC.md#live-changes)
+defines live-view controls, pane precedence, geometry, scrolling and settling.
 
-Each file gets at least 15 rows including its heading, plus one shared Live heading;
-short terminals show a file-count summary instead. At capacity, new files advance
-the window without shrinking existing splits. Ctrl-B e cycles and pins the displayed
-thread's file window; later arrivals cannot steal it. Wheel and Ctrl-B PgUp/PgDn
-scroll live source independently of transcript and saved Diff. Reaching the source
-tip resumes following; Ctrl-B r resumes both source following and the newest window.
+## Lifecycle and failure
 
-Each completed call expires after its own 1.5-second settling interval, independently
-of running siblings or newer edits. A surviving pinned file keeps its window;
-expiry of the selected call follows the newest remaining file. With no cards,
-the transcript returns. History never reconstructs transient bursts, and projection
-first received at completion opens none. Finished input remains labelled preview,
-not success; observed changes describe differences without exclusive attribution
-or successful command completion. Following tests retain their own running state,
-not the edit's dock. Shared captured baselines avoid rereading already-edited source
-from app-server file-change notifications.
+Preview state is bounded and attachment-local. Switching sessions or detaching
+retires the old attachment's projection and observation work independently of host
+commands and retained capture. Source baselines, active previews and completed
+display state are process-local. Resume restores authorized review scope and
+retained identities, never transient edit bursts or polling. Previewing preserves
+stock inputs/results, continuations, cancellation and failed or partial outcomes
+without replaying or rewriting a tool call.
 
-## Lifecycle
-
-The composed handle contains only a private typed state key. The application
-resolves preview state from its attachment store and replaces that store when the
-selected session changes or the view detaches. Each attachment retains bounded
-state and one in-process renderer subscription, with no mailbox goroutine,
-filesystem store, HTTP endpoint, or second transcript. Retiring an attachment
-cancels its input-projection and running-observation workers, independently of
-host commands and retained capture. Disabling live presentation does not disable capture or host
-execution. Removing the composition entry omits preview observation and leaves
-retained change publication and saved review available.
-
-## Codex connection
-
-No backend binding is registered. The application validates request kind, selected
-workspace, caller identity, and root/subagent metadata before supplying neutral
-scope and turn facts. It preserves exact stock arguments and results, PTY/yield
-continuations, cancellation, and failed or partial outcomes. Previewing never
-replays or rewrites a tool call.
-
-## Records
-
-None. Source baselines, active snapshots, completed display snapshots, mailboxes,
-and turn state are process-local. Application resume restores authorized review
-scope and retained change identities; it never reconstructs transient edit bursts
-or polling.
-
-## Failure
-
-Unsupported source or failed reads cannot fabricate a diff or suppress captured
-evidence. The application reports exhausted review scope without affecting edits
-or retained change inspection. Slow viewers resynchronize; slow source evaluation stays outside the
-UI owner and remains independently bounded. Missing retained evidence is reported
-by the application's saved-review loader, not interpreted as an empty change.
-
-## Acceptance
-
-Module tests cover literal projection without effects, prediction/runtime agreement,
-source-boundary gating, baseline reuse, bounded evaluation, immutable admitted
-scope, mailbox coalescing, overflow, and subscriber replacement. Application tests
-cover scope admission, receipt ordering, stock-byte preservation, pre-completion
-streaming, source/capture/segment joins, attachment replacement, and late-turn retirement. Saved-review
-restore, updates, Activity receipts and root switching remain available with the
-preview feature omitted.
-Renderer snapshots and PTY tests cover source following, independent scrolling,
-resize, pinned windows, per-call expiry, and resynchronization. Installed-Codex
-acceptance remains a separate host check.
+Unsupported source and failed reads cannot fabricate a diff or suppress captured
+evidence. Exhausted scope remains visible without affecting edits or retained
+inspection. Slow viewers resynchronize; source evaluation is independently bounded
+and cannot stall input, cancellation or unrelated lifecycle delivery. Missing
+retained evidence remains unavailable under the change-history contract, never an
+empty change.

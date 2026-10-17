@@ -169,6 +169,26 @@ Unavailable backend versions are omitted. It remains while composing the first
 prompt, including six-row Main frames, yielding to history, live edits, modals and
 the full multiline composer.
 
+### Live changes
+
+`/live` toggles [provisional source views](../../../../modules/livepreview/SPEC.md);
+`on` and `off` apply explicitly. Each launch or resume starts enabled; the choice
+lasts only for that frontend. Hidden views reserve no space. Live source replaces
+its owning thread's selected transcript above the composer, yielding to question,
+approval, picker and help docks.
+
+Each file gets at least 15 rows including its heading, plus one shared Live heading.
+Short frames show a file-count summary. New files advance the visible window without
+shrinking existing splits. Ctrl-B e cycles and pins the displayed thread's file
+window against later arrivals. Wheel and Ctrl-B PgUp/PgDn scroll live source
+independently of transcript and saved Diff. Reaching its tip resumes following;
+Ctrl-B r resumes both source following and the newest window.
+
+Each completed call remains for its own 1.5-second settling interval. Surviving
+pinned files keep their window; expiry of the selected call follows the newest
+remaining file. The transcript returns when no cards remain. Following tests keep
+their own running state after the edit dock retires.
+
 ## Content dialogs
 
 A dialog captures input above both panes without changing transcript follow. It
