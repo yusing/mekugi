@@ -383,7 +383,7 @@ func TestNativeQuestionGapsQueueAndLiteralAnswers(t *testing.T) {
 	v.openQuestions()
 	questionTestPaint(t, v, 60)
 	appServerTestKeys(t, v, "\x1b[200~! @file $skill /quit\x1b[201~")
-	if v.shellMode() || v.picker.Open || len(v.Files) != 0 || v.Text != "! @file $skill /quit" {
+	if v.conversation().ShellMode() || v.picker.Open || len(v.Files) != 0 || v.Text != "! @file $skill /quit" {
 		t.Fatal("answer paste was interpreted")
 	}
 }

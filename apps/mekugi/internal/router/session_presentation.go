@@ -30,8 +30,7 @@ func (u *appServerUI) mainPresentation(now time.Time) sessionpresentation.View {
 		caption.Items = m.StatusItems(presentationcontract.Thread{ID: view.Displayed.ID, OutputThroughput: agent.OutputThroughput}, presentationcontract.ComposerCaption)
 	}
 	return m.Publish(sessionpresentation.MainInputs{
-		Control: &u.Live, Feedback: &u.feedback, Questions: u.questions.Questions, Approvals: u.approvals.Approvals,
-		DraftKept: u.promptEditor.Parked.Snapshot.Text != "", ShellMode: u.shellMode(), Restoring: u.restoring != nil,
+		Control: &u.Live, Feedback: &u.feedback, Conversation: u.conversation(), Restoring: u.restoring != nil,
 		SideRunning: u.btw != nil && (u.btw.Busy || u.btw.Starting), Processes: u.runningProcessCount(),
 	}, caption, now)
 }

@@ -10,6 +10,8 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/contracts/scope"
+	"github.com/yusing/mekugi/modules/conversation/composer"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
 )
@@ -17,18 +19,19 @@ import (
 // statusConsumer consumes the same detached publication a nonterminal frontend
 // receives, with operation and prompt state supplied by their existing owners.
 type statusConsumer struct {
-	service   sessionpresentation.Service
-	store     scope.Store
-	control   sessioncontrol.Live
-	feedback  noticepresentation.Model
-	questions prompt.Questions
-	approvals prompt.Approvals
-	now       time.Time
+	service      sessionpresentation.Service
+	store        scope.Store
+	control      sessioncontrol.Live
+	feedback     noticepresentation.Model
+	conversation conversationmodel.Session
+	now          time.Time
 }
 
 func newStatusConsumer() *statusConsumer {
 	c := &statusConsumer{now: time.Unix(100, 0)}
 	c.control.Thread = "main"
+	c.conversation.Editor.Text = "!command"
+	c.conversation.PromptEditor.Parked.Snapshot.Text = "draft"
 	m := c.model()
 	m.Attach(sessionpresentation.Thread{ID: "main", Caller: "/root"}, false)
 	m.Status.Set("Working", false)
@@ -40,8 +43,7 @@ func newStatusConsumer() *statusConsumer {
 func (c *statusConsumer) model() *sessionpresentation.Model { return c.service.Session(&c.store) }
 func (c *statusConsumer) publish(caption sessionpresentation.Caption) sessionpresentation.View {
 	return c.model().Publish(sessionpresentation.MainInputs{
-		Control: &c.control, Feedback: &c.feedback, Questions: &c.questions, Approvals: &c.approvals,
-		DraftKept: true, ShellMode: true, Processes: 2,
+		Control: &c.control, Feedback: &c.feedback, Conversation: &c.conversation, Processes: 2,
 	}, caption, c.now)
 }
 
@@ -76,19 +78,19 @@ func TestNonTerminalStatusTimingAndDetachedDetails(t *testing.T) {
 func TestNonTerminalStatusPromptsAndDisplayedCaption(t *testing.T) {
 	c := newStatusConsumer()
 	call := &prompt.Call{ID: "question", Thread: "main", Turn: "turn", Sync: true, Questions: []prompt.Question{{ID: "q", Question: "Keep all details?", Note: true}}}
-	if !c.questions.Add(call, false) || !c.questions.Open(call) {
+	if !c.conversation.Questions.Add(call, false) || !c.conversation.Questions.Open(call) {
 		t.Fatal("question admission failed")
 	}
-	c.approvals.Add(&prompt.Approval{ID: "approval", Details: []string{"full approval details"}})
-	if !c.approvals.Show() {
+	c.conversation.Approvals.Add(&prompt.Approval{ID: "approval", Details: []string{"full approval details"}})
+	if !c.conversation.Approvals.Show() {
 		t.Fatal("approval admission failed")
 	}
 	v := c.publish(sessionpresentation.Caption{Model: "main-model"})
 	if v.Status.Composer.Text != "approving · turn waiting" || v.Status.Session.Text != "Working" {
 		t.Fatalf("approval precedence: %+v", v.Status)
 	}
-	c.approvals.Hide()
-	if s := c.publish(sessionpresentation.Caption{}).Status; s.Composer.Text != "answering · note · turn waiting · draft kept" || !s.ShellMode || s.Processes != 2 {
+	c.conversation.Approvals.Hide()
+	if s := c.publish(sessionpresentation.Caption{}).Status; s.Composer.Text != "answering · note · turn waiting · draft kept" || s.ShellMode || s.Processes != 2 {
 		t.Fatalf("question status: %+v", s)
 	}
 	m := c.model()
@@ -104,8 +106,46 @@ func TestNonTerminalStatusPromptsAndDisplayedCaption(t *testing.T) {
 		t.Fatal(err)
 	}
 	v = c.publish(sessionpresentation.Caption{Model: "main-model"})
-	if v.ReadOnly != sessionpresentation.Editable || v.Caption.Model != "main-model" || v.Status.Composer.Text != "answering · note · turn waiting · draft kept" || c.questions.Current().Question != "Keep all details?" || c.approvals.View().Approval.Details[0] != "full approval details" {
+	if v.ReadOnly != sessionpresentation.Editable || v.Caption.Model != "main-model" || v.Status.Composer.Text != "answering · note · turn waiting · draft kept" || c.conversation.Questions.Current().Question != "Keep all details?" || c.conversation.Approvals.View().Approval.Details[0] != "full approval details" {
 		t.Fatalf("return to Main lost owner state: %+v", v)
+	}
+	c.conversation.Questions.Current().Question = "changed"
+	c.conversation.Approvals.Pending[0].Details[0] = "changed"
+	if v.Questions.Call.Questions[0].Text != "Keep all details?" || v.Approvals.Approval.Details[0] != "full approval details" {
+		t.Fatal("prompt publication aliases its owners")
+	}
+}
+
+func TestNonTerminalPendingInputOrderAndDetachment(t *testing.T) {
+	c := newStatusConsumer()
+	input := func(text string) conversationmodel.Input {
+		return conversationmodel.Input{Draft: composer.Draft{Text: text}}
+	}
+	c.conversation.Stage("first", conversationmodel.Submission{Parts: []conversationmodel.Input{input("acknowledged steer")}})
+	c.control.Submit("first", "turn")
+	c.control.AcknowledgeInput(false, false, false)
+	c.conversation.Stage("second", conversationmodel.Submission{Parts: []conversationmodel.Input{input("awaiting acknowledgement")}})
+	c.control.Submit("second", "turn")
+	c.conversation.Unsent = []conversationmodel.Input{input("unsent")}
+	c.conversation.Queued = []conversationmodel.Input{input("next turn")}
+	v := c.publish(sessionpresentation.Caption{})
+	want := conversationmodel.PendingView{
+		Reason:  conversationmodel.Steering,
+		Waiting: []conversationmodel.PendingText{{Text: "acknowledged steer"}, {Text: "awaiting acknowledgement"}, {Text: "unsent"}},
+		Queued:  []conversationmodel.PendingText{{Text: "next turn"}},
+	}
+	if !reflect.DeepEqual(v.Pending, want) || !v.Status.ShellMode {
+		t.Fatalf("pending publication: %+v", v)
+	}
+	c.control.CommitInput("first")
+	c.conversation.Submitted["second"].Parts[0].Text = "changed"
+	c.conversation.Unsent[0].Text, c.conversation.Queued[0].Text = "changed", "changed"
+	c.control.Shell.Begin("")
+	if next := c.publish(sessionpresentation.Caption{}).Pending; len(next.Waiting) != 2 || next.Reason != conversationmodel.ShellRunning {
+		t.Fatalf("control changes not reflected: %+v", next)
+	}
+	if !reflect.DeepEqual(v.Pending, want) {
+		t.Fatal("pending publication aliases its owners")
 	}
 }
 

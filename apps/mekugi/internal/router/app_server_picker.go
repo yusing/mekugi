@@ -43,7 +43,7 @@ type composerPicker struct {
 }
 
 func (u *appServerUI) completionTarget() completion.Target {
-	if u.shellMode() {
+	if u.conversation().ShellMode() {
 		return completion.Target{}
 	}
 	return u.picker.FindTarget(u.Draft)

@@ -7,7 +7,13 @@ owns transcript interpretation, Activity owns feeds, and [session control](../se
 requests, and [terminal session](../terminalsession/SPEC.md) owns focus, navigation,
 geometry and rendering.
 
-Status and caption values are detached, renderer-neutral facts. Session control
+Status, captions, question and approval docks, and pending-input previews are
+published together as detached, renderer-neutral facts. Prompt identity and input
+ordering come from Conversation; pending-input reasons come from session control.
+The terminal paints those values without choosing semantic queue states or
+reconstructing prompt content. Secret editing remains renderer-local.
+
+Session control
 remains the operation authority; Conversation, Notifications and Usage retain their
 drafts, prompts, feedback delivery and accounting. Presentation selects status
 precedence and retains progress timing; the terminal chooses styling, animation

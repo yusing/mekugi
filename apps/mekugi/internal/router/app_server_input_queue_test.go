@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	"github.com/charmbracelet/x/ansi"
@@ -107,7 +109,7 @@ func TestAppServerSteersStackUntilSendable(t *testing.T) {
 	appServerTestUserMessage(t, u, "user-1", first.Params.ClientUserMessageID, "first")
 	appServerTestUserMessage(t, u, "user-2", stacked.Params.ClientUserMessageID, "second\nthird")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"t"}}`, stacked.ID))
-	if len(u.Steers()) != 0 || len(u.conversation().Submitted) != 0 || len(u.pendingInputPreview(80)) != 0 {
+	if len(u.Steers()) != 0 || len(u.conversation().Submitted) != 0 || len(conversationui.Pending(u.mainPresentation(u.now()).Pending, 80)) != 0 {
 		t.Fatalf("committed steers still pending: %+v", u.Steers())
 	}
 	if len(u.view.Entries) != 2 || u.view.Entries[1].Source.Text != "second\nthird" {
@@ -316,7 +318,7 @@ func TestAppServerInputStackedDuringSettingsSendsAfterApply(t *testing.T) {
 	appServerTestKeys(t, u, "/reasoning high\r")
 	appServerOneRequest(t, w, "thread/settings/update", "")
 	appServerTestKeys(t, u, "prompt\r")
-	if len(appServerTurnRequests(t, w)) != 0 || !strings.Contains(ansi.Strip(strings.Join(u.pendingInputPreview(80), "\n")), "Sending when settings apply") {
+	if len(appServerTurnRequests(t, w)) != 0 || !strings.Contains(ansi.Strip(strings.Join(conversationui.Pending(u.mainPresentation(u.now()).Pending, 80), "\n")), "Sending when settings apply") {
 		t.Fatal("prompt not held while settings apply")
 	}
 	appServerTestMessage(t, u, `{"method":"thread/settings/updated","params":{"threadId":"main","threadSettings":{"effort":"high"}}}`)

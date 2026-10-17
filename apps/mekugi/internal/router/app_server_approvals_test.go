@@ -347,7 +347,7 @@ func TestNativeApprovalTypedDenialReachesCommand(t *testing.T) {
 			u.openApprovals()
 			questionTestPaint(t, u, 80)
 			appServerTestKeys(t, u, keys)
-			if u.pendingApprovals()[0].Selected != 2 || u.shellMode() || u.picker.Open {
+			if u.pendingApprovals()[0].Selected != 2 || u.conversation().ShellMode() || u.picker.Open {
 				t.Fatal("typing did not select plain-text denial")
 			}
 			u.hideApprovals()

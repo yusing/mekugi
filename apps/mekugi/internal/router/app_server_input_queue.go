@@ -8,7 +8,6 @@ import (
 	"time"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
-	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 
@@ -325,31 +324,4 @@ func (u *appServerUI) applySteerResult(result sessioncontrol.SteerResult) {
 		u.restoreDrafts(steers...)
 		u.setNotice("Unconfirmed steer restored to the composer", false)
 	}
-}
-
-func (u *appServerUI) pendingInputPreview(width int) []string {
-	ids := slices.Clone(u.Steers())
-	if u.Submission().Turn != "" {
-		ids = append(ids, u.Submission().ID)
-	}
-	reason := conversationmodel.Waiting
-	switch {
-	case u.Compaction.PreservesWaitingInput():
-		reason = conversationmodel.CompactAfterInterrupt
-	case u.Shell.Standalone():
-		reason = conversationmodel.ShellRunning
-	case u.SendSteersAfterInterrupt || u.SteerInterruptAckPending:
-		reason = conversationmodel.SendingAfterInterrupt
-	case u.Interruption.Target != "":
-		reason = conversationmodel.RestoringAfterInterrupt
-	case u.Compaction.Active():
-		reason = conversationmodel.CompactRunning
-	case len(u.conversation().Unsent) > 0 && u.conversation().Unsent[0].Text == "/compact":
-		reason = conversationmodel.CompactQueued
-	case u.Turn != "" || u.Starting():
-		reason = conversationmodel.Steering
-	case u.Settings.Pending() || u.Settings.RestoreEffort:
-		reason = conversationmodel.ApplyingSettings
-	}
-	return conversationui.Pending(u.conversation().Pending(ids, reason), width)
 }

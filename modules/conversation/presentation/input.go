@@ -3,6 +3,7 @@ package presentation
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -47,6 +48,11 @@ type Session struct {
 	Submitted      map[string]Submission
 	Shell          Input
 	Side           *SideAnswer
+}
+
+// Source: apps/mekugi/internal/router/app_server_shell.go:15:17@[cf6c7832]
+func (m *Session) ShellMode() bool {
+	return m.Questions.Current() == nil && !m.Approvals.Open && strings.HasPrefix(m.Editor.Text, "!")
 }
 
 // CarryInput transfers locally editable state and still-live approvals during

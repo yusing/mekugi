@@ -7,6 +7,8 @@ import (
 
 	"github.com/yusing/mekugi/contracts/presentation"
 	"github.com/yusing/mekugi/contracts/scope"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+	"github.com/yusing/mekugi/modules/conversation/prompt"
 )
 
 type Thread struct {
@@ -36,6 +38,9 @@ type View struct {
 	Loading   string
 	Status    MainStatus
 	Caption   Caption
+	Questions prompt.QuestionDockView
+	Approvals prompt.ApprovalDockView
+	Pending   conversationmodel.PendingView
 }
 
 type DisplayIntent struct {

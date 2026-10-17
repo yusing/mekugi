@@ -12,10 +12,6 @@ import (
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
 
-func (u *appServerUI) shellMode() bool {
-	return u.currentQuestion() == nil && !u.approvals.Open && strings.HasPrefix(u.Text, "!")
-}
-
 // Paint complete logical lines before cutting them to the existing draft layout.
 // Soft wraps must not change Bash's multiline lexical state or cursor geometry.
 func (u *appServerUI) paintShellDraft(rows []string) {

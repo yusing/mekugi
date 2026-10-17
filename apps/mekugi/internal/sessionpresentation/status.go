@@ -7,7 +7,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/contracts/presentation"
-	"github.com/yusing/mekugi/modules/conversation/prompt"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
 )
 
@@ -71,12 +71,11 @@ type MainStatus struct {
 // MainInputs borrows current owner state only for publication. Nothing here is
 // retained, and the resulting view contains no owner pointers or capabilities.
 type MainInputs struct {
-	Control                                      *sessioncontrol.Live
-	Feedback                                     *noticepresentation.Model
-	Questions                                    *prompt.Questions
-	Approvals                                    *prompt.Approvals
-	DraftKept, ShellMode, Restoring, SideRunning bool
-	Processes                                    int
+	Control                *sessioncontrol.Live
+	Feedback               *noticepresentation.Model
+	Conversation           *conversationmodel.Session
+	Restoring, SideRunning bool
+	Processes              int
 }
 
 type Caption struct {
@@ -93,6 +92,9 @@ type Caption struct {
 func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) View {
 	v := m.View()
 	v.Caption = caption
+	v.Questions = in.Conversation.Questions.View(in.Control.Thread)
+	v.Approvals = in.Conversation.Approvals.View()
+	v.Pending = pendingInput(in.Control, in.Conversation)
 	s := &v.Status
 	state, control := m.Status, in.Control
 	s.Session = Label{Text: state.Text, Alert: state.Alert, Failure: state.failure, FailureKnown: state.failureKnown,
@@ -134,24 +136,24 @@ func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) View {
 	if in.Feedback.Alert {
 		s.Details[1] = Label{Text: in.Feedback.Text, Alert: true}
 	}
-	if in.Approvals.Open {
+	if v.Approvals.Open {
 		s.Composer = Label{Text: "approving · turn waiting"}
 		s.ComposerOverride = true
-	} else if call := in.Questions.Active; call != nil {
+	} else if call := v.Questions.Call; call != nil {
 		text := "answering"
-		if q := in.Questions.Current(); q != nil && q.Note {
+		if i := v.Questions.Index; i >= 0 && i < len(call.Questions) && call.Questions[i].Note {
 			text += " · note"
 		}
 		if call.Sync || call.Local {
 			text += " · turn waiting"
 		}
-		if in.DraftKept {
+		if in.Conversation.PromptEditor.Parked.Snapshot.Text != "" {
 			text += " · draft kept"
 		}
 		s.Composer = Label{Text: text}
 		s.ComposerOverride = true
 	}
-	s.ShellMode, s.Processes = in.ShellMode, in.Processes
+	s.ShellMode, s.Processes = in.Conversation.ShellMode(), in.Processes
 	s.Feedback = Label{Text: in.Feedback.Text, Alert: in.Feedback.Alert}
 	return v
 }

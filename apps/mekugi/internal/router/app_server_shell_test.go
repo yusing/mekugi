@@ -194,7 +194,7 @@ func TestAppServerShellComposer(t *testing.T) {
 		t.Fatalf("shell notice/frame missing: %q", text)
 	}
 	u.deleteDraftRange(0, 1)
-	if u.shellMode() {
+	if u.conversation().ShellMode() {
 		t.Fatal("removing bang did not leave shell mode")
 	}
 	appServerTestKeys(t, u, "\x03\x1b[200~!printf '%s\\n' \"你好\n$HOME\"\n\x1b[201~")

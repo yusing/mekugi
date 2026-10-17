@@ -1102,7 +1102,7 @@ func (u *appServerUI) key(key string) (bool, error) {
 		if text == "/btw" || strings.HasPrefix(text, "/btw ") || strings.HasPrefix(text, "/btw\n") || strings.HasPrefix(text, "/btw\t") {
 			return false, u.submitBTW()
 		}
-		if u.shellMode() {
+		if u.conversation().ShellMode() {
 			return false, u.submitShell()
 		}
 		if text == "/compact" || text == "/clear" {
@@ -1165,7 +1165,7 @@ func (u *appServerUI) key(key string) (bool, error) {
 		if text == "/compact" {
 			return false, u.submitCompact(true)
 		}
-		if u.shellMode() || text == "" || strings.HasPrefix(text, "/") || u.Turn == "" && !u.Starting() && !u.InputPending() {
+		if u.conversation().ShellMode() || text == "" || strings.HasPrefix(text, "/") || u.Turn == "" && !u.Starting() && !u.InputPending() {
 			return u.key("\r")
 		}
 		u.conversation().Queued = append(u.conversation().Queued, u.takeDraft())
@@ -1280,7 +1280,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	textWidth := width - inset
 	u.composerWidth = textWidth
 	draft, points := u.draftLayout()
-	if u.shellMode() {
+	if presentation.Status.ShellMode {
 		u.paintShellDraft(draft)
 	}
 	if q := u.currentQuestion(); q != nil && q.IsSecret {
@@ -1322,7 +1322,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	var pending []string
 	var approvalRows, questionRows, btwRows []string
 	if !readOnly {
-		if d := u.approvals.View(); d.Count > 0 {
+		if d := presentation.Approvals; d.Count > 0 {
 			a := u.approvals.handles[u.approvals.Pending[0]]
 			approvalRows = conversationui.Approvals(d, &u.view.Painter.Painter, &a.layout, u.pickerSelection(), u.approvalAgent(d.Approval.Thread), width, min(height/2, room))
 		}
@@ -1332,7 +1332,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		room -= len(approvalRows)
 	}
 	if !readOnly {
-		questionRows = conversationui.Questions(u.questions.View(u.Thread), &u.view.Painter.Painter, u.questionLayout(u.currentQuestion()), u.pickerSelection(), u.Turn == "" && u.Text != "", width, min(height/2, room))
+		questionRows = conversationui.Questions(presentation.Questions, &u.view.Painter.Painter, u.questionLayout(u.currentQuestion()), u.pickerSelection(), u.Turn == "" && u.Text != "", width, min(height/2, room))
 	}
 	if len(questionRows) > 0 {
 		dock = 0
@@ -1349,7 +1349,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		dock = 0
 	} else if !readOnly {
 		// Waiting input yields to the transcript beyond half the room.
-		pending = u.pendingInputPreview(width)
+		pending = conversationui.Pending(presentation.Pending, width)
 		pending = pending[:min(len(pending), room/2)]
 		room -= len(pending)
 	}
@@ -1408,7 +1408,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	border := "\x1b[38;2;52;48;72m"
 	if !readOnly && (u.currentQuestion() != nil || u.approvals.Open) {
 		border = u.view.Painter.Theme.Accent()
-	} else if !readOnly && u.shellMode() {
+	} else if !readOnly && presentation.Status.ShellMode {
 		border = terminalui.Red
 	}
 	const inputColor = "\x1b[39m"
