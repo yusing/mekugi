@@ -267,7 +267,7 @@ func TestAppServerWorkingSurvivesDockComposition(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.Text = "one\ntwo\nthree\nfour"
 	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
-	u.shell.preview(previewmodel.Preview{ID: "p", Caller: "/root", Status: previewmodel.PreviewEdit, Input: "package a\n"}, false)
+	u.preview(previewmodel.Preview{ID: "p", Caller: "/root", Status: previewmodel.PreviewEdit, Input: "package a\n"}, false)
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "r", "delta": "**Active summary**"})
 	var out bytes.Buffer
 	if err := u.testPaint(&out, 80, 14); err != nil {

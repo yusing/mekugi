@@ -35,7 +35,7 @@ func (s *mekugiReplayStore) liveDiffSnapshotFiles(ctx context.Context, scope pre
 }
 
 func setSavedReviewStore(ui *terminalUI, store *mekugiReplayStore) {
-	ui.saved.Changes, ui.saved.Retained = store.changes, store.changeScope()
+	ui.main.review.Projection.Changes, ui.main.review.Projection.Retained = store.changes, store.changeScope()
 }
 
 func liveDiffScopeCapture(t *testing.T, store *mekugiReplayStore, workspace, thread, call, path, before, after string) {
@@ -239,7 +239,7 @@ func publishFixtureReview(t *testing.T, u *appServerUI) {
 	})
 	u.session.activity = activity.Value()
 	u.reviewSource = captured.Value()
-	u.reviewSource.PublishReview(u.session.Scope(), u.shell.saved.Data, u.session.cwd, u.shell.saved.Coverage, u.shell.diffFailure)
+	u.reviewSource.PublishReview(u.session.Scope(), u.review.Projection.Data, u.session.cwd, u.review.Projection.Coverage, u.review.Failure)
 }
 
 func fixtureActivityWithoutDetails(t *testing.T) *feed.Service {

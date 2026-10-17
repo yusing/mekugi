@@ -436,12 +436,12 @@ func TestAppServerResumeSwitchWaitsForDiffResync(t *testing.T) {
 	auto.Enable()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
+	u.review = testReview(auto)
 	setSavedReviewStore(u.shell, store)
-	u.shell.review = testReview(auto)
 	u.session.start("main", workspace)
 	testReview(auto).IncludeThread(workspace, "main", true)
 	sub := testReview(auto).Subscribe()
-	u.shell.applyDiff(t.Context(), <-sub.Events())
+	u.applyReview(t.Context(), <-sub.Events())
 	appServerTestKeys(t, u, "/resume saved\r")
 	resume := resumeTestPrepared(t, u, w)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"saved","cwd":%q,"turns":[]}}}`, resume.ID, workspace))
@@ -456,13 +456,13 @@ func TestAppServerResumeSwitchWaitsForDiffResync(t *testing.T) {
 	}
 	sub = testReview(auto).Subscribe()
 	for _, event := range testReview(auto).TakePreviews(sub) {
-		u.shell.applyDiff(t.Context(), event)
+		u.applyReview(t.Context(), event)
 	}
 	if err := u.finishRestoredContent(); err != nil {
 		t.Fatal(err)
 	}
-	if u.sessionPresentation().Status.Text != "Ready" || u.shell.diffFailure != "" || len(u.shell.saved.Data.Publication.Files) != 1 || filepath.Base(u.shell.saved.Data.Publication.Files[0].Path) != "saved.go" {
-		t.Fatalf("resumed Diff: status=%q failure=%q files=%+v", u.sessionPresentation().Status.Text, u.shell.diffFailure, u.shell.saved.Data.Publication.Files)
+	if u.sessionPresentation().Status.Text != "Ready" || u.review.Failure != "" || len(u.review.Projection.Data.Publication.Files) != 1 || filepath.Base(u.review.Projection.Data.Publication.Files[0].Path) != "saved.go" {
+		t.Fatalf("resumed Diff: status=%q failure=%q files=%+v", u.sessionPresentation().Status.Text, u.review.Failure, u.review.Projection.Data.Publication.Files)
 	}
 	// A later /clear session still joins the Diff, as do its children.
 	appServerTestKeys(t, u, "/clear\r")

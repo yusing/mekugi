@@ -42,7 +42,7 @@ func TestUISnapshotNativeMoveKeepsTranscript(t *testing.T) {
 	u := nativeBatchFixture(t)
 	for _, event := range testReview(auto).TakePreviews(sub) {
 		if event.Preview != nil {
-			u.shell.preview(*event.Preview, false)
+			u.preview(*event.Preview, false)
 		}
 	}
 	revealNativeDock(u.shell)
@@ -65,10 +65,10 @@ func TestNativeUIExecEditCompletionRetainsWorkingStatusAndClearsDock(t *testing.
 	u.sessionPresentation().Status.Text = "Working"
 	workspace := t.TempDir()
 	preview := previewmodel.Preview{ID: "running:edit-then-test", Workspace: workspace, Thread: "thread", Caller: "/root", Tool: nativeExecCommandToolName, Status: previewmodel.PreviewRunning, Input: "observed edit"}
-	u.shell.preview(preview, false)
+	u.preview(preview, false)
 	revealNativeDock(u.shell)
 	preview.Complete = true
-	u.shell.preview(preview, false)
+	u.preview(preview, false)
 	revealNativeDock(u.shell)
 	if u.shell.liveDock.Live() != 0 || u.sessionPresentation().Status.Text != "Working" {
 		t.Fatal("edit completion changed process status or retained an active dock")
@@ -86,7 +86,7 @@ func TestNativeUIExecEditCompletionRetainsWorkingStatusAndClearsDock(t *testing.
 		t.Fatal("completed dock did not clear independently of process Working status")
 	}
 	// A final host observation must not create a second, late completion card.
-	u.shell.preview(previewmodel.Preview{ID: "late:edit-then-test", Workspace: workspace, Tool: nativeExecCommandToolName, Complete: true, Status: previewmodel.PreviewRunning}, false)
+	u.preview(previewmodel.Preview{ID: "late:edit-then-test", Workspace: workspace, Tool: nativeExecCommandToolName, Complete: true, Status: previewmodel.PreviewRunning}, false)
 	revealNativeDock(u.shell)
 	if len(u.shell.liveDock.Order) != 0 {
 		t.Fatal("late shell completion resurrected the dock")

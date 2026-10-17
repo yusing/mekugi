@@ -65,7 +65,7 @@ func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 	setTestAppServerIntegration(u, &observationFixture{review: testReview(auto), execWindows: &executionobservation.Windows{}})
 	workspace := u.session.cwd
 	setLiveScope(auto, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}})
-	u.shell.saved.Scope = testReview(auto).Scope()
+	u.review.Projection.Scope = testReview(auto).Scope()
 	sub := testReview(auto).Subscribe()
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "turn"}})
 	main := previewmodel.Preview{ID: "edit", Workspace: workspace, Thread: "main", Turn: "turn", Caller: "/root", Status: previewmodel.PreviewRunning, Input: "observed edit"}
@@ -73,7 +73,7 @@ func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 	child.ID, child.Thread, child.Caller = "child-edit", "child", "/root/child"
 	for _, preview := range []previewmodel.Preview{main, child} {
 		auto.Update(preview, false)
-		u.shell.preview(preview, false)
+		u.preview(preview, false)
 		revealNativeDock(u.shell)
 	}
 	queued := main
@@ -91,7 +91,7 @@ func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 		auto.Update(main, false)
 		for _, event := range testReview(auto).TakePreviews(sub) {
 			if event.Kind == "preview" {
-				u.shell.applyDiff(t.Context(), event)
+				u.applyReview(t.Context(), event)
 			}
 		}
 		if u.shell.liveDock.Views[main.ID] != nil || u.shell.liveDock.Views[queued.ID] != nil {

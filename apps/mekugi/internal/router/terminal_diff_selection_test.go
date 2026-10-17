@@ -25,14 +25,14 @@ func TestTerminalUIDiffSelectionUsesLastPaintedEvidence(t *testing.T) {
 			}
 			u := newAppServerSessionTestUI(t, workspace)
 			setSavedReviewStore(u.shell, store)
-			u.shell.saved.Workspace = workspace
+			u.review.Projection.Workspace = workspace
 			u.shell.DiffOpen, u.shell.Focus = true, 1
 			scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}}
 			refresh := func() {
 				t.Helper()
-				u.shell.applyDiff(t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope, Resync: true})
-				if u.shell.diffFailure != "" {
-					t.Fatal(u.shell.diffFailure)
+				u.applyReview(t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope, Resync: true})
+				if u.review.Failure != "" {
+					t.Fatal(u.review.Failure)
 				}
 			}
 			publish := func(name string) {

@@ -108,10 +108,10 @@ func TestAppServerShellEditsRevertApplyReplay(t *testing.T) {
 		if err != nil || data.Len() != index+2 {
 			t.Fatalf("Changes history: %+v, %v", data, err)
 		}
-		u.shell.saved.Data = data
+		u.review.Projection.Data = data
 		publishFixtureReview(t, u)
 		savedPane(u.shell).Update(data.Publication, "")
-		counts := u.shell.saved.Data.Publication.Counts.Net
+		counts := u.review.Projection.Data.Publication.Counts.Net
 		if counts == nil || index == 0 && (counts.Added != 0 || counts.Removed != 0) || index == 1 && (counts.Added != 1 || counts.Removed != 1) {
 			t.Fatalf("saved Diff after %s: files=%+v counts=%+v", mutation, data.Publication.Files, counts)
 		}

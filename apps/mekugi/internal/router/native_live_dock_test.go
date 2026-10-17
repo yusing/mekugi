@@ -18,12 +18,12 @@ func TestNativeUIRunningChildRemovalReleasesDock(t *testing.T) {
 	broker := newLivePreview(t.Context())
 	scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"child": true}}}
 	setLiveScope(broker, scope)
-	u.shell.saved.Scope = scope
+	u.review.Projection.Scope = scope
 	sub := testReview(broker).Subscribe()
 	deliver := func() {
 		for _, event := range testReview(broker).TakePreviews(sub) {
 			if event.Kind == "preview" {
-				u.shell.applyDiff(t.Context(), event)
+				u.applyReview(t.Context(), event)
 				revealNativeDock(u.shell)
 			}
 		}

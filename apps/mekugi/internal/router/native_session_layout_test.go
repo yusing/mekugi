@@ -86,7 +86,7 @@ func TestUISnapshotNativeLiveToggle(t *testing.T) {
 	defer screen.Close()
 	preview := previewmodel.Preview{ID: "edit", Workspace: t.TempDir(), Caller: "/root", Status: previewmodel.PreviewEdit, Input: "*** Begin Patch\n*** Add File: live.txt\n+Live edit still in progress\n*** End Patch"}
 	u.session.cwd = preview.Workspace
-	u.shell.preview(projectStockPatchPreview(t.Context(), preview.Workspace, preview), false)
+	u.preview(projectStockPatchPreview(t.Context(), preview.Workspace, preview), false)
 	revealNativeDock(u.shell)
 	for _, value := range []string{"off", "on"} {
 		appServerTestKeys(t, u, "/live\r")
@@ -115,7 +115,7 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			}
 			workspace := t.TempDir()
 			preview := previewmodel.Preview{ID: "edit", Workspace: workspace, Caller: caller, Status: previewmodel.PreviewEdit, Input: "*** Begin Patch\n*** Add File: a.txt\n+VISIBLE_EDIT\n*** End Patch"}
-			u.shell.preview(projectStockPatchPreview(t.Context(), workspace, preview), false)
+			u.preview(projectStockPatchPreview(t.Context(), workspace, preview), false)
 			revealNativeDock(u.shell)
 			if caller != "/root" {
 				u.agents.setDisplayFilter(true, caller)
@@ -143,7 +143,7 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			}
 			appServerTestKeys(t, u, "/live\r")
 			preview.Complete = true
-			u.shell.preview(projectStockPatchPreview(t.Context(), workspace, preview), false)
+			u.preview(projectStockPatchPreview(t.Context(), workspace, preview), false)
 			revealNativeDock(u.shell)
 			u.shell.animating(time.Now().Add(time.Hour))
 			appServerTestKeys(t, u, "/live\r")

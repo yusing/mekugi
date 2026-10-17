@@ -31,7 +31,7 @@ func TestObservedEditReceiptBeforeHostItemSurvivesSegmentRefresh(t *testing.T) {
 	file := diffmodel.RenderReviewFile("a.go", "a.go", "before\n", "after\n")
 	// The tracker sees host starts on the transport reader. Its completion
 	// can reach the preview mailbox before the UI consumes that same item.
-	u.shell.preview(previewmodel.Preview{ID: "early", Workspace: u.session.cwd, Thread: "main", Complete: true,
+	u.preview(previewmodel.Preview{ID: "early", Workspace: u.session.cwd, Thread: "main", Complete: true,
 		HostItems: []string{"cmd"}, Files: []diffmodel.ReviewFile{file}, EditReceipt: "Edit `a.go` +1 -1 · python3"}, false)
 	command := "python3 - <<'PY'\np='a.go';s=open(p).read().replace('before','after');open(p,'w').write(s)\nPY\ngo test ./..."
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: command, Status: "inProgress"}})
@@ -251,7 +251,7 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 			awaitCommandSegments(t, u)
 			restored := newAppServerSessionTestUI(t, workspace)
 			setTestAppServerIntegration(restored, testProxyWithStore(testReplayStore(mekugiReplayStore{directory: store.directory})))
-			restored.shell.saved.Data = reviewReceiptSnapshot(t, trackedEditReceiptData(thread, item.ID))
+			restored.review.Projection.Data = reviewReceiptSnapshot(t, trackedEditReceiptData(thread, item.ID))
 			turns := []binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}}
 			view := restored.view
 			if thread == "main" {
@@ -331,7 +331,7 @@ func TestObservedEditReceiptsBeforeHostRows(t *testing.T) {
 				if tc.lines == 4000 && (len(preview.Files) != 0 || !preview.Truncated) {
 					t.Fatal("fixture did not cross live-card clipping")
 				}
-				u.shell.preview(preview, false)
+				u.preview(preview, false)
 			}
 			for i := range tc.calls {
 				path, call := fmt.Sprintf("a%d.go", i), fmt.Sprintf("cmd%d", i)
@@ -364,7 +364,7 @@ func TestObservedEditReceiptsBeforeHostRows(t *testing.T) {
 			if len(u.pendingEditReceipts) != 0 {
 				t.Fatal("matched receipts remained pending")
 			}
-			if u.shell.saved.Data.Len() != 0 {
+			if u.review.Projection.Data.Len() != 0 {
 				t.Fatal("observed pages became durable evidence")
 			}
 		})
@@ -377,13 +377,13 @@ func TestPendingObservedEditReceiptsStayBounded(t *testing.T) {
 	receipt := presentation.ReceiptText(u.session.cwd, receiptEvidence(legacycall.History{ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{file}), ExecOutcome: (*legacycall.Outcome)(&changecapture.Outcome{Labels: []string{"cat"}})}))
 	for i := range 256 {
 		call := fmt.Sprintf("cmd%d", i)
-		u.shell.preview(previewmodel.Preview{ID: call, Workspace: u.session.cwd, Thread: "main", Complete: true, HostItems: []string{call}, EditReceipt: receipt}, false)
+		u.preview(previewmodel.Preview{ID: call, Workspace: u.session.cwd, Thread: "main", Complete: true, HostItems: []string{call}, EditReceipt: receipt}, false)
 	}
 	pending := u.pendingEditReceipts
 	if len(pending) == 0 || len(pending) >= 256 || pending[len(pending)-1].Calls[0] != "cmd255" {
 		t.Fatalf("unmatched receipt budget did not retain a bounded newest window: %d", len(pending))
 	}
-	if u.shell.saved.Data.Len() != 0 {
+	if u.review.Projection.Data.Len() != 0 {
 		t.Fatal("unmatched receipts became durable evidence")
 	}
 }

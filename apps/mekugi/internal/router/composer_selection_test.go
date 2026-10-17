@@ -301,7 +301,7 @@ func TestTerminalUIDiffSelectionEdges(t *testing.T) {
 			t.Fatalf("mention = %q, want %q", got, tt.want)
 		}
 	}
-	u.diffFailure = "boom"
+	u.main.review.Failure = "boom"
 	if u.diffSelection(0, 2) != nil {
 		t.Fatal("failed diff body was selectable")
 	}

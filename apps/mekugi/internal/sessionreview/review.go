@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/yusing/mekugi/modules/changehistory/changes"
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	"github.com/yusing/mekugi/contracts/scope"
 
@@ -48,6 +49,13 @@ type Subscription struct {
 // It is always present; preview observation is an optional consumer of its scope.
 // One lock orders scope expansion and retained receipts before preview drains.
 type Review struct {
+	// The application event loop serializes this consumer state independently
+	// of producer membership. Retained loading never holds mu.
+	Projection   Projection
+	Loader       *Loader
+	PreviewScope previewmodel.Scope
+	Failure      string
+
 	mu                 sync.Mutex
 	preview            *previewmodel.Session
 	live               *previewmodel.Service
@@ -64,6 +72,7 @@ type Review struct {
 
 func New(ctx context.Context, live *previewmodel.Service, notice func(string, string)) *Review {
 	r := &Review{live: live, ctx: ctx, notice: notice, scope: previewmodel.Scope{Workspaces: make(map[string]map[string]bool)}, scopeBytes: len(`{"Workspaces":{}}`), changed: make(chan struct{}, 1)}
+	r.Projection = Projection{Data: new(changepresentation.Snapshot), Coverage: "CONNECTING"}
 	r.preview = live.Attach(ctx, &r.state)
 	return r
 }
@@ -80,6 +89,7 @@ func (r *Review) Preview() *previewmodel.Session {
 // Close retires only this attachment's observation state. Captures, commands,
 // retained publications and unrelated host work continue at their owners.
 func (r *Review) Close() {
+	r.Loader.Close()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.preview != nil {

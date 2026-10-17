@@ -40,6 +40,7 @@ func (u *appServerUI) sessionPresentation() *sessionpresentation.Model {
 }
 
 func (u *appServerUI) attachPresentation() {
+	u.attachReview()
 	u.bindConversation()
 	m := u.sessionPresentation()
 	m.Attach(sessionpresentation.Thread{ID: cmp.Or(u.Thread, "/root"), Caller: "/root"}, u.replay != nil)

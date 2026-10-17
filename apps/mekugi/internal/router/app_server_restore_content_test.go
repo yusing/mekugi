@@ -206,7 +206,7 @@ func TestAppServerRestoreDiffScopeBeforeNewTurn(t *testing.T) {
 	defer auto.Close()
 	auto.Enable()
 	u := newAppServerSessionTestUI(t, workspace)
-	u.shell.review = testReview(auto)
+	u.review = testReview(auto)
 	sub := testReview(auto).Subscribe()
 	u.restoreDiffThread(binding.ThreadInfo{ID: "main", Cwd: workspace}, true)
 	u.restoreDiffThread(binding.ThreadInfo{ID: "child", Cwd: workspace}, false)
@@ -276,8 +276,8 @@ func TestAppServerRestoreWaitsForDurableDiffBeforeInput(t *testing.T) {
 			auto := newLivePreview(t.Context())
 			defer auto.Close()
 			auto.Enable()
+			u.review = testReview(auto)
 			setSavedReviewStore(u.shell, store)
-			u.shell.review = testReview(auto)
 			sub := testReview(auto).Subscribe()
 			if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: workspace}); err != nil {
 				t.Fatal(err)
@@ -286,26 +286,26 @@ func TestAppServerRestoreWaitsForDurableDiffBeforeInput(t *testing.T) {
 			restoreContentReply(t, u, 1, map[string]any{"data": []any{}})
 			u.Text = "next turn"
 			appServerTestKeys(t, u, "\r")
-			if u.restoring == nil || len(u.shell.saved.Data.Publication.Files) != 0 || len(restoreContentRequests(t, w)) != 2 {
+			if u.restoring == nil || len(u.review.Projection.Data.Publication.Files) != 0 || len(restoreContentRequests(t, w)) != 2 {
 				t.Fatal("input unlocked before the Diff controller consumed the restored scope")
 			}
 			if viaPreviews {
 				for _, event := range testReview(auto).TakePreviews(sub) {
-					u.shell.applyDiff(t.Context(), event)
+					u.applyReview(t.Context(), event)
 				}
 				if err := u.finishRestoredContent(); err != nil {
 					t.Fatal(err)
 				}
 			} else {
 				for len(sub.Events()) > 0 {
-					u.shell.applyDiff(t.Context(), <-sub.Events())
+					u.applyReview(t.Context(), <-sub.Events())
 					if err := u.finishRestoredContent(); err != nil {
 						t.Fatal(err)
 					}
 				}
 			}
-			if u.restoring != nil || len(u.shell.saved.Data.Publication.Files) != 1 || u.shell.diffFailure != "" {
-				t.Fatalf("durable Diff not hydrated: %s", u.shell.diffFailure)
+			if u.restoring != nil || len(u.review.Projection.Data.Publication.Files) != 1 || u.review.Failure != "" {
+				t.Fatalf("durable Diff not hydrated: %s", u.review.Failure)
 			}
 			appServerTestKeys(t, u, "\r")
 			requests := restoreContentRequests(t, w)

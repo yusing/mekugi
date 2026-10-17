@@ -47,13 +47,13 @@ func (u *appServerUI) restorePaneContent(root binding.ThreadInfo) error {
 }
 
 func (u *appServerUI) restoreDiffThread(info binding.ThreadInfo, root bool) {
-	if u.shell == nil || u.shell.review == nil {
+	if u.review == nil {
 		return
 	}
-	u.shell.review.IncludeThread(info.Cwd, info.ID, root)
+	u.review.IncludeThread(info.Cwd, info.ID, root)
 	if root {
-		u.shell.saved.Workspace = info.Cwd
-		u.shell.publishReview()
+		u.review.Projection.Workspace = info.Cwd
+		u.publishReview()
 	}
 }
 
@@ -239,22 +239,11 @@ func (u *appServerUI) finishRestoredContent() error {
 	if r == nil || !r.state.Ready() {
 		return nil
 	}
-	if u.shell != nil && u.shell.review != nil && u.shell.saved.Retained.Store != nil && u.shell.diffFailure == "" {
-		if loader := u.shell.reviewLoader; loader != nil && loader.Pending() {
-			u.sessionPresentation().Status.SetText("Restoring saved Diff…")
-			return nil
-		}
-		a := u.shell.review
-		scope := a.Scope()
-		for workspace, threads := range scope.Workspaces {
-			for thread := range threads {
-				if !u.shell.saved.Scope.Workspaces[workspace][thread] {
-					u.sessionPresentation().Status.SetText("Restoring saved Diff…")
-					return nil
-				}
-			}
-		}
+	if u.review != nil && u.review.Restoring() {
+		u.sessionPresentation().Status.SetText("Restoring saved Diff…")
+		return nil
 	}
+
 	u.restoring = nil
 	u.updateHistoryHint()
 	u.sessionPresentation().Status.SetText("Ready")

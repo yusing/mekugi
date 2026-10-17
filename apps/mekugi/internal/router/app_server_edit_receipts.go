@@ -20,9 +20,9 @@ func (u *appServerUI) applyCapturedEdits() {
 			})
 		})
 	})
-	if u.shell == nil || u.shell.saved.Data == nil {
+	if u.review == nil || u.review.Projection.Data == nil {
 		return
 	}
-	u.view.ApplyCapturedEdits(u.shell.saved.Data.Receipts())
-	u.agents.ApplyCapturedEdits(u.shell.saved.Data.Receipts())
+	u.view.ApplyCapturedEdits(u.review.Projection.Data.Receipts())
+	u.agents.ApplyCapturedEdits(u.review.Projection.Data.Receipts())
 }

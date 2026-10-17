@@ -220,18 +220,17 @@ func (u *appServerUI) releaseRetired(root string) {
 // resetDiffScope starts the saved Diff over for a resumed root thread; its
 // restoration then includes only that thread and its descendants.
 func (u *appServerUI) resetDiffScope() {
-	if u.shell == nil || u.shell.review == nil {
+	if u.review == nil {
 		return
 	}
-	u.shell.saved.Reset()
-	u.shell.reviewLoader.Replace(u.ctx, u.shell.saved)
-	u.shell.reviewScope = u.shell.saved.Scope
-	if u.shell.Auxiliary != nil {
-		u.shell.Auxiliary.Reset()
+	u.review.Replace(u.ctx)
+	if u.shell != nil {
+		if u.shell.Auxiliary != nil {
+			u.shell.Auxiliary.Reset()
+		}
+		u.shell.liveDock, u.shell.diffUnseen = previewview.PreviewPane{}, false
 	}
-	u.shell.liveDock, u.shell.diffFailure, u.shell.diffUnseen = previewview.PreviewPane{}, "", false
-	u.shell.publishReview()
-	u.shell.review.ResetScope()
+	u.publishReview()
 }
 
 func (u *appServerUI) filterCommands(query string) {

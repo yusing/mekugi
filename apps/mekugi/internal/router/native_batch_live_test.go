@@ -60,12 +60,12 @@ func TestUISnapshotNativeBatchPlacement(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) { assertNativeUISnapshot(t, name, strings.Split(screen.String(), "\n")) })
 	}
-	u.shell.preview(nativeBatchPreview("child", "/root/editor", "child"), false)
+	u.preview(nativeBatchPreview("child", "/root/editor", "child"), false)
 	revealNativeDock(u.shell)
 	u.agents.setDisplayFilter(true, "/root/editor")
 	paint("native-batch-child-replaces-transcript", 140, 48)
 	u.agents.setDisplayFilter(false, u.agents.Selected)
-	u.shell.preview(nativeBatchPreview("main", "/root", "one", "two", "three"), false)
+	u.preview(nativeBatchPreview("main", "/root", "one", "two", "three"), false)
 	revealNativeDock(u.shell)
 	paint("native-batch-main-overflow", 140, 48)
 	for _, key := range []byte("\x02e") {
@@ -77,12 +77,12 @@ func TestUISnapshotNativeBatchPlacement(t *testing.T) {
 	paint("native-batch-short-summary", 80, 18)
 	u.agents.setDisplayFilter(true, "/root/editor")
 	paint("native-batch-narrow-activity", 80, 28)
-	u.shell.preview(previewmodel.Preview{ID: "child", Workspace: "/workspace"}, false)
+	u.preview(previewmodel.Preview{ID: "child", Workspace: "/workspace"}, false)
 	revealNativeDock(u.shell)
-	u.shell.preview(previewmodel.Preview{ID: "main", Workspace: "/workspace"}, false)
+	u.preview(previewmodel.Preview{ID: "main", Workspace: "/workspace"}, false)
 	revealNativeDock(u.shell)
 	paint("native-batch-restored-transcripts", 140, 48)
-	u.shell.preview(nativeBatchPreview("child", "/root/editor", "child", "second", "third"), false)
+	u.preview(nativeBatchPreview("child", "/root/editor", "child", "second", "third"), false)
 	revealNativeDock(u.shell)
 	for _, key := range []byte("\x02e") {
 		if err := u.shell.key(key); err != nil {
@@ -146,28 +146,28 @@ func TestNativeBatchLivePTY(t *testing.T) {
 	// A quick completed edit must never produce even one transcript-replacing
 	// frame on the real terminal, including after its reveal deadline.
 	quick := nativeBatchPreview("quick", "/root", "quick")
-	u.shell.preview(quick, false)
+	u.preview(quick, false)
 	if frame := paint(140, 48); strings.Contains(frame, "LIVE ·") || !strings.Contains(frame, "MAIN_TRANSCRIPT") {
 		t.Fatal("pending edit flashed a dock")
 	}
 	quick.Complete = true
-	u.shell.preview(quick, false)
+	u.preview(quick, false)
 	revealNativeDock(u.shell)
 	if frame := paint(140, 48); strings.Contains(frame, "LIVE ·") || !strings.Contains(frame, "MAIN_TRANSCRIPT") {
 		t.Fatal("completed quick edit popped a dock")
 	}
 	deleted := previewmodel.Preview{ID: "deleted", Caller: "/root", Workspace: "/workspace", Status: previewmodel.PreviewEdit,
 		Files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("/workspace/deleted.go", "", "package old\n", "")}}
-	u.shell.preview(deleted, false)
+	u.preview(deleted, false)
 	revealNativeDock(u.shell)
 	if frame := paint(140, 48); strings.Contains(frame, "LIVE ·") || !strings.Contains(frame, "MAIN_TRANSCRIPT") {
 		t.Fatal("deletion-only call replaced transcript with an empty dock")
 	}
-	u.shell.preview(previewmodel.Preview{ID: "deleted", Workspace: "/workspace"}, false)
+	u.preview(previewmodel.Preview{ID: "deleted", Workspace: "/workspace"}, false)
 	p := nativeBatchPreview("main", "/root", "one")
-	u.shell.preview(p, false)
+	u.preview(p, false)
 	revealNativeDock(u.shell)
-	u.shell.preview(nativeBatchPreview("child", "/root/editor", "child"), false)
+	u.preview(nativeBatchPreview("child", "/root/editor", "child"), false)
 	revealNativeDock(u.shell)
 	frame := paint(140, 48)
 	if !strings.Contains(frame, "one_line_40") || strings.Contains(frame, "child_line_40") || strings.Contains(frame, "OTHER_ACTIVITY") || strings.Contains(frame, "MAIN_TRANSCRIPT") || strings.Contains(frame, "EDITOR_TRANSCRIPT") {
@@ -187,7 +187,7 @@ func TestNativeBatchLivePTY(t *testing.T) {
 		fmt.Fprintf(&grown, "one_line_%02d\n", i)
 	}
 	p.Files[0] = diffmodel.RenderReviewFile("", "/workspace/one.txt", "", grown.String()+"streaming_tip\n")
-	u.shell.preview(p, false)
+	u.preview(p, false)
 	revealNativeDock(u.shell)
 	if frame = paint(140, 48); strings.Contains(frame, "streaming_tip") {
 		t.Fatal("new input stole paused viewport")
@@ -201,9 +201,9 @@ func TestNativeBatchLivePTY(t *testing.T) {
 		t.Fatal("resume did not follow source tip")
 	}
 	p.Complete = true
-	u.shell.preview(p, false)
+	u.preview(p, false)
 	revealNativeDock(u.shell)
-	u.shell.preview(nativeBatchPreview("next", "/root", "two", "three"), false)
+	u.preview(nativeBatchPreview("next", "/root", "two", "three"), false)
 	revealNativeDock(u.shell)
 	if len(u.shell.liveDock.Order) != 3 {
 		t.Fatal("new edit evicted completed batch member")
@@ -215,7 +215,7 @@ func TestNativeBatchLivePTY(t *testing.T) {
 	if frame = paint(80, 18); !strings.Contains(frame, "enlarge for diff") || strings.Contains(frame, "three_line") {
 		t.Fatal("short terminal squeezed below minimum file height")
 	}
-	u.shell.preview(previewmodel.Preview{ID: "next"}, false)
+	u.preview(previewmodel.Preview{ID: "next"}, false)
 	revealNativeDock(u.shell)
 	u.shell.animating(time.Now().Add(nativeDockMinimum + time.Second))
 	frame = paint(140, 48)
@@ -226,7 +226,7 @@ func TestNativeBatchLivePTY(t *testing.T) {
 	if frame = paint(140, 48); !strings.Contains(frame, "child_line_40") {
 		t.Fatal("child preview was lost while viewing Main")
 	}
-	u.shell.preview(previewmodel.Preview{ID: "child", Workspace: "/workspace"}, false)
+	u.preview(previewmodel.Preview{ID: "child", Workspace: "/workspace"}, false)
 	revealNativeDock(u.shell)
 	if frame = paint(140, 48); !strings.Contains(frame, "EDITOR_TRANSCRIPT") || strings.Contains(frame, "LIVE ·") {
 		t.Fatal("withdrawal did not restore Activity")
@@ -246,7 +246,7 @@ func TestUISnapshotNativeBatchDeletionPresentation(t *testing.T) {
 			if mixed {
 				preview.Files = append(preview.Files, nativeBatchPreview("kept", "/root", "kept").Files...)
 			}
-			u.shell.preview(preview, false)
+			u.preview(preview, false)
 			revealNativeDock(u.shell)
 			screen := vt.NewEmulator(140, 48)
 			defer screen.Close()

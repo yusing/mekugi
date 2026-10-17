@@ -23,7 +23,7 @@ func (u *appServerUI) endTurnPreviews(thread, turn string) {
 		for _, id := range slices.Clone(u.shell.liveDock.Order) {
 			view := u.shell.liveDock.Views[id]
 			if view != nil && view.Current.Thread == thread && view.Current.Turn == turn {
-				u.shell.preview(previewmodel.Preview{ID: id, Workspace: view.Current.Workspace, Thread: thread, Turn: turn}, false)
+				u.preview(previewmodel.Preview{ID: id, Workspace: view.Current.Workspace, Thread: thread, Turn: turn}, false)
 			}
 		}
 	}

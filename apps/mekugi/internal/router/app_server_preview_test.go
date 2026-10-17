@@ -508,7 +508,7 @@ func newNativePreview(t *testing.T) *nativePreview {
 	u.terminalViews = testTerminalViews(u.reviewSource)
 	label, attachment := u.terminalViews.Attach(u.shell.Theme)
 	u.shell.AuxiliaryLabel, u.shell.Auxiliary, u.shell.preparePane = label, attachment.Pane, attachment.Prepare
-	u.shell.saved = sessionreview.Projection{Workspace: workspace, Changes: store.changes, Retained: store.changeScope(), Data: new(presentation.Snapshot), Coverage: "CONNECTING"}
+	u.review.Projection = sessionreview.Projection{Workspace: workspace, Changes: store.changes, Retained: store.changeScope(), Data: new(presentation.Snapshot), Coverage: "CONNECTING"}
 	u.session.start("main", workspace)
 	p := &nativePreview{t: t, ui: u, proxy: proxy, input: input, store: store, usage: usage, workspace: workspace, delay: "0", active: make(map[string]string), assignments: make(map[string]string), models: map[string]string{"t-explorer": nativePreviewGrokModel}}
 	store.liveDiff = func(updates []changes.Update) {
@@ -516,13 +516,13 @@ func newNativePreview(t *testing.T) *nativePreview {
 		for _, update := range updates {
 			delivered = append(delivered, sessionreview.FromUpdate(update))
 		}
-		u.shell.applyDiff(t.Context(), sessionreview.Event{Kind: "change", Changes: delivered})
+		u.applyReview(t.Context(), sessionreview.Event{Kind: "change", Changes: delivered})
 	}
 	scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {}}}
 	for _, thread := range []string{"main", "t-reviewer", "t-explorer", "t-tester"} {
 		scope.Workspaces[workspace][thread] = true
 	}
-	u.shell.applyDiff(t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope})
+	u.applyReview(t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope})
 	u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.agents})
 	u.sessionPresentation().Status.Text = "Ready"
 	p.populate()
@@ -616,7 +616,7 @@ func (p *nativePreview) stream(name string, edits ...nativePreviewEdit) {
 			input := strings.Join(patchLines[:min(lines+2, len(patchLines))], "")
 			p.add("stream "+name, func() {
 				preview := projectStockPatchPreview(p.ui.ctx, p.workspace, previewmodel.Preview{ID: edit.item, Workspace: p.workspace, Thread: edit.thread, Caller: p.ui.session.path(edit.thread), Tool: applyPatchToolName, Status: previewmodel.PreviewEdit, Input: input})
-				p.ui.shell.applyDiff(p.ui.ctx, sessionreview.Event{Kind: "preview", Preview: &preview})
+				p.ui.applyReview(p.ui.ctx, sessionreview.Event{Kind: "preview", Preview: &preview})
 				revealNativeDock(p.ui.shell)
 			})
 		}
@@ -630,7 +630,7 @@ func (p *nativePreview) stream(name string, edits ...nativePreviewEdit) {
 // the router's capturer does, so the saved diff gains the change.
 func (p *nativePreview) apply(edit nativePreviewEdit) {
 	preview := projectStockPatchPreview(p.ui.ctx, p.workspace, previewmodel.Preview{ID: edit.item, Workspace: p.workspace, Thread: edit.thread, Caller: p.ui.session.path(edit.thread), Tool: applyPatchToolName, Status: previewmodel.PreviewEdit, Input: edit.patch, Complete: true})
-	p.ui.shell.applyDiff(p.ui.ctx, sessionreview.Event{Kind: "preview", Preview: &preview})
+	p.ui.applyReview(p.ui.ctx, sessionreview.Event{Kind: "preview", Preview: &preview})
 	revealNativeDock(p.ui.shell)
 	change := edit.change(-1)
 	item := map[string]any{"id": edit.item, "type": "fileChange", "status": "inProgress", "changes": []any{change}}
@@ -1451,7 +1451,7 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 			}
 			paint()
 			found := false
-			for attempt := range u.shell.saved.Data.Attempts() {
+			for attempt := range u.review.Projection.Data.Attempts() {
 				if attempt.Correlation != item+"\x000" {
 					continue
 				}

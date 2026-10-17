@@ -36,7 +36,7 @@ func TestNativeEditClickOpensExactCapturedDiffDialog(t *testing.T) {
 					attempt.Correlation = "exec-carrier"
 					attempt.Receipt = &presentation.Receipt{Thread: "main", Calls: []string{"call"}}
 				}
-				u.shell.saved.Data = reviewFixtureSnapshot(t, wrong, attempt)
+				u.review.Projection.Data = reviewFixtureSnapshot(t, wrong, attempt)
 				publishFixtureReview(t, u)
 
 				path := "earlier.go"
@@ -98,7 +98,7 @@ func TestNativeCompletedBatchEditOpensBeforeSiblingCommandExits(t *testing.T) {
 			if err := u.testPaint(screen, 160, 40); err != nil {
 				t.Fatal(err)
 			}
-			if u.shell.saved.Data.Len() != 0 || u.session.commands[[3]string{thread, "batch", "slow-sibling"}] == nil {
+			if u.review.Projection.Data.Len() != 0 || u.session.commands[[3]string{thread, "batch", "slow-sibling"}] == nil {
 				t.Fatal("fixture must have no durable capture and a running batch sibling")
 			}
 			// Click the actual rendered edit, through the shared pointer routing.
@@ -181,7 +181,7 @@ func TestNativeEditDialogShowsHistoricalHunkNotLaterCapture(t *testing.T) {
 	}
 	c := liveDiffChangesPane(t, 120, 24, captures)
 	u.shell.Auxiliary = c
-	u.shell.saved.Data = reviewFixtureSnapshot(t, presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: "/w", Call: "clicked"}, Correlation: "call\x000", Change: "amber1"}, Operation: activitydetail.Operation{Thread: "main", Item: "call"}, Chunks: captures[:1]})
+	u.review.Projection.Data = reviewFixtureSnapshot(t, presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: "/w", Call: "clicked"}, Correlation: "call\x000", Change: "amber1"}, Operation: activitydetail.Operation{Thread: "main", Item: "call"}, Chunks: captures[:1]})
 	publishFixtureReview(t, u)
 
 	u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "Edit `target.go` +1 -1 · apply_patch", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "call"}}}})
@@ -207,7 +207,7 @@ func TestNativeEditDialogShowsHistoricalHunkNotLaterCapture(t *testing.T) {
 func TestNativeCapturedDetailIsAttachmentScoped(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	chunk := liveDiffCapture("edit", "scope.go", 1, "before\n", "after\n", presentation.Origin{})
-	u.shell.saved.Data = reviewFixtureSnapshot(t, presentation.Attempt{
+	u.review.Projection.Data = reviewFixtureSnapshot(t, presentation.Attempt{
 		AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: "/w", Call: "edit"}},
 		Operation:       activitydetail.Operation{Thread: "main", Item: "edit"}, Chunks: []presentation.Chunk{chunk},
 	})
@@ -215,8 +215,8 @@ func TestNativeCapturedDetailIsAttachmentScoped(t *testing.T) {
 	u.view.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "edit"}}}}
 	// Retained reads are unavailable after publication. Detail navigation must
 	// consume the accepted snapshot without reopening evidence.
-	u.shell.saved.Changes = nil
-	u.shell.saved.Retained.Store = testHistory().Attach(filepath.Join(t.TempDir(), "unavailable"))
+	u.review.Projection.Changes = nil
+	u.review.Projection.Retained.Store = testHistory().Attach(filepath.Join(t.TempDir(), "unavailable"))
 	if !u.shell.openActivityEdit(u.view, 1, "scope.go") || !strings.Contains(u.shell.output.pages[0].Code, "+after") {
 		t.Fatal("accepted capture did not resolve without retained storage")
 	}

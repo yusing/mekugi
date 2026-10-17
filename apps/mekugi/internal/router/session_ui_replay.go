@@ -84,6 +84,7 @@ func (p *uiReplayPlayback) reset() {
 }
 
 func (p *uiReplayPlayback) close() {
+	p.ui.review.Close()
 	p.ui.commits.Close()
 	p.ui.shell.diffScreen.Close()
 	p.ui.session.Retire()

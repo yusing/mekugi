@@ -67,17 +67,17 @@ func TestSavedReviewLoadingSeparatesPreviewAuthorityFromRestoredInput(t *testing
 				blocked.failure = errors.New("retained index unavailable")
 			}
 			u := newAppServerSessionTestUI(t, workspace)
-			u.shell.saved, u.shell.reviewLoader = loader.Projection(), loader
-			sub := u.shell.review.Subscribe()
-			defer func() { u.shell.review.Unsubscribe(sub) }()
+			u.review.Projection, u.review.Loader = loader.Projection(), loader
+			sub := u.review.Subscribe()
+			defer func() { u.review.Unsubscribe(sub) }()
 			if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: workspace}); err != nil {
 				t.Fatal(err)
 			}
-			u.shell.review.IncludeThread(workspace, "blocked-child", false)
+			u.review.IncludeThread(workspace, "blocked-child", false)
 			restoreContentReply(t, u, 0, map[string]any{"data": []any{}})
 			restoreContentReply(t, u, 1, map[string]any{"data": []any{}})
-			for _, event := range u.shell.review.TakePreviews(sub) {
-				u.shell.applyDiff(t.Context(), event)
+			for _, event := range u.review.TakePreviews(sub) {
+				u.applyReview(t.Context(), event)
 			}
 		waiting:
 			for {
@@ -85,15 +85,15 @@ func TestSavedReviewLoadingSeparatesPreviewAuthorityFromRestoredInput(t *testing
 				case <-blocked.entered:
 					break waiting
 				case result := <-loader.Updates():
-					u.shell.loadedReview(result)
+					u.loadedReview(result)
 				case <-time.After(5 * time.Second):
 					t.Fatal("restored Diff did not reach blocked retained read")
 				}
 			}
 			preview := previewmodel.Preview{ID: "stream", Workspace: workspace, Thread: "blocked-child", Caller: "/root/worker", Input: "live edit", Status: "active"}
-			u.shell.applyDiff(t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
+			u.applyReview(t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
 			revealNativeDock(u.shell)
-			if u.shell.liveDock.Views[preview.ID] == nil || u.shell.saved.Scope.Workspaces[workspace][preview.Thread] {
+			if u.shell.liveDock.Views[preview.ID] == nil || u.review.Projection.Scope.Workspaces[workspace][preview.Thread] {
 				t.Fatal("preview waited for retained scope hydration")
 			}
 			if err := u.finishRestoredContent(); err != nil {
@@ -106,30 +106,30 @@ func TestSavedReviewLoadingSeparatesPreviewAuthorityFromRestoredInput(t *testing
 				t.Fatal("restored input became available before retained read settled")
 			}
 			release()
-			for loader.Pending() && u.shell.diffFailure == "" {
-				u.shell.loadedReview(savedReviewLoaderResult(t, loader))
+			for loader.Pending() && u.review.Failure == "" {
+				u.loadedReview(savedReviewLoaderResult(t, loader))
 				if err := u.finishRestoredContent(); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if u.restoring != nil || (u.shell.diffFailure != "") != failure {
-				t.Fatalf("restoration did not settle after retained read: restoring=%v failure=%q", u.restoring != nil, u.shell.diffFailure)
+			if u.restoring != nil || (u.review.Failure != "") != failure {
+				t.Fatalf("restoration did not settle after retained read: restoring=%v failure=%q", u.restoring != nil, u.review.Failure)
 			}
-			if !failure && len(u.shell.saved.Data.Publication.Files) != 1 {
+			if !failure && len(u.review.Projection.Data.Publication.Files) != 1 {
 				t.Fatal("successful hydration did not publish saved Diff")
 			}
 			if failure {
 				// Returning from the editor creates a fresh subscription even
 				// when retained Diff is unavailable. Its barrier must settle,
 				// not trigger an endless chain of replacement subscriptions.
-				u.shell.review.Unsubscribe(sub)
+				u.review.Unsubscribe(sub)
 				loader.AwaitResync()
-				sub = u.shell.review.Subscribe()
-				if !u.shell.admitReviewEvents(t.Context(), sub, <-sub.Events()) {
+				sub = u.review.Subscribe()
+				if !u.admitReviewEvents(t.Context(), sub, <-sub.Events()) {
 					t.Fatal("failed Diff requested another subscription after editor reattachment")
 				}
 				preview.ID = "after-editor"
-				if !u.shell.admitReviewEvents(t.Context(), sub, sessionreview.Event{Kind: "preview", Preview: &preview}) {
+				if !u.admitReviewEvents(t.Context(), sub, sessionreview.Event{Kind: "preview", Preview: &preview}) {
 					t.Fatal("failed Diff forced resubscription during preview delivery")
 				}
 				revealNativeDock(u.shell)
@@ -151,27 +151,27 @@ func TestSavedReviewReplacementRejectsQueuedOldResync(t *testing.T) {
 	liveDiffScopeCapture(t, store, workspace, "old", "old-edit", filepath.Join(workspace, "old.go"), "a", "b")
 	liveDiffScopeCapture(t, store, workspace, "replacement", "new-edit", filepath.Join(workspace, "new.go"), "a", "b")
 	u := newAppServerSessionTestUI(t, workspace)
-	u.shell.saved, u.shell.reviewLoader = loader.Projection(), loader
-	u.shell.review.IncludeThread(workspace, "old", true)
-	old := u.shell.review.Subscribe()
-	defer u.shell.review.Unsubscribe(old)
+	u.review.Projection, u.review.Loader = loader.Projection(), loader
+	u.review.IncludeThread(workspace, "old", true)
+	old := u.review.Subscribe()
+	defer u.review.Unsubscribe(old)
 	u.resetDiffScope()
-	u.shell.review.IncludeThread(workspace, "replacement", true)
-	if u.shell.admitReviewEvents(t.Context(), old, <-old.Events()) {
+	u.review.IncludeThread(workspace, "replacement", true)
+	if u.admitReviewEvents(t.Context(), old, <-old.Events()) {
 		t.Fatal("queued old resync entered the replacement attachment")
 	}
-	if loader.Pending() || len(u.shell.reviewScope.Workspaces) != 0 {
+	if loader.Pending() || len(u.review.PreviewScope.Workspaces) != 0 {
 		t.Fatal("invalidated subscription authorized or started an old-session read")
 	}
-	sub := u.shell.review.Subscribe()
-	defer u.shell.review.Unsubscribe(sub)
-	if !u.shell.admitReviewEvents(t.Context(), sub, <-sub.Events()) {
+	sub := u.review.Subscribe()
+	defer u.review.Unsubscribe(sub)
+	if !u.admitReviewEvents(t.Context(), sub, <-sub.Events()) {
 		t.Fatal("current replacement scope was rejected")
 	}
-	u.shell.loadedReview(savedReviewLoaderResult(t, loader))
-	files := u.shell.saved.Data.Publication.Files
-	if u.shell.diffFailure != "" || len(files) != 1 || filepath.Base(files[0].Path) != "new.go" {
-		t.Fatalf("old subscription poisoned replacement Diff: failure=%q files=%+v", u.shell.diffFailure, files)
+	u.loadedReview(savedReviewLoaderResult(t, loader))
+	files := u.review.Projection.Data.Publication.Files
+	if u.review.Failure != "" || len(files) != 1 || filepath.Base(files[0].Path) != "new.go" {
+		t.Fatalf("old subscription poisoned replacement Diff: failure=%q files=%+v", u.review.Failure, files)
 	}
 }
 

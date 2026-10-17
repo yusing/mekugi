@@ -90,7 +90,7 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "m", "item": map[string]any{
 		"id": "cat-call", "type": "commandExecution", "command": "cat > direct.go <<'EOF'\nnew\nEOF", "exitCode": 2}})
 	assertCapturedCommand(t, u.view, "main", "cat-call", "Edit", 2)
-	u.shell.saved.Data = snapshot
+	u.review.Projection.Data = snapshot
 	publishFixtureReview(t, u)
 	u.applyCapturedEdits()
 	assertCapturedCommand(t, u.view, "main", "cat-call", "Edit", 2)
@@ -139,7 +139,7 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 	}
 	// History restored into a new UI still reconciles against retained receipts.
 	restored := newAppServerSessionTestUI(t, workspace)
-	restored.shell.saved.Data = snapshot
+	restored.review.Projection.Data = snapshot
 	publishFixtureReview(t, restored)
 	restored.restoreHistory([]binding.HistoryTurn{{ID: "prior", Status: "completed", Items: []binding.ThreadItem{{
 		ID: "cat-call", Type: "commandExecution", Command: "cat > direct.go", ExitCode: new(2),
@@ -186,7 +186,7 @@ func TestAppServerCapturedEditsReuseReceipt(t *testing.T) {
 	var data []*presentation.Receipt
 	receipt := &presentation.Receipt{Thread: "main", Calls: []string{"cmd"}, Text: "Edit `a.go` +1 -1"}
 	data = []*presentation.Receipt{receipt}
-	u.shell.saved.Data = reviewReceiptSnapshot(t, data)
+	u.review.Projection.Data = reviewReceiptSnapshot(t, data)
 	u.applyCapturedEdits()
 	assertCapturedCommand(t, u.view, "main", "cmd", "Edit", 0)
 	if allocations := testing.AllocsPerRun(5, u.applyCapturedEdits); allocations > 1 {
@@ -203,7 +203,7 @@ func TestAppServerCapturedEditsReuseReceipt(t *testing.T) {
 	updated := *receipt
 	updated.Text = "Edit `a.go` +2 -1"
 	data[0] = &updated
-	u.shell.saved.Data = reviewReceiptSnapshot(t, data)
+	u.review.Projection.Data = reviewReceiptSnapshot(t, data)
 	u.applyCapturedEdits()
 	assertCapturedCommand(t, u.view, "main", "cmd", "Edit", 2)
 	if !strings.Contains(u.view.Entries[0].Source.Text, "+2 -1") {
@@ -339,7 +339,7 @@ func TestCodeModeCellEditReceipt(t *testing.T) {
 	live := newAppServerSessionTestUI(t, workspace)
 	live.Thread = "thread-1"
 	live.session.start(live.Thread, workspace)
-	live.shell.saved.Data = snapshot
+	live.review.Projection.Data = snapshot
 	publishFixtureReview(t, live)
 	appServerTestNotify(t, live, "item/completed", map[string]any{"threadId": "thread-1", "turnId": "turn", "item": item})
 	live.applyCapturedEdits()
@@ -347,7 +347,7 @@ func TestCodeModeCellEditReceipt(t *testing.T) {
 	restored := newAppServerSessionTestUI(t, workspace)
 	restored.Thread = "thread-1"
 	restored.session.start(restored.Thread, workspace)
-	restored.shell.saved.Data = snapshot
+	restored.review.Projection.Data = snapshot
 	publishFixtureReview(t, restored)
 	restored.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}})
 	assertCapturedCommand(t, restored.view, "thread-1", "edit-exec", "Edit", 0)
@@ -410,11 +410,11 @@ func TestAppServerCapturedEditKeepsCommandPaths(t *testing.T) {
 			t.Fatalf("receipt changed neighboring paths, query or source: %q", entry.Source.Text)
 		}
 	}
-	u.shell.saved.Data = reviewReceiptSnapshot(t, data)
+	u.review.Projection.Data = reviewReceiptSnapshot(t, data)
 	u.applyCapturedEdits()
 	check(u.view)
 	restored := newAppServerSessionTestUI(t, u.session.cwd)
-	restored.shell.saved.Data = reviewReceiptSnapshot(t, data)
+	restored.review.Projection.Data = reviewReceiptSnapshot(t, data)
 	restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 	check(restored.view)
 }

@@ -31,24 +31,24 @@ func TestUISnapshotNativeDockReveal(t *testing.T) {
 			assertNativeUISnapshot(t, name, strings.Split(screen.String(), "\n"))
 		}
 		p := nativeBatchPreview("small", "/root", "small")
-		u.shell.preview(p, false)
+		u.preview(p, false)
 		time.Sleep(nativeDockReveal - time.Millisecond)
 		u.shell.animating(time.Now())
 		paint("native-dock-before-reveal")
 		p.Complete = true
-		u.shell.preview(p, false)
+		u.preview(p, false)
 		time.Sleep(nativeDockReveal)
 		if u.shell.animating(time.Now()) || len(u.shell.liveDock.Order) != 0 {
 			t.Fatal("short edit opened a dock after completion")
 		}
 		paint("native-dock-short-completed")
 		p.ID, p.Complete = "stream", false
-		u.shell.preview(p, false)
+		u.preview(p, false)
 		time.Sleep(nativeDockReveal)
 		u.shell.animating(time.Now())
 		paint("native-dock-stream-revealed")
 		p.Complete = true
-		u.shell.preview(p, false)
+		u.preview(p, false)
 		time.Sleep(nativeDockMinimum)
 		u.shell.animating(time.Now())
 		paint("native-dock-stream-settled")
@@ -61,19 +61,19 @@ func TestNativeDockPendingLifecycle(t *testing.T) {
 			u := nativeBatchFixture(t)
 			p := nativeBatchPreview("main", "/root", "main")
 			p.Thread, p.Turn = "main", "turn"
-			u.shell.preview(p, false)
+			u.preview(p, false)
 			child := nativeBatchPreview("child", "/root/editor", "child")
 			child.Thread, child.Turn = "child", "turn"
-			u.shell.preview(child, false)
+			u.preview(child, false)
 			switch finish {
 			case "completed":
-				u.shell.preview(previewmodel.Preview{ID: p.ID}, false)
+				u.preview(previewmodel.Preview{ID: p.ID}, false)
 			case "withdrawn":
-				u.shell.preview(previewmodel.Preview{ID: p.ID, Workspace: p.Workspace}, false)
+				u.preview(previewmodel.Preview{ID: p.ID, Workspace: p.Workspace}, false)
 			case "turn ended":
 				u.endTurnPreviews("main", "turn")
 			case "reconnect":
-				u.shell.applyDiff(t.Context(), sessionreview.Event{Kind: "coverage", Status: "RECONNECTING: test"})
+				u.applyReview(t.Context(), sessionreview.Event{Kind: "coverage", Status: "RECONNECTING: test"})
 			}
 			revealNativeDock(u.shell)
 			if u.shell.liveDock.Views[p.ID] != nil || len(u.shell.livePending) != 0 {

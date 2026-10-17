@@ -29,6 +29,15 @@ resynchronization. Retired results cannot update the current projection, and a
 retired read retains its physical capacity until storage actually returns.
 Loading does not block input, cancellation or independent preview delivery.
 
+The serialized application consumer keeps the complete projection, admitted
+preview scope, retained-load failure and loader with this Review owner. Producer
+membership remains independently synchronized; retained reads never hold its
+mutex. Replacing the selected attachment resets consumer admission while reusing
+the loader's physical capacity. Terminal release and reentry only resynchronize
+the subscription. Application publication and receipt reconciliation remain
+available without a terminal; rendering consumes admitted preview updates and
+already-published review values.
+
 Acceptance covers immutable membership, unrelated-thread isolation, subscriber
 overflow, scope-before-preview ordering, optional preview absence and replacement
 without changing capture or execution lifetime.

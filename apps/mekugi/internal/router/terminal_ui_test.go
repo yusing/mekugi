@@ -21,10 +21,10 @@ func TestTerminalUIBatchKeepsSettlingTime(t *testing.T) {
 	u.ensureShell()
 	defer u.shell.diffScreen.Close()
 	p := previewmodel.Preview{ID: "edit", Caller: "/root", Workspace: t.TempDir(), Status: previewmodel.PreviewEdit, Input: "source"}
-	u.shell.preview(p, false)
+	u.preview(p, false)
 	revealNativeDock(u.shell)
 	p.Complete = true
-	u.shell.preview(p, false)
+	u.preview(p, false)
 	revealNativeDock(u.shell)
 	now := time.Now()
 	if !u.shell.animating(now) || len(u.shell.liveDock.Order) != 1 {
@@ -144,10 +144,10 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 					preview := previewmodel.Preview{ID: "edit", Caller: caller, Tool: applyPatchToolName, Status: previewmodel.PreviewEdit, Input: "*** Begin Patch\n*** Add File: live.txt\n+live\n*** End Patch"}
 					preview.Workspace = t.TempDir()
 					preview = projectStockPatchPreview(t.Context(), preview.Workspace, preview)
-					u.shell.preview(preview, false)
+					u.preview(preview, false)
 					revealNativeDock(u.shell)
 					preview.Complete = true
-					u.shell.preview(preview, false)
+					u.preview(preview, false)
 					now := time.Now()
 					u.shell.animating(now.Add(nativeDockMinimum - time.Millisecond))
 					paint()
@@ -157,7 +157,7 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 					u.shell.animating(now.Add(nativeDockMinimum))
 					assertCollapsed()
 					preview.Complete = false
-					u.shell.preview(preview, false)
+					u.preview(preview, false)
 					revealNativeDock(u.shell)
 					paint()
 					if len(u.shell.liveDock.Order) != 1 || strings.Contains(screen.String(), "LIVE ·") != (caller == "/root") {
@@ -207,7 +207,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			}
 			assertFollow(paint(120, 40))
 			workspace := t.TempDir()
-			u.shell.preview(projectStockPatchPreview(t.Context(), workspace, previewmodel.Preview{ID: "edit", Workspace: workspace, Caller: caller, Tool: applyPatchToolName, Status: previewmodel.PreviewEdit, Input: "*** Begin Patch\n*** Add File: follow.txt\n+live content\n*** End Patch"}), false)
+			u.preview(projectStockPatchPreview(t.Context(), workspace, previewmodel.Preview{ID: "edit", Workspace: workspace, Caller: caller, Tool: applyPatchToolName, Status: previewmodel.PreviewEdit, Input: "*** Begin Patch\n*** Add File: follow.txt\n+live content\n*** End Patch"}), false)
 			revealNativeDock(u.shell)
 			assertLiveFollow := func(frame string) {
 				t.Helper()
@@ -226,7 +226,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			}
 			u.shell.DiffOpen = false
 			assertLiveFollow(paint(140, 32))
-			u.shell.preview(previewmodel.Preview{ID: "edit", Workspace: workspace}, false)
+			u.preview(previewmodel.Preview{ID: "edit", Workspace: workspace}, false)
 			revealNativeDock(u.shell)
 			assertFollow(paint(140, 32))
 			view.ScrollKey(terminalui.PaneWheelDown)

@@ -221,8 +221,8 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 	u.shell.faint = faint
 	u.settlePresentation()
 	return func() error {
-		u.shell.reviewLoader = sessionreview.NewLoader(ctx, u.shell.saved)
-		defer u.shell.reviewLoader.Close()
+		u.review.Loader = sessionreview.NewLoader(ctx, u.review.Projection)
+		defer u.review.Loader.Close()
 		defer func() {
 			if u.waitRelease != nil {
 				u.waitRelease()
@@ -242,17 +242,17 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 		for {
 			err = terminalui.WithRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1003;1004;1006;2004h\x1b]10;?\x1b\\\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1003;1004;1006;2004l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
 				defer u.clearTerminalTitle()
-				review := u.shell.review
+				review := u.review
 				review.Preview().Enable()
 				defer func() { review.Preview().Disable() }()
-				u.shell.reviewLoader.AwaitResync()
+				u.review.Loader.AwaitResync()
 				sub := review.Subscribe()
 				defer func() { review.Unsubscribe(sub) }()
 				diffEvents, diffGap, diffReady, previewGap := sub.Events(), sub.Gap(), sub.Ready(), sub.PreviewGap()
 				autoChanged := review.Changed()
 				resubscribe := func() {
 					review.Unsubscribe(sub)
-					u.shell.reviewLoader.AwaitResync()
+					u.review.Loader.AwaitResync()
 					sub = review.Subscribe()
 					diffEvents, diffGap, diffReady, previewGap = sub.Events(), sub.Gap(), sub.Ready(), sub.PreviewGap()
 					u.dirty = true
@@ -266,24 +266,24 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 					case <-ctx.Done():
 						return ctx.Err()
 					case <-autoChanged:
-						u.shell.saved.Workspace = review.Workspace()
-						u.shell.publishReview()
+						u.review.Projection.Workspace = review.Workspace()
+						u.publishReview()
 						u.dirty = true
 					case <-diffGap:
 						resubscribe()
 					case <-previewGap:
 						resubscribe()
-					case result := <-u.shell.reviewLoader.Updates():
+					case result := <-u.review.Loader.Updates():
 						if sub.Invalidated() {
 							resubscribe()
 						}
-						u.shell.loadedReview(result)
+						u.loadedReview(result)
 						if err := u.finishRestoredContent(); err != nil {
 							return err
 						}
 						u.dirty = true
 					case <-diffReady:
-						if !u.shell.admitReviewEvents(ctx, sub, review.TakePreviews(sub)...) {
+						if !u.admitReviewEvents(ctx, sub, review.TakePreviews(sub)...) {
 							resubscribe()
 						}
 						if err := u.finishRestoredContent(); err != nil {
@@ -291,7 +291,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 						}
 						u.dirty = true
 					case event := <-diffEvents:
-						if !u.shell.admitReviewEvents(ctx, sub, event) {
+						if !u.admitReviewEvents(ctx, sub, event) {
 							resubscribe()
 						}
 						if err := u.finishRestoredContent(); err != nil {
@@ -423,7 +423,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 				u.execTrack.ReleaseOutput(key)
 			}
 		}
-		u.shell.review.Close()
+		u.review.Close()
 		u.hideQuestions()
 		u.hideApprovals()
 		if unsent := conversationmodel.Join(slices.Concat(u.conversation().Unsent, u.conversation().Queued, []conversationmodel.Input{u.draftSnapshot()})...); unsent.Text != "" {
@@ -1205,20 +1205,13 @@ func (u *appServerUI) ensureShell() {
 	u.agents.ChildrenOnly = true
 	u.agents.Coverage = "" // Fed by app-server directly, never by a collector connection.
 	u.agents.mainView = u.view
-	store, review := u.retained, u.review
-	if review == nil {
-		review = sessionreview.New(u.ctx, nil, nil)
-	}
 	u.agents.Bare = true
-	shell := &terminalUI{main: u, agents: u.agents, review: review, diffScreen: new(terminalsession.DiffScreen)}
+	shell := &terminalUI{main: u, agents: u.agents, diffScreen: new(terminalsession.DiffScreen)}
 	shell.RosterLabel = u.terminalViews.RosterLabel()
 	shell.Theme = diffrender.EnvironmentTheme(os.Getenv("COLORFGBG"))
 	label, attachment := u.terminalViews.Attach(shell.Theme)
 	shell.AuxiliaryLabel, shell.Auxiliary, shell.preparePane = label, attachment.Pane, attachment.Prepare
-	shell.saved = sessionreview.Projection{Data: new(changepresentation.Snapshot), Coverage: "CONNECTING"}
-	if store.Store != nil {
-		shell.saved.Changes, shell.saved.Retained = u.changeSource, store
-	}
+
 	u.shell = shell
 }
 

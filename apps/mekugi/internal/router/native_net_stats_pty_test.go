@@ -54,9 +54,9 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 	scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}}
 	refresh := func() {
 		t.Helper()
-		u.shell.applyDiff(t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope, Resync: true})
-		if u.shell.diffFailure != "" {
-			t.Fatal(u.shell.diffFailure)
+		u.applyReview(t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope, Resync: true})
+		if u.review.Failure != "" {
+			t.Fatal(u.review.Failure)
 		}
 	}
 	refresh()
@@ -128,7 +128,7 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 	// A new store reader and controller projection can restore the outcome
 	// without any live parent, command execution, or workspace source files.
 	setSavedReviewStore(u.shell, testReplayStore(mekugiReplayStore{directory: store.directory}))
-	u.shell.saved.Reset()
+	u.review.Projection.Reset()
 	savedPane(u.shell).Reset()
 	refresh()
 	savedPane(u.shell).Key("a")
@@ -137,7 +137,7 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 	if frame := paint(160); !strings.Contains(frame, "+3 -1") {
 		t.Fatalf("replay or caller filter changed overall outcome:\n%s", frame)
 	}
-	u.shell.saved.Reset()
+	u.review.Projection.Reset()
 	savedPane(u.shell).Reset()
 	scope.Workspaces[workspace] = map[string]bool{"new-thread": true}
 	refresh()

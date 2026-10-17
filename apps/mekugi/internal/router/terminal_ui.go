@@ -4,13 +4,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/libraries/diffrender"
-	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 
@@ -22,17 +19,12 @@ type terminalUI struct {
 	selection     *terminalSelection
 	frame         terminalsession.Frame
 	input         terminalsession.Decoder
-	diffFailure   string
 	output        *outputDialog // Open over both panes, taking every key.
 	fileReadSlot  chan struct{} // Physical read capacity survives dialog and attachment replacement.
 	diffScreen    *terminalsession.DiffScreen
 	preparePane   func(*scope.Store)
-	saved         sessionreview.Projection
-	reviewLoader  *sessionreview.Loader
-	reviewScope   previewmodel.Scope // Admitted preview authority, independent of retained loading.
 	agents        *activityAdapter
 	main          *appServerUI
-	review        *sessionreview.Review
 	width, height int
 	terminalsession.Shell
 	diffUnseen  bool // Saved changes arrived while Diff was closed.

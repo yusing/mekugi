@@ -127,7 +127,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			// Seed the same running dock before execution so completion must
 			// actively retire it, rather than simply avoid opening a new card.
 			if !opaque {
-				u.shell.preview(previewmodel.Preview{ID: "running:edit", Workspace: workspace, Thread: "main", Caller: "/root", Status: previewmodel.PreviewRunning, Input: "observing edit"}, false)
+				u.preview(previewmodel.Preview{ID: "running:edit", Workspace: workspace, Thread: "main", Caller: "/root", Status: previewmodel.PreviewRunning, Input: "observing edit"}, false)
 			}
 			cmd := exec.CommandContext(ctx, execTrackShellExecutable(t, "bash"), "-lc", script)
 			cmd.Dir, cmd.Env = workspace, shell.env
@@ -192,7 +192,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 				case <-sub.Ready():
 					for _, event := range testReview(broker).TakePreviews(sub) {
 						if event.Preview != nil {
-							u.shell.preview(*event.Preview, false)
+							u.preview(*event.Preview, false)
 							if event.Preview.Complete {
 								if event.Preview.EditReceipt != "" && len(event.Preview.Files) == wantFiles {
 									completed = event.Preview
@@ -463,7 +463,7 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 			}
 			if shell == "sh" {
 				preview := waitExecScopePreview(t, auto, func(p previewmodel.Preview) bool { return len(p.Files) > 0 && !p.Complete })
-				u.shell.preview(preview, false)
+				u.preview(preview, false)
 				revealNativeDock(u.shell)
 				if u.shell.liveDock.Live() == 0 {
 					t.Fatal("source preview did not open before native completion")
@@ -487,7 +487,7 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 							if u.session.commands[[3]string{"main", "turn", "test"}] == nil {
 								t.Fatal("edit completion ended enclosing cell or sibling test")
 							}
-							u.shell.preview(*event.Preview, false)
+							u.preview(*event.Preview, false)
 							streamDone = streamDone || event.Preview.EditReceipt == ""
 							receiptDone = receiptDone || event.Preview.EditReceipt != ""
 							if !streamDone || !receiptDone {

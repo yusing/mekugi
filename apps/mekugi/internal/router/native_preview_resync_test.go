@@ -33,10 +33,10 @@ func TestNativePreviewMailboxKeepsNewestFile(t *testing.T) {
 	broker.Update(older, false)
 	drain := func(u *appServerUI) {
 		for _, event := range testReview(broker).TakePreviews(sub) {
-			u.shell.applyDiff(t.Context(), event)
+			u.applyReview(t.Context(), event)
 		}
-		if u.shell.diffFailure != "" {
-			t.Fatal(u.shell.diffFailure)
+		if u.review.Failure != "" {
+			t.Fatal(u.review.Failure)
 		}
 		revealNativeDock(u.shell)
 	}

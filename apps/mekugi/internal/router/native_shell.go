@@ -5,14 +5,10 @@ import (
 	"io"
 	"maps"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
-
-	"github.com/yusing/mekugi/contracts/activitydetail"
-	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -20,9 +16,6 @@ import (
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
-
-	"github.com/yusing/mekugi/libraries/pathdisplay"
-	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
@@ -58,50 +51,8 @@ func (u *terminalUI) openActivityReply(seq uint64) bool {
 }
 
 // preview updates the shared dock by call ID, including caller-less completion markers.
-func (u *terminalUI) preview(preview previewmodel.Preview, restored bool) {
-	if u.main != nil && preview.Complete && len(preview.HostItems) > 0 {
-		receipt := &changepresentation.Receipt{Thread: preview.Thread, Calls: preview.HostItems, Text: preview.EditReceipt}
-		for _, file := range preview.Files {
-			path := file.AfterPath
-			if path == "" {
-				path = file.BeforePath
-			}
-			receipt.Pages = append(receipt.Pages, activitydetail.Page{ID: preview.ID + "/" + strconv.Itoa(len(receipt.Pages)), Verb: file.Action().Title(),
-				Path: pathdisplay.ForWorkspace(preview.Workspace, path), Code: file.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(preview.Workspace, file.BeforePath), pathdisplay.ForWorkspace(preview.Workspace, file.AfterPath)), Language: "diff"})
-		}
-		if len(receipt.Pages) == 0 {
-			// Large live cards discard Files. Their receipt still carries bounded
-			// observed hunks, including an explicit marker for omitted lines.
-			for _, paragraph := range activitymodel.Paragraphs(receipt.Text) {
-				block := activityui.Block{Content: activitymodel.ParseOperation(paragraph)}
-				if block.Lang == "diff" && block.Code != "" {
-					block.Path = block.EditPath()
-					receipt.Pages = append(receipt.Pages, activitydetail.Page{ID: preview.ID + "/" + strconv.Itoa(len(receipt.Pages)), Verb: block.Verb, Path: block.Path, Code: block.Code, Language: block.Lang})
-				}
-			}
-		}
-		u.main.pendingEditReceipts = append(u.main.pendingEditReceipts, receipt)
-		u.main.applyCapturedEdits()
-		// Host rows can lag several preview mailbox drains. Bound unmatched
-		// projections by memory, not one mailbox's count. Charge metadata too,
-		// so tiny receipts cannot grow without a bound. These are not durable
-		// changes or evidence of the whole command's success.
-		budget := 32 * (48 << 10)
-		for i := len(u.main.pendingEditReceipts) - 1; i >= 0; i-- {
-			pending := u.main.pendingEditReceipts[i]
-			budget -= 1024 + len(pending.Thread) + len(pending.Text)
-			for _, call := range pending.Calls {
-				budget -= 32 + len(call)
-			}
-			for _, page := range pending.Pages {
-				budget -= 1024 + len(page.Path) + len(page.Code)
-			}
-			if budget < 0 {
-				u.main.pendingEditReceipts = slices.Delete(u.main.pendingEditReceipts, 0, i+1)
-				break
-			}
-		}
-	}
+func (u *terminalUI) showPreview(preview previewmodel.Preview, restored bool) {
+
 	dock := &u.liveDock
 	// Restoration may carry receipts for expired calls, but cannot reopen them.
 	if restored && preview.Complete && dock.Views[preview.ID] == nil {
@@ -133,40 +84,11 @@ func (u *terminalUI) preview(preview previewmodel.Preview, restored bool) {
 	dock.Update(preview)
 }
 
-// A closed subscription can still have queued scope barriers. Reject them
-// before they can authorize previews or hydrate the replacement attachment.
-// Failed retained loading leaves preview delivery active without requesting
-// another durable barrier after every event.
-func (u *terminalUI) admitReviewEvents(ctx context.Context, sub *sessionreview.Subscription, events ...sessionreview.Event) bool {
-	if sub.Invalidated() {
-		return false
-	}
-	for _, event := range events {
-		u.applyDiff(ctx, event)
-	}
-	return u.diffFailure != "" || u.reviewLoader == nil || !u.reviewLoader.NeedsResync()
-}
-
-// applyDiff sends saved changes to the diff pane and live edit cards to
-// the shared dock. All edits use the router preview and capture owners.
-func (u *terminalUI) applyDiff(ctx context.Context, event sessionreview.Event) {
+// reviewEvent consumes only an admitted visual update. It has no retained store,
+// loader or membership authority.
+func (u *terminalUI) reviewEvent(event sessionreview.Event) {
 	switch event.Kind {
-	case "preview":
-		preview := event.Preview
-		scope := u.saved.Scope
-		if u.reviewLoader != nil {
-			scope = u.reviewScope
-		}
-		if preview == nil ||
-			preview.Workspace != "" && !scope.Workspaces[preview.Workspace][preview.Thread] {
-			return
-		}
-		u.preview(*preview, event.Resync)
-		return
 	case "scope":
-		if event.Scope != nil {
-			u.reviewScope = *event.Scope
-		}
 		if event.Resync && event.Scope != nil {
 			retained := func(preview previewmodel.Preview, complete bool) bool {
 				return event.Scope.Workspaces[preview.Workspace][preview.Thread] &&
@@ -194,52 +116,6 @@ func (u *terminalUI) applyDiff(ctx context.Context, event sessionreview.Event) {
 	case "change":
 		u.diffUnseen = u.diffUnseen || !u.DiffOpen
 	}
-	if u.diffFailure != "" {
-		return
-	}
-	if u.reviewLoader != nil {
-		if err := u.reviewLoader.Enqueue(event); err != nil {
-			u.diffFailure = err.Error()
-			u.publishReview()
-		}
-		return
-	}
-	if changed, err := u.saved.Apply(ctx, event); err != nil {
-		u.diffFailure = err.Error()
-		u.publishReview()
-	} else if changed {
-		u.publishReview()
-	}
-	if u.main != nil && (event.Kind == "scope" || event.Kind == "change") {
-		u.main.applyCapturedEdits()
-	}
-}
-
-func (u *terminalUI) loadedReview(result sessionreview.Result) {
-	accepted, err := u.reviewLoader.Accept(result)
-	if err != nil {
-		u.diffFailure = err.Error()
-		u.publishReview()
-	} else if accepted {
-		workspace := u.saved.Workspace
-		u.saved = u.reviewLoader.Projection()
-		u.saved.Workspace = workspace
-		u.publishReview()
-		if u.main != nil {
-			u.main.applyCapturedEdits()
-		}
-	}
-}
-
-func (u *terminalUI) publishReview() {
-	snapshot := u.saved.Data
-	if u.main != nil {
-		u.main.reviewSource.PublishReview(u.main.session.Scope(), snapshot, u.saved.Workspace, u.saved.Coverage, u.diffFailure)
-		if u.preparePane != nil {
-			u.preparePane(u.main.session.Scope())
-		}
-	}
-	u.agents.Model.LineCounts, u.agents.Model.NetCounts = snapshot.Publication.Counts.Callers, snapshot.Publication.Counts.Net
 }
 
 // animating keeps frames coming while previews reveal or completed calls expire.
