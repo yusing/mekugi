@@ -166,6 +166,13 @@ func TestMainFrameConsumesPublishedMetadata(t *testing.T) {
 	if !strings.Contains(painted, "codex v1.2.3") || strings.Contains(painted, "9.9.9") || strings.Contains(painted, "Unpublished activity") || !strings.Contains(u.mainHeaderRight(100, true), "Published title") {
 		t.Fatalf("Main consulted unpublished owners: %s", painted)
 	}
+	if err := u.paint(io.Discard, 100, 24); err != nil {
+		t.Fatal(err)
+	}
+	outer := strings.Join(u.shell.frame.Rows, "\n")
+	if !strings.Contains(outer, "Published title") || !strings.Contains(outer, "codex v1.2.3") || strings.Contains(outer, "Unpublished") {
+		t.Fatalf("outer frame consulted unpublished owners: %s", outer)
+	}
 	if !reflect.DeepEqual(u.sessionPresentation().View(), before) {
 		t.Fatal("painting refreshed the session publication")
 	}

@@ -281,5 +281,5 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 }
 
 func (u *terminalUI) nativeStatus() string {
-	return u.Shell.Status(u.shellStatus(), u.width, u.height)
+	return u.Shell.Status(u.frameInput().Status(), u.width, u.height)
 }

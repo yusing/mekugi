@@ -6,8 +6,6 @@ import (
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"net/url"
 	"slices"
-	"strings"
-
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/charmbracelet/x/ansi"
@@ -313,23 +311,4 @@ func (s *terminalSelection) mentionDescription() (string, string) {
 		return fmt.Sprintf("diff hunk @%s:%d", changes[0], low), path
 	}
 	return fmt.Sprintf("diff hunk @%s:%d-%d", changes[0], low, high), path
-}
-
-func (u *terminalUI) paintSelection(rows []string) {
-	s := u.selection
-	if s == nil || u.output != nil {
-		return
-	}
-	if cmp.Or(s.ScreenRows(), len(s.Rows)) != len(rows) || u.frame.Width != u.width || s.pane != u.Layout.Main && s.pane != u.Layout.Diff {
-		u.selection = nil
-		return
-	}
-	for y := s.Rect.Y; y < s.Rect.Y+s.Rect.H; y++ {
-		line := ansi.Cut(s.Row(s.DocumentY(y), u.main.view.Painter.Theme), s.Rect.X, s.Rect.X+s.Rect.W)
-		line += strings.Repeat(" ", max(0, s.Rect.W-ansi.StringWidth(line)))
-		rows[y] += fmt.Sprintf("\x1b[%dG\x1b[0m%s\x1b[0m", s.Rect.X+1, line)
-	}
-	if !s.Dragging() {
-		rows[len(rows)-1] = "\x1b[1G\x1b[0m" + ansi.Truncate(terminalsession.SelectionHints.Render(), u.width, "")
-	}
 }

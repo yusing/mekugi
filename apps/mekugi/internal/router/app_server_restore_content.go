@@ -245,7 +245,6 @@ func (u *appServerUI) finishRestoredContent() error {
 	}
 
 	u.restoring = nil
-	u.updateHistoryHint()
 	u.sessionPresentation().Status.SetText("Ready")
 	if u.Turn != "" {
 		u.sessionPresentation().Status.SetText("Working")

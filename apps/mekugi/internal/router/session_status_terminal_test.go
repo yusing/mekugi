@@ -51,3 +51,26 @@ func (u *appServerUI) recallInput(backward bool) {
 		u.pruneDraftImages()
 	}
 }
+
+func (u *appServerUI) mainHeaderRight(width int, focused bool) string {
+	return u.mainView.HeaderRight(u.view, width, focused)
+}
+
+// mainFrame hydrates identified output between terminal-only render passes.
+func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalsession.Rect) {
+	transcript := u.transcriptView()
+	options := terminalsession.MainOptions{Now: u.now(), Focused: u.shell == nil || u.shell.Focus == 0, Version: mekugiVersion()}
+	for {
+		frame := u.mainView.Render(transcript, &u.view.Painter, &u.prompts, options, width, height, dock)
+		if len(frame.Demands) == 0 {
+			return frame.Rows, frame.Dock
+		}
+		transcript.Hydrate(u.activitySource(transcript).ResolveOutputDemands(frame.Demands))
+	}
+}
+
+func (u *terminalUI) paintSelection(rows []string) {
+	if !u.frame.PaintSelection(u.frameInput(), rows) {
+		u.selection = nil
+	}
+}

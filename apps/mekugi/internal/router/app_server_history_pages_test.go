@@ -406,6 +406,9 @@ func TestAppServerAnchoredHistoryInitialFailureRetryKeepsEvidence(t *testing.T) 
 		}
 		return n
 	}
+	if err := u.testPaint(io.Discard, 100, 24); err != nil {
+		t.Fatal(err)
+	}
 	if count() != 1 || u.restoring != nil || historyLoadIntent(u).Thread == "" || u.agents.HistoryHint != "History unavailable · Ctrl-B o retry" {
 		t.Fatal("failed initial read lost evidence or its retry state")
 	}

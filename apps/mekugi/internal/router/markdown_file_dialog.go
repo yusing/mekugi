@@ -52,9 +52,12 @@ func markdownFileTarget(workspace, target string) (path string, ok bool) {
 	return path, true
 }
 
-func (u *appServerUI) markdownFileAllowed(target string) bool {
-	_, ok := markdownFileTarget(u.cwd, target)
-	return ok
+// Capture only detached workspace metadata for lexical rendering admission.
+func markdownFileLinks(workspace string) func(string) bool {
+	return func(target string) bool {
+		_, ok := markdownFileTarget(workspace, target)
+		return ok
+	}
 }
 
 type markdownFileResult struct {

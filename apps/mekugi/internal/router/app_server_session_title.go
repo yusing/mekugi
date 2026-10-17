@@ -6,10 +6,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
-	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	"github.com/yusing/mekugi/libraries/terminalui"
-	"github.com/yusing/mekugi/libraries/textsanitize"
 )
 
 func (u *appServerUI) titleCommand(text string) bool {
@@ -99,20 +96,4 @@ func (u *appServerUI) confirmSessionTitle(thread, name string) {
 	if thread == u.Thread {
 		u.title, u.dirty = name, true
 	}
-}
-
-func (u *appServerUI) mainHeaderRight(width int, focused bool) string {
-	scroll := scrollLabel(u.view)
-	name := u.sessionPresentation().View().Info.Title
-	title := strings.Join(strings.Fields(textsanitize.Safe(name, false)), " ")
-	if title == "" {
-		return scroll
-	}
-	// Account for both labels' framing spaces and one separating border cell.
-	available := width - 2 - ansi.StringWidth(terminalui.PaneTitle(1, "Main", u.mainTitleDetail(), focused)) - 5
-	if scroll != "" && available > ansi.StringWidth(scroll)+6 {
-		title = ansi.Truncate(title, available-ansi.StringWidth(scroll)-3, "…")
-		return scroll + " · " + title
-	}
-	return ansi.Truncate(title, max(0, available), "…")
 }

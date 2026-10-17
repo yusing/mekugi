@@ -7,6 +7,7 @@ import (
 	presentationcontract "github.com/yusing/mekugi/contracts/presentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // publishPresentation settles detached facts at a semantic transition boundary.
@@ -29,7 +30,7 @@ func (u *appServerUI) publishPresentation(now time.Time) sessionpresentation.Vie
 		caption.ContextKnown, caption.ContextTokens, caption.ContextWindow = agent.ContextKnown, agent.ContextTokens, agent.ContextWindow
 		caption.Items = m.StatusItems(presentationcontract.Thread{ID: view.Displayed.ID, OutputThroughput: agent.OutputThroughput}, presentationcontract.ComposerCaption)
 	}
-	info := sessionpresentation.MainInfo{Workspace: u.cwd, Title: cmp.Or(u.names.Pending(u.Thread), u.title), BackendVersion: u.backendVersion}
+	info := sessionpresentation.MainInfo{Workspace: u.cwd, Title: cmp.Or(u.names.Pending(u.Thread), u.title), BackendVersion: u.backendVersion, Skills: u.source.ActiveSkills()["Main"]}
 	if approval := u.approvals.View(); approval.Count > 0 {
 		if caller := u.session.KnownCaller(approval.Approval.Thread); caller != "/root" {
 			info.ApprovalCaller = caller
@@ -42,6 +43,11 @@ func (u *appServerUI) publishPresentation(now time.Time) sessionpresentation.Vie
 	}, caption, now)
 	u.prompts.Update(view)
 	u.mainView.Update(view)
+	for _, terminal := range []*activityui.View{u.view, u.agents} {
+		if terminal != nil {
+			terminal.Painter.FileLink = markdownFileLinks(view.Info.Workspace)
+		}
+	}
 	return view
 }
 

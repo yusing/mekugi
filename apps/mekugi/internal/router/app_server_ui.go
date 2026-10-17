@@ -947,46 +947,16 @@ func (u *appServerUI) applyActivity(entries []sessionpresentation.ActivityEntry,
 	u.publishActivity()
 }
 
-// mainFrame hydrates identified output between terminal-only render passes.
-func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalsession.Rect) {
-	transcript := u.transcriptView()
-	options := terminalsession.MainOptions{Now: u.now(), Focused: u.shell == nil || u.shell.Focus == 0, Version: mekugiVersion()}
-	for {
-		frame := u.mainView.Render(transcript, &u.view.Painter, &u.prompts, options, width, height, dock)
-		if len(frame.Demands) == 0 {
-			return frame.Rows, frame.Dock
-		}
-		transcript.Hydrate(u.activitySource(transcript).ResolveOutputDemands(frame.Demands))
-	}
-}
-
-// scrollLabel shows how much of the feed lies above the viewport and, once
-// the reader scrolls back, how much lies below and what arrived since.
-func scrollLabel(v *activityui.View) string {
-	below := v.FeedLines - v.Offset - v.FeedRows
-	switch {
-	case !v.Following && below > 0:
-		label := fmt.Sprintf("▼ %d", below)
-		if v.Unseen > 0 {
-			label += fmt.Sprintf(" · %d new", v.Unseen)
-		}
-		return terminalui.Amber + label + terminalui.Reset
-	case v.Offset > 0:
-		return terminalui.Dim + fmt.Sprintf("▲ %d", v.Offset) + terminalui.Undim
-	}
-	return ""
-}
-
 func (u *appServerUI) ensureShell() {
 	u.view.Conversation = true
-	u.view.Painter.FileLink = u.markdownFileAllowed
+	u.view.Painter.FileLink = markdownFileLinks(u.sessionPresentation().View().Info.Workspace)
 	if u.shell != nil {
 		return
 	}
 	if u.agents == nil {
 		u.agents = u.terminalViews.NewThreadView()
 	}
-	u.agents.Painter.FileLink = u.markdownFileAllowed
+	u.agents.Painter.FileLink = markdownFileLinks(u.sessionPresentation().View().Info.Workspace)
 	u.agents.ChildrenOnly = true
 	u.agents.Bare = true
 	shell := &terminalUI{main: u, agents: u.agents, diffScreen: new(terminalsession.DiffScreen)}

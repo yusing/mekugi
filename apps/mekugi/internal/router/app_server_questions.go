@@ -10,10 +10,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/libraries/terminalui"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
-
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -505,23 +502,4 @@ func (u *appServerUI) renderQuestionRecord(c *sessioncontrol.Question) {
 		entry := sessionpresentation.ActivityEntry{Seq: v.LastSeq + 1, Agent: "Main", Kind: "question", Text: text, Observed: u.now(), Native: &sessionpresentation.NativeItem{Thread: c.Thread, Turn: c.Turn, Item: id, Phase: "question", Questions: records}}
 		v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
 	}
-}
-
-// mainTitleDetail follows Main's pane name: unanswered questions, then the
-// skills loaded into Main's current context.
-func (u *appServerUI) mainTitleDetail() string {
-	details := []string{u.questionBadge()}
-	if set := u.source.ActiveSkills()["Main"]; set != nil {
-		details = append(details, activityui.SkillLabel(set))
-	}
-	return strings.Join(slices.DeleteFunc(details, func(detail string) bool { return detail == "" }), terminalui.Dim+" · "+terminalui.Undim)
-}
-
-func (u *appServerUI) questionBadge() string {
-	if u.shell != nil && u.shell.Focus != 0 {
-		if n := u.questionCount(); n > 0 {
-			return fmt.Sprintf("?%d", n)
-		}
-	}
-	return ""
 }

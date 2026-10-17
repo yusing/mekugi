@@ -84,7 +84,6 @@ func (u *appServerUI) requestChildHistory(request sessionpresentation.PageReques
 			u.sessionPresentation().Status.SetText(fmt.Sprintf("Restoring Activity %d/%d · recent items…", progress.Next+1, len(progress.Threads)))
 		}
 	}
-	u.updateHistoryHint()
 	return nil
 }
 
@@ -183,7 +182,6 @@ func (u *appServerUI) finishChildHistory() error {
 		u.restoring.state.ReadComplete()
 		return u.readNextRestoredChild()
 	}
-	u.updateHistoryHint()
 	pending := h.pending
 	h.pending = nil
 	for _, m := range pending {
@@ -205,21 +203,6 @@ func (u *appServerUI) historyViews() []sessionpresentation.HistoryView {
 		}
 	}
 	return views
-}
-
-func (u *appServerUI) updateHistoryHint() {
-	if u.agents == nil {
-		return
-	}
-	u.agents.HistoryHint = ""
-	if h := u.historyLoading(); h != nil && !h.state.View(h.info.ID).Initial {
-		u.agents.HistoryHint = "Loading older · Esc cancels"
-	} else if h := u.childHistory(u.sessionPresentation().HistoryView(u.historyViews()).Target); h != nil {
-		u.agents.HistoryHint = "Older history · Ctrl-B o load"
-		if h.state.View("").Status == sessionpresentation.Failed {
-			u.agents.HistoryHint = "History unavailable · Ctrl-B o retry"
-		}
-	}
 }
 
 func (u *appServerUI) loadOlderActivity(intent sessionpresentation.HistoryIntent) error {

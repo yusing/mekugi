@@ -3,15 +3,10 @@ package router
 import (
 	"context"
 	"io"
-	"slices"
-	"strings"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-
-	"github.com/yusing/mekugi/libraries/terminalui"
-	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
@@ -51,124 +46,50 @@ func (u *appServerUI) transcriptView() *activityui.View {
 	return u.view
 }
 
-// paintNative lays out the app-server shell: Main on the left, the saved
-// optional saved Diff on the right, a caller-local live dock, the fitted roster
-// below, and a status bar for the focused pane.
-func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
-	promptReceipt := u.main.prompts.Update(u.main.sessionPresentation().View())
-	u.main.mainView.PromptRect = terminalsession.Rect{}
-	width, height := max(1, u.width), max(1, u.height)
-	now := u.main.now()
-	u.agents.FeedOnly, u.agents.Focused = true, u.Focus == 3
-	u.liveDock.Motion.Enabled = true
-	u.liveDock.Motion.Now = now
-	u.liveDock.Motion.Canvas = u.Theme.Canvas()
-	if u.agents.Painter.Colors.HasBackground {
-		u.liveDock.Motion.Canvas.Background = u.agents.Painter.Colors.Background
+// frameInput binds actual terminal state and the playback caption without
+// exposing application records or callbacks to the compositor.
+func (u *terminalUI) frameInput() terminalsession.FrameInput {
+	in := terminalsession.FrameInput{
+		Main: &u.main.mainView, Prompts: &u.main.prompts, Transcript: u.main.view, Agents: u.agents,
+		Shell: &u.Shell, Dialog: u.output, Diff: u.diffScreen, Live: &u.liveDock,
+		Width: u.width, Height: u.height, Now: u.main.now(), Version: mekugiVersion(),
+		LiveHidden: u.liveHidden, DiffUnseen: u.diffUnseen, Prefix: u.prefix,
 	}
-	caller := u.main.transcriptCaller()
-	mainEdit := !u.liveHidden && slices.Contains(u.liveDock.Callers(), caller)
-	u.agents.LivePreviews = nil
-
-	var roster []string
-	if u.RosterLabel != "" {
-		roster = u.agents.NativeRoster(width, u.Panes.RosterLimit(height), now, u.Focus == 3)
-	} else {
-		u.agents.Hits = nil
-	}
-	plan := u.Shell.Plan(width, height, len(roster))
-	content := terminalsession.ShellContent{Roster: roster, MainName: "Main"}
-	if plan.Left.W >= 4 && plan.Left.H >= 1 {
-		iw, ih := plan.Layout.Main.W, plan.Layout.Main.H
-		dockRows := 0
-		if mainEdit && !u.main.mainView.Keybindings && !u.main.picker.Open {
-			dockRows = ih
-		}
-		rosterHits := u.agents.Hits
-		content.Main, content.Dock = u.main.mainFrame(iw, ih, dockRows)
-		u.agents.Hits = rosterHits
-		dockAt, dockRows := content.Dock.Y, content.Dock.H
-		if dockRows > 0 && dockAt+dockRows <= len(content.Main) {
-			dock, err := u.liveDock.RenderBatch(ctx, caller, u.main.sessionPresentation().View().Info.Workspace, u.Theme, iw, dockRows, 15)
-			if err != nil {
-				return err
-			}
-			for i := 0; i < dockRows; i++ {
-				content.Main[dockAt+i] = ""
-				if i < len(dock) {
-					content.Main[dockAt+i] = dock[i]
-				}
-			}
-		}
-		if plan.Framed {
-			content.MainDetail = u.main.mainTitleDetail()
-			if set := u.main.source.ActiveSkills()["Main"]; set != nil {
-				content.MainSkills = activityui.SkillLabel(set)
-				if u.main.view.SkillsHover == "Main" {
-					content.MainDetail = strings.TrimSuffix(content.MainDetail, content.MainSkills) + activityui.Underline(content.MainSkills)
-				}
-			}
-			content.MainRight = u.main.mainHeaderRight(plan.Left.W, u.Focus == 0)
-			if u.main.sessionPresentation().DisplayingChild() {
-				content.MainName, content.MainDetail = "Thread", u.agents.Painter.Agent(u.main.sessionPresentation().View().Displayed.Caller)
-				content.MainSkills = ""
-				u.main.updateHistoryHint()
-				content.MainRight = strings.TrimSpace(scrollLabel(u.agents) + " " + u.agents.HistoryHint)
-			}
-		}
-	}
-	if plan.Right.W >= 4 && plan.Right.H >= 1 {
-		var err error
-		content.Diff, err = u.diffScreen.Paint(ctx, u.Auxiliary, plan.Layout.Diff.W, plan.Layout.Diff.H)
-		if err != nil {
-			content.Diff = []string{u.AuxiliaryLabel + " unavailable", textsanitize.Safe(err.Error(), false)}
-		}
-		content.DiffSummary, content.DiffState = u.Auxiliary.Title()
-		u.diffUnseen = false
-	}
-	content.Status = u.shellStatus()
-	rows := u.Shell.Compose(plan, content)
-	if u.output != nil {
-		u.output.Paint(rows[:height-1], width, height-1)
-	}
-	copyRows := make([][]terminalui.CopySpan, len(rows))
-	for y := range rows {
-		rows[y], copyRows[y] = terminalui.ExtractCopy(rows[y])
-	}
-	u.paintSelection(rows)
-	if err := u.frame.Write(out, rows, copyRows, u.width, u.faint); err != nil {
-		return err
-	}
-	// Composing Main does not show a prompt covered by a dialog or frozen selection.
-	var selected terminalsession.Rect
 	if u.selection != nil {
-		selected = u.selection.Rect
+		in.Selection, in.SelectionPane = u.selection.Selection, u.selection.pane
 	}
-	visible := u.Shell.PromptVisible(u.main.mainView.PromptRect, u.output != nil, selected)
-	if visible {
-		u.main.prompts.Delivered(promptReceipt)
-	}
-
-	return nil
-}
-
-// shellStatus binds owner facts to the terminal's status view.
-func (u *terminalUI) shellStatus() terminalsession.ShellStatus {
-	if u.main != nil && u.main.replay != nil {
-		return terminalsession.ShellStatus{Playback: true, PlaybackBar: u.main.replay.bar(u.width)}
-	}
-	responding, _ := u.agents.StatusCounts(u.agents.Roster())
-	in := terminalsession.ShellStatus{
-		Child: u.main.sessionPresentation().DisplayingChild(), Responding: responding,
-		DiffUnseen: u.diffUnseen, Prefix: u.prefix, LiveCount: u.liveDock.Live(),
-	}
-	if u.main != nil {
-		in.Locked = u.main.mainView.InterruptLocked
-		if u.Focus == 0 && !u.prefix {
-			in.Expansion = u.main.transcriptView().Expansion
-		}
+	if u.main.replay != nil {
+		in.Playback, in.PlaybackBar = true, u.main.replay.bar(u.width)
 	}
 	return in
+}
+
+func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
+	in := u.frameInput()
+	for {
+		frame, err := u.frame.Render(ctx, in)
+		if err != nil {
+			return err
+		}
+		if len(frame.Demands) != 0 {
+			transcript := u.main.transcriptView()
+			transcript.Hydrate(u.main.activitySource(transcript).ResolveOutputDemands(frame.Demands))
+			continue
+		}
+		if frame.DiffPainted {
+			u.diffUnseen = false
+		}
+		if !frame.SelectionRetained {
+			u.selection = nil
+		}
+		if err := u.frame.Write(out, frame.Rows, frame.Copy, u.width, u.faint); err != nil {
+			return err
+		}
+		if frame.PromptVisible {
+			u.main.prompts.Delivered(frame.Prompt)
+		}
+		return nil
+	}
 }
 
 // selectNativePane gives status-bar clicks and Ctrl-B digits the same action.

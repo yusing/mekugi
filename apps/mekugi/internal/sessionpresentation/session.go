@@ -9,6 +9,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/contracts/presentation"
 	"github.com/yusing/mekugi/contracts/scope"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 )
@@ -32,6 +33,7 @@ type Version struct {
 }
 
 type MainInfo struct {
+	Skills                                           activitypresentation.SkillSet
 	Workspace, Title, BackendVersion, ApprovalCaller string
 }
 
@@ -126,6 +128,7 @@ func (m *Model) View() View {
 // cloneView keeps both retained publications and subsequent readers isolated
 // from mutable values supplied by another owner or a previous consumer.
 func cloneView(v View) View {
+	v.Info.Skills = slices.Clone(v.Info.Skills)
 	if v.Menu != nil {
 		menu := *v.Menu
 		menu.Choices = slices.Clone(menu.Choices)

@@ -28,8 +28,10 @@ receipts. It renders the attached Activity view and returns identity-addressed
 output demands for application hydration before delivery. Painting has no backend
 or storage capability. Live sessions and playback use the same frame. Shortcut
 visibility and the keyboard-interruption lock stay with terminal state.
-The outer compositor receives prepared pane rows and header/status facts. It owns
-frame decoration, status-tab targets and final pane geometry. Prompt visibility
+The outer frame consumes the attached terminal views and detached session facts.
+It composes Main, preview, roster, saved pane, dialog and frozen selection, then
+returns output demands or delivery-ready rows with prompt visibility. It owns
+header/status painting, frame decoration, status-tab targets and final pane geometry. Prompt visibility
 is calculated against that geometry and active overlays; only successful terminal
 delivery makes a visible prompt ready for input.
 Prompt layouts, preferred columns, masked secret editors and readiness belong to

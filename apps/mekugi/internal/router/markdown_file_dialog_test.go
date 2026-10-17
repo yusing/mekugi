@@ -41,7 +41,8 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 	fileURL := (&url.URL{Scheme: "file", Path: path}).String()
 	main, _ := newAppServerTestUI()
 	main.cwd = workspace
-	painter := activityui.Painter{FileLink: main.markdownFileAllowed}
+	main.settlePresentation()
+	painter := activityui.Painter{FileLink: markdownFileLinks(main.cwd)}
 	for _, target := range []string{"src/source #1?%.go", path + ":26", fileURL + ":26", "src/source #1?%.go:26-27", fileURL + ":26-27", "`" + path + ":26`"} {
 		t.Run(target, func(t *testing.T) {
 			row := painter.Inline("[source](<" + target + ">)")
@@ -86,6 +87,7 @@ func TestUISnapshotMarkdownFileLinks(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
 	u.cwd = t.TempDir()
+	u.settlePresentation()
 	if err := os.WriteFile(filepath.Join(u.cwd, "sample.go"), []byte("package sample\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -99,6 +101,10 @@ func TestUISnapshotMarkdownFileLinks(t *testing.T) {
 		uisnapshot.AssertTerminal(t, "testdata/snapshots/markdown-file-links.txt", append(rows, "plain after links"), 72)
 	}
 	u.cwd = ""
+	if !strings.Contains(u.view.Painter.Inline("sample.go"), "\x1b]8;") {
+		t.Fatal("painting consulted unpublished workspace metadata")
+	}
+	u.settlePresentation()
 	if strings.Contains(u.view.Painter.Inline("sample.go"), "\x1b]8;") {
 		t.Fatal("relative path became clickable without workspace metadata")
 	}
@@ -143,6 +149,7 @@ func TestMarkdownFileDialogViews(t *testing.T) {
 	}
 	main, _ := newAppServerTestUI()
 	main.cwd = workspace
+	main.settlePresentation()
 	u := &terminalUI{main: main, width: 80, height: 18}
 	u.main.openMarkdownFile(u, main.view, path+":30-31")
 	awaitMarkdownFile(t, u)
@@ -191,6 +198,7 @@ func TestUISnapshotMarkdownFileViews(t *testing.T) {
 	}
 	main, _ := newAppServerTestUI()
 	main.cwd = workspace
+	main.settlePresentation()
 	main.view.Painter.Theme = diffrender.TerminalTheme
 	u := &terminalUI{main: main, width: 80, height: 24}
 	u.main.openMarkdownFile(u, main.view, path)
@@ -211,6 +219,7 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 	}
 	main, _ := newAppServerTestUI()
 	main.cwd = workspace
+	main.settlePresentation()
 	u := &terminalUI{main: main, width: 80, height: 18}
 	u.openBlocks(main.view, []activityui.Block{{Body: "Open sample.go:1 or [remote](https://example.com)."}})
 	drawOutputDialog(u)
@@ -304,6 +313,7 @@ func TestUISnapshotMarkdownFileDialog(t *testing.T) {
 			}
 			main, _ := newAppServerTestUI()
 			main.cwd = workspace
+			main.settlePresentation()
 			main.view.Painter.Theme = test.theme
 			u := &terminalUI{main: main, width: 80, height: 18}
 			if !u.main.openMarkdownFile(u, main.view, path+test.location) {
