@@ -38,7 +38,7 @@ func processDialog(u *appServerUI, width, height int) []string {
 
 func TestRunningProcessesLifecycle(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
-	u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
+	u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	appServerTestKeys(t, u, "/ps\r")
 	if got := drawOutputDialog(u.shell); !strings.Contains(got, "No running processes") {
 		t.Fatalf("missing empty state: %s", got)
@@ -66,7 +66,7 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 	if u.runningProcessCount() != 2 || !u.publishPresentation(u.now()).Status.Animating {
 		t.Fatal("yielded command stopped counting or animating")
 	}
-	if u.session.Transcript("main", "t").Turn != nil || !u.session.commands[[3]string{"main", "t", "cmd"}].entry.Native.Invocation.Snapshot().Running {
+	if u.session.Transcript("main", "t").Turn != nil || !u.session.Commands()[[3]string{"main", "t", "cmd"}].Entry.Native.Invocation.Snapshot().Running {
 		t.Fatal("command lifetime followed its closed turn scope")
 	}
 	if err := u.shell.send("\x1b[C"); err != nil {
@@ -93,7 +93,7 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 		entries[i] = sessionpresentation.ActivityEntry{Seq: u.source.LastSeq + uint64(i) + 1, Agent: "Main", Kind: "text", Text: "Later event"}
 	}
 	u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: entries})
-	u.session.seq = u.source.LastSeq
+	u.session.Activity().AdvanceSequence(u.source.LastSeq)
 	reopen := func() {
 		if err := u.shell.send("\x1b"); err != nil {
 			t.Fatal(err)
@@ -190,7 +190,7 @@ func TestUISnapshotRunningProcesses(t *testing.T) {
 		view.Clock, view.Painter.Theme = u.clock, diffrender.DarkTheme
 		view.FeedOnly, view.Bare = true, true
 	}
-	u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
+	u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	for _, thread := range []string{"main", "child"} {
 		processNotify(t, u, thread, "cmd", "go test ./...", "inProgress")
 		for i := range 3 {

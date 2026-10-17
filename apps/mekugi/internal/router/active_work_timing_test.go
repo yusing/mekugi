@@ -20,7 +20,7 @@ func newActiveWorkTestUI(t *testing.T) (*appServerUI, *time.Time) {
 
 func assertAgentWork(t *testing.T, u *appServerUI, thread string, at time.Time, want time.Duration, running bool) {
 	t.Helper()
-	agent := u.session.agent(u.session.paths[thread])
+	agent := u.session.Agent(u.session.KnownCaller(thread))
 	if got := agent.WorkTimer.At(at); got != want {
 		t.Fatalf("%s active work = %s, want %s", thread, got, want)
 	}
@@ -75,7 +75,7 @@ func TestAppServerActiveWorkTurnEndsAndLateUsage(t *testing.T) {
 				*at = at.Add(19 * time.Second)
 				appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "old", "status": "completed"}})
 				assertAgentWork(t, u, thread, *at, 19*time.Second, true)
-				agent := u.session.agent(u.session.paths[thread])
+				agent := u.session.Agent(u.session.KnownCaller(thread))
 				if !agent.Responding || agent.Final {
 					t.Fatalf("old completion changed current roster state: %+v", agent)
 				}

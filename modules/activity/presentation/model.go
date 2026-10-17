@@ -72,6 +72,8 @@ type Session[S Source, A AgentSource] struct {
 	Main, Children Model[S, A]
 	Commits        *CommitReader
 	agents         scope.Key[AgentLifecycle]
+	roster         []A
+	sequence       uint64
 }
 
 var attachedSession scope.Key[any]

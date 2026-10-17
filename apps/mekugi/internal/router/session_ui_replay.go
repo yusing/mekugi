@@ -67,11 +67,11 @@ func (p *uiReplayPlayback) reset() {
 	p.paintedAt = time.Time{}
 	// The read-only terminal attachment uses shared projection without a backend
 	// client, request tracker, writable store, observers or notification sink.
-	u := &appServerUI{terminalViews: p.terminalViews, reviewSource: p.reviewSource, presentationState: p.views, conversationState: p.conversation, session: appServerSession{activity: p.activity, observations: p.observations}, ctx: p.ctx, view: activityui.NewView(), agents: p.terminalViews.NewThreadView(), Thread: p.Source.Thread, clock: func() time.Time { return p.At }, replay: p}
+	u := &appServerUI{terminalViews: p.terminalViews, reviewSource: p.reviewSource, presentationState: p.views, conversationState: p.conversation, activity: p.activity, observations: p.observations, ctx: p.ctx, view: activityui.NewView(), agents: p.terminalViews.NewThreadView(), Thread: p.Source.Thread, clock: func() time.Time { return p.At }, replay: p}
 	u.attachPresentation()
 	u.sessionPresentation().Status.Set("Replay", false)
 	u.view.Clock, u.agents.Clock = u.clock, u.clock
-	u.session.start(p.Source.Thread, p.Source.Cwd)
+	u.startSession(p.Source.Thread, p.Source.Cwd)
 	u.ensureShell()
 	if previous != nil {
 		u.shell.fileReadSlot = previous.fileReadSlot
@@ -92,16 +92,16 @@ func (p *uiReplayPlayback) close() {
 
 func (p *uiReplayPlayback) apply(e playback.Event) error {
 	defer func() { p.ui.settlePresentation() }()
-	if id := e.ThreadID; id != "" && id != p.Source.Thread && p.ui.session.paths[id] == "" {
-		p.ui.session.registerThreadFacts(observation.Thread{ID: id, Nickname: strings.TrimPrefix(p.Source.Threads[id], "/root/")})
+	if id := e.ThreadID; id != "" && id != p.Source.Thread && p.ui.session.KnownCaller(id) == "" {
+		p.ui.session.RegisterThread(observation.Thread{ID: id, Nickname: strings.TrimPrefix(p.Source.Threads[id], "/root/")})
 	}
 	switch {
 	case e.Hook != nil:
-		entry := p.ui.session.hookEntry(e.ThreadID, *e.Hook, false)
-		entry.Seq = p.ui.session.next()
+		entry := p.ui.hookEntry(e.ThreadID, *e.Hook, false)
+		entry.Seq = p.ui.session.Activity().NextSequence()
 		p.ui.applyActivity([]sessionpresentation.ActivityEntry{entry}, nil)
 	case e.Kind == observation.ProviderStarted:
-		p.ui.applyActivity(p.ui.transcriptUpdates(p.ui.session.providerStarted(e.ThreadID, e.At), false), nil)
+		p.ui.applyActivity(p.ui.transcriptUpdates(p.ui.providerStarted(e.ThreadID, e.At), false), nil)
 	case e.Kind == observation.ProviderCompleted:
 	default:
 		if p.ui.replayTranscript(e.Event) {
@@ -109,7 +109,7 @@ func (p *uiReplayPlayback) apply(e playback.Event) error {
 		}
 		result := p.ui.projectSessionEvent(e.Event, sessionEventFacts{})
 		if result.publish {
-			p.ui.applyActivity(result.entries, p.ui.session.roster())
+			p.ui.applyActivity(result.entries, p.ui.session.Roster())
 		}
 		// Playback selects recorded turns without creating or settling live
 		// control operations. Status uses the same admitted observation clock.
@@ -172,10 +172,10 @@ func (p *uiReplayPlayback) seek(position time.Duration) error {
 }
 
 func (p *uiReplayPlayback) settleCompleted() {
-	p.ui.summaryStream.FinishCompleted()
-	for _, run := range p.ui.session.commands {
-		if run.holding {
-			run.output.Settle()
+	p.ui.streams.Reasoning.FinishCompleted()
+	for _, stream := range p.ui.streams.Commands {
+		if stream.Holding {
+			stream.Output.Settle()
 		}
 	}
 	p.ui.flushStreamOutput()

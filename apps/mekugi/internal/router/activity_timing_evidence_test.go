@@ -78,7 +78,7 @@ func TestActivitySingleCommandActualTime(t *testing.T) {
 			u.retainCommandSegments(entry, item.Observation(), view)
 			u.finishCommandSegments()
 			entry.Native.Segments = nil
-			u.restoreCommandSegments(&entry, item, u.session.cwd)
+			u.restoreCommandSegments(&entry, item, u.cwd)
 			blocks = parseLiveActivity(entry)
 			if len(blocks) != 1 || blocks[0].Duration != elapsed || blocks[0].Running {
 				t.Fatalf("single command timing lost on restore: %+v", blocks)

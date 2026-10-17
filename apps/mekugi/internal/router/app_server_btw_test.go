@@ -100,12 +100,12 @@ func TestAppServerBTWIsolationAndFollowUp(t *testing.T) {
 	for _, active := range []bool{false, true} {
 		t.Run(fmt.Sprint(active), func(t *testing.T) {
 			u, w := newAppServerTestUI()
-			u.session.start("main", t.TempDir())
+			u.startSession("main", t.TempDir())
 			u.sessionPresentation().Status.Text = "main status"
 			if active {
 				u.Turn = "main-turn"
 			}
-			turn, status, entries, agents, usage := u.Turn, u.sessionPresentation().Status.Text, len(u.source.Entries), len(u.session.agents), u.exitUsage
+			turn, status, entries, agents, usage := u.Turn, u.sessionPresentation().Status.Text, len(u.source.Entries), len(u.session.Roster()), u.exitUsage
 			btwTestStart(t, u, w)
 			if u.Text != "" {
 				t.Fatalf("side draft retained: %q", u.Text)
@@ -118,7 +118,7 @@ func TestAppServerBTWIsolationAndFollowUp(t *testing.T) {
 			}
 			appServerTestMessage(t, u, `{"method":"thread/tokenUsage/updated","params":{"threadId":"side","tokenUsage":{"total":{"inputTokens":9999,"outputTokens":123}}}}`)
 			appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"side","turn":{"id":"side-turn","status":"completed"}}}`)
-			if u.Thread != "main" || u.Turn != turn || u.sessionPresentation().Status.Text != status || len(u.source.Entries) != entries || len(u.session.agents) != agents || u.exitUsage != usage {
+			if u.Thread != "main" || u.Turn != turn || u.sessionPresentation().Status.Text != status || len(u.source.Entries) != entries || len(u.session.Roster()) != agents || u.exitUsage != usage {
 				t.Fatal("side events mutated main conversation")
 			}
 			appServerTestKeys(t, u, "/btw explain more\r")
@@ -171,7 +171,7 @@ func TestAppServerBTWTurnFailureDetailsAreLocal(t *testing.T) {
 
 func TestAppServerBTWUnsolicitedSideEventsDoNotReachMain(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.session.start("main", t.TempDir())
+	u.startSession("main", t.TempDir())
 	u.Turn, u.sessionPresentation().Status.Text = "main-turn", "Working"
 	out := notificationTestOutput(t, u)
 	btwTestStart(t, u, w)
@@ -304,8 +304,8 @@ func TestAppServerBTWRejectedAttachmentsReturnWithNewDraft(t *testing.T) {
 	for _, stage := range []string{"fork", "start"} {
 		t.Run(stage, func(t *testing.T) {
 			u, w := newAppServerTestUI()
-			u.session.cwd = t.TempDir()
-			path := filepath.Join(u.session.cwd, "image.png")
+			u.cwd = t.TempDir()
+			path := filepath.Join(u.cwd, "image.png")
 			if err := os.WriteFile(path, []byte("image"), 0600); err != nil {
 				t.Fatal(err)
 			}

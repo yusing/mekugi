@@ -14,23 +14,11 @@ import (
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
-	"github.com/yusing/mekugi/modules/commandsegments/segments"
 
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
 
 const execTrackCompletionWait = 300 * time.Millisecond
-
-// Terminal cursors reveal the existing invocation's admitted segment output.
-type execTrackPresentation struct {
-	segments []execSegmentOutput
-	version  uint64
-}
-
-type execSegmentOutput struct {
-	text   string
-	output activityui.CommandOutput
-}
 
 // execTrackView is a report as presented at one frame.
 type execTrackView struct {
@@ -48,43 +36,18 @@ type execTrackView struct {
 // segments the list never reached as skipped; a segment still open when the
 // shell finished is the one the shell exited in. The invocation owns facts and
 // retained output; this adapter owns text projection and terminal reveal.
-func (p *execTrackPresentation) view(invocation *activitypresentation.Invocation, track segments.Report, final bool, text func(string) string) (execTrackView, bool) {
-	changed := p.version != track.Version
-	p.version = track.Version
-	for len(p.segments) < len(track.Segments) {
-		p.segments = append(p.segments, execSegmentOutput{})
-	}
-	report := activitypresentation.SegmentReport{Terminal: track.Terminal, Lossy: track.Lossy, Ended: track.Ended, Closed: track.Closed, Done: track.Done, ExitCode: track.Code}
-	for i, observed := range track.Segments {
-		cursor := &p.segments[i]
-		if cursor.text == "" {
-			cursor.text = text(observed.Source)
-			cursor.output = activityui.NewCommandOutput(instantOperations(cursor.text))
-		}
-		if !track.Lossy && observed.Output != "" {
-			cursor.output.Write(observed.Output)
-		}
-		report.Segments = append(report.Segments, activitypresentation.SegmentObservation{
-			Source: observed.Source, Text: cursor.text, Analysis: frontends.ShellDisplaySource(observed.Source),
-			Started: observed.Timing.Started, Ended: observed.Timing.Ended, Duration: time.Duration(observed.Timing.ElapsedNS),
-			Began: observed.Began, Finished: observed.Ended, ExitCode: observed.Code, Output: observed.Output,
-		})
-	}
+func commandReportFrame(invocation *activitypresentation.Invocation, stream *activityui.CommandStream, report activitypresentation.SegmentReport, version uint64, final bool) (execTrackView, bool) {
 	semantic, release := invocation.ObserveSegments(report)
 	snapshot := invocation.ReportSnapshot(final)
+	frames, changed := stream.RevealSegments(report, snapshot, version, final)
 	view := execTrackView{output: snapshot.SeparateOutput, ended: snapshot.Ended, complete: snapshot.Complete, code: snapshot.ExitCode, semantic: semantic, release: release}
 	for index, segment := range snapshot.Segments {
-		cursor := &p.segments[index]
-		frame, advanced := cursor.output.Advance()
-		changed = changed || advanced
+		frame := frames[index]
 		shown := sessionpresentation.ActivitySegment{Timing: segmenttransport.Timing{Started: segment.Started, Ended: segment.Ended, ElapsedNS: int64(segment.Duration)},
 			Text: segment.Text, Source: segment.Source, Running: segment.Running, Skipped: segment.Skipped, Exit: segment.ExitCode, Raw: segment.Raw,
 			Output: invocation.SegmentOutput(index),
 		}
 		if view.output {
-			if final {
-				frame = cursor.output.Settle()
-			}
 			shown.Tail, shown.Omit = frame.Tail, frame.Omitted
 			if final && !shown.Skipped && shown.Exit == 0 {
 				output := strings.Join(shown.Tail, "\n")
@@ -101,14 +64,14 @@ func (p *execTrackPresentation) view(invocation *activitypresentation.Invocation
 
 // commandReportView drains the observer once before Activity reduction and
 // terminal reveal. Attribution loss returns to the transport owner explicitly.
-func (u *appServerUI) commandReportView(key [3]string, run *appServerCommandRun, final bool, directory string) (execTrackView, bool) {
+func (u *appServerUI) commandReportView(key [3]string, run *sessionpresentation.CommandOperation, final bool, directory string) (execTrackView, bool) {
 	track, ok := u.execTrack.Read(key)
 	if !ok {
 		return execTrackView{}, false
 	}
-	view, changed := run.segments.view(run.entry.Native.Invocation, track, final, func(source string) string {
-		return (activitypresentation.CommandSource{Script: source, Display: frontends.ShellDisplaySource(source), Directory: directory}).SegmentText()
-	})
+	report := sessionpresentation.CommandReport(run.Entry.Native.Invocation, track, directory)
+	stream := u.streams.Command(key, run.Entry.Text)
+	view, changed := commandReportFrame(run.Entry.Native.Invocation, stream, report, track.Version, final)
 	if view.release {
 		u.execTrack.ReleaseOutput(key)
 	}
@@ -118,36 +81,37 @@ func (u *appServerUI) commandReportView(key [3]string, run *appServerCommandRun,
 // flushTrackedCommand re-sends a tracked command whose segments changed, and
 // completes it once its report ends. It reports false for an untracked
 // command, which keeps the host's single output stream.
-func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRun) ([]sessionpresentation.ActivityEntry, bool) {
+func (u *appServerUI) flushTrackedCommand(key [3]string, run *sessionpresentation.CommandOperation) ([]sessionpresentation.ActivityEntry, bool) {
 	s := &u.session
-	if run.completion != nil {
-		view, _ := u.commandReportView(key, run, false, run.entry.Native.CommandCwd)
-		if !view.ended && u.now().Sub(run.completedAt) < execTrackCompletionWait {
+	if run.Completion != nil {
+		view, _ := u.commandReportView(key, run, false, run.Entry.Native.CommandCwd)
+		if !view.ended && u.now().Sub(run.CompletedAt) < execTrackCompletionWait {
 			return nil, true
 		}
-		enriched, valid := u.reconcileTrackedCommand(key, *run.completion, run.completed)
+		enriched, valid := u.reconcileTrackedCommand(key, *run.Completion, run.Completed)
 		for _, adapter := range []*sessionpresentation.ActivitySource{u.source, u.childSource} {
 			adapter.SettleCommandReport(enriched, valid)
 		}
-		u.releaseCommand(run.entry)
-		delete(s.commands, key)
+		u.releaseCommand(run.Entry)
+		delete(u.session.Commands(), key)
+		delete(u.streams.Commands, key)
 		u.execTrack.Forget(key)
 		u.dirty = true
 		return nil, true
 	}
-	view, changed := u.commandReportView(key, run, false, run.entry.Native.CommandCwd)
+	view, changed := u.commandReportView(key, run, false, run.Entry.Native.CommandCwd)
 	if !u.execTrack.Tracking(key) {
 		return nil, false
 	}
-	entry := run.entry
+	entry := run.Entry
 	native := *entry.Native
 	native.Phase = "item/commandExecution/outputDelta"
-	entry.Native, entry.Agent = &native, s.path(native.Thread)
+	entry.Native, entry.Agent = &native, s.Caller(native.Thread)
 	if view.ended && !view.complete {
 		// The report ended early, as when the helper declined after the
 		// match; the host's combined output applies from here on.
 		if changed {
-			run.output.Invalidate()
+			u.streams.Commands[key].Output.Invalidate()
 		}
 		if view.semantic {
 			return []sessionpresentation.ActivityEntry{entry}, false
@@ -158,7 +122,7 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 	var frame activityui.OutputFrame
 	if !view.output {
 		var advanced bool
-		frame, advanced = run.output.Advance()
+		frame, advanced = u.streams.Commands[key].Output.Advance()
 		changed = changed || advanced
 	}
 	if !changed {
@@ -181,9 +145,9 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 // the host's own exit status. Otherwise the report is incomplete, and the
 // already-published host aggregate remains authoritative.
 func (u *appServerUI) reconcileTrackedCommand(key [3]string, entry sessionpresentation.ActivityEntry, item observation.Item) (sessionpresentation.ActivityEntry, bool) {
-	run := u.session.commands[key]
-	view, _ := u.commandReportView(key, run, true, appServerCommandDirectory(item, u.session.cwd))
-	if !run.entry.Native.Invocation.ReportMatchesHost() || len(view.segments) == 0 {
+	run := u.session.Commands()[key]
+	view, _ := u.commandReportView(key, run, true, appServerCommandDirectory(item, u.cwd))
+	if !run.Entry.Native.Invocation.ReportMatchesHost() || len(view.segments) == 0 {
 		return entry, false
 	}
 	native := *entry.Native

@@ -31,7 +31,7 @@ func TestComposerFilePickerExcludedMode(t *testing.T) {
 	}
 	u, w := newAppServerTestUI()
 	u.ctx = t.Context()
-	u.session.cwd = root
+	u.cwd = root
 	t.Cleanup(u.cancelPickerScan)
 	appServerTestKeys(t, u, "@!excluded")
 	if len(pickerRequests(t, w)) != 0 {
@@ -54,7 +54,7 @@ func TestComposerFilePickerExcludedMode(t *testing.T) {
 
 func TestComposerFilePickerNormalHidesGitMetadata(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.session.cwd = "/work"
+	u.cwd = "/work"
 	appServerTestKeys(t, u, "@g")
 	request := pickerRequests(t, w)[0]
 	pickerReply(t, u, request.ID, `{"files":[{"root":"/work","path":".git","match_type":"directory"},{"root":"/work","path":".git/config"},{"root":"/work","path":"nested/.git/HEAD"},{"root":"/work","path":"git.go"}]}`)
@@ -66,18 +66,18 @@ func TestComposerFilePickerNormalHidesGitMetadata(t *testing.T) {
 func TestComposerFilePickerCanceledResultsCannotReopen(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ctx = t.Context()
-	u.session.cwd = t.TempDir()
+	u.cwd = t.TempDir()
 	t.Cleanup(u.cancelPickerScan)
 	appServerTestKeys(t, u, "@!a")
 	id, target := u.picker.scanID, u.picker.Target
 	u.pickerKey("\x1b")
-	u.applyPickerScan(pickerScanResult{id: id, target: target, cwd: u.session.cwd, choices: []completion.Choice{{Name: "a", Path: "a"}}})
+	u.applyPickerScan(pickerScanResult{id: id, target: target, cwd: u.cwd, choices: []completion.Choice{{Name: "a", Path: "a"}}})
 	if u.picker.Open || len(u.picker.Choices) != 0 {
 		t.Fatal("canceled scan reopened picker")
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	choices, problem := scanPickerFiles(ctx, u.session.cwd, "a")
+	choices, problem := scanPickerFiles(ctx, u.cwd, "a")
 	if len(choices) != 0 || problem != "" {
 		t.Fatal("cancellation returned files or an error notice")
 	}
@@ -100,7 +100,7 @@ func TestComposerFilePickerUsesWholeTokenAtCaret(t *testing.T) {
 
 func TestComposerFilePickerNarrowingClampsSelectedResult(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.session.cwd = "/work"
+	u.cwd = "/work"
 	appServerTestKeys(t, u, "@a")
 	request := pickerRequests(t, w)[0]
 	pickerReply(t, u, request.ID, `{"files":[{"root":"/work","path":"a.go"},{"root":"/work","path":"ab.go"}]}`)
@@ -116,14 +116,14 @@ func TestComposerFilePickerNarrowingClampsSelectedResult(t *testing.T) {
 func TestComposerFilePickerLateSkillSaveDoesNotReplaceResults(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.ctx = t.Context()
-	u.session.cwd = t.TempDir()
+	u.cwd = t.TempDir()
 	t.Cleanup(u.cancelPickerScan)
-	if err := os.WriteFile(filepath.Join(u.session.cwd, "target.txt"), []byte("test"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(u.cwd, "target.txt"), []byte("test"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	u.picker.modal, u.picker.Open = "manage", true
 	u.picker.Skills = []completion.Choice{{Name: "review", Path: "/work/review/SKILL.md", Enabled: true}}
-	u.picker.SkillsLoaded, u.picker.SkillsCwd = true, u.session.cwd
+	u.picker.SkillsLoaded, u.picker.SkillsCwd = true, u.cwd
 	u.picker.RememberSkills()
 	u.picker.FilterSkills("", u.picker.modal == "manage")
 	u.toggleSkill()

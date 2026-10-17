@@ -186,7 +186,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		u.agents.Hits = rosterHits
 		dockAt, dockRows := content.Dock.Y, content.Dock.H
 		if dockRows > 0 && dockAt+dockRows <= len(content.Main) {
-			dock, err := u.liveDock.RenderBatch(ctx, caller, u.main.session.cwd, u.Theme, iw, dockRows, 15)
+			dock, err := u.liveDock.RenderBatch(ctx, caller, u.main.cwd, u.Theme, iw, dockRows, 15)
 			if err != nil {
 				return err
 			}

@@ -132,7 +132,7 @@ func (u *appServerUI) renderSessionMetrics() {
 	}
 	s := m.snapshot
 	if m.tab == 0 && u.replayDebugDirectory != "" {
-		add("Debug", "Directory", pathdisplay.ForWorkspace(u.session.cwd, u.replayDebugDirectory))
+		add("Debug", "Directory", pathdisplay.ForWorkspace(u.cwd, u.replayDebugDirectory))
 		p.fields[len(p.fields)-1].path = true
 	}
 	if m.tab == 0 && s.OutputDeduplication.Projections > 0 {

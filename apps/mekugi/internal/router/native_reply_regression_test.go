@@ -112,7 +112,7 @@ func TestNativeEmptyCollaborationRetainsParticipantOrder(t *testing.T) {
 		"senderThreadId": "sender", "receiverThreadIds": []string{"second", "first"}, "prompt": " \n",
 	}})
 	var threads []string
-	for _, agent := range u.session.agents {
+	for _, agent := range u.session.Roster() {
 		threads = append(threads, agent.Thread)
 	}
 	if !slices.Equal(threads, []string{"main", "sender", "second", "first"}) {

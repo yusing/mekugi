@@ -20,7 +20,7 @@ func appliedSettingsTestUI(t *testing.T, workspace, thread string) (*appServerUI
 	t.Helper()
 	u := newAppServerSessionTestUI(t, workspace)
 	u.Thread = thread
-	u.session.start(thread, workspace)
+	u.startSession(thread, workspace)
 	u.panes = testPanePreferences()
 	if err := u.panes.open(u.shell, workspace, thread, false); err != nil {
 		t.Fatal(err)

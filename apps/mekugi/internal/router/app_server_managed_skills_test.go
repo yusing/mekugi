@@ -38,7 +38,7 @@ func testManagedSkills(t *testing.T, u *appServerUI, script string) {
 	if err := os.WriteFile(filepath.Join(workspace, "workspace-marker"), nil, 0600); err != nil {
 		t.Fatal(err)
 	}
-	u.ctx, u.session.cwd = t.Context(), workspace
+	u.ctx, u.cwd = t.Context(), workspace
 	u.skillEnvironment = []string{"PATH=" + bin}
 }
 func replyManagedCatalog(t *testing.T, u *appServerUI, w *appServerTestInput, native string) {
@@ -47,7 +47,7 @@ func replyManagedCatalog(t *testing.T, u *appServerUI, w *appServerTestInput, na
 	if len(requests) != 1 || requests[0].Method != "skills/list" {
 		t.Fatalf("missing catalog request: %+v", requests)
 	}
-	pickerReply(t, u, requests[0].ID, `{"data":[{"cwd":`+strconv.Quote(u.session.cwd)+`,"skills":`+native+`}]}`)
+	pickerReply(t, u, requests[0].ID, `{"data":[{"cwd":`+strconv.Quote(u.cwd)+`,"skills":`+native+`}]}`)
 }
 func TestManagedSkillAttachmentContentsAndIdentity(t *testing.T) {
 	u, w := newAppServerTestUI()
@@ -74,7 +74,7 @@ func TestManagedSkillAttachmentContentsAndIdentity(t *testing.T) {
 	if !ok || text != "use $review then $review please" || len(spans) != 2 {
 		t.Fatalf("shared transcript identity lost: %q %+v", text, spans)
 	}
-	blocks := sessionpresentation.AttachmentValues(u.session.cwd, content)
+	blocks := sessionpresentation.AttachmentValues(u.cwd, content)
 	if len(blocks) != 1 || blocks[0].Verb != "Attached skill" || blocks[0].Label != "review" {
 		t.Fatalf("missing receipt: %+v", blocks)
 	}
@@ -116,7 +116,7 @@ func TestManagedSkillReadFailureIsExplicit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	blocks := sessionpresentation.AttachmentValues(u.session.cwd, content)
+	blocks := sessionpresentation.AttachmentValues(u.cwd, content)
 	if u.conversation().Submitted[u.Submission().ID].Text != "use $review please" || len(blocks) != 1 || blocks[0].Verb != "Attach failed" || !strings.Contains(blocks[0].Label, "review") {
 		t.Fatalf("failed skill lost prompt or receipt: %+v", blocks)
 	}
@@ -132,7 +132,7 @@ func TestManagedSkillSourceFailuresRemainIndependent(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := readManagedSkills(ctx, u.session.cwd, u.skillEnvironment); err == nil {
+	if _, err := readManagedSkills(ctx, u.cwd, u.skillEnvironment); err == nil {
 		t.Fatal("canceled catalog ran")
 	}
 }
@@ -149,7 +149,7 @@ func TestManagedSkillMetadataPlaceholderResolvesInstructions(t *testing.T) {
 				script += "[ \"$1\" = get ] && [ \"$2\" = --codex ] && [ \"$3\" = review ] || exit 1\nprintf '%s' '" + managedSkillInstructions + "'\n"
 			}
 			testManagedSkills(t, u, script+"fi\n")
-			choices, err := readManagedSkills(t.Context(), u.session.cwd, u.skillEnvironment)
+			choices, err := readManagedSkills(t.Context(), u.cwd, u.skillEnvironment)
 			if err != nil || len(choices) != 0 {
 				t.Fatalf("user-invoked skill leaked into catalog: %+v, %v", choices, err)
 			}
@@ -162,7 +162,7 @@ func TestManagedSkillMetadataPlaceholderResolvesInstructions(t *testing.T) {
 			}
 			draft := conversationmodel.Input{Text: "$review", Skills: []composer.Token{{Start: 0, End: 7, Name: "review", Path: path}}}
 			draft.SnapshotSkills(func(name, path string) ([]byte, error) {
-				data, _, err := readSkillAttachment(context.Background(), u.session.cwd, u.skillEnvironment, name, path)
+				data, _, err := readSkillAttachment(context.Background(), u.cwd, u.skillEnvironment, name, path)
 				return data, err
 			})
 			frames, ok := attachments.Decode(draft.Attachments[0])
@@ -186,7 +186,7 @@ func TestManagedSkillMetadataPlaceholderResolvesInstructions(t *testing.T) {
 				t.Fatal(err)
 			}
 			draft.SnapshotSkills(func(name, path string) ([]byte, error) {
-				data, _, err := readSkillAttachment(context.Background(), u.session.cwd, u.skillEnvironment, name, path)
+				data, _, err := readSkillAttachment(context.Background(), u.cwd, u.skillEnvironment, name, path)
 				return data, err
 			})
 			if draft.Attachments[0] != before {

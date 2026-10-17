@@ -13,19 +13,21 @@ import (
 	"github.com/yusing/mekugi/modules/conversation/transcript"
 )
 
-func (s *appServerSession) observeTranscript(e observation.TextEvent, main bool) []observation.TextUpdate {
+func (u *appServerUI) observeTranscript(e observation.TextEvent, main bool) []observation.TextUpdate {
+	s := &u.session
 	ref := e.Item.Ref
 	if ref.ThreadID == "" || ref.TurnID == "" || ref.ItemID == "" {
 		return nil
 	}
-	return s.transcript.Observe(e, main, s.Transcript(ref.ThreadID, ref.TurnID))
+	return u.transcript.Observe(e, main, s.Transcript(ref.ThreadID, ref.TurnID))
 }
 
-func (s *appServerSession) providerStarted(thread string, at time.Time) []observation.TextUpdate {
+func (u *appServerUI) providerStarted(thread string, at time.Time) []observation.TextUpdate {
+	s := &u.session
 	if thread == "" {
 		return nil
 	}
-	return s.transcript.ProviderStarted(thread, at, s.Thread(thread))
+	return u.transcript.ProviderStarted(thread, at, s.Thread(thread))
 }
 
 // Host snapshots retain their original payload for control and evidence; this
@@ -36,16 +38,16 @@ func transcriptItem(item binding.ThreadItem, thread, turn, id string) observatio
 
 func (u *appServerUI) transcriptUpdates(updates []observation.TextUpdate, paced bool) []sessionpresentation.ActivityEntry {
 	for i := range updates {
-		updates[i].Sequence = u.session.next()
+		updates[i].Sequence = u.session.Activity().NextSequence()
 	}
 	if paced {
-		updates = u.summaryStream.Queue(updates)
+		updates = u.streams.Reasoning.Queue(updates)
 	}
 	entries := make([]sessionpresentation.ActivityEntry, 0, len(updates))
 	for _, update := range updates {
 		agent := "/root"
 		if update.Ref.ThreadID != u.Thread {
-			agent = u.session.path(update.Ref.ThreadID)
+			agent = u.session.Caller(update.Ref.ThreadID)
 		}
 		entries = append(entries, sessionpresentation.TranscriptEntry(update, agent))
 	}
@@ -61,7 +63,7 @@ func historicalTranscript(items []binding.ThreadItem, thread, turn string, main,
 }
 
 func (u *appServerUI) flushSummaryOutput() {
-	updates := u.summaryStream.Advance(u.now())
+	updates := u.streams.Reasoning.Advance(u.now())
 	if len(updates) == 0 {
 		return
 	}
@@ -102,7 +104,7 @@ func (u *appServerUI) messageTranscript(text observation.TextEvent, item observa
 	if u.observeMessageQuestions(text, item, false) {
 		return true
 	}
-	updates := u.session.observeTranscript(text, main)
+	updates := u.observeTranscript(text, main)
 	if !main {
 		u.applyActivity(u.transcriptUpdates(updates, true), nil)
 		return false
@@ -112,7 +114,7 @@ func (u *appServerUI) messageTranscript(text observation.TextEvent, item observa
 			u.applyActivity(u.transcriptUpdates([]observation.TextUpdate{update}, true), nil)
 			continue
 		}
-		u.source.ApplyTranscript(update, item.Content, u.session.cwd, u.Thread, item.Type == "userMessage")
+		u.source.ApplyTranscript(update, item.Content, u.cwd, u.Thread, item.Type == "userMessage")
 	}
 	return false
 }

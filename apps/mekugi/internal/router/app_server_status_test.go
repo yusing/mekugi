@@ -93,7 +93,7 @@ func TestUISnapshotAppServerStatusSystemTimezone(t *testing.T) {
 
 func TestAppServerStatusLocalAndAccountRefresh(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.session.start("main", "/workspace")
+	u.startSession("main", "/workspace")
 	u.agents = activityui.NewView()
 	u.model, u.reasoningEffort, u.serviceTier = "gpt-6-sol", "high", "priority"
 	u.Turn, u.sessionPresentation().Status.Text = "active", "Working"
@@ -161,7 +161,7 @@ func TestAppServerStatusIndependentSnapshotsAndFailure(t *testing.T) {
 
 func TestAppServerStatusUsesCurrentHostSettings(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.session.start("main", "/old")
+	u.startSession("main", "/old")
 	for _, thread := range []string{"main", "child"} {
 		appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": thread, "threadSettings": map[string]any{"model": thread, "modelProvider": thread, "approvalPolicy": "on-request", "sandboxPolicy": map[string]any{"type": "read-only"}, "cwd": "/" + thread}})
 	}
@@ -178,8 +178,8 @@ func TestAppServerStatusUsesCurrentHostSettings(t *testing.T) {
 func TestAppServerStatusInvalidOptionalResponses(t *testing.T) {
 	for _, response := range []string{`{"account":false}`, `{"account":{"type":"apiKey"}}`} {
 		u, wire := newAppServerTestUI()
-		u.session.start("main", "/work")
-		u.session.agent("/root").InputTokens = 12
+		u.startSession("main", "/work")
+		u.session.Agent("/root").InputTokens = 12
 		appServerTestKeys(t, u, "/status\r")
 		appServerTestMessage(t, u, `{"id":1,"result":`+response+`}`)
 		if u.requests.Pending() || strings.Contains(statusReportText(u.statusPanel), "Loading") || strings.Contains(wire.String(), "rateLimits") {
@@ -287,12 +287,12 @@ func statusReportText(p *appServerStatusReport) string {
 func TestAppServerStatusPanelVisual(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.model, u.reasoningEffort, u.serviceTier = "gpt-6-sol", "high", "priority"
-	u.session.start("main", "/home/yusing/projects/mekugi")
+	u.startSession("main", "/home/yusing/projects/mekugi")
 	u.statusConfig.Provider = "openai"
 	u.statusConfig.Approval = jsontext.Value(`"never"`)
 	u.statusConfig.Sandbox.Type = "danger-full-access"
 	u.statusConfig.Instructions = []string{"/home/yusing/projects/mekugi/AGENTS.md"}
-	root := u.session.agent("/root")
+	root := u.session.Agent("/root")
 	root.ContextKnown, root.ContextTokens, root.ContextWindow = true, 120000, 400000
 	appServerTestKeys(t, u, "/status\r")
 	appServerTestMessage(t, u, `{"id":1,"result":{"account":{"type":"chatgpt","email":"yusing@example.com","planType":"pro"}}}`)

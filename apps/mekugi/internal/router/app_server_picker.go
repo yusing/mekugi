@@ -75,7 +75,7 @@ func (u *appServerUI) refreshPicker() {
 	}
 	target := u.completionTarget()
 	bindingOnly := false
-	if target.Kind == 0 && p.modal == "" && (!p.SkillsLoaded || p.SkillsCwd != u.session.cwd) {
+	if target.Kind == 0 && p.modal == "" && (!p.SkillsLoaded || p.SkillsCwd != u.cwd) {
 		query := u.skillBindingQuery(draft, false)
 		for _, part := range slices.Concat(u.conversation().Unsent, u.conversation().Queued) {
 			if query == "" {
@@ -107,7 +107,7 @@ func (u *appServerUI) refreshPicker() {
 		u.filterCommands(target.Query)
 		return
 	}
-	cwd := u.session.cwd
+	cwd := u.cwd
 	if !filepath.IsAbs(cwd) {
 		p.Loading, p.Problem = false, "Waiting for the thread workspace…"
 		return
@@ -250,7 +250,7 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 	}
 	if method == "skills/list" {
 		available := m.Error == nil && err == nil
-		if u.skillEnvironment != nil && p.modal != "manage" && cwd == u.session.cwd {
+		if u.skillEnvironment != nil && p.modal != "manage" && cwd == u.cwd {
 			parent := u.ctx
 			if parent == nil {
 				parent = context.Background()
@@ -278,7 +278,7 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 		if p.modal == "manage" && p.Initial == nil {
 			u.picker.RememberSkills()
 		}
-		if problem != "" && cwd == u.session.cwd {
+		if problem != "" && cwd == u.cwd {
 			label := "Skill catalog incomplete: "
 			if !available {
 				label = "Skill attachment unavailable: "
@@ -286,7 +286,7 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 			u.setNotice(label+problem+". Unavailable references remain text.", true)
 		}
 	}
-	p.Resolve(target, cwd, u.session.cwd, choices, problem)
+	p.Resolve(target, cwd, u.cwd, choices, problem)
 	u.refreshPicker()
 	return true
 }
@@ -351,7 +351,7 @@ func (u *appServerUI) pickerKey(key string) bool {
 		if target.Kind == '@' {
 			path := choice.Path
 			if !filepath.IsAbs(path) {
-				path = filepath.Join(u.session.cwd, path)
+				path = filepath.Join(u.cwd, path)
 			}
 			if imageFile(path) {
 				imagePath = path

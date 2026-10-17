@@ -39,10 +39,7 @@ func waitTargetTestStore(t *testing.T, u *appServerUI, store *mekugiReplayStore)
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if u.waitRelease != nil {
-			u.waitRelease()
-			u.waitRelease = nil
-		}
+		u.retainedSession.Close()
 	})
 }
 
@@ -137,7 +134,7 @@ func TestAppServerWaitTargetsDurableReplay(t *testing.T) {
 			workspace, store := t.TempDir(), waitTargetTestOpenStore(t)
 			first := newAppServerSessionTestUI(t, workspace)
 			if absent {
-				first.session.activity = nil
+				first.activity = nil
 			}
 			waitTargetTestStore(t, first, store)
 			waitTargetTestAgent(t, first, "a", "/root/alpha", true)
@@ -151,7 +148,7 @@ func TestAppServerWaitTargetsDurableReplay(t *testing.T) {
 			history := []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{{ID: "w", Type: "collabAgentToolCall", Tool: "wait", Status: "completed"}}}}
 			restored := newAppServerSessionTestUI(t, workspace)
 			if absent {
-				restored.session.activity = nil
+				restored.activity = nil
 			}
 			waitTargetTestStore(t, restored, store)
 			restored.restoreHistory(history)
@@ -168,7 +165,7 @@ func TestAppServerWaitTargetsDurableReplay(t *testing.T) {
 			if !strings.Contains(rendered, terminalui.DimAgentColor("/root/alpha")+"alpha") {
 				t.Fatalf("restored wait lost color: %q", rendered)
 			}
-			restored.session.registerThread(binding.ThreadInfo{ID: "a", AgentNickname: "alpha"})
+			restored.registerThread(binding.ThreadInfo{ID: "a", AgentNickname: "alpha"})
 			restored.restoreActivityThread(binding.ThreadInfo{ID: "a", Turns: history}, false)
 			if got := restored.childSource.Entries[0].Source.Text; got != "Finished waiting · alpha/nested" {
 				t.Fatalf("child replay lost targets: %q", got)
@@ -176,7 +173,7 @@ func TestAppServerWaitTargetsDurableReplay(t *testing.T) {
 			if restored.Turn != "" {
 				t.Fatal("replay revived main turn")
 			}
-			for _, agent := range restored.session.agents {
+			for _, agent := range restored.session.Roster() {
 				if agent.Responding {
 					t.Fatalf("replay revived agent: %+v", agent)
 				}
@@ -184,7 +181,7 @@ func TestAppServerWaitTargetsDurableReplay(t *testing.T) {
 			for _, dir := range []string{t.TempDir(), workspace} {
 				fresh := newAppServerSessionTestUI(t, dir)
 				if absent {
-					fresh.session.activity = nil
+					fresh.activity = nil
 				}
 				freshStore := store
 				if dir == workspace {
@@ -211,14 +208,14 @@ func TestAppServerWaitTargetsStorageFailureKeepsLiveDisplay(t *testing.T) {
 			if mode == "malformed" {
 				waitTargetTestAgent(t, u, "a", "/root/alpha", true)
 				waitTargetTestEvent(t, u, "item/started", "main", "t", "w")
-				if err := os.WriteFile(u.session.waitTargetsPath([3]string{"main", "t", "w"}), []byte("not json"), 0600); err != nil {
+				if err := os.WriteFile(u.waitTargetsPath([3]string{"main", "t", "w"}), []byte("not json"), 0600); err != nil {
 					t.Fatal(err)
 				}
 				u = newAppServerSessionTestUI(t, workspace)
 				waitTargetTestStore(t, u, store)
 				waitTargetTestAgent(t, u, "a", "/root/alpha", true)
 			} else {
-				path := u.session.waitTargetsPath([3]string{"main", "t", "w"})
+				path := u.waitTargetsPath([3]string{"main", "t", "w"})
 				if err := os.Mkdir(path, 0700); err != nil {
 					t.Fatal(err)
 				}
@@ -244,17 +241,17 @@ func TestAppServerWaitTargetsManagedRetention(t *testing.T) {
 	create := func(thread, workspace string) (string, func()) {
 		u := newAppServerSessionTestUI(t, workspace)
 		u.Thread = thread
-		u.session.start(thread, workspace)
+		u.startSession(thread, workspace)
 		if err := u.openWaitStore(store.publication, store.writes, store.retentionLimits()); err != nil {
 			t.Fatal(err)
 		}
 		item := binding.ThreadItem{Type: "collabAgentToolCall", Tool: "wait", ReceiverThreadIDs: []string{"target"}}
 		u.itemProgress(item.Observation(), thread, "turn", "wait", "item/started", true)
-		path := u.session.waitTargetsPath([3]string{thread, "turn", "wait"})
+		path := u.waitTargetsPath([3]string{thread, "turn", "wait"})
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("wait record was not retained: %v", err)
 		}
-		return path, u.waitRelease
+		return path, u.retainedSession.Close
 	}
 	oldPath, releaseOld := create("old", "/old")
 	releaseOld()

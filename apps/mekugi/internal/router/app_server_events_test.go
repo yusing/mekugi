@@ -40,16 +40,16 @@ func newAppServerSessionTestUI(t *testing.T, workspace string) *appServerUI {
 	t.Cleanup(func() { awaitCommandSegments(t, u) })
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
-	u.session.start("main", workspace)
+	u.startSession("main", workspace)
 	return u
 }
 
 func TestAppServerAgentTimerStartsAtFirstTurn(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
-	u.session.path("early")
+	u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
+	u.session.Caller("early")
 	u.testActivity(u.agents).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "/root/worker", Kind: "status", Text: "Assigned", Observed: time.Now()}}})
-	for _, agent := range u.session.agents {
+	for _, agent := range u.session.Roster() {
 		if !agent.Started.IsZero() {
 			t.Fatalf("thread registration started timer: %+v", agent)
 		}
@@ -60,7 +60,7 @@ func TestAppServerAgentTimerStartsAtFirstTurn(t *testing.T) {
 	for _, thread := range []string{"main", "child", "early"} {
 		before := time.Now()
 		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "first"}})
-		agent := u.session.agent(u.session.paths[thread])
+		agent := u.session.Agent(u.session.KnownCaller(thread))
 		start := agent.Started
 		if start.Before(before) || start.After(time.Now()) {
 			t.Fatalf("timer does not use turn start: %+v", agent)
@@ -77,7 +77,7 @@ func TestAppServerRestoredAgentTimerUsesTurns(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	info := binding.ThreadInfo{ID: "main", CreatedAt: 100, UpdatedAt: 900}
 	u.restoreMainHistory(info.Turns, nil, nil)
-	agent := u.session.agent("/root")
+	agent := u.session.Agent("/root")
 	if !agent.Started.IsZero() || !agent.LastResponse.IsZero() {
 		t.Fatal("empty restored thread started timer")
 	}
@@ -86,10 +86,10 @@ func TestAppServerRestoredAgentTimerUsesTurns(t *testing.T) {
 	if !agent.Started.Equal(historyTime(200)) || !agent.LastResponse.Equal(historyTime(350)) {
 		t.Fatalf("restored timer used metadata instead of turns: %+v", agent)
 	}
-	u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
+	u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	info.ID = "child"
 	u.restoreActivityThread(info, false)
-	child := u.session.agent("/root/worker")
+	child := u.session.Agent("/root/worker")
 	if !child.Started.Equal(agent.Started) || !child.LastResponse.Equal(agent.LastResponse) {
 		t.Fatalf("child restored timer differs from Main: %+v", child)
 	}
@@ -109,13 +109,13 @@ func TestAppServerSessionProjectsChildThreads(t *testing.T) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "c1", "item": map[string]any{"id": "read", "type": "commandExecution",
 		"command": "cat a.go", "exitCode": 0, "commandActions": []map[string]any{{"type": "read", "command": "cat", "path": "a.go"}}}})
 	appServerTestNotify(t, u, "thread/tokenUsage/updated", map[string]any{"threadId": "child", "turnId": "c1", "tokenUsage": map[string]any{"total": map[string]any{"inputTokens": 1200, "outputTokens": 30}}})
-	agent := u.session.agent("/root/worker")
+	agent := u.session.Agent("/root/worker")
 	if agent == nil || agent.Role != "explore" || !agent.Responding || agent.InputTokens != 1200 || agent.OutputTokens != 30 {
-		t.Fatalf("roster did not follow the child thread: %+v", u.session.agents)
+		t.Fatalf("roster did not follow the child thread: %+v", u.session.Roster())
 	}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "c1", "item": map[string]any{"id": "answer", "type": "agentMessage", "text": "The pane waits on its first frame."}})
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "c1", "status": "completed"}})
-	agent = u.session.agent("/root/worker")
+	agent = u.session.Agent("/root/worker")
 	if agent.Responding || !agent.Final {
 		t.Fatal("finished child still responding")
 	}

@@ -48,7 +48,7 @@ func (u *appServerUI) prepareDraft(draft composer.Draft) conversationmodel.Input
 	d := conversationmodel.Input{Draft: draft}
 	d.ReplyCount = len(binding.QuestionReplies(d.Text))
 	u.bindSkills(&d, true)
-	d.SnapshotFiles(u.session.cwd)
+	d.SnapshotFiles(u.cwd)
 	u.snapshotDraftSkills(&d)
 	u.mainView.CursorColumn = nil
 	return d
@@ -102,7 +102,7 @@ func (u *appServerUI) flushInput() error {
 			return err
 		}
 	}
-	emitting := u.controlObservations != nil && u.controlObservations.EmittingToolInput(u.session.cwd, u.Thread)
+	emitting := u.controlObservations != nil && u.controlObservations.EmittingToolInput(u.cwd, u.Thread)
 	next := u.sessionPresentation().NextInput(&u.Live, u.conversation(), emitting)
 	if next.Interrupt {
 		return u.interruptTurn()

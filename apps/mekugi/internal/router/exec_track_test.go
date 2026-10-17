@@ -17,6 +17,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/commandsegments/segments"
 
@@ -753,7 +754,7 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	awaitCommandSegments(t, u)
-	restored := newAppServerSessionTestUI(t, u.session.cwd)
+	restored := newAppServerSessionTestUI(t, u.cwd)
 	setTestAppServerIntegration(restored, testProxyWithStore(store))
 	restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 	segments := restored.source.Entries[0].Source.Native.Segments
@@ -761,7 +762,7 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 		t.Fatalf("restored paths or source changed: %+v", segments)
 	}
 	// Publish the child's inherited evidence in its own retained workspace.
-	retained := restored.prepareCommandSegments("main", u.session.cwd, binding.HistoryTurn{ID: "t", Items: []binding.ThreadItem{item}})[item.ID]
+	retained := restored.prepareCommandSegments("main", u.cwd, binding.HistoryTurn{ID: "t", Items: []binding.ThreadItem{item}})[item.ID]
 	if retained == nil {
 		t.Fatal("fixture command segments were not retained")
 	}
@@ -770,9 +771,9 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 	}
 	// Child history can omit command cwd while retaining its own workspace.
 	item.Cwd = ""
-	child := newAppServerSessionTestUI(t, u.session.cwd)
+	child := newAppServerSessionTestUI(t, u.cwd)
 	setTestAppServerIntegration(child, testProxyWithStore(store))
-	child.session.path("child")
+	child.session.Caller("child")
 	child.restoreActivityThread(binding.ThreadInfo{ID: "child", Cwd: cwd, Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
 	parts := child.childSource.Entries[0].Source.Native.Segments
 	if len(parts) != 2 || parts[0].Text != "Read `a.go`" || parts[1].Text != "Search `needle` in `src`" {
@@ -862,7 +863,8 @@ type execTrackFixture struct {
 	*segments.Observer
 	mu       sync.Mutex // Test shells can view distinct commands concurrently.
 	server   *segmenttransport.Server
-	views    map[[3]string]*appServerCommandRun
+	views    map[[3]string]*sessionpresentation.CommandOperation
+	streams  map[[3]string]*activityui.CommandStream
 	reported map[[3]string][][]byte
 	ui       *appServerUI
 }
@@ -879,17 +881,17 @@ func (h *execTrackFixture) observeCommandStart(message appserver.Message) {
 	}
 }
 
-func (h *execTrackFixture) run(key [3]string) *appServerCommandRun {
+func (h *execTrackFixture) run(key [3]string) *sessionpresentation.CommandOperation {
 	if h.ui != nil {
-		if run := h.ui.session.commands[key]; run != nil {
+		if run := h.ui.session.Commands()[key]; run != nil {
 			return run
 		}
 	}
 	if h.views == nil {
-		h.views = make(map[[3]string]*appServerCommandRun)
+		h.views = make(map[[3]string]*sessionpresentation.CommandOperation)
 	}
 	if h.views[key] == nil {
-		h.views[key] = &appServerCommandRun{entry: sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{
+		h.views[key] = &sessionpresentation.CommandOperation{Entry: sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{
 			Invocation: activitypresentation.NewInvocation(activitypresentation.CommandSource{}, time.Time{}, new(activitymodel.Retention)),
 		}}}
 	}
@@ -913,7 +915,22 @@ func (h *execTrackFixture) view(key [3]string, final bool, text func(string) str
 		h.reported[key][index] = append(h.reported[key][index], segment.Output...)
 	}
 	run := h.run(key)
-	view, changed := run.segments.view(run.entry.Native.Invocation, track, final, text)
+	report := sessionpresentation.CommandReport(run.Entry.Native.Invocation, track, "")
+	for i := range report.Segments {
+		report.Segments[i].Text = text(report.Segments[i].Source)
+	}
+	if h.streams == nil {
+		h.streams = make(map[[3]string]*activityui.CommandStream)
+	}
+	stream := h.streams[key]
+	if h.ui != nil {
+		stream = h.ui.streams.Command(key, run.Entry.Text)
+	}
+	if stream == nil {
+		stream = activityui.NewCommandStream(run.Entry.Text)
+		h.streams[key] = stream
+	}
+	view, changed := commandReportFrame(run.Entry.Native.Invocation, stream, report, track.Version, final)
 	if view.release {
 		h.ReleaseOutput(key)
 	}

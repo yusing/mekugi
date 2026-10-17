@@ -87,7 +87,7 @@ func TestCommandSegmentsBatchMixedCandidates(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(store.directory, legacycall.Name(workspace, reports.ID(turn.ID, corrupt.ID), false)), []byte("broken"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, segments: testReports(), ctx: t.Context(), Thread: "unrelated-current-thread", retained: store.changeScope(), changeSource: store.changes, snapshots: store.snapshots, recovered: store.recovery, publishChanges: store.liveDiff})
+	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), segments: testReports(), ctx: t.Context(), Thread: "unrelated-current-thread", retained: store.changeScope(), changeSource: store.changes, snapshots: store.snapshots, recovered: store.recovery, publishChanges: store.liveDiff})
 	got := u.prepareCommandSegments("fork", workspace, turn)
 	catalog, err := store.publication.ReadCatalog(history.SessionName("fork"))
 	if err != nil {
@@ -129,7 +129,7 @@ func TestCommandSegmentsBatchRejectsUnretainedRecords(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(store.directory, history.SessionName("fork")), []byte("broken"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, segments: testReports(), ctx: t.Context(), retained: store.changeScope(), changeSource: store.changes, snapshots: store.snapshots, recovered: store.recovery, publishChanges: store.liveDiff})
+	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), segments: testReports(), ctx: t.Context(), retained: store.changeScope(), changeSource: store.changes, snapshots: store.snapshots, recovered: store.recovery, publishChanges: store.liveDiff})
 	if got := u.prepareCommandSegments("fork", workspace, turn); got[item.ID] != nil {
 		t.Fatal("published a record without durable target ownership")
 	}
@@ -149,7 +149,7 @@ func TestCommandSegmentsBatchForkOwnershipSurvivesParentExpiry(t *testing.T) {
 			u := newAppServerSessionTestUI(t, workspace)
 			u.ctx = parent
 			setTestAppServerIntegration(u, testProxyWithStore(store))
-			first, second := u.session.activity.Outputs(u.session.Scope()).New(), u.session.activity.Outputs(u.session.Scope()).New()
+			first, second := u.activity.Outputs(u.session.Scope()).New(), u.activity.Outputs(u.session.Scope()).New()
 			first.Finish(new("one"), new(0))
 			second.Finish(new(""), new(1))
 			u.retainCommandSegments(sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Thread: "parent", Turn: turn.ID, Item: item.ID}}, item.Observation(), execTrackView{complete: true, output: true, code: 1, segments: []sessionpresentation.ActivitySegment{{Output: first}, {Output: second, Exit: 1}}})
@@ -167,7 +167,7 @@ func TestCommandSegmentsBatchForkOwnershipSurvivesParentExpiry(t *testing.T) {
 				u.Thread = "fork"
 				u.restoreHistory([]binding.HistoryTurn{turn})
 			} else {
-				u.session.path("fork")
+				u.session.Caller("fork")
 				u.restoreActivityThread(binding.ThreadInfo{ID: "fork", Cwd: workspace, Turns: []binding.HistoryTurn{turn}}, false)
 				view = u.testActivity(u.agents)
 			}
@@ -221,7 +221,7 @@ func BenchmarkCommandSegmentsBatchLargeHistory(b *testing.B) {
 			if err := store.put(b.Context(), workspace, histories); err != nil {
 				b.Fatal(err)
 			}
-			u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, segments: testReports(), ctx: b.Context(), retained: store.changeScope(), changeSource: store.changes, snapshots: store.snapshots, recovered: store.recovery, publishChanges: store.liveDiff})
+			u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), segments: testReports(), ctx: b.Context(), retained: store.changeScope(), changeSource: store.changes, snapshots: store.snapshots, recovered: store.recovery, publishChanges: store.liveDiff})
 			b.ReportAllocs()
 			iteration := 0
 			for b.Loop() {

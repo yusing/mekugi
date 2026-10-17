@@ -23,7 +23,7 @@ func guardHookTestEntry(hash string) map[string]any {
 
 func TestAppServerGuardHookChecksBeforeEachNewTurn(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.session.cwd = "/selected/workspace"
+	u.cwd = "/selected/workspace"
 	u.guardHookCheck.hash = "guard"
 	appServerTestKeys(t, u, "first\rsecond\r")
 	type hookRequest struct {
@@ -34,10 +34,10 @@ func TestAppServerGuardHookChecksBeforeEachNewTurn(t *testing.T) {
 		} `json:"params"`
 	}
 	requests := appServerDrainRequests[hookRequest](t, wire)
-	if len(requests) != 1 || requests[0].Method != "hooks/list" || len(requests[0].Params.Cwds) != 1 || requests[0].Params.Cwds[0] != u.session.cwd || len(u.conversation().Unsent)+len(u.conversation().Queued) != 2 {
+	if len(requests) != 1 || requests[0].Method != "hooks/list" || len(requests[0].Params.Cwds) != 1 || requests[0].Params.Cwds[0] != u.cwd || len(u.conversation().Unsent)+len(u.conversation().Queued) != 2 {
 		t.Fatalf("pending input bypassed workspace check: requests=%+v unsent=%+v queued=%+v", requests, u.conversation().Unsent, u.conversation().Queued)
 	}
-	result := guardHookTestResult(t, u.session.cwd, guardHookTestEntry("guard"))
+	result := guardHookTestResult(t, u.cwd, guardHookTestEntry("guard"))
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":%s}`, requests[0].ID, result))
 	start := appServerOneRequest(t, wire, "turn/start", "first\nsecond")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"t"}}}`, start.ID))
@@ -56,7 +56,7 @@ func TestAppServerGuardHookFailureRestoresDrafts(t *testing.T) {
 	unverifiable := guardHookTestResult(t, "/workspace", guardHookTestEntry("guard"), other)
 	for _, response := range []string{`"result":{"data":[]}`, `"error":{"code":-1,"message":"offline"}`, `"result":` + string(unverifiable)} {
 		u, wire := newAppServerTestUI()
-		u.session.cwd, u.guardHookCheck.hash = "/workspace", "guard"
+		u.cwd, u.guardHookCheck.hash = "/workspace", "guard"
 		appServerTestKeys(t, u, "first\rsecond\rtyping")
 		request := appServerOneRequest(t, wire, "hooks/list", "")
 		appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,%s}`, request.ID, response))
@@ -70,12 +70,12 @@ func TestAppServerGuardHookFailureRestoresDrafts(t *testing.T) {
 
 func TestAppServerGuardHookIgnoresStaleThreadResponse(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.session.cwd, u.guardHookCheck.hash = "/old", "guard"
+	u.cwd, u.guardHookCheck.hash = "/old", "guard"
 	appServerTestKeys(t, u, "old input\r")
 	old := appServerOneRequest(t, wire, "hooks/list", "")
 	// Thread switching owns pending-input removal. The outstanding host request
 	// can still arrive after the selected thread and workspace change.
-	u.Thread, u.session.cwd, u.conversation().Unsent, u.conversation().Queued = "new", "/new", nil, nil
+	u.Thread, u.cwd, u.conversation().Unsent, u.conversation().Queued = "new", "/new", nil, nil
 	appServerTestKeys(t, u, "new input\r")
 	if wire.Len() != 0 {
 		t.Fatalf("overlapping hook check: %q", wire.String())

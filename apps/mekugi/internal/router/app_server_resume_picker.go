@@ -94,7 +94,7 @@ func (u *appServerUI) resumeCommand(text string) error {
 }
 
 func (u *appServerUI) openResumePicker(startup bool) error {
-	cwd := u.session.cwd
+	cwd := u.cwd
 	if startup {
 		cwd = u.startup.Workspace
 	}

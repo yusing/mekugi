@@ -102,9 +102,9 @@ func (u *appServerUI) retainAppliedSettings() {
 	if u.panes == nil || u.panes.attachment == nil || u.model == "" || u.Settings.RestoreEffort {
 		return
 	}
-	scope := preferences.Scope{Workspace: u.session.cwd, Thread: u.Thread}
+	scope := preferences.Scope{Workspace: u.cwd, Thread: u.Thread}
 	if u.panes.attachment.Scope() != scope {
-		if err := u.panes.open(u.shell, u.session.cwd, u.Thread, false); err != nil {
+		if err := u.panes.open(u.shell, u.cwd, u.Thread, false); err != nil {
 			u.paneError(err)
 			return
 		}

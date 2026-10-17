@@ -14,7 +14,7 @@ func TestNonTerminalDisplayPublishesWithoutActivityOrPaint(t *testing.T) {
 		t.Run(map[bool]string{true: "composed", false: "without Activity"}[activity], func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			if !activity {
-				u.session.activity = nil
+				u.activity = nil
 			}
 			appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 			editOrdinaryInput(t, u, "Main draft")
@@ -93,7 +93,7 @@ func TestNativeDisplayedThreadIndependentOfRosterFocus(t *testing.T) {
 	if u.composerReadOnly() || u.transcriptView() != u.view || u.agents.Selected != "/root/second" {
 		t.Fatal("Main selection changed roster focus or retained child admission")
 	}
-	if first == nil || u.session.Transcript("first", "work").Turn != first || !u.session.agent("/root/first").Responding {
+	if first == nil || u.session.Transcript("first", "work").Turn != first || !u.session.Agent("/root/first").Responding {
 		t.Fatal("display switching retired a child's work scope")
 	}
 }

@@ -32,7 +32,7 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 		t.Fatal(err)
 	}
 	u, w := newAppServerTestUI()
-	u.session.cwd = cwd
+	u.cwd = cwd
 	u.Text = "Review "
 	bindComposerFile(u, `@"file name.go"`, "file name.go")
 	u.Text += " please"
@@ -61,7 +61,7 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 	}
 	resumed, _ := newAppServerTestUI()
 	resumed.agents = activityui.NewView()
-	resumed.session.start(resumed.Thread, cwd)
+	resumed.startSession(resumed.Thread, cwd)
 	resumed.restoreHistory([]binding.HistoryTurn{{ID: "saved", Status: "completed", Items: []binding.ThreadItem{{Type: "userMessage", ID: "saved-input", Content: content}}}})
 	if len(resumed.InputHistory) != 1 || resumed.InputHistory[0].Text != draft.Text {
 		t.Fatal("resume leaked attachment framing into recalled prompt")

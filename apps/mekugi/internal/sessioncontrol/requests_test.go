@@ -42,6 +42,39 @@ func (s *requestTransport) Respond(id jsontext.Value, result any) error {
 	return s.err
 }
 
+func TestMetadataReadSharesCorrelationAndRetirement(t *testing.T) {
+	transport := &requestTransport{id: "metadata-1"}
+	requests := NewRequests[string](transport)
+	for range 2 {
+		if err := requests.ReadThreadMetadata("main", "child", false, "child owner"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(transport.sends) != 1 {
+		t.Fatal("repeated observation issued another metadata read")
+	}
+	request, ok := requests.Take("metadata-1")
+	if !ok || request.Method != "thread/read" || request.Owner != "child owner" || requests.Pending() {
+		t.Fatalf("metadata response lost its sole ledger owner: %+v", request)
+	}
+	if err := requests.ReadThreadMetadata("main", "child", false, "child owner"); err != nil || len(transport.sends) != 1 {
+		t.Fatal("settled metadata was requested again")
+	}
+	requests.Retire("main")
+	transport.id, transport.err = "failed", errors.New("transport failed")
+	if err := requests.ReadThreadMetadata("main", "child", false, "replacement"); err == nil || requests.Pending() {
+		t.Fatal("failed replacement read retained request admission")
+	}
+	transport.id, transport.err = "metadata-2", nil
+	if err := requests.ReadThreadMetadata("main", "child", false, "replacement"); err != nil {
+		t.Fatal(err)
+	}
+	requests.Retire("main")
+	if _, ok := requests.Take("metadata-2"); ok {
+		t.Fatal("retired metadata response retained an owner")
+	}
+}
+
 func TestRequestsIssueAndConsume(t *testing.T) {
 	type owner struct {
 		label string

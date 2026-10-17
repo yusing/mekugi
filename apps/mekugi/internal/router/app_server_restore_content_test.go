@@ -83,7 +83,7 @@ func TestAppServerRestoreRosterAndActivityFromObservationalHistory(t *testing.T)
 	u.agents = activityui.NewView()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
-	u.session.start("main", workspace)
+	u.startSession("main", workspace)
 	u.startup.Thread = "main"
 	root := binding.ThreadInfo{ID: "main", Cwd: workspace, Turns: []binding.HistoryTurn{{ID: "root-turn", Status: "completed", Items: []binding.ThreadItem{
 		{ID: "spawn", Type: "collabAgentToolCall", Status: "completed", Tool: "spawnAgent", SenderThreadID: "main", ReceiverThreadIDs: []string{"child"}, Prompt: "Inspect the change."},
@@ -93,7 +93,7 @@ func TestAppServerRestoreRosterAndActivityFromObservationalHistory(t *testing.T)
 		t.Fatal(err)
 	}
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "live", "agentNickname": "late"}})
-	if len(u.resumePending) != 1 || u.session.paths["live"] != "" {
+	if len(u.resumePending) != 1 || u.session.KnownCaller("live") != "" {
 		t.Fatal("live event was applied before history hydration")
 	}
 	u.Text = "do not send yet"
@@ -123,8 +123,8 @@ func TestAppServerRestoreRosterAndActivityFromObservationalHistory(t *testing.T)
 	restoreContentReply(t, u, 4, map[string]any{"thread": map[string]any{"id": "grand", "cwd": workspace, "agentRole": "explore", "turns": []any{map[string]any{
 		"id": "g1", "status": "inProgress", "items": []any{map[string]any{"id": "partial", "type": "agentMessage", "text": "Partial analysis"}},
 	}}}})
-	if u.restoring != nil || u.session.paths["live"] != "/root/late" || u.session.agent("/root/reviewer").Role != "review" || u.session.agent("/root/reviewer/explorer").Role != "explore" || u.session.agent("/root/reviewer/explorer").Responding {
-		t.Fatalf("hydrated roster or buffered notification missing: %+v", u.session.agents)
+	if u.restoring != nil || u.session.KnownCaller("live") != "/root/late" || u.session.Agent("/root/reviewer").Role != "review" || u.session.Agent("/root/reviewer/explorer").Role != "explore" || u.session.Agent("/root/reviewer/explorer").Responding {
+		t.Fatalf("hydrated roster or buffered notification missing: %+v", u.session.Roster())
 	}
 	feed := ansi.Strip(strings.Join(u.testActivity(u.agents).RenderFeed(100, 80).Lines, "\n"))
 	for _, want := range []string{"Inspect the change.", "Check again.", "go test ./internal/router", "a.go", "I found a failure.", "Review complete.", "Partial analysis", "history only"} {
@@ -148,9 +148,9 @@ func TestAppServerRestoreWrongChildIdentityContinues(t *testing.T) {
 	u.agents = activityui.NewView()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
-	u.session.start("main", t.TempDir())
+	u.startSession("main", t.TempDir())
 	u.startup.Thread = "main"
-	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: u.session.cwd}); err != nil {
+	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: u.cwd}); err != nil {
 		t.Fatal(err)
 	}
 	restoreContentReply(t, u, 0, map[string]any{"data": []any{map[string]any{"id": "first"}, map[string]any{"id": "second"}}})
@@ -160,7 +160,7 @@ func TestAppServerRestoreWrongChildIdentityContinues(t *testing.T) {
 		t.Fatal("wrong identity prevented remaining Activity reads")
 	}
 	restoreContentReply(t, u, 3, map[string]any{"thread": map[string]any{"id": "second", "turns": []any{map[string]any{"id": "t", "status": "completed", "items": []any{map[string]any{"id": "answer", "type": "agentMessage", "text": "Still available"}}}}}})
-	if u.restoring != nil || u.session.paths["wrong"] != "" || u.childSource.Coverage != "History incomplete" || !strings.Contains(strings.Join(u.testActivity(u.agents).RenderFeed(90, 50).Lines, "\n"), "Still available") {
+	if u.restoring != nil || u.session.KnownCaller("wrong") != "" || u.childSource.Coverage != "History incomplete" || !strings.Contains(strings.Join(u.testActivity(u.agents).RenderFeed(90, 50).Lines, "\n"), "Still available") {
 		t.Fatal("partial failure leaked identity or suppressed later history")
 	}
 }
@@ -171,9 +171,9 @@ func TestAppServerRestoreChildReadErrorContinues(t *testing.T) {
 	u.agents = activityui.NewView()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
-	u.session.start("main", t.TempDir())
+	u.startSession("main", t.TempDir())
 	u.startup.Thread = "main"
-	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: u.session.cwd}); err != nil {
+	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: u.cwd}); err != nil {
 		t.Fatal(err)
 	}
 	restoreContentReply(t, u, 0, map[string]any{"data": []any{map[string]any{"id": "first"}, map[string]any{"id": "second"}}})
@@ -241,7 +241,7 @@ func TestAppServerRestoreDiffScopeBeforeNewTurn(t *testing.T) {
 func TestAppServerRestoreCollaborationRequiresCompletedStatus(t *testing.T) {
 	for _, status := range []string{"inProgress", "failed", "interrupted", ""} {
 		u := newAppServerSessionTestUI(t, t.TempDir())
-		entries := u.session.collab((binding.ThreadItem{ID: "send", Type: "collabAgentToolCall", Tool: "sendMessage", Status: status, SenderThreadID: "main", ReceiverThreadIDs: []string{"child"}, Prompt: "undelivered message"}).Observation(), "send", time.Now(), activitypresentation.HistoricalCollaboration)
+		entries := u.collab((binding.ThreadItem{ID: "send", Type: "collabAgentToolCall", Tool: "sendMessage", Status: status, SenderThreadID: "main", ReceiverThreadIDs: []string{"child"}, Prompt: "undelivered message"}).Observation(), "send", time.Now(), activitypresentation.HistoricalCollaboration)
 		if len(entries) != 1 || entries[0].Kind != "error" || !strings.Contains(entries[0].Text, "delivery not confirmed") || strings.Contains(entries[0].Text, "Message sent") {
 			t.Fatalf("unfinished delivery presented as successful: %+v", entries)
 		}
@@ -251,7 +251,7 @@ func TestAppServerRestoreCollaborationRequiresCompletedStatus(t *testing.T) {
 func TestAppServerRestoreListPageBudget(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.agents = activityui.NewView()
-	u.session.start("main", t.TempDir())
+	u.startSession("main", t.TempDir())
 	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main"}); err != nil {
 		t.Fatal(err)
 	}

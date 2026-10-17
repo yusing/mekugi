@@ -24,7 +24,7 @@ import (
 
 func skillAttachmentCatalog(t *testing.T, u *appServerUI, w *appServerTestInput) {
 	t.Helper()
-	u.session.cwd = "/work"
+	u.cwd = "/work"
 	appServerTestKeys(t, u, "$rev")
 	requests := pickerRequests(t, w)
 	if len(requests) != 1 || requests[0].Method != "skills/list" || len(requests[0].Params.Cwds) != 1 || requests[0].Params.Cwds[0] != "/work" {
@@ -75,7 +75,7 @@ func TestSkillAttachmentPastedBeforeCatalogResponse(t *testing.T) {
 	if err := os.WriteFile(path, []byte(instructions), 0600); err != nil {
 		t.Fatal(err)
 	}
-	u.session.cwd = workspace
+	u.cwd = workspace
 	appServerTestKeys(t, u, "\x1b[200~use $review please\x1b[201~")
 	if u.picker.Open || len(u.Skills) != 0 {
 		t.Fatalf("paste opened picker or bound before catalog: %+v %+v", u.picker, u.Skills)
@@ -129,7 +129,7 @@ func TestSkillAttachmentTranscriptAndHistoryMetadata(t *testing.T) {
 				t.Fatalf("skill display: %q %+v, ok=%v", text, spans, ok)
 			}
 			u, _ := newAppServerTestUI()
-			u.session.start("main", "/work")
+			u.startSession("main", "/work")
 			u.agents = activityui.NewView()
 			var turns []binding.HistoryTurn
 			payload := `[{"id":"turn","status":"completed","items":[{"type":"userMessage","id":"message","content":` + tc.content + `}]}]`
@@ -152,7 +152,7 @@ func TestSkillAttachmentTranscriptAndHistoryMetadata(t *testing.T) {
 
 func TestSkillAttachmentLookupFailureStillSendsText(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.session.cwd = "/work"
+	u.cwd = "/work"
 	appServerTestKeys(t, u, "\x1b[200~use $review please\x1b[201~\r")
 	requests := pickerRequests(t, wire)
 	if len(requests) != 1 || requests[0].Method != "skills/list" {
@@ -173,7 +173,7 @@ func TestSkillAttachmentLookupFailureStillSendsText(t *testing.T) {
 
 func TestSkillAttachmentFailureIndependentOfForegroundPicker(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.session.cwd = "/work"
+	u.cwd = "/work"
 	appServerTestKeys(t, u, "\x1b[200~use $review please\x1b[201~\r@foo")
 	requests := pickerRequests(t, wire)
 	if len(requests) != 1 || requests[0].Method != "skills/list" {
@@ -204,7 +204,7 @@ func TestSkillAttachmentFailureIndependentOfForegroundPicker(t *testing.T) {
 
 func TestSkillAttachmentQueuedLookupIndependentOfForegroundPicker(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.session.cwd = "/work"
+	u.cwd = "/work"
 	u.conversation().Queued = []conversationmodel.Input{{Text: "use $review please"}}
 	appServerTestKeys(t, u, "@foo")
 	if err := u.flushInput(); err != nil {
@@ -233,7 +233,7 @@ func TestSkillAttachmentQueuedLookupIndependentOfForegroundPicker(t *testing.T) 
 
 func TestSkillAttachmentPartialCatalogFailureKeepsAvailableSkillsVisible(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.session.cwd = "/work"
+	u.cwd = "/work"
 	appServerTestKeys(t, u, "\x1b[200~use $review and $broken please\x1b[201~\r")
 	requests := pickerRequests(t, wire)
 	if len(requests) != 1 || requests[0].Method != "skills/list" {

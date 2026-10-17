@@ -75,7 +75,7 @@ func (*appServerTestInput) Close() error { return nil }
 func newAppServerTestUI() (*appServerUI, *appServerTestInput) {
 	w := new(appServerTestInput)
 	client := &appserver.Client{Input: w}
-	u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, issues: testCriticalErrors(), history: testHistory(), client: client, view: activityui.NewView(), requests: sessioncontrol.NewRequests[appServerRequest](appServerTestTransport{client, w}), Thread: "main"})
+	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), issues: testCriticalErrors(), history: testHistory(), client: client, view: activityui.NewView(), requests: sessioncontrol.NewRequests[appServerRequest](appServerTestTransport{client, w}), Thread: "main"})
 	u.approvals.grants = sessioncontrol.NewApprovalGrants(testGuards())
 	u.view.Painter.FileLink = u.markdownFileAllowed
 	return u, w
@@ -450,8 +450,8 @@ func appServerTestFeatures(u *appServerUI) *appServerUI {
 	u.presentationState = testPresentation()
 	u.conversationState = new(conversationmodel.Service)
 	observations := conversationbinding.Codex.Observation(u.conversationState)
-	u.session.observations = &observations
-	u.session.transcript = observations.NewTranscript(u.session.Scope())
+	u.observations = &observations
+	u.transcript = observations.NewTranscript(u.session.Scope())
 	u.attachPresentation()
 	u.settlePresentation()
 	return u

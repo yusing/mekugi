@@ -72,7 +72,7 @@ func TestLiveActivityAttachmentOutcomes(t *testing.T) {
 	}
 	resumed, _ := newAppServerTestUI()
 	resumed.agents = activityui.NewView()
-	resumed.session.start(resumed.Thread, cwd)
+	resumed.startSession(resumed.Thread, cwd)
 	resumed.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}})
 	if len(resumed.source.Entries) != 2 || resumed.testActivity(resumed.view).blocks(1)[0].Verb != "Attached" || resumed.testActivity(resumed.view).blocks(1)[1].Verb != "Attach failed" || resumed.testActivity(resumed.view).blocks(1)[0].Path != "attached.txt" || resumed.testActivity(resumed.view).blocks(1)[1].Path != "missing.txt" {
 		t.Fatal("resume did not preserve submitted outcomes")
@@ -211,7 +211,7 @@ func TestLiveActivityAttachmentDialogs(t *testing.T) {
 				}
 				resumed, _ := newAppServerTestUI()
 				resumed.agents = activityui.NewView()
-				resumed.session.start(resumed.Thread, "/workspace")
+				resumed.startSession(resumed.Thread, "/workspace")
 				resumed.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}})
 				page := resumed.view.Painter.DialogPage(resumed.testActivity(resumed.view).blocks(1)[0], 80)
 				if page.Text != textsanitize.Safe(body, false) {

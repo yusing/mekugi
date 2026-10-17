@@ -32,7 +32,7 @@ func TestAppServerTypedTokensAcrossSubmissionAndResume(t *testing.T) {
 		t.Fatal(err)
 	}
 	// This tests explicit attachment identity, not catalog discovery.
-	u.picker.SkillsLoaded, u.picker.SkillsCwd = true, u.session.cwd
+	u.picker.SkillsLoaded, u.picker.SkillsCwd = true, u.cwd
 	appServerTestKeys(t, u, "世界 literal $review @file ")
 	u.insertImage("/tmp/image.png")
 	appServerTestKeys(t, u, " ")
@@ -43,7 +43,7 @@ func TestAppServerTypedTokensAcrossSubmissionAndResume(t *testing.T) {
 	u.Skills = append(u.Skills, composer.Token{Start: start, End: len(u.Text), Name: "review", Path: skillPath})
 	draft := u.draftSnapshot()
 	draft.SnapshotSkills(func(name, path string) ([]byte, error) {
-		data, _, err := readSkillAttachment(context.Background(), u.session.cwd, nil, name, path)
+		data, _, err := readSkillAttachment(context.Background(), u.cwd, nil, name, path)
 		return data, err
 	})
 	input := conversationbinding.Input(draft.Draft)

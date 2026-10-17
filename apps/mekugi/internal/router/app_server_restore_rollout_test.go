@@ -240,7 +240,7 @@ func TestAppServerResumeDefersHistoryButKeepsActiveTurn(t *testing.T) {
 	u.agents = activityui.NewView()
 	appServerTestRequest(t, u, "1", "thread/resume")
 	appServerTestMessage(t, u, `{"id":1,"result":{"thread":{"id":"saved","turns":[{"id":"active","status":"inProgress","items":[{"type":"userMessage","id":"q","content":[{"type":"text","text":"Still running"}]}]}]}}}`)
-	if u.Turn != "active" || !u.session.agent("/root").Responding || len(u.source.Entries) != 0 {
+	if u.Turn != "active" || !u.session.Agent("/root").Responding || len(u.source.Entries) != 0 {
 		t.Fatalf("resume lost the active turn or rendered early: turn=%q entries=%+v", u.Turn, u.source.Entries)
 	}
 	// Attach only the activity collector.

@@ -63,13 +63,13 @@ func (u *appServerUI) toggleSkill() {
 		p.Problem = "Could not save skill: " + err.Error()
 		return
 	}
-	p.toggleID, p.togglePath, p.toggleCwd = id, choice.Path, u.session.cwd
+	p.toggleID, p.togglePath, p.toggleCwd = id, choice.Path, u.cwd
 	p.toggleOwnsManager, p.Problem = p.modal == "manage", ""
 }
 
 func (u *appServerUI) skillSaveOwnsManager() bool {
 	p := &u.picker
-	return p.toggleOwnsManager && p.modal == "manage" && p.toggleCwd == u.session.cwd
+	return p.toggleOwnsManager && p.modal == "manage" && p.toggleCwd == u.cwd
 }
 
 func (u *appServerUI) skillToggleResponse(m appserver.Message) {
@@ -100,7 +100,7 @@ func (u *appServerUI) skillToggleResponse(m appserver.Message) {
 	} else if problem != "" {
 		u.setNotice(problem, true)
 	}
-	if !updated || cwd != u.session.cwd {
+	if !updated || cwd != u.cwd {
 		return
 	}
 	if p.modal == "manage" {
@@ -119,7 +119,7 @@ func (u *appServerUI) bindSkills(d *conversationmodel.Input, final bool) {
 	if strings.HasPrefix(d.Text, "!") || d.Question != nil {
 		return
 	}
-	if !p.SkillsLoaded || p.SkillsCwd != u.session.cwd {
+	if !p.SkillsLoaded || p.SkillsCwd != u.cwd {
 		return
 	}
 	var catalog []composer.Token
@@ -171,18 +171,18 @@ func (u *appServerUI) skillBindingQuery(d conversationmodel.Input, final bool) s
 
 func (u *appServerUI) waitForSkillBindings(parts []conversationmodel.Input) bool {
 	p := &u.picker
-	if p.SkillsLoaded && p.SkillsCwd == u.session.cwd {
+	if p.SkillsLoaded && p.SkillsCwd == u.cwd {
 		return false
 	}
-	if p.SkillsProblem != "" && p.SkillsCwd == u.session.cwd {
+	if p.SkillsProblem != "" && p.SkillsCwd == u.cwd {
 		return false // Catalog failure must not borrow foreground completion state.
 	}
 	for _, part := range parts {
 		if query := u.skillBindingQuery(part, true); query != "" {
-			if p.Pending == nil && filepath.IsAbs(u.session.cwd) {
-				u.requestPicker(completion.Target{Kind: '$', Query: query}, u.session.cwd)
+			if p.Pending == nil && filepath.IsAbs(u.cwd) {
+				u.requestPicker(completion.Target{Kind: '$', Query: query}, u.cwd)
 			}
-			return p.SkillsProblem == "" || p.SkillsCwd != u.session.cwd
+			return p.SkillsProblem == "" || p.SkillsCwd != u.cwd
 		}
 	}
 	return false

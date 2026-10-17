@@ -147,7 +147,7 @@ func TestUISnapshotSudoDialogs(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.view.Painter.Theme = diffrender.DarkTheme
 	u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
-	u.session.start("main", "/workspace")
+	u.startSession("main", "/workspace")
 	u.Turn = "turn"
 	u.addGuardApproval(&sessioncontrol.ShellApprovalRequest{Kind: "sudo", Thread: "main", Cwd: "/workspace", Argv: []string{"sudo", "apt", "update"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})})
 	rows, _ := u.testMainFrame(80, 20, 0)

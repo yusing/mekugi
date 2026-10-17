@@ -237,9 +237,9 @@ func publishFixtureReview(t *testing.T, u *appServerUI) {
 			t.Error(err)
 		}
 	})
-	u.session.activity = activity.Value()
+	u.activity = activity.Value()
 	u.reviewSource = captured.Value()
-	u.reviewSource.PublishReview(u.session.Scope(), u.review.Projection.Data, u.session.cwd, u.review.Projection.Coverage, u.review.Failure)
+	u.reviewSource.PublishReview(u.session.Scope(), u.review.Projection.Data, u.cwd, u.review.Projection.Coverage, u.review.Failure)
 }
 
 func fixtureActivityWithoutDetails(t *testing.T) *feed.Service {

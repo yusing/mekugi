@@ -23,16 +23,16 @@ func TestAppServerChildMetadataWithoutThreadStarted(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	const child = "0123456789-child"
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": child, "turn": map[string]any{"id": "t"}})
-	id := u.session.metadata[child]
 	request := resumeTestOne(t, u.client.Input.(*appServerTestInput), "thread/read")
-	if id == "" || fmt.Sprint(request.ID) != id {
+	id := fmt.Sprint(request.ID)
+	if id == "" {
 		t.Fatal("child observation did not request metadata")
 	}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": child, "turnId": "t", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "go test ./...", "exitCode": 2}})
-	u.agents.Selected = appServerPlaceholder(child)
+	u.agents.Selected = sessionpresentation.Placeholder(child)
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
 		"id": "spawn", "type": "subAgentActivity", "kind": "started", "agentThreadId": child, "agentPath": "/root/checker"}})
-	if u.session.metadata[child] != id || u.session.paths[child] != "/root/checker" || u.agents.Selected != "/root/checker" {
+	if !u.requests.Pending() || u.session.KnownCaller(child) != "/root/checker" || u.agents.Selected != "/root/checker" {
 		t.Fatal("activity identity or in-flight metadata request lost")
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%s,"result":{"thread":{"id":%q,"agentNickname":"random-nickname","agentRole":"review","source":{"subAgent":{"thread_spawn":{"parent_thread_id":"main","agent_path":"/root/checker","agent_role":"review"}}}}}}`, id, child))
@@ -46,7 +46,7 @@ func TestAppServerChildMetadataWithoutThreadStarted(t *testing.T) {
 		t.Fatalf("late rename lost retained activity: %s", feed)
 	}
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": child, "turn": map[string]any{"id": "t", "status": "completed"}})
-	if u.requests.Pending() || u.session.metadata[child] != "" {
+	if u.requests.Pending() {
 		t.Fatalf("metadata read repeated: %+v", u.requests)
 	}
 }
@@ -54,10 +54,10 @@ func TestAppServerChildMetadataWithoutThreadStarted(t *testing.T) {
 func TestAppServerChildMetadataFailureKeepsActivity(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "t"}})
-	id := u.session.metadata["child"]
+	id := fmt.Sprint(resumeTestOne(t, u.client.Input.(*appServerTestInput), "thread/read").ID)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%s,"error":{"code":-1,"message":"not available"}}`, id))
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "mcat child.go"}})
-	if u.requests.Pending() || u.sessionPresentation().Status.Alert || !strings.Contains(ansi.Strip(u.agents.AgentState(u.testActivity(u.agents).testAgent(*u.session.agent("/root/child")), 80, u.now())), "child.go") {
+	if u.requests.Pending() || u.sessionPresentation().Status.Alert || !strings.Contains(ansi.Strip(u.agents.AgentState(u.testActivity(u.agents).testAgent(*u.session.Agent("/root/child")), 80, u.now())), "child.go") {
 		t.Fatal("metadata failure blocked activity or caused repeated reads")
 	}
 }
@@ -82,7 +82,7 @@ func TestNativeRosterShowsActivityDetails(t *testing.T) {
 		t.Fatalf("summary missing: %s", got)
 	}
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "t", "status": "completed"}})
-	if got := ansi.Strip(u.agents.AgentState(u.testActivity(u.agents).testAgent(*u.session.agent("/root/reviewer")), 80, u.now())); got != "done" {
+	if got := ansi.Strip(u.agents.AgentState(u.testActivity(u.agents).testAgent(*u.session.Agent("/root/reviewer")), 80, u.now())); got != "done" {
 		t.Fatalf("finished state: %q", got)
 	}
 }

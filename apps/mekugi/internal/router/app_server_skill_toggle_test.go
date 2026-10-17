@@ -21,7 +21,7 @@ func TestComposerSkillSaveRequiresEffectiveState(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
-			u.session.cwd = "/work"
+			u.cwd = "/work"
 			u.picker.Catalog([]completion.Choice{{Name: "review", Path: "/work/review/SKILL.md", Enabled: true}}, "/work", true, "")
 			appServerTestKeys(t, u, "/skills\r2 ")
 			write := pickerRequests(t, wire)[0]
@@ -61,9 +61,9 @@ func TestComposerLateSkillSavePreservesCurrentSearch(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
-			u.session.cwd = "/work/one"
+			u.cwd = "/work/one"
 			catalog := []completion.Choice{{Name: "review", Path: "/shared/review/SKILL.md", Enabled: true}}
-			u.picker.Catalog(catalog, u.session.cwd, true, "")
+			u.picker.Catalog(catalog, u.cwd, true, "")
 			appServerTestKeys(t, u, "/skills\r2 ")
 			write := pickerRequests(t, wire)[0]
 			if write.Method != "skills/config/write" {
@@ -71,7 +71,7 @@ func TestComposerLateSkillSavePreservesCurrentSearch(t *testing.T) {
 			}
 			u.pickerKey("\x1b")
 			if test.switchWorkspace {
-				u.session.cwd = "/work/two"
+				u.cwd = "/work/two"
 			}
 			if test.reopen {
 				appServerTestKeys(t, u, "/skills\r2")
@@ -80,7 +80,7 @@ func TestComposerLateSkillSavePreservesCurrentSearch(t *testing.T) {
 				if load.Method != "skills/list" {
 					t.Fatalf("expected catalog reload, got %+v", load)
 				}
-				pickerReply(t, u, load.ID, fmt.Sprintf(`{"data":[{"cwd":%q,"skills":[{"name":"review","path":"/shared/review/SKILL.md","enabled":true}],"errors":[{"message":"current catalog incomplete"}]}]}`, u.session.cwd))
+				pickerReply(t, u, load.ID, fmt.Sprintf(`{"data":[{"cwd":%q,"skills":[{"name":"review","path":"/shared/review/SKILL.md","enabled":true}],"errors":[{"message":"current catalog incomplete"}]}]}`, u.cwd))
 			} else {
 				appServerTestKeys(t, u, "@f")
 				requests := pickerRequests(t, wire)
@@ -113,7 +113,7 @@ func TestComposerSkillSaveDoesNotOwnReloadedCatalog(t *testing.T) {
 	for _, response := range []string{`"result":{"effectiveEnabled":false}`, `"error":{"code":-1,"message":"save denied"}`} {
 		t.Run(response, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
-			u.session.cwd = "/work"
+			u.cwd = "/work"
 			u.picker.Catalog([]completion.Choice{{Name: "review", Path: "/work/review/SKILL.md", Enabled: true}}, "/work", true, "")
 			appServerTestKeys(t, u, "/skills\r2 ")
 			write := pickerRequests(t, wire)[0]
@@ -138,7 +138,7 @@ func TestComposerSkillSaveDoesNotOwnReloadedCatalog(t *testing.T) {
 
 func TestUISnapshotSkillSavePresentationOwnership(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.session.cwd = "/work"
+	u.cwd = "/work"
 	u.picker.Catalog([]completion.Choice{{Name: "review", Path: "/work/review/SKILL.md", Enabled: true}}, "/work", true, "")
 	appServerTestKeys(t, u, "/skills\r2 ")
 	uisnapshot.Assert(t, "testdata/snapshots/skill_save_owning_manager.txt", strings.Join(u.renderPicker(72, 12), "\n")+"\n")

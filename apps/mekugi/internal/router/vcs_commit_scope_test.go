@@ -41,7 +41,7 @@ func TestVCSCommitEnrichmentKeepsSegmentDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "/usr/bin/bash -lc " + quoteShellWord(script), "cwd": u.session.cwd, "status": "inProgress"}
+	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "/usr/bin/bash -lc " + quoteShellWord(script), "cwd": u.cwd, "status": "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	report := dialExecTrackReport(t, hub, script)
 	for i := range commands {

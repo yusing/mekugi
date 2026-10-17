@@ -79,7 +79,7 @@ func TestAppServerInputHistoryAttachmentsRemainUsable(t *testing.T) {
 func TestAppServerInputHistoryResumeAndRejectedInput(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.agents = activityui.NewView()
-	u.session.start(u.Thread, "/workspace")
+	u.startSession(u.Thread, "/workspace")
 	u.restoreHistory([]binding.HistoryTurn{{ID: "old", Status: "completed", Items: []binding.ThreadItem{{Type: "userMessage", ID: "input", Content: []byte(`[{"type":"text","text":"saved"}]`)}}}})
 	appServerTestKeys(t, u, "\x1b[A")
 	if u.Text != "saved" {

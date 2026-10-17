@@ -16,7 +16,7 @@ func bindComposerFile(u *appServerUI, label, path string) {
 
 func TestComposerFileTokenHistoryAndRejectedSubmission(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.session.cwd = "/work"
+	u.cwd = "/work"
 	appServerTestKeys(t, u, "@f")
 	requests := pickerRequests(t, w)
 	pickerReply(t, u, requests[0].ID, `{"files":[{"root":"/work","path":"file name.go"}]}`)
@@ -96,7 +96,7 @@ func TestComposerFileTokenEditorPreservesExistingAdjacency(t *testing.T) {
 
 func TestComposerKillLineKeepsMultilineFileAtomic(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.session.cwd = "/work"
+	u.cwd = "/work"
 	appServerTestKeys(t, u, "@f")
 	requests := pickerRequests(t, w)
 	pickerReply(t, u, requests[0].ID, `{"files":[{"root":"/work","path":"foo\nbar.txt"}]}`)

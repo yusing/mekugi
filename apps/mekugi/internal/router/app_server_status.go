@@ -74,7 +74,7 @@ func (u *appServerUI) showStatus() error {
 	add("Service tier", u.displayServiceTier())
 	add("Model provider", u.statusConfig.Provider)
 	group = "Session"
-	add("Directory", u.session.cwd)
+	add("Directory", u.cwd)
 	add("Session", u.Thread)
 	var approval string
 	if len(u.statusConfig.Approval) != 0 {
@@ -93,7 +93,7 @@ func (u *appServerUI) showStatus() error {
 		add("Agents.md", strings.Join(u.statusConfig.Instructions, ", "))
 	}
 	report := new(appServerStatusReport)
-	for _, agent := range u.session.agents {
+	for _, agent := range u.session.Roster() {
 		if agent.Name != "/root" {
 			continue
 		}

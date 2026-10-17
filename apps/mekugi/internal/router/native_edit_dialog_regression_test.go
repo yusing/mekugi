@@ -57,7 +57,7 @@ func openRegressionEditDialog(t *testing.T, tc editDialogRegressionCase, capture
 		change := binding.FileChange{Path: path, Diff: tc.host}
 		change.Kind.Type = tc.kind
 		item := binding.ThreadItem{Type: "fileChange", Status: "completed", Changes: []binding.FileChange{change}}
-		u.source.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch", EditPages: activitypresentation.HostEditPages(item.Observation(), u.session.cwd, "item/completed")}}}}
+		u.source.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch", EditPages: activitypresentation.HostEditPages(item.Observation(), u.cwd, "item/completed")}}}}
 	}
 	if !u.shell.openActivityEdit(u.view, 1, path) {
 		t.Fatal("edit dialog did not open")

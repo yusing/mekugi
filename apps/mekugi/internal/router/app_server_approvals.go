@@ -53,7 +53,7 @@ func (d *nativeApprovalDock) layout(a *sessioncontrol.Approval) *conversationui.
 }
 
 func (u *appServerUI) approvalAgent(thread string) string {
-	path := u.session.paths[thread]
+	path := u.session.KnownCaller(thread)
 	if path == "" || path == "/root" {
 		return ""
 	}
@@ -65,7 +65,7 @@ func (u *appServerUI) approvalDirectory(cwd string) []string {
 	if cwd == "" {
 		return nil
 	}
-	if path := pathdisplay.ForWorkspace(u.session.cwd, cwd); path != "." {
+	if path := pathdisplay.ForWorkspace(u.cwd, cwd); path != "." {
 		return []string{"in " + path}
 	}
 	return nil
@@ -178,7 +178,7 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 			if m.Method == "item/started" {
 				var paths []string
 				for _, change := range p.Item.Changes {
-					paths = append(paths, pathdisplay.ForWorkspace(u.session.cwd, change.Path))
+					paths = append(paths, pathdisplay.ForWorkspace(u.cwd, change.Path))
 				}
 				u.approvals.patches[p.Item.ID] = paths
 			} else {
@@ -197,7 +197,7 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 	if err != nil {
 		return true, fmt.Errorf("%s: %w", m.Method, err)
 	}
-	decoded, err := conversationbinding.DecodeApproval(m.Method, m.ID, params, u.session.cwd, u.approvals.patches[params.ItemID], u.controlObservations != nil)
+	decoded, err := conversationbinding.DecodeApproval(m.Method, m.ID, params, u.cwd, u.approvals.patches[params.ItemID], u.controlObservations != nil)
 	if err != nil {
 		return true, err
 	}
@@ -291,10 +291,10 @@ func (u *appServerUI) recordApproval(a *sessioncontrol.Approval, outcome string)
 		a.Thread, a.Turn = owner.Thread, owner.Turn
 		outcome += "\nCommand: " + a.Subject
 	}
-	entry := sessionpresentation.ActivityEntry{Seq: u.session.next(), Kind: "tool", Text: activitypresentation.ShellSource(frontends.ShellDisplaySource(a.Subject), ""), Observed: u.now(),
+	entry := sessionpresentation.ActivityEntry{Seq: u.session.Activity().NextSequence(), Kind: "tool", Text: activitypresentation.ShellSource(frontends.ShellDisplaySource(a.Subject), ""), Observed: u.now(),
 		Native: &sessionpresentation.NativeItem{Thread: a.Thread, Turn: a.Turn, Item: a.Item, Phase: "approval/updated", Approval: outcome}}
-	if u.session.paths != nil {
-		entry.Agent = u.session.path(a.Thread)
+	if u.session.KnownCaller(u.Thread) != "" {
+		entry.Agent = u.session.Caller(a.Thread)
 		u.applyActivity([]sessionpresentation.ActivityEntry{entry}, nil)
 	} else {
 		entry.Seq, entry.Agent = u.source.LastSeq+1, "Main"

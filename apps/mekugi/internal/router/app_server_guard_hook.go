@@ -27,7 +27,7 @@ func (u *appServerUI) checkGuardHook() (bool, error) {
 	if check.pendingThread == "" {
 		check.pendingThread = u.Thread
 		u.sessionPresentation().Status.SetText("Checking approval guard…")
-		if _, err := u.requests.Send("hooks/list", map[string]any{"cwds": []string{u.session.cwd}}, "main", appServerRequest{label: "approval/hooks"}); err != nil {
+		if _, err := u.requests.Send("hooks/list", map[string]any{"cwds": []string{u.cwd}}, "main", appServerRequest{label: "approval/hooks"}); err != nil {
 			check.pendingThread = ""
 			return false, err
 		}
@@ -45,7 +45,7 @@ func (u *appServerUI) guardHookResponse(message appserver.Message) error {
 	if message.Error != nil {
 		err = fmt.Errorf("read approval hook: %s", message.Error.Message)
 	} else {
-		err = shellhook.Validate(message.Result, u.session.cwd, u.guardHookCheck.hash)
+		err = shellhook.Validate(message.Result, u.cwd, u.guardHookCheck.hash)
 	}
 	if err != nil {
 		u.restoreDrafts(append(u.conversation().Unsent, u.conversation().Queued...)...)

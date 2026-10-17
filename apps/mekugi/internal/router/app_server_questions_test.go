@@ -62,8 +62,8 @@ func questionTestAsync(t *testing.T, u *appServerUI, item string, titles ...stri
 
 func questionTestPaint(t *testing.T, u *appServerUI, width int) string {
 	t.Helper()
-	if u.session.paths == nil {
-		u.session.start(u.Thread, u.session.cwd)
+	if u.session.KnownCaller(u.Thread) == "" {
+		u.startSession(u.Thread, u.cwd)
 	}
 	if u.shell == nil {
 		u.ensureShell()
@@ -175,7 +175,7 @@ func TestNativeChildQuestionUsesBlockedFallback(t *testing.T) {
 
 func TestNativeQuestionAsyncBatchAndExternalCommit(t *testing.T) {
 	u, input := newAppServerTestUI()
-	u.session.start("main", t.TempDir())
+	u.startSession("main", t.TempDir())
 	u.Turn = "turn"
 	questionTestAsync(t, u, "async-item", "Who receives it?", "Who approves it?")
 	if u.activeQuestionCall() == nil || u.questionCount() != 2 {
@@ -251,7 +251,7 @@ func TestNativeQuestionExternalReplyParksActiveAnswerBeforeCommit(t *testing.T) 
 	for _, secret := range []bool{false, true} {
 		t.Run(fmt.Sprintf("secret=%v", secret), func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.session.start("main", t.TempDir())
+			u.startSession("main", t.TempDir())
 			u.Turn = "turn"
 			u.insertDraft("Main draft")
 			questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{
@@ -302,7 +302,7 @@ func TestNativeQuestionsUseComposedAttachment(t *testing.T) {
 	if u.questions.Questions != questions || questions.Count("main") != 1 {
 		t.Fatal("native question did not reach the composed owner")
 	}
-	u.session.start("main", "/workspace")
+	u.startSession("main", "/workspace")
 	u.ensureShell()
 	if &u.conversation().Questions != questions || u.questionCount() != 1 || editor != &u.conversation().Editor || u.Text != "pre-start draft" {
 		t.Fatal("first host identity replaced pending question state")
@@ -373,7 +373,7 @@ func TestNativeQuestionSupersedeBannerAndRejectedSend(t *testing.T) {
 func TestNativeQuestionResumeOnlyUnanswered(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.agents = activityui.NewView()
-	u.session.start("main", t.TempDir())
+	u.startSession("main", t.TempDir())
 	id, err := json.Marshal([]any{"request_user_input_async", "answered-item", 0})
 	if err != nil {
 		t.Fatal(err)

@@ -96,7 +96,7 @@ func (u *appServerUI) holdResumeEvent(m appserver.Message, resuming bool) (hold,
 	}
 	_ = json.Unmarshal(m.Params, &p)
 	thread := cmp.Or(p.ThreadID, p.Thread.ID)
-	if !resuming && (thread == "" || u.session.paths[thread] != "" || u.session.paths[p.Thread.ParentThreadID] != "") {
+	if !resuming && (thread == "" || u.session.KnownCaller(thread) != "" || u.session.KnownCaller(p.Thread.ParentThreadID) != "") {
 		return false, false
 	}
 	root := cmp.Or(u.Replacement.Target, u.startup.Thread)
@@ -179,7 +179,7 @@ func (u *appServerUI) restoreMainHistory(turns []binding.HistoryTurn, placements
 		}
 	}
 	for index, turn := range turns {
-		u.restoredSegments = u.prepareCommandSegments(u.Thread, u.session.cwd, turn)
+		u.restoredSegments = u.prepareCommandSegments(u.Thread, u.cwd, turn)
 		placements := byTurn[index]
 		slots := positions[index].Slots(restoredPositions(placements))
 		place := func(indices []int) {
@@ -214,10 +214,10 @@ func (u *appServerUI) restoreMainHistory(turns []binding.HistoryTurn, placements
 			u.sessionPresentation().Status.SetText("Working")
 		}
 	}
-	u.session.lifecycle(u.Thread).Restore(restoredAgentIntervals(turns), uint64(len(turns)), u.Turn != "")
+	u.session.Lifecycle(u.Thread).Restore(restoredAgentIntervals(turns), uint64(len(turns)), u.Turn != "")
 	// Keep future activity sequence numbers ahead of the hydrated transcript.
-	u.session.seq = max(u.session.seq, u.source.LastSeq)
-	u.applyActivity(nil, u.session.roster())
+	u.session.Activity().AdvanceSequence(u.source.LastSeq)
+	u.applyActivity(nil, u.session.Roster())
 }
 
 func (u *appServerUI) applyRestoredMain(placements []*restoredPlacement) {
@@ -281,22 +281,22 @@ func (u *appServerUI) restoreHistoryItem(turn binding.HistoryTurn, item binding.
 	}
 	switch item.Type {
 	case "imageView":
-		entry := sessionpresentation.ActivityEntry{Seq: u.source.LastSeq + 1, Agent: "Main", Kind: "tool", Text: "View " + markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(u.session.cwd, item.Path)), CallID: item.ID, Observed: time.Now(),
+		entry := sessionpresentation.ActivityEntry{Seq: u.source.LastSeq + 1, Agent: "Main", Kind: "tool", Text: "View " + markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(u.cwd, item.Path)), CallID: item.ID, Observed: time.Now(),
 			Native: &sessionpresentation.NativeItem{Thread: u.Thread, Turn: turn.ID, Item: item.ID, Phase: method, SearchResults: appServerSearchResults(facts)}}
 		u.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
 	case "commandExecution", "fileChange", "webSearch":
-		text := appServerToolText(facts, u.session.cwd)
+		text := appServerToolText(facts, u.cwd)
 		if item.Type == "fileChange" {
-			text = activitypresentation.HostEditText(facts, u.session.cwd)
+			text = activitypresentation.HostEditText(facts, u.cwd)
 		}
 		entry := sessionpresentation.ActivityEntry{Seq: u.source.LastSeq + 1, Agent: "Main", Kind: "tool", Text: text, CallID: item.ID, Observed: time.Now(),
-			Native: &sessionpresentation.NativeItem{Thread: u.Thread, Turn: turn.ID, Item: item.ID, Phase: method, Command: item.Command, CommandCwd: appServerCommandDirectory(facts, u.session.cwd), Status: item.Status, Duration: appServerDuration(facts), SearchResults: appServerSearchResults(facts), Workdir: appServerCommandWorkdir(facts, u.session.cwd)}}
+			Native: &sessionpresentation.NativeItem{Thread: u.Thread, Turn: turn.ID, Item: item.ID, Phase: method, Command: item.Command, CommandCwd: appServerCommandDirectory(facts, u.cwd), Status: item.Status, Duration: appServerDuration(facts), SearchResults: appServerSearchResults(facts), Workdir: appServerCommandWorkdir(facts, u.cwd)}}
 		if item.Type == "fileChange" {
-			entry.Native.EditPages = activitypresentation.HostEditPages(facts, u.session.cwd, method)
+			entry.Native.EditPages = activitypresentation.HostEditPages(facts, u.cwd, method)
 		}
-		u.session.completeCommand(entry.Native, facts)
+		u.completeCommand(entry.Native, facts)
 		appServerCommandOutput(&entry, facts, time.Time{})
-		u.restoreCommandSegments(&entry, item, u.session.cwd)
+		u.restoreCommandSegments(&entry, item, u.cwd)
 		u.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
 		if len(entry.Native.Segments) == 0 && item.ExitCode != nil && *item.ExitCode != 0 {
 			exit := sessionpresentation.ActivityEntry{Seq: u.source.LastSeq + 1, Agent: "Main", Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID}
@@ -306,7 +306,7 @@ func (u *appServerUI) restoreHistoryItem(turn binding.HistoryTurn, item binding.
 	default:
 		if update, ok := historicalTranscript([]binding.ThreadItem{item}, u.Thread, turn.ID, true, false, u.now())[item.ID]; ok {
 			update.Phase = method
-			u.source.ApplyTranscript(update, item.Content, u.session.cwd, u.Thread, item.Type == "userMessage")
+			u.source.ApplyTranscript(update, item.Content, u.cwd, u.Thread, item.Type == "userMessage")
 		}
 	}
 }

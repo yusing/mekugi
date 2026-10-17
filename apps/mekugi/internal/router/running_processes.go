@@ -17,14 +17,15 @@ import (
 
 // Only live host commands enter this map. A completed command can stay there
 // while its output rolls through the transcript or its segment report drains.
-func (s *appServerSession) runningProcesses() iter.Seq[sessionpresentation.ActivityEntry] {
+func (u *appServerUI) runningProcesses() iter.Seq[sessionpresentation.ActivityEntry] {
+	s := &u.session
 	return func(yield func(sessionpresentation.ActivityEntry) bool) {
-		for key, run := range s.commands {
-			if !run.entry.Native.Invocation.Running() {
+		for key, run := range u.session.Commands() {
+			if !run.Entry.Native.Invocation.Running() {
 				continue
 			}
-			entry := run.entry
-			entry.Agent = s.paths[key[0]]
+			entry := run.Entry
+			entry.Agent = s.KnownCaller(key[0])
 			if !yield(entry) {
 				return
 			}
@@ -34,7 +35,7 @@ func (s *appServerSession) runningProcesses() iter.Seq[sessionpresentation.Activ
 
 func (u *appServerUI) runningProcessCount() int {
 	count := 0
-	for range u.session.runningProcesses() {
+	for range u.runningProcesses() {
 		count++
 	}
 	return count
@@ -61,7 +62,7 @@ func (u *appServerUI) processPages(pages []outputPage) []activityui.Block {
 			bySource[page.Source] = activityui.Block{Value: page.Value}
 		}
 	}
-	for entry := range u.session.runningProcesses() {
+	for entry := range u.runningProcesses() {
 		if seq := u.childSource.EntrySeq(entry); seq != 0 {
 			if _, known := bySource[seq]; !known {
 				bySource[seq] = activityui.Block{Source: seq, Owner: entry.Agent}

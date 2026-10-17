@@ -79,13 +79,19 @@ request tracker. Both sources use the same item, turn and transcript projection;
 the terminal attachment retains its own pacing and navigation.
 
 The application's source binding borrows the existing attached Activity feed pair
-for source records, semantic revisions and enrichment. Conversation remains the
+for source records, semantic revisions and enrichment. Activity owns the single
+ordered roster and shared feed sequence; the binding adds admitted metadata to
+that owner rather than maintaining an application registry. Conversation remains the
 transcript interpreter; its backend binding supplies neutral submitted-text spans
 and question-reply identities. Shared shell-source decoding supplies command facts. Audience admission and coverage belong to that binding,
 independently of painter configuration. Private host evidence and retained output
 handles stay in the binding; terminal consumers receive detached publications,
 identity-addressed details and output windows. Command reveal frames and animation
 cursors never become semantic source state.
+The attachment's command-operation index references Activity's canonical
+invocations and pending report evidence. Completion is visible there before a
+terminal finishes revealing its buffered output; process lists use canonical
+running state rather than index membership.
 
 The application binds source feeds and terminal views separately. Semantic
 transitions publish detached values before subsequent input or animation; painting

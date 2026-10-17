@@ -33,6 +33,7 @@ type Requests[T any] struct {
 	transport Transport
 	pending   map[string]Request[T]
 	sides     map[string]*Side
+	metadata  map[[2]string]bool
 }
 
 func NewRequests[T any](transport Transport) *Requests[T] {
@@ -79,6 +80,11 @@ func (r *Requests[T]) Retire(scope string) {
 	for id, request := range r.pending {
 		if request.Scope == scope {
 			delete(r.pending, id)
+		}
+	}
+	for key := range r.metadata {
+		if key[0] == scope {
+			delete(r.metadata, key)
 		}
 	}
 }

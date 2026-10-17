@@ -65,8 +65,8 @@ func (u *appServerUI) sessionCommand(command string) error {
 	u.Replacement.Clear()
 	u.sessionPresentation().Status.SetText("Starting new session…")
 	params := sessioncontrol.ThreadPermissions(map[string]any{"sessionStartSource": "clear"}, u.approvalMode)
-	if u.session.cwd != "" {
-		params["cwd"] = u.session.cwd
+	if u.cwd != "" {
+		params["cwd"] = u.cwd
 	}
 	if u.model != "" {
 		params["model"] = u.model
@@ -137,8 +137,8 @@ func (u *appServerUI) clearSessionPresentation() error {
 		u.retiredThreads = make(map[string]string)
 	}
 	u.retiredThreads[u.Thread] = u.Thread
-	for thread := range u.session.paths {
-		u.retiredThreads[thread] = u.Thread
+	for _, agent := range u.session.Roster() {
+		u.retiredThreads[agent.Thread] = u.Thread
 	}
 	u.hideQuestions()
 	retainedQuestions := u.questionCalls()
@@ -154,14 +154,14 @@ func (u *appServerUI) clearSessionPresentation() error {
 	u.exitUsage = binding.TokenUsage{}
 	u.feedback = noticepresentation.Model{}
 	u.mainView.NoticeDetails, u.mainView.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
-	for key, run := range u.session.commands {
-		if run.entry.Native.Invocation.ReleaseSegmentOutputs() {
+	for key, run := range u.session.Commands() {
+		if run.Entry.Native.Invocation.ReleaseSegmentOutputs() {
 			u.execTrack.ReleaseOutput(key)
 		}
 	}
 	waiting := u.conversation()
 	u.session.Retire()
-	u.session.Attachment = sessionpresentation.Attachment{}
+	u.session = sessionpresentation.Attachment{}
 	u.conversation().CarryInput(waiting)
 	u.bindConversation()
 	u.questions = nativeQuestionDock{Questions: &u.conversation().Questions}

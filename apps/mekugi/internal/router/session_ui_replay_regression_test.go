@@ -71,7 +71,7 @@ func TestSessionUIReplayRetainedCollaborationDelivery(t *testing.T) {
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("pass %d collaboration delivery = %#v, want %#v", pass, got, want)
 		}
-		child := p.ui.session.agent(p.ui.session.paths["child"])
+		child := p.ui.session.Agent(p.ui.session.KnownCaller("child"))
 		if child == nil || child.Settings.Model != "child-model" || child.Settings.Effort != "high" {
 			t.Fatalf("spawn settings lost: %+v", child)
 		}
@@ -134,7 +134,7 @@ func TestSessionUIReplayMailboxWaitUsesRecordedRoster(t *testing.T) {
 			if !strings.Contains(frame, want) {
 				t.Fatalf("pass %d at %s roster hides %q:\n%s", pass, at, want, frame)
 			}
-			if p.ui.session.waitStore != nil {
+			if p.ui.retainedSession.Store != nil {
 				t.Fatal("offline wait opened live retention")
 			}
 		}
@@ -172,7 +172,7 @@ func TestSessionUIReplayRetainsQuestionAnswerWait(t *testing.T) {
 		}
 		replayPlaybackTestPaint(t, p, 120, 28)
 	}
-	if p.ui.client != nil || p.ui.requests != nil || len(p.ui.session.metadata) != 0 {
+	if p.ui.client != nil || p.ui.requests != nil {
 		t.Fatal("playback constructed live question transport")
 	}
 }
@@ -363,8 +363,8 @@ func TestSessionUIReplayEndPaintSettlesQueuedCommandOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	replayPlaybackTestPaint(t, p, 120, 28)
-	run := p.ui.session.commands[[3]string{"root", "turn", command.ID}]
-	if run == nil || !run.output.Pending() {
+	run := p.ui.session.Commands()[[3]string{"root", "turn", command.ID}]
+	if run == nil || !p.ui.streams.Commands[[3]string{"root", "turn", command.ID}].Output.Pending() {
 		t.Fatal("regression requires painted output with a remaining backlog")
 	}
 	if err := p.advance(p.Until); err != nil {
@@ -372,7 +372,7 @@ func TestSessionUIReplayEndPaintSettlesQueuedCommandOutput(t *testing.T) {
 	}
 	p.Paused = true
 	first := ansi.Strip(replayPlaybackTestPaint(t, p, 120, 28))
-	if len(p.ui.session.commands) != 0 {
+	if len(p.ui.session.Commands()) != 0 {
 		t.Fatal("session-end frame leaves recorded completed command running")
 	}
 	var tail []string

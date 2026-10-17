@@ -145,7 +145,7 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 		ID: "cat-call", Type: "commandExecution", Command: "cat > direct.go", ExitCode: new(2),
 	}}}})
 	assertCapturedCommand(t, restored.testActivity(restored.view), "main", "cat-call", "Edit", 2)
-	restored.session.path("child")
+	restored.session.Caller("child")
 	restored.restoreActivityThread(binding.ThreadInfo{ID: "child", Cwd: workspace, Turns: []binding.HistoryTurn{{ID: "c", Status: "completed", Items: []binding.ThreadItem{sibling}}}}, false)
 	assertCapturedCommand(t, restored.testActivity(restored.agents), "child", sibling.ID, "Search", 0)
 	for _, view := range []*activityAdapter{u.testActivity(u.agents), restored.testActivity(restored.agents)} {
@@ -231,7 +231,7 @@ func TestAppServerCapturedEditsPreserveTrackedExits(t *testing.T) {
 			t.Fatalf("receipt overwrote per-command statuses: %+v", blocks)
 		}
 	}
-	got := mainFeed(appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: v.View, source: v.ActivitySource}), 100)
+	got := mainFeed(appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), view: v.View, source: v.ActivitySource}), 100)
 	if strings.Count(got, "exit 1") != 1 || !strings.Contains(got, "git cherry-pick · exit 1") {
 		t.Fatalf("receipt changed rendered failure ownership:\n%s", got)
 	}
@@ -338,7 +338,7 @@ func TestCodeModeCellEditReceipt(t *testing.T) {
 	item := binding.ThreadItem{ID: "edit-exec", Type: "commandExecution", Command: edit, ExitCode: new(0)}
 	live := newAppServerSessionTestUI(t, workspace)
 	live.Thread = "thread-1"
-	live.session.start(live.Thread, workspace)
+	live.startSession(live.Thread, workspace)
 	live.review.Projection.Data = snapshot
 	publishFixtureReview(t, live)
 	appServerTestNotify(t, live, "item/completed", map[string]any{"threadId": "thread-1", "turnId": "turn", "item": item})
@@ -346,7 +346,7 @@ func TestCodeModeCellEditReceipt(t *testing.T) {
 	assertCapturedCommand(t, live.testActivity(live.view), "thread-1", "edit-exec", "Edit", 0)
 	restored := newAppServerSessionTestUI(t, workspace)
 	restored.Thread = "thread-1"
-	restored.session.start(restored.Thread, workspace)
+	restored.startSession(restored.Thread, workspace)
 	restored.review.Projection.Data = snapshot
 	publishFixtureReview(t, restored)
 	restored.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}})
@@ -413,7 +413,7 @@ func TestAppServerCapturedEditKeepsCommandPaths(t *testing.T) {
 	u.review.Projection.Data = reviewReceiptSnapshot(t, data)
 	u.applyCapturedEdits()
 	check(u.testActivity(u.view))
-	restored := newAppServerSessionTestUI(t, u.session.cwd)
+	restored := newAppServerSessionTestUI(t, u.cwd)
 	restored.review.Projection.Data = reviewReceiptSnapshot(t, data)
 	restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 	check(restored.testActivity(restored.view))

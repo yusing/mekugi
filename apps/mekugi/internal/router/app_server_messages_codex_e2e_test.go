@@ -65,7 +65,7 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, history: testHistory(), client: client, view: activityui.NewView(), agents: activityui.NewView(), requests: sessioncontrol.NewRequests[appServerRequest](client), ctx: ctx})
+	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), history: testHistory(), client: client, view: activityui.NewView(), agents: activityui.NewView(), requests: sessioncontrol.NewRequests[appServerRequest](client), ctx: ctx})
 	setTestAppServerIntegration(u, proxy)
 	u.ensureShell()
 

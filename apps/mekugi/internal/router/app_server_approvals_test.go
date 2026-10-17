@@ -473,7 +473,7 @@ func TestNativeApprovalDenialProjectsFeedbackInSameTurn(t *testing.T) {
 
 func TestNativeApprovalQuestionEditorOwnership(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.session.start("main", t.TempDir())
+	u.startSession("main", t.TempDir())
 	u.Turn = "turn"
 	approvalTestCommand(t, u, 7, nil)
 	questionTestPaint(t, u, 80)
@@ -640,7 +640,7 @@ func TestUISnapshotNativeApprovalDock(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.view.Painter.Theme = diffrender.DarkTheme
 			u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
-			u.session.start("main", "/workspace")
+			u.startSession("main", "/workspace")
 			u.Turn = "turn"
 			tc.setup(t, u)
 			rows, _ := u.testMainFrame(tc.width, 20, 0)
@@ -671,7 +671,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 			u.Turn = "turn"
 			thread, view := "main", u.testActivity(u.view)
 			if tc.child {
-				u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
+				u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 				thread, view = "child", u.testActivity(u.agents)
 			}
 			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "git push origin main", Status: "inProgress"}
@@ -694,7 +694,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 				native := *view.Entries[0].Source.Native
 				native.Phase = "item/commandExecution/outputDelta"
 				native.Segments = []sessionpresentation.ActivitySegment{{Source: item.Command, Text: toolActivityShell(item.Command), Running: true}}
-				u.applyActivity([]sessionpresentation.ActivityEntry{{Seq: u.session.next(), Agent: u.session.path(thread), Kind: "tool", Text: toolActivityShell(item.Command), Native: &native}}, nil)
+				u.applyActivity([]sessionpresentation.ActivityEntry{{Seq: u.session.Activity().NextSequence(), Agent: u.session.Caller(thread), Kind: "tool", Text: toolActivityShell(item.Command), Native: &native}}, nil)
 				if len(view.Entries) != 1 || len(view.blocks(0)) != 1 || !strings.HasPrefix(view.Entries[0].Source.Native.Approval, "Pending Approval") {
 					t.Fatal("early guard pending state was not reconciled")
 				}
@@ -766,7 +766,7 @@ func TestUISnapshotNativeAutoApprovalStates(t *testing.T) {
 			u := newAppServerSessionTestUI(t, "/workspace")
 			u.clock = func() time.Time { return time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC) }
 			u.view.Clock, u.agents.Clock = u.clock, u.clock
-			u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
+			u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "git push", Status: "inProgress"}
 			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "turn", "item": item})
 			review := func(method, state, target string) {

@@ -14,7 +14,7 @@ func TestNativePromptCoveredFrameDoesNotAdmitAnswer(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			u, input := newAppServerTestUI()
 			u.Turn = "turn"
-			u.session.start("main", "")
+			u.startSession("main", "")
 			u.ensureShell()
 			content := []activityui.Block{{Kind: "op", Verb: "Read", Code: "retained output", Body: strings.Repeat("Content dialog\n", 30)}}
 			u.shell.openBlocks(u.view, content)
@@ -75,7 +75,7 @@ func TestNativePromptSelectionVisibility(t *testing.T) {
 		for _, covering := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/covering=%t", kind, covering), func(t *testing.T) {
 				u, input := newAppServerTestUI()
-				u.session.start("main", "")
+				u.startSession("main", "")
 				u.Turn = "turn"
 				screen := vt.NewEmulator(80, 20)
 				defer screen.Close()
@@ -126,7 +126,7 @@ func TestUISnapshotNativePromptsTinyFrame(t *testing.T) {
 	for _, height := range []int{2, 3, 4} {
 		t.Run(fmt.Sprintf("height=%d", height), func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.session.start("main", "")
+			u.startSession("main", "")
 			u.Turn = "turn"
 			approvalTestCommand(t, u, "approval", nil)
 			questionTestSync(t, u, "question", false)

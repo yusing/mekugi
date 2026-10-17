@@ -107,7 +107,7 @@ func TestOutputDialogWheelAndOutsideClickIsolation(t *testing.T) {
 		output.Write(fmt.Sprintf("line %02d\n", i))
 	}
 	u := dialogForOutput(output)
-	u.main = appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: activityui.NewView()})
+	u.main = appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), view: activityui.NewView()})
 	drawOutputDialog(u)
 	feedOffset := u.main.view.Offset
 	u.outputMouse(64, 0, 0, false)
@@ -129,7 +129,7 @@ func TestOutputDialogSearchAndCopyRetainedText(t *testing.T) {
 	output.Write("alpha\nneedle one\nbeta\nneedle two\n")
 	output.Finish(nil, new(0))
 	u := dialogForOutput(output)
-	u.main = appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: activityui.NewView()})
+	u.main = appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), view: activityui.NewView()})
 	drawOutputDialog(u)
 	u.outputKey("/")
 	for _, key := range []string{"n", "e", "e", "d", "l", "e", "\r"} {
@@ -416,7 +416,7 @@ func TestOutputDialogTerminalKeyDecoderOwnsPrefixAndPaging(t *testing.T) {
 		output.Write(fmt.Sprintf("row %02d\n", i))
 	}
 	u := dialogForOutput(output)
-	u.main = appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: activityui.NewView()})
+	u.main = appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), view: activityui.NewView()})
 	drawOutputDialog(u)
 	u.Focus = 0
 	for _, key := range []byte{2, '3'} {

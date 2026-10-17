@@ -52,7 +52,7 @@ func markdownFileTarget(workspace, target string) (path string, ok bool) {
 }
 
 func (u *appServerUI) markdownFileAllowed(target string) bool {
-	_, ok := markdownFileTarget(u.session.cwd, target)
+	_, ok := markdownFileTarget(u.cwd, target)
 	return ok
 }
 
@@ -79,7 +79,7 @@ func (u *terminalUI) markdownFileUpdates() <-chan markdownFileResult {
 func (u *terminalUI) openMarkdownFile(view *activityui.View, target string) bool {
 	workspace := ""
 	if u.main != nil {
-		workspace = u.main.session.cwd
+		workspace = u.main.cwd
 	}
 	path, ok := markdownFileTarget(workspace, target)
 	if !ok {
@@ -127,7 +127,7 @@ func (u *terminalUI) loadedMarkdownFile(result markdownFileResult) bool {
 	if u.output != d {
 		return false
 	}
-	if u.main != nil && (u.main.session.Scope() != result.attachment || u.main.sessionPresentation().View().Displayed.ID != result.thread || u.main.session.cwd != result.workspace) {
+	if u.main != nil && (u.main.session.Scope() != result.attachment || u.main.sessionPresentation().View().Displayed.ID != result.thread || u.main.cwd != result.workspace) {
 		u.output = nil
 		return true
 	}

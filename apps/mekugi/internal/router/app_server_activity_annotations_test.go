@@ -107,7 +107,7 @@ func TestAppServerFailedCodeModeCellShowsItsError(t *testing.T) {
 			if child {
 				thread, view = "child", u.testActivity(u.agents)
 				activity.Observe("child", "main", "/root/worker", true)
-				u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
+				u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 			}
 			failed := `[{"type":"input_text","text":"Script failed\nWall time 0.0 seconds\nOutput:\n"},{"type":"input_text","text":"Script error:\nSyntaxError: Unexpected token '<<'\n    at cell:1"}]`
 			completed := `[{"type":"input_text","text":"Script completed\nWall time 0.1 seconds\nOutput:\n"},{"type":"input_text","text":"Script error:\nprinted by the program"}]`

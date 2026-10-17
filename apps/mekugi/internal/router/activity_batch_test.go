@@ -243,12 +243,12 @@ func TestActivityBatchRestoresVCSRows(t *testing.T) {
 	output := "2\t1\ta.go\n"
 	item := binding.ThreadItem{ID: "vcs", Type: "commandExecution", Command: "bash -lc 'echo before; git diff --numstat'", ExitCode: new(0), AggregatedOutput: new("before\n" + output)}
 	entry := sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "t", Item: item.ID}}
-	first, second := u.session.activity.Outputs(u.session.Scope()).New(), u.session.activity.Outputs(u.session.Scope()).New()
+	first, second := u.activity.Outputs(u.session.Scope()).New(), u.activity.Outputs(u.session.Scope()).New()
 	first.Finish(new("before\n"), new(0))
 	second.Finish(&output, new(0))
 	u.retainCommandSegments(entry, item.Observation(), execTrackView{complete: true, output: true, segments: []sessionpresentation.ActivitySegment{{Output: first}, {Output: second, Raw: output}}})
 	awaitCommandSegments(t, u)
-	u.restoreCommandSegments(&entry, item, u.session.cwd)
+	u.restoreCommandSegments(&entry, item, u.cwd)
 	if len(entry.Native.Segments) != 2 {
 		t.Fatalf("missing segments: %+v", entry.Native.Segments)
 	}

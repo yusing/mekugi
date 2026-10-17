@@ -131,7 +131,7 @@ func TestAppServerTranscriptOlderHistoryPreservesLiveReasoning(t *testing.T) {
 	restoreContentReply(t, u, 5, map[string]any{"data": []any{map[string]any{
 		"turnId": "t", "completedAtMs": 101000, "item": map[string]any{"id": "shared", "type": "reasoning", "summary": []string{"Older public summary"}, "content": []string{"PRIVATE"}},
 	}}})
-	if !u.session.agent("/root/worker").Responding {
+	if !u.session.Agent("/root/worker").Responding {
 		t.Fatal("historical page reset the active child lifecycle")
 	}
 	at = at.Add(2 * time.Second)

@@ -40,7 +40,7 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 	}
 	fileURL := (&url.URL{Scheme: "file", Path: path}).String()
 	main, _ := newAppServerTestUI()
-	main.session.cwd = workspace
+	main.cwd = workspace
 	painter := activityui.Painter{FileLink: main.markdownFileAllowed}
 	for _, target := range []string{"src/source #1?%.go", path + ":26", fileURL + ":26", "src/source #1?%.go:26-27", fileURL + ":26-27", "`" + path + ":26`"} {
 		t.Run(target, func(t *testing.T) {
@@ -50,7 +50,7 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 				target = strings.Trim(target, "`")
 			}
 			u := selectionTestUI(row)
-			u.main.session.cwd = workspace
+			u.main.cwd = workspace
 			u.selectionMouse(0, 1, 0, false)
 			u.selectionMouse(0, 1, 0, true)
 			if u.output == nil || u.frame.Clipboard != "" || u.selection != nil {
@@ -73,7 +73,7 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 				t.Fatal("whole-file copy changed source or trailing newlines")
 			}
 			u = selectionTestUI(row)
-			u.main.session.cwd = workspace
+			u.main.cwd = workspace
 			selectionTestDrag(t, u, 0, 0, 5, 0)
 			if u.output != nil || u.frame.Clipboard != "" || u.selection.Text() != "source" {
 				t.Fatal("drag activated the file link")
@@ -85,8 +85,8 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 func TestUISnapshotMarkdownFileLinks(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
-	u.session.cwd = t.TempDir()
-	if err := os.WriteFile(filepath.Join(u.session.cwd, "sample.go"), []byte("package sample\n"), 0600); err != nil {
+	u.cwd = t.TempDir()
+	if err := os.WriteFile(filepath.Join(u.cwd, "sample.go"), []byte("package sample\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	text := "Historical replacement count or resulting speed/cost savings.\n" +
@@ -98,7 +98,7 @@ func TestUISnapshotMarkdownFileLinks(t *testing.T) {
 		rows := view.Painter.Markdown(text, 72, false)
 		uisnapshot.AssertTerminal(t, "testdata/snapshots/markdown-file-links.txt", append(rows, "plain after links"), 72)
 	}
-	u.session.cwd = ""
+	u.cwd = ""
 	if strings.Contains(u.view.Painter.Inline("sample.go"), "\x1b]8;") {
 		t.Fatal("relative path became clickable without workspace metadata")
 	}
@@ -141,7 +141,7 @@ func TestMarkdownFileDialogViews(t *testing.T) {
 		t.Fatal(err)
 	}
 	main, _ := newAppServerTestUI()
-	main.session.cwd = workspace
+	main.cwd = workspace
 	u := &terminalUI{main: main, width: 80, height: 18}
 	u.openMarkdownFile(main.view, path+":30-31")
 	awaitMarkdownFile(t, u)
@@ -189,7 +189,7 @@ func TestUISnapshotMarkdownFileViews(t *testing.T) {
 		t.Fatal(err)
 	}
 	main, _ := newAppServerTestUI()
-	main.session.cwd = workspace
+	main.cwd = workspace
 	main.view.Painter.Theme = diffrender.TerminalTheme
 	u := &terminalUI{main: main, width: 80, height: 24}
 	u.openMarkdownFile(main.view, path)
@@ -208,7 +208,7 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 		t.Fatal(err)
 	}
 	main, _ := newAppServerTestUI()
-	main.session.cwd = workspace
+	main.cwd = workspace
 	u := &terminalUI{main: main, width: 80, height: 18}
 	u.openBlocks(main.view, []activityui.Block{{Body: "Open sample.go:1 or [remote](https://example.com)."}})
 	drawOutputDialog(u)
@@ -258,7 +258,7 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 			t.Fatalf("local read error is not copyable: %q", target)
 		}
 	}
-	main.session.cwd = ""
+	main.cwd = ""
 	if u.openMarkdownFile(main.view, "sample.go") {
 		t.Fatal("relative file resolved without workspace metadata")
 	}
@@ -301,7 +301,7 @@ func TestUISnapshotMarkdownFileDialog(t *testing.T) {
 				t.Fatal(err)
 			}
 			main, _ := newAppServerTestUI()
-			main.session.cwd = workspace
+			main.cwd = workspace
 			main.view.Painter.Theme = test.theme
 			u := &terminalUI{main: main, width: 80, height: 18}
 			if !u.openMarkdownFile(main.view, path+test.location) {

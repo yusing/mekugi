@@ -43,15 +43,15 @@ func (u *appServerUI) startChildHistory(info binding.ThreadInfo) error {
 	r := u.restoring
 	store := u.session.Thread(info.ID)
 	h := &appServerChildHistory{state: u.presentationState.History(store), info: info,
-		itemAt: r.itemAt[info.ID], placements: r.pane[u.session.path(info.ID)]}
+		itemAt: r.itemAt[info.ID], placements: r.pane[u.session.Caller(info.ID)]}
 	if h.itemAt == nil {
 		h.itemAt = make(map[string]time.Time)
 	}
-	delete(r.pane, u.session.path(info.ID))
+	delete(r.pane, u.session.Caller(info.ID))
 	h.info.Turns = nil
 	*u.childHistoryState.Value(store) = h
 	request := u.sessionPresentation().StartHistory(h.state, info.ID)
-	u.childSource.MarkSkillHistoryUnknown(u.session.path(info.ID))
+	u.childSource.MarkSkillHistoryUnknown(u.session.Caller(info.ID))
 	return u.requestChildHistory(request)
 }
 
@@ -127,7 +127,7 @@ func (u *appServerUI) childHistoryResponse(method string, m appserver.Message) e
 			for _, p := range h.placements {
 				if p.entry.Kind == "hook" {
 					entry := p.entry
-					entry.Seq = u.session.next()
+					entry.Seq = u.session.Activity().NextSequence()
 					u.applyRestoredActivity([]sessionpresentation.ActivityEntry{entry})
 				}
 			}
@@ -169,8 +169,8 @@ func (u *appServerUI) failChildHistory(message string) error {
 	h := u.historyLoading()
 	h.state.Fail(message)
 	if h.state.View(h.info.ID).Initial {
-		u.restoreHistoryNotice("Could not restore "+u.session.path(h.info.ID)+" history: "+message, false)
-		u.restoring.pane[u.session.path(h.info.ID)] = h.placements
+		u.restoreHistoryNotice("Could not restore "+u.session.Caller(h.info.ID)+" history: "+message, false)
+		u.restoring.pane[u.session.Caller(h.info.ID)] = h.placements
 	} else {
 		u.setNotice("Older child history: "+message+" · Ctrl-B o retries", true)
 	}
@@ -199,13 +199,9 @@ func (u *appServerUI) finishChildHistory() error {
 func (u *appServerUI) historyViews() []sessionpresentation.HistoryView {
 	loading := u.sessionPresentation().View().Loading
 	var views []sessionpresentation.HistoryView
-	for _, agent := range u.session.agents {
-		for thread, name := range u.session.paths {
-			if name == agent.Name {
-				if h := u.childHistory(thread); h != nil {
-					views = append(views, h.state.View(loading))
-				}
-			}
+	for _, agent := range u.session.Roster() {
+		if h := u.childHistory(agent.Thread); h != nil {
+			views = append(views, h.state.View(loading))
 		}
 	}
 	return views
@@ -312,7 +308,7 @@ func (u *appServerUI) renderChildHistoryPage(h *appServerChildHistory, turn bind
 		}
 	}
 	h.placements = remaining
-	name := u.session.path(h.info.ID)
+	name := u.session.Caller(h.info.ID)
 	r := u.restoring
 	if r == nil {
 		r = &appServerActivityRestore{state: sessionpresentation.NewRestoration(u.Thread), pane: make(map[string][]*restoredPlacement), itemAt: make(map[string]map[string]time.Time)}
@@ -328,10 +324,10 @@ func (u *appServerUI) renderChildHistoryPage(h *appServerChildHistory, turn bind
 	info.Turns = []binding.HistoryTurn{turn}
 	// Historical pages may not reset a newer live lifecycle or cumulative
 	// counters. Initial metadata supplies the complete turn count and timing.
-	agent := *u.session.agent(name)
+	agent := *u.session.Agent(name)
 	u.restoreActivityThread(info, page.Older)
-	*u.session.agent(name) = agent
-	u.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.roster()})
+	*u.session.Agent(name) = agent
+	u.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.Roster()})
 	first := uint64(0)
 	for _, entry := range u.childSource.Entries {
 		if entry.Source.Seq > before {
@@ -370,18 +366,18 @@ func (u *appServerUI) renderChildHistoryPage(h *appServerChildHistory, turn bind
 }
 
 func (u *appServerUI) hydrateChildHistoryMetadata(h *appServerChildHistory) {
-	agent := u.session.agent(u.session.path(h.info.ID))
+	agent := u.session.Agent(u.session.Caller(h.info.ID))
 	if !h.state.View(h.info.ID).Live {
 		var final *bool
 		if len(h.info.Turns) > 0 {
 			final = new(h.info.Turns[len(h.info.Turns)-1].Status == "completed")
 		}
-		u.session.lifecycle(h.info.ID).RestorePage(restoredAgentIntervals(h.info.Turns), uint64(len(h.info.Turns)), final)
+		u.session.Lifecycle(h.info.ID).RestorePage(restoredAgentIntervals(h.info.Turns), uint64(len(h.info.Turns)), final)
 	}
-	u.restoreContextUsage(agent, h.info)
+	restoreContextUsage(agent, h.info)
 	u.restoreUsage(h.info)
 	u.observeCost(h.info.ID, agent)
-	u.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.roster()})
+	u.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.Roster()})
 }
 
 // Insert the admitted source page through the shared model and terminal owners.

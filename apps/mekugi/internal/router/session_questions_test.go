@@ -58,7 +58,7 @@ func TestNonTerminalQuestionSubmissionKeepsOtherEditor(t *testing.T) {
 
 func TestNonTerminalQuestionBatchUsesOrdinarySubmission(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.session.start("main", t.TempDir())
+	u.startSession("main", t.TempDir())
 	u.Turn = "turn"
 	questionTestAsync(t, u, "batch", "Who receives it?", "Who approves it?")
 	v := u.publishPresentation(u.now())

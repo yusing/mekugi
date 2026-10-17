@@ -12,7 +12,7 @@ func (u *appServerUI) endTurnPreviews(thread, turn string) {
 	u.execWindows.StopTurnPreviews(thread, turn)
 	if live := u.review.Preview(); live != nil {
 		live.SetTurn(thread, turn, false)
-		live.FinishTurn(u.session.cwd, thread, turn)
+		live.FinishTurn(u.cwd, thread, turn)
 	}
 	if u.shell != nil {
 		for id, pending := range u.shell.livePending {

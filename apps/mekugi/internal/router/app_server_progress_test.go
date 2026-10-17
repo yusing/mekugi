@@ -83,7 +83,7 @@ func TestAppServerProgressWaitAndReplay(t *testing.T) {
 	if len(v.source.Entries) != 2 || v.Turn != "" {
 		t.Fatalf("restored events revived work or went missing: %+v", v.source.Entries)
 	}
-	v.session.registerThread(binding.ThreadInfo{ID: "child"})
+	v.registerThread(binding.ThreadInfo{ID: "child"})
 	v.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: history}, false)
 	if len(v.childSource.Entries) != 2 || v.childSource.Entries[1].Source.Text != "Context compacted" {
 		t.Fatalf("child replay missing progress: %+v", v.childSource.Entries)
@@ -93,13 +93,13 @@ func TestAppServerProgressWaitAndReplay(t *testing.T) {
 func TestAppServerProgressUnfinishedChildWait(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	wait := binding.ThreadItem{ID: "w", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress"}
-	u.session.registerThread(binding.ThreadInfo{ID: "child"})
+	u.registerThread(binding.ThreadInfo{ID: "child"})
 	u.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: []binding.HistoryTurn{{ID: "t", Status: "inProgress", Items: []binding.ThreadItem{wait}}}}, false)
-	if !strings.Contains(u.childSource.Entries[0].Source.Text, "Waiting for agent") || u.session.agent(u.session.paths["child"]).Responding {
+	if !strings.Contains(u.childSource.Entries[0].Source.Text, "Waiting for agent") || u.session.Agent(u.session.KnownCaller("child")).Responding {
 		t.Fatal("unfinished historical wait claimed completion or revived work")
 	}
 	// A later turn must not restart animation for the restored wait.
-	agent := *u.session.agent(u.session.paths["child"])
+	agent := *u.session.Agent(u.session.KnownCaller("child"))
 	agent.Responding = true
 	first, _ := u.testActivity(u.agents).testCurrent(agent, time.Unix(0, 0))
 	second, _ := u.testActivity(u.agents).testCurrent(agent, time.Unix(1, 0))
@@ -117,11 +117,11 @@ func TestAppServerWaitRosterOnly(t *testing.T) {
 	for _, caller := range []string{"main", "child"} {
 		t.Run(caller, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			u.session.registerThread(binding.ThreadInfo{ID: "child"})
+			u.registerThread(binding.ThreadInfo{ID: "child"})
 			feed := u.testActivity(u.view)
 			name := "/root"
 			if caller == "child" {
-				feed, name = u.testActivity(u.agents), u.session.path(caller)
+				feed, name = u.testActivity(u.agents), u.session.Caller(caller)
 			}
 			check := func(want string) {
 				t.Helper()

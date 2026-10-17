@@ -21,18 +21,18 @@ func (u *appServerUI) captureShellEdit(command string) *executionobservation.She
 	if u.retained.Store == nil || u.replay != nil {
 		return nil
 	}
-	ctx := u.session.waitContext
+	ctx := u.retainedSession.Context
 	if ctx == nil {
 		ctx = u.ctx
 	}
 	edit := executionobservation.PrepareShell(ctx, u.retained, u.changeSource, u.snapshots, u.recovered, u.publishChanges, u.execWindows, u.audience, u.captureNotice, executionobservation.ShellInput{
-		Thread: u.Thread, Turn: u.Turn, Namespace: u.session.waitNamespace,
-		Workspace: u.session.cwd, Caller: u.session.path(u.Thread), Command: command, Shell: u.shellEdits.shell,
+		Thread: u.Thread, Turn: u.Turn, Namespace: u.retainedSession.Namespace,
+		Workspace: u.cwd, Caller: u.session.Caller(u.Thread), Command: command, Shell: u.shellEdits.shell,
 	})
 	if edit == nil {
 		return nil
 	}
-	u.restoreDiffThread(binding.ThreadInfo{ID: u.Thread, Cwd: u.session.cwd}, true)
+	u.restoreDiffThread(binding.ThreadInfo{ID: u.Thread, Cwd: u.cwd}, true)
 	edit.Begin(u.review)
 	return edit
 }

@@ -15,7 +15,7 @@ func TestAppServerInterruptedWaitEndsBeforeContinue(t *testing.T) {
 	for _, thread := range []string{"main", "child"} {
 		t.Run(thread, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			u.session.registerThread(binding.ThreadInfo{ID: "child"})
+			u.registerThread(binding.ThreadInfo{ID: "child"})
 			wait := binding.ThreadItem{ID: "wait", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress", ReceiverThreadIDs: []string{"target"}}
 			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "turn"}})
 			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "turn", "item": wait})
@@ -45,7 +45,7 @@ func TestAppServerRestoredStoppedWait(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			history := []binding.HistoryTurn{{ID: "old", Status: status, Items: []binding.ThreadItem{{ID: "wait", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress"}}}}
 			u.restoreHistory(history)
-			u.session.registerThread(binding.ThreadInfo{ID: "child"})
+			u.registerThread(binding.ThreadInfo{ID: "child"})
 			u.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: history}, false)
 			for _, view := range []*activityAdapter{u.testActivity(u.view), u.testActivity(u.agents)} {
 				if view.Entries[0].Source.Text != "Wait ended" || view.Entries[0].Source.Native.Phase != "turn/completed" {
@@ -63,7 +63,7 @@ func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 	auto := newLivePreview(t.Context())
 	defer auto.Close()
 	setTestAppServerIntegration(u, &observationFixture{review: testReview(auto), execWindows: &executionobservation.Windows{}})
-	workspace := u.session.cwd
+	workspace := u.cwd
 	setLiveScope(auto, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}})
 	u.review.Projection.Scope = testReview(auto).Scope()
 	sub := testReview(auto).Subscribe()

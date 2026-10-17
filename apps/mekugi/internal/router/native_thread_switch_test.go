@@ -166,8 +166,8 @@ func TestNativeChildComposerSettingsEvidence(t *testing.T) {
 	if got := caption(); !strings.Contains(got, "live-model (low) · flex") {
 		t.Fatalf("child caption ignored its confirmed thread tier: %s", got)
 	}
-	u.session.collab((binding.ThreadItem{Tool: "spawnAgent", SenderThreadID: "main", ReceiverThreadIDs: []string{"spawned"}, Model: "spawn-model", ReasoningEffort: "high"}).Observation(), "spawn", u.now(), activitypresentation.ObservedCollaboration)
-	u.testActivity(u.agents).displayThread(u.session.paths["spawned"])
+	u.collab((binding.ThreadItem{Tool: "spawnAgent", SenderThreadID: "main", ReceiverThreadIDs: []string{"spawned"}, Model: "spawn-model", ReasoningEffort: "high"}).Observation(), "spawn", u.now(), activitypresentation.ObservedCollaboration)
+	u.testActivity(u.agents).displayThread(u.session.KnownCaller("spawned"))
 	if got := caption(); !strings.Contains(got, "spawn-model (high)") || strings.Contains(got, "priority") {
 		t.Fatalf("spawn metadata was not scoped to the selected child: %s", got)
 	}

@@ -186,7 +186,7 @@ func TestUISnapshotNativeFilePicker(t *testing.T) {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.view.Painter.Theme = diffrender.DarkTheme
-			u.session.cwd = "/workspace"
+			u.cwd = "/workspace"
 			u.picker = composerPicker{State: completion.State{Open: true, Target: completion.Target{Kind: '@', Query: "snapshot"}, Selected: 1, Choices: []completion.Choice{
 				{Name: "internal/uisnapshot/snapshot.go", Path: "internal/uisnapshot/snapshot.go"},
 				{Name: "internal/ui/activity/snapshot_test.go", Path: "internal/ui/activity/snapshot_test.go"},

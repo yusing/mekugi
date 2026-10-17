@@ -247,7 +247,7 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.view.Painter.Theme = diffrender.DarkTheme
-			u.session.cwd = "/workspace"
+			u.cwd = "/workspace"
 			u.replayDebugDirectory = tc.debug
 			u.showSessionMetrics()
 			m := u.statusPanel.metrics

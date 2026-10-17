@@ -15,10 +15,3 @@ func restoreContextUsage(agent *sessionpresentation.ActivityAgent, info binding.
 		agent.ContextTokens, agent.ContextWindow, agent.ContextKnown = usage.Tokens, usage.Window, true
 	}
 }
-
-func (u *appServerUI) restoreContextUsage(agent *sessionpresentation.ActivityAgent, info binding.ThreadInfo) {
-	if info.ID == u.Thread {
-		u.session.compactionRollout = binding.ThreadInfo{ID: info.ID, Path: info.Path, Cwd: info.Cwd}
-	}
-	restoreContextUsage(agent, info)
-}

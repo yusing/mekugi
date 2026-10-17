@@ -32,7 +32,7 @@ func (u *appServerUI) openSelectedFileEditor(path string, stdin, stdout *os.File
 		u.setNotice("Open editor: "+err.Error(), true)
 		return
 	}
-	workspace := u.session.cwd
+	workspace := u.cwd
 	if editor, ok := u.shell.Auxiliary.(terminalui.PaneEditor); ok {
 		workspace = editor.Workspace()
 	}

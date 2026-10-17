@@ -31,7 +31,7 @@ func TestAppServerContextWindow(t *testing.T) {
 	}
 	notify("main", 100000, 400000)
 	notify("child", 20000, 200000)
-	root := u.session.agent("/root")
+	root := u.session.Agent("/root")
 	if root.ContextTokens != 100000 || root.InputTokens != 900000 {
 		t.Fatalf("context conflated with cumulative usage: %+v", root)
 	}
@@ -79,8 +79,8 @@ func TestAppServerContextWindow(t *testing.T) {
 	if got := activityui.ContextWindowLabel(testActivityAgent(*root)); got != "0%" {
 		t.Fatal(got)
 	}
-	u.session.start("fresh", t.TempDir())
-	if got := activityui.ContextWindowLabel(testActivityAgent(*u.session.agent("/root"))); got != "0%" {
+	u.startSession("fresh", t.TempDir())
+	if got := activityui.ContextWindowLabel(testActivityAgent(*u.session.Agent("/root"))); got != "0%" {
 		t.Fatal(got)
 	}
 }
@@ -104,7 +104,7 @@ func TestAppServerStartupRestoresContext(t *testing.T) {
 	}
 	write("child", 20000)
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-	child := u.session.agent("/root/worker")
+	child := u.session.Agent("/root/worker")
 	if child.ContextKnown {
 		t.Fatal("child context arrived without evidence")
 	}
@@ -121,7 +121,7 @@ func TestAppServerStartupRestoresContext(t *testing.T) {
 	}
 	// Metadata must never replace a newer live update with a stale disk snapshot.
 	appServerTestNotify(t, u, "thread/tokenUsage/updated", map[string]any{"threadId": "child", "tokenUsage": map[string]any{"last": map[string]any{"totalTokens": 40000}, "modelContextWindow": 400000}})
-	u.session.registerThread(binding.ThreadInfo{ID: "child", Path: path})
+	u.registerThread(binding.ThreadInfo{ID: "child", Path: path})
 	if got := activityui.ContextWindowLabel(testActivityAgent(*child)); got != "40K/400K • 10%" {
 		t.Fatal(got)
 	}

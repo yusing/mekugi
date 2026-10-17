@@ -333,7 +333,7 @@ func TestAppServerCompactCancelRestoresWaitingInputDespiteSuccessfulCompletion(t
 func TestUISnapshotNativeCompactQueuedContinuation(t *testing.T) {
 	u, w := newAppServerTestUI()
 	setTestAppServerIntegration(u, &observationFixture{})
-	u.session.start(u.Thread, "")
+	u.startSession(u.Thread, "")
 	u.agents = activityui.NewView()
 	u.view.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }

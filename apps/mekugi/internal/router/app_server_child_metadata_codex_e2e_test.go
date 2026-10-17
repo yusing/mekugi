@@ -54,7 +54,7 @@ func TestAppServerChildMetadataNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, history: testHistory(), client: client, view: activityui.NewView(), agents: activityui.NewView(), requests: sessioncontrol.NewRequests[appServerRequest](client), ctx: ctx})
+	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), history: testHistory(), client: client, view: activityui.NewView(), agents: activityui.NewView(), requests: sessioncontrol.NewRequests[appServerRequest](client), ctx: ctx})
 	u.ensureShell()
 
 	defer u.shell.diffScreen.Close()
@@ -78,12 +78,12 @@ func TestAppServerChildMetadataNativeCodexE2E(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			for thread, path := range u.session.paths {
-				requestID, observed := u.session.metadata[thread]
-				if thread == u.Thread || path != "/root/metadata_probe" || !observed || requestID != "" {
+			for _, observed := range u.session.Roster() {
+				thread, path := observed.Thread, observed.Name
+				if thread == u.Thread || path != "/root/metadata_probe" {
 					continue
 				}
-				agent := u.session.agent(path)
+				agent := u.session.Agent(path)
 				if agent == nil || agent.Role != "explorer" {
 					continue
 				}
@@ -105,7 +105,7 @@ func TestAppServerChildMetadataNativeCodexE2E(t *testing.T) {
 		case err := <-client.Done:
 			t.Fatalf("app-server exited before child metadata and tool activity: %v", err)
 		case <-ctx.Done():
-			t.Fatalf("child identity, role, or tool activity missing: %v; paths=%v agents=%+v entries=%+v", ctx.Err(), u.session.paths, u.session.agents, u.childSource.Entries)
+			t.Fatalf("child identity, role, or tool activity missing: %v; paths=%v agents=%+v entries=%+v", ctx.Err(), u.session.Roster(), u.session.Roster(), u.childSource.Entries)
 		}
 	}
 }

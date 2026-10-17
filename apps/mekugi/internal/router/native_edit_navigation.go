@@ -35,7 +35,7 @@ func (u *terminalUI) activityEditPages(view *activityui.View, seq uint64, path s
 			}
 		}
 		if u.main != nil {
-			result := u.main.session.activity.ActivityDetail(u.main.session.Scope(), request)
+			result := u.main.activity.ActivityDetail(u.main.session.Scope(), request)
 			if len(result.Pages) > 0 {
 				return activitypresentation.ContributedDetails(result.Pages), result.Selected
 			}

@@ -13,7 +13,7 @@ func (u *appServerUI) refreshRosterRoles() {
 	u.childSource.Agents = slices.Clone(u.childSource.Agents)
 	for i := range u.childSource.Agents {
 		agent := &u.childSource.Agents[i]
-		host := u.session.agent(agent.Name)
+		host := u.session.Agent(agent.Name)
 		if host == nil {
 			continue
 		}

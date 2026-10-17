@@ -139,8 +139,8 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	baseline.ctx = t.Context()
 	baseline.ensureShell()
 	t.Cleanup(func() { baseline.shell.diffScreen.Close() })
-	baseline.session.start("main", workspace)
-	baseline.session.registerThread(binding.ThreadInfo{ID: thread, AgentNickname: "worker", AgentRole: "worker"})
+	baseline.startSession("main", workspace)
+	baseline.registerThread(binding.ThreadInfo{ID: thread, AgentNickname: "worker", AgentRole: "worker"})
 	projectionStarted := time.Now()
 	baseline.restoreActivityThread(read.Thread, false)
 	fullDuration += time.Since(projectionStarted)
@@ -152,9 +152,9 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	u.agents = activityui.NewView()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
-	u.session.start("main", workspace)
+	u.startSession("main", workspace)
 	u.startup.Thread = "main"
-	u.session.registerThread(binding.ThreadInfo{ID: thread, AgentNickname: "worker", AgentRole: "worker"})
+	u.registerThread(binding.ThreadInfo{ID: thread, AgentNickname: "worker", AgentRole: "worker"})
 	u.restoring = &appServerActivityRestore{root: binding.ThreadInfo{ID: "main", Cwd: workspace}, state: restoredDiscoveryTestState("main", thread), pane: make(map[string][]*restoredPlacement), itemAt: make(map[string]map[string]time.Time)}
 	started = time.Now()
 	if err := u.startChildHistory(read.Thread); err != nil {
@@ -168,7 +168,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	if !strings.HasPrefix(u.childSource.Entries[0].Source.Text, "item 1900 ") || !strings.HasPrefix(u.childSource.Entries[99].Source.Text, "item 1999 ") {
 		t.Fatal("host descending pages not rendered chronologically")
 	}
-	if u.session.agent("/root/worker").Started.Unix() != 100 || u.session.agent("/root/worker").LastResponse.Unix() != 110 {
+	if u.session.Agent("/root/worker").Started.Unix() != 100 || u.session.Agent("/root/worker").LastResponse.Unix() != 110 {
 		t.Fatal("host turn timing lost")
 	}
 	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
@@ -215,8 +215,8 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	fresh, _ := newAppServerTestUI()
 	fresh.client, fresh.ctx, fresh.agents = client, t.Context(), activityui.NewView()
 	fresh.requests = sessioncontrol.NewRequests[appServerRequest](client)
-	fresh.session.start("main", workspace)
-	fresh.session.registerThread(binding.ThreadInfo{ID: forked.Thread.ID, AgentNickname: "worker", AgentRole: "worker"})
+	fresh.startSession("main", workspace)
+	fresh.registerThread(binding.ThreadInfo{ID: forked.Thread.ID, AgentNickname: "worker", AgentRole: "worker"})
 	fresh.restoring = &appServerActivityRestore{root: binding.ThreadInfo{ID: "main", Cwd: workspace}, state: restoredDiscoveryTestState("main", forked.Thread.ID), pane: make(map[string][]*restoredPlacement), itemAt: make(map[string]map[string]time.Time)}
 	if err := fresh.startChildHistory(forked.Thread); err != nil {
 		t.Fatal(err)

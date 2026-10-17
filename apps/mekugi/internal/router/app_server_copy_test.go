@@ -91,7 +91,7 @@ func TestAppServerCopyEmptyCancelAndRestore(t *testing.T) {
 	if u.feedback.Text != "No agent response to copy" || u.shell.frame.Clipboard != "" || wire.Len() != 0 {
 		t.Fatalf("empty notice=%q wire=%s", u.feedback.Text, wire.Bytes())
 	}
-	u.session.start("main", "")
+	u.startSession("main", "")
 	u.restoreMainHistory([]binding.HistoryTurn{{ID: "old", Status: "completed", Items: []binding.ThreadItem{{ID: "a", Type: "agentMessage", Text: "restored"}}}}, nil, nil)
 	appServerTestKeys(t, u, "/copy\r")
 	if u.picker.copyTexts[0] != "restored" {

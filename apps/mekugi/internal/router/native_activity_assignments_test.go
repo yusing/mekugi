@@ -48,7 +48,7 @@ func TestNativeActivityFollowupAssignments(t *testing.T) {
 	if len(next) != 1 || next[0].Assignment.Text != "Check the edited answer." {
 		t.Fatalf("follow-up was omitted or conflated with spawn: %+v", next)
 	}
-	u.applyActivity([]sessionpresentation.ActivityEntry{{Seq: u.session.next(), Agent: "/root/reviewer", Kind: "final", Text: "The edited answer is correct."}}, nil)
+	u.applyActivity([]sessionpresentation.ActivityEntry{{Seq: u.session.Activity().NextSequence(), Agent: "/root/reviewer", Kind: "final", Text: "The edited answer is correct."}}, nil)
 	u.view.Conversation = true
 	u.testActivity(u.view).testAudience()
 	feed := u.testActivity(u.view).RenderFeed(100, 40)
@@ -123,7 +123,7 @@ func TestNativeActivityChildResultsStaySeparateAndLinked(t *testing.T) {
 			"tool": tool, "senderThreadId": "main", "receiverThreadIds": []string{receiver}, "prompt": prompt}})
 	}
 	result := func(agent, answer string) {
-		u.applyActivity([]sessionpresentation.ActivityEntry{{Seq: u.session.next(), Agent: agent, Kind: "final", Text: answer}}, nil)
+		u.applyActivity([]sessionpresentation.ActivityEntry{{Seq: u.session.Activity().NextSequence(), Agent: agent, Kind: "final", Text: answer}}, nil)
 	}
 	collab("task-1", "spawnAgent", "child", "Review the first change.")
 	result("/root/reviewer", "FIRST ANSWER")

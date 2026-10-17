@@ -15,10 +15,7 @@ import (
 )
 
 func (u *appServerUI) openWaitStore(store *history.Store, writes *persistence.Counter, limits history.Limits) error {
-	if u.waitRelease != nil {
-		u.waitRelease()
-		u.waitRelease = nil
-	}
+	u.retainedSession.Close()
 	ctx := u.ctx
 	if ctx == nil {
 		ctx = context.Background()
@@ -34,33 +31,30 @@ func (u *appServerUI) openWaitStore(store *history.Store, writes *persistence.Co
 			return err
 		}
 	}
-	namespace, release, err := store.BeginSession(ctx, writes, limits, u.Thread)
+	selected, err := store.SelectSession(ctx, writes, limits, u.Thread)
 	if publication, ok := errors.AsType[*history.PublicationError](err); ok {
 		err = requestexecution.StoragePublicationError(publication.Err)
 	}
 	if err != nil {
 		return err
 	}
-	u.session.waitStore, u.session.waitContext = store, ctx
-	u.session.waitThread, u.session.waitWrites, u.session.waitLimits = u.Thread, writes, limits
-	u.session.waitNamespace = namespace
-	u.waitRelease = release
+	u.retainedSession = selected
 	return nil
 }
 
-func (s *appServerSession) waitTargetsPath(key [3]string) string {
-	return filepath.Join(s.waitStore.Directory(), waittargets.Name(s.cwd, key[0], key[1], key[2]))
+func (u *appServerUI) waitTargetsPath(key [3]string) string {
+	return filepath.Join(u.retainedSession.Store.Directory(), waittargets.Name(u.cwd, key[0], key[1], key[2]))
 }
 
-func (s *appServerSession) readWaitTargets(key [3]string) (targets []waittargets.Target, found bool, err error) {
-	err = s.waitStore.Transaction(s.waitContext, s.waitWrites, func(tx *history.Transaction) error {
-		path := s.waitTargetsPath(key)
+func (u *appServerUI) readWaitTargets(key [3]string) (targets []waittargets.Target, found bool, err error) {
+	err = u.retainedSession.Store.Transaction(u.retainedSession.Context, u.retainedSession.Writes, func(tx *history.Transaction) error {
+		path := u.waitTargetsPath(key)
 		var err error
 		targets, found, err = waittargets.Read(path)
 		if err != nil || !found {
 			return err
 		}
-		if err := requestexecution.StoragePublicationError(tx.Retain(s.waitThread, s.waitLimits, filepath.Base(path))); err != nil {
+		if err := requestexecution.StoragePublicationError(tx.Retain(u.retainedSession.Thread, u.retainedSession.Limits, filepath.Base(path))); err != nil {
 			return err
 		}
 		return nil
@@ -71,15 +65,15 @@ func (s *appServerSession) readWaitTargets(key [3]string) (targets []waittargets
 	return targets, found, nil
 }
 
-func (s *appServerSession) writeWaitTargets(key [3]string, targets []waittargets.Target) error {
-	if s.waitStore == nil {
+func (u *appServerUI) writeWaitTargets(key [3]string, targets []waittargets.Target) error {
+	if u.retainedSession.Store == nil {
 		return nil
 	}
 	data, err := waittargets.Encode(targets)
 	if err != nil {
 		return err
 	}
-	return s.waitStore.Transaction(s.waitContext, s.waitWrites, func(tx *history.Transaction) error {
-		return writeRetainedRecord(tx, s.waitThread, s.waitLimits, filepath.Base(s.waitTargetsPath(key)), "wait-pending-", data)
+	return u.retainedSession.Store.Transaction(u.retainedSession.Context, u.retainedSession.Writes, func(tx *history.Transaction) error {
+		return writeRetainedRecord(tx, u.retainedSession.Thread, u.retainedSession.Limits, filepath.Base(u.waitTargetsPath(key)), "wait-pending-", data)
 	})
 }

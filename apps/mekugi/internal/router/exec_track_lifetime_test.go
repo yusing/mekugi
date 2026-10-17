@@ -11,7 +11,7 @@ import (
 
 func TestExecTrackSessionReplacementDropsRetainedChildOutput(t *testing.T) {
 	u, hub := newTrackedAppServerUI(t)
-	u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
+	u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	key := [3]string{"child", "turn", "command"}
 	script := "echo first; echo second"
 	item := map[string]any{"id": key[2], "type": "commandExecution", "command": "bash -lc " + quoteShellWord(script), "status": "inProgress"}
@@ -37,8 +37,8 @@ func TestExecTrackSessionReplacementDropsRetainedChildOutput(t *testing.T) {
 	// A subsequent attachment may see the same still-running command. Losing
 	// its earlier bytes must not turn the remaining bytes into complete output.
 	u.releaseRetired("main")
-	u.session.start("main", u.session.cwd)
-	u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
+	u.startSession("main", u.cwd)
+	u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	report.send(segmenttransport.Message{Type: segmenttransport.Output, Index: 0, Data: "later\n"})
 	report.send(segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)})
 	report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 1})
@@ -60,7 +60,7 @@ func TestExecTrackSessionReplacementDropsRetainedChildOutput(t *testing.T) {
 	// retires tracking and presents its authoritative combined output.
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 3, "first\nlater\nsecond\n"
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": key[0], "turnId": key[1], "item": item})
-	if hub.Tracking(key) || u.session.commands[key] != nil {
+	if hub.Tracking(key) || u.session.Commands()[key] != nil {
 		t.Fatal("host completion retained the old command observation")
 	}
 	for _, entry := range u.childSource.Entries {

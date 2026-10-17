@@ -85,7 +85,7 @@ func TestUISnapshotNativeLiveToggle(t *testing.T) {
 	screen := vt.NewEmulator(100, 28)
 	defer screen.Close()
 	preview := previewmodel.Preview{ID: "edit", Workspace: t.TempDir(), Caller: "/root", Status: previewmodel.PreviewEdit, Input: "*** Begin Patch\n*** Add File: live.txt\n+Live edit still in progress\n*** End Patch"}
-	u.session.cwd = preview.Workspace
+	u.cwd = preview.Workspace
 	u.preview(projectStockPatchPreview(t.Context(), preview.Workspace, preview), false)
 	revealNativeDock(u.shell)
 	for _, value := range []string{"off", "on"} {

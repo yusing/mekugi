@@ -10,7 +10,7 @@ import (
 
 func TestActivityAbsenceKeepsHostOutput(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.session.activity = nil
+	u.activity = nil
 	u.view.Conversation = true
 	u.testActivity(u.view).testAudience()
 	item := binding.ThreadItem{ID: "command", Type: "commandExecution", Command: "printf 'host output'", Status: "inProgress"}
@@ -20,7 +20,7 @@ func TestActivityAbsenceKeepsHostOutput(t *testing.T) {
 	item.Status, item.ExitCode, item.AggregatedOutput = "failed", new(3), new("host output\n")
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	awaitMain(t, u, "exit 3")
-	appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.session.cwd, "failed")})
+	appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.cwd, "failed")})
 	hookShown := false
 	for _, entry := range u.source.Entries {
 		for _, block := range u.view.Disclosure.Blocks(entry.Values) {
@@ -66,7 +66,7 @@ func TestActivityAbsenceUnknownExit(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			if absent {
-				u.session.activity = nil
+				u.activity = nil
 			}
 			item := binding.ThreadItem{ID: "command", Type: "commandExecution", Command: "go test ./...", Status: "failed", AggregatedOutput: new("interrupted\n")}
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
@@ -104,7 +104,7 @@ func TestActivityAbsenceDialogRefresh(t *testing.T) {
 			u.view.Conversation = true
 			u.testActivity(u.view).testAudience()
 			if absent {
-				u.session.activity = nil
+				u.activity = nil
 			}
 			item := binding.ThreadItem{ID: "command", Type: "commandExecution", Command: "go test ./...", Status: "inProgress"}
 			notify := func(method string, extra map[string]any) {

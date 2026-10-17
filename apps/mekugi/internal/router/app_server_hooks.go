@@ -76,20 +76,21 @@ func (u *appServerUI) hookEvent(method string, event binding.Notification) error
 	observation := history.HookObservation{Turn: event.TurnID, Run: history.HookRun(run), At: u.now(), Output: output, HasError: hasError, Completed: completed}
 	observation.Run.Entries = nil
 	if u.replay == nil {
-		if err := s.retainHook(event.ThreadID, observation); err != nil {
+		if err := u.retainHook(event.ThreadID, observation); err != nil {
 			u.setNotice("Hook observation could not be retained: "+err.Error(), true)
 		}
 	}
-	entry := s.hookEntry(event.ThreadID, observation, u.replay == nil)
+	entry := u.hookEntry(event.ThreadID, observation, u.replay == nil)
 	if previousOutput != nil {
 		previousOutput.Release()
 	}
-	entry.Seq = s.next()
-	u.applyActivity([]sessionpresentation.ActivityEntry{entry}, s.roster())
+	entry.Seq = s.Activity().NextSequence()
+	u.applyActivity([]sessionpresentation.ActivityEntry{entry}, s.Roster())
 	return nil
 }
 
-func (s *appServerSession) hookEntry(thread string, observation history.HookObservation, live bool) sessionpresentation.ActivityEntry {
+func (u *appServerUI) hookEntry(thread string, observation history.HookObservation, live bool) sessionpresentation.ActivityEntry {
+	s := &u.session
 	run := observation.Run
 	hook := &activitypresentation.HookDetails{HandlerType: run.HandlerType, ExecutionMode: run.ExecutionMode,
 		Status: run.Status, HasError: observation.HasError}
@@ -109,7 +110,7 @@ func (s *appServerSession) hookEntry(thread string, observation history.HookObse
 	if run.DurationMS != nil {
 		n.Duration = time.Duration(*run.DurationMS) * time.Millisecond
 	}
-	if outputs := s.activity.Outputs(s.Scope()); outputs != nil {
+	if outputs := u.activity.Outputs(s.Scope()); outputs != nil {
 		n.Output = outputs.New()
 		n.Output.Write(observation.Output)
 		if !n.Running {
@@ -123,7 +124,7 @@ func (s *appServerSession) hookEntry(thread string, observation history.HookObse
 	if run.SourcePath == builtinHookSource {
 		label += " · builtin"
 	} else {
-		label += " · " + markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(s.cwd, run.SourcePath))
+		label += " · " + markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(u.cwd, run.SourcePath))
 	}
 	if run.ExecutionMode == "async" {
 		label += " · async"
@@ -131,7 +132,7 @@ func (s *appServerSession) hookEntry(thread string, observation history.HookObse
 	if !observation.Completed && !live {
 		label += " · outcome unknown"
 	}
-	entry := sessionpresentation.ActivityEntry{Agent: s.path(thread), Kind: "hook", CallID: run.ID, Text: label, Observed: observation.At, Native: n}
+	entry := sessionpresentation.ActivityEntry{Agent: s.Caller(thread), Kind: "hook", CallID: run.ID, Text: label, Observed: observation.At, Native: n}
 	entry.OutputTail, entry.OutputOmit = appServerOutputTail(&observation.Output)
 	if observation.Completed && run.Status == "completed" && !observation.HasError {
 		if live && len(entry.OutputTail) > 0 {

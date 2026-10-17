@@ -50,6 +50,14 @@ type invocationReport struct {
 	exit                                       int
 }
 
+// SegmentText supplies the already interpreted source for a stable report index.
+func (i *Invocation) SegmentText(index int) string {
+	if index >= 0 && index < len(i.report.segments) {
+		return i.report.segments[index].facts.Text
+	}
+	return ""
+}
+
 // ObserveSegments retains drained bytes and reduces source facts independently
 // of terminal reveal. Loss requests release at the external observation owner.
 // Source: apps/mekugi/internal/router/exec_track.go:222:313@1bcbdd5a.

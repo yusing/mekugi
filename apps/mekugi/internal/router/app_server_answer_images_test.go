@@ -35,7 +35,7 @@ func answerImageFixture(t *testing.T) string {
 
 func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.session.start("main", t.TempDir())
+	u.startSession("main", t.TempDir())
 	u.Turn = "turn"
 	appServerTestKeys(t, u, "main draft")
 	questionTestAsync(t, u, "photos", "First image?", "Second image?")
@@ -124,7 +124,7 @@ func TestQuestionSyncImageSendsHostOwnedCompanion(t *testing.T) {
 
 func TestQuestionImageLifetimeAcrossNavigationAndRetry(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.session.start("main", t.TempDir())
+	u.startSession("main", t.TempDir())
 	u.Turn = "turn"
 	questionTestAsync(t, u, "retained", "First?", "Second?")
 	questionTestPaint(t, u, 70)

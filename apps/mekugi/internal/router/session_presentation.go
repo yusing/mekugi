@@ -18,7 +18,7 @@ func (u *appServerUI) publishPresentation(now time.Time) sessionpresentation.Vie
 	if view.Displayed.ID == view.Main.ID {
 		caption.Model, caption.Effort, caption.Tier = u.model, u.reasoningEffort, u.displayServiceTier()
 	}
-	if agent := u.session.agent(view.Displayed.Caller); agent != nil {
+	if agent := u.session.Agent(view.Displayed.Caller); agent != nil {
 		if view.Displayed.ID != view.Main.ID {
 			caption.Model, caption.Effort = agent.Settings.Model, agent.Settings.Effort
 			if agent.Settings.TierKnown {
@@ -60,7 +60,7 @@ func (u *appServerUI) settlePresentation() {
 func (u *appServerUI) displaySession(intent sessionpresentation.DisplayIntent) bool {
 	defer u.settlePresentation()
 	m := u.sessionPresentation()
-	if intent.Thread != m.View().Main && u.session.paths[intent.Thread.ID] != intent.Thread.Caller {
+	if intent.Thread != m.View().Main && u.session.KnownCaller(intent.Thread.ID) != intent.Thread.Caller {
 		u.setNotice(sessionpresentation.ErrStaleIntent.Error(), true)
 		return false
 	}

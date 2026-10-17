@@ -129,7 +129,7 @@ func TestQuestionAsyncRemainingSurvivesReplyTurnSteerAndReplay(t *testing.T) {
 	// Replay is history-only. It must recover the remaining open question without resending.
 	v, input := newAppServerTestUI()
 	v.agents = activityui.NewView()
-	v.session.start("main", t.TempDir())
+	v.startSession("main", t.TempDir())
 	first, _ := json.Marshal(map[string]any{"id": "two", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Who receives it?", "questions": []any{
 		map[string]any{"title": "Who receives it?", "options": []string{"Customers", "Internal"}}, map[string]any{"title": "Who approves it?", "options": []string{"Customers", "Internal"}},
 	}})

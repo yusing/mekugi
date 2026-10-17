@@ -128,7 +128,7 @@ func TestAppServerClosedTurnRejectsLateStreaming(t *testing.T) {
 			reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", delta)
 			reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "without-start", "item": map[string]any{"id": "late", "type": "reasoning", "summary": []string{"leaked"}}})
 			reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "without-start"}})
-			if u.session.Transcript(key[0], key[1]).Turn != nil || u.session.agent(u.session.path(thread)).Responding || u.Turn == "without-start" {
+			if u.session.Transcript(key[0], key[1]).Turn != nil || u.session.Agent(u.session.Caller(thread)).Responding || u.Turn == "without-start" {
 				t.Fatal("late observations revived a closed turn")
 			}
 			view := u.testActivity(u.view)
@@ -182,7 +182,7 @@ func TestAppServerRestorePublicSummaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	u.restoreHistory(turns)
-	u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
+	u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	u.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: turns}, false)
 	u.testActivity(u.agents).setDisplayFilter(false, "/root/worker")
 	for _, view := range []*activityAdapter{u.testActivity(u.view), u.testActivity(u.agents)} {
@@ -197,7 +197,7 @@ func TestAppServerRestorePublicSummaries(t *testing.T) {
 		}
 	}
 	// A new turn must not restart the restored summary animation.
-	agent := *u.session.agent("/root/worker")
+	agent := *u.session.Agent("/root/worker")
 	agent.Responding = true
 	first, _ := u.testActivity(u.agents).testCurrent(agent, time.Unix(0, 0))
 	second, _ := u.testActivity(u.agents).testCurrent(agent, time.Unix(1, 0))

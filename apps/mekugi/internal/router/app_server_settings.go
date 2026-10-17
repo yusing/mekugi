@@ -272,8 +272,8 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 		return true, fmt.Errorf("thread settings: %w", err)
 	}
 	if event.ThreadID != u.Thread {
-		if u.session.paths != nil && event.ThreadID != "" {
-			agent := u.session.agent(u.session.path(event.ThreadID))
+		if u.session.KnownCaller(u.Thread) != "" && event.ThreadID != "" {
+			agent := u.session.Agent(u.session.Caller(event.ThreadID))
 			agent.Settings = preferences.Evidence{Model: event.Settings.Model, Effort: event.Settings.Effort, Tier: event.Settings.ServiceTier, TierKnown: true}
 			agent.SettingsLive = true
 		}
@@ -289,7 +289,7 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 		u.statusConfig.Sandbox.Type = event.Settings.Sandbox.Type
 	}
 	if event.Settings.Cwd != "" {
-		u.session.cwd = event.Settings.Cwd
+		u.cwd = event.Settings.Cwd
 	}
 	u.model, u.reasoningEffort, u.serviceTier = event.Settings.Model, event.Settings.Effort, event.Settings.ServiceTier
 	confirmation := u.Settings.Confirmed(u.Turn, u.reasoningEffort)

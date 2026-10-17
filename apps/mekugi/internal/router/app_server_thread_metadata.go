@@ -11,42 +11,27 @@ import (
 // Child event subscriptions do not imply a thread/started notification. Read
 // metadata once, without loading history or resuming/executing the child.
 func (u *appServerUI) requestThreadMetadata(thread string) error {
-	if _, requested := u.session.metadata[thread]; requested {
-		return nil
-	}
-	if path := u.session.paths[thread]; path != "" && path != appServerPlaceholder(thread) && u.session.agent(path).Role != "" {
-		u.session.metadata[thread] = ""
-		return nil // thread/started or restored history already supplied it.
-	}
-	id, err := u.requests.Send("thread/read", map[string]any{"threadId": thread, "includeTurns": false}, "main", appServerRequest{})
-	if err != nil {
-		return err
-	}
-	u.session.metadata[thread] = id
-	return nil
+	path := u.session.KnownCaller(thread)
+	known := path != "" && path != sessionpresentation.Placeholder(thread) && u.session.Agent(path).Role != ""
+	return u.requests.ReadThreadMetadata("main", thread, known, appServerRequest{metadata: thread})
 }
 
-func (u *appServerUI) applyThreadMetadata(m appserver.Message) bool {
-	for thread, id := range u.session.metadata {
-		if id == "" || id != string(m.ID) {
-			continue
-		}
-		u.session.metadata[thread] = ""
-		if m.Error != nil {
-			return true
-		}
-		info, err := binding.DecodeHistoryThread(m.Result, thread)
-		if err != nil {
-			return true
-		} // Metadata cannot block observed activity.
-
-		old := u.session.path(thread)
-		u.session.registerThread(info)
-		u.renameThreadActivity(old, u.session.paths[thread])
-		u.applyActivity(nil, u.session.roster())
+func (u *appServerUI) applyThreadMetadata(m appserver.Message, thread string) bool {
+	if thread == "" {
+		return false
+	}
+	if m.Error != nil {
 		return true
 	}
-	return false
+	info, err := binding.DecodeHistoryThread(m.Result, thread)
+	if err != nil {
+		return true
+	} // Metadata cannot block observed activity.
+	old := u.session.Caller(thread)
+	u.registerThread(info)
+	u.renameThreadActivity(old, u.session.KnownCaller(thread))
+	u.applyActivity(nil, u.session.Roster())
+	return true
 }
 
 // Late metadata changes the display name, not the identity of retained items.

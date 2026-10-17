@@ -21,9 +21,9 @@ func TestUISnapshotMarkdownFileLoading(t *testing.T) {
 	for _, extension := range []string{"go", "md"} {
 		t.Run(extension, func(t *testing.T) {
 			main, _ := newAppServerTestUI()
-			main.session.cwd = t.TempDir()
+			main.cwd = t.TempDir()
 			main.view.Painter.Theme = diffrender.TerminalTheme
-			path := filepath.Join(main.session.cwd, "sample."+extension)
+			path := filepath.Join(main.cwd, "sample."+extension)
 			content := strings.Repeat("// preceding line\n", 39) + "var target = 1\n"
 			if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 				t.Fatal(err)
@@ -73,8 +73,8 @@ func TestMarkdownFileLateCompletion(t *testing.T) {
 		t.Run(boundary, func(t *testing.T) {
 			main, _ := newAppServerTestUI()
 			main.ensureShell()
-			main.session.cwd = t.TempDir()
-			path := filepath.Join(main.session.cwd, "source.go")
+			main.cwd = t.TempDir()
+			path := filepath.Join(main.cwd, "source.go")
 			if err := os.WriteFile(path, []byte("package stale\n"), 0600); err != nil {
 				t.Fatal(err)
 			}
@@ -115,7 +115,7 @@ func TestMarkdownFileLateCompletion(t *testing.T) {
 
 func TestMarkdownFileCapacityAndReadErrors(t *testing.T) {
 	main, _ := newAppServerTestUI()
-	main.session.cwd = t.TempDir()
+	main.cwd = t.TempDir()
 	u := &terminalUI{main: main, width: 80, height: 18, fileReadSlot: make(chan struct{}, 1)}
 	// Reserve physical capacity independently of the dialog. This models an
 	// outstanding syscall, not a kernel-blocked filesystem fixture.
@@ -130,7 +130,7 @@ func TestMarkdownFileCapacityAndReadErrors(t *testing.T) {
 	}
 	<-u.fileReadSlot
 	for _, name := range []string{"oversized.go", "unreadable.go"} {
-		path := filepath.Join(main.session.cwd, name)
+		path := filepath.Join(main.cwd, name)
 		if err := os.WriteFile(path, nil, 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -164,8 +164,8 @@ func TestSessionUIReplayPausedMarkdownFileCompletion(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	p.ctx = ctx
-	p.ui.session.cwd = t.TempDir()
-	path := filepath.Join(p.ui.session.cwd, "source.go")
+	p.ui.cwd = t.TempDir()
+	path := filepath.Join(p.ui.cwd, "source.go")
 	if err := os.WriteFile(path, []byte("package replay_file\n"), 0600); err != nil {
 		t.Fatal(err)
 	}

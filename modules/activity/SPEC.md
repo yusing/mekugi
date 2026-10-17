@@ -235,8 +235,10 @@ renderer chooses its syntax-context bound and has no retained handle.
 
 ## Lifecycle and integration
 
-The presentation session keeps feed models in the application's attached session
-store and agent lifecycle state in its thread stores. Adapters publish detached
+The presentation session keeps feed models, their shared sequence and one
+observation-ordered roster in the application's attached session store, with
+agent lifecycle state in its thread stores. Caller labels can change while
+thread identity and roster order remain stable. Adapters publish detached
 roster values; those values do not own lifecycle transitions. The optional composed
 service supplies output retention and asynchronous enrichment. Main and children
 have distinct feeds and share output retention; separate attachments and offline

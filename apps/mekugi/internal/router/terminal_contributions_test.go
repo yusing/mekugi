@@ -53,7 +53,7 @@ func TestNativeAuxiliaryAbsencePreservesMainAndReviewSource(t *testing.T) {
 func TestReplayAuxiliaryAbsenceSurvivesReset(t *testing.T) {
 	owner, _ := newAppServerTestUI()
 	start := time.Unix(1, 0)
-	p := newUIReplayPlayback(terminalsession.Views{}, owner.reviewSource, owner.presentationState, owner.conversationState, owner.session.observations, owner.session.activity, t.Context(), &playback.Source{Thread: "main", Start: start, End: start.Add(time.Second)}, 1)
+	p := newUIReplayPlayback(terminalsession.Views{}, owner.reviewSource, owner.presentationState, owner.conversationState, owner.observations, owner.activity, t.Context(), &playback.Source{Thread: "main", Start: start, End: start.Add(time.Second)}, 1)
 	defer p.close()
 	p.ui.shell.Focus, p.ui.shell.DiffOpen = 3, true
 	p.reset()
@@ -68,12 +68,12 @@ func TestReplayAuxiliaryAbsenceSurvivesReset(t *testing.T) {
 func TestUISnapshotNativeWithoutActivityRoster(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.terminalViews = terminalsession.Views{}
-	u.session.activity = nil
+	u.activity = nil
 	u.clock = func() time.Time { return time.Date(2026, 10, 1, 12, 0, 0, 0, time.Local) }
 	u.ensureShell()
 	defer u.shell.diffScreen.Close()
 	u.view.Clock, u.agents.Clock = u.clock, u.clock
-	u.session.start("main", "/workspace")
+	u.startSession("main", "/workspace")
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "reader"}})
 	for _, thread := range []string{"main", "child"} {
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "turn", "item": map[string]any{"id": "answer", "type": "agentMessage", "phase": "final_answer", "text": thread + " Conversation result"}})
@@ -116,7 +116,7 @@ func TestUISnapshotNativeWithoutActivityRoster(t *testing.T) {
 	u.shell.selectNativePane(0)
 	appServerTestKeys(t, u, "\r")
 	appServerOneRequest(t, wire, "turn/start", "retained draft")
-	if u.session.activity != nil {
+	if u.activity != nil {
 		t.Fatal("renderer recreated the optional source service")
 	}
 }
@@ -159,7 +159,7 @@ func TestNativeRosterConstructorReplacementAndReplay(t *testing.T) {
 	if u.shell.Layout.Roster.H == 0 || u.shell.Tabs[3].W == 0 {
 		t.Fatal("declared roster did not reach painting")
 	}
-	p := newUIReplayPlayback(runtime.Terminal, u.reviewSource, u.presentationState, u.conversationState, u.session.observations, u.session.activity, t.Context(), replayPlaybackTestSource(), 1)
+	p := newUIReplayPlayback(runtime.Terminal, u.reviewSource, u.presentationState, u.conversationState, u.observations, u.activity, t.Context(), replayPlaybackTestSource(), 1)
 	defer p.close()
 	p.reset()
 	if len(created) != 4 || p.ui.agents != created[3] {

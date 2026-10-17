@@ -53,7 +53,7 @@ func TestUISnapshotDirectoryDeletion(t *testing.T) {
 			}
 			u := newAppServerSessionTestUI(t, workspace)
 			u.Thread = "stock-thread"
-			u.session.start("stock-thread", workspace)
+			u.startSession("stock-thread", workspace)
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "stock-thread", "turnId": "t", "item": map[string]any{
 				"id": "delete-call", "type": "commandExecution", "command": "rm -rf removed removed2", "exitCode": 0}})
 			u.review.Projection.Data = data

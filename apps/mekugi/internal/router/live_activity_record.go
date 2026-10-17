@@ -19,8 +19,8 @@ func (u *appServerUI) attachActivity() {
 		u.childSource.Coverage = "" // Live/replayed host observations, without collector connection state.
 	}
 
-	state := activitypresentation.Attached[sessionpresentation.ActivityEntry, sessionpresentation.ActivityAgent](u.session.Scope())
-	if state.Commits == nil && u.session.activity != nil && u.replay == nil {
+	state := u.session.Activity()
+	if state.Commits == nil && u.activity != nil && u.replay == nil {
 		ctx := u.ctx
 		if ctx == nil {
 			ctx = context.Background()

@@ -10,7 +10,7 @@ import (
 
 func TestComposerCommandCatalog(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.session.cwd = "" // Local commands do not depend on workspace discovery.
+	u.cwd = "" // Local commands do not depend on workspace discovery.
 	appServerTestKeys(t, u, "/")
 	if !u.picker.Open || len(u.picker.Choices) != len(nativeCommands) || len(pickerRequests(t, wire)) != 0 {
 		t.Fatalf("catalog = %+v, requests = %s", u.picker, wire.Bytes())

@@ -34,7 +34,7 @@ func TestExecCompletedReceiptKeepsPythonValidation(t *testing.T) {
 func TestNativeCompletedReceiptWithdrawal(t *testing.T) {
 	u, _ := newTrackedAppServerUI(t)
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": binding.ThreadItem{ID: "edit", Type: "commandExecution", Command: "python3 edit.py; read -r answer", Status: "inProgress"}})
-	frame := previewmodel.Preview{ID: "observed:cell", Workspace: u.session.cwd, Thread: "main", Turn: "turn", Complete: true, HostItems: []string{"edit"}, EditReceipt: "Edit `a.go` +1 -1 · python3", Footer: "observed edit"}
+	frame := previewmodel.Preview{ID: "observed:cell", Workspace: u.cwd, Thread: "main", Turn: "turn", Complete: true, HostItems: []string{"edit"}, EditReceipt: "Edit `a.go` +1 -1 · python3", Footer: "observed edit"}
 	u.preview(frame, false)
 	awaitMain(t, u, "Edited")
 	frame.EditReceipt = ""

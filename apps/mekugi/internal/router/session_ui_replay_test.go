@@ -63,7 +63,7 @@ func replayPlaybackTestNew(t *testing.T) *uiReplayPlayback {
 
 func replayPlaybackTestPaint(t *testing.T, p *uiReplayPlayback, width, height int) string {
 	t.Helper()
-	if p.ui.client != nil || p.ui.requests != nil || len(p.ui.session.metadata) != 0 || (p.ui.controlObservations != nil || p.ui.usage != nil || p.ui.audience != nil || p.ui.retained.Store != nil || p.ui.execWindows != nil || p.ui.nativeTrace != nil || p.ui.guard != nil) || p.ui.execTrack != nil || p.ui.session.waitStore != nil {
+	if p.ui.client != nil || p.ui.requests != nil || (p.ui.controlObservations != nil || p.ui.usage != nil || p.ui.audience != nil || p.ui.retained.Store != nil || p.ui.execWindows != nil || p.ui.nativeTrace != nil || p.ui.guard != nil) || p.ui.execTrack != nil || p.ui.retainedSession.Store != nil {
 		t.Fatal("playback constructed live execution dependencies")
 	}
 	screen := vt.NewEmulator(width, height)
@@ -85,8 +85,8 @@ func TestSessionUIReplayPlaybackUsesRecordedClockAndSeekReset(t *testing.T) {
 	if !p.At.Equal(wantNow) || !p.ui.now().Equal(wantNow) || !p.ui.view.Clock().Equal(wantNow) || !p.ui.agents.Clock().Equal(wantNow) {
 		t.Fatal("presentation clocks are not tied to recorded position")
 	}
-	command := p.ui.session.commands[[3]string{"root", "turn", "command"}]
-	if command == nil || !command.entry.Observed.Equal(p.Source.Start.Add(4*time.Second)) || !command.entry.Native.CommandStarted.Equal(p.Source.Start.Add(4*time.Second)) {
+	command := p.ui.session.Commands()[[3]string{"root", "turn", "command"}]
+	if command == nil || !command.Entry.Observed.Equal(p.Source.Start.Add(4*time.Second)) || !command.Entry.Native.CommandStarted.Equal(p.Source.Start.Add(4*time.Second)) {
 		t.Fatalf("command start used playback wall time: %+v", command)
 	}
 	if quit, err := p.key(' '); err != nil || quit || !p.Paused {
@@ -114,8 +114,8 @@ func TestSessionUIReplayPlaybackUsesRecordedClockAndSeekReset(t *testing.T) {
 	if p.ui.session.FindThread(p.Source.Thread) == oldThread || oldUI.session.Scope() != nil || oldUI.session.Transcript(p.Source.Thread, "turn").Turn != nil {
 		t.Fatal("backward seek retained old correlation scopes")
 	}
-	if p.ui == oldUI || len(p.ui.session.commands) != 0 || p.ui.Turn != "turn" || !p.At.Equal(p.Source.Start.Add(2*time.Second)) {
-		t.Fatalf("seek did not rebuild earlier state: position=%v commands=%d", p.Position, len(p.ui.session.commands))
+	if p.ui == oldUI || len(p.ui.session.Commands()) != 0 || p.ui.Turn != "turn" || !p.At.Equal(p.Source.Start.Add(2*time.Second)) {
+		t.Fatalf("seek did not rebuild earlier state: position=%v commands=%d", p.Position, len(p.ui.session.Commands()))
 	}
 	if !strings.Contains(replayPlaybackTestPaint(t, p, 120, 28), "Inspecting repaint timing.") {
 		t.Fatal("seek did not replay earlier reasoning")
@@ -133,7 +133,7 @@ func TestSessionUIReplayPlaybackUsesRecordedClockAndSeekReset(t *testing.T) {
 	if p.Paused || p.Position != p.From || p.ui.Text != "" {
 		t.Fatalf("replay controls leaked into live composer/transport: paused=%v position=%v draft=%q", p.Paused, p.Position, p.ui.Text)
 	}
-	if p.ui.client != nil || p.ui.requests != nil || len(p.ui.session.metadata) != 0 || (p.ui.controlObservations != nil || p.ui.usage != nil || p.ui.audience != nil || p.ui.retained.Store != nil || p.ui.execWindows != nil || p.ui.nativeTrace != nil || p.ui.guard != nil) || p.ui.execTrack != nil || p.ui.session.waitStore != nil {
+	if p.ui.client != nil || p.ui.requests != nil || (p.ui.controlObservations != nil || p.ui.usage != nil || p.ui.audience != nil || p.ui.retained.Store != nil || p.ui.execWindows != nil || p.ui.nativeTrace != nil || p.ui.guard != nil) || p.ui.execTrack != nil || p.ui.retainedSession.Store != nil {
 		t.Fatal("offline playback constructed live execution dependencies")
 	}
 }
@@ -148,7 +148,7 @@ func TestSessionUIReplayPlaybackShowsOnlyArrivedContent(t *testing.T) {
 	if !strings.Contains(early, "printf") || strings.Contains(early, "Repaint diagnosis complete.") {
 		t.Fatalf("early frame lost running command or exposed final answer:\n%s", early)
 	}
-	if run := p.ui.session.commands[[3]string{"root", "turn", "command"}]; run == nil || run.holding || run.completedAt != (time.Time{}) {
+	if run := p.ui.session.Commands()[[3]string{"root", "turn", "command"}]; run == nil || p.ui.streams.Commands[[3]string{"root", "turn", "command"}].Holding || run.CompletedAt != (time.Time{}) {
 		t.Fatal("running command was prematurely completed")
 	}
 	if err := p.advance(8 * time.Second); err != nil {
@@ -162,7 +162,7 @@ func TestSessionUIReplayPlaybackShowsOnlyArrivedContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	final := ansi.Strip(replayPlaybackTestPaint(t, p, 120, 28))
-	if !strings.Contains(final, "Repaint diagnosis complete.") || len(p.ui.session.commands) != 0 {
+	if !strings.Contains(final, "Repaint diagnosis complete.") || len(p.ui.session.Commands()) != 0 {
 		t.Fatalf("completed frame/state did not settle:\n%s", final)
 	}
 }

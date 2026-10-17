@@ -84,8 +84,8 @@ func TestNativeCompletedBatchEditOpensBeforeSiblingCommandExits(t *testing.T) {
 			thread, view := "main", u.testActivity(u.view)
 			if child {
 				thread, view = "child", u.testActivity(u.agents)
-				u.session.registerThread(binding.ThreadInfo{ID: thread, AgentNickname: "worker"})
-				u.session.metadata[thread] = ""
+				u.registerThread(binding.ThreadInfo{ID: thread, AgentNickname: "worker"})
+				_ = u.requests.ReadThreadMetadata("main", thread, true, appServerRequest{})
 				u.testActivity(u.agents).setDisplayFilter(true, "/root/worker")
 			}
 			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "batch", "status": "inProgress"}})
@@ -98,7 +98,7 @@ func TestNativeCompletedBatchEditOpensBeforeSiblingCommandExits(t *testing.T) {
 			if err := u.testPaint(screen, 160, 40); err != nil {
 				t.Fatal(err)
 			}
-			if u.review.Projection.Data.Len() != 0 || u.session.commands[[3]string{thread, "batch", "slow-sibling"}] == nil {
+			if u.review.Projection.Data.Len() != 0 || u.session.Commands()[[3]string{thread, "batch", "slow-sibling"}] == nil {
 				t.Fatal("fixture must have no durable capture and a running batch sibling")
 			}
 			// Click the actual rendered edit, through the shared pointer routing.
@@ -135,7 +135,7 @@ func TestNativeCompletedBatchEditOpensBeforeSiblingCommandExits(t *testing.T) {
 			if !strings.Contains(u.shell.output.Document.Text, "+after_batch") || u.shell.output.view != view.View {
 				t.Fatalf("wrong edit opened:\n%s", screen.String())
 			}
-			if u.session.commands[[3]string{thread, "batch", "slow-sibling"}] == nil {
+			if u.session.Commands()[[3]string{thread, "batch", "slow-sibling"}] == nil {
 				t.Fatal("opening a diff altered host command lifecycle")
 			}
 		})
@@ -144,16 +144,16 @@ func TestNativeCompletedBatchEditOpensBeforeSiblingCommandExits(t *testing.T) {
 
 func TestNativeHostEditNavigationRequiresCompletedSuccessfulItem(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.session.activity = fixtureActivityWithoutDetails(t)
+	u.activity = fixtureActivityWithoutDetails(t)
 	for _, tc := range []struct{ phase, status string }{{"item/started", ""}, {"item/completed", "failed"}, {"item/completed", "declined"}, {"item/completed", "inProgress"}} {
 		item := binding.ThreadItem{Type: "fileChange", Status: tc.status, Changes: []binding.FileChange{{Path: "a.go", Diff: "+not_confirmed\n"}}}
-		u.source.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch", EditPages: activitypresentation.HostEditPages(item.Observation(), u.session.cwd, tc.phase)}}}}
+		u.source.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch", EditPages: activitypresentation.HostEditPages(item.Observation(), u.cwd, tc.phase)}}}}
 		if u.shell.openActivityEdit(u.view, 1, "a.go") || u.shell.output != nil {
 			t.Fatalf("%s/%s opened a completed edit", tc.phase, tc.status)
 		}
 	}
 	item := binding.ThreadItem{Changes: []binding.FileChange{{Path: "first.go", Diff: "+first\n"}, {Path: "second.go", Diff: "+second\n"}}}
-	u.source.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 2, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch", EditPages: activitypresentation.HostEditPages(item.Observation(), u.session.cwd, "item/completed")}}}}
+	u.source.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 2, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch", EditPages: activitypresentation.HostEditPages(item.Observation(), u.cwd, "item/completed")}}}}
 	if u.shell.openActivityEdit(u.view, 2, "missing.go") || !u.shell.openActivityEdit(u.view, 2, "second.go") || u.shell.output.Page != 1 {
 		t.Fatal("host diff did not resolve the exact clicked path")
 	}
@@ -162,7 +162,7 @@ func TestNativeHostEditNavigationRequiresCompletedSuccessfulItem(t *testing.T) {
 func TestUISnapshotNativeCompletedHostEditDialog(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	item := binding.ThreadItem{Changes: []binding.FileChange{{Path: "internal/router/batch.go", Diff: "@@ -1 +1 @@\n-before_batch\n+after_batch\n"}}}
-	u.source.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch", EditPages: activitypresentation.HostEditPages(item.Observation(), u.session.cwd, "item/completed")}}}}
+	u.source.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch", EditPages: activitypresentation.HostEditPages(item.Observation(), u.cwd, "item/completed")}}}}
 	if !u.shell.openActivityEdit(u.view, 1, "internal/router/batch.go") {
 		t.Fatal("host edit did not open")
 	}
@@ -185,7 +185,7 @@ func TestNativeEditDialogShowsHistoricalHunkNotLaterCapture(t *testing.T) {
 	publishFixtureReview(t, u)
 
 	u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "Edit `target.go` +1 -1 · apply_patch", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "call"}}}})
-	if err := os.WriteFile(filepath.Join(u.session.cwd, "target.go"), []byte("unrelated_workspace_content\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(u.cwd, "target.go"), []byte("unrelated_workspace_content\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if !u.shell.openActivityEdit(u.view, 1, "target.go") {
@@ -222,7 +222,7 @@ func TestNativeCapturedDetailIsAttachmentScoped(t *testing.T) {
 	}
 	u.shell.outputKey("\x1b")
 	u.session.Retire()
-	u.session.Attachment = sessionpresentation.Attachment{}
+	u.session = sessionpresentation.Attachment{}
 	if u.shell.openActivityEdit(u.view, 1, "scope.go") || u.shell.output != nil {
 		t.Fatal("new attachment inherited the prior captured-detail publication")
 	}

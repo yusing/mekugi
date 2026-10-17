@@ -27,7 +27,7 @@ func newShellEditTestUI(t *testing.T) *appServerUI {
 	if err := u.openWaitStore(u.retained.Store, u.retained.Writes, u.retained.Limits); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(u.waitRelease)
+	t.Cleanup(u.retainedSession.Close)
 	u.shellEdits.shell = execTrackShellExecutable(t, "bash")
 	return u
 }
@@ -66,8 +66,8 @@ func completeShellEditTestCommand(t *testing.T, u *appServerUI, item string, exi
 
 func TestAppServerShellEditsRevertApplyReplay(t *testing.T) {
 	u := newShellEditTestUI(t)
-	workspace, store := u.session.cwd, testUIStore(u)
-	ctx := context.WithValue(u.session.waitContext, storageSessionKey{}, storageSessionIdentity{Thread: u.session.waitThread, Namespace: u.session.waitNamespace})
+	workspace, store := u.cwd, testUIStore(u)
+	ctx := context.WithValue(u.retainedSession.Context, storageSessionKey{}, storageSessionIdentity{Thread: u.retainedSession.Thread, Namespace: u.retainedSession.Namespace})
 	path := filepath.Join(workspace, "ignored.txt")
 	// Source-named mchanges targets must not depend on workspace snapshot admission.
 	runExecVCSTestGit(t, workspace, "init", "-q")
@@ -124,8 +124,8 @@ func TestAppServerShellEditsFailedWriterAndNoEffect(t *testing.T) {
 	for _, command := range []string{"printf 'saved\\n' > \"$SHELL_EDIT_TARGET\"; exit 7", "rm -f missing.txt"} {
 		startShellEditTestCommand(t, u, command, command)
 		cmd := exec.Command(u.shellEdits.shell, "-c", command)
-		cmd.Dir = u.session.cwd
-		cmd.Env = append(mchangesSliceInvocation(u.session.cwd, u.Thread).environment, "SHELL_EDIT_TARGET=saved.txt")
+		cmd.Dir = u.cwd
+		cmd.Env = append(mchangesSliceInvocation(u.cwd, u.Thread).environment, "SHELL_EDIT_TARGET=saved.txt")
 		err := cmd.Run()
 		exit := 0
 		if err != nil {
@@ -141,7 +141,7 @@ func TestAppServerShellEditsFailedWriterAndNoEffect(t *testing.T) {
 		if u.feedback.Alert {
 			t.Fatal(u.feedback.Text)
 		}
-		history := shellTestRecord(t, testUIStore(u), u.session.cwd, u.Thread, command).History
+		history := shellTestRecord(t, testUIStore(u), u.cwd, u.Thread, command).History
 		if history.ExecOutcome.Exit == nil || *history.ExecOutcome.Exit != exit {
 			t.Fatalf("shell outcome: %+v", history)
 		}
@@ -162,7 +162,7 @@ func TestAppServerShellEditsFailedWriterAndNoEffect(t *testing.T) {
 
 func TestAppServerShellObservationKeepsOriginalOwnersAfterSwitch(t *testing.T) {
 	u := newShellEditTestUI(t)
-	thread, workspace, retained := u.Thread, u.session.cwd, testUIStore(u)
+	thread, workspace, retained := u.Thread, u.cwd, testUIStore(u)
 	path := filepath.Join(workspace, "selected.txt")
 	writeTestFile(t, path, "before\n")
 	edit := startShellEditTestCommand(t, u, "printf 'after\\n' > selected.txt", "shell-original")
@@ -176,11 +176,11 @@ func TestAppServerShellObservationKeepsOriginalOwnersAfterSwitch(t *testing.T) {
 	t.Cleanup(other.snapshots.Close)
 	setTestUIStore(u, other)
 	u.Thread = "other-thread"
-	u.session.start(u.Thread, t.TempDir())
+	u.startSession(u.Thread, t.TempDir())
 	if err := u.openWaitStore(other.publication, other.writes, other.retentionLimits()); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(u.waitRelease)
+	t.Cleanup(u.retainedSession.Close)
 	writeTestFile(t, path, "after\n")
 	exit := 0
 	u.observeShellEdit(thread, "item/completed", binding.ThreadItem{ID: "shell-original", Type: "commandExecution", Source: "userShell", Status: "completed", ExitCode: &exit})

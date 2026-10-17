@@ -40,7 +40,7 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 				thread, view, focus = "child", u.testActivity(u.agents), 0
 				u.testActivity(u.agents).setDisplayFilter(true, "/root/worker")
 				activity.Observe("child", "main", "/root/worker", true)
-				u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
+				u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 			}
 			// The decisive reason is beyond both the old first-line clip and
 			// Activity's generic 64 KiB message limit. No shell is executed.
@@ -118,7 +118,7 @@ func TestErrorDetailsRestoredRollout(t *testing.T) {
 			u.agents = u.shell.agents
 			detail := "CreateProcess: " + strings.Repeat("command ", 9000) + "\nrejected: forced cleanup is not permitted\n    at cell:17"
 			records := append([]map[string]any{rolloutRecord(1, "event_msg", map[string]any{"type": "task_started", "turn_id": "t"})}, rolloutFailedCell(2, "rejected", detail)...)
-			info := binding.ThreadInfo{ID: "main", Cwd: u.session.cwd, Turns: []binding.HistoryTurn{{ID: "t", Status: "failed"}}}
+			info := binding.ThreadInfo{ID: "main", Cwd: u.cwd, Turns: []binding.HistoryTurn{{ID: "t", Status: "failed"}}}
 			if !child {
 				info.Path = writeTestRollout(t, "main", records...)
 			}
@@ -127,7 +127,7 @@ func TestErrorDetailsRestoredRollout(t *testing.T) {
 			}
 			var data []any
 			if child {
-				data = []any{map[string]any{"id": "child", "cwd": u.session.cwd, "path": writeTestRollout(t, "child", records...), "parentThreadId": "main",
+				data = []any{map[string]any{"id": "child", "cwd": u.cwd, "path": writeTestRollout(t, "child", records...), "parentThreadId": "main",
 					"source": map[string]any{"subAgent": map[string]any{"thread_spawn": map[string]any{"agent_path": "/root/worker"}}}}}
 			}
 			restoreContentReply(t, u, 0, map[string]any{"data": data, "nextCursor": nil})

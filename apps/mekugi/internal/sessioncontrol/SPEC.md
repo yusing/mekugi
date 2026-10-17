@@ -16,6 +16,9 @@ queues and provisional transcript rows; control decides which submissions settle
 return to the composer or requeue. [Session presentation](../sessionpresentation/SPEC.md)
 owns attachment lifetime, displayed-thread and history reconstruction. Control
 issues its observational reads without changing execution or input identity.
+Child metadata is read once per attached request scope. Its response uses the
+same request ledger; missing metadata does not block admitted Activity, and
+retiring the scope clears both correlation and read admission.
 
 ## Interactive operations
 

@@ -171,7 +171,7 @@ func (w *throughputSlowWriter) Write(payload []byte) (int, error) {
 func TestOutputThroughputUIRefreshRetainsPreviousRound(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		u, _ := newAppServerTestUI()
-		u.session.start(u.Thread, "")
+		u.startSession(u.Thread, "")
 		u.ensureShell()
 		usage := newTestUsage(t)
 
@@ -181,13 +181,13 @@ func TestOutputThroughputUIRefreshRetainsPreviousRound(t *testing.T) {
 		time.Sleep(time.Second)
 		first.Observe(inference.Usage{TotalsKnown: true, OutputTokens: 30})
 		u.applyObservedActivity()
-		if usagepresentation.OutputThroughputLabel(u.session.agent("/root").OutputThroughput) != "30.0 tok/s" {
+		if usagepresentation.OutputThroughputLabel(u.session.Agent("/root").OutputThroughput) != "30.0 tok/s" {
 			t.Fatal("main did not refresh")
 		}
 		next := usage.Observation(u.Thread, u.Thread, "gpt-6-sol", "")
 		next.Begin()
 		u.applyObservedActivity()
-		if got := usagepresentation.OutputThroughputLabel(u.session.agent("/root").OutputThroughput); got != "30.0 tok/s" {
+		if got := usagepresentation.OutputThroughputLabel(u.session.Agent("/root").OutputThroughput); got != "30.0 tok/s" {
 			t.Fatalf("previous rate disappeared: %s", got)
 		}
 	})
@@ -201,7 +201,7 @@ func TestUISnapshotOutputThroughputStreamingRetainsMeasuredRate(t *testing.T) {
 				u, _ := newAppServerTestUI()
 				u.Thread = "thread-1"
 				setTestAppServerIntegration(u, proxy)
-				u.session.start(u.Thread, "")
+				u.startSession(u.Thread, "")
 				u.ensureShell()
 				var previous inference.OutputThroughput
 				if prior {
@@ -241,12 +241,12 @@ func TestUISnapshotOutputThroughputStreamingRetainsMeasuredRate(t *testing.T) {
 					}
 					synctest.Wait()
 					u.applyObservedActivity()
-					if got := u.session.agent("/root").OutputThroughput; got != previous {
+					if got := u.session.Agent("/root").OutputThroughput; got != previous {
 						t.Fatalf("%s replaced measured rate: %+v, want %+v", kind, got, previous)
 					}
 					time.Sleep(250 * time.Millisecond)
 				}
-				root := u.session.agent("/root")
+				root := u.session.Agent("/root")
 				u.testActivity(u.agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: []sessionpresentation.ActivityAgent{*root}})
 				rows, _ := u.testMainFrame(80, 10, 0)
 				if prior {
@@ -279,13 +279,13 @@ func TestUISnapshotOutputThroughputComposerAndRoster(t *testing.T) {
 	for _, width := range []int{36, 80, 140} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.session.start(u.Thread, "")
+			u.startSession(u.Thread, "")
 			u.ensureShell()
 			u.view.Painter.Theme = diffrender.DarkTheme
-			root := u.session.agent("/root")
+			root := u.session.Agent("/root")
 			root.ContextKnown, root.ContextTokens, root.ContextWindow = true, 24000, 200000
 			root.OutputThroughput = inference.OutputThroughput{OutputTokens: 83, DurationNanos: uint64(2 * time.Second), MeasuredRequests: 1}
-			u.session.lifecycle(u.Thread).RestoreFinal(true)
+			u.session.Lifecycle(u.Thread).RestoreFinal(true)
 			u.sessionPresentation().Status.Text, u.model = "Ready", "gpt-6-sol"
 			rows, _ := u.testMainFrame(width, 10, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("output-throughput-composer-%d", width), rows)
@@ -315,12 +315,12 @@ func TestUISnapshotOutputThroughputRestoredRoster(t *testing.T) {
 
 		for _, thread := range []string{"child", "interrupted", "legacy"} {
 			info := binding.ThreadInfo{ID: thread, AgentNickname: thread, Turns: []binding.HistoryTurn{{ID: "old", Status: "completed"}}}
-			u.session.registerThread(info)
+			u.registerThread(info)
 			u.restoreActivityThread(info, false)
 		}
-		u.testActivity(u.agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.agents})
+		u.testActivity(u.agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.Roster()})
 		u.agents.Painter.Theme = diffrender.DarkTheme
-		u.agents.Selected = u.session.paths["child"]
+		u.agents.Selected = u.session.KnownCaller("child")
 		assertNativeUISnapshot(t, "output-throughput-restored-roster", u.testActivity(u.agents).NativeRoster(120, 8, time.Now(), true))
 	})
 }
@@ -334,22 +334,22 @@ func TestOutputThroughputPresentationSelectionAndIsolation(t *testing.T) {
 				u.attachPresentation()
 			}
 			if mode == "without activity" {
-				u.session.activity = nil
+				u.activity = nil
 			}
 			u.ensureShell()
 			u.model = "main-model"
 			rate := inference.OutputThroughput{OutputTokens: 40, DurationNanos: uint64(time.Second), MeasuredRequests: 1}
-			u.session.agent("/root").OutputThroughput = rate
+			u.session.Agent("/root").OutputThroughput = rate
 			before := u.publishPresentation(u.now())
 			frame, _ := u.testMainFrame(120, 12, 0)
 			if text := ansi.Strip(strings.Join(frame, "\n")); !strings.Contains(text, "main-model") || strings.Contains(text, "40.0 tok/s") != (mode != "without usage") {
 				t.Fatalf("Main contribution: %s", text)
 			}
-			u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "child"})
-			child := u.session.agent("/root/child")
+			u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "child"})
+			child := u.session.Agent("/root/child")
 			rate.OutputTokens = 80
 			child.OutputThroughput = rate
-			u.testActivity(u.agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.agents})
+			u.testActivity(u.agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.Roster()})
 			roster := ansi.Strip(strings.Join(u.testActivity(u.agents).NativeRoster(140, 8, u.now(), true), "\n"))
 			if strings.Contains(roster, "80.0 tok/s") != (mode != "without usage") {
 				t.Fatalf("roster contribution: %s", roster)
@@ -372,7 +372,7 @@ func TestOutputThroughputPresentationReplayReset(t *testing.T) {
 	if err := p.seek(p.Until); err != nil {
 		t.Fatal(err)
 	}
-	p.ui.session.agent("/root").OutputThroughput = inference.OutputThroughput{OutputTokens: 40, DurationNanos: uint64(time.Second), MeasuredRequests: 1}
+	p.ui.session.Agent("/root").OutputThroughput = inference.OutputThroughput{OutputTokens: 40, DurationNanos: uint64(time.Second), MeasuredRequests: 1}
 	before := p.ui.publishPresentation(p.At)
 	if len(before.Caption.Items) != 1 {
 		t.Fatal("admitted replay fact was not published")

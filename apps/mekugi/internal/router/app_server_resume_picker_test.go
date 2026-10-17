@@ -99,7 +99,7 @@ func newResumeSessionTestUI(t *testing.T) (*appServerUI, *appServerTestInput) {
 	u.ctx = t.Context()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
-	u.session.start("main", "/work")
+	u.startSession("main", "/work")
 	return u, w
 }
 
@@ -184,7 +184,7 @@ func TestAppServerResumePickerStartupEscapeAndQuit(t *testing.T) {
 
 func TestAppServerResumePickerSearchFilterAndPages(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.session.start("main", "/work")
+	u.startSession("main", "/work")
 	if err := u.openResumePicker(false); err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +231,7 @@ func TestAppServerResumePickerSearchFilterAndPages(t *testing.T) {
 
 func TestAppServerResumeSwitchesSession(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
-	outputs := u.session.activity.Outputs(u.session.Scope())
+	outputs := u.activity.Outputs(u.session.Scope())
 	u.ensureShell()
 	feed := u.source.Model
 	appServerTestUserMessage(t, u, "old-user", "", "old transcript")
@@ -264,7 +264,7 @@ func TestAppServerResumeSwitchesSession(t *testing.T) {
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"saved","turnId":"old","item":{"type":"agentMessage","id":"answer","text":"Saved answer"}}}`)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"model":"model","thread":{"id":"saved","cwd":"/work","turns":[{"id":"old","status":"completed","items":[{"type":"userMessage","id":"question","content":[{"type":"text","text":"Saved question"}]},{"type":"agentMessage","id":"answer","text":"Saved answer"}]}]}}}`, resume.ID))
 	methods := resumeTestSettle(t, u, w)
-	if u.session.activity.Outputs(u.session.Scope()) == outputs || u.source.Model == feed {
+	if u.activity.Outputs(u.session.Scope()) == outputs || u.source.Model == feed {
 		t.Fatal("confirmed replacement retained the old activity scope")
 	}
 	if len(methods) == 0 || methods[0] != "thread/unsubscribe" || !slices.Contains(methods, "model/list") {
@@ -302,7 +302,7 @@ func TestAppServerResumeSwitchesSession(t *testing.T) {
 
 func TestAppServerResumeSwitchFailureKeepsSession(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
-	outputs := u.session.activity.Outputs(u.session.Scope())
+	outputs := u.activity.Outputs(u.session.Scope())
 	u.ensureShell()
 	feed := u.source.Model
 	appServerTestUserMessage(t, u, "old-user", "", "keep this")
@@ -321,7 +321,7 @@ func TestAppServerResumeSwitchFailureKeepsSession(t *testing.T) {
 	if start := resumeTestOne(t, w, "turn/start"); start.Params.ThreadID != "main" {
 		t.Fatalf("input after failed switch targeted %q", start.Params.ThreadID)
 	}
-	if u.session.activity.Outputs(u.session.Scope()) != outputs || u.source.Model != feed {
+	if u.activity.Outputs(u.session.Scope()) != outputs || u.source.Model != feed {
 		t.Fatal("failed replacement discarded activity state")
 	}
 }
@@ -403,7 +403,7 @@ func TestLiveDiffResetScopeResynchronizes(t *testing.T) {
 
 func TestAppServerResumeSwitchKeepsCurrentSessionLive(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
-	u.session.registerThread(binding.ThreadInfo{ID: "child", ParentThreadID: "main", AgentNickname: "worker", AgentRole: "worker",
+	u.registerThread(binding.ThreadInfo{ID: "child", ParentThreadID: "main", AgentNickname: "worker", AgentRole: "worker",
 		Source: jsontext.Value(`{"subAgent":{"thread_spawn":{"agent_path":"/root/worker","agent_role":"worker"}}}`)})
 	appServerTestKeys(t, u, "/resume saved\r")
 	resume := resumeTestPrepared(t, u, w)
@@ -439,7 +439,7 @@ func TestAppServerResumeSwitchWaitsForDiffResync(t *testing.T) {
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.review = testReview(auto)
 	setSavedReviewStore(u.shell, store)
-	u.session.start("main", workspace)
+	u.startSession("main", workspace)
 	testReview(auto).IncludeThread(workspace, "main", true)
 	sub := testReview(auto).Subscribe()
 	u.applyReview(t.Context(), <-sub.Events())
@@ -478,7 +478,7 @@ func TestAppServerResumeSwitchWaitsForDiffResync(t *testing.T) {
 
 func TestAppServerResumePickerFailedPageStopsPaging(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.session.start("main", "/work")
+	u.startSession("main", "/work")
 	if err := u.openResumePicker(false); err != nil {
 		t.Fatal(err)
 	}

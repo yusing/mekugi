@@ -77,8 +77,8 @@ func TestAppServerFrontendCommandClassification(t *testing.T) {
 				if len(restored.source.Entries) != 1 || restored.source.Entries[0].Source.Text != tc.want {
 					t.Fatalf("classified restored entries: %+v", restored.source.Entries)
 				}
-				restored.session.path("child")
-				restored.restoreActivityThread(binding.ThreadInfo{ID: "child", Cwd: restored.session.cwd, Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
+				restored.session.Caller("child")
+				restored.restoreActivityThread(binding.ThreadInfo{ID: "child", Cwd: restored.cwd, Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
 				if len(restored.childSource.Entries) != 1 || restored.childSource.Entries[0].Source.Text != tc.want {
 					t.Fatalf("classified restored child text: %q; want %q", restored.childSource.Entries[len(restored.childSource.Entries)-1].Source.Text, tc.want)
 				}
@@ -214,7 +214,7 @@ func TestAppServerImageViewLiveAndRestored(t *testing.T) {
 		restored := newAppServerSessionTestUI(t, workspace)
 		turns := []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}
 		if child {
-			restored.session.path(thread)
+			restored.session.Caller(thread)
 			restored.restoreActivityThread(binding.ThreadInfo{ID: thread, Cwd: workspace, Turns: turns}, false)
 			check(restored.testActivity(restored.agents))
 		} else {
@@ -436,7 +436,7 @@ func TestActivityReadsKeepInvocationWorkdirsApart(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	for _, item := range []binding.ThreadItem{
 		{ID: "a", Type: "commandExecution", Command: "rg x; cat a.go", Cwd: other, CommandActions: []binding.CommandAction{{Type: "search", Command: "rg x", Query: "x"}, {Type: "read", Command: "cat a.go", Path: other + "/a.go"}}},
-		{ID: "b", Type: "commandExecution", Command: "cat b.go", Cwd: u.session.cwd, CommandActions: []binding.CommandAction{{Type: "read", Command: "cat b.go", Path: u.session.cwd + "/b.go"}}},
+		{ID: "b", Type: "commandExecution", Command: "cat b.go", Cwd: u.cwd, CommandActions: []binding.CommandAction{{Type: "read", Command: "cat b.go", Path: u.cwd + "/b.go"}}},
 	} {
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	}

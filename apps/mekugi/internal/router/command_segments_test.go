@@ -51,7 +51,7 @@ func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing
 		u := newAppServerSessionTestUI(t, workspace)
 		setTestAppServerIntegration(u, testProxyWithStore(store))
 		key := [3]string{"main", "turn", "command"}
-		first, second := u.session.activity.Outputs(u.session.Scope()).New(), u.session.activity.Outputs(u.session.Scope()).New()
+		first, second := u.activity.Outputs(u.session.Scope()).New(), u.activity.Outputs(u.session.Scope()).New()
 		first.Finish(new("first\n"), new(0))
 		second.Finish(new("second\n"), new(0))
 		view := execTrackView{complete: true, output: true, segments: []sessionpresentation.ActivitySegment{
@@ -77,7 +77,7 @@ func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing
 		}
 		// Switching sessions and releasing live buffers must not change the pending
 		// report's evidence or ownership. Hold beyond the former one-second limit.
-		u.session.cwd, u.Thread = t.TempDir(), "other"
+		u.cwd, u.Thread = t.TempDir(), "other"
 		first.Release()
 		second.Release()
 		time.Sleep(1100 * time.Millisecond)
@@ -243,11 +243,11 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 			if strings.HasPrefix(target, "child") {
 				childWorkspace := workspace
 				if target == "child-other-workspace" {
-					restored.session.cwd = t.TempDir()
+					restored.cwd = t.TempDir()
 				} else if target == "child-missing-workspace" {
 					childWorkspace = ""
 				}
-				restored.session.path(target)
+				restored.session.Caller(target)
 				restored.restoreActivityThread(binding.ThreadInfo{ID: target, Cwd: childWorkspace, Turns: turns}, false)
 				view = restored.testActivity(restored.agents)
 			} else {
@@ -345,7 +345,7 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 			setTestAppServerIntegration(u, testProxyWithStore(store))
 			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc 'echo one; false'", AggregatedOutput: new("one\n"), ExitCode: new(1)}
 			entry := sessionpresentation.ActivityEntry{Seq: 1, Text: "Run `echo one`\n\nRun `false`", Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "t", Item: item.ID, Command: item.Command}}
-			first, second := u.session.activity.Outputs(u.session.Scope()).New(), u.session.activity.Outputs(u.session.Scope()).New()
+			first, second := u.activity.Outputs(u.session.Scope()).New(), u.activity.Outputs(u.session.Scope()).New()
 			if mode == "truncated" {
 				first.Write(strings.Repeat("line\n", activitymodel.OutputBytes/5))
 			} else if mode == "long-line" {
@@ -382,7 +382,7 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			u.session.completeCommand(entry.Native, item.Observation())
+			u.completeCommand(entry.Native, item.Observation())
 			u.restoreCommandSegments(&entry, item, workspace)
 			u.source.Entries = []sessionpresentation.ActivityRecord{{Source: entry}}
 			pages := activityui.Disclosure(nil).Blocks(sessionpresentation.CommandPresentation(entry).DetailValues())
@@ -432,7 +432,7 @@ func TestCommandSegmentsRestoreRichChangeRows(t *testing.T) {
 	listing := "amber1..amber5 +343 -658\namber6 +158 -81\n"
 	item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc 'echo before; mchanges --list'", ExitCode: new(0), AggregatedOutput: new("before\n" + listing)}
 	entry := sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "t", Item: item.ID}}
-	first, second := u.session.activity.Outputs(u.session.Scope()).New(), u.session.activity.Outputs(u.session.Scope()).New()
+	first, second := u.activity.Outputs(u.session.Scope()).New(), u.activity.Outputs(u.session.Scope()).New()
 	first.Finish(new("before"), new(0))
 	second.Finish(&listing, new(0))
 	u.retainCommandSegments(entry, item.Observation(), execTrackView{complete: true, output: true, segments: []sessionpresentation.ActivitySegment{{Output: first}, {Output: second}}})
