@@ -80,15 +80,17 @@ func TestSessionUIReplayCLISessionLookup(t *testing.T) {
 		metadata  []string
 	}
 	for _, tc := range []struct {
-		name      string
-		session   string
-		rollouts  []rollout
-		code      int
-		error     string
-		errorPath string
+		name          string
+		session       string
+		rollouts      []rollout
+		relativeState bool
+		code          int
+		error         string
+		errorPath     string
 	}{
 		{name: "active", session: sessionID, rollouts: []rollout{{"sessions/2023/11/14", sessionID, []string{sessionID}}}},
 		{name: "archived", session: sessionID, rollouts: []rollout{{"archived_sessions", sessionID, []string{sessionID}}}},
+		{name: "relative state directory", session: sessionID, rollouts: []rollout{{"sessions", sessionID, []string{sessionID}}}, relativeState: true, code: 1, error: "XDG_STATE_HOME must be absolute"},
 		{name: "duplicate", session: sessionID, rollouts: []rollout{
 			{"sessions/2023/11/14", sessionID, []string{sessionID}},
 			{"archived_sessions", sessionID, []string{sessionID}},
@@ -110,6 +112,11 @@ func TestSessionUIReplayCLISessionLookup(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			t.Setenv("CODEX_HOME", dir)
+			stateDirectory := filepath.Join(dir, "state")
+			if tc.relativeState {
+				stateDirectory = "relative-state"
+			}
+			t.Setenv("XDG_STATE_HOME", stateDirectory)
 			for _, rollout := range tc.rollouts {
 				root := filepath.Join(dir, filepath.FromSlash(rollout.directory))
 				if err := os.MkdirAll(root, 0700); err != nil {
@@ -147,17 +154,19 @@ func TestSessionUIReplayCLISessionLookup(t *testing.T) {
 			if tc.errorPath != "" && !strings.Contains(string(stderr), filepath.Join(dir, filepath.FromSlash(tc.errorPath))) {
 				t.Fatalf("error lacks source path: %s", stderr)
 			}
+			data, err := os.ReadFile(files[1].Name())
+			if err != nil {
+				t.Fatal(err)
+			}
 			if tc.code == 0 {
-				data, err := os.ReadFile(files[1].Name())
-				if err != nil {
-					t.Fatal(err)
-				}
 				var summary struct {
 					Events int `json:"events_applied"`
 				}
 				if err := json.Unmarshal(data, &summary); err != nil || summary.Events == 0 {
 					t.Fatalf("missing playback result: %s (%v)", data, err)
 				}
+			} else if len(data) != 0 {
+				t.Fatalf("failed replay emitted a playback result: %s", data)
 			}
 		})
 	}
