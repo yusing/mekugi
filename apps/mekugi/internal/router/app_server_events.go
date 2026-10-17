@@ -43,13 +43,14 @@ type appServerSession struct {
 	commands     map[[3]string]*appServerCommandRun // Live commands by thread, turn, item.
 	activity     *activitymodel.Service
 	sessionpresentation.Attachment
-	cwd         string
-	waits       activitypresentation.Waits
-	waitStore   *history.Store
-	waitWrites  *persistence.Counter
-	waitLimits  history.Limits
-	waitThread  string
-	waitContext context.Context
+	cwd           string
+	waits         activitypresentation.Waits
+	waitStore     *history.Store
+	waitWrites    *persistence.Counter
+	waitLimits    history.Limits
+	waitThread    string
+	waitNamespace string
+	waitContext   context.Context
 
 	compactionRollout binding.ThreadInfo // Host-selected Main rollout, without its history.
 }
@@ -75,7 +76,7 @@ func (s *appServerSession) start(thread, cwd string) {
 	s.metadata = make(map[string]string)
 	s.commands = make(map[[3]string]*appServerCommandRun)
 	s.waitStore, s.waitContext = nil, nil
-	s.waitWrites, s.waitLimits, s.waitThread = nil, history.Limits{}, ""
+	s.waitWrites, s.waitLimits, s.waitThread, s.waitNamespace = nil, history.Limits{}, "", ""
 	s.cwd = cwd
 }
 

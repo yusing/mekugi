@@ -29,11 +29,11 @@ func (u *appServerUI) submitShell() error {
 		u.setNotice("Shell commands use plain text · remove attachments and picker tokens first", true)
 		return nil
 	}
-	u.discardShellEdit(u.shellEdits.pending)
+	u.shellEdits.pending.Discard()
 	u.shellEdits.pending = nil
 	edit := u.captureShellEdit(command)
 	if err := u.request("thread/shellCommand", map[string]any{"threadId": u.Thread, "command": command}); err != nil {
-		u.discardShellEdit(edit)
+		edit.Discard()
 		return err // Keep the draft when transport submission fails.
 	}
 	u.shellEdits.pending = edit
@@ -49,7 +49,7 @@ func (u *appServerUI) shellResponse(failure *appserver.Error) {
 	u.conversation().Shell = conversationmodel.Input{}
 	u.Shell.Acknowledge(failure != nil, u.Turn)
 	if failure != nil {
-		u.discardShellEdit(u.shellEdits.pending)
+		u.shellEdits.pending.Discard()
 		u.shellEdits.pending = nil
 		hint := ""
 		if u.Text == "" {

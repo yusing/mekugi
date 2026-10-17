@@ -28,17 +28,3 @@ func (u *appServerUI) endTurnPreviews(thread, turn string) {
 		}
 	}
 }
-
-func (r *execWindowRegistry) stopTurnPreviews(thread, turn string) {
-	if r == nil || turn == "" {
-		return
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for _, window := range r.windows {
-		if window.thread == thread && window.turn == turn && window.previewCancel != nil {
-			window.previewCancel()
-			window.previewCancel = nil
-		}
-	}
-}

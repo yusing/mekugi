@@ -326,18 +326,18 @@ func TestStockPatchPreviewKeepsSourceFromBeforeTheCall(t *testing.T) {
 func TestCodeModePatchFinalPreviewUsesPreExecutionSource(t *testing.T) {
 	t.Parallel()
 	proxy := newManagedMekugiProxy(t)
+	broker := newLivePreview(t.Context())
+	proxy.review = testReview(broker)
 	attachTestReplayStore(t, proxy)
 	transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
 	path := filepath.Join(workspace, "sample.go")
 	if err := os.WriteFile(path, []byte("old()\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	broker := newLivePreview(t.Context())
 	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {transform.threadID: true}}})
 	sub := testReview(broker).Subscribe()
 	<-sub.Events()
 
-	proxy.review = testReview(broker)
 	proxy.review.Preview().Enable()
 	patch := "*** Begin Patch\n*** Update File: sample.go\n@@\n-old()\n+new()\n*** End Patch\n"
 	script := "const patch = " + string(responses.MustMarshalJSON(patch)) + "; text(await tools.apply_patch(patch));"

@@ -50,7 +50,7 @@ func (p *mekugiProxy) observeCodeModeFailures(thread, codeModeToolName string, r
 			responses.StringField(call, "namespace") != "" && responses.StringField(call, "namespace") != "functions" {
 			continue
 		}
-		if text, failed := codeModeFailureText(binding.ExecutionOutputTexts(item["output"])); failed {
+		if text, failed := binding.CodeModeFailureText(binding.ExecutionOutputTexts(item["output"])); failed {
 			p.activity.Collect(activitypresentation.Supplement{Thread: thread, Source: "code-mode-failure\x00" + callID, Kind: "error", CallID: callID, Text: text})
 		}
 		if codeModeReturnedNothing(item["output"]) {
@@ -100,25 +100,4 @@ func codeModeReturnedNothing(raw json.RawMessage) bool {
 		}
 	}
 	return true
-}
-
-// codeModeFailureText reads the host's failure header and, when the host
-// appended one as the final part, its complete script error. Presentation
-// bounds the inline preview separately; the host result is never modified.
-func codeModeFailureText(texts []string) (string, bool) {
-	if len(texts) == 0 {
-		return "", false
-	}
-	if status, _, _ := binding.CodeModeExecutionHeader(texts[0]); status != "Script failed" {
-		return "", false
-	}
-	text := "exec script failed"
-	if len(texts) > 1 {
-		if detail, ok := strings.CutPrefix(texts[len(texts)-1], "Script error:\n"); ok {
-			if strings.TrimSpace(detail) != "" {
-				text += ": " + detail
-			}
-		}
-	}
-	return text, true
 }

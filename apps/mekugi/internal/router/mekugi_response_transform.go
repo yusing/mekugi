@@ -66,8 +66,8 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 			return [][]byte{payload}, nil //nolint:nilerr // Unrelated output items pass through unchanged.
 		}
 		if item.Type == "function_call" || item.Type == "custom_tool_call" {
-			if t.proxy != nil {
-				t.proxy.control.SetToolInput(&t.generation, t.directory, t.threadID, item.ID, true)
+			if t.control != nil {
+				t.control.SetToolInput(&t.generation, t.directory, t.threadID, item.ID, true)
 			}
 		}
 		name := item.Name
@@ -91,8 +91,8 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		return [][]byte{payload}, nil
 
 	case envelope.Type == responseevents.CustomInputDone:
-		if t.proxy != nil {
-			t.proxy.control.SetToolInput(&t.generation, t.directory, t.threadID, envelope.ItemID, false)
+		if t.control != nil {
+			t.control.SetToolInput(&t.generation, t.directory, t.threadID, envelope.ItemID, false)
 		}
 		if addedFields, stockCall := t.nativeExecCalls[envelope.ItemID]; stockCall {
 			if responseevents.StringField(addedFields, "type") == "custom_tool_call" {
@@ -127,8 +127,8 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		return [][]byte{payload}, nil
 
 	case envelope.Type == responseevents.FunctionArgumentsDone:
-		if t.proxy != nil {
-			t.proxy.control.SetToolInput(&t.generation, t.directory, t.threadID, envelope.ItemID, false)
+		if t.control != nil {
+			t.control.SetToolInput(&t.generation, t.directory, t.threadID, envelope.ItemID, false)
 		}
 		return [][]byte{payload}, nil
 
@@ -138,8 +138,8 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 			return [][]byte{payload}, nil //nolint:nilerr // Malformed unrelated output remains the upstream's responsibility.
 		}
 		t.storageToolHandoff = t.storageToolHandoff || blocksTokenUsage(item.Fields)
-		if t.proxy != nil {
-			t.proxy.control.SetToolInput(&t.generation, t.directory, t.threadID, item.ID, false)
+		if t.control != nil {
+			t.control.SetToolInput(&t.generation, t.directory, t.threadID, item.ID, false)
 		}
 		if _, delivered := t.local[item.CallID]; item.Status == "incomplete" && !delivered {
 			t.endPreview(item.ID)
@@ -308,7 +308,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responseevents.Item)
 		execs, dynamic := commandanalysis.LiteralExecCommands(originalInput, t.directory, t.sessionShell)
 		// Source-resolved edit operands acquire baselines; a cell that may write
 		// elsewhere, including a dynamic one, is bounded by a workspace snapshot.
-		observation, observed := changecapture.Capture(t.ctx, execs, dynamic, true, executionCaptureEnvironment(t.ctx, t.directory, t.proxy.replayStore, patches))
+		observation, observed := changecapture.Capture(t.ctx, execs, dynamic, true, executionCaptureEnvironment(t.ctx, t.directory, t.retained, patches))
 		previewOpened := t.openStockExecWindow(callID, observation, patches, execs, dynamic, true)
 		if len(patches) == 0 && !observed && !previewOpened {
 			return false, nil
@@ -337,22 +337,22 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responseevents.Item)
 }
 
 func (t *mekugiResponseTransform) openExecWindow(callID string, observation *changecapture.Observation, patches []changecapture.PatchObservation) {
-	if observation == nil && len(patches) == 0 || t.proxy == nil {
+	if observation == nil && len(patches) == 0 || t.execWindows == nil {
 		return
 	}
 	if t.execGroup == "" {
 		t.execGroup = rand.Text()
 	}
 	window := &execWindow{ref: callID, thread: t.shellThreadID, turn: t.shellTurnID, group: t.execGroup}
-	admitExecutionWindow(t.proxy.execWindows, t.proxy.review, window, observation, patches, executionCaptureEnvironment(t.ctx, t.directory, t.proxy.replayStore, patches), t.threadID, t.operationCaller())
+	admitExecutionWindow(t.execWindows, t.review, window, observation, patches, executionCaptureEnvironment(t.ctx, t.directory, t.retained, patches), t.threadID, t.operationCaller())
 }
 
 // Display baselines are process-local. They preserve running LiveDiff without
 // turning formatter/managed effects into persisted authored changes.
 func (t *mekugiResponseTransform) openStockExecWindow(callID string, authored *changecapture.Observation, patches []changecapture.PatchObservation, commands []commandanalysis.Command, dynamic, codeMode bool) bool {
 	display := authored
-	if (authored == nil || authored.Class == execscope.Opaque.String()) && t.proxy != nil && t.proxy.review.Preview().Enabled() {
-		env := executionCaptureEnvironment(t.ctx, t.directory, t.proxy.replayStore, patches)
+	if (authored == nil || authored.Class == execscope.Opaque.String()) && t.review.Preview().Enabled() {
+		env := executionCaptureEnvironment(t.ctx, t.directory, t.retained, patches)
 		env.PreviewOnly = true
 		if preview, ok := changecapture.Capture(t.ctx, commands, dynamic, codeMode, env); ok {
 			if authored != nil {

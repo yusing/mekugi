@@ -113,6 +113,8 @@ func TestLiveDiffCodeModeSSEStreamsEditWithoutChangingEvents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	broker := newLivePreview(t.Context())
+	proxy.review = testReview(broker)
 	transform, err := proxy.prepareRequest(t.Context(), &request, "stream-session", "thread", codexresponses.TurnMetadata{
 		RequestKind: "turn", Directories: map[string]json.RawMessage{workspace: nil},
 	}, true)
@@ -120,12 +122,10 @@ func TestLiveDiffCodeModeSSEStreamsEditWithoutChangingEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(transform.Close)
-	broker := newLivePreview(t.Context())
 	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
 	sub := testReview(broker).Subscribe()
 	<-sub.Events()
 
-	proxy.review = testReview(broker)
 	proxy.review.Preview().Enable()
 	for _, event := range [][]byte{
 		mustTestJSON(t, map[string]any{"type": "response.output_item.added", "output_index": 0,

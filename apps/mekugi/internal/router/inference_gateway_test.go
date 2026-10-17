@@ -32,7 +32,7 @@ func testRequestExecutor(provider inferencegateway.Forwarder, issues *requestexe
 	executor := requestexecution.Executor{Provider: provider, Issues: issues}
 	if proxy != nil {
 		executor.Observations, executor.Guidance = proxy, proxy.registry.Guidance
-		executor.Control, executor.Usage = &proxy.control, proxy.usage
+		executor.Control, executor.Usage = proxy.control, proxy.usage
 	}
 	executor.Client, _ = provider.(*inferencegateway.Client)
 	executor.Exchange, _ = provider.(*inferencegateway.Exchange)

@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
@@ -33,12 +34,16 @@ func (u *appServerUI) openWaitStore(store *history.Store, writes *persistence.Co
 			return err
 		}
 	}
-	ctx, release, err := beginRetainedSession(ctx, store, writes, limits, u.Thread, "")
+	namespace, release, err := store.BeginSession(ctx, writes, limits, u.Thread)
+	if publication, ok := errors.AsType[*history.PublicationError](err); ok {
+		err = requestexecution.StoragePublicationError(publication.Err)
+	}
 	if err != nil {
 		return err
 	}
 	u.session.waitStore, u.session.waitContext = store, ctx
 	u.session.waitThread, u.session.waitWrites, u.session.waitLimits = u.Thread, writes, limits
+	u.session.waitNamespace = namespace
 	u.waitRelease = release
 	return nil
 }

@@ -27,7 +27,6 @@ import (
 
 	json "encoding/json/v2"
 	"errors"
-	"slices"
 	"strings"
 	"time"
 
@@ -48,26 +47,11 @@ type mekugiProxy struct {
 	activity         *sessioncontrol.Audience
 	execWindows      *execWindowRegistry
 	nativeTrace      *nativetrace.Reader
-	control          sessioncontrol.Observations
+	control          *sessioncontrol.Observations
+	previewTiming    previewbinding.Timing
 	calls            *history.CallCache
 	replayStore      *mekugiReplayStore
 	noticeSink       func(string, string, string, string)
-}
-
-func newMekugiProxy(registry *frontends.Registry, projections []binding.InputProjection, usage *accounting.Service, service *history.Service) *mekugiProxy {
-	if registry == nil {
-		return nil
-	}
-	proxy := &mekugiProxy{
-		registry:         registry,
-		calls:            service.Calls(),
-		review:           sessionreview.New(context.Background(), nil, nil),
-		inputProjections: slices.Clone(projections),
-		usage:            usage,
-		execWindows:      &execWindowRegistry{},
-	}
-	proxy.activity = sessioncontrol.NewAudience(func(category, message string) { proxy.notice("", "", category, message) })
-	return proxy
 }
 
 func (p *mekugiProxy) notice(session, thread, category, message string) {
@@ -93,7 +77,12 @@ type mekugiResponseTransform struct {
 	generation       sessioncontrol.Generation
 	toolTrace        requestexecution.Trace
 	ctx              context.Context
-	proxy            *mekugiProxy
+	control          *sessioncontrol.Observations
+	review           *sessionreview.Review
+	execWindows      *execWindowRegistry
+	calls            *history.CallCache
+	retained         *mekugiReplayStore
+	previewTiming    previewbinding.Timing
 	sessionID        string
 	shellTurnID      string
 	execGroup        string
@@ -127,8 +116,8 @@ func (t *mekugiResponseTransform) Close() {
 	if t == nil {
 		return
 	}
-	if t.proxy != nil {
-		t.proxy.control.EndGeneration(&t.generation)
+	if t.control != nil {
+		t.control.EndGeneration(&t.generation)
 	}
 	for itemID := range t.previews {
 		t.endPreview(itemID)
@@ -289,7 +278,12 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 	}
 	transform := &mekugiResponseTransform{
 		ctx:              ctx,
-		proxy:            p,
+		control:          p.control,
+		review:           p.review,
+		execWindows:      p.execWindows,
+		calls:            p.calls,
+		retained:         p.replayStore,
+		previewTiming:    p.previewTiming,
 		sessionID:        sessionID,
 		shellTurnID:      metadata.TurnID,
 		shellThreadID:    threadID,

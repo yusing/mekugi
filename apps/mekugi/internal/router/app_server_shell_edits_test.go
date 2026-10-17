@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -30,7 +31,7 @@ func newShellEditTestUI(t *testing.T) *appServerUI {
 	return u
 }
 
-func startShellEditTestCommand(t *testing.T, u *appServerUI, command, item string) *appServerShellEdit {
+func startShellEditTestCommand(t *testing.T, u *appServerUI, command, item string) *shellObservation {
 	t.Helper()
 	u.Text = "!" + command
 	if err := u.submitShell(); err != nil {
@@ -64,7 +65,8 @@ func completeShellEditTestCommand(t *testing.T, u *appServerUI, item string, exi
 
 func TestAppServerShellEditsRevertApplyReplay(t *testing.T) {
 	u := newShellEditTestUI(t)
-	workspace, ctx, store := u.session.cwd, u.session.waitContext, u.retained
+	workspace, store := u.session.cwd, u.retained
+	ctx := context.WithValue(u.session.waitContext, storageSessionKey{}, storageSessionIdentity{Thread: u.session.waitThread, Namespace: u.session.waitNamespace})
 	path := filepath.Join(workspace, "ignored.txt")
 	// Source-named mchanges targets must not depend on workspace snapshot admission.
 	runExecVCSTestGit(t, workspace, "init", "-q")
@@ -154,5 +156,41 @@ func TestAppServerShellEditsFailedWriterAndNoEffect(t *testing.T) {
 	u.shellResponse(&appserver.Error{Message: "rejected"})
 	if u.shellEdits.pending != nil {
 		t.Fatal("rejected shell retained its observation")
+	}
+}
+
+func TestAppServerShellObservationKeepsOriginalOwnersAfterSwitch(t *testing.T) {
+	u := newShellEditTestUI(t)
+	thread, workspace, retained := u.Thread, u.session.cwd, u.retained
+	path := filepath.Join(workspace, "selected.txt")
+	writeTestFile(t, path, "before\n")
+	edit := startShellEditTestCommand(t, u, "printf 'after\\n' > selected.txt", "shell-original")
+	if edit == nil {
+		t.Fatal("missing shell observation")
+	}
+	other, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(other.snapshots.Close)
+	u.retained, u.Thread = other, "other-thread"
+	u.session.start(u.Thread, t.TempDir())
+	if err := u.openWaitStore(other.publication, other.writes, other.retentionLimits()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(u.waitRelease)
+	writeTestFile(t, path, "after\n")
+	exit := 0
+	u.observeShellEdit(thread, "item/completed", binding.ThreadItem{ID: "shell-original", Type: "commandExecution", Source: "userShell", Status: "completed", ExitCode: &exit})
+	if u.feedback.Alert {
+		t.Fatal(u.feedback.Text)
+	}
+	id := legacycall.ExecCallID(edit.call, false)
+	record, found, err := retained.publication.LookupHostCall(t.Context(), workspace, id)
+	if err != nil || !found || record.ExecutingThread != thread || record.ChangeID == "" {
+		t.Fatalf("original observation: %+v, %v, %v", record, found, err)
+	}
+	if _, found, err := other.publication.LookupHostCall(t.Context(), workspace, id); err != nil || found {
+		t.Fatalf("observation crossed retained owners: %v, %v", found, err)
 	}
 }

@@ -174,3 +174,25 @@ func NativeJSONSession(text string) int64 {
 	}
 	return id
 }
+
+// Source: apps/mekugi/internal/router/code_mode_failure.go@[c6bad96c].
+// CodeModeFailureText reads the host's failure header and, when the host
+// appended one as the final part, its complete script error. Presentation
+// bounds the inline preview separately; the host result is never modified.
+func CodeModeFailureText(texts []string) (string, bool) {
+	if len(texts) == 0 {
+		return "", false
+	}
+	if status, _, _ := CodeModeExecutionHeader(texts[0]); status != "Script failed" {
+		return "", false
+	}
+	text := "exec script failed"
+	if len(texts) > 1 {
+		if detail, ok := strings.CutPrefix(texts[len(texts)-1], "Script error:\n"); ok {
+			if strings.TrimSpace(detail) != "" {
+				text += ": " + detail
+			}
+		}
+	}
+	return text, true
+}

@@ -37,7 +37,7 @@ func TestUISnapshotNativeMoveKeepsTranscript(t *testing.T) {
 	setLiveScope(auto, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
 	sub := testReview(auto).Subscribe()
 	proxy := &mekugiProxy{review: testReview(auto), execWindows: &execWindowRegistry{}}
-	transform := &mekugiResponseTransform{proxy: proxy, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
+	transform := &mekugiResponseTransform{control: proxy.control, review: proxy.review, execWindows: proxy.execWindows, calls: proxy.calls, retained: proxy.replayStore, previewTiming: proxy.previewTiming, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
 	transform.openExecWindow("cell", observation, nil)
 	defer proxy.execWindows.close("cell")
 	if proxy.execWindows.find("cell").previewCancel != nil {

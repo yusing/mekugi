@@ -1,37 +1,22 @@
 package router
 
 import (
-	"context"
-	"crypto/rand"
-
 	"github.com/yusing/mekugi/backends/codex/binding"
-
-	"github.com/yusing/mekugi/libraries/commandanalysis"
-	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
-	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
-
-	jsonv1 "encoding/json"
 
 	json "encoding/json/v2"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
-type appServerShellEdit struct {
-	ctx                     context.Context
-	call, workspace, thread string
-	history                 mekugiHistory
-}
-
 // Only locally submitted commands own observation windows. History restoration
 // never captures a new baseline or revives an unfinished command.
 type appServerShellEdits struct {
 	shell   string
-	pending *appServerShellEdit
-	running map[[2]string]*appServerShellEdit
+	pending *shellObservation
+	running map[[2]string]*shellObservation
 }
 
-func (u *appServerUI) captureShellEdit(command string) *appServerShellEdit {
+func (u *appServerUI) captureShellEdit(command string) *shellObservation {
 	if u.retained == nil || u.replay != nil {
 		return nil
 	}
@@ -39,25 +24,16 @@ func (u *appServerUI) captureShellEdit(command string) *appServerShellEdit {
 	if ctx == nil {
 		ctx = u.ctx
 	}
-	options := executionCaptureEnvironment(ctx, u.session.cwd, u.retained, nil)
-	input := commandanalysis.Command{Command: command, Workdir: u.session.cwd, Shell: u.shellEdits.shell}
-	observation, observed := changecapture.Capture(ctx, []commandanalysis.Command{input}, false, false, options)
-	if !observed {
+	edit := prepareShellObservation(ctx, u.retained, u.execWindows, u.audience, u.captureNotice, shellObservationInput{
+		Thread: u.Thread, Turn: u.Turn, Namespace: u.session.waitNamespace,
+		Workspace: u.session.cwd, Caller: u.session.path(u.Thread), Command: command, Shell: u.shellEdits.shell,
+	})
+	if edit == nil {
 		return nil
 	}
-	call := "shell:" + rand.Text()
 	u.restoreDiffThread(binding.ThreadInfo{ID: u.Thread, Cwd: u.session.cwd}, true)
-	admitExecutionWindow(u.execWindows, u.review, &execWindow{ref: call, thread: u.Thread, turn: u.Turn, group: rand.Text()}, observation, nil, options, u.Thread, "/root")
-	u.execWindows.setSession(call, call)
-	return &appServerShellEdit{ctx: ctx, call: call, workspace: u.session.cwd, thread: u.Thread,
-		history: mekugiHistory{ToolName: nativeExecCommandToolName, ExecObservation: observation,
-			ExecutingThread: u.Thread, Caller: u.session.path(u.Thread)}}
-}
-
-func (u *appServerUI) discardShellEdit(edit *appServerShellEdit) {
-	if edit != nil {
-		u.execWindows.close(edit.call)
-	}
+	edit.begin(u.review)
+	return edit
 }
 
 // Capture completion before presentation can discard an event from a thread
@@ -79,14 +55,14 @@ func (u *appServerUI) observeShellEdit(thread, method string, item binding.Threa
 	key := [2]string{thread, item.ID}
 	if method == "item/started" {
 		edit := u.shellEdits.pending
-		if edit == nil || edit.thread != thread {
+		if edit == nil || edit.Thread() != thread {
 			return
 		}
 		u.shellEdits.pending = nil
 		if u.shellEdits.running == nil {
-			u.shellEdits.running = make(map[[2]string]*appServerShellEdit)
+			u.shellEdits.running = make(map[[2]string]*shellObservation)
 		}
-		edit.history.UpstreamItem = map[string]jsonv1.RawMessage{"id": responses.MustMarshalJSON(item.ID)}
+		edit.BindItem(item.ID)
 		u.shellEdits.running[key] = edit
 		return
 	}
@@ -102,10 +78,8 @@ func (u *appServerUI) observeShellEdit(thread, method string, item binding.Threa
 	if item.AggregatedOutput != nil {
 		output = *item.AggregatedOutput
 	}
-	host := &binding.ToolResult{CallID: item.ID, Tool: item.Source, Status: item.Status, ExitCode: item.ExitCode}
-	if err := finalizeExecObservations(u.retained, u.execWindows, u.audience, u.captureNotice, context.WithoutCancel(edit.ctx), edit.workspace,
-		[]execCompletion{{callID: edit.call, history: edit.history, result: binding.ExecutionResult{Terminal: true, Succeeded: host.Status == "completed" && host.ExitCode != nil && *host.ExitCode == 0, ExitCode: host.ExitCode, Text: output}, host: host}}); err != nil {
-		u.discardShellEdit(edit)
+	host := binding.ToolResult{CallID: item.ID, Tool: item.Source, Status: item.Status, ExitCode: item.ExitCode}
+	if err := edit.Complete(host, output); err != nil {
 		u.setNotice("Shell change capture failed: "+err.Error(), true)
 	}
 }

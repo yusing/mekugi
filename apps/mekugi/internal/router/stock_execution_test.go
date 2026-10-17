@@ -225,7 +225,7 @@ func TestCodeModeStockBatchPassesThroughUnchanged(t *testing.T) {
 	if history, found := transform.local["batch-call"]; !found || len(history.NativePatches) != 1 {
 		t.Fatalf("stock batch was not retained before exposure: found=%v history=%+v", found, history)
 	}
-	history, found, err := transform.proxy.replayStore.lookup(transform.ctx, workspace, "batch-call")
+	history, found, err := transform.retained.lookup(transform.ctx, workspace, "batch-call")
 	if err != nil || !found || len(history.NativePatches) != 1 || history.NativePatches[0].Input != patch {
 		t.Fatalf("stock batch observation = %+v, found=%v, err=%v", history.NativePatches, found, err)
 	}

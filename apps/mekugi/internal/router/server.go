@@ -12,9 +12,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
+
+	previewbinding "github.com/yusing/mekugi/modules/livepreview/codexbinding"
+	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
@@ -121,6 +125,14 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 		ctx = requestexecution.WithDebug(ctx, debug)
 	}
 	var mekugiCalls *mekugiProxy
+	var registry *frontends.Registry
+	var retained *mekugiReplayStore
+	var calls *history.CallCache
+	var audience *sessioncontrol.Audience
+	var review *sessionreview.Review
+	var windows *execWindowRegistry
+	var nativeTrace *nativetrace.Reader
+	var control sessioncontrol.Observations
 	var guardServer *sessioncontrol.ShellApprovals
 	var reportObserver *segmentservice.Observer
 	defer func() {
@@ -240,7 +252,7 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 		if debug != nil {
 			axReadOutput = debug.ReadLogPath()
 		}
-		registry, err := frontends.New(ctx, frontends.Config{Commands: commands, Guidance: guidance, ReplayDirectory: replayDirectory, AXReadOutput: axReadOutput})
+		registry, err = frontends.New(ctx, frontends.Config{Commands: commands, Guidance: guidance, ReplayDirectory: replayDirectory, AXReadOutput: axReadOutput})
 		if err != nil {
 			return fmt.Errorf("initialize tool registry: %w", err)
 		}
@@ -259,39 +271,41 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 		if !options.DeduplicateOutput {
 			projections = nil
 		}
-		mekugiCalls = newMekugiProxy(registry, projections, usage, service)
+		calls = service.Calls()
+		audience = sessioncontrol.NewAudience(func(category, message string) { issues.AddThreadNotice("", "", category, message) })
+		windows = &execWindowRegistry{}
+		retained = replayStore
 		if titleGenerator != nil {
-			titleGenerator.usage = mekugiCalls.usage
+			titleGenerator.usage = usage
 		}
 		traceDirectory, traceErr := os.MkdirTemp("", "mekugi-native-trace-")
 		if traceErr == nil {
-			mekugiCalls.nativeTrace = nativetrace.New(traceDirectory)
+			nativeTrace = nativetrace.New(traceDirectory)
 			defer func() { runErr = errors.Join(runErr, os.RemoveAll(traceDirectory)) }()
 		} else {
 			issues.AddNotice("", "native_trace", "Nested tool confirmation unavailable: "+traceErr.Error())
 		}
-		mekugiCalls.noticeSink = issues.AddThreadNotice
 		replayStore.storageNotice = func(session, thread, phase, message string) {
 			issues.CleanupNotice(session, thread, phase, message)
 		}
-		mekugiCalls.review = sessionreview.New(ctx, live, func(category, message string) { issues.AddNotice("", category, message) })
-		defer mekugiCalls.review.Close()
-		replayStore.liveDiff = mekugiCalls.review.Publish
-		mekugiCalls.replayStore = replayStore
-		mekugiCalls.usage.Configure(replayStore.directory, replayStore.writes, replayStore.retentionLimits(), func(thread string, err error) {
+		review = sessionreview.New(ctx, live, func(category, message string) { issues.AddNotice("", category, message) })
+		defer review.Close()
+		replayStore.liveDiff = review.Publish
+		mekugiCalls = &mekugiProxy{registry: registry, inputProjections: slices.Clone(projections), usage: usage, review: review, activity: audience, execWindows: windows, nativeTrace: nativeTrace, control: &control, calls: calls, replayStore: replayStore, noticeSink: issues.AddThreadNotice, previewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}}
+		usage.Configure(replayStore.directory, replayStore.writes, replayStore.retentionLimits(), func(thread string, err error) {
 			issues.AddThreadNotice("", thread, "usage_storage", "Provider usage could not be retained or restored: "+err.Error())
 		})
 		if issues != nil {
 			issues.Configure(requestexecution.FailureStorage{Diagnostics: diagnosis, Writes: writes, Store: replayStore.publication, Limits: replayStore.retentionLimits()})
 		}
 		defer func() {
-			mekugiCalls.calls.StopAdmission()
+			calls.StopAdmission()
 			if reportObserver != nil {
 				reportObserver.Close()
 			}
 			guardServer.Close()
-			mekugiCalls.calls.Close()
-			mekugiCalls.activity.Close()
+			calls.Close()
+			audience.Close()
 		}()
 	}
 	skillsManagerAvailable := mekugiCalls != nil && skillsManagerInPath(frontendDirectory)
@@ -309,7 +323,7 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 			defer close(retentionDone)
 			runStorageRetention(retentionCtx, diagnosis, func() retentionScope {
 				if mekugiCalls != nil {
-					return mekugiCalls.replayStore.retentionScope(retentionCtx)
+					return retained.retentionScope(retentionCtx)
 				}
 				storage := issues.Storage()
 				return retentionScope{store: storage.Store, writes: storage.Writes, limits: storage.Limits, notice: func(phase, message string) { issues.CleanupNotice("", "", phase, message) }}
@@ -337,8 +351,8 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 
 	executor := requestexecution.Executor{Provider: provider, Client: provider, Issues: issues, ServiceTiers: serviceTiers, Naming: titleGenerator}
 	if mekugiCalls != nil {
-		executor.Observations, executor.Guidance = mekugiCalls, mekugiCalls.registry.Guidance
-		executor.SkillsManager, executor.Control, executor.Usage = skillsManagerAvailable, &mekugiCalls.control, mekugiCalls.usage
+		executor.Observations, executor.Guidance = mekugiCalls, registry.Guidance
+		executor.SkillsManager, executor.Control, executor.Usage = skillsManagerAvailable, &control, usage
 	}
 	webSocketEndpoint := inferencegateway.NewWebSocketEndpoint(ctx, options.Timeout, provider, executor.ExecuteWebSocket)
 	defer webSocketEndpoint.Close()
@@ -391,7 +405,7 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 					hub, reportErr = segmentservice.NewObserver(segments.Live, instrumentation, activitymodel.OutputBytes)
 					if reportErr == nil {
 						reportObserver = hub
-						mekugiCalls.execWindows.tracker = hub
+						windows.tracker = hub
 					} else {
 						segments.Live.Close()
 					}
@@ -404,10 +418,10 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 			if debug != nil {
 				debugDirectory = filepath.Dir(debug.Paths()[0])
 			}
-			return startAppServerUI(terminalViews, changes, views, conversation, activity, service, prefs, segments.Reports, ctx, cmd, stdin, stdout, appServerIntegration{controlObservations: &mekugiCalls.control, usage: mekugiCalls.usage, audience: mekugiCalls.activity, review: mekugiCalls.review, execWindows: mekugiCalls.execWindows, nativeTrace: mekugiCalls.nativeTrace, retained: mekugiCalls.replayStore, captureNotice: mekugiCalls.noticeSink, guard: guardServer, guards: guards, execTrack: reportObserver, skillsManager: skillsManagerAvailable}, issues, resumeThread, faint, serviceTiers, capture, resumeArgv, debugDirectory, titleGenerator, observations, approvals)
+			return startAppServerUI(terminalViews, changes, views, conversation, activity, service, prefs, segments.Reports, ctx, cmd, stdin, stdout, appServerIntegration{controlObservations: &control, usage: usage, audience: audience, review: review, execWindows: windows, nativeTrace: nativeTrace, retained: retained, captureNotice: issues.AddThreadNotice, guard: guardServer, guards: guards, execTrack: reportObserver, skillsManager: skillsManagerAvailable}, issues, resumeThread, faint, serviceTiers, capture, resumeArgv, debugDirectory, titleGenerator, observations, approvals)
 		}
-		if mekugiCalls != nil && mekugiCalls.nativeTrace != nil {
-			session.NativeTraceDirectory = mekugiCalls.nativeTrace.Directory()
+		if mekugiCalls != nil && nativeTrace != nil {
+			session.NativeTraceDirectory = nativeTrace.Directory()
 		}
 		if debug != nil {
 			session.AXReadOutput = debug.ReadLogPath()

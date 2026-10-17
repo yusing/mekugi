@@ -146,10 +146,10 @@ func TestLiveDiffTerminalCompletesAfterTransformedDelivery(t *testing.T) {
 		for _, child := range []bool{false, true} {
 			name := map[bool]string{false: "json", true: "sse"}[stream] + map[bool]string{false: "/root", true: "/child"}[child]
 			t.Run(name, func(t *testing.T) {
-				transform, proxy, _, workspace := newMekugiTestTransform(t)
+				transform, _, _, workspace := newMekugiTestTransform(t)
 				auto, sub := newLiveDiffTurnTest(t, workspace, transform.threadID)
 
-				proxy.review = testReview(auto)
+				transform.review = testReview(auto)
 				transform.shellTurnID = "host-turn"
 				transform.subagentTurn = child
 				beginLiveDiffTurn(auto, workspace, transform.threadID, codexresponses.TurnMetadata{
@@ -203,12 +203,12 @@ func TestLiveDiffCompletionOnlyForSuccessfulFinal(t *testing.T) {
 		for _, scenario := range []string{"final", "tool-only", "terminal-tool", "failed"} {
 			t.Run(map[bool]string{false: "json", true: "sse"}[stream]+"/"+scenario, func(t *testing.T) {
 				t.Setenv("TMPDIR", t.TempDir())
-				transform, proxy, _, workspace := newMekugiTestTransform(t)
+				transform, _, _, workspace := newMekugiTestTransform(t)
 				turnID := "usage-off-" + map[bool]string{false: "json", true: "sse"}[stream] + "-" + scenario
 				transform.shellTurnID = turnID
 				auto, sub := newLiveDiffTurnTest(t, workspace, transform.shellThreadID)
 
-				proxy.review = testReview(auto)
+				transform.review = testReview(auto)
 				beginLiveDiffTurn(auto, workspace, transform.shellThreadID, codexresponses.TurnMetadata{
 					RequestKind: "turn", ThreadID: transform.shellThreadID, TurnID: turnID,
 				})

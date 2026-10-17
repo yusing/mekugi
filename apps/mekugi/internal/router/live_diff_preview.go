@@ -3,7 +3,6 @@ package router
 import (
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	previewbinding "github.com/yusing/mekugi/modules/livepreview/codexbinding"
-	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 )
 
 // operationCaller is the canonical agent path of this request's tool calls.
@@ -19,7 +18,7 @@ func (t *mekugiResponseTransform) previewStockDelta(itemID, kind, delta string) 
 	if delta == "" {
 		return
 	}
-	auto := t.proxy.review.Preview()
+	auto := t.review.Preview()
 	if auto == nil || !auto.Enabled() {
 		return
 	}
@@ -30,7 +29,7 @@ func (t *mekugiResponseTransform) previewStockDelta(itemID, kind, delta string) 
 	if worker == nil {
 		worker = previewbinding.Start(t.ctx, auto, previewbinding.Identity{
 			Workspace: t.directory, Thread: t.threadID, Kind: kind, Caller: t.operationCaller(), Turn: t.shellTurnID,
-		}, previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}, changecapture.ReadPatchFile)
+		}, t.previewTiming, changecapture.ReadPatchFile)
 		t.previews[itemID] = worker
 	}
 	worker.Append(delta)

@@ -20,15 +20,15 @@ import (
 func newLiveDiffFinalFrameTransform(t *testing.T) (*mekugiResponseTransform, *previewmodel.Session, *sessionreview.Subscription) {
 	t.Helper()
 	proxy := newManagedMekugiProxy(t)
+	broker := newLivePreview(t.Context())
+	proxy.review = testReview(broker)
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	workspace, thread := transform.directory, transform.threadID
-	broker := newLivePreview(t.Context())
 	scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {thread: true}}}
 	setLiveScope(broker, scope)
 	sub := testReview(broker).Subscribe()
 	<-sub.Events() // retained scope
 
-	proxy.review = testReview(broker)
 	proxy.review.Preview().Enable()
 	return transform, broker, sub
 }

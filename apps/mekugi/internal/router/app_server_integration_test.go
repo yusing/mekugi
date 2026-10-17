@@ -4,7 +4,7 @@ func testAppServerIntegration(p *mekugiProxy) appServerIntegration {
 	if p == nil {
 		return appServerIntegration{}
 	}
-	integration := appServerIntegration{controlObservations: &p.control, usage: p.usage, audience: p.activity, review: p.review, execWindows: p.execWindows, nativeTrace: p.nativeTrace, retained: p.replayStore, captureNotice: p.noticeSink}
+	integration := appServerIntegration{controlObservations: p.control, usage: p.usage, audience: p.activity, review: p.review, execWindows: p.execWindows, nativeTrace: p.nativeTrace, retained: p.replayStore, captureNotice: p.noticeSink}
 	if p.execWindows != nil {
 		integration.execTrack = p.execWindows.tracker
 	}

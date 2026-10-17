@@ -7,10 +7,18 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+	"github.com/yusing/mekugi/backends/codex/binding"
+	previewbinding "github.com/yusing/mekugi/modules/livepreview/codexbinding"
+	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
+	"github.com/yusing/mekugi/modules/usage/accounting"
 
 	"github.com/dlclark/regexp2/v2"
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
@@ -216,4 +224,22 @@ func (p *mekugiProxy) Close() error {
 	p.calls.Close()
 	p.activity.Close()
 	return nil
+}
+
+func newMekugiProxy(registry *frontends.Registry, projections []binding.InputProjection, usage *accounting.Service, service *history.Service) *mekugiProxy {
+	if registry == nil {
+		return nil
+	}
+	proxy := &mekugiProxy{
+		registry:         registry,
+		calls:            service.Calls(),
+		review:           sessionreview.New(context.Background(), nil, nil),
+		inputProjections: slices.Clone(projections),
+		usage:            usage,
+		control:          new(sessioncontrol.Observations),
+		previewTiming:    previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain},
+		execWindows:      &execWindowRegistry{},
+	}
+	proxy.activity = sessioncontrol.NewAudience(func(category, message string) { proxy.notice("", "", category, message) })
+	return proxy
 }
