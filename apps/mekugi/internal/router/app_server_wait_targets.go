@@ -4,12 +4,14 @@ import (
 	"context"
 	"path/filepath"
 
+	"github.com/yusing/mekugi/libraries/persistence"
+
 	history "github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/modules/activity/waittargets"
 )
 
-func (u *appServerUI) openWaitStore(store *mekugiReplayStore) error {
+func (u *appServerUI) openWaitStore(store *history.Store, writes *persistence.Counter, limits history.Limits) error {
 	if u.waitRelease != nil {
 		u.waitRelease()
 		u.waitRelease = nil
@@ -23,33 +25,35 @@ func (u *appServerUI) openWaitStore(store *mekugiReplayStore) error {
 		if err != nil {
 			return err
 		}
-		store, err = openReplayStore(ctx, u.history, nil, directory)
+		store, err = u.history.Open(ctx, directory)
+		limits = history.Limits{Total: history.DefaultStorageBytes, Kinds: map[string]int64{"commentary": 16 << 20}}
 		if err != nil {
 			return err
 		}
 	}
-	ctx, release, err := store.beginSession(ctx, u.Thread, "")
+	ctx, release, err := beginRetainedSession(ctx, store, writes, limits, u.Thread, "")
 	if err != nil {
 		return err
 	}
-	u.session.waitStore, u.session.waitContext = store.scoped(ctx), ctx
+	u.session.waitStore, u.session.waitContext = store, ctx
+	u.session.waitThread, u.session.waitWrites, u.session.waitLimits = u.Thread, writes, limits
 	u.waitRelease = release
 	return nil
 }
 
 func (s *appServerSession) waitTargetsPath(key [3]string) string {
-	return filepath.Join(s.waitStore.directory, waittargets.Name(s.cwd, key[0], key[1], key[2]))
+	return filepath.Join(s.waitStore.Directory(), waittargets.Name(s.cwd, key[0], key[1], key[2]))
 }
 
 func (s *appServerSession) readWaitTargets(key [3]string) (targets []waittargets.Target, found bool, err error) {
-	err = s.waitStore.locked(s.waitContext, func(store *mekugiReplayStore) error {
+	err = s.waitStore.Transaction(s.waitContext, s.waitWrites, func(tx *history.Transaction) error {
 		path := s.waitTargetsPath(key)
 		var err error
 		targets, found, err = waittargets.Read(path)
 		if err != nil || !found {
 			return err
 		}
-		if err := store.retainFiles(filepath.Base(path)); err != nil {
+		if err := storagePublicationError(tx.Retain(s.waitThread, s.waitLimits, filepath.Base(path))); err != nil {
 			return err
 		}
 		return nil
@@ -68,7 +72,7 @@ func (s *appServerSession) writeWaitTargets(key [3]string, targets []waittargets
 	if err != nil {
 		return err
 	}
-	return s.waitStore.locked(s.waitContext, func(store *mekugiReplayStore) error {
-		return store.writeManagedFile(filepath.Base(s.waitTargetsPath(key)), "wait-pending-", data)
+	return s.waitStore.Transaction(s.waitContext, s.waitWrites, func(tx *history.Transaction) error {
+		return writeRetainedRecord(tx, s.waitThread, s.waitLimits, filepath.Base(s.waitTargetsPath(key)), "wait-pending-", data)
 	})
 }

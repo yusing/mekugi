@@ -4,6 +4,9 @@ import (
 	"cmp"
 	"context"
 
+	"github.com/yusing/mekugi/libraries/persistence"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"fmt"
@@ -40,7 +43,10 @@ type appServerSession struct {
 	sessionpresentation.Attachment
 	cwd         string
 	waits       activitypresentation.Waits
-	waitStore   *mekugiReplayStore
+	waitStore   *history.Store
+	waitWrites  *persistence.Counter
+	waitLimits  history.Limits
+	waitThread  string
 	waitContext context.Context
 
 	compactionRollout binding.ThreadInfo // Host-selected Main rollout, without its history.
@@ -67,6 +73,7 @@ func (s *appServerSession) start(thread, cwd string) {
 	s.metadata = make(map[string]string)
 	s.commands = make(map[[3]string]*appServerCommandRun)
 	s.waitStore, s.waitContext = nil, nil
+	s.waitWrites, s.waitLimits, s.waitThread = nil, history.Limits{}, ""
 	s.cwd = cwd
 }
 

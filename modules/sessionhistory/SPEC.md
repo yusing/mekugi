@@ -77,6 +77,9 @@ and fork. Initialization failure prevents launch. Passthrough opens storage only
 to retain failures and does not retain tool replay state.
 
 Cross-process leases cover active turns, host handoffs, workers and yielded calls.
+Session admission resolves the durable namespace before acquiring the thread lease,
+then enrolls the active owner under publication serialization. Failed enrollment
+releases that lease. Native metadata and request observation share this admission.
 A delivered terminal without a tool handoff releases its turn lease independently
 of answer text or optional UI tracking; shutdown releases owned leases. Cleanup
 never stops host processes or changes continuation lifetimes.

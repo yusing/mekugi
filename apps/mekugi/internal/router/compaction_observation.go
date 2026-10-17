@@ -41,7 +41,7 @@ func (p *mekugiProxy) observeCompactionInput(ctx context.Context, request *codex
 	if p == nil || p.replayStore == nil || thread == "" {
 		return nil
 	}
-	ctx, release, err := p.replayStore.beginSession(ctx, thread, session)
+	ctx, release, err := beginRetainedSession(ctx, p.replayStore.publication, p.replayStore.writes, p.replayStore.retentionLimits(), thread, session)
 	if err != nil {
 		return err
 	}

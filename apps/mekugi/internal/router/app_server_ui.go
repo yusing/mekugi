@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"context"
 
+	"github.com/yusing/mekugi/libraries/persistence"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
@@ -762,7 +764,13 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				}
 			}
 			if u.retained != nil || u.panes != nil {
-				if err := u.openWaitStore(u.retained); err != nil {
+				var store *history.Store
+				var writes *persistence.Counter
+				var limits history.Limits
+				if u.retained != nil {
+					store, writes, limits = u.retained.publication, u.retained.writes, u.retained.retentionLimits()
+				}
+				if err := u.openWaitStore(store, writes, limits); err != nil {
 					u.setNotice("Wait targets could not be retained: "+err.Error(), true)
 				}
 			}

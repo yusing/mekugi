@@ -43,43 +43,26 @@ func (s *mekugiReplayStore) scoped(ctx context.Context) *mekugiReplayStore {
 	return &copy
 }
 
-// A shared process lease protects running requests and workers across routers.
-// Lock files have stable inodes and are never unlinked while another process
-// could be acquiring them. Their empty contents are not retained chat data.
-func (s *mekugiReplayStore) beginSession(ctx context.Context, thread, routing string) (context.Context, func(), error) {
-	if s == nil || thread == "" {
+// Application scope carries routing authority without giving it to the store.
+func beginRetainedSession(ctx context.Context, store *history.Store, writes *persistence.Counter, limits history.Limits, thread, routing string) (context.Context, func(), error) {
+	if store == nil || thread == "" {
 		return ctx, func() {}, nil
 	}
-	identity := storageSessionIdentity{Thread: thread, Routing: routing, Namespace: thread}
-	if err := s.locked(ctx, func(s *mekugiReplayStore) error {
-		var err error
-		identity.Namespace, err = s.publication.NamespaceForThread(thread)
-		return err
-	}); err != nil {
+	namespace, release, err := store.BeginSession(ctx, writes, limits, thread)
+	if publication, ok := errors.AsType[*history.PublicationError](err); ok {
+		err = storagePublicationError(publication.Err)
+	}
+	if err != nil {
 		return ctx, nil, err
 	}
-	ctx = context.WithValue(ctx, storageSessionKey{}, identity)
-	s = s.scoped(ctx)
-	release, err := s.publication.SessionLease(ctx, thread)
-	if err != nil {
-		return ctx, nil, fmt.Errorf("acquire session storage lease: %w", err)
-	}
-	err = s.locked(ctx, func(s *mekugiReplayStore) error { return s.retainFiles() })
-	if err != nil {
-		release()
-		return ctx, nil, err
-	}
-	return ctx, release, nil
+	identity := storageSessionIdentity{Thread: thread, Routing: routing, Namespace: namespace}
+	return context.WithValue(ctx, storageSessionKey{}, identity), release, nil
 }
 
 // Called under store.lock. Ownership is recorded before publishing a capability.
 // Reading inherited history adds another owner instead of transferring ownership.
 func (s *mekugiReplayStore) retentionLimits() history.Limits {
 	return history.Limits{Total: s.maxBytes, Kinds: map[string]int64{"commentary": s.maxCommentaryBytes}}
-}
-
-func (s *mekugiReplayStore) retainFiles(names ...string) error {
-	return storagePublicationError(s.transaction.Retain(s.session.Thread, s.retentionLimits(), names...))
 }
 
 func storagePublicationError(err error) error {
@@ -209,19 +192,16 @@ func storageIOError(err error) error {
 	return requestexecution.Classify(err, "storage_io", "Mekugi could not persist session data; check available disk space and storage permissions before retrying", false)
 }
 
-func (s *mekugiReplayStore) maintainStorage(replacement string, size int64) error {
-	return storagePublicationError(s.transaction.Admit(s.retentionLimits(), replacement, size))
-}
-
-// Called under store.lock. Retain and admit the record before publication.
-func (s *mekugiReplayStore) writeManagedFile(name, pattern string, data []byte) error {
-	if err := s.retainFiles(name); err != nil {
+// Retain and admit prepared native metadata before publishing its bytes.
+// Source: apps/mekugi/internal/router/storage_retention.go:217:226@[55257c48] writeManagedFile.
+func writeRetainedRecord(tx *history.Transaction, thread string, limits history.Limits, name, pattern string, data []byte) error {
+	if err := storagePublicationError(tx.Retain(thread, limits, name)); err != nil {
 		return storageIOError(err)
 	}
-	if err := s.maintainStorage(name, int64(len(data))); err != nil {
+	if err := storagePublicationError(tx.Admit(limits, name, int64(len(data)))); err != nil {
 		return err
 	}
-	return storageIOError(s.transaction.Write(name, pattern, data))
+	return storageIOError(tx.Write(name, pattern, data))
 }
 
 // Readers acquire this lease before store.lock; cleanup only tries it without

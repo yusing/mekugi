@@ -234,7 +234,10 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 	if err != nil {
 		return nil, err
 	}
-	ctx, release, err := p.replayStore.beginSession(ctx, threadID, sessionID)
+	release := func() {}
+	if store := p.replayStore; store != nil {
+		ctx, release, err = beginRetainedSession(ctx, store.publication, store.writes, store.retentionLimits(), threadID, sessionID)
+	}
 	if err == nil {
 		err = retained.BindLease(release)
 	}

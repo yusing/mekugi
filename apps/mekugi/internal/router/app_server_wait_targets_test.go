@@ -33,7 +33,7 @@ func waitTargetTestEvent(t *testing.T, u *appServerUI, method, caller, turn, id 
 
 func waitTargetTestStore(t *testing.T, u *appServerUI, store *mekugiReplayStore) {
 	t.Helper()
-	if err := u.openWaitStore(store); err != nil {
+	if err := u.openWaitStore(store.publication, store.writes, store.retentionLimits()); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
@@ -243,7 +243,7 @@ func TestAppServerWaitTargetsManagedRetention(t *testing.T) {
 		u := newAppServerSessionTestUI(t, workspace)
 		u.Thread = thread
 		u.session.start(thread, workspace)
-		if err := u.openWaitStore(store); err != nil {
+		if err := u.openWaitStore(store.publication, store.writes, store.retentionLimits()); err != nil {
 			t.Fatal(err)
 		}
 		item := binding.ThreadItem{Type: "collabAgentToolCall", Tool: "wait", ReceiverThreadIDs: []string{"target"}}

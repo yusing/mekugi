@@ -22,7 +22,7 @@ func newShellEditTestUI(t *testing.T) *appServerUI {
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
 	setTestAppServerIntegration(u, proxy)
-	if err := u.openWaitStore(u.retained); err != nil {
+	if err := u.openWaitStore(u.retained.publication, u.retained.writes, u.retained.retentionLimits()); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(u.waitRelease)

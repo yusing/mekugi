@@ -16,8 +16,8 @@ func (s *appServerSession) retainHook(thread string, observation history.HookObs
 	if store == nil {
 		return errors.New("native session store is unavailable")
 	}
-	return store.locked(s.waitContext, func(store *mekugiReplayStore) error {
-		r, err := store.publication.ReadHookObservations(s.cwd, thread)
+	return store.Transaction(s.waitContext, s.waitWrites, func(tx *history.Transaction) error {
+		r, err := store.ReadHookObservations(s.cwd, thread)
 		if err != nil {
 			return err
 		}
@@ -36,7 +36,7 @@ func (s *appServerSession) retainHook(thread string, observation history.HookObs
 				return err
 			}
 			if len(data) <= maxReplayRecordBytes {
-				return store.writeManagedFile(history.HookObservationsName(s.cwd, thread), "hooks-pending-", data)
+				return writeRetainedRecord(tx, s.waitThread, s.waitLimits, history.HookObservationsName(s.cwd, thread), "hooks-pending-", data)
 			}
 			if len(r.Runs) < 2 {
 				return errors.New("hook observation exceeds size limit")
@@ -50,11 +50,7 @@ func (s *appServerSession) retainHook(thread string, observation history.HookObs
 
 func (u *appServerUI) restoredHookEvents(info binding.ThreadInfo) []restoredRolloutEvent {
 	store := u.session.waitStore
-	var published *history.Store
-	if store != nil {
-		published = store.publication
-	}
-	r, err := published.ReadHookObservations(u.session.cwd, info.ID)
+	r, err := store.ReadHookObservations(u.session.cwd, info.ID)
 	if err != nil {
 		u.restoreContentNotice("Hook observations for " + info.ID + " unavailable: " + err.Error())
 		return nil
@@ -63,8 +59,8 @@ func (u *appServerUI) restoredHookEvents(info binding.ThreadInfo) []restoredRoll
 		u.restoreContentNotice(fmt.Sprintf("%s: %d earlier hook observations were not retained", info.ID, r.Dropped))
 	}
 	if store != nil && len(r.Runs) > 0 {
-		if err := store.locked(u.session.waitContext, func(store *mekugiReplayStore) error {
-			return store.retainFiles(history.HookObservationsName(u.session.cwd, info.ID))
+		if err := store.Transaction(u.session.waitContext, u.session.waitWrites, func(tx *history.Transaction) error {
+			return storagePublicationError(tx.Retain(u.session.waitThread, u.session.waitLimits, history.HookObservationsName(u.session.cwd, info.ID)))
 		}); err != nil {
 			u.restoreContentNotice("Hook observations for " + info.ID + " could not be retained: " + err.Error())
 		}

@@ -835,3 +835,20 @@ func BenchmarkStorageReserveChange(b *testing.B) {
 		b.Fatalf("persisted reservation: changes=%d err=%v", len(persisted.Changes), err)
 	}
 }
+
+// Retained-store fixtures select the actual History owner and application scope.
+func (s *mekugiReplayStore) beginSession(ctx context.Context, thread, routing string) (context.Context, func(), error) {
+	return beginRetainedSession(ctx, s.publication, s.writes, s.retentionLimits(), thread, routing)
+}
+
+func (s *mekugiReplayStore) retainFiles(names ...string) error {
+	return storagePublicationError(s.transaction.Retain(s.session.Thread, s.retentionLimits(), names...))
+}
+func (s *mekugiReplayStore) maintainStorage(replacement string, size int64) error {
+	return storagePublicationError(s.transaction.Admit(s.retentionLimits(), replacement, size))
+}
+
+// Called under store.lock. Retain and admit the record before publication.
+func (s *mekugiReplayStore) writeManagedFile(name, pattern string, data []byte) error {
+	return writeRetainedRecord(s.transaction, s.session.Thread, s.retentionLimits(), name, pattern, data)
+}

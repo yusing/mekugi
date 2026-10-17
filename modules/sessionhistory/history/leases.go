@@ -11,7 +11,39 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
+	"github.com/yusing/mekugi/libraries/persistence"
 )
+
+// BeginSession resolves retained identity before leasing and enrolling its owner.
+// The caller releases the lease after delivery or session retirement.
+// Source: apps/mekugi/internal/router/storage_retention.go:49:74@[55257c48] beginSession.
+func (s *Store) BeginSession(ctx context.Context, writes *persistence.Counter, limits Limits, thread string) (string, func(), error) {
+	if s == nil || thread == "" {
+		return thread, func() {}, nil
+	}
+	namespace := thread
+	if err := s.Transaction(ctx, writes, func(*Transaction) error {
+		var err error
+		namespace, err = s.NamespaceForThread(thread)
+		return err
+	}); err != nil {
+		return "", nil, err
+	}
+	release, err := s.SessionLease(ctx, thread)
+	if err != nil {
+		return "", nil, fmt.Errorf("acquire session storage lease: %w", err)
+	}
+	if err := s.Transaction(ctx, writes, func(tx *Transaction) error {
+		if err := tx.Retain(thread, limits); err != nil {
+			return &PublicationError{Err: err}
+		}
+		return nil
+	}); err != nil {
+		release()
+		return "", nil, err
+	}
+	return namespace, release, nil
+}
 
 // SessionName preserves the existing durable ownership catalog identity.
 func SessionName(thread string) string {

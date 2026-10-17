@@ -79,7 +79,9 @@ func TestAppServerShellNativeCodex(t *testing.T) {
 		awaitFrame(func(frame string) bool {
 			return strings.Contains(frame, "shell-edit.txt") && strings.Contains(frame, "+1")
 		})
-		io.WriteString(outer, "\x022\t")
+		// Main focus preserves the open Diff. Hide and reopen its toggle to
+		// focus it before selecting the Changes tab.
+		io.WriteString(outer, "\x022\x022\t")
 		await("Changes")
 		await("mchanges apply")
 		io.WriteString(outer, "\x021")
