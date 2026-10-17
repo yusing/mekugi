@@ -64,8 +64,19 @@ func openCodeResponsesFixture() string {
 	)
 }
 
+// Endpoint fixtures pin protocol metadata independently of the bundled live catalog.
+func openCodeEndpointService(t *testing.T) opencode.Service {
+	t.Helper()
+	service := openCodeTestService(t, map[string]opencode.Metadata{
+		"minimax-m3": {Format: "anthropic"},
+		"grok-4.6":   {Format: "responses"},
+	})
+	service.APIKey = "go-key"
+	return service
+}
+
 func TestOpenCodeEndpointRequestsAndReplay(t *testing.T) {
-	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "go-key"}}).Services()[0]
+	service := openCodeEndpointService(t)
 	for _, test := range []struct {
 		model, path, fixture, retained string
 	}{
@@ -162,9 +173,9 @@ func TestOpenCodeEndpointRequestsAndReplay(t *testing.T) {
 }
 
 func TestOpenCodeEndpointStreamsRejectPartialTools(t *testing.T) {
-	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
+	service := openCodeEndpointService(t)
 	for _, test := range []struct{ model, fixture, terminal string }{
-		{"minimax-m2.7", openCodeAnthropicFixture(), `data: {"type":"message_stop"}`},
+		{"minimax-m3", openCodeAnthropicFixture(), `data: {"type":"message_stop"}`},
 		{"grok-4.6", openCodeResponsesFixture(), `data: {"response":`},
 	} {
 		t.Run(test.model, func(t *testing.T) {
@@ -199,7 +210,7 @@ func TestOpenCodeEndpointStreamsRejectPartialTools(t *testing.T) {
 }
 
 func TestOpenCodeResponsesRefusal(t *testing.T) {
-	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
+	service := openCodeEndpointService(t)
 	for _, streamed := range []bool{false, true} {
 		item := map[string]any{"type": "message", "id": "msg_refusal", "role": "assistant", "content": []any{
 			map[string]string{"type": "refusal", "refusal": "Cannot fulfill that request."},

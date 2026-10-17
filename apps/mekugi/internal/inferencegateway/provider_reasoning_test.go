@@ -132,7 +132,7 @@ func TestProviderReasoningAfterTextIsDeferred(t *testing.T) {
 // Messages and Responses routes cannot replay summary-only reasoning, so a
 // visible block that closes before its retained item keeps no summary.
 func TestProviderReasoningWithoutRetainedItemIsNotReplayed(t *testing.T) {
-	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "go-key"}}).Services()[0]
+	service := openCodeTestService(t, map[string]opencode.Metadata{"grok-4.6": {Format: "responses"}})
 	tr := testOpenCodeTranslation(t, &service, "grok-4.6", "responses", nil)
 	result, err := tr.codec.Read(io.NopCloser(strings.NewReader(openCodeEvents(
 		map[string]any{"type": "response.reasoning_text.delta", "output_index": 0, "delta": "unsigned"},
