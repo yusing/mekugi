@@ -48,7 +48,7 @@ func TestAppServerProgressCompactionLifecycle(t *testing.T) {
 		item("main", status, "pending", "item/started")
 		before = len(u.view.Entries)
 		appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": status, "status": status}})
-		if u.compacting != nil || strings.Contains(u.sessionLabel(time.Now()), "Compacting") || len(u.view.Entries) != before {
+		if strings.Contains(u.sessionLabel(time.Now()), "Compacting") || len(u.view.Entries) != before {
 			t.Fatal("turn end retained compaction or fabricated completion")
 		}
 	}
@@ -77,7 +77,7 @@ func TestAppServerProgressWaitAndReplay(t *testing.T) {
 	history := []appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{wait, {ID: "c", Type: "contextCompaction"}}}}
 	v := newAppServerSessionTestUI(t, t.TempDir())
 	v.restoreHistory(history)
-	if len(v.view.Entries) != 2 || v.compacting != nil || v.Turn != "" {
+	if len(v.view.Entries) != 2 || v.Turn != "" {
 		t.Fatalf("restored events revived work or went missing: %+v", v.view.Entries)
 	}
 	v.session.registerThread(appServerThreadInfo{ID: "child"})
@@ -203,7 +203,7 @@ func TestAppServerProgressTerminalPolling(t *testing.T) {
 	poll("main", "t", "proc", "")
 	label("Compacting context")
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t", "status": "interrupted"}})
-	if u.polling != nil || u.compacting != nil {
+	if got := u.mainPresentation(u.now()).Status.Session; got.Text != "Interrupted" || got.Running {
 		t.Fatal("interrupt retained progress")
 	}
 }

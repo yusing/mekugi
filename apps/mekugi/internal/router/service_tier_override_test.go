@@ -51,7 +51,7 @@ func TestUISnapshotNativeConfiguredServiceTier(t *testing.T) {
 	u := newAppServerSessionTestUI(t, directory)
 	u.proxy = newManagedMekugiProxy(t)
 	u.serviceTiers = &serviceTierSettings{configured: config.ServiceTiers}
-	u.status = "Ready"
+	u.sessionPresentation().Status.Text = "Ready"
 	u.view.Painter.Theme = diffrender.DarkTheme
 	for _, tc := range []struct{ model, requested, want string }{
 		{"gpt-6.1-sol", "default", "priority"},

@@ -281,7 +281,7 @@ func TestUISnapshotOutputThroughputComposerAndRoster(t *testing.T) {
 			root.ContextKnown, root.ContextTokens, root.ContextWindow = true, 24000, 200000
 			root.OutputThroughput = inference.OutputThroughput{OutputTokens: 83, DurationNanos: uint64(2 * time.Second), MeasuredRequests: 1}
 			root.Final = true
-			u.status, u.model = "Ready", "gpt-6-sol"
+			u.sessionPresentation().Status.Text, u.model = "Ready", "gpt-6-sol"
 			rows, _ := u.mainFrame(width, 10, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("output-throughput-composer-%d", width), rows)
 			u.agents.apply(activityPaneEvent{Kind: "agents", Agents: []activityPaneAgent{*root,

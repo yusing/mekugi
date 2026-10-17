@@ -142,8 +142,8 @@ func TestAppServerResumePickerStartup(t *testing.T) {
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"named","turnId":"old","item":{"type":"agentMessage","id":"answer","text":"Saved answer"}}}`)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"model":"model","thread":{"id":"named","cwd":"/work","turns":[{"id":"old","status":"completed","items":[{"type":"userMessage","id":"question","content":[{"type":"text","text":"Saved question"}]},{"type":"agentMessage","id":"answer","text":"Saved answer"}]}]}}}`, resume.ID))
 	resumeTestSettle(t, u, w)
-	if u.Thread != "named" || u.status != "Ready" || len(u.view.Entries) != 2 || u.view.Entries[1].Source.Text != "Saved answer" {
-		t.Fatalf("resumed state: thread=%q status=%q entries=%+v", u.Thread, u.status, u.view.Entries)
+	if u.Thread != "named" || u.sessionPresentation().Status.Text != "Ready" || len(u.view.Entries) != 2 || u.view.Entries[1].Source.Text != "Saved answer" {
+		t.Fatalf("resumed state: thread=%q status=%q entries=%+v", u.Thread, u.sessionPresentation().Status.Text, u.view.Entries)
 	}
 }
 
@@ -264,8 +264,8 @@ func TestAppServerResumeSwitchesSession(t *testing.T) {
 	if len(methods) == 0 || methods[0] != "thread/unsubscribe" || !slices.Contains(methods, "model/list") {
 		t.Fatalf("switch follow-up requests: %v", methods)
 	}
-	if u.Thread != "saved" || u.Replacement.Pending() || u.Replacement.Target != "" || u.status != "Ready" || len(u.view.Entries) != 2 || u.view.Entries[0].Source.Text != "Saved question" {
-		t.Fatalf("switched state: thread=%q status=%q entries=%+v", u.Thread, u.status, u.view.Entries)
+	if u.Thread != "saved" || u.Replacement.Pending() || u.Replacement.Target != "" || u.sessionPresentation().Status.Text != "Ready" || len(u.view.Entries) != 2 || u.view.Entries[0].Source.Text != "Saved question" {
+		t.Fatalf("switched state: thread=%q status=%q entries=%+v", u.Thread, u.sessionPresentation().Status.Text, u.view.Entries)
 	}
 	if frame := resumeTestFrame(t, u, 120, 20); strings.Contains(frame, "old transcript") || strings.Contains(frame, "late old") {
 		t.Fatalf("old transcript remains rendered:\n%s", frame)
@@ -414,8 +414,8 @@ func TestAppServerResumeSwitchKeepsCurrentSessionLive(t *testing.T) {
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"saved","cwd":"/work","turns":[{"id":"old","status":"completed","items":[{"type":"agentMessage","id":"answer","text":"Saved answer"}]}]}}}`, resume.ID))
 	resumeTestSettle(t, u, w)
-	if u.Thread != "saved" || u.status != "Ready" {
-		t.Fatalf("switch state: thread=%q status=%q", u.Thread, u.status)
+	if u.Thread != "saved" || u.sessionPresentation().Status.Text != "Ready" {
+		t.Fatalf("switch state: thread=%q status=%q", u.Thread, u.sessionPresentation().Status.Text)
 	}
 }
 
@@ -444,8 +444,8 @@ func TestAppServerResumeSwitchWaitsForDiffResync(t *testing.T) {
 	resume := resumeTestPrepared(t, u, w)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"saved","cwd":%q,"turns":[]}}}`, resume.ID, workspace))
 	resumeTestSettle(t, u, w)
-	if u.status != "Restoring saved Diff…" || u.restoring == nil {
-		t.Fatalf("restoration finished before the Diff resynchronized: %q", u.status)
+	if u.sessionPresentation().Status.Text != "Restoring saved Diff…" || u.restoring == nil {
+		t.Fatalf("restoration finished before the Diff resynchronized: %q", u.sessionPresentation().Status.Text)
 	}
 	select {
 	case <-sub.Gap():
@@ -459,8 +459,8 @@ func TestAppServerResumeSwitchWaitsForDiffResync(t *testing.T) {
 	if err := u.finishRestoredContent(); err != nil {
 		t.Fatal(err)
 	}
-	if u.status != "Ready" || u.shell.diffFailure != "" || len(u.shell.saved.data.files()) != 1 || filepath.Base(u.shell.saved.data.files()[0].Path) != "saved.go" {
-		t.Fatalf("resumed Diff: status=%q failure=%q files=%+v", u.status, u.shell.diffFailure, u.shell.saved.data.files())
+	if u.sessionPresentation().Status.Text != "Ready" || u.shell.diffFailure != "" || len(u.shell.saved.data.files()) != 1 || filepath.Base(u.shell.saved.data.files()[0].Path) != "saved.go" {
+		t.Fatalf("resumed Diff: status=%q failure=%q files=%+v", u.sessionPresentation().Status.Text, u.shell.diffFailure, u.shell.saved.data.files())
 	}
 	// A later /clear session still joins the Diff, as do its children.
 	appServerTestKeys(t, u, "/clear\r")

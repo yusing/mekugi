@@ -82,7 +82,7 @@ func TestAppServerGuardHookIgnoresStaleThreadResponse(t *testing.T) {
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":%s}`, old.ID, guardHookTestResult(t, "/old", guardHookTestEntry("guard"))))
 	appServerOneRequest(t, wire, "hooks/list", "")
-	if u.guardHookCheck.readyThread != "" || u.guardHookCheck.pendingThread != "new" || len(u.conversation().Unsent)+len(u.conversation().Queued) != 1 || u.alert {
+	if u.guardHookCheck.readyThread != "" || u.guardHookCheck.pendingThread != "new" || len(u.conversation().Unsent)+len(u.conversation().Queued) != 1 || u.sessionPresentation().Status.Alert {
 		t.Fatalf("stale result affected new thread: check=%+v notice=%q", u.guardHookCheck, u.feedback.Text)
 	}
 }

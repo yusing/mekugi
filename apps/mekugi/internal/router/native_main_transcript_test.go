@@ -17,7 +17,7 @@ func TestUISnapshotNativeMainRepliesStayInTranscript(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
 			u.clock = func() time.Time { return now }
-			u.Turn, u.status, u.model = "active", "Working", "snapshot-model"
+			u.Turn, u.sessionPresentation().Status.Text, u.model = "active", "Working", "snapshot-model"
 			u.view.Painter.Theme = diffrender.DarkTheme
 			entries := []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Main reply stays in the transcript.", Observed: now}}
 			for i := range 20 {

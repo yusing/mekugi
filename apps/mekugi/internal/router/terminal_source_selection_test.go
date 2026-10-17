@@ -170,7 +170,7 @@ func TestAppServerBTWShimmerElapsed(t *testing.T) {
 	a := u.btwRows(80, 8)[0]
 	now = now.Add(100 * time.Millisecond)
 	b := u.btwRows(80, 8)[0]
-	if a == b || ansi.Strip(a) != ansi.Strip(b) || !strings.Contains(ansi.Strip(a), "Answering · 1m15s") || !u.sessionAnimating() {
+	if a == b || ansi.Strip(a) != ansi.Strip(b) || !strings.Contains(ansi.Strip(a), "Answering · 1m15s") || !u.mainPresentation(u.now()).Status.Animating {
 		t.Fatalf("status=%q / %q", a, b)
 	}
 	u.btw.Busy = false

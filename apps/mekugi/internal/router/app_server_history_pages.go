@@ -78,9 +78,9 @@ func (u *appServerUI) requestChildHistory(request sessionpresentation.PageReques
 	state := h.state.View(request.Thread)
 	if state.Initial {
 		if request.Kind == sessionpresentation.TurnMetadata {
-			u.status = fmt.Sprintf("Restoring Activity %d/%d · turn page %d…", u.restoring.next+1, len(u.restoring.order), state.TurnPages+1)
+			u.sessionPresentation().Status.SetText(fmt.Sprintf("Restoring Activity %d/%d · turn page %d…", u.restoring.next+1, len(u.restoring.order), state.TurnPages+1))
 		} else {
-			u.status = fmt.Sprintf("Restoring Activity %d/%d · recent items…", u.restoring.next+1, len(u.restoring.order))
+			u.sessionPresentation().Status.SetText(fmt.Sprintf("Restoring Activity %d/%d · recent items…", u.restoring.next+1, len(u.restoring.order)))
 		}
 	}
 	u.updateHistoryHint()

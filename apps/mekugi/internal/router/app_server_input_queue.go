@@ -150,7 +150,7 @@ func (u *appServerUI) send(parts []conversationmodel.Input, steer bool) error {
 	defer u.pruneInputPayloads()
 	if len(parts) == 1 && parts[0].Text == "/compact" {
 		u.Compaction.Begin(sessioncontrol.CompactIntent(parts[0].Compact))
-		u.status = "Compacting context" + "…"
+		u.sessionPresentation().Status.SetText("Compacting context" + "…")
 		return u.request("thread/compact/start", map[string]any{"threadId": u.Thread})
 	}
 	for i := range parts {
@@ -197,7 +197,7 @@ func (u *appServerUI) send(parts []conversationmodel.Input, steer bool) error {
 	if !steer {
 		u.guardHookCheck.readyThread = ""
 	}
-	u.status, u.alert = "Sending…", false
+	u.sessionPresentation().Status.Set("Sending…", false)
 	if s.AttachmentNotice != "" {
 		notice := s.AttachmentNotice
 		if strings.HasPrefix(u.feedback.Text, "Skill attachment unavailable:") || strings.HasPrefix(u.feedback.Text, "Skill catalog incomplete:") {
@@ -226,7 +226,8 @@ func (u *appServerUI) withdraw(result sessioncontrol.InputResult) {
 	}
 	u.view.removePendingInput(s.Echo)
 	if result.Submission.Interrupted && len(u.view.Entries) == 0 {
-		u.status, u.turnStarted = "Ready", time.Time{}
+		u.sessionPresentation().Status.Started = time.Time{}
+		u.sessionPresentation().Status.SetText("Ready")
 	}
 	if result.KeepWaiting {
 		u.restoreDrafts(s.Parts...)
@@ -250,7 +251,7 @@ func (u *appServerUI) submissionResponse(method string, failure *appserver.Error
 	}
 	result := u.AcknowledgeInput(failure != nil, len(s.Parts) == 1 && s.Parts[0].Question != nil, len(u.conversation().Unsent) > 0)
 	if result.Action == sessioncontrol.InputRejected {
-		u.status, u.alert = method+": "+failure.Message, true
+		u.sessionPresentation().Status.Set(method+": "+failure.Message, true)
 	}
 	u.applyInputResult(result)
 }
@@ -258,11 +259,11 @@ func (u *appServerUI) submissionResponse(method string, failure *appserver.Error
 func (u *appServerUI) applyInputResult(result sessioncontrol.InputResult) {
 	switch result.Action {
 	case sessioncontrol.InputAccepted, sessioncontrol.InputStale:
-		if u.status == "Sending…" && !u.alert {
+		if u.sessionPresentation().Status.Text == "Sending…" && !u.sessionPresentation().Status.Alert {
 			if u.Turn != "" {
-				u.status = "Working"
+				u.sessionPresentation().Status.SetText("Working")
 			} else if u.Starting() {
-				u.status = "Starting turn…"
+				u.sessionPresentation().Status.SetText("Starting turn…")
 			}
 		}
 		if result.Action != sessioncontrol.InputStale {

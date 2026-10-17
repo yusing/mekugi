@@ -34,7 +34,7 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.ensureShell()
 			defer u.shell.diffScreen.Close()
-			u.Turn, u.status, u.Text = "active", "Working", "keep draft"
+			u.Turn, u.sessionPresentation().Status.Text, u.Text = "active", "Working", "keep draft"
 			switch tc.kind {
 			case "command":
 				u.Text = "/unknown"
@@ -89,7 +89,7 @@ func TestUISnapshotComposerError(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.view.Painter.Theme = diffrender.DarkTheme
 			u.clock = func() time.Time { return time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC) }
-			u.status = "Ready"
+			u.sessionPresentation().Status.Text = "Ready"
 			u.setNotice("File contents omitted: setup.sh (attachment budget exceeded).\nThe attachment result names the missing content.", true)
 			rows, _ := u.mainFrame(width, 8, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("composer-error-%d", width), rows)

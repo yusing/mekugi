@@ -186,9 +186,7 @@ func (u *appServerUI) replayTranscript(e observation.Event) bool {
 			u.view.applyTranscript(update, e.Item.Content, u.session.cwd, u.Thread, e.Item.Type == "userMessage")
 		}
 	}
-	// Public text clears a recorded polling indicator without issuing control.
-	if e.TurnID == u.Turn && (e.Kind == observation.AgentDelta || e.Kind == observation.ReasoningDelta || e.Kind == observation.ItemStarted || e.Item.Type == "agentMessage") {
-		u.polling = nil
-	}
+	// Replay shares Main's progress identity and never revives operations.
+	u.sessionPresentation().ObserveProgress(e, u.Turn, false)
 	return true
 }

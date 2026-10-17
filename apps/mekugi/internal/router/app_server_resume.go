@@ -31,7 +31,7 @@ import (
 )
 
 func (u *appServerUI) requestResume(thread string) error {
-	u.status = "Resuming thread…"
+	u.sessionPresentation().Status.SetText("Resuming thread…")
 	_, err := u.requests.Send("thread/read", map[string]any{"threadId": thread, "includeTurns": false}, "main", appServerRequest{label: "resume/settings"})
 	return err
 }
@@ -258,7 +258,9 @@ func (u *appServerUI) restoreMainHistory(turns []appServerHistoryTurn, placement
 				Observed: historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt))}}})
 		}
 		if turn.Status == "inProgress" {
-			u.Turn, u.status, u.turnStarted = turn.ID, "Working", time.Now()
+			u.Turn = turn.ID
+			u.sessionPresentation().Status.Started = u.now()
+			u.sessionPresentation().Status.SetText("Working")
 		}
 	}
 	root := u.session.agent("/root")

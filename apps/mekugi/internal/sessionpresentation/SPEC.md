@@ -1,10 +1,17 @@
 # Session presentation
 
 The application owns displayed-thread identity, Main's input destination,
-read-only admission and child-history pagination. [Activity](../../../../modules/activity/SPEC.md)
+read-only admission, child-history pagination, Main's status and displayed-thread
+caption values. [Activity](../../../../modules/activity/SPEC.md)
 owns transcript content, [session control](../sessioncontrol/SPEC.md) issues backend
 requests, and [terminal session](../terminalsession/SPEC.md) owns focus, navigation,
 geometry and rendering.
+
+Status and caption values are detached, renderer-neutral facts. Session control
+remains the operation authority; Conversation, Notifications and Usage retain their
+drafts, prompts, feedback delivery and accounting. Presentation selects status
+precedence and retains progress timing; the terminal chooses styling, animation
+and geometry using the same presentation clock as replay.
 
 Displaying a child changes no execution identity and cancels no host work. Main
 remains the input, question and approval destination. Child display makes the

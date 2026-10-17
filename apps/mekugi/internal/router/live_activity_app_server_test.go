@@ -147,7 +147,7 @@ func TestAppServerActivityExcludesMain(t *testing.T) {
 func TestAppServerMainRosterSummary(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
-	u.status = "Working"
+	u.sessionPresentation().Status.Text = "Working"
 	u.shell.Focus = 3 // Narrow layout displays only the roster, not Main.
 	if err := u.paint(&bytes.Buffer{}, 80, 40); err != nil {
 		t.Fatal(err)

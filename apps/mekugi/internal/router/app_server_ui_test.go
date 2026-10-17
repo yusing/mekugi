@@ -177,21 +177,21 @@ func TestAppServerCtrlCClearsDraftThenInterruptsOrQuits(t *testing.T) {
 
 func TestAppServerComposerNoticeKeepsTurnStateAndClearsOnEdit(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.Turn, u.status = "turn", "Working"
+	u.Turn, u.sessionPresentation().Status.Text = "turn", "Working"
 	appServerTestKeys(t, u, "/nope\r")
 	label := ansi.Strip(u.stateLabel(time.Now()))
 	if !strings.Contains(label, "Working") || !strings.Contains(label, "Unknown command /nope") {
 		t.Fatalf("notice replaced turn state: %q", label)
 	}
 	appServerTestKeys(t, u, "\x7f")
-	if u.feedback.Text != "" || u.status != "Working" {
-		t.Fatalf("edit kept stale notice %q or lost status %q", u.feedback.Text, u.status)
+	if u.feedback.Text != "" || u.sessionPresentation().Status.Text != "Working" {
+		t.Fatalf("edit kept stale notice %q or lost status %q", u.feedback.Text, u.sessionPresentation().Status.Text)
 	}
 }
 
 func TestAppServerIdleStateUsesDefaultText(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.status = "Ready"
+	u.sessionPresentation().Status.Text = "Ready"
 	if label := u.stateLabel(time.Now()); label != "\x1b[39mReady"+terminalui.Reset {
 		t.Fatalf("idle label = %q", label)
 	}
@@ -199,7 +199,9 @@ func TestAppServerIdleStateUsesDefaultText(t *testing.T) {
 
 func appServerTestKeys(t *testing.T, u *appServerUI, keys string) {
 	t.Helper()
-	decoder := u.client.Input.(interface{ keyDecoder() *terminalsession.Decoder }).keyDecoder()
+	decoder := u.client.Input.(interface {
+		keyDecoder() *terminalsession.Decoder
+	}).keyDecoder()
 	for _, key := range []byte(keys) {
 		if quit, err := u.input(decoder.Feed(key, u.now())); quit || err != nil {
 			t.Fatalf("key %q: quit=%v err=%v", key, quit, err)
@@ -366,7 +368,7 @@ func TestAppServerUINotificationBeforeResponseAndItems(t *testing.T) {
 		t.Fatalf("unexpected visible content: %q", frame.String())
 	}
 	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"t","status":"completed"}}}`)
-	if u.Turn != "" || !strings.HasPrefix(u.status, "Completed in ") {
+	if u.Turn != "" || !strings.Contains(u.sessionLabel(u.now()), "Completed in ") {
 		t.Fatal("main completion not applied")
 	}
 }
@@ -376,20 +378,20 @@ func TestAppServerSteerStatusAcknowledgement(t *testing.T) {
 		u, _ := newAppServerTestUI()
 		appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"t"}}}`)
 		appServerTestKeys(t, u, "steer\r")
-		if u.status != "Sending…" {
-			t.Fatal(u.status)
+		if u.sessionPresentation().Status.Text != "Sending…" {
+			t.Fatal(u.sessionPresentation().Status.Text)
 		}
 		if completed {
 			appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"t","status":"completed"}}}`)
 		}
-		before := u.status
+		before := u.sessionPresentation().Status.Text
 		appServerTestMessage(t, u, `{"id":1,"result":{"turnId":"t"}}`)
 		if completed {
-			if u.status != before || u.Turn != "" {
+			if u.sessionPresentation().Status.Text != before || u.Turn != "" {
 				t.Fatal("late acknowledgement revived completed turn")
 			}
-		} else if u.status != "Working" || u.Turn != "t" || u.conversation().Submitted[u.Submission().ID].Text != "" {
-			t.Fatalf("steer stayed pending: status=%s turn=%s submitted=%s", u.status, u.Turn, u.conversation().Submitted[u.Submission().ID].Text)
+		} else if u.sessionPresentation().Status.Text != "Working" || u.Turn != "t" || u.conversation().Submitted[u.Submission().ID].Text != "" {
+			t.Fatalf("steer stayed pending: status=%s turn=%s submitted=%s", u.sessionPresentation().Status.Text, u.Turn, u.conversation().Submitted[u.Submission().ID].Text)
 		}
 	}
 }
@@ -397,7 +399,7 @@ func TestAppServerSteerStatusAcknowledgement(t *testing.T) {
 func TestAppServerNoticeExpiry(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
-	u.status = "Working"
+	u.sessionPresentation().Status.Text = "Working"
 	u.shell.copyText("copied")
 	deadline := u.feedback.Until
 	if deadline.IsZero() || u.expireNotice(deadline.Add(-time.Millisecond)) {
@@ -407,7 +409,7 @@ func TestAppServerNoticeExpiry(t *testing.T) {
 	if u.feedback.Until.Before(deadline) {
 		t.Fatal("repeat notice did not refresh deadline")
 	}
-	if !u.expireNotice(u.feedback.Until) || u.feedback.Text != "" || u.status != "Working" {
+	if !u.expireNotice(u.feedback.Until) || u.feedback.Text != "" || u.sessionPresentation().Status.Text != "Working" {
 		t.Fatal("notice did not expire independently of status")
 	}
 	u.setNotice("failure", true)

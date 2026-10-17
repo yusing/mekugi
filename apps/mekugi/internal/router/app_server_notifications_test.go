@@ -217,7 +217,7 @@ func TestAppServerNotificationOutputFailureNonfatal(t *testing.T) {
 	appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"turn"}}}`)
 	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"turn","status":"completed"}}}`)
 	u.notify("agent-turn-complete", "again")
-	if u.Turn != "" || !strings.HasPrefix(u.status, "Completed") || failing.calls != 1 || u.feedback.Text == "" {
-		t.Fatalf("output failure disrupted completion: turn=%q status=%q calls=%d notice=%q", u.Turn, u.status, failing.calls, u.feedback.Text)
+	if u.Turn != "" || !strings.HasPrefix(u.sessionPresentation().Status.Text, "Completed") || failing.calls != 1 || u.feedback.Text == "" {
+		t.Fatalf("output failure disrupted completion: turn=%q status=%q calls=%d notice=%q", u.Turn, u.sessionPresentation().Status.Text, failing.calls, u.feedback.Text)
 	}
 }

@@ -52,7 +52,7 @@ func TestAppServerChildMetadataFailureKeepsActivity(t *testing.T) {
 	id := u.session.metadata["child"]
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%s,"error":{"code":-1,"message":"not available"}}`, id))
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "mcat child.go"}})
-	if u.requests.Pending() || u.alert || !strings.Contains(ansi.Strip(u.agents.AgentState(u.agents.testAgent(*u.session.agent("/root/child")), 80, u.now())), "child.go") {
+	if u.requests.Pending() || u.sessionPresentation().Status.Alert || !strings.Contains(ansi.Strip(u.agents.AgentState(u.agents.testAgent(*u.session.agent("/root/child")), 80, u.now())), "child.go") {
 		t.Fatal("metadata failure blocked activity or caused repeated reads")
 	}
 }

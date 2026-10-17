@@ -61,7 +61,7 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 	// A yielded command can outlive the turn that started it. Only its host
 	// completion removes it, including when the UI still has output to roll.
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t", "status": "completed"}})
-	if u.runningProcessCount() != 2 || !u.sessionAnimating() {
+	if u.runningProcessCount() != 2 || !u.mainPresentation(u.now()).Status.Animating {
 		t.Fatal("yielded command stopped counting or animating")
 	}
 	if err := u.shell.send("\x1b[C"); err != nil {
@@ -150,7 +150,7 @@ func TestRunningProcessesInteraction(t *testing.T) {
 	for i := range 20 {
 		processNotify(t, u, "main", fmt.Sprint(i), fmt.Sprintf("sleep %d", i+1), "inProgress")
 	}
-	u.Turn, u.status = "active", "Working"
+	u.Turn, u.sessionPresentation().Status.Text = "active", "Working"
 	wire := u.client.Input.(*appServerTestInput)
 	wire.Reset()
 	for _, closeKey := range []string{"\x1b", "q", "\x03"} {

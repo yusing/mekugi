@@ -113,7 +113,7 @@ func TestNativeUIPreview(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || p.ui.sessionAnimating() || p.ui.agents.HasLiveStatus() || flashExpired || settled || noticeExpired || p.ui.shell.animating(now) {
+				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || p.ui.mainPresentation(p.ui.now()).Status.Animating || p.ui.agents.HasLiveStatus() || flashExpired || settled || noticeExpired || p.ui.shell.animating(now) {
 					if err := paint(); err != nil {
 						return err
 					}
@@ -336,8 +336,8 @@ func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 		t.Fatal("first Ctrl-C did not only clear the draft")
 	}
 	keys("\x03")
-	if p.ui.Turn != "" || p.ui.status != "Interrupted" || p.advance() || len(p.active) != 0 {
-		t.Fatalf("interrupt left playback running: turn=%q status=%q active=%v", p.ui.Turn, p.ui.status, p.active)
+	if p.ui.Turn != "" || p.ui.sessionPresentation().Status.Text != "Interrupted" || p.advance() || len(p.active) != 0 {
+		t.Fatalf("interrupt left playback running: turn=%q status=%q active=%v", p.ui.Turn, p.ui.sessionPresentation().Status.Text, p.active)
 	}
 	if p.ui.Text != "queued follow-up" || len(p.ui.conversation().Queued) != 0 {
 		t.Fatalf("interrupt did not return queued input: %q", p.ui.Text)
@@ -349,8 +349,8 @@ func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 		}
 	}
 	keys("hello\r")
-	if !strings.HasPrefix(p.ui.status, "Completed in ") || !slices.ContainsFunc(p.ui.view.Entries, func(e liveActivityRecord) bool { return strings.Contains(e.Source.Text, "I heard: hello") }) {
-		t.Fatalf("new turn not answered: %q", p.ui.status)
+	if !strings.Contains(p.ui.sessionLabel(p.ui.now()), "Completed in ") || !slices.ContainsFunc(p.ui.view.Entries, func(e liveActivityRecord) bool { return strings.Contains(e.Source.Text, "I heard: hello") }) {
+		t.Fatalf("new turn not answered: %q", p.ui.sessionPresentation().Status.Text)
 	}
 	keys("\x03")
 	if !p.ui.quitRequested {
@@ -507,7 +507,7 @@ func newNativePreview(t *testing.T) *nativePreview {
 	}
 	u.shell.applyDiff(t.Context(), reviewEvent{Kind: "scope", Scope: &scope})
 	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: u.session.agents})
-	u.status = "Ready"
+	u.sessionPresentation().Status.Text = "Ready"
 	p.populate()
 	return p
 }

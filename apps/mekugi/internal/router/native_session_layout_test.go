@@ -73,7 +73,7 @@ func TestNativeUILiveToggleDuringModelList(t *testing.T) {
 func TestUISnapshotNativeLiveToggle(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.view.Painter.Theme = diffrender.DarkTheme
-	u.status, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
+	u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	u.view.Clock = u.clock
 	u.ensureShell()

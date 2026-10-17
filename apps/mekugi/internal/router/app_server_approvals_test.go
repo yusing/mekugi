@@ -545,7 +545,7 @@ func TestUISnapshotNativeApprovalDock(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.view.Painter.Theme = diffrender.DarkTheme
-			u.status, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
+			u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 			u.session.start("main", "/workspace")
 			u.Turn = "turn"
 			tc.setup(t, u)

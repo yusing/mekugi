@@ -159,16 +159,11 @@ type appServerUI struct {
 	interruptLocked         bool
 	mainContentPainted      bool
 	promptRect              terminalsession.Rect
-	status                  string
 	exitUsage               appServerTokenUsage
 	resumeArgv              []string
 	replayDebugDirectory    string
-	compacting              *[2]string           // Main turn and compaction item.
-	polling                 *[2]string           // Main turn and polled process.
-	alert                   bool                 // The status reports a failure or blocked request.
 	noticeDetails           terminalsession.Rect // Truncated composer error, relative to Main.
 	noticeDismiss           terminalsession.Rect // Check button, relative to Main.
-	turnStarted             time.Time            // Shown as elapsed time while a turn runs.
 	model, reasoningEffort  string
 	serviceTier             string
 	serviceTiers            *serviceTierSettings // Invocation defaults and confirmed thread/model choices.
@@ -242,7 +237,8 @@ func startAppServerUI(conversation *conversationmodel.Service, activity *activit
 	if err != nil {
 		return nil, err
 	}
-	u := &appServerUI{conversationState: conversation, session: appServerSession{activity: activity, observations: observations}, history: service, segments: segments, client: c, view: newActivityAdapter(), agents: newActivityAdapter(), proxy: proxy, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
+	u := &appServerUI{conversationState: conversation, session: appServerSession{activity: activity, observations: observations}, history: service, segments: segments, client: c, view: newActivityAdapter(), agents: newActivityAdapter(), proxy: proxy, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
+	u.sessionPresentation().Status.Set("Connecting…", false)
 	u.attachActivity()
 	u.guardHookCheck.hash = guardHash
 	if generator != nil {
@@ -411,7 +407,7 @@ func startAppServerUI(conversation *conversationmodel.Service, activity *activit
 								u.dirty = true
 							}
 						}
-						if u.sessionAnimating() || u.agents.HasLiveStatus() {
+						if u.mainPresentation(u.now()).Status.Animating || u.agents.HasLiveStatus() {
 							u.dirty = true
 						}
 						if time.Since(agePaint) >= time.Second {
@@ -652,7 +648,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				u.restoreDrafts(append([]conversationmodel.Input{{Text: "/compact"}}, slices.Concat(u.conversation().Unsent, u.conversation().Queued)...)...)
 				u.conversation().Unsent, u.conversation().Queued = nil, nil
 				u.setNotice("Compaction failed: "+m.Error.Message, true)
-				u.status = "Ready"
+				u.sessionPresentation().Status.SetText("Ready")
 			}
 			return nil
 		}
@@ -662,9 +658,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				u.restoreDrafts(slices.Concat(u.conversation().Unsent, u.conversation().Queued)...)
 				u.conversation().Unsent, u.conversation().Queued = nil, nil
 				u.setNotice("Could not interrupt for compaction: "+m.Error.Message, true)
-				u.status = "Ready"
+				u.sessionPresentation().Status.SetText("Ready")
 				if u.Turn != "" {
-					u.status = "Working"
+					u.sessionPresentation().Status.SetText("Working")
 				}
 			}
 			return nil
@@ -689,7 +685,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			u.Replacement.Finish()
 			u.restoreDrafts(slices.Concat(u.conversation().Unsent, u.conversation().Queued)...)
 			u.conversation().Unsent, u.conversation().Queued = nil, nil
-			u.status = "Ready"
+			u.sessionPresentation().Status.SetText("Ready")
 			u.setNotice("Could not clear session: "+m.Error.Message, true)
 			return nil
 		}
@@ -697,9 +693,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			return u.resumeSessionFailed(m.Error.Message)
 		}
 		if m.Error != nil {
-			u.status, u.alert = method+": "+m.Error.Message, true
+			u.sessionPresentation().Status.Set(method+": "+m.Error.Message, true)
 			if method == "initialize" || method == "thread/start" || method == "thread/resume" {
-				return errors.New(u.status)
+				return errors.New(u.sessionPresentation().Status.Text)
 			}
 			if method == "turn/interrupt" {
 				u.InterruptResponse(method, true)
@@ -723,12 +719,12 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				}
 			}
 			if u.resumeThread == resumePickerStartup {
-				u.status = "Choose a session"
+				u.sessionPresentation().Status.SetText("Choose a session")
 				return u.openResumePicker(true)
 			}
 			if u.resumeThread != "" {
 				if u.resumeThread == "--last" {
-					u.status = "Finding latest thread…"
+					u.sessionPresentation().Status.SetText("Finding latest thread…")
 					params := resumableThreads(1)
 					params["cwd"] = u.resumeCwd
 					return u.request("thread/list", params)
@@ -773,7 +769,8 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			if err := json.Unmarshal(m.Result, &u.statusConfig); err != nil {
 				return err
 			}
-			u.Thread, u.status = result.Thread.ID, "Ready"
+			u.Thread = result.Thread.ID
+			u.sessionPresentation().Status.SetText("Ready")
 			u.title = result.Thread.Name
 			u.titleGenerator.register(result.Thread)
 			if u.pendingTitle != "" {
@@ -826,7 +823,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			if method == "thread/resume" {
 				for _, turn := range result.Thread.Turns {
 					if turn.Status == "inProgress" {
-						u.Turn, u.status, u.turnStarted = turn.ID, "Working", u.now()
+						u.Turn = turn.ID
+						u.sessionPresentation().Status.Started = u.now()
+						u.sessionPresentation().Status.SetText("Working")
 						u.session.agent("/root").Responding = true
 					}
 				}
@@ -884,9 +883,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	if len(m.ID) != 0 {
 		// Never auto-approve an unexpected server request. Leave it pending,
 		// visibly blocked, until interrupted.
-		u.status, u.alert = "Blocked on unsupported request "+m.Method+" · Ctrl-C interrupts", true
+		u.sessionPresentation().Status.Set("Blocked on unsupported request "+m.Method+" · Ctrl-C interrupts", true)
 		u.blockNotification(m)
-		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.LastSeq + 1, Agent: "Session", Kind: "text", Text: u.status, Observed: u.now()}}})
+		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.LastSeq + 1, Agent: "Session", Kind: "text", Text: u.sessionPresentation().Status.Text, Observed: u.now()}}})
 		return nil
 	}
 	if handled, err := u.settingsMessage("", m); handled || err != nil {
@@ -925,7 +924,8 @@ func (u *appServerUI) observedEvent(method string, p appServerEvent) error {
 	case "turn/started":
 		if p.ThreadID == u.Thread {
 			u.Started(p.Turn.ID)
-			u.status, u.alert, u.turnStarted = "Working", false, u.now()
+			u.sessionPresentation().Status.Started = u.now()
+			u.sessionPresentation().Status.Set("Working", false)
 			if u.Interruption.BeforeStart || u.Compaction.InterruptTarget() != "" {
 				return u.interruptTurn()
 			}
@@ -941,13 +941,11 @@ func (u *appServerUI) observedEvent(method string, p appServerEvent) error {
 		if p.ThreadID == u.Thread && p.Turn.ID == u.Turn {
 			u.Completed(p.Turn.Status == "completed")
 			u.endSyncQuestions(p.Turn.ID)
-			u.status, u.alert = strings.ToUpper(p.Turn.Status[:min(1, len(p.Turn.Status))])+p.Turn.Status[min(1, len(p.Turn.Status)):], p.Turn.Status == "failed"
-			if p.Turn.Status == "completed" && !u.turnStarted.IsZero() {
-				u.status += " in " + activityui.FormatDuration(u.now().Sub(u.turnStarted))
-			}
+			var failure *string
 			if p.Turn.Error != nil {
-				u.status, u.alert = u.status+": "+p.Turn.Error.Message, true
+				failure = &p.Turn.Error.Message
 			}
+			u.sessionPresentation().Status.Complete(p.Turn.Status, failure, u.now())
 			u.settleInput(p.Turn.ID, p.Turn.Status == "interrupted")
 			if p.Turn.Status == "completed" && u.questionCount() == 0 {
 				u.notify("agent-turn-complete", "Agent turn complete")
@@ -1296,6 +1294,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	readOnly := u.agents != nil && u.agents.displayingChild()
 	u.autoOpenApprovals()
 	u.autoOpenQuestions()
+	presentation := u.mainPresentation(u.now())
 	width, height = max(1, width), max(1, height)
 	u.picker.rect = terminalsession.Rect{}
 	u.noticeDetails, u.noticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
@@ -1400,7 +1399,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	dock = min(dock, room)
 	room -= dock
 	u.mainContentPainted = room > 1
-	transcript.Conversation, transcript.FeedOnly, transcript.StatusLabel = true, true, textsanitize.Safe(u.status, false)
+	transcript.Conversation, transcript.FeedOnly, transcript.StatusLabel = true, true, textsanitize.Safe(sessionStatusText(presentation.Status.State), false)
 	var frame []string
 	transcript.FeedRows = 0
 	transcript.FeedQuestions, transcript.FeedSnippets = nil, nil
@@ -1451,7 +1450,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	const inputColor = "\x1b[39m"
 	focused := !readOnly && (u.shell == nil || u.shell.Focus == 0)
 	if boxed {
-		frame = append(frame, u.composerNoticeBorder(width, len(frame), border))
+		frame = append(frame, u.composerNoticeBorder(presentation.Status, width, len(frame), border))
 	}
 	textX := min(2, inset)
 	if boxed {
@@ -1482,38 +1481,19 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		}
 	}
 	if boxed {
-		model, effort, tier := u.model, u.reasoningEffort, u.displayServiceTier()
-		agent := u.session.agent(u.transcriptCaller())
-		if readOnly {
-			model, effort, tier = "", "", ""
-			if agent != nil {
-				model, effort = agent.settings.Model, agent.settings.Effort
-				if agent.settings.TierKnown {
-					tier = cmp.Or(agent.settings.Tier, "default")
-				}
-				thread := ""
-				for id, path := range u.session.paths {
-					if path == agent.Name {
-						thread = id
-						break
-					}
-				}
-				tier = effectiveServiceTier(model, tier, u.serviceTiers, thread)
-			}
+		model := presentation.Caption.Model
+		if model != "" && presentation.Caption.Effort != "" {
+			model += " (" + presentation.Caption.Effort + ")"
 		}
-		if model != "" && effort != "" {
-			model += " (" + effort + ")"
-		}
-		if tier != "" {
-			model += " · " + tier
+		if presentation.Caption.Tier != "" {
+			model += " · " + presentation.Caption.Tier
 		}
 		model = strings.ReplaceAll(textsanitize.Safe(model, false), "\n", " ")
-		context := activityui.ContextWindowLabel(activitypresentation.Agent{})
-		if agent != nil {
-			context = activityui.ContextWindowLabel(activitypresentation.Agent{AgentFacts: agent.ActivityAgent()})
-			if throughput := activityui.OutputThroughputLabel(agent.OutputThroughput); throughput != "" {
-				context += " • " + throughput
-			}
+		context := activityui.ContextWindowLabel(activitypresentation.Agent{AgentFacts: activitypresentation.AgentFacts{
+			ContextKnown: presentation.Caption.ContextKnown, ContextTokens: presentation.Caption.ContextTokens, ContextWindow: presentation.Caption.ContextWindow,
+		}})
+		if throughput := activityui.OutputThroughputLabel(presentation.Caption.OutputThroughput); throughput != "" {
+			context += " • " + throughput
 		}
 		caption := context
 		if room := width - 7 - ansi.StringWidth(context) - 3; model != "" && room > 0 {
@@ -1547,43 +1527,6 @@ func composerBorder(open, close, left, right string, width int, color string) st
 	}
 	fill := max(0, inner-ansi.StringWidth(l)-ansi.StringWidth(r)-2)
 	return color + open + "─" + l + strings.Repeat("─", fill) + r + "─" + close + terminalui.Reset
-}
-
-func (u *appServerUI) sessionAnimating() bool {
-	return u.runningProcessCount() > 0 || u.btw != nil && (u.btw.Busy || u.btw.Starting) || !u.alert && (u.Turn != "" || u.Starting() || u.InputPending() || u.restoring != nil || u.Thread == "")
-}
-
-func (u *appServerUI) sessionLabel(now time.Time) string {
-	if u.Replacement.Archiving() {
-		return activityui.StatusPulse("Archiving session…", now, u.view.Painter.Colors) + terminalui.Reset
-	}
-	status := strings.ReplaceAll(textsanitize.Safe(u.status, false), "\n", " ")
-	switch {
-	case status == "":
-		return ""
-	case u.alert:
-		return terminalui.Red + "✗ " + activityui.ErrorPreview(u.status) + terminalui.Reset
-	case u.Turn != "":
-		label := "\x1b[39m◐ " + activityui.StatusPulse(status, now, u.view.Painter.Colors) + terminalui.Reset
-		if status == "Working" {
-			if u.Shell.Standalone() {
-				status = "Running shell"
-			} else if u.compacting != nil {
-				status = "Compacting context"
-			} else if u.polling != nil {
-				status = "Still running"
-			}
-			label = "\x1b[39m◐ " + activityui.ReasoningShimmer(status, now.Sub(u.turnStarted), u.view.Painter.Colors) + terminalui.Reset
-		}
-		if !u.turnStarted.IsZero() {
-			label += terminalui.Dim + " " + activityui.FormatDuration(now.Sub(u.turnStarted)) + terminalui.Undim
-		}
-		return label
-	case u.Starting() || u.InputPending() || u.restoring != nil || u.Thread == "":
-		return activityui.StatusPulse(status, now, u.view.Painter.Colors) + terminalui.Reset
-	}
-	// Idle states use default text; the border color would otherwise carry over.
-	return "\x1b[39m" + status + terminalui.Reset
 }
 
 // scrollLabel shows how much of the feed lies above the viewport and, once
@@ -1640,7 +1583,7 @@ func (u *appServerUI) paint(out io.Writer, width, height int) error {
 	u.ensureShell()
 	u.refreshRosterRoles()
 	u.agents.mainView = u.view
-	u.view.StatusLabel = textsanitize.Safe(u.status, false)
+	u.view.StatusLabel = textsanitize.Safe(sessionStatusText(u.mainPresentation(u.now()).Status.State), false)
 	u.shell.width, u.shell.height = max(1, width), max(1, height)
 	u.mainContentPainted = false
 	ctx := u.ctx
@@ -1697,13 +1640,13 @@ func (u *appServerUI) interruptTurn() error {
 		u.conversation().Unsent, u.conversation().Queued = nil, nil
 	}
 	if intent.Pending {
-		u.status = "Interrupting…"
+		u.sessionPresentation().Status.SetText("Interrupting…")
 	}
 	if intent.Turn == "" {
 		return nil
 	}
 	u.endSyncQuestions(intent.Turn)
-	u.status = "Interrupting…"
+	u.sessionPresentation().Status.SetText("Interrupting…")
 	_, err := u.requests.Send("turn/interrupt", map[string]any{"threadId": u.Thread, "turnId": intent.Turn}, "main", appServerRequest{label: intent.Label})
 	if err != nil && intent.Label == "steer/interrupt" {
 		u.SteerInterruptAckPending = false

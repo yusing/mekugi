@@ -235,12 +235,12 @@ func TestAppServerComposerKeepsWorkingDuringReasoning(t *testing.T) {
 func TestAppServerWorkingShimmers(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
-	a, b := u.sessionLabel(u.turnStarted), u.sessionLabel(u.turnStarted.Add(500*time.Millisecond))
+	a, b := u.sessionLabel(u.sessionPresentation().Status.Started), u.sessionLabel(u.sessionPresentation().Status.Started.Add(500*time.Millisecond))
 	if a == b || strings.TrimSuffix(ansi.Strip(a), " 0s") != strings.TrimSuffix(ansi.Strip(b), " 500ms") || !strings.Contains(ansi.Strip(a), "Working") {
 		t.Fatalf("no text-preserving shimmer: %q %q", a, b)
 	}
 	u.Turn = ""
-	if u.sessionLabel(u.turnStarted) != u.sessionLabel(u.turnStarted.Add(500*time.Millisecond)) {
+	if u.sessionLabel(u.sessionPresentation().Status.Started) != u.sessionLabel(u.sessionPresentation().Status.Started.Add(500*time.Millisecond)) {
 		t.Fatal("idle label animates")
 	}
 }
@@ -249,7 +249,7 @@ func TestAppServerCompletedElapsedTime(t *testing.T) {
 	for seconds, elapsed := range map[int]string{0: "0s", 12: "12s", 60: "1m", 75: "1m15s", 82: "1m22s", 3600: "1h", 3682: "1h1m22s"} {
 		u := newAppServerSessionTestUI(t, t.TempDir())
 		reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
-		u.turnStarted = time.Now().Add(-time.Duration(seconds) * time.Second)
+		u.sessionPresentation().Status.Started = time.Now().Add(-time.Duration(seconds) * time.Second)
 		reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t", "status": "completed"}})
 		want := "Completed in " + elapsed
 		for _, now := range []time.Time{time.Now(), time.Now().Add(time.Minute)} {
@@ -291,7 +291,6 @@ func TestAppServerPendingStatusPulses(t *testing.T) {
 	for _, status := range []string{"Connecting…", "Starting thread…", "Resuming thread…", "Sending…", "Interrupting…", "Restoring roster and Activity…"} {
 		t.Run(status, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			u.status = status
 			u.Thread = ""
 			if status == "Sending…" {
 				u.Thread = "main"
@@ -306,19 +305,21 @@ func TestAppServerPendingStatusPulses(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			u.sessionPresentation().Status.Set(status, false)
 			start := time.Unix(0, 0)
 			dim, bright, dimAgain := u.sessionLabel(start), u.sessionLabel(start.Add(time.Second)), u.sessionLabel(start.Add(2*time.Second))
-			if !u.sessionAnimating() || dim == bright || dim != dimAgain || ansi.Strip(dim) != ansi.Strip(bright) {
+			if !u.mainPresentation(u.now()).Status.Animating || dim == bright || dim != dimAgain || ansi.Strip(dim) != ansi.Strip(bright) {
 				t.Fatalf("pending status does not pulse: %q %q %q", dim, bright, dimAgain)
 			}
-			u.alert = true
-			if u.sessionAnimating() || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
+			u.sessionPresentation().Status.Alert = true
+			if u.mainPresentation(u.now()).Status.Animating || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
 				t.Fatal("alert animates")
 			}
 			u.restoring = nil
 			u.LeaveThread()
-			u.alert, u.Thread, u.status = false, "main", "Ready"
-			if u.sessionAnimating() || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
+			u.Thread = "main"
+			u.sessionPresentation().Status.Set("Ready", false)
+			if u.mainPresentation(u.now()).Status.Animating || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
 				t.Fatal("idle animates")
 			}
 		})

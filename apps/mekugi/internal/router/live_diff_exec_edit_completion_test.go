@@ -246,7 +246,7 @@ func TestNativeUIExecEditCompletionRetainsWorkingStatusAndClearsDock(t *testing.
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
 	defer u.shell.diffScreen.Close()
-	u.status = "Working"
+	u.sessionPresentation().Status.Text = "Working"
 	workspace := t.TempDir()
 	preview := previewmodel.Preview{ID: "running:edit-then-test", Workspace: workspace, Thread: "thread", Caller: "/root", Tool: nativeExecCommandToolName, Status: previewmodel.PreviewRunning, Input: "observed edit"}
 	u.shell.preview(preview, false)
@@ -254,7 +254,7 @@ func TestNativeUIExecEditCompletionRetainsWorkingStatusAndClearsDock(t *testing.
 	preview.Complete = true
 	u.shell.preview(preview, false)
 	revealNativeDock(u.shell)
-	if u.shell.liveDock.Live() != 0 || u.status != "Working" {
+	if u.shell.liveDock.Live() != 0 || u.sessionPresentation().Status.Text != "Working" {
 		t.Fatal("edit completion changed process status or retained an active dock")
 	}
 	screen := vt.NewEmulator(120, 40)
@@ -266,7 +266,7 @@ func TestNativeUIExecEditCompletionRetainsWorkingStatusAndClearsDock(t *testing.
 		t.Fatal("completed edit was not rendered during its minimum display time")
 	}
 	u.shell.animating(time.Now().Add(nativeDockMinimum + time.Millisecond))
-	if len(u.shell.liveDock.Order) != 0 || u.status != "Working" {
+	if len(u.shell.liveDock.Order) != 0 || u.sessionPresentation().Status.Text != "Working" {
 		t.Fatal("completed dock did not clear independently of process Working status")
 	}
 	// A final host observation must not create a second, late completion card.

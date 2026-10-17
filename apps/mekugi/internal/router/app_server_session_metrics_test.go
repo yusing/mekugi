@@ -101,7 +101,7 @@ func sessionMetricField(t *testing.T, u *appServerUI, group, label, want string)
 
 func TestAppServerSessionMetricsLocalNavigation(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.Turn, u.status = "active", "Working"
+	u.Turn, u.sessionPresentation().Status.Text = "active", "Working"
 	appServerTestKeys(t, u, "/session\r")
 	if u.statusPanel == nil || u.statusPanel.metrics == nil || u.Text != "" {
 		t.Fatal("session command did not open a local dialog")
@@ -151,8 +151,8 @@ func TestAppServerSessionMetricsLocalNavigation(t *testing.T) {
 	}
 	u.statusPanelKey("r")
 	u.statusPanelKey("\x1b")
-	if u.statusPanel != nil || wire.Len() != 0 || len(u.view.Entries) != 0 || u.Turn != "active" || u.status != "Working" {
-		t.Fatalf("local dialog disturbed active session: wire=%q turn=%q status=%q", wire.String(), u.Turn, u.status)
+	if u.statusPanel != nil || wire.Len() != 0 || len(u.view.Entries) != 0 || u.Turn != "active" || u.sessionPresentation().Status.Text != "Working" {
+		t.Fatalf("local dialog disturbed active session: wire=%q turn=%q status=%q", wire.String(), u.Turn, u.sessionPresentation().Status.Text)
 	}
 }
 

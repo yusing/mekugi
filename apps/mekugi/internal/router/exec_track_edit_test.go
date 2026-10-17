@@ -103,7 +103,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			shell.hub.ui = u
 			u.ensureShell()
 			defer u.shell.diffScreen.Close()
-			u.status = "Working"
+			u.sessionPresentation().Status.Text = "Working"
 			item := map[string]any{"id": "edit", "type": "commandExecution", "command": "/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
@@ -231,7 +231,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 				assertNativeUISnapshot(t, name, rows)
 			}
 			u.shell.animating(time.Now().Add(nativeDockMinimum + time.Second))
-			if len(u.shell.liveDock.Order) != 0 || u.status != "Working" || !registry.find("edit").closed.IsZero() {
+			if len(u.shell.liveDock.Order) != 0 || u.sessionPresentation().Status.Text != "Working" || !registry.find("edit").closed.IsZero() {
 				t.Fatal("edit completion retained the dock or completed the host lifecycle")
 			}
 			master, slave, err := pty.Open()

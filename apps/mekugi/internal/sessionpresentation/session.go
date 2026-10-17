@@ -33,6 +33,8 @@ type View struct {
 	Input     Thread
 	ReadOnly  ReadOnly
 	Loading   string
+	Status    MainStatus
+	Caption   Caption
 }
 
 type DisplayIntent struct {
@@ -66,9 +68,11 @@ func (s *Service) History(store *scope.Store) *History { return s.history.Value(
 
 // Source: apps/mekugi/internal/router/native_shell.go:265:283@db279442
 type Model struct {
-	view      View
-	lastChild string
-	replay    bool
+	Status              MainState
+	compacting, polling [2]string
+	view                View
+	lastChild           string
+	replay              bool
 }
 
 func (m *Model) Attach(main Thread, replay bool) {

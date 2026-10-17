@@ -127,7 +127,7 @@ func TestNativeChildQuestionUsesBlockedFallback(t *testing.T) {
 	}
 	request("child")
 	frame := questionTestPaint(t, u, 140)
-	if !u.alert || !strings.Contains(frame, "Blocked on unsupported request item/tool/requestUserInput") || !strings.Contains(frame, "Ctrl-C interrupts") {
+	if !u.sessionPresentation().Status.Alert || !strings.Contains(frame, "Blocked on unsupported request item/tool/requestUserInput") || !strings.Contains(frame, "Ctrl-C interrupts") {
 		t.Fatalf("child request was not visibly blocked: %s", frame)
 	}
 	blocked := u.notifications.blocked[`"child-request"`]

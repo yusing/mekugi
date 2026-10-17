@@ -98,7 +98,7 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 			provider.mu.Lock()
 			detail := fmt.Sprintf("turns=%v seen=%v input=%v", provider.turns, provider.messageSeen, provider.inputShapes)
 			provider.mu.Unlock()
-			t.Fatalf("native child message was not rendered: %v; status=%s %s", ctx.Err(), u.status, detail)
+			t.Fatalf("native child message was not rendered: %v; status=%s %s", ctx.Err(), u.sessionPresentation().Status.Text, detail)
 		}
 		if started && provider.completed() {
 			var assignmentCount, messageCount, excerptCount int

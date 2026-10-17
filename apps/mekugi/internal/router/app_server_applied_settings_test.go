@@ -372,7 +372,7 @@ func TestUISnapshotNativeSettingsPersistenceFailure(t *testing.T) {
 	u.view.Painter.Theme = diffrender.DarkTheme
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
 	u.clock = func() time.Time { return now }
-	u.status, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
+	u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 	u.paneError(errors.New("session preferences storage unavailable"))
 	u.view.Entries[len(u.view.Entries)-1].Source.Observed = now
 	rows, _ := u.mainFrame(100, 14, 0)
@@ -383,7 +383,7 @@ func TestUISnapshotNativeResumeReasoningRejected(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.view.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
-	u.status, u.model, u.reasoningEffort = "Ready", "saved-model", "high"
+	u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "saved-model", "high"
 	u.Settings.RestoreEffort = true
 	u.Settings.BeginLive()
 	appServerTestRequest(t, u, "1", "thread/settings/update")

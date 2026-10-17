@@ -47,7 +47,7 @@ type appServerActivityRestore struct {
 func (u *appServerUI) restorePaneContent(root appServerThreadInfo) error {
 	u.restoring = &appServerActivityRestore{root: root, threads: make(map[string]appServerThreadInfo), cursors: make(map[string]bool)}
 	u.restoreDiffThread(root, true)
-	u.status = "Restoring roster and Activity…"
+	u.sessionPresentation().Status.SetText("Restoring roster and Activity…")
 	return u.restoreList("")
 }
 
@@ -233,7 +233,7 @@ func (u *appServerUI) readRestoredRollouts() {
 func (u *appServerUI) readNextRestoredChild() error {
 	r := u.restoring
 	if r.next < len(r.order) {
-		u.status = fmt.Sprintf("Restoring Activity %d/%d…", r.next+1, len(r.order))
+		u.sessionPresentation().Status.SetText(fmt.Sprintf("Restoring Activity %d/%d…", r.next+1, len(r.order)))
 		return u.request("thread/read", map[string]any{"threadId": r.order[r.next], "includeTurns": r.threads[r.order[r.next]].HistoryMode != "paginated"})
 	}
 	if !r.rendered {
@@ -266,7 +266,7 @@ func (u *appServerUI) finishRestoredContent() error {
 	}
 	if u.shell != nil && u.shell.review != nil && u.shell.saved.store != nil && u.shell.diffFailure == "" {
 		if loader := u.shell.reviewLoader; loader != nil && (loader.active || len(loader.pending) > 0 || loader.resync) {
-			u.status = "Restoring saved Diff…"
+			u.sessionPresentation().Status.SetText("Restoring saved Diff…")
 			return nil
 		}
 		a := u.shell.review
@@ -274,7 +274,7 @@ func (u *appServerUI) finishRestoredContent() error {
 		for workspace, threads := range scope.Workspaces {
 			for thread := range threads {
 				if !u.shell.saved.scope.Workspaces[workspace][thread] {
-					u.status = "Restoring saved Diff…"
+					u.sessionPresentation().Status.SetText("Restoring saved Diff…")
 					return nil
 				}
 			}
@@ -282,9 +282,9 @@ func (u *appServerUI) finishRestoredContent() error {
 	}
 	u.restoring = nil
 	u.updateHistoryHint()
-	u.status = "Ready"
+	u.sessionPresentation().Status.SetText("Ready")
 	if u.Turn != "" {
-		u.status = "Working"
+		u.sessionPresentation().Status.SetText("Working")
 	}
 	return u.replayResumePending()
 }

@@ -3,6 +3,7 @@ package router
 import (
 	"slices"
 
+	"github.com/yusing/mekugi/contracts/observation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
@@ -80,58 +81,28 @@ func appServerWaitProgress(item appServerItem, method string) *activityui.Block 
 	return block
 }
 
-// Compaction is scoped to the active Main turn and exact item. A completion for
-// another item, or activity from a child, cannot clear or replace it.
+// Main progress consumes Activity's authoritative retained item evidence. The
+// application adapts host facts; session presentation owns precedence and keys.
 func (u *appServerUI) observeProgress(method string, p appServerEvent) {
-	if p.ThreadID != u.Thread {
+	m := u.sessionPresentation()
+	if method == "item/commandExecution/terminalInteraction" {
+		m.TerminalInteraction(p.ThreadID, p.TurnID, u.Turn, p.ProcessID, p.Stdin)
 		return
 	}
-	switch method {
-	case "turn/started":
-		u.compacting = nil
-		u.polling = nil
-	case "turn/completed":
-		if p.Turn.ID == u.Turn {
-			u.compacting = nil
-			u.polling = nil
-		}
-	case "item/commandExecution/terminalInteraction":
-		// Source: codex-rs/tui/src/chatwidget/command_lifecycle.rs:76:128@1cc7e236.
-		// Empty stdin is a poll, not an ordinary input write. It changes the
-		// composer only, so repeated polls never flood the transcript.
-		if p.TurnID == u.Turn && u.Turn != "" && p.ProcessID != "" {
-			key := [2]string{p.TurnID, p.ProcessID}
-			if p.Stdin == "" {
-				u.polling = &key
-			} else if u.polling != nil && *u.polling == key {
-				u.polling = nil
+	completed := false
+	if p.ThreadID == u.Thread && method == "item/started" && p.Item.Type == "contextCompaction" {
+		for _, entry := range u.view.Model.Entries {
+			native := entry.Source.native
+			if native != nil && native.thread == p.ThreadID && native.turn == p.TurnID && native.item == p.Item.ID && native.phase == "item/completed" {
+				completed = true
+				break
 			}
-		}
-	case "item/agentMessage/delta", "item/reasoning/summaryTextDelta":
-		if p.TurnID == u.Turn {
-			u.polling = nil
-		}
-	case "item/started", "item/completed":
-		if p.TurnID != u.Turn || u.Turn == "" {
-			return
-		}
-		if p.Item.Type != "contextCompaction" {
-			if method == "item/started" || p.Item.Type == "agentMessage" || p.Item.Type == "commandExecution" && u.polling != nil && u.polling[1] == p.Item.ProcessID {
-				u.polling = nil
-			}
-			return
-		}
-		u.polling = nil
-		key := [2]string{p.TurnID, p.Item.ID}
-		if method == "item/started" {
-			for _, entry := range u.view.Entries {
-				if entry.Source.native != nil && entry.Source.native.thread == p.ThreadID && entry.Source.native.turn == p.TurnID && entry.Source.native.item == p.Item.ID && entry.Source.native.phase == "item/completed" {
-					return
-				}
-			}
-			u.compacting = &key
-		} else if u.compacting != nil && *u.compacting == key {
-			u.compacting = nil
 		}
 	}
+	turn := p.TurnID
+	if method == "turn/started" || method == "turn/completed" {
+		turn = p.Turn.ID
+	}
+	m.ObserveProgress(observation.Event{Kind: observation.Kind(method), ThreadID: p.ThreadID, TurnID: turn,
+		Item: observation.Item{ID: p.Item.ID, Type: p.Item.Type, ProcessID: p.Item.ProcessID}}, u.Turn, completed)
 }

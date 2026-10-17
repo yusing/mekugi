@@ -65,7 +65,8 @@ func (p *uiReplayPlayback) reset() {
 	// replay store, filesystem observers, input submission, or notification sink.
 	client := &appserver.Client{Input: replayDiscard{io.Discard}}
 	observations := activitybinding.Codex.Observation(p.activity)
-	u := &appServerUI{session: appServerSession{activity: p.activity, observations: &observations}, ctx: p.ctx, client: client, view: newActivityAdapter(), agents: newActivityAdapter(), Thread: p.Source.Thread, status: "Replay", requests: sessioncontrol.NewRequests[appServerRequest](client), clock: func() time.Time { return p.At }, replay: p}
+	u := &appServerUI{session: appServerSession{activity: p.activity, observations: &observations}, ctx: p.ctx, client: client, view: newActivityAdapter(), agents: newActivityAdapter(), Thread: p.Source.Thread, requests: sessioncontrol.NewRequests[appServerRequest](client), clock: func() time.Time { return p.At }, replay: p}
+	u.sessionPresentation().Status.Set("Replay", false)
 	u.view.Clock, u.agents.Clock = u.clock, u.clock
 	u.session.start(p.Source.Thread, p.Source.Cwd)
 	for id := range p.Source.Threads {

@@ -256,8 +256,8 @@ func TestAppServerInterruptRestoresUnresolvedSteerOnce(t *testing.T) {
 			if tt.committed {
 				want = ""
 			}
-			if requests := appServerTurnRequests(t, w); len(requests) != 0 || u.Text != want || u.alert {
-				t.Fatalf("requests=%+v draft=%q alert=%v status=%q", requests, u.Text, u.alert, u.status)
+			if requests := appServerTurnRequests(t, w); len(requests) != 0 || u.Text != want || u.sessionPresentation().Status.Alert {
+				t.Fatalf("requests=%+v draft=%q alert=%v status=%q", requests, u.Text, u.sessionPresentation().Status.Alert, u.sessionPresentation().Status.Text)
 			}
 		})
 	}
@@ -268,8 +268,8 @@ func TestAppServerPlainInterruptRestoresQueuedInput(t *testing.T) {
 	appServerTestTurn(t, u, "t")
 	appServerTestKeys(t, u, "queued\t\x03")
 	appServerOneRequest(t, w, "turn/interrupt", "")
-	if u.status != "Interrupting…" {
-		t.Fatalf("status = %q", u.status)
+	if u.sessionPresentation().Status.Text != "Interrupting…" {
+		t.Fatalf("status = %q", u.sessionPresentation().Status.Text)
 	}
 	appServerTestKeys(t, u, "draft")
 	appServerTestTurnEnd(t, u, "t", "interrupted")
@@ -420,8 +420,8 @@ func TestAppServerInterruptBeforeFirstCommitRestoresCleanComposer(t *testing.T) 
 			if !responseFirst {
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"t"}}}`, start.ID))
 			}
-			if u.Text != "first prompt" || len(u.view.Entries) != 0 || u.status != "Ready" || u.Starting() || u.Turn != "" {
-				t.Fatalf("not clean: draft=%q entries=%+v status=%q starting=%v turn=%q", u.Text, u.view.Entries, u.status, u.Starting(), u.Turn)
+			if u.Text != "first prompt" || len(u.view.Entries) != 0 || u.sessionPresentation().Status.Text != "Ready" || u.Starting() || u.Turn != "" {
+				t.Fatalf("not clean: draft=%q entries=%+v status=%q starting=%v turn=%q", u.Text, u.view.Entries, u.sessionPresentation().Status.Text, u.Starting(), u.Turn)
 			}
 			if len(appServerTurnRequests(t, w)) != 0 {
 				t.Fatal("automatically resent restored input")

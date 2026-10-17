@@ -48,7 +48,7 @@ func TestNativeNavigationBatchStatusClicks(t *testing.T) {
 	for _, width := range []int{16, 30, 52, 120} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			u.status = "Ready"
+			u.sessionPresentation().Status.Text = "Ready"
 			u.shell.diffUnseen = true
 			screen := navigationBatchPaint(t, u, width, 24)
 			footer := strings.Split(screen.String(), "\n")[23]
@@ -91,7 +91,7 @@ func TestNativeNavigationBatchStatusClicks(t *testing.T) {
 
 func TestNativeNavigationBatchDiffBadgeCells(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.status = "Ready"
+	u.sessionPresentation().Status.Text = "Ready"
 	u.shell.diffUnseen = true
 	u.agents.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/worker", Responding: true}}})
 	screen := navigationBatchPaint(t, u, 120, 24)
@@ -282,7 +282,7 @@ func TestUISnapshotNativeNavigationBatchStatus(t *testing.T) {
 			t.Run(fmt.Sprintf("%d/only%v", width, only), func(t *testing.T) {
 				u := newAppServerSessionTestUI(t, t.TempDir())
 				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-				u.status = "Ready"
+				u.sessionPresentation().Status.Text = "Ready"
 				u.shell.diffUnseen = true
 				u.shell.Focus = 3
 				u.agents.setDisplayFilter(only, u.agents.Selected)

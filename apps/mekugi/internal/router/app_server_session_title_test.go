@@ -47,7 +47,7 @@ func TestAppServerSessionTitleSaveFailureNonfatal(t *testing.T) {
 	for _, immediate := range []bool{false, true} {
 		t.Run(fmt.Sprint(immediate), func(t *testing.T) {
 			u, wire := newAppServerTestUI()
-			u.title, u.status, u.Turn, u.Text = "Confirmed", "Working", "active-turn", "unsent input"
+			u.title, u.sessionPresentation().Status.Text, u.Turn, u.Text = "Confirmed", "Working", "active-turn", "unsent input"
 			u.dirty = false
 			if immediate {
 				u.client.Input = new(sessionTitleFailInput)
@@ -61,8 +61,8 @@ func TestAppServerSessionTitleSaveFailureNonfatal(t *testing.T) {
 				request := resumeTestOne(t, wire, "thread/name/set")
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"unavailable"}}`, request.ID))
 			}
-			if u.title != "Confirmed" || u.status != "Working" || u.Turn != "active-turn" || u.Text != "unsent input" || u.feedback.Text == "" || u.feedback.Alert || !u.dirty || appServerTestPendingTitle(u) || u.requests.Pending() {
-				t.Fatalf("save failure disturbed session: title=%q status=%q turn=%q draft=%q notice=%q alert=%v dirty=%v", u.title, u.status, u.Turn, u.Text, u.feedback.Text, u.feedback.Alert, u.dirty)
+			if u.title != "Confirmed" || u.sessionPresentation().Status.Text != "Working" || u.Turn != "active-turn" || u.Text != "unsent input" || u.feedback.Text == "" || u.feedback.Alert || !u.dirty || appServerTestPendingTitle(u) || u.requests.Pending() {
+				t.Fatalf("save failure disturbed session: title=%q status=%q turn=%q draft=%q notice=%q alert=%v dirty=%v", u.title, u.sessionPresentation().Status.Text, u.Turn, u.Text, u.feedback.Text, u.feedback.Alert, u.dirty)
 			}
 		})
 	}
@@ -78,7 +78,7 @@ func TestAppServerSessionTitleIdleSaveFailureRepaints(t *testing.T) {
 	for _, immediate := range []bool{false, true} {
 		t.Run(fmt.Sprint(immediate), func(t *testing.T) {
 			u, wire := newAppServerTestUI()
-			u.status, u.dirty = "Ready", false
+			u.sessionPresentation().Status.Text, u.dirty = "Ready", false
 			if immediate {
 				u.client.Input = new(sessionTitleFailInput)
 			}
@@ -87,8 +87,8 @@ func TestAppServerSessionTitleIdleSaveFailureRepaints(t *testing.T) {
 				request := resumeTestOne(t, wire, "thread/name/set")
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"unavailable"}}`, request.ID))
 			}
-			if !u.dirty || u.feedback.Text == "" || u.feedback.Alert || u.Turn != "" || u.status != "Ready" {
-				t.Fatalf("idle failure will not repaint: dirty=%v notice=%q status=%q", u.dirty, u.feedback.Text, u.status)
+			if !u.dirty || u.feedback.Text == "" || u.feedback.Alert || u.Turn != "" || u.sessionPresentation().Status.Text != "Ready" {
+				t.Fatalf("idle failure will not repaint: dirty=%v notice=%q status=%q", u.dirty, u.feedback.Text, u.sessionPresentation().Status.Text)
 			}
 		})
 	}
@@ -123,7 +123,7 @@ func TestAppServerSessionTitleSkippedNamingPreservesHostMetadata(t *testing.T) {
 	u.titleGenerator = newTestSessionNaming(t.Context(), nil)
 	u.titleGenerator.register(appServerThreadInfo{ID: "main"})
 	u.titleUpdates = u.titleGenerator.updates
-	u.status, u.Turn, u.Text = "Working", "active-turn", "unsent input"
+	u.sessionPresentation().Status.Text, u.Turn, u.Text = "Working", "active-turn", "unsent input"
 	u.setNotice("Existing host notice", false)
 	u.dirty = false
 	u.titleGenerator.observeInput("main", responses.MustMarshalJSON("First user message"))
@@ -137,8 +137,8 @@ func TestAppServerSessionTitleSkippedNamingPreservesHostMetadata(t *testing.T) {
 		t.Fatalf("skipped naming changed UI: dirty=%v notice=%q wire=%q", u.dirty, u.feedback.Text, wire.String())
 	}
 	appServerTestMessage(t, u, `{"method":"thread/name/updated","params":{"threadId":"main","threadName":"Saved host title"}}`)
-	if u.title != "Saved host title" || !u.dirty || u.feedback.Text != "Existing host notice" || u.status != "Working" || u.Turn != "active-turn" || u.Text != "unsent input" || wire.Len() != 0 || appServerTestPendingTitle(u) {
-		t.Fatalf("host metadata after skipped naming: title=%q dirty=%v notice=%q status=%q turn=%q draft=%q wire=%q", u.title, u.dirty, u.feedback.Text, u.status, u.Turn, u.Text, wire.String())
+	if u.title != "Saved host title" || !u.dirty || u.feedback.Text != "Existing host notice" || u.sessionPresentation().Status.Text != "Working" || u.Turn != "active-turn" || u.Text != "unsent input" || wire.Len() != 0 || appServerTestPendingTitle(u) {
+		t.Fatalf("host metadata after skipped naming: title=%q dirty=%v notice=%q status=%q turn=%q draft=%q wire=%q", u.title, u.dirty, u.feedback.Text, u.sessionPresentation().Status.Text, u.Turn, u.Text, wire.String())
 	}
 }
 
@@ -166,14 +166,14 @@ func TestAppServerSessionTitleComposerRename(t *testing.T) {
 			u.titleGenerator = newTestSessionNaming(t.Context(), nil)
 			u.titleGenerator.register(appServerThreadInfo{ID: "main"})
 			if busy {
-				u.Turn, u.status = "active-turn", "Working"
+				u.Turn, u.sessionPresentation().Status.Text = "active-turn", "Working"
 			}
 			appServerTestKeys(t, u, "/title 修復 session title\r")
 			request := sessionTitleTestOne(t, wire)
 			if request.Params.ThreadID != "main" || request.Params.Name != "修復 session title" || u.Text != "" || u.title != "Saved title" || u.titleGenerator.acceptCandidate("main") {
 				t.Fatalf("manual rename: request=%+v draft=%q saved=%q", request, u.Text, u.title)
 			}
-			if busy && (u.Turn != "active-turn" || u.status != "Working") {
+			if busy && (u.Turn != "active-turn" || u.sessionPresentation().Status.Text != "Working") {
 				t.Fatal("rename disturbed the running task")
 			}
 			// The header updates before the metadata response, not merely after it.
@@ -264,7 +264,7 @@ func TestAppServerSessionTitleManualSaveFailure(t *testing.T) {
 	for _, immediate := range []bool{false, true} {
 		t.Run(fmt.Sprint(immediate), func(t *testing.T) {
 			u, wire := newAppServerTestUI()
-			u.title, u.Turn, u.status = "Saved title", "active-turn", "Working"
+			u.title, u.Turn, u.sessionPresentation().Status.Text = "Saved title", "active-turn", "Working"
 			if immediate {
 				u.client.Input = new(sessionTitleFailInput)
 			}
@@ -273,8 +273,8 @@ func TestAppServerSessionTitleManualSaveFailure(t *testing.T) {
 				request := sessionTitleTestOne(t, wire)
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"unavailable"}}`, request.ID))
 			}
-			if u.title != "Saved title" || len(u.titleRenames) != 0 || appServerTestPendingTitle(u) || u.feedback.Text == "" || u.feedback.Alert || !u.dirty || u.Turn != "active-turn" || u.status != "Working" {
-				t.Fatalf("manual save failure: title=%q pending=%v notice=%q turn=%q status=%q", u.title, u.titleRenames, u.feedback.Text, u.Turn, u.status)
+			if u.title != "Saved title" || len(u.titleRenames) != 0 || appServerTestPendingTitle(u) || u.feedback.Text == "" || u.feedback.Alert || !u.dirty || u.Turn != "active-turn" || u.sessionPresentation().Status.Text != "Working" {
+				t.Fatalf("manual save failure: title=%q pending=%v notice=%q turn=%q status=%q", u.title, u.titleRenames, u.feedback.Text, u.Turn, u.sessionPresentation().Status.Text)
 			}
 		})
 	}
@@ -356,14 +356,15 @@ func TestUISnapshotNativeSessionTitle(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.view.Painter.Theme = diffrender.DarkTheme
 			u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
-			u.status, u.model, u.title = "Ready", "snapshot-model", tc.title
+			u.sessionPresentation().Status.Text, u.model, u.title = "Ready", "snapshot-model", tc.title
 			if tc.name == "idle-save-failure" {
 				u.client.Input = new(sessionTitleFailInput)
 				u.persistSessionTitle(sessionTitleUpdate{thread: "main", name: "Candidate"})
 			}
 			if strings.HasPrefix(tc.name, "manual-") {
 				if tc.name == "manual-before-start" {
-					u.Thread, u.status = "", "Starting thread…"
+					u.Thread = ""
+					u.sessionPresentation().Status.SetText("Starting thread…")
 				}
 				appServerTestKeys(t, u, "/title My manual session name\r")
 			}

@@ -146,7 +146,7 @@ func TestSudoUnlockDialog(t *testing.T) {
 func TestUISnapshotSudoDialogs(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.view.Painter.Theme = diffrender.DarkTheme
-	u.status, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
+	u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 	u.session.start("main", "/workspace")
 	u.Turn = "turn"
 	u.addGuardApproval(&vcsApproval{kind: "sudo", thread: "main", cwd: "/workspace", argv: []string{"sudo", "apt", "update"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})})

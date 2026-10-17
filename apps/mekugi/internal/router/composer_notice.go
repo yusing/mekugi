@@ -1,14 +1,13 @@
 package router
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/terminalui"
-	"github.com/yusing/mekugi/libraries/textsanitize"
 	"github.com/yusing/mekugi/modules/notifications/notice"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -28,71 +27,9 @@ func (u *appServerUI) expireNotice(now time.Time) bool {
 	return true
 }
 
-// stateLabel is the session state followed by any composer notice.
-func (u *appServerUI) stateLabel(now time.Time) string {
-	view := u.sessionPresentation().View()
-	if view.Displayed.ID != view.Main.ID {
-		return "Read-only"
-	}
-	label := u.sessionLabel(now)
-	if u.approvals.Open {
-		label = "approving · turn waiting"
-	} else if u.activeQuestionCall() != nil {
-		label = "answering"
-		if u.currentQuestion().Note {
-			label += " · note"
-		}
-		if len(u.activeQuestionCall().request) > 0 || u.activeQuestionCall().sudo != nil {
-			label += " · turn waiting"
-		}
-		if u.promptEditor.Parked.Snapshot.Text != "" {
-			label += " · draft kept"
-		}
-	}
-	if u.shellMode() {
-		label = terminalui.Red + "Shell Mode" + terminalui.Reset + " · " + label
-	}
-	if count := u.runningProcessCount(); count > 0 {
-		if label != "" {
-			label += terminalui.Dim + " · " + terminalui.Undim
-		}
-		label += activityui.StatusPulse(fmt.Sprintf("%d running processes", count), now, u.view.Painter.Colors) + terminalui.Reset
-	}
-	notice := strings.ReplaceAll(textsanitize.Safe(u.feedback.Text, false), "\n", " ")
-	switch {
-	case notice == "":
-		return label
-	case u.feedback.Alert:
-		notice = terminalui.Red + "✗ " + activityui.ErrorPreview(u.feedback.Text) + terminalui.Reset
-	default:
-		notice = "\x1b[39m" + notice + terminalui.Reset
-	}
-	if label == "" {
-		return notice
-	}
-	return label + terminalui.Dim + " · " + terminalui.Undim + notice
-}
-
-// Composer errors stay presentation-only. Model errors retain their transcript
-// entries; both surfaces use the same preview and full error dialog.
-func (u *appServerUI) composerErrorText() string {
-	view := u.sessionPresentation().View()
-	if view.Displayed.ID != view.Main.ID {
-		return ""
-	}
-	var parts []string
-	if u.alert && u.status != "" {
-		parts = append(parts, u.status)
-	}
-	if u.feedback.Alert && u.feedback.Text != "" {
-		parts = append(parts, u.feedback.Text)
-	}
-	return strings.Join(parts, "\n")
-}
-
-func (u *appServerUI) composerNoticeBorder(width, row int, color string) string {
-	label := u.stateLabel(u.now())
-	full := u.composerErrorText()
+func (u *appServerUI) composerNoticeBorder(status sessionpresentation.MainStatus, width, row int, color string) string {
+	label := paintMainStatus(status, u.now(), u.view.Painter.Colors)
+	full := mainStatusDetails(status)
 	if full == "" {
 		return composerBorder("╭", "╮", label, "", width, color)
 	}
@@ -118,17 +55,17 @@ func (u *appServerUI) composerNoticeBorder(width, row int, color string) string 
 
 func (u *appServerUI) composerNoticeMouse(button, x, y int, release bool) bool {
 	details, dismiss := u.noticeDetails.Contains(x, y), u.noticeDismiss.Contains(x, y)
-	if (!details && !dismiss) || u.composerErrorText() == "" {
+	if (!details && !dismiss) || mainStatusDetails(u.mainPresentation(u.now()).Status) == "" {
 		return false
 	}
 	if !release && button == 0 {
 		if dismiss {
 			u.setNotice("", false)
-			if u.alert {
-				u.status, u.alert = "", false
+			if u.sessionPresentation().Status.Alert {
+				u.sessionPresentation().Status.Set("", false)
 			}
 		} else {
-			u.shell.openBlocks(u.view, []activityui.Block{{Kind: "error", Body: u.composerErrorText()}})
+			u.shell.openBlocks(u.view, []activityui.Block{{Kind: "error", Body: mainStatusDetails(u.mainPresentation(u.now()).Status)}})
 		}
 		u.dirty = true
 	}

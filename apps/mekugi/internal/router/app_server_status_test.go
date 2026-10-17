@@ -93,15 +93,15 @@ func TestAppServerStatusLocalAndAccountRefresh(t *testing.T) {
 	u.session.start("main", "/workspace")
 	u.agents = newActivityAdapter()
 	u.model, u.reasoningEffort, u.serviceTier = "gpt-6-sol", "high", "priority"
-	u.Turn, u.status = "active", "Working"
+	u.Turn, u.sessionPresentation().Status.Text = "active", "Working"
 	u.statusConfig.Provider = "openai"
 	u.statusConfig.Approval = jsontext.Value(`"never"`)
 	u.statusConfig.Sandbox.Type = "danger-full-access"
 	u.statusConfig.Instructions = []string{"/workspace/AGENTS.md"}
 	appServerTestNotify(t, u, "thread/tokenUsage/updated", map[string]any{"threadId": "main", "tokenUsage": map[string]any{"total": map[string]any{"inputTokens": 1200, "outputTokens": 30}, "last": map[string]any{"totalTokens": 1000}, "modelContextWindow": 4000}})
 	appServerTestKeys(t, u, "/status\r")
-	if len(u.view.Entries) != 0 || u.Text != "" || u.Turn != "active" || u.status != "Working" {
-		t.Fatalf("status altered session: draft=%q turn=%q status=%q entries=%d", u.Text, u.Turn, u.status, len(u.view.Entries))
+	if len(u.view.Entries) != 0 || u.Text != "" || u.Turn != "active" || u.sessionPresentation().Status.Text != "Working" {
+		t.Fatalf("status altered session: draft=%q turn=%q status=%q entries=%d", u.Text, u.Turn, u.sessionPresentation().Status.Text, len(u.view.Entries))
 	}
 	for _, want := range []string{"Model: gpt-6-sol", "Reasoning: high", "Service tier: priority", "Directory: /workspace", "Approvals: never", "Sandbox: danger-full-access", "Agents.md: /workspace/AGENTS.md", "75% left", "Loading account"} {
 		if !strings.Contains(statusReportText(u.statusPanel), want) {
@@ -146,7 +146,7 @@ func TestAppServerStatusIndependentSnapshotsAndFailure(t *testing.T) {
 	if !strings.Contains(first, "Model: first") || strings.Contains(first, "offline") || strings.Contains(first, "API key") || !strings.Contains(second, "Model: second") || !strings.Contains(second, "API key") {
 		t.Fatalf("crossed replies: %q / %q", first, second)
 	}
-	if u.alert || u.status != "" || u.requests.Pending() || appServerTestPendingStatus(u) {
+	if u.sessionPresentation().Status.Alert || u.sessionPresentation().Status.Text != "" || u.requests.Pending() || appServerTestPendingStatus(u) {
 		t.Fatal("optional failure damaged session or retained request")
 	}
 	for _, card := range []string{first, second} {
@@ -192,7 +192,7 @@ func TestAppServerStatusPanelCloseScrollAndLateResponse(t *testing.T) {
 	for _, closeKey := range []string{"\x1b", "\r", "q", "\x03"} {
 		t.Run(closeKey, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
-			u.Turn, u.status = "active", "Working"
+			u.Turn, u.sessionPresentation().Status.Text = "active", "Working"
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Existing transcript"}}})
 			shell := &terminalUI{main: u, layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 60, 12}}}
 			appServerTestKeys(t, u, "/status\r")
@@ -228,7 +228,7 @@ func TestAppServerStatusPanelCloseScrollAndLateResponse(t *testing.T) {
 			if err := shell.send(closeKey); err != nil {
 				t.Fatal(err)
 			}
-			if u.statusPanel != nil || u.Turn != "active" || u.status != "Working" || len(u.view.Entries) != 1 || u.view.Entries[0].Source.Text != "Existing transcript" {
+			if u.statusPanel != nil || u.Turn != "active" || u.sessionPresentation().Status.Text != "Working" || len(u.view.Entries) != 1 || u.view.Entries[0].Source.Text != "Existing transcript" {
 				t.Fatal("closing changed turn or transcript")
 			}
 			// A response to a closed panel must not fetch limits or resurrect UI.
@@ -242,10 +242,10 @@ func TestAppServerStatusPanelCloseScrollAndLateResponse(t *testing.T) {
 
 func TestAppServerStatusRefreshFailureStaysInPanel(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.status = "Working"
+	u.sessionPresentation().Status.Text = "Working"
 	appServerTestKeys(t, u, "/status\r")
 	appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"offline"}}`)
-	if !strings.Contains(statusReportText(u.statusPanel), "offline") || u.alert || u.status != "Working" || len(u.view.Entries) != 0 {
+	if !strings.Contains(statusReportText(u.statusPanel), "offline") || u.sessionPresentation().Status.Alert || u.sessionPresentation().Status.Text != "Working" || len(u.view.Entries) != 0 {
 		t.Fatal("optional failure altered session")
 	}
 }

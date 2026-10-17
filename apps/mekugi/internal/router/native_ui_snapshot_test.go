@@ -25,7 +25,7 @@ func TestUISnapshotNativeMainComposer(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.view.Painter.Theme = diffrender.DarkTheme
 			// An idle session avoids wall-clock durations and status animation.
-			u.status, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
+			u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 			now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
 				{Seq: 1, Agent: "You", Kind: "text", Text: "Explain the snapshot workflow.", Observed: now},
@@ -41,7 +41,7 @@ func TestUISnapshotNativeMainComposer(t *testing.T) {
 func TestUISnapshotShellComposer(t *testing.T) {
 	t.Run("marker", func(t *testing.T) {
 		u, _ := newAppServerTestUI()
-		u.status = "Ready"
+		u.sessionPresentation().Status.Text = "Ready"
 		appServerTestKeys(t, u, "!")
 		u.mainFrame(36, 6, 0)
 		rows, _ := u.mainFrame(36, 6, 0)
@@ -52,7 +52,7 @@ func TestUISnapshotShellComposer(t *testing.T) {
 			t.Run(fmt.Sprintf("%d/%d", theme, width), func(t *testing.T) {
 				u, _ := newAppServerTestUI()
 				u.view.Painter.Theme = theme
-				u.status = "Ready"
+				u.sessionPresentation().Status.Text = "Ready"
 				appServerTestKeys(t, u, "\x1b[200~!printf '%s\\n' \"你好\n$HOME\" | cat\n# comment\n\x1b[201~")
 				u.CursorBack = len(u.Text) - strings.Index(u.Text, "$HOME")
 				rows, _ := u.mainFrame(width, 12, 0)
@@ -160,7 +160,7 @@ func TestUISnapshotNativeRosterContext(t *testing.T) {
 
 func TestUISnapshotNativeLockedComposer(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.status = "Ready"
+	u.sessionPresentation().Status.Text = "Ready"
 	u.view.Painter.Theme = diffrender.DarkTheme
 	appServerTestKeys(t, u, "/lock\r")
 	rows, _ := u.mainFrame(100, 10, 0)
@@ -201,7 +201,7 @@ func TestUISnapshotNativeWaitingInputStacks(t *testing.T) {
 				u.view.Painter.Theme = diffrender.DarkTheme
 				u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) }
 				appServerTestTurn(t, u, "t")
-				u.turnStarted = u.now()
+				u.sessionPresentation().Status.Started = u.now()
 				if mode == "queued" {
 					appServerTestKeys(t, u, "Diagnose the broken pipe issue.\tAdd replay key tests.\tPreserve pending attachments.\tCover dequeue and retry.\t")
 				} else {

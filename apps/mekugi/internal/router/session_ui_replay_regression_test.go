@@ -215,8 +215,8 @@ func TestSessionUIReplayItemlessForkTurnUsesSettingsBoundary(t *testing.T) {
 	if err := p.advance(p.Until); err != nil {
 		t.Fatal(err)
 	}
-	if p.ui.Turn != "" || p.ui.status != "Interrupted" {
-		t.Fatalf("local abort lost: turn=%q status=%q", p.ui.Turn, p.ui.status)
+	if p.ui.Turn != "" || p.ui.sessionPresentation().Status.Text != "Interrupted" {
+		t.Fatalf("local abort lost: turn=%q status=%q", p.ui.Turn, p.ui.sessionPresentation().Status.Text)
 	}
 }
 

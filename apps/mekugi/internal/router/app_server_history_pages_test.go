@@ -62,7 +62,7 @@ func TestAppServerAnchoredHistoryPages(t *testing.T) {
 	}
 	restoreContentReply(t, u, 4, map[string]any{"data": []any{historyItem("last", "latest answer", 109000), historyItem("middle", "middle commentary", 105000)}, "nextCursor": "older"})
 	if u.restoring != nil || u.historyLoading() != nil || u.agents.StatusLabel != "" {
-		t.Fatalf("partial history blocked resume: restoring=%+v loading=%+v status=%q agents=%q", u.restoring, u.historyLoading(), u.status, u.agents.StatusLabel)
+		t.Fatalf("partial history blocked resume: restoring=%+v loading=%+v status=%q agents=%q", u.restoring, u.historyLoading(), u.sessionPresentation().Status.Text, u.agents.StatusLabel)
 	}
 	agent := u.session.agent("/root/worker")
 	if agent.Turns != 2 || agent.Started.Unix() != 90 || agent.LastResponse.Unix() != 110 || !agent.Final || agent.Responding {

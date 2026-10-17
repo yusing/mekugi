@@ -60,7 +60,7 @@ func (u *appServerUI) sessionCommand(command string) error {
 	}
 	u.takeDraft()
 	u.Replacement.Clear()
-	u.status = "Starting new session…"
+	u.sessionPresentation().Status.SetText("Starting new session…")
 	params := u.threadPermissions(map[string]any{"sessionStartSource": "clear"})
 	if u.session.cwd != "" {
 		params["cwd"] = u.session.cwd
@@ -156,10 +156,7 @@ func (u *appServerUI) clearSessionPresentation() error {
 		return err
 	}
 	u.picker = composerPicker{}
-	u.compacting, u.polling = nil, nil
-	u.turnStarted = time.Time{}
 	u.exitUsage = appServerTokenUsage{}
-	u.alert = false
 	u.feedback = noticepresentation.Model{}
 	u.noticeDetails, u.noticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
 	for key, run := range u.session.commands {

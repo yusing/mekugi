@@ -99,11 +99,11 @@ func TestAppServerBTWIsolationAndFollowUp(t *testing.T) {
 		t.Run(fmt.Sprint(active), func(t *testing.T) {
 			u, w := newAppServerTestUI()
 			u.session.start("main", t.TempDir())
-			u.status = "main status"
+			u.sessionPresentation().Status.Text = "main status"
 			if active {
 				u.Turn = "main-turn"
 			}
-			turn, status, entries, agents, usage := u.Turn, u.status, len(u.view.Entries), len(u.session.agents), u.exitUsage
+			turn, status, entries, agents, usage := u.Turn, u.sessionPresentation().Status.Text, len(u.view.Entries), len(u.session.agents), u.exitUsage
 			btwTestStart(t, u, w)
 			if u.Text != "" {
 				t.Fatalf("side draft retained: %q", u.Text)
@@ -116,7 +116,7 @@ func TestAppServerBTWIsolationAndFollowUp(t *testing.T) {
 			}
 			appServerTestMessage(t, u, `{"method":"thread/tokenUsage/updated","params":{"threadId":"side","tokenUsage":{"total":{"inputTokens":9999,"outputTokens":123}}}}`)
 			appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"side","turn":{"id":"side-turn","status":"completed"}}}`)
-			if u.Thread != "main" || u.Turn != turn || u.status != status || len(u.view.Entries) != entries || len(u.session.agents) != agents || u.exitUsage != usage {
+			if u.Thread != "main" || u.Turn != turn || u.sessionPresentation().Status.Text != status || len(u.view.Entries) != entries || len(u.session.agents) != agents || u.exitUsage != usage {
 				t.Fatal("side events mutated main conversation")
 			}
 			appServerTestKeys(t, u, "/btw explain more\r")
@@ -159,10 +159,10 @@ func TestAppServerBTWWaitsForMainStartAcknowledgement(t *testing.T) {
 
 func TestAppServerBTWTurnFailureDetailsAreLocal(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.Turn, u.status = "main-turn", "Working"
+	u.Turn, u.sessionPresentation().Status.Text = "main-turn", "Working"
 	btwTestStart(t, u, w)
 	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"side","turn":{"id":"side-turn","status":"failed","error":{"message":"side model failed"}}}}`)
-	if u.btw.Busy || !u.btw.Alert || u.btw.Status != "side model failed" || u.Turn != "main-turn" || u.status != "Working" {
+	if u.btw.Busy || !u.btw.Alert || u.btw.Status != "side model failed" || u.Turn != "main-turn" || u.sessionPresentation().Status.Text != "Working" {
 		t.Fatalf("side failure changed Main or lost detail: %+v", u.btw)
 	}
 }
@@ -170,7 +170,7 @@ func TestAppServerBTWTurnFailureDetailsAreLocal(t *testing.T) {
 func TestAppServerBTWUnsolicitedSideEventsDoNotReachMain(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.session.start("main", t.TempDir())
-	u.Turn, u.status = "main-turn", "Working"
+	u.Turn, u.sessionPresentation().Status.Text = "main-turn", "Working"
 	out := notificationTestOutput(t, u)
 	btwTestStart(t, u, w)
 	questionTestAsync(t, u, "main-question", "Keep Main's question?")
@@ -187,7 +187,7 @@ func TestAppServerBTWUnsolicitedSideEventsDoNotReachMain(t *testing.T) {
 	} {
 		appServerTestMessage(t, u, message)
 	}
-	if out.Len() != 0 || u.questionCount() != beforeQuestions || len(u.view.Entries) != beforeEntries || u.Turn != "main-turn" || u.status != "Working" || u.exitUsage.InputTokens != 0 {
+	if out.Len() != 0 || u.questionCount() != beforeQuestions || len(u.view.Entries) != beforeEntries || u.Turn != "main-turn" || u.sessionPresentation().Status.Text != "Working" || u.exitUsage.InputTokens != 0 {
 		t.Fatal("side event leaked into Main notification, question, usage, or lifecycle")
 	}
 }
@@ -283,7 +283,7 @@ func TestAppServerBTWErrorsStayLocal(t *testing.T) {
 	for _, stage := range []string{"fork", "start"} {
 		t.Run(stage, func(t *testing.T) {
 			u, w := newAppServerTestUI()
-			u.Turn, u.status = "main-turn", "Working"
+			u.Turn, u.sessionPresentation().Status.Text = "main-turn", "Working"
 			appServerTestKeys(t, u, "/btw question\r")
 			r := btwTestRequest(t, w, "thread/fork", "main")
 			if stage == "start" {
@@ -291,7 +291,7 @@ func TestAppServerBTWErrorsStayLocal(t *testing.T) {
 				r = btwTestRequest(t, w, "turn/start", "side")
 			}
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"side failed"}}`, r.ID))
-			if u.btw.Busy || !u.btw.Alert || !strings.Contains(u.btw.Status, "side failed") || u.status != "Working" || u.Turn != "main-turn" || len(u.view.Entries) != 0 {
+			if u.btw.Busy || !u.btw.Alert || !strings.Contains(u.btw.Status, "side failed") || u.sessionPresentation().Status.Text != "Working" || u.Turn != "main-turn" || len(u.view.Entries) != 0 {
 				t.Fatalf("error leaked or side stayed busy: %+v", u.btw)
 			}
 		})
