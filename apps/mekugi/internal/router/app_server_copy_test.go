@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/binding"
 )
 
@@ -114,7 +115,7 @@ func TestTerminalClipboardSharedSelection(t *testing.T) {
 		u, wire := newAppServerTestUI()
 		u.ensureShell()
 		u.Turn = "active"
-		u.shell.selection = &terminalSelection{Selection: selectedTerminalText("same text")}
+		u.shell.selection = &terminalsession.SourceSelection{Selection: selectedTerminalText("same text")}
 		if err := u.shell.key(key); err != nil {
 			t.Fatal(err)
 		}

@@ -215,7 +215,7 @@ func TestDiffSelectionScrollFromEOFAndRestart(t *testing.T) {
 	if got := s.Text(); got != strings.Join(want, "\n") {
 		t.Fatalf("EOF selection lost source rows: %q", got)
 	}
-	if description, _ := s.mentionDescription(); description != "diff hunk @amber1:1-40" {
+	if description, _ := s.MentionDescription(); description != "diff hunk @amber1:1-40" {
 		t.Fatalf("EOF reference = %q", description)
 	}
 	u.selectionMouse(0, source.X, first, false)
@@ -259,7 +259,7 @@ func TestSelectionScrolledClickUsesDocumentTarget(t *testing.T) {
 	y = -1
 	for row := s.Rect.Y; row < s.Rect.Y+s.Rect.H; row++ {
 		at := s.DocumentY(row) - s.Rect.Y
-		if at < len(s.questions) && (s.questions[at] != 0 || s.snippets[at] != (activityui.Snippet{})) && strings.Contains(ansi.Strip(s.Rows[s.DocumentY(row)]), "prompt 00") {
+		if at < len(s.Questions) && (s.Questions[at] != 0 || s.Snippets[at] != (activityui.Snippet{})) && strings.Contains(ansi.Strip(s.Rows[s.DocumentY(row)]), "prompt 00") {
 			y = row
 			break
 		}

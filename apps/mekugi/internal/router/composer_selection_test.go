@@ -135,13 +135,13 @@ func TestTerminalUIDiffSelectionMentionsChangeLines(t *testing.T) {
 		for i, source := range sources {
 			left[i] = source.Content
 		}
-		u.selection = &terminalSelection{Selection: terminalsession.NewSelection(terminalsession.Surface{Rect: u.Layout.Diff, Rows: rows, ContentLeft: left}, 0, tt.y1), pane: u.Layout.Diff, diff: sources, workspace: "/w"}
+		u.selection = &terminalsession.SourceSelection{Selection: terminalsession.NewSelection(terminalsession.Surface{Rect: u.Layout.Diff, Rows: rows, ContentLeft: left}, 0, tt.y1), Pane: u.Layout.Diff, Diff: sources, Workspace: "/w"}
 		u.selection.Move(39, tt.y2, true)
 
 		if got := u.selection.Text(); got != tt.text {
 			t.Fatalf("diff selection text = %q, want %q", got, tt.text)
 		}
-		if description, source := u.selection.mentionDescription(); description != tt.description || source != tt.source {
+		if description, source := u.selection.MentionDescription(); description != tt.description || source != tt.source {
 			t.Fatalf("mention = %q from %q, want %q from %q", description, source, tt.description, tt.source)
 		}
 	}
@@ -184,14 +184,14 @@ func TestTerminalUIDiffSelectionUsesRenderedPane(t *testing.T) {
 		u.width, u.frame.Width = width, width
 		u.Layout = terminalsession.Layout{Diff: terminalsession.Rect{0, 0, width, 16}}
 		u.Auxiliary = c
-		if sourceView.Y > 0 && u.diffSelection(sourceView.X, 0) != nil {
+		if sourceView.Y > 0 && u.frame.DiffSelection(u.frameInput(), sourceView.X, 0) != nil {
 			t.Fatal("stacked navigator was selectable")
 		}
 		u.selectionMouse(0, sourceView.X, first, false)
 		if !u.selectionMouse(32, width-2, last, false) || !u.selectionMouse(0, width-2, last, true) || u.selection == nil {
 			t.Fatalf("rendered diff was not selectable (width %d)", width)
 		}
-		description, source := u.selection.mentionDescription()
+		description, source := u.selection.MentionDescription()
 		if description != "diff hunk @amber1:3-5" || source != "a.go" {
 			t.Fatalf("mention = %q from %q", description, source)
 		}
@@ -294,15 +294,15 @@ func TestTerminalUIDiffSelectionEdges(t *testing.T) {
 		y1, y2 int
 		want   string
 	}{{1, 3, "diff hunk @amber1:7-8"}, {1, 1, "diff hunk @amber1:2"}} {
-		u.selection = &terminalSelection{Selection: terminalsession.NewSelection(terminalsession.Surface{Rect: u.Layout.Diff, Rows: u.frame.Rows, ContentLeft: []int{0, 4, 4, 4}}, 0, tt.y1), diff: sources}
+		u.selection = &terminalsession.SourceSelection{Selection: terminalsession.NewSelection(terminalsession.Surface{Rect: u.Layout.Diff, Rows: u.frame.Rows, ContentLeft: []int{0, 4, 4, 4}}, 0, tt.y1), Diff: sources}
 		u.selection.Move(39, tt.y2, true)
 
-		if got, _ := u.selection.mentionDescription(); got != tt.want {
+		if got, _ := u.selection.MentionDescription(); got != tt.want {
 			t.Fatalf("mention = %q, want %q", got, tt.want)
 		}
 	}
 	u.main.review.Failure = "boom"
-	if u.diffSelection(0, 2) != nil {
+	if u.frame.DiffSelection(u.frameInput(), 0, 2) != nil {
 		t.Fatal("failed diff body was selectable")
 	}
 }

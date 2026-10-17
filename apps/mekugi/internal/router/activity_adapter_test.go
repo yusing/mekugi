@@ -65,3 +65,14 @@ func renderActivity(source *sessionpresentation.ActivitySource, view *activityui
 		view.Hydrate(source.ResolveOutputDemands(demands))
 	}
 }
+
+func renderActivityFeed(source *sessionpresentation.ActivitySource, view *activityui.View, width, rows int) activityui.Feed {
+	for {
+		feed := view.RenderFeed(width, rows)
+		demands := view.OutputDemands()
+		if len(demands) == 0 {
+			return feed
+		}
+		view.Hydrate(source.ResolveOutputDemands(demands))
+	}
+}

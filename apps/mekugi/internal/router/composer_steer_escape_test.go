@@ -8,6 +8,7 @@ import (
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
 )
@@ -199,7 +200,7 @@ func TestComposerEscapeContextPrecedesSteerDelivery(t *testing.T) {
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"t"}}`, steer.ID))
 			switch context {
 			case "selection":
-				u.shell.selection = &terminalSelection{Selection: selectedTerminalText("selected")}
+				u.shell.selection = &terminalsession.SourceSelection{Selection: selectedTerminalText("selected")}
 			case "scrollback":
 				u.view.Following = false
 			case "picker":

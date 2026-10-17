@@ -52,6 +52,8 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 			}
 			u := selectionTestUI(row)
 			u.main.cwd = workspace
+			u.main.publishPresentation(u.main.now())
+			u.frame.Source = selectionTestSource(u.main)
 			u.selectionMouse(0, 1, 0, false)
 			u.selectionMouse(0, 1, 0, true)
 			if u.output == nil || u.frame.Clipboard != "" || u.selection != nil {
@@ -75,9 +77,52 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 			}
 			u = selectionTestUI(row)
 			u.main.cwd = workspace
+			u.main.publishPresentation(u.main.now())
+			u.frame.Source = selectionTestSource(u.main)
 			selectionTestDrag(t, u, 0, 0, 5, 0)
 			if u.output != nil || u.frame.Clipboard != "" || u.selection.Text() != "source" {
 				t.Fatal("drag activated the file link")
+			}
+		})
+	}
+}
+
+func TestMarkdownSelectionClickRetainsWorkspace(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "source.go"), []byte("original\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, change := range []string{"status", "workspace", "workspace before press"} {
+		t.Run(change, func(t *testing.T) {
+			painter := activityui.Painter{FileLink: markdownFileLinks(workspace)}
+			u := selectionTestUI(painter.Inline("[source](source.go)"))
+			u.main.cwd = workspace
+			u.main.publishPresentation(u.main.now())
+			u.frame.Source = selectionTestSource(u.main)
+			if change == "workspace before press" {
+				u.main.cwd = t.TempDir()
+				u.main.publishPresentation(u.main.now())
+			}
+			u.selectionMouse(0, 1, 0, false)
+			if change == "workspace" {
+				u.main.cwd = t.TempDir()
+			} else {
+				u.main.setNotice("unrelated status", false)
+			}
+			u.main.publishPresentation(u.main.now())
+			u.selectionMouse(0, 1, 0, true)
+			if change != "status" {
+				if u.output != nil || u.main.fileReads != nil || !u.main.feedback.Alert {
+					t.Fatal("old click acquired from a replacement workspace")
+				}
+			} else {
+				if u.output == nil {
+					t.Fatal("status publication discarded the original click")
+				}
+				awaitMarkdownFile(t, u)
+				if u.output.File.Path != "source.go" {
+					t.Fatal("click lost its original file")
+				}
 			}
 		})
 	}

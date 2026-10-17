@@ -51,17 +51,6 @@ func (u *appServerUI) activitySource(view *activityui.View) *sessionpresentation
 	return nil
 }
 
-func renderActivityFeed(source *sessionpresentation.ActivitySource, view *activityui.View, width, rows int) activityui.Feed {
-	for {
-		feed := view.RenderFeed(width, rows)
-		demands := view.OutputDemands()
-		if len(demands) == 0 {
-			return feed
-		}
-		view.Hydrate(source.ResolveOutputDemands(demands))
-	}
-}
-
 func (u *appServerUI) takeDisplayIntent() *sessionpresentation.DisplayIntent {
 	intent := u.agents.DisplayRequest
 	if intent == nil {

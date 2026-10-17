@@ -328,10 +328,17 @@ the selection. Local links in Main, child transcripts and shared dialogs follow
 the [content-dialog contract](#content-dialogs).
 Clipboard availability is controlled by the user's terminal.
 
+Frozen source capture and pointer routing belong to the terminal. Capture returns
+identity-addressed output demands for application hydration before the frozen
+document is installed. It never reads a source reducer or retained output itself.
+Pressed links and item targets retain their attachment, displayed thread and
+workspace from the delivered frame, including when publication advances before
+the press. Later source updates cannot redirect the click to another destination.
+
 The application binds Reference to the [conversation attachment pipeline](../../../../modules/conversation/SPEC.md#attachment-snapshots)
 and labels selections using their original item or diff-row attribution. A frame
 retains its source-copy annotations independently of selection highlighting.
-Clipboard bytes and the painted-row cache advance only after a successful
+Clipboard bytes, painted rows and their source context advance only after a successful
 terminal write. Failed writes leave pending clipboard delivery and the previous
 frame available for retry. External-editor handoff invalidates the painted cache.
 

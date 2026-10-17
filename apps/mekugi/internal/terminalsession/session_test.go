@@ -60,22 +60,23 @@ type failedPaint struct{}
 func (failedPaint) Write([]byte) (int, error) { return 0, io.ErrClosedPipe }
 
 func TestFrameCommitsClipboardAndRowsTogether(t *testing.T) {
-	frame := Frame{Rows: []string{"old"}, Width: 8, Notices: NoticeReceipt{Attachment: 9, Composer: true}}
+	oldSource := SourceContext{Attachment: 9, Thread: "old"}
+	frame := Frame{Rows: []string{"old"}, Width: 8, Notices: NoticeReceipt{Attachment: 9, Composer: true}, Source: oldSource}
 	frame.CopyText("source")
 	clipboard := frame.Clipboard
 	rows := []string{"new"}
-	rendered := RenderedFrame{Rows: rows, Notices: NoticeReceipt{Attachment: 3, Feedback: 7, Composer: true, Content: true}}
+	rendered := RenderedFrame{Rows: rows, Notices: NoticeReceipt{Attachment: 3, Feedback: 7, Composer: true, Content: true}, Source: SourceContext{Attachment: 3, Thread: "main"}}
 	if err := frame.Write(failedPaint{}, rendered, 8, true); !errors.Is(err, io.ErrClosedPipe) {
 		t.Fatalf("write: %v", err)
 	}
-	if frame.Clipboard != clipboard || frame.Rows[0] != "old" || frame.Notices != (NoticeReceipt{}) {
+	if frame.Clipboard != clipboard || frame.Rows[0] != "old" || frame.Notices != (NoticeReceipt{}) || frame.Source != oldSource {
 		t.Fatal("failed paint committed pending output")
 	}
 	var out bytes.Buffer
 	if err := frame.Write(&out, rendered, 8, true); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(out.String(), clipboard) || !strings.Contains(out.String(), "new") || frame.Clipboard != "" || frame.Notices != rendered.Notices {
+	if !strings.HasPrefix(out.String(), clipboard) || !strings.Contains(out.String(), "new") || frame.Clipboard != "" || frame.Notices != rendered.Notices || frame.Source != rendered.Source {
 		t.Fatal("successful paint lost clipboard or frame")
 	}
 	out.Reset()

@@ -28,6 +28,7 @@ type FrameInput struct {
 	Live                   *previewview.PreviewPane
 	Selection              *Selection
 	SelectionPane          Rect
+	SelectionSource        SourceContext
 	Width, Height          int
 	Now                    time.Time
 	Version                string
@@ -38,6 +39,7 @@ type FrameInput struct {
 
 type RenderedFrame struct {
 	Notices                        NoticeReceipt
+	Source                         SourceContext
 	Rows                           []string
 	Copy                           [][]terminalui.CopySpan
 	Demands                        []activitypresentation.OutputDemand
@@ -78,6 +80,7 @@ func (in FrameInput) Status() ShellStatus {
 func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, err error) {
 	out.SelectionRetained = true
 	view, shell := in.Main.session, in.Shell
+	out.Source = SourceContext{Attachment: view.Version.Attachment, Thread: view.Displayed.ID, Workspace: view.Info.Workspace}
 	in.Agents.HistoryHint = in.Main.historyHint()
 	out.Prompt = in.Prompts.Update(view)
 	in.Main.PromptRect, in.Main.ContentPainted = Rect{}, false
@@ -165,6 +168,12 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 	selected := Rect{}
 	if in.Selection != nil && out.SelectionRetained {
 		selected = in.Selection.Rect
+		if in.SelectionPane == shell.Layout.Main {
+			out.Source = in.SelectionSource
+		}
+	}
+	if in.Dialog != nil {
+		out.Source = SourceContext{}
 	}
 	if in.Dialog != nil || in.Selection != nil && out.SelectionRetained {
 		out.Notices.Composer, out.Notices.Content = false, false

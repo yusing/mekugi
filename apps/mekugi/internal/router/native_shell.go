@@ -56,7 +56,8 @@ func (u *terminalUI) frameInput() terminalsession.FrameInput {
 		LiveHidden: u.liveHidden, DiffUnseen: u.diffUnseen, Prefix: u.prefix,
 	}
 	if u.selection != nil {
-		in.Selection, in.SelectionPane = u.selection.Selection, u.selection.pane
+		in.Selection, in.SelectionPane = u.selection.Selection, u.selection.Pane
+		in.SelectionSource = terminalsession.SourceContext{Attachment: u.selection.Attachment, Thread: u.selection.Thread, Workspace: u.selection.Workspace}
 	}
 	if u.main.replay != nil {
 		in.Playback, in.PlaybackBar = true, u.main.replay.bar(u.width)

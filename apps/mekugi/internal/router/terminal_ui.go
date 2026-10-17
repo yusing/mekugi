@@ -18,7 +18,7 @@ import (
 
 // The native shell owns terminal presentation; Codex app-server owns execution.
 type terminalUI struct {
-	selection     *terminalSelection
+	selection     *terminalsession.SourceSelection
 	frame         terminalsession.Frame
 	input         terminalsession.Decoder
 	output        *terminalsession.ContentDialog // Open over both panes, taking every key.

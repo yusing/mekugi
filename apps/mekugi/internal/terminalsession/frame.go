@@ -15,10 +15,17 @@ import (
 // Clearing Rows invalidates incremental painting after an external editor.
 type Frame struct {
 	Notices   NoticeReceipt
+	Source    SourceContext
 	Rows      []string
 	Copy      [][]terminalui.CopySpan
 	Width     int
 	Clipboard string
+}
+
+// SourceContext binds painted source to its original attachment and display.
+type SourceContext struct {
+	Attachment        uint64
+	Thread, Workspace string
 }
 
 // CopyText queues OSC 52, which requests clipboard delivery without confirming it.
@@ -58,6 +65,7 @@ func (f *Frame) Write(out io.Writer, rendered RenderedFrame, width int, faint bo
 	_, err := io.WriteString(out, frame)
 	if err == nil {
 		f.Notices = rendered.Notices
+		f.Source = rendered.Source
 		f.Clipboard = ""
 		f.Rows, f.Width, f.Copy = rows, width, copied
 	}

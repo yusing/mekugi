@@ -28,13 +28,18 @@ import (
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
+func selectionTestSource(main *appServerUI) terminalsession.SourceContext {
+	v := main.sessionPresentation().View()
+	return terminalsession.SourceContext{Attachment: v.Version.Attachment, Thread: v.Displayed.ID, Workspace: v.Info.Workspace}
+}
+
 func selectionTestUI(rows ...string) *terminalUI {
 	main, _ := newAppServerTestUI()
 	main.view.FeedLeft, main.view.FeedTop = 1, 1
 	main.view.FeedRight, main.view.FeedRows = 40, len(rows)
 	painted := append([]string(nil), rows...)
 	painted = append(painted, "")
-	return &terminalUI{main: main, width: 40, height: len(painted), frame: terminalsession.Frame{Width: 40, Rows: painted}, Shell: terminalsession.Shell{Layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 40, len(rows)}}}}
+	return &terminalUI{main: main, width: 40, height: len(painted), frame: terminalsession.Frame{Width: 40, Rows: painted, Source: selectionTestSource(main)}, Shell: terminalsession.Shell{Layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 40, len(rows)}}}}
 }
 
 func selectionTestSnapshot(u *terminalUI) *terminalsession.Selection {

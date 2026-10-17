@@ -77,7 +77,7 @@ func TestTerminalUIDiffSelectionUsesLastPaintedEvidence(t *testing.T) {
 				if s := u.shell.selection; s == nil {
 					t.Fatal("visible empty Diff did not accept the pointer press")
 				} else {
-					for _, source := range s.diff {
+					for _, source := range s.Diff {
 						if source.Path != "" {
 							t.Fatalf("unpainted evidence entered the selection: %+v", source)
 						}
@@ -116,7 +116,7 @@ func TestTerminalUIDiffSelectionUsesLastPaintedEvidence(t *testing.T) {
 				if _, err := fmt.Sscanf(text, "a_line_%d", &line); err != nil {
 					t.Fatal(err)
 				}
-				description, path := s.mentionDescription()
+				description, path := s.MentionDescription()
 				if path != "a.go" || !strings.HasSuffix(description, fmt.Sprintf(":%d", line+1)) {
 					t.Fatalf("selection changed displayed source identity: %q %q, want a.go:%d", description, path, line+1)
 				}
