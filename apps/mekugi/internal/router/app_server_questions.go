@@ -8,6 +8,7 @@ import (
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -318,7 +319,7 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 	case conversationui.PromptAttach:
 		u.pasteImage()
 	case conversationui.PromptSubmit:
-		return true, u.submitQuestions()
+		return true, u.submitQuestions(sessionpresentation.QuestionSubmitIntent{Version: u.mainPresentation(u.now()).Version, Call: c.ID, Incomplete: true})
 	case conversationui.PromptAnswer, conversationui.PromptSkip:
 		u.parkQuestion(q)
 		if q.IsSecret {
@@ -331,22 +332,42 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 				c.secretAnswers = make(map[int][]string)
 			}
 			c.secretAnswers[u.questions.Index] = answer.Answer
-		} else if !q.Complete(u.Text, c.Sync, action == conversationui.PromptSkip) {
-			return true, nil
+		} else {
+			view := u.mainPresentation(u.now())
+			if !u.answerQuestion(sessionpresentation.AnswerIntent{Version: view.Version, AnswerInput: prompt.AnswerInput{
+				Call: c.ID, Question: view.Questions.Call.Questions[u.questions.Index].ID,
+				Choice: q.Selected, Draft: q.Editor.Snapshot.Draft, Skip: action == conversationui.PromptSkip,
+			}}) {
+				return true, nil
+			}
 		}
 		if step, submit := u.questions.Advance(); step != 0 {
 			u.moveQuestion(step)
 		} else if submit {
-			return true, u.submitQuestions()
+			return true, u.submitQuestions(sessionpresentation.QuestionSubmitIntent{Version: u.mainPresentation(u.now()).Version, Call: c.ID})
 		}
 	}
 	return true, nil
 }
-func (u *appServerUI) submitQuestions() error {
-	c := u.activeQuestionCall()
-	if c == nil || c.Resolved || c.Sent {
+func (u *appServerUI) answerQuestion(intent sessionpresentation.AnswerIntent) bool {
+	q, err := u.sessionPresentation().AnswerQuestion(intent, u.questions.Questions)
+	if err != nil {
+		u.setNotice(err.Error(), true)
+		return false
+	}
+	if q == u.currentQuestion() {
+		u.resumeQuestion(q)
+	}
+	return true
+}
+
+func (u *appServerUI) submitQuestions(intent sessionpresentation.QuestionSubmitIntent) error {
+	record, err := u.sessionPresentation().SubmitQuestions(intent, u.questions.Questions)
+	if err != nil {
+		u.setNotice(err.Error(), true)
 		return nil
 	}
+	c := u.questions.handles[record]
 	defer func() {
 		u.pruneDraftImages()
 		u.questions.AutoOpen = true
@@ -360,7 +381,9 @@ func (u *appServerUI) submitQuestions() error {
 		if err := u.requests.Respond(c.request, conversationbinding.QuestionResponse(c.Call, c.secretAnswers)); err != nil {
 			return err
 		}
-		u.hideQuestions()
+		if u.questions.Active == c.Call {
+			u.hideQuestions()
+		}
 		c.Submitted()
 		clear(c.secrets)
 		clear(c.secretAnswers)
@@ -381,7 +404,9 @@ func (u *appServerUI) submitQuestions() error {
 		return nil
 	}
 	reply := conversationbinding.QuestionReplies(c.Call)
-	u.hideQuestions()
+	if u.questions.Active == c.Call {
+		u.hideQuestions()
+	}
 	c.Submitted()
 	if reply == "" {
 		c.Resolved = true

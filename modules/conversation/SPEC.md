@@ -176,6 +176,11 @@ interaction follow [questions and approvals](../../apps/mekugi/internal/terminal
 
 ### Questions
 
+Ordinary answer intents name a pending call and question, with an explicit choice,
+editable draft or skip. Retired identities, unavailable choices and secret questions
+reject ordinary answer input. Submission names the call and explicitly confirms
+incomplete answers; it does not depend on which prompt the terminal has open.
+
 Each question offers its named options and free text. Synchronous options can carry
 a note. Answering advances to the next unanswered question; submitting with skipped
 or incomplete questions requires confirmation. Sending removes a call from

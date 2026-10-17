@@ -3,7 +3,6 @@ package prompt
 
 import (
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -273,7 +272,7 @@ func (c *Call) View() CallView {
 				state = "open"
 			}
 		}
-		r := QuestionView{Selected: q.Selected, Note: q.Note, Pending: q.Outcome == "", ID: c.ID + "/" + strconv.Itoa(i), Header: q.Header, Text: q.Question, State: state, Choices: slices.Clone(q.Choices), Secret: q.IsSecret}
+		r := QuestionView{Selected: q.Selected, Note: q.Note, Pending: q.Outcome == "", ID: c.questionID(i), Header: q.Header, Text: q.Question, State: state, Choices: slices.Clone(q.Choices), Secret: q.IsSecret}
 		if !q.IsSecret && q.Outcome != "" {
 			r.Answer = slices.Clone(q.Answer)
 			if c.Sync && len(r.Answer) == 1 && q.Selected == len(q.Choices) {

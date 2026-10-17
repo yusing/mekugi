@@ -14,7 +14,9 @@ The terminal paints those values without choosing semantic queue states or
 reconstructing prompt content. Approval intents retain their view version, request
 identity, offered choice and ordinary denial reason. Admission resolves the current Conversation owner before
 any host response; stale identities and replay produce feedback without answering.
-Secret editing remains renderer-local.
+Ordinary question answers and call submissions use the same version and replay
+admission before resolving Conversation identities. Submission of a hidden call
+preserves an unrelated open editor. Secret editing remains renderer-local.
 
 Session control
 remains the operation authority; Conversation, Notifications and Usage retain their
