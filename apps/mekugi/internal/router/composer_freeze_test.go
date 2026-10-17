@@ -72,6 +72,6 @@ func TestUISnapshotComposerPasteAndReferenceOnScrollback(t *testing.T) {
 	composerShellKeys(t, u, "\x1b[200~'"+pasteTestImage(t)+"'\x1b[201~")
 	u.shell.selection = &terminalSelection{Selection: selectedTerminalText("quote"), mention: "message"}
 	composerShellKeys(t, u, "rtyped")
-	rows, _ := u.mainFrame(80, 10, 0)
+	rows, _ := u.testMainFrame(80, 10, 0)
 	uisnapshot.Assert(t, "testdata/snapshots/composer-paste-reference-scrollback.txt", strings.Join(rows, "\n")+"\n")
 }

@@ -35,7 +35,7 @@ func TestAppServerContextWindow(t *testing.T) {
 	}
 	u.model, u.reasoningEffort = "actual-model", "high"
 	for _, width := range []int{12, 32, 80, 160} {
-		frame, _ := u.mainFrame(width, 12, 0)
+		frame, _ := u.testMainFrame(width, 12, 0)
 		for _, line := range frame {
 			if ansi.StringWidth(line) > width {
 				t.Fatalf("composer overflow at %d: %q", width, line)
@@ -45,7 +45,7 @@ func TestAppServerContextWindow(t *testing.T) {
 			t.Fatalf("missing main context at %d: %v", width, frame)
 		}
 	}
-	frame, _ := u.mainFrame(80, 12, 0)
+	frame, _ := u.testMainFrame(80, 12, 0)
 	if bottom := ansi.Strip(frame[len(frame)-1]); !strings.HasSuffix(bottom, " actual-model (high) • 100K/400K • 25% ─╯") {
 		t.Fatalf("context must follow model in composer: %q", bottom)
 	}
@@ -96,7 +96,7 @@ func TestAppServerStartupRestoresContext(t *testing.T) {
 	write("main", 100000)
 	appServerTestRequest(t, u, "1", "thread/start")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":1,"result":{"model":"model","thread":{"id":"main","path":%q}}}`, path))
-	frame, _ := u.mainFrame(80, 8, 0)
+	frame, _ := u.testMainFrame(80, 8, 0)
 	if bottom := ansi.Strip(frame[len(frame)-1]); !strings.Contains(bottom, "model • 100K/400K • 25%") {
 		t.Fatal(bottom)
 	}

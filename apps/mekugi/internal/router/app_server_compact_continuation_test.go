@@ -247,10 +247,10 @@ func TestUISnapshotNativeCompactQueuedCancel(t *testing.T) {
 	u.model, u.reasoningEffort = "snapshot-model", "high"
 	appServerTestTurn(t, u, "work")
 	appServerTestKeys(t, u, "/compact\t")
-	rows, _ := u.mainFrame(80, 16, 0)
+	rows, _ := u.testMainFrame(80, 16, 0)
 	assertNativeUISnapshot(t, "native-compact-queued", rows)
 	appServerTestKeys(t, u, "\x03")
-	rows, _ = u.mainFrame(80, 16, 0)
+	rows, _ = u.testMainFrame(80, 16, 0)
 	assertNativeUISnapshot(t, "native-compact-queued-cancel", rows)
 	if w.Len() != 0 {
 		t.Fatal("cancellation interrupted Main")
@@ -347,7 +347,7 @@ func TestUISnapshotNativeCompactQueuedContinuation(t *testing.T) {
 	for i := range u.view.Entries {
 		u.view.Entries[i].Source.Observed = u.now()
 	}
-	rows, _ := u.mainFrame(80, 16, 0)
+	rows, _ := u.testMainFrame(80, 16, 0)
 	assertNativeUISnapshot(t, "native-compact-queued-continuation", rows)
 }
 
@@ -489,10 +489,10 @@ func TestUISnapshotNativeCompactSteerInterrupt(t *testing.T) {
 	appServerTestTurn(t, u, "work")
 	appServerTestKeys(t, u, "/compact\r")
 	appServerOneRequest(t, w, "turn/interrupt", "")
-	rows, _ := u.mainFrame(80, 16, 0)
+	rows, _ := u.testMainFrame(80, 16, 0)
 	assertNativeUISnapshot(t, "native-compact-steer-interrupt", rows)
 	appServerTestKeys(t, u, "\x03")
-	rows, _ = u.mainFrame(80, 16, 0)
+	rows, _ = u.testMainFrame(80, 16, 0)
 	assertNativeUISnapshot(t, "native-compact-steer-cancel", rows)
 }
 

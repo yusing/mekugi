@@ -14,7 +14,7 @@ func TestTerminalViewMemory(t *testing.T) {
 	u.ctx = t.Context()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
-	if err := u.paint(io.Discard, 120, 32); err != nil {
+	if err := u.testPaint(io.Discard, 120, 32); err != nil {
 		t.Fatal(err)
 	}
 	if u.shell.diffScreen.Emulator != nil {
@@ -28,7 +28,7 @@ func TestTerminalViewMemory(t *testing.T) {
 	savedPane(u.shell).Update((presentation.Publication{}).With(presentation.GroupCaptures([]presentation.Chunk{liveDiffCapture("main", "main.go", 1, "old\n", "new é\n", presentation.Origin{})})), "")
 	var first string
 	for _, width := range []int{120, 100, 120} {
-		if err := u.paint(io.Discard, width, 32); err != nil {
+		if err := u.testPaint(io.Discard, width, 32); err != nil {
 			t.Fatal(err)
 		}
 		frame := u.shell.diffScreen.Render()

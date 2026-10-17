@@ -247,7 +247,7 @@ func TestUISnapshotOutputThroughputStreamingRetainsMeasuredRate(t *testing.T) {
 				}
 				root := u.session.agent("/root")
 				u.agents.apply(activityPaneEvent{Kind: "agents", Agents: []activityPaneAgent{*root}})
-				rows, _ := u.mainFrame(80, 10, 0)
+				rows, _ := u.testMainFrame(80, 10, 0)
 				if prior {
 					assertNativeUISnapshot(t, "output-throughput-live-composer", rows)
 					assertNativeUISnapshot(t, "output-throughput-live-roster", u.agents.NativeRoster(80, 4, time.Now(), true))
@@ -286,7 +286,7 @@ func TestUISnapshotOutputThroughputComposerAndRoster(t *testing.T) {
 			root.OutputThroughput = inference.OutputThroughput{OutputTokens: 83, DurationNanos: uint64(2 * time.Second), MeasuredRequests: 1}
 			u.session.lifecycle(u.Thread).RestoreFinal(true)
 			u.sessionPresentation().Status.Text, u.model = "Ready", "gpt-6-sol"
-			rows, _ := u.mainFrame(width, 10, 0)
+			rows, _ := u.testMainFrame(width, 10, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("output-throughput-composer-%d", width), rows)
 			u.agents.apply(activityPaneEvent{Kind: "agents", Agents: []activityPaneAgent{*root,
 				{Name: "/root/fast", OutputThroughput: inference.OutputThroughput{OutputTokens: 120, DurationNanos: uint64(time.Second), MeasuredRequests: 1}, ContextKnown: true, ContextTokens: 1000, ContextWindow: 200000},
@@ -330,6 +330,7 @@ func TestOutputThroughputPresentationSelectionAndIsolation(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			if mode == "without usage" {
 				u.presentationState = new(sessionpresentation.Service)
+				u.attachPresentation()
 			}
 			if mode == "without activity" {
 				u.session.activity = nil
@@ -338,8 +339,8 @@ func TestOutputThroughputPresentationSelectionAndIsolation(t *testing.T) {
 			u.model = "main-model"
 			rate := inference.OutputThroughput{OutputTokens: 40, DurationNanos: uint64(time.Second), MeasuredRequests: 1}
 			u.session.agent("/root").OutputThroughput = rate
-			before := u.mainPresentation(u.now())
-			frame, _ := u.mainFrame(120, 12, 0)
+			before := u.publishPresentation(u.now())
+			frame, _ := u.testMainFrame(120, 12, 0)
 			if text := ansi.Strip(strings.Join(frame, "\n")); !strings.Contains(text, "main-model") || strings.Contains(text, "40.0 tok/s") != (mode != "without usage") {
 				t.Fatalf("Main contribution: %s", text)
 			}
@@ -353,7 +354,7 @@ func TestOutputThroughputPresentationSelectionAndIsolation(t *testing.T) {
 				t.Fatalf("roster contribution: %s", roster)
 			}
 			u.agents.displayThread("/root/child")
-			frame, _ = u.mainFrame(120, 12, 0)
+			frame, _ = u.testMainFrame(120, 12, 0)
 			if text := ansi.Strip(strings.Join(frame, "\n")); strings.Contains(text, "40.0 tok/s") || strings.Contains(text, "80.0 tok/s") != (mode != "without usage") {
 				t.Fatalf("child contribution: %s", text)
 			}
@@ -371,14 +372,14 @@ func TestOutputThroughputPresentationReplayReset(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.ui.session.agent("/root").OutputThroughput = inference.OutputThroughput{OutputTokens: 40, DurationNanos: uint64(time.Second), MeasuredRequests: 1}
-	before := p.ui.mainPresentation(p.At)
+	before := p.ui.publishPresentation(p.At)
 	if len(before.Caption.Items) != 1 {
 		t.Fatal("admitted replay fact was not published")
 	}
 	if err := p.seek(0); err != nil {
 		t.Fatal(err)
 	}
-	after := p.ui.mainPresentation(p.At)
+	after := p.ui.publishPresentation(p.At)
 	if len(after.Caption.Items) != 0 || before.Version.Attachment == after.Version.Attachment {
 		t.Fatalf("backward replay retained future facts: %+v", after)
 	}

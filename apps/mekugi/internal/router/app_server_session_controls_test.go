@@ -133,7 +133,7 @@ func TestAppServerClearStartsFreshThreadAndRetiresOldEvents(t *testing.T) {
 		t.Fatalf("retired events repopulated session: %+v turn=%q", u.view.Entries, u.Turn)
 	}
 	var frame bytes.Buffer
-	if err := u.paint(&frame, 80, 20); err != nil {
+	if err := u.testPaint(&frame, 80, 20); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(ansi.Strip(frame.String()), "old transcript") {

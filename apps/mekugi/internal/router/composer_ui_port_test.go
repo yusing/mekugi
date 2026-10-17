@@ -158,7 +158,7 @@ func TestComposerImagePastePTYLifecycle(t *testing.T) {
 							return fmt.Errorf("paste lifecycle: %q images=%d state=%v", u.Text, len(u.Images), u.shell.input.Pasting())
 						}
 						var frame bytes.Buffer
-						if err := u.paint(&frame, 80, 20); err != nil {
+						if err := u.testPaint(&frame, 80, 20); err != nil {
 							return err
 						}
 						screen := vt.NewEmulator(80, 20)

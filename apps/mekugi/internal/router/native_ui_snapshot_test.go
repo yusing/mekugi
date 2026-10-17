@@ -34,7 +34,7 @@ func TestUISnapshotNativeMainComposer(t *testing.T) {
 				{Seq: 2, Agent: "Main", Kind: "final", Text: "Review the **rendered frame**, accept its baseline, then rerun the offline check.", Observed: now},
 			}})
 			u.Text = "Add narrow-screen coverage.\nKeep the interaction assertions."
-			rows, _ := u.mainFrame(width, 16, 0)
+			rows, _ := u.testMainFrame(width, 16, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("native-main-%d", width), rows)
 		})
 	}
@@ -45,8 +45,8 @@ func TestUISnapshotShellComposer(t *testing.T) {
 		u, _ := newAppServerTestUI()
 		u.sessionPresentation().Status.Text = "Ready"
 		appServerTestKeys(t, u, "!")
-		u.mainFrame(36, 6, 0)
-		rows, _ := u.mainFrame(36, 6, 0)
+		u.testMainFrame(36, 6, 0)
+		rows, _ := u.testMainFrame(36, 6, 0)
 		uisnapshot.AssertTerminal(t, "testdata/snapshots/shell-composer-marker.txt", rows, 36)
 	})
 	for _, theme := range []diffrender.Theme{diffrender.TerminalTheme, diffrender.DarkTheme, diffrender.LightTheme} {
@@ -57,10 +57,10 @@ func TestUISnapshotShellComposer(t *testing.T) {
 				u.sessionPresentation().Status.Text = "Ready"
 				appServerTestKeys(t, u, "\x1b[200~!printf '%s\\n' \"你好\n$HOME\" | cat\n# comment\n\x1b[201~")
 				u.CursorBack = len(u.Text) - strings.Index(u.Text, "$HOME")
-				rows, _ := u.mainFrame(width, 12, 0)
+				rows, _ := u.testMainFrame(width, 12, 0)
 				rows = append(rows, "plain after shell")
 				u.deleteDraftRange(0, 1)
-				normal, _ := u.mainFrame(width, 12, 0)
+				normal, _ := u.testMainFrame(width, 12, 0)
 				rows = append(rows, normal...)
 				rows = append(rows, "plain after prompt")
 				uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/shell-composer-%d-%d.txt", theme, width), rows, width)
@@ -165,7 +165,7 @@ func TestUISnapshotNativeLockedComposer(t *testing.T) {
 	u.sessionPresentation().Status.Text = "Ready"
 	u.view.Painter.Theme = diffrender.DarkTheme
 	appServerTestKeys(t, u, "/lock\r")
-	rows, _ := u.mainFrame(100, 10, 0)
+	rows, _ := u.testMainFrame(100, 10, 0)
 	assertNativeUISnapshot(t, "native-main-locked", rows)
 }
 
@@ -212,7 +212,7 @@ func TestUISnapshotNativeWaitingInputStacks(t *testing.T) {
 					appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"t"}}`, first.ID))
 					appServerTestKeys(t, u, "Add replay key tests.\rPreserve pending attachments.\rCover dequeue and retry.\r")
 				}
-				rows, _ := u.mainFrame(width, 16, 0)
+				rows, _ := u.testMainFrame(width, 16, 0)
 				assertNativeUISnapshot(t, fmt.Sprintf("native-waiting-%s-%d", mode, width), rows)
 			})
 		}

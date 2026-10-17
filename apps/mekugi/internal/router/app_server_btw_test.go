@@ -378,7 +378,7 @@ func TestAppServerBTWRenderAndScroll(t *testing.T) {
 	}
 	u.Text = "COMPOSER_DRAFT"
 	var frame bytes.Buffer
-	if err := u.paint(&frame, 80, 30); err != nil {
+	if err := u.testPaint(&frame, 80, 30); err != nil {
 		t.Fatal(err)
 	}
 	text := ansi.Strip(frame.String())

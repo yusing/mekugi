@@ -22,7 +22,7 @@ func navigationBatchPaint(t *testing.T, u *appServerUI, width, height int) *vt.E
 	t.Helper()
 	var frame bytes.Buffer
 	u.shell.frame.Rows = nil
-	if err := u.paint(&frame, width, height); err != nil {
+	if err := u.testPaint(&frame, width, height); err != nil {
 		t.Fatal(err)
 	}
 	screen := vt.NewEmulator(width, height)

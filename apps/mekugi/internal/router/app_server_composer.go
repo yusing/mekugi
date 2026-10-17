@@ -41,7 +41,7 @@ func (u *appServerUI) deleteDraftRange(start, end int) {
 		u.removeDraft(start, end, composer.NoRun)
 		return
 	}
-	view := u.mainPresentation(u.now())
+	view := u.publishPresentation(u.now())
 	u.editInput(sessionpresentation.DraftEditIntent{Version: view.Version, Revision: view.Draft.Revision, Start: start, End: end})
 }
 

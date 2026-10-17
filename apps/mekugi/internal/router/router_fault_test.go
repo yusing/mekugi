@@ -152,7 +152,7 @@ func TestRouterTransformFaultAfterCreatedEmitsActionableTerminalFailure(t *testi
 	}
 	ui.ensureShell()
 	defer ui.shell.diffScreen.Close()
-	if err := ui.paint(io.Discard, 100, 16); err != nil {
+	if err := ui.testPaint(io.Discard, 100, 16); err != nil {
 		t.Fatal(err)
 	}
 	delivery.finish(true)

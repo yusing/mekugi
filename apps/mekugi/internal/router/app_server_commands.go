@@ -178,7 +178,7 @@ func (u *appServerUI) clearSessionPresentation() error {
 		u.agents.Painter, u.agents.mainView = painter, u.view
 		u.agents.ChildrenOnly, u.agents.Bare = true, true
 	}
-	u.sessionPresentation()
+	u.attachPresentation()
 	u.attachActivity()
 	if u.shell != nil {
 		u.shell.selection, u.shell.output = nil, nil

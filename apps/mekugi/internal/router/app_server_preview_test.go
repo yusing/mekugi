@@ -66,7 +66,7 @@ func TestNativeUIPreview(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			if err := p.ui.paint(tty, w, h); err != nil {
+			if err := p.ui.testPaint(tty, w, h); err != nil {
 				return err
 			}
 			lastWidth, lastHeight, lastPaint = w, h, time.Now()
@@ -112,7 +112,7 @@ func TestNativeUIPreview(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || p.ui.mainPresentation(p.ui.now()).Status.Animating || p.ui.agents.HasLiveStatus() || flashExpired || settled || noticeExpired || p.ui.shell.animating(now) {
+				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || p.ui.publishPresentation(p.ui.now()).Status.Animating || p.ui.agents.HasLiveStatus() || flashExpired || settled || noticeExpired || p.ui.shell.animating(now) {
 					if err := paint(); err != nil {
 						return err
 					}
@@ -159,7 +159,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		p.ui.shell.frame.Rows = nil // A new screen needs every row.
 		rollCommandOutput(p.ui)
 		finishPacing(p.ui.view, p.ui.agents)
-		if err := p.ui.paint(screen, 160, 48); err != nil {
+		if err := p.ui.testPaint(screen, 160, 48); err != nil {
 			t.Fatal(err)
 		}
 		frame := screen.String()
@@ -375,7 +375,7 @@ func TestNativeUIPreviewSessionControlsRendered(t *testing.T) {
 		defer screen.Close()
 		p.ui.shell.frame.Rows = nil
 		finishPacing(p.ui.view, p.ui.agents)
-		if err := p.ui.paint(screen, 100, 28); err != nil {
+		if err := p.ui.testPaint(screen, 100, 28); err != nil {
 			t.Fatal(err)
 		}
 		return screen.String()
@@ -1224,7 +1224,7 @@ func TestNativeDiffNavigatorPointerMovesAndBack(t *testing.T) {
 		screen := vt.NewEmulator(160, 48)
 		defer screen.Close()
 		shell.frame.Rows = nil
-		if err := p.ui.paint(screen, 160, 48); err != nil {
+		if err := p.ui.testPaint(screen, 160, 48); err != nil {
 			t.Fatal(err)
 		}
 		return screen.String()
@@ -1395,7 +1395,7 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 			u.shell.DiffOpen = activity
 			paint := func() {
 				t.Helper()
-				if err := u.paint(io.Discard, 160, 160); err != nil {
+				if err := u.testPaint(io.Discard, 160, 160); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -1469,7 +1469,7 @@ func TestNativeUIPreviewQuestions(t *testing.T) {
 	p.ui.Text = "Keep my draft"
 	p.until("sync question")
 	p.ui.openQuestions()
-	rows, _ := p.ui.mainFrame(72, 28, 0)
+	rows, _ := p.ui.testMainFrame(72, 28, 0)
 	t.Logf("question dock:\n%s", ansi.Strip(strings.Join(rows, "\n")))
 	questionTestPaint(t, p.ui, 72)
 	appServerTestKeys(t, p.ui, "1\r")
@@ -1482,7 +1482,7 @@ func TestNativeUIPreviewQuestions(t *testing.T) {
 		t.Fatal("preview did not resolve both questions and restore its draft")
 	}
 	for _, width := range []int{24, 40, 72} {
-		rows, _ = p.ui.mainFrame(width, 28, 0)
+		rows, _ = p.ui.testMainFrame(width, 28, 0)
 		if len(rows) > 28 {
 			t.Fatalf("width %d: frame has %d rows", width, len(rows))
 		}

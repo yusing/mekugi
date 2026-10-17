@@ -21,7 +21,7 @@ func TestNativeReplyDialogPreservesScrolledDiff(t *testing.T) {
 	offset := c.Selection(119, 27).Offset
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "ct", "item": map[string]any{"id": "reply", "type": "collabAgentToolCall", "tool": "sendMessage", "status": "completed", "senderThreadId": "child", "receiverThreadIds": []string{"main"}, "prompt": strings.Repeat("Reply body.\n", 16)}})
-	if err := u.paint(&bytes.Buffer{}, 120, 28); err != nil {
+	if err := u.testPaint(&bytes.Buffer{}, 120, 28); err != nil {
 		t.Fatal(err)
 	}
 	var seq uint64
@@ -36,7 +36,7 @@ func TestNativeReplyDialogPreservesScrolledDiff(t *testing.T) {
 	if !u.shell.DiffOpen || u.shell.Focus != 1 || c.Selection(u.shell.Layout.Diff.W-1, u.shell.Layout.Diff.H-1).Offset != offset {
 		t.Fatal("opening reply changed underlying diff navigation")
 	}
-	if err := u.paint(&bytes.Buffer{}, 120, 28); err != nil {
+	if err := u.testPaint(&bytes.Buffer{}, 120, 28); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(u.shell.output.Document.Text, "Reply body.") {

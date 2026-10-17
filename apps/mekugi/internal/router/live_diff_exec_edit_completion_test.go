@@ -59,7 +59,7 @@ func TestUISnapshotNativeMoveKeepsTranscript(t *testing.T) {
 	}
 	screen := vt.NewEmulator(100, 28)
 	defer screen.Close()
-	if err := u.paint(screen, 100, 28); err != nil {
+	if err := u.testPaint(screen, 100, 28); err != nil {
 		t.Fatal(err)
 	}
 	assertNativeUISnapshot(t, "native-dock-before-reveal", strings.Split(screen.String(), "\n"))
@@ -259,7 +259,7 @@ func TestNativeUIExecEditCompletionRetainsWorkingStatusAndClearsDock(t *testing.
 	}
 	screen := vt.NewEmulator(120, 40)
 	defer screen.Close()
-	if err := u.paint(screen, 120, 40); err != nil {
+	if err := u.testPaint(screen, 120, 40); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(screen.String(), "LIVE ·") {

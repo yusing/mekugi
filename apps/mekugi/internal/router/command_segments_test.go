@@ -181,7 +181,7 @@ func TestCommandSegmentsRetentionErrorsStayWithOriginalThreadAndCause(t *testing
 	if retry := u.applyCriticalNotices(); retry == nil || u.feedback.Text != before || len(u.view.Entries) != 0 {
 		t.Fatal("unpainted error was lost or duplicated")
 	} else {
-		u.mainFrame(100, 12, 0)
+		u.testMainFrame(100, 12, 0)
 		retry.finish(true)
 	}
 	if len(u.issues.Notices.Pending()) != 0 {

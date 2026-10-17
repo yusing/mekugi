@@ -23,7 +23,7 @@ func TestUISnapshotNativeDockReveal(t *testing.T) {
 		defer screen.Close()
 		paint := func(name string) {
 			t.Helper()
-			if err := u.paint(screen, 100, 28); err != nil {
+			if err := u.testPaint(screen, 100, 28); err != nil {
 				t.Fatal(err)
 			}
 			assertNativeUISnapshot(t, name, strings.Split(screen.String(), "\n"))

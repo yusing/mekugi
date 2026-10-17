@@ -9,6 +9,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/contracts/observation"
+	presentationcontract "github.com/yusing/mekugi/contracts/presentation"
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -45,6 +46,53 @@ func (c *statusConsumer) publish(caption sessionpresentation.Caption) sessionpre
 	return c.model().Publish(sessionpresentation.MainInputs{
 		Control: &c.control, Feedback: &c.feedback, Conversation: &c.conversation, Processes: 2,
 	}, caption, c.now)
+}
+
+func TestNonTerminalPublicationRetainsDetachedCurrentValue(t *testing.T) {
+	c := newStatusConsumer()
+	call := &prompt.Call{ID: "call", Thread: "main", Questions: []prompt.Question{{
+		ID: "question", Choices: []prompt.Option{{Label: "choice"}}, Answer: []string{"answer"}, Outcome: "answered",
+	}}}
+	c.conversation.Questions.Add(call, false)
+	c.conversation.Questions.Open(call)
+	c.conversation.Approvals.Add(&prompt.Approval{ID: "approval", Details: []string{"detail"}, Choices: []prompt.Choice{{Label: "allow"}}})
+	c.conversation.Unsent = []conversationmodel.Input{{Text: "waiting"}}
+	c.conversation.Queued = []conversationmodel.Input{{Text: "queued"}}
+	caption := sessionpresentation.Caption{Items: []presentationcontract.Item{{Text: "caption"}}}
+	v := c.publish(caption)
+	want := c.model().View()
+	if !reflect.DeepEqual(v, want) || c.publish(caption).Version != want.Version {
+		t.Fatal("publication was not retained or unchanged publication advanced its version")
+	}
+	v.Caption.Items[0].Text = "changed"
+	v.Questions.Call.Questions[0].Choices[0].Label = "changed"
+	v.Questions.Call.Questions[0].Answer[0] = "changed"
+	v.Approvals.Approval.Details[0] = "changed"
+	v.Approvals.Approval.Choices[0].Label = "changed"
+	v.Pending.Waiting[0].Text = "changed"
+	v.Pending.Queued[0].Text = "changed"
+	caption.Items[0].Text = "changed"
+	c.model().Status.Set("new state", false)
+	c.now = c.now.Add(time.Hour)
+	for range 2 {
+		if !reflect.DeepEqual(c.model().View(), want) {
+			t.Fatal("a read, returned value, input value or unpublished owner change mutated the current publication")
+		}
+	}
+	c.conversation.Questions.Hide()
+	c.conversation.Editor.Files = []composer.Token{{Path: "source"}}
+	history := []sessionpresentation.HistoryView{{Thread: "child", Status: sessionpresentation.Unloaded}}
+	v = c.model().Publish(sessionpresentation.MainInputs{Control: &c.control, Feedback: &c.feedback, Conversation: &c.conversation, History: history}, caption, c.now)
+	if v.Version == want.Version || v.Status.State.Text != "new state" {
+		t.Fatal("changed owner facts were not published")
+	}
+	want = c.model().View()
+	v.Draft.Draft.Files[0].Path = "changed"
+	v.History.Entries[0].Thread = "changed"
+	history[0].Thread = "changed again"
+	if !reflect.DeepEqual(c.model().View(), want) {
+		t.Fatal("draft or history publication aliases mutable storage")
+	}
 }
 
 func TestNonTerminalStatusTimingAndDetachedDetails(t *testing.T) {

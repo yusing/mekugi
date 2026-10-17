@@ -40,7 +40,7 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	}
 	u.ensureShell()
 	defer u.shell.diffScreen.Close()
-	if err := u.paint(io.Discard, 100, 16); err != nil {
+	if err := u.testPaint(io.Discard, 100, 16); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(u.feedback.Text, "/root/worker: ") || !strings.Contains(u.feedback.Text, "router-wide capacity warning") || strings.Count(u.feedback.Text, "Enable supported tools.") != 2 {
@@ -72,7 +72,7 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	if retry == nil || len(retry.errors.Messages) != 3 || len(u.view.Entries) != 0 || u.feedback.Text != before {
 		t.Fatalf("retry duplicated or lost entries: delivery=%v entries=%d", retry, len(u.view.Entries))
 	}
-	if err := u.paint(io.Discard, 100, 16); err != nil {
+	if err := u.testPaint(io.Discard, 100, 16); err != nil {
 		t.Fatal(err)
 	}
 	retry.finish(true)
@@ -171,7 +171,7 @@ func TestFailureStorageNoticeReachesOwningNativeRootBeforeShutdown(t *testing.T)
 	if delivery == nil || len(delivery.errors.Messages) != 1 || len(owner.view.Entries) != 0 || !owner.feedback.Alert {
 		t.Fatalf("owning root did not receive the storage notice: delivery=%v entries=%d", delivery, len(owner.view.Entries))
 	}
-	rows, _ := owner.mainFrame(100, 12, 0)
+	rows, _ := owner.testMainFrame(100, 12, 0)
 	feed := ansi.Strip(strings.Join(rows, "\n"))
 	if !strings.Contains(feed, "could not retain the failure reference") {
 		t.Fatalf("storage failure did not appear in the composer before shutdown: %s", feed)
@@ -201,7 +201,7 @@ func TestNativeCriticalNoticeComposerVisibility(t *testing.T) {
 			if state == "compact" {
 				height = 3
 			}
-			u.mainFrame(80, height, 0)
+			u.testMainFrame(80, height, 0)
 			delivery.finish(true)
 			if state == "compact" {
 				if u.mainView.ContentPainted || len(u.issues.Notices.Pending()) != 0 {
@@ -217,7 +217,7 @@ func TestNativeCriticalNoticeComposerVisibility(t *testing.T) {
 			if retry == nil || u.feedback.Text != delivery.composerText {
 				t.Fatal("hidden batch could not retry")
 			}
-			u.mainFrame(80, 12, 0)
+			u.testMainFrame(80, 12, 0)
 			retry.finish(true)
 			if len(u.issues.Notices.Pending()) != 0 {
 				t.Fatal("visible retry remained pending")
@@ -239,7 +239,7 @@ func TestNativeCleanupNoticeTranscriptReplacement(t *testing.T) {
 			if delivered {
 				height = 12
 			}
-			u.mainFrame(80, height, 0)
+			u.testMainFrame(80, height, 0)
 			first.finish(true)
 			if got := len(u.issues.Notices.Pending()); (got == 0) != delivered {
 				t.Fatalf("initial delivery: pending=%d delivered=%t", got, delivered)
@@ -258,7 +258,7 @@ func TestNativeCleanupNoticeTranscriptReplacement(t *testing.T) {
 			if retry == nil {
 				t.Fatal("pending progress did not retry")
 			}
-			rows, _ := u.mainFrame(80, 12, 0)
+			rows, _ := u.testMainFrame(80, 12, 0)
 			if !strings.Contains(ansi.Strip(strings.Join(rows, "\n")), "pending cleanup plan") {
 				t.Fatal("replacement transcript did not paint pending progress")
 			}
@@ -278,7 +278,7 @@ func TestNativeCriticalNoticeMixedBatchDismissal(t *testing.T) {
 	delivery := u.applyCriticalNotices()
 	u.ensureShell()
 	defer u.shell.diffScreen.Close()
-	u.mainFrame(80, 3, 0)
+	u.testMainFrame(80, 3, 0)
 	delivery.finish(true)
 	if pending := u.issues.Notices.Pending(); len(pending) != 1 || !strings.Contains(pending[0], "cleanup progress") {
 		t.Fatalf("mixed batch acknowledged the wrong surface: %v", pending)
@@ -288,7 +288,7 @@ func TestNativeCriticalNoticeMixedBatchDismissal(t *testing.T) {
 	if u.feedback.Text != "" || len(u.view.Entries) != 1 {
 		t.Fatal("dismissed error returned or progress duplicated")
 	}
-	u.mainFrame(80, 12, 0)
+	u.testMainFrame(80, 12, 0)
 	retry.finish(true)
 	if len(u.issues.Notices.Pending()) != 0 {
 		t.Fatal("visible progress remained pending")

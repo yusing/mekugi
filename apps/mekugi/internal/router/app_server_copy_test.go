@@ -76,7 +76,7 @@ func TestAppServerCopyPicker(t *testing.T) {
 	}
 	screen := vt.NewEmulator(100, 30)
 	defer screen.Close()
-	if err := u.paint(screen, 100, 30); err != nil {
+	if err := u.testPaint(screen, 100, 30); err != nil {
 		t.Fatal(err)
 	}
 	if u.shell.frame.Clipboard != "" {

@@ -53,7 +53,7 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 			full, draft, turn, sent := u.composerErrorText(), u.Text, u.Turn, wire.String()
 			screen := vt.NewEmulator(tc.width+2, 16)
 			defer screen.Close()
-			if err := u.paint(screen, tc.width+2, 16); err != nil {
+			if err := u.testPaint(screen, tc.width+2, 16); err != nil {
 				t.Fatal(err)
 			}
 			click := func(rect terminalsession.Rect) {
@@ -91,7 +91,7 @@ func TestUISnapshotComposerError(t *testing.T) {
 			u.clock = func() time.Time { return time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC) }
 			u.sessionPresentation().Status.Text = "Ready"
 			u.setNotice("File contents omitted: setup.sh (attachment budget exceeded).\nThe attachment result names the missing content.", true)
-			rows, _ := u.mainFrame(width, 8, 0)
+			rows, _ := u.testMainFrame(width, 8, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("composer-error-%d", width), rows)
 			if !strings.Contains(rows[u.mainView.NoticeDismiss.Y], terminalui.Green) || !strings.Contains(ansi.Strip(rows[u.mainView.NoticeDismiss.Y]), "[✓]") {
 				t.Fatal("dismiss check is missing its shared success color")
@@ -100,9 +100,9 @@ func TestUISnapshotComposerError(t *testing.T) {
 	}
 	u, _ := newAppServerTestUI()
 	u.setNotice("failed", true)
-	u.mainFrame(80, 8, 0)
+	u.testMainFrame(80, 8, 0)
 	u.setNotice("done", false)
-	u.mainFrame(80, 8, 0)
+	u.testMainFrame(80, 8, 0)
 	if u.mainView.NoticeDetails.W != 0 || u.mainView.NoticeDismiss.W != 0 {
 		t.Fatal("stale error controls survived feedback")
 	}

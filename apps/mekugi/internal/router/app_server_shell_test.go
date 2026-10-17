@@ -184,9 +184,9 @@ func TestAppServerShellComposer(t *testing.T) {
 	if u.completionTarget().Kind != 0 || w.Len() != 0 {
 		t.Fatal("shell variable opened a picker")
 	}
-	frame, _ := u.mainFrame(80, 20, 0)
+	frame, _ := u.testMainFrame(80, 20, 0)
 	text := strings.Join(frame, "\n")
-	redraw, _ := u.mainFrame(80, 20, 0)
+	redraw, _ := u.testMainFrame(80, 20, 0)
 	if strings.Join(redraw, "\n") != text {
 		t.Fatal("redrawing the shell composer changed its text or cursor")
 	}
@@ -199,7 +199,7 @@ func TestAppServerShellComposer(t *testing.T) {
 	}
 	appServerTestKeys(t, u, "\x03\x1b[200~!printf '%s\\n' \"你好\n$HOME\"\n\x1b[201~")
 	appServerTestKeys(t, u, "\x1b[A\x1b[H")
-	frame, _ = u.mainFrame(18, 20, 0)
+	frame, _ = u.testMainFrame(18, 20, 0)
 	if u.Cursor() != strings.Index(u.Text, "$HOME") || !strings.Contains(ansi.Strip(strings.Join(frame, "\n")), "$HOME") {
 		t.Fatal("multiline navigation or wrapped command changed")
 	}

@@ -8,6 +8,7 @@ import (
 )
 
 func (u *appServerUI) interruptSession(intent sessionpresentation.InterruptIntent) error {
+	defer u.settlePresentation()
 	unsent := u.conversation().Unsent
 	decision, err := u.sessionPresentation().Interrupt(intent, &u.Live, len(unsent) > 0 && unsent[0].Text != "/compact")
 	if err != nil {

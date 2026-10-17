@@ -255,6 +255,6 @@ func TestUISnapshotNativeExpeditedSteer(t *testing.T) {
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"t"}}`, steer.ID))
 	appServerTestKeys(t, u, "Next turn stays queued.\tKeep editing this draft.")
 	composerShellEscape(t, u)
-	rows, _ := u.mainFrame(80, 16, 0)
+	rows, _ := u.testMainFrame(80, 16, 0)
 	assertNativeUISnapshot(t, "native-expedited-steer", rows)
 }

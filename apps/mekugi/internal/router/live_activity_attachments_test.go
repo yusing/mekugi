@@ -54,7 +54,7 @@ func TestLiveActivityAttachmentOutcomes(t *testing.T) {
 		t.Fatalf("incorrect outcomes: %+v", blocks)
 	}
 	var screen bytes.Buffer
-	if err := u.paint(&screen, 300, 35); err != nil {
+	if err := u.testPaint(&screen, 300, 35); err != nil {
 		t.Fatal(err)
 	}
 	plain := ansi.Strip(screen.String())

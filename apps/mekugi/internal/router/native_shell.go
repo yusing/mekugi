@@ -397,7 +397,8 @@ func (u *terminalUI) shellStatus() terminalsession.ShellStatus {
 // selectNativePane gives status-bar clicks and Ctrl-B digits the same action.
 func (u *terminalUI) selectNativePane(pane int) {
 	if pane == 0 {
-		u.agents.displayThread("/root")
+		view := u.main.sessionPresentation().View()
+		u.main.displaySession(sessionpresentation.DisplayIntent{Version: view.Version, Thread: view.Main})
 	}
 	u.Shell.Select(pane)
 	u.selection = nil
@@ -405,7 +406,9 @@ func (u *terminalUI) selectNativePane(pane int) {
 
 // showRosterPick switches presentation only; Main retains its composer and host identity.
 func (u *terminalUI) showRosterPick(only bool, selected string) {
-	u.agents.applyDisplayIntent()
+	if intent := u.agents.takeDisplayIntent(); intent != nil && u.main.displaySession(*intent) && intent.Thread.Caller != "/root" {
+		u.agents.Selected = intent.Thread.Caller
+	}
 	if u.main != nil && (u.agents.displayingChild() != only || u.agents.Selected != selected) {
 		u.selection = nil
 		u.agents.Runs = nil

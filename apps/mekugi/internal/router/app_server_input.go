@@ -46,6 +46,10 @@ func (u *appServerUI) prepareComposerInput() bool {
 
 // input consumes complete keys and framed paste events, never terminal byte sequences.
 func (u *appServerUI) input(event terminalsession.Input) (bool, error) {
+	if event.Kind == terminalsession.NoInput {
+		return false, nil
+	}
+	defer u.settlePresentation()
 	switch event.Kind {
 	case terminalsession.KeyInput:
 		return u.key(event.Text)

@@ -4,6 +4,7 @@ package sessionpresentation
 
 import (
 	"errors"
+	"slices"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/contracts/presentation"
@@ -100,13 +101,37 @@ func (m *Model) Attach(main Thread, replay bool) {
 }
 
 func (m *Model) View() View {
-	v := m.view
+	v := cloneView(m.view)
+	v.ReadOnly = Editable
 	switch {
 	case m.replay:
 		v.ReadOnly = Replay
 	case v.Displayed.ID != v.Main.ID:
 		v.ReadOnly = ChildDisplayed
 	}
+	return v
+}
+
+// cloneView keeps both retained publications and subsequent readers isolated
+// from mutable values supplied by another owner or a previous consumer.
+func cloneView(v View) View {
+	v.Caption.Items = slices.Clone(v.Caption.Items)
+	if v.Questions.Call != nil {
+		call := *v.Questions.Call
+		call.Questions = slices.Clone(call.Questions)
+		for i := range call.Questions {
+			q := &call.Questions[i]
+			q.Choices = slices.Clone(q.Choices)
+			q.Answer = slices.Clone(q.Answer)
+		}
+		v.Questions.Call = &call
+	}
+	v.Approvals.Approval.Details = slices.Clone(v.Approvals.Approval.Details)
+	v.Approvals.Approval.Choices = slices.Clone(v.Approvals.Approval.Choices)
+	v.Pending.Waiting = slices.Clone(v.Pending.Waiting)
+	v.Pending.Queued = slices.Clone(v.Pending.Queued)
+	v.Draft.Draft = v.Draft.Draft.Clone()
+	v.History.Entries = slices.Clone(v.History.Entries)
 	return v
 }
 

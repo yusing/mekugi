@@ -71,7 +71,7 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
 		"id": "cmd", "type": "commandExecution", "command": command, "status": "inProgress"}})
 	finishPacing(u.view, u.agents)
-	if err := u.paint(slave, width, height); err != nil {
+	if err := u.testPaint(slave, width, height); err != nil {
 		t.Fatal(err)
 	}
 	frame := nextFrame()
@@ -115,7 +115,7 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	u.shell.saved.data = new(presentation.Snapshot)
 	u.shell.preview(previewmodel.Preview{ID: "observed", Workspace: workspace, Thread: "main", Complete: true,
 		HostItems: []string{"cmd"}, EditReceipt: receipt.Text, Files: history.ReviewFiles}, false)
-	if err := u.paint(slave, width, height); err != nil {
+	if err := u.testPaint(slave, width, height); err != nil {
 		t.Fatal(err)
 	}
 	frame = nextFrame()
@@ -150,7 +150,7 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	data = []*presentation.Receipt{capturedEditActivity(workspace, history)}
 	u.shell.saved.data = reviewReceiptSnapshot(t, data)
 	u.applyCapturedEdits()
-	if err := u.paint(slave, width, height); err != nil {
+	if err := u.testPaint(slave, width, height); err != nil {
 		t.Fatal(err)
 	}
 	frame = nextFrame()

@@ -47,7 +47,7 @@ func TestNativeDialogPTYCloseAndResize(t *testing.T) {
 			t.Fatal(err)
 		}
 		screen.Resize(width, height)
-		if err := u.paint(slave, width, height); err != nil {
+		if err := u.testPaint(slave, width, height); err != nil {
 			t.Fatal(err)
 		}
 		select {

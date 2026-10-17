@@ -60,7 +60,7 @@ func TestUISnapshotNativeConfiguredServiceTier(t *testing.T) {
 	} {
 		t.Run(tc.model+"-"+tc.requested, func(t *testing.T) {
 			appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "main", "threadSettings": map[string]any{"model": tc.model, "effort": "high", "serviceTier": tc.requested}})
-			rows, _ := u.mainFrame(100, 10, 0)
+			rows, _ := u.testMainFrame(100, 10, 0)
 			if frame := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(frame, tc.model+" (high) · "+tc.want) {
 				t.Fatalf("composer does not reflect routed tier: %s", frame)
 			}
@@ -70,7 +70,7 @@ func TestUISnapshotNativeConfiguredServiceTier(t *testing.T) {
 			// Passthrough routes tiers too, but has no observation proxy.
 			proxy := u.proxy
 			u.proxy = nil
-			passthrough, _ := u.mainFrame(100, 10, 0)
+			passthrough, _ := u.testMainFrame(100, 10, 0)
 			if strings.Join(rows, "\n") != strings.Join(passthrough, "\n") {
 				t.Fatal("passthrough composer lost configured tier")
 			}

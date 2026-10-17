@@ -78,7 +78,7 @@ func resumeTestSettle(t *testing.T, u *appServerUI, w *appServerTestInput) []str
 func resumeTestFrame(t *testing.T, u *appServerUI, width, height int) string {
 	t.Helper()
 	u.ensureShell()
-	rows, _ := u.mainFrame(width, height, 0)
+	rows, _ := u.testMainFrame(width, height, 0)
 	return ansi.Strip(strings.Join(rows, "\n"))
 }
 

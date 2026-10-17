@@ -50,7 +50,7 @@ func TestUISnapshotLoadedSkillsRestoreClickAndReset(t *testing.T) {
 			u.shell.Focus = 3
 			screen := vt.NewEmulator(120, 28)
 			defer screen.Close()
-			if err := u.paint(screen, 120, 28); err != nil {
+			if err := u.testPaint(screen, 120, 28); err != nil {
 				t.Fatal(err)
 			}
 			if thread == "main" {
@@ -83,7 +83,7 @@ func TestUISnapshotLoadedSkillsRestoreClickAndReset(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				if err := u.paint(screen, 120, 28); err != nil {
+				if err := u.testPaint(screen, 120, 28); err != nil {
 					t.Fatal(err)
 				}
 				for col := x; col < x+len(label); col++ {

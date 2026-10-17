@@ -1,6 +1,7 @@
 package sessionpresentation
 
 import (
+	"reflect"
 	"strings"
 	"time"
 
@@ -90,8 +91,16 @@ type Caption struct {
 // The caption already names the displayed thread, including unknown settings.
 // Source: apps/mekugi/internal/router/app_server_ui.go:1550:1585 and
 // composer_notice.go:32:74@1145fbbc.
-func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) View {
-	v := m.View()
+func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) (v View) {
+	v = m.View()
+	v.Status = MainStatus{}
+	defer func() {
+		if !reflect.DeepEqual(v, m.view) {
+			v.Version.Revision++
+			m.view = cloneView(v)
+		}
+		v = m.View()
+	}()
 	v.Caption = caption
 	v.Questions = in.Conversation.Questions.View(in.Control.Thread)
 	v.Approvals = in.Conversation.Approvals.View()

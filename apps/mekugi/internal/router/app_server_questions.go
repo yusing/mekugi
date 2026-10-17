@@ -319,7 +319,7 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 	case conversationui.PromptAttach:
 		u.pasteImage()
 	case conversationui.PromptSubmit:
-		return true, u.submitQuestions(sessionpresentation.QuestionSubmitIntent{Version: u.mainPresentation(u.now()).Version, Call: c.ID, Incomplete: true})
+		return true, u.submitQuestions(sessionpresentation.QuestionSubmitIntent{Version: u.sessionPresentation().View().Version, Call: c.ID, Incomplete: true})
 	case conversationui.PromptAnswer, conversationui.PromptSkip:
 		u.parkQuestion(q)
 		if q.IsSecret {
@@ -333,7 +333,7 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 			}
 			c.secretAnswers[u.questions.Index] = answer.Answer
 		} else {
-			view := u.mainPresentation(u.now())
+			view := u.sessionPresentation().View()
 			if !u.answerQuestion(sessionpresentation.AnswerIntent{Version: view.Version, AnswerInput: prompt.AnswerInput{
 				Call: c.ID, Question: view.Questions.Call.Questions[u.questions.Index].ID,
 				Choice: q.Selected, Draft: q.Editor.Snapshot.Draft, Skip: action == conversationui.PromptSkip,
@@ -344,12 +344,13 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 		if step, submit := u.questions.Advance(); step != 0 {
 			u.moveQuestion(step)
 		} else if submit {
-			return true, u.submitQuestions(sessionpresentation.QuestionSubmitIntent{Version: u.mainPresentation(u.now()).Version, Call: c.ID})
+			return true, u.submitQuestions(sessionpresentation.QuestionSubmitIntent{Version: u.sessionPresentation().View().Version, Call: c.ID})
 		}
 	}
 	return true, nil
 }
 func (u *appServerUI) answerQuestion(intent sessionpresentation.AnswerIntent) bool {
+	defer u.settlePresentation()
 	q, err := u.sessionPresentation().AnswerQuestion(intent, u.questions.Questions)
 	if err != nil {
 		u.setNotice(err.Error(), true)
@@ -362,6 +363,7 @@ func (u *appServerUI) answerQuestion(intent sessionpresentation.AnswerIntent) bo
 }
 
 func (u *appServerUI) submitQuestions(intent sessionpresentation.QuestionSubmitIntent) error {
+	defer u.settlePresentation()
 	record, err := u.sessionPresentation().SubmitQuestions(intent, u.questions.Questions)
 	if err != nil {
 		u.setNotice(err.Error(), true)

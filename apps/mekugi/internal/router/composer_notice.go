@@ -25,7 +25,7 @@ func (u *appServerUI) expireNotice(now time.Time) bool {
 
 func (u *appServerUI) composerNoticeMouse(button, x, y int, release bool) bool {
 	details, dismiss := u.mainView.NoticeDetails.Contains(x, y), u.mainView.NoticeDismiss.Contains(x, y)
-	if (!details && !dismiss) || terminalsession.MainStatusDetails(u.mainPresentation(u.now()).Status) == "" {
+	if (!details && !dismiss) || terminalsession.MainStatusDetails(u.sessionPresentation().View().Status) == "" {
 		return false
 	}
 	if !release && button == 0 {
@@ -35,7 +35,7 @@ func (u *appServerUI) composerNoticeMouse(button, x, y int, release bool) bool {
 				u.sessionPresentation().Status.Set("", false)
 			}
 		} else {
-			u.shell.openBlocks(u.view, []activityui.Block{{Kind: "error", Body: terminalsession.MainStatusDetails(u.mainPresentation(u.now()).Status)}})
+			u.shell.openBlocks(u.view, []activityui.Block{{Kind: "error", Body: terminalsession.MainStatusDetails(u.sessionPresentation().View().Status)}})
 		}
 		u.dirty = true
 	}
@@ -63,6 +63,7 @@ func (d *nativeCriticalNoticeDelivery) finish(success bool) {
 }
 
 func (u *appServerUI) applyCriticalNotices() *nativeCriticalNoticeDelivery {
+	defer func() { u.publishPresentation(u.now()) }()
 	var activity *subagentActivity
 	if u.proxy != nil {
 		activity = u.proxy.activity

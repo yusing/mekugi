@@ -378,7 +378,7 @@ func TestUISnapshotNativeSessionTitle(t *testing.T) {
 			}
 			screen := vt.NewEmulator(tc.width, 16)
 			defer screen.Close()
-			if err := u.paint(screen, tc.width, 16); err != nil {
+			if err := u.testPaint(screen, tc.width, 16); err != nil {
 				t.Fatal(err)
 			}
 			uisnapshot.Assert(t, "testdata/snapshots/native-session-title-"+tc.name+".txt", strings.TrimSuffix(screen.String(), "\n")+"\n")

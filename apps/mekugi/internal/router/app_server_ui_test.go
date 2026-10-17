@@ -110,7 +110,7 @@ func TestAppServerUIEscapeAndLongDraft(t *testing.T) {
 	}
 	u.Text = strings.Repeat("a", 88) + "VISIBLE_TAIL"
 	var frame bytes.Buffer
-	if err := u.paint(&frame, 24, 12); err != nil {
+	if err := u.testPaint(&frame, 24, 12); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.HasSuffix(appServerComposerScreenText(t, frame.Bytes(), 24, 12), "VISIBLE_TAIL") {
@@ -243,7 +243,7 @@ func TestAppServerUIImmediateInputEcho(t *testing.T) {
 		u.view.Following = false
 		appServerTestKeys(t, u, "你好 first message\r")
 		var frame bytes.Buffer
-		if err := u.paint(&frame, 100, 24); err != nil {
+		if err := u.testPaint(&frame, 100, 24); err != nil {
 			t.Fatal(err)
 		}
 		if !u.view.Following || !strings.Contains(frame.String(), "你好 first message") {
@@ -347,7 +347,7 @@ func TestAppServerUINotificationBeforeResponseAndItems(t *testing.T) {
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"main","turnId":"t","item":{"id":"r","type":"reasoning","text":"PRIVATE_REASONING"}}}`)
 	appServerTestMessage(t, u, `{"method":"item/reasoning/textDelta","params":{"threadId":"main","turnId":"t","itemId":"r","delta":"PRIVATE_REASONING"}}`)
 	var frame bytes.Buffer
-	if err := u.paint(&frame, 100, 30); err != nil {
+	if err := u.testPaint(&frame, 100, 30); err != nil {
 		t.Fatal(err)
 	}
 	if len(u.view.Entries) != 3 || strings.Contains(frame.String(), "PRIVATE_REASONING") || !strings.Contains(frame.String(), "child answer") {
@@ -452,7 +452,8 @@ func appServerTestFeatures(u *appServerUI) *appServerUI {
 	observations := conversationbinding.Codex.Observation(u.conversationState)
 	u.session.observations = &observations
 	u.session.transcript = observations.NewTranscript(u.session.Scope())
-	u.bindConversation()
+	u.attachPresentation()
+	u.settlePresentation()
 	return u
 }
 

@@ -97,7 +97,7 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 			t.Fatal(err)
 		}
 		screen.Resize(width, 32)
-		if err := u.paint(slave, width, 32); err != nil {
+		if err := u.testPaint(slave, width, 32); err != nil {
 			t.Fatal(err)
 		}
 		select {

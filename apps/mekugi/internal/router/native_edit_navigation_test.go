@@ -52,7 +52,7 @@ func TestNativeEditClickOpensExactCapturedDiffDialog(t *testing.T) {
 				}
 				before := strings.Join(paintSavedDiff(t, c, 120, 28), "\n")
 
-				if err := u.paint(&bytes.Buffer{}, 120, 28); err != nil {
+				if err := u.testPaint(&bytes.Buffer{}, 120, 28); err != nil {
 					t.Fatal(err)
 				}
 				if !u.shell.openActivityEdit(u.view, 2, "file20.go") || u.shell.output == nil {
@@ -61,7 +61,7 @@ func TestNativeEditClickOpensExactCapturedDiffDialog(t *testing.T) {
 				if !u.shell.DiffOpen || u.shell.Focus != 1 || strings.Join(paintSavedDiff(t, c, 120, 28), "\n") != before {
 					t.Fatal("edit dialog changed live diff navigation")
 				}
-				if err := u.paint(&bytes.Buffer{}, 120, 28); err != nil {
+				if err := u.testPaint(&bytes.Buffer{}, 120, 28); err != nil {
 					t.Fatal(err)
 				}
 				page := u.shell.output.Document.Text
@@ -95,7 +95,7 @@ func TestNativeCompletedBatchEditOpensBeforeSiblingCommandExits(t *testing.T) {
 			finishPacing(u.view, u.agents)
 			screen := vt.NewEmulator(160, 40)
 			defer screen.Close()
-			if err := u.paint(screen, 160, 40); err != nil {
+			if err := u.testPaint(screen, 160, 40); err != nil {
 				t.Fatal(err)
 			}
 			if u.shell.saved.data.Len() != 0 || u.session.commands[[3]string{thread, "batch", "slow-sibling"}] == nil {
@@ -129,7 +129,7 @@ func TestNativeCompletedBatchEditOpensBeforeSiblingCommandExits(t *testing.T) {
 			if u.shell.output == nil {
 				t.Fatal("completed nested edit was unresponsive before batch exit")
 			}
-			if err := u.paint(screen, 160, 40); err != nil {
+			if err := u.testPaint(screen, 160, 40); err != nil {
 				t.Fatal(err)
 			}
 			if !strings.Contains(u.shell.output.Document.Text, "+after_batch") || u.shell.output.view != view {
@@ -191,7 +191,7 @@ func TestNativeEditDialogShowsHistoricalHunkNotLaterCapture(t *testing.T) {
 	if !u.shell.openActivityEdit(u.view, 1, "target.go") {
 		t.Fatal("edit dialog failed")
 	}
-	if err := u.paint(&bytes.Buffer{}, 120, 24); err != nil {
+	if err := u.testPaint(&bytes.Buffer{}, 120, 24); err != nil {
 		t.Fatal(err)
 	}
 	if got := u.shell.output.Document.Text; !strings.Contains(got, "clicked_hunk") || !strings.Contains(got, "target_line_70") || !strings.Contains(got, "target_line_90") || strings.Contains(got, "later_hunk") || strings.Contains(got, "unrelated_workspace_content") {

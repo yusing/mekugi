@@ -41,11 +41,11 @@ func TestTerminalUIIncrementalPaint(t *testing.T) {
 	defer screen.Close()
 	var wire bytes.Buffer
 	out := io.MultiWriter(screen, &wire)
-	if err := u.paint(out, 120, 30); err != nil {
+	if err := u.testPaint(out, 120, 30); err != nil {
 		t.Fatal(err)
 	}
 	wire.Reset()
-	if err := u.paint(out, 120, 30); err != nil {
+	if err := u.testPaint(out, 120, 30); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(wire.String(), "\x1b[2K") {
@@ -53,7 +53,7 @@ func TestTerminalUIIncrementalPaint(t *testing.T) {
 	}
 	u.Text = "new"
 	wire.Reset()
-	if err := u.paint(out, 120, 30); err != nil {
+	if err := u.testPaint(out, 120, 30); err != nil {
 		t.Fatal(err)
 	}
 	if cleared := strings.Count(wire.String(), "\x1b[2K"); cleared != 1 {
@@ -64,7 +64,7 @@ func TestTerminalUIIncrementalPaint(t *testing.T) {
 	}
 	// Resize and close the auxiliary panes; removed content must be cleared.
 	screen.Resize(80, 20)
-	if err := u.paint(screen, 80, 20); err != nil {
+	if err := u.testPaint(screen, 80, 20); err != nil {
 		t.Fatal(err)
 	}
 	fresh, _ := newAppServerTestUI()
@@ -72,7 +72,7 @@ func TestTerminalUIIncrementalPaint(t *testing.T) {
 	fresh.Text = "new"
 	want := vt.NewEmulator(80, 20)
 	defer want.Close()
-	if err := fresh.paint(want, 80, 20); err != nil {
+	if err := fresh.testPaint(want, 80, 20); err != nil {
 		t.Fatal(err)
 	}
 	if screen.String() != want.String() {
@@ -123,7 +123,7 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 					defer screen.Close()
 					paint := func() {
 						t.Helper()
-						if err := u.paint(screen, 120, 40); err != nil {
+						if err := u.testPaint(screen, 120, 40); err != nil {
 							t.Fatal(err)
 						}
 					}
@@ -192,7 +192,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			paint := func(width, height int) string {
 				t.Helper()
 				screen.Resize(width, height)
-				if err := u.paint(screen, width, height); err != nil {
+				if err := u.testPaint(screen, width, height); err != nil {
 					t.Fatal(err)
 				}
 				return screen.String()

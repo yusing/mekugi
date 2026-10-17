@@ -213,14 +213,14 @@ func TestAppServerComposerKeepsWorkingDuringReasoning(t *testing.T) {
 	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "r", "delta": "**Checking layout**"})
 	for _, dock := range []int{0, 3} {
-		frame, dockRect := u.mainFrame(70, 12, dock)
+		frame, dockRect := u.testMainFrame(70, 12, dock)
 		border := u.mainView.ComposerRect.Y - 1
 		if len(frame) != 12 || !strings.Contains(ansi.Strip(frame[border]), "◐ Working") || strings.Contains(ansi.Strip(frame[border]), "Checking layout") || dockRect.Y+dockRect.H != border-1 || frame[border-1] != "" {
 			t.Fatalf("reasoning replaced Working: dock=%d frame=%q", dock, frame)
 		}
 	}
 	for _, size := range [][2]int{{1, 1}, {7, 3}, {12, 4}} {
-		frame, _ := u.mainFrame(size[0], size[1], 0)
+		frame, _ := u.testMainFrame(size[0], size[1], 0)
 		if len(frame) != size[1] {
 			t.Fatalf("height overflow: %q", frame)
 		}
@@ -267,7 +267,7 @@ func TestAppServerWorkingSurvivesDockComposition(t *testing.T) {
 	u.shell.preview(previewmodel.Preview{ID: "p", Caller: "/root", Status: previewmodel.PreviewEdit, Input: "package a\n"}, false)
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "r", "delta": "**Active summary**"})
 	var out bytes.Buffer
-	if err := u.paint(&out, 80, 14); err != nil {
+	if err := u.testPaint(&out, 80, 14); err != nil {
 		t.Fatal(err)
 	}
 	screen := vt.NewEmulator(80, 14)
@@ -308,18 +308,18 @@ func TestAppServerPendingStatusPulses(t *testing.T) {
 			u.sessionPresentation().Status.Set(status, false)
 			start := time.Unix(0, 0)
 			dim, bright, dimAgain := u.sessionLabel(start), u.sessionLabel(start.Add(time.Second)), u.sessionLabel(start.Add(2*time.Second))
-			if !u.mainPresentation(u.now()).Status.Animating || dim == bright || dim != dimAgain || ansi.Strip(dim) != ansi.Strip(bright) {
+			if !u.publishPresentation(u.now()).Status.Animating || dim == bright || dim != dimAgain || ansi.Strip(dim) != ansi.Strip(bright) {
 				t.Fatalf("pending status does not pulse: %q %q %q", dim, bright, dimAgain)
 			}
 			u.sessionPresentation().Status.Alert = true
-			if u.mainPresentation(u.now()).Status.Animating || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
+			if u.publishPresentation(u.now()).Status.Animating || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
 				t.Fatal("alert animates")
 			}
 			u.restoring = nil
 			u.LeaveThread()
 			u.Thread = "main"
 			u.sessionPresentation().Status.Set("Ready", false)
-			if u.mainPresentation(u.now()).Status.Animating || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
+			if u.publishPresentation(u.now()).Status.Animating || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
 				t.Fatal("idle animates")
 			}
 		})

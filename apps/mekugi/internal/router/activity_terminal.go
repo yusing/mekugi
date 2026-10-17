@@ -3,6 +3,8 @@ package router
 import (
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	presentationcontract "github.com/yusing/mekugi/contracts/presentation"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -103,17 +105,16 @@ func (v *activityAdapter) NativeRoster(width, limit int, now time.Time, focused 
 	return v.View.NativeRoster(width, limit, now, focused)
 }
 
-func (v *activityAdapter) applyDisplayIntent() {
+func (v *activityAdapter) takeDisplayIntent() *sessionpresentation.DisplayIntent {
 	intent := v.View.DisplayRequest
 	if intent == nil {
-		return
+		return nil
 	}
 	v.View.DisplayRequest = nil
-	current := v.display.View()
-	if current.Version.Attachment != intent.Attachment || current.Version.Revision != intent.Revision {
-		return
+	return &sessionpresentation.DisplayIntent{
+		Version: sessionpresentation.Version{Attachment: intent.Attachment, Revision: intent.Revision},
+		Thread:  v.displayTarget(intent.Caller),
 	}
-	v.displayThread(intent.Caller)
 }
 
 func settleActivity(now time.Time, adapters ...*activityAdapter) bool {

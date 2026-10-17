@@ -202,7 +202,7 @@ func TestAppServerStatusPanelCloseScrollAndLateResponse(t *testing.T) {
 			}
 			u.renderStatus(u.statusPanel, statusNotice("Loading account…"))
 			for _, width := range []int{1, 12, 60} {
-				frame, _ := u.mainFrame(width, 8, 0)
+				frame, _ := u.testMainFrame(width, 8, 0)
 				for _, row := range frame {
 					if ansi.StringWidth(row) > width {
 						t.Fatalf("overflow at %d: %q", width, row)
@@ -341,7 +341,7 @@ func TestAppServerStatusPanelVisual(t *testing.T) {
 	u.statusPanel.top = 0
 	screen := vt.NewEmulator(160, 48)
 	defer screen.Close()
-	if err := u.paint(screen, 160, 48); err != nil {
+	if err := u.testPaint(screen, 160, 48); err != nil {
 		t.Fatal(err)
 	}
 
@@ -362,7 +362,7 @@ func TestAppServerStatusPanelVisual(t *testing.T) {
 	if err := u.shell.send("\x1b"); err != nil {
 		t.Fatal(err)
 	}
-	if err := u.paint(screen, 160, 48); err != nil {
+	if err := u.testPaint(screen, 160, 48); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(screen.String(), "Session status") || strings.Contains(screen.String(), "78% left") {
@@ -391,7 +391,7 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 			appServerTestKeys(t, u, "/status\r")
 			screen := vt.NewEmulator(160, 48)
 			defer screen.Close()
-			if err := u.paint(screen, 160, 48); err != nil {
+			if err := u.testPaint(screen, 160, 48); err != nil {
 				t.Fatal(err)
 			}
 
@@ -420,7 +420,7 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 				}
 			}
 			drag()
-			if err := u.paint(screen, 160, 48); err != nil {
+			if err := u.testPaint(screen, 160, 48); err != nil {
 				t.Fatal(err)
 			}
 			if !strings.Contains(screen.String(), "copy") {
@@ -433,7 +433,7 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 			if u.shell.frame.Clipboard != want || u.statusPanel == nil || u.Turn != "active" || u.shell.selection != nil {
 				t.Fatal("copy failed or dismissed/interrupted status")
 			}
-			if err := u.paint(screen, 160, 48); err != nil {
+			if err := u.testPaint(screen, 160, 48); err != nil {
 				t.Fatal(err)
 			}
 			drag()
@@ -450,7 +450,7 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 			if u.statusPanel != nil || u.shell.selection != nil {
 				t.Fatal("closing retained panel selection")
 			}
-			if err := u.paint(screen, 160, 48); err != nil {
+			if err := u.testPaint(screen, 160, 48); err != nil {
 				t.Fatal(err)
 			}
 			if strings.Contains(screen.String(), "Session status") || len(u.view.Entries) != 1 {

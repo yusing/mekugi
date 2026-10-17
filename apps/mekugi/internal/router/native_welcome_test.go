@@ -20,7 +20,7 @@ func TestNativeWelcome(t *testing.T) {
 		}
 	}
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.mainFrame(80, 24, 0)
+	u.testMainFrame(80, 24, 0)
 	if len(u.view.Entries) != 0 {
 		t.Fatal("welcome entered history")
 	}
@@ -68,7 +68,7 @@ func TestUISnapshotNativeWelcome(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.view.Painter.Theme = diffrender.DarkTheme
 			u.backendVersion, u.sessionPresentation().Status.Text, u.model, u.Text = "0.158.0", "Ready", "snapshot-model", tc.draft
-			rows, _ := u.mainFrame(tc.width, tc.height, 0)
+			rows, _ := u.testMainFrame(tc.width, tc.height, 0)
 			// Build identity is not fixed across test executables.
 			if tc.version == "" {
 				rows[0] = strings.ReplaceAll(rows[0], "Mekugi "+mekugiVersion(), "Mekugi dev")
@@ -86,7 +86,7 @@ func TestNativeWelcomeDoesNotReplaceHistoryOrLiveDock(t *testing.T) {
 			if dock == 0 {
 				u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "You", Kind: "text", Text: "Submitted prompt"}}})
 			}
-			rows, _ := u.mainFrame(80, 24, dock)
+			rows, _ := u.testMainFrame(80, 24, dock)
 			if strings.Contains(strings.Join(rows, "\n"), "Mekugi "+mekugiVersion()) {
 				t.Fatal("welcome replaced active content")
 			}

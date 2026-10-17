@@ -37,7 +37,7 @@ func appServerComposerScreenText(t *testing.T, frame []byte, width, height int) 
 func TestAppServerComposerFrame(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	appServerTestKeys(t, u, "first\n你好")
-	frame, _ := u.mainFrame(16, 8, 0)
+	frame, _ := u.testMainFrame(16, 8, 0)
 	for i := range frame {
 		frame[i] = ansi.Strip(frame[i])
 	}
@@ -61,7 +61,7 @@ func TestAppServerComposerResizeKeepsDraftTail(t *testing.T) {
 	}{{20, 8, 6}, {7, 6, 6}, {7, 3, 3}, {6, 2, 2}, {2, 1, 1}, {1, 1, 1}} {
 		u, _ := newAppServerTestUI()
 		u.Text = "old\nlines\nmore\n你好\nlast\nZ"
-		frame, _ := u.mainFrame(size.width, size.height, 0)
+		frame, _ := u.testMainFrame(size.width, size.height, 0)
 		if len(frame) != size.height {
 			t.Fatalf("size %v: got %d rows", size, len(frame))
 		}
@@ -80,14 +80,14 @@ func TestAppServerComposerObservedModelCaption(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	appServerTestRequest(t, u, "1", "thread/start")
 	appServerTestMessage(t, u, `{"id":1,"result":{"thread":{"id":"main"},"model":"actual-model","reasoningEffort":"high"}}`)
-	frame, _ := u.mainFrame(70, 8, 0)
+	frame, _ := u.testMainFrame(70, 8, 0)
 	bottom := ansi.Strip(frame[len(frame)-1])
 	if !strings.HasPrefix(bottom, "╰───") || !strings.HasSuffix(bottom, " actual-model (high) • 0% ─╯") || ansi.StringWidth(bottom) != 70 {
 		t.Fatalf("observed model caption: %q", bottom)
 	}
 	appServerTestRequest(t, u, "2", "thread/start")
 	appServerTestMessage(t, u, `{"id":2,"result":{"thread":{"id":"new"},"reasoningEffort":null}}`)
-	frame, _ = u.mainFrame(70, 8, 0)
+	frame, _ = u.testMainFrame(70, 8, 0)
 	bottom = ansi.Strip(frame[len(frame)-1])
 	if strings.Contains(bottom, "actual-model") || !strings.HasSuffix(bottom, " 0% ─╯") || ansi.StringWidth(bottom) != 70 {
 		t.Fatalf("unknown model retained stale caption: %q", bottom)
@@ -101,7 +101,7 @@ func TestAppServerComposerCaretFollowsFocusAndWrap(t *testing.T) {
 		u.Text = "12345678901" // Fills the 11-column input, placing its caret on the next row.
 		screen := vt.NewEmulator(16, 8)
 		t.Cleanup(func() { screen.Close() })
-		if _, err := screen.Write([]byte(strings.Join(first(u.mainFrame(16, 8, 0)), "\r\n"))); err != nil {
+		if _, err := screen.Write([]byte(strings.Join(first(u.testMainFrame(16, 8, 0)), "\r\n"))); err != nil {
 			t.Fatal(err)
 		}
 		for y := 4; y < 8; y++ {

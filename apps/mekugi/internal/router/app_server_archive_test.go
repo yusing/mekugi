@@ -26,7 +26,7 @@ func TestUISnapshotAppServerArchive(t *testing.T) {
 				t.Fatal("archive must first ask for confirmation, defaulting to No")
 			}
 			for _, width := range []int{40, 80} {
-				rows, _ := u.mainFrame(width, 12, 0)
+				rows, _ := u.testMainFrame(width, 12, 0)
 				assertNativeUISnapshot(t, "archive-confirm-"+name+"-"+exitTokenCount(uint64(width)), rows)
 			}
 			appServerTestKeys(t, u, "\x1b[B\r")

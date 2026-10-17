@@ -205,7 +205,7 @@ func TestAppServerSettingsChoicesRenderedInPicker(t *testing.T) {
 		t.Fatal(err)
 	}
 	appServerTestKeys(t, u, "/model\r")
-	frame, _ := u.mainFrame(55, 20, 0)
+	frame, _ := u.testMainFrame(55, 20, 0)
 	rendered := strings.Join(frame, "\n")
 	if !strings.Contains(rendered, "first-choice") || !strings.Contains(rendered, "last-choice-that-would-not-fit") {
 		t.Fatalf("missing choices: %s", rendered)

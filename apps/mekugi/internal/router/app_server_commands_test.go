@@ -106,7 +106,7 @@ func TestUISnapshotComposerCommandWithPastedImage(t *testing.T) {
 				t.Fatalf("image blocked command completion: %q %+v", u.Text, u.picker)
 			}
 			if key == "\t" {
-				rows, _ := u.mainFrame(60, 10, 0)
+				rows, _ := u.testMainFrame(60, 10, 0)
 				assertNativeUISnapshot(t, "composer-command-image", rows)
 			}
 			appServerTestKeys(t, u, key)

@@ -250,6 +250,7 @@ func TestUISnapshotNativeAnchoredHistory(t *testing.T) {
 			u.agents.Clock = u.clock
 			u.view.Clock = u.clock
 			u.shell.width, u.shell.height = 100, 24
+			u.settlePresentation()
 			if err := u.shell.paintNative(t.Context(), io.Discard); err != nil {
 				t.Fatal(err)
 			}
@@ -475,11 +476,11 @@ func TestAppServerAnchoredHistoryMetadataRetryPreservesCompletedLiveTiming(t *te
 }
 
 func historyLoadIntent(u *appServerUI) sessionpresentation.HistoryIntent {
-	v := u.mainPresentation(u.now())
+	v := u.publishPresentation(u.now())
 	return sessionpresentation.HistoryIntent{Version: v.Version, Thread: v.History.Target}
 }
 
 func historyCancelIntent(u *appServerUI) sessionpresentation.HistoryIntent {
-	v := u.mainPresentation(u.now())
+	v := u.publishPresentation(u.now())
 	return sessionpresentation.HistoryIntent{Version: v.Version, Thread: v.Loading}
 }

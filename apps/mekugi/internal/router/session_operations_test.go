@@ -12,7 +12,7 @@ func TestNonTerminalHistoryIntentsReachHostAndRetire(t *testing.T) {
 	u, wire := newPagedHistoryUI(t)
 	historyTurnsReply(t, u)
 	restoreContentReply(t, u, 4, map[string]any{"data": []any{historyItem("last", "saved", 109000)}, "nextCursor": "older"})
-	v := u.mainPresentation(u.now())
+	v := u.publishPresentation(u.now())
 	if len(v.History.Entries) != 1 || v.History.Entries[0].Status != sessionpresentation.Unloaded || v.History.Target != "child" {
 		t.Fatalf("history publication: %+v", v.History)
 	}
@@ -47,7 +47,8 @@ func TestNonTerminalHistoryIntentsReachHostAndRetire(t *testing.T) {
 		t.Fatal("cancelled response revived history or issued host work")
 	}
 	u.replay = &uiReplayPlayback{}
-	v = u.mainPresentation(u.now())
+	u.attachPresentation()
+	v = u.publishPresentation(u.now())
 	if v.History.Target != "" {
 		t.Fatal("replay offered a host history target")
 	}
@@ -63,7 +64,7 @@ func TestNonTerminalInterruptionIdentityAndDisposition(t *testing.T) {
 	for _, mode := range []sessioncontrol.InterruptMode{sessioncontrol.RestoreWaiting, sessioncontrol.ExpediteSteers} {
 		u, wire := newAppServerTestUI()
 		appServerTestTurn(t, u, "old")
-		v := u.mainPresentation(u.now())
+		v := u.publishPresentation(u.now())
 		intent := sessionpresentation.InterruptIntent{Version: v.Version, Target: v.Interrupt, Mode: mode}
 		appServerTestTurn(t, u, "current")
 		if err := u.interruptSession(intent); err != nil {
@@ -73,7 +74,7 @@ func TestNonTerminalInterruptionIdentityAndDisposition(t *testing.T) {
 			t.Fatal("retired turn intent interrupted newer work")
 		}
 		u.conversation().Unsent = []conversationmodel.Input{{Text: "waiting"}}
-		v = u.mainPresentation(u.now())
+		v = u.publishPresentation(u.now())
 		intent.Version, intent.Target = v.Version, v.Interrupt
 		if err := u.interruptSession(intent); err != nil {
 			t.Fatal(err)
@@ -91,14 +92,14 @@ func TestNonTerminalInterruptionIdentityAndDisposition(t *testing.T) {
 func TestNonTerminalInterruptionPendingStartAndReplay(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.Submit("first", "")
-	v := u.mainPresentation(u.now())
+	v := u.publishPresentation(u.now())
 	intent := sessionpresentation.InterruptIntent{Version: v.Version, Target: v.Interrupt}
 	u.SubmissionFailed()
 	u.Submit("second", "")
 	if err := u.interruptSession(intent); err != nil || u.Interruption.BeforeStart {
 		t.Fatal("retired start intent cancelled its replacement")
 	}
-	v = u.mainPresentation(u.now())
+	v = u.publishPresentation(u.now())
 	intent.Version, intent.Target = v.Version, v.Interrupt
 	if err := u.interruptSession(intent); err != nil || !u.Interruption.BeforeStart || wire.Len() != 0 {
 		t.Fatal("pending start did not defer to its host turn")
@@ -107,7 +108,8 @@ func TestNonTerminalInterruptionPendingStartAndReplay(t *testing.T) {
 	appServerOneRequest(t, wire, "turn/interrupt", "")
 	u.Interruption.Finish()
 	u.replay = &uiReplayPlayback{}
-	v = u.mainPresentation(u.now())
+	u.attachPresentation()
+	v = u.publishPresentation(u.now())
 	intent.Version, intent.Target = v.Version, v.Interrupt
 	if err := u.interruptSession(intent); err != nil || wire.Len() != 0 || u.Interruption.Target != "" || u.feedback.Text != sessionpresentation.ErrReplayIntent.Error() {
 		t.Fatal("replay interruption reached the host")

@@ -49,7 +49,7 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 			defer screen.Close()
 			paint := func() {
 				t.Helper()
-				if err := u.paint(screen, 120, 30); err != nil {
+				if err := u.testPaint(screen, 120, 30); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -242,7 +242,7 @@ func TestSelectionScrolledClickUsesDocumentTarget(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := u.paint(&strings.Builder{}, 120, 30); err != nil {
+	if err := u.testPaint(&strings.Builder{}, 120, 30); err != nil {
 		t.Fatal(err)
 	}
 	r := u.shell.Layout.Main

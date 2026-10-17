@@ -185,6 +185,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 		return nil, err
 	}
 	u := &appServerUI{terminalViews: terminalViews, reviewSource: reviewSource, presentationState: views, conversationState: conversation, session: appServerSession{activity: activity, observations: observations}, history: service, segments: segments, client: c, view: newTranscriptAdapter(activityui.NewView()), agents: newTranscriptAdapter(terminalViews.NewThreadView()), proxy: proxy, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
+	u.attachPresentation()
 	u.sessionPresentation().Status.Set("Connecting…", false)
 	u.attachActivity()
 	u.guardHookCheck.hash = guardHash
@@ -218,6 +219,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 	}
 	u.ensureShell()
 	u.shell.faint = faint
+	u.settlePresentation()
 	return func() error {
 		u.shell.reviewLoader = newSavedReviewLoader(ctx, u.shell.saved)
 		defer u.shell.reviewLoader.close()
@@ -357,7 +359,8 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 								u.dirty = true
 							}
 						}
-						if u.mainPresentation(u.now()).Status.Animating || u.agents.HasLiveStatus() {
+						u.settlePresentation()
+						if u.sessionPresentation().View().Status.Animating || u.agents.HasLiveStatus() {
 							u.dirty = true
 						}
 						if time.Since(agePaint) >= time.Second {
@@ -368,6 +371,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 							return err
 						}
 						notices := u.applyCriticalNotices()
+						u.settlePresentation()
 						if u.shell.animating(u.now()) || u.agents.RosterEasing {
 							u.dirty = true
 						}
@@ -385,7 +389,10 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 							notices.finish(true)
 							u.dirty = false
 						}
+						u.writeTerminalTitle(u.now())
+						continue
 					}
+					u.settlePresentation()
 					u.writeTerminalTitle(u.now())
 				}
 			})
@@ -465,6 +472,7 @@ func (u *appServerUI) request(method string, params any) error {
 }
 
 func (u *appServerUI) message(m appserver.Message) (err error) {
+	defer u.settlePresentation()
 	u.issues.ObserveTurnCompletion(m.Method, m.Params)
 	u.observeShellMessage(m)
 	var response sessioncontrol.Request[appServerRequest]
@@ -718,6 +726,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				return err
 			}
 			u.Thread = result.Thread.ID
+			u.attachPresentation()
 			u.sessionPresentation().Status.SetText("Ready")
 			u.title = result.Thread.Name
 			u.titleGenerator.register(result.Thread)
@@ -918,9 +927,13 @@ func (u *appServerUI) observedEvent(method string, p binding.Notification) error
 
 // key interprets one complete terminal key. Framing belongs to terminalsession.Decoder.
 func (u *appServerUI) key(key string) (bool, error) {
+	defer u.settlePresentation()
 	if !u.prepareComposerInput() {
 		return false, nil
 	}
+	// Prompt dismissal and adapter-owned edits settle before this key derives a
+	// new intent. Detached callers keep their supplied version unchanged.
+	u.publishPresentation(u.now())
 	if handled, err := u.approvalKey(key); handled {
 		return false, err
 	}
@@ -950,8 +963,13 @@ func (u *appServerUI) key(key string) (bool, error) {
 	}
 	// An exact /compact has a submission meaning for Tab, not just completion.
 	compactTab := key == "\t" && strings.TrimSpace(u.Text) == "/compact" && u.picker.modal == ""
-	if !compactTab && u.pickerKey(key) {
-		return false, nil
+	if !compactTab {
+		handled := u.pickerKey(key)
+		// Enter may complete a command and continue dispatching the same key.
+		u.publishPresentation(u.now())
+		if handled {
+			return false, nil
+		}
 	}
 	if u.currentQuestion() == nil && !u.approvals.Open && key == "?" && u.Text == "" && (u.shell == nil || u.shell.Focus == 0) {
 		u.keybindings = !u.keybindings
@@ -1115,7 +1133,7 @@ func (u *appServerUI) key(key string) (bool, error) {
 		if text == "" || u.Thread == "" || u.restoring != nil {
 			return false, nil
 		}
-		view := u.mainPresentation(u.now())
+		view := u.sessionPresentation().View()
 		return false, u.submitInput(sessionpresentation.SubmitIntent{Version: view.Version, Revision: view.Draft.Revision, Mode: sessioncontrol.SendInput})
 	case "\t":
 		// Tab queues busy input for the next turn; otherwise it sends like Enter.
@@ -1126,7 +1144,7 @@ func (u *appServerUI) key(key string) (bool, error) {
 		if u.conversation().ShellMode() || text == "" || strings.HasPrefix(text, "/") || u.Turn == "" && !u.Starting() && !u.InputPending() {
 			return u.key("\r")
 		}
-		view := u.mainPresentation(u.now())
+		view := u.sessionPresentation().View()
 		return false, u.submitInput(sessionpresentation.SubmitIntent{Version: view.Version, Revision: view.Draft.Revision, Mode: sessioncontrol.QueueNextTurn})
 	default:
 		if len(key) > 0 && key[0] >= 32 {
@@ -1213,9 +1231,7 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalsession.Rect) {
 	transcript := u.transcriptView()
 	readOnly := u.agents != nil && u.agents.displayingChild()
-	u.autoOpenApprovals()
-	u.autoOpenQuestions()
-	presentation := u.mainPresentation(u.now())
+	presentation := u.sessionPresentation().View()
 	width, height = max(1, width), max(1, height)
 	u.picker.rect = terminalsession.Rect{}
 	u.mainView.NoticeDetails, u.mainView.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
@@ -1295,7 +1311,6 @@ func scrollLabel(v *activityAdapter) string {
 }
 
 func (u *appServerUI) ensureShell() {
-	u.sessionPresentation()
 	u.attachActivity()
 	u.view.Conversation = true
 	u.view.Painter.FileLink = u.markdownFileAllowed
@@ -1304,9 +1319,9 @@ func (u *appServerUI) ensureShell() {
 	}
 	if u.agents == nil {
 		u.agents = newTranscriptAdapter(u.terminalViews.NewThreadView())
-		u.sessionPresentation()
 		u.attachActivity()
 	}
+	u.agents.display = u.sessionPresentation()
 	u.agents.Painter.FileLink = u.markdownFileAllowed
 	u.agents.ChildrenOnly = true
 	u.agents.StatusLabel = "" // Fed by app-server directly, never by a collector connection.
@@ -1334,7 +1349,7 @@ func (u *appServerUI) paint(out io.Writer, width, height int) error {
 	u.ensureShell()
 	u.refreshRosterRoles()
 	u.agents.mainView = u.view
-	u.view.StatusLabel = textsanitize.Safe(terminalsession.StatusText(u.mainPresentation(u.now()).Status.State), false)
+	u.view.StatusLabel = textsanitize.Safe(terminalsession.StatusText(u.sessionPresentation().View().Status.State), false)
 	u.shell.width, u.shell.height = max(1, width), max(1, height)
 	u.mainView.ContentPainted = false
 	ctx := u.ctx

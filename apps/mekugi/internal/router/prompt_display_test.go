@@ -35,7 +35,7 @@ func TestNativePromptCoveredFrameDoesNotAdmitAnswer(t *testing.T) {
 			}
 			screen := vt.NewEmulator(80, 20)
 			defer screen.Close()
-			if err := u.paint(screen, 80, 20); err != nil {
+			if err := u.testPaint(screen, 80, 20); err != nil {
 				t.Fatal(err)
 			}
 			if frame := screen.String(); !strings.Contains(frame, "Content dialog") || strings.Contains(frame, title) || strings.Contains(frame, choice) {
@@ -51,7 +51,7 @@ func TestNativePromptCoveredFrameDoesNotAdmitAnswer(t *testing.T) {
 			}
 			// Explicit reopening must still reveal and answer the same host request.
 			send("\x02q")
-			if err := u.paint(screen, 80, 20); err != nil {
+			if err := u.testPaint(screen, 80, 20); err != nil {
 				t.Fatal(err)
 			}
 			if frame := screen.String(); !strings.Contains(frame, title) || !strings.Contains(frame, choice) {
@@ -59,7 +59,7 @@ func TestNativePromptCoveredFrameDoesNotAdmitAnswer(t *testing.T) {
 			}
 			// A later overlay does not revoke readiness from an already seen prompt.
 			u.shell.openBlocks(u.view, content)
-			if err := u.paint(screen, 80, 20); err != nil {
+			if err := u.testPaint(screen, 80, 20); err != nil {
 				t.Fatal(err)
 			}
 			send("q\r")
@@ -79,7 +79,7 @@ func TestNativePromptSelectionVisibility(t *testing.T) {
 				u.Turn = "turn"
 				screen := vt.NewEmulator(80, 20)
 				defer screen.Close()
-				if err := u.paint(screen, 80, 20); err != nil {
+				if err := u.testPaint(screen, 80, 20); err != nil {
 					t.Fatal(err)
 				}
 				// The arriving dock has not replaced the terminal's previous frame yet.
@@ -101,7 +101,7 @@ func TestNativePromptSelectionVisibility(t *testing.T) {
 				if u.shell.selection == nil || !u.shell.selection.Moved() {
 					t.Fatal("pointer drag did not freeze the preceding frame")
 				}
-				if err := u.paint(screen, 80, 20); err != nil {
+				if err := u.testPaint(screen, 80, 20); err != nil {
 					t.Fatal(err)
 				}
 				title := "Which release scope?"
@@ -132,7 +132,7 @@ func TestUISnapshotNativePromptsTinyFrame(t *testing.T) {
 			questionTestSync(t, u, "question", false)
 			screen := vt.NewEmulator(80, height)
 			defer screen.Close()
-			if err := u.paint(screen, 80, height); err != nil {
+			if err := u.testPaint(screen, 80, height); err != nil {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { u.shell.diffScreen.Close() })

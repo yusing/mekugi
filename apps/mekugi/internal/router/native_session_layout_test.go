@@ -88,7 +88,7 @@ func TestUISnapshotNativeLiveToggle(t *testing.T) {
 	revealNativeDock(u.shell)
 	for _, value := range []string{"off", "on"} {
 		appServerTestKeys(t, u, "/live\r")
-		if err := u.paint(screen, 100, 28); err != nil {
+		if err := u.testPaint(screen, 100, 28); err != nil {
 			t.Fatal(err)
 		}
 		assertNativeUISnapshot(t, "native-live-toggle-"+value, strings.Split(screen.String(), "\n"))
@@ -106,7 +106,7 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			defer screen.Close()
 			paint := func() string {
 				t.Helper()
-				if err := u.paint(screen, width, 40); err != nil {
+				if err := u.testPaint(screen, width, 40); err != nil {
 					t.Fatal(err)
 				}
 				return screen.String()
@@ -155,7 +155,7 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 func TestNativeUIComposerGap(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.Text = "draft"
-	rows, _ := u.mainFrame(80, 24, 0)
+	rows, _ := u.testMainFrame(80, 24, 0)
 	border := u.mainView.ComposerRect.Y - 1
 	if len(rows) != 24 || strings.TrimSpace(ansi.Strip(rows[border-1])) != "" {
 		t.Fatalf("composer not separated: %q", rows)

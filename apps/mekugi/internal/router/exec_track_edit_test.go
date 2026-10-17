@@ -256,7 +256,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 				}
 			}()
 			finishPacing(u.view, u.agents)
-			if err := u.paint(slave, 140, 40); err != nil {
+			if err := u.testPaint(slave, 140, 40); err != nil {
 				t.Fatal(err)
 			}
 			select {
@@ -552,7 +552,7 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 							u.shell.animating(time.Now().Add(nativeDockMinimum + time.Millisecond))
 							screen := vt.NewEmulator(100, 30)
 							defer screen.Close()
-							if err := u.paint(screen, 100, 30); err != nil {
+							if err := u.testPaint(screen, 100, 30); err != nil {
 								t.Fatal(err)
 							}
 							if len(u.shell.liveDock.Order) != 0 || strings.Contains(screen.String(), "LIVE ·") {

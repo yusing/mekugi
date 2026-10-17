@@ -22,7 +22,7 @@ import (
 func TestUISnapshotNativeFaintLabelForeground(t *testing.T) {
 	const width = 40
 	u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, model: "model", view: newActivityAdapter()})
-	frame, _ := u.mainFrame(width, 3, 0)
+	frame, _ := u.testMainFrame(width, 3, 0)
 	rows := []string{
 		terminalui.PaneRule("┌", "┐", "─", terminalui.PaneTitle(2, "Diff", "", false), terminalui.Dim+"metadata"+terminalui.Undim, width, terminalui.PaneBorder(false)),
 		terminalui.PaneRule("┌", "┐", "─", terminalui.PaneTitle(1, "Main", "", true), "", width, terminalui.PaneBorder(true)),
@@ -43,7 +43,7 @@ func TestUISnapshotNativeFaintLabelForeground(t *testing.T) {
 func TestNativeUISubtleForeground(t *testing.T) {
 	p := activityui.Painter{}
 	u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, model: "x", view: newActivityAdapter()})
-	frame, _ := u.mainFrame(40, 3, 0)
+	frame, _ := u.testMainFrame(40, 3, 0)
 	v := newActivityAdapter()
 	metrics := activityui.RosterColumns([][activityui.MetricParts]string{activityui.RosterMetricParts(v.View, testActivityAgent(activityPaneAgent{Name: "/root/a", ContextKnown: true, ContextTokens: 1000, ContextWindow: 4000, InputTokens: 2000, OutputTokens: 1000}), time.Now())}, 200)[0]
 	for name, row := range map[string]string{
@@ -89,7 +89,7 @@ func TestNativeUIFaintOutputPolicy(t *testing.T) {
 			u.shell.Focus = 3 // Inspect the roster, the sole wait-status surface.
 			u.shell.faint = faint
 			var wire bytes.Buffer
-			if err := u.paint(&wire, 120, 30); err != nil {
+			if err := u.testPaint(&wire, 120, 30); err != nil {
 				t.Fatal(err)
 			}
 			screen := vt.NewEmulator(120, 30)

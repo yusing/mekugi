@@ -42,7 +42,7 @@ func TestNativeControlsTerminalFrames(t *testing.T) {
 	paint := func() string {
 		t.Helper()
 		finishPacing(u.view, u.agents)
-		if err := u.paint(slave, width, height); err != nil {
+		if err := u.testPaint(slave, width, height); err != nil {
 			t.Fatal(err)
 		}
 		select {

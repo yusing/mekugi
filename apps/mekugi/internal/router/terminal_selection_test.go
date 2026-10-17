@@ -121,7 +121,7 @@ func TestTerminalSelectionComposerCaretStyles(t *testing.T) {
 	for _, back := range []int{0, 3} {
 		main, _ := newAppServerTestUI()
 		main.Text, main.CursorBack = "abcdef", back
-		frame, _ := main.mainFrame(40, 12, 0)
+		frame, _ := main.testMainFrame(40, 12, 0)
 		u := &terminalUI{main: main, width: 40, height: len(frame), frame: terminalsession.Frame{Width: 40, Rows: frame}, Shell: terminalsession.Shell{Layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 40, len(frame)}}}}
 		x, y := main.mainView.ComposerRect.X, main.mainView.ComposerRect.Y
 		selectionTestDrag(t, u, x, y, x+5, y)
@@ -394,7 +394,7 @@ func TestTerminalUISelectionRenderedClipboard(t *testing.T) {
 		var wire bytes.Buffer
 		paint := func() {
 			t.Helper()
-			if err := u.paint(io.MultiWriter(screen, &wire), 120, 30); err != nil {
+			if err := u.testPaint(io.MultiWriter(screen, &wire), 120, 30); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -459,7 +459,7 @@ func TestTerminalUISelectionComposer(t *testing.T) {
 		u.insertDraft("你好abc\nsecond")
 		screen := vt.NewEmulator(size[0], size[1])
 		defer screen.Close()
-		if err := u.paint(screen, size[0], size[1]); err != nil {
+		if err := u.testPaint(screen, size[0], size[1]); err != nil {
 			t.Fatal(err)
 		}
 		r := u.mainView.ComposerRect
@@ -489,7 +489,7 @@ func TestTerminalUISelectionComposerReplacesTranscript(t *testing.T) {
 	defer screen.Close()
 	paint := func() {
 		t.Helper()
-		if err := u.paint(screen, 40, 8); err != nil {
+		if err := u.testPaint(screen, 40, 8); err != nil {
 			t.Fatal(err)
 		}
 	}

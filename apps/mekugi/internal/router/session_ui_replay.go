@@ -68,6 +68,7 @@ func (p *uiReplayPlayback) reset() {
 	// The read-only terminal attachment uses shared projection without a backend
 	// client, request tracker, writable store, observers or notification sink.
 	u := &appServerUI{terminalViews: p.terminalViews, reviewSource: p.reviewSource, presentationState: p.views, conversationState: p.conversation, session: appServerSession{activity: p.activity, observations: p.observations}, ctx: p.ctx, view: newTranscriptAdapter(activityui.NewView()), agents: newTranscriptAdapter(p.terminalViews.NewThreadView()), Thread: p.Source.Thread, clock: func() time.Time { return p.At }, replay: p}
+	u.attachPresentation()
 	u.sessionPresentation().Status.Set("Replay", false)
 	u.view.Clock, u.agents.Clock = u.clock, u.clock
 	u.session.start(p.Source.Thread, p.Source.Cwd)
@@ -79,6 +80,7 @@ func (p *uiReplayPlayback) reset() {
 	}
 	u.shell.Shell.Clamp()
 	p.ui = u
+	u.settlePresentation()
 }
 
 func (p *uiReplayPlayback) close() {
@@ -88,6 +90,7 @@ func (p *uiReplayPlayback) close() {
 }
 
 func (p *uiReplayPlayback) apply(e playback.Event) error {
+	defer func() { p.ui.settlePresentation() }()
 	if id := e.ThreadID; id != "" && id != p.Source.Thread && p.ui.session.paths[id] == "" {
 		p.ui.session.registerThreadFacts(observation.Thread{ID: id, Nickname: strings.TrimPrefix(p.Source.Threads[id], "/root/")})
 	}
@@ -133,6 +136,7 @@ func (p *uiReplayPlayback) apply(e playback.Event) error {
 	return nil
 }
 func (p *uiReplayPlayback) advance(position time.Duration) error {
+	defer func() { p.ui.settlePresentation() }()
 	if err := p.Player.Advance(p.ctx, position, p.reset, p.apply); err != nil {
 		return err
 	}
@@ -143,6 +147,7 @@ func (p *uiReplayPlayback) advance(position time.Duration) error {
 	return nil
 }
 func (p *uiReplayPlayback) step(elapsed time.Duration, intent playback.Intent) error {
+	defer func() { p.ui.settlePresentation() }()
 	sought, err := p.Player.Step(p.ctx, elapsed, intent, p.reset, p.apply)
 	if err != nil {
 		return err
@@ -157,6 +162,7 @@ func (p *uiReplayPlayback) step(elapsed time.Duration, intent playback.Intent) e
 // Seeking skips paint ticks, so completed output must not survive as running
 // merely because its synthetic chunks have not rolled through the viewport.
 func (p *uiReplayPlayback) seek(position time.Duration) error {
+	defer func() { p.ui.settlePresentation() }()
 	if err := p.advance(position); err != nil {
 		return err
 	}

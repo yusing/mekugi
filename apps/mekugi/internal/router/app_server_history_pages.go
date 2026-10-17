@@ -226,6 +226,7 @@ func (u *appServerUI) updateHistoryHint() {
 }
 
 func (u *appServerUI) loadOlderActivity(intent sessionpresentation.HistoryIntent) error {
+	defer u.settlePresentation()
 	if u.restoring != nil {
 		return nil
 	}
@@ -250,6 +251,7 @@ func (u *appServerUI) loadOlderActivity(intent sessionpresentation.HistoryIntent
 }
 
 func (u *appServerUI) cancelOlderActivity(intent sessionpresentation.HistoryIntent) error {
+	defer u.settlePresentation()
 	h := u.childHistory(intent.Thread)
 	if intent.Thread == "" {
 		return nil

@@ -151,14 +151,14 @@ func TestUISnapshotSudoDialogs(t *testing.T) {
 	u.session.start("main", "/workspace")
 	u.Turn = "turn"
 	u.addGuardApproval(&vcsApproval{kind: "sudo", thread: "main", cwd: "/workspace", argv: []string{"sudo", "apt", "update"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})})
-	rows, _ := u.mainFrame(80, 20, 0)
+	rows, _ := u.testMainFrame(80, 20, 0)
 	assertNativeUISnapshot(t, "native-sudo-approval", rows)
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "1\r")
 	u.addGuardApproval(&vcsApproval{kind: "sudo-password", thread: "main", cwd: "/workspace", argv: []string{"sudo", "apt", "update"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})})
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "1234-secret")
-	rows, _ = u.mainFrame(80, 20, 0)
+	rows, _ = u.testMainFrame(80, 20, 0)
 	assertNativeUISnapshot(t, "native-sudo-password", rows)
 }
 

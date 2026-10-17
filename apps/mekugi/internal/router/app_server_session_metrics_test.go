@@ -30,7 +30,7 @@ func TestSessionMetricsWrappedDirectoryCopy(t *testing.T) {
 		u.showSessionMetrics()
 		screen := vt.NewEmulator(width, 24)
 		defer screen.Close()
-		if err := u.paint(screen, width, 24); err != nil {
+		if err := u.testPaint(screen, width, 24); err != nil {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { u.shell.diffScreen.Close() })

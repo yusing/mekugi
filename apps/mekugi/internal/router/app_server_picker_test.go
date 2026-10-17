@@ -185,7 +185,7 @@ func TestComposerPickerEscapeViaShellAndFrameBounds(t *testing.T) {
 		t.Fatal("dismissed picker reopened without an edit")
 	}
 	for _, size := range [][2]int{{1, 1}, {12, 5}, {80, 24}} {
-		frame, _ := u.mainFrame(size[0], size[1], 0)
+		frame, _ := u.testMainFrame(size[0], size[1], 0)
 		if len(frame) != size[1] {
 			t.Fatalf("size %v: %d rows", size, len(frame))
 		}
@@ -268,7 +268,7 @@ func TestComposerPickerFailureRecoveryAndRendering(t *testing.T) {
 	appServerTestKeys(t, u, "@a")
 	request := pickerRequests(t, w)[0]
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"offline"}}`, request.ID))
-	rows, _ := u.mainFrame(80, 20, 5)
+	rows, _ := u.testMainFrame(80, 20, 5)
 	if !strings.Contains(strings.Join(rows, "\n"), "Search failed: offline") || u.picker.Loading {
 		t.Fatal("missing error feedback")
 	}
@@ -282,7 +282,7 @@ func TestComposerPickerFailureRecoveryAndRendering(t *testing.T) {
 	}
 	pickerReply(t, u, requests[1].ID, `{"files":[{"root":"/work","path":"some/deep/path/ab.go"}]}`)
 	for _, size := range [][2]int{{1, 1}, {12, 5}, {80, 24}} {
-		frame, dock := u.mainFrame(size[0], size[1], 5)
+		frame, dock := u.testMainFrame(size[0], size[1], 5)
 		if dock.H != 0 || len(frame) != size[1] {
 			t.Fatalf("bad picker geometry %v: dock=%+v rows=%d", size, dock, len(frame))
 		}
@@ -374,13 +374,13 @@ func TestComposerPickerDoesNotMarkCoveredTranscriptPainted(t *testing.T) {
 	u.session.cwd = "/work"
 	appServerTestKeys(t, u, "@f")
 	for _, height := range []int{6, 24} {
-		frame, _ := u.mainFrame(80, height, 0)
+		frame, _ := u.testMainFrame(80, height, 0)
 		if !strings.Contains(strings.Join(frame, "\n"), "loading...") || u.mainView.ContentPainted {
 			t.Fatalf("height %d: covered transcript acknowledged", height)
 		}
 	}
 	u.pickerKey("\x1b")
-	u.mainFrame(80, 24, 0)
+	u.testMainFrame(80, 24, 0)
 	if !u.mainView.ContentPainted {
 		t.Fatal("dismissal did not restore transcript presentation")
 	}

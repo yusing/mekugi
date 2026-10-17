@@ -54,7 +54,7 @@ func TestAppServerComposerVerticalEditing(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			appServerTestKeys(t, u, tt.draft)
-			u.mainFrame(16, 10, 0) // Eleven display cells remain after borders and prompt.
+			u.testMainFrame(16, 10, 0) // Eleven display cells remain after borders and prompt.
 			appServerTestKeys(t, u, tt.keys)
 			if u.Text != tt.want {
 				t.Fatalf("draft = %q, want %q", u.Text, tt.want)
@@ -172,7 +172,7 @@ func TestAppServerComposerMovedCaretVisible(t *testing.T) {
 	appServerTestKeys(t, u, "abc\x1b[D\x1b[D")
 	screen := vt.NewEmulator(16, 8)
 	t.Cleanup(func() { screen.Close() })
-	if _, err := screen.Write([]byte(strings.Join(first(u.mainFrame(16, 8, 0)), "\r\n"))); err != nil {
+	if _, err := screen.Write([]byte(strings.Join(first(u.testMainFrame(16, 8, 0)), "\r\n"))); err != nil {
 		t.Fatal(err)
 	}
 	carets := 0
@@ -197,7 +197,7 @@ func TestAppServerComposerFullLineNewlineCaret(t *testing.T) {
 	appServerTestKeys(t, u, "12345678901\nx\x1b[H\x1b[D")
 	screen := vt.NewEmulator(16, 10)
 	defer screen.Close()
-	frame, _ := u.mainFrame(16, 10, 0)
+	frame, _ := u.testMainFrame(16, 10, 0)
 	if _, err := screen.Write([]byte(strings.Join(frame, "\r\n"))); err != nil {
 		t.Fatal(err)
 	}
@@ -329,7 +329,7 @@ func TestAppServerComposerOptionWordNavigation(t *testing.T) {
 			}
 			screen := vt.NewEmulator(100, 30)
 			defer screen.Close()
-			if err := u.paint(screen, 100, 30); err != nil {
+			if err := u.testPaint(screen, 100, 30); err != nil {
 				t.Fatal(err)
 			}
 			if !strings.Contains(screen.String(), "X你好👩‍💻Y three") {

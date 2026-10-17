@@ -53,7 +53,7 @@ func TestUISnapshotNativeBatchPlacement(t *testing.T) {
 	paint := func(name string, width, height int) {
 		t.Helper()
 		screen.Resize(width, height)
-		if err := u.paint(screen, width, height); err != nil {
+		if err := u.testPaint(screen, width, height); err != nil {
 			t.Fatal(err)
 		}
 		t.Run(name, func(t *testing.T) { assertNativeUISnapshot(t, name, strings.Split(screen.String(), "\n")) })
@@ -128,7 +128,7 @@ func TestNativeBatchLivePTY(t *testing.T) {
 			t.Fatal(err)
 		}
 		screen.Resize(width, height)
-		if err := u.paint(slave, width, height); err != nil {
+		if err := u.testPaint(slave, width, height); err != nil {
 			t.Fatal(err)
 		}
 		select {
@@ -248,7 +248,7 @@ func TestUISnapshotNativeBatchDeletionPresentation(t *testing.T) {
 			revealNativeDock(u.shell)
 			screen := vt.NewEmulator(140, 48)
 			defer screen.Close()
-			if err := u.paint(screen, 140, 48); err != nil {
+			if err := u.testPaint(screen, 140, 48); err != nil {
 				t.Fatal(err)
 			}
 			assertNativeUISnapshot(t, name, strings.Split(screen.String(), "\n"))

@@ -109,7 +109,7 @@ func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.btw = &appServerBTW{SideAnswer: &conversationmodel.SideAnswer{Question: "side question", Status: "completed", Answer: []conversationmodel.Answer{{Text: "**side answer**"}}}}
 	var wire bytes.Buffer
-	if err := u.paint(&wire, 80, 30); err != nil {
+	if err := u.testPaint(&wire, 80, 30); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(wire.String(), "mekugi-copy") {
@@ -171,7 +171,7 @@ func TestAppServerBTWShimmerElapsed(t *testing.T) {
 	a := u.btwRows(80, 8)[0]
 	now = now.Add(100 * time.Millisecond)
 	b := u.btwRows(80, 8)[0]
-	if a == b || ansi.Strip(a) != ansi.Strip(b) || !strings.Contains(ansi.Strip(a), "Answering · 1m15s") || !u.mainPresentation(u.now()).Status.Animating {
+	if a == b || ansi.Strip(a) != ansi.Strip(b) || !strings.Contains(ansi.Strip(a), "Answering · 1m15s") || !u.publishPresentation(u.now()).Status.Animating {
 		t.Fatalf("status=%q / %q", a, b)
 	}
 	u.btw.Busy = false
@@ -200,7 +200,7 @@ func TestTerminalSourceScrolledMainReply(t *testing.T) {
 	u.view.Following, u.view.Offset = false, 0
 	screen := vt.NewEmulator(80, 30)
 	defer screen.Close()
-	if err := u.paint(screen, 80, 30); err != nil {
+	if err := u.testPaint(screen, 80, 30); err != nil {
 		t.Fatal(err)
 	}
 	x, y := -1, -1
@@ -247,7 +247,7 @@ func TestTerminalSourceRenderedTables(t *testing.T) {
 				if view == u.agents {
 					u.agents.setDisplayFilter(true, "Main")
 				}
-				if err := u.paint(&wire, width, 50); err != nil {
+				if err := u.testPaint(&wire, width, 50); err != nil {
 					t.Fatal(err)
 				}
 				first, last, left, right := -1, -1, 0, 0
@@ -288,7 +288,7 @@ func TestTerminalSourceActivityCodeTabs(t *testing.T) {
 	applyTranscriptFixture(u.agents, true, "", "main", "main", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "```\n\tx := 1  \n```"})
 	var wire bytes.Buffer
 	u.agents.setDisplayFilter(true, "Main")
-	if err := u.paint(&wire, 120, 40); err != nil {
+	if err := u.testPaint(&wire, 120, 40); err != nil {
 		t.Fatal(err)
 	}
 	for y, spans := range u.shell.frame.Copy {

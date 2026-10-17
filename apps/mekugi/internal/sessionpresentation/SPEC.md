@@ -10,6 +10,13 @@ geometry and rendering.
 Status, captions, question and approval docks, and pending-input previews are
 published together as detached, renderer-neutral facts. Prompt identity and input
 ordering come from Conversation; pending-input reasons come from session control.
+The session retains the latest complete publication after each observation or
+semantic intent, including failed operations and restoration. Reading it neither
+refreshes owner state nor advances its version. Repeated publication of unchanged
+facts keeps the version; nested values returned to consumers are detached copies.
+Clock-driven changes settle on explicit maintenance or replay transitions.
+Publication and prompt admission do not acknowledge display. Only successful
+terminal delivery makes a newly opened dock eligible for keyboard input.
 The terminal paints those values without choosing semantic queue states or
 reconstructing prompt content. Approval intents retain their view version, request
 identity, offered choice and ordinary denial reason. Admission resolves the current Conversation owner before

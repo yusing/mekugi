@@ -61,7 +61,7 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 	// A yielded command can outlive the turn that started it. Only its host
 	// completion removes it, including when the UI still has output to roll.
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t", "status": "completed"}})
-	if u.runningProcessCount() != 2 || !u.mainPresentation(u.now()).Status.Animating {
+	if u.runningProcessCount() != 2 || !u.publishPresentation(u.now()).Status.Animating {
 		t.Fatal("yielded command stopped counting or animating")
 	}
 	if u.session.Transcript("main", "t").Turn != nil || !u.session.commands[[3]string{"main", "t", "cmd"}].entry.native.invocation.Snapshot().Running {
@@ -195,7 +195,7 @@ func TestUISnapshotRunningProcesses(t *testing.T) {
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": fmt.Sprint("after", i), "type": "agentMessage", "text": strings.Repeat("Later transcript\n", 12) + "Last row"}})
 		}
 	}
-	frame, _ := u.mainFrame(80, 12, 0)
+	frame, _ := u.testMainFrame(80, 12, 0)
 	assertNativeUISnapshot(t, "running-processes-composer", frame)
 	assertNativeUISnapshot(t, "running-processes-activity", u.agents.Render(70, 8, now))
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/running-processes-pulse.txt", append([]string{u.stateLabel(now), u.stateLabel(now.Add(time.Second))}, "plain"), 80)

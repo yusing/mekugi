@@ -66,7 +66,7 @@ func questionTestPaint(t *testing.T, u *appServerUI, width int) string {
 		u.ensureShell()
 		t.Cleanup(func() { u.shell.diffScreen.Close() })
 	}
-	if err := u.paint(io.Discard, width+2, 31); err != nil {
+	if err := u.testPaint(io.Discard, width+2, 31); err != nil {
 		t.Fatal(err)
 	}
 	return strings.Join(u.shell.frame.Rows, "\n")

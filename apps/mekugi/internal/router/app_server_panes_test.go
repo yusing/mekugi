@@ -64,7 +64,7 @@ func TestNativePaneStateResumeAndIsolation(t *testing.T) {
 				t.Fatal("restored out-of-scope view state")
 			}
 			var frame bytes.Buffer
-			if err := restored.paint(&frame, 120, 35); err != nil {
+			if err := restored.testPaint(&frame, 120, 35); err != nil {
 				t.Fatal(err)
 			}
 			if restored.shell.Layout.Vertical != 67 || restored.shell.Layout.Diff.W == 0 {
@@ -73,13 +73,13 @@ func TestNativePaneStateResumeAndIsolation(t *testing.T) {
 			if !strings.Contains(ansi.Strip(restored.shell.nativeStatus()), "s files") {
 				t.Fatal("restored focus does not route Diff keys")
 			}
-			if err := restored.paint(&frame, 45, 14); err != nil {
+			if err := restored.testPaint(&frame, 45, 14); err != nil {
 				t.Fatal(err)
 			}
 			if restored.shell.Layout.Diff.W == 0 || restored.shell.Layout.Main.W != 0 {
 				t.Fatal("narrow screen did not retain focused pane")
 			}
-			if err := restored.paint(&frame, 100, 35); err != nil {
+			if err := restored.testPaint(&frame, 100, 35); err != nil {
 				t.Fatal(err)
 			}
 			if restored.shell.Layout.Vertical != 60 {

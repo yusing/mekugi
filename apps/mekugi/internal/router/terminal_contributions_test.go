@@ -24,7 +24,7 @@ func TestNativeAuxiliaryAbsencePreservesMainAndReviewSource(t *testing.T) {
 	u.shell.Panes.Restore(terminalsession.Preferences{Focus: 1, DiffOpen: true})
 	u.shell.saved.workspace, u.shell.saved.coverage = "/workspace", "READY"
 	u.shell.publishReview()
-	if err := u.paint(io.Discard, 160, 32); err != nil {
+	if err := u.testPaint(io.Discard, 160, 32); err != nil {
 		t.Fatal(err)
 	}
 	shell := u.shell
@@ -60,7 +60,7 @@ func TestReplayAuxiliaryAbsenceSurvivesReset(t *testing.T) {
 	if p.ui.shell.Auxiliary != nil || p.ui.shell.RosterLabel != "" || p.ui.shell.Focus != 0 || p.ui.shell.DiffOpen {
 		t.Fatal("replay recreated an absent contribution")
 	}
-	if err := p.ui.paint(io.Discard, 120, 24); err != nil {
+	if err := p.ui.testPaint(io.Discard, 120, 24); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -84,7 +84,7 @@ func TestUISnapshotNativeWithoutActivityRoster(t *testing.T) {
 	defer screen.Close()
 	paint := func(name, text string) {
 		t.Helper()
-		if err := u.paint(screen, 100, 24); err != nil {
+		if err := u.testPaint(screen, 100, 24); err != nil {
 			t.Fatal(err)
 		}
 		frame := screen.String()
@@ -153,7 +153,7 @@ func TestNativeRosterConstructorReplacementAndReplay(t *testing.T) {
 	if len(created) != 2 || u.agents.View != created[1] || u.shell.agents.View != created[1] {
 		t.Fatal("replacement bypassed descriptor")
 	}
-	if err := u.paint(io.Discard, 100, 24); err != nil {
+	if err := u.testPaint(io.Discard, 100, 24); err != nil {
 		t.Fatal(err)
 	}
 	if u.shell.Layout.Roster.H == 0 || u.shell.Tabs[3].W == 0 {

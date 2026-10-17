@@ -34,7 +34,7 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 	for i := range 12 {
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "child-turn", "item": map[string]any{"id": fmt.Sprint("cmd-", i), "type": "commandExecution", "command": "echo later", "status": "completed"}})
 	}
-	if err := u.paint(&bytes.Buffer{}, 120, 28); err != nil {
+	if err := u.testPaint(&bytes.Buffer{}, 120, 28); err != nil {
 		t.Fatal(err)
 	}
 	main := ansi.Strip(strings.Join(u.view.RenderFeed(110, 50).Lines, "\n"))
@@ -42,7 +42,7 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 		t.Fatalf("Main did not collapse the actual message: %s", main)
 	}
 	// Restore the painted geometry after inspecting the complete feed.
-	if err := u.paint(&bytes.Buffer{}, 120, 28); err != nil {
+	if err := u.testPaint(&bytes.Buffer{}, 120, 28); err != nil {
 		t.Fatal(err)
 	}
 	var seq, activity uint64
@@ -101,7 +101,7 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 			}
 		}
 	}()
-	if err := u.paint(slave, 120, 28); err != nil {
+	if err := u.testPaint(slave, 120, 28); err != nil {
 		t.Fatal(err)
 	}
 	select {

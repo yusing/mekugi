@@ -100,7 +100,7 @@ func TestNativeControlsPanePersistence(t *testing.T) {
 		t.Fatal("resume lost preferences or revived live child state")
 	}
 	var frame bytes.Buffer
-	if err := resumed.paint(&frame, 120, 35); err != nil {
+	if err := resumed.testPaint(&frame, 120, 35); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(ansi.Strip(frame.String()), "Diff") || !strings.Contains(ansi.Strip(frame.String()), "Locked") {

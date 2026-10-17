@@ -55,7 +55,7 @@ func TestNativeUIKeybindingsPaintAndEscape(t *testing.T) {
 	if err := u.shell.key('?'); err != nil {
 		t.Fatal(err)
 	}
-	if err := u.paint(screen, 100, 30); err != nil {
+	if err := u.testPaint(screen, 100, 30); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(screen.String(), "Keyboard shortcuts") || !strings.Contains(screen.String(), "External editor") {
@@ -65,7 +65,7 @@ func TestNativeUIKeybindingsPaintAndEscape(t *testing.T) {
 		t.Fatal("hidden transcript must not be marked painted")
 	}
 	for _, size := range [][2]int{{1, 1}, {12, 5}, {40, 24}} {
-		frame, _ := u.mainFrame(size[0], size[1], 0)
+		frame, _ := u.testMainFrame(size[0], size[1], 0)
 		if len(frame) != size[1] {
 			t.Fatalf("height: %d", len(frame))
 		}
@@ -82,7 +82,7 @@ func TestNativeUIKeybindingsPaintAndEscape(t *testing.T) {
 	if err := u.shell.flushEscape(); err != nil {
 		t.Fatal(err)
 	}
-	if err := u.paint(screen, 100, 30); err != nil {
+	if err := u.testPaint(screen, 100, 30); err != nil {
 		t.Fatal(err)
 	}
 	if u.keybindings || strings.Contains(screen.String(), "Keyboard shortcuts") {

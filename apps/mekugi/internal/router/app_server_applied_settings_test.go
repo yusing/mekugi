@@ -386,7 +386,7 @@ func TestUISnapshotNativeSettingsPersistenceFailure(t *testing.T) {
 	u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 	u.paneError(errors.New("session preferences storage unavailable"))
 	u.view.Entries[len(u.view.Entries)-1].Source.Observed = now
-	rows, _ := u.mainFrame(100, 14, 0)
+	rows, _ := u.testMainFrame(100, 14, 0)
 	assertNativeUISnapshot(t, "native-settings-persistence-failure", rows)
 }
 
@@ -400,6 +400,6 @@ func TestUISnapshotNativeResumeReasoningRejected(t *testing.T) {
 	appServerTestRequest(t, u, "1", "thread/settings/update")
 	appServerTestKeys(t, u, "held input\r")
 	appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"host rejected update"}}`)
-	rows, _ := u.mainFrame(100, 16, 0)
+	rows, _ := u.testMainFrame(100, 16, 0)
 	assertNativeUISnapshot(t, "native-resume-reasoning-rejected", rows)
 }

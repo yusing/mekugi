@@ -14,7 +14,7 @@ func TestNonTerminalQuestionSubmissionKeepsOtherEditor(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.Turn = "turn"
 	questionTestSync(t, u, "first", false)
-	v := u.mainPresentation(u.now())
+	v := u.publishPresentation(u.now())
 	call := v.Questions.Call
 	answer := sessionpresentation.AnswerIntent{Version: v.Version, AnswerInput: prompt.AnswerInput{
 		Call: call.ID, Question: call.Questions[0].ID, Choice: 0, Draft: composer.Draft{Text: "explicit note"},
@@ -27,7 +27,7 @@ func TestNonTerminalQuestionSubmissionKeepsOtherEditor(t *testing.T) {
 	u.hideQuestions()
 	u.openQuestionCall(u.questionCalls()[1])
 	u.Text = "another answer draft"
-	submit := sessionpresentation.QuestionSubmitIntent{Version: u.mainPresentation(u.now()).Version, Call: call.ID}
+	submit := sessionpresentation.QuestionSubmitIntent{Version: u.publishPresentation(u.now()).Version, Call: call.ID}
 	if err := u.submitQuestions(submit); err != nil {
 		t.Fatal(err)
 	}
@@ -38,18 +38,19 @@ func TestNonTerminalQuestionSubmissionKeepsOtherEditor(t *testing.T) {
 		t.Fatal("submission replaced another prompt's editor")
 	}
 	wire.Reset()
-	if u.answerQuestion(answer) || u.feedback.Text != prompt.ErrQuestionUnavailable.Error() {
+	if u.answerQuestion(answer) || u.feedback.Text != sessionpresentation.ErrStaleIntent.Error() {
 		t.Fatal("answered call accepted another answer")
 	}
 	if err := u.submitQuestions(submit); err != nil || wire.Len() != 0 {
 		t.Fatal("answered call responded again")
 	}
-	v = u.mainPresentation(u.now())
+	v = u.publishPresentation(u.now())
 	submit = sessionpresentation.QuestionSubmitIntent{Version: v.Version, Call: v.Questions.Call.ID}
 	if err := u.submitQuestions(submit); err != nil || wire.Len() != 0 || u.feedback.Text != prompt.ErrIncompleteAnswers.Error() {
 		t.Fatal("incomplete submission skipped confirmation")
 	}
 	submit.Incomplete = true
+	submit.Version = u.sessionPresentation().View().Version
 	if err := u.submitQuestions(submit); err != nil || !strings.Contains(wire.String(), `"id":"second","result":{"answers":{}}`) {
 		t.Fatal("confirmed incomplete call lost the host's empty-answer semantics")
 	}
@@ -60,13 +61,15 @@ func TestNonTerminalQuestionBatchUsesOrdinarySubmission(t *testing.T) {
 	u.session.start("main", t.TempDir())
 	u.Turn = "turn"
 	questionTestAsync(t, u, "batch", "Who receives it?", "Who approves it?")
-	v := u.mainPresentation(u.now())
+	v := u.publishPresentation(u.now())
 	call := v.Questions.Call
 	for i, q := range call.Questions {
+		v = u.sessionPresentation().View()
 		if !u.answerQuestion(sessionpresentation.AnswerIntent{Version: v.Version, AnswerInput: prompt.AnswerInput{Call: call.ID, Question: q.ID, Choice: i}}) {
 			t.Fatal(u.feedback.Text)
 		}
 	}
+	v = u.sessionPresentation().View()
 	if err := u.submitQuestions(sessionpresentation.QuestionSubmitIntent{Version: v.Version, Call: call.ID}); err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +87,7 @@ func TestNonTerminalQuestionRejectsSecretReplayAndRetiredView(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.Turn = "turn"
 	questionTestSync(t, u, "secret", true)
-	v := u.mainPresentation(u.now())
+	v := u.publishPresentation(u.now())
 	answer := sessionpresentation.AnswerIntent{Version: v.Version, AnswerInput: prompt.AnswerInput{
 		Call: v.Questions.Call.ID, Question: v.Questions.Call.Questions[0].ID,
 		Choice: 0, Draft: composer.Draft{Text: "ordinary input"},
@@ -93,12 +96,14 @@ func TestNonTerminalQuestionRejectsSecretReplayAndRetiredView(t *testing.T) {
 		t.Fatal("ordinary intent entered secret state")
 	}
 	u.replay = &uiReplayPlayback{}
-	answer.Version = u.mainPresentation(u.now()).Version
+	u.attachPresentation()
+	answer.Version = u.publishPresentation(u.now()).Version
 	if u.answerQuestion(answer) || u.feedback.Text != sessionpresentation.ErrReplayIntent.Error() {
 		t.Fatal("replay accepted an answer")
 	}
 	u.replay = nil
 	u.Thread = "replacement"
+	u.attachPresentation()
 	if u.answerQuestion(answer) || u.feedback.Text != sessionpresentation.ErrStaleIntent.Error() || wire.Len() != 0 {
 		t.Fatal("retired view answered a replacement prompt")
 	}

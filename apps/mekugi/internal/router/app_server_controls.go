@@ -31,7 +31,7 @@ func (u *appServerUI) keyboardInterrupt() error {
 		u.lockNotice()
 		return nil
 	}
-	view := u.mainPresentation(u.now())
+	view := u.publishPresentation(u.now())
 	return u.interruptSession(sessionpresentation.InterruptIntent{Version: view.Version, Target: view.Interrupt, Mode: sessioncontrol.RestoreWaiting})
 }
 
@@ -42,6 +42,6 @@ func (u *appServerUI) keyboardEscape() error {
 		u.lockNotice()
 		return nil
 	}
-	view := u.mainPresentation(u.now())
+	view := u.publishPresentation(u.now())
 	return u.interruptSession(sessionpresentation.InterruptIntent{Version: view.Version, Target: view.Interrupt, Mode: sessioncontrol.ExpediteSteers})
 }

@@ -52,7 +52,7 @@ func TestUISnapshotBackgroundStorageCleanup(t *testing.T) {
 			name = "storage-cleanup-planning"
 		}
 		assertNativeUISnapshot(t, name, u.view.RenderFeed(80, 24).Lines)
-		if err := u.paint(io.Discard, 100, 30); err != nil {
+		if err := u.testPaint(io.Discard, 100, 30); err != nil {
 			t.Fatal(err)
 		}
 		delivery.finish(true)

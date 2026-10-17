@@ -56,7 +56,7 @@ func TestTerminalUIDiffSelectionUsesLastPaintedEvidence(t *testing.T) {
 			defer screen.Close()
 			paint := func() {
 				t.Helper()
-				if err := u.paint(screen, 160, 32); err != nil {
+				if err := u.testPaint(screen, 160, 32); err != nil {
 					t.Fatal(err)
 				}
 			}

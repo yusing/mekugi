@@ -19,7 +19,7 @@ func TestAppServerProgressCompactionLifecycle(t *testing.T) {
 	}
 	label := func(want string) {
 		t.Helper()
-		frame, _ := u.mainFrame(80, 18, 0)
+		frame, _ := u.testMainFrame(80, 18, 0)
 		if got := ansi.Strip(frame[u.mainView.ComposerRect.Y-1]); !strings.Contains(got, want) {
 			t.Fatalf("composer = %q, want %q", got, want)
 		}
@@ -39,7 +39,7 @@ func TestAppServerProgressCompactionLifecycle(t *testing.T) {
 	if len(u.view.Entries) != before {
 		t.Fatal("duplicate compaction completion created an event")
 	}
-	frame, _ := u.mainFrame(80, 24, 0)
+	frame, _ := u.testMainFrame(80, 24, 0)
 	screen := ansi.Strip(strings.Join(frame, "\n"))
 	if !strings.Contains(screen, "Context compacted") || strings.Contains(screen, "re:") {
 		t.Fatalf("compaction should be an event without reply context: %s", screen)
@@ -174,7 +174,7 @@ func TestAppServerProgressTerminalPolling(t *testing.T) {
 	}
 	label := func(want string) {
 		t.Helper()
-		frame, _ := u.mainFrame(60, 12, 0)
+		frame, _ := u.testMainFrame(60, 12, 0)
 		if got := ansi.Strip(frame[u.mainView.ComposerRect.Y-1]); !strings.Contains(got, want) {
 			t.Fatalf("composer = %q, want %q", got, want)
 		}
@@ -204,7 +204,7 @@ func TestAppServerProgressTerminalPolling(t *testing.T) {
 	poll("main", "t", "proc", "")
 	label("Compacting context")
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t", "status": "interrupted"}})
-	if got := u.mainPresentation(u.now()).Status.Session; got.Text != "Interrupted" || got.Running {
+	if got := u.publishPresentation(u.now()).Status.Session; got.Text != "Interrupted" || got.Running {
 		t.Fatal("interrupt retained progress")
 	}
 }

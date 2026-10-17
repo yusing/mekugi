@@ -101,7 +101,7 @@ func testAppServerEditorTerminalHandoff(t *testing.T, selectedFile bool) {
 	done := make(chan error, 1)
 	go func() {
 		err := terminalui.WithRawPane(ctx, slave, slave, "\x1b[?1049hENTER!", "\x1b[?1049lLEAVE!", func(keys <-chan byte) error {
-			if err := u.paint(slave, 120, 30); err != nil {
+			if err := u.testPaint(slave, 120, 30); err != nil {
 				return err
 			}
 			select {
@@ -132,7 +132,7 @@ func testAppServerEditorTerminalHandoff(t *testing.T, selectedFile bool) {
 		}
 		done <- terminalui.WithRawPane(ctx, slave, slave, "\x1b[?1049h", "\x1b[?1049lDONE!", func(keys <-chan byte) error {
 			var frame bytes.Buffer
-			if err := u.paint(io.MultiWriter(slave, &frame), 120, 30); err != nil {
+			if err := u.testPaint(io.MultiWriter(slave, &frame), 120, 30); err != nil {
 				return err
 			}
 			if rows := strings.Count(frame.String(), "\x1b[2K"); rows != 30 {
@@ -228,7 +228,7 @@ func TestAppServerComposerEditorFailurePreservesRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer output.Close()
-	if err := u.paint(io.Discard, 120, 30); err != nil {
+	if err := u.testPaint(io.Discard, 120, 30); err != nil {
 		t.Fatal(err)
 	}
 	defer u.shell.diffScreen.Close()
@@ -242,7 +242,7 @@ func TestAppServerComposerEditorFailurePreservesRecovery(t *testing.T) {
 	}
 	defer os.Remove(path)
 	var frame bytes.Buffer
-	if err := u.paint(&frame, 120, 30); err != nil {
+	if err := u.testPaint(&frame, 120, 30); err != nil {
 		t.Fatal(err)
 	}
 	if rows := strings.Count(frame.String(), "\x1b[2K"); rows != 30 {

@@ -30,7 +30,7 @@ func TestNativeSentMessagesBecomeExcerptsOutOfView(t *testing.T) {
 	collab("follow", "followupTask", long("Follow"))
 	paint := func() string {
 		t.Helper()
-		if err := u.paint(&bytes.Buffer{}, 120, 28); err != nil {
+		if err := u.testPaint(&bytes.Buffer{}, 120, 28); err != nil {
 			t.Fatal(err)
 		}
 		return ansi.Strip(strings.Join(u.view.RenderFeed(110, 50).Lines, "\n"))
@@ -47,7 +47,7 @@ func TestNativeSentMessagesBecomeExcerptsOutOfView(t *testing.T) {
 	if strings.Contains(main, "Spawn last line.") || strings.Contains(main, "Follow last line.") || strings.Count(main, "↩ Open assignment") != 2 {
 		t.Fatalf("messages out of view did not become linked excerpts:\n%s", main)
 	}
-	if err := u.paint(&bytes.Buffer{}, 120, 28); err != nil {
+	if err := u.testPaint(&bytes.Buffer{}, 120, 28); err != nil {
 		t.Fatal(err)
 	}
 	var seq, activity uint64
@@ -62,7 +62,7 @@ func TestNativeSentMessagesBecomeExcerptsOutOfView(t *testing.T) {
 	if u.shell.output == nil {
 		t.Fatal("link did not open the follow-up in a dialog")
 	}
-	if err := u.paint(&bytes.Buffer{}, 120, 28); err != nil {
+	if err := u.testPaint(&bytes.Buffer{}, 120, 28); err != nil {
 		t.Fatal(err)
 	}
 	if full := u.shell.output.Document.Text; !strings.Contains(full, "Follow last line.") {
@@ -203,7 +203,7 @@ func TestUISnapshotMainBatchWithFailedCommand(t *testing.T) {
 			v.Following, v.Offset = false, 0
 			screen := vt.NewEmulator(120, 28)
 			defer screen.Close()
-			if err := u.paint(screen, 120, 28); err != nil {
+			if err := u.testPaint(screen, 120, 28); err != nil {
 				t.Fatal(err)
 			}
 			for y, row := range strings.Split(screen.String(), "\n") {

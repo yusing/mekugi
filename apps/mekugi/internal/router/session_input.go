@@ -3,6 +3,7 @@ package router
 import "github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 func (u *appServerUI) editInput(intent sessionpresentation.DraftEditIntent) bool {
+	defer u.settlePresentation()
 	if err := u.sessionPresentation().EditDraft(intent, u.conversation()); err != nil {
 		u.setNotice(err.Error(), true)
 		return false
@@ -14,6 +15,7 @@ func (u *appServerUI) editInput(intent sessionpresentation.DraftEditIntent) bool
 }
 
 func (u *appServerUI) submitInput(intent sessionpresentation.SubmitIntent) error {
+	defer u.settlePresentation()
 	draft, plan, err := u.sessionPresentation().TakeInput(intent, &u.Live, u.conversation(), u.restoring != nil)
 	if err != nil {
 		u.setNotice(err.Error(), true)

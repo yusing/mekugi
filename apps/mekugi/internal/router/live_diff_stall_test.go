@@ -37,7 +37,7 @@ func TestLiveDiffCodeModeNativeSourceFollowLifecycle(t *testing.T) {
 	defer screen.Close()
 	paint := func() string {
 		t.Helper()
-		if err := u.paint(screen, 140, 48); err != nil {
+		if err := u.testPaint(screen, 140, 48); err != nil {
 			t.Fatal(err)
 		}
 		return screen.String()

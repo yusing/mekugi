@@ -35,7 +35,7 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	defer screen.Close()
 	paint := func(name string) string {
 		t.Helper()
-		if err := u.paint(screen, 140, 36); err != nil {
+		if err := u.testPaint(screen, 140, 36); err != nil {
 			t.Fatal(err)
 		}
 		frame := screen.String()
@@ -99,6 +99,9 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 		t.Fatal("read-only composer accepted editing, paste, submission or interruption")
 	}
 	u.Turn = ""
+	if err := u.testPaint(screen, 140, 36); err != nil {
+		t.Fatal(err)
+	}
 	click("/root")
 	frame = paint("native-thread-return-main")
 	if u.agents.displayingChild() || !strings.Contains(frame, "main result") || strings.Contains(frame, "Input: Main") || u.Text != "retained draft" {
@@ -133,7 +136,7 @@ func TestNativeChildComposerSettingsEvidence(t *testing.T) {
 	u.ensureShell()
 	u.agents.setDisplayFilter(true, "/root/reader")
 	caption := func() string {
-		rows, _ := u.mainFrame(120, 20, 0)
+		rows, _ := u.testMainFrame(120, 20, 0)
 		return ansi.Strip(rows[len(rows)-1])
 	}
 	if got := caption(); strings.Contains(got, "parent-model") || strings.Contains(got, "priority") {
@@ -155,7 +158,7 @@ func TestNativeChildComposerSettingsEvidence(t *testing.T) {
 		t.Fatalf("child tier ignored model routing: %s", got)
 	}
 	u.serviceTiers.Confirm("live-model", info.ID, "flex")
-	publication := u.mainPresentation(u.now())
+	publication := u.publishPresentation(u.now())
 	if publication.Caption.Model != "live-model" || publication.Caption.Tier != "flex" || publication.Status.Composer.Text != "Read-only" {
 		t.Fatalf("detached child caption lost confirmed thread settings: %+v", publication)
 	}
@@ -182,7 +185,7 @@ func TestUISnapshotNativeTinyDiffToggle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := u.paint(screen, 80, 6); err != nil {
+	if err := u.testPaint(screen, 80, 6); err != nil {
 		t.Fatal(err)
 	}
 	assertNativeUISnapshot(t, "native-thread-tiny-diff", strings.Split(screen.String(), "\n"))
@@ -194,7 +197,7 @@ func TestUISnapshotNativeTinyDiffToggle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := u.paint(screen, 80, 6); err != nil {
+	if err := u.testPaint(screen, 80, 6); err != nil {
 		t.Fatal(err)
 	}
 	if u.shell.Layout.Main.W != 80 || u.shell.Layout.Diff.H != 0 {

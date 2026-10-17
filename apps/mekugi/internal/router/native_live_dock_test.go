@@ -41,7 +41,7 @@ func TestNativeUIRunningChildRemovalReleasesDock(t *testing.T) {
 	}
 	screen := vt.NewEmulator(120, 40)
 	defer screen.Close()
-	if err := u.paint(screen, 120, 40); err != nil {
+	if err := u.testPaint(screen, 120, 40); err != nil {
 		t.Fatal(err)
 	}
 	if u.shell.Layout.Live.H != 0 || strings.Contains(screen.String(), "LIVE ·") {

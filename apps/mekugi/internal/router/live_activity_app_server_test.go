@@ -78,7 +78,7 @@ func TestLiveActivityNativeItemsShareStateAndRendering(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.view = v
 	var frame bytes.Buffer
-	if err := u.paint(&frame, 100, 25); err != nil {
+	if err := u.testPaint(&frame, 100, 25); err != nil {
 		t.Fatal(err)
 	}
 	plain := ansi.Strip(frame.String())
@@ -94,7 +94,7 @@ func TestLiveActivityMainQuestionBranchLink(t *testing.T) {
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "You", Kind: "text", Text: question, Observed: time.Now(), native: &liveActivityNativeItem{thread: "root", turn: "turn", item: "prompt"}}}})
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 2, Agent: "Main", Kind: "text", Text: strings.Repeat("Working through the request.\n", 20)}}})
 	applyTranscriptFixture(v, true, "", "root", "root", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "The answer"})
-	if err := u.paint(&bytes.Buffer{}, 120, 24); err != nil {
+	if err := u.testPaint(&bytes.Buffer{}, 120, 24); err != nil {
 		t.Fatal(err)
 	}
 	clicked := false
@@ -116,7 +116,7 @@ func TestLiveActivityMainQuestionBranchLink(t *testing.T) {
 		t.Fatal("reply branch did not open a dialog while preserving follow")
 	}
 	var frame bytes.Buffer
-	if err := u.paint(&frame, 120, 24); err != nil || !strings.Contains(frame.String(), question) {
+	if err := u.testPaint(&frame, 120, 24); err != nil || !strings.Contains(frame.String(), question) {
 		t.Fatalf("original question not visible in dialog: %v", err)
 	}
 	u.shell.outputKey("\x1b")
@@ -152,7 +152,7 @@ func TestAppServerMainRosterSummary(t *testing.T) {
 	u.ensureShell()
 	u.sessionPresentation().Status.Text = "Working"
 	u.shell.Focus = 3 // Narrow layout displays only the roster, not Main.
-	if err := u.paint(&bytes.Buffer{}, 80, 40); err != nil {
+	if err := u.testPaint(&bytes.Buffer{}, 80, 40); err != nil {
 		t.Fatal(err)
 	}
 	root := activityPaneAgent{Name: "/root"}
@@ -375,7 +375,7 @@ func TestLiveActivityConversationKeepsFullTextAndViewport(t *testing.T) {
 	}
 	u, _ := newAppServerTestUI()
 	u.view = v
-	if err := u.paint(&bytes.Buffer{}, 80, 15); err != nil {
+	if err := u.testPaint(&bytes.Buffer{}, 80, 15); err != nil {
 		t.Fatal(err)
 	}
 	appServerTestKeys(t, u, "\x1b[5~")
@@ -384,7 +384,7 @@ func TestLiveActivityConversationKeepsFullTextAndViewport(t *testing.T) {
 	}
 	offset := v.Offset
 	applyTranscriptFixture(v, true, "", "root", "root", "turn", "next", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "new answer"})
-	if err := u.paint(&bytes.Buffer{}, 80, 15); err != nil {
+	if err := u.testPaint(&bytes.Buffer{}, 80, 15); err != nil {
 		t.Fatal(err)
 	}
 	if v.Following || v.Offset != offset || v.Unseen != 1 {
@@ -396,7 +396,7 @@ func TestLiveActivityMainShortTerminalKeepsNewestLine(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	applyTranscriptFixture(u.view, true, "", "root", "root", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "earlier paragraph\n\nLATEST_VISIBLE_LINE"})
 	var frame bytes.Buffer
-	if err := u.paint(&frame, 80, 6); err != nil {
+	if err := u.testPaint(&frame, 80, 6); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(ansi.Strip(frame.String()), "LATEST_VISIBLE_LINE") {
@@ -436,7 +436,7 @@ func TestLiveActivityMainSymbolicReadPaths(t *testing.T) {
 			command := `mcat "$HOME/.codex/INSTRUCTION-AUTHORING.md" AGENTS.md`
 			appServerTestNotify(t, u, phase, map[string]any{"threadId": "main", "turnId": "turn", "item": binding.ThreadItem{ID: "read", Type: "commandExecution", Command: command}})
 			var frame bytes.Buffer
-			if err := u.paint(&frame, 140, 25); err != nil {
+			if err := u.testPaint(&frame, 140, 25); err != nil {
 				t.Fatal(err)
 			}
 			plain := ansi.Strip(frame.String())

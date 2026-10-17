@@ -214,7 +214,7 @@ func TestErrorDetailsTerminalClick(t *testing.T) {
 			}
 			screen := vt.NewEmulator(120, 40)
 			defer screen.Close()
-			if err := u.paint(screen, 120, 40); err != nil {
+			if err := u.testPaint(screen, 120, 40); err != nil {
 				t.Fatal(err)
 			}
 			row := slices.IndexFunc(view.FeedSnippets, func(s activityui.Snippet) bool { return s != activityui.Snippet{} })

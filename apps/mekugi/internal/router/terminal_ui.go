@@ -48,6 +48,9 @@ func (u *terminalUI) key(key byte) error {
 		u.prefix = false
 	}
 	event := u.input.Feed(key, time.Now())
+	if event.Kind != terminalsession.NoInput && u.main != nil {
+		defer u.main.settlePresentation()
+	}
 	switch event.Kind {
 	case terminalsession.NoInput:
 		return nil
@@ -109,7 +112,7 @@ func (u *terminalUI) key(key byte) error {
 		case '3':
 			u.selectNativePane(3)
 		case 'o':
-			view := u.main.mainPresentation(u.main.now())
+			view := u.main.sessionPresentation().View()
 			return u.main.loadOlderActivity(sessionpresentation.HistoryIntent{Version: view.Version, Thread: view.History.Target})
 		case 'q':
 			if u.main != nil && u.main.composerReadOnly() {
@@ -212,7 +215,7 @@ func (u *terminalUI) send(s string) error {
 		return nil
 	}
 	if s == "\x1b" && u.main != nil && u.main.historyLoading() != nil {
-		view := u.main.mainPresentation(u.main.now())
+		view := u.main.sessionPresentation().View()
 		return u.main.cancelOlderActivity(sessionpresentation.HistoryIntent{Version: view.Version, Thread: view.Loading})
 	}
 	if u.main != nil && u.Focus == 0 && u.main.composerReadOnly() {
@@ -318,6 +321,7 @@ func (u *terminalUI) send(s string) error {
 		return nil
 	}
 	only, selected := u.agents.displayingChild(), u.agents.Selected
+	u.agents.publishActivity()
 	quit := u.agents.HandleRosterKey(s)
 	u.showRosterPick(only, selected)
 	if quit {

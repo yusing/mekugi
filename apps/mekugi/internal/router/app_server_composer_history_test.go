@@ -147,7 +147,7 @@ func TestAppServerComposerImageTokenStyledAndCaretVisible(t *testing.T) {
 	appServerTestKeys(t, u, "b\x1b[D")
 	screen := vt.NewEmulator(24, 8)
 	t.Cleanup(func() { screen.Close() })
-	if _, err := screen.Write([]byte(strings.Join(first(u.mainFrame(24, 8, 0)), "\r\n"))); err != nil {
+	if _, err := screen.Write([]byte(strings.Join(first(u.testMainFrame(24, 8, 0)), "\r\n"))); err != nil {
 		t.Fatal(err)
 	}
 	left, image, right := screen.CellAt(4, 6), screen.CellAt(5, 6), screen.CellAt(14, 6)

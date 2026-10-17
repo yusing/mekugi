@@ -341,6 +341,7 @@ func (u *appServerUI) flushApprovalUpdates() {
 }
 
 func (u *appServerUI) decideApproval(intent sessionpresentation.ApprovalIntent) error {
+	defer u.settlePresentation()
 	record, choice, err := u.sessionPresentation().Approval(intent, u.approvals.Approvals)
 	if err != nil {
 		u.setNotice(err.Error(), true)
@@ -450,7 +451,7 @@ func (u *appServerUI) approvalKey(key string) (bool, error) {
 		u.hideApprovals()
 		u.approvals.AutoOpen = false
 	case conversationui.PromptSubmit:
-		view := u.mainPresentation(u.now())
+		view := u.sessionPresentation().View()
 		return true, u.decideApproval(sessionpresentation.ApprovalIntent{Version: view.Version, Request: a.ID, Choice: a.Choices[a.Selected].ID, Reason: u.Text})
 	}
 	return true, nil

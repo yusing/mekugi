@@ -107,13 +107,14 @@ func TestNonTerminalApprovalDecisionsPreserveIdentityAndReason(t *testing.T) {
 	u.Turn = "turn"
 	approvalTestCommand(t, u, "first", map[string]any{"availableDecisions": []string{"accept", "decline"}})
 	approvalTestCommand(t, u, "second", map[string]any{"availableDecisions": []string{"accept"}})
-	v := u.mainPresentation(u.now())
+	v := u.publishPresentation(u.now())
 	intent := sessionpresentation.ApprovalIntent{Version: v.Version, Request: v.Approvals.Approval.ID, Choice: 99, Reason: "explicit reason"}
 	if err := u.decideApproval(intent); err != nil || wire.Len() != 0 || len(u.pendingApprovals()) != 2 {
 		t.Fatal("unoffered choice answered a request")
 	}
 	// This editor is deliberately unrelated to the submitted semantic reason.
 	u.Text = "editor content must not become the reason"
+	intent.Version = u.sessionPresentation().View().Version
 	intent.Choice = v.Approvals.Approval.Choices[1].ID
 	if err := u.decideApproval(intent); err != nil {
 		t.Fatal(err)
@@ -129,14 +130,16 @@ func TestNonTerminalApprovalDecisionsPreserveIdentityAndReason(t *testing.T) {
 	if err := u.decideApproval(intent); err != nil || wire.Len() != 0 || len(u.pendingApprovals()) != 1 {
 		t.Fatal("resolved identity answered the next request")
 	}
-	v = u.mainPresentation(u.now())
+	v = u.publishPresentation(u.now())
 	intent = sessionpresentation.ApprovalIntent{Version: v.Version, Request: v.Approvals.Approval.ID, Choice: v.Approvals.Approval.Choices[0].ID}
 	u.Thread = "replacement"
+	u.attachPresentation()
 	if err := u.decideApproval(intent); err != nil || wire.Len() != 0 || u.feedback.Text != sessionpresentation.ErrStaleIntent.Error() {
 		t.Fatal("retired attachment answered a retained approval")
 	}
 	u.replay = &uiReplayPlayback{}
-	intent.Version = u.mainPresentation(u.now()).Version
+	u.attachPresentation()
+	intent.Version = u.publishPresentation(u.now()).Version
 	if err := u.decideApproval(intent); err != nil || wire.Len() != 0 || u.feedback.Text != sessionpresentation.ErrReplayIntent.Error() {
 		t.Fatal("replay answered an approval")
 	}
@@ -146,7 +149,7 @@ func TestNonTerminalGuardDecisionUsesPublishedChoice(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/work")
 	request := &vcsApproval{thread: "main", cwd: "/work", argv: []string{"git", "push"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})}
 	u.addGuardApproval(request)
-	v := u.mainPresentation(u.now())
+	v := u.publishPresentation(u.now())
 	a := v.Approvals.Approval
 	if a.Choices[0].ID == a.Choices[1].ID || a.Choices[1].ID == a.Choices[2].ID {
 		t.Fatal("guard choices have ambiguous identities")
@@ -159,7 +162,7 @@ func TestNonTerminalGuardDecisionUsesPublishedChoice(t *testing.T) {
 	}
 	request = &vcsApproval{thread: "main", cwd: "/work", argv: []string{"git", "push"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})}
 	u.addGuardApproval(request)
-	if next := u.mainPresentation(u.now()).Approvals.Approval.ID; next == "" || next == a.ID {
+	if next := u.publishPresentation(u.now()).Approvals.Approval.ID; next == "" || next == a.ID {
 		t.Fatal("retired local request identity was reused")
 	}
 }
@@ -639,7 +642,7 @@ func TestUISnapshotNativeApprovalDock(t *testing.T) {
 			u.session.start("main", "/workspace")
 			u.Turn = "turn"
 			tc.setup(t, u)
-			rows, _ := u.mainFrame(tc.width, 20, 0)
+			rows, _ := u.testMainFrame(tc.width, 20, 0)
 			assertNativeUISnapshot(t, "native-"+tc.name, rows)
 		})
 	}
@@ -698,7 +701,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 			if tc.name == "guard-approved" {
 				uisnapshot.AssertTerminal(t, "testdata/snapshots/approval-pending-"+tc.name+".txt", append(view.RenderFeed(48, 30).Lines, "plain after approval"), 48)
 			}
-			if err := u.decideApproval(sessionpresentation.ApprovalIntent{Version: u.mainPresentation(u.now()).Version, Request: a.ID, Choice: a.Choices[tc.choice].ID}); err != nil {
+			if err := u.decideApproval(sessionpresentation.ApprovalIntent{Version: u.publishPresentation(u.now()).Version, Request: a.ID, Choice: a.Choices[tc.choice].ID}); err != nil {
 				t.Fatal(err)
 			}
 			if !tc.guard && !tc.early {

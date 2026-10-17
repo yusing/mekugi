@@ -9,9 +9,9 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 )
 
-// mainPresentation adapts current owner facts once for any consumer. Caption
-// lookup uses the displayed identity, never reverse-searches a display name.
-func (u *appServerUI) mainPresentation(now time.Time) sessionpresentation.View {
+// publishPresentation settles detached facts at a semantic transition boundary.
+// Reading Model.View does not run this projection or bind an attachment.
+func (u *appServerUI) publishPresentation(now time.Time) sessionpresentation.View {
 	m := u.sessionPresentation()
 	view := m.View()
 	var caption sessionpresentation.Caption
@@ -36,13 +36,24 @@ func (u *appServerUI) mainPresentation(now time.Time) sessionpresentation.View {
 }
 
 func (u *appServerUI) sessionPresentation() *sessionpresentation.Model {
+	return u.presentationState.Session(u.session.Scope())
+}
+
+func (u *appServerUI) attachPresentation() {
 	u.bindConversation()
-	m := u.presentationState.Session(u.session.Scope())
+	m := u.sessionPresentation()
 	m.Attach(sessionpresentation.Thread{ID: cmp.Or(u.Thread, "/root"), Caller: "/root"}, u.replay != nil)
 	if u.agents != nil {
 		u.agents.display = m
 	}
-	return m
+}
+
+// settlePresentation runs before another intent can observe this session.
+// Opening a prompt does not mark it painted or acknowledge a notice.
+func (u *appServerUI) settlePresentation() {
+	u.autoOpenApprovals()
+	u.autoOpenQuestions()
+	u.publishPresentation(u.now())
 }
 
 func (v *activityAdapter) displayingChild() bool {
@@ -52,9 +63,24 @@ func (v *activityAdapter) displayingChild() bool {
 
 func (v *activityAdapter) displayedCaller() string { return v.display.View().Displayed.Caller }
 
-// Roster keys and hit targets become a semantic identity before changing the
-// displayed transcript. The highlighted row remains renderer-local.
-func (v *activityAdapter) displayThread(caller string) {
+// displaySession accepts detached targets without consulting terminal state.
+func (u *appServerUI) displaySession(intent sessionpresentation.DisplayIntent) bool {
+	defer u.settlePresentation()
+	m := u.sessionPresentation()
+	if intent.Thread != m.View().Main && u.session.paths[intent.Thread.ID] != intent.Thread.Caller {
+		u.setNotice(sessionpresentation.ErrStaleIntent.Error(), true)
+		return false
+	}
+	if err := m.Display(intent); err != nil {
+		u.setNotice(err.Error(), true)
+		return false
+	}
+	return true
+}
+
+// Roster keys and hit targets resolve to stable thread identities before
+// admission. The highlighted row remains renderer-local.
+func (v *activityAdapter) displayTarget(caller string) sessionpresentation.Thread {
 	view := v.display.View()
 	target := view.Main
 	if caller != "/root" && caller != "" {
@@ -65,10 +91,6 @@ func (v *activityAdapter) displayThread(caller string) {
 				break
 			}
 		}
-		v.Selected = caller
 	}
-	// This synchronous terminal action uses the view it just read. Future
-	// detached consumers submit their retained version directly to the owner.
-	_ = v.display.Display(sessionpresentation.DisplayIntent{Version: view.Version, Thread: target})
-	v.publishActivity()
+	return target
 }
