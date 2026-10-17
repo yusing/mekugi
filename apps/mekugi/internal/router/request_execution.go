@@ -30,7 +30,7 @@ import (
 // requestExecutor owns the services used to execute a request.
 type requestExecutor struct {
 	titleGenerator *sessionNaming
-	serviceTiers   *serviceTierSettings
+	serviceTiers   *inferencegateway.Tiers
 	provider       inferencegateway.Forwarder
 	client         *inferencegateway.Client
 	exchange       *inferencegateway.Exchange
@@ -174,14 +174,14 @@ func (a *requestAttempt) prepare() error {
 	}
 	// Terra remains a selectable legacy Codex model, but all provider requests
 	// use Sol. Do this after automatic-continuation selection.
-	if a.request.Model() == "gpt-5.6-terra" {
-		a.request.Fields["model"] = responses.MustMarshalJSON("gpt-6-sol")
+	if model := inferencegateway.RoutedModel(a.request.Model()); model != a.request.Model() {
+		a.request.Fields["model"] = responses.MustMarshalJSON(model)
 	}
 	if exchange := a.executor.exchange; exchange != nil && exchange.State != nil {
 		exchange.State.RememberProviderModel(a.request)
 	}
 	requestedTier := responses.StringField(a.request.Fields, "service_tier")
-	if tier := effectiveServiceTier(a.request.Model(), requestedTier, a.executor.serviceTiers, a.threadID); tier != requestedTier {
+	if tier := a.executor.serviceTiers.Effective(a.request.Model(), requestedTier, a.threadID); tier != requestedTier {
 		a.request.Fields["service_tier"] = responses.MustMarshalJSON(tier)
 	}
 

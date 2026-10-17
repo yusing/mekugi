@@ -48,6 +48,12 @@ Request preparation, execution admission, retained evidence, accounting and noti
 remain application consumers. Socket execution uses that same request pipeline;
 transport does not acquire a second execution or observation authority.
 
+The gateway owns invocation-local service-tier selection. Confirmed choices are
+scoped by host thread and routed model, ahead of configured model defaults and
+the request's tier. The legacy Terra selection routes to Sol before that lookup;
+`fast` is forwarded and displayed as `priority`. Request preparation, Main and
+child captions use this same policy without rewriting confirmed host settings.
+
 ### Grok
 
 Grok uses Chat Completions. Non-null `max_output_tokens` rejects locally: Chat completion limits exclude

@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/backends/codex/binding"
 )
 
@@ -147,11 +148,11 @@ func TestNativeChildComposerSettingsEvidence(t *testing.T) {
 	if got := caption(); !strings.Contains(got, "live-model (low) · default") || strings.Contains(got, "saved-model") {
 		t.Fatalf("late metadata replaced live child settings: %s", got)
 	}
-	u.serviceTiers = &serviceTierSettings{configured: map[string]string{"live-model": "priority"}}
+	u.serviceTiers = inferencegateway.NewTiers(map[string]string{"live-model": "priority"})
 	if got := caption(); !strings.Contains(got, "live-model (low) · priority") {
 		t.Fatalf("child tier ignored model routing: %s", got)
 	}
-	u.serviceTiers.choices.Store([2]string{info.ID, "live-model"}, "flex")
+	u.serviceTiers.Confirm("live-model", info.ID, "flex")
 	publication := u.mainPresentation(u.now())
 	if publication.Caption.Model != "live-model" || publication.Caption.Tier != "flex" || publication.Status.Composer.Text != "Read-only" {
 		t.Fatalf("detached child caption lost confirmed thread settings: %+v", publication)

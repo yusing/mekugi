@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffrender"
 )
@@ -24,7 +25,7 @@ func TestAppServerCompactQueuedContinuesOnceAfterAckAndTurn(t *testing.T) {
 		t.Run(fmt.Sprint("turnBeforeAck=", beforeAck), func(t *testing.T) {
 			u, w := newAppServerTestUI()
 			u.model = "gpt-6.1-sol"
-			u.serviceTiers = &serviceTierSettings{configured: map[string]string{u.model: "priority"}}
+			u.serviceTiers = inferencegateway.NewTiers(map[string]string{u.model: "priority"})
 			appServerTestKeys(t, u, "/tier default\r")
 			r := queueBusyCompact(t, u, w)
 			ack := fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID)

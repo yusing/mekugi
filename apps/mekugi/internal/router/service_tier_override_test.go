@@ -50,7 +50,7 @@ func TestUISnapshotNativeConfiguredServiceTier(t *testing.T) {
 	}
 	u := newAppServerSessionTestUI(t, directory)
 	u.proxy = newManagedMekugiProxy(t)
-	u.serviceTiers = &serviceTierSettings{configured: config.ServiceTiers}
+	u.serviceTiers = inferencegateway.NewTiers(config.ServiceTiers)
 	u.sessionPresentation().Status.Text = "Ready"
 	u.view.Painter.Theme = diffrender.DarkTheme
 	for _, tc := range []struct{ model, requested, want string }{
@@ -86,7 +86,7 @@ func TestUISnapshotNativeConfiguredServiceTier(t *testing.T) {
 			}
 			request := serverRequest(t, func(fields map[string]any) { fields["model"], fields["service_tier"] = tc.model, tc.requested })
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
-			executor := requestExecutor{provider: provider, output: &bytes.Buffer{}, serviceTiers: &serviceTierSettings{configured: config.ServiceTiers}}
+			executor := requestExecutor{provider: provider, output: &bytes.Buffer{}, serviceTiers: inferencegateway.NewTiers(config.ServiceTiers)}
 			if err := executor.execute(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", nil), "tier"); err != nil {
 				t.Fatal(err)
 			}
@@ -106,7 +106,7 @@ func newServiceTierPickerTestUI(t *testing.T, model, tier string, overrides map[
 	u, input := newAppServerTestUI()
 	u.ctx = t.Context()
 	u.model, u.serviceTier = model, tier
-	u.serviceTiers = &serviceTierSettings{configured: overrides}
+	u.serviceTiers = inferencegateway.NewTiers(overrides)
 	u.view.Painter.Theme = diffrender.DarkTheme
 	if err := json.Unmarshal([]byte(`[{"model":"gpt-6.1-sol","serviceTiers":[{"id":"priority"},{"id":"flex"}]},{"model":"gpt-5.6-terra","serviceTiers":[{"id":"priority"},{"id":"flex"}]},{"model":"unconfigured","serviceTiers":[{"id":"priority"},{"id":"flex"}]}]`), &u.models); err != nil {
 		t.Fatal(err)
@@ -201,7 +201,7 @@ func TestServiceTierPickerSelectionUpdatesEffectiveTier(t *testing.T) {
 			if want == "" {
 				want = "default"
 			}
-			if u.displayServiceTier() != want || u.serviceTiers.configured[u.model] != "fast" {
+			if u.displayServiceTier() != want || u.serviceTiers.Effective(u.model, "default", "unrelated") != "priority" {
 				t.Fatal("selection did not replace effective tier or changed configuration")
 			}
 			request := serverRequest(t, func(fields map[string]any) { fields["model"], fields["service_tier"] = u.model, u.serviceTier })
@@ -267,7 +267,7 @@ func TestServiceTierOverrideAcrossTransports(t *testing.T) {
 			}))
 			defer upstream.Close()
 			client := newTestProviderClient(upstream.URL, upstream.Client())
-			executor := requestExecutor{provider: client, client: client, serviceTiers: &serviceTierSettings{configured: map[string]string{"gpt-6-astra": "priority"}}}
+			executor := requestExecutor{provider: client, client: client, serviceTiers: inferencegateway.NewTiers(map[string]string{"gpt-6-astra": "priority"})}
 			request := serverRequest(t, func(fields map[string]any) {
 				fields["model"], fields["service_tier"], fields["stream"] = "gpt-6-astra", "default", transport != "http"
 			})
@@ -315,7 +315,7 @@ func TestServiceTierOverrideUsesEffectiveModel(t *testing.T) {
 			request := serverRequest(t, func(fields map[string]any) { fields["model"], fields["service_tier"] = model, "flex" })
 			headers := serverMetadataHeaders(t, "turn", nil)
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
-			executor := requestExecutor{provider: provider, output: &bytes.Buffer{}, mekugiCalls: proxy, serviceTiers: &serviceTierSettings{configured: map[string]string{"gpt-6-sol": "fast"}}}
+			executor := requestExecutor{provider: provider, output: &bytes.Buffer{}, mekugiCalls: proxy, serviceTiers: inferencegateway.NewTiers(map[string]string{"gpt-6-sol": "fast"})}
 			if err := executor.execute(t.Context(), t.Context(), request, headers, "tier"); err != nil {
 				t.Fatal(err)
 			}
@@ -373,7 +373,7 @@ func TestServiceTierChildRequestAndRootNotice(t *testing.T) {
 	provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"id":"tier-response","status":"completed","output":[],"usage":{"input_tokens":50000}}`)}}}
 	executor := requestExecutor{
 		provider: provider, output: &bytes.Buffer{}, mekugiCalls: proxy,
-		serviceTiers: &serviceTierSettings{configured: map[string]string{"gpt-5.6-sol": "fast"}},
+		serviceTiers: inferencegateway.NewTiers(map[string]string{"gpt-5.6-sol": "fast"}),
 	}
 	if err := executor.execute(t.Context(), t.Context(), request, headers, "child-session"); err != nil {
 		t.Fatal(err)

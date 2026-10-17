@@ -3,6 +3,7 @@ package router
 import (
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	"github.com/yusing/mekugi/modules/conversation/completion"
@@ -381,19 +382,15 @@ func (u *appServerUI) showSettingsPicker(command string, choices []string) {
 }
 
 func (u *appServerUI) selectedServiceTier() string {
-	tier, _ := u.serviceTiers.choice(u.model, u.Thread)
+	tier, _ := u.serviceTiers.Choice(u.model, u.Thread)
 	return tier
 }
 
 func (u *appServerUI) chooseServiceTier() {
 	if u.serviceTiers == nil {
-		u.serviceTiers = new(serviceTierSettings)
+		u.serviceTiers = inferencegateway.NewTiers(nil)
 	}
-	tier := u.serviceTier
-	if tier == "" {
-		tier = "default"
-	}
-	u.serviceTiers.choices.Store([2]string{u.Thread, serviceTierModel(u.model)}, tier)
+	u.serviceTiers.Confirm(u.model, u.Thread, u.serviceTier)
 }
 
 func (u *appServerUI) settingsPickerKey(key string) bool {

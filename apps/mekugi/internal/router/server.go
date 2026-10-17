@@ -216,7 +216,7 @@ func RunSession(views *sessionpresentation.Service, conversation *conversationmo
 			log.Printf("OpenCode catalog: refresh/cache update unavailable; retaining last usable metadata")
 		}
 	}
-	serviceTiers := &serviceTierSettings{configured: config.ServiceTiers}
+	serviceTiers := inferencegateway.NewTiers(config.ServiceTiers)
 	provider.OpenCode = make(map[string]*inferencegateway.ThirdPartyClient)
 	for _, service := range openCode.Services() {
 		client := httptransport.Client(nil)

@@ -24,7 +24,7 @@ func (u *appServerUI) mainPresentation(now time.Time) sessionpresentation.View {
 			if agent.settings.TierKnown {
 				caption.Tier = cmp.Or(agent.settings.Tier, "default")
 			}
-			caption.Tier = effectiveServiceTier(caption.Model, caption.Tier, u.serviceTiers, agent.thread)
+			caption.Tier = u.serviceTiers.Effective(caption.Model, caption.Tier, agent.thread)
 		}
 		caption.ContextKnown, caption.ContextTokens, caption.ContextWindow = agent.ContextKnown, agent.ContextTokens, agent.ContextWindow
 		caption.Items = m.StatusItems(presentationcontract.Thread{ID: view.Displayed.ID, OutputThroughput: agent.OutputThroughput}, presentationcontract.ComposerCaption)

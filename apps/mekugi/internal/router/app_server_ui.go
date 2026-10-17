@@ -17,6 +17,7 @@ import (
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
@@ -127,7 +128,7 @@ type appServerUI struct {
 	noticeDismiss           terminalsession.Rect // Check button, relative to Main.
 	model, reasoningEffort  string
 	serviceTier             string
-	serviceTiers            *serviceTierSettings // Invocation defaults and confirmed thread/model choices.
+	serviceTiers            *inferencegateway.Tiers // Invocation defaults and confirmed thread/model choices.
 	models                  []appServerModel
 	modelsLoading           bool
 	reasoningKey            *bool
@@ -159,7 +160,7 @@ func StartAppServerUI(views *sessionpresentation.Service, conversation *conversa
 }
 
 // Codex approval policy and the invocation-local Shell guard are independent.
-func startAppServerUI(views *sessionpresentation.Service, conversation *conversationmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *serviceTierSettings, capture *transportcapture.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, observations *binding.Observation, approvals bool) (func() error, error) {
+func startAppServerUI(views *sessionpresentation.Service, conversation *conversationmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *inferencegateway.Tiers, capture *transportcapture.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, observations *binding.Observation, approvals bool) (func() error, error) {
 	guardHash := ""
 	for _, entry := range cmd.Environ() {
 		if hash, ok := strings.CutPrefix(entry, shellhook.Environment+"="); ok {
