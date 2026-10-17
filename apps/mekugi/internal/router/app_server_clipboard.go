@@ -37,7 +37,7 @@ func (u *appServerUI) insertImage(path string) {
 	u.Editor.InsertImage(path)
 	u.shell.Main.CursorColumn = nil
 	u.setNotice("", false)
-	u.pruneDraftImages()
+	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
 }
 
 // finishPaste inserts a bracketed paste as one edit. A lone path to an image

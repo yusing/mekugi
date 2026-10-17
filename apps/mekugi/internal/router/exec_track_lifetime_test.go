@@ -25,9 +25,7 @@ func TestExecTrackSessionReplacementDropsRetainedChildOutput(t *testing.T) {
 		t.Fatalf("child output was not retained before replacement: %+v", before)
 	}
 	retired := before.segments[0].Output
-	if err := u.clearSessionPresentation(); err != nil {
-		t.Fatal(err)
-	}
+	replaceAppServerTestSession(t, u, "replacement")
 	if !retired.View().Released {
 		t.Error("detached child output remains retained")
 	}
@@ -36,8 +34,7 @@ func TestExecTrackSessionReplacementDropsRetainedChildOutput(t *testing.T) {
 	}
 	// A subsequent attachment may see the same still-running command. Losing
 	// its earlier bytes must not turn the remaining bytes into complete output.
-	u.Readmit("main")
-	u.startSession("main", u.attached.cwd)
+	replaceAppServerTestSession(t, u, "main")
 	u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	report.send(segmenttransport.Message{Type: segmenttransport.Output, Index: 0, Data: "later\n"})
 	report.send(segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)})

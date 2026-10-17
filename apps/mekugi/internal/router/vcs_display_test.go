@@ -208,9 +208,7 @@ func TestVCSCommitReadDoesNotBlockTheUI(t *testing.T) {
 		t.Fatalf("read commit =\n%s", got)
 	}
 	previous := u.commits
-	if err := u.clearSessionPresentation(); err != nil {
-		t.Fatal(err)
-	}
+	replaceAppServerTestSession(t, u, "replacement")
 	if u.commits == previous {
 		t.Fatal("replacement retained commit cache")
 	}

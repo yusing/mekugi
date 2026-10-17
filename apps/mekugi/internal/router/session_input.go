@@ -18,7 +18,7 @@ func (u *appServerUI) editInput(intent sessionpresentation.DraftEditIntent) bool
 	}
 	u.shell.Main.CursorColumn = nil
 	u.setNotice("", false)
-	u.pruneDraftImages()
+	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
 	return true
 }
 
@@ -31,7 +31,7 @@ func (u *appServerUI) submitInput(intent sessionpresentation.SubmitIntent) error
 	}
 	input := u.prepareDraft(draft)
 	u.attached.conversation.QueueInput(input, plan.Queued)
-	u.pruneDraftImages()
+	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
 	u.setNotice("", false)
 	if !plan.Flush {
 		return nil
@@ -75,7 +75,7 @@ func (u *appServerUI) applyComposerInput(input terminalsession.ComposerInput) (b
 	}
 	u.setNotice("", false)
 	if kind != composer.UndoAction && kind != composer.RedoAction {
-		u.pruneDraftImages()
+		pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
 	}
 	return false, nil
 }

@@ -1,6 +1,7 @@
 package router
 
 import (
+	"cmp"
 	"context"
 	json "encoding/json/v2"
 	"errors"
@@ -44,6 +45,7 @@ import (
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 	"github.com/yusing/mekugi/modules/notifications/notice"
+	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
@@ -216,7 +218,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 		defer func() {
 			u.retainedSession.Close()
 		}()
-		defer u.cancelPickerScan()
+		defer u.picker.cancelScan()
 		defer u.shell.Diff.Close()
 		defer func() { u.commits.Close() }()
 		if u.audience != nil {
@@ -416,7 +418,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 			}
 		}
 		u.review.Close()
-		u.hideQuestions()
+		u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 		u.hideApprovals()
 		if unsent := conversationmodel.Join(slices.Concat(u.attached.conversation.Unsent, u.attached.conversation.Queued, []conversationmodel.Input{u.draftSnapshot()})...); unsent.Text != "" {
 			fmt.Fprintln(stdout, "Unsent draft:\n"+textsanitize.Safe(unsent.Text, false))
@@ -640,8 +642,62 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				return err
 			}
 			if u.Replacement.Pending() {
-				if err := u.clearSessionPresentation(); err != nil {
+				// Detach only after host acceptance; process and operation owners remain live.
+				closing := u.side
+				if closing != nil {
+					u.side = nil
+					closing.Close()
+					u.attached.conversation.Side = nil
+					pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
+					if err := u.Requests.ReleaseSide(closing); err != nil {
+						return err
+					}
+				}
+				if u.panes != nil {
+					u.paneError(u.panes.save(u.shell.Shell.Preferences(u.shell.Main), time.Now(), true))
+				}
+				u.picker.cancelScan()
+				roster := u.attached.session.Roster()
+				retired := make([]string, 0, len(roster))
+				for _, agent := range roster {
+					retired = append(retired, agent.Thread)
+				}
+				u.RetireThreads(u.Thread, retired...)
+				u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
+				retainedQuestions := u.questionCalls()
+				if u.notifications != nil {
+					clear(u.notifications.blocked)
+				}
+				u.statusPanel = nil
+				u.attached.presentation.ClosePanel()
+				u.Requests.Retire("main") // Retire old-thread response correlation.
+				if err := u.Request("thread/unsubscribe", map[string]any{"threadId": u.Thread}); err != nil {
 					return err
+				}
+				u.picker = composerPicker{}
+				u.exitUsage = binding.TokenUsage{}
+				u.attached.feedback = noticepresentation.Model{}
+				u.shell.Main.NoticeDetails, u.shell.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
+				releaseSegmentOutputs(&u.attached, u.execTrack)
+				waiting := u.attached.conversation
+				u.attached.session.Retire()
+				workspace := u.attached.cwd
+				u.attached = newAttachedPresentation(u.presentationState, u.conversationState, u.observations)
+				u.attached.cwd = workspace
+				u.attached.conversation.CarryInput(waiting)
+				u.Editor = &u.attached.conversation.Editor
+				u.promptEditor = &u.attached.conversation.PromptEditor
+				u.picker.State, u.picker.MenuState = &u.attached.conversation.Completion, u.attached.presentation.Menu()
+				u.approvals.Approvals = &u.attached.conversation.Approvals
+				u.questions.carryLocal(u.attached.conversation, retainedQuestions, u.Thread)
+				u.terminalViews.ReplaceConversation(u.shell)
+				u.commits = attachCommitReader(&u.attached.session, u.commits, u.ctx, u.activity != nil)
+				u.attached.presentation.Attach(sessionpresentation.Thread{ID: cmp.Or(u.Thread, "/root"), Caller: "/root"}, false)
+				if u.shell != nil {
+					u.shell.Selection = nil
+					u.detailFiles.closeOutput(&u.attached.session, u.shell)
+					u.shell.Focus = 0
+					u.shell.StopDrag()
 				}
 				u.LeaveThread()
 				u.Startup.Thread, u.Startup.Workspace = "", ""

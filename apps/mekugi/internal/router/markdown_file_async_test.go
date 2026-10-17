@@ -94,9 +94,7 @@ func TestMarkdownFileLateCompletion(t *testing.T) {
 			case "retirement":
 				main.attached.session.Retire()
 			case "attachment":
-				if err := main.clearSessionPresentation(); err != nil {
-					t.Fatal(err)
-				}
+				replaceAppServerTestSession(t, main, "replacement")
 			}
 			select {
 			case result := <-results:

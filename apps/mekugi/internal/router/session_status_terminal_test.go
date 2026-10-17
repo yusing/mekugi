@@ -49,7 +49,7 @@ func (u *appServerUI) recallInput(backward bool) {
 	if u.Editor.Recall(backward) {
 		u.shell.Main.CursorColumn = nil
 		u.setNotice("", false)
-		u.pruneDraftImages()
+		pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
 	}
 }
 

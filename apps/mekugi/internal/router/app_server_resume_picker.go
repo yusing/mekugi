@@ -53,7 +53,7 @@ func (u *appServerUI) openResumePicker(startup bool) error {
 	if startup {
 		cwd = u.Startup.Workspace
 	}
-	u.cancelPickerScan()
+	u.picker.cancelScan()
 	u.picker.Open = false
 	u.resumePicker = &appServerResumePicker{ResumeChooser: u.attached.presentation.OpenResume(startup, cwd)}
 	return u.loadResumePage(true)

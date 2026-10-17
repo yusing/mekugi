@@ -36,11 +36,11 @@ func (u *appServerUI) questionCalls() []*sessioncontrol.Question {
 func (u *appServerUI) activeQuestionCall() *sessioncontrol.Question {
 	return u.questions.handles[u.questions.Active]
 }
-func (u *appServerUI) parkQuestion(q *prompt.Question) {
-	state := u.Editor.Park()
-	u.shell.Prompts.QuestionLayout(u.questions.View(u.Thread)).Column = u.shell.Main.CursorColumn
+func parkQuestion(questions *nativeQuestionDock, terminal *terminalsession.Attachment, editor *composer.Editor, main string, q *prompt.Question) {
+	state := editor.Park()
+	terminal.Prompts.QuestionLayout(questions.View(main)).Column = terminal.Main.CursorColumn
 	if q.IsSecret {
-		u.shell.Prompts.Secrets(u.questions.Active.ID).Editors[u.questions.Index] = state
+		terminal.Prompts.Secrets(questions.Active.ID).Editors[questions.Index] = state
 	} else {
 		q.Editor = state
 	}
@@ -105,24 +105,40 @@ func (u *appServerUI) openQuestionCall(c *sessioncontrol.Question) {
 }
 func (u *appServerUI) focusPrompt() {
 	u.picker.Open, u.shell.Main.Keybindings = false, false
-	u.cancelPickerScan()
+	u.picker.cancelScan()
 	if u.shell != nil {
 		u.shell.Focus = 0
 		u.shell.Selection = nil
 	}
 }
-func (u *appServerUI) hideQuestions() {
-	if q := u.currentQuestion(); q != nil {
-		u.parkQuestion(q)
-		u.Editor = &u.attached.conversation.Editor
-		u.shell.Prompts.Secret = composer.Editor{}
-		u.promptEditor.Close(u.Editor)
-		u.shell.Main.CursorColumn = u.shell.Main.PromptColumn
-		u.questions.Hide()
+func hideQuestionEditor(questions *nativeQuestionDock, conversation *conversationmodel.Session, terminal *terminalsession.Attachment, editor *composer.Editor, main string) *composer.Editor {
+	if q := questions.Current(); q != nil {
+		parkQuestion(questions, terminal, editor, main, q)
+		editor = &conversation.Editor
+		terminal.Prompts.Secret = composer.Editor{}
+		conversation.PromptEditor.Close(editor)
+		terminal.Main.CursorColumn = terminal.Main.PromptColumn
+		questions.Hide()
+	}
+	return editor
+}
+
+// carryLocal preserves unresolved local authentication without recording a host question.
+func (q *nativeQuestionDock) carryLocal(conversation *conversationmodel.Session, previous []*sessioncontrol.Question, main string) {
+	*q = nativeQuestionDock{Questions: &conversation.Questions}
+	for _, c := range previous {
+		if c.Sudo == nil || c.Resolved || c.Thread != main && !c.Local || !q.Add(c.Call, true) {
+			continue
+		}
+		if q.handles == nil {
+			q.handles = make(map[*prompt.Call]*sessioncontrol.Question)
+		}
+		q.handles[c.Call] = c
 	}
 }
+
 func (u *appServerUI) moveQuestion(step int) {
-	u.parkQuestion(u.currentQuestion())
+	parkQuestion(&u.questions, u.shell, u.Editor, u.Thread, u.currentQuestion())
 	u.questions.Move(step)
 	u.resumeQuestion(u.currentQuestion())
 }
@@ -191,7 +207,7 @@ func (u *appServerUI) resolveQuestionCall(c *sessioncontrol.Question, outcome st
 		return
 	}
 	if u.activeQuestionCall() == c {
-		u.hideQuestions()
+		u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 	}
 	for _, d := range c.Resolve(outcome) {
 		u.saveUnsentAnswer(d)
@@ -268,7 +284,7 @@ func (u *appServerUI) applyQuestionInput(input terminalsession.PromptInput) (boo
 		return false, nil
 	case conversationui.PromptHide:
 		u.questions.AutoOpen = false
-		u.hideQuestions()
+		u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 	case conversationui.PromptCursor:
 		return false, nil
 	case conversationui.PromptPrevious:
@@ -282,7 +298,7 @@ func (u *appServerUI) applyQuestionInput(input terminalsession.PromptInput) (boo
 	case conversationui.PromptSubmit:
 		return true, u.submitQuestions(sessionpresentation.QuestionSubmitIntent{Version: u.attached.presentation.View().Version, Call: c.ID, Incomplete: true})
 	case conversationui.PromptAnswer, conversationui.PromptSkip:
-		u.parkQuestion(q)
+		parkQuestion(&u.questions, u.shell, u.Editor, u.Thread, q)
 		if q.IsSecret {
 			answer := *q
 			if !answer.Complete(u.Text, c.Sync, action == conversationui.PromptSkip) {
@@ -329,7 +345,7 @@ func (u *appServerUI) submitQuestions(intent sessionpresentation.QuestionSubmitI
 	}
 	c := u.questions.handles[record]
 	defer func() {
-		u.pruneDraftImages()
+		pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
 		u.questions.AutoOpen = true
 		u.autoOpenQuestions()
 	}()
@@ -342,7 +358,7 @@ func (u *appServerUI) submitQuestions(intent sessionpresentation.QuestionSubmitI
 			return err
 		}
 		if u.questions.Active == c.Call {
-			u.hideQuestions()
+			u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 		}
 		c.Submitted()
 		clear(u.shell.Prompts.SecretState(c.ID).Editors)
@@ -365,7 +381,7 @@ func (u *appServerUI) submitQuestions(intent sessionpresentation.QuestionSubmitI
 	}
 	reply := conversationbinding.QuestionReplies(c.Call)
 	if u.questions.Active == c.Call {
-		u.hideQuestions()
+		u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 	}
 	c.Submitted()
 	if reply == "" {

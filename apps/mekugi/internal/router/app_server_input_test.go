@@ -69,7 +69,7 @@ func TestPromptInputRejectsRetiredDock(t *testing.T) {
 	if input == nil {
 		t.Fatal("question did not produce targeted input")
 	}
-	u.hideQuestions()
+	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 	u.publishPresentation(u.now())
 	if handled, err := u.applyPromptInput(*input); !handled || err != nil || !u.attached.feedback.Alert || u.Text != "" || wire.Len() != 0 {
 		t.Fatalf("retired prompt input escaped admission: handled=%v err=%v draft=%q", handled, err, u.Text)

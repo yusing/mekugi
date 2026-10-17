@@ -59,7 +59,7 @@ func TestAppServerInputHistoryAttachmentsRemainUsable(t *testing.T) {
 	u.attachImage(path)
 	appServerTestKeys(t, u, "\x1b[A")
 	u.UndoDrafts = nil
-	u.pruneDraftImages()
+	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("live draft image pruned: %v", err)
 	}

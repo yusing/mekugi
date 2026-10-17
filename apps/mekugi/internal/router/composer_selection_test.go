@@ -245,7 +245,7 @@ func TestComposerSelectionReviewEdges(t *testing.T) {
 		u.insertSelection("message", "main quote", "")
 		questionTestAsync(t, u, "parked", "Which scope?")
 		u.openQuestions()
-		u.hideQuestions()
+		u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 		u.deleteDraftRange(0, len(u.Text))
 		u.insertSelection("message", "replacement quote", "")
 		if u.Text != "[Selected message] " {

@@ -22,9 +22,9 @@ func TestNonTerminalQuestionSubmissionKeepsOtherEditor(t *testing.T) {
 	if !u.answerQuestion(answer) {
 		t.Fatal(u.attached.feedback.Text)
 	}
-	u.hideQuestions()
+	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 	questionTestSync(t, u, "second", false)
-	u.hideQuestions()
+	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 	u.openQuestionCall(u.questionCalls()[1])
 	u.Text = "another answer draft"
 	submit := sessionpresentation.QuestionSubmitIntent{Version: u.publishPresentation(u.now()).Version, Call: call.ID}

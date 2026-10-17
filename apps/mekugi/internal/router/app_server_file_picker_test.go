@@ -32,7 +32,7 @@ func TestComposerFilePickerExcludedMode(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.ctx = t.Context()
 	u.attached.cwd = root
-	t.Cleanup(u.cancelPickerScan)
+	t.Cleanup(u.picker.cancelScan)
 	appServerTestKeys(t, u, "@!excluded")
 	if len(pickerRequests(t, w)) != 0 {
 		t.Fatal("@! sent an ignore-respecting host search")
@@ -67,7 +67,7 @@ func TestComposerFilePickerCanceledResultsCannotReopen(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ctx = t.Context()
 	u.attached.cwd = t.TempDir()
-	t.Cleanup(u.cancelPickerScan)
+	t.Cleanup(u.picker.cancelScan)
 	appServerTestKeys(t, u, "@!a")
 	id, target := u.picker.scanID, u.picker.Target
 	u.pickerKey("\x1b")
@@ -117,7 +117,7 @@ func TestComposerFilePickerLateSkillSaveDoesNotReplaceResults(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.ctx = t.Context()
 	u.attached.cwd = t.TempDir()
-	t.Cleanup(u.cancelPickerScan)
+	t.Cleanup(u.picker.cancelScan)
 	if err := os.WriteFile(filepath.Join(u.attached.cwd, "target.txt"), []byte("test"), 0600); err != nil {
 		t.Fatal(err)
 	}

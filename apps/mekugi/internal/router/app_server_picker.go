@@ -95,14 +95,14 @@ func (u *appServerUI) refreshPicker() {
 	}
 	wasOpen := p.Open
 	if !p.Activate(target, bindingOnly) {
-		u.cancelPickerScan()
+		u.picker.cancelScan()
 		return
 	}
 	if !wasOpen && !bindingOnly {
 		p.ID++
 	}
 	if target.Kind == '/' {
-		u.cancelPickerScan()
+		u.picker.cancelScan()
 		u.filterCommands(target.Query)
 		return
 	}
@@ -112,7 +112,7 @@ func (u *appServerUI) refreshPicker() {
 		return
 	}
 	if target.Kind != '@' || !strings.HasPrefix(target.Query, "!") {
-		u.cancelPickerScan()
+		u.picker.cancelScan()
 	}
 	if target.Kind == '$' && (p.SkillsLoaded || p.SkillsProblem != "") && p.SkillsCwd == cwd {
 		p.Loading = false

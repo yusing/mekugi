@@ -13,7 +13,7 @@ func (u *appServerUI) showArchivePicker() {
 		return
 	}
 	u.deleteDraftRange(0, len(u.Text))
-	u.cancelPickerScan()
+	u.picker.cancelScan()
 	p := &u.picker
 	u.openMenu("archive")
 	p.Target, p.Problem, p.Loading = completion.Target{}, "", false

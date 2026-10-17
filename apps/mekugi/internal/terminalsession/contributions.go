@@ -79,3 +79,18 @@ func (v Views) NewAttachment(theme diffrender.Theme) (*Attachment, func(*scope.S
 	u.AuxiliaryLabel, u.Auxiliary = label, attachment.Pane
 	return u, attachment.Prepare
 }
+
+// ReplaceConversation retires transcript navigation while preserving painters
+// and the terminal's independent layout, prompts and output surfaces.
+// Source: apps/mekugi/internal/router/app_server_commands.go:169:177@eb3d0b22.
+func (v Views) ReplaceConversation(terminal *Attachment) {
+	painter := terminal.Transcript.Painter
+	terminal.Transcript = activityview.NewView()
+	terminal.Transcript.Painter, terminal.Transcript.Conversation = painter, true
+	if terminal.Agents != nil {
+		painter = terminal.Agents.Painter
+		terminal.Agents = v.NewThreadView()
+		terminal.Agents.Painter = painter
+		terminal.Agents.ChildrenOnly, terminal.Agents.Bare = true, true
+	}
+}

@@ -224,7 +224,7 @@ func TestNativeQuestionParkedEditorMidTypingAndSecret(t *testing.T) {
 	u.openQuestions()
 	questionTestPaint(t, u, 60)
 	appServerTestKeys(t, u, "3private")
-	u.hideQuestions()
+	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 	if !reflect.DeepEqual(u.Editor.Park(), before) {
 		t.Fatalf("parked draft not restored: %q", u.Text)
 	}
@@ -278,7 +278,7 @@ func TestNativeQuestionExternalReplyParksActiveAnswerBeforeCommit(t *testing.T) 
 			}
 			commit(0)
 			commit(0) // Duplicate delivery cannot remember or revive the draft.
-			u.hideQuestions()
+			u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 			u.openQuestions()
 			if u.activeQuestionCall() != nil || u.Text != "Main draft" || !u.questionCalls()[0].Resolved {
 				t.Fatal("resolved answer was revived or replaced Main")
@@ -308,9 +308,7 @@ func TestNativeQuestionsUseComposedAttachment(t *testing.T) {
 	if &u.attached.conversation.Questions != questions || u.questionCount() != 1 || editor != &u.attached.conversation.Editor || u.Text != "pre-start draft" {
 		t.Fatal("first host identity replaced pending question state")
 	}
-	if err := u.clearSessionPresentation(); err != nil {
-		t.Fatal(err)
-	}
+	replaceAppServerTestSession(t, u, "replacement")
 	u.Thread = "replacement"
 	if u.Editor == editor || u.Editor != &u.attached.conversation.Editor || u.Text != "pre-start draft" || editor.Text != "" {
 		t.Fatal("replacement did not transfer editable input to its new owner")

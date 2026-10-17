@@ -518,13 +518,12 @@ func TestNativeApprovalSurvivesMainReplacement(t *testing.T) {
 	if previous != &u.attached.conversation.Approvals || u.Editor != &u.attached.conversation.Editor {
 		t.Fatal("approval editor bypassed the composed owner")
 	}
-	if err := u.clearSessionPresentation(); err != nil {
-		t.Fatal(err)
-	}
+	replaceAppServerTestSession(t, u, "replacement")
 	u.Thread = "replacement"
 	if u.approvals.Approvals == previous || u.approvals.Approvals != &u.attached.conversation.Approvals || !u.approvals.Open || u.pendingApprovals()[0].Approval != approval || u.Text != "wait for review" {
 		t.Fatal("replacement lost a pending approval or its editor")
 	}
+	questionTestPaint(t, u, 80) // The replacement must deliver its own prompt frame.
 	appServerTestKeys(t, u, "\r")
 	if !strings.Contains(wire.String(), `"id":7`) || u.Text != "main draft" || len(u.pendingApprovals()) != 0 {
 		t.Fatal("retained approval did not settle its original request and restore Main")

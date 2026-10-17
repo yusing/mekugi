@@ -50,7 +50,7 @@ func (u *appServerUI) insertSelection(description, text, source string) {
 	}
 	u.setNotice("", false)
 	u.shell.Main.CursorColumn = nil
-	u.pruneDraftImages()
+	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
 	if q := u.currentQuestion(); q != nil {
 		q.Edit(!q.Note)
 	}

@@ -89,7 +89,7 @@ func TestNonTerminalInputDispositionAndHostRequests(t *testing.T) {
 			u.Turn, u.Settings.RestoreEffort = tc.turn, tc.blocked
 			if tc.question {
 				questionTestSync(t, u, "waiting", false)
-				u.hideQuestions()
+				u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 			}
 			editOrdinaryInput(t, u, "ordinary input")
 			intent := ordinarySubmitIntent(u, tc.mode)
@@ -145,7 +145,7 @@ func TestNonTerminalOrdinaryInputRejectsPromptAndReadOnlyViews(t *testing.T) {
 	if err := u.submitInput(intent); err != nil || wire.Len() != 0 || u.currentQuestion() == nil {
 		t.Fatal("ordinary submit took a prompt editor")
 	}
-	u.hideQuestions()
+	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 	v := u.publishPresentation(u.now())
 	if err := u.attached.presentation.Display(sessionpresentation.DisplayIntent{Version: v.Version, Thread: sessionpresentation.Thread{ID: "child", Caller: "/root/child"}}); err != nil {
 		t.Fatal(err)

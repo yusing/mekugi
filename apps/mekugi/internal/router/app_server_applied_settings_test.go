@@ -183,9 +183,7 @@ func TestAppServerAppliedSettingsFlushesCurrentLayoutBeforeTick(t *testing.T) {
 		t.Fatal("immediate settings flush lost layout changed since the last tick", err)
 	}
 	terminalTest(u).Split = 67
-	if err := u.clearSessionPresentation(); err != nil {
-		t.Fatal(err)
-	}
+	replaceAppServerTestSession(t, u, "replacement")
 	state, err = testPanePreferences().read("/workspace", "saved")
 	if err != nil || state.layout.Split != 67 || state.Settings.Model != "model" {
 		t.Fatal("replacement did not flush the old attachment's current layout", err)

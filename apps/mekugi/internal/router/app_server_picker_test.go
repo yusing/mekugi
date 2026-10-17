@@ -411,9 +411,7 @@ func TestComposerCompletionAttachmentLifetime(t *testing.T) {
 	if !u.attached.conversation.Completion.SkillsLoaded || len(u.attached.conversation.Completion.CopyTexts) != 1 {
 		t.Fatal("attachment binding discarded Conversation completion values")
 	}
-	if err := u.clearSessionPresentation(); err != nil {
-		t.Fatal(err)
-	}
+	replaceAppServerTestSession(t, u, "replacement")
 	if u.attached.conversation == previous || u.picker.State != &u.attached.conversation.Completion || u.picker.SkillsLoaded || len(u.picker.CopyTexts) != 0 {
 		t.Fatal("replacement retained old completion or copy choices")
 	}

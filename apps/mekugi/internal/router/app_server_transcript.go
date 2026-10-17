@@ -59,7 +59,7 @@ func (u *appServerUI) observeMessageQuestions(text observation.TextEvent, item o
 	}
 	in := conversationbinding.MessageQuestions(text, item, userText, text.Item.Ref.ThreadID == u.Thread, history)
 	if u.questions.NeedsParking(in) {
-		u.hideQuestions()
+		u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 	}
 	changes := u.questions.ObserveMessage(in)
 	if changes.Added != nil {

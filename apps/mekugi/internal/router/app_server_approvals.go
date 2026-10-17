@@ -345,7 +345,7 @@ func (u *appServerUI) openApprovals() bool {
 	if u.approvals.Open {
 		return true
 	}
-	u.hideQuestions()
+	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 	if a := u.pendingApprovals()[0]; a.DenialChoice() >= 0 {
 		u.shell.Main.PromptColumn = u.shell.Main.CursorColumn
 		u.promptEditor.Open(u.Editor, a.Editor)

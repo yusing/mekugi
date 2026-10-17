@@ -9,7 +9,7 @@ func (u *appServerUI) insertDraft(text string) {
 	u.shell.Main.CursorColumn = nil
 	u.setNotice("", false)
 	u.Editor.Insert(text)
-	u.pruneDraftImages()
+	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
 }
 
 func (u *appServerUI) deleteDraftRange(start, end int) {
@@ -32,5 +32,5 @@ func (u *appServerUI) removeDraft(start, end int, run composer.Run) {
 	}
 	u.setNotice("", false)
 	u.shell.Main.CursorColumn = nil
-	u.pruneDraftImages()
+	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
 }

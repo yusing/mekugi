@@ -20,6 +20,7 @@ import (
 	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
+	commandsegments "github.com/yusing/mekugi/modules/commandsegments/segments"
 
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
@@ -192,4 +193,13 @@ func (u *appServerUI) prepareCommandSegments(thread, workspace string, turn bind
 		}
 	}
 	return result
+}
+
+// releaseSegmentOutputs drops presentation retention without cancelling host reports.
+func releaseSegmentOutputs(attached *attachedPresentation, observer *commandsegments.Observer) {
+	for key, run := range attached.session.Commands() {
+		if run.Entry.Native.Invocation.ReleaseSegmentOutputs() {
+			observer.ReleaseOutput(key)
+		}
+	}
 }

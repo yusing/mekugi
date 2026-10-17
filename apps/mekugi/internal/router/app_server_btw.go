@@ -84,7 +84,7 @@ func (u *appServerUI) closeBTW() error {
 	u.side = nil
 	b.Close()
 	u.attached.conversation.Side = nil
-	u.pruneDraftImages()
+	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
 	return u.Requests.ReleaseSide(b)
 }
 

@@ -500,7 +500,7 @@ func TestAppServerCompactSteerInterruptsWaitingQuestion(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestTurn(t, u, "turn")
 	questionTestSync(t, u, "question", false)
-	u.hideQuestions()
+	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 	appServerTestKeys(t, u, "/compact\r")
 	requests := appServerTurnRequests(t, w)
 	found := false

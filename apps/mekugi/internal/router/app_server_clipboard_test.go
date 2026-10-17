@@ -60,7 +60,7 @@ func TestAppServerClipboardImage(t *testing.T) {
 				t.Fatalf("undoable image lost: %v", err)
 			}
 			u.UndoDrafts, u.RedoDrafts = nil, nil
-			u.pruneDraftImages()
+			pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
 			if _, err := os.Stat(path); !os.IsNotExist(err) {
 				t.Fatalf("unreferenced draft image remains: %v", err)
 			}
@@ -110,7 +110,7 @@ func TestAppServerPastedImagePathAttaches(t *testing.T) {
 			t.Fatalf("attachment and its space are not one undo: %q", u.Text)
 		}
 		u.UndoDrafts, u.RedoDrafts = nil, nil
-		u.pruneDraftImages()
+		pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
 		u.discardDraftImages()
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("pasted user file removed: %v", err)

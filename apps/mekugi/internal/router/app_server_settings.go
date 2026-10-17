@@ -316,7 +316,7 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 
 // Settings share the composer's bounded viewport, never the transcript.
 func (u *appServerUI) showSettingsPicker(command string, choices []string) {
-	u.cancelPickerScan()
+	u.picker.cancelScan()
 	p := &u.picker
 	u.openMenu("settings")
 	p.Target, p.Problem, p.Loading = completion.Target{}, "", u.modelsLoading

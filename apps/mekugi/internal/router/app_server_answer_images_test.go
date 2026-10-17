@@ -132,7 +132,7 @@ func TestQuestionImageLifetimeAcrossNavigationAndRetry(t *testing.T) {
 	u.attachImage(path)
 	u.insertSelection("message", "retry quote", "")
 	appServerTestKeys(t, u, "\r")
-	u.pruneDraftImages()
+	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
 	if _, err := os.Stat(path); err != nil {
 		t.Fatal("parked answer image reclaimed", err)
 	}
@@ -172,8 +172,8 @@ func TestQuestionSecretDraftKeepsImageWithoutExposingModelState(t *testing.T) {
 	questionTestPaint(t, u, 70)
 	path := answerImageFixture(t)
 	u.attachImage(path)
-	u.hideQuestions()
-	u.pruneDraftImages()
+	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
+	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
 	if _, err := os.Stat(path); err != nil {
 		t.Fatal("parked secret image reclaimed", err)
 	}

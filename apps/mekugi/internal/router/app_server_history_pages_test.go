@@ -205,11 +205,7 @@ func TestAppServerAnchoredHistoryTurnPagesAndIsolation(t *testing.T) {
 	if len(restoreContentRequests(t, wire)) != 7 {
 		t.Fatal("Activity key did not request older history")
 	}
-	if err := u.clearSessionPresentation(); err != nil {
-		t.Fatal(err)
-	}
-	u.Thread = "other"
-	u.startSession("other", u.attached.cwd)
+	replaceAppServerTestSession(t, u, "other")
 	restoreContentReply(t, u, 6, map[string]any{"data": []any{historyItem("first", "foreign history", 101000)}})
 	if len(u.attached.childSource.Entries) != 0 || u.historyLoading() != nil || len(slices.Collect(u.attached.session.Threads())) != 1 || u.attached.session.FindThread("other") == nil {
 		t.Fatal("late old session response leaked across thread switch")

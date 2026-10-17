@@ -531,7 +531,7 @@ func newNativePreview(t *testing.T) *nativePreview {
 }
 
 func (p *nativePreview) close() {
-	p.ui.cancelPickerScan()
+	p.ui.picker.cancelScan()
 	terminalTest(p.ui).Diff.Close()
 }
 

@@ -49,7 +49,7 @@ func (u *appServerUI) prepareComposerInput() bool {
 			u.setNotice(err.Error(), true)
 			return false
 		}
-		u.hideQuestions()
+		u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 	}
 	if intent := preparation.Approval; intent != nil {
 		if err := u.attached.presentation.ApprovalInput(*intent, u.approvals.Approvals); err != nil {

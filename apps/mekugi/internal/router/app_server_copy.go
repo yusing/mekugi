@@ -35,7 +35,7 @@ func (u *appServerUI) showCopyPicker() {
 		u.setNotice("No agent response to copy", true)
 		return
 	}
-	u.cancelPickerScan()
+	u.picker.cancelScan()
 	p := &u.picker
 	u.openMenu("copy")
 	p.Target, p.Problem, p.Loading = completion.Target{}, "", false

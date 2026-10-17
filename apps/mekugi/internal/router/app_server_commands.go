@@ -2,19 +2,13 @@ package router
 
 import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	"github.com/yusing/mekugi/backends/codex/binding"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/conversation/completion"
 
 	"slices"
-	"time"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
-
-	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
 )
 
 // Only commands implemented by the native shell belong in this catalog.
@@ -117,75 +111,6 @@ func (u *appServerUI) cancelQueuedCompact() bool {
 		u.setNotice("Queued compaction cancelled · input restored · Main continues", false)
 	}
 	return true
-}
-
-// Detach presentation only after the new host thread exists. Saved threads,
-// change evidence, and running children remain owned by Codex.
-func (u *appServerUI) clearSessionPresentation() error {
-	if err := u.closeBTW(); err != nil {
-		return err
-	}
-	if u.panes != nil {
-		u.paneError(u.panes.save(u.shell.Shell.Preferences(u.shell.Main), time.Now(), true))
-	}
-	u.cancelPickerScan()
-	roster := u.attached.session.Roster()
-	retired := make([]string, 0, len(roster))
-	for _, agent := range roster {
-		retired = append(retired, agent.Thread)
-	}
-	u.RetireThreads(u.Thread, retired...)
-	u.hideQuestions()
-	retainedQuestions := u.questionCalls()
-	if u.notifications != nil {
-		clear(u.notifications.blocked)
-	}
-	u.statusPanel = nil
-	u.attached.presentation.ClosePanel()
-	u.Requests.Retire("main") // Retire old-thread response correlation.
-	if err := u.Request("thread/unsubscribe", map[string]any{"threadId": u.Thread}); err != nil {
-		return err
-	}
-	u.picker = composerPicker{}
-	u.exitUsage = binding.TokenUsage{}
-	u.attached.feedback = noticepresentation.Model{}
-	u.shell.Main.NoticeDetails, u.shell.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
-	for key, run := range u.attached.session.Commands() {
-		if run.Entry.Native.Invocation.ReleaseSegmentOutputs() {
-			u.execTrack.ReleaseOutput(key)
-		}
-	}
-	waiting := u.attached.conversation
-	u.attached.session.Retire()
-	workspace := u.attached.cwd
-	u.attached = newAttachedPresentation(u.presentationState, u.conversationState, u.observations)
-	u.attached.cwd = workspace
-	u.attached.conversation.CarryInput(waiting)
-	u.bindConversation()
-	u.questions = nativeQuestionDock{Questions: &u.attached.conversation.Questions}
-	for _, c := range retainedQuestions {
-		if c.Sudo != nil && !c.Resolved {
-			u.addQuestions(c, true)
-		}
-	}
-	painter := u.shell.Transcript.Painter
-	u.shell.Transcript = activityui.NewView()
-	u.shell.Transcript.Painter, u.shell.Transcript.Conversation = painter, true
-	if u.shell.Agents != nil {
-		painter = u.shell.Agents.Painter
-		u.shell.Agents = u.terminalViews.NewThreadView()
-		u.shell.Agents.Painter = painter
-		u.shell.Agents.ChildrenOnly, u.shell.Agents.Bare = true, true
-	}
-	u.attached.source, u.attached.childSource = nil, nil
-	u.attachPresentation()
-	if u.shell != nil {
-		u.shell.Selection = nil
-		u.detailFiles.closeOutput(&u.attached.session, u.shell)
-		u.shell.Focus = 0
-		u.shell.StopDrag()
-	}
-	return nil
 }
 
 // resetDiffScope starts the saved Diff over for a resumed root thread; its

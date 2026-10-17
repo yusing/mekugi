@@ -31,7 +31,7 @@ func (u *appServerUI) searchExcludedFiles(target completion.Target, cwd string) 
 	if p.scanCancel != nil && p.scanTarget == target && p.scanCwd == cwd {
 		return
 	}
-	u.cancelPickerScan()
+	u.picker.cancelScan()
 	if p.scanResults == nil {
 		p.scanResults = make(chan pickerScanResult, 1)
 	}
@@ -62,11 +62,11 @@ func (u *appServerUI) searchExcludedFiles(target completion.Target, cwd string) 
 	}()
 }
 
-func (u *appServerUI) cancelPickerScan() {
-	if u.picker.scanCancel != nil {
-		u.picker.scanCancel()
-		u.picker.scanCancel = nil
-		u.picker.scanID++
+func (p *composerPicker) cancelScan() {
+	if p.scanCancel != nil {
+		p.scanCancel()
+		p.scanCancel = nil
+		p.scanID++
 	}
 }
 

@@ -3,6 +3,8 @@ package router
 import (
 	"os"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -22,24 +24,25 @@ func (u *appServerUI) loadDraft(d conversationmodel.Input) { u.Editor.Replace(d.
 func (u *appServerUI) recordDraft() {
 	u.Editor.Record()
 	u.setNotice("", false)
-	u.pruneDraftImages()
+	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
 }
 
 // Images referenced by undo/redo remain usable. Submission transfers file
 // lifetime to Codex; only this session's never-submitted files are reclaimed.
-func (u *appServerUI) pruneDraftImages() {
+func pruneDraftImages(owned map[string]bool, editor *composer.Editor, conversation *conversationmodel.Session, questions *nativeQuestionDock, approvals *nativeApprovalDock, prompts *terminalsession.Prompts, side *sessioncontrol.Side) {
 	used := make(map[string]bool)
-	for _, image := range u.Images {
+	for _, image := range editor.Images {
 		used[image.Path] = true
 	}
-	if u.side != nil {
-		for _, image := range u.side.Pending.Images {
+	if side != nil {
+		for _, image := range side.Pending.Images {
 			used[image.Path] = true
 		}
 	}
-	stacks := [][]composer.Undo{u.UndoDrafts, u.RedoDrafts}
-	for _, call := range u.questionCalls() {
-		for _, e := range u.shell.Prompts.SecretState(call.ID).Editors {
+	stacks := [][]composer.Undo{editor.UndoDrafts, editor.RedoDrafts}
+	for _, c := range questions.Calls {
+		call := questions.handles[c]
+		for _, e := range prompts.SecretState(call.ID).Editors {
 			stacks = append(stacks, e.UndoDrafts, e.RedoDrafts, []composer.Undo{e.Snapshot})
 		}
 		for _, question := range call.Questions {
@@ -47,12 +50,12 @@ func (u *appServerUI) pruneDraftImages() {
 			stacks = append(stacks, e.UndoDrafts, e.RedoDrafts, []composer.Undo{e.Snapshot})
 		}
 	}
-	if u.activeQuestionCall() != nil {
-		e := u.promptEditor.Parked
+	if questions.handles[questions.Active] != nil {
+		e := conversation.PromptEditor.Parked
 		stacks = append(stacks, e.UndoDrafts, e.RedoDrafts, []composer.Undo{e.Snapshot})
 	}
-	if u.approvals.Open && u.pendingApprovals()[0].DenialChoice() >= 0 {
-		e := u.promptEditor.Parked
+	if approvals.Open && approvals.handles[approvals.Pending[0]].DenialChoice() >= 0 {
+		e := conversation.PromptEditor.Parked
 		stacks = append(stacks, e.UndoDrafts, e.RedoDrafts, []composer.Undo{e.Snapshot})
 	}
 	for _, stack := range stacks {
@@ -64,7 +67,7 @@ func (u *appServerUI) pruneDraftImages() {
 			}
 		}
 	}
-	for _, history := range [][]composer.Draft{u.attached.conversation.Editor.InputHistory, {u.HistoryDraft}, conversationmodel.Drafts(u.attached.conversation.Unsent), conversationmodel.Drafts(u.attached.conversation.Queued)} {
+	for _, history := range [][]composer.Draft{conversation.Editor.InputHistory, {editor.HistoryDraft}, conversationmodel.Drafts(conversation.Unsent), conversationmodel.Drafts(conversation.Queued)} {
 		for _, snapshot := range history {
 			for _, path := range snapshot.AnswerImages {
 				used[path] = true
@@ -74,10 +77,10 @@ func (u *appServerUI) pruneDraftImages() {
 			}
 		}
 	}
-	for path := range u.ownedImages {
+	for path := range owned {
 		if !used[path] {
 			_ = os.Remove(path)
-			delete(u.ownedImages, path)
+			delete(owned, path)
 		}
 	}
 }

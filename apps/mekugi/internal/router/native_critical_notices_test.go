@@ -257,9 +257,7 @@ func TestNativeCleanupNoticeTranscriptReplacement(t *testing.T) {
 			if got := len(u.issues.Notices.Pending()); (got == 0) != delivered {
 				t.Fatalf("initial delivery: pending=%d delivered=%t", got, delivered)
 			}
-			if err := u.clearSessionPresentation(); err != nil {
-				t.Fatal(err)
-			}
+			replaceAppServerTestSession(t, u, "replacement")
 			u.Thread = "replacement"
 			retry := u.applyCriticalNotices()
 			if delivered {

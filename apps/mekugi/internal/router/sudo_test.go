@@ -195,13 +195,11 @@ func TestSudoSecretEditorAndSessionSwitch(t *testing.T) {
 	if _, err := u.key("\x07"); err != nil || u.Text != "fixture-secret" {
 		t.Fatalf("secret editor dispatch: %v", err)
 	}
-	u.hideQuestions()
+	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 	if u.shell.Prompts.Secret.Text != "" || u.Editor != &u.attached.conversation.Editor {
 		t.Fatal("hiding authentication did not return to the ordinary editor")
 	}
-	if err := u.clearSessionPresentation(); err != nil {
-		t.Fatal(err)
-	}
+	replaceAppServerTestSession(t, u, "replacement")
 	if u.questions.Questions == questions || len(u.questions.Calls) != 1 || u.questions.Calls[0] != call {
 		t.Fatal("local authentication did not retain identity in its replacement owner")
 	}

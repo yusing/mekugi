@@ -65,7 +65,7 @@ func (u *appServerUI) applyMenuAction(action sessionpresentation.MenuAction) boo
 			p.Dismissed, p.Open = p.Target, false
 			p.Kind, p.Choices, p.CopyTexts = "", nil, nil
 			u.picker.Setting = ""
-			u.cancelPickerScan()
+			u.picker.cancelScan()
 		}
 		return true
 	case sessionpresentation.MenuAccept:

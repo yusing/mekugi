@@ -22,7 +22,7 @@ func TestQuestionQueuedSteerIsNotStillActionable(t *testing.T) {
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "3Customers only\r")
 	request := appServerOneRequest(t, wire, "turn/steer", u.attached.conversation.Submitted[u.Submission().ID].Text)
-	u.hideQuestions()
+	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 	if u.questionCount() != 1 || u.questionCalls()[0].Resolved || !u.questionCalls()[0].Sent {
 		t.Fatalf("sent answer and separate unanswered question confused: count=%d call=%+v", u.questionCount(), u.questionCalls()[0])
 	}
@@ -67,7 +67,7 @@ func TestQuestionRejectedQueuedSteerReopensDockWithDraft(t *testing.T) {
 	if u.questionCount() != 1 || u.questionCalls()[0].Sent || u.questionCalls()[0].Resolved {
 		t.Fatal("rejected answer did not become actionable again")
 	}
-	u.hideQuestions()
+	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 	if rows := strings.Join(testQuestionRows(u, 80, 10), "\n"); !strings.Contains(rows, "main asks 1 questions") {
 		t.Fatalf("reopened question missing from dock: %q", rows)
 	}

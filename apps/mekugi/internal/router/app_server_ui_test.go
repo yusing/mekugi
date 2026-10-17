@@ -506,3 +506,20 @@ func (u *appServerUI) startSession(thread, workspace string) {
 	u.retainedSession.Close()
 	u.retainedSession = history.Session{}
 }
+
+func replaceAppServerTestSession(t *testing.T, u *appServerUI, thread string) {
+	t.Helper()
+	u.Replacement.Clear()
+	appServerTestRequest(t, u, `"replacement-test"`, "thread/start")
+	result, err := json.Marshal(map[string]any{
+		"id": "replacement-test",
+		"result": map[string]any{
+			"thread": map[string]any{"id": thread, "cwd": u.attached.cwd},
+			"model":  u.model, "reasoningEffort": u.reasoningEffort, "serviceTier": u.serviceTier,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	appServerTestMessage(t, u, string(result))
+}
