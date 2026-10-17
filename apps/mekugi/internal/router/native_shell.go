@@ -275,7 +275,7 @@ func (u *appServerUI) transcriptView() *activityAdapter {
 // optional saved Diff on the right, a caller-local live dock, the fitted roster
 // below, and a status bar for the focused pane.
 func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
-	u.main.promptRect = terminalsession.Rect{}
+	u.main.mainView.PromptRect = terminalsession.Rect{}
 	width, height := max(1, u.width), max(1, u.height)
 	now := u.main.now()
 	u.agents.FeedOnly, u.agents.Focused = true, u.Focus == 3
@@ -396,7 +396,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	// Composing Main does not show a prompt covered by a dialog or frozen selection.
-	prompt := u.main.promptRect
+	prompt := u.main.mainView.PromptRect
 	prompt.H = min(prompt.H, max(0, l.Main.H-prompt.Y))
 	prompt.X, prompt.Y = prompt.X+l.Main.X, prompt.Y+l.Main.Y
 	visible := prompt.W > 0 && prompt.H > 0 && u.output == nil

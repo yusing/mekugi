@@ -1,4 +1,5 @@
-package router
+// Source: apps/mekugi/internal/router/app_server_keybindings.go:10:108@[ce8700a8].
+package terminalsession
 
 import (
 	"strings"
@@ -7,7 +8,7 @@ import (
 	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
-func renderNativeKeybindings(width, height int) []string {
+func Keybindings(width, height int) []string {
 	const bold = "\x1b[1m"
 	const blue = "\x1b[38;2;80;155;225m"
 	groups := []struct {

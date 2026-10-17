@@ -7,16 +7,15 @@ import (
 	"strings"
 	"time"
 
-	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
-
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/binding"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/backends/codex/appserver"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
-
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-
-	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
 // Busy input follows Codex's composer queue: Enter steers the running turn,
@@ -53,7 +52,7 @@ func (u *appServerUI) takeDraft() conversationmodel.Input {
 	u.bindSkills(&d, true)
 	d.SnapshotFiles(u.session.cwd)
 	u.snapshotDraftSkills(&d)
-	u.cursorColumn = nil
+	u.mainView.CursorColumn = nil
 	return d
 }
 
@@ -70,7 +69,7 @@ func (u *appServerUI) restoreDrafts(parts ...conversationmodel.Input) {
 		c, index := u.activeQuestionCall(), u.questions.Index
 		u.hideQuestions()
 		u.restoreDrafts(parts...)
-		u.promptColumn = u.cursorColumn
+		u.mainView.PromptColumn = u.mainView.CursorColumn
 		u.promptEditor.Open(u.Editor, composer.State{})
 		u.questions.Active, u.questions.Index = c.Call, index
 		u.resumeQuestion(u.currentQuestion())
@@ -80,7 +79,7 @@ func (u *appServerUI) restoreDrafts(parts ...conversationmodel.Input) {
 		return
 	}
 	u.Editor.Restore(conversationmodel.Drafts(parts)...)
-	u.cursorColumn = nil
+	u.mainView.CursorColumn = nil
 }
 
 // editQueued returns all locally waiting input to the composer as one stack.
@@ -188,7 +187,7 @@ func (u *appServerUI) send(parts []conversationmodel.Input, steer bool) error {
 		if len(binding.QuestionReplies(s.Text)) == 0 {
 			s.Echo = u.view.LastSeq + 1
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: s.Echo, Agent: "You", Kind: "text", Text: s.Text, Observed: u.now(),
-				native: &liveActivityNativeItem{thread: u.Thread, item: fmt.Sprintf("input/%d", s.Echo), phase: "input/pending", spans: draftDisplaySpans(s.Draft)}}}})
+				native: &liveActivityNativeItem{thread: u.Thread, item: fmt.Sprintf("input/%d", s.Echo), phase: "input/pending", spans: terminalsession.DraftSpans(s.Draft)}}}})
 		}
 	}
 	for _, image := range s.Images {

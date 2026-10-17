@@ -88,7 +88,7 @@ func TestNativePromptSelectionVisibility(t *testing.T) {
 				} else {
 					approvalTestCommand(t, u, "selected-prompt", nil)
 				}
-				x, y := u.composerRect.X+2, u.composerRect.Y
+				x, y := u.mainView.ComposerRect.X+2, u.mainView.ComposerRect.Y
 				if covering {
 					x, y = u.view.FeedLeft+1, u.view.FeedTop
 				}
@@ -136,8 +136,8 @@ func TestUISnapshotNativePromptsTinyFrame(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { u.shell.diffScreen.Close() })
-			if u.composerRect.H < 1 || u.composerRect.Y+u.composerRect.H > u.shell.layout.Main.H {
-				t.Fatalf("prompts displaced the composer: composer=%+v Main=%+v", u.composerRect, u.shell.layout.Main)
+			if u.mainView.ComposerRect.H < 1 || u.mainView.ComposerRect.Y+u.mainView.ComposerRect.H > u.shell.layout.Main.H {
+				t.Fatalf("prompts displaced the composer: composer=%+v Main=%+v", u.mainView.ComposerRect, u.shell.layout.Main)
 			}
 			if len(u.pendingApprovals()) != 1 || u.questionCount() != 1 {
 				t.Fatal("a short terminal discarded pending prompts")

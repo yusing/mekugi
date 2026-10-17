@@ -46,7 +46,7 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	}
 	before := u.feedback.Text
 
-	rect := u.noticeDetails
+	rect := u.mainView.NoticeDetails
 	if rect.W == 0 {
 		t.Fatal("router batch has no details target")
 	}
@@ -200,7 +200,7 @@ func TestNativeCriticalNoticeComposerVisibility(t *testing.T) {
 			u.mainFrame(80, height, 0)
 			delivery.finish(true)
 			if state == "compact" {
-				if u.mainContentPainted || len(u.issues.Notices.Pending()) != 0 {
+				if u.mainView.ContentPainted || len(u.issues.Notices.Pending()) != 0 {
 					t.Fatal("compact composer did not deliver independently of transcript")
 				}
 				return
@@ -279,7 +279,7 @@ func TestNativeCriticalNoticeMixedBatchDismissal(t *testing.T) {
 	if pending := u.issues.Notices.Pending(); len(pending) != 1 || !strings.Contains(pending[0], "cleanup progress") {
 		t.Fatalf("mixed batch acknowledged the wrong surface: %v", pending)
 	}
-	u.composerNoticeMouse(0, u.noticeDismiss.X, u.noticeDismiss.Y, false)
+	u.composerNoticeMouse(0, u.mainView.NoticeDismiss.X, u.mainView.NoticeDismiss.Y, false)
 	retry := u.applyCriticalNotices()
 	if u.feedback.Text != "" || len(u.view.Entries) != 1 {
 		t.Fatal("dismissed error returned or progress duplicated")

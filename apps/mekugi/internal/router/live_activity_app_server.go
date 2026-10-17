@@ -2,23 +2,24 @@ package router
 
 import (
 	"encoding/json/jsontext"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	json "encoding/json/v2"
 	"fmt"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
-	"github.com/yusing/mekugi/backends/codex/binding"
-
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-
-	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
@@ -122,7 +123,7 @@ func appServerUserText(content jsontext.Value) (string, []activitypresentation.T
 	}
 	draft := conversationmodel.Input{Text: text}
 	draft.Skills = unambiguousSkillBindings(text, composerContentSkills(contents), spans)
-	for _, span := range draftDisplaySpans(draft.Draft) {
+	for _, span := range terminalsession.DraftSpans(draft.Draft) {
 		if !slices.ContainsFunc(spans, func(existing activitypresentation.TextSpan) bool {
 			return span.Start < existing.End && span.End > existing.Start
 		}) {

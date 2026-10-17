@@ -3,20 +3,14 @@ package router
 import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	"github.com/yusing/mekugi/libraries/terminalui"
-	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
-	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
 
 	json "encoding/json/v2"
 	"strings"
-	"time"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
-
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // The adapter retains terminal interaction state and the host correlation owner.
@@ -344,19 +338,4 @@ func (u *appServerUI) btwKey(key string) (bool, error) {
 		return true, nil
 	}
 	return false, nil
-}
-
-func (u *appServerUI) btwRows(width, height int) []string {
-	b := u.btw
-	if b == nil || height < 1 {
-		return nil
-	}
-	status := textsanitize.Safe(b.Status, false)
-	if (b.Busy || b.Starting) && b.Status == "Answering" && !b.Alert && !b.Started.IsZero() {
-		elapsed := max(time.Duration(0), u.now().Sub(b.Started))
-		status = activityui.ReasoningShimmer("Answering", elapsed, u.view.Painter.Colors) + terminalui.Dim + " · " + activityui.FormatDuration(elapsed) + terminalui.Reset
-	}
-	frame := conversationui.Side(b.View(), &u.view.Painter.Painter, status, width, height, b.scroll)
-	b.copyAnswer, b.rows, b.scroll = frame.CopyAnswer, frame.AnswerRows, frame.Scroll
-	return frame.Rows
 }

@@ -375,13 +375,13 @@ func TestComposerPickerDoesNotMarkCoveredTranscriptPainted(t *testing.T) {
 	appServerTestKeys(t, u, "@f")
 	for _, height := range []int{6, 24} {
 		frame, _ := u.mainFrame(80, height, 0)
-		if !strings.Contains(strings.Join(frame, "\n"), "loading...") || u.mainContentPainted {
+		if !strings.Contains(strings.Join(frame, "\n"), "loading...") || u.mainView.ContentPainted {
 			t.Fatalf("height %d: covered transcript acknowledged", height)
 		}
 	}
 	u.pickerKey("\x1b")
 	u.mainFrame(80, 24, 0)
-	if !u.mainContentPainted {
+	if !u.mainView.ContentPainted {
 		t.Fatal("dismissal did not restore transcript presentation")
 	}
 }

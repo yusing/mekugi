@@ -216,7 +216,7 @@ func TestAppServerComposerKeepsWorkingDuringReasoning(t *testing.T) {
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "r", "delta": "**Checking layout**"})
 	for _, dock := range []int{0, 3} {
 		frame, dockRect := u.mainFrame(70, 12, dock)
-		border := u.composerRect.Y - 1
+		border := u.mainView.ComposerRect.Y - 1
 		if len(frame) != 12 || !strings.Contains(ansi.Strip(frame[border]), "◐ Working") || strings.Contains(ansi.Strip(frame[border]), "Checking layout") || dockRect.Y+dockRect.H != border-1 || frame[border-1] != "" {
 			t.Fatalf("reasoning replaced Working: dock=%d frame=%q", dock, frame)
 		}
@@ -226,7 +226,7 @@ func TestAppServerComposerKeepsWorkingDuringReasoning(t *testing.T) {
 		if len(frame) != size[1] {
 			t.Fatalf("height overflow: %q", frame)
 		}
-		for _, row := range frame[u.composerRect.Y:] {
+		for _, row := range frame[u.mainView.ComposerRect.Y:] {
 			if ansi.StringWidth(row) > size[0] {
 				t.Fatalf("width overflow: %q", row)
 			}

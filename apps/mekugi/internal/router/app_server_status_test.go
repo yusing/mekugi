@@ -208,7 +208,7 @@ func TestAppServerStatusPanelCloseScrollAndLateResponse(t *testing.T) {
 						t.Fatalf("overflow at %d: %q", width, row)
 					}
 				}
-				if u.mainContentPainted {
+				if u.mainView.ContentPainted {
 					t.Fatal("covered transcript acknowledged")
 				}
 			}

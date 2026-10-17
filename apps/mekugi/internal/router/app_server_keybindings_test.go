@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	terminalsession "github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -60,7 +61,7 @@ func TestNativeUIKeybindingsPaintAndEscape(t *testing.T) {
 	if !strings.Contains(screen.String(), "Keyboard shortcuts") || !strings.Contains(screen.String(), "External editor") {
 		t.Fatal(screen.String())
 	}
-	if u.mainContentPainted {
+	if u.mainView.ContentPainted {
 		t.Fatal("hidden transcript must not be marked painted")
 	}
 	for _, size := range [][2]int{{1, 1}, {12, 5}, {40, 24}} {
@@ -87,7 +88,7 @@ func TestNativeUIKeybindingsPaintAndEscape(t *testing.T) {
 	if u.keybindings || strings.Contains(screen.String(), "Keyboard shortcuts") {
 		t.Fatal("help not dismissed")
 	}
-	if !u.mainContentPainted {
+	if !u.mainView.ContentPainted {
 		t.Fatal("visible transcript must be marked painted")
 	}
 	if err := u.shell.key('?'); err != nil {
@@ -101,7 +102,7 @@ func TestNativeUIKeybindingsPaintAndEscape(t *testing.T) {
 func TestUISnapshotNativeUIKeybindingsColumns(t *testing.T) {
 	for _, width := range []int{40, 100, 140} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
-			frame := renderNativeKeybindings(width, 40)
+			frame := terminalsession.Keybindings(width, 40)
 			for _, row := range frame {
 				if ansi.StringWidth(row) > width {
 					t.Fatalf("width %d: overflowing row %q", width, row)

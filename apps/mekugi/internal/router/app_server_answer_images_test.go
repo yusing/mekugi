@@ -2,6 +2,9 @@ package router
 
 import (
 	"bytes"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	json "encoding/json/v2"
 	"fmt"
 	"image"
@@ -12,10 +15,9 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
-
-	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 )
 
 func answerImageFixture(t *testing.T) string {
@@ -41,7 +43,7 @@ func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 	questionTestPaint(t, u, 70)
 	first, second := answerImageFixture(t), answerImageFixture(t)
 	appServerTestKeys(t, u, "\x1b[200~"+first+"\x1b[201~")
-	if u.Text != "[Image 1] " || len(u.Images) != 1 || len(draftDisplaySpans(u.draftSnapshot().Draft)) != 1 {
+	if u.Text != "[Image 1] " || len(u.Images) != 1 || len(terminalsession.DraftSpans(u.draftSnapshot().Draft)) != 1 {
 		t.Fatalf("answer did not reuse composer: %q %+v", u.Text, u.Images)
 	}
 	u.insertSelection("message", "first quote", "")

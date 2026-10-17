@@ -46,8 +46,8 @@ func (u *appServerUI) pickerSelection() string {
 func (u *appServerUI) skillsModalFrame(width, height int) []string {
 	ph := min(height, u.pickerHeight(width))
 	frame := make([]string, height)
-	u.mainContentPainted = false
-	u.composerRect = terminalsession.Rect{}
+	u.mainView.ContentPainted = false
+	u.mainView.ComposerRect = terminalsession.Rect{}
 	if height > ph {
 		copy(frame, u.transcriptView().Render(width, height-ph, u.now()))
 	}

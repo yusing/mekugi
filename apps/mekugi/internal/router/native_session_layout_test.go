@@ -156,7 +156,7 @@ func TestNativeUIComposerGap(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.Text = "draft"
 	rows, _ := u.mainFrame(80, 24, 0)
-	border := u.composerRect.Y - 1
+	border := u.mainView.ComposerRect.Y - 1
 	if len(rows) != 24 || strings.TrimSpace(ansi.Strip(rows[border-1])) != "" {
 		t.Fatalf("composer not separated: %q", rows)
 	}

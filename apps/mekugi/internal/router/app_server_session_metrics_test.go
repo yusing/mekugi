@@ -2,6 +2,9 @@ package router
 
 import (
 	"encoding/base64"
+
+	terminalsession "github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	json "encoding/json/v2"
 	"fmt"
 	"net/http"
@@ -10,13 +13,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
-	"github.com/yusing/mekugi/contracts/inference"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/contracts/inference"
+	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/persistence"
+
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
@@ -278,7 +280,7 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 func TestUISnapshotNativeSessionShortcuts(t *testing.T) {
 	for _, width := range []int{40, 140} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
-			assertNativeUISnapshot(t, fmt.Sprintf("native-session-shortcuts-%d", width), renderNativeKeybindings(width, 40))
+			assertNativeUISnapshot(t, fmt.Sprintf("native-session-shortcuts-%d", width), terminalsession.Keybindings(width, 40))
 		})
 	}
 }

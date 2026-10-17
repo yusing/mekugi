@@ -13,8 +13,6 @@ import (
 
 	"github.com/yusing/mekugi/modules/conversation/completion"
 
-	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
-
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
@@ -43,9 +41,6 @@ import (
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
-	"github.com/charmbracelet/x/ansi"
-	"github.com/rivo/uniseg"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/shellhook"
@@ -67,6 +62,7 @@ import (
 )
 
 type appServerUI struct {
+	mainView terminalsession.Main
 	*composer.Editor
 	secretEditor composer.Editor
 	feedback     noticepresentation.Model
@@ -88,7 +84,6 @@ type appServerUI struct {
 	btw                     *appServerBTW
 	notifications           *nativeNotifications
 	promptEditor            *prompt.Editor
-	promptColumn            *int
 	questions               nativeQuestionDock
 	approvals               nativeApprovalDock
 	approvalMode            bool // Codex's configured policy applies, not --yolo's.
@@ -119,13 +114,9 @@ type appServerUI struct {
 	quitRequested           bool
 	archived                bool
 	interruptLocked         bool
-	mainContentPainted      bool
-	promptRect              terminalsession.Rect
 	exitUsage               appServerTokenUsage
 	resumeArgv              []string
 	replayDebugDirectory    string
-	noticeDetails           terminalsession.Rect // Truncated composer error, relative to Main.
-	noticeDismiss           terminalsession.Rect // Check button, relative to Main.
 	model, reasoningEffort  string
 	serviceTier             string
 	serviceTiers            *inferencegateway.Tiers // Invocation defaults and confirmed thread/model choices.
@@ -135,9 +126,6 @@ type appServerUI struct {
 	settingsChoices         string
 	requests                *sessioncontrol.Requests[appServerRequest]
 	retiredThreads          map[string]string
-	composerRect            terminalsession.Rect // Visible draft text, relative to Main.
-	composerWidth           int
-	cursorColumn            *int
 	ownedImages             map[string]bool
 	pasted                  []byte // Non-nil while collecting an admitted, already-framed paste.
 	dirty                   bool
@@ -1238,7 +1226,7 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 // mainFrame is the transcript above a boxed composer. The top border carries
 // the session state; the bottom border the model. dock rows are left blank
 // between the two, in the returned rectangle, for the live edit dock.
-func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, dockRect terminalsession.Rect) {
+func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalsession.Rect) {
 	transcript := u.transcriptView()
 	readOnly := u.agents != nil && u.agents.displayingChild()
 	u.autoOpenApprovals()
@@ -1246,7 +1234,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	presentation := u.mainPresentation(u.now())
 	width, height = max(1, width), max(1, height)
 	u.picker.rect = terminalsession.Rect{}
-	u.noticeDetails, u.noticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
+	u.mainView.NoticeDetails, u.mainView.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
 	u.questions.rect = terminalsession.Rect{}
 	if !readOnly && u.statusPanel != nil {
 		return u.statusPanelFrame(width, height), terminalsession.Rect{}
@@ -1257,225 +1245,52 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	if u.pickerVisible() && u.picker.modal != "" {
 		return u.skillsModalFrame(width, height), terminalsession.Rect{}
 	}
-	boxed := width >= 12 && height >= 3
-	borderRows, inset := 0, min(2, width-1)
-	if boxed {
-		borderRows, inset = 2, 5
+	in := terminalsession.MainInput{
+		Session: presentation, Draft: u.Draft, Now: u.now(), ReadOnly: readOnly,
+		Focused: u.shell == nil || u.shell.Focus == 0, Empty: len(transcript.Entries) == 0,
+		Picker: u.pickerVisible(), Welcome: u.welcome(), Selection: u.pickerSelection(), TurnIdle: u.Turn == "",
 	}
-	textWidth := width - inset
-	u.composerWidth = textWidth
-	draft, points := u.draftLayout()
-	if presentation.Status.ShellMode {
-		u.paintShellDraft(draft)
+	if q := u.currentQuestion(); q != nil {
+		in.Question, in.Secret, in.QuestionLayout = true, q.IsSecret, u.questionLayout(q)
 	}
-	if q := u.currentQuestion(); q != nil && q.IsSecret {
-		for i, line := range draft {
-			draft[i] = strings.Repeat("•", ansi.StringWidth(line))
-		}
+	if presentation.Approvals.Count > 0 {
+		in.ApprovalLayout = &u.approvals.handles[u.approvals.Pending[0]].layout
+		in.ApprovalAgent = u.approvalAgent(presentation.Approvals.Approval.Thread)
 	}
-	caret := points[len(points)-1]
-	for _, point := range points {
-		if point.Offset == u.Cursor() {
-			caret = point
-			break
-		}
+	if b := u.btw; b != nil {
+		in.Side = &terminalsession.SideInput{View: b.View(), Running: b.Busy || b.Starting, Scroll: b.scroll}
 	}
-	if readOnly {
-		draft = []string{""}
-		caret.Row, caret.Column = 0, 0
-	}
-	if dock == 0 && len(transcript.Entries) == 0 && height >= 6 && height > min(6, len(draft))+borderRows && !u.pickerVisible() {
-		height--
-		defer func() {
-			frameRows = append([]string{ansi.Truncate(u.welcome(), max(1, width), "…")}, frameRows...)
-			dockRect.Y++
-			u.composerRect.Y++
-			u.promptRect.Y++
-			u.noticeDetails.Y++
-			u.noticeDismiss.Y++
-			if u.btw != nil && u.btw.rect.H > 0 {
-				u.btw.rect.Y++
-			}
-			transcript.FeedTop++
-		}()
-	}
-	visible := min(6, height-borderRows)
-	firstRow := max(0, caret.Row-visible+1)
-	draft = draft[firstRow:min(len(draft), firstRow+visible)]
-
-	room := max(0, height-len(draft)-borderRows)
-	var pending []string
-	var approvalRows, questionRows, btwRows []string
-	if !readOnly {
-		if d := presentation.Approvals; d.Count > 0 {
-			a := u.approvals.handles[u.approvals.Pending[0]]
-			approvalRows = conversationui.Approvals(d, &u.view.Painter.Painter, &a.layout, u.pickerSelection(), u.approvalAgent(d.Approval.Thread), width, min(height/2, room))
-		}
-	}
-	if len(approvalRows) > 0 {
-		dock = 0
-		room -= len(approvalRows)
-	}
-	if !readOnly {
-		questionRows = conversationui.Questions(presentation.Questions, &u.view.Painter.Painter, u.questionLayout(u.currentQuestion()), u.pickerSelection(), u.Turn == "" && u.Text != "", width, min(height/2, room))
-	}
-	if len(questionRows) > 0 {
-		dock = 0
-		room -= len(questionRows)
-	}
-	if !readOnly {
-		btwRows = u.btwRows(width, max(0, min(height/2, room)))
-	}
-	if len(btwRows) > 0 {
-		dock = 0
-		room -= len(btwRows)
-	}
-	if u.pickerVisible() {
-		dock = 0
-	} else if !readOnly {
-		// Waiting input yields to the transcript beyond half the room.
-		pending = conversationui.Pending(presentation.Pending, width)
-		pending = pending[:min(len(pending), room/2)]
-		room -= len(pending)
-	}
-	// Reserve a blank row immediately above the composer, including below
-	// pending input or a live dock.
-	gap := 0
-	if !u.pickerVisible() && room > 2 {
-		gap = 1
-		room--
-	}
-	dock = min(dock, room)
-	room -= dock
-	u.mainContentPainted = room > 1
-	transcript.Conversation, transcript.FeedOnly, transcript.StatusLabel = true, true, textsanitize.Safe(sessionStatusText(presentation.Status.State), false)
-	var frame []string
+	frame := u.mainView.Layout(in, &u.view.Painter, width, height, dock)
+	transcript.Conversation, transcript.FeedOnly, transcript.StatusLabel = true, true, textsanitize.Safe(terminalsession.StatusText(presentation.Status.State), false)
 	transcript.FeedRows = 0
 	transcript.FeedQuestions, transcript.FeedSnippets = nil, nil
-	if room > 0 {
-		frame = transcript.Render(width, room, u.now())
-		for row := range frame {
-			frame[row] = terminalui.AttachCopy(frame[row], transcript.CopyRows[row])
+	if room := frame.Feed.H; room > 0 {
+		rows := transcript.Render(width, room, in.Now)
+		for row := range rows {
+			rows[row] = terminalui.AttachCopy(rows[row], transcript.CopyRows[row])
 		}
-		if !readOnly && u.keybindings && (u.shell == nil || u.shell.Focus == 0) {
-			u.mainContentPainted = false
-			frame = renderNativeKeybindings(width, room)
+		if !readOnly && u.keybindings && in.Focused {
+			u.mainView.ContentPainted = false
+			rows = terminalsession.Keybindings(width, room)
 		}
-		if u.pickerVisible() {
-			u.mainContentPainted = false
+		if in.Picker {
+			u.mainView.ContentPainted = false
 			popupHeight := min(room, u.pickerHeight(width))
 			popup := u.renderPicker(width, popupHeight)
-			u.picker.rect = terminalsession.Rect{0, len(frame) - popupHeight, width, popupHeight}
-			copy(frame[len(frame)-popupHeight:], popup)
+			u.picker.rect = terminalsession.Rect{0, frame.Feed.Y + len(rows) - popupHeight, width, popupHeight}
+			copy(rows[len(rows)-popupHeight:], popup)
+		}
+		copy(frame.Rows[frame.Feed.Y:], rows)
+	}
+	transcript.FeedTop += frame.Feed.Y
+	u.questions.rect = frame.Questions
+	if b := u.btw; b != nil {
+		b.rect = frame.SideRect
+		if !readOnly && frame.Side.Rows != nil {
+			b.copyAnswer, b.rows, b.scroll = frame.Side.CopyAnswer, frame.Side.AnswerRows, frame.Side.Scroll
 		}
 	}
-	dockAt := len(frame)
-	frame = append(frame, make([]string, dock)...)
-	frame = append(frame, pending...)
-	if u.btw != nil {
-		u.btw.rect = terminalsession.Rect{2, len(frame) + 1, max(0, width-2), max(0, len(btwRows)-2)}
-	}
-	frame = append(frame, btwRows...)
-	u.questions.rect = terminalsession.Rect{0, len(frame), width, len(questionRows)}
-	if u.activeQuestionCall() != nil {
-		u.promptRect = u.questions.rect
-	}
-	frame = append(frame, questionRows...)
-	if u.approvals.Open {
-		u.promptRect = terminalsession.Rect{0, len(frame), width, len(approvalRows)}
-	}
-	frame = append(frame, approvalRows...)
-	frame = append(frame, make([]string, gap)...)
-	// Visual reference: Grok CLI PromptStyle / PromptWidget::draw, source
-	// crates/codegen/xai-grok-pager/src/views/prompt_widget/mod.rs:217:240,3007:3078
-	// @be7ce6e8cffe46d20bef9834b211616082ee866b. Keep continuation rows aligned.
-	// Colors: xai-grok-pager-render/src/theme/oscura.rs, same revision.
-	border := "\x1b[38;2;52;48;72m"
-	if !readOnly && (u.currentQuestion() != nil || u.approvals.Open) {
-		border = u.view.Painter.Theme.Accent()
-	} else if !readOnly && presentation.Status.ShellMode {
-		border = terminalui.Red
-	}
-	const inputColor = "\x1b[39m"
-	focused := !readOnly && (u.shell == nil || u.shell.Focus == 0)
-	if boxed {
-		frame = append(frame, u.composerNoticeBorder(presentation.Status, width, len(frame), border))
-	}
-	textX := min(2, inset)
-	if boxed {
-		textX += 2
-	}
-	u.composerRect = terminalsession.Rect{textX, len(frame), textWidth, len(draft)}
-	for i, line := range draft {
-		prefix := strings.Repeat(" ", min(2, inset))
-		if i == 0 && inset >= 2 {
-			prefix = activityui.PromptColor + "❯ " + inputColor
-		}
-		line = ansi.Truncate(line, textWidth, "")
-		if focused && textWidth > 1 && i+firstRow == caret.Row {
-			before := ansi.Cut(line, 0, caret.Column)
-			cluster, _, _, _ := uniseg.FirstGraphemeClusterInString(u.Text[u.Cursor():], -1)
-			cellWidth := max(1, ansi.StringWidth(textsanitize.Safe(cluster, false)))
-			cell := ansi.Cut(line, caret.Column, caret.Column+cellWidth)
-			if ansi.StringWidth(cell) == 0 {
-				cell = " "
-			}
-			rest := ansi.Cut(line, caret.Column+cellWidth, textWidth)
-			line = before + "\x1b[7m" + cell + "\x1b[27m" + rest
-		}
-		if boxed {
-			frame = append(frame, border+"│"+inputColor+" "+prefix+line+strings.Repeat(" ", textWidth-ansi.StringWidth(line))+border+"│"+terminalui.Reset)
-		} else {
-			frame = append(frame, inputColor+prefix+line+terminalui.Reset)
-		}
-	}
-	if boxed {
-		model := presentation.Caption.Model
-		if model != "" && presentation.Caption.Effort != "" {
-			model += " (" + presentation.Caption.Effort + ")"
-		}
-		if presentation.Caption.Tier != "" {
-			model += " · " + presentation.Caption.Tier
-		}
-		model = strings.ReplaceAll(textsanitize.Safe(model, false), "\n", " ")
-		context := activityui.ContextWindowLabel(activitypresentation.Agent{AgentFacts: activitypresentation.AgentFacts{
-			ContextKnown: presentation.Caption.ContextKnown, ContextTokens: presentation.Caption.ContextTokens, ContextWindow: presentation.Caption.ContextWindow,
-		}})
-		for _, item := range presentation.Caption.Items {
-			context += " • " + textsanitize.Safe(item.Text, false)
-		}
-		caption := context
-		if room := width - 7 - ansi.StringWidth(context) - 3; model != "" && room > 0 {
-			caption = ansi.Truncate(model, room, "…") + " • " + context
-		}
-		caption = terminalui.Dim + ansi.Truncate(caption, max(0, width-7), "…") + terminalui.Reset
-		frame = append(frame, composerBorder("╰", "╯", "", caption, width, border))
-	}
-	return frame, terminalsession.Rect{0, dockAt, width, dock}
-}
-
-// composerBorder embeds optional left and right labels in a box edge. The
-// right label yields first when the edge is too narrow for both.
-func composerBorder(open, close, left, right string, width int, color string) string {
-	segment := func(label string) string {
-		if label == "" {
-			return ""
-		}
-		return " \x1b[39m" + label + color + " "
-	}
-	inner := width - 2
-	l, r := segment(left), segment(right)
-	if inner-ansi.StringWidth(l)-ansi.StringWidth(r)-2 < 0 {
-		r = ""
-	}
-	if room := inner - ansi.StringWidth(r) - 2; ansi.StringWidth(l) > room {
-		l = ""
-		if room > 4 {
-			l = ansi.Truncate(segment(left), room-1, "…") + color + " "
-		}
-	}
-	fill := max(0, inner-ansi.StringWidth(l)-ansi.StringWidth(r)-2)
-	return color + open + "─" + l + strings.Repeat("─", fill) + r + "─" + close + terminalui.Reset
+	return frame.Rows, frame.Dock
 }
 
 // scrollLabel shows how much of the feed lies above the viewport and, once
@@ -1532,9 +1347,9 @@ func (u *appServerUI) paint(out io.Writer, width, height int) error {
 	u.ensureShell()
 	u.refreshRosterRoles()
 	u.agents.mainView = u.view
-	u.view.StatusLabel = textsanitize.Safe(sessionStatusText(u.mainPresentation(u.now()).Status.State), false)
+	u.view.StatusLabel = textsanitize.Safe(terminalsession.StatusText(u.mainPresentation(u.now()).Status.State), false)
 	u.shell.width, u.shell.height = max(1, width), max(1, height)
-	u.mainContentPainted = false
+	u.mainView.ContentPainted = false
 	ctx := u.ctx
 	if ctx == nil {
 		ctx = context.Background()

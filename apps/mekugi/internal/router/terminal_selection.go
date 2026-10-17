@@ -144,7 +144,7 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 		}
 	}
 	if !rect.Contains(x, y) {
-		composer := u.main.composerRect
+		composer := u.main.mainView.ComposerRect
 		composer.X += pane.X
 		composer.Y += pane.Y
 		if composer.Contains(x, y) {

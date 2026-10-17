@@ -405,9 +405,9 @@ func (u *appServerUI) openApprovals() bool {
 	}
 	u.hideQuestions()
 	if a := u.pendingApprovals()[0]; a.DenialChoice() >= 0 {
-		u.promptColumn = u.cursorColumn
+		u.mainView.PromptColumn = u.mainView.CursorColumn
 		u.promptEditor.Open(u.Editor, a.Editor)
-		u.cursorColumn = a.layout.Column
+		u.mainView.CursorColumn = a.layout.Column
 	}
 	u.approvals.Show()
 	u.approvals.painted = false
@@ -418,9 +418,9 @@ func (u *appServerUI) openApprovals() bool {
 func (u *appServerUI) hideApprovals() {
 	if u.approvals.Open && len(u.pendingApprovals()) > 0 {
 		if a := u.pendingApprovals()[0]; a.DenialChoice() >= 0 {
-			a.layout.Column = u.cursorColumn
+			a.layout.Column = u.mainView.CursorColumn
 			a.Editor = u.promptEditor.Close(u.Editor)
-			u.cursorColumn = u.promptColumn
+			u.mainView.CursorColumn = u.mainView.PromptColumn
 		}
 	}
 	u.approvals.Hide()

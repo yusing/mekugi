@@ -3,14 +3,13 @@ package router
 import (
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/libraries/diffrender"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
-	"github.com/yusing/mekugi/backends/codex/binding"
-
-	"github.com/yusing/mekugi/libraries/diffrender"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
@@ -36,7 +35,7 @@ func TestComposerSelectionMentionIsOneToken(t *testing.T) {
 	if want := "see [Selected message] [Selected message 2] "; u.Text != want {
 		t.Fatalf("draft = %q, want %q", u.Text, want)
 	}
-	spans := draftDisplaySpans(u.draftSnapshot().Draft)
+	spans := terminalsession.DraftSpans(u.draftSnapshot().Draft)
 	if len(spans) != 2 || spans[0].Kind != activitypresentation.SelectionToken || u.Text[spans[1].Start:spans[1].End] != "[Selected message 2]" {
 		t.Fatalf("spans = %+v", spans)
 	}

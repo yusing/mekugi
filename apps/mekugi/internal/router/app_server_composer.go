@@ -3,41 +3,19 @@ package router
 import (
 	"strings"
 
-	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
-
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/modules/conversation/composer"
-
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func (u *appServerUI) insertDraft(text string) {
-	u.cursorColumn = nil
+	u.mainView.CursorColumn = nil
 	u.setNotice("", false)
 	u.Editor.Insert(text)
 	u.pruneDraftImages()
 }
 
-// displaySpans is the shared editing and presentation boundary for every
-// atomic composer token. Payload and lifetime remain owned by each token kind.
-func draftDisplaySpans(d composer.Draft) []activitypresentation.TextSpan {
-	var spans []activitypresentation.TextSpan
-	for _, span := range d.Spans() {
-		kind := activitypresentation.ImageToken
-		switch span.Kind {
-		case composer.File:
-			kind = activitypresentation.FileToken
-		case composer.Skill:
-			kind = activitypresentation.SkillToken
-		case composer.Selection:
-			kind = activitypresentation.SelectionToken
-		}
-		spans = append(spans, activitypresentation.TextSpan{Start: span.Start, End: span.End, Kind: kind})
-	}
-	return spans
-}
-
 func (u *appServerUI) deleteDraft(backward bool) {
-	u.cursorColumn = nil
+	u.mainView.CursorColumn = nil
 	at := u.Cursor()
 	start, end, run := at, u.Boundary(at, 1), composer.DeleteRun
 	if backward {
@@ -47,7 +25,7 @@ func (u *appServerUI) deleteDraft(backward bool) {
 }
 
 func (u *appServerUI) deleteWord(backward bool) {
-	u.cursorColumn = nil
+	u.mainView.CursorColumn = nil
 	at := u.Cursor()
 	other := u.WordBoundary(at, backward)
 	u.deleteDraftRange(min(at, other), max(at, other))
@@ -61,26 +39,8 @@ func (u *appServerUI) removeDraft(start, end int, run composer.Run) {
 		return
 	}
 	u.setNotice("", false)
-	u.cursorColumn = nil
+	u.mainView.CursorColumn = nil
 	u.pruneDraftImages()
-}
-
-// Layout and navigation share the same atomic-span layout as submitted input.
-func (u *appServerUI) draftLayout() ([]string, []activityui.TextPoint) {
-	width := u.composerWidth
-	if width == 0 {
-		width = 80
-	}
-	rows, points := activityui.LayoutSpans(u.Text, draftDisplaySpans(u.Draft), width)
-	last := points[len(points)-1]
-	if width > 1 && last.Column >= width {
-		rows = append(rows, "")
-		points[len(points)-1] = activityui.TextPoint{Offset: len(u.Text), Row: len(rows) - 1}
-	}
-	if width > 1 {
-		rows[len(rows)-1] += " "
-	}
-	return rows, points
 }
 
 func (u *appServerUI) moveDraft(sequence string) {
@@ -88,7 +48,7 @@ func (u *appServerUI) moveDraft(sequence string) {
 	at := u.Cursor()
 	vertical := sequence == "\x1b[A" || sequence == "\x1bOA" || sequence == "\x1b[B" || sequence == "\x1bOB"
 	if !vertical {
-		u.cursorColumn = nil
+		u.mainView.CursorColumn = nil
 	}
 	switch sequence {
 	case "\x1b[D", "\x1bOD":
@@ -106,7 +66,7 @@ func (u *appServerUI) moveDraft(sequence string) {
 			at = len(u.Text)
 		}
 	case "\x1b[A", "\x1bOA", "\x1b[B", "\x1bOB":
-		_, points := u.draftLayout()
+		_, points := terminalsession.DraftLayout(u.Draft, u.mainView.ComposerWidth)
 		current := points[len(points)-1]
 		for _, point := range points {
 			if point.Offset == at {
@@ -114,8 +74,8 @@ func (u *appServerUI) moveDraft(sequence string) {
 				break
 			}
 		}
-		if u.cursorColumn == nil {
-			u.cursorColumn = new(current.Column)
+		if u.mainView.CursorColumn == nil {
+			u.mainView.CursorColumn = new(current.Column)
 		}
 		row := current.Row + 1
 		if strings.HasSuffix(sequence, "A") {
@@ -129,7 +89,7 @@ func (u *appServerUI) moveDraft(sequence string) {
 			if best < 0 {
 				best = point.Offset
 			}
-			if point.Column <= *u.cursorColumn {
+			if point.Column <= *u.mainView.CursorColumn {
 				best = point.Offset
 			}
 		}

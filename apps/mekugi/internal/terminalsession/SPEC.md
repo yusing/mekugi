@@ -11,6 +11,11 @@ selected targets and intents to their owners.
 [Session presentation](../sessionpresentation/SPEC.md) owns displayed identity and
 Main admission; [session control](../sessioncontrol/SPEC.md) issues host operations.
 Feature views own disclosure, navigation and animation.
+Main-frame composition consumes detached session, draft and prompt values. Its
+terminal owner allocates the transcript window, docks and composer, paints the
+composer and captions, and returns geometry for pointer routing and delivery
+receipts. Supplying transcript rows is separate from layout; painting has no
+backend or storage capability. Live sessions and playback use the same frame.
 The [attachment owner](../sessionpresentation/SPEC.md#attachment-lifetime) retires
 module state. Backward replay retains terminal focus and Diff visibility.
 The [saved-Diff view](../../../../modules/changehistory/SPEC.md#saved-review-presentation)

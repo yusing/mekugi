@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -109,8 +110,8 @@ func TestAppServerComposerTokenIsOneNavigationUnit(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			appServerTestKeys(t, u, "prefix ")
 			token.attach(t, u)
-			u.composerWidth = 16
-			rows, _ := u.draftLayout()
+			u.mainView.ComposerWidth = 16
+			rows, _ := terminalsession.DraftLayout(u.Draft, u.mainView.ComposerWidth)
 			if !strings.Contains(ansi.Strip(strings.Join(rows, "\n")), token.label) {
 				t.Fatalf("split atomic token: %q", rows)
 			}

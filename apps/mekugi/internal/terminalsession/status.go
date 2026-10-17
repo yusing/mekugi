@@ -1,4 +1,5 @@
-package router
+// Source: apps/mekugi/internal/router/session_status_terminal.go:14:87@[ce8700a8].
+package terminalsession
 
 import (
 	"fmt"
@@ -11,7 +12,7 @@ import (
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
-func sessionStatusText(label sessionpresentation.Label) string {
+func StatusText(label sessionpresentation.Label) string {
 	text := label.Text
 	if label.CompletionKnown {
 		text += " in " + activityui.FormatDuration(label.Completion)
@@ -22,11 +23,11 @@ func sessionStatusText(label sessionpresentation.Label) string {
 	return text
 }
 
-// paintSessionStatus consumes only detached values. Semantic precedence is
+// PaintSessionStatus consumes only detached values. Semantic precedence is
 // already settled; terminal animation, sanitization and elapsed grammar stay here.
 // Source: apps/mekugi/internal/router/app_server_ui.go:1554:1585@1145fbbc.
-func paintSessionStatus(label sessionpresentation.Label, now time.Time, colors terminalui.Colors) string {
-	full := sessionStatusText(label)
+func PaintSessionStatus(label sessionpresentation.Label, now time.Time, colors terminalui.Colors) string {
+	full := StatusText(label)
 	text := strings.ReplaceAll(textsanitize.Safe(full, false), "\n", " ")
 	if text == "" {
 		return ""
@@ -52,8 +53,8 @@ func paintSessionStatus(label sessionpresentation.Label, now time.Time, colors t
 }
 
 // Source: apps/mekugi/internal/router/composer_notice.go:32:91@1145fbbc.
-func paintMainStatus(status sessionpresentation.MainStatus, now time.Time, colors terminalui.Colors) string {
-	label := paintSessionStatus(status.Composer, now, colors)
+func PaintMainStatus(status sessionpresentation.MainStatus, now time.Time, colors terminalui.Colors) string {
+	label := PaintSessionStatus(status.Composer, now, colors)
 	if status.ComposerOverride {
 		label = status.Composer.Text
 	}
@@ -66,7 +67,7 @@ func paintMainStatus(status sessionpresentation.MainStatus, now time.Time, color
 		}
 		label += activityui.StatusPulse(fmt.Sprintf("%d running processes", status.Processes), now, colors) + terminalui.Reset
 	}
-	notice := paintSessionStatus(status.Feedback, now, colors)
+	notice := PaintSessionStatus(status.Feedback, now, colors)
 	if notice == "" {
 		return label
 	}
@@ -76,10 +77,10 @@ func paintMainStatus(status sessionpresentation.MainStatus, now time.Time, color
 	return label + terminalui.Dim + " · " + terminalui.Undim + notice
 }
 
-func mainStatusDetails(status sessionpresentation.MainStatus) string {
+func MainStatusDetails(status sessionpresentation.MainStatus) string {
 	var parts []string
 	for _, detail := range status.Details {
-		if text := sessionStatusText(detail); text != "" {
+		if text := StatusText(detail); text != "" {
 			parts = append(parts, text)
 		}
 	}

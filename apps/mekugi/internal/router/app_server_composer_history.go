@@ -17,7 +17,7 @@ func (u *appServerUI) rememberInput(draft conversationmodel.Input) {
 }
 func (u *appServerUI) recallInput(backward bool) {
 	if u.Editor.Recall(backward) {
-		u.cursorColumn = nil
+		u.mainView.CursorColumn = nil
 		u.setNotice("", false)
 		u.pruneDraftImages()
 	}
@@ -33,7 +33,7 @@ func (u *appServerUI) recordDraft() {
 }
 func (u *appServerUI) undoDraft(redo bool) {
 	u.Editor.Undo(redo)
-	u.cursorColumn = nil
+	u.mainView.CursorColumn = nil
 	u.setNotice("", false)
 }
 

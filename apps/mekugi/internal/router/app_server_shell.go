@@ -1,38 +1,13 @@
 package router
 
 import (
-	"slices"
 	"strings"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 
-	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	"github.com/yusing/mekugi/libraries/textsanitize"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
-
-// Paint complete logical lines before cutting them to the existing draft layout.
-// Soft wraps must not change Bash's multiline lexical state or cursor geometry.
-func (u *appServerUI) paintShellDraft(rows []string) {
-	// Highlight returns cached rows. The mode marker belongs only to this draft.
-	lines := slices.Clone(u.view.Painter.Highlight("bash", textsanitize.Safe(u.Text[1:], false)+"\n"))
-	lines[0] = "!" + lines[0]
-	line, column := 0, 0
-	for i, row := range rows {
-		if line >= len(lines) {
-			break // The layout can add an empty row for the trailing caret.
-		}
-		width := ansi.StringWidth(row)
-		painted := ansi.Cut(lines[line], column, column+width)
-		rows[i] = painted + "\x1b[39m" + strings.Repeat(" ", max(0, width-ansi.StringWidth(painted)))
-		column += width
-		if column >= ansi.StringWidth(lines[line]) {
-			line++
-			column = 0
-		}
-	}
-}
 
 // Source: codex-rs/tui/src/chatwidget/input_submission.rs:36:67@1cc7e236.
 // Codex owns execution, cancellation and history: active shell results inject

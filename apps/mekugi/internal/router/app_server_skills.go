@@ -1,6 +1,8 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	json "encoding/json/v2"
 	"fmt"
 	"path/filepath"
@@ -9,13 +11,11 @@ import (
 
 	"github.com/yusing/mekugi/modules/conversation/completion"
 
+	"github.com/yusing/mekugi/backends/codex/appserver"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
-
-	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
-
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
-	"github.com/yusing/mekugi/backends/codex/appserver"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
 
 // Source: codex-rs/tui/src/chatwidget/skills.rs:29:136 and
@@ -127,7 +127,7 @@ func (u *appServerUI) bindSkills(d *conversationmodel.Input, final bool) {
 			catalog = append(catalog, composer.Token{Name: choice.Name, Path: choice.Path})
 		}
 	}
-	spans := draftDisplaySpans(d.Draft)
+	spans := terminalsession.DraftSpans(d.Draft)
 	for _, binding := range unambiguousSkillBindings(d.Text, catalog, nil) {
 		if !final && binding.End == len(d.Text) {
 			continue // A still-growing word stays editable.
@@ -146,7 +146,7 @@ func (u *appServerUI) skillBindingQuery(d conversationmodel.Input, final bool) s
 		return ""
 	}
 	at := 0
-	spans := draftDisplaySpans(d.Draft)
+	spans := terminalsession.DraftSpans(d.Draft)
 	for word := range strings.FieldsSeq(d.Text) {
 		start := at + strings.Index(d.Text[at:], word)
 		at = start + len(word)

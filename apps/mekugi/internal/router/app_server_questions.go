@@ -94,11 +94,11 @@ func (u *appServerUI) discardQuestionEditors(c *nativeQuestionCall) {
 	}
 }
 func (u *appServerUI) saveQuestionEditor() questionEditor {
-	return questionEditor{u.Editor.Park(), u.cursorColumn}
+	return questionEditor{u.Editor.Park(), u.mainView.CursorColumn}
 }
 func (u *appServerUI) loadQuestionEditor(e questionEditor) {
 	u.Editor.Resume(e.State)
-	u.cursorColumn = e.column
+	u.mainView.CursorColumn = e.column
 }
 func (u *appServerUI) currentQuestion() *prompt.Question { return u.questions.Current() }
 func (u *appServerUI) questionCount() int                { return u.questions.Count(u.Thread) }
@@ -134,7 +134,7 @@ func (u *appServerUI) openQuestionCall(c *nativeQuestionCall) {
 	}
 	u.hideApprovals()
 	u.questions.painted = false
-	u.promptColumn = u.cursorColumn
+	u.mainView.PromptColumn = u.mainView.CursorColumn
 	u.promptEditor.Open(u.Editor, composer.State{})
 	if !u.questions.Open(c.Call) {
 		return
@@ -156,7 +156,7 @@ func (u *appServerUI) hideQuestions() {
 		u.Editor = &u.conversation().Editor
 		u.secretEditor = composer.Editor{}
 		u.promptEditor.Close(u.Editor)
-		u.cursorColumn = u.promptColumn
+		u.mainView.CursorColumn = u.mainView.PromptColumn
 		u.questions.Hide()
 	}
 }

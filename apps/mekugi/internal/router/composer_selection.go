@@ -35,7 +35,7 @@ func (u *appServerUI) insertSelection(description, text, source string) {
 		return
 	}
 	u.setNotice("", false)
-	u.cursorColumn = nil
+	u.mainView.CursorColumn = nil
 	u.pruneDraftImages()
 	if q := u.currentQuestion(); q != nil {
 		q.Edit(!q.Note)

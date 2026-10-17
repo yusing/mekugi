@@ -66,7 +66,7 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			click(u.noticeDetails)
+			click(u.mainView.NoticeDetails)
 			if u.shell.output == nil {
 				t.Fatal("truncated error did not open")
 			}
@@ -75,7 +75,7 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 				t.Fatal("details lost full error")
 			}
 			u.shell.outputKey("q")
-			click(u.noticeDismiss)
+			click(u.mainView.NoticeDismiss)
 			if u.composerErrorText() != "" || u.Text != draft || u.Turn != turn || wire.String() != sent || len(u.view.Entries) != 0 {
 				t.Fatal("dismissal changed draft, host state, wire, or transcript")
 			}
@@ -93,7 +93,7 @@ func TestUISnapshotComposerError(t *testing.T) {
 			u.setNotice("File contents omitted: setup.sh (attachment budget exceeded).\nThe attachment result names the missing content.", true)
 			rows, _ := u.mainFrame(width, 8, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("composer-error-%d", width), rows)
-			if !strings.Contains(rows[u.noticeDismiss.Y], terminalui.Green) || !strings.Contains(ansi.Strip(rows[u.noticeDismiss.Y]), "[✓]") {
+			if !strings.Contains(rows[u.mainView.NoticeDismiss.Y], terminalui.Green) || !strings.Contains(ansi.Strip(rows[u.mainView.NoticeDismiss.Y]), "[✓]") {
 				t.Fatal("dismiss check is missing its shared success color")
 			}
 		})
@@ -103,7 +103,7 @@ func TestUISnapshotComposerError(t *testing.T) {
 	u.mainFrame(80, 8, 0)
 	u.setNotice("done", false)
 	u.mainFrame(80, 8, 0)
-	if u.noticeDetails.W != 0 || u.noticeDismiss.W != 0 {
+	if u.mainView.NoticeDetails.W != 0 || u.mainView.NoticeDismiss.W != 0 {
 		t.Fatal("stale error controls survived feedback")
 	}
 }

@@ -319,8 +319,8 @@ func resumePickerAge(now time.Time, updated int64) string {
 // Column widths come from the visible rows only.
 func (u *appServerUI) resumePickerFrame(width, height int) []string {
 	p := u.resumePicker
-	u.mainContentPainted = false
-	u.composerRect = terminalsession.Rect{}
+	u.mainView.ContentPainted = false
+	u.mainView.ComposerRect = terminalsession.Rect{}
 	frame := make([]string, height)
 	put := func(y int, text string) {
 		if y >= 0 && y < height {

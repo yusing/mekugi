@@ -123,7 +123,7 @@ func TestTerminalSelectionComposerCaretStyles(t *testing.T) {
 		main.Text, main.CursorBack = "abcdef", back
 		frame, _ := main.mainFrame(40, 12, 0)
 		u := &terminalUI{main: main, width: 40, height: len(frame), frame: terminalsession.Frame{Width: 40, Rows: frame}, layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 40, len(frame)}}}
-		x, y := main.composerRect.X, main.composerRect.Y
+		x, y := main.mainView.ComposerRect.X, main.mainView.ComposerRect.Y
 		selectionTestDrag(t, u, x, y, x+5, y)
 		u.paintSelection(frame)
 		screen := vt.NewEmulator(40, len(frame))
@@ -462,7 +462,7 @@ func TestTerminalUISelectionComposer(t *testing.T) {
 		if err := u.paint(screen, size[0], size[1]); err != nil {
 			t.Fatal(err)
 		}
-		r := u.composerRect
+		r := u.mainView.ComposerRect
 		r.X += u.shell.layout.Main.X
 		r.Y += u.shell.layout.Main.Y
 		selectionTestDrag(t, u.shell, r.X, r.Y, r.X+3, r.Y)
@@ -498,7 +498,7 @@ func TestTerminalUISelectionComposerReplacesTranscript(t *testing.T) {
 	u.view.QuestionRows = map[uint64]int{1: 99}
 	u.insertDraft("first\nsecond\nthird\nfourth\nfifth")
 	paint()
-	r := u.composerRect
+	r := u.mainView.ComposerRect
 	r.X += u.shell.layout.Main.X
 	r.Y += u.shell.layout.Main.Y
 	selectionTestDrag(t, u.shell, r.X, r.Y, r.X+5, r.Y+1)

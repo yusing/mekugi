@@ -80,7 +80,7 @@ func (u *appServerUI) applyEditorDraft(text string) error {
 	if err := u.Editor.ApplyExternal(text); err != nil {
 		return err
 	}
-	u.cursorColumn = nil
+	u.mainView.CursorColumn = nil
 	u.setNotice("", false)
 	u.pruneDraftImages()
 	return nil
