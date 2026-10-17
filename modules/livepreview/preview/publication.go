@@ -69,6 +69,9 @@ func (b *Session) Update(preview Preview, remove bool) {
 		b.emitPreviewLocked(Preview{ID: preview.ID})
 		return
 	}
+	if b.ctx.Err() != nil {
+		return
+	}
 	if turn, known := b.previewTurns[preview.Thread]; known && preview.Turn != "" && (turn.id != preview.Turn || turn.complete) {
 		return
 	}

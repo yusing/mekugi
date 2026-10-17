@@ -18,6 +18,8 @@ type Stream struct {
 	mu        sync.Mutex
 	ctx       context.Context
 	cancel    context.CancelFunc
+	finalCtx  context.Context
+	stopFinal context.CancelFunc
 	broker    *previewmodel.Session
 	preview   previewmodel.Preview
 	input     strings.Builder
@@ -41,12 +43,15 @@ type Timing struct{ Frame, Unit, Finish time.Duration }
 // retains the caller's bounded patch-read contract.
 func Start(ctx context.Context, broker *previewmodel.Session, id Identity, timing Timing, readPatch func(string) (string, bool, error)) *Stream {
 	ctx, cancel := context.WithCancel(projection.WithSources(ctx, false))
+	// Accepted final input can outlive its transport, not its attachment.
+	finalCtx, stopFinal := context.WithCancel(context.WithoutCancel(ctx))
 	worker := &Stream{
 		ctx: ctx, cancel: cancel, broker: broker, kind: id.Kind, timing: timing, readPatch: readPatch,
+		finalCtx: finalCtx, stopFinal: stopFinal,
 		preview: previewmodel.Preview{ID: rand.Text(), Workspace: id.Workspace, Thread: id.Thread, Turn: id.Turn, Caller: id.Caller},
 		wake:    make(chan struct{}, 1), done: make(chan struct{}),
 	}
-	stop := context.AfterFunc(broker.Context(), cancel)
+	stop := context.AfterFunc(broker.Context(), worker.Stop)
 	go func() { defer stop(); worker.run() }()
 	return worker
 }
@@ -109,12 +114,14 @@ func (worker *Stream) Stop() {
 	}
 	worker.closed = true
 	worker.cancel()
+	worker.stopFinal()
 	worker.broker.Discard(worker.preview.ID)
 }
 
 func (w *Stream) run() {
 	defer close(w.done)
 	defer w.cancel()
+	defer w.stopFinal()
 	defer func() {
 		w.mu.Lock()
 		w.closed = true
@@ -154,7 +161,7 @@ func (w *Stream) run() {
 		default:
 		}
 		w.mu.Lock()
-		if w.closed || w.ctx.Err() != nil && !w.finishing {
+		if w.closed || w.broker.Context().Err() != nil || w.ctx.Err() != nil && !w.finishing {
 			w.mu.Unlock()
 			return
 		}
@@ -198,7 +205,11 @@ func (w *Stream) run() {
 			w.broker.Update(preview, false)
 			continue
 		}
-		projected, recognized := Project(w.ctx, preview.Workspace, w.kind, input, final, w.readPatch)
+		projectionContext := w.ctx
+		if final {
+			projectionContext = w.finalCtx
+		}
+		projected, recognized := Project(projectionContext, preview.Workspace, w.kind, input, final, w.readPatch)
 		edited = edited || recognized
 		if !edited {
 			continue

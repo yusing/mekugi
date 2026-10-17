@@ -184,7 +184,12 @@ func (b *Session) Context() context.Context { return b.ctx }
 
 // Close cancels observation only. Host execution and retained capture have
 // independent lifetimes in the application.
-func (b *Session) Close() { b.enabled.Store(false); b.cancel() }
+func (b *Session) Close() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.enabled.Store(false)
+	b.cancel()
+}
 
 // Current returns active frames in first-observation order. The snapshots are
 // immutable observation values; callers never mutate their source slices.

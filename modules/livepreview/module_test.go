@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,60 @@ import (
 	"github.com/yusing/mekugi/modules/livepreview/projection"
 	"github.com/yusing/mekugi/testsupport/moduletest"
 )
+
+func TestLivePreviewFinalProjectionLifetime(t *testing.T) {
+	for _, lifetime := range []string{"transport", "attachment", "stream"} {
+		t.Run(lifetime, func(t *testing.T) {
+			service := moduletest.New(t, livepreview.Module, livepreview.Deps{}, module.Slots{}, nil)
+			var attachment scope.Store
+			session := service.Attach(t.Context(), &attachment)
+			defer session.Close()
+			workspace := t.TempDir()
+			session.SetScope(preview.Scope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
+			session.Enable()
+			sub, _ := session.Subscribe()
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			entered, release := make(chan struct{}), make(chan struct{})
+			stream := codexbinding.Start(ctx, session, codexbinding.Identity{Workspace: workspace, Thread: "thread", Kind: "exec"},
+				codexbinding.Timing{Frame: time.Millisecond, Unit: time.Millisecond, Finish: time.Second},
+				func(string) (string, bool, error) {
+					close(entered)
+					<-release
+					return "", false, nil
+				})
+			defer stream.Stop()
+			stream.Finish("await tools.apply_patch(" + strconv.Quote("*** Begin Patch\n*** Add File: source.txt\n+final\n*** End Patch\n") + ");")
+			select {
+			case <-entered:
+			case <-time.After(5 * time.Second):
+				close(release)
+				t.Fatal("final projection did not reach its reader")
+			}
+			switch lifetime {
+			case "attachment":
+				session.Close()
+			case "stream":
+				stream.Stop()
+			default:
+				cancel()
+			}
+			close(release)
+			select {
+			case <-stream.Done():
+			case <-time.After(5 * time.Second):
+				t.Fatal("final projection did not stop")
+			}
+			published := false
+			for _, event := range session.TakePreviews(sub) {
+				published = published || event.Preview != nil && event.Preview.Complete && len(event.Preview.Files) != 0
+			}
+			if published != (lifetime == "transport") {
+				t.Fatalf("final publication after %s cancellation = %t", lifetime, published)
+			}
+		})
+	}
+}
 
 func TestLivePreviewStreamPublication(t *testing.T) {
 	service := moduletest.New(t, livepreview.Module, livepreview.Deps{}, module.Slots{}, nil)

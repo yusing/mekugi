@@ -141,9 +141,10 @@ The module owns each arriving source stream, its baseline cache, projection and
 paced publication. The application supplies admitted identity, the bounded patch
 reader and display timing, then forwards deltas and authoritative final input.
 Unfinished request cleanup withdraws its streams. Accepted final input can finish
-its bounded projection after transport cancellation, with publication confined to
-the original attachment. Completed literal-call recognition is shared with capture
-through the Codex binding, while unfinished recognition remains display-only.
+its bounded projection after transport cancellation, but attachment retirement
+cancels that projection and rejects later publication. Completed literal-call
+recognition is shared with capture through the Codex binding, while unfinished
+recognition remains display-only.
 
 Unsupported source and failed reads cannot fabricate a diff or suppress captured
 evidence. Exhausted scope remains visible without affecting edits or retained

@@ -25,13 +25,7 @@ func Shell(ctx context.Context, program, directory string, final bool) ([]diffmo
 	if !parsed {
 		return nil, "", false, nil
 	}
-	projectionContext := ctx
-	if final {
-		// Accepted final input outlives transport teardown, but projection
-		// remains independently bounded and never executes the command.
-		projectionContext = context.WithoutCancel(projectionContext)
-	}
-	ctx, cancel := context.WithTimeout(projectionContext, time.Second)
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	var files []diffmodel.ReviewFile
 	var tools []string

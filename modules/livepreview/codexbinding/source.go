@@ -30,11 +30,7 @@ func projectStockPreview(ctx context.Context, input, workspace string, final boo
 	if !ok {
 		return previewmodel.Preview{}, false
 	}
-	projectionContext := ctx
-	if final {
-		projectionContext = context.WithoutCancel(projectionContext)
-	}
-	ctx, cancel := context.WithTimeout(projectionContext, time.Second)
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	if !final {
 		// Decode first: an outer JavaScript newline need not terminate a
