@@ -64,31 +64,6 @@ func appServerTestRequest(t *testing.T, u *appServerUI, id, method string) {
 		t.Fatal(err)
 	}
 }
-func appServerTestRequestMethod(u *appServerUI, id string) string {
-	for pendingID, request := range u.requests.All() {
-		if id == pendingID {
-			return request.Method
-		}
-	}
-	return ""
-}
-func appServerTestPendingTitle(u *appServerUI) bool {
-	for _, request := range u.requests.All() {
-		if request.Owner.title != nil {
-			return true
-		}
-	}
-	return false
-}
-func appServerTestPendingStatus(u *appServerUI) bool {
-	for _, request := range u.requests.All() {
-		if request.Owner.status != nil {
-			return true
-		}
-	}
-	return false
-}
-
 func (*appServerTestInput) Close() error { return nil }
 
 func newAppServerTestUI() (*appServerUI, *appServerTestInput) {

@@ -76,7 +76,7 @@ func TestAppServerNotificationConfig(t *testing.T) {
 			}
 			appServerTestRequest(t, u, "42", "config/read")
 			appServerTestMessage(t, u, `{"id":42,"result":{"config":{"tui":`+tc.tui+`}}}`)
-			if !u.notifications.ready || appServerTestRequestMethod(u, "42") != "" {
+			if !u.notifications.ready || u.requests.Pending() {
 				t.Fatal("configuration response was not consumed")
 			}
 			u.notify(tc.event, "test")

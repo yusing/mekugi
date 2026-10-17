@@ -94,16 +94,6 @@ func (v *activityAdapter) RenderFeed(width, rows int) activityui.Feed {
 	}
 }
 
-func (v *activityAdapter) LayoutFeed(width int) activityui.Feed {
-	v.publishActivity()
-	for {
-		feed := v.View.LayoutFeed(width)
-		if !v.hydrateActivity() {
-			return feed
-		}
-	}
-}
-
 func (v *activityAdapter) NativeRoster(width, limit int, now time.Time, focused bool) []string {
 	v.publishActivity()
 	return v.View.NativeRoster(width, limit, now, focused)

@@ -69,8 +69,8 @@ func TestRequestsIssueAndConsume(t *testing.T) {
 		"init-7":     {Method: "initialize", Owner: initialOwner},
 		"request-19": {Method: "thread/compact", Scope: "thread-a", Owner: sendOwner},
 	}
-	if got := maps.Collect(requests.All()); !reflect.DeepEqual(got, want) {
-		t.Fatalf("All = %#v, want %#v", got, want)
+	if got := maps.Clone(requests.pending); !reflect.DeepEqual(got, want) {
+		t.Fatalf("pending = %#v, want %#v", got, want)
 	}
 	if got, ok := requests.Take("unknown"); ok || got != (Request[owner]{}) {
 		t.Fatalf("unknown response = %#v, %v", got, ok)
@@ -111,7 +111,7 @@ func TestRequestsFailedIssuancePreservesExistingRequest(t *testing.T) {
 		t.Fatalf("transport calls: initialize=%d, sends=%#v", transport.initialized, transport.sends)
 	}
 	want := map[string]Request[string]{"existing": {Method: "thread/read", Scope: "thread-a", Owner: "existing owner"}}
-	if got := maps.Collect(requests.All()); !reflect.DeepEqual(got, want) || !requests.Pending() {
+	if got := maps.Clone(requests.pending); !reflect.DeepEqual(got, want) || !requests.Pending() {
 		t.Fatalf("ledger after failed issuance = %#v, want %#v", got, want)
 	}
 }
@@ -141,7 +141,7 @@ func TestRequestsNotificationsAndResponsesDoNotCorrelate(t *testing.T) {
 	if transport.initialized != 0 || !reflect.DeepEqual(transport.sends, wantSends) || !reflect.DeepEqual(transport.responses, wantResponses) {
 		t.Fatalf("transport calls: initialize=%d, sends=%#v, responses=%#v", transport.initialized, transport.sends, transport.responses)
 	}
-	if requests.Pending() || len(maps.Collect(requests.All())) != 0 {
+	if requests.Pending() || len(maps.Clone(requests.pending)) != 0 {
 		t.Fatal("notification or response entered the ledger")
 	}
 }
@@ -165,7 +165,7 @@ func TestRequestsRetireAndForgetOnlyRemoveCorrelation(t *testing.T) {
 	requests.Forget("b2")
 	requests.Forget("unknown")
 	want := map[string]Request[string]{"b1": {Method: "thread/read", Scope: "thread-b", Owner: "new compact"}}
-	if got := maps.Collect(requests.All()); !reflect.DeepEqual(got, want) || !requests.Pending() {
+	if got := maps.Clone(requests.pending); !reflect.DeepEqual(got, want) || !requests.Pending() {
 		t.Fatalf("ledger after retirement = %#v, want %#v", got, want)
 	}
 	for _, id := range []string{"a1", "a2", "b2"} {

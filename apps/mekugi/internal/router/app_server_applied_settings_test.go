@@ -33,7 +33,7 @@ func appliedSettingsTestNotify(t *testing.T, u *appServerUI, model, effort, tier
 	appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": u.Thread, "threadSettings": map[string]any{"model": model, "effort": effort, "serviceTier": tier}})
 }
 
-func appliedSettingsTestResume(t *testing.T, u *appServerUI, w *appServerTestInput, info binding.ThreadInfo) map[string]any {
+func appliedSettingsTestResume(t *testing.T, u *appServerUI, w *appServerTestInput, info binding.ThreadInfo) (map[string]any, int) {
 	t.Helper()
 	u.resumeThread = info.ID
 	if err := u.requestResume(info.ID); err != nil {
@@ -42,6 +42,7 @@ func appliedSettingsTestResume(t *testing.T, u *appServerUI, w *appServerTestInp
 	read := resumeTestOne(t, w, "thread/read")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":%q,"cwd":%q,"path":%q}}}`, read.ID, info.ID, info.Cwd, info.Path))
 	var request struct {
+		ID     int            `json:"id"`
 		Method string         `json:"method"`
 		Params map[string]any `json:"params"`
 	}
@@ -52,7 +53,7 @@ func appliedSettingsTestResume(t *testing.T, u *appServerUI, w *appServerTestInp
 	if request.Method != "thread/resume" {
 		t.Fatalf("expected resume after preflight: %+v", request)
 	}
-	return request.Params
+	return request.Params, request.ID
 }
 
 func TestAppServerAppliedSettingsFreshOwnerResumeBeforeFirstTurn(t *testing.T) {
@@ -71,7 +72,7 @@ func TestAppServerAppliedSettingsFreshOwnerResumeBeforeFirstTurn(t *testing.T) {
 			// No live writer, parent, rollout, or previous UI is needed for recovery.
 			fresh, w := appliedSettingsTestUI(t, "/workspace", "other")
 			fresh.resumeConfig = map[string]any{"model_provider": "routed"}
-			params := appliedSettingsTestResume(t, fresh, w, binding.ThreadInfo{ID: "saved", Cwd: "/workspace"})
+			params, _ := appliedSettingsTestResume(t, fresh, w, binding.ThreadInfo{ID: "saved", Cwd: "/workspace"})
 			wantConfig := map[string]any{"model": "saved-model", "model_provider": "routed", "model_reasoning_effort": "high"}
 			var wantTier any = "priority"
 			if defaults {
@@ -93,7 +94,7 @@ func TestAppServerAppliedSettingsFlagsOverridePerField(t *testing.T) {
 			appliedSettingsTestNotify(t, u, "saved-model", "high", "priority")
 			fresh, w := appliedSettingsTestUI(t, "/workspace", "other")
 			fresh.resumeConfig = map[string]any{field: "explicit"}
-			params := appliedSettingsTestResume(t, fresh, w, binding.ThreadInfo{ID: "saved", Cwd: "/workspace"})
+			params, _ := appliedSettingsTestResume(t, fresh, w, binding.ThreadInfo{ID: "saved", Cwd: "/workspace"})
 			want := map[string]any{"model": "saved-model", "model_reasoning_effort": "high"}
 			var tier any = "priority"
 			if field == "service_tier" {
@@ -205,15 +206,8 @@ func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T)
 				t.Fatal(err)
 			}
 			observed = observed.Add(time.Hour)
-			appliedSettingsTestResume(t, u, w, binding.ThreadInfo{ID: "saved", Cwd: "/workspace"})
-			var resumeID string
-			for id, request := range u.requests.All() {
-				method := request.Method
-				if method == "thread/resume" {
-					resumeID = id
-				}
-			}
-			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%s,"result":{"model":"saved-model","reasoningEffort":"high","serviceTier":null,"collaborationMode":{"mode":"default","settings":{"model":"saved-model","reasoning_effort":"high","developer_instructions":null}},"thread":{"id":"saved","cwd":"/workspace"}}}`, resumeID))
+			_, resumeID := appliedSettingsTestResume(t, u, w, binding.ThreadInfo{ID: "saved", Cwd: "/workspace"})
+			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"model":"saved-model","reasoningEffort":"high","serviceTier":null,"collaborationMode":{"mode":"default","settings":{"model":"saved-model","reasoning_effort":"high","developer_instructions":null}},"thread":{"id":"saved","cwd":"/workspace"}}}`, resumeID))
 			if !u.Settings.Pending() {
 				t.Fatal("did not wait for default restoration")
 			}
@@ -255,7 +249,7 @@ func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T)
 				info := resumeSettingsRollout(t, `{"timestamp":"2026-09-30T12:30:00Z","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"model":"saved-model","reasoning_effort":"high","service_tier":null}}}`, "")
 				info.Cwd = "/workspace"
 				fresh, writer := appliedSettingsTestUI(t, "/workspace", "other")
-				params := appliedSettingsTestResume(t, fresh, writer, info)
+				params, _ := appliedSettingsTestResume(t, fresh, writer, info)
 				if !fresh.ResumeEffort || !reflect.DeepEqual(params["config"], map[string]any{"model": "saved-model"}) {
 					t.Fatal("fresh retry promoted transient resume defaults over saved null intent")
 				}
@@ -297,14 +291,8 @@ func TestAppServerAppliedSettingsRejectedRestoreRetainsSelectedEvidence(t *testi
 			info.Cwd = "/workspace"
 			u, w := appliedSettingsTestUI(t, "/workspace", "other")
 			u.clock = func() time.Time { return time.Date(2026, 9, 30, 13, 0, 0, 0, time.UTC) }
-			appliedSettingsTestResume(t, u, w, info)
-			for id, request := range u.requests.All() {
-				method := request.Method
-				if method == "thread/resume" {
-					appServerTestMessage(t, u, fmt.Sprintf(`{"id":%s,"result":{"model":"selected","reasoningEffort":"high","serviceTier":"flex","collaborationMode":{"mode":"default","settings":{"model":"selected","reasoning_effort":"high","developer_instructions":null}},"thread":{"id":"saved","cwd":"/workspace"}}}`, id))
-					break
-				}
-			}
+			_, resumeID := appliedSettingsTestResume(t, u, w, info)
+			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"model":"selected","reasoningEffort":"high","serviceTier":"flex","collaborationMode":{"mode":"default","settings":{"model":"selected","reasoning_effort":"high","developer_instructions":null}},"thread":{"id":"saved","cwd":"/workspace"}}}`, resumeID))
 			for _, request := range resumeTestRequests(t, w) {
 				if request.Method == "thread/settings/update" {
 					appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, request.ID))
@@ -313,7 +301,7 @@ func TestAppServerAppliedSettingsRejectedRestoreRetainsSelectedEvidence(t *testi
 			info = resumeSettingsRollout(t, record, `{"timestamp":"2026-09-30T12:30:00Z","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"model":"selected","reasoning_effort":"high","service_tier":"flex"}}}`, "")
 			info.Cwd = "/workspace"
 			fresh, writer := appliedSettingsTestUI(t, "/workspace", "fresh")
-			params := appliedSettingsTestResume(t, fresh, writer, info)
+			params, _ := appliedSettingsTestResume(t, fresh, writer, info)
 			tier, tierKnown := params["serviceTier"]
 			if !fresh.ResumeEffort || !reflect.DeepEqual(params["config"], map[string]any{"model": "selected"}) || tierKnown != (source != "legacy-no-tier") || tierKnown && tier != "flex" {
 				t.Fatalf("fresh retry lost selected evidence: %#v", params)
@@ -349,7 +337,7 @@ func TestAppServerAppliedSettingsHostTimestampPrecedence(t *testing.T) {
 			info := resumeSettingsRollout(t, fmt.Sprintf(`{"timestamp":%q,"type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"model":"host","reasoning_effort":"low","service_tier":"flex"}}}`, hostTime), "")
 			info.Cwd = "/workspace"
 			fresh, w := appliedSettingsTestUI(t, "/workspace", "other")
-			params := appliedSettingsTestResume(t, fresh, w, info)
+			params, _ := appliedSettingsTestResume(t, fresh, w, info)
 			model, effort, tier := "retained", "high", "priority"
 			if hostTime == "2026-09-30T13:00:00Z" {
 				model, effort, tier = "host", "low", "flex"
@@ -373,7 +361,7 @@ func TestAppServerAppliedSettingsMalformedAndLayoutOnly(t *testing.T) {
 				t.Fatal(err)
 			}
 			fresh, w := appliedSettingsTestUI(t, "/workspace", "other")
-			params := appliedSettingsTestResume(t, fresh, w, binding.ThreadInfo{ID: "saved", Cwd: "/workspace"})
+			params, _ := appliedSettingsTestResume(t, fresh, w, binding.ThreadInfo{ID: "saved", Cwd: "/workspace"})
 			if !reflect.DeepEqual(params["config"], map[string]any{}) {
 				t.Fatalf("invalid or absent settings applied: %#v", params)
 			}

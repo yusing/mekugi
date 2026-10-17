@@ -44,7 +44,7 @@ func TestUISnapshotAppServerStatusResetCredits(t *testing.T) {
 				response = `{"id":2,"result":{"rateLimits":{"primary":{"usedPercent":20}},"rateLimitResetCredits":` + tc.summary + `}}`
 			}
 			appServerTestMessage(t, u, response)
-			if appServerTestPendingStatus(u) || len(u.view.Entries) != 0 || strings.Count(sent.String(), `"method"`) != 2 || !strings.Contains(sent.String(), `"method":"account/rateLimits/read"`) {
+			if u.requests.Pending() || len(u.view.Entries) != 0 || strings.Count(sent.String(), `"method"`) != 2 || !strings.Contains(sent.String(), `"method":"account/rateLimits/read"`) {
 				t.Fatalf("status changed read-only request flow: %s", sent.String())
 			}
 			assertNativeUISnapshot(t, "native-status-resets-"+tc.name, u.statusPanelFrame(80, 40))
@@ -124,7 +124,7 @@ func TestAppServerStatusLocalAndAccountRefresh(t *testing.T) {
 			t.Fatalf("missing %q in rendered card: %s", want, body)
 		}
 	}
-	if strings.Contains(body, "Token usage:") || strings.Contains(body, "Loading") || len(u.view.Entries) != 0 || appServerTestPendingStatus(u) {
+	if strings.Contains(body, "Token usage:") || strings.Contains(body, "Loading") || len(u.view.Entries) != 0 || u.requests.Pending() {
 		t.Fatalf("stale/duplicated card: %s", body)
 	}
 }
@@ -146,7 +146,7 @@ func TestAppServerStatusIndependentSnapshotsAndFailure(t *testing.T) {
 	if !strings.Contains(first, "Model: first") || strings.Contains(first, "offline") || strings.Contains(first, "API key") || !strings.Contains(second, "Model: second") || !strings.Contains(second, "API key") {
 		t.Fatalf("crossed replies: %q / %q", first, second)
 	}
-	if u.sessionPresentation().Status.Alert || u.sessionPresentation().Status.Text != "" || u.requests.Pending() || appServerTestPendingStatus(u) {
+	if u.sessionPresentation().Status.Alert || u.sessionPresentation().Status.Text != "" || u.requests.Pending() {
 		t.Fatal("optional failure damaged session or retained request")
 	}
 	for _, card := range []string{first, second} {
@@ -179,7 +179,7 @@ func TestAppServerStatusInvalidOptionalResponses(t *testing.T) {
 		u.session.agent("/root").InputTokens = 12
 		appServerTestKeys(t, u, "/status\r")
 		appServerTestMessage(t, u, `{"id":1,"result":`+response+`}`)
-		if appServerTestPendingStatus(u) || strings.Contains(statusReportText(u.statusPanel), "Loading") || strings.Contains(wire.String(), "rateLimits") {
+		if u.requests.Pending() || strings.Contains(statusReportText(u.statusPanel), "Loading") || strings.Contains(wire.String(), "rateLimits") {
 			t.Fatal("optional result left pending or fetched unsupported limits")
 		}
 		if strings.Contains(response, "apiKey") && !strings.Contains(statusReportText(u.statusPanel), "Token usage: 12 input") {
@@ -233,7 +233,7 @@ func TestAppServerStatusPanelCloseScrollAndLateResponse(t *testing.T) {
 			}
 			// A response to a closed panel must not fetch limits or resurrect UI.
 			appServerTestMessage(t, u, `{"id":1,"result":{"account":{"type":"chatgpt","planType":"plus"}}}`)
-			if u.statusPanel != nil || appServerTestPendingStatus(u) || strings.Contains(wire.String(), "rateLimits") || strings.Contains(wire.String(), "turn/") {
+			if u.statusPanel != nil || u.requests.Pending() || strings.Contains(wire.String(), "rateLimits") || strings.Contains(wire.String(), "turn/") {
 				t.Fatalf("closed panel performed work: %s", wire.String())
 			}
 		})

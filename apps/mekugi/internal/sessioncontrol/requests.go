@@ -4,8 +4,6 @@ package sessioncontrol
 
 import (
 	"encoding/json/jsontext"
-	"iter"
-	"maps"
 )
 
 // Transport is the app-server's existing request and response surface.
@@ -80,6 +78,3 @@ func (r *Requests[T]) Retire(scope string) {
 }
 
 func (r *Requests[T]) Pending() bool { return len(r.pending) != 0 }
-
-// All supports admission decisions such as serializing writes to a thread name.
-func (r *Requests[T]) All() iter.Seq2[string, Request[T]] { return maps.All(r.pending) }

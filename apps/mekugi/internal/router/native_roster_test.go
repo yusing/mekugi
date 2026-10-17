@@ -20,7 +20,8 @@ func TestAppServerChildMetadataWithoutThreadStarted(t *testing.T) {
 	const child = "0123456789-child"
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": child, "turn": map[string]any{"id": "t"}})
 	id := u.session.metadata[child]
-	if id == "" || appServerTestRequestMethod(u, id) != "thread/read" {
+	request := resumeTestOne(t, u.client.Input.(*appServerTestInput), "thread/read")
+	if id == "" || fmt.Sprint(request.ID) != id {
 		t.Fatal("child observation did not request metadata")
 	}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": child, "turnId": "t", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "go test ./...", "exitCode": 2}})

@@ -400,3 +400,13 @@ func TestActivityFeedOutputContextIsBounded(t *testing.T) {
 		})
 	}
 }
+
+func (v *activityAdapter) LayoutFeed(width int) activityui.Feed {
+	v.publishActivity()
+	for {
+		feed := v.View.LayoutFeed(width)
+		if !v.hydrateActivity() {
+			return feed
+		}
+	}
+}

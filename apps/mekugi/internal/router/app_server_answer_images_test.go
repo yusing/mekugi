@@ -3,6 +3,7 @@ package router
 import (
 	"bytes"
 	json "encoding/json/v2"
+	"fmt"
 	"image"
 	"image/png"
 	"os"
@@ -135,14 +136,8 @@ func TestQuestionImageLifetimeAcrossNavigationAndRetry(t *testing.T) {
 	}
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "1\r")
-	requestID := ""
-	for id, request := range u.requests.All() {
-		method := request.Method
-		if method == "turn/steer" {
-			requestID = id
-		}
-	}
-	appServerTestMessage(t, u, `{"id":`+requestID+`,"error":{"code":-1,"message":"rejected"}}`)
+	request := resumeTestOne(t, wire, "turn/steer")
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, request.ID))
 	u.openQuestions()
 	questionTestPaint(t, u, 70)
 	if len(u.Images) != 1 || u.Images[0].Path != path || len(u.Selections) != 1 || u.Selections[0].Text != "retry quote" {
