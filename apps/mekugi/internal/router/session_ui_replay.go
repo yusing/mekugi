@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/contracts/observation"
@@ -36,6 +37,8 @@ import (
 )
 
 type uiReplayPlayback struct {
+	terminalViews terminalsession.Views
+	reviewSource  *changecapture.Service
 	*playback.Player
 	views        *sessionpresentation.Service
 	conversation *conversationmodel.Service
@@ -49,8 +52,8 @@ type uiReplayPlayback struct {
 	ctx          context.Context
 }
 
-func newUIReplayPlayback(views *sessionpresentation.Service, conversation *conversationmodel.Service, observations *binding.Observation, activity *activitymodel.Service, ctx context.Context, source *playback.Source, speed float64) *uiReplayPlayback {
-	p := &uiReplayPlayback{views: views, conversation: conversation, observations: observations, activity: activity, ctx: ctx, Player: playback.NewPlayer(source, speed)}
+func newUIReplayPlayback(terminalViews terminalsession.Views, reviewSource *changecapture.Service, views *sessionpresentation.Service, conversation *conversationmodel.Service, observations *binding.Observation, activity *activitymodel.Service, ctx context.Context, source *playback.Source, speed float64) *uiReplayPlayback {
+	p := &uiReplayPlayback{terminalViews: terminalViews, reviewSource: reviewSource, views: views, conversation: conversation, observations: observations, activity: activity, ctx: ctx, Player: playback.NewPlayer(source, speed)}
 	p.reset()
 	return p
 }
@@ -64,7 +67,7 @@ func (p *uiReplayPlayback) reset() {
 	p.paintedAt = time.Time{}
 	// The read-only terminal attachment uses shared projection without a backend
 	// client, request tracker, writable store, observers or notification sink.
-	u := &appServerUI{presentationState: p.views, conversationState: p.conversation, session: appServerSession{activity: p.activity, observations: p.observations}, ctx: p.ctx, view: newActivityAdapter(), agents: newActivityAdapter(), Thread: p.Source.Thread, clock: func() time.Time { return p.At }, replay: p}
+	u := &appServerUI{terminalViews: p.terminalViews, reviewSource: p.reviewSource, presentationState: p.views, conversationState: p.conversation, session: appServerSession{activity: p.activity, observations: p.observations}, ctx: p.ctx, view: newActivityAdapter(), agents: newActivityAdapter(), Thread: p.Source.Thread, clock: func() time.Time { return p.At }, replay: p}
 	u.sessionPresentation().Status.Set("Replay", false)
 	u.view.Clock, u.agents.Clock = u.clock, u.clock
 	u.session.start(p.Source.Thread, p.Source.Cwd)
@@ -74,6 +77,7 @@ func (p *uiReplayPlayback) reset() {
 		u.shell.Focus = previous.Focus
 		u.shell.DiffOpen = previous.DiffOpen
 	}
+	u.shell.Shell.Clamp()
 	p.ui = u
 }
 
@@ -390,7 +394,7 @@ func (p *uiReplayPlayback) run(keys <-chan byte, paint func() error, headless bo
 
 // RunSessionUIReplay is an offline entry point. It shares the native presenter,
 // but constructs no host, upstream connection, execution capability, or store.
-func RunSessionUIReplay(views *sessionpresentation.Service, conversation *conversationmodel.Service, observations *binding.Observation, activity *activitymodel.Service, service *playback.Service, ctx context.Context, args []string, stdin, stdout, stderr *os.File) (code int) {
+func RunSessionUIReplay(terminalViews terminalsession.Views, reviewSource *changecapture.Service, views *sessionpresentation.Service, conversation *conversationmodel.Service, observations *binding.Observation, activity *activitymodel.Service, service *playback.Service, ctx context.Context, args []string, stdin, stdout, stderr *os.File) (code int) {
 	f := flag.NewFlagSet("replay-session", flag.ContinueOnError)
 	f.SetOutput(stderr)
 	session := f.String("session", "", "Codex session ID (required; searches CODEX_HOME or ~/.codex)")
@@ -441,7 +445,7 @@ func RunSessionUIReplay(views *sessionpresentation.Service, conversation *conver
 		return fail(err)
 	}
 	duration := source.End.Sub(source.Start)
-	p := newUIReplayPlayback(views, conversation, observations, activity, ctx, source, *speed)
+	p := newUIReplayPlayback(terminalViews, reviewSource, views, conversation, observations, activity, ctx, source, *speed)
 	defer p.close()
 	if err = p.Bounds(*from, *until); err != nil {
 		return fail(err)

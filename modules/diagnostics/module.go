@@ -6,7 +6,7 @@ import (
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 )
 
-var Module = module.Descriptor[Deps, *diagnostic.Service, module.NoBindings]{
+var Module = module.Descriptor[Deps, *diagnostic.Service, module.NoBindings, module.NoViews]{
 	ID: "diagnostics", Summary: "Retain and inspect private diagnostic evidence",
 	Requires: []module.ID{"sessionhistory", "sessioninspection"}, Lifetime: module.Invocation,
 	HostsDiagnosticSections: true, New: newService,

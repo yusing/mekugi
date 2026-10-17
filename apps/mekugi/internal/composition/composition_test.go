@@ -17,7 +17,7 @@ type testService struct {
 	name     string
 	commands []command.Contribution
 }
-type testDescriptor = module.Descriptor[struct{}, *testService, binding.Bindings[*testService]]
+type testDescriptor = module.Descriptor[struct{}, *testService, binding.Bindings[*testService], module.NoViews]
 
 func descriptor(id module.ID, specs ...command.Contribution) testDescriptor {
 	definitions := make([]command.Definition[*testService], len(specs))
@@ -49,7 +49,7 @@ func TestCompositionTypedDependenciesAndCollectedSlots(t *testing.T) {
 	var c Composition
 	base := c.Add(descriptor("base"), emptyDeps)
 	type deps struct{ Base *testService }
-	host := c.Add(module.Descriptor[deps, *testService, binding.Bindings[*testService]]{
+	host := c.Add(module.Descriptor[deps, *testService, binding.Bindings[*testService], module.NoViews]{
 		ID: "host", Requires: []module.ID{"base"}, Lifetime: module.Stateless, HostsCommands: true,
 		New: func(d deps, slots module.Slots) (*testService, error) {
 			if d.Base != base.Value() {

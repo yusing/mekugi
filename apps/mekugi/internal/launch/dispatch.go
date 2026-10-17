@@ -70,7 +70,7 @@ func Run() (exitCode int) {
 		case "inspect-sessions":
 			return inspectioncli.RunSessionCorpusInspection(runtime.Inspection, ctx, os.Args[2:], os.Stdout, os.Stderr)
 		case "replay-session":
-			return router.RunSessionUIReplay(runtime.Presentation, runtime.Conversation, runtime.Observation, runtime.Activity, runtime.Replay, ctx, os.Args[2:], os.Stdin, os.Stdout, os.Stderr)
+			return router.RunSessionUIReplay(runtime.Terminal, runtime.Changes, runtime.Presentation, runtime.Conversation, runtime.Observation, runtime.Activity, runtime.Replay, ctx, os.Args[2:], os.Stdin, os.Stdout, os.Stderr)
 		case "inspect-session":
 			return inspectioncli.RunSessionInspection(runtime.Inspection, runtime.Diagnostics, ctx, os.Args[2:], os.Stdout, os.Stderr)
 		case "inspect-storage":

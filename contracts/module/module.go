@@ -21,6 +21,9 @@ type Lifetime string
 // NoBindings declares a backend-neutral module.
 type NoBindings struct{}
 
+// NoViews declares a module without renderer contributions.
+type NoViews struct{}
+
 const (
 	Stateless       Lifetime = "stateless"
 	Invocation      Lifetime = "invocation"
@@ -58,7 +61,7 @@ type Contributions[S any] struct {
 // Descriptor keeps typed construction separate from backend-specific bindings.
 // B is the backend binding value, so contracts never imports a backend package.
 // New assembles state; Start acquires declared invocation resources.
-type Descriptor[D, S, B any] struct {
+type Descriptor[D, S, B, V any] struct {
 	ID                      ID
 	Summary                 string
 	Requires                []ID
@@ -74,6 +77,7 @@ type Descriptor[D, S, B any] struct {
 	HostsReplayTiming       bool
 	HostsDiagnosticSections bool
 	New                     func(D, Slots) (S, error)
+	Views                   V
 	Bindings                B
 	Start                   func(context.Context, S) error
 	Stop                    func(context.Context, S) error

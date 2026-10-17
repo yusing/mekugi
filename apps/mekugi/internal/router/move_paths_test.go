@@ -34,7 +34,7 @@ func TestUISnapshotMoveActivityAndDialog(t *testing.T) {
 	c.SetWorkspace(workspace)
 	u.shell.saved.data = reviewFixtureSnapshot(t, presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: workspace, Call: "move"}, Correlation: "move\x000"}, Operation: activitydetail.Operation{Thread: "main", Item: "move"}, Chunks: []presentation.Chunk{{Workspace: workspace, Review: file}}})
 	publishFixtureReview(t, u)
-	u.shell.diff = c
+	u.shell.Auxiliary = c
 	if !u.shell.openActivityEdit(u.view, 1, pathdisplay.Move(workspace, file.BeforePath, file.AfterPath)) {
 		t.Fatal("compressed move endpoint did not open exact captured dialog")
 	}

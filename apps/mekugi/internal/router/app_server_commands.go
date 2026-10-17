@@ -224,9 +224,11 @@ func (u *appServerUI) resetDiffScope() {
 	u.shell.saved.reset()
 	u.shell.reviewLoader.replace(u.ctx, u.shell.saved)
 	u.shell.reviewScope = u.shell.saved.scope
-	u.shell.diff.Reset()
-	u.shell.publishReview()
+	if u.shell.Auxiliary != nil {
+		u.shell.Auxiliary.Reset()
+	}
 	u.shell.liveDock, u.shell.diffFailure, u.shell.diffUnseen = previewview.PreviewPane{}, "", false
+	u.shell.publishReview()
 	u.shell.review.ResetScope()
 }
 

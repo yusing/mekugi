@@ -5,14 +5,18 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
 // Shell owns outer layout and status targets around prepared feature content.
 type Shell struct {
 	Panes
-	Layout Layout
-	Tabs   [4]Rect
+	Auxiliary      terminalui.Pane
+	AuxiliaryLabel string
+	Theme          diffrender.Theme
+	Layout         Layout
+	Tabs           [4]Rect
 }
 
 type ShellPlan struct {
@@ -31,14 +35,15 @@ type ShellContent struct {
 }
 
 type ShellStatus struct {
-	Child, Locked, DiffUnseen, DiffBack, Prefix bool
-	Responding, LiveCount                       int
-	Expansion                                   uint8
-	Playback                                    bool
-	PlaybackBar                                 string
+	Child, Locked, DiffUnseen, Prefix bool
+	Responding, LiveCount             int
+	Expansion                         uint8
+	Playback                          bool
+	PlaybackBar                       string
 }
 
 func (s *Shell) Plan(width, height, roster int) ShellPlan {
+	s.Clamp()
 	width, height = max(1, width), max(1, height)
 	layout, left, right, framed, kept := s.Panes.Geometry(width, height, roster)
 	return ShellPlan{layout, left, right, width, height, kept, framed}
@@ -75,7 +80,7 @@ func (s *Shell) Compose(plan ShellPlan, in ShellContent) []string {
 	if right := plan.Right; right.W >= 4 && right.H >= 1 {
 		body := append(in.Diff[:min(len(in.Diff), layout.Diff.H)], make([]string, max(0, layout.Diff.H-len(in.Diff)))...)
 		if plan.Framed {
-			title := terminalui.PaneTitle(2, "Diff", "saved · "+in.DiffSummary, s.Focus == 1)
+			title := terminalui.PaneTitle(2, s.AuxiliaryLabel, in.DiffSummary, s.Focus == 1)
 			draw(right, terminalui.PaneBox(right.W, right.H, title, in.DiffState, s.Focus == 1, body, nil))
 		} else {
 			draw(right, body)
@@ -99,6 +104,7 @@ func (s *Shell) PromptVisible(prompt Rect, dialog bool, selection Rect) bool {
 // Status shows selectors and only the focused pane's keys.
 // Source: apps/mekugi/internal/router/native_shell.go:417:482@921795f4 nativeStatus
 func (s *Shell) Status(in ShellStatus, width, height int) string {
+	s.Clamp()
 	s.Tabs = [4]Rect{}
 	if in.Playback {
 		return in.PlaybackBar
@@ -131,7 +137,9 @@ func (s *Shell) Status(in ShellStatus, width, height int) string {
 		agentsBadge = terminalui.Amber + superscript(in.Responding) + "\x1b[39m"
 	}
 	tab(1, "Main", "", !in.Child)
-	tab(2, "Diff", diffBadge, s.DiffOpen)
+	if s.Auxiliary != nil {
+		tab(2, s.AuxiliaryLabel, diffBadge, s.DiffOpen)
+	}
 	tab(3, "Agents", agentsBadge, true)
 	if in.Locked {
 		tabs.WriteString("  " + terminalui.Amber + "Locked · /unlock" + terminalui.Reset)
@@ -143,20 +151,25 @@ func (s *Shell) Status(in ShellStatus, width, height int) string {
 	var hints terminalui.Hints
 	switch {
 	case in.Prefix:
-		hints = terminalui.Hints{{"ctrl+b 1-3", "select", 0}, {"2", "toggle diff", 0}, {"o", "older child history", 0}, {"e", "next live", 0}, {"←→", "resize", 0}, {"PgUp/PgDn", "history", 0}}
+		hints = terminalui.Hints{{"ctrl+b 1-3", "select", 0}, {"2", "toggle " + strings.ToLower(s.AuxiliaryLabel), 0}, {"o", "older child history", 0}, {"e", "next live", 0}, {"←→", "resize", 0}, {"PgUp/PgDn", "history", 0}}
+		if s.Auxiliary == nil {
+			hints = append(hints[:1], hints[2:]...)
+			hints[0].Key = "ctrl+b 1,3"
+		}
 		return tabs.String() + "  " + hints.Render()
 	case s.Focus == 1:
-		hints = terminalui.Hints{{"s", "files", 0}, {"tab", "changes", 0}, {"[ ]", "hunks", 0}, {"a", "caller", 0}, {"?", "help", 0}}
-		if in.DiffBack {
-			hints = append(terminalui.Hints{{"esc", "back", 0}}, hints...)
-		}
+		hints = s.Auxiliary.Hints()
 	case s.Focus == 3:
 		hints = terminalui.Hints{{"j/k", "agent", 0}, {"a", filter, 0}, {"esc", "back", 0}}
 	}
 	if in.LiveCount > 1 {
 		hints = append(hints, terminalui.Hint{"^B e", "next live", 0})
 	}
-	hints = append(hints, terminalui.Hint{"^B 1-3", "views", 0})
+	selector := "^B 1-3"
+	if s.Auxiliary == nil {
+		selector = "^B 1,3"
+	}
+	hints = append(hints, terminalui.Hint{selector, "views", 0})
 	if s.Focus == 0 {
 		hints = append(hints, terminalui.Hint{"^E", [3]string{"expand events", "expand all", "default"}[in.Expansion], 0})
 	}
@@ -170,4 +183,21 @@ func superscript(n int) string {
 		b.WriteRune(digits[r-'0'])
 	}
 	return b.String()
+}
+
+// Clamp discards focus and geometry for an absent contribution.
+func (s *Shell) Clamp() {
+	if s.Auxiliary == nil {
+		s.DiffOpen = false
+		if s.Focus == 1 {
+			s.Focus = 0
+		}
+	}
+}
+
+func (s *Shell) Select(pane int) {
+	if pane == 1 && s.Auxiliary == nil {
+		return
+	}
+	s.Panes.Select(pane)
 }

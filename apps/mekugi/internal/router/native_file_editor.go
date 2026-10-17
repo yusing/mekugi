@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/yusing/mekugi/libraries/pathdisplay"
+	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
 // Carries the selected file across raw-terminal restoration, before launching
@@ -31,5 +32,9 @@ func (u *appServerUI) openSelectedFileEditor(path string, stdin, stdout *os.File
 		u.setNotice("Open editor: "+err.Error(), true)
 		return
 	}
-	u.setNotice("Editor closed: "+pathdisplay.ForWorkspace(u.shell.diff.Workspace(), path), false)
+	workspace := u.session.cwd
+	if editor, ok := u.shell.Auxiliary.(terminalui.PaneEditor); ok {
+		workspace = editor.Workspace()
+	}
+	u.setNotice("Editor closed: "+pathdisplay.ForWorkspace(workspace, path), false)
 }

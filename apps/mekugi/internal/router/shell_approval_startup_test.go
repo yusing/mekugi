@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"net"
 	"os"
 	"os/exec"
@@ -49,7 +50,7 @@ func TestShellApprovalStartupSurvivesReportFailure(t *testing.T) {
 					t.Fatal(err)
 				}
 				ready := false
-				err = RunSession(testPresentation(), new(conversationmodel.Service), new(previewmodel.Service), new(activitymodel.Service), testHistory(), testPreferences(), testRecovery(), segments, testCapture(t, ""), newTestUsage(t), new(evidence.Service), new(transportcapture.Service), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), ctx, testCommands(), testInputProjections(), testGuidance(), testNaming(), nil, testGuards(), options, testCriticalErrors(), func(session Session) {
+				err = RunSession(terminalsession.Views{}, testPresentation(), new(conversationmodel.Service), new(previewmodel.Service), new(activitymodel.Service), testHistory(), testPreferences(), testRecovery(), segments, testCapture(t, ""), newTestUsage(t), new(evidence.Service), new(transportcapture.Service), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), ctx, testCommands(), testInputProjections(), testGuidance(), testNaming(), nil, testGuards(), options, testCriticalErrors(), func(session Session) {
 					ready = true
 					defer cancel()
 					// Stop at backend launch, after the production approval startup boundary.

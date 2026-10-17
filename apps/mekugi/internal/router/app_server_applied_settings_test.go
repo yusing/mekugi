@@ -370,7 +370,7 @@ func TestAppServerAppliedSettingsMalformedAndLayoutOnly(t *testing.T) {
 					t.Fatal("corrupt retention failed invisibly")
 				}
 			} else {
-				if err := fresh.panes.open(fresh.shell, "/workspace", "saved", true); err != nil || fresh.shell.Split != 63 || fresh.shell.diff.NavigatorColumns() != 20 {
+				if err := fresh.panes.open(fresh.shell, "/workspace", "saved", true); err != nil || fresh.shell.Split != 63 || savedPane(fresh.shell).NavigatorColumns() != 20 {
 					t.Fatalf("layout-only record not backward compatible: %v", err)
 				}
 			}

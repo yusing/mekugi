@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
@@ -30,7 +32,7 @@ func TestPaneSelectionPinnedHeadingAndFrozenCopies(t *testing.T) {
 				}
 			}
 			paint(width)
-			var rejected SelectionSource
+			var rejected terminalui.SelectionSource
 			if allocations := testing.AllocsPerRun(20, func() { rejected = pane.Selection(0, 0) }); allocations != 0 || len(rejected.Painted) != 0 || len(rejected.Document) != 0 {
 				t.Fatalf("navigator hit materialized selection: allocations=%g, source=%+v", allocations, rejected)
 			}

@@ -73,7 +73,7 @@ import (
     "github.com/yusing/mekugi/contracts/module"
     "github.com/yusing/mekugi/contracts/recordkind"
 )
-var Module = module.Descriptor[struct{}, int, module.NoBindings]{
+var Module = module.Descriptor[struct{}, int, module.NoBindings, module.NoViews]{
     ID: %q, Summary: "fixture", Lifetime: module.Stateless,
     Contributes: module.Contributions[int]{RecordKinds: records()},
     New: func(struct{}, module.Slots) (int, error) { panic("constructor executed") },

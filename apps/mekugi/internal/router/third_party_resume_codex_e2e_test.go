@@ -6,6 +6,7 @@ import (
 	"context"
 	json "encoding/json/v2"
 	"fmt"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -60,7 +61,8 @@ func startThirdPartyResumeTerminal(t *testing.T, newCommand func(context.Context
 	}
 	conversation := new(conversationmodel.Service)
 	observations := conversationbinding.Codex.Observation(conversation)
-	wait, err := startAppServerUI(testPresentation(), conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, newCommand(ctx), inner, inner, nil, nil, thread, true, nil, nil, argv, "", nil, &observations, false)
+	reviewSource := new(changecapture.Service)
+	wait, err := startAppServerUI(testTerminalViews(reviewSource), reviewSource, testPresentation(), conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, newCommand(ctx), inner, inner, nil, nil, thread, true, nil, nil, argv, "", nil, &observations, false)
 	if err != nil {
 		t.Fatal(err)
 	}

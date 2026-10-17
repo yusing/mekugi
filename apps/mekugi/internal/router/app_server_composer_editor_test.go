@@ -90,7 +90,7 @@ func testAppServerEditorTerminalHandoff(t *testing.T, selectedFile bool) {
 		if err := os.WriteFile(path, []byte("original file"), 0600); err != nil {
 			t.Fatal(err)
 		}
-		c := u.shell.diff
+		c := savedPane(u.shell)
 		c.SetWorkspace(dir)
 		c.Update((presentation.Publication{}).With([]presentation.File{{Path: path, Chunks: []presentation.Chunk{
 			liveDiffCapture("selected", path, 1, "before\n", "original file\n", presentation.Origin{}),
@@ -203,7 +203,7 @@ func testAppServerEditorTerminalHandoff(t *testing.T, selectedFile bool) {
 	}
 	if selectedFile {
 		data, err := os.ReadFile(path)
-		if err != nil || string(data) != "edited from terminal" || u.Text != "original" || u.shell.Focus != 1 || u.shell.diff.EditorPath() != path {
+		if err != nil || string(data) != "edited from terminal" || u.Text != "original" || u.shell.Focus != 1 || savedPane(u.shell).EditorPath() != path {
 			t.Fatalf("file=%q draft=%q focus=%d error=%v", data, u.Text, u.shell.Focus, err)
 		}
 	} else if u.Text != "edited from terminalx" {

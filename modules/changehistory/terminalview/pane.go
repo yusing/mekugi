@@ -19,8 +19,10 @@ import (
 // Pane owns saved-review interaction, layout and source attribution.
 // Source: apps/mekugi/internal/router/live_diff_terminal.go:27:695@[fc0514ff]
 type Pane struct {
+	publicationRevision              uint64
 	workspace                        string
 	coverage                         string
+	failure                          string
 	view                             View
 	renderer                         Renderer
 	rendering                        Render
@@ -33,7 +35,7 @@ type Pane struct {
 	files                            []presentation.File
 	lines                            []string
 	offset, rows, navRows, stack     int
-	selection                        SelectionSource
+	selection                        terminalui.SelectionSource
 	selectionHeading                 int
 	back                             paneBack
 	theme                            diffrender.Theme
@@ -51,7 +53,6 @@ func (c *Pane) SetWorkspace(workspace string) {
 	c.workspace, c.rendered, c.dirty = workspace, nil, true
 	c.refreshChanges()
 }
-func (c *Pane) Theme() diffrender.Theme { return c.theme }
 func (c *Pane) SetTheme(theme diffrender.Theme) {
 	c.dirty = c.dirty || c.theme != theme
 	c.theme = theme
@@ -74,10 +75,10 @@ func (c *Pane) Update(publication presentation.Publication, coverage string) {
 	c.refreshChanges()
 	c.dirty = true
 }
-func (c *Pane) SetCoverage(coverage string) { c.coverage, c.dirty = coverage, true }
 
 // Reset retires the selected review while retaining its tree/flat preference.
 func (c *Pane) Reset() {
+	c.publicationRevision, c.failure = 0, ""
 	c.coverage = "CONNECTING"
 	c.view = View{Scroll: make(map[string]int)}
 	c.navigation = Navigation{Flat: c.navigation.Flat}
@@ -104,6 +105,22 @@ func (c *Pane) EditorPath() string {
 func (c *Pane) Paint(ctx context.Context, out io.Writer, width, height int) error {
 	var err error
 	width, height = max(1, width), max(3, height)
+	if c.failure != "" {
+		lines := []string{"Diff unavailable", textsanitize.Safe(c.failure, false), "Use mchanges to review captured edits."}
+		var frame strings.Builder
+		for row := range height {
+			text := ""
+			if row < len(lines) {
+				text = ansi.Truncate(lines[row], width, "")
+			}
+			fmt.Fprintf(&frame, "\x1b[%d;1H\x1b[0m\x1b[2K%s", row+1, text)
+		}
+		if _, err := io.WriteString(out, frame.String()); err != nil {
+			return err
+		}
+		c.selection = terminalui.SelectionSource{}
+		return nil
+	}
 	files := make([]presentation.File, len(c.view.Files))
 	for i, file := range c.view.Files {
 		files[i] = c.view.Visible[file.Key()]
@@ -216,7 +233,7 @@ func (c *Pane) Paint(ctx context.Context, out io.Writer, width, height int) erro
 	}
 	header = diffrender.Gutter(false, c.theme) + textsanitize.Safe(header, false)
 
-	var source SelectionSource
+	var source terminalui.SelectionSource
 
 	var nav []string
 	renderNav := func(width, rows int) []string {
@@ -256,7 +273,7 @@ func (c *Pane) Paint(ctx context.Context, out io.Writer, width, height int) erro
 		top = stack + 1
 	}
 	if !overlay && !c.help && rows > 0 {
-		source = SelectionSource{Y: top, Width: width, Painted: make([]diffrender.LineSource, rows),
+		source = terminalui.SelectionSource{Y: top, Width: width, Painted: make([]diffrender.LineSource, rows),
 			Document: lines, Sources: c.rendering.Sources, Offset: offset, Workspace: c.workspace}
 		if navWidth > 0 {
 			source.X = navWidth + 1
@@ -370,5 +387,14 @@ func (c *Pane) Title() (string, string) {
 	if visible > 1 {
 		right = append(right, fmt.Sprintf("%d/%d", position, visible))
 	}
-	return left, strings.Join(right, terminalui.Dim+" · "+terminalui.Undim)
+	return "saved · " + left, strings.Join(right, terminalui.Dim+" · "+terminalui.Undim)
+}
+
+// Hints describes the saved-review controls in their current navigation state.
+func (c *Pane) Hints() terminalui.Hints {
+	hints := terminalui.Hints{{"s", "files", 0}, {"tab", "changes", 0}, {"[ ]", "hunks", 0}, {"a", "caller", 0}, {"?", "help", 0}}
+	if c.Back() {
+		hints = append(terminalui.Hints{{"esc", "back", 0}}, hints...)
+	}
+	return hints
 }

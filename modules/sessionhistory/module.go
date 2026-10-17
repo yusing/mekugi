@@ -9,7 +9,7 @@ import (
 
 type Deps struct{}
 
-var Module = module.Descriptor[Deps, *history.Service, module.NoBindings]{
+var Module = module.Descriptor[Deps, *history.Service, module.NoBindings, module.NoViews]{
 	ID:           "sessionhistory",
 	Summary:      "Own retained session publication, namespaces, allocation, leases, and retention",
 	Lifetime:     module.Invocation,

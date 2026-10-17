@@ -7,7 +7,6 @@ import (
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
-	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
 
 	commandsegments "github.com/yusing/mekugi/modules/commandsegments/segments"
 
@@ -17,6 +16,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -62,7 +62,9 @@ import (
 )
 
 type appServerUI struct {
-	mainView terminalsession.Main
+	terminalViews terminalsession.Views
+	reviewSource  *changecapture.Service
+	mainView      terminalsession.Main
 	*composer.Editor
 	secretEditor composer.Editor
 	feedback     noticepresentation.Model
@@ -141,14 +143,14 @@ type appServerUI struct {
 // StartAppServerUI starts the native terminal frontend without router observers.
 // Codex app-server owns execution; the launcher
 // still owns routing, environment, invocation-local configuration and cancellation.
-func StartAppServerUI(views *sessionpresentation.Service, conversation *conversationmodel.Service, observations *binding.Observation, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, notices *notice.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
+func StartAppServerUI(terminalViews terminalsession.Views, reviewSource *changecapture.Service, views *sessionpresentation.Service, conversation *conversationmodel.Service, observations *binding.Observation, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, notices *notice.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
 	faint, _ := terminalui.SupportsFaint(ctx, "auto")
 	issues := NewCriticalErrors(notices)
-	return startAppServerUI(views, conversation, activity, service, prefs, nil, ctx, cmd, stdin, stdout, nil, issues, resumeThread, faint, nil, nil, resumeArgv, "", nil, observations, approvals)
+	return startAppServerUI(terminalViews, reviewSource, views, conversation, activity, service, prefs, nil, ctx, cmd, stdin, stdout, nil, issues, resumeThread, faint, nil, nil, resumeArgv, "", nil, observations, approvals)
 }
 
 // Codex approval policy and the invocation-local Shell guard are independent.
-func startAppServerUI(views *sessionpresentation.Service, conversation *conversationmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *inferencegateway.Tiers, capture *transportcapture.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, observations *binding.Observation, approvals bool) (func() error, error) {
+func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changecapture.Service, views *sessionpresentation.Service, conversation *conversationmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *inferencegateway.Tiers, capture *transportcapture.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, observations *binding.Observation, approvals bool) (func() error, error) {
 	guardHash := ""
 	for _, entry := range cmd.Environ() {
 		if hash, ok := strings.CutPrefix(entry, shellhook.Environment+"="); ok {
@@ -186,7 +188,7 @@ func startAppServerUI(views *sessionpresentation.Service, conversation *conversa
 	if err != nil {
 		return nil, err
 	}
-	u := &appServerUI{presentationState: views, conversationState: conversation, session: appServerSession{activity: activity, observations: observations}, history: service, segments: segments, client: c, view: newActivityAdapter(), agents: newActivityAdapter(), proxy: proxy, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
+	u := &appServerUI{terminalViews: terminalViews, reviewSource: reviewSource, presentationState: views, conversationState: conversation, session: appServerSession{activity: activity, observations: observations}, history: service, segments: segments, client: c, view: newActivityAdapter(), agents: newActivityAdapter(), proxy: proxy, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
 	u.sessionPresentation().Status.Set("Connecting…", false)
 	u.attachActivity()
 	u.guardHookCheck.hash = guardHash
@@ -266,7 +268,8 @@ func startAppServerUI(views *sessionpresentation.Service, conversation *conversa
 					case <-ctx.Done():
 						return ctx.Err()
 					case <-autoChanged:
-						u.shell.diff.SetWorkspace(review.Workspace())
+						u.shell.saved.workspace = review.Workspace()
+						u.shell.publishReview()
 						u.dirty = true
 					case <-diffGap:
 						resubscribe()
@@ -1338,7 +1341,9 @@ func (u *appServerUI) ensureShell() {
 	}
 	u.agents.Bare = true
 	shell := &terminalUI{main: u, agents: u.agents, review: review, diffScreen: new(terminalsession.DiffScreen)}
-	shell.diff = changeview.NewPane("", diffrender.EnvironmentTheme(os.Getenv("COLORFGBG")))
+	shell.Theme = diffrender.EnvironmentTheme(os.Getenv("COLORFGBG"))
+	label, attachment := u.terminalViews.Attach(shell.Theme)
+	shell.AuxiliaryLabel, shell.Auxiliary, shell.preparePane = label, attachment.Pane, attachment.Prepare
 	shell.saved = savedDiff{store: store, data: new(changepresentation.Snapshot), coverage: "CONNECTING"}
 	u.shell = shell
 }

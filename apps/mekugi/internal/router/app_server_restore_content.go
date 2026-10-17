@@ -53,7 +53,8 @@ func (u *appServerUI) restoreDiffThread(info binding.ThreadInfo, root bool) {
 	}
 	u.shell.review.IncludeThread(info.Cwd, info.ID, root)
 	if root {
-		u.shell.diff.SetWorkspace(info.Cwd)
+		u.shell.saved.workspace = info.Cwd
+		u.shell.publishReview()
 	}
 }
 

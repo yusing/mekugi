@@ -12,7 +12,7 @@ func scrollTestUI(t *testing.T, offset int) *terminalUI {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
-	u.shell.diff = liveDiffChangesPane(t, 80, 10, []presentation.Chunk{liveDiffCapture("scroll", "scroll.txt", 1, "", liveDiffLinesFile("scroll", 100), presentation.Origin{})})
+	u.shell.Auxiliary = liveDiffChangesPane(t, 80, 10, []presentation.Chunk{liveDiffCapture("scroll", "scroll.txt", 1, "", liveDiffLinesFile("scroll", 100), presentation.Origin{})})
 	u.shell.Focus, u.shell.width, u.shell.height = 1, 80, 10
 	u.shell.Layout.Diff = terminalsession.Rect{W: 80, H: 10}
 	for range offset {
@@ -20,7 +20,7 @@ func scrollTestUI(t *testing.T, offset int) *terminalUI {
 			t.Fatal(err)
 		}
 	}
-	paintSavedDiff(t, u.shell.diff, 80, 10)
+	paintSavedDiff(t, savedPane(u.shell), 80, 10)
 	return u.shell
 }
 
@@ -42,8 +42,8 @@ func TestScrollablePaneWheelAgreesAtConsumers(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			paintSavedDiff(t, shell.diff, 80, 10)
-			if got := shell.diff.Selection(79, 9).Offset; got != test.diffWant {
+			paintSavedDiff(t, savedPane(shell), 80, 10)
+			if got := savedPane(shell).Selection(79, 9).Offset; got != test.diffWant {
 				t.Fatalf("saved diff wheel offset=%d want=%d", got, test.diffWant)
 			}
 			activity := newActivityAdapter()
@@ -69,8 +69,8 @@ func TestScrollablePaneWheelBurstAccumulates(t *testing.T) {
 		}
 		activity.testHandleMouse('k', 2, 1)
 	}
-	paintSavedDiff(t, shell.diff, 80, 10)
-	if got := shell.diff.Selection(79, 9).Offset; got != 38 || activity.Offset != 38 {
+	paintSavedDiff(t, savedPane(shell), 80, 10)
+	if got := savedPane(shell).Selection(79, 9).Offset; got != 38 || activity.Offset != 38 {
 		t.Fatalf("wheel burst lost input before paint: diff=%d agents=%d", got, activity.Offset)
 	}
 }

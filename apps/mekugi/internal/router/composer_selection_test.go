@@ -178,7 +178,7 @@ func TestTerminalUIDiffSelectionUsesRenderedPane(t *testing.T) {
 		u := selectionTestUI(rows...)
 		u.width, u.frame.Width = width, width
 		u.Layout = terminalsession.Layout{Diff: terminalsession.Rect{0, 0, width, 16}}
-		u.diff = c
+		u.Auxiliary = c
 		if sourceView.Y > 0 && u.diffSelection(sourceView.X, 0) != nil {
 			t.Fatal("stacked navigator was selectable")
 		}

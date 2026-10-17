@@ -7,7 +7,10 @@ import (
 	"slices"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/contracts/presentation"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
@@ -61,6 +64,7 @@ func (h *Handle[S]) Value() S {
 }
 
 type entry struct {
+	auxiliary       []terminalui.PaneFactory[*scope.Store]
 	presentation    []presentation.Status
 	activityDetails []activitydetail.Provider
 	replayTiming    []replaytiming.Reader
@@ -89,7 +93,9 @@ type Composition struct {
 // dependency closure resolves prior handles after all slots have been collected.
 func (c *Composition) Add[D, S any, B interface {
 	module.NoBindings | binding.Bindings[S]
-}](descriptor module.Descriptor[D, S, B], deps func() D) *Handle[S] {
+}, V interface {
+	module.NoViews | terminalui.Definitions[S, *scope.Store]
+}](descriptor module.Descriptor[D, S, B, V], deps func() D) *Handle[S] {
 	if c.sealed {
 		panic("composition is already activated")
 	}
@@ -104,6 +110,16 @@ func (c *Composition) Add[D, S any, B interface {
 		guidance:     slices.Clone(descriptor.Contributes.Guidance),
 		capabilities: slices.Clone(backend.Requires),
 		validFactory: descriptor.New != nil && deps != nil,
+	}
+	views, _ := any(descriptor.Views).(terminalui.Definitions[S, *scope.Store])
+	for _, definition := range views.Auxiliary {
+		factory := terminalui.PaneFactory[*scope.Store]{Name: definition.Name, Label: definition.Label}
+		if definition.Attach != nil {
+			factory.Attach = func(theme diffrender.Theme) terminalui.PaneAttachment[*scope.Store] {
+				return definition.Attach(handle.Value(), theme)
+			}
+		}
+		node.auxiliary = append(node.auxiliary, factory)
 	}
 	for _, definition := range descriptor.Contributes.ActivityDetails {
 		provider := activitydetail.Provider{Name: definition.Name}
@@ -276,6 +292,7 @@ func (r *moduleRegistrar) ShellApproval(guard binding.ShellApproval) error {
 }
 
 type Runtime struct {
+	Terminal             terminalsession.Views
 	Presentation         *sessionpresentation.Service
 	Conversation         *conversationmodel.Service
 	Replay               *playback.Service
@@ -322,6 +339,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 	}
 	c.sealed = true
 	runtime := new(Runtime)
+	var auxiliary []terminalui.PaneFactory[*scope.Store]
 	var status []presentation.Status
 	var records []recordkind.Spec
 	var activityDetails []activitydetail.Provider
@@ -341,6 +359,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 		}
 		positions[node.id] = i
 		runtime.Commands = append(runtime.Commands, node.commands...)
+		auxiliary = append(auxiliary, node.auxiliary...)
 		status = append(status, node.presentation...)
 		activityDetails = append(activityDetails, node.activityDetails...)
 		records = append(records, node.records...)
@@ -395,6 +414,11 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 		}
 		names[spec.Name] = true
 	}
+	terminal, err := terminalsession.NewViews(auxiliary)
+	if err != nil {
+		failures = append(failures, err)
+	}
+	runtime.Terminal = terminal
 	presentations, err := sessionpresentation.New(status)
 	if err != nil {
 		failures = append(failures, err)

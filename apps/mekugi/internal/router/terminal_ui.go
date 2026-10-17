@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/libraries/diffrender"
-	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
@@ -23,7 +23,7 @@ type terminalUI struct {
 	output        *outputDialog // Open over both panes, taking every key.
 	fileReadSlot  chan struct{} // Physical read capacity survives dialog and attachment replacement.
 	diffScreen    *terminalsession.DiffScreen
-	diff          *changeview.Pane
+	preparePane   func(*scope.Store)
 	saved         savedDiff
 	reviewLoader  *savedReviewLoader
 	reviewScope   previewmodel.Scope // Admitted preview authority, independent of retained loading.
@@ -156,8 +156,8 @@ func (u *terminalUI) resize(key string) {
 		return
 	}
 	u.Panes.Resize(key, u.width)
-	if key == "[" || key == "]" {
-		columns := u.diff.NavigatorColumns()
+	if navigator, ok := u.Auxiliary.(terminalui.PaneNavigator); ok && (key == "[" || key == "]") {
+		columns := navigator.NavigatorColumns()
 		if columns == 0 {
 			columns = max(25, u.Layout.Diff.W/4)
 		}
@@ -166,7 +166,7 @@ func (u *terminalUI) resize(key string) {
 		} else {
 			columns += 2
 		}
-		u.diff.SetNavigatorColumns(max(16, columns))
+		navigator.SetNavigatorColumns(max(16, columns))
 	}
 }
 
@@ -195,8 +195,9 @@ func (u *terminalUI) terminalColor(reply string) {
 			view.Painter.Colors.Background, view.Painter.Colors.HasBackground = bg, true
 		}
 	}
-	if u.diff != nil {
-		u.diff.SetTheme(theme)
+	u.Theme = theme
+	if u.Auxiliary != nil {
+		u.Auxiliary.SetTheme(theme)
 	}
 }
 
@@ -296,18 +297,19 @@ func (u *terminalUI) send(s string) error {
 		return nil
 	}
 
+	u.Shell.Clamp()
 	if u.Focus == 0 {
 		quit, err := u.main.input(terminalsession.Input{Kind: terminalsession.KeyInput, Text: s})
 		u.main.quitRequested = u.main.quitRequested || quit
 		return err
 	}
 	if u.Focus == 1 {
-		if s == "e" && u.main != nil {
-			if path := u.diff.EditorPath(); path != "" {
+		if editor, ok := u.Auxiliary.(terminalui.PaneEditor); ok && s == "e" && u.main != nil {
+			if path := editor.EditorPath(); path != "" {
 				return &openFileEditor{path: path}
 			}
 		}
-		if u.diff.Key(s) {
+		if u.Auxiliary.Key(s) {
 			u.DiffOpen, u.Focus = false, 0
 		}
 		return nil
@@ -424,12 +426,13 @@ func (u *terminalUI) mouse(s string) error {
 		}
 	}
 	navigatorWidth := 0
-	if u.diff != nil {
-		navigatorWidth = u.diff.NavigatorWidth(u.Layout.Diff.W)
+	navigator, hasNavigator := u.Auxiliary.(terminalui.PaneNavigator)
+	if hasNavigator {
+		navigatorWidth = navigator.NavigatorWidth(u.Layout.Diff.W)
 	}
 	if handled, columns := u.Panes.Drag(pointer, u.Layout, navigatorWidth); handled {
-		if columns != 0 {
-			u.diff.SetNavigatorColumns(columns)
+		if columns != 0 && hasNavigator {
+			navigator.SetNavigatorColumns(columns)
 		}
 		return nil
 	}
@@ -467,8 +470,8 @@ func (u *terminalUI) mouse(s string) error {
 	if pane < 0 {
 		return nil
 	}
-	if pane != 1 && u.diff != nil {
-		u.diff.ClearHover()
+	if pane != 1 && u.Auxiliary != nil {
+		u.Auxiliary.ClearHover()
 	}
 
 	if button&^28 == 0 && !release {
@@ -507,8 +510,8 @@ func (u *terminalUI) mouse(s string) error {
 	case 65:
 		action = 'j'
 	}
-	if pane == 1 {
-		u.diff.Mouse(action, y-r.Y+1, x-r.X+1)
+	if pane == 1 && u.Auxiliary != nil {
+		u.Auxiliary.Mouse(action, y-r.Y+1, x-r.X+1)
 		return nil
 	}
 	if pane == 3 {

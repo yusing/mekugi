@@ -11,7 +11,7 @@ import (
 func TestNativeReplyDialogPreservesScrolledDiff(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	c := liveDiffChangesPane(t, 120, 28, []presentation.Chunk{liveDiffCapture("a", "a.go", 1, "", liveDiffLinesFile("a", 80), presentation.Origin{Change: "amber1", Caller: "/root"})})
-	u.shell.diff = c
+	u.shell.Auxiliary = c
 	u.shell.DiffOpen, u.shell.Focus = true, 1
 
 	for range 12 {

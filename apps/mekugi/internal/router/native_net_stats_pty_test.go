@@ -124,16 +124,16 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 	// without any live parent, command execution, or workspace source files.
 	u.shell.saved.store = testReplayStore(mekugiReplayStore{directory: store.directory})
 	u.shell.saved.reset()
-	u.shell.diff.Reset()
+	savedPane(u.shell).Reset()
 	refresh()
-	u.shell.diff.Key("a")
-	u.shell.diff.Key("a")
+	savedPane(u.shell).Key("a")
+	savedPane(u.shell).Key("a")
 	refresh()
 	if frame := paint(160); !strings.Contains(frame, "+3 -1") {
 		t.Fatalf("replay or caller filter changed overall outcome:\n%s", frame)
 	}
 	u.shell.saved.reset()
-	u.shell.diff.Reset()
+	savedPane(u.shell).Reset()
 	scope.Workspaces[workspace] = map[string]bool{"new-thread": true}
 	refresh()
 	if frame := paint(160); strings.Contains(frame, "+3 -1") || strings.Contains(frame, "+4 -1") || strings.Contains(frame, "+3 -4") {

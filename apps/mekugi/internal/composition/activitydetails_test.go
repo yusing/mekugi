@@ -17,7 +17,7 @@ func TestCompositionActivityDetails(t *testing.T) {
 			type service struct{ value string }
 			var c Composition
 			var names []string
-			host := c.Add(module.Descriptor[struct{}, []activitydetail.Provider, module.NoBindings]{
+			host := c.Add(module.Descriptor[struct{}, []activitydetail.Provider, module.NoBindings, module.NoViews]{
 				ID: "host", Lifetime: module.Stateless, HostsActivityDetails: true,
 				New: func(_ struct{}, slots module.Slots) ([]activitydetail.Provider, error) {
 					var got []string
@@ -54,7 +54,7 @@ func TestCompositionActivityDetails(t *testing.T) {
 					})
 					want = append(want, activitydetail.Result{Pages: []activitydetail.Page{{ID: name, Code: id + "-live", Path: request.Path}}, Selected: name})
 				}
-				handles = append(handles, c.Add(module.Descriptor[struct{}, *service, module.NoBindings]{
+				handles = append(handles, c.Add(module.Descriptor[struct{}, *service, module.NoBindings, module.NoViews]{
 					ID: module.ID(id), Lifetime: module.Stateless,
 					Contributes: module.Contributions[*service]{ActivityDetails: definitions},
 					New: func(_ struct{}, slots module.Slots) (*service, error) {
@@ -95,7 +95,7 @@ func TestCompositionActivityDetails(t *testing.T) {
 
 func TestCompositionActivityDetailsRetainsMissingResolver(t *testing.T) {
 	var c Composition
-	c.Add(module.Descriptor[struct{}, struct{}, module.NoBindings]{
+	c.Add(module.Descriptor[struct{}, struct{}, module.NoBindings, module.NoViews]{
 		ID: "host", Lifetime: module.Stateless, HostsActivityDetails: true,
 		New: func(_ struct{}, slots module.Slots) (struct{}, error) {
 			if len(slots.ActivityDetails) != 1 || slots.ActivityDetails[0].Name != "missing" || slots.ActivityDetails[0].Resolve != nil {

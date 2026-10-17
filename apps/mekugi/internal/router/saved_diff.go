@@ -16,6 +16,7 @@ type savedDiff struct {
 	store          *mekugiReplayStore
 	data           *presentation.Snapshot
 	scope          previewmodel.Scope
+	workspace      string
 	coverage       string
 	awaitingResync bool
 }

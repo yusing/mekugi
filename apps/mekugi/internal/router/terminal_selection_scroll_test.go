@@ -184,7 +184,7 @@ func TestDiffSelectionScrollFromEOFAndRestart(t *testing.T) {
 	u := selectionTestUI(strings.Split(screen.Render(), "\n")...)
 	u.width, u.frame.Width = width, width
 	u.Layout = terminalsession.Layout{Diff: terminalsession.Rect{0, 0, width, height}}
-	u.diff = c
+	u.Auxiliary = c
 	u.selectionMouse(0, width-2, source.Y+1, false)
 	s := u.selection
 	if s == nil || s.Top() != source.Offset {

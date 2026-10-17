@@ -35,9 +35,9 @@ func (s *Scripted) Capability(mechanism capability.Mechanism) capability.Result 
 
 // New uses the caller's real dependencies, including temporary-storage owners.
 // Composition graph and startup rollback are tested by the application owner.
-func New[D, S any, B interface {
+func New[D, S, V any, B interface {
 	module.NoBindings | binding.Bindings[S]
-}](t *testing.T, descriptor module.Descriptor[D, S, B], deps D, slots module.Slots, script *Scripted) S {
+}](t *testing.T, descriptor module.Descriptor[D, S, B, V], deps D, slots module.Slots, script *Scripted) S {
 	t.Helper()
 	backend, _ := any(descriptor.Bindings).(binding.Bindings[S])
 	for _, requirement := range backend.Requires {

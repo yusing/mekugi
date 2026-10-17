@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"os"
 	"path/filepath"
 	"testing"
@@ -35,7 +36,7 @@ func TestRunSessionReusesParsedConfigWithIndependentDebugOutputs(t *testing.T) {
 		var paths []string
 		var readLog string
 		// RunSession returns only after cancellation has joined its owned work.
-		err := RunSession(testPresentation(), new(conversationmodel.Service), new(previewmodel.Service), new(activitymodel.Service), testHistory(), testPreferences(), testRecovery(), &segmentservice.Service{Reports: testReports()}, testCapture(t, ""), newTestUsage(t), new(evidence.Service), new(transportcapture.Service), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), ctx, testCommands(), testInputProjections(), testGuidance(), testNaming(), nil, testGuards(), options, nil, func(session Session) {
+		err := RunSession(terminalsession.Views{}, testPresentation(), new(conversationmodel.Service), new(previewmodel.Service), new(activitymodel.Service), testHistory(), testPreferences(), testRecovery(), &segmentservice.Service{Reports: testReports()}, testCapture(t, ""), newTestUsage(t), new(evidence.Service), new(transportcapture.Service), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), ctx, testCommands(), testInputProjections(), testGuidance(), testNaming(), nil, testGuards(), options, nil, func(session Session) {
 			readLog = session.AXReadOutput
 			cancel()
 		}, func(artifacts []string) { paths = artifacts })

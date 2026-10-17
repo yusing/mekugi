@@ -7,6 +7,7 @@ import (
 	"context"
 	json "encoding/json/v2"
 	"errors"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"io"
 	"io/fs"
 	"net/http"
@@ -265,7 +266,8 @@ func startAppResumeTerminalWithProxy(t *testing.T, newCommand func(context.Conte
 	}
 	conversation := new(conversationmodel.Service)
 	observations := conversationbinding.Codex.Observation(conversation)
-	wait, err := startAppServerUI(testPresentation(), conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, newCommand(ctx), inner, inner, proxy, nil, resumeThread, true, nil, recorder, nil, "", nil, &observations, false)
+	reviewSource := new(changecapture.Service)
+	wait, err := startAppServerUI(testTerminalViews(reviewSource), reviewSource, testPresentation(), conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, newCommand(ctx), inner, inner, proxy, nil, resumeThread, true, nil, recorder, nil, "", nil, &observations, false)
 	if err != nil {
 		t.Fatal(err)
 	}

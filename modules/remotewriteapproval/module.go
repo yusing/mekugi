@@ -6,7 +6,7 @@ import (
 	"github.com/yusing/mekugi/modules/remotewriteapproval/remote"
 )
 
-var Module = module.Descriptor[Deps, remote.Service, codexbinding.Bindings]{
+var Module = module.Descriptor[Deps, remote.Service, codexbinding.Bindings, module.NoViews]{
 	ID: "remotewriteapproval", Summary: "Own remote-write approval policy and exact session grants", Lifetime: module.Invocation,
 	New: newService, Bindings: codexbinding.Codex,
 }

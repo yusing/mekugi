@@ -56,7 +56,7 @@ Capture, retain, review, apply, and revert filesystem change evidence
 - Composition: selected; lifetime: `invocation`.
 - Requires: `sessionhistory`.
 - Resources: private workspace checkpoints and bounded warm-up tasks.
-- Contributes: `commands`, `guidance`, `record-kinds`, `references`, `activity-details`.
+- Contributes: `commands`, `guidance`, `record-kinds`, `references`, `activity-details`, `terminal-auxiliary`.
 - Commands: `mchanges`.
 - Records: `changes`.
 - References: `changes`.

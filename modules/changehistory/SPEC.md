@@ -193,6 +193,9 @@ Each attached session publishes one immutable retained-review snapshot for saved
 Diff, exact-operation details and edit totals. Detail requests use that snapshot
 without reopening storage. [Terminal-session loading](../../apps/mekugi/internal/terminalsession/SPEC.md#boundary)
 owns admission, replacement and responsiveness.
+The publication includes workspace, coverage, loading failure and revision alongside
+its immutable evidence. The descriptor's terminal contribution consumes that publication in
+memory; disabling the view leaves detail and edit-total consumers available.
 
 The model preserves selected file and change identities across updates. Initial
 history is a baseline; later captures carry recent-update marks. A caller filter

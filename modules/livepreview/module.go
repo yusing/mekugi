@@ -7,7 +7,7 @@ import (
 
 type Deps struct{}
 
-var Module = module.Descriptor[Deps, *preview.Service, module.NoBindings]{
+var Module = module.Descriptor[Deps, *preview.Service, module.NoBindings, module.NoViews]{
 	ID: "livepreview", Summary: "Project provisional source changes and publish bounded live view state",
 	Lifetime: module.AttachedSession,
 	New:      func(Deps, module.Slots) (*preview.Service, error) { return new(preview.Service), nil },

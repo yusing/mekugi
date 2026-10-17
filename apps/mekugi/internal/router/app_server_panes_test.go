@@ -24,7 +24,7 @@ func TestNativePaneStateResumeAndIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	u.shell.Focus, u.shell.Split, u.shell.DiffOpen = 1, 67, true
-	u.shell.diff.SetNavigatorColumns(22)
+	savedPane(u.shell).SetNavigatorColumns(22)
 	u.Text = "unsent private text"
 	u.view.Offset = 99
 	if err := p.save(u.shell, time.Now(), true); err != nil {

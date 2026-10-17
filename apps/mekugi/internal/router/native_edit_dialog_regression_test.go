@@ -44,7 +44,7 @@ func openRegressionEditDialog(t *testing.T, tc editDialogRegressionCase, capture
 		}
 		chunk := presentation.Chunk{Key: "edit", CaptureOrder: 1, Review: diffmodel.RenderReviewFile(beforePath, afterPath, tc.before, tc.after)}
 		c := liveDiffChangesPane(t, 120, 24, []presentation.Chunk{chunk})
-		u.shell.diff = c
+		u.shell.Auxiliary = c
 		u.shell.saved.data = reviewFixtureSnapshot(t, presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: "/w", Call: "patch"}, Correlation: "patch\x000"}, Operation: activitydetail.Operation{Thread: "main", Item: "patch"}, Chunks: []presentation.Chunk{chunk}})
 		publishFixtureReview(t, u)
 		want = chunk.Review.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(c.Workspace(), chunk.Review.BeforePath), pathdisplay.ForWorkspace(c.Workspace(), chunk.Review.AfterPath))

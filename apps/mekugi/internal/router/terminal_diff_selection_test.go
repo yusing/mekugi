@@ -22,7 +22,7 @@ func TestTerminalUIDiffSelectionUsesLastPaintedEvidence(t *testing.T) {
 			}
 			u := newAppServerSessionTestUI(t, workspace)
 			u.shell.saved.store = store
-			u.shell.diff.SetWorkspace(workspace)
+			u.shell.saved.workspace = workspace
 			u.shell.DiffOpen, u.shell.Focus = true, 1
 			scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}}
 			refresh := func() {

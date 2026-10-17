@@ -4,28 +4,19 @@ import (
 	"slices"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
 )
-
-// SelectionSource retains the displayed source rectangle and its complete document.
-// Coordinates are pane-local. Painted rows exclude the navigator and its rule;
-// Document and Sources include a pinned heading when Fixed is one.
-type SelectionSource struct {
-	X, Y, Width int
-	Painted     []diffrender.LineSource
-	Document    []string
-	Sources     []diffrender.LineSource
-	Offset      int
-	Fixed       int
-	Workspace   string
-}
 
 // Selection freezes the last painted source at a pane-local zero-based cell.
 // Non-source cells return an empty value without copying the document.
 // Source: apps/mekugi/internal/router/terminal_selection.go:231:269@[7dc6daaf]
-func (c *Pane) Selection(x, y int) SelectionSource {
+func (c *Pane) Selection(x, y int) terminalui.SelectionSource {
+	if c.failure != "" {
+		return terminalui.SelectionSource{}
+	}
 	source := c.selection
 	if x < source.X || x >= source.X+source.Width || y < source.Y || y >= source.Y+len(source.Painted) {
-		return SelectionSource{}
+		return terminalui.SelectionSource{}
 	}
 	source.Painted = slices.Clone(source.Painted)
 	if heading := c.selectionHeading; heading >= 0 {

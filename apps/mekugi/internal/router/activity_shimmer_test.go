@@ -26,7 +26,7 @@ func TestNativeUITerminalColorReports(t *testing.T) {
 			t.Fatalf("pane palette = %+v theme %v", view.Painter.Colors, view.Painter.Theme)
 		}
 	}
-	if !u.agents.Painter.Colors.HasBackground || u.agents.Painter.Colors.Background != want.Background || u.shell.diff.Theme() != diffrender.DarkTheme {
+	if !u.agents.Painter.Colors.HasBackground || u.agents.Painter.Colors.Background != want.Background || u.shell.Theme != diffrender.DarkTheme {
 		t.Fatal("diff pane did not take the reported background")
 	}
 	if u.Text != "" {

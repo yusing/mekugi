@@ -343,7 +343,7 @@ func TestTerminalUISelectionKeepsPressedHitTarget(t *testing.T) {
 	for _, question := range []bool{false, true} {
 		u := selectionTestUI("click target")
 		u.agents = newActivityAdapter()
-		u.diff = changeview.NewPane("", diffrender.TerminalTheme)
+		u.Auxiliary = changeview.NewPane("", diffrender.TerminalTheme)
 		for _, entry := range []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "First target"}, {Seq: 2, Agent: "Main", Kind: "text", Text: "Advanced target"}} {
 			u.main.view.appendEntry(entry, parseLiveActivity(entry))
 		}

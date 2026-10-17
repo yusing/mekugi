@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"os"
 	"strings"
 	"testing"
@@ -269,11 +270,13 @@ func TestUISnapshotSessionUIReplay(t *testing.T) {
 func newTestUIReplayPlayback(activity *activitymodel.Service, ctx context.Context, source *playback.Source, speed float64) *uiReplayPlayback {
 	conversation := new(conversationmodel.Service)
 	observations := conversationbinding.Codex.Observation(conversation)
-	return newUIReplayPlayback(testPresentation(), conversation, &observations, activity, ctx, source, speed)
+	reviewSource := new(changecapture.Service)
+	return newUIReplayPlayback(testTerminalViews(reviewSource), reviewSource, testPresentation(), conversation, &observations, activity, ctx, source, speed)
 }
 
 func runTestSessionUIReplay(activity *activitymodel.Service, service *playback.Service, ctx context.Context, args []string, stdin, stdout, stderr *os.File) int {
 	conversation := new(conversationmodel.Service)
 	observations := conversationbinding.Codex.Observation(conversation)
-	return RunSessionUIReplay(testPresentation(), conversation, &observations, activity, service, ctx, args, stdin, stdout, stderr)
+	reviewSource := new(changecapture.Service)
+	return RunSessionUIReplay(testTerminalViews(reviewSource), reviewSource, testPresentation(), conversation, &observations, activity, service, ctx, args, stdin, stdout, stderr)
 }

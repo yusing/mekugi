@@ -5,7 +5,7 @@ import (
 	"github.com/yusing/mekugi/modules/notifications/notice"
 )
 
-var Module = module.Descriptor[Deps, *notice.Service, module.NoBindings]{
+var Module = module.Descriptor[Deps, *notice.Service, module.NoBindings, module.NoViews]{
 	ID: "notifications", Summary: "Deliver bounded notices, failure details and recovery summaries",
 	Lifetime: module.Invocation, New: newService,
 }

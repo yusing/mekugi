@@ -3,6 +3,7 @@ package router
 import (
 	"bytes"
 	"context"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"io"
 	"io/fs"
 	"net/http"
@@ -95,7 +96,7 @@ func runDiagnosticsAbsentSession(t *testing.T, ctx context.Context, args []strin
 		t.Fatal(err)
 	}
 	defer usage.Close()
-	return RunSession(testPresentation(), new(conversationmodel.Service), new(previewmodel.Service), new(activitymodel.Service), history, testPreferences(), testRecovery(), &segmentservice.Service{Reports: testReports()}, testCapture(t, ""), usage,
+	return RunSession(terminalsession.Views{}, testPresentation(), new(conversationmodel.Service), new(previewmodel.Service), new(activitymodel.Service), history, testPreferences(), testRecovery(), &segmentservice.Service{Reports: testReports()}, testCapture(t, ""), usage,
 		new(evidence.Service), new(transportcapture.Service), nil, ctx,
 		testCommands(), testInputProjections(), testGuidance(), testNaming(), nil, testGuards(), options, testCriticalErrors(), ready,
 		func(paths []string) { t.Errorf("absent diagnostics published artifacts: %v", paths) })

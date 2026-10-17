@@ -4,11 +4,16 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
 func (u *terminalUI) paneState() terminalsession.Preferences {
-	state := terminalsession.Preferences{Focus: u.Focus, Split: u.Split, DiffOpen: u.DiffOpen, NavigatorColumns: u.diff.NavigatorColumns()}
+	u.Shell.Clamp()
+	state := terminalsession.Preferences{Focus: u.Focus, Split: u.Split, DiffOpen: u.DiffOpen}
+	if navigator, ok := u.Auxiliary.(terminalui.PaneNavigator); ok {
+		state.NavigatorColumns = navigator.NavigatorColumns()
+	}
 	if u.main != nil {
 		state.InterruptLocked = u.main.interruptLocked
 	}
@@ -59,7 +64,10 @@ func (p *nativePreferences) open(u *terminalUI, workspace, thread string, resume
 	layout := state.layout
 	u.Panes.Restore(layout)
 	u.main.interruptLocked = layout.InterruptLocked
-	u.diff.SetNavigatorColumns(layout.NavigatorColumns)
+	u.Shell.Clamp()
+	if navigator, ok := u.Auxiliary.(terminalui.PaneNavigator); ok {
+		navigator.SetNavigatorColumns(layout.NavigatorColumns)
+	}
 	state.Presentation, err = p.encoding.Encode(u.paneState())
 	if err != nil {
 		return err

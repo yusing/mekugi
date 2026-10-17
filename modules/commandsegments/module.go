@@ -12,7 +12,7 @@ type Deps struct {
 	Live    bool
 }
 
-var Module = module.Descriptor[Deps, *segments.Service, module.NoBindings]{
+var Module = module.Descriptor[Deps, *segments.Service, module.NoBindings, module.NoViews]{
 	ID: "commandsegments", Summary: "Receive, retain, and restore command-segment observations",
 	Requires: []module.ID{"sessionhistory"}, Lifetime: module.Invocation,
 	Resources:   []string{"optional private report FIFOs and consumer tasks"},

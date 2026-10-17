@@ -72,14 +72,14 @@ func TestNativeUIDiffStandaloneEscapeBeforeNextKey(t *testing.T) {
 		if err := u.drainKeys(make(chan byte)); err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(strings.Join(paintSavedDiff(t, u.shell.diff, 80, 24), "\n"), "Diff navigation") {
+		if strings.Contains(strings.Join(paintSavedDiff(t, savedPane(u.shell), 80, 24), "\n"), "Diff navigation") {
 			t.Fatal("settled Escape did not close Diff help")
 		}
 		if err := u.shell.key('?'); err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(strings.Join(paintSavedDiff(t, u.shell.diff, 80, 24), "\n"), "Diff navigation") || wire.Len() != 0 {
-			t.Fatalf("following key did not reopen Diff help: help=%v host=%q", strings.Contains(strings.Join(paintSavedDiff(t, u.shell.diff, 80, 24), "\n"), "Diff navigation"), wire.String())
+		if !strings.Contains(strings.Join(paintSavedDiff(t, savedPane(u.shell), 80, 24), "\n"), "Diff navigation") || wire.Len() != 0 {
+			t.Fatalf("following key did not reopen Diff help: help=%v host=%q", strings.Contains(strings.Join(paintSavedDiff(t, savedPane(u.shell), 80, 24), "\n"), "Diff navigation"), wire.String())
 		}
 	})
 }

@@ -27,7 +27,7 @@ func TestNativeEditClickOpensExactCapturedDiffDialog(t *testing.T) {
 					liveDiffCapture("target", "file20.go", 2, "target-old\n", "target-new\n", presentation.Origin{Change: "amber20", Caller: "/root", Source: "apply_patch"}),
 				}
 				c := liveDiffChangesPane(t, 120, 28, captures)
-				u.shell.diff = c
+				u.shell.Auxiliary = c
 				wrong := presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: "/w", Call: "wrong"}, Correlation: "call\x000", Change: "amber1"}, Operation: activitydetail.Operation{Thread: "child", Item: "call"}, Chunks: captures[:1]}
 				attempt := presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: "/w", Call: "target"}, Correlation: "call\x000", Change: "amber20"}, Operation: activitydetail.Operation{Thread: "main", Item: "call"}, Chunks: captures[1:]}
 				if grouped {
@@ -178,7 +178,7 @@ func TestNativeEditDialogShowsHistoricalHunkNotLaterCapture(t *testing.T) {
 		liveDiffCapture("later", "target.go", 2, after, later, presentation.Origin{Change: "amber2", Caller: "/root", Source: "apply_patch"}),
 	}
 	c := liveDiffChangesPane(t, 120, 24, captures)
-	u.shell.diff = c
+	u.shell.Auxiliary = c
 	u.shell.saved.data = reviewFixtureSnapshot(t, presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: "/w", Call: "clicked"}, Correlation: "call\x000", Change: "amber1"}, Operation: activitydetail.Operation{Thread: "main", Item: "call"}, Chunks: captures[:1]})
 	publishFixtureReview(t, u)
 

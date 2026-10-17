@@ -79,7 +79,7 @@ func TestWorkspaceImportBoundaries(t *testing.T) {
 				writeWorkspaceSource(t, filepath.Join(tt.owner, "module.go"), `package reader
 import "github.com/yusing/mekugi/contracts/module"
 type Deps struct{}
-var Module = module.Descriptor[Deps, int, int]{}
+var Module = module.Descriptor[Deps, int, int, int]{}
 `)
 			}
 			path := filepath.Join(tt.owner, tt.pkg, "source.go")
@@ -159,7 +159,7 @@ import (
  retained "github.com/yusing/mekugi/modules/history/publication"
 )
 type Deps struct{%s}
-var Module = module.Descriptor[Deps, int, int]{Requires: %s}
+var Module = module.Descriptor[Deps, int, int, int]{Requires: %s}
 `
 	for _, tt := range []struct{ name, deps, requires, extra, reason string }{
 		{"matching", "History retained.Publisher", `[]module.ID{"history"}`, "", ""},

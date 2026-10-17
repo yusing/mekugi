@@ -152,6 +152,9 @@ separate from painted readiness and offline prompt tests.
 ## Panes
 
 Main starts at full width. Diff toggles the auxiliary column open and closed.
+The auxiliary view comes from composition. Without a contribution, its selector,
+geometry and input targets are absent, and restored auxiliary focus returns to
+Main. Live previews retain their own attachment theme and remain independent.
 Pane preferences retain visibility and focus; transient selection and expansion remain local to the active frontend.
 The bottom pane selectors are clickable and perform the same selection as
 `Ctrl-B` followed by the pane digit. Only visible selector cells are active;

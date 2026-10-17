@@ -3,6 +3,7 @@ package router
 import (
 	"cmp"
 	"fmt"
+	"github.com/yusing/mekugi/libraries/terminalui"
 	"net/url"
 	"slices"
 	"strings"
@@ -229,8 +230,9 @@ func (u *terminalUI) selectionDocument(s *terminalSelection) {
 // diffSelection starts a selection right of the file navigator and its
 // divider; each row's text starts after its gutter and line number.
 func (u *terminalUI) diffSelection(x, y int) *terminalSelection {
-	c, pane := u.diff, u.Layout.Diff
-	if c == nil || u.diffFailure != "" || len(u.frame.Rows) != u.height || !pane.Contains(x, y) {
+	c, ok := u.Auxiliary.(terminalui.PaneSelection)
+	pane := u.Layout.Diff
+	if !ok || len(u.frame.Rows) != u.height || !pane.Contains(x, y) {
 		return nil
 	}
 	source := c.Selection(x-pane.X, y-pane.Y)

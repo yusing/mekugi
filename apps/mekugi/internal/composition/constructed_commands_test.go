@@ -20,7 +20,7 @@ func TestConstructedCommandBindsServiceAndDependenciesForEarlierHost(t *testing.
 	hostDescriptor := descriptor("host")
 	hostDescriptor.HostsCommands = true
 	host := c.Add(hostDescriptor, emptyDeps)
-	base := c.Add(module.Descriptor[struct{}, *dependency, module.NoBindings]{
+	base := c.Add(module.Descriptor[struct{}, *dependency, module.NoBindings, module.NoViews]{
 		ID: "dependency", Lifetime: module.Stateless,
 		New: func(struct{}, module.Slots) (*dependency, error) {
 			return &dependency{value: "constructed dependency"}, nil
@@ -28,7 +28,7 @@ func TestConstructedCommandBindsServiceAndDependenciesForEarlierHost(t *testing.
 	}, emptyDeps)
 	spec := command.Spec{Name: "constructed", Description: "constructed service command"}
 	calls := 0
-	constructed := c.Add(module.Descriptor[*dependency, *service, binding.Bindings[*service]]{
+	constructed := c.Add(module.Descriptor[*dependency, *service, binding.Bindings[*service], module.NoViews]{
 		ID: "contributor", Requires: []module.ID{"dependency"}, Lifetime: module.Invocation,
 		Contributes: module.Contributions[*service]{Commands: []command.Definition[*service]{{
 			Spec: spec,

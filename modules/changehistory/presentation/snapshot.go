@@ -54,6 +54,14 @@ type Publication struct {
 	initialized bool
 }
 
+// ReviewView joins admitted evidence with its attached workspace and coverage.
+// Publication is immutable; revisions identify source replacement, not paint.
+type ReviewView struct {
+	Publication
+	Workspace, Coverage, Failure string
+	Revision                     uint64
+}
+
 // With derives one replacement from supplied captures, preserving stable order
 // and recent-update marks. Consumers share the resulting unfiltered composition.
 func (p Publication) With(files []File) Publication {

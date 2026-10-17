@@ -50,6 +50,14 @@ detached identity/text values; terminal layout, styling and separators remain wi
 the renderer. Empty contributions or unavailable facts add no item. Publication
 does not read storage, query a provider or establish a second accounting cache.
 
+Descriptors select terminal views through typed definitions. The auxiliary-pane
+placement accepts zero or one contribution, with a unique nonempty name and a
+constructor. A typed attachment bridge publishes the owning module's admitted
+in-memory snapshot before rendering; the pane receives values and retains only
+terminal interaction state. Construction and publication callbacks belong to
+application wiring, never to published view values. Removing the contribution
+removes its pane and input targets while retaining independent source consumers.
+
 Session history receives record-kind recognition, dependency enumeration,
 retention budgets and semantic retirement policy. Record meaning stays with its
 feature owner. Composition supplies the constructed history service to live
@@ -84,7 +92,7 @@ cannot depend on launch, composition or the remaining router.
 ## Generated reference
 
 The [feature module index](../reference/modules.md) derives identity, dependencies,
-lifetime, records, contribution slots and Codex connections from the declarations.
+lifetime, records, source and terminal contribution slots, and Codex connections from the declarations.
 Workspace membership comes from `go.work`; selection comes from the application's
 composition list. An unselected module appears without being activated.
 

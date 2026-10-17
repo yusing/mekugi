@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"sync/atomic"
 
 	"github.com/yusing/mekugi/contracts/activitydetail"
 	"github.com/yusing/mekugi/contracts/scope"
@@ -20,22 +21,44 @@ import (
 // and offline readers. Construction acquires no checkpoint resources.
 type Service struct {
 	changes.Service
-	directory  string
-	workspaces *Workspaces
-	review     scope.Key[*presentation.Snapshot]
+	directory      string
+	workspaces     *Workspaces
+	review         scope.Key[reviewPublication]
+	reviewRevision atomic.Uint64
 }
 
-func (s *Service) PublishReview(store *scope.Store, snapshot *presentation.Snapshot) {
-	if s != nil {
-		*s.review.Value(store) = snapshot
+type reviewPublication struct {
+	snapshot *presentation.Snapshot
+	view     presentation.ReviewView
+}
+
+func (s *Service) PublishReview(store *scope.Store, snapshot *presentation.Snapshot, workspace, coverage, failure string) {
+	if s == nil || store == nil {
+		return
 	}
+	review := s.review.Value(store)
+	if review.snapshot == snapshot && review.view.Workspace == workspace && review.view.Coverage == coverage && review.view.Failure == failure {
+		return
+	}
+	review.snapshot = snapshot
+	review.view = presentation.ReviewView{Workspace: workspace, Coverage: coverage, Failure: failure, Revision: s.reviewRevision.Add(1)}
+	if snapshot != nil {
+		review.view.Publication = snapshot.Publication
+	}
+}
+
+func (s *Service) ReviewView(store *scope.Store) presentation.ReviewView {
+	if s == nil || store == nil {
+		return presentation.ReviewView{}
+	}
+	return s.review.Value(store).view
 }
 
 func (s *Service) ActivityDetail(store *scope.Store, request activitydetail.Request) activitydetail.Result {
 	if s == nil || store == nil {
 		return activitydetail.Result{}
 	}
-	return (*s.review.Value(store)).ActivityDetail(request)
+	return s.review.Value(store).snapshot.ActivityDetail(request)
 }
 
 func New(service *history.Service, directory string) (*Service, error) {

@@ -20,7 +20,7 @@ import (
 )
 
 func TestDescriptorReference(t *testing.T) {
-	descriptor := Descriptor[struct{}, struct{}, NoBindings]{
+	descriptor := Descriptor[struct{}, struct{}, NoBindings, NoViews]{
 		ID: "example", Summary: "Declared metadata", Requires: []ID{"dependency"},
 		Lifetime: Invocation, Resources: []string{"retained store"},
 		HostsCommands: true, HostsGuidance: true, HostsRecords: true, HostsReferences: true,
@@ -113,7 +113,7 @@ func TestDescriptorReference(t *testing.T) {
 }
 
 func TestDescriptorReferenceSlotsAreIndependent(t *testing.T) {
-	descriptor := Descriptor[struct{}, struct{}, NoBindings]{
+	descriptor := Descriptor[struct{}, struct{}, NoBindings, NoViews]{
 		HostsCommands: true,
 		Contributes:   Contributions[struct{}]{Guidance: []guidance.Section{{Command: "reader"}}},
 	}
@@ -122,12 +122,12 @@ func TestDescriptorReferenceSlotsAreIndependent(t *testing.T) {
 		t.Fatalf("Reference() = %+v, want %+v", got, want)
 	}
 
-	descriptor = Descriptor[struct{}, struct{}, NoBindings]{HostsActivityDetails: true}
+	descriptor = Descriptor[struct{}, struct{}, NoBindings, NoViews]{HostsActivityDetails: true}
 	want = Reference{Hosts: []string{"activity-details"}}
 	if got := descriptor.Reference(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("host-only Reference() = %+v, want %+v", got, want)
 	}
-	descriptor = Descriptor[struct{}, struct{}, NoBindings]{
+	descriptor = Descriptor[struct{}, struct{}, NoBindings, NoViews]{
 		Contributes: Contributions[struct{}]{ActivityDetails: []activitydetail.Definition[struct{}]{{Name: "detail"}}},
 	}
 	want = Reference{Contributes: []string{"activity-details"}}
@@ -137,7 +137,7 @@ func TestDescriptorReferenceSlotsAreIndependent(t *testing.T) {
 }
 
 func TestEmptyReferences(t *testing.T) {
-	if got := (Descriptor[struct{}, struct{}, NoBindings]{}).Reference(); !reflect.DeepEqual(got, Reference{}) {
+	if got := (Descriptor[struct{}, struct{}, NoBindings, NoViews]{}).Reference(); !reflect.DeepEqual(got, Reference{}) {
 		t.Fatalf("zero descriptor Reference() = %+v", got)
 	}
 	if got := (NoBindings{}).Reference(); !reflect.DeepEqual(got, BindingReference{}) {

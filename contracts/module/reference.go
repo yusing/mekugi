@@ -31,7 +31,7 @@ func (NoBindings) Reference() BindingReference { return BindingReference{} }
 
 // Reference reads declaration values without constructing a service or invoking
 // lifecycle, contribution or binding callbacks.
-func (d Descriptor[D, S, B]) Reference() Reference {
+func (d Descriptor[D, S, B, V]) Reference() Reference {
 	r := Reference{
 		ID: d.ID, Summary: d.Summary, Requires: slices.Clone(d.Requires),
 		Lifetime: d.Lifetime, Resources: slices.Clone(d.Resources),
@@ -57,6 +57,9 @@ func (d Descriptor[D, S, B]) Reference() Reference {
 		if slot.host {
 			r.Hosts = append(r.Hosts, slot.name)
 		}
+	}
+	if views, ok := any(d.Views).(interface{ ViewKinds() []string }); ok {
+		r.Contributes = append(r.Contributes, views.ViewKinds()...)
 	}
 	for _, definition := range d.Contributes.Commands {
 		r.Commands = append(r.Commands, definition.Name)

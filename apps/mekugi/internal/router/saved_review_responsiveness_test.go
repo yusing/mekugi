@@ -5,6 +5,7 @@ package router
 import (
 	"context"
 	"encoding/json/jsontext"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 
@@ -222,7 +223,8 @@ func TestAppServerSavedReviewHydrationKeepsTerminalResponsive(t *testing.T) {
 	cmd.ExtraFiles = []*os.File{control}
 	conversation := new(conversationmodel.Service)
 	observations := conversationbinding.Codex.Observation(conversation)
-	wait, err := startAppServerUI(testPresentation(), conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, cmd, terminal, terminal, proxy, nil, "", true, nil, nil, nil, "", nil, &observations, false)
+	reviewSource := new(changecapture.Service)
+	wait, err := startAppServerUI(testTerminalViews(reviewSource), reviewSource, testPresentation(), conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, cmd, terminal, terminal, proxy, nil, "", true, nil, nil, nil, "", nil, &observations, false)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,6 +4,7 @@ package router
 
 import (
 	"context"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -159,7 +160,8 @@ func runAppServerPreviewWith(t *testing.T, provider inferencegateway.Forwarder, 
 	}
 	conversation := new(conversationmodel.Service)
 	observations := conversationbinding.Codex.Observation(conversation)
-	wait, err := startAppServerUI(testPresentation(), conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, cmd, terminal, terminal, proxy, nil, "", true, nil, nil, nil, "", nil, &observations, options.approvals)
+	reviewSource := new(changecapture.Service)
+	wait, err := startAppServerUI(testTerminalViews(reviewSource), reviewSource, testPresentation(), conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, cmd, terminal, terminal, proxy, nil, "", true, nil, nil, nil, "", nil, &observations, options.approvals)
 	if err != nil {
 		t.Fatal(err)
 	}

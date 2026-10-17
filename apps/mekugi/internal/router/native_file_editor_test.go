@@ -14,7 +14,7 @@ func TestNativeFileEditorSelectionAndFilter(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
 	defer u.shell.diffScreen.Close()
-	c := u.shell.diff
+	c := savedPane(u.shell)
 	c.SetWorkspace("/w")
 	c.Update((presentation.Publication{}).With(presentation.GroupCaptures([]presentation.Chunk{
 		liveDiffCapture("selected", "src/selected.go", 1, "old\n", "new\n", presentation.Origin{}),

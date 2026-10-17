@@ -198,17 +198,15 @@ func (u *terminalUI) applyDiff(ctx context.Context, event reviewEvent) {
 	if u.reviewLoader != nil {
 		if err := u.reviewLoader.enqueue(event); err != nil {
 			u.diffFailure = err.Error()
+			u.publishReview()
 		}
 		return
 	}
 	if changed, err := u.saved.applyEvent(ctx, event); err != nil {
 		u.diffFailure = err.Error()
+		u.publishReview()
 	} else if changed {
-		if event.Kind == "coverage" {
-			u.diff.SetCoverage(u.saved.coverage)
-		} else {
-			u.publishReview()
-		}
+		u.publishReview()
 	}
 	if u.main != nil && (event.Kind == "scope" || event.Kind == "change") {
 		u.main.applyCapturedEdits()
@@ -219,8 +217,11 @@ func (u *terminalUI) loadedReview(result savedReviewResult) {
 	accepted, err := u.reviewLoader.accept(result)
 	if err != nil {
 		u.diffFailure = err.Error()
+		u.publishReview()
 	} else if accepted {
+		workspace := u.saved.workspace
 		u.saved = u.reviewLoader.state
+		u.saved.workspace = workspace
 		u.publishReview()
 		if u.main != nil {
 			u.main.applyCapturedEdits()
@@ -230,10 +231,12 @@ func (u *terminalUI) loadedReview(result savedReviewResult) {
 
 func (u *terminalUI) publishReview() {
 	snapshot := u.saved.data
-	if u.main != nil && u.saved.store != nil {
-		u.saved.store.captured.PublishReview(u.main.session.Scope(), snapshot)
+	if u.main != nil {
+		u.main.reviewSource.PublishReview(u.main.session.Scope(), snapshot, u.saved.workspace, u.saved.coverage, u.diffFailure)
+		if u.preparePane != nil {
+			u.preparePane(u.main.session.Scope())
+		}
 	}
-	u.diff.Update(snapshot.Publication, u.saved.coverage)
 	u.agents.Model.LineCounts, u.agents.Model.NetCounts = snapshot.Publication.Counts.Callers, snapshot.Publication.Counts.Net
 }
 
@@ -278,7 +281,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	now := u.main.now()
 	u.agents.FeedOnly, u.agents.Focused = true, u.Focus == 3
 	u.liveDock.Motion.Enabled = true
-	u.liveDock.Motion.Canvas = u.diff.Theme().Canvas()
+	u.liveDock.Motion.Canvas = u.Theme.Canvas()
 	if u.agents.Painter.Colors.HasBackground {
 		u.liveDock.Motion.Canvas.Background = u.agents.Painter.Colors.Background
 	}
@@ -300,7 +303,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		u.agents.Hits = rosterHits
 		dockAt, dockRows := content.Dock.Y, content.Dock.H
 		if dockRows > 0 && dockAt+dockRows <= len(content.Main) {
-			dock, err := u.liveDock.RenderBatch(ctx, caller, u.main.session.cwd, u.diff.Theme(), iw, dockRows, 15)
+			dock, err := u.liveDock.RenderBatch(ctx, caller, u.main.session.cwd, u.Theme, iw, dockRows, 15)
 			if err != nil {
 				return err
 			}
@@ -329,17 +332,12 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		}
 	}
 	if plan.Right.W >= 4 && plan.Right.H >= 1 {
-		if u.diffFailure == "" {
-			var err error
-			content.Diff, err = u.diffScreen.Paint(ctx, u.diff, plan.Layout.Diff.W, plan.Layout.Diff.H)
-			if err != nil {
-				u.diffFailure = err.Error()
-			}
+		var err error
+		content.Diff, err = u.diffScreen.Paint(ctx, u.Auxiliary, plan.Layout.Diff.W, plan.Layout.Diff.H)
+		if err != nil {
+			content.Diff = []string{u.AuxiliaryLabel + " unavailable", textsanitize.Safe(err.Error(), false)}
 		}
-		if u.diffFailure != "" {
-			content.Diff = []string{"Diff unavailable", textsanitize.Safe(u.diffFailure, false), "Use mchanges to review captured edits."}
-		}
-		content.DiffSummary, content.DiffState = u.diff.Title()
+		content.DiffSummary, content.DiffState = u.Auxiliary.Title()
 		u.diffUnseen = false
 	}
 	content.Status = u.shellStatus()
@@ -388,9 +386,6 @@ func (u *terminalUI) shellStatus() terminalsession.ShellStatus {
 			in.Expansion = u.main.transcriptView().Expansion
 		}
 	}
-	if u.Focus == 1 && !u.prefix {
-		in.DiffBack = u.diff.Back()
-	}
 	return in
 }
 
@@ -399,7 +394,7 @@ func (u *terminalUI) selectNativePane(pane int) {
 	if pane == 0 {
 		u.agents.displayThread("/root")
 	}
-	u.Panes.Select(pane)
+	u.Shell.Select(pane)
 	u.selection = nil
 }
 

@@ -8,8 +8,6 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 
-	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
-
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	"github.com/yusing/mekugi/modules/usage/accounting"
@@ -31,7 +29,6 @@ import (
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/contracts/inference"
-	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -269,7 +266,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		t.Fatal(err)
 	}
 	render("saved diff changes", "Unsubscribe", "Changes", "files focus", "─────")
-	if source := p.ui.shell.diff.Selection(p.ui.shell.Layout.Diff.W-1, p.ui.shell.Layout.Diff.H-1); source.Y == 0 || len(source.Painted) == 0 {
+	if source := savedPane(p.ui.shell).Selection(p.ui.shell.Layout.Diff.W-1, p.ui.shell.Layout.Diff.H-1); source.Y == 0 || len(source.Painted) == 0 {
 		t.Fatal("Tab replaced the stacked list with a full-pane picker")
 	}
 	for _, key := range []byte{'\t', 's'} {
@@ -278,7 +275,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		}
 	}
 	render("saved diff hidden list", "Unsubscribe")
-	if source := p.ui.shell.diff.Selection(p.ui.shell.Layout.Diff.W-1, p.ui.shell.Layout.Diff.H-1); source.Y != 0 || len(source.Painted) == 0 {
+	if source := savedPane(p.ui.shell).Selection(p.ui.shell.Layout.Diff.W-1, p.ui.shell.Layout.Diff.H-1); source.Y != 0 || len(source.Painted) == 0 {
 		t.Fatal("s did not hide the focused stacked list")
 	}
 	// Picking an agent in the roster shows its Activity instead of the diff.
@@ -496,8 +493,11 @@ func newNativePreview(t *testing.T) *nativePreview {
 	}
 	u.ensureShell()
 
-	u.shell.diff = changeview.NewPane(workspace, diffrender.EnvironmentTheme(os.Getenv("COLORFGBG")))
-	u.shell.saved = savedDiff{store: store, data: new(presentation.Snapshot), coverage: "CONNECTING"}
+	u.reviewSource = store.captured
+	u.terminalViews = testTerminalViews(u.reviewSource)
+	label, attachment := u.terminalViews.Attach(u.shell.Theme)
+	u.shell.AuxiliaryLabel, u.shell.Auxiliary, u.shell.preparePane = label, attachment.Pane, attachment.Prepare
+	u.shell.saved = savedDiff{workspace: workspace, store: store, data: new(presentation.Snapshot), coverage: "CONNECTING"}
 	u.session.start("main", workspace)
 	p := &nativePreview{t: t, ui: u, input: input, store: store, usage: usage, workspace: workspace, delay: "0", active: make(map[string]string), assignments: make(map[string]string), models: map[string]string{"t-explorer": nativePreviewGrokModel}}
 	store.liveDiff = func(changes []reviewChange) {
@@ -1210,7 +1210,7 @@ func TestNativeDiffNavigatorPointerMovesAndBack(t *testing.T) {
 	defer p.close()
 	for p.advance() {
 	}
-	shell, d := p.ui.shell, p.ui.shell.diff
+	shell, d := p.ui.shell, savedPane(p.ui.shell)
 	keys := func(s string) {
 		t.Helper()
 		for _, key := range []byte(s) {
@@ -1440,7 +1440,7 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 					continue
 				}
 				for _, chunk := range attempt.Chunks {
-					if u.shell.output.pages[u.shell.output.Page].Code == chunk.Review.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(u.shell.diff.Workspace(), chunk.Review.BeforePath), pathdisplay.ForWorkspace(u.shell.diff.Workspace(), chunk.Review.AfterPath)) {
+					if u.shell.output.pages[u.shell.output.Page].Code == chunk.Review.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(savedPane(u.shell).Workspace(), chunk.Review.BeforePath), pathdisplay.ForWorkspace(savedPane(u.shell).Workspace(), chunk.Review.AfterPath)) {
 						found = true
 					}
 				}

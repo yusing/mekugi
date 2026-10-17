@@ -5,14 +5,18 @@ import (
 	"encoding/json/jsontext"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/contracts/scope"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
 	"github.com/yusing/mekugi/modules/usage"
 
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-
-	"github.com/yusing/mekugi/libraries/terminalui"
 
 	json "encoding/json/v2"
 	"strings"
@@ -21,7 +25,6 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
@@ -439,6 +442,8 @@ func TestNativeUIEscapeInterruptPreservesDraft(t *testing.T) {
 
 // appServerTestFeatures supplies the same core owner to the composer and transcript.
 func appServerTestFeatures(u *appServerUI) *appServerUI {
+	u.reviewSource = new(changecapture.Service)
+	u.terminalViews = testTerminalViews(u.reviewSource)
 	u.presentationState = testPresentation()
 	u.conversationState = new(conversationmodel.Service)
 	observations := conversationbinding.Codex.Observation(u.conversationState)
@@ -455,3 +460,16 @@ func testPresentation() *sessionpresentation.Service {
 	}
 	return service
 }
+
+func testTerminalViews(source *changecapture.Service) terminalsession.Views {
+	definition := changeview.Views.Auxiliary[0]
+	views, err := terminalsession.NewViews([]terminalui.PaneFactory[*scope.Store]{{Name: definition.Name, Label: definition.Label, Attach: func(theme diffrender.Theme) terminalui.PaneAttachment[*scope.Store] {
+		return definition.Attach(source, theme)
+	}}})
+	if err != nil {
+		panic(err)
+	}
+	return views
+}
+
+func savedPane(u *terminalUI) *changeview.Pane { return u.Auxiliary.(*changeview.Pane) }
