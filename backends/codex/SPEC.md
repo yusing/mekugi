@@ -18,6 +18,9 @@ presentation and replay never execute a call again, serialize independent
 
 The application admits the JavaScript execution interface before inference;
 catalogs exposing top-level `apply_patch` or `exec_command` instead are unsupported.
+The binding discovers the stock execution owner across native tool catalogs and
+refreshes only its composed guidance. Unsupported interfaces remain distinct from
+malformed catalogs; the application supplies their compatibility diagnostic.
 [Launch](../../apps/mekugi/internal/launch/SPEC.md#host-integration) owns the
 invocation-local settings. The native shell hook is the narrow exception to
 unchanged command text: composed guard and sh-tracking instrumentation can return
@@ -186,9 +189,10 @@ Opaque source and printed lookalikes cannot supply native-result provenance.
 
 Continuation annotations have one wire definition shared by their producer and
 recognizer. Recognition requires the exact annotation envelope and expected host
-handle, so unrelated text remains intact. The application chooses advice from the
-active tool catalog and tracks request-local provenance; the backend decoder never
-resumes a process or chooses a next call. Offline findings remain query policy.
+handle, so unrelated text remains intact. The binding derives advice from the
+active tool catalog and validated retained facts, with request-local provenance.
+Advice never resumes a process or dispatches a call. The application admits retained
+evidence before this projection. Offline findings remain query policy.
 
 The backend's bounded, incremental native-trace reader observes only the private
 directory selected for the invocation. It correlates executing thread, outer call

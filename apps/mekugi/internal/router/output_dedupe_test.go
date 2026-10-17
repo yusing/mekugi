@@ -122,7 +122,7 @@ func TestDuplicateOutputHostPartsAndExclusions(t *testing.T) {
 	items := duplicateTestItems(t, request)
 	// Use the production append owner after the original boundary was recorded.
 	for _, at := range []int{1, 2, 3} {
-		appended, _, err := appendToolOutputWarning(items[at]["output"], warning)
+		appended, _, err := codexresponses.AppendOutputNotice(items[at]["output"], warning)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -1,25 +1,23 @@
-package router
+package responses
 
 import (
 	"regexp"
 	"strings"
-
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
 // Source: internal/router/request.go:40:125@06fc40e4 execution admission.
 
-// isExecutionFreeRequest identifies catalogs that need no editing or
+// ExecutionFree identifies catalogs that need no editing or
 // process-execution projection. Other tools and output schemas remain Codex-owned.
-func isExecutionFreeRequest(r *codexresponses.Request) bool {
+func ExecutionFree(r *Request) bool {
 	// Admission precedes explicit instruction omission, which can remove input items.
-	catalog := codexresponses.DecodeToolCatalog(r.Fields)
+	catalog := DecodeToolCatalog(r.Fields)
 	if catalog.InputError != nil {
 		return false
 	}
 	var execSeen, waitSeen bool
-	var acceptSection func(*codexresponses.ToolSection, bool) bool
-	acceptSection = func(section *codexresponses.ToolSection, namespaces bool) bool {
+	var acceptSection func(*ToolSection, bool) bool
+	acceptSection = func(section *ToolSection, namespaces bool) bool {
 		if section == nil || section.Err != nil {
 			return false
 		}
@@ -75,10 +73,10 @@ func isExecutionFreeRequest(r *codexresponses.Request) bool {
 var codeModeExecutionDeclaration = regexp.MustCompile(`(?:^|[;{])\s*(apply_patch|exec_command)\s*\(`)
 
 func isExecutionFreeCodeModeDescription(description string) bool {
-	return !codeModeDeclaresExecutionTool(description, "apply_patch") && !codeModeDeclaresExecutionTool(description, "exec_command")
+	return !CodeModeDeclaresExecutionTool(description, "apply_patch") && !CodeModeDeclaresExecutionTool(description, "exec_command")
 }
 
-func codeModeDeclaresExecutionTool(description, name string) bool {
+func CodeModeDeclaresExecutionTool(description, name string) bool {
 	for line := range strings.SplitSeq(description, "\n") {
 		heading := strings.Fields(line)
 		if len(heading) < 2 || heading[0] != "###" {

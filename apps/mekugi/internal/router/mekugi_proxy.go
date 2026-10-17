@@ -121,11 +121,8 @@ type mekugiResponseTransform struct {
 	retainedRequest  *history.CallRequest
 	threadID         string
 
-	originalTools             jsonv1.RawMessage
-	originalToolsPresent      bool
-	originalToolChoice        jsonv1.RawMessage
-	originalToolChoicePresent bool
-	directory                 string
+	responseContract codexresponses.ResponseContract
+	directory        string
 	mekugiTranslationState
 
 	commentaryAuthor string
@@ -194,7 +191,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 	}
 	p.execWindows.markBackground(threadID, metadata.TurnID)
 	// Execution-free requests retain their native instructions, tools, and schema.
-	if isExecutionFreeRequest(request) {
+	if codexresponses.ExecutionFree(request) {
 		if !prewarm && strings.TrimSpace(threadID) == "" {
 			return nil, errors.New("mekugi rewrite requires a valid Codex thread ID")
 		}
@@ -210,11 +207,11 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 	// handshake may not yet carry the instruction or tool catalog of a turn.
 	if prewarm {
 		tools := codexresponses.DecodeToolCatalog(request.Fields)
-		execution, err := prepareStockExecution(request.Fields, tools, p.registry.FrontendGuidance, p.registry.Guidance)
+		execution, err := binding.PrepareStockExecution(request.Fields, tools, p.registry.FrontendGuidance, p.registry.Guidance)
 		if err != nil {
 			return nil, err
 		}
-		if execution == nil {
+		if execution == "" {
 			return nil, nil
 		}
 	}
@@ -238,17 +235,10 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 
 	tools := codexresponses.DecodeToolCatalog(request.Fields)
 	directory, _ := usableRoutingDirectory(metadata.Directories)
-	originalTools, originalToolsPresent := request.Fields["tools"]
-	originalTools = bytes.Clone(originalTools)
-	originalToolChoice, originalToolChoicePresent := request.Fields["tool_choice"]
-	originalToolChoice = bytes.Clone(originalToolChoice)
-	execution, err := prepareStockExecution(request.Fields, tools, p.registry.FrontendGuidance, p.registry.Guidance)
+	responseContract := codexresponses.CaptureResponseContract(request.Fields)
+	codeModeToolName, err := binding.PrepareStockExecution(request.Fields, tools, p.registry.FrontendGuidance, p.registry.Guidance)
 	if err != nil {
 		return nil, err
-	}
-	codeModeToolName := ""
-	if execution != nil {
-		codeModeToolName = execution.name
 	}
 	if prewarm {
 		return nil, nil
@@ -323,25 +313,26 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 		retainedRequest:  retained,
 		threadID:         activityThreadID,
 
-		originalTools:             originalTools,
-		originalToolsPresent:      originalToolsPresent,
-		originalToolChoice:        originalToolChoice,
-		originalToolChoicePresent: originalToolChoicePresent,
-		directory:                 directory,
-		nativeExecCalls:           make(map[string]map[string]jsonv1.RawMessage),
-		local:                     make(map[string]mekugiHistory),
-		commentaryAuthor:          metadata.CommentaryAuthor(),
-		subagentTurn:              metadata.SubagentKind != "",
-		usageTracker:              p.usage.Observation(threadID, metadata.ThreadID, request.Model(), codexresponses.UsageServiceTier(request.Fields["service_tier"])),
-		codeModeToolName:          codeModeToolName,
-		sessionShell:              requestSessionShell(request.Fields["input"]),
+		responseContract: responseContract,
+		directory:        directory,
+		nativeExecCalls:  make(map[string]map[string]jsonv1.RawMessage),
+		local:            make(map[string]mekugiHistory),
+		commentaryAuthor: metadata.CommentaryAuthor(),
+		subagentTurn:     metadata.SubagentKind != "",
+		usageTracker:     p.usage.Observation(threadID, metadata.ThreadID, request.Model(), codexresponses.UsageServiceTier(request.Fields["service_tier"])),
+		codeModeToolName: codeModeToolName,
+		sessionShell:     codexresponses.SessionShell(request.Fields["input"]),
 	}
 	if transform.usageTracker != nil {
 		transform.usageTracker.Reasoning = request.ReasoningEffort()
 	}
 	p.observeCodeModeFailures(activityThreadID, codeModeToolName, request, visible)
 	// Continuation advice is appended to the output the model will see.
-	projectExecutionContinuations(request, tools, codeModeToolName, visible)
+	retainedExecution := make(map[string]binding.RetainedExecutionItem, len(visible))
+	for id, call := range visible {
+		retainedExecution[id] = binding.RetainedExecutionItem{Evidence: call.executionEvidence(true), UpstreamItem: call.UpstreamItem}
+	}
+	binding.ProjectExecutionContinuations(request, tools, codeModeToolName, retainedExecution)
 	if err := request.AppendApprovalFeedback(p.control.Feedback(threadID, metadata.TurnID)); err != nil {
 		transform.Close()
 		return nil, err

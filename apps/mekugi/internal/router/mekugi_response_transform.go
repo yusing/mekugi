@@ -1,7 +1,6 @@
 package router
 
 import (
-	"bytes"
 	"cmp"
 	"crypto/rand"
 	"encoding/json"
@@ -267,7 +266,7 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 		}
 		object["output"] = encoded
 	}
-	t.restoreResponseContract(object)
+	t.responseContract.Restore(object)
 	// Every translated carrier in a JSON body is about to become visible,
 	// regardless of whether the provider supplied a terminal response status.
 	if err := t.commitHistory(); err != nil {
@@ -281,23 +280,6 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 		t.liveDiffCompletionReady = true
 	}
 	return transformed, err
-}
-
-func (t *mekugiResponseTransform) restoreResponseContract(object map[string]json.RawMessage) {
-	if _, ok := object["tools"]; ok {
-		if !t.originalToolsPresent {
-			delete(object, "tools")
-		} else {
-			object["tools"] = bytes.Clone(t.originalTools)
-		}
-	}
-	if _, ok := object["tool_choice"]; ok {
-		if !t.originalToolChoicePresent {
-			delete(object, "tool_choice")
-		} else {
-			object["tool_choice"] = bytes.Clone(t.originalToolChoice)
-		}
-	}
 }
 
 func (t *mekugiResponseTransform) transformOutputItem(item *responseevents.Item) (bool, error) {

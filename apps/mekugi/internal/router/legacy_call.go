@@ -256,3 +256,11 @@ func retainedDirectories(values map[string]changecapture.DirectoryStamp) map[str
 	}
 	return result
 }
+
+// Convert validated retained history without exporting its private record shape.
+func (h mekugiHistory) executionEvidence(known bool) *binding.RetainedExecution {
+	if !known || h.TranslationError != "" {
+		return nil
+	}
+	return &binding.RetainedExecution{CarrierKind: string(h.effectiveCarrierKind()), ToolName: h.ToolName, Script: h.Script}
+}

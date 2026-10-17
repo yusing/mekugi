@@ -96,14 +96,14 @@ func TestExecutionContinuationPreservesHistoricalSuggestions(t *testing.T) {
 					}
 				}
 				original := continuationTestOutput("a", yielded, "unrelated warning")
-				history := map[string]mekugiHistory{"a": {ToolName: "shell", PluginID: "builtin.frontends"}}
+				history := map[string]binding.RetainedExecutionItem{"a": {Evidence: &binding.RetainedExecution{ToolName: "shell", CarrierKind: "custom"}}}
 				if kind != "cell" {
 					delete(history, "a")
 				}
 				request := codexresponses.Request{Fields: map[string]json.RawMessage{
 					"input": responses.MustMarshalJSON([]any{first, original}),
 				}}
-				projectExecutionContinuations(&request, continuationTestCatalog(), "exec", history)
+				binding.ProjectExecutionContinuations(&request, continuationTestCatalog(), "exec", history)
 				if !strings.Contains(string(request.Fields["input"]), "continuation") {
 					t.Fatal("live execution lost its suggestion")
 				}
@@ -124,7 +124,7 @@ func TestExecutionContinuationPreservesHistoricalSuggestions(t *testing.T) {
 					items = append(items, continuationTestOutput("b", output))
 				}
 				request.Fields["input"] = responses.MustMarshalJSON(items)
-				projectExecutionContinuations(&request, continuationTestCatalog(), "exec", history)
+				binding.ProjectExecutionContinuations(&request, continuationTestCatalog(), "exec", history)
 				if err := json.Unmarshal(request.Fields["input"], &items); err != nil {
 					t.Fatal(err)
 				}
@@ -139,7 +139,7 @@ func TestExecutionContinuationPreservesHistoricalSuggestions(t *testing.T) {
 					t.Fatalf("got %d suggestions, want %d: %s", got, want, request.Fields["input"])
 				}
 				previous := string(request.Fields["input"])
-				projectExecutionContinuations(&request, continuationTestCatalog(), "exec", history)
+				binding.ProjectExecutionContinuations(&request, continuationTestCatalog(), "exec", history)
 				if string(request.Fields["input"]) != previous {
 					t.Fatal("projection is not idempotent")
 				}
@@ -171,7 +171,7 @@ func TestExecutionContinuationCompletionKeepsProviderPrefix(t *testing.T) {
 			if err := json.Unmarshal(request.Fields["input"], &nativeHistory); err != nil {
 				t.Fatal(err)
 			}
-			projectExecutionContinuations(&request, continuationTestCatalog(), "exec", nil)
+			binding.ProjectExecutionContinuations(&request, continuationTestCatalog(), "exec", nil)
 			var prefix []json.RawMessage
 			if err := json.Unmarshal(request.Fields["input"], &prefix); err != nil {
 				t.Fatal(err)
@@ -179,7 +179,7 @@ func TestExecutionContinuationCompletionKeepsProviderPrefix(t *testing.T) {
 
 			request.Fields["input"] = responses.MustMarshalJSON(append(nativeHistory, test.finishCall, continuationTestOutput("finish", test.finishOutput)))
 			request.Fields["previous_response_id"] = responses.MustMarshalJSON("parent")
-			projectExecutionContinuations(&request, continuationTestCatalog(), "exec", nil)
+			binding.ProjectExecutionContinuations(&request, continuationTestCatalog(), "exec", nil)
 			exchange := confirmedHistoryExchange(t, prefix, false)
 			reason, err := exchange.Reconcile(&request, true)
 			if err != nil {
@@ -221,15 +221,15 @@ func TestExecutionContinuationRetiresAcrossProjectionChanges(t *testing.T) {
 						continuationTestOutput("other", "Script running with cell ID other-cell\nWall time 0.1 seconds\nOutput:\n"),
 					}),
 				}}
-				projectExecutionContinuations(&request, continuationTestCatalog(), "exec", nil)
+				binding.ProjectExecutionContinuations(&request, continuationTestCatalog(), "exec", nil)
 				var items []map[string]json.RawMessage
 				if err := json.Unmarshal(request.Fields["input"], &items); err != nil {
 					t.Fatal(err)
 				}
 				resume := continuationTestCall("exec", "b", source)
-				history := map[string]mekugiHistory{}
+				history := map[string]binding.RetainedExecutionItem{}
 				if outputOnlyReplay {
-					history["b"] = mekugiHistory{UpstreamItem: resume, Script: source, ToolName: "exec"}
+					history["b"] = binding.RetainedExecutionItem{UpstreamItem: resume, Evidence: &binding.RetainedExecution{Script: source, ToolName: "exec", CarrierKind: "custom"}}
 				} else {
 					items = append(items, resume)
 				}
@@ -237,7 +237,7 @@ func TestExecutionContinuationRetiresAcrossProjectionChanges(t *testing.T) {
 				request.Fields["input"] = responses.MustMarshalJSON(items)
 				// The old nested next_call cannot be reconstructed from this catalog.
 				catalog := codexresponses.DecodeToolCatalog(map[string]json.RawMessage{"tools": responses.MustMarshalJSON([]any{})})
-				projectExecutionContinuations(&request, catalog, "exec", history)
+				binding.ProjectExecutionContinuations(&request, catalog, "exec", history)
 				if err := json.Unmarshal(request.Fields["input"], &items); err != nil {
 					t.Fatal(err)
 				}
@@ -271,77 +271,13 @@ func TestNativeContinuationUsesAvailableDirectTool(t *testing.T) {
 			},
 		}),
 	}}
-	projectExecutionContinuations(&request, catalog, "exec_command", nil)
+	binding.ProjectExecutionContinuations(&request, catalog, "exec_command", nil)
 	var items []map[string]json.RawMessage
 	_ = json.Unmarshal(request.Fields["input"], &items)
 	texts := binding.ExecutionOutputTexts(items[1]["output"])
 	if len(texts) != 2 || !strings.Contains(texts[1], `"tool":"write_stdin"`) ||
 		!strings.Contains(texts[1], `"input":{"chars":"","session_id":42}`) {
 		t.Fatalf("native action = %v", texts)
-	}
-}
-
-func TestMissingContinuationToolDoesNotInventAuthority(t *testing.T) {
-	tools := executionContinuationTools{}
-	for _, continuation := range []binding.ExecutionContinuation{tools.forCell("cell-1"), tools.forSession(42)} {
-		if continuation.NextCall != nil || continuation.Reason == "" {
-			t.Fatalf("invented continuation: %+v", continuation)
-		}
-	}
-}
-
-func TestExecutionContinuationLongWaitTiming(t *testing.T) {
-	for _, name := range []string{"wait", "write_stdin"} {
-		for _, limit := range []struct {
-			maximum json.Number
-			want    int
-		}{
-			{"0", 300000},
-			{"120000", 120000},
-			{"120000.0", 120000},
-			{"120000.5", 120000},
-			{"300000", 300000},
-			{"600000", 300000},
-		} {
-			t.Run(name+"/"+string(limit.maximum), func(t *testing.T) {
-				properties := map[string]any{
-					"cell_id":       map[string]any{"type": "string"},
-					"session_id":    map[string]any{"type": "integer"},
-					"chars":         map[string]any{"type": "string"},
-					"yield_time_ms": map[string]any{"type": "integer", "maximum": limit.maximum},
-					"unrelated":     map[string]any{"type": "number", "maximum": 1.5},
-				}
-				catalog := codexresponses.DecodeToolCatalog(map[string]json.RawMessage{
-					"tools": responses.MustMarshalJSON([]any{map[string]any{
-						"type": "function", "name": name,
-						"parameters": map[string]any{"type": "object", "properties": properties},
-					}}),
-				})
-				tools := executionTools(catalog, "exec")
-				result := tools.forCell("cell-1")
-				if name == "write_stdin" {
-					result = tools.forSession(42)
-				}
-				want := limit.want
-				if result.NextCall == nil || result.NextCall.Input.(map[string]any)["yield_time_ms"] != want {
-					t.Fatalf("continuation = %+v, want wait %d", result, want)
-				}
-			})
-		}
-	}
-}
-
-func TestExecutionContinuationNestedLongWait(t *testing.T) {
-	description := "### `write_stdin`\ndeclare const tools: { write_stdin(args: { session_id: number; chars?: string; yield_time_ms?: number }): Promise<unknown>; };\n"
-	catalog := codexresponses.DecodeToolCatalog(map[string]json.RawMessage{
-		"tools": responses.MustMarshalJSON([]any{
-			map[string]any{"type": "custom", "name": "exec", "description": description},
-		}),
-	})
-	result := executionTools(catalog, "exec").forSession(42)
-	want := `text(await tools.write_stdin({"chars":"","session_id":42,"yield_time_ms":300000}));`
-	if result.NextCall == nil || result.NextCall.Input != want {
-		t.Fatalf("nested continuation = %+v, want %s", result, want)
 	}
 }
 

@@ -2,6 +2,10 @@ package router
 
 import (
 	"context"
+	"errors"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -10,6 +14,9 @@ import (
 
 func (p *mekugiProxy) Prepare(ctx context.Context, request *codexresponses.Request, input requestexecution.Preparation) (requestexecution.Prepared, error) {
 	t, err := p.prepareModelRequest(ctx, request, input.Session, input.Thread, input.Metadata, input.MetadataValid, input.Prewarm)
+	if errors.Is(err, binding.ErrUnsupportedExecutionInterface) {
+		return nil, inferencegateway.IncompatibleRequest("unsupported_execution_interface", err.Error())
+	}
 	if err != nil || t == nil {
 		return nil, err
 	}

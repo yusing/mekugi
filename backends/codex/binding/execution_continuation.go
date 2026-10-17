@@ -1,16 +1,30 @@
-package router
+package binding
 
 import (
-	"encoding/json"
+	jsonv1 "encoding/json"
 
-	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
-	jsonv2 "encoding/json/v2"
+	json "encoding/json/v2"
 	"strconv"
 	"strings"
 )
+
+// Source: apps/mekugi/internal/router/execution_continuation.go:15:294@874a6e86.
+// RetainedExecutionItem supplies already-admitted historical wire facts. A nil
+// Evidence preserves classification from original input without asserting a carrier.
+type RetainedExecutionItem struct {
+	Evidence     *RetainedExecution
+	UpstreamItem map[string]jsonv1.RawMessage
+}
+
+func qualifiedExecutionToolName(namespace, name string) string {
+	if namespace == "" {
+		return name
+	}
+	return namespace + "." + name
+}
 
 const minimumStatusWaitMS = 300000
 
@@ -20,7 +34,7 @@ func statusWaitFloor(kind string, maximumJSON []byte) int {
 	}
 	floor := minimumStatusWaitMS
 	var maximum float64
-	if jsonv2.Unmarshal(maximumJSON, &maximum) == nil && maximum > 0 && maximum < float64(floor) {
+	if json.Unmarshal(maximumJSON, &maximum) == nil && maximum > 0 && maximum < float64(floor) {
 		floor = int(maximum)
 	}
 	return floor
@@ -45,14 +59,14 @@ func executionTools(catalog *codexresponses.ToolCatalog, execName string) execut
 				continue
 			}
 			if tool.Type() == "namespace" {
-				visit(tool.Nested, qualifiedToolName(namespace, tool.Name()))
+				visit(tool.Nested, qualifiedExecutionToolName(namespace, tool.Name()))
 				continue
 			}
 			if namespace != "" && namespace != "functions" {
 				continue
 			}
 			name := strings.TrimPrefix(tool.Name(), "functions.")
-			path := qualifiedToolName(namespace, tool.Name())
+			path := qualifiedExecutionToolName(namespace, tool.Name())
 			if tool.Type() == "custom" && name == strings.TrimPrefix(execName, "functions.") {
 				found.exec = path
 				waitSection := codeModeSessionWaitSection(tool.Description())
@@ -67,11 +81,11 @@ func executionTools(catalog *codexresponses.ToolCatalog, execName string) execut
 			}
 			var schema struct {
 				Properties map[string]struct {
-					Type    string          `json:"type"`
-					Maximum json.RawMessage `json:"maximum"`
+					Type    string            `json:"type"`
+					Maximum jsonv1.RawMessage `json:"maximum"`
 				} `json:"properties"`
 			}
-			if json.Unmarshal(tool.RawField("parameters"), &schema) != nil {
+			if json.Unmarshal(tool.RawField("parameters"), &schema, jsonv1.DefaultOptionsV1()) != nil {
 				continue
 			}
 			timing := schema.Properties["yield_time_ms"]
@@ -115,59 +129,51 @@ func codeModeSessionWaitSection(description string) string {
 	return ""
 }
 
-func (t executionContinuationTools) forCell(id string) binding.ExecutionContinuation {
-	result := binding.ExecutionContinuation{Handle: map[string]any{"cell_id": id}}
+func (t executionContinuationTools) forCell(id string) ExecutionContinuation {
+	result := ExecutionContinuation{Handle: map[string]any{"cell_id": id}}
 	if t.cellWait != "" {
 		args := map[string]any{"cell_id": id}
 		if t.cellWaitMS > 0 {
 			args["yield_time_ms"] = t.cellWaitMS
 		}
-		result.NextCall = &binding.ExecutionNextCall{Tool: t.cellWait, Input: args}
+		result.NextCall = &ExecutionNextCall{Tool: t.cellWait, Input: args}
 	} else {
 		result.Reason = "The host wait tool is not exposed in this request. Do not restart the running call."
 	}
 	return result
 }
 
-func (t executionContinuationTools) forSession(id int64) binding.ExecutionContinuation {
-	result := binding.ExecutionContinuation{Handle: map[string]any{"session_id": id}}
+func (t executionContinuationTools) forSession(id int64) ExecutionContinuation {
+	result := ExecutionContinuation{Handle: map[string]any{"session_id": id}}
 	args := map[string]any{"session_id": id, "chars": ""}
 	if t.sessionWait != "" {
 		if t.sessionWaitMS > 0 {
 			args["yield_time_ms"] = t.sessionWaitMS
 		}
-		result.NextCall = &binding.ExecutionNextCall{Tool: t.sessionWait, Input: args}
+		result.NextCall = &ExecutionNextCall{Tool: t.sessionWait, Input: args}
 	} else if t.exec != "" && t.nestedSessionWait && id <= 1<<53-1 {
 		if t.nestedSessionWaitMS > 0 {
 			args["yield_time_ms"] = t.nestedSessionWaitMS
 		}
 		source := "text(await tools.write_stdin(" + string(responses.MustMarshalJSON(args)) + "));"
-		result.NextCall = &binding.ExecutionNextCall{Tool: t.exec, Input: source}
+		result.NextCall = &ExecutionNextCall{Tool: t.exec, Input: source}
 	} else {
 		result.Reason = "The host session continuation tool is not exposed in this request. Do not restart the running call."
 	}
 	return result
 }
 
-// Convert validated retained history without exporting its private record shape.
-func (h mekugiHistory) executionEvidence(known bool) *binding.RetainedExecution {
-	if !known || h.TranslationError != "" {
-		return nil
-	}
-	return &binding.RetainedExecution{CarrierKind: string(h.effectiveCarrierKind()), ToolName: h.ToolName, Script: h.Script}
-}
-
 // Project only after replay validation has established the original calls.
 // Cell provenance is request-local transcript evidence, not a session registry.
-func projectExecutionContinuations(request *codexresponses.Request, catalog *codexresponses.ToolCatalog, execName string, visible map[string]mekugiHistory) {
-	var items []map[string]json.RawMessage
-	if json.Unmarshal(request.Fields["input"], &items) != nil {
+func ProjectExecutionContinuations(request *codexresponses.Request, catalog *codexresponses.ToolCatalog, execName string, visible map[string]RetainedExecutionItem) {
+	var items []map[string]jsonv1.RawMessage
+	if json.Unmarshal(request.Fields["input"], &items, jsonv1.DefaultOptionsV1()) != nil {
 		return
 	}
 	tools := executionTools(catalog, execName)
-	calls := make(map[string]binding.ExecutionCall)
-	cells := make(map[string]binding.ExecutionCall)
-	notices := make(map[int]binding.ExecutionContinuation)
+	calls := make(map[string]ExecutionCall)
+	cells := make(map[string]ExecutionCall)
+	notices := make(map[int]ExecutionContinuation)
 	pending := make(map[string]int)
 	changed := false
 	for index, item := range items {
@@ -177,8 +183,8 @@ func projectExecutionContinuations(request *codexresponses.Request, catalog *cod
 		}
 		switch responses.StringField(item, "type") {
 		case "custom_tool_call", "function_call":
-			history, known := visible[callID]
-			call := binding.ClassifyExecutionCall(item, history.executionEvidence(known), execName)
+			history := visible[callID]
+			call := ClassifyExecutionCall(item, history.Evidence, execName)
 			delete(pending, call.ResumeHandle)
 			calls[callID] = call
 		case "custom_tool_call_output", "function_call_output":
@@ -186,7 +192,7 @@ func projectExecutionContinuations(request *codexresponses.Request, catalog *cod
 			delete(calls, callID)
 			if !known {
 				if history, found := visible[callID]; found {
-					call = binding.ClassifyExecutionCall(history.UpstreamItem, history.executionEvidence(true), execName)
+					call = ClassifyExecutionCall(history.UpstreamItem, history.Evidence, execName)
 					delete(pending, call.ResumeHandle)
 					known = true
 				}
@@ -198,14 +204,14 @@ func projectExecutionContinuations(request *codexresponses.Request, catalog *cod
 				origin := cells[call.CellID]
 				call.NativePayload = origin.NativePayload
 			}
-			texts := binding.ExecutionOutputTexts(item["output"])
+			texts := ExecutionOutputTexts(item["output"])
 
 			if len(texts) == 0 {
 				continue
 			}
-			var notice *binding.ExecutionContinuation
+			var notice *ExecutionContinuation
 			if call.CodeMode {
-				status, cell, body := binding.CodeModeExecutionHeader(texts[0])
+				status, cell, body := CodeModeExecutionHeader(texts[0])
 				if status == "running" && (call.CellID == "" || call.CellID == cell) {
 					cells[cell] = call
 					value := tools.forCell(cell)
@@ -218,7 +224,7 @@ func projectExecutionContinuations(request *codexresponses.Request, catalog *cod
 						texts[0] = body
 						var session int64
 						for _, payload := range texts {
-							if id := binding.NativeJSONSession(payload); id != 0 {
+							if id := NativeJSONSession(payload); id != 0 {
 								if session != 0 {
 									session = 0
 									break
@@ -233,7 +239,7 @@ func projectExecutionContinuations(request *codexresponses.Request, catalog *cod
 					}
 				}
 			} else if call.Native {
-				if session := binding.NativeExecutionSession(texts[0]); session != 0 {
+				if session := NativeExecutionSession(texts[0]); session != 0 {
 					value := tools.forSession(session)
 					notice = &value
 				}
@@ -259,11 +265,11 @@ func projectExecutionContinuations(request *codexresponses.Request, catalog *cod
 		// Re-prepared requests can contain annotations from an older catalog.
 		// Replace only obsolete advice, preserving host output and already-sent
 		// annotations whose tool contract has not changed.
-		var parts []json.RawMessage
-		if json.Unmarshal(item["output"], &parts) == nil {
+		var parts []jsonv1.RawMessage
+		if json.Unmarshal(item["output"], &parts, jsonv1.DefaultOptionsV1()) == nil {
 			kept := parts[:0:0]
 			for _, part := range parts {
-				if binding.ExecutionAnnotationMatches(part, notice.Handle) && !responses.SameJSONValue(part, annotation) {
+				if ExecutionAnnotationMatches(part, notice.Handle) && !responses.SameJSONValue(part, annotation) {
 					changed = true
 					continue
 				}
@@ -274,7 +280,7 @@ func projectExecutionContinuations(request *codexresponses.Request, catalog *cod
 			}
 		}
 		if outstanding || notice.NextCall != nil {
-			output, added, err := appendToolOutputWarning(item["output"], text)
+			output, added, err := codexresponses.AppendOutputNotice(item["output"], text)
 			if err == nil && added {
 				item["output"] = output
 				changed = true
@@ -286,7 +292,7 @@ func projectExecutionContinuations(request *codexresponses.Request, catalog *cod
 	}
 }
 
-func executionHandleKey(notice binding.ExecutionContinuation) string {
+func executionHandleKey(notice ExecutionContinuation) string {
 	if cell, ok := notice.Handle["cell_id"].(string); ok {
 		return "cell:" + cell
 	}

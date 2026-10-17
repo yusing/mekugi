@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -236,7 +235,7 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *codexr
 			}
 			visible[callID] = history
 			if history.OutputWarning != "" {
-				output, projected, err := appendToolOutputWarning(item["output"], history.OutputWarning)
+				output, projected, err := codexresponses.AppendOutputNotice(item["output"], history.OutputWarning)
 				if err != nil {
 					return nil, fmt.Errorf("project call %q warning: %w", callID, err)
 				}
@@ -346,7 +345,7 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *codexr
 		if err != nil || notice == "" {
 			continue // Auxiliary evidence must not interfere with stock results.
 		}
-		output, projected, err := appendToolOutputWarning(item["output"], notice)
+		output, projected, err := codexresponses.AppendOutputNotice(item["output"], notice)
 		if err == nil && projected {
 			item["output"] = output
 			changed = true
@@ -360,23 +359,6 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *codexr
 		request.Fields["input"] = encoded
 	}
 	return visible, nil
-}
-
-func appendToolOutputWarning(raw json.RawMessage, warning string) (json.RawMessage, bool, error) {
-	var parts []json.RawMessage
-	var text string
-	if json.Unmarshal(raw, &text) == nil {
-		parts = []json.RawMessage{responses.MustMarshalJSON(map[string]string{"type": "input_text", "text": text})}
-	} else if err := json.Unmarshal(raw, &parts); err != nil {
-		return nil, false, errors.New("tool output must be text or content parts")
-	}
-	notice := responses.MustMarshalJSON(map[string]string{"type": "input_text", "text": warning})
-	for _, part := range parts {
-		if responses.SameJSONValue(part, notice) {
-			return raw, false, nil
-		}
-	}
-	return responses.MustMarshalJSON(append(parts, notice)), true, nil
 }
 
 func (t *mekugiResponseTransform) recordLocal(callID string, history *mekugiHistory) {

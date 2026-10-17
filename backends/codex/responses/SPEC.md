@@ -26,6 +26,11 @@ Catalogs describe the fields at the point of tool discovery. Presence, null,
 malformed sections and additional-tool groups stay distinct so each consumer can
 apply its own admission policy. Raw tool fields are authoritative, including unknown extensions.
 
+Execution-free admission and session-shell decoding share this protocol owner.
+Request-local response contracts preserve the tools and tool choice captured before
+execution guidance projection, including absent and explicit-null fields. Restoring
+a response never adds a contract field the provider did not return.
+
 Incremental encoding slices only the workflow-supplied cached prefix and
 can remove its previous-response dependency when rebasing. The caller selects
 whether its provider uses that connection-local cache. Connection-local history

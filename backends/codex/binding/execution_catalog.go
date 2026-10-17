@@ -1,18 +1,18 @@
-package router
+package binding
 
 import (
-	"encoding/json"
+	jsonv1 "encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-
-	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
+var ErrUnsupportedExecutionInterface = errors.New("This model does not expose the required exec interface. Select a model that supports exec.")
+
+// Source: apps/mekugi/internal/router/mekugi_tool_catalog.go:16:134@874a6e86.
 type executionOwner struct {
 	group     *codexresponses.AdditionalTools
 	namespace *codexresponses.Tool
@@ -22,13 +22,13 @@ type executionOwner struct {
 	command   bool
 }
 
-// prepareStockExecution recognizes the stock Codex exec interface and
+// PrepareStockExecution recognizes the stock Codex exec interface and
 // adds session-helper guidance to the owning execution description. It never
 // removes, replaces, or rewrites apply_patch, exec_command, or the JavaScript
 // execution contract.
-func prepareStockExecution(fields map[string]json.RawMessage, catalog *codexresponses.ToolCatalog, frontendGuidance string, guidance *binding.Guidance) (*executionOwner, error) {
+func PrepareStockExecution(fields map[string]jsonv1.RawMessage, catalog *codexresponses.ToolCatalog, frontendGuidance string, guidance *Guidance) (string, error) {
 	if catalog.Top.Present && catalog.Top.Err != nil {
-		return nil, fmt.Errorf("decode responses tools: %w", catalog.Top.Err)
+		return "", fmt.Errorf("decode responses tools: %w", catalog.Top.Err)
 	}
 	var result *executionOwner
 	var claim func(*codexresponses.AdditionalTools, *codexresponses.ToolSection, int) error
@@ -72,28 +72,28 @@ func prepareStockExecution(fields map[string]json.RawMessage, catalog *codexresp
 				return errors.New("responses request defines exec more than once")
 			}
 			result = &executionOwner{group: group, section: section, toolIndex: index, name: tool.Name(),
-				command: strings.Contains(stockDescription, "tools.exec_command") || codeModeDeclaresExecutionTool(stockDescription, "exec_command")}
-		case applyPatchToolName, nativeExecCommandToolName:
-			return inferencegateway.IncompatibleRequest("unsupported_execution_interface", "This model does not expose the required exec interface. Select a model that supports exec.")
+				command: strings.Contains(stockDescription, "tools.exec_command") || codexresponses.CodeModeDeclaresExecutionTool(stockDescription, "exec_command")}
+		case "apply_patch", "exec_command":
+			return ErrUnsupportedExecutionInterface
 		}
 		return nil
 	}
 	for index := range catalog.Top.Tools {
 		if err := claim(nil, catalog.Top, index); err != nil {
-			return nil, err
+			return "", err
 		}
 	}
 	if catalog.InputError == nil {
 		for _, group := range catalog.Additional {
 			if !group.Tools.Present {
-				return nil, errors.New("decode additional tools: unexpected end of JSON input")
+				return "", errors.New("decode additional tools: unexpected end of JSON input")
 			}
 			if group.Tools.Err != nil {
-				return nil, fmt.Errorf("decode additional tools: %w", group.Tools.Err)
+				return "", fmt.Errorf("decode additional tools: %w", group.Tools.Err)
 			}
 			for index := range group.Tools.Tools {
 				if err := claim(group, group.Tools, index); err != nil {
-					return nil, err
+					return "", err
 				}
 			}
 		}
@@ -105,7 +105,7 @@ func prepareStockExecution(fields map[string]json.RawMessage, catalog *codexresp
 			var err error
 			description, err = guidance.ToolDescription(description, frontendGuidance, !owner.command)
 			if err != nil {
-				return nil, err
+				return "", err
 			}
 		}
 
@@ -114,21 +114,24 @@ func prepareStockExecution(fields map[string]json.RawMessage, catalog *codexresp
 			if owner.namespace != nil {
 				encoded, err := responses.MarshalJSON(owner.section.Tools)
 				if err != nil {
-					return nil, err
+					return "", err
 				}
 				owner.namespace.SetRawField("tools", encoded)
 			}
 			if err := catalog.EncodeTop(fields); err != nil {
-				return nil, fmt.Errorf("encode Responses tools: %w", err)
+				return "", fmt.Errorf("encode Responses tools: %w", err)
 			}
 		} else if err := catalog.EncodeAdditional(fields, owner.group, owner.section); err != nil {
-			return nil, fmt.Errorf("encode Responses input: %w", err)
+			return "", fmt.Errorf("encode Responses input: %w", err)
 		}
 	}
-	return result, nil
+	if result == nil {
+		return "", nil
+	}
+	return result.name, nil
 }
 
 func codeModeOwnsStockExecution(description string) bool {
 	return strings.Contains(description, "tools.exec_command") || strings.Contains(description, "tools.apply_patch") ||
-		!isExecutionFreeCodeModeDescription(description)
+		codexresponses.CodeModeDeclaresExecutionTool(description, "apply_patch") || codexresponses.CodeModeDeclaresExecutionTool(description, "exec_command")
 }
