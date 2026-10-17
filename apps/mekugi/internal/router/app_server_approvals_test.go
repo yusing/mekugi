@@ -59,7 +59,7 @@ func approvalTestChoices(u *appServerUI) []string {
 func approvalTestTranscript(t *testing.T, u *appServerUI) string {
 	t.Helper()
 	var rows []string
-	for _, entry := range u.source.Entries {
+	for _, entry := range u.attached.source.Entries {
 		if entry.Source.Agent == "Session" {
 			t.Fatal("approval added a Session entry")
 		}
@@ -99,7 +99,7 @@ func TestNativeApprovalCommandReturnsTheOfferedDecision(t *testing.T) {
 	if len(u.pendingApprovals()) != 0 || u.approvals.Open {
 		t.Fatal("answered approval remains")
 	}
-	if got := approvalTestTranscript(t, u); !strings.Contains(got, "git push origin main · Approved") || len(u.source.Entries) != 1 {
+	if got := approvalTestTranscript(t, u); !strings.Contains(got, "git push origin main · Approved") || len(u.attached.source.Entries) != 1 {
 		t.Fatalf("transcript = %q", got)
 	}
 }
@@ -116,7 +116,7 @@ func TestNonTerminalApprovalDecisionsPreserveIdentityAndReason(t *testing.T) {
 	}
 	// This editor is deliberately unrelated to the submitted semantic reason.
 	u.Text = "editor content must not become the reason"
-	intent.Version = u.sessionPresentation().View().Version
+	intent.Version = u.attached.presentation.View().Version
 	intent.Choice = v.Approvals.Approval.Choices[1].ID
 	if err := u.decideApproval(intent); err != nil {
 		t.Fatal(err)
@@ -136,12 +136,12 @@ func TestNonTerminalApprovalDecisionsPreserveIdentityAndReason(t *testing.T) {
 	intent = sessionpresentation.ApprovalIntent{Version: v.Version, Request: v.Approvals.Approval.ID, Choice: v.Approvals.Approval.Choices[0].ID}
 	u.Thread = "replacement"
 	u.attachPresentation()
-	if err := u.decideApproval(intent); err != nil || wire.Len() != 0 || u.feedback.Text != sessionpresentation.ErrStaleIntent.Error() {
+	if err := u.decideApproval(intent); err != nil || wire.Len() != 0 || u.attached.feedback.Text != sessionpresentation.ErrStaleIntent.Error() {
 		t.Fatal("retired attachment answered a retained approval")
 	}
-	u.sessionPresentation().Attach(sessionpresentation.Thread{ID: u.Thread, Caller: "/root"}, true)
+	u.attached.presentation.Attach(sessionpresentation.Thread{ID: u.Thread, Caller: "/root"}, true)
 	intent.Version = u.publishPresentation(u.now()).Version
-	if err := u.decideApproval(intent); err != nil || wire.Len() != 0 || u.feedback.Text != sessionpresentation.ErrReplayIntent.Error() {
+	if err := u.decideApproval(intent); err != nil || wire.Len() != 0 || u.attached.feedback.Text != sessionpresentation.ErrReplayIntent.Error() {
 		t.Fatal("replay answered an approval")
 	}
 }
@@ -245,7 +245,7 @@ func TestNativeApprovalEndsWhenResolvedElsewhere(t *testing.T) {
 	if strings.Contains(input.String(), `"decision"`) {
 		t.Fatalf("ended approval was answered: %s", input.String())
 	}
-	if got := approvalTestTranscript(t, u); strings.Contains(got, "Pending Approval") || len(u.source.Entries) != 1 || u.source.Entries[0].Source.Native.Approval != "Turn ended before an answer" {
+	if got := approvalTestTranscript(t, u); strings.Contains(got, "Pending Approval") || len(u.attached.source.Entries) != 1 || u.attached.source.Entries[0].Source.Native.Approval != "Turn ended before an answer" {
 		t.Fatalf("transcript = %q", got)
 	}
 }
@@ -318,15 +318,15 @@ func TestNativeApprovalGuardedWrite(t *testing.T) {
 		t.Fatal("expired write was answered")
 	}
 	for i, want := range []string{"Approved", "Denied", "Auto Denied: no answer within 5 minutes"} {
-		if len(u.source.Entries) != 3 || u.testActivity(u.shell.Transcript).blocks(i)[0].Approval != want+"\nCommand: git push origin main" {
-			t.Fatalf("approval %d = %+v", i, u.source.Entries)
+		if len(u.attached.source.Entries) != 3 || u.testActivity(u.shell.Transcript).blocks(i)[0].Approval != want+"\nCommand: git push origin main" {
+			t.Fatalf("approval %d = %+v", i, u.attached.source.Entries)
 		}
 	}
 	withdrawn := newRequest()
 	u.addGuardApproval(withdrawn)
 	withdrawn.Outcome = "withdrawn"
 	close(withdrawn.Done)
-	if !u.expireApprovals() || strings.Contains(approvalTestTranscript(t, u), "Approval") || u.source.Entries[3].Source.Native.Approval != "Withdrawn: the command stopped\nCommand: git push origin main" {
+	if !u.expireApprovals() || strings.Contains(approvalTestTranscript(t, u), "Approval") || u.attached.source.Entries[3].Source.Native.Approval != "Withdrawn: the command stopped\nCommand: git push origin main" {
 		t.Fatalf("transcript = %q", approvalTestTranscript(t, u))
 	}
 }
@@ -415,7 +415,7 @@ func TestNativeApprovalTypedDenialReachesCommand(t *testing.T) {
 			u.openApprovals()
 			questionTestPaint(t, u, 80)
 			appServerTestKeys(t, u, keys)
-			if u.pendingApprovals()[0].Selected != 2 || u.conversation().ShellMode() || u.picker.Open {
+			if u.pendingApprovals()[0].Selected != 2 || u.attached.conversation.ShellMode() || u.picker.Open {
 				t.Fatal("typing did not select plain-text denial")
 			}
 			u.hideApprovals()
@@ -515,14 +515,14 @@ func TestNativeApprovalSurvivesMainReplacement(t *testing.T) {
 	appServerTestKeys(t, u, "wait for review")
 	previous := u.approvals.Approvals
 	approval := u.pendingApprovals()[0].Approval
-	if previous != &u.conversation().Approvals || u.Editor != &u.conversation().Editor {
+	if previous != &u.attached.conversation.Approvals || u.Editor != &u.attached.conversation.Editor {
 		t.Fatal("approval editor bypassed the composed owner")
 	}
 	if err := u.clearSessionPresentation(); err != nil {
 		t.Fatal(err)
 	}
 	u.Thread = "replacement"
-	if u.approvals.Approvals == previous || u.approvals.Approvals != &u.conversation().Approvals || !u.approvals.Open || u.pendingApprovals()[0].Approval != approval || u.Text != "wait for review" {
+	if u.approvals.Approvals == previous || u.approvals.Approvals != &u.attached.conversation.Approvals || !u.approvals.Open || u.pendingApprovals()[0].Approval != approval || u.Text != "wait for review" {
 		t.Fatal("replacement lost a pending approval or its editor")
 	}
 	appServerTestKeys(t, u, "\r")
@@ -639,7 +639,7 @@ func TestUISnapshotNativeApprovalDock(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
-			u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
+			u.attached.presentation.Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 			u.startSession("main", "/workspace")
 			u.Turn = "turn"
 			tc.setup(t, u)
@@ -681,7 +681,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 			if !tc.early {
 				notify("item/started")
 				terminalTest(u).openEntry(view.View, view.Entries[len(view.Entries)-1].Source.Seq)
-				u.detailFiles.prepareOutput(&u.session, terminalTest(u).Attachment)
+				u.detailFiles.prepareOutput(&u.attached.session, terminalTest(u).Attachment)
 				terminalTest(u).Dialog.Paint(make([]string, 18), 80, 18)
 			}
 			if tc.guard {
@@ -695,7 +695,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 				native := *view.Entries[0].Source.Native
 				native.Phase = "item/commandExecution/outputDelta"
 				native.Segments = []sessionpresentation.ActivitySegment{{Source: item.Command, Text: toolActivityShell(item.Command), Running: true}}
-				u.applyActivity([]sessionpresentation.ActivityEntry{{Seq: u.session.Activity().NextSequence(), Agent: u.session.Caller(thread), Kind: "tool", Text: toolActivityShell(item.Command), Native: &native}}, nil)
+				u.applyActivity([]sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Agent: u.attached.session.Caller(thread), Kind: "tool", Text: toolActivityShell(item.Command), Native: &native}}, nil)
 				if len(view.Entries) != 1 || len(view.blocks(0)) != 1 || !strings.HasPrefix(view.Entries[0].Source.Native.Approval, "Pending Approval") {
 					t.Fatal("early guard pending state was not reconciled")
 				}
@@ -749,7 +749,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 				t.Fatal("approval command has no clickable output dialog")
 			}
 			rows = make([]string, 18)
-			u.detailFiles.prepareOutput(&u.session, terminalTest(u).Attachment)
+			u.detailFiles.prepareOutput(&u.attached.session, terminalTest(u).Attachment)
 			terminalTest(u).Dialog.Paint(rows, 80, len(rows))
 			if !strings.Contains(terminalTest(u).Dialog.Document.Title, color+label+terminalui.Reset) {
 				t.Fatalf("dialog lost the decision: %q", rows)
@@ -785,8 +785,8 @@ func TestUISnapshotNativeAutoApprovalStates(t *testing.T) {
 			// Untargeted network reviews and missing items cannot add a row.
 			review("item/autoApprovalReview/completed", "approved", "")
 			review("item/autoApprovalReview/completed", "approved", "missing")
-			if len(u.childSource.Entries) != 1 || len(u.source.Entries) != 0 || u.testActivity(u.shell.Agents).blocks(0)[0].Approval != want {
-				t.Fatalf("review changed another record: %+v", u.childSource.Entries)
+			if len(u.attached.childSource.Entries) != 1 || len(u.attached.source.Entries) != 0 || u.testActivity(u.shell.Agents).blocks(0)[0].Approval != want {
+				t.Fatalf("review changed another record: %+v", u.attached.childSource.Entries)
 			}
 			if status == "approved" || status == "denied" {
 				uisnapshot.AssertTerminal(t, "testdata/snapshots/approval-auto-"+status+".txt", append(u.testActivity(u.shell.Agents).RenderFeed(48, 30).Lines, "plain after approval"), 48)

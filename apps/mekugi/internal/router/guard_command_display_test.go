@@ -162,7 +162,7 @@ func TestUISnapshotGuardedHeredocCommit(t *testing.T) {
 	u.restoreHistory([]binding.HistoryTurn{{ID: "past", Status: "completed", Items: []binding.ThreadItem{{
 		ID: "cmd", Type: "commandExecution", Command: command, AggregatedOutput: &output, ExitCode: new(0), DurationMS: new(int64(500)),
 	}}}})
-	if entry := u.source.Entries[0]; entry.Source.Native.Command != command {
+	if entry := u.attached.source.Entries[0]; entry.Source.Native.Command != command {
 		t.Fatal("host command changed")
 	}
 	assertNativeUISnapshot(t, "guarded-heredoc-commit", strings.Split(mainFeed(u, 90), "\n"))
@@ -213,9 +213,9 @@ func TestUISnapshotGuardCommandOutputDialog(t *testing.T) {
 	u.restoreHistory([]binding.HistoryTurn{{ID: "past", Status: "completed", Items: []binding.ThreadItem{{
 		ID: "cmd", Type: "commandExecution", Command: command, AggregatedOutput: &output, ExitCode: new(1),
 	}}}})
-	entry := u.source.Entries[0]
+	entry := u.attached.source.Entries[0]
 	pages := activityui.Disclosure(nil).Blocks(sessionpresentation.CommandPresentation(entry.Source).DetailValues())
-	if len(pages) != 1 || pages[0].Code != source || entry.Source.Native.Command != command || u.source.RetainedOutput(pages[0].Source, pages[0].Output) != entry.Source.Native.Output {
+	if len(pages) != 1 || pages[0].Code != source || entry.Source.Native.Command != command || u.attached.source.RetainedOutput(pages[0].Source, pages[0].Output) != entry.Source.Native.Output {
 		t.Fatalf("combined output pages = %+v; want original command display and unchanged host output", pages)
 	}
 	terminal := terminalTest(u)

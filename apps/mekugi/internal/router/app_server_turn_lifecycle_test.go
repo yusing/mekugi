@@ -63,7 +63,7 @@ func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 	auto := newLivePreview(t.Context())
 	defer auto.Close()
 	setTestAppServerIntegration(u, &observationFixture{review: testReview(auto), execWindows: &executionobservation.Windows{}})
-	workspace := u.cwd
+	workspace := u.attached.cwd
 	setLiveScope(auto, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}})
 	u.review.Projection.Scope = testReview(auto).Scope()
 	sub := testReview(auto).Subscribe()

@@ -167,7 +167,7 @@ func TestLiveActivitySharedNarrativeDialogRefresh(t *testing.T) {
 	}
 	entry.Text += "Newly streamed detail."
 	v.replaceEntry(0, entry, parseLiveActivity(entry))
-	u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
+	u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
 	if got := u.Dialog.Pages[0]; got.Source != 1 || !got.Live || !strings.HasSuffix(got.Body, "Newly streamed detail.") {
 		t.Fatalf("dialog did not refresh its exact source: %+v", got)
 	}

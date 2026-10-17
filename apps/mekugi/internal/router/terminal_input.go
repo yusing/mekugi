@@ -13,7 +13,7 @@ import (
 func (main *appServerUI) applyInput(u *terminalsession.Attachment, effects iter.Seq[terminalsession.InputEffect]) error {
 	if main != nil {
 		main.publishPresentation(main.now())
-		main.publishActivity()
+		publishActivity(&main.attached, main.shell)
 		defer main.settlePresentation()
 	}
 	for effect := range effects {
@@ -46,7 +46,7 @@ func (main *appServerUI) applyEffect(u *terminalsession.Attachment, effect termi
 		handled, err := m.applyPromptInput(*effect.Prompt)
 		return !handled, err
 	case effect.PendingPrompt != nil:
-		if effect.PendingPrompt.Version != m.sessionPresentation().View().Version {
+		if effect.PendingPrompt.Version != m.attached.presentation.View().Version {
 			m.setNotice(sessionpresentation.ErrStaleIntent.Error(), true)
 			return false, nil
 		}
@@ -87,13 +87,13 @@ func (main *appServerUI) applyEffect(u *terminalsession.Attachment, effect termi
 		m.displaySession(*effect.Display)
 	case effect.Roster != nil:
 		intent := effect.Roster
-		target := m.sessionPresentation().ActivityTarget(intent.Caller, m.childSource)
+		target := m.attached.presentation.ActivityTarget(intent.Caller, m.attached.childSource)
 		if m.displaySession(sessionpresentation.DisplayIntent{Version: sessionpresentation.Version{Attachment: intent.Attachment, Revision: intent.Revision}, Thread: target}) && target.Caller != "/root" {
 			u.Agents.Selected = target.Caller
 		}
 	case effect.Details != nil:
 		intent := effect.Details
-		if intent.Version != m.sessionPresentation().View().Version || m.activitySource(intent.View) == nil {
+		if intent.Version != m.attached.presentation.View().Version || m.activitySource(intent.View) == nil {
 			m.setNotice(sessionpresentation.ErrStaleIntent.Error(), true)
 			return false, nil
 		}
@@ -105,15 +105,15 @@ func (main *appServerUI) applyEffect(u *terminalsession.Attachment, effect termi
 		}
 	case effect.Notice != nil:
 		intent := effect.Notice
-		view := m.sessionPresentation().View()
+		view := m.attached.presentation.View()
 		if intent.Version != view.Version || intent.Feedback != view.Status.FeedbackRevision {
 			m.setNotice(sessionpresentation.ErrStaleIntent.Error(), true)
 			return false, nil
 		}
 		if intent.Dismiss {
 			m.setNotice("", false)
-			if m.sessionPresentation().Status.Alert {
-				m.sessionPresentation().Status.Set("", false)
+			if m.attached.presentation.Status.Alert {
+				m.attached.presentation.Status.Set("", false)
 			}
 		} else {
 			main.openBlocks(u, m.shell.Transcript, []activityui.Block{{Kind: "error", Body: intent.Text}})

@@ -38,9 +38,9 @@ func (v *activityAdapter) displayTarget(caller string) sessionpresentation.Threa
 }
 
 func (u *appServerUI) testActivity(view *activityui.View) *activityAdapter {
-	fixture := &activityAdapter{ActivitySource: u.activitySource(view), View: view, display: u.sessionPresentation()}
+	fixture := &activityAdapter{ActivitySource: u.activitySource(view), View: view, display: u.attached.presentation}
 	if view == u.shell.Agents {
-		fixture.mainView = &activityAdapter{ActivitySource: u.source, View: u.shell.Transcript, display: fixture.display}
+		fixture.mainView = &activityAdapter{ActivitySource: u.attached.source, View: u.shell.Transcript, display: fixture.display}
 	}
 	return fixture
 }
@@ -48,9 +48,9 @@ func (u *appServerUI) testActivity(view *activityui.View) *activityAdapter {
 // bind supplies the actual application source boundary for standalone dialog tests.
 func (v *activityAdapter) bind(terminal *terminalUI) *activityui.View {
 	if terminal.main == nil {
-		terminal.main = appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: v.View}, source: v.ActivitySource})
+		terminal.main = appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: v.View}, attached: attachedPresentation{source: v.ActivitySource}})
 	} else if terminal.main.activitySource(v.View) == nil {
-		terminal.main.shell.Transcript, terminal.main.source = v.View, v.ActivitySource
+		terminal.main.shell.Transcript, terminal.main.attached.source = v.View, v.ActivitySource
 	}
 	return v.View
 }

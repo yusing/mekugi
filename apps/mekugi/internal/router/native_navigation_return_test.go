@@ -25,7 +25,7 @@ func TestNativeReplyDialogPreservesScrolledDiff(t *testing.T) {
 		t.Fatal(err)
 	}
 	var seq uint64
-	for _, entry := range u.source.Entries {
+	for _, entry := range u.attached.source.Entries {
 		if entry.Source.ActivitySeq != 0 {
 			seq = entry.Source.Seq
 		}

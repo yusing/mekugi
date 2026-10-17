@@ -6,7 +6,7 @@ func (u *appServerUI) endTurnPreviews(thread, turn string) {
 	u.execWindows.StopTurnPreviews(thread, turn)
 	if live := u.review.Preview(); live != nil {
 		live.SetTurn(thread, turn, false)
-		live.FinishTurn(u.cwd, thread, turn)
+		live.FinishTurn(u.attached.cwd, thread, turn)
 	}
 	if u.shell != nil {
 		u.shell.Live.EndTurn(thread, turn, u.now())

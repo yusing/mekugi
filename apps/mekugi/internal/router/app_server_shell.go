@@ -37,7 +37,7 @@ func (u *appServerUI) submitShell() error {
 		return err // Keep the draft when transport submission fails.
 	}
 	u.shellEdits.pending = edit
-	u.conversation().Shell = u.takeDraft()
+	u.attached.conversation.Shell = u.takeDraft()
 	u.Shell.Begin(u.Turn)
 	u.setNotice("Shell command submitted", false)
 	u.shell.Transcript.Follow()
@@ -45,8 +45,8 @@ func (u *appServerUI) submitShell() error {
 }
 
 func (u *appServerUI) shellResponse(failure *appserver.Error) {
-	draft := u.conversation().Shell
-	u.conversation().Shell = conversationmodel.Input{}
+	draft := u.attached.conversation.Shell
+	u.attached.conversation.Shell = conversationmodel.Input{}
 	u.Shell.Acknowledge(failure != nil, u.Turn)
 	if failure != nil {
 		u.shellEdits.pending.Discard()

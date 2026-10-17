@@ -12,7 +12,7 @@ import (
 
 func (u *appServerUI) editInput(intent sessionpresentation.DraftEditIntent) bool {
 	defer u.settlePresentation()
-	if err := u.sessionPresentation().EditDraft(intent, u.conversation()); err != nil {
+	if err := u.attached.presentation.EditDraft(intent, u.attached.conversation); err != nil {
 		u.setNotice(err.Error(), true)
 		return false
 	}
@@ -24,13 +24,13 @@ func (u *appServerUI) editInput(intent sessionpresentation.DraftEditIntent) bool
 
 func (u *appServerUI) submitInput(intent sessionpresentation.SubmitIntent) error {
 	defer u.settlePresentation()
-	draft, plan, err := u.sessionPresentation().TakeInput(intent, &u.Live, u.conversation(), u.restoring != nil)
+	draft, plan, err := u.attached.presentation.TakeInput(intent, &u.Live, u.attached.conversation, u.restoring != nil)
 	if err != nil {
 		u.setNotice(err.Error(), true)
 		return nil
 	}
 	input := u.prepareDraft(draft)
-	u.conversation().QueueInput(input, plan.Queued)
+	u.attached.conversation.QueueInput(input, plan.Queued)
 	u.pruneDraftImages()
 	u.setNotice("", false)
 	if !plan.Flush {
@@ -53,7 +53,7 @@ func (u *appServerUI) applyComposerInput(input terminalsession.ComposerInput) (b
 	kind, changed := input.LocalEdit, input.Changed
 	if input.Editor.Action.Kind != composer.NoAction {
 		var err error
-		changed, err = u.sessionPresentation().ApplyEditor(input.Editor, u.conversation())
+		changed, err = u.attached.presentation.ApplyEditor(input.Editor, u.attached.conversation)
 		if err != nil {
 			u.setNotice(err.Error(), true)
 			return false, nil
@@ -81,7 +81,7 @@ func (u *appServerUI) applyComposerInput(input terminalsession.ComposerInput) (b
 }
 
 func (u *appServerUI) applyComposerCommand(intent sessionpresentation.ComposerIntent) (bool, error) {
-	if err := u.sessionPresentation().AdmitComposer(intent, u.conversation()); err != nil {
+	if err := u.attached.presentation.AdmitComposer(intent, u.attached.conversation); err != nil {
 		u.setNotice(err.Error(), true)
 		return false, nil
 	}
@@ -119,7 +119,7 @@ func (u *appServerUI) applyComposerCommand(intent sessionpresentation.ComposerIn
 		if u.cancelQueuedCompact() {
 			return false, nil
 		}
-		if u.Turn != "" || u.Starting() || u.InputPending() || u.Compaction.Pending() || u.Compaction.ContinuationPending() || len(u.conversation().Unsent)+len(u.conversation().Queued) > 0 {
+		if u.Turn != "" || u.Starting() || u.InputPending() || u.Compaction.Pending() || u.Compaction.ContinuationPending() || len(u.attached.conversation.Unsent)+len(u.attached.conversation.Queued) > 0 {
 			return false, u.keyboardInterrupt()
 		}
 		if u.shell.Main.InterruptLocked {
@@ -146,7 +146,7 @@ func (u *appServerUI) applyComposerCommand(intent sessionpresentation.ComposerIn
 		if text == "/btw" || strings.HasPrefix(text, "/btw ") || strings.HasPrefix(text, "/btw\n") || strings.HasPrefix(text, "/btw\t") {
 			return false, u.submitBTW()
 		}
-		if u.conversation().ShellMode() {
+		if u.attached.conversation.ShellMode() {
 			return false, u.submitShell()
 		}
 		if text == "/compact" || text == "/clear" {
@@ -195,7 +195,7 @@ func (u *appServerUI) applyComposerCommand(intent sessionpresentation.ComposerIn
 		if text == "" || u.Thread == "" || u.restoring != nil {
 			return false, nil
 		}
-		view := u.sessionPresentation().View()
+		view := u.attached.presentation.View()
 		return false, u.submitInput(sessionpresentation.SubmitIntent{Version: view.Version, Revision: view.Draft.Revision, Mode: sessioncontrol.SendInput})
 	case sessionpresentation.QueueComposer:
 		// Tab queues busy input for the next turn; otherwise it sends like Enter.
@@ -203,11 +203,11 @@ func (u *appServerUI) applyComposerCommand(intent sessionpresentation.ComposerIn
 		if text == "/compact" {
 			return false, u.submitCompact(true)
 		}
-		if u.conversation().ShellMode() || text == "" || strings.HasPrefix(text, "/") || u.Turn == "" && !u.Starting() && !u.InputPending() {
+		if u.attached.conversation.ShellMode() || text == "" || strings.HasPrefix(text, "/") || u.Turn == "" && !u.Starting() && !u.InputPending() {
 			intent.Operation = sessionpresentation.SubmitComposer
 			return u.applyComposerCommand(intent)
 		}
-		view := u.sessionPresentation().View()
+		view := u.attached.presentation.View()
 		return false, u.submitInput(sessionpresentation.SubmitIntent{Version: view.Version, Revision: view.Draft.Revision, Mode: sessioncontrol.QueueNextTurn})
 	}
 	return false, nil

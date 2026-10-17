@@ -45,14 +45,14 @@ func (u *appServerUI) prepareComposerInput() bool {
 		return false
 	}
 	if intent := preparation.Question; intent != nil {
-		if err := u.sessionPresentation().QuestionInput(*intent, u.questions.Questions); err != nil {
+		if err := u.attached.presentation.QuestionInput(*intent, u.questions.Questions); err != nil {
 			u.setNotice(err.Error(), true)
 			return false
 		}
 		u.hideQuestions()
 	}
 	if intent := preparation.Approval; intent != nil {
-		if err := u.sessionPresentation().ApprovalInput(*intent, u.approvals.Approvals); err != nil {
+		if err := u.attached.presentation.ApprovalInput(*intent, u.approvals.Approvals); err != nil {
 			u.setNotice(err.Error(), true)
 			return false
 		}

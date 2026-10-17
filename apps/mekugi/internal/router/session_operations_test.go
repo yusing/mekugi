@@ -21,7 +21,7 @@ func TestNonTerminalHistoryIntentsReachHostAndRetire(t *testing.T) {
 	if err := u.loadOlderActivity(load); err != nil {
 		t.Fatal(err)
 	}
-	if len(restoreContentRequests(t, wire)) != 5 || u.feedback.Text != sessionpresentation.ErrStaleIntent.Error() {
+	if len(restoreContentRequests(t, wire)) != 5 || u.attached.feedback.Text != sessionpresentation.ErrStaleIntent.Error() {
 		t.Fatal("stale history intent issued a request or hid its rejection")
 	}
 	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
@@ -46,7 +46,7 @@ func TestNonTerminalHistoryIntentsReachHostAndRetire(t *testing.T) {
 	if u.historyLoading() != nil || len(entryTexts(u.testActivity(u.shell.Agents))) != 1 || len(restoreContentRequests(t, wire)) != 6 {
 		t.Fatal("cancelled response revived history or issued host work")
 	}
-	u.sessionPresentation().Attach(sessionpresentation.Thread{ID: u.Thread, Caller: "/root"}, true)
+	u.attached.presentation.Attach(sessionpresentation.Thread{ID: u.Thread, Caller: "/root"}, true)
 	v = u.publishPresentation(u.now())
 	if v.History.Target != "" {
 		t.Fatal("replay offered a host history target")
@@ -54,7 +54,7 @@ func TestNonTerminalHistoryIntentsReachHostAndRetire(t *testing.T) {
 	if err := u.loadOlderActivity(sessionpresentation.HistoryIntent{Version: v.Version, Thread: "child"}); err != nil {
 		t.Fatal(err)
 	}
-	if u.feedback.Text != sessionpresentation.ErrReplayIntent.Error() || len(restoreContentRequests(t, wire)) != 6 {
+	if u.attached.feedback.Text != sessionpresentation.ErrReplayIntent.Error() || len(restoreContentRequests(t, wire)) != 6 {
 		t.Fatal("replay history intent reached the host")
 	}
 }
@@ -69,10 +69,10 @@ func TestNonTerminalInterruptionIdentityAndDisposition(t *testing.T) {
 		if err := u.interruptSession(intent); err != nil {
 			t.Fatal(err)
 		}
-		if wire.Len() != 0 || u.Interruption.Target != "" || u.feedback.Text != sessionpresentation.ErrStaleIntent.Error() {
+		if wire.Len() != 0 || u.Interruption.Target != "" || u.attached.feedback.Text != sessionpresentation.ErrStaleIntent.Error() {
 			t.Fatal("retired turn intent interrupted newer work")
 		}
-		u.conversation().Unsent = []conversationmodel.Input{{Text: "waiting"}}
+		u.attached.conversation.Unsent = []conversationmodel.Input{{Text: "waiting"}}
 		v = u.publishPresentation(u.now())
 		intent.Version, intent.Target = v.Version, v.Interrupt
 		if err := u.interruptSession(intent); err != nil {
@@ -106,10 +106,10 @@ func TestNonTerminalInterruptionPendingStartAndReplay(t *testing.T) {
 	appServerTestTurn(t, u, "started")
 	appServerOneRequest(t, wire, "turn/interrupt", "")
 	u.Interruption.Finish()
-	u.sessionPresentation().Attach(sessionpresentation.Thread{ID: u.Thread, Caller: "/root"}, true)
+	u.attached.presentation.Attach(sessionpresentation.Thread{ID: u.Thread, Caller: "/root"}, true)
 	v = u.publishPresentation(u.now())
 	intent.Version, intent.Target = v.Version, v.Interrupt
-	if err := u.interruptSession(intent); err != nil || wire.Len() != 0 || u.Interruption.Target != "" || u.feedback.Text != sessionpresentation.ErrReplayIntent.Error() {
+	if err := u.interruptSession(intent); err != nil || wire.Len() != 0 || u.Interruption.Target != "" || u.attached.feedback.Text != sessionpresentation.ErrReplayIntent.Error() {
 		t.Fatal("replay interruption reached the host")
 	}
 }

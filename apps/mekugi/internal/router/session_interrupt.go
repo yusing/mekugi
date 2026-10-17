@@ -7,8 +7,8 @@ import (
 
 func (u *appServerUI) interruptSession(intent sessionpresentation.InterruptIntent) error {
 	defer u.settlePresentation()
-	unsent := u.conversation().Unsent
-	decision, err := u.sessionPresentation().Interrupt(intent, &u.Live, len(unsent) > 0 && unsent[0].Text != "/compact")
+	unsent := u.attached.conversation.Unsent
+	decision, err := u.attached.presentation.Interrupt(intent, &u.Live, len(unsent) > 0 && unsent[0].Text != "/compact")
 	if err != nil {
 		u.setNotice(err.Error(), true)
 		return nil
@@ -27,7 +27,7 @@ func (u *appServerUI) interruptTurn() error {
 }
 
 func (u *appServerUI) applyInterruption(intent sessioncontrol.Interrupt) error {
-	u.applyInputRestoration(u.sessionPresentation().RestoreInterruptedInput(u.conversation(), intent))
+	u.applyInputRestoration(u.attached.presentation.RestoreInterruptedInput(u.attached.conversation, intent))
 	if intent.Turn == "" {
 		return nil
 	}

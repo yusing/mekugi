@@ -37,7 +37,7 @@ func TestPasteAdmissionPreservesOriginalDestination(t *testing.T) {
 			if u.Text != want || u.picker.Query != "" || wire.Len() != 0 || u.shell.Main.Pasting() {
 				t.Fatalf("paste retargeted: draft=%q, query=%q, wire=%q", u.Text, u.picker.Query, wire.String())
 			}
-			if change != "status" && !u.feedback.Alert {
+			if change != "status" && !u.attached.feedback.Alert {
 				t.Fatal("rejected paste lacks feedback")
 			}
 		})
@@ -50,13 +50,13 @@ func TestSecretPasteRejectsReopenedEditor(t *testing.T) {
 	questionTestSync(t, u, "secret-paste", true)
 	questionTestPaint(t, u, 60)
 	appServerTestKeys(t, u, "\x1b[200~private\x1b[201~")
-	if u.shell.Prompts.Secret.Text != "private" || u.sessionPresentation().View().PromptDraft.Draft.Text != "" {
+	if u.shell.Prompts.Secret.Text != "private" || u.attached.presentation.View().PromptDraft.Draft.Text != "" {
 		t.Fatal("secret paste was lost or published")
 	}
 	appServerTestKeys(t, u, "\x1b[200~stale")
 	u.shell.Prompts.Reopen()
 	appServerTestKeys(t, u, "\x1b[201~")
-	if u.shell.Prompts.Secret.Text != "private" || !u.feedback.Alert {
+	if u.shell.Prompts.Secret.Text != "private" || !u.attached.feedback.Alert {
 		t.Fatal("reopened secret editor accepted an old paste")
 	}
 }
@@ -71,7 +71,7 @@ func TestPromptInputRejectsRetiredDock(t *testing.T) {
 	}
 	u.hideQuestions()
 	u.publishPresentation(u.now())
-	if handled, err := u.applyPromptInput(*input); !handled || err != nil || !u.feedback.Alert || u.Text != "" || wire.Len() != 0 {
+	if handled, err := u.applyPromptInput(*input); !handled || err != nil || !u.attached.feedback.Alert || u.Text != "" || wire.Len() != 0 {
 		t.Fatalf("retired prompt input escaped admission: handled=%v err=%v draft=%q", handled, err, u.Text)
 	}
 }

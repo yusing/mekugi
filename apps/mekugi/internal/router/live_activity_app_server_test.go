@@ -79,7 +79,7 @@ func TestLiveActivityNativeItemsShareStateAndRendering(t *testing.T) {
 	}
 	// Main is the same activity viewport, not another row cache or renderer.
 	u, _ := newAppServerTestUI()
-	u.shell.Transcript, u.source = v.View, v.ActivitySource
+	u.shell.Transcript, u.attached.source = v.View, v.ActivitySource
 	var frame bytes.Buffer
 	if err := u.testPaint(&frame, 100, 25); err != nil {
 		t.Fatal(err)
@@ -153,7 +153,7 @@ func TestAppServerActivityExcludesMain(t *testing.T) {
 func TestAppServerMainRosterSummary(t *testing.T) {
 	u, _ := newAppServerTestUI()
 
-	u.sessionPresentation().Status.Text = "Working"
+	u.attached.presentation.Status.Text = "Working"
 	terminalTest(u).Focus = 3 // Narrow layout displays only the roster, not Main.
 	if err := u.testPaint(&bytes.Buffer{}, 80, 40); err != nil {
 		t.Fatal(err)
@@ -170,7 +170,7 @@ func TestAppServerMainRosterSummary(t *testing.T) {
 	if got, _ := u.testActivity(u.shell.Agents).testCurrent(root, time.Now()); ansi.Strip(got) != "Roster fixed" {
 		t.Fatalf("Main completed summary stale: %q", got)
 	}
-	if len(u.childSource.Entries) != 0 {
+	if len(u.attached.childSource.Entries) != 0 {
 		t.Fatal("Main summary was copied into Activity")
 	}
 }
@@ -187,15 +187,15 @@ func TestAppServerActivityReasoningSummaries(t *testing.T) {
 	}
 	feed := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(80, 20).Lines, "\n"))
 	status, _ := u.testActivity(u.shell.Agents).testCurrent(sessionpresentation.ActivityAgent{Name: "/root/reviewer"}, time.Now())
-	if !strings.Contains(feed, "Updated public summary") || !strings.Contains(status, "Updated public summary") || len(u.childSource.Entries) != 1 {
+	if !strings.Contains(feed, "Updated public summary") || !strings.Contains(status, "Updated public summary") || len(u.attached.childSource.Entries) != 1 {
 		t.Fatal("summary must remain in Activity and update status")
 	}
-	u.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/reviewer", Responding: true}}
+	u.attached.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/reviewer", Responding: true}}
 	live := strings.Join(u.testActivity(u.shell.Agents).RenderFeed(80, 20).Lines, "\n")
 	if !strings.Contains(ansi.Strip(live), "Updated public summary") {
 		t.Fatal("reasoning summary is missing from Activity")
 	}
-	u.childSource.Agents[0].Responding = false
+	u.attached.childSource.Agents[0].Responding = false
 	if idle := strings.Join(u.testActivity(u.shell.Agents).RenderFeed(80, 20).Lines, "\n"); !strings.Contains(idle, "Updated public summary") {
 		t.Fatal("reasoning transcript disappeared after completion")
 	}
@@ -212,7 +212,7 @@ func TestAppServerActivityReasoningSummaries(t *testing.T) {
 	if !strings.Contains(detail, "Updated public summary") || strings.Contains(detail, "Reasoning summary") {
 		t.Fatal("detailed summary must remain visible, not a labelled card")
 	}
-	if len(legacy.Entries) != 0 || len(u.source.Entries) != 0 {
+	if len(legacy.Entries) != 0 || len(u.attached.source.Entries) != 0 {
 		t.Fatal("changed Main or legacy reasoning policy")
 	}
 }
@@ -382,7 +382,7 @@ func TestLiveActivityConversationKeepsFullTextAndViewport(t *testing.T) {
 		t.Fatal("Main inherited compact answer clipping")
 	}
 	u, _ := newAppServerTestUI()
-	u.shell.Transcript, u.source = v.View, v.ActivitySource
+	u.shell.Transcript, u.attached.source = v.View, v.ActivitySource
 	if err := u.testPaint(&bytes.Buffer{}, 80, 15); err != nil {
 		t.Fatal(err)
 	}

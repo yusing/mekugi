@@ -27,8 +27,8 @@ func TestUISnapshotNativeMainQuotedReplyBoundary(t *testing.T) {
 		"item": map[string]any{"id": "prompt", "type": "userMessage", "content": []map[string]string{{"type": "text", "text": "Show me how the new transcript search instruction looks like"}}}})
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn",
 		"item": map[string]any{"id": "answer", "type": "agentMessage", "text": "> Read retained output before searching the transcript for exact historical details."}})
-	for i := range u.source.Entries {
-		u.source.Entries[i].Source.Observed = time.Date(2026, 10, 6, 11, 50, 6+i*6, 0, time.Local)
+	for i := range u.attached.source.Entries {
+		u.attached.source.Entries[i].Source.Observed = time.Date(2026, 10, 6, 11, 50, 6+i*6, 0, time.Local)
 	}
 	for _, width := range []int{100, 32} {
 		feed := u.testActivity(u.shell.Transcript).RenderFeed(width, 60)
@@ -79,7 +79,7 @@ func TestNativeChildAnswerPromotionRequiresMatchingSuccessfulTurn(t *testing.T) 
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "child-turn", "item": map[string]any{"id": "note", "type": "agentMessage", "text": "An interim note."}})
 			appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": tc.completionTurn, "status": tc.status}})
 			finals := 0
-			for _, entry := range u.source.Entries {
+			for _, entry := range u.attached.source.Entries {
 				if entry.Source.Agent == "/root/worker" && entry.Source.Kind == "final" {
 					finals++
 				}
@@ -98,7 +98,7 @@ func TestNativeFailedCollaborationDoesNotClaimDelivery(t *testing.T) {
 		"id": "send", "type": "collabAgentToolCall", "status": "failed", "tool": "sendMessage",
 		"senderThreadId": "main", "receiverThreadIds": []string{"child"}, "prompt": "Undelivered message.",
 	}})
-	for _, entry := range u.source.Entries {
+	for _, entry := range u.attached.source.Entries {
 		if entry.Source.Kind == "reply" || strings.Contains(entry.Source.Text, "Message sent") {
 			t.Fatalf("failed send claimed successful delivery: %+v", entry)
 		}
@@ -112,7 +112,7 @@ func TestNativeEmptyCollaborationRetainsParticipantOrder(t *testing.T) {
 		"senderThreadId": "sender", "receiverThreadIds": []string{"second", "first"}, "prompt": " \n",
 	}})
 	var threads []string
-	for _, agent := range u.session.Roster() {
+	for _, agent := range u.attached.session.Roster() {
 		threads = append(threads, agent.Thread)
 	}
 	if !slices.Equal(threads, []string{"main", "sender", "second", "first"}) {
@@ -133,7 +133,7 @@ func TestNativeMainAnswerBindsOwnTurnPromptAcrossUpdates(t *testing.T) {
 	appServerTestNotify(t, u, "item/agentMessage/delta", map[string]any{"threadId": "main", "turnId": "current-turn", "itemId": "answer", "delta": "part"})
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "current-turn", "item": map[string]any{"id": "answer", "type": "agentMessage", "text": "First part"}})
 	var current uint64
-	for _, entry := range u.source.Entries {
+	for _, entry := range u.attached.source.Entries {
 		if entry.Source.Native != nil && entry.Source.Native.Item == "current" {
 			current = entry.Source.Seq
 		}
@@ -142,7 +142,7 @@ func TestNativeMainAnswerBindsOwnTurnPromptAcrossUpdates(t *testing.T) {
 		t.Fatal("current user prompt missing")
 	}
 	answerCount := 0
-	for _, entry := range u.source.Entries {
+	for _, entry := range u.attached.source.Entries {
 		if entry.Source.Native != nil && entry.Source.Native.Item == "answer" {
 			answerCount++
 			if entry.Source.Native.Question != current || entry.Source.Text != "First part" {
@@ -239,7 +239,7 @@ func TestNativeMainRepliesQuoteTheirMessageOnce(t *testing.T) {
 		t.Fatalf("replies separated only by Main's own tools quoted the message %d times", got)
 	}
 	// Another message between replies makes the next one quote it again.
-	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: "Blocked on a request"}}})
+	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: "Blocked on a request"}}})
 	reply("third", "Continuing.")
 	if got := quotes(); got != 2 {
 		t.Fatalf("reply after another message quoted %d times; want 2\n%s", got, ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 60).Lines, "\n")))

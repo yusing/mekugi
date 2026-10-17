@@ -83,9 +83,9 @@ func (u *appServerUI) retainAppliedSettings() {
 	if u.panes == nil || u.panes.attachment == nil || u.model == "" || u.Settings.RestoreEffort {
 		return
 	}
-	scope := preferences.Scope{Workspace: u.cwd, Thread: u.Thread}
+	scope := preferences.Scope{Workspace: u.attached.cwd, Thread: u.Thread}
 	if u.panes.attachment.Scope() != scope {
-		if err := u.panes.open(&u.shell.Shell, u.shell.Main, u.cwd, u.Thread, false); err != nil {
+		if err := u.panes.open(&u.shell.Shell, u.shell.Main, u.attached.cwd, u.Thread, false); err != nil {
 			u.paneError(err)
 			return
 		}
@@ -102,6 +102,6 @@ func (u *appServerUI) paneError(err error) {
 	if err == nil {
 		return
 	}
-	u.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: "Pane layout or settings could not be restored or saved: " + err.Error(), Observed: time.Now()}}})
+	u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: "Pane layout or settings could not be restored or saved: " + err.Error(), Observed: time.Now()}}})
 	u.dirty = true
 }

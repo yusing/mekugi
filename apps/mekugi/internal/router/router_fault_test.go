@@ -147,7 +147,7 @@ func TestRouterTransformFaultAfterCreatedEmitsActionableTerminalFailure(t *testi
 	}
 	appServerTestNotify(t, ui, "turn/completed", map[string]any{"threadId": metadata.ThreadID, "turn": map[string]any{"id": metadata.TurnID, "status": "failed"}})
 	delivery := ui.applyCriticalNotices()
-	if delivery == nil || !strings.Contains(ui.feedback.Text, message) {
+	if delivery == nil || !strings.Contains(ui.attached.feedback.Text, message) {
 		t.Fatal("host-confirmed failure lost native notice delivery")
 	}
 

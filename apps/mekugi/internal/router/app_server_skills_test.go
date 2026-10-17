@@ -50,7 +50,7 @@ func TestUISnapshotSkillsMenuAndActions(t *testing.T) {
 func TestUISnapshotSkillsManageFilteringAndSave(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
-	u.cwd = "/work"
+	u.attached.cwd = "/work"
 	u.picker.Kind, u.picker.Open = "manage", true
 	u.picker.Skills = []completion.Choice{
 		{Name: "repo_scout", Display: "Repo Scout", Description: "Summarize the repo layout", Path: "/tmp/skills/repo_scout.toml", Enabled: true},
@@ -92,7 +92,7 @@ func TestUISnapshotSkillsManageFilteringAndSave(t *testing.T) {
 func TestUISnapshotSkillsManagerViewportAndPaste(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
-	u.cwd = "/work"
+	u.attached.cwd = "/work"
 	u.picker.Kind, u.picker.Open = "manage", true
 	u.picker.SkillsLoaded, u.picker.SkillsCwd = true, "/work"
 	for i := range 15 {

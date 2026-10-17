@@ -43,7 +43,7 @@ func (u *appServerUI) openWaitStore(store *history.Store, writes *persistence.Co
 }
 
 func (u *appServerUI) waitTargetsPath(key [3]string) string {
-	return filepath.Join(u.retainedSession.Store.Directory(), waittargets.Name(u.cwd, key[0], key[1], key[2]))
+	return filepath.Join(u.retainedSession.Store.Directory(), waittargets.Name(u.attached.cwd, key[0], key[1], key[2]))
 }
 
 func (u *appServerUI) readWaitTargets(key [3]string) (targets []waittargets.Target, found bool, err error) {

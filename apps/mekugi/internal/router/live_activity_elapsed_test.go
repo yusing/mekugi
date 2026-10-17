@@ -34,8 +34,8 @@ func TestLiveActivityElapsedFormatting(t *testing.T) {
 			now := start.Add(tc.age)
 			for _, status := range []string{"Waiting", "Working"} {
 				u := *appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: activityui.NewView()}, Turn: "active"})
-				u.sessionPresentation().Status.Set(status, false)
-				u.sessionPresentation().Status.Started = start
+				u.attached.presentation.Status.Set(status, false)
+				u.attached.presentation.Status.Started = start
 				if got := ansi.Strip(u.sessionLabel(now)); !strings.HasSuffix(got, " "+tc.want) {
 					t.Fatalf("composer = %q, want elapsed %q", got, tc.want)
 				}

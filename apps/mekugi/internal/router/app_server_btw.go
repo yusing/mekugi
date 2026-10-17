@@ -28,8 +28,8 @@ func (u *appServerUI) submitBTW() error {
 		return nil
 	}
 	if u.side == nil {
-		u.conversation().Side = new(conversationmodel.SideAnswer)
-		u.side = &sessioncontrol.Side{SideAnswer: u.conversation().Side}
+		u.attached.conversation.Side = new(conversationmodel.SideAnswer)
+		u.side = &sessioncontrol.Side{SideAnswer: u.attached.conversation.Side}
 	}
 	b := u.side
 	// Remove the command through the composer so attachment offsets stay valid.
@@ -83,14 +83,14 @@ func (u *appServerUI) closeBTW() error {
 	}
 	u.side = nil
 	b.Close()
-	u.conversation().Side = nil
+	u.attached.conversation.Side = nil
 	u.pruneDraftImages()
 	return u.Requests.ReleaseSide(b)
 }
 
 func (u *appServerUI) applyCloseSide(in sessionpresentation.CloseSideIntent) error {
 	defer u.settlePresentation()
-	if err := u.sessionPresentation().AdmitCloseSide(in); err != nil {
+	if err := u.attached.presentation.AdmitCloseSide(in); err != nil {
 		u.setNotice(err.Error(), true)
 		return nil
 	}

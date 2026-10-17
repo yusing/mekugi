@@ -29,7 +29,7 @@ import (
 )
 
 func selectionTestSource(main *appServerUI) terminalsession.SourceContext {
-	v := main.sessionPresentation().View()
+	v := main.attached.presentation.View()
 	return terminalsession.SourceContext{Attachment: v.Version.Attachment, Thread: v.Displayed.ID, Workspace: v.Info.Workspace}
 }
 
@@ -89,7 +89,7 @@ func TestTerminalSelectionSyntaxColors(t *testing.T) {
 					rows := slices.Clone(u.Frame.Rows)
 					if dialog {
 						rows = make([]string, u.Height)
-						u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
+						u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
 						u.Dialog.Paint(rows, u.Width, u.Height)
 					} else {
 						u.paintSelection(rows)
@@ -400,7 +400,7 @@ func TestTerminalUISelectionRenderedClipboard(t *testing.T) {
 		view := u.testActivity(u.shell.Transcript)
 		if activity {
 			view = u.testActivity(u.shell.Agents)
-			u.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
+			u.attached.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
 			terminalTest(u).DiffOpen = false
 
 		}

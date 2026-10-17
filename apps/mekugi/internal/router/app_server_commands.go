@@ -2,7 +2,6 @@ package router
 
 import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -60,10 +59,10 @@ func (u *appServerUI) sessionCommand(command string) error {
 	}
 	u.takeDraft()
 	u.Replacement.Clear()
-	u.sessionPresentation().Status.SetText("Starting new session…")
+	u.attached.presentation.Status.SetText("Starting new session…")
 	params := sessioncontrol.ThreadPermissions(map[string]any{"sessionStartSource": "clear"}, u.approvalMode)
-	if u.cwd != "" {
-		params["cwd"] = u.cwd
+	if u.attached.cwd != "" {
+		params["cwd"] = u.attached.cwd
 	}
 	if u.model != "" {
 		params["model"] = u.model
@@ -92,26 +91,26 @@ func (u *appServerUI) submitCompact(queue bool) error {
 	draft := u.takeDraft()
 	draft.Text = "/compact"
 	draft.Compact = conversationmodel.CompactIntent{WaitForIdle: queue, Continue: u.Turn != "" || u.Starting()}
-	u.conversation().Unsent = append(u.conversation().Unsent, draft)
+	u.attached.conversation.Unsent = append(u.attached.conversation.Unsent, draft)
 	return u.flushInput()
 }
 
 // sessionBusy reports work that leaving the current thread would strand.
 func (u *appServerUI) sessionBusy() bool {
-	return u.Busy(len(u.conversation().Unsent)+len(u.conversation().Queued) > 0)
+	return u.Busy(len(u.attached.conversation.Unsent)+len(u.attached.conversation.Queued) > 0)
 }
 
 // A queued compact is a local action, not Main's running turn. Return waiting
 // input for retry without interrupting that turn or an in-flight submission.
 func (u *appServerUI) cancelQueuedCompact() bool {
 	isCompact := func(d conversationmodel.Input) bool { return d.Text == "/compact" }
-	hasQueued := slices.ContainsFunc(u.conversation().Unsent, isCompact) || slices.ContainsFunc(u.conversation().Queued, isCompact)
+	hasQueued := slices.ContainsFunc(u.attached.conversation.Unsent, isCompact) || slices.ContainsFunc(u.attached.conversation.Queued, isCompact)
 	cancelled, interruptionIssued := u.Compaction.CancelQueued(hasQueued)
 	if !cancelled {
 		return false
 	}
-	u.restoreDrafts(slices.Concat(u.conversation().Unsent, u.conversation().Queued)...)
-	u.conversation().Unsent, u.conversation().Queued = nil, nil
+	u.restoreDrafts(slices.Concat(u.attached.conversation.Unsent, u.attached.conversation.Queued)...)
+	u.attached.conversation.Unsent, u.attached.conversation.Queued = nil, nil
 	if interruptionIssued {
 		u.setNotice("Compaction cancelled · input restored · interruption already requested", false)
 	} else {
@@ -130,7 +129,7 @@ func (u *appServerUI) clearSessionPresentation() error {
 		u.paneError(u.panes.save(u.shell.Shell.Preferences(u.shell.Main), time.Now(), true))
 	}
 	u.cancelPickerScan()
-	roster := u.session.Roster()
+	roster := u.attached.session.Roster()
 	retired := make([]string, 0, len(roster))
 	for _, agent := range roster {
 		retired = append(retired, agent.Thread)
@@ -142,26 +141,28 @@ func (u *appServerUI) clearSessionPresentation() error {
 		clear(u.notifications.blocked)
 	}
 	u.statusPanel = nil
-	u.sessionPresentation().ClosePanel()
+	u.attached.presentation.ClosePanel()
 	u.Requests.Retire("main") // Retire old-thread response correlation.
 	if err := u.Request("thread/unsubscribe", map[string]any{"threadId": u.Thread}); err != nil {
 		return err
 	}
 	u.picker = composerPicker{}
 	u.exitUsage = binding.TokenUsage{}
-	u.feedback = noticepresentation.Model{}
+	u.attached.feedback = noticepresentation.Model{}
 	u.shell.Main.NoticeDetails, u.shell.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
-	for key, run := range u.session.Commands() {
+	for key, run := range u.attached.session.Commands() {
 		if run.Entry.Native.Invocation.ReleaseSegmentOutputs() {
 			u.execTrack.ReleaseOutput(key)
 		}
 	}
-	waiting := u.conversation()
-	u.session.Retire()
-	u.session = sessionpresentation.Attachment{}
-	u.conversation().CarryInput(waiting)
+	waiting := u.attached.conversation
+	u.attached.session.Retire()
+	workspace := u.attached.cwd
+	u.attached = newAttachedPresentation(u.presentationState, u.conversationState, u.observations)
+	u.attached.cwd = workspace
+	u.attached.conversation.CarryInput(waiting)
 	u.bindConversation()
-	u.questions = nativeQuestionDock{Questions: &u.conversation().Questions}
+	u.questions = nativeQuestionDock{Questions: &u.attached.conversation.Questions}
 	for _, c := range retainedQuestions {
 		if c.Sudo != nil && !c.Resolved {
 			u.addQuestions(c, true)
@@ -176,11 +177,11 @@ func (u *appServerUI) clearSessionPresentation() error {
 		u.shell.Agents.Painter = painter
 		u.shell.Agents.ChildrenOnly, u.shell.Agents.Bare = true, true
 	}
-	u.source, u.childSource = nil, nil
+	u.attached.source, u.attached.childSource = nil, nil
 	u.attachPresentation()
 	if u.shell != nil {
 		u.shell.Selection = nil
-		u.detailFiles.closeOutput(&u.session, u.shell)
+		u.detailFiles.closeOutput(&u.attached.session, u.shell)
 		u.shell.Focus = 0
 		u.shell.StopDrag()
 	}

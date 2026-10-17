@@ -26,7 +26,7 @@ func (u *appServerUI) openComposerEditor(intent sessionpresentation.ComposerInte
 	if u.shell != nil {
 		u.shell.Frame.Rows = nil
 	}
-	if err := u.sessionPresentation().AdmitAcquiredInput(intent, u.conversation()); err != nil {
+	if err := u.attached.presentation.AdmitAcquiredInput(intent, u.attached.conversation); err != nil {
 		u.setNotice(err.Error(), true)
 		return
 	}
@@ -78,7 +78,7 @@ func (u *appServerUI) runEditor(path string, stdin, stdout *os.File) error {
 }
 
 func (u *appServerUI) applyEditorDraft(intent sessionpresentation.ComposerIntent, text string) error {
-	if err := u.sessionPresentation().AdmitAcquiredInput(intent, u.conversation()); err != nil {
+	if err := u.attached.presentation.AdmitAcquiredInput(intent, u.attached.conversation); err != nil {
 		return err
 	}
 	defer u.refreshPicker()

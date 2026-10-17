@@ -32,7 +32,7 @@ func processNotify(t *testing.T, u *appServerUI, thread, id, command, status str
 // processDialog paints the open /ps dialog over a blank screen.
 func processDialog(u *appServerUI, width, height int) []string {
 	rows := make([]string, height)
-	u.detailFiles.prepareOutput(&u.session, terminalTest(u).Attachment)
+	u.detailFiles.prepareOutput(&u.attached.session, terminalTest(u).Attachment)
 	terminalTest(u).Dialog.Paint(rows, width, height)
 	return rows
 }
@@ -67,7 +67,7 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 	if u.runningProcessCount() != 2 || !u.publishPresentation(u.now()).Status.Animating {
 		t.Fatal("yielded command stopped counting or animating")
 	}
-	if u.session.Transcript("main", "t").Turn != nil || !u.session.Commands()[[3]string{"main", "t", "cmd"}].Entry.Native.Invocation.Snapshot().Running {
+	if u.attached.session.Transcript("main", "t").Turn != nil || !u.attached.session.Commands()[[3]string{"main", "t", "cmd"}].Entry.Native.Invocation.Snapshot().Running {
 		t.Fatal("command lifetime followed its closed turn scope")
 	}
 	if err := terminalTest(u).send("\x1b[C"); err != nil {
@@ -91,10 +91,10 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 	}
 	entries := make([]sessionpresentation.ActivityEntry, liveActivityFeedLimit)
 	for i := range entries {
-		entries[i] = sessionpresentation.ActivityEntry{Seq: u.source.LastSeq + uint64(i) + 1, Agent: "Main", Kind: "text", Text: "Later event"}
+		entries[i] = sessionpresentation.ActivityEntry{Seq: u.attached.source.LastSeq + uint64(i) + 1, Agent: "Main", Kind: "text", Text: "Later event"}
 	}
 	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: entries})
-	u.session.Activity().AdvanceSequence(u.source.LastSeq)
+	u.attached.session.Activity().AdvanceSequence(u.attached.source.LastSeq)
 	reopen := func() {
 		if err := terminalTest(u).send("\x1b"); err != nil {
 			t.Fatal(err)
@@ -156,7 +156,7 @@ func TestRunningProcessesInteraction(t *testing.T) {
 	for i := range 20 {
 		processNotify(t, u, "main", fmt.Sprint(i), fmt.Sprintf("sleep %d", i+1), "inProgress")
 	}
-	u.Turn, u.sessionPresentation().Status.Text = "active", "Working"
+	u.Turn, u.attached.presentation.Status.Text = "active", "Working"
 	wire := u.Host.Input.(*appServerTestInput)
 	wire.Reset()
 	for _, closeKey := range []string{"\x1b", "q", "\x03"} {

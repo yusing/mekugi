@@ -62,10 +62,10 @@ func TestSubmittedAttachmentHostSchema(t *testing.T) {
 		if restore {
 			u.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 		} else {
-			applyTranscriptFixture(u.testActivity(u.shell.Transcript), true, u.cwd, "main", "main", "t", "input", "item/completed", "", item)
+			applyTranscriptFixture(u.testActivity(u.shell.Transcript), true, u.attached.cwd, "main", "main", "t", "input", "item/completed", "", item)
 		}
-		if !reflect.DeepEqual(u.source.Entries[0].Source.Native.Spans, want) {
-			t.Fatalf("restore=%v spans=%+v", restore, u.source.Entries[0].Source.Native.Spans)
+		if !reflect.DeepEqual(u.attached.source.Entries[0].Source.Native.Spans, want) {
+			t.Fatalf("restore=%v spans=%+v", restore, u.attached.source.Entries[0].Source.Native.Spans)
 		}
 	}
 }

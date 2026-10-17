@@ -28,7 +28,7 @@ type appServerStatusReport struct {
 }
 
 func (u *appServerUI) newStatusReport() *appServerStatusReport {
-	return &appServerStatusReport{PanelState: u.sessionPresentation().OpenPanel(u.replayDebugDirectory)}
+	return &appServerStatusReport{PanelState: u.attached.presentation.OpenPanel(u.replayDebugDirectory)}
 }
 
 func statusNotice(value string) []sessionpresentation.StatusField {
@@ -61,7 +61,7 @@ func (u *appServerUI) showStatus() error {
 	add("Service tier", u.displayServiceTier())
 	add("Model provider", u.statusConfig.Provider)
 	group = "Session"
-	add("Directory", u.cwd)
+	add("Directory", u.attached.cwd)
 	add("Session", u.Thread)
 	var approval string
 	if len(u.statusConfig.Approval) != 0 {
@@ -80,7 +80,7 @@ func (u *appServerUI) showStatus() error {
 		add("Agents.md", strings.Join(u.statusConfig.Instructions, ", "))
 	}
 	report := u.newStatusReport()
-	for _, agent := range u.session.Roster() {
+	for _, agent := range u.attached.session.Roster() {
 		if agent.Name != "/root" {
 			continue
 		}
@@ -275,14 +275,14 @@ func (u *appServerUI) applyPanelAction(action sessionpresentation.PanelAction) {
 	if action.Kind == sessionpresentation.PanelNoAction {
 		return
 	}
-	if err := u.sessionPresentation().AdmitPanel(action); err != nil {
+	if err := u.attached.presentation.AdmitPanel(action); err != nil {
 		u.setNotice(err.Error(), true)
 		return
 	}
 	switch action.Kind {
 	case sessionpresentation.PanelClose:
 		u.statusPanel = nil
-		u.sessionPresentation().ClosePanel()
+		u.attached.presentation.ClosePanel()
 	case sessionpresentation.PanelRefresh:
 		u.refreshSessionMetrics(true)
 	}

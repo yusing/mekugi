@@ -53,7 +53,7 @@ func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing
 		u := newAppServerSessionTestUI(t, workspace)
 		setTestAppServerIntegration(u, testProxyWithStore(store))
 		key := [3]string{"main", "turn", "command"}
-		first, second := u.activity.Outputs(u.session.Scope()).New(), u.activity.Outputs(u.session.Scope()).New()
+		first, second := u.activity.Outputs(u.attached.session.Scope()).New(), u.activity.Outputs(u.attached.session.Scope()).New()
 		first.Finish(new("first\n"), new(0))
 		second.Finish(new("second\n"), new(0))
 		view := execTrackView{complete: true, output: true, segments: []sessionpresentation.ActivitySegment{
@@ -79,7 +79,7 @@ func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing
 		}
 		// Switching sessions and releasing live buffers must not change the pending
 		// report's evidence or ownership. Hold beyond the former one-second limit.
-		u.cwd, u.Thread = t.TempDir(), "other"
+		u.attached.cwd, u.Thread = t.TempDir(), "other"
 		first.Release()
 		second.Release()
 		time.Sleep(1100 * time.Millisecond)
@@ -169,23 +169,23 @@ func TestCommandSegmentsRetentionErrorsStayWithOriginalThreadAndCause(t *testing
 		u.commandSegmentPending++
 		u.commandSegmentRetained(commandSegmentWrite{key: [3]string{"main", "turn", "item"}, err: requestexecution.StorageIOError(cause)})
 	}
-	if delivery := u.applyCriticalNotices(); delivery != nil || len(u.source.Entries) != 0 {
+	if delivery := u.applyCriticalNotices(); delivery != nil || len(u.attached.source.Entries) != 0 {
 		t.Fatal("switched thread borrowed another thread's retention errors")
 	}
 	u.Thread = "main"
 	delivery := u.applyCriticalNotices()
 
-	if delivery == nil || len(u.source.Entries) != 0 || !u.feedback.Alert {
+	if delivery == nil || len(u.attached.source.Entries) != 0 || !u.attached.feedback.Alert {
 		t.Fatal("retention errors missed the composer")
 	}
 	for _, cause := range []error{first, second} {
-		if !strings.Contains(u.feedback.Text, cause.Error()) || !strings.Contains(u.feedback.Text, "item item (turn turn)") {
+		if !strings.Contains(u.attached.feedback.Text, cause.Error()) || !strings.Contains(u.attached.feedback.Text, "item item (turn turn)") {
 			t.Fatal("composer omitted complete error or identity")
 		}
 	}
-	before := u.feedback.Text
+	before := u.attached.feedback.Text
 	delivery.finish(terminalsession.NoticeReceipt{})
-	if retry := u.applyCriticalNotices(); retry == nil || u.feedback.Text != before || len(u.source.Entries) != 0 {
+	if retry := u.applyCriticalNotices(); retry == nil || u.attached.feedback.Text != before || len(u.attached.source.Entries) != 0 {
 		t.Fatal("unpainted error was lost or duplicated")
 	} else {
 		_, receipt := u.testDeliveredMainFrame(t, 100, 12, 0)
@@ -225,7 +225,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": key[0], "turnId": key[1], "item": item})
 	awaitMain(t, u, "skipped")
 	awaitCommandSegments(t, u)
-	if names := u.source.ActiveSkills()["Main"]; len(names) != 1 || names[0] != filepath.Base(filepath.Dir(path)) {
+	if names := u.attached.source.ActiveSkills()["Main"]; len(names) != 1 || names[0] != filepath.Base(filepath.Dir(path)) {
 		t.Fatalf("successful skill segment lost after a failed command: %v", names)
 	}
 	// Reopen the durable owner and destroy the live report before restoring.
@@ -245,11 +245,11 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 			if strings.HasPrefix(target, "child") {
 				childWorkspace := workspace
 				if target == "child-other-workspace" {
-					restored.cwd = t.TempDir()
+					restored.attached.cwd = t.TempDir()
 				} else if target == "child-missing-workspace" {
 					childWorkspace = ""
 				}
-				restored.session.Caller(target)
+				restored.attached.session.Caller(target)
 				restored.restoreActivityThread(binding.ThreadInfo{ID: target, Cwd: childWorkspace, Turns: turns}, false)
 				view = restored.testActivity(restored.shell.Agents)
 			} else {
@@ -347,7 +347,7 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 			setTestAppServerIntegration(u, testProxyWithStore(store))
 			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc 'echo one; false'", AggregatedOutput: new("one\n"), ExitCode: new(1)}
 			entry := sessionpresentation.ActivityEntry{Seq: 1, Text: "Run `echo one`\n\nRun `false`", Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "t", Item: item.ID, Command: item.Command}}
-			first, second := u.activity.Outputs(u.session.Scope()).New(), u.activity.Outputs(u.session.Scope()).New()
+			first, second := u.activity.Outputs(u.attached.session.Scope()).New(), u.activity.Outputs(u.attached.session.Scope()).New()
 			if mode == "truncated" {
 				first.Write(strings.Repeat("line\n", activitymodel.OutputBytes/5))
 			} else if mode == "long-line" {
@@ -384,11 +384,11 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			u.session.CompleteCommand(entry.Native, item.Observation(), u.activity.Outputs(u.session.Scope()))
+			u.attached.session.CompleteCommand(entry.Native, item.Observation(), u.activity.Outputs(u.attached.session.Scope()))
 			u.restoreCommandSegments(&entry, item, workspace)
-			u.source.Entries = []sessionpresentation.ActivityRecord{{Source: entry}}
+			u.attached.source.Entries = []sessionpresentation.ActivityRecord{{Source: entry}}
 			pages := activityui.Disclosure(nil).Blocks(sessionpresentation.CommandPresentation(entry).DetailValues())
-			if len(pages) != 1 || pages[0].Label != "combined output" || u.source.RetainedOutput(pages[0].Source, pages[0].Output).View().Exit != 1 || strings.Join(u.source.RetainedOutput(pages[0].Source, pages[0].Output).View().Lines, "\n") != "one" {
+			if len(pages) != 1 || pages[0].Label != "combined output" || u.attached.source.RetainedOutput(pages[0].Source, pages[0].Output).View().Exit != 1 || strings.Join(u.attached.source.RetainedOutput(pages[0].Source, pages[0].Output).View().Lines, "\n") != "one" {
 				t.Fatalf("missing evidence fabricated output: %+v", pages)
 			}
 			wantStates := mode == "lossy" || mode == "released" || mode == "truncated" || mode == "long-line"
@@ -434,7 +434,7 @@ func TestCommandSegmentsRestoreRichChangeRows(t *testing.T) {
 	listing := "amber1..amber5 +343 -658\namber6 +158 -81\n"
 	item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc 'echo before; mchanges --list'", ExitCode: new(0), AggregatedOutput: new("before\n" + listing)}
 	entry := sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "t", Item: item.ID}}
-	first, second := u.activity.Outputs(u.session.Scope()).New(), u.activity.Outputs(u.session.Scope()).New()
+	first, second := u.activity.Outputs(u.attached.session.Scope()).New(), u.activity.Outputs(u.attached.session.Scope()).New()
 	first.Finish(new("before"), new(0))
 	second.Finish(&listing, new(0))
 	u.retainCommandSegments(entry, item.Observation(), execTrackView{complete: true, output: true, segments: []sessionpresentation.ActivitySegment{{Output: first}, {Output: second}}})
@@ -442,7 +442,7 @@ func TestCommandSegmentsRestoreRichChangeRows(t *testing.T) {
 	u.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 	// History starts collapsed; inspect the expanded retained command.
 	var rows []string
-	for _, restored := range u.source.Entries {
+	for _, restored := range u.attached.source.Entries {
 		for _, block := range commandSegmentBlocks(sessionpresentation.CommandPresentation(restored.Source)) {
 			block.Collapsed = false
 			rows = append(rows, u.shell.Transcript.Painter.Block(block, 90)...)

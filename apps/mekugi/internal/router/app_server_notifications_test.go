@@ -92,7 +92,7 @@ func TestAppServerNotificationConfig(t *testing.T) {
 		appServerTestRequest(t, u, "42", "config/read")
 		appServerTestMessage(t, u, reply)
 		u.notify("agent-turn-complete", "test")
-		if u.notifications.ready || out.Len() != 0 || u.feedback.Text == "" {
+		if u.notifications.ready || out.Len() != 0 || u.attached.feedback.Text == "" {
 			t.Fatal("invalid configuration enabled notifications or hid the error")
 		}
 	}
@@ -220,7 +220,7 @@ func TestAppServerNotificationOutputFailureNonfatal(t *testing.T) {
 	appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"turn"}}}`)
 	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"turn","status":"completed"}}}`)
 	u.notify("agent-turn-complete", "again")
-	if u.Turn != "" || !strings.HasPrefix(u.sessionPresentation().Status.Text, "Completed") || failing.calls != 1 || u.feedback.Text == "" {
-		t.Fatalf("output failure disrupted completion: turn=%q status=%q calls=%d notice=%q", u.Turn, u.sessionPresentation().Status.Text, failing.calls, u.feedback.Text)
+	if u.Turn != "" || !strings.HasPrefix(u.attached.presentation.Status.Text, "Completed") || failing.calls != 1 || u.attached.feedback.Text == "" {
+		t.Fatalf("output failure disrupted completion: turn=%q status=%q calls=%d notice=%q", u.Turn, u.attached.presentation.Status.Text, failing.calls, u.attached.feedback.Text)
 	}
 }

@@ -68,7 +68,7 @@ func (u *appServerUI) snapshotDraftSkills(d *conversationmodel.Input) {
 	d.SnapshotSkills(func(name, path string) ([]byte, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		data, _, err := readSkillAttachment(ctx, u.cwd, u.skillEnvironment, name, path)
+		data, _, err := readSkillAttachment(ctx, u.attached.cwd, u.skillEnvironment, name, path)
 		return data, err
 	})
 }

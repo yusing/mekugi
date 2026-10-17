@@ -30,23 +30,23 @@ func deliverActivity(view *activityui.View, source *sessionpresentation.Activity
 	view.Update(publication, activityui.Display{Caller: display.Displayed.Caller, Attachment: display.Version.Attachment, Revision: display.Version.Revision})
 }
 
-func (u *appServerUI) publishActivity() {
-	refreshRosterRoles(&u.session, u.childSource)
-	session := u.sessionPresentation()
-	if u.shell.Transcript != nil {
-		u.shell.Transcript.StatusLabel = textsanitize.Safe(terminalsession.StatusText(session.View().Status.State), false)
+func publishActivity(attached *attachedPresentation, terminal *terminalsession.Attachment) {
+	refreshRosterRoles(&attached.session, attached.childSource)
+	session := attached.presentation
+	if terminal.Transcript != nil {
+		terminal.Transcript.StatusLabel = textsanitize.Safe(terminalsession.StatusText(session.View().Status.State), false)
 	}
-	deliverActivity(u.shell.Transcript, u.source, session, nil, nil)
-	deliverActivity(u.shell.Agents, u.childSource, session, u.source, u.shell.Transcript)
+	deliverActivity(terminal.Transcript, attached.source, session, nil, nil)
+	deliverActivity(terminal.Agents, attached.childSource, session, attached.source, terminal.Transcript)
 }
 
 // activitySource resolves only a renderer already bound to this attachment.
 func (u *appServerUI) activitySource(view *activityui.View) *sessionpresentation.ActivitySource {
 	if view == u.shell.Transcript {
-		return u.source
+		return u.attached.source
 	}
 	if view == u.shell.Agents {
-		return u.childSource
+		return u.attached.childSource
 	}
 	return nil
 }

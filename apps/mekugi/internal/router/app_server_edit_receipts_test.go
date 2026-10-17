@@ -146,7 +146,7 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 		ID: "cat-call", Type: "commandExecution", Command: "cat > direct.go", ExitCode: new(2),
 	}}}})
 	assertCapturedCommand(t, restored.testActivity(restored.shell.Transcript), "main", "cat-call", "Edit", 2)
-	restored.session.Caller("child")
+	restored.attached.session.Caller("child")
 	restored.restoreActivityThread(binding.ThreadInfo{ID: "child", Cwd: workspace, Turns: []binding.HistoryTurn{{ID: "c", Status: "completed", Items: []binding.ThreadItem{sibling}}}}, false)
 	assertCapturedCommand(t, restored.testActivity(restored.shell.Agents), "child", sibling.ID, "Search", 0)
 	for _, view := range []*activityAdapter{u.testActivity(u.shell.Agents), restored.testActivity(restored.shell.Agents)} {
@@ -197,7 +197,7 @@ func TestAppServerCapturedEditsReuseReceipt(t *testing.T) {
 	item.ExitCode = new(2)
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	assertCapturedCommand(t, u.testActivity(u.shell.Transcript), "main", "cmd", "Edit", 2)
-	if !strings.Contains(u.source.Entries[0].Source.Text, "+1 -1") {
+	if !strings.Contains(u.attached.source.Entries[0].Source.Text, "+1 -1") {
 		t.Fatal("host refresh lost captured counts")
 	}
 	// A new receipt must replace the cached projection.
@@ -207,7 +207,7 @@ func TestAppServerCapturedEditsReuseReceipt(t *testing.T) {
 	u.review.Projection.Data = reviewReceiptSnapshot(t, data)
 	u.applyCapturedEdits()
 	assertCapturedCommand(t, u.testActivity(u.shell.Transcript), "main", "cmd", "Edit", 2)
-	if !strings.Contains(u.source.Entries[0].Source.Text, "+2 -1") {
+	if !strings.Contains(u.attached.source.Entries[0].Source.Text, "+2 -1") {
 		t.Fatal("new receipt did not replace captured counts")
 	}
 }
@@ -232,7 +232,7 @@ func TestAppServerCapturedEditsPreserveTrackedExits(t *testing.T) {
 			t.Fatalf("receipt overwrote per-command statuses: %+v", blocks)
 		}
 	}
-	got := mainFeed(appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: v.View}, source: v.ActivitySource}), 100)
+	got := mainFeed(appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: v.View}, attached: attachedPresentation{source: v.ActivitySource}}), 100)
 	if strings.Count(got, "exit 1") != 1 || !strings.Contains(got, "git cherry-pick · exit 1") {
 		t.Fatalf("receipt changed rendered failure ownership:\n%s", got)
 	}
@@ -414,7 +414,7 @@ func TestAppServerCapturedEditKeepsCommandPaths(t *testing.T) {
 	u.review.Projection.Data = reviewReceiptSnapshot(t, data)
 	u.applyCapturedEdits()
 	check(u.testActivity(u.shell.Transcript))
-	restored := newAppServerSessionTestUI(t, u.cwd)
+	restored := newAppServerSessionTestUI(t, u.attached.cwd)
 	restored.review.Projection.Data = reviewReceiptSnapshot(t, data)
 	restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 	check(restored.testActivity(restored.shell.Transcript))

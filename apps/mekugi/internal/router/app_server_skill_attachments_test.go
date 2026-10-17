@@ -23,7 +23,7 @@ import (
 
 func skillAttachmentCatalog(t *testing.T, u *appServerUI, w *appServerTestInput) {
 	t.Helper()
-	u.cwd = "/work"
+	u.attached.cwd = "/work"
 	appServerTestKeys(t, u, "$rev")
 	requests := pickerRequests(t, w)
 	if len(requests) != 1 || requests[0].Method != "skills/list" || len(requests[0].Params.Cwds) != 1 || requests[0].Params.Cwds[0] != "/work" {
@@ -74,7 +74,7 @@ func TestSkillAttachmentPastedBeforeCatalogResponse(t *testing.T) {
 	if err := os.WriteFile(path, []byte(instructions), 0600); err != nil {
 		t.Fatal(err)
 	}
-	u.cwd = workspace
+	u.attached.cwd = workspace
 	appServerTestKeys(t, u, "\x1b[200~use $review please\x1b[201~")
 	if u.picker.Open || len(u.Skills) != 0 {
 		t.Fatalf("paste opened picker or bound before catalog: %+v %+v", u.picker, u.Skills)
@@ -136,14 +136,14 @@ func TestSkillAttachmentTranscriptAndHistoryMetadata(t *testing.T) {
 				t.Fatal(err)
 			}
 			u.restoreHistory(turns)
-			if len(u.source.Entries) == 0 || u.source.Entries[0].Source.Native == nil || len(u.source.Entries[0].Source.Native.Spans) != 1 || u.source.Entries[0].Source.Native.Spans[0].Start != tc.wantStart {
-				t.Fatalf("restored transcript did not preserve selected skill: %+v", u.source.Entries)
+			if len(u.attached.source.Entries) == 0 || u.attached.source.Entries[0].Source.Native == nil || len(u.attached.source.Entries[0].Source.Native.Spans) != 1 || u.attached.source.Entries[0].Source.Native.Spans[0].Start != tc.wantStart {
+				t.Fatalf("restored transcript did not preserve selected skill: %+v", u.attached.source.Entries)
 			}
 			if len(u.InputHistory) != 1 || len(u.InputHistory[0].Skills) != 1 || u.InputHistory[0].Skills[0].Start != tc.wantStart {
 				t.Fatalf("history binding disagrees with transcript: %+v", u.InputHistory)
 			}
-			if !strings.Contains(u.source.Entries[0].Source.Text, "$review") {
-				t.Fatalf("restored transcript lost skill text: %+v", u.source.Entries[0])
+			if !strings.Contains(u.attached.source.Entries[0].Source.Text, "$review") {
+				t.Fatalf("restored transcript lost skill text: %+v", u.attached.source.Entries[0])
 			}
 		})
 	}
@@ -151,28 +151,28 @@ func TestSkillAttachmentTranscriptAndHistoryMetadata(t *testing.T) {
 
 func TestSkillAttachmentLookupFailureStillSendsText(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.cwd = "/work"
+	u.attached.cwd = "/work"
 	appServerTestKeys(t, u, "\x1b[200~use $review please\x1b[201~\r")
 	requests := pickerRequests(t, wire)
 	if len(requests) != 1 || requests[0].Method != "skills/list" {
 		t.Fatalf("unexpected pending input: %+v", requests)
 	}
-	if len(u.conversation().Unsent) != 1 || len(u.conversation().Queued) != 0 {
+	if len(u.attached.conversation.Unsent) != 1 || len(u.attached.conversation.Queued) != 0 {
 		t.Fatal("skill lookup reordered a steer into the queued stack")
 	}
 	appServerTestMessage(t, u, `{"id":`+strconv.Itoa(requests[0].ID)+`,"error":{"code":-1,"message":"catalog unavailable"}}`)
 	requests = pickerRequests(t, wire)
-	if len(requests) != 2 || requests[1].Method != "turn/start" || len(u.conversation().Submitted[u.Submission().ID].Skills) != 0 || u.conversation().Submitted[u.Submission().ID].Text != "use $review please" {
-		t.Fatalf("lookup failure blocked ordinary delivery: %+v %+v", requests, u.conversation().Submitted[u.Submission().ID])
+	if len(requests) != 2 || requests[1].Method != "turn/start" || len(u.attached.conversation.Submitted[u.Submission().ID].Skills) != 0 || u.attached.conversation.Submitted[u.Submission().ID].Text != "use $review please" {
+		t.Fatalf("lookup failure blocked ordinary delivery: %+v %+v", requests, u.attached.conversation.Submitted[u.Submission().ID])
 	}
-	if !u.feedback.Alert || !strings.Contains(u.feedback.Text, "Skill attachment unavailable") {
-		t.Fatalf("lookup failure was silent: %q", u.feedback.Text)
+	if !u.attached.feedback.Alert || !strings.Contains(u.attached.feedback.Text, "Skill attachment unavailable") {
+		t.Fatalf("lookup failure was silent: %q", u.attached.feedback.Text)
 	}
 }
 
 func TestSkillAttachmentFailureIndependentOfForegroundPicker(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.cwd = "/work"
+	u.attached.cwd = "/work"
 	appServerTestKeys(t, u, "\x1b[200~use $review please\x1b[201~\r@foo")
 	requests := pickerRequests(t, wire)
 	if len(requests) != 1 || requests[0].Method != "skills/list" {
@@ -189,11 +189,11 @@ func TestSkillAttachmentFailureIndependentOfForegroundPicker(t *testing.T) {
 			starts++
 		}
 	}
-	if starts != 1 || fileID == 0 || u.conversation().Submitted[u.Submission().ID].Text != "use $review please" || len(u.conversation().Submitted[u.Submission().ID].Skills) != 0 {
-		t.Fatalf("foreground picker stranded fallback: %+v %+v", requests, u.conversation().Submitted[u.Submission().ID])
+	if starts != 1 || fileID == 0 || u.attached.conversation.Submitted[u.Submission().ID].Text != "use $review please" || len(u.attached.conversation.Submitted[u.Submission().ID].Skills) != 0 {
+		t.Fatalf("foreground picker stranded fallback: %+v %+v", requests, u.attached.conversation.Submitted[u.Submission().ID])
 	}
-	if !u.feedback.Alert || !strings.Contains(u.feedback.Text, "catalog unavailable") {
-		t.Fatalf("foreground picker hid catalog failure: %q", u.feedback.Text)
+	if !u.attached.feedback.Alert || !strings.Contains(u.attached.feedback.Text, "catalog unavailable") {
+		t.Fatalf("foreground picker hid catalog failure: %q", u.attached.feedback.Text)
 	}
 	pickerReply(t, u, fileID, `{"files":[{"root":"/work","path":"foo.go","match_type":"file"}]}`)
 	if u.Text != "@foo" || !u.picker.Open || len(u.picker.Choices) != 1 {
@@ -203,8 +203,8 @@ func TestSkillAttachmentFailureIndependentOfForegroundPicker(t *testing.T) {
 
 func TestSkillAttachmentQueuedLookupIndependentOfForegroundPicker(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.cwd = "/work"
-	u.conversation().Queued = []conversationmodel.Input{{Text: "use $review please"}}
+	u.attached.cwd = "/work"
+	u.attached.conversation.Queued = []conversationmodel.Input{{Text: "use $review please"}}
 	appServerTestKeys(t, u, "@foo")
 	if err := u.flushInput(); err != nil {
 		t.Fatal(err)
@@ -225,24 +225,24 @@ func TestSkillAttachmentQueuedLookupIndependentOfForegroundPicker(t *testing.T) 
 		t.Fatalf("active file picker prevented background skill lookup: %+v", requests)
 	}
 	pickerReply(t, u, catalog.ID, `{"data":[{"cwd":"/work","skills":[{"name":"review","path":"/work/review/SKILL.md","enabled":true}]}]}`)
-	if u.conversation().Submitted[u.Submission().ID].Text != "use $review please" || len(u.conversation().Submitted[u.Submission().ID].Skills) != 1 || u.Text != "@foo" {
-		t.Fatalf("queued skill lost catalog or foreground draft: %+v %q", u.conversation().Submitted[u.Submission().ID], u.Text)
+	if u.attached.conversation.Submitted[u.Submission().ID].Text != "use $review please" || len(u.attached.conversation.Submitted[u.Submission().ID].Skills) != 1 || u.Text != "@foo" {
+		t.Fatalf("queued skill lost catalog or foreground draft: %+v %q", u.attached.conversation.Submitted[u.Submission().ID], u.Text)
 	}
 }
 
 func TestSkillAttachmentPartialCatalogFailureKeepsAvailableSkillsVisible(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.cwd = "/work"
+	u.attached.cwd = "/work"
 	appServerTestKeys(t, u, "\x1b[200~use $review and $broken please\x1b[201~\r")
 	requests := pickerRequests(t, wire)
 	if len(requests) != 1 || requests[0].Method != "skills/list" {
 		t.Fatalf("unexpected catalog request: %+v", requests)
 	}
 	pickerReply(t, u, requests[0].ID, `{"data":[{"cwd":"/work","skills":[{"name":"review","path":"/work/review/SKILL.md","enabled":true}],"errors":[{"message":"broken skill manifest"}]}]}`)
-	if u.conversation().Submitted[u.Submission().ID].Text != "use $review and $broken please" || len(u.conversation().Submitted[u.Submission().ID].Skills) != 1 || u.conversation().Submitted[u.Submission().ID].Skills[0].Name != "review" {
-		t.Fatalf("partial catalog failure lost text or available attachment: %+v", u.conversation().Submitted[u.Submission().ID])
+	if u.attached.conversation.Submitted[u.Submission().ID].Text != "use $review and $broken please" || len(u.attached.conversation.Submitted[u.Submission().ID].Skills) != 1 || u.attached.conversation.Submitted[u.Submission().ID].Skills[0].Name != "review" {
+		t.Fatalf("partial catalog failure lost text or available attachment: %+v", u.attached.conversation.Submitted[u.Submission().ID])
 	}
-	if !u.feedback.Alert || !strings.Contains(u.feedback.Text, "Skill catalog incomplete") || !strings.Contains(u.feedback.Text, "broken skill manifest") {
-		t.Fatalf("partial catalog failure was hidden: %q", u.feedback.Text)
+	if !u.attached.feedback.Alert || !strings.Contains(u.attached.feedback.Text, "Skill catalog incomplete") || !strings.Contains(u.attached.feedback.Text, "broken skill manifest") {
+		t.Fatalf("partial catalog failure was hidden: %q", u.attached.feedback.Text)
 	}
 }

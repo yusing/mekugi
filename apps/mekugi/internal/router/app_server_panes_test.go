@@ -165,7 +165,7 @@ func TestNativePaneStateInvalidAndUnavailable(t *testing.T) {
 			t.Fatal("invalid renderer state contributed saved settings")
 		}
 		u.paneError(err)
-		if u.Thread != "main" || !strings.Contains(u.source.Entries[len(u.source.Entries)-1].Source.Text, "Pane layout") {
+		if u.Thread != "main" || !strings.Contains(u.attached.source.Entries[len(u.attached.source.Entries)-1].Source.Text, "Pane layout") {
 			t.Fatal("layout failure was fatal or invisible")
 		}
 	}

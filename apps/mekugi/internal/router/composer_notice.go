@@ -11,12 +11,12 @@ import (
 
 // Successful feedback is transient; actionable errors remain until editing.
 func (u *appServerUI) setNotice(text string, alert bool) {
-	u.feedback.Set(text, alert, u.now())
+	u.attached.feedback.Set(text, alert, u.now())
 	u.shell.Main.NoticeDetails, u.shell.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
 }
 
 func (u *appServerUI) expireNotice(now time.Time) bool {
-	if !u.feedback.Expire(now) {
+	if !u.attached.feedback.Expire(now) {
 		return false
 	}
 	u.shell.Main.NoticeDetails, u.shell.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
@@ -42,7 +42,7 @@ func (u *appServerUI) applyCriticalNotices() (delivery *nativeCriticalNoticeDeli
 	defer func() {
 		view := u.publishPresentation(u.now())
 		if delivery != nil {
-			delivery.attachment, delivery.feedback = view.Version.Attachment, u.feedback.Revision
+			delivery.attachment, delivery.feedback = view.Version.Attachment, u.attached.feedback.Revision
 		}
 	}()
 	claim := claimNativeNotices(u.issues, u.Thread, u.audience)
@@ -50,8 +50,8 @@ func (u *appServerUI) applyCriticalNotices() (delivery *nativeCriticalNoticeDeli
 		return nil
 	}
 	delivery = &nativeCriticalNoticeDelivery{errors: claim.Errors, progress: claim.Progress}
-	for _, message := range u.feedback.Receive(claim, u.now()) {
-		u.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.source.LastSeq + 1, Agent: "Main", Kind: "progress", Text: message.Text, Observed: u.now()}}})
+	for _, message := range u.attached.feedback.Receive(claim, u.now()) {
+		u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.source.LastSeq + 1, Agent: "Main", Kind: "progress", Text: message.Text, Observed: u.now()}}})
 	}
 	if len(claim.Errors.Messages) > 0 {
 		u.shell.Main.NoticeDetails, u.shell.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}

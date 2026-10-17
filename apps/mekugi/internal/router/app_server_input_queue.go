@@ -25,16 +25,12 @@ import (
 // Source: codex-rs/tui/src/chatwidget/{input_queue,input_flow,input_restore}.rs
 // @86be5320b068ef67b56348b02aa8c33706955da6.
 
-func (u *appServerUI) conversation() *conversationmodel.Session {
-	return u.conversationState.Session(u.session.Scope())
-}
-
 func (u *appServerUI) bindConversation() {
-	m := u.conversation()
+	m := u.attached.conversation
 	if u.Editor != &u.shell.Prompts.Secret {
 		u.Editor = &m.Editor
 	}
-	u.picker.State, u.picker.MenuState = &m.Completion, u.sessionPresentation().Menu()
+	u.picker.State, u.picker.MenuState = &m.Completion, u.attached.presentation.Menu()
 	u.promptEditor = &m.PromptEditor
 	u.questions.Questions, u.approvals.Approvals = &m.Questions, &m.Approvals
 }
@@ -49,7 +45,7 @@ func (u *appServerUI) prepareDraft(draft composer.Draft) conversationmodel.Input
 	d := conversationmodel.Input{Draft: draft}
 	d.ReplyCount = len(binding.QuestionReplies(d.Text))
 	u.bindSkills(&d, true)
-	d.SnapshotFiles(u.cwd)
+	d.SnapshotFiles(u.attached.cwd)
 	u.snapshotDraftSkills(&d)
 	u.shell.Main.CursorColumn = nil
 	return d
@@ -57,7 +53,7 @@ func (u *appServerUI) prepareDraft(draft composer.Draft) conversationmodel.Input
 
 // restoreDrafts returns input to the composer ahead of the current draft.
 func (u *appServerUI) restoreDrafts(parts ...conversationmodel.Input) {
-	u.applyInputRestoration(u.conversation().RestoreInput(parts...))
+	u.applyInputRestoration(u.attached.conversation.RestoreInput(parts...))
 }
 
 func (u *appServerUI) applyInputRestoration(restored conversationmodel.InputRestoration) {
@@ -85,7 +81,7 @@ func (u *appServerUI) applyInputRestoration(restored conversationmodel.InputRest
 // editQueued returns all locally waiting input to the composer as one stack.
 // Already-sent steers remain host-owned until committed or interrupted.
 func (u *appServerUI) editQueued() {
-	parts := u.conversation().TakeWaiting()
+	parts := u.attached.conversation.TakeWaiting()
 	u.Compaction.CancelQueued(true)
 	u.restoreDrafts(parts...)
 }
@@ -93,18 +89,18 @@ func (u *appServerUI) editQueued() {
 // flushInput sends stacked input once nothing blocks it: unsent steers into
 // the running turn, otherwise unsent steers, then queued input, as a new turn.
 func (u *appServerUI) flushInput() error {
-	u.conversation().Unsent = pendingQuestionReplies(u.conversation().Unsent)
-	u.conversation().Queued = pendingQuestionReplies(u.conversation().Queued)
+	u.attached.conversation.Unsent = pendingQuestionReplies(u.attached.conversation.Unsent)
+	u.attached.conversation.Queued = pendingQuestionReplies(u.attached.conversation.Queued)
 	if u.restoring != nil || !u.AcceptsInput() {
 		return nil
 	}
-	if len(u.conversation().Unsent)+len(u.conversation().Queued) > 0 {
+	if len(u.attached.conversation.Unsent)+len(u.attached.conversation.Queued) > 0 {
 		if ready, err := u.checkGuardHook(); !ready || err != nil {
 			return err
 		}
 	}
-	emitting := u.controlObservations != nil && u.controlObservations.EmittingToolInput(u.cwd, u.Thread)
-	next := u.sessionPresentation().NextInput(&u.Live, u.conversation(), emitting)
+	emitting := u.controlObservations != nil && u.controlObservations.EmittingToolInput(u.attached.cwd, u.Thread)
+	next := u.attached.presentation.NextInput(&u.Live, u.attached.conversation, emitting)
 	if next.Interrupt {
 		return u.interruptTurn()
 	}
@@ -112,7 +108,7 @@ func (u *appServerUI) flushInput() error {
 		return nil
 	}
 	if u.waitForSkillBindings(next.Batch.Parts) {
-		u.conversation().ReturnBatch(next.Batch)
+		u.attached.conversation.ReturnBatch(next.Batch)
 		u.refreshPicker()
 		return nil
 	}
@@ -120,10 +116,10 @@ func (u *appServerUI) flushInput() error {
 }
 
 func (u *appServerUI) send(parts []conversationmodel.Input, steer bool) error {
-	defer u.sessionPresentation().PruneInput(&u.Live, u.conversation())
+	defer u.attached.presentation.PruneInput(&u.Live, u.attached.conversation)
 	if len(parts) == 1 && parts[0].Text == "/compact" {
 		u.Compaction.Begin(sessioncontrol.CompactIntent(parts[0].Compact))
-		u.sessionPresentation().Status.SetText("Compacting context" + "…")
+		u.attached.presentation.Status.SetText("Compacting context" + "…")
 		return u.Request("thread/compact/start", map[string]any{"threadId": u.Thread})
 	}
 	for i := range parts {
@@ -150,8 +146,8 @@ func (u *appServerUI) send(parts []conversationmodel.Input, steer bool) error {
 	} else {
 		request.Tier = u.selectedServiceTier()
 		if len(binding.QuestionReplies(s.Text)) == 0 {
-			echo := u.source.LastSeq + 1
-			u.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: echo, Agent: "You", Kind: "text", Text: s.Text, Observed: u.now(),
+			echo := u.attached.source.LastSeq + 1
+			u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: echo, Agent: "You", Kind: "text", Text: s.Text, Observed: u.now(),
 				Native: &sessionpresentation.NativeItem{Thread: u.Thread, Item: "input/" + id, Phase: "input/pending", Spans: sessionpresentation.DraftSpans(s.Draft)}}}})
 		}
 	}
@@ -161,19 +157,19 @@ func (u *appServerUI) send(parts []conversationmodel.Input, steer bool) error {
 	for _, path := range s.AnswerImages {
 		delete(u.ownedImages, path)
 	}
-	u.sessionPresentation().StageInput(&u.Live, u.conversation(), id, s, steer)
+	u.attached.presentation.StageInput(&u.Live, u.attached.conversation, id, s, steer)
 	if !steer {
 		u.guardHookCheck.readyThread = ""
 	}
 	if s.AttachmentNotice != "" {
 		notice := s.AttachmentNotice
-		if strings.HasPrefix(u.feedback.Text, "Skill attachment unavailable:") || strings.HasPrefix(u.feedback.Text, "Skill catalog incomplete:") {
-			notice = u.feedback.Text + " " + notice
+		if strings.HasPrefix(u.attached.feedback.Text, "Skill attachment unavailable:") || strings.HasPrefix(u.attached.feedback.Text, "Skill catalog incomplete:") {
+			notice = u.attached.feedback.Text + " " + notice
 		}
 		u.setNotice(notice, true)
 	}
 	if _, err := u.Requests.SendInput(request, appServerRequest{}); err != nil {
-		u.applyInputEffects(u.sessionPresentation().ApplyInputResult(&u.Live, u.conversation(), u.SubmissionFailed()))
+		u.applyInputEffects(u.attached.presentation.ApplyInputResult(&u.Live, u.attached.conversation, u.SubmissionFailed()))
 		return err
 	}
 	for _, part := range parts {
@@ -189,13 +185,13 @@ func (u *appServerUI) submissionResponse(method string, failure *appserver.Error
 	if failure != nil {
 		message = failure.Message
 	}
-	u.applyInputEffects(u.sessionPresentation().AcknowledgeInput(&u.Live, u.conversation(), method, message, failure != nil))
+	u.applyInputEffects(u.attached.presentation.AcknowledgeInput(&u.Live, u.attached.conversation, method, message, failure != nil))
 }
 
 func (u *appServerUI) applyInputEffects(effects sessionpresentation.InputEffects) {
 	if effects.Withdrawn != "" {
-		u.source.RemovePendingInput(effects.Withdrawn)
-		u.sessionPresentation().SettleWithdrawnInput(effects, len(u.source.Model.Entries) > 0)
+		u.attached.source.RemovePendingInput(effects.Withdrawn)
+		u.attached.presentation.SettleWithdrawnInput(effects, len(u.attached.source.Model.Entries) > 0)
 	}
 	u.applyInputRestoration(effects.Restored)
 	if effects.Notice != "" {
@@ -205,11 +201,11 @@ func (u *appServerUI) applyInputEffects(effects sessionpresentation.InputEffects
 
 func (u *appServerUI) commitSteer(item binding.ThreadItem) {
 	text, _, _ := sessionpresentation.UserText(item.Content)
-	u.sessionPresentation().CommitInput(&u.Live, u.conversation(), item.ClientID, text)
+	u.attached.presentation.CommitInput(&u.Live, u.attached.conversation, item.ClientID, text)
 }
 
 func (u *appServerUI) settleInput(turn string, interrupted bool) {
-	for _, effects := range u.sessionPresentation().SettleInput(&u.Live, u.conversation(), turn, interrupted) {
+	for _, effects := range u.attached.presentation.SettleInput(&u.Live, u.attached.conversation, turn, interrupted) {
 		u.applyInputEffects(effects)
 	}
 }

@@ -192,7 +192,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	p.until("explorer thought")
 	render("grok thought readable", "• Thought")
 	retained := false
-	for _, record := range p.ui.childSource.Entries {
+	for _, record := range p.ui.attached.childSource.Entries {
 		blocks := p.ui.shell.Agents.Disclosure.Blocks(record.Values)
 		for _, block := range blocks {
 			if block.Kind == "summary" && block.Body == nativePreviewGrokReasoning {
@@ -248,7 +248,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	if got := agents(); strings.Contains(got, "Running") || !strings.Contains(got, "┆ ok      example.com") || !regexp.MustCompile(`Ran +│ for test in`).MatchString(got) {
 		t.Fatalf("passed test run lacks its settled state:\n%s", got)
 	}
-	nextEvent(t, p.ui, p.ui.childSource.Entries[len(p.ui.childSource.Entries)-1].Source.Native.Thread)
+	nextEvent(t, p.ui, p.ui.attached.childSource.Entries[len(p.ui.attached.childSource.Entries)-1].Source.Native.Thread)
 	settleActivity(time.Now().Add(activityui.OutputDebounce), p.ui.testActivity(p.ui.shell.Agents))
 	if got := agents(); strings.Contains(got, "┆ ok ") || !strings.Contains(got, "┆ … +6 lines") {
 		t.Fatalf("passed test run output did not collapse:\n%s", got)
@@ -308,7 +308,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		}
 	}
 	render("roster pick", "1 Thread", "tester")
-	if !shell.DiffOpen || !shell.main.sessionPresentation().DisplayingChild() || shell.Agents.Selected != "/root/tester" {
+	if !shell.DiffOpen || !shell.main.attached.presentation.DisplayingChild() || shell.Agents.Selected != "/root/tester" {
 		t.Fatal("clicking a roster agent did not show its Activity")
 	}
 }
@@ -329,13 +329,13 @@ func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 	}
 	p.until("main streams its patch")
 	keys("also check Unsubscribe\r")
-	if p.ui.conversation().Submitted[p.ui.Submission().ID].Text != "" || p.ui.Turn == "" || !slices.ContainsFunc(p.ui.source.Entries, func(e sessionpresentation.ActivityRecord) bool {
+	if p.ui.attached.conversation.Submitted[p.ui.Submission().ID].Text != "" || p.ui.Turn == "" || !slices.ContainsFunc(p.ui.attached.source.Entries, func(e sessionpresentation.ActivityRecord) bool {
 		return e.Source.Agent == "You" && e.Source.Text == "also check Unsubscribe"
 	}) {
-		t.Fatalf("steer not accepted: submitted=%q turn=%q", p.ui.conversation().Submitted[p.ui.Submission().ID].Text, p.ui.Turn)
+		t.Fatalf("steer not accepted: submitted=%q turn=%q", p.ui.attached.conversation.Submitted[p.ui.Submission().ID].Text, p.ui.Turn)
 	}
 	keys("queued follow-up\t")
-	if len(p.ui.conversation().Queued) != 1 || p.ui.Text != "" {
+	if len(p.ui.attached.conversation.Queued) != 1 || p.ui.Text != "" {
 		t.Fatal("Tab did not queue during playback")
 	}
 	keys("scratch\x03")
@@ -343,23 +343,23 @@ func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 		t.Fatal("first Ctrl-C did not only clear the draft")
 	}
 	keys("\x03")
-	if p.ui.Turn != "" || p.ui.sessionPresentation().Status.Text != "Interrupted" || p.advance() || len(p.active) != 0 {
-		t.Fatalf("interrupt left playback running: turn=%q status=%q active=%v", p.ui.Turn, p.ui.sessionPresentation().Status.Text, p.active)
+	if p.ui.Turn != "" || p.ui.attached.presentation.Status.Text != "Interrupted" || p.advance() || len(p.active) != 0 {
+		t.Fatalf("interrupt left playback running: turn=%q status=%q active=%v", p.ui.Turn, p.ui.attached.presentation.Status.Text, p.active)
 	}
-	if p.ui.Text != "queued follow-up" || len(p.ui.conversation().Queued) != 0 {
+	if p.ui.Text != "queued follow-up" || len(p.ui.attached.conversation.Queued) != 0 {
 		t.Fatalf("interrupt did not return queued input: %q", p.ui.Text)
 	}
 	keys("\x03")
-	for _, agent := range p.ui.childSource.Agents {
+	for _, agent := range p.ui.attached.childSource.Agents {
 		if agent.Responding {
 			t.Fatalf("%s still responding after interrupt", agent.Name)
 		}
 	}
 	keys("hello\r")
-	if !strings.Contains(p.ui.sessionLabel(p.ui.now()), "Completed in ") || !slices.ContainsFunc(p.ui.source.Entries, func(e sessionpresentation.ActivityRecord) bool {
+	if !strings.Contains(p.ui.sessionLabel(p.ui.now()), "Completed in ") || !slices.ContainsFunc(p.ui.attached.source.Entries, func(e sessionpresentation.ActivityRecord) bool {
 		return strings.Contains(e.Source.Text, "I heard: hello")
 	}) {
-		t.Fatalf("new turn not answered: %q", p.ui.sessionPresentation().Status.Text)
+		t.Fatalf("new turn not answered: %q", p.ui.attached.presentation.Status.Text)
 	}
 	keys("\x03")
 	if !p.ui.quitRequested {
@@ -392,7 +392,7 @@ func TestNativeUIPreviewSessionControlsRendered(t *testing.T) {
 	}
 	p.until("main streams its patch")
 	keys("/compact\t")
-	if p.ui.Turn == "" || len(p.ui.conversation().Unsent) != 1 || p.ui.conversation().Unsent[0].Text != "/compact" {
+	if p.ui.Turn == "" || len(p.ui.attached.conversation.Unsent) != 1 || p.ui.attached.conversation.Unsent[0].Text != "/compact" {
 		t.Fatal("busy compact was not queued locally")
 	}
 	if frame := render(); !strings.Contains(frame, "/compact") {
@@ -405,8 +405,8 @@ func TestNativeUIPreviewSessionControlsRendered(t *testing.T) {
 		t.Fatal("queued compaction did not complete visibly")
 	}
 	keys("/clear\r")
-	if p.ui.Thread != "preview-clear-1" || len(p.ui.source.Entries) != 0 {
-		t.Fatalf("clear did not open empty thread: thread=%q entries=%+v", p.ui.Thread, p.ui.source.Entries)
+	if p.ui.Thread != "preview-clear-1" || len(p.ui.attached.source.Entries) != 0 {
+		t.Fatalf("clear did not open empty thread: thread=%q entries=%+v", p.ui.Thread, p.ui.attached.source.Entries)
 	}
 	if frame := render(); strings.Contains(frame, "Context compacted") || strings.Contains(frame, "old transcript") {
 		t.Fatalf("clear retained previous presentation:\n%s", frame)
@@ -524,8 +524,8 @@ func newNativePreview(t *testing.T) *nativePreview {
 		scope.Workspaces[workspace][thread] = true
 	}
 	u.applyReview(t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope})
-	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.Roster()})
-	u.sessionPresentation().Status.Text = "Ready"
+	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.attached.session.Roster()})
+	u.attached.presentation.Status.Text = "Ready"
 	p.populate()
 	return p
 }
@@ -616,7 +616,7 @@ func (p *nativePreview) stream(name string, edits ...nativePreviewEdit) {
 			patchLines := strings.SplitAfter(edit.patch, "\n")
 			input := strings.Join(patchLines[:min(lines+2, len(patchLines))], "")
 			p.add("stream "+name, func() {
-				preview := projectStockPatchPreview(p.ui.ctx, p.workspace, previewmodel.Preview{ID: edit.item, Workspace: p.workspace, Thread: edit.thread, Caller: p.ui.session.Caller(edit.thread), Tool: applyPatchToolName, Status: previewmodel.PreviewEdit, Input: input})
+				preview := projectStockPatchPreview(p.ui.ctx, p.workspace, previewmodel.Preview{ID: edit.item, Workspace: p.workspace, Thread: edit.thread, Caller: p.ui.attached.session.Caller(edit.thread), Tool: applyPatchToolName, Status: previewmodel.PreviewEdit, Input: input})
 				p.ui.applyReview(p.ui.ctx, sessionreview.Event{Kind: "preview", Preview: &preview})
 				revealNativeDock(terminalTest(p.ui))
 			})
@@ -630,7 +630,7 @@ func (p *nativePreview) stream(name string, edits ...nativePreviewEdit) {
 // apply reports the call applied, writes the file, and records it the way
 // the router's capturer does, so the saved diff gains the change.
 func (p *nativePreview) apply(edit nativePreviewEdit) {
-	preview := projectStockPatchPreview(p.ui.ctx, p.workspace, previewmodel.Preview{ID: edit.item, Workspace: p.workspace, Thread: edit.thread, Caller: p.ui.session.Caller(edit.thread), Tool: applyPatchToolName, Status: previewmodel.PreviewEdit, Input: edit.patch, Complete: true})
+	preview := projectStockPatchPreview(p.ui.ctx, p.workspace, previewmodel.Preview{ID: edit.item, Workspace: p.workspace, Thread: edit.thread, Caller: p.ui.attached.session.Caller(edit.thread), Tool: applyPatchToolName, Status: previewmodel.PreviewEdit, Input: edit.patch, Complete: true})
 	p.ui.applyReview(p.ui.ctx, sessionreview.Event{Kind: "preview", Preview: &preview})
 	revealNativeDock(terminalTest(p.ui))
 	change := edit.change(-1)
@@ -652,7 +652,7 @@ func (p *nativePreview) apply(edit nativePreviewEdit) {
 	}
 	p.calls++
 	id := fmt.Sprintf("call-%d", p.calls)
-	caller := p.ui.session.Caller(edit.thread)
+	caller := p.ui.attached.session.Caller(edit.thread)
 	if change, err := p.store.changes.Reserve(p.ui.ctx, p.store.scoped(p.ui.ctx).changeScope(), p.workspace, edit.thread, edit.item+"\x000"); err == nil {
 		_ = p.store.put(p.ui.ctx, p.workspace, map[string]legacycall.History{id: {
 			ToolName: applyPatchToolName, Caller: caller, ChangeID: change, CorrelationID: edit.item + "\x000", ExecutingThread: edit.thread,
@@ -773,7 +773,7 @@ func (p *nativePreview) spawn(id, thread, path, role, prompt string) {
 // V2 collaboration emits only a body-free activity item. The prompt becomes
 // visible when the router observes the authenticated recipient request.
 func (p *nativePreview) collab(id, tool, from, to, prompt string) {
-	p.notify("item/completed", map[string]any{"threadId": from, "turnId": p.active[from], "item": map[string]any{"id": id, "type": "subAgentActivity", "agentThreadId": to, "agentPath": p.ui.session.Caller(to), "kind": "interacted"}})
+	p.notify("item/completed", map[string]any{"threadId": from, "turnId": p.active[from], "item": map[string]any{"id": id, "type": "subAgentActivity", "agentThreadId": to, "agentPath": p.ui.attached.session.Caller(to), "kind": "interacted"}})
 	kind := "MESSAGE"
 	if tool == "followupTask" {
 		p.assignments[to] = prompt
@@ -786,7 +786,7 @@ func (p *nativePreview) collab(id, tool, from, to, prompt string) {
 }
 
 func (p *nativePreview) receive(to, from, id, kind, body string) {
-	path, sender := p.ui.session.Caller(to), p.ui.session.Caller(from)
+	path, sender := p.ui.attached.session.Caller(to), p.ui.attached.session.Caller(from)
 	envelope := map[string]any{"type": "agent_message", "id": id, "author": sender, "recipient": path,
 		"content": []any{map[string]any{"type": "input_text", "text": "Message Type: " + kind + "\nTask name: " + path + "\nSender: " + sender + "\nPayload:\n" + body}}}
 	parent := "main"
@@ -1127,14 +1127,14 @@ func (p *nativePreview) serve() {
 			result["reasoningEffort"] = p.ui.reasoningEffort
 			result["serviceTier"] = p.ui.serviceTier
 		case "skills/list":
-			result["data"] = []any{map[string]any{"cwd": p.ui.cwd, "skills": []any{
-				map[string]any{"name": "code-review", "description": "Review a change for correctness", "path": filepath.Join(p.ui.cwd, "skills/code-review/SKILL.md"), "enabled": true},
-				map[string]any{"name": "test-plan", "description": "Plan focused validation", "path": filepath.Join(p.ui.cwd, "skills/test-plan/SKILL.md"), "enabled": true},
+			result["data"] = []any{map[string]any{"cwd": p.ui.attached.cwd, "skills": []any{
+				map[string]any{"name": "code-review", "description": "Review a change for correctness", "path": filepath.Join(p.ui.attached.cwd, "skills/code-review/SKILL.md"), "enabled": true},
+				map[string]any{"name": "test-plan", "description": "Plan focused validation", "path": filepath.Join(p.ui.attached.cwd, "skills/test-plan/SKILL.md"), "enabled": true},
 			}}}
 		case "fuzzyFileSearch":
 			files := []any{}
 			for _, path := range slices.Sorted(maps.Keys(nativePreviewFiles)) {
-				files = append(files, map[string]any{"root": p.ui.cwd, "path": path})
+				files = append(files, map[string]any{"root": p.ui.attached.cwd, "path": path})
 			}
 			result["files"] = files
 		case "turn/settings/update":
@@ -1209,7 +1209,7 @@ func (p *nativePreview) reply(id jsontext.Value, result any) {
 
 func (p *nativePreview) userMessage(turn, clientID string, content any) {
 	p.notify("item/completed", map[string]any{"threadId": p.ui.Thread, "turnId": turn, "item": map[string]any{
-		"id": fmt.Sprintf("preview-user-%d-%d", p.message, len(p.ui.source.Entries)), "type": "userMessage", "clientId": clientID, "content": content,
+		"id": fmt.Sprintf("preview-user-%d-%d", p.message, len(p.ui.attached.source.Entries)), "type": "userMessage", "clientId": clientID, "content": content,
 	}})
 }
 

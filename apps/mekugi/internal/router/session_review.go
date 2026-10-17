@@ -133,11 +133,11 @@ func (u *appServerUI) loadedReview(result sessionreview.Result) {
 func (u *appServerUI) publishReview() {
 	projection := &u.review.Projection
 	snapshot := projection.Data
-	u.reviewSource.PublishReview(u.session.Scope(), snapshot, projection.Workspace, projection.Coverage, u.review.Failure)
+	u.reviewSource.PublishReview(u.attached.session.Scope(), snapshot, projection.Workspace, projection.Coverage, u.review.Failure)
 	if u.shell != nil && u.preparePane != nil {
-		u.preparePane(u.session.Scope())
+		u.preparePane(u.attached.session.Scope())
 	}
-	if u.childSource != nil {
-		u.childSource.Model.LineCounts, u.childSource.Model.NetCounts = snapshot.Publication.Counts.Callers, snapshot.Publication.Counts.Net
+	if u.attached.childSource != nil {
+		u.attached.childSource.Model.LineCounts, u.attached.childSource.Model.NetCounts = snapshot.Publication.Counts.Callers, snapshot.Publication.Counts.Net
 	}
 }

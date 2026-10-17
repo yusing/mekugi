@@ -43,7 +43,7 @@ func TestAppServerClipboardImage(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			appServerTestKeys(t, u, "before \x16 after")
 			if u.Text != "before [Image 1] after" || len(u.Images) != 1 {
-				t.Fatalf("paste = %q, images=%v, notice=%s", u.Text, u.Images, u.feedback.Text)
+				t.Fatalf("paste = %q, images=%v, notice=%s", u.Text, u.Images, u.attached.feedback.Text)
 			}
 			path := u.Images[0].Path
 			t.Cleanup(func() { _ = os.Remove(path) })
@@ -68,8 +68,8 @@ func TestAppServerClipboardImage(t *testing.T) {
 				t.Fatal(err)
 			}
 			appServerTestKeys(t, u, "\x16")
-			if !u.feedback.Alert || !strings.Contains(u.feedback.Text, "PNG image") || len(u.Images) != 0 {
-				t.Fatalf("bad clipboard not reported: %q", u.feedback.Text)
+			if !u.attached.feedback.Alert || !strings.Contains(u.attached.feedback.Text, "PNG image") || len(u.Images) != 0 {
+				t.Fatalf("bad clipboard not reported: %q", u.attached.feedback.Text)
 			}
 		})
 	}

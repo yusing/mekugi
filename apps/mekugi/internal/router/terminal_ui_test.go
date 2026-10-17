@@ -121,7 +121,7 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 					terminalTest(u).DiffOpen = saved
 
 					if child {
-						u.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
+						u.attached.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
 					}
 					screen := vt.NewEmulator(120, 40)
 					defer screen.Close()
@@ -177,7 +177,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			u, _ := newAppServerTestUI()
 
 			defer terminalTest(u).Diff.Close()
-			u.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Responding: true}}
+			u.attached.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Responding: true}}
 			view, caller := u.testActivity(u.shell.Transcript), "/root"
 			if activity {
 				view, caller = u.testActivity(u.shell.Agents), "/root/worker"
@@ -219,7 +219,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 				}
 			}
 			assertLiveFollow(paint(120, 40))
-			u.childSource.Agents[0].Responding = false
+			u.attached.childSource.Agents[0].Responding = false
 			assertLiveFollow(paint(120, 40))
 			terminalTest(u).DiffOpen = true
 			paint(120, 40)

@@ -46,7 +46,7 @@ func TestUISnapshotAppServerStatusResetCredits(t *testing.T) {
 				response = `{"id":2,"result":{"rateLimits":{"primary":{"usedPercent":20}},"rateLimitResetCredits":` + tc.summary + `}}`
 			}
 			appServerTestMessage(t, u, response)
-			if u.Requests.Pending() || len(u.source.Entries) != 0 || strings.Count(sent.String(), `"method"`) != 2 || !strings.Contains(sent.String(), `"method":"account/rateLimits/read"`) {
+			if u.Requests.Pending() || len(u.attached.source.Entries) != 0 || strings.Count(sent.String(), `"method"`) != 2 || !strings.Contains(sent.String(), `"method":"account/rateLimits/read"`) {
 				t.Fatalf("status changed read-only request flow: %s", sent.String())
 			}
 			assertNativeUISnapshot(t, "native-status-resets-"+tc.name, u.statusPanelFrame(80, 40))
@@ -95,15 +95,15 @@ func TestAppServerStatusLocalAndAccountRefresh(t *testing.T) {
 	u.startSession("main", "/workspace")
 
 	u.model, u.reasoningEffort, u.serviceTier = "gpt-6-sol", "high", "priority"
-	u.Turn, u.sessionPresentation().Status.Text = "active", "Working"
+	u.Turn, u.attached.presentation.Status.Text = "active", "Working"
 	u.statusConfig.Provider = "openai"
 	u.statusConfig.Approval = jsontext.Value(`"never"`)
 	u.statusConfig.Sandbox.Type = "danger-full-access"
 	u.statusConfig.Instructions = []string{"/workspace/AGENTS.md"}
 	appServerTestNotify(t, u, "thread/tokenUsage/updated", map[string]any{"threadId": "main", "tokenUsage": map[string]any{"total": map[string]any{"inputTokens": 1200, "outputTokens": 30}, "last": map[string]any{"totalTokens": 1000}, "modelContextWindow": 4000}})
 	appServerTestKeys(t, u, "/status\r")
-	if len(u.source.Entries) != 0 || u.Text != "" || u.Turn != "active" || u.sessionPresentation().Status.Text != "Working" {
-		t.Fatalf("status altered session: draft=%q turn=%q status=%q entries=%d", u.Text, u.Turn, u.sessionPresentation().Status.Text, len(u.source.Entries))
+	if len(u.attached.source.Entries) != 0 || u.Text != "" || u.Turn != "active" || u.attached.presentation.Status.Text != "Working" {
+		t.Fatalf("status altered session: draft=%q turn=%q status=%q entries=%d", u.Text, u.Turn, u.attached.presentation.Status.Text, len(u.attached.source.Entries))
 	}
 	for _, want := range []string{"Model: gpt-6-sol", "Reasoning: high", "Service tier: priority", "Directory: /workspace", "Approvals: never", "Sandbox: danger-full-access", "Agents.md: /workspace/AGENTS.md", "75% left", "Loading account"} {
 		if !strings.Contains(statusReportText(u.statusPanel), want) {
@@ -126,7 +126,7 @@ func TestAppServerStatusLocalAndAccountRefresh(t *testing.T) {
 			t.Fatalf("missing %q in rendered card: %s", want, body)
 		}
 	}
-	if strings.Contains(body, "Token usage:") || strings.Contains(body, "Loading") || len(u.source.Entries) != 0 || u.Requests.Pending() {
+	if strings.Contains(body, "Token usage:") || strings.Contains(body, "Loading") || len(u.attached.source.Entries) != 0 || u.Requests.Pending() {
 		t.Fatalf("stale/duplicated card: %s", body)
 	}
 }
@@ -141,14 +141,14 @@ func TestAppServerStatusIndependentSnapshotsAndFailure(t *testing.T) {
 	appServerTestKeys(t, u, "/status\r")
 	appServerTestMessage(t, u, `{"id":2,"result":{"account":{"type":"apiKey"}}}`)
 	appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"offline"}}`)
-	if len(u.source.Entries) != 0 {
-		t.Fatalf("cards=%d", len(u.source.Entries))
+	if len(u.attached.source.Entries) != 0 {
+		t.Fatalf("cards=%d", len(u.attached.source.Entries))
 	}
 	first, second := statusReportText(firstPanel), statusReportText(u.statusPanel)
 	if !strings.Contains(first, "Model: first") || strings.Contains(first, "offline") || strings.Contains(first, "API key") || !strings.Contains(second, "Model: second") || !strings.Contains(second, "API key") {
 		t.Fatalf("crossed replies: %q / %q", first, second)
 	}
-	if u.sessionPresentation().Status.Alert || u.sessionPresentation().Status.Text != "" || u.Requests.Pending() {
+	if u.attached.presentation.Status.Alert || u.attached.presentation.Status.Text != "" || u.Requests.Pending() {
 		t.Fatal("optional failure damaged session or retained request")
 	}
 	for _, card := range []string{first, second} {
@@ -178,7 +178,7 @@ func TestAppServerStatusInvalidOptionalResponses(t *testing.T) {
 	for _, response := range []string{`{"account":false}`, `{"account":{"type":"apiKey"}}`} {
 		u, wire := newAppServerTestUI()
 		u.startSession("main", "/work")
-		u.session.Agent("/root").InputTokens = 12
+		u.attached.session.Agent("/root").InputTokens = 12
 		appServerTestKeys(t, u, "/status\r")
 		appServerTestMessage(t, u, `{"id":1,"result":`+response+`}`)
 		if u.Requests.Pending() || strings.Contains(statusReportText(u.statusPanel), "Loading") || strings.Contains(wire.String(), "rateLimits") {
@@ -194,7 +194,7 @@ func TestAppServerStatusPanelCloseScrollAndLateResponse(t *testing.T) {
 	for _, closeKey := range []string{"\x1b", "\r", "q", "\x03"} {
 		t.Run(closeKey, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
-			u.Turn, u.sessionPresentation().Status.Text = "active", "Working"
+			u.Turn, u.attached.presentation.Status.Text = "active", "Working"
 			u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Existing transcript"}}})
 			shell := terminalTest(u)
 			shell.Layout.Main = terminalsession.Rect{0, 0, 60, 12}
@@ -231,7 +231,7 @@ func TestAppServerStatusPanelCloseScrollAndLateResponse(t *testing.T) {
 			if err := shell.send(closeKey); err != nil {
 				t.Fatal(err)
 			}
-			if u.statusPanel != nil || u.Turn != "active" || u.sessionPresentation().Status.Text != "Working" || len(u.source.Entries) != 1 || u.source.Entries[0].Source.Text != "Existing transcript" {
+			if u.statusPanel != nil || u.Turn != "active" || u.attached.presentation.Status.Text != "Working" || len(u.attached.source.Entries) != 1 || u.attached.source.Entries[0].Source.Text != "Existing transcript" {
 				t.Fatal("closing changed turn or transcript")
 			}
 			// A response to a closed panel must not fetch limits or resurrect UI.
@@ -245,10 +245,10 @@ func TestAppServerStatusPanelCloseScrollAndLateResponse(t *testing.T) {
 
 func TestAppServerStatusRefreshFailureStaysInPanel(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.sessionPresentation().Status.Text = "Working"
+	u.attached.presentation.Status.Text = "Working"
 	appServerTestKeys(t, u, "/status\r")
 	appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"offline"}}`)
-	if !strings.Contains(statusReportText(u.statusPanel), "offline") || u.sessionPresentation().Status.Alert || u.sessionPresentation().Status.Text != "Working" || len(u.source.Entries) != 0 {
+	if !strings.Contains(statusReportText(u.statusPanel), "offline") || u.attached.presentation.Status.Alert || u.attached.presentation.Status.Text != "Working" || len(u.attached.source.Entries) != 0 {
 		t.Fatal("optional failure altered session")
 	}
 }
@@ -267,7 +267,7 @@ func TestAppServerStatusTerminalPasteCanClose(t *testing.T) {
 	if err := shell.key('q'); err != nil {
 		t.Fatal(err)
 	}
-	if u.statusPanel != nil || u.quitRequested || len(u.source.Entries) != 0 {
+	if u.statusPanel != nil || u.quitRequested || len(u.attached.source.Entries) != 0 {
 		t.Fatal("panel trapped input after paste")
 	}
 }
@@ -292,7 +292,7 @@ func TestAppServerStatusPanelVisual(t *testing.T) {
 	u.statusConfig.Approval = jsontext.Value(`"never"`)
 	u.statusConfig.Sandbox.Type = "danger-full-access"
 	u.statusConfig.Instructions = []string{"/home/yusing/projects/mekugi/AGENTS.md"}
-	root := u.session.Agent("/root")
+	root := u.attached.session.Agent("/root")
 	root.ContextKnown, root.ContextTokens, root.ContextWindow = true, 120000, 400000
 	appServerTestKeys(t, u, "/status\r")
 	appServerTestMessage(t, u, `{"id":1,"result":{"account":{"type":"chatgpt","email":"yusing@example.com","planType":"pro"}}}`)
@@ -457,7 +457,7 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 			if err := u.testPaint(screen, 160, 48); err != nil {
 				t.Fatal(err)
 			}
-			if strings.Contains(screen.String(), "Session status") || len(u.source.Entries) != 1 {
+			if strings.Contains(screen.String(), "Session status") || len(u.attached.source.Entries) != 1 {
 				t.Fatal("selection resurrected panel or changed transcript")
 			}
 		})

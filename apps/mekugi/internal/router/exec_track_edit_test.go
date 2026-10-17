@@ -106,7 +106,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			shell.hub.ui = u
 
 			defer terminalTest(u).Diff.Close()
-			u.sessionPresentation().Status.Text = "Working"
+			u.attached.presentation.Status.Text = "Working"
 			item := map[string]any{"id": "edit", "type": "commandExecution", "command": "/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
@@ -233,7 +233,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 				assertNativeUISnapshot(t, name, rows)
 			}
 			terminalTest(u).Live.Tick(time.Now().Add(previewview.CompletionHold + time.Second))
-			if len(terminalTest(u).Live.Order) != 0 || u.sessionPresentation().Status.Text != "Working" {
+			if len(terminalTest(u).Live.Order) != 0 || u.attached.presentation.Status.Text != "Working" {
 				t.Fatal("edit completion retained the dock or completed the host lifecycle")
 			}
 			master, slave, err := pty.Open()
@@ -293,7 +293,7 @@ func TestAppServerTrackedEditCommandOutcomeBeforeHostExit(t *testing.T) {
 	report.send(segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Begin, Index: 1})
 	awaitMain(t, u, "via sed · ran")
 	shown := awaitMain(t, u, "Running go test")
-	if strings.Contains(shown, "requested") || !strings.Contains(shown, "via sed · ran") || u.session.Commands()[[3]string{"main", "turn", "edit"}] == nil {
+	if strings.Contains(shown, "requested") || !strings.Contains(shown, "via sed · ran") || u.attached.session.Commands()[[3]string{"main", "turn", "edit"}] == nil {
 		t.Fatalf("segment completion changed host lifecycle:\n%s", shown)
 	}
 	// A zero exit also describes a no-op. Without file evidence, show the
@@ -486,7 +486,7 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 							if len(event.Preview.Files) != wantFiles || event.Preview.Footer != "observed edit" {
 								t.Fatalf("completion lost actual edit: %+v", event.Preview)
 							}
-							if u.session.Commands()[[3]string{"main", "turn", "test"}] == nil {
+							if u.attached.session.Commands()[[3]string{"main", "turn", "test"}] == nil {
 								t.Fatal("edit completion ended enclosing cell or sibling test")
 							}
 							u.preview(*event.Preview, false)

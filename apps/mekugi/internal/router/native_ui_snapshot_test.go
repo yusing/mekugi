@@ -29,7 +29,7 @@ func TestUISnapshotNativeMainComposer(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			// An idle session avoids wall-clock durations and status animation.
-			u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
+			u.attached.presentation.Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 			now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
 			u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
 				{Seq: 1, Agent: "You", Kind: "text", Text: "Explain the snapshot workflow.", Observed: now},
@@ -45,7 +45,7 @@ func TestUISnapshotNativeMainComposer(t *testing.T) {
 func TestUISnapshotShellComposer(t *testing.T) {
 	t.Run("marker", func(t *testing.T) {
 		u, _ := newAppServerTestUI()
-		u.sessionPresentation().Status.Text = "Ready"
+		u.attached.presentation.Status.Text = "Ready"
 		appServerTestKeys(t, u, "!")
 		u.testMainFrame(36, 6, 0)
 		rows, _ := u.testMainFrame(36, 6, 0)
@@ -56,7 +56,7 @@ func TestUISnapshotShellComposer(t *testing.T) {
 			t.Run(fmt.Sprintf("%d/%d", theme, width), func(t *testing.T) {
 				u, _ := newAppServerTestUI()
 				u.shell.Transcript.Painter.Theme = theme
-				u.sessionPresentation().Status.Text = "Ready"
+				u.attached.presentation.Status.Text = "Ready"
 				appServerTestKeys(t, u, "\x1b[200~!printf '%s\\n' \"你好\n$HOME\" | cat\n# comment\n\x1b[201~")
 				u.CursorBack = len(u.Text) - strings.Index(u.Text, "$HOME")
 				rows, _ := u.testMainFrame(width, 12, 0)
@@ -86,7 +86,7 @@ func TestUISnapshotNativeResumePicker(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
-			chooser := u.sessionPresentation().OpenResume(false, "/workspace")
+			chooser := u.attached.presentation.OpenResume(false, "/workspace")
 			chooser.All, chooser.Loading, chooser.Query, chooser.LoadedAt = tc.all, tc.loading, tc.query, now
 			chooser.Rows = []sessionpresentation.ResumeRow{
 				{ID: "main", Title: "Improve rendered snapshot coverage", Workspace: "/workspace", Branch: "coverage/snapshot", Updated: now.Add(-2 * time.Minute).Unix()},
@@ -168,7 +168,7 @@ func TestUISnapshotNativeRosterContext(t *testing.T) {
 
 func TestUISnapshotNativeLockedComposer(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.sessionPresentation().Status.Text = "Ready"
+	u.attached.presentation.Status.Text = "Ready"
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	appServerTestKeys(t, u, "/lock\r")
 	rows, _ := u.testMainFrame(100, 10, 0)
@@ -190,8 +190,8 @@ func TestUISnapshotNativeFilePicker(t *testing.T) {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
-			u.cwd = "/workspace"
-			u.conversation().Completion = completion.State{Open: true, Target: completion.Target{Kind: '@', Query: "snapshot"}, Choices: []completion.Choice{
+			u.attached.cwd = "/workspace"
+			u.attached.conversation.Completion = completion.State{Open: true, Target: completion.Target{Kind: '@', Query: "snapshot"}, Choices: []completion.Choice{
 				{Name: "internal/uisnapshot/snapshot.go", Path: "internal/uisnapshot/snapshot.go"},
 				{Name: "internal/ui/activity/snapshot_test.go", Path: "internal/ui/activity/snapshot_test.go"},
 				{Name: "internal/ui/diffview/snapshot_test.go", Path: "internal/ui/diffview/snapshot_test.go"},
@@ -211,7 +211,7 @@ func TestUISnapshotNativeWaitingInputStacks(t *testing.T) {
 				u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 				u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) }
 				appServerTestTurn(t, u, "t")
-				u.sessionPresentation().Status.Started = u.now()
+				u.attached.presentation.Status.Started = u.now()
 				if mode == "queued" {
 					appServerTestKeys(t, u, "Diagnose the broken pipe issue.\tAdd replay key tests.\tPreserve pending attachments.\tCover dequeue and retry.\t")
 				} else {

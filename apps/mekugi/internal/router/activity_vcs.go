@@ -26,7 +26,7 @@ func vcsSegmentCwd(cwd string, prior []sessionpresentation.ActivitySegment) stri
 // startCommitReads projects cached immutable files and admits bounded background reads.
 // The attached Activity owner coalesces completion notifications; no work blocks input.
 func (u *appServerUI) startCommitReads() {
-	for _, view := range []*sessionpresentation.ActivitySource{u.source, u.childSource} {
+	for _, view := range []*sessionpresentation.ActivitySource{u.attached.source, u.attached.childSource} {
 		if view != nil && view.RefreshCommits(u.commits) {
 			u.dirty = true
 		}

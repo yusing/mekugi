@@ -46,7 +46,7 @@ func (u *appServerUI) hookEvent(method string, event binding.Notification) error
 	if event.ThreadID == "" || event.Run == nil || event.Run.ID == "" {
 		return fmt.Errorf("%s: missing hook thread or run identity", method)
 	}
-	s := &u.session
+	s := &u.attached.session
 	if event.ThreadID != u.Thread {
 		if err := u.requestThreadMetadata(event.ThreadID); err != nil {
 			return err
@@ -58,9 +58,9 @@ func (u *appServerUI) hookEvent(method string, event binding.Notification) error
 	run := *event.Run
 	completed := method == "hook/completed"
 	var previousOutput *activitymodel.Output
-	view := u.childSource
+	view := u.attached.childSource
 	if event.ThreadID == u.Thread {
-		view = u.source
+		view = u.attached.source
 	}
 	// Use the existing item reconciliation to ignore duplicate starts and late
 	// starts after completion. Hook identity is thread + run, independently of turn.
@@ -78,7 +78,7 @@ func (u *appServerUI) hookEvent(method string, event binding.Notification) error
 	if err := u.retainHook(event.ThreadID, observation); err != nil {
 		u.setNotice("Hook observation could not be retained: "+err.Error(), true)
 	}
-	entry := hookEntry(&u.session, u.activity, u.cwd, event.ThreadID, observation, true)
+	entry := hookEntry(&u.attached.session, u.activity, u.attached.cwd, event.ThreadID, observation, true)
 	if previousOutput != nil {
 		previousOutput.Release()
 	}

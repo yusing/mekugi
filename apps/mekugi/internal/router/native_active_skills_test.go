@@ -23,7 +23,7 @@ func TestUISnapshotLoadedSkillsRestoreClickAndReset(t *testing.T) {
 		t.Run(thread, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			content, _ := json.Marshal([]map[string]string{{"type": "text", "text": attachments.Encode(composer.SkillFrames("council", "/work/council/SKILL.md", "# Council\n"))}})
-			info := binding.ThreadInfo{ID: thread, Cwd: u.cwd, AgentNickname: "worker", AgentRole: "worker", Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{
+			info := binding.ThreadInfo{ID: thread, Cwd: u.attached.cwd, AgentNickname: "worker", AgentRole: "worker", Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{
 				{ID: "old", Type: "commandExecution", Command: "skills-mgr get old", ExitCode: new(0)},
 				{ID: "boundary", Type: "contextCompaction"},
 				{ID: "attached", Type: "userMessage", Content: content},
@@ -46,7 +46,7 @@ func TestUISnapshotLoadedSkillsRestoreClickAndReset(t *testing.T) {
 				view, owner = u.testActivity(u.shell.Agents), "/root/worker"
 			}
 			for range liveActivityFeedLimit {
-				view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.session.Activity().NextSequence(), Agent: owner, Kind: "text", Text: "note"}}})
+				view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Agent: owner, Kind: "text", Text: "note"}}})
 			}
 			terminalTest(u).Focus = 3
 			screen := vt.NewEmulator(120, 28)

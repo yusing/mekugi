@@ -104,8 +104,8 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	u.review.Projection.Data = reviewReceiptSnapshot(t, data)
 	// Completed tracked edit segments must receive the same captured counts
 	// as untracked commands while the neighboring test keeps its own state.
-	for i := range u.source.Entries {
-		if native := u.source.Entries[i].Source.Native; native != nil && native.Item == "cmd" {
+	for i := range u.attached.source.Entries {
+		if native := u.attached.source.Entries[i].Source.Native; native != nil && native.Item == "cmd" {
 			native.Segments = []sessionpresentation.ActivitySegment{
 				{Source: "cat >> a.go", Text: "Edit `a.go` · cat (requested)"},
 				{Source: "python3", Text: "Edit `b.go` · python3 (requested)"},

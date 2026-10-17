@@ -20,7 +20,7 @@ func TestNonTerminalQuestionSubmissionKeepsOtherEditor(t *testing.T) {
 		Call: call.ID, Question: call.Questions[0].ID, Choice: 0, Draft: composer.Draft{Text: "explicit note"},
 	}}
 	if !u.answerQuestion(answer) {
-		t.Fatal(u.feedback.Text)
+		t.Fatal(u.attached.feedback.Text)
 	}
 	u.hideQuestions()
 	questionTestSync(t, u, "second", false)
@@ -38,7 +38,7 @@ func TestNonTerminalQuestionSubmissionKeepsOtherEditor(t *testing.T) {
 		t.Fatal("submission replaced another prompt's editor")
 	}
 	wire.Reset()
-	if u.answerQuestion(answer) || u.feedback.Text != sessionpresentation.ErrStaleIntent.Error() {
+	if u.answerQuestion(answer) || u.attached.feedback.Text != sessionpresentation.ErrStaleIntent.Error() {
 		t.Fatal("answered call accepted another answer")
 	}
 	if err := u.submitQuestions(submit); err != nil || wire.Len() != 0 {
@@ -46,11 +46,11 @@ func TestNonTerminalQuestionSubmissionKeepsOtherEditor(t *testing.T) {
 	}
 	v = u.publishPresentation(u.now())
 	submit = sessionpresentation.QuestionSubmitIntent{Version: v.Version, Call: v.Questions.Call.ID}
-	if err := u.submitQuestions(submit); err != nil || wire.Len() != 0 || u.feedback.Text != prompt.ErrIncompleteAnswers.Error() {
+	if err := u.submitQuestions(submit); err != nil || wire.Len() != 0 || u.attached.feedback.Text != prompt.ErrIncompleteAnswers.Error() {
 		t.Fatal("incomplete submission skipped confirmation")
 	}
 	submit.Incomplete = true
-	submit.Version = u.sessionPresentation().View().Version
+	submit.Version = u.attached.presentation.View().Version
 	if err := u.submitQuestions(submit); err != nil || !strings.Contains(wire.String(), `"id":"second","result":{"answers":{}}`) {
 		t.Fatal("confirmed incomplete call lost the host's empty-answer semantics")
 	}
@@ -64,12 +64,12 @@ func TestNonTerminalQuestionBatchUsesOrdinarySubmission(t *testing.T) {
 	v := u.publishPresentation(u.now())
 	call := v.Questions.Call
 	for i, q := range call.Questions {
-		v = u.sessionPresentation().View()
+		v = u.attached.presentation.View()
 		if !u.answerQuestion(sessionpresentation.AnswerIntent{Version: v.Version, AnswerInput: prompt.AnswerInput{Call: call.ID, Question: q.ID, Choice: i}}) {
-			t.Fatal(u.feedback.Text)
+			t.Fatal(u.attached.feedback.Text)
 		}
 	}
-	v = u.sessionPresentation().View()
+	v = u.attached.presentation.View()
 	if err := u.submitQuestions(sessionpresentation.QuestionSubmitIntent{Version: v.Version, Call: call.ID}); err != nil {
 		t.Fatal(err)
 	}
@@ -92,17 +92,17 @@ func TestNonTerminalQuestionRejectsSecretReplayAndRetiredView(t *testing.T) {
 		Call: v.Questions.Call.ID, Question: v.Questions.Call.Questions[0].ID,
 		Choice: 0, Draft: composer.Draft{Text: "ordinary input"},
 	}}
-	if u.answerQuestion(answer) || u.feedback.Text != prompt.ErrSecretAnswer.Error() || u.currentQuestion().Done || u.currentQuestion().Editor.Snapshot.Text != "" {
+	if u.answerQuestion(answer) || u.attached.feedback.Text != prompt.ErrSecretAnswer.Error() || u.currentQuestion().Done || u.currentQuestion().Editor.Snapshot.Text != "" {
 		t.Fatal("ordinary intent entered secret state")
 	}
-	u.sessionPresentation().Attach(sessionpresentation.Thread{ID: u.Thread, Caller: "/root"}, true)
+	u.attached.presentation.Attach(sessionpresentation.Thread{ID: u.Thread, Caller: "/root"}, true)
 	answer.Version = u.publishPresentation(u.now()).Version
-	if u.answerQuestion(answer) || u.feedback.Text != sessionpresentation.ErrReplayIntent.Error() {
+	if u.answerQuestion(answer) || u.attached.feedback.Text != sessionpresentation.ErrReplayIntent.Error() {
 		t.Fatal("replay accepted an answer")
 	}
 	u.Thread = "replacement"
 	u.attachPresentation()
-	if u.answerQuestion(answer) || u.feedback.Text != sessionpresentation.ErrStaleIntent.Error() || wire.Len() != 0 {
+	if u.answerQuestion(answer) || u.attached.feedback.Text != sessionpresentation.ErrStaleIntent.Error() || wire.Len() != 0 {
 		t.Fatal("retired view answered a replacement prompt")
 	}
 }

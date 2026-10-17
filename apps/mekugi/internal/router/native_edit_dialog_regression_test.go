@@ -52,12 +52,12 @@ func openRegressionEditDialog(t *testing.T, tc editDialogRegressionCase, capture
 		u.review.Projection.Data = reviewFixtureSnapshot(t, presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: "/w", Call: "patch"}, Correlation: "patch\x000"}, Operation: activitydetail.Operation{Thread: "main", Item: "patch"}, Chunks: []presentation.Chunk{chunk}})
 		publishFixtureReview(t, u)
 		want = chunk.Review.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(c.Workspace(), chunk.Review.BeforePath), pathdisplay.ForWorkspace(c.Workspace(), chunk.Review.AfterPath))
-		u.source.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch"}}}}
+		u.attached.source.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch"}}}}
 	} else {
 		change := binding.FileChange{Path: path, Diff: tc.host}
 		change.Kind.Type = tc.kind
 		item := binding.ThreadItem{Type: "fileChange", Status: "completed", Changes: []binding.FileChange{change}}
-		u.source.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch", EditPages: activitypresentation.HostEditPages(item.Observation(), u.cwd, "item/completed")}}}}
+		u.attached.source.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch", EditPages: activitypresentation.HostEditPages(item.Observation(), u.attached.cwd, "item/completed")}}}}
 	}
 	if !terminalTest(u).openActivityEdit(u.shell.Transcript, 1, path) {
 		t.Fatal("edit dialog did not open")
@@ -150,7 +150,7 @@ func TestUISnapshotNativeEditDialogSurroundingContext(t *testing.T) {
 			after := strings.Replace(before, fmt.Sprintf("historical_line_%02d", tc.line), "changed_line", 1)
 			u, _ := openRegressionEditDialog(t, editDialogRegressionCase{kind: "update", before: before, after: after}, true)
 			rows := make([]string, 36)
-			u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
+			u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
 			u.Dialog.Paint(rows, 100, len(rows))
 			uisnapshot.Assert(t, "testdata/snapshots/native-edit-dialog-context-"+tc.name+".txt", strings.Join(rows, "\n")+"\n")
 		})

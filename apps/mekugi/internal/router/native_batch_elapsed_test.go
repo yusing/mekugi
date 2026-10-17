@@ -45,7 +45,7 @@ func TestUISnapshotNativeGroupedSkills(t *testing.T) {
 				if restored {
 					clock := view.Clock
 					*view = *newActivityAdapter()
-					u.shell.Transcript, u.source = view.View, view.ActivitySource
+					u.shell.Transcript, u.attached.source = view.View, view.ActivitySource
 					view.Clock = clock
 					view.Conversation, view.Bare, view.FeedOnly = main, !main, !main
 					view.testAudience()
@@ -170,13 +170,13 @@ func TestNativeCapturedBatchKeepsSingleElapsedResult(t *testing.T) {
 			var data []*presentation.Receipt
 			for range 2 {
 				data = []*presentation.Receipt{{Thread: "main", Calls: []string{"batch"}, Text: "Edit `a.txt` +1 -1 · printf"}}
-				u.source.ApplyCapturedEdits(data)
+				u.attached.source.ApplyCapturedEdits(data)
 				count := 0
-				for _, entry := range u.source.Entries {
+				for _, entry := range u.attached.source.Entries {
 					for _, block := range u.shell.Transcript.Disclosure.Blocks(entry.Values) {
 						if block.BatchExit {
 							count++
-							if block.Duration != time.Second || block.ExitCode != exit || block.Output == 0 || strings.Join(u.source.RetainedOutput(block.Source, block.Output).View().Lines, "\n") != "retained batch output" {
+							if block.Duration != time.Second || block.ExitCode != exit || block.Output == 0 || strings.Join(u.attached.source.RetainedOutput(block.Source, block.Output).View().Lines, "\n") != "retained batch output" {
 								t.Fatalf("receipt lost batch timing, exit or output: %+v", block)
 							}
 						} else if block.Duration != 0 || block.ExitCode != 0 {

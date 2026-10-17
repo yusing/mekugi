@@ -49,8 +49,8 @@ func TestUISnapshotNativeResumeSwitchSettingsUnavailable(t *testing.T) {
 	resume := resumeTestPrepared(t, u, w)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"model":"default-model","thread":{"id":"saved","cwd":"/work","turns":[]}}}`, resume.ID))
 	resumeTestSettle(t, u, w)
-	if u.Thread != "saved" || u.Replacement.Pending() || !strings.Contains(u.feedback.Text, "Saved model settings unavailable") {
-		t.Fatalf("completed resume lost fallback notice: thread=%q clearing=%v notice=%q", u.Thread, u.Replacement.Pending(), u.feedback.Text)
+	if u.Thread != "saved" || u.Replacement.Pending() || !strings.Contains(u.attached.feedback.Text, "Saved model settings unavailable") {
+		t.Fatalf("completed resume lost fallback notice: thread=%q clearing=%v notice=%q", u.Thread, u.Replacement.Pending(), u.attached.feedback.Text)
 	}
 	rows, _ := u.testMainFrame(100, 12, 0)
 	assertNativeUISnapshot(t, "native-resume-switch-settings-unavailable", rows)

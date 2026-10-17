@@ -50,7 +50,7 @@ func outputDialogScreen(u *terminalUI) []string {
 		h = 18
 	}
 	rows := make([]string, h)
-	u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
+	u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
 	u.Dialog.Paint(rows, w, h)
 	return renderedDialogRows(rows, w)
 }
@@ -194,7 +194,7 @@ func TestOutputDialogMouseSelectionClearedByNavigation(t *testing.T) {
 	for _, action := range []string{"page", "wheel", "width", "height"} {
 		t.Run(action, func(t *testing.T) {
 			u, _ := outputSelectionFixture("alpha\nbeta\n", false)
-			u.main.detailFiles.replaceDetails(&u.main.session, u.Attachment, activitypresentation.DetailPages(activityui.Values([]activityui.Block{{Value: u.Dialog.Pages[0].Value}, {Kind: "op", Verb: "Run", Code: "second"}})))
+			u.main.detailFiles.replaceDetails(&u.main.attached.session, u.Attachment, activitypresentation.DetailPages(activityui.Values([]activityui.Block{{Value: u.Dialog.Pages[0].Value}, {Kind: "op", Verb: "Run", Code: "second"}})))
 			x, y := outputSelectionPoint(t, u, "alpha")
 			outputSelectionDrag(u, x, y, x+4, y)
 			switch action {
@@ -203,10 +203,10 @@ func TestOutputDialogMouseSelectionClearedByNavigation(t *testing.T) {
 			case "wheel":
 				u.outputMouse(64, x, y, false)
 			case "width":
-				u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
+				u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
 				u.Dialog.Paint(make([]string, 18), 50, 18)
 			case "height":
-				u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
+				u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
 				u.Dialog.Paint(make([]string, 8), 80, 8)
 			}
 			if u.Dialog == nil || u.Dialog.Selection != nil {
@@ -227,7 +227,7 @@ func TestOutputDialogSkillMarkdownSearchSelectionAndCopy(t *testing.T) {
 	u := dialogForOutput(output)
 	block := activityui.Block{Content: activitymodel.ParseOperation("Skill `example`")}
 	block.Source, block.Output = u.Dialog.Pages[0].Source, u.Dialog.Pages[0].Output
-	u.main.detailFiles.replaceDetails(&u.main.session, u.Attachment, activitypresentation.DetailPages(activityui.Values([]activityui.Block{block})))
+	u.main.detailFiles.replaceDetails(&u.main.attached.session, u.Attachment, activitypresentation.DetailPages(activityui.Values([]activityui.Block{block})))
 	frame := drawOutputDialog(u)
 	if !strings.Contains(frame, "Use careful steps.") || strings.Contains(frame, "**") || strings.Contains(frame, "# Skill guide") {
 		t.Fatalf("skill Markdown not rendered in dialog: %q", frame)
@@ -260,7 +260,7 @@ func TestUISnapshotOutputDialogSharedSelectionActions(t *testing.T) {
 	x, y := outputSelectionPoint(t, u, "alpha")
 	outputSelectionDrag(u, x, y, x+4, y)
 	rows := make([]string, 18)
-	u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
+	u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
 	u.Dialog.Paint(rows, 80, len(rows))
 	screen := vt.NewEmulator(80, len(rows))
 	defer screen.Close()
@@ -292,11 +292,11 @@ func TestOutputDialogSelectionFooterClippedHints(t *testing.T) {
 			u, _ := outputSelectionFixture("alpha\nbeta\n", false)
 			rows := make([]string, 18)
 			u.Width, u.Height = tt.width, len(rows)
-			u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
+			u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
 			u.Dialog.Paint(rows, tt.width, len(rows))
 			x, y := outputSelectionPoint(t, u, "alpha")
 			outputSelectionDrag(u, x, y, x+4, y)
-			u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
+			u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
 			u.Dialog.Paint(rows, tt.width, len(rows))
 			selection := u.Dialog.Selection
 			rect := dialogFrameRect(t, renderedDialogRows(rows, tt.width))

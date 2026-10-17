@@ -49,13 +49,13 @@ func (u *appServerUI) resumeCommand(text string) error {
 }
 
 func (u *appServerUI) openResumePicker(startup bool) error {
-	cwd := u.cwd
+	cwd := u.attached.cwd
 	if startup {
 		cwd = u.Startup.Workspace
 	}
 	u.cancelPickerScan()
 	u.picker.Open = false
-	u.resumePicker = &appServerResumePicker{ResumeChooser: u.sessionPresentation().OpenResume(startup, cwd)}
+	u.resumePicker = &appServerResumePicker{ResumeChooser: u.attached.presentation.OpenResume(startup, cwd)}
 	return u.loadResumePage(true)
 }
 
@@ -134,7 +134,7 @@ func (u *appServerUI) resumePickerFailed(problem string) {
 
 func (u *appServerUI) closeResumePicker() {
 	u.resumePicker = nil
-	u.sessionPresentation().CloseResume()
+	u.attached.presentation.CloseResume()
 	if u.shell != nil {
 		u.shell.Selection = nil
 	}
@@ -161,9 +161,9 @@ func (u *appServerUI) resumeSession(id string) error {
 func (u *appServerUI) resumeSessionFailed(message string) error {
 	u.Replacement.Finish()
 	u.ResumeEffort = false
-	u.restoreDrafts(slices.Concat(u.conversation().Unsent, u.conversation().Queued)...)
-	u.conversation().Unsent, u.conversation().Queued = nil, nil
-	u.sessionPresentation().Status.SetText("Ready")
+	u.restoreDrafts(slices.Concat(u.attached.conversation.Unsent, u.attached.conversation.Queued)...)
+	u.attached.conversation.Unsent, u.attached.conversation.Queued = nil, nil
+	u.attached.presentation.Status.SetText("Ready")
 	u.setNotice("Could not resume session: "+message, true)
 	return u.replayResumePending()
 }
@@ -173,7 +173,7 @@ func (u *appServerUI) applyResumeAction(action sessionpresentation.ResumeAction)
 		return nil
 	}
 	defer u.settlePresentation()
-	if err := u.sessionPresentation().AdmitResume(action); err != nil {
+	if err := u.attached.presentation.AdmitResume(action); err != nil {
 		u.setNotice(err.Error(), true)
 		return nil
 	}

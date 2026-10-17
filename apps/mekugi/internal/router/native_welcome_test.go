@@ -23,7 +23,7 @@ func TestNativeWelcome(t *testing.T) {
 	}
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.testMainFrame(80, 24, 0)
-	if len(u.source.Entries) != 0 {
+	if len(u.attached.source.Entries) != 0 {
 		t.Fatal("welcome entered history")
 	}
 }
@@ -69,7 +69,7 @@ func TestUISnapshotNativeWelcome(t *testing.T) {
 			setMekugiBuildVersion(t, tc.version)
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
-			u.backendVersion, u.sessionPresentation().Status.Text, u.model, u.Text = "0.158.0", "Ready", "snapshot-model", tc.draft
+			u.backendVersion, u.attached.presentation.Status.Text, u.model, u.Text = "0.158.0", "Ready", "snapshot-model", tc.draft
 			rows, _ := u.testMainFrame(tc.width, tc.height, 0)
 			// Build identity is not fixed across test executables.
 			if tc.version == "" {

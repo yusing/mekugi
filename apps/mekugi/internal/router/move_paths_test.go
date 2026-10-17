@@ -98,7 +98,7 @@ func TestUISnapshotHostMoveDialogSyntax(t *testing.T) {
 	pages := activitypresentation.HostEditPages(item.Observation(), "/w", "item/completed")
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
-	u.source.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "move", EditPages: pages}}}}
+	u.attached.source.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "move", EditPages: pages}}}}
 	if !terminalTest(u).openActivityEdit(u.shell.Transcript, 1, "internal/{old.go=>new.go}") {
 		t.Fatal("compressed host move did not open its exact page")
 	}

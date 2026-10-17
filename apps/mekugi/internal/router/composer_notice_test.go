@@ -34,7 +34,7 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 			u, wire := newAppServerTestUI()
 
 			defer terminalTest(u).Diff.Close()
-			u.Turn, u.sessionPresentation().Status.Text, u.Text = "active", "Working", "keep draft"
+			u.Turn, u.attached.presentation.Status.Text, u.Text = "active", "Working", "keep draft"
 			switch tc.kind {
 			case "command":
 				u.Text = "/unknown"
@@ -76,7 +76,7 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 			}
 			terminalTest(u).outputKey("q")
 			click(u.shell.Main.NoticeDismiss)
-			if u.composerErrorText() != "" || u.Text != draft || u.Turn != turn || wire.String() != sent || len(u.source.Entries) != 0 {
+			if u.composerErrorText() != "" || u.Text != draft || u.Turn != turn || wire.String() != sent || len(u.attached.source.Entries) != 0 {
 				t.Fatal("dismissal changed draft, host state, wire, or transcript")
 			}
 		})
@@ -89,7 +89,7 @@ func TestUISnapshotComposerError(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			u.clock = func() time.Time { return time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC) }
-			u.sessionPresentation().Status.Text = "Ready"
+			u.attached.presentation.Status.Text = "Ready"
 			u.setNotice("File contents omitted: setup.sh (attachment budget exceeded).\nThe attachment result names the missing content.", true)
 			rows, _ := u.testMainFrame(width, 8, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("composer-error-%d", width), rows)

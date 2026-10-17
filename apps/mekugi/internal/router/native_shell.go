@@ -12,12 +12,12 @@ import (
 
 // A Main excerpt carries an Activity identity, not a nearby question or run.
 func (main *appServerUI) openActivityReply(u *terminalsession.Attachment, seq uint64) bool {
-	v := main.source
+	v := main.attached.source
 	for _, entry := range v.Entries {
 		if entry.Source.Seq != seq || entry.Source.ActivitySeq == 0 {
 			continue
 		}
-		for _, target := range main.childSource.Entries {
+		for _, target := range main.attached.childSource.Entries {
 			if target.Source.Seq != entry.Source.ActivitySeq {
 				continue
 			}
@@ -28,12 +28,12 @@ func (main *appServerUI) openActivityReply(u *terminalsession.Attachment, seq ui
 }
 
 func (u *appServerUI) composerReadOnly() bool {
-	return u.sessionPresentation().View().ReadOnly != sessionpresentation.Editable
+	return u.attached.presentation.View().ReadOnly != sessionpresentation.Editable
 }
 
 // transcriptView selects display state without changing the input or execution owner.
 func (u *appServerUI) transcriptView() *activityui.View {
-	view := u.sessionPresentation().View()
+	view := u.attached.presentation.View()
 	if u.shell.Agents != nil && view.Displayed.ID != view.Main.ID {
 		u.shell.Agents.Conversation = true
 		return u.shell.Agents

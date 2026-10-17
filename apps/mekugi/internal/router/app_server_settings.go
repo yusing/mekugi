@@ -193,7 +193,7 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 	// The host validates explicit values, including custom models and tiers.
 	accepted, err := u.updateSettings(change)
 	if accepted {
-		notice, alert := u.feedback.Text, u.feedback.Alert
+		notice, alert := u.attached.feedback.Text, u.attached.feedback.Alert
 		u.recordDraft()
 		u.Text, u.CursorBack, u.Images = "", 0, nil
 		u.Editor.Changed()
@@ -247,7 +247,7 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 		if m.Error != nil {
 			failure = m.Error.Message
 		}
-		u.applyInputEffects(u.sessionPresentation().SettingsAcknowledged(u.conversation(), method, failure, ack))
+		u.applyInputEffects(u.attached.presentation.SettingsAcknowledged(u.attached.conversation, method, failure, ack))
 		return true, nil
 	}
 	if m.Method != "thread/settings/updated" {
@@ -271,8 +271,8 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 		return true, fmt.Errorf("thread settings: %w", err)
 	}
 	if event.ThreadID != u.Thread {
-		if u.session.KnownCaller(u.Thread) != "" && event.ThreadID != "" {
-			agent := u.session.Agent(u.session.Caller(event.ThreadID))
+		if u.attached.session.KnownCaller(u.Thread) != "" && event.ThreadID != "" {
+			agent := u.attached.session.Agent(u.attached.session.Caller(event.ThreadID))
 			agent.Settings = preferences.Evidence{Model: event.Settings.Model, Effort: event.Settings.Effort, Tier: event.Settings.ServiceTier, TierKnown: true}
 			agent.SettingsLive = true
 		}
@@ -288,7 +288,7 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 		u.statusConfig.Sandbox.Type = event.Settings.Sandbox.Type
 	}
 	if event.Settings.Cwd != "" {
-		u.cwd = event.Settings.Cwd
+		u.attached.cwd = event.Settings.Cwd
 	}
 	u.model, u.reasoningEffort, u.serviceTier = event.Settings.Model, event.Settings.Effort, event.Settings.ServiceTier
 	confirmation := u.Settings.Confirmed(u.Turn, u.reasoningEffort)
@@ -387,7 +387,7 @@ func (u *appServerUI) chooseSetting(choice completion.Choice) {
 		p.Kind, p.Open, p.Choices = "", false, nil
 		u.picker.Setting = ""
 	} else {
-		p.Problem = u.feedback.Text
+		p.Problem = u.attached.feedback.Text
 	}
 }
 

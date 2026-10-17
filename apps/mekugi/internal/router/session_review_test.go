@@ -17,7 +17,7 @@ func TestReviewReceiptsWithoutTerminal(t *testing.T) {
 			r := sessionreview.New(t.Context(), nil, nil)
 			defer r.Close()
 			u := &appServerUI{review: r, reviewSource: new(changecapture.Service)}
-			for _, target := range []**sessionpresentation.ActivitySource{&u.source, &u.childSource} {
+			for _, target := range []**sessionpresentation.ActivitySource{&u.attached.source, &u.attached.childSource} {
 				*target = &sessionpresentation.ActivitySource{Model: new(activity.Model[sessionpresentation.ActivityEntry, sessionpresentation.ActivityAgent])}
 				(*target).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
 					Seq: 1, Agent: "Main", Kind: "tool", Text: "Run `write source.go`", CallID: "edit",
@@ -39,7 +39,7 @@ func TestReviewReceiptsWithoutTerminal(t *testing.T) {
 				p := preview.Preview{ID: "observed", Workspace: "/workspace", Thread: "main", HostItems: []string{"edit"}, Complete: true, EditReceipt: text}
 				u.admitReviewEvents(t.Context(), sub, sessionreview.Event{Kind: "preview", Preview: &p})
 			}
-			for _, source := range []*sessionpresentation.ActivitySource{u.source, u.childSource} {
+			for _, source := range []*sessionpresentation.ActivitySource{u.attached.source, u.attached.childSource} {
 				record := source.Entries[0]
 				if record.Source.Native.CapturedEdit == nil || record.Source.Text != text || record.Values[0].Verb != "Edit" {
 					t.Fatalf("receipt depended on a renderer: %+v", record)

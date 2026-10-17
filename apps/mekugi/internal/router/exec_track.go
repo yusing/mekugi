@@ -60,18 +60,18 @@ func (u *appServerUI) commandReportView(key [3]string, run *sessionpresentation.
 // completes it once its report ends. It reports false for an untracked
 // command, which keeps the host's single output stream.
 func (u *appServerUI) flushTrackedCommand(key [3]string, run *sessionpresentation.CommandOperation) ([]sessionpresentation.ActivityEntry, bool) {
-	s := &u.session
+	s := &u.attached.session
 	if run.Completion != nil {
 		view, _ := u.commandReportView(key, run, false, run.Entry.Native.CommandCwd)
 		if !view.ended && u.now().Sub(run.CompletedAt) < execTrackCompletionWait {
 			return nil, true
 		}
 		enriched, valid := u.reconcileTrackedCommand(key, *run.Completion, run.Completed)
-		for _, adapter := range []*sessionpresentation.ActivitySource{u.source, u.childSource} {
+		for _, adapter := range []*sessionpresentation.ActivitySource{u.attached.source, u.attached.childSource} {
 			adapter.SettleCommandReport(enriched, valid)
 		}
 		u.releaseCommand(run.Entry)
-		delete(u.session.Commands(), key)
+		delete(u.attached.session.Commands(), key)
 		delete(u.streams.Commands, key)
 		u.execTrack.Forget(key)
 		u.dirty = true
@@ -123,8 +123,8 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *sessionpresentatio
 // the host's own exit status. Otherwise the report is incomplete, and the
 // already-published host aggregate remains authoritative.
 func (u *appServerUI) reconcileTrackedCommand(key [3]string, entry sessionpresentation.ActivityEntry, item observation.Item) (sessionpresentation.ActivityEntry, bool) {
-	run := u.session.Commands()[key]
-	view, _ := u.commandReportView(key, run, true, sessionpresentation.CommandDirectory(item, u.cwd))
+	run := u.attached.session.Commands()[key]
+	view, _ := u.commandReportView(key, run, true, sessionpresentation.CommandDirectory(item, u.attached.cwd))
 	if !run.Entry.Native.Invocation.ReportMatchesHost() || len(view.segments) == 0 {
 		return entry, false
 	}

@@ -63,8 +63,8 @@ func questionTestAsync(t *testing.T, u *appServerUI, item string, titles ...stri
 
 func questionTestPaint(t *testing.T, u *appServerUI, width int) string {
 	t.Helper()
-	if u.session.KnownCaller(u.Thread) == "" {
-		u.startSession(u.Thread, u.cwd)
+	if u.attached.session.KnownCaller(u.Thread) == "" {
+		u.startSession(u.Thread, u.attached.cwd)
 	}
 	if terminalTest(u) == nil {
 
@@ -131,7 +131,7 @@ func TestNativeChildQuestionUsesBlockedFallback(t *testing.T) {
 	}
 	request("child")
 	frame := questionTestPaint(t, u, 140)
-	if !u.sessionPresentation().Status.Alert || !strings.Contains(frame, "Blocked on unsupported request item/tool/requestUserInput") || !strings.Contains(frame, "Ctrl-C interrupts") {
+	if !u.attached.presentation.Status.Alert || !strings.Contains(frame, "Blocked on unsupported request item/tool/requestUserInput") || !strings.Contains(frame, "Ctrl-C interrupts") {
 		t.Fatalf("child request was not visibly blocked: %s", frame)
 	}
 	blocked := u.notifications.blocked[`"child-request"`]
@@ -182,7 +182,7 @@ func TestNativeQuestionAsyncBatchAndExternalCommit(t *testing.T) {
 	if u.activeQuestionCall() == nil || u.questionCount() != 2 {
 		t.Fatal("async question did not open or was lost")
 	}
-	if slices.ContainsFunc(u.source.Entries, func(entry sessionpresentation.ActivityRecord) bool { return entry.Source.Kind == "final" }) {
+	if slices.ContainsFunc(u.attached.source.Entries, func(entry sessionpresentation.ActivityRecord) bool { return entry.Source.Kind == "final" }) {
 		t.Fatal("async question entered final-answer bookkeeping")
 	}
 	u.openQuestions()
@@ -284,7 +284,7 @@ func TestNativeQuestionExternalReplyParksActiveAnswerBeforeCommit(t *testing.T) 
 				t.Fatal("resolved answer was revived or replaced Main")
 			}
 			if secret {
-				if len(u.InputHistory) != 0 || u.conversation().Editor.Text != "Main draft" {
+				if len(u.InputHistory) != 0 || u.attached.conversation.Editor.Text != "Main draft" {
 					t.Fatal("secret entered ordinary editor/history")
 				}
 			} else if len(u.InputHistory) != 1 || u.InputHistory[0].Text != "active answer" {
@@ -298,24 +298,24 @@ func TestNativeQuestionsUseComposedAttachment(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.insertDraft("pre-start draft")
 	editor := u.Editor
-	questions := &u.conversation().Questions
+	questions := &u.attached.conversation.Questions
 	questionTestSync(t, u, "pending", false)
 	if u.questions.Questions != questions || questions.Count("main") != 1 {
 		t.Fatal("native question did not reach the composed owner")
 	}
 	u.startSession("main", "/workspace")
 
-	if &u.conversation().Questions != questions || u.questionCount() != 1 || editor != &u.conversation().Editor || u.Text != "pre-start draft" {
+	if &u.attached.conversation.Questions != questions || u.questionCount() != 1 || editor != &u.attached.conversation.Editor || u.Text != "pre-start draft" {
 		t.Fatal("first host identity replaced pending question state")
 	}
 	if err := u.clearSessionPresentation(); err != nil {
 		t.Fatal(err)
 	}
 	u.Thread = "replacement"
-	if u.Editor == editor || u.Editor != &u.conversation().Editor || u.Text != "pre-start draft" || editor.Text != "" {
+	if u.Editor == editor || u.Editor != &u.attached.conversation.Editor || u.Text != "pre-start draft" || editor.Text != "" {
 		t.Fatal("replacement did not transfer editable input to its new owner")
 	}
-	if u.questions.Questions == questions || u.questions.Questions != &u.conversation().Questions || u.questionCount() != 0 {
+	if u.questions.Questions == questions || u.questions.Questions != &u.attached.conversation.Questions || u.questionCount() != 0 {
 		t.Fatal("replacement retained the retired question owner")
 	}
 	questionTestMessage(t, u, nil, "serverRequest/resolved", map[string]any{"threadId": "main", "requestId": "pending"})
@@ -427,13 +427,13 @@ func TestNativeQuestionGapsQueueAndLiteralAnswers(t *testing.T) {
 	appServerTestKeys(t, v, "main draft")
 	questionTestSync(t, v, "queue", false)
 	appServerTestKeys(t, v, "\r")
-	if len(v.conversation().Queued) != 1 || wire.Len() != 0 {
+	if len(v.attached.conversation.Queued) != 1 || wire.Len() != 0 {
 		t.Fatal("hidden sync steered instead of queueing")
 	}
 	v.openQuestions()
 	questionTestPaint(t, v, 60)
 	appServerTestKeys(t, v, "\x1b[200~! @file $skill /quit\x1b[201~")
-	if v.conversation().ShellMode() || v.picker.Open || len(v.Files) != 0 || v.Text != "! @file $skill /quit" {
+	if v.attached.conversation.ShellMode() || v.picker.Open || len(v.Files) != 0 || v.Text != "! @file $skill /quit" {
 		t.Fatal("answer paste was interpreted")
 	}
 }

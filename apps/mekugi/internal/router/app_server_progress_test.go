@@ -34,11 +34,11 @@ func TestAppServerProgressCompactionLifecycle(t *testing.T) {
 	label("Compacting context")
 	item("main", "t", "c", "item/completed")
 	label("Working")
-	before := len(u.source.Entries)
+	before := len(u.attached.source.Entries)
 	item("main", "t", "c", "item/completed")
 	item("main", "t", "c", "item/started")
 	label("Working")
-	if len(u.source.Entries) != before {
+	if len(u.attached.source.Entries) != before {
 		t.Fatal("duplicate compaction completion created an event")
 	}
 	frame, _ := u.testMainFrame(80, 24, 0)
@@ -49,9 +49,9 @@ func TestAppServerProgressCompactionLifecycle(t *testing.T) {
 	for _, status := range []string{"interrupted", "failed", "completed"} {
 		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": status}})
 		item("main", status, "pending", "item/started")
-		before = len(u.source.Entries)
+		before = len(u.attached.source.Entries)
 		appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": status, "status": status}})
-		if strings.Contains(u.sessionLabel(time.Now()), "Compacting") || len(u.source.Entries) != before {
+		if strings.Contains(u.sessionLabel(time.Now()), "Compacting") || len(u.attached.source.Entries) != before {
 			t.Fatal("turn end retained compaction or fabricated completion")
 		}
 	}
@@ -70,23 +70,23 @@ func TestAppServerProgressWaitAndReplay(t *testing.T) {
 		if got := ansi.Strip(u.sessionLabel(time.Now())); !strings.Contains(got, "Working") {
 			t.Fatalf("wait replaced composer: %q", got)
 		}
-		if len(u.source.Entries) != 1 || u.source.Entries[0].Source.Kind != "progress" || u.source.Entries[0].Source.Native.Question != 0 {
-			t.Fatalf("wait did not reconcile as an event: %+v", u.source.Entries)
+		if len(u.attached.source.Entries) != 1 || u.attached.source.Entries[0].Source.Kind != "progress" || u.attached.source.Entries[0].Source.Native.Question != 0 {
+			t.Fatalf("wait did not reconcile as an event: %+v", u.attached.source.Entries)
 		}
 	}
-	if !strings.Contains(u.source.Entries[0].Source.Text, "Finished waiting") || !strings.Contains(u.source.Entries[0].Source.Text, "child: Still running") {
+	if !strings.Contains(u.attached.source.Entries[0].Source.Text, "Finished waiting") || !strings.Contains(u.attached.source.Entries[0].Source.Text, "child: Still running") {
 		t.Fatal("wait start did not complete")
 	}
 	history := []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{wait, {ID: "c", Type: "contextCompaction"}}}}
 	v := newAppServerSessionTestUI(t, t.TempDir())
 	v.restoreHistory(history)
-	if len(v.source.Entries) != 2 || v.Turn != "" {
-		t.Fatalf("restored events revived work or went missing: %+v", v.source.Entries)
+	if len(v.attached.source.Entries) != 2 || v.Turn != "" {
+		t.Fatalf("restored events revived work or went missing: %+v", v.attached.source.Entries)
 	}
 	v.registerThread(binding.ThreadInfo{ID: "child"})
 	v.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: history}, false)
-	if len(v.childSource.Entries) != 2 || v.childSource.Entries[1].Source.Text != "Context compacted" {
-		t.Fatalf("child replay missing progress: %+v", v.childSource.Entries)
+	if len(v.attached.childSource.Entries) != 2 || v.attached.childSource.Entries[1].Source.Text != "Context compacted" {
+		t.Fatalf("child replay missing progress: %+v", v.attached.childSource.Entries)
 	}
 }
 
@@ -95,11 +95,11 @@ func TestAppServerProgressUnfinishedChildWait(t *testing.T) {
 	wait := binding.ThreadItem{ID: "w", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress"}
 	u.registerThread(binding.ThreadInfo{ID: "child"})
 	u.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: []binding.HistoryTurn{{ID: "t", Status: "inProgress", Items: []binding.ThreadItem{wait}}}}, false)
-	if !strings.Contains(u.childSource.Entries[0].Source.Text, "Waiting for agent") || u.session.Agent(u.session.KnownCaller("child")).Responding {
+	if !strings.Contains(u.attached.childSource.Entries[0].Source.Text, "Waiting for agent") || u.attached.session.Agent(u.attached.session.KnownCaller("child")).Responding {
 		t.Fatal("unfinished historical wait claimed completion or revived work")
 	}
 	// A later turn must not restart animation for the restored wait.
-	agent := *u.session.Agent(u.session.KnownCaller("child"))
+	agent := *u.attached.session.Agent(u.attached.session.KnownCaller("child"))
 	agent.Responding = true
 	first, _ := u.testActivity(u.shell.Agents).testCurrent(agent, time.Unix(0, 0))
 	second, _ := u.testActivity(u.shell.Agents).testCurrent(agent, time.Unix(1, 0))
@@ -108,8 +108,8 @@ func TestAppServerProgressUnfinishedChildWait(t *testing.T) {
 	}
 	wait.Status = "failed"
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "t", "item": wait})
-	if u.childSource.Entries[0].Source.Text != "Wait failed" || u.childSource.Entries[0].Source.Native.Phase != "item/completed" {
-		t.Fatalf("live completion could not replace history: %+v", u.childSource.Entries[0])
+	if u.attached.childSource.Entries[0].Source.Text != "Wait failed" || u.attached.childSource.Entries[0].Source.Native.Phase != "item/completed" {
+		t.Fatalf("live completion could not replace history: %+v", u.attached.childSource.Entries[0])
 	}
 }
 
@@ -121,7 +121,7 @@ func TestAppServerWaitRosterOnly(t *testing.T) {
 			feed := u.testActivity(u.shell.Transcript)
 			name := "/root"
 			if caller == "child" {
-				feed, name = u.testActivity(u.shell.Agents), u.session.Caller(caller)
+				feed, name = u.testActivity(u.shell.Agents), u.attached.session.Caller(caller)
 			}
 			check := func(want string) {
 				t.Helper()
@@ -188,7 +188,7 @@ func TestAppServerProgressTerminalPolling(t *testing.T) {
 	poll("main", "t", "proc", "")
 	poll("main", "t", "proc", "")
 	label("Still running")
-	if len(u.source.Entries) != 0 {
+	if len(u.attached.source.Entries) != 0 {
 		t.Fatal("polls flooded transcript")
 	}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": binding.ThreadItem{ID: "other", Type: "commandExecution", ProcessID: "other"}})

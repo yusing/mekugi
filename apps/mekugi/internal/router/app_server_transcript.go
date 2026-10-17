@@ -15,11 +15,11 @@ import (
 )
 
 func (u *appServerUI) providerStarted(thread string, at time.Time) []observation.TextUpdate {
-	s := &u.session
+	s := &u.attached.session
 	if thread == "" {
 		return nil
 	}
-	return u.transcript.ProviderStarted(thread, at, s.Thread(thread))
+	return u.attached.transcript.ProviderStarted(thread, at, s.Thread(thread))
 }
 
 // Host snapshots retain their original payload for control and evidence; this
@@ -29,7 +29,7 @@ func transcriptItem(item binding.ThreadItem, thread, turn, id string) observatio
 }
 
 func (u *appServerUI) transcriptUpdates(updates []observation.TextUpdate, paced bool) []sessionpresentation.ActivityEntry {
-	entries := u.session.AdmitText(updates, u.Thread)
+	entries := u.attached.session.AdmitText(updates, u.Thread)
 	if paced {
 		u.streams.QueueText(slices.Clone(updates), u.shell.Transcript, u.shell.Agents)
 	}
@@ -82,8 +82,8 @@ func (u *appServerUI) messageTranscript(text observation.TextEvent, item observa
 	if u.observeMessageQuestions(text, item, false) {
 		return true
 	}
-	deliveries := sessionpresentation.ProjectMessage(&u.session, u.source, u.childSource, u.transcript, main, sessionpresentation.ObservationInput{
-		Event: observation.Event{ThreadID: text.Item.Ref.ThreadID, Item: item}, Text: text, Main: u.Thread, Workspace: u.cwd,
+	deliveries := sessionpresentation.ProjectMessage(&u.attached.session, u.attached.source, u.attached.childSource, u.attached.transcript, main, sessionpresentation.ObservationInput{
+		Event: observation.Event{ThreadID: text.Item.Ref.ThreadID, Item: item}, Text: text, Main: u.Thread, Workspace: u.attached.cwd,
 	})
 	u.streams.Deliver(deliveries, u.shell.Transcript, u.shell.Agents)
 	if !main || len(deliveries) > 0 {

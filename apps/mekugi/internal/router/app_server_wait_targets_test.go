@@ -59,11 +59,11 @@ func TestAppServerWaitTargetsSnapshotAndRender(t *testing.T) {
 	waitTargetTestAgent(t, u, "b", "/root/beta", false)
 	waitTargetTestAgent(t, u, "nested", "/root/alpha/nested", true)
 	waitTargetTestEvent(t, u, "item/started", "main", "t", "w")
-	if u.source.Entries[0].Source.Native.Wait == nil {
+	if u.attached.source.Entries[0].Source.Native.Wait == nil {
 		t.Fatal("live wait lacks structured roster status")
 	}
 	want := "Waiting for agent · alpha, alpha/nested"
-	if got := u.source.Entries[0].Source.Text; got != want {
+	if got := u.attached.source.Entries[0].Source.Text; got != want {
 		t.Fatalf("start = %q, want %q", got, want)
 	}
 	if rendered := u.testActivity(u.shell.Transcript).RenderFeed(120, 30).Lines; len(rendered) != 0 {
@@ -80,8 +80,8 @@ func TestAppServerWaitTargetsSnapshotAndRender(t *testing.T) {
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "a", "turn": map[string]any{"id": "work", "status": "completed"}})
 	waitTargetTestAgent(t, u, "new", "/root/new", true)
 	waitTargetTestEvent(t, u, "item/completed", "main", "t", "w")
-	if len(u.source.Entries) != 1 || u.source.Entries[0].Source.Text != "Finished waiting · alpha, alpha/nested" {
-		t.Fatalf("completion changed start targets: %+v", u.source.Entries)
+	if len(u.attached.source.Entries) != 1 || u.attached.source.Entries[0].Source.Text != "Finished waiting · alpha, alpha/nested" {
+		t.Fatalf("completion changed start targets: %+v", u.attached.source.Entries)
 	}
 }
 
@@ -152,10 +152,10 @@ func TestAppServerWaitTargetsDurableReplay(t *testing.T) {
 			}
 			waitTargetTestStore(t, restored, store)
 			restored.restoreHistory(history)
-			if restored.source.Entries[0].Source.Native.Wait == nil {
+			if restored.attached.source.Entries[0].Source.Native.Wait == nil {
 				t.Fatal("restored wait lacks structured roster status")
 			}
-			if got := restored.source.Entries[0].Source.Text; got != "Finished waiting · alpha, alpha/nested" {
+			if got := restored.attached.source.Entries[0].Source.Text; got != "Finished waiting · alpha, alpha/nested" {
 				t.Fatalf("main replay lost targets: %q", got)
 			}
 			if rendered := restored.testActivity(restored.shell.Transcript).RenderFeed(120, 30).Lines; len(rendered) != 0 {
@@ -167,13 +167,13 @@ func TestAppServerWaitTargetsDurableReplay(t *testing.T) {
 			}
 			restored.registerThread(binding.ThreadInfo{ID: "a", AgentNickname: "alpha"})
 			restored.restoreActivityThread(binding.ThreadInfo{ID: "a", Turns: history}, false)
-			if got := restored.childSource.Entries[0].Source.Text; got != "Finished waiting · alpha/nested" {
+			if got := restored.attached.childSource.Entries[0].Source.Text; got != "Finished waiting · alpha/nested" {
 				t.Fatalf("child replay lost targets: %q", got)
 			}
 			if restored.Turn != "" {
 				t.Fatal("replay revived main turn")
 			}
-			for _, agent := range restored.session.Roster() {
+			for _, agent := range restored.attached.session.Roster() {
 				if agent.Responding {
 					t.Fatalf("replay revived agent: %+v", agent)
 				}
@@ -190,7 +190,7 @@ func TestAppServerWaitTargetsDurableReplay(t *testing.T) {
 				waitTargetTestStore(t, fresh, freshStore)
 				waitTargetTestAgent(t, fresh, "today", "/root/today", true)
 				fresh.restoreHistory(history)
-				if got := fresh.source.Entries[0].Source.Text; got != "Finished waiting" {
+				if got := fresh.attached.source.Entries[0].Source.Text; got != "Finished waiting" {
 					t.Fatalf("missing scoped evidence inferred targets: %q", got)
 				}
 			}
@@ -222,14 +222,14 @@ func TestAppServerWaitTargetsStorageFailureKeepsLiveDisplay(t *testing.T) {
 				waitTargetTestAgent(t, u, "a", "/root/alpha", true)
 			}
 			waitTargetTestEvent(t, u, "item/started", "main", "t", "w")
-			if got := u.source.Entries[0].Source.Text; got != "Waiting for agent · alpha" {
+			if got := u.attached.source.Entries[0].Source.Text; got != "Waiting for agent · alpha" {
 				t.Fatalf("storage blocked live start: %q", got)
 			}
-			if !strings.Contains(u.feedback.Text, "Wait targets could not") {
-				t.Fatalf("storage failure missing notice: %q", u.feedback.Text)
+			if !strings.Contains(u.attached.feedback.Text, "Wait targets could not") {
+				t.Fatalf("storage failure missing notice: %q", u.attached.feedback.Text)
 			}
 			waitTargetTestEvent(t, u, "item/completed", "main", "t", "w")
-			if got := u.source.Entries[0].Source.Text; got != "Finished waiting · alpha" {
+			if got := u.attached.source.Entries[0].Source.Text; got != "Finished waiting · alpha" {
 				t.Fatalf("storage blocked live completion: %q", got)
 			}
 		})

@@ -15,22 +15,22 @@ import (
 // publishPresentation settles detached facts at a semantic transition boundary.
 // Reading Model.View does not run this projection or bind an attachment.
 func (u *appServerUI) publishPresentation(now time.Time) sessionpresentation.View {
-	m := u.sessionPresentation()
+	m := u.attached.presentation
 	view := m.View()
 	var caption sessionpresentation.Caption
 	if view.Displayed.ID == view.Main.ID {
 		caption.Model, caption.Effort, caption.Tier = u.model, u.reasoningEffort, u.displayServiceTier()
 	}
-	caption = sessionCaption(&u.session, m, caption, u.serviceTiers)
-	info := sessionpresentation.MainInfo{Workspace: u.cwd, Title: cmp.Or(u.Names.Pending(u.Thread), u.title), BackendVersion: u.backendVersion, Skills: u.source.ActiveSkills()["Main"]}
+	caption = sessionCaption(&u.attached.session, m, caption, u.serviceTiers)
+	info := sessionpresentation.MainInfo{Workspace: u.attached.cwd, Title: cmp.Or(u.Names.Pending(u.Thread), u.title), BackendVersion: u.backendVersion, Skills: u.attached.source.ActiveSkills()["Main"]}
 	if approval := u.approvals.View(); approval.Count > 0 {
-		if caller := u.session.KnownCaller(approval.Approval.Thread); caller != "/root" {
+		if caller := u.attached.session.KnownCaller(approval.Approval.Thread); caller != "/root" {
 			info.ApprovalCaller = caller
 		}
 	}
 	view = m.Publish(sessionpresentation.MainInputs{
 		Info: info,
-		Menu: u.menuView(), Control: &u.Live, Feedback: &u.feedback, Conversation: u.conversation(), Restoring: u.restoring != nil,
+		Menu: u.menuView(), Control: &u.Live, Feedback: &u.attached.feedback, Conversation: u.attached.conversation, Restoring: u.restoring != nil,
 		SideRunning: u.side != nil && (u.side.Busy || u.side.Starting), Processes: u.runningProcessCount(), History: u.historyViews(),
 	}, caption, now)
 	u.shell.Prompts.Update(view)
@@ -43,15 +43,12 @@ func (u *appServerUI) publishPresentation(now time.Time) sessionpresentation.Vie
 	return view
 }
 
-func (u *appServerUI) sessionPresentation() *sessionpresentation.Model {
-	return u.presentationState.Session(u.session.Scope())
-}
-
 func (u *appServerUI) attachPresentation() {
 	u.attachReview()
-	u.attachActivity()
+	u.attached.bindSources()
+	u.commits = attachCommitReader(&u.attached.session, u.commits, u.ctx, u.activity != nil)
 	u.bindConversation()
-	m := u.sessionPresentation()
+	m := u.attached.presentation
 	m.Attach(sessionpresentation.Thread{ID: cmp.Or(u.Thread, "/root"), Caller: "/root"}, false)
 }
 
@@ -61,14 +58,14 @@ func (u *appServerUI) settlePresentation() {
 	u.autoOpenApprovals()
 	u.autoOpenQuestions()
 	u.publishPresentation(u.now())
-	u.publishActivity()
+	publishActivity(&u.attached, u.shell)
 }
 
 // displaySession accepts detached targets without consulting terminal state.
 func (u *appServerUI) displaySession(intent sessionpresentation.DisplayIntent) bool {
 	defer u.settlePresentation()
-	m := u.sessionPresentation()
-	if intent.Thread != m.View().Main && u.session.KnownCaller(intent.Thread.ID) != intent.Thread.Caller {
+	m := u.attached.presentation
+	if intent.Thread != m.View().Main && u.attached.session.KnownCaller(intent.Thread.ID) != intent.Thread.Caller {
 		u.setNotice(sessionpresentation.ErrStaleIntent.Error(), true)
 		return false
 	}

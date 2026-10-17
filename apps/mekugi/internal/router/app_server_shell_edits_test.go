@@ -46,7 +46,7 @@ func startShellEditTestCommand(t *testing.T, u *appServerUI, command, item strin
 		"item": binding.ThreadItem{ID: item, Type: "commandExecution", Source: "userShell", Command: command, Status: "inProgress"}})
 	u.shellResponse(nil)
 	if edit != nil && u.shellEdits.running[[2]string{u.Thread, item}] != edit {
-		t.Fatalf("shell start was not matched: pending=%+v running=%+v notice=%s", u.shellEdits.pending, u.shellEdits.running, u.feedback.Text)
+		t.Fatalf("shell start was not matched: pending=%+v running=%+v notice=%s", u.shellEdits.pending, u.shellEdits.running, u.attached.feedback.Text)
 	}
 	return edit
 }
@@ -66,7 +66,7 @@ func completeShellEditTestCommand(t *testing.T, u *appServerUI, item string, exi
 
 func TestAppServerShellEditsRevertApplyReplay(t *testing.T) {
 	u := newShellEditTestUI(t)
-	workspace, store := u.cwd, testUIStore(u)
+	workspace, store := u.attached.cwd, testUIStore(u)
 	ctx := context.WithValue(u.retainedSession.Context, storageSessionKey{}, storageSessionIdentity{Thread: u.retainedSession.Thread, Namespace: u.retainedSession.Namespace})
 	path := filepath.Join(workspace, "ignored.txt")
 	// Source-named mchanges targets must not depend on workspace snapshot admission.
@@ -87,8 +87,8 @@ func TestAppServerShellEditsRevertApplyReplay(t *testing.T) {
 			t.Fatalf("mutation failed: %s", output)
 		}
 		completeShellEditTestCommand(t, u, item, 0)
-		if u.feedback.Alert {
-			t.Fatal(u.feedback.Text)
+		if u.attached.feedback.Alert {
+			t.Fatal(u.attached.feedback.Text)
 		}
 		// Duplicate notifications and resumed host history cannot allocate another capture.
 		completeShellEditTestCommand(t, u, item, 0)
@@ -124,8 +124,8 @@ func TestAppServerShellEditsFailedWriterAndNoEffect(t *testing.T) {
 	for _, command := range []string{"printf 'saved\\n' > \"$SHELL_EDIT_TARGET\"; exit 7", "rm -f missing.txt"} {
 		startShellEditTestCommand(t, u, command, command)
 		cmd := exec.Command(u.shellEdits.shell, "-c", command)
-		cmd.Dir = u.cwd
-		cmd.Env = append(mchangesSliceInvocation(u.cwd, u.Thread).environment, "SHELL_EDIT_TARGET=saved.txt")
+		cmd.Dir = u.attached.cwd
+		cmd.Env = append(mchangesSliceInvocation(u.attached.cwd, u.Thread).environment, "SHELL_EDIT_TARGET=saved.txt")
 		err := cmd.Run()
 		exit := 0
 		if err != nil {
@@ -138,10 +138,10 @@ func TestAppServerShellEditsFailedWriterAndNoEffect(t *testing.T) {
 		if u.Turn != "model" {
 			t.Fatal("shell completion ended the model turn")
 		}
-		if u.feedback.Alert {
-			t.Fatal(u.feedback.Text)
+		if u.attached.feedback.Alert {
+			t.Fatal(u.attached.feedback.Text)
 		}
-		history := shellTestRecord(t, testUIStore(u), u.cwd, u.Thread, command).History
+		history := shellTestRecord(t, testUIStore(u), u.attached.cwd, u.Thread, command).History
 		if history.ExecOutcome.Exit == nil || *history.ExecOutcome.Exit != exit {
 			t.Fatalf("shell outcome: %+v", history)
 		}
@@ -162,7 +162,7 @@ func TestAppServerShellEditsFailedWriterAndNoEffect(t *testing.T) {
 
 func TestAppServerShellObservationKeepsOriginalOwnersAfterSwitch(t *testing.T) {
 	u := newShellEditTestUI(t)
-	thread, workspace, retained := u.Thread, u.cwd, testUIStore(u)
+	thread, workspace, retained := u.Thread, u.attached.cwd, testUIStore(u)
 	path := filepath.Join(workspace, "selected.txt")
 	writeTestFile(t, path, "before\n")
 	edit := startShellEditTestCommand(t, u, "printf 'after\\n' > selected.txt", "shell-original")
@@ -184,8 +184,8 @@ func TestAppServerShellObservationKeepsOriginalOwnersAfterSwitch(t *testing.T) {
 	writeTestFile(t, path, "after\n")
 	exit := 0
 	u.observeShellEdit(thread, "item/completed", binding.ThreadItem{ID: "shell-original", Type: "commandExecution", Source: "userShell", Status: "completed", ExitCode: &exit})
-	if u.feedback.Alert {
-		t.Fatal(u.feedback.Text)
+	if u.attached.feedback.Alert {
+		t.Fatal(u.attached.feedback.Text)
 	}
 	record := shellTestRecord(t, retained, workspace, thread, "shell-original")
 	id := record.CallID

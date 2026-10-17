@@ -7,6 +7,7 @@ import (
 
 	"github.com/yusing/mekugi/modules/activity"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -78,7 +79,7 @@ func newAppServerTestUI(views ...terminalsession.Views) (*appServerUI, *appServe
 	client := &appserver.Client{Input: w}
 	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), issues: testCriticalErrors(), history: testHistory(), Host: client, Requests: sessioncontrol.NewRequests[appServerRequest](appServerTestTransport{client, w}), Thread: "main"}, views...)
 	u.approvals.grants = sessioncontrol.NewApprovalGrants(testGuards())
-	u.shell.Transcript.Painter.FileLink = markdownFileLinks(u.cwd)
+	u.shell.Transcript.Painter.FileLink = markdownFileLinks(u.attached.cwd)
 	return u, w
 }
 
@@ -135,12 +136,12 @@ func TestAppServerUIEscapeAndLongDraft(t *testing.T) {
 func TestAppServerCtrlCClearsDraftThenInterruptsOrQuits(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestKeys(t, u, "draft\x03")
-	if u.Text != "" || w.Len() != 0 || !strings.Contains(u.feedback.Text, "Ctrl-C again quits") {
-		t.Fatalf("first Ctrl-C draft=%q notice=%q", u.Text, u.feedback.Text)
+	if u.Text != "" || w.Len() != 0 || !strings.Contains(u.attached.feedback.Text, "Ctrl-C again quits") {
+		t.Fatalf("first Ctrl-C draft=%q notice=%q", u.Text, u.attached.feedback.Text)
 	}
 	appServerTestKeys(t, u, "\x1a")
-	if u.Text != "draft" || u.feedback.Text != "" {
-		t.Fatalf("cleared draft not restorable: %q notice=%q", u.Text, u.feedback.Text)
+	if u.Text != "draft" || u.attached.feedback.Text != "" {
+		t.Fatalf("cleared draft not restorable: %q notice=%q", u.Text, u.attached.feedback.Text)
 	}
 	u.Text = ""
 	if quit, err := u.key("\x03"); !quit || err != nil {
@@ -149,7 +150,7 @@ func TestAppServerCtrlCClearsDraftThenInterruptsOrQuits(t *testing.T) {
 	u, w = newAppServerTestUI()
 	u.Turn = "turn"
 	appServerTestKeys(t, u, "steer\x03")
-	if u.Text != "" || w.Len() != 0 || !strings.Contains(u.feedback.Text, "Ctrl-C again interrupts") {
+	if u.Text != "" || w.Len() != 0 || !strings.Contains(u.attached.feedback.Text, "Ctrl-C again interrupts") {
 		t.Fatalf("draft not cleared before interrupt: %q sent=%q", u.Text, w.String())
 	}
 	if quit, err := u.key("\x03"); quit || err != nil || !strings.Contains(w.String(), "turn/interrupt") {
@@ -164,21 +165,21 @@ func TestAppServerCtrlCClearsDraftThenInterruptsOrQuits(t *testing.T) {
 
 func TestAppServerComposerNoticeKeepsTurnStateAndClearsOnEdit(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.Turn, u.sessionPresentation().Status.Text = "turn", "Working"
+	u.Turn, u.attached.presentation.Status.Text = "turn", "Working"
 	appServerTestKeys(t, u, "/nope\r")
 	label := ansi.Strip(u.stateLabel(time.Now()))
 	if !strings.Contains(label, "Working") || !strings.Contains(label, "Unknown command /nope") {
 		t.Fatalf("notice replaced turn state: %q", label)
 	}
 	appServerTestKeys(t, u, "\x7f")
-	if u.feedback.Text != "" || u.sessionPresentation().Status.Text != "Working" {
-		t.Fatalf("edit kept stale notice %q or lost status %q", u.feedback.Text, u.sessionPresentation().Status.Text)
+	if u.attached.feedback.Text != "" || u.attached.presentation.Status.Text != "Working" {
+		t.Fatalf("edit kept stale notice %q or lost status %q", u.attached.feedback.Text, u.attached.presentation.Status.Text)
 	}
 }
 
 func TestAppServerIdleStateUsesDefaultText(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.sessionPresentation().Status.Text = "Ready"
+	u.attached.presentation.Status.Text = "Ready"
 	if label := u.stateLabel(time.Now()); label != "\x1b[39mReady"+terminalui.Reset {
 		t.Fatalf("idle label = %q", label)
 	}
@@ -252,7 +253,7 @@ func TestAppServerUIImmediateInputEcho(t *testing.T) {
 		}
 		if rejected {
 			appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"rejected"}}`)
-			if len(u.source.Entries) != 0 || u.Text != "你好 first message" || u.Starting() {
+			if len(u.attached.source.Entries) != 0 || u.Text != "你好 first message" || u.Starting() {
 				t.Fatal("rejection retained a false user message or lost the draft")
 			}
 			continue
@@ -261,7 +262,7 @@ func TestAppServerUIImmediateInputEcho(t *testing.T) {
 			appServerTestMessage(t, u, `{"method":"`+method+`","params":{"threadId":"main","turnId":"t","item":{"id":"user-1","type":"userMessage","content":[{"type":"text","text":"你好 first message"}]}}}`)
 		}
 		appServerTestMessage(t, u, `{"id":1,"result":{"turn":{"id":"t"}}}`)
-		if len(u.source.Entries) != 1 || u.source.Entries[0].Source.Native.Item != "user-1" {
+		if len(u.attached.source.Entries) != 1 || u.attached.source.Entries[0].Source.Native.Item != "user-1" {
 			t.Fatal("server echo duplicated the local user message")
 		}
 	}
@@ -332,13 +333,13 @@ func TestAppServerUINotificationBeforeResponseAndItems(t *testing.T) {
 	} {
 		appServerTestMessage(t, u, wire)
 	}
-	if len(u.source.Entries) != 2 || u.source.Entries[1].Source.Text != "hello" {
-		t.Fatalf("delta assembly: %+v", u.source.Entries)
+	if len(u.attached.source.Entries) != 2 || u.attached.source.Entries[1].Source.Text != "hello" {
+		t.Fatalf("delta assembly: %+v", u.attached.source.Entries)
 	}
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"main","turnId":"t","item":{"id":"i","type":"agentMessage","text":"hello!"}}}`)
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"child","turnId":"t","item":{"id":"i","type":"agentMessage","text":"child answer"}}}`)
-	if len(u.source.Entries) != 3 || u.source.Entries[1].Source.Text != "hello!" || u.source.Entries[2].Source.Agent != "Thread child" {
-		t.Fatalf("completion or cross-thread collision: %+v", u.source.Entries)
+	if len(u.attached.source.Entries) != 3 || u.attached.source.Entries[1].Source.Text != "hello!" || u.attached.source.Entries[2].Source.Agent != "Thread child" {
+		t.Fatalf("completion or cross-thread collision: %+v", u.attached.source.Entries)
 	}
 	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"child","turn":{"id":"t","status":"completed"}}}`)
 	if u.Turn != "t" {
@@ -351,7 +352,7 @@ func TestAppServerUINotificationBeforeResponseAndItems(t *testing.T) {
 	if err := u.testPaint(&frame, 100, 30); err != nil {
 		t.Fatal(err)
 	}
-	if len(u.source.Entries) != 3 || strings.Contains(frame.String(), "PRIVATE_REASONING") || !strings.Contains(frame.String(), "child answer") {
+	if len(u.attached.source.Entries) != 3 || strings.Contains(frame.String(), "PRIVATE_REASONING") || !strings.Contains(frame.String(), "child answer") {
 		t.Fatalf("unexpected visible content: %q", frame.String())
 	}
 	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"t","status":"completed"}}}`)
@@ -365,20 +366,20 @@ func TestAppServerSteerStatusAcknowledgement(t *testing.T) {
 		u, _ := newAppServerTestUI()
 		appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"t"}}}`)
 		appServerTestKeys(t, u, "steer\r")
-		if u.sessionPresentation().Status.Text != "Sending…" {
-			t.Fatal(u.sessionPresentation().Status.Text)
+		if u.attached.presentation.Status.Text != "Sending…" {
+			t.Fatal(u.attached.presentation.Status.Text)
 		}
 		if completed {
 			appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"t","status":"completed"}}}`)
 		}
-		before := u.sessionPresentation().Status.Text
+		before := u.attached.presentation.Status.Text
 		appServerTestMessage(t, u, `{"id":1,"result":{"turnId":"t"}}`)
 		if completed {
-			if u.sessionPresentation().Status.Text != before || u.Turn != "" {
+			if u.attached.presentation.Status.Text != before || u.Turn != "" {
 				t.Fatal("late acknowledgement revived completed turn")
 			}
-		} else if u.sessionPresentation().Status.Text != "Working" || u.Turn != "t" || u.conversation().Submitted[u.Submission().ID].Text != "" {
-			t.Fatalf("steer stayed pending: status=%s turn=%s submitted=%s", u.sessionPresentation().Status.Text, u.Turn, u.conversation().Submitted[u.Submission().ID].Text)
+		} else if u.attached.presentation.Status.Text != "Working" || u.Turn != "t" || u.attached.conversation.Submitted[u.Submission().ID].Text != "" {
+			t.Fatalf("steer stayed pending: status=%s turn=%s submitted=%s", u.attached.presentation.Status.Text, u.Turn, u.attached.conversation.Submitted[u.Submission().ID].Text)
 		}
 	}
 }
@@ -386,25 +387,25 @@ func TestAppServerSteerStatusAcknowledgement(t *testing.T) {
 func TestAppServerNoticeExpiry(t *testing.T) {
 	u, _ := newAppServerTestUI()
 
-	u.sessionPresentation().Status.Text = "Working"
+	u.attached.presentation.Status.Text = "Working"
 	terminalTest(u).copyText("copied")
-	deadline := u.feedback.Until
+	deadline := u.attached.feedback.Until
 	if deadline.IsZero() || u.expireNotice(deadline.Add(-time.Millisecond)) {
 		t.Fatal("notice expired early")
 	}
 	terminalTest(u).copyText("copied again")
-	if u.feedback.Until.Before(deadline) {
+	if u.attached.feedback.Until.Before(deadline) {
 		t.Fatal("repeat notice did not refresh deadline")
 	}
-	if !u.expireNotice(u.feedback.Until) || u.feedback.Text != "" || u.sessionPresentation().Status.Text != "Working" {
+	if !u.expireNotice(u.attached.feedback.Until) || u.attached.feedback.Text != "" || u.attached.presentation.Status.Text != "Working" {
 		t.Fatal("notice did not expire independently of status")
 	}
 	u.setNotice("failure", true)
-	if u.expireNotice(time.Now().Add(time.Hour)) || u.feedback.Text != "failure" {
+	if u.expireNotice(time.Now().Add(time.Hour)) || u.attached.feedback.Text != "failure" {
 		t.Fatal("error expired")
 	}
 	u.insertDraft("x")
-	if u.feedback.Text != "" || !u.feedback.Until.IsZero() {
+	if u.attached.feedback.Text != "" || !u.attached.feedback.Until.IsZero() {
 		t.Fatal("editing did not clear notice")
 	}
 }
@@ -460,7 +461,15 @@ func appServerTestFeatures(u *appServerUI, views ...terminalsession.Views) *appS
 	u.conversationState = new(conversationmodel.Service)
 	observations := conversationbinding.Codex.Observation(u.conversationState)
 	u.observations = &observations
-	u.transcript = observations.NewTranscript(u.session.Scope())
+	source, child, workspace := u.attached.source, u.attached.childSource, u.attached.cwd
+	u.attached = newAttachedPresentation(u.presentationState, u.conversationState, &observations)
+	if source != nil {
+		u.attached.source = source
+	}
+	if child != nil {
+		u.attached.childSource = child
+	}
+	u.attached.cwd = workspace
 	u.attachPresentation()
 	u.settlePresentation()
 	return u
@@ -488,3 +497,12 @@ func testTerminalViews(source *changecapture.Service) terminalsession.Views {
 func savedPane(u *terminalUI) *changeview.Pane { return u.Auxiliary.(*changeview.Pane) }
 
 func newActivityAdapter() *activityAdapter { return newTranscriptAdapter(activityui.NewView(), 0) }
+
+// startSession applies the same independent source, stream and retained-lease
+// transitions as accepted host startup.
+func (u *appServerUI) startSession(thread, workspace string) {
+	startAttachedSession(&u.attached, u.observations, thread, workspace)
+	u.streams = terminalsession.Streams{}
+	u.retainedSession.Close()
+	u.retainedSession = history.Session{}
+}

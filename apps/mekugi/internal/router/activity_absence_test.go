@@ -20,9 +20,9 @@ func TestActivityAbsenceKeepsHostOutput(t *testing.T) {
 	item.Status, item.ExitCode, item.AggregatedOutput = "failed", new(3), new("host output\n")
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	awaitMain(t, u, "exit 3")
-	appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.cwd, "failed")})
+	appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.attached.cwd, "failed")})
 	hookShown := false
-	for _, entry := range u.source.Entries {
+	for _, entry := range u.attached.source.Entries {
 		for _, block := range u.shell.Transcript.Disclosure.Blocks(entry.Values) {
 			if block.Output != 0 {
 				t.Fatal("absent activity retained output")
@@ -71,7 +71,7 @@ func TestActivityAbsenceUnknownExit(t *testing.T) {
 			item := binding.ThreadItem{ID: "command", Type: "commandExecution", Command: "go test ./...", Status: "failed", AggregatedOutput: new("interrupted\n")}
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 			found := false
-			for _, entry := range u.source.Entries {
+			for _, entry := range u.attached.source.Entries {
 				for _, block := range u.shell.Transcript.Disclosure.Blocks(entry.Values) {
 					if block.Verb != "Run" {
 						continue
@@ -116,7 +116,7 @@ func TestActivityAbsenceDialogRefresh(t *testing.T) {
 			notify("item/commandExecution/outputDelta", map[string]any{"itemId": item.ID, "delta": "first\n"})
 			awaitMain(t, u, "first")
 			var seq uint64
-			for _, entry := range u.source.Entries {
+			for _, entry := range u.attached.source.Entries {
 				if entry.Source.Native != nil && entry.Source.Native.Item == item.ID {
 					seq = entry.Source.Seq
 					break

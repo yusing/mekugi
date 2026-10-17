@@ -31,7 +31,7 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 		t.Fatal(err)
 	}
 	u, w := newAppServerTestUI()
-	u.cwd = cwd
+	u.attached.cwd = cwd
 	u.Text = "Review "
 	bindComposerFile(u, `@"file name.go"`, "file name.go")
 	u.Text += " please"
@@ -269,7 +269,7 @@ func TestComposerFileAttachmentOversizedInputRestoresDraft(t *testing.T) {
 	if err := u.send([]conversationmodel.Input{d}, false); err != nil {
 		t.Fatal(err)
 	}
-	if w.Len() != 0 || u.Text != d.Text || !u.feedback.Alert || u.Starting() {
+	if w.Len() != 0 || u.Text != d.Text || !u.attached.feedback.Alert || u.Starting() {
 		t.Fatal("oversized input was sent or draft lost")
 	}
 }

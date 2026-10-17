@@ -91,7 +91,7 @@ func TestAppServerRestoreRosterAndActivityFromObservationalHistory(t *testing.T)
 		t.Fatal(err)
 	}
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "live", "agentNickname": "late"}})
-	if len(u.resumePending) != 1 || u.session.KnownCaller("live") != "" {
+	if len(u.resumePending) != 1 || u.attached.session.KnownCaller("live") != "" {
 		t.Fatal("live event was applied before history hydration")
 	}
 	u.Text = "do not send yet"
@@ -121,8 +121,8 @@ func TestAppServerRestoreRosterAndActivityFromObservationalHistory(t *testing.T)
 	restoreContentReply(t, u, 4, map[string]any{"thread": map[string]any{"id": "grand", "cwd": workspace, "agentRole": "explore", "turns": []any{map[string]any{
 		"id": "g1", "status": "inProgress", "items": []any{map[string]any{"id": "partial", "type": "agentMessage", "text": "Partial analysis"}},
 	}}}})
-	if u.restoring != nil || u.session.KnownCaller("live") != "/root/late" || u.session.Agent("/root/reviewer").Role != "review" || u.session.Agent("/root/reviewer/explorer").Role != "explore" || u.session.Agent("/root/reviewer/explorer").Responding {
-		t.Fatalf("hydrated roster or buffered notification missing: %+v", u.session.Roster())
+	if u.restoring != nil || u.attached.session.KnownCaller("live") != "/root/late" || u.attached.session.Agent("/root/reviewer").Role != "review" || u.attached.session.Agent("/root/reviewer/explorer").Role != "explore" || u.attached.session.Agent("/root/reviewer/explorer").Responding {
+		t.Fatalf("hydrated roster or buffered notification missing: %+v", u.attached.session.Roster())
 	}
 	feed := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(100, 80).Lines, "\n"))
 	for _, want := range []string{"Inspect the change.", "Check again.", "go test ./internal/router", "a.go", "I found a failure.", "Review complete.", "Partial analysis", "history only"} {
@@ -147,7 +147,7 @@ func TestAppServerRestoreWrongChildIdentityContinues(t *testing.T) {
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.startSession("main", t.TempDir())
 	u.Startup.Thread = "main"
-	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: u.cwd}); err != nil {
+	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: u.attached.cwd}); err != nil {
 		t.Fatal(err)
 	}
 	restoreContentReply(t, u, 0, map[string]any{"data": []any{map[string]any{"id": "first"}, map[string]any{"id": "second"}}})
@@ -157,7 +157,7 @@ func TestAppServerRestoreWrongChildIdentityContinues(t *testing.T) {
 		t.Fatal("wrong identity prevented remaining Activity reads")
 	}
 	restoreContentReply(t, u, 3, map[string]any{"thread": map[string]any{"id": "second", "turns": []any{map[string]any{"id": "t", "status": "completed", "items": []any{map[string]any{"id": "answer", "type": "agentMessage", "text": "Still available"}}}}}})
-	if u.restoring != nil || u.session.KnownCaller("wrong") != "" || u.childSource.Coverage != "History incomplete" || !strings.Contains(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(90, 50).Lines, "\n"), "Still available") {
+	if u.restoring != nil || u.attached.session.KnownCaller("wrong") != "" || u.attached.childSource.Coverage != "History incomplete" || !strings.Contains(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(90, 50).Lines, "\n"), "Still available") {
 		t.Fatal("partial failure leaked identity or suppressed later history")
 	}
 }
@@ -169,7 +169,7 @@ func TestAppServerRestoreChildReadErrorContinues(t *testing.T) {
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.startSession("main", t.TempDir())
 	u.Startup.Thread = "main"
-	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: u.cwd}); err != nil {
+	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: u.attached.cwd}); err != nil {
 		t.Fatal(err)
 	}
 	restoreContentReply(t, u, 0, map[string]any{"data": []any{map[string]any{"id": "first"}, map[string]any{"id": "second"}}})
@@ -180,7 +180,7 @@ func TestAppServerRestoreChildReadErrorContinues(t *testing.T) {
 		t.Fatalf("read error stopped remaining history: %+v", requests)
 	}
 	restoreContentReply(t, u, 3, map[string]any{"thread": map[string]any{"id": "second", "turns": []any{map[string]any{"id": "t", "status": "completed", "items": []any{map[string]any{"id": "answer", "type": "agentMessage", "text": "Recovered answer"}}}}}})
-	if u.restoring != nil || u.childSource.Coverage != "History incomplete" || !strings.Contains(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(90, 50).Lines, "\n"), "Recovered answer") {
+	if u.restoring != nil || u.attached.childSource.Coverage != "History incomplete" || !strings.Contains(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(90, 50).Lines, "\n"), "Recovered answer") {
 		t.Fatal("error hid partial notice or remaining Activity")
 	}
 }
@@ -237,7 +237,7 @@ func TestAppServerRestoreDiffScopeBeforeNewTurn(t *testing.T) {
 func TestAppServerRestoreCollaborationRequiresCompletedStatus(t *testing.T) {
 	for _, status := range []string{"inProgress", "failed", "interrupted", ""} {
 		u := newAppServerSessionTestUI(t, t.TempDir())
-		entries := u.session.Collaboration((binding.ThreadItem{ID: "send", Type: "collabAgentToolCall", Tool: "sendMessage", Status: status, SenderThreadID: "main", ReceiverThreadIDs: []string{"child"}, Prompt: "undelivered message"}).Observation(), "send", time.Now(), activitypresentation.HistoricalCollaboration)
+		entries := u.attached.session.Collaboration((binding.ThreadItem{ID: "send", Type: "collabAgentToolCall", Tool: "sendMessage", Status: status, SenderThreadID: "main", ReceiverThreadIDs: []string{"child"}, Prompt: "undelivered message"}).Observation(), "send", time.Now(), activitypresentation.HistoricalCollaboration)
 		if len(entries) != 1 || entries[0].Kind != "error" || !strings.Contains(entries[0].Text, "delivery not confirmed") || strings.Contains(entries[0].Text, "Message sent") {
 			t.Fatalf("unfinished delivery presented as successful: %+v", entries)
 		}
@@ -254,7 +254,7 @@ func TestAppServerRestoreListPageBudget(t *testing.T) {
 	for i := range 8 {
 		restoreContentReply(t, u, i, map[string]any{"data": []any{}, "nextCursor": fmt.Sprint(i + 1)})
 	}
-	if len(restoreContentRequests(t, w)) != 8 || u.restoring != nil || u.childSource.Coverage != "History incomplete" {
+	if len(restoreContentRequests(t, w)) != 8 || u.restoring != nil || u.attached.childSource.Coverage != "History incomplete" {
 		t.Fatalf("list-page budget not enforced before dispatch: %+v", restoreContentRequests(t, w))
 	}
 }

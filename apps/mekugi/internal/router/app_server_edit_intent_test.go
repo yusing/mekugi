@@ -243,7 +243,7 @@ func TestAppServerEditIntentLiveAndRestored(t *testing.T) {
 				assertCapturedCommand(t, view, thread, "cmd", "Move", 0)
 				if method == "item/completed" {
 					finishPacing(u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents))
-					if got := mainFeed(appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: view.View}, source: view.ActivitySource}), 100); !strings.Contains(got, "shell batch · exit 2") {
+					if got := mainFeed(appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: view.View}, attached: attachedPresentation{source: view.ActivitySource}}), 100); !strings.Contains(got, "shell batch · exit 2") {
 						t.Fatalf("batch failure missing: %s", got)
 					}
 				}

@@ -67,7 +67,7 @@ func (u *appServerUI) retainCommandSegments(entry sessionpresentation.ActivityEn
 	id := reports.ID(entry.Native.Turn, entry.Native.Item)
 	key := [3]string{entry.Native.Thread, entry.Native.Turn, entry.Native.Item}
 	store := u.retained
-	scope := reports.Scope{Store: store.Store, Workspace: u.cwd, Thread: entry.Native.Thread, Limits: store.Limits, Writes: store.Writes}
+	scope := reports.Scope{Store: store.Store, Workspace: u.attached.cwd, Thread: entry.Native.Thread, Limits: store.Limits, Writes: store.Writes}
 	if u.commandSegmentWrites == nil {
 		u.commandSegmentWrites = make(chan commandSegmentWrite, commandSegmentRetentionLimit)
 	}
@@ -135,7 +135,7 @@ func (u *appServerUI) restoreCommandSegments(entry *sessionpresentation.Activity
 	for _, part := range record.Parts {
 		segment := sessionpresentation.ActivitySegment{Timing: segmenttransport.Timing(part.Timing), Source: part.Source, Text: (activitypresentation.CommandSource{Script: part.Source, Display: frontends.ShellDisplaySource(part.Source), Directory: cwd}).SegmentText(), Skipped: part.Skipped, Exit: part.Exit}
 		if separate && !part.Skipped {
-			if outputs := u.activity.Outputs(u.session.Scope()); outputs != nil {
+			if outputs := u.activity.Outputs(u.attached.session.Scope()); outputs != nil {
 				segment.Output = outputs.New()
 				segment.Output.Finish(part.Output, &part.Exit)
 			}

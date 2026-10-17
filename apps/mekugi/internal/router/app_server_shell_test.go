@@ -100,8 +100,8 @@ func TestAppServerShellWaitsForCompaction(t *testing.T) {
 				}
 			}
 			appServerTestKeys(t, u, "!pwd\r")
-			if wire.Len() != 0 || u.Text != "!pwd" || u.feedback.Text == "" {
-				t.Fatalf("shell overtook compaction: wire=%s draft=%q notice=%q", wire.String(), u.Text, u.feedback.Text)
+			if wire.Len() != 0 || u.Text != "!pwd" || u.attached.feedback.Text == "" {
+				t.Fatalf("shell overtook compaction: wire=%s draft=%q notice=%q", wire.String(), u.Text, u.attached.feedback.Text)
 			}
 			if prerequisite {
 				return // Existing busy-turn shell coverage checks ordinary Main admission.
@@ -120,13 +120,13 @@ func TestAppServerShellWaitsForCompaction(t *testing.T) {
 func TestAppServerShellRejectedAndEmpty(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestKeys(t, u, "!\r")
-	if w.Len() != 0 || u.Text != "!" || u.feedback.Text == "" {
+	if w.Len() != 0 || u.Text != "!" || u.attached.feedback.Text == "" {
 		t.Fatal("empty shell command was submitted or silently discarded")
 	}
 	appServerTestKeys(t, u, "pwd\rnext")
 	w.Reset()
 	appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"unavailable"}}`)
-	if u.Text != "next" || !u.feedback.Alert || u.Starting() || u.Shell.Standalone() || w.Len() != 0 || len(u.InputHistory) != 1 || u.InputHistory[0].Text != "!pwd" {
+	if u.Text != "next" || !u.attached.feedback.Alert || u.Starting() || u.Shell.Standalone() || w.Len() != 0 || len(u.InputHistory) != 1 || u.InputHistory[0].Text != "!pwd" {
 		t.Fatalf("rejected shell lost input or blocked composer: %+v", u)
 	}
 	appServerTestKeys(t, u, "\x1b[A\r")
@@ -194,7 +194,7 @@ func TestAppServerShellComposer(t *testing.T) {
 		t.Fatalf("shell notice/frame missing: %q", text)
 	}
 	u.deleteDraftRange(0, 1)
-	if u.conversation().ShellMode() {
+	if u.attached.conversation.ShellMode() {
 		t.Fatal("removing bang did not leave shell mode")
 	}
 	appServerTestKeys(t, u, "\x03\x1b[200~!printf '%s\\n' \"你好\n$HOME\"\n\x1b[201~")

@@ -13,8 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/contracts/observation"
-
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
@@ -46,7 +44,6 @@ import (
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 	"github.com/yusing/mekugi/modules/notifications/notice"
-	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
@@ -56,11 +53,11 @@ import (
 )
 
 type appServerUI struct {
+	attached      attachedPresentation
 	terminalViews terminalsession.Views
 	preparePane   func(*scope.Store)
 	reviewSource  *changecapture.Service
 	*composer.Editor
-	feedback noticepresentation.Model
 	history  *history.Service
 	segments *reports.Service
 	sessioncontrol.Client[appServerRequest]
@@ -88,8 +85,6 @@ type appServerUI struct {
 	commandSegmentWrites  chan commandSegmentWrite           // Completed replay writes, consumed only by the UI.
 	commandSegmentPending int
 	restoredSegments      map[string]*reports.Report // Turn-local, validated and adopted history.
-	source                *sessionpresentation.ActivitySource
-	childSource           *sessionpresentation.ActivitySource
 	controlObservations   *sessioncontrol.Observations
 	usage                 *accounting.Service
 	audience              *sessioncontrol.Audience
@@ -110,12 +105,8 @@ type appServerUI struct {
 	shell                 *terminalsession.Attachment
 	detailFiles
 	streams                terminalsession.Streams
-	session                sessionpresentation.Attachment
 	activity               *activitymodel.Service
 	observations           *binding.Observation
-	transcript             observation.Transcript
-	waits                  activitypresentation.Waits
-	cwd                    string
 	retainedSession        history.Session
 	ctx                    context.Context
 	quitRequested          bool
@@ -183,11 +174,12 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 		return nil, err
 	}
 	shell, preparePane := terminalViews.NewAttachment(diffrender.EnvironmentTheme(os.Getenv("COLORFGBG")))
-	u := &appServerUI{terminalViews: terminalViews, reviewSource: reviewSource, presentationState: views, conversationState: conversation, activity: activity, observations: observations, history: service, segments: segments, Client: control, shell: shell, preparePane: preparePane, controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, changeSource: integration.changeSource, snapshots: integration.snapshots, recovered: integration.recovered, publishChanges: integration.publishChanges, captureNotice: integration.captureNotice, issues: issues, dirty: true, ctx: ctx, serviceTiers: serviceTiers, approvalMode: approvals}
+	attached := newAttachedPresentation(views, conversation, observations)
+	u := &appServerUI{attached: attached, terminalViews: terminalViews, reviewSource: reviewSource, presentationState: views, conversationState: conversation, activity: activity, observations: observations, history: service, segments: segments, Client: control, shell: shell, preparePane: preparePane, controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, changeSource: integration.changeSource, snapshots: integration.snapshots, recovered: integration.recovered, publishChanges: integration.publishChanges, captureNotice: integration.captureNotice, issues: issues, dirty: true, ctx: ctx, serviceTiers: serviceTiers, approvalMode: approvals}
 	c := u.Host
 	u.Startup.Thread = resumeThread
 	u.attachPresentation()
-	u.sessionPresentation().Status.Set("Connecting…", false)
+	u.attached.presentation.Status.Set("Connecting…", false)
 	u.guardHookCheck.hash = guardHash
 	if generator != nil {
 		u.titleGenerator = generator
@@ -295,7 +287,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 						}
 						u.dirty = true
 					case result := <-u.fileReads:
-						u.dirty = u.detailFiles.loadedMarkdownFile(&u.session, u.presentationState, u.cwd, u.shell, result) || u.dirty
+						u.dirty = u.detailFiles.loadedMarkdownFile(&u.attached.session, u.presentationState, u.attached.cwd, u.shell, result) || u.dirty
 					case result := <-u.picker.scanResults:
 						u.applyPickerScan(result)
 					case <-u.commits.Updates():
@@ -327,7 +319,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 						}
 						u.dirty = true
 					case <-tick.C:
-						if len(u.conversation().Unsent) > 0 && u.conversation().Unsent[0].Question != nil && (u.controlObservations == nil || !u.controlObservations.EmittingToolInput(u.cwd, u.Thread)) {
+						if len(u.attached.conversation.Unsent) > 0 && u.attached.conversation.Unsent[0].Question != nil && (u.controlObservations == nil || !u.controlObservations.EmittingToolInput(u.attached.cwd, u.Thread)) {
 							if err := u.flushInput(); err != nil {
 								return err
 							}
@@ -346,7 +338,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 							u.dirty = true
 						}
 						now := u.now()
-						u.publishActivity()
+						publishActivity(&u.attached, u.shell)
 						if activityui.Settle(now, u.shell.Transcript, u.shell.Agents) {
 							u.dirty = true
 						}
@@ -359,7 +351,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 							}
 						}
 						u.settlePresentation()
-						if u.sessionPresentation().View().Status.Animating || u.shell.Agents.HasLiveStatus() {
+						if u.attached.presentation.View().Status.Animating || u.shell.Agents.HasLiveStatus() {
 							u.dirty = true
 						}
 						if time.Since(agePaint) >= time.Second {
@@ -418,7 +410,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 			}
 		}
 		u.finishCommandSegments()
-		for key, run := range u.session.Commands() {
+		for key, run := range u.attached.session.Commands() {
 			if run.Entry.Native.Invocation.ReleaseSegmentOutputs() {
 				u.execTrack.ReleaseOutput(key)
 			}
@@ -426,20 +418,20 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 		u.review.Close()
 		u.hideQuestions()
 		u.hideApprovals()
-		if unsent := conversationmodel.Join(slices.Concat(u.conversation().Unsent, u.conversation().Queued, []conversationmodel.Input{u.draftSnapshot()})...); unsent.Text != "" {
+		if unsent := conversationmodel.Join(slices.Concat(u.attached.conversation.Unsent, u.attached.conversation.Queued, []conversationmodel.Input{u.draftSnapshot()})...); unsent.Text != "" {
 			fmt.Fprintln(stdout, "Unsent draft:\n"+textsanitize.Safe(unsent.Text, false))
 		}
 		unknown := slices.Clone(u.Steers())
 		if !u.Submission().Committed {
 			unknown = append(unknown, u.Submission().ID)
 		}
-		if unknown := conversationmodel.Join(u.conversation().Parts(unknown)...); unknown.Text != "" {
+		if unknown := conversationmodel.Join(u.attached.conversation.Parts(unknown)...); unknown.Text != "" {
 			fmt.Fprintln(stdout, "Submission outcome unknown; not automatically resent:\n"+textsanitize.Safe(unknown.Text, false))
 		}
-		if u.conversation().Shell.Text != "" {
-			fmt.Fprintln(stdout, "Shell submission outcome unknown; not automatically rerun:\n"+textsanitize.Safe(u.conversation().Shell.Text, false))
+		if u.attached.conversation.Shell.Text != "" {
+			fmt.Fprintln(stdout, "Shell submission outcome unknown; not automatically rerun:\n"+textsanitize.Safe(u.attached.conversation.Shell.Text, false))
 		}
-		u.session.Retire()
+		u.attached.session.Retire()
 		if err != nil {
 			c.Diagnostics.Lock()
 			defer c.Diagnostics.Unlock()
@@ -603,9 +595,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				failure = m.Error.Message
 			}
 			if method == "thread/compact/start" {
-				u.applyInputEffects(u.sessionPresentation().AcknowledgeCompaction(&u.Live, u.conversation(), failure, m.Error != nil))
+				u.applyInputEffects(u.attached.presentation.AcknowledgeCompaction(&u.Live, u.attached.conversation, failure, m.Error != nil))
 			} else {
-				u.applyInputEffects(u.sessionPresentation().AcknowledgeInterrupt(&u.Live, u.conversation(), method, failure, m.Error != nil))
+				u.applyInputEffects(u.attached.presentation.AcknowledgeInterrupt(&u.Live, u.attached.conversation, method, failure, m.Error != nil))
 			}
 			return nil
 		}
@@ -614,9 +606,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		}
 		if method == "thread/start" && u.Replacement.Pending() && m.Error != nil {
 			u.Replacement.Finish()
-			u.restoreDrafts(slices.Concat(u.conversation().Unsent, u.conversation().Queued)...)
-			u.conversation().Unsent, u.conversation().Queued = nil, nil
-			u.sessionPresentation().Status.SetText("Ready")
+			u.restoreDrafts(slices.Concat(u.attached.conversation.Unsent, u.attached.conversation.Queued)...)
+			u.attached.conversation.Unsent, u.attached.conversation.Queued = nil, nil
+			u.attached.presentation.Status.SetText("Ready")
 			u.setNotice("Could not clear session: "+m.Error.Message, true)
 			return nil
 		}
@@ -624,9 +616,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			return u.resumeSessionFailed(m.Error.Message)
 		}
 		if m.Error != nil {
-			u.sessionPresentation().Status.Set(method+": "+m.Error.Message, true)
+			u.attached.presentation.Status.Set(method+": "+m.Error.Message, true)
 			if method == "initialize" || method == "thread/start" || method == "thread/resume" {
-				return errors.New(u.sessionPresentation().Status.Text)
+				return errors.New(u.attached.presentation.Status.Text)
 			}
 			return nil
 		}
@@ -669,7 +661,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			u.Thread = result.Thread.ID
 			u.attachPresentation()
-			u.sessionPresentation().Status.SetText("Ready")
+			u.attached.presentation.Status.SetText("Ready")
 			u.title = result.Thread.Name
 			u.titleGenerator.register(result.Thread)
 			if name := u.Names.Attach(u.Thread); name != "" {
@@ -690,7 +682,10 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			if err := u.Request("model/list", map[string]any{"includeHidden": true}); err != nil {
 				return err
 			}
-			u.startSession(u.Thread, result.Thread.Cwd)
+			startAttachedSession(&u.attached, u.observations, u.Thread, result.Thread.Cwd)
+			u.streams = terminalsession.Streams{}
+			u.retainedSession.Close()
+			u.retainedSession = history.Session{}
 			if u.notifications != nil {
 				if err := u.Request("config/read", map[string]any{"cwd": result.Thread.Cwd, "includeLayers": false}); err != nil {
 					return err
@@ -701,11 +696,11 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 					u.setNotice("Wait targets could not be retained: "+err.Error(), true)
 				}
 			}
-			restoreContextUsage(u.session.Agent("/root"), result.Thread)
+			restoreContextUsage(u.attached.session.Agent("/root"), result.Thread)
 			u.restoreUsage(result.Thread)
-			u.observeCost(u.Thread, u.session.Agent("/root"))
-			if u.childSource != nil {
-				u.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.Roster()})
+			u.observeCost(u.Thread, u.attached.session.Agent("/root"))
+			if u.attached.childSource != nil {
+				u.attached.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.attached.session.Roster()})
 			}
 			if u.audience != nil {
 				u.audience.Attach(u.Thread)
@@ -717,9 +712,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				for _, turn := range result.Thread.Turns {
 					if turn.Status == "inProgress" {
 						u.Turn = turn.ID
-						u.sessionPresentation().Status.Started = u.now()
-						u.sessionPresentation().Status.SetText("Working")
-						u.session.Lifecycle(u.Thread).ResumeActive()
+						u.attached.presentation.Status.Started = u.now()
+						u.attached.presentation.Status.SetText("Working")
+						u.attached.session.Lifecycle(u.Thread).ResumeActive()
 					}
 				}
 			}
@@ -767,9 +762,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	if len(m.ID) != 0 {
 		// Never auto-approve an unexpected server request. Leave it pending,
 		// visibly blocked, until interrupted.
-		u.sessionPresentation().Status.Set("Blocked on unsupported request "+m.Method+" · Ctrl-C interrupts", true)
+		u.attached.presentation.Status.Set("Blocked on unsupported request "+m.Method+" · Ctrl-C interrupts", true)
 		u.blockNotification(m)
-		u.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: u.sessionPresentation().Status.Text, Observed: u.now()}}})
+		u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: u.attached.presentation.Status.Text, Observed: u.now()}}})
 		return nil
 	}
 	if handled, err := u.settingsMessage("", m); handled || err != nil {
@@ -801,8 +796,8 @@ func (u *appServerUI) observedEvent(method string, p binding.Notification) error
 	case "turn/started":
 		if p.ThreadID == u.Thread {
 			u.Started(p.Turn.ID)
-			u.sessionPresentation().Status.Started = u.now()
-			u.sessionPresentation().Status.Set("Working", false)
+			u.attached.presentation.Status.Started = u.now()
+			u.attached.presentation.Status.Set("Working", false)
 			if u.Interruption.BeforeStart || u.Compaction.InterruptTarget() != "" {
 				return u.interruptTurn()
 			}
@@ -822,7 +817,7 @@ func (u *appServerUI) observedEvent(method string, p binding.Notification) error
 			if p.Turn.Error != nil {
 				failure = &p.Turn.Error.Message
 			}
-			u.sessionPresentation().Status.Complete(p.Turn.Status, failure, u.now())
+			u.attached.presentation.Status.Complete(p.Turn.Status, failure, u.now())
 			u.settleInput(p.Turn.ID, p.Turn.Status == "interrupted")
 			if p.Turn.Status == "completed" && u.questionCount() == 0 {
 				u.notify("agent-turn-complete", "Agent turn complete")
@@ -903,16 +898,16 @@ func (u *appServerUI) historyPending() bool {
 }
 
 func (u *appServerUI) applyActivity(entries []sessionpresentation.ActivityEntry, agents []sessionpresentation.ActivityAgent) {
-	sessionpresentation.ApplyActivity(u.source, u.childSource, entries, agents)
+	sessionpresentation.ApplyActivity(u.attached.source, u.attached.childSource, entries, agents)
 	u.applyCapturedEdits()
 	u.flushApprovalUpdates()
-	u.publishActivity()
+	publishActivity(&u.attached, u.shell)
 }
 
 func (u *appServerUI) paint(out io.Writer, width, height int) error {
 	u.shell.Width, u.shell.Height = max(1, width), max(1, height)
 	u.shell.Main.ContentPainted = false
-	u.detailFiles.prepareOutput(&u.session, u.shell)
+	u.detailFiles.prepareOutput(&u.attached.session, u.shell)
 	ctx := u.ctx
 	if ctx == nil {
 		ctx = context.Background()
@@ -930,15 +925,15 @@ func (u *appServerUI) applyObservedActivity() {
 	// Provider rounds can start within one host turn, before another usage
 	// notification. Refresh from the owner so a prior round's TPS is not stale.
 	usageChanged := false
-	for _, observed := range u.session.Roster() {
-		if agent := u.session.Agent(observed.Name); agent != nil {
+	for _, observed := range u.attached.session.Roster() {
+		if agent := u.attached.session.Agent(observed.Name); agent != nil {
 			before := *agent
 			u.observeCost(observed.Thread, agent)
 			usageChanged = usageChanged || before != *agent
 		}
 	}
 	if usageChanged {
-		u.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.Roster()})
+		u.attached.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.attached.session.Roster()})
 		u.dirty = true
 	}
 	if u.audience == nil {
@@ -949,14 +944,14 @@ func (u *appServerUI) applyObservedActivity() {
 		entries = append(entries, u.transcriptUpdates(u.providerStarted(start.Thread, start.At), false)...)
 	}
 	for i := range entries {
-		entries[i].Seq = u.session.Activity().NextSequence()
+		entries[i].Seq = u.attached.session.Activity().NextSequence()
 	}
 	if len(entries) != 0 {
 		u.applyActivity(entries, nil)
 		u.dirty = true
 	}
 	for _, ref := range u.audience.TakeUnreturned(u.Thread) {
-		if main, activity := u.source.MarkUnreturned(ref.Thread, ref.Call), u.childSource.MarkUnreturned(ref.Thread, ref.Call); main || activity {
+		if main, activity := u.attached.source.MarkUnreturned(ref.Thread, ref.Call), u.attached.childSource.MarkUnreturned(ref.Thread, ref.Call); main || activity {
 			u.dirty = true
 		}
 	}

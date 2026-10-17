@@ -44,7 +44,7 @@ func (u *appServerUI) applyMenuResult(result terminalsession.MenuResult) bool {
 	return result.Handled && !(accepted && result.Submit)
 }
 func (u *appServerUI) applyMenuAction(action sessionpresentation.MenuAction) bool {
-	if err := u.sessionPresentation().AdmitMenu(action); err != nil {
+	if err := u.attached.presentation.AdmitMenu(action); err != nil {
 		u.setNotice(err.Error(), true)
 		return false
 	}

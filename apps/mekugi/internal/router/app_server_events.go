@@ -5,10 +5,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	"fmt"
 	"slices"
@@ -20,26 +17,14 @@ import (
 	"github.com/yusing/mekugi/backends/codex/rollout"
 )
 
-func (u *appServerUI) startSession(thread, cwd string) {
-	s := &u.session
-	s.Start(thread)
-	s.Activity().StartRoster(sessionpresentation.ActivityAgent{Thread: thread, Name: "/root", Role: "main"})
-	u.transcript = u.observations.NewTranscript(s.Scope())
-	clear(u.session.Commands())
-	u.streams = terminalsession.Streams{}
-	u.retainedSession.Close()
-	u.retainedSession = history.Session{}
-	u.cwd = cwd
-}
-
 func (u *appServerUI) registerThread(info binding.ThreadInfo) {
-	s := &u.session
+	s := &u.attached.session
 	s.RegisterThread(info.Observation())
 	u.restoreThreadSettings(info)
 }
 
 func (u *appServerUI) restoreThreadSettings(info binding.ThreadInfo) {
-	s := &u.session
+	s := &u.attached.session
 	path := s.KnownCaller(info.ID)
 	restoreContextUsage(s.Agent(path), info)
 	if agent := s.Agent(path); !agent.SettingsLive {
@@ -57,7 +42,7 @@ func (u *appServerUI) restoreThreadSettings(info binding.ThreadInfo) {
 
 // sessionEvent owns live enrichment and effects around shared presentation.
 func (u *appServerUI) sessionEvent(method string, p binding.Notification) (bool, error) {
-	s := &u.session
+	s := &u.attached.session
 	if s.KnownCaller(u.Thread) == "" {
 		return false, nil
 	}
@@ -77,7 +62,7 @@ func (u *appServerUI) sessionEvent(method string, p binding.Notification) (bool,
 			if script, ok := shellinstrumentation.CommandScript(command.Command); ok {
 				u.execTrack.Start(key, script)
 			}
-		case method == "item/completed" && (u.session.Commands()[key] == nil || !u.execTrack.Tracking(key)):
+		case method == "item/completed" && (u.attached.session.Commands()[key] == nil || !u.execTrack.Tracking(key)):
 			u.execTrack.Forget(key)
 		}
 	}
@@ -93,7 +78,7 @@ func (u *appServerUI) sessionEvent(method string, p binding.Notification) (bool,
 
 	key := [3]string{p.ThreadID, p.TurnID, cmp.Or(p.ItemID, p.Item.ID)}
 	event := p.Observation(method, u.now())
-	facts := sessionpresentation.ObservationInput{Event: event, Text: binding.RetainedTranscript(event), Main: u.Thread, Selected: u.Turn, Workspace: u.cwd, Tracked: u.execTrack.Tracking(key), Wait: u.readWaitEvidence(event.Item, key)}
+	facts := sessionpresentation.ObservationInput{Event: event, Text: binding.RetainedTranscript(event), Main: u.Thread, Selected: u.Turn, Workspace: u.attached.cwd, Tracked: u.execTrack.Tracking(key), Wait: u.readWaitEvidence(event.Item, key)}
 	if p.Item.Type == "commandExecution" && u.nativeTrace != nil {
 		if ms, known := u.nativeTrace.CommandTimeout(p.ThreadID, key[2]); known {
 			facts.CommandTimeout = strconv.FormatUint(ms/1000, 10)
@@ -106,7 +91,7 @@ func (u *appServerUI) sessionEvent(method string, p binding.Notification) (bool,
 	if method == "turn/completed" {
 		u.endTurnPreviews(p.ThreadID, p.Turn.ID)
 	}
-	result := sessionpresentation.ReduceObservation(s, u.sessionPresentation(), u.source, u.childSource, u.transcript, &u.waits, u.activity.Outputs(s.Scope()), facts)
+	result := sessionpresentation.ReduceObservation(s, u.attached.presentation, u.attached.source, u.attached.childSource, u.attached.transcript, &u.attached.waits, u.activity.Outputs(s.Scope()), facts)
 	if result.Started && u.review != nil {
 		u.review.Preview().SetTurn(p.ThreadID, p.Turn.ID, true)
 	}
@@ -142,10 +127,10 @@ func (u *appServerUI) sessionEvent(method string, p binding.Notification) (bool,
 // reopen a completed invocation.
 func (u *appServerUI) flushStreamOutput() {
 	u.flushSummaryOutput()
-	s := &u.session
+	s := &u.attached.session
 	var entries []sessionpresentation.ActivityEntry
 	handled := make(map[[3]string]bool)
-	for key, run := range u.session.Commands() {
+	for key, run := range u.attached.session.Commands() {
 		tracked, trackedCommand := u.flushTrackedCommand(key, run)
 		entries = append(entries, tracked...)
 		handled[key] = trackedCommand

@@ -149,7 +149,7 @@ func TestCommandSegmentsBatchForkOwnershipSurvivesParentExpiry(t *testing.T) {
 			u := newAppServerSessionTestUI(t, workspace)
 			u.ctx = parent
 			setTestAppServerIntegration(u, testProxyWithStore(store))
-			first, second := u.activity.Outputs(u.session.Scope()).New(), u.activity.Outputs(u.session.Scope()).New()
+			first, second := u.activity.Outputs(u.attached.session.Scope()).New(), u.activity.Outputs(u.attached.session.Scope()).New()
 			first.Finish(new("one"), new(0))
 			second.Finish(new(""), new(1))
 			u.retainCommandSegments(sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Thread: "parent", Turn: turn.ID, Item: item.ID}}, item.Observation(), execTrackView{complete: true, output: true, code: 1, segments: []sessionpresentation.ActivitySegment{{Output: first}, {Output: second, Exit: 1}}})
@@ -167,7 +167,7 @@ func TestCommandSegmentsBatchForkOwnershipSurvivesParentExpiry(t *testing.T) {
 				u.Thread = "fork"
 				u.restoreHistory([]binding.HistoryTurn{turn})
 			} else {
-				u.session.Caller("fork")
+				u.attached.session.Caller("fork")
 				u.restoreActivityThread(binding.ThreadInfo{ID: "fork", Cwd: workspace, Turns: []binding.HistoryTurn{turn}}, false)
 				view = u.testActivity(u.shell.Agents)
 			}

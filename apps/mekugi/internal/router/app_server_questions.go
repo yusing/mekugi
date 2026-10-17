@@ -46,7 +46,7 @@ func (u *appServerUI) parkQuestion(q *prompt.Question) {
 	}
 }
 func (u *appServerUI) resumeQuestion(q *prompt.Question) {
-	u.Editor = &u.conversation().Editor
+	u.Editor = &u.attached.conversation.Editor
 	u.shell.Prompts.Secret = composer.Editor{}
 	state := q.Editor
 	if q.IsSecret {
@@ -114,7 +114,7 @@ func (u *appServerUI) focusPrompt() {
 func (u *appServerUI) hideQuestions() {
 	if q := u.currentQuestion(); q != nil {
 		u.parkQuestion(q)
-		u.Editor = &u.conversation().Editor
+		u.Editor = &u.attached.conversation.Editor
 		u.shell.Prompts.Secret = composer.Editor{}
 		u.promptEditor.Close(u.Editor)
 		u.shell.Main.CursorColumn = u.shell.Main.PromptColumn
@@ -228,7 +228,7 @@ func (u *appServerUI) recordSyncQuestionAnswer(c *sessioncontrol.Question) {
 	if len(answers) == 0 {
 		return
 	}
-	for _, v := range []*sessionpresentation.ActivitySource{u.source, u.childSource} {
+	for _, v := range []*sessionpresentation.ActivitySource{u.attached.source, u.attached.childSource} {
 		if v == nil {
 			continue
 		}
@@ -257,7 +257,7 @@ func (u *appServerUI) endSyncQuestions(turn string) {
 
 func (u *appServerUI) applyQuestionInput(input terminalsession.PromptInput) (bool, error) {
 	keyInput := input.PromptKey
-	if err := u.sessionPresentation().QuestionInput(sessionpresentation.QuestionInputIntent{Version: input.Version, QuestionInput: keyInput.Question}, u.questions.Questions); err != nil {
+	if err := u.attached.presentation.QuestionInput(sessionpresentation.QuestionInputIntent{Version: input.Version, QuestionInput: keyInput.Question}, u.questions.Questions); err != nil {
 		u.setNotice(err.Error(), true)
 		return true, nil
 	}
@@ -280,7 +280,7 @@ func (u *appServerUI) applyQuestionInput(input terminalsession.PromptInput) (boo
 		_, err := u.applyComposerCommand(sessionpresentation.ComposerIntent{Version: view.Version, Target: view.EditorTarget(), Operation: sessionpresentation.AttachClipboard})
 		return true, err
 	case conversationui.PromptSubmit:
-		return true, u.submitQuestions(sessionpresentation.QuestionSubmitIntent{Version: u.sessionPresentation().View().Version, Call: c.ID, Incomplete: true})
+		return true, u.submitQuestions(sessionpresentation.QuestionSubmitIntent{Version: u.attached.presentation.View().Version, Call: c.ID, Incomplete: true})
 	case conversationui.PromptAnswer, conversationui.PromptSkip:
 		u.parkQuestion(q)
 		if q.IsSecret {
@@ -291,7 +291,7 @@ func (u *appServerUI) applyQuestionInput(input terminalsession.PromptInput) (boo
 			q.Done, q.Skipped = answer.Done, answer.Skipped
 			u.shell.Prompts.Secrets(c.ID).Answers[u.questions.Index] = answer.Answer
 		} else {
-			view := u.sessionPresentation().View()
+			view := u.attached.presentation.View()
 			if !u.answerQuestion(sessionpresentation.AnswerIntent{Version: view.Version, AnswerInput: prompt.AnswerInput{
 				Call: c.ID, Question: view.Questions.Call.Questions[u.questions.Index].ID,
 				Choice: q.Selected, Draft: q.Editor.Snapshot.Draft, Skip: action == conversationui.PromptSkip,
@@ -302,14 +302,14 @@ func (u *appServerUI) applyQuestionInput(input terminalsession.PromptInput) (boo
 		if step, submit := u.questions.Advance(); step != 0 {
 			u.moveQuestion(step)
 		} else if submit {
-			return true, u.submitQuestions(sessionpresentation.QuestionSubmitIntent{Version: u.sessionPresentation().View().Version, Call: c.ID})
+			return true, u.submitQuestions(sessionpresentation.QuestionSubmitIntent{Version: u.attached.presentation.View().Version, Call: c.ID})
 		}
 	}
 	return true, nil
 }
 func (u *appServerUI) answerQuestion(intent sessionpresentation.AnswerIntent) bool {
 	defer u.settlePresentation()
-	q, err := u.sessionPresentation().AnswerQuestion(intent, u.questions.Questions)
+	q, err := u.attached.presentation.AnswerQuestion(intent, u.questions.Questions)
 	if err != nil {
 		u.setNotice(err.Error(), true)
 		return false
@@ -322,7 +322,7 @@ func (u *appServerUI) answerQuestion(intent sessionpresentation.AnswerIntent) bo
 
 func (u *appServerUI) submitQuestions(intent sessionpresentation.QuestionSubmitIntent) error {
 	defer u.settlePresentation()
-	record, err := u.sessionPresentation().SubmitQuestions(intent, u.questions.Questions)
+	record, err := u.attached.presentation.SubmitQuestions(intent, u.questions.Questions)
 	if err != nil {
 		u.setNotice(err.Error(), true)
 		return nil
@@ -358,7 +358,7 @@ func (u *appServerUI) submitQuestions(intent sessionpresentation.QuestionSubmitI
 				d.Text += label + "\n"
 				d.Images = append(d.Images, composer.Token{Start: start, End: start + len(label), Path: path})
 			}
-			u.conversation().Unsent = append(u.conversation().Unsent, d)
+			u.attached.conversation.Unsent = append(u.attached.conversation.Unsent, d)
 			return u.flushInput()
 		}
 		return nil
@@ -374,7 +374,7 @@ func (u *appServerUI) submitQuestions(intent sessionpresentation.QuestionSubmitI
 		return nil
 	}
 	attached.Text, attached.InHistory = reply, true
-	u.conversation().Unsent = append(u.conversation().Unsent, conversationmodel.Input{Draft: attached, Question: c.Call, ReplyCount: len(binding.QuestionReplies(reply))})
+	u.attached.conversation.Unsent = append(u.attached.conversation.Unsent, conversationmodel.Input{Draft: attached, Question: c.Call, ReplyCount: len(binding.QuestionReplies(reply))})
 	u.renderQuestionRecord(c)
 	return u.flushInput()
 }
@@ -453,6 +453,6 @@ func pendingQuestionReplies(parts []conversationmodel.Input) []conversationmodel
 }
 func (u *appServerUI) renderQuestionRecord(c *sessioncontrol.Question) {
 	if c.Sudo == nil {
-		sessionpresentation.RecordQuestion(c.Call, string(c.RequestID), u.Turn, u.now(), u.source, u.childSource)
+		sessionpresentation.RecordQuestion(c.Call, string(c.RequestID), u.Turn, u.now(), u.attached.source, u.attached.childSource)
 	}
 }

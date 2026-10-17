@@ -144,13 +144,13 @@ func scanPickerFiles(ctx context.Context, cwd, query string) ([]completion.Choic
 
 func (u *appServerUI) applyPickerScan(result pickerScanResult) {
 	p := &u.picker
-	if result.id != p.scanID || result.cwd != u.cwd || result.target != u.completionTarget() || !p.Open {
+	if result.id != p.scanID || result.cwd != u.attached.cwd || result.target != u.completionTarget() || !p.Open {
 		return
 	}
 	if p.scanCancel != nil {
 		p.scanCancel()
 		p.scanCancel = nil
 	}
-	p.Resolve(result.target, result.cwd, u.cwd, result.choices, result.problem)
+	p.Resolve(result.target, result.cwd, u.attached.cwd, result.choices, result.problem)
 	u.dirty = true
 }

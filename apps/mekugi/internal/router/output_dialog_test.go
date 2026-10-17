@@ -48,7 +48,7 @@ func TestUISnapshotCombinedEditOutput(t *testing.T) {
 			t.Fatal("missing combined output page")
 		}
 		rows := make([]string, 24)
-		u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
+		u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
 		u.Dialog.Paint(rows, 100, len(rows))
 		if u.Dialog.Document.Text != "build failed" {
 			t.Fatalf("combined output lost host text: %q", u.Dialog.Document.Text)
@@ -73,13 +73,13 @@ func dialogForOutput(output *activitymodel.Output) *terminalUI {
 }
 
 func (u *terminalUI) layoutOutput(width int) {
-	u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
+	u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
 	u.Dialog.Layout(width)
 }
 
 func drawOutputDialog(u *terminalUI) string {
 	rows := make([]string, 18)
-	u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
+	u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
 	u.Dialog.Paint(rows, 80, len(rows))
 	return ansi.Strip(strings.Join(rows, "\n"))
 }
@@ -242,16 +242,16 @@ func TestOutputDialogNativeMergeKeepsRetainedOutputIdentity(t *testing.T) {
 		appServerTestNotify(t, u, method, params)
 	}
 	notify("item/started", map[string]any{"item": item})
-	if len(u.source.Entries) != 1 || len(u.testActivity(u.shell.Transcript).blocks(0)) == 0 {
+	if len(u.attached.source.Entries) != 1 || len(u.testActivity(u.shell.Transcript).blocks(0)) == 0 {
 		t.Fatal("start did not create command block")
 	}
-	retained := u.source.RetainedOutput(u.testActivity(u.shell.Transcript).blocks(0)[len(u.testActivity(u.shell.Transcript).blocks(0))-1].Source, u.testActivity(u.shell.Transcript).blocks(0)[len(u.testActivity(u.shell.Transcript).blocks(0))-1].Output)
+	retained := u.attached.source.RetainedOutput(u.testActivity(u.shell.Transcript).blocks(0)[len(u.testActivity(u.shell.Transcript).blocks(0))-1].Source, u.testActivity(u.shell.Transcript).blocks(0)[len(u.testActivity(u.shell.Transcript).blocks(0))-1].Output)
 	if retained == nil {
 		t.Fatal("started command has no retained output")
 	}
 	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "cmd", "delta": "streamed\n"})
 	u.flushStreamOutput()
-	if got := u.source.RetainedOutput(u.testActivity(u.shell.Transcript).blocks(0)[len(u.testActivity(u.shell.Transcript).blocks(0))-1].Source, u.testActivity(u.shell.Transcript).blocks(0)[len(u.testActivity(u.shell.Transcript).blocks(0))-1].Output); got != retained {
+	if got := u.attached.source.RetainedOutput(u.testActivity(u.shell.Transcript).blocks(0)[len(u.testActivity(u.shell.Transcript).blocks(0))-1].Source, u.testActivity(u.shell.Transcript).blocks(0)[len(u.testActivity(u.shell.Transcript).blocks(0))-1].Output); got != retained {
 		t.Fatal("delta changed retained output identity")
 	}
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, "aggregate\nfinal\n"
@@ -320,7 +320,7 @@ func TestUISnapshotOutputDialogVTOverlayWideAndNarrow(t *testing.T) {
 			for i := range rows {
 				rows[i] = "background"
 			}
-			u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
+			u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
 			u.Dialog.Paint(rows, width, height)
 			// paintOutput overlays with cursor addressing, so snapshot its final VT rows.
 			screen := vt.NewEmulator(width, height)
@@ -586,9 +586,9 @@ func TestSharedDialogCloseButton(t *testing.T) {
 		u := dialogForOutput(&activitymodel.Output{})
 		page := u.Dialog.Pages[0].DetailPage
 		page.Body = "Dialog body"
-		u.main.detailFiles.replaceDetails(&u.main.session, u.Attachment, []activitypresentation.DetailPage{page})
+		u.main.detailFiles.replaceDetails(&u.main.attached.session, u.Attachment, []activitypresentation.DetailPage{page})
 		rows := make([]string, 20)
-		u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
+		u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
 		u.Dialog.Paint(rows, width, len(rows))
 		frame := ansi.Strip(strings.Join(rows, "\n"))
 		if !strings.Contains(frame, terminalui.DialogClose) {
@@ -621,7 +621,7 @@ func TestRunDurationLiveAndCompletedRendering(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "timed", "type": "commandExecution", "command": "sleep 2", "status": "inProgress"}})
 	index := -1
-	for i, entry := range u.source.Entries {
+	for i, entry := range u.attached.source.Entries {
 		if entry.Source.Native != nil && entry.Source.Native.Item == "timed" {
 			index = i
 			break
@@ -630,8 +630,8 @@ func TestRunDurationLiveAndCompletedRendering(t *testing.T) {
 	if index < 0 {
 		t.Fatal("missing running command")
 	}
-	u.source.Entries[index].Source.Native.CommandStarted = time.Now().Add(-2 * time.Second)
-	u.testActivity(u.shell.Transcript).replaceEntry(index, u.source.Entries[index].Source, parseLiveActivity(u.source.Entries[index].Source))
+	u.attached.source.Entries[index].Source.Native.CommandStarted = time.Now().Add(-2 * time.Second)
+	u.testActivity(u.shell.Transcript).replaceEntry(index, u.attached.source.Entries[index].Source, parseLiveActivity(u.attached.source.Entries[index].Source))
 	u.shell.Transcript.Runs = nil
 	feed := u.testActivity(u.shell.Transcript).RenderFeed(100, 30)
 	if !strings.Contains(ansi.Strip(strings.Join(feed.Lines, "\n")), "2s") {
@@ -751,7 +751,7 @@ func TestNarrativeDialogRefreshesWhileStreaming(t *testing.T) {
 		t.Fatal("completion failed to refresh narrative without moving reader")
 	}
 	// The retained page remains readable after its source ages out of the feed.
-	u.childSource.Entries = nil
+	u.attached.childSource.Entries = nil
 	drawOutputDialog(terminalTest(u))
 	if !strings.Contains(d.Document.Text, "Final paragraph.") {
 		t.Fatal("eviction lost the last available narrative")

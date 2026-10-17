@@ -40,7 +40,7 @@ func TestNativeActivityFollowupAssignments(t *testing.T) {
 	collab("task-1", "spawnAgent", "Check the original answer.")
 	collab("task-2", "followupTask", "Check the edited answer.")
 	var next []sessionpresentation.ActivityEntry
-	for _, entry := range u.source.Entries {
+	for _, entry := range u.attached.source.Entries {
 		if entry.Source.Kind == "assignment" {
 			next = append(next, entry.Source)
 		}
@@ -48,7 +48,7 @@ func TestNativeActivityFollowupAssignments(t *testing.T) {
 	if len(next) != 1 || next[0].Assignment.Text != "Check the edited answer." {
 		t.Fatalf("follow-up was omitted or conflated with spawn: %+v", next)
 	}
-	u.applyActivity([]sessionpresentation.ActivityEntry{{Seq: u.session.Activity().NextSequence(), Agent: "/root/reviewer", Kind: "final", Text: "The edited answer is correct."}}, nil)
+	u.applyActivity([]sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Agent: "/root/reviewer", Kind: "final", Text: "The edited answer is correct."}}, nil)
 	u.shell.Transcript.Conversation = true
 	u.testActivity(u.shell.Transcript).testAudience()
 	feed := u.testActivity(u.shell.Transcript).RenderFeed(100, 40)
@@ -56,7 +56,7 @@ func TestNativeActivityFollowupAssignments(t *testing.T) {
 	if !strings.Contains(main, "▶ reviewer started") || !strings.Contains(main, "├─→ follow-up") || !strings.Contains(main, "├─✓ finished") || strings.Contains(main, "↩ re:") {
 		t.Fatalf("follow-up answer was not threaded under its assignment:\n%s", main)
 	}
-	for _, entry := range u.source.Entries {
+	for _, entry := range u.attached.source.Entries {
 		if entry.Source.Kind == "start" && entry.Source.Agent != "Main" {
 			t.Fatal("root spawn rendered as child speech")
 		}
@@ -123,7 +123,7 @@ func TestNativeActivityChildResultsStaySeparateAndLinked(t *testing.T) {
 			"tool": tool, "senderThreadId": "main", "receiverThreadIds": []string{receiver}, "prompt": prompt}})
 	}
 	result := func(agent, answer string) {
-		u.applyActivity([]sessionpresentation.ActivityEntry{{Seq: u.session.Activity().NextSequence(), Agent: agent, Kind: "final", Text: answer}}, nil)
+		u.applyActivity([]sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Agent: agent, Kind: "final", Text: answer}}, nil)
 	}
 	collab("task-1", "spawnAgent", "child", "Review the first change.")
 	result("/root/reviewer", "FIRST ANSWER")

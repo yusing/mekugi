@@ -220,7 +220,7 @@ func TestActivitySingleCommandObservedTimestamps(t *testing.T) {
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	item["status"], item["durationMs"], item["exitCode"] = "completed", 123, 0
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	for _, entry := range u.source.Entries {
+	for _, entry := range u.attached.source.Entries {
 		if entry.Source.CallID != "timestamps" || entry.Source.Native == nil {
 			continue
 		}
@@ -243,12 +243,12 @@ func TestActivityBatchRestoresVCSRows(t *testing.T) {
 	output := "2\t1\ta.go\n"
 	item := binding.ThreadItem{ID: "vcs", Type: "commandExecution", Command: "bash -lc 'echo before; git diff --numstat'", ExitCode: new(0), AggregatedOutput: new("before\n" + output)}
 	entry := sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "t", Item: item.ID}}
-	first, second := u.activity.Outputs(u.session.Scope()).New(), u.activity.Outputs(u.session.Scope()).New()
+	first, second := u.activity.Outputs(u.attached.session.Scope()).New(), u.activity.Outputs(u.attached.session.Scope()).New()
 	first.Finish(new("before\n"), new(0))
 	second.Finish(&output, new(0))
 	u.retainCommandSegments(entry, item.Observation(), execTrackView{complete: true, output: true, segments: []sessionpresentation.ActivitySegment{{Output: first}, {Output: second, Raw: output}}})
 	awaitCommandSegments(t, u)
-	u.restoreCommandSegments(&entry, item, u.cwd)
+	u.restoreCommandSegments(&entry, item, u.attached.cwd)
 	if len(entry.Native.Segments) != 2 {
 		t.Fatalf("missing segments: %+v", entry.Native.Segments)
 	}

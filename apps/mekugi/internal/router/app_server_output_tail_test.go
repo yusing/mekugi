@@ -118,7 +118,7 @@ func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 	if got := main(); strings.Contains(got, "ok 7") {
 		t.Fatalf("output rendered before its frame:\n%s", got)
 	}
-	canonical := u.source.Model.Publish().Entries[0]
+	canonical := u.attached.source.Model.Publish().Entries[0]
 	u.flushStreamOutput()
 	if got := main(); !strings.Contains(got, "┆ ok 1") || strings.Contains(got, "ok 2") {
 		t.Fatalf("burst jumped to its tail instead of rolling:\n%s", got)
@@ -128,7 +128,7 @@ func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 	if got := main(); !strings.Contains(got, "└ Running go test ./...") || !strings.Contains(got, want) {
 		t.Fatalf("live tail missing header or %q:\n%s", want, got)
 	}
-	if got := u.source.Model.Publish().Entries[0]; !reflect.DeepEqual(got, canonical) {
+	if got := u.attached.source.Model.Publish().Entries[0]; !reflect.DeepEqual(got, canonical) {
 		t.Fatalf("output animation changed the neutral record:\nbefore=%+v\nafter=%+v", canonical, got)
 	}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "c", "item": map[string]any{
@@ -184,8 +184,8 @@ func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 	if terminal.Dialog != nil || !strings.Contains(main(), "┆ … +3 lines") {
 		t.Fatal("closing output dialog changed the command row")
 	}
-	if _, tracked := u.session.Commands()[[3]string{"main", "t", "cmd"}]; tracked || len(u.session.Commands()) != 1 {
-		t.Fatalf("completed command still tracked: %v", u.session.Commands())
+	if _, tracked := u.attached.session.Commands()[[3]string{"main", "t", "cmd"}]; tracked || len(u.attached.session.Commands()) != 1 {
+		t.Fatalf("completed command still tracked: %v", u.attached.session.Commands())
 	}
 }
 
@@ -336,10 +336,10 @@ func TestAppServerCompletionWaitsForOutputBurst(t *testing.T) {
 	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "cmd", "delta": output.String()})
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 1, output.String()
 	notify("item/completed", map[string]any{"item": item})
-	if u.session.Commands()[[3]string{"main", "t", "cmd"}] != nil {
+	if u.attached.session.Commands()[[3]string{"main", "t", "cmd"}] != nil {
 		t.Fatal("terminal reveal retained completed source correlation")
 	}
-	canonical := u.source.Entries[len(u.source.Entries)-1].Source.Native.Invocation.Snapshot()
+	canonical := u.attached.source.Entries[len(u.attached.source.Entries)-1].Source.Native.Invocation.Snapshot()
 	if canonical.Running || !canonical.Exited || canonical.ExitCode != 1 || canonical.Ended.IsZero() || u.runningProcessCount() != 0 {
 		t.Fatalf("visual delay held canonical host completion: %+v", canonical)
 	}
@@ -359,8 +359,8 @@ func TestAppServerCompletionWaitsForOutputBurst(t *testing.T) {
 	if got := main(); !strings.Contains(got, "Ran") || !strings.Contains(got, "exit 1") || !strings.Contains(got, "┆ ok 19") {
 		t.Fatalf("held completion did not follow its rolled output:\n%s", got)
 	}
-	if len(u.session.Commands()) != 0 {
-		t.Fatalf("completed command still tracked: %v", u.session.Commands())
+	if len(u.attached.session.Commands()) != 0 {
+		t.Fatalf("completed command still tracked: %v", u.attached.session.Commands())
 	}
 	for view, before := range completed {
 		after := view.Model.Publish().Entries[len(view.Entries)-1]
@@ -382,13 +382,13 @@ func TestAppServerHeldCompletionRefreshesAnnotations(t *testing.T) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	u.flushStreamOutput()
 	view := u.testActivity(u.shell.Transcript)
-	view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.session.Activity().NextSequence(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd"}}}})
+	view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd"}}}})
 	if !view.MarkUnreturned("main", "cmd") {
 		t.Fatal("output note was not admitted")
 	}
 	for _, receiptText := range []string{"Edit `source.go` +1 -1", ""} {
 		view.ApplyCapturedEdits([]*changepresentation.Receipt{{Thread: "main", Calls: []string{"cmd"}, Text: receiptText}})
-		view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.session.Activity().NextSequence(), Agent: "Main", Kind: "tool", Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "t", Item: "cmd", Phase: "approval/updated", Approval: "Approved"}}}})
+		view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Agent: "Main", Kind: "tool", Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "t", Item: "cmd", Phase: "approval/updated", Approval: "Approved"}}}})
 		frame := ansi.Strip(strings.Join(view.RenderFeed(100, 30).Lines, "\n"))
 		if strings.Count(frame, "Repeated fixture output") != 1 || strings.Count(frame, "output not returned to the model") != 1 || strings.Contains(frame, "exit 1") {
 			t.Fatalf("held frame lost current annotations or exposed its delayed outcome:\n%s", frame)
@@ -416,7 +416,7 @@ func TestAppServerHeldCompletionSettlesFromDisplayTime(t *testing.T) {
 	appServerTestNotify(t, u, "item/commandExecution/outputDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "cmd", "delta": output})
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, output
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	completed := u.source.Model.Publish().Entries[0].Completed
+	completed := u.attached.source.Model.Publish().Entries[0].Completed
 	if !completed.Equal(now) {
 		t.Fatalf("neutral completion time = %v, want %v", completed, now)
 	}
@@ -424,14 +424,14 @@ func TestAppServerHeldCompletionSettlesFromDisplayTime(t *testing.T) {
 	now = now.Add(time.Hour)
 	rollCommandOutput(u)
 	u.testActivity(u.shell.Transcript).RenderFeed(100, 30)
-	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.session.Activity().NextSequence(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd"}}}})
+	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd"}}}})
 	if settleActivity(now.Add(activityui.OutputDebounce-time.Nanosecond), u.testActivity(u.shell.Transcript)) {
 		t.Fatal("annotation refresh reset display settlement to host completion")
 	}
 	if !settleActivity(now.Add(activityui.OutputDebounce), u.testActivity(u.shell.Transcript)) {
 		t.Fatal("displayed completion did not settle after its quiet period")
 	}
-	if got := u.source.Model.Publish().Entries[0].Completed; !got.Equal(completed) {
+	if got := u.attached.source.Model.Publish().Entries[0].Completed; !got.Equal(completed) {
 		t.Fatalf("terminal settlement rewrote host completion: %v -> %v", completed, got)
 	}
 }
@@ -441,7 +441,7 @@ func TestAppServerHeldCompletionSettlesFromDisplayTime(t *testing.T) {
 func nextEvent(t *testing.T, u *appServerUI, thread string) {
 	t.Helper()
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{
-		"id": fmt.Sprintf("next-%s-%d", thread, u.source.LastSeq+1), "type": "reasoning", "summary": []string{"**Next step**"}}})
+		"id": fmt.Sprintf("next-%s-%d", thread, u.attached.source.LastSeq+1), "type": "reasoning", "summary": []string{"**Next step**"}}})
 	rollCommandOutput(u)
 }
 
@@ -577,7 +577,7 @@ func TestAppServerInstantOperationOutputDoesNotRoll(t *testing.T) {
 	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "read", "delta": "line 20\n"})
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, output.String()+"line 20\n"
 	notify("item/completed", map[string]any{"item": item})
-	if got := main(); strings.Contains(got, "Running") || !strings.Contains(got, "┆ line 20") || len(u.session.Commands()) != 0 {
+	if got := main(); strings.Contains(got, "Running") || !strings.Contains(got, "┆ line 20") || len(u.attached.session.Commands()) != 0 {
 		t.Fatalf("a search's completion waited for its output to roll:\n%s", got)
 	}
 

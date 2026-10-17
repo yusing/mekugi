@@ -19,9 +19,9 @@ func appServerHistoryProgressPhase(item observation.Item, turnStatus string) str
 }
 
 func (u *appServerUI) readWaitEvidence(item observation.Item, key [3]string) sessionpresentation.WaitEvidence {
-	s := &u.session
+	s := &u.attached.session
 	var evidence sessionpresentation.WaitEvidence
-	if item.Type != "collabAgentToolCall" || item.Tool != "wait" || key[0] == "" || key[1] == "" || key[2] == "" || u.retainedSession.Store == nil || u.waits.HasSnapshot(s.Transcript(key[0], key[1]).Turn, key[2]) {
+	if item.Type != "collabAgentToolCall" || item.Tool != "wait" || key[0] == "" || key[1] == "" || key[2] == "" || u.retainedSession.Store == nil || u.attached.waits.HasSnapshot(s.Transcript(key[0], key[1]).Turn, key[2]) {
 		return evidence
 	}
 	var err error
@@ -43,7 +43,7 @@ func (u *appServerUI) retainWaitProgress(key [3]string, progress *activitypresen
 // itemProgress retains the live/history storage boundary around shared projection.
 func (u *appServerUI) itemProgress(item observation.Item, thread, turn, id, phase string, observed bool) (string, *activitypresentation.Value, bool) {
 	key := [3]string{thread, turn, id}
-	text, wait, handled, progress := u.session.ProjectProgress(&u.waits, item, thread, turn, id, phase, observed, u.readWaitEvidence(item, key))
+	text, wait, handled, progress := u.attached.session.ProjectProgress(&u.attached.waits, item, thread, turn, id, phase, observed, u.readWaitEvidence(item, key))
 	u.retainWaitProgress(key, progress)
 	return text, wait, handled
 }

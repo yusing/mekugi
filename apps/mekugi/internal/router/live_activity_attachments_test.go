@@ -47,8 +47,8 @@ func TestLiveActivityAttachmentOutcomes(t *testing.T) {
 		applyTranscriptFixture(u.testActivity(u.shell.Transcript), true, cwd, u.Thread, u.Thread, "turn", item.ID, method, "", item)
 	}
 	applyTranscriptFixture(u.testActivity(u.shell.Transcript), true, cwd, u.Thread, u.Thread, "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "Agent response"})
-	if len(u.source.Entries) != 3 || u.source.Entries[1].Source.Kind != "attachments" {
-		t.Fatalf("missing, duplicated, or reordered receipts: %+v", u.source.Entries)
+	if len(u.attached.source.Entries) != 3 || u.attached.source.Entries[1].Source.Kind != "attachments" {
+		t.Fatalf("missing, duplicated, or reordered receipts: %+v", u.attached.source.Entries)
 	}
 	blocks := u.testActivity(u.shell.Transcript).blocks(1)
 	if blocks[0].Path != "attached.txt" {
@@ -76,7 +76,7 @@ func TestLiveActivityAttachmentOutcomes(t *testing.T) {
 
 	resumed.startSession(resumed.Thread, cwd)
 	resumed.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}})
-	if len(resumed.source.Entries) != 2 || resumed.testActivity(resumed.shell.Transcript).blocks(1)[0].Verb != "Attached" || resumed.testActivity(resumed.shell.Transcript).blocks(1)[1].Verb != "Attach failed" || resumed.testActivity(resumed.shell.Transcript).blocks(1)[0].Path != "attached.txt" || resumed.testActivity(resumed.shell.Transcript).blocks(1)[1].Path != "missing.txt" {
+	if len(resumed.attached.source.Entries) != 2 || resumed.testActivity(resumed.shell.Transcript).blocks(1)[0].Verb != "Attached" || resumed.testActivity(resumed.shell.Transcript).blocks(1)[1].Verb != "Attach failed" || resumed.testActivity(resumed.shell.Transcript).blocks(1)[0].Path != "attached.txt" || resumed.testActivity(resumed.shell.Transcript).blocks(1)[1].Path != "missing.txt" {
 		t.Fatal("resume did not preserve submitted outcomes")
 	}
 }

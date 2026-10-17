@@ -55,7 +55,7 @@ func pickerReply(t *testing.T, u *appServerUI, id int, result string) {
 
 func TestComposerFilePickerScopesAndCoalescesRequests(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.cwd = "/work/one"
+	u.attached.cwd = "/work/one"
 	appServerTestKeys(t, u, "@ab")
 	requests := pickerRequests(t, w)
 	if len(requests) != 1 || requests[0].Method != "fuzzyFileSearch" || requests[0].Params.Query != "a" || len(requests[0].Params.Roots) != 1 || requests[0].Params.Roots[0] != "/work/one" {
@@ -73,7 +73,7 @@ func TestComposerFilePickerScopesAndCoalescesRequests(t *testing.T) {
 	if len(u.picker.Choices) != 1 || u.picker.Choices[0].Path != "ab.go" {
 		t.Fatalf("unscoped search results: %+v", u.picker.Choices)
 	}
-	u.cwd = "/work/two"
+	u.attached.cwd = "/work/two"
 	u.refreshPicker()
 	requests = pickerRequests(t, w)
 	if len(requests) != 3 || len(requests[2].Params.Roots) != 1 || requests[2].Params.Roots[0] != "/work/two" {
@@ -92,7 +92,7 @@ func TestComposerSkillPickerFiltersAndSubmitsAttachedContents(t *testing.T) {
 	if err := os.WriteFile(path, []byte(instructions), 0600); err != nil {
 		t.Fatal(err)
 	}
-	u.cwd = workspace
+	u.attached.cwd = workspace
 	appServerTestKeys(t, u, "$qu")
 	requests := pickerRequests(t, w)
 	if len(requests) != 1 || requests[0].Method != "skills/list" || len(requests[0].Params.Cwds) != 1 || requests[0].Params.Cwds[0] != workspace {
@@ -103,8 +103,8 @@ func TestComposerSkillPickerFiltersAndSubmitsAttachedContents(t *testing.T) {
 		t.Fatalf("skill filtering = %+v", u.picker.Choices)
 	}
 	appServerTestKeys(t, u, "\t")
-	if u.Text != "$quiet " || len(u.Skills) != 1 || u.Skills[0].Path != path || len(u.source.Entries) != 0 {
-		t.Fatalf("skill insertion submitted or lost binding: draft=%q skills=%+v entries=%d", u.Text, u.Skills, len(u.source.Entries))
+	if u.Text != "$quiet " || len(u.Skills) != 1 || u.Skills[0].Path != path || len(u.attached.source.Entries) != 0 {
+		t.Fatalf("skill insertion submitted or lost binding: draft=%q skills=%+v entries=%d", u.Text, u.Skills, len(u.attached.source.Entries))
 	}
 	w.Reset()
 	appServerTestKeys(t, u, "\r")
@@ -134,14 +134,14 @@ func TestComposerSkillPickerFiltersAndSubmitsAttachedContents(t *testing.T) {
 
 func TestComposerFilePickerInsertionUndoRedoAndPasteOpacity(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.cwd = "/work"
+	u.attached.cwd = "/work"
 	appServerTestKeys(t, u, "see @fi")
 	requests := pickerRequests(t, w)
 	pickerReply(t, u, requests[0].ID, `{"files":[]}`)
 	requests = pickerRequests(t, w)
 	pickerReply(t, u, requests[1].ID, `{"files":[{"root":"/work","path":"file name.go"}]}`)
 	appServerTestKeys(t, u, "\t")
-	if u.Text != `see @"file name.go" ` || len(u.source.Entries) != 0 {
+	if u.Text != `see @"file name.go" ` || len(u.attached.source.Entries) != 0 {
 		t.Fatalf("file insertion submitted or did not quote whitespace: %q", u.Text)
 	}
 	appServerTestKeys(t, u, "\x1a")
@@ -153,7 +153,7 @@ func TestComposerFilePickerInsertionUndoRedoAndPasteOpacity(t *testing.T) {
 		t.Fatalf("redo picker replacement = %q", u.Text)
 	}
 	v, input := newAppServerTestUI()
-	v.cwd = "/work"
+	v.attached.cwd = "/work"
 	appServerTestKeys(t, v, "\x1b[200~@secret $quiet\x1b[201~")
 	if v.Text != "@secret $quiet" || v.picker.Open || input.Len() != 0 {
 		t.Fatalf("paste opened search: draft=%q picker=%+v", v.Text, v.picker)
@@ -162,7 +162,7 @@ func TestComposerFilePickerInsertionUndoRedoAndPasteOpacity(t *testing.T) {
 
 func TestComposerPickerEscapeViaShellAndFrameBounds(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.cwd = "/work"
+	u.attached.cwd = "/work"
 
 	for _, key := range []byte("@file") {
 		if err := terminalTest(u).key(key); err != nil {
@@ -197,14 +197,14 @@ func TestComposerPickerEscapeViaShellAndFrameBounds(t *testing.T) {
 			}
 		}
 	}
-	if len(u.source.Entries) != 0 || strings.Contains(w.String(), "turn/start") {
+	if len(u.attached.source.Entries) != 0 || strings.Contains(w.String(), "turn/start") {
 		t.Fatal("picker activity polluted transcript or submitted a turn")
 	}
 }
 
 func TestComposerSkillPickerUndoHistoryAndAtomicEditing(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.cwd = "/work"
+	u.attached.cwd = "/work"
 	appServerTestKeys(t, u, "/skills\r1")
 	requests := pickerRequests(t, w)
 	pickerReply(t, u, requests[0].ID, `{"data":[{"cwd":"/work","skills":[{"name":"review","path":"/work/review/SKILL.md","enabled":true}]}]}`)
@@ -266,7 +266,7 @@ func TestComposerSkillPickerResumeAndEditorBindings(t *testing.T) {
 
 func TestComposerPickerFailureRecoveryAndRendering(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.cwd = "/work"
+	u.attached.cwd = "/work"
 	appServerTestKeys(t, u, "@a")
 	request := pickerRequests(t, w)[0]
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"offline"}}`, request.ID))
@@ -314,12 +314,12 @@ func TestComposerPickerScore(t *testing.T) {
 
 func TestComposerFilePickerImageAndUndoCapacity(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.cwd = t.TempDir()
+	u.attached.cwd = t.TempDir()
 	var data bytes.Buffer
 	if err := png.Encode(&data, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(u.cwd, "shot.png")
+	path := filepath.Join(u.attached.cwd, "shot.png")
 	if err := os.WriteFile(path, data.Bytes(), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -329,7 +329,7 @@ func TestComposerFilePickerImageAndUndoCapacity(t *testing.T) {
 	}
 	u.insertDraft("@s")
 	target := u.completionTarget()
-	u.conversation().Completion = completion.State{Open: true, Target: target, Choices: []completion.Choice{{Name: "shot.png", Path: "shot.png"}}}
+	u.attached.conversation.Completion = completion.State{Open: true, Target: target, Choices: []completion.Choice{{Name: "shot.png", Path: "shot.png"}}}
 	before := u.Text
 	if !u.pickerKey("\t") || len(u.Images) != 1 || u.Images[0].Path != path {
 		t.Fatalf("image choice: %q %+v", u.Text, u.Images)
@@ -350,11 +350,11 @@ func TestComposerFilePickerImageAndUndoCapacity(t *testing.T) {
 func TestComposerPickerEditorRefreshBeforeSelection(t *testing.T) {
 	for _, key := range []string{"\t", "\r"} {
 		u, _ := newAppServerTestUI()
-		u.cwd = "/work"
+		u.attached.cwd = "/work"
 		u.Text = "long prompt @file"
 		u.refreshPicker()
 		target := u.completionTarget()
-		u.conversation().Completion = completion.State{Open: true, Target: target, Resolved: target, ResolvedCwd: "/work", Choices: []completion.Choice{{Name: "file.go", Path: "file.go"}}}
+		u.attached.conversation.Completion = completion.State{Open: true, Target: target, Resolved: target, ResolvedCwd: "/work", Choices: []completion.Choice{{Name: "file.go", Path: "file.go"}}}
 		if err := u.applyEditorDraft(editorTestIntent(u), "new"); err != nil {
 			t.Fatal(err)
 		}
@@ -365,15 +365,15 @@ func TestComposerPickerEditorRefreshBeforeSelection(t *testing.T) {
 		if len(u.Images) != 0 || len(u.Skills) != 0 || strings.Contains(u.Text, "file.go") {
 			t.Fatal("stale selection changed edited draft")
 		}
-		if key == "\r" && u.conversation().Submitted[u.Submission().ID].Text != "new" {
-			t.Fatalf("edited submission = %q", u.conversation().Submitted[u.Submission().ID].Text)
+		if key == "\r" && u.attached.conversation.Submitted[u.Submission().ID].Text != "new" {
+			t.Fatalf("edited submission = %q", u.attached.conversation.Submitted[u.Submission().ID].Text)
 		}
 	}
 }
 
 func TestComposerPickerDoesNotMarkCoveredTranscriptPainted(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.cwd = "/work"
+	u.attached.cwd = "/work"
 	appServerTestKeys(t, u, "@f")
 	for _, height := range []int{6, 24} {
 		frame, _ := u.testMainFrame(80, height, 0)
@@ -404,17 +404,17 @@ func (u *appServerUI) renderPicker(width, height int) []string {
 
 func TestComposerCompletionAttachmentLifetime(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	previous := u.conversation()
+	previous := u.attached.conversation
 	u.picker.Catalog([]completion.Choice{{Name: "skill", Path: "/work/SKILL.md"}}, "/work", true, "")
 	u.picker.CopyTexts = []string{"retained response"}
 	u.attachPresentation()
-	if !u.conversation().Completion.SkillsLoaded || len(u.conversation().Completion.CopyTexts) != 1 {
+	if !u.attached.conversation.Completion.SkillsLoaded || len(u.attached.conversation.Completion.CopyTexts) != 1 {
 		t.Fatal("attachment binding discarded Conversation completion values")
 	}
 	if err := u.clearSessionPresentation(); err != nil {
 		t.Fatal(err)
 	}
-	if u.conversation() == previous || u.picker.State != &u.conversation().Completion || u.picker.SkillsLoaded || len(u.picker.CopyTexts) != 0 {
+	if u.attached.conversation == previous || u.picker.State != &u.attached.conversation.Completion || u.picker.SkillsLoaded || len(u.picker.CopyTexts) != 0 {
 		t.Fatal("replacement retained old completion or copy choices")
 	}
 }

@@ -98,12 +98,12 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 			provider.mu.Lock()
 			detail := fmt.Sprintf("turns=%v seen=%v input=%v", provider.turns, provider.messageSeen, provider.inputShapes)
 			provider.mu.Unlock()
-			t.Fatalf("native child message was not rendered: %v; status=%s %s", ctx.Err(), u.sessionPresentation().Status.Text, detail)
+			t.Fatalf("native child message was not rendered: %v; status=%s %s", ctx.Err(), u.attached.presentation.Status.Text, detail)
 		}
 		if started && provider.completed() {
 			var assignmentCount, messageCount, excerptCount int
 			var activitySeq, excerptSeq uint64
-			for _, entry := range u.childSource.Entries {
+			for _, entry := range u.attached.childSource.Entries {
 				if entry.Source.Assignment != nil && entry.Source.Assignment.Text == assignment {
 					assignmentCount++
 				}
@@ -112,7 +112,7 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 					activitySeq = entry.Source.Seq
 				}
 			}
-			for _, entry := range u.source.Entries {
+			for _, entry := range u.attached.source.Entries {
 				if entry.Source.Kind == "reply" && entry.Source.ActivitySeq == activitySeq && activitySeq != 0 {
 					excerptCount++
 					excerptSeq = entry.Source.Seq

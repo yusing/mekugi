@@ -36,12 +36,12 @@ func restoredUsageRosterFixture(t *testing.T) *appServerUI {
 
 func TestNativeRosterRestoredUsageUsesProviderTotals(t *testing.T) {
 	u := restoredUsageRosterFixture(t)
-	child := u.session.Agent(u.session.KnownCaller("child"))
+	child := u.attached.session.Agent(u.attached.session.KnownCaller("child"))
 	if child.Responding || !child.TokensKnown || !child.UsagePartial || child.InputTokens != 100_000 || child.OutputTokens != 10_000 || child.Roundtrips != 2 || !child.CostKnown || !child.CostPartial || math.Abs(child.Cost-.3) > 1e-10 {
 		t.Fatalf("idle child usage not restored: %+v", child)
 	}
 	for _, thread := range []string{"gap", "historical"} {
-		agent := u.session.Agent(u.session.KnownCaller(thread))
+		agent := u.attached.session.Agent(u.attached.session.KnownCaller(thread))
 		if agent.CostKnown || activityui.Cost(testActivityAgent(*agent)) != "" || agent.InputTokens != 0 || agent.OutputTokens != 0 {
 			t.Fatalf("%s invented consumption or zero cost: %+v", thread, agent)
 		}
@@ -62,7 +62,7 @@ func TestNativeRosterRestoredUsageUsesProviderTotals(t *testing.T) {
 	if unknown.InputTokens != 0 || unknown.OutputTokens != 0 || unknown.CostKnown || unknown.Roundtrips != 0 {
 		t.Fatalf("unobserved thread borrowed host consumption: %+v", unknown)
 	}
-	historical := u.session.Agent(u.session.KnownCaller("historical"))
+	historical := u.attached.session.Agent(u.attached.session.KnownCaller("historical"))
 	u.usage.Observation("historical", "historical", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 10_000})
 	u.observeCost("historical", historical)
 	if !historical.TokensKnown || !historical.UsagePartial || !historical.CostPartial || historical.Roundtrips != 1 || historical.InputTokens != 100_000 || historical.OutputTokens != 10_000 {
@@ -76,10 +76,10 @@ func TestNativeRosterRestoredUsageUsesProviderTotals(t *testing.T) {
 func TestUISnapshotNativeRosterRestoredUsage(t *testing.T) {
 	u := restoredUsageRosterFixture(t)
 	u.usage.Observation("historical", "historical", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 10_000})
-	u.observeCost("historical", u.session.Agent(u.session.KnownCaller("historical")))
-	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.Roster()})
+	u.observeCost("historical", u.attached.session.Agent(u.attached.session.KnownCaller("historical")))
+	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.attached.session.Roster()})
 	u.shell.Agents.Painter.Theme = diffrender.DarkTheme
-	u.shell.Agents.Selected = u.session.KnownCaller("child")
+	u.shell.Agents.Selected = u.attached.session.KnownCaller("child")
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 	assertNativeUISnapshot(t, "native-roster-restored-usage", u.testActivity(u.shell.Agents).NativeRoster(140, 8, now, true))
 }

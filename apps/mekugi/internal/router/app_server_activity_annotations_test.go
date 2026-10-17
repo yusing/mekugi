@@ -53,8 +53,8 @@ func TestAppServerSearchResultCounts(t *testing.T) {
 			}
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-			if len(u.source.Entries) != 1 || len(u.testActivity(u.shell.Transcript).blocks(0)) != 1 || u.testActivity(u.shell.Transcript).blocks(0)[0].Results == nil || *u.testActivity(u.shell.Transcript).blocks(0)[0].Results != tc.want {
-				t.Fatalf("lost count: %+v", u.source.Entries)
+			if len(u.attached.source.Entries) != 1 || len(u.testActivity(u.shell.Transcript).blocks(0)) != 1 || u.testActivity(u.shell.Transcript).blocks(0)[0].Results == nil || *u.testActivity(u.shell.Transcript).blocks(0)[0].Results != tc.want {
+				t.Fatalf("lost count: %+v", u.attached.source.Entries)
 			}
 			painted := strings.Join(u.shell.Transcript.Painter.Block(u.testActivity(u.shell.Transcript).blocks(0)[0], 120), "\n")
 			if !strings.Contains(painted, activityui.ResultCount(count)) {
@@ -85,13 +85,13 @@ func TestAppServerWebSearchResults(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	item := map[string]any{"id": "web", "type": "webSearch", "query": "golang"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	if len(u.source.Entries) != 1 || u.testActivity(u.shell.Transcript).blocks(0)[0].Results != nil {
+	if len(u.attached.source.Entries) != 1 || u.testActivity(u.shell.Transcript).blocks(0)[0].Results != nil {
 		t.Fatal("started search count")
 	}
 	item["results"] = []any{map[string]any{"title": "one"}, map[string]any{"title": "two"}}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	if len(u.source.Entries) != 1 || u.testActivity(u.shell.Transcript).blocks(0)[0].Results == nil || *u.testActivity(u.shell.Transcript).blocks(0)[0].Results != 2 {
-		t.Fatalf("completed search: %+v", u.source.Entries)
+	if len(u.attached.source.Entries) != 1 || u.testActivity(u.shell.Transcript).blocks(0)[0].Results == nil || *u.testActivity(u.shell.Transcript).blocks(0)[0].Results != 2 {
+		t.Fatalf("completed search: %+v", u.attached.source.Entries)
 	}
 }
 

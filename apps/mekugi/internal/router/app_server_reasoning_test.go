@@ -61,7 +61,7 @@ func TestAppServerPublicSummaryNotifications(t *testing.T) {
 	// A reused item ID in a new turn must not replace earlier summaries.
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "next", "itemId": "same-id", "delta": "Next public summary."})
 	main = ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 40).Lines, "\n"))
-	if !strings.Contains(main, "• Complete") || !strings.Contains(main, "Next public summary.") || u.source.Entries[0].Source.Text != "**Complete**\n\nFinal public main." {
+	if !strings.Contains(main, "• Complete") || !strings.Contains(main, "Next public summary.") || u.attached.source.Entries[0].Source.Text != "**Complete**\n\nFinal public main." {
 		t.Fatalf("turn identity lost: %q", main)
 	}
 }
@@ -83,7 +83,7 @@ func TestAppServerOldTurnCompletionPreservesCurrentTranscript(t *testing.T) {
 	if got := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(90, 40).Lines, "\n")); !strings.Contains(got, "Thinking") {
 		t.Fatalf("old completion removed current provider placeholder: %q", got)
 	}
-	if old := u.childSource.Entries[0].Source; old.Text != "Wait ended" || old.Native.Phase != "turn/completed" {
+	if old := u.attached.childSource.Entries[0].Source; old.Text != "Wait ended" || old.Native.Phase != "turn/completed" {
 		t.Fatalf("old completion did not settle its wait: %+v", old)
 	}
 	*at = at.Add(2 * time.Second)
@@ -94,14 +94,14 @@ func TestAppServerOldTurnCompletionPreservesCurrentTranscript(t *testing.T) {
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "current", "itemId": "summary", "delta": " continued"})
 	reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "current", "status": "completed"}})
 	var summary, final bool
-	for _, entry := range u.childSource.Entries {
+	for _, entry := range u.attached.childSource.Entries {
 		if entry.Source.Kind == "reasoning" {
 			summary = entry.Source.Text == "First continued" && entry.Source.Native.Phase == "item/completed" && entry.Source.Native.Thought == 5*time.Second
 		}
 		final = final || entry.Source.Kind == "final" && entry.Source.Text == "Current answer"
 	}
 	if !summary || !final {
-		t.Fatalf("matching turn did not settle its summary and final: summary=%v final=%v entries=%+v", summary, final, u.childSource.Entries)
+		t.Fatalf("matching turn did not settle its summary and final: summary=%v final=%v entries=%+v", summary, final, u.attached.childSource.Entries)
 	}
 	assertAgentWork(t, u, "child", *at, 2*time.Second, false)
 	activity.BeginResponse("child", true, time.Now())
@@ -120,7 +120,7 @@ func TestAppServerClosedTurnRejectsLateStreaming(t *testing.T) {
 			delta := map[string]any{"threadId": thread, "turnId": "without-start", "itemId": "summary", "delta": "Initial"}
 			reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", delta)
 			key := [2]string{thread, "without-start"}
-			if u.session.Transcript(key[0], key[1]).Turn == nil {
+			if u.attached.session.Transcript(key[0], key[1]).Turn == nil {
 				t.Fatal("first item did not establish its turn scope")
 			}
 			reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "without-start", "status": "interrupted"}})
@@ -128,7 +128,7 @@ func TestAppServerClosedTurnRejectsLateStreaming(t *testing.T) {
 			reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", delta)
 			reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "without-start", "item": map[string]any{"id": "late", "type": "reasoning", "summary": []string{"leaked"}}})
 			reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "without-start"}})
-			if u.session.Transcript(key[0], key[1]).Turn != nil || u.session.Agent(u.session.Caller(thread)).Responding || u.Turn == "without-start" {
+			if u.attached.session.Transcript(key[0], key[1]).Turn != nil || u.attached.session.Agent(u.attached.session.Caller(thread)).Responding || u.Turn == "without-start" {
 				t.Fatal("late observations revived a closed turn")
 			}
 			view := u.testActivity(u.shell.Transcript)
@@ -160,12 +160,12 @@ func TestAppServerClosedCompletionKeepsCurrentTurnSelection(t *testing.T) {
 	if got := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(90, 40).Lines, "\n")); !strings.Contains(got, "Thinking") || !strings.Contains(got, "Older summary") || !strings.Contains(got, "Older answer") {
 		t.Fatalf("late completion lost content or consumed current thinking: %q", got)
 	}
-	if u.session.Transcript("child", "old").Turn != nil {
+	if u.attached.session.Transcript("child", "old").Turn != nil {
 		t.Fatal("late completion recreated correlation")
 	}
 	reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "current", "status": "completed"}})
 	var finals []string
-	for _, entry := range u.childSource.Entries {
+	for _, entry := range u.attached.childSource.Entries {
 		if entry.Source.Kind == "final" {
 			finals = append(finals, entry.Source.Text)
 		}
@@ -197,7 +197,7 @@ func TestAppServerRestorePublicSummaries(t *testing.T) {
 		}
 	}
 	// A new turn must not restart the restored summary animation.
-	agent := *u.session.Agent("/root/worker")
+	agent := *u.attached.session.Agent("/root/worker")
 	agent.Responding = true
 	first, _ := u.testActivity(u.shell.Agents).testCurrent(agent, time.Unix(0, 0))
 	second, _ := u.testActivity(u.shell.Agents).testCurrent(agent, time.Unix(1, 0))
@@ -206,8 +206,8 @@ func TestAppServerRestorePublicSummaries(t *testing.T) {
 	}
 	// Raw-only items are decodable but produce no visible entry.
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"main","turnId":"t","item":{"id":"raw","type":"reasoning","summary":[],"content":["PRIVATE"]}}}`)
-	if len(u.source.Entries) != 1 {
-		t.Fatalf("raw reasoning reached transcript: %+v", u.source.Entries)
+	if len(u.attached.source.Entries) != 1 {
+		t.Fatalf("raw reasoning reached transcript: %+v", u.attached.source.Entries)
 	}
 }
 
@@ -238,12 +238,12 @@ func TestAppServerComposerKeepsWorkingDuringReasoning(t *testing.T) {
 func TestAppServerWorkingShimmers(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
-	a, b := u.sessionLabel(u.sessionPresentation().Status.Started), u.sessionLabel(u.sessionPresentation().Status.Started.Add(500*time.Millisecond))
+	a, b := u.sessionLabel(u.attached.presentation.Status.Started), u.sessionLabel(u.attached.presentation.Status.Started.Add(500*time.Millisecond))
 	if a == b || strings.TrimSuffix(ansi.Strip(a), " 0s") != strings.TrimSuffix(ansi.Strip(b), " 500ms") || !strings.Contains(ansi.Strip(a), "Working") {
 		t.Fatalf("no text-preserving shimmer: %q %q", a, b)
 	}
 	u.Turn = ""
-	if u.sessionLabel(u.sessionPresentation().Status.Started) != u.sessionLabel(u.sessionPresentation().Status.Started.Add(500*time.Millisecond)) {
+	if u.sessionLabel(u.attached.presentation.Status.Started) != u.sessionLabel(u.attached.presentation.Status.Started.Add(500*time.Millisecond)) {
 		t.Fatal("idle label animates")
 	}
 }
@@ -252,7 +252,7 @@ func TestAppServerCompletedElapsedTime(t *testing.T) {
 	for seconds, elapsed := range map[int]string{0: "0s", 12: "12s", 60: "1m", 75: "1m15s", 82: "1m22s", 3600: "1h", 3682: "1h1m22s"} {
 		u := newAppServerSessionTestUI(t, t.TempDir())
 		reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
-		u.sessionPresentation().Status.Started = time.Now().Add(-time.Duration(seconds) * time.Second)
+		u.attached.presentation.Status.Started = time.Now().Add(-time.Duration(seconds) * time.Second)
 		reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t", "status": "completed"}})
 		want := "Completed in " + elapsed
 		for _, now := range []time.Time{time.Now(), time.Now().Add(time.Minute)} {
@@ -308,20 +308,20 @@ func TestAppServerPendingStatusPulses(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			u.sessionPresentation().Status.Set(status, false)
+			u.attached.presentation.Status.Set(status, false)
 			start := time.Unix(0, 0)
 			dim, bright, dimAgain := u.sessionLabel(start), u.sessionLabel(start.Add(time.Second)), u.sessionLabel(start.Add(2*time.Second))
 			if !u.publishPresentation(u.now()).Status.Animating || dim == bright || dim != dimAgain || ansi.Strip(dim) != ansi.Strip(bright) {
 				t.Fatalf("pending status does not pulse: %q %q %q", dim, bright, dimAgain)
 			}
-			u.sessionPresentation().Status.Alert = true
+			u.attached.presentation.Status.Alert = true
 			if u.publishPresentation(u.now()).Status.Animating || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
 				t.Fatal("alert animates")
 			}
 			u.restoring = nil
 			u.LeaveThread()
 			u.Thread = "main"
-			u.sessionPresentation().Status.Set("Ready", false)
+			u.attached.presentation.Status.Set("Ready", false)
 			if u.publishPresentation(u.now()).Status.Animating || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
 				t.Fatal("idle animates")
 			}

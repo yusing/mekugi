@@ -11,12 +11,12 @@ import (
 
 func TestNonTerminalCurrentPublicationWithoutPaint(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	read := func() sessionpresentation.View { return u.sessionPresentation().View() }
+	read := func() sessionpresentation.View { return u.attached.presentation.View() }
 	edit := func(text string) {
 		t.Helper()
 		v := read()
 		if !u.editInput(sessionpresentation.DraftEditIntent{Version: v.Version, Revision: v.Draft.Revision, End: len(v.Draft.Draft.Text), Text: text}) {
-			t.Fatal(u.feedback.Text)
+			t.Fatal(u.attached.feedback.Text)
 		}
 		if next := read(); next.Draft.Draft.Text != text || next.Version == v.Version {
 			t.Fatalf("edit did not publish: %+v", next)
@@ -61,7 +61,7 @@ func editOrdinaryInput(t *testing.T, u *appServerUI, text string) {
 	t.Helper()
 	v := u.publishPresentation(u.now())
 	if !v.Draft.Available || !u.editInput(sessionpresentation.DraftEditIntent{Version: v.Version, Revision: v.Draft.Revision, End: len(v.Draft.Draft.Text), Text: text}) {
-		t.Fatalf("ordinary edit rejected: %s", u.feedback.Text)
+		t.Fatalf("ordinary edit rejected: %s", u.attached.feedback.Text)
 	}
 }
 
@@ -103,8 +103,8 @@ func TestNonTerminalInputDispositionAndHostRequests(t *testing.T) {
 				}
 			}
 			v := u.publishPresentation(u.now())
-			if wire.Len() != 0 || v.Draft.Draft.Text != "" || len(u.conversation().Queued) != tc.queued || len(u.conversation().Unsent) != tc.unsent {
-				t.Fatalf("wrong disposition: draft=%q queued=%d unsent=%d wire=%s", v.Draft.Draft.Text, len(u.conversation().Queued), len(u.conversation().Unsent), wire.String())
+			if wire.Len() != 0 || v.Draft.Draft.Text != "" || len(u.attached.conversation.Queued) != tc.queued || len(u.attached.conversation.Unsent) != tc.unsent {
+				t.Fatalf("wrong disposition: draft=%q queued=%d unsent=%d wire=%s", v.Draft.Draft.Text, len(u.attached.conversation.Queued), len(u.attached.conversation.Unsent), wire.String())
 			}
 			if err := u.submitInput(intent); err != nil || wire.Len() != 0 {
 				t.Fatal("duplicate intent submitted again")
@@ -147,13 +147,13 @@ func TestNonTerminalOrdinaryInputRejectsPromptAndReadOnlyViews(t *testing.T) {
 	}
 	u.hideQuestions()
 	v := u.publishPresentation(u.now())
-	if err := u.sessionPresentation().Display(sessionpresentation.DisplayIntent{Version: v.Version, Thread: sessionpresentation.Thread{ID: "child", Caller: "/root/child"}}); err != nil {
+	if err := u.attached.presentation.Display(sessionpresentation.DisplayIntent{Version: v.Version, Thread: sessionpresentation.Thread{ID: "child", Caller: "/root/child"}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := u.submitInput(ordinarySubmitIntent(u, sessioncontrol.SendInput)); err != nil || wire.Len() != 0 || u.publishPresentation(u.now()).Draft.Draft.Text != "keep draft" {
 		t.Fatal("child display submitted Main input")
 	}
-	u.sessionPresentation().Attach(sessionpresentation.Thread{ID: u.Thread, Caller: "/root"}, true)
+	u.attached.presentation.Attach(sessionpresentation.Thread{ID: u.Thread, Caller: "/root"}, true)
 	if err := u.submitInput(ordinarySubmitIntent(u, sessioncontrol.SendInput)); err != nil || wire.Len() != 0 {
 		t.Fatal("replay submitted input")
 	}

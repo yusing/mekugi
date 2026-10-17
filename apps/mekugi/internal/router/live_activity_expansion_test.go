@@ -195,8 +195,8 @@ func TestAppServerExpansionRetainedReads(t *testing.T) {
 		if !strings.Contains(render(), "third-start") {
 			t.Fatal("arriving reads ignored pane expansion")
 		}
-		u.source.Entries[0].Source.Native.Output.Release()
-		u.testActivity(u.shell.Transcript).invalidateEntry(u.source.Entries[0].Source.Seq)
+		u.attached.source.Entries[0].Source.Native.Output.Release()
+		u.testActivity(u.shell.Transcript).invalidateEntry(u.attached.source.Entries[0].Source.Seq)
 		if !strings.Contains(render(), "first-end") {
 			t.Fatal("released output erased the retained inline tail")
 		}

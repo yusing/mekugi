@@ -55,7 +55,7 @@ func (main *appServerUI) openDetails(u *terminalsession.Attachment, view *activi
 	if len(pages) == 0 {
 		return
 	}
-	main.detailFiles.openDetailSelection(&main.session, main.sessionPresentation().View().Version, main.activitySource(view), u, view, pages, false)
+	main.detailFiles.openDetailSelection(&main.attached.session, main.attached.presentation.View().Version, main.activitySource(view), u, view, pages, false)
 }
 
 func (main *appServerUI) openEntry(u *terminalsession.Attachment, view *activityui.View, seq uint64) bool {
@@ -79,7 +79,7 @@ func (main *appServerUI) openEntry(u *terminalsession.Attachment, view *activity
 func (main *appServerUI) outputIntent(u *terminalsession.Attachment, intent terminalsession.DialogIntent) {
 	switch intent.Action {
 	case terminalsession.DialogClose:
-		main.detailFiles.closeOutput(&main.session, u)
+		main.detailFiles.closeOutput(&main.attached.session, u)
 	case terminalsession.DialogCopy:
 		main.copyText(u, intent.Text)
 	case terminalsession.DialogReference:
@@ -87,8 +87,8 @@ func (main *appServerUI) outputIntent(u *terminalsession.Attachment, intent term
 			return
 		}
 		u.Focus = 0
-		main.detailFiles.closeOutput(&main.session, u)
+		main.detailFiles.closeOutput(&main.attached.session, u)
 	case terminalsession.DialogOpenLink:
-		main.detailFiles.openMarkdownFile(&main.session, main.sessionPresentation(), main.cwd, main.activitySource(u.Dialog.View), u, u.Dialog.View, intent.Text)
+		main.detailFiles.openMarkdownFile(&main.attached.session, main.attached.presentation, main.attached.cwd, main.activitySource(u.Dialog.View), u, u.Dialog.View, intent.Text)
 	}
 }

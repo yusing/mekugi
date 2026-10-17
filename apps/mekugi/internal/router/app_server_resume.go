@@ -34,7 +34,7 @@ import (
 
 func (u *appServerUI) openSession() error {
 	opening, err := u.Requests.OpenSession(&u.Startup, &u.Live, u.approvalMode, appServerRequest{label: "resume/settings"})
-	u.sessionPresentation().BeginOpening(opening)
+	u.attached.presentation.BeginOpening(opening)
 	if err != nil {
 		return err
 	}
@@ -96,7 +96,7 @@ func (u *appServerUI) holdResumeEvent(m appserver.Message, resuming bool) (hold,
 	}
 	_ = json.Unmarshal(m.Params, &p)
 	thread := cmp.Or(p.ThreadID, p.Thread.ID)
-	if !resuming && (thread == "" || u.session.KnownCaller(thread) != "" || u.session.KnownCaller(p.Thread.ParentThreadID) != "") {
+	if !resuming && (thread == "" || u.attached.session.KnownCaller(thread) != "" || u.attached.session.KnownCaller(p.Thread.ParentThreadID) != "") {
 		return false, false
 	}
 	root := cmp.Or(u.Replacement.Target, u.Startup.Thread)
@@ -179,7 +179,7 @@ func (u *appServerUI) restoreMainHistory(turns []binding.HistoryTurn, placements
 		}
 	}
 	for index, turn := range turns {
-		u.restoredSegments = u.prepareCommandSegments(u.Thread, u.cwd, turn)
+		u.restoredSegments = u.prepareCommandSegments(u.Thread, u.attached.cwd, turn)
 		placements := byTurn[index]
 		slots := positions[index].Slots(restoredPositions(placements))
 		place := func(indices []int) {
@@ -189,12 +189,12 @@ func (u *appServerUI) restoreMainHistory(turns []binding.HistoryTurn, placements
 		}
 		place(slots[0])
 		for i, item := range turn.Items {
-			before := u.source.LastSeq
+			before := u.attached.source.LastSeq
 			u.restoreHistoryItem(turn, item)
 			at := cmp.Or(itemAt[item.ID], historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt)))
 			if !at.IsZero() {
-				for j := len(u.source.Entries) - 1; j >= 0 && u.source.Entries[j].Source.Seq > before; j-- {
-					u.source.Model.Mutate(j, func(record *sessionpresentation.ActivityRecord) { record.Source.Observed = at })
+				for j := len(u.attached.source.Entries) - 1; j >= 0 && u.attached.source.Entries[j].Source.Seq > before; j-- {
+					u.attached.source.Model.Mutate(j, func(record *sessionpresentation.ActivityRecord) { record.Source.Observed = at })
 				}
 			}
 			place(slots[i+1])
@@ -205,19 +205,19 @@ func (u *appServerUI) restoreMainHistory(turns []binding.HistoryTurn, placements
 			if turn.Error != nil && strings.TrimSpace(turn.Error.Message) != "" {
 				text += ": " + turn.Error.Message
 			}
-			u.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.source.LastSeq + 1, Agent: "Main", Kind: "error", Text: text,
+			u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.source.LastSeq + 1, Agent: "Main", Kind: "error", Text: text,
 				Observed: historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt))}}})
 		}
 		if turn.Status == "inProgress" {
 			u.Turn = turn.ID
-			u.sessionPresentation().Status.Started = u.now()
-			u.sessionPresentation().Status.SetText("Working")
+			u.attached.presentation.Status.Started = u.now()
+			u.attached.presentation.Status.SetText("Working")
 		}
 	}
-	u.session.Lifecycle(u.Thread).Restore(restoredAgentIntervals(turns), uint64(len(turns)), u.Turn != "")
+	u.attached.session.Lifecycle(u.Thread).Restore(restoredAgentIntervals(turns), uint64(len(turns)), u.Turn != "")
 	// Keep future activity sequence numbers ahead of the hydrated transcript.
-	u.session.Activity().AdvanceSequence(u.source.LastSeq)
-	u.applyActivity(nil, u.session.Roster())
+	u.attached.session.Activity().AdvanceSequence(u.attached.source.LastSeq)
+	u.applyActivity(nil, u.attached.session.Roster())
 }
 
 func (u *appServerUI) applyRestoredMain(placements []*restoredPlacement) {
@@ -229,7 +229,7 @@ func (u *appServerUI) applyRestoredMain(placements []*restoredPlacement) {
 		if entry.Observed.IsZero() {
 			entry.Observed = p.at
 		}
-		u.source.ApplyMain(entry)
+		u.attached.source.ApplyMain(entry)
 	}
 }
 
@@ -272,8 +272,8 @@ func (u *appServerUI) restoreHistoryItem(turn binding.HistoryTurn, item binding.
 	progressPhase := appServerHistoryProgressPhase(facts, turn.Status)
 	if text, wait, progress := u.itemProgress(facts, u.Thread, turn.ID, item.ID, progressPhase, false); progress {
 		if text != "" {
-			u.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
-				Seq: u.source.LastSeq + 1, Agent: "Main", Kind: "progress", Text: text, Observed: time.Now(),
+			u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
+				Seq: u.attached.source.LastSeq + 1, Agent: "Main", Kind: "progress", Text: text, Observed: time.Now(),
 				Native: &sessionpresentation.NativeItem{Thread: u.Thread, Turn: turn.ID, Item: item.ID, Phase: progressPhase, Wait: wait},
 			}}})
 		}
@@ -281,32 +281,32 @@ func (u *appServerUI) restoreHistoryItem(turn binding.HistoryTurn, item binding.
 	}
 	switch item.Type {
 	case "imageView":
-		entry := sessionpresentation.ActivityEntry{Seq: u.source.LastSeq + 1, Agent: "Main", Kind: "tool", Text: "View " + markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(u.cwd, item.Path)), CallID: item.ID, Observed: time.Now(),
+		entry := sessionpresentation.ActivityEntry{Seq: u.attached.source.LastSeq + 1, Agent: "Main", Kind: "tool", Text: "View " + markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(u.attached.cwd, item.Path)), CallID: item.ID, Observed: time.Now(),
 			Native: &sessionpresentation.NativeItem{Thread: u.Thread, Turn: turn.ID, Item: item.ID, Phase: method, SearchResults: sessionpresentation.SearchResults(facts)}}
-		u.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
+		u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
 	case "commandExecution", "fileChange", "webSearch":
-		text := sessionpresentation.ToolText(facts, u.cwd)
+		text := sessionpresentation.ToolText(facts, u.attached.cwd)
 		if item.Type == "fileChange" {
-			text = activitypresentation.HostEditText(facts, u.cwd)
+			text = activitypresentation.HostEditText(facts, u.attached.cwd)
 		}
-		entry := sessionpresentation.ActivityEntry{Seq: u.source.LastSeq + 1, Agent: "Main", Kind: "tool", Text: text, CallID: item.ID, Observed: time.Now(),
-			Native: &sessionpresentation.NativeItem{Thread: u.Thread, Turn: turn.ID, Item: item.ID, Phase: method, Command: item.Command, CommandCwd: sessionpresentation.CommandDirectory(facts, u.cwd), Status: item.Status, Duration: sessionpresentation.ItemDuration(facts), SearchResults: sessionpresentation.SearchResults(facts), Workdir: sessionpresentation.CommandWorkdir(facts, u.cwd)}}
+		entry := sessionpresentation.ActivityEntry{Seq: u.attached.source.LastSeq + 1, Agent: "Main", Kind: "tool", Text: text, CallID: item.ID, Observed: time.Now(),
+			Native: &sessionpresentation.NativeItem{Thread: u.Thread, Turn: turn.ID, Item: item.ID, Phase: method, Command: item.Command, CommandCwd: sessionpresentation.CommandDirectory(facts, u.attached.cwd), Status: item.Status, Duration: sessionpresentation.ItemDuration(facts), SearchResults: sessionpresentation.SearchResults(facts), Workdir: sessionpresentation.CommandWorkdir(facts, u.attached.cwd)}}
 		if item.Type == "fileChange" {
-			entry.Native.EditPages = activitypresentation.HostEditPages(facts, u.cwd, method)
+			entry.Native.EditPages = activitypresentation.HostEditPages(facts, u.attached.cwd, method)
 		}
-		u.session.CompleteCommand(entry.Native, facts, u.activity.Outputs(u.session.Scope()))
+		u.attached.session.CompleteCommand(entry.Native, facts, u.activity.Outputs(u.attached.session.Scope()))
 		sessionpresentation.CommandOutput(&entry, facts, time.Time{})
-		u.restoreCommandSegments(&entry, item, u.cwd)
-		u.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
+		u.restoreCommandSegments(&entry, item, u.attached.cwd)
+		u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
 		if len(entry.Native.Segments) == 0 && item.ExitCode != nil && *item.ExitCode != 0 {
-			exit := sessionpresentation.ActivityEntry{Seq: u.source.LastSeq + 1, Agent: "Main", Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID}
+			exit := sessionpresentation.ActivityEntry{Seq: u.attached.source.LastSeq + 1, Agent: "Main", Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID}
 			exit.OutputTail, exit.OutputOmit = sessionpresentation.OutputTail(item.AggregatedOutput)
-			u.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{exit}})
+			u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{exit}})
 		}
 	default:
 		if update, ok := historicalTranscript([]binding.ThreadItem{item}, u.Thread, turn.ID, true, false, u.now())[item.ID]; ok {
 			update.Phase = method
-			u.source.ApplyTranscript(update, item.Content, u.cwd, u.Thread, item.Type == "userMessage")
+			u.attached.source.ApplyTranscript(update, item.Content, u.attached.cwd, u.Thread, item.Type == "userMessage")
 		}
 	}
 }

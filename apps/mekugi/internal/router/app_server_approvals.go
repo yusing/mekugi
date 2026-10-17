@@ -46,7 +46,7 @@ func (u *appServerUI) approvalDirectory(cwd string) []string {
 	if cwd == "" {
 		return nil
 	}
-	if path := pathdisplay.ForWorkspace(u.cwd, cwd); path != "." {
+	if path := pathdisplay.ForWorkspace(u.attached.cwd, cwd); path != "." {
 		return []string{"in " + path}
 	}
 	return nil
@@ -159,7 +159,7 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 			if m.Method == "item/started" {
 				var paths []string
 				for _, change := range p.Item.Changes {
-					paths = append(paths, pathdisplay.ForWorkspace(u.cwd, change.Path))
+					paths = append(paths, pathdisplay.ForWorkspace(u.attached.cwd, change.Path))
 				}
 				u.approvals.patches[p.Item.ID] = paths
 			} else {
@@ -178,7 +178,7 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 	if err != nil {
 		return true, fmt.Errorf("%s: %w", m.Method, err)
 	}
-	decoded, err := conversationbinding.DecodeApproval(m.Method, m.ID, params, u.cwd, u.approvals.patches[params.ItemID], u.controlObservations != nil)
+	decoded, err := conversationbinding.DecodeApproval(m.Method, m.ID, params, u.attached.cwd, u.approvals.patches[params.ItemID], u.controlObservations != nil)
 	if err != nil {
 		return true, err
 	}
@@ -235,7 +235,7 @@ func (u *appServerUI) endApproval(a *sessioncontrol.Approval, outcome string) {
 // approvalItem finds one exact host identity across the two presentation views.
 func (u *appServerUI) approvalItem(thread, turn, item string) *sessionpresentation.NativeItem {
 	var owner *sessionpresentation.NativeItem
-	for _, view := range []*sessionpresentation.ActivitySource{u.source, u.childSource} {
+	for _, view := range []*sessionpresentation.ActivitySource{u.attached.source, u.attached.childSource} {
 		if view == nil {
 			continue
 		}
@@ -272,14 +272,14 @@ func (u *appServerUI) recordApproval(a *sessioncontrol.Approval, outcome string)
 		a.Thread, a.Turn = owner.Thread, owner.Turn
 		outcome += "\nCommand: " + a.Subject
 	}
-	entry := sessionpresentation.ActivityEntry{Seq: u.session.Activity().NextSequence(), Kind: "tool", Text: activitypresentation.ShellSource(frontends.ShellDisplaySource(a.Subject), ""), Observed: u.now(),
+	entry := sessionpresentation.ActivityEntry{Seq: u.attached.session.Activity().NextSequence(), Kind: "tool", Text: activitypresentation.ShellSource(frontends.ShellDisplaySource(a.Subject), ""), Observed: u.now(),
 		Native: &sessionpresentation.NativeItem{Thread: a.Thread, Turn: a.Turn, Item: a.Item, Phase: "approval/updated", Approval: outcome}}
-	if u.session.KnownCaller(u.Thread) != "" {
-		entry.Agent = u.session.Caller(a.Thread)
+	if u.attached.session.KnownCaller(u.Thread) != "" {
+		entry.Agent = u.attached.session.Caller(a.Thread)
 		u.applyActivity([]sessionpresentation.ActivityEntry{entry}, nil)
 	} else {
-		entry.Seq, entry.Agent = u.source.LastSeq+1, "Main"
-		u.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
+		entry.Seq, entry.Agent = u.attached.source.LastSeq+1, "Main"
+		u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
 	}
 }
 
@@ -298,7 +298,7 @@ func (u *appServerUI) flushApprovalUpdates() {
 
 func (u *appServerUI) decideApproval(intent sessionpresentation.ApprovalIntent) error {
 	defer u.settlePresentation()
-	record, choice, err := u.sessionPresentation().Approval(intent, u.approvals.Approvals)
+	record, choice, err := u.attached.presentation.Approval(intent, u.approvals.Approvals)
 	if err != nil {
 		u.setNotice(err.Error(), true)
 		return nil
@@ -370,7 +370,7 @@ func (u *appServerUI) hideApprovals() {
 
 func (u *appServerUI) applyApprovalInput(input terminalsession.PromptInput) (bool, error) {
 	keyInput := input.PromptKey
-	if err := u.sessionPresentation().ApprovalInput(sessionpresentation.ApprovalInputIntent{Version: input.Version, ApprovalInput: keyInput.Approval}, u.approvals.Approvals); err != nil {
+	if err := u.attached.presentation.ApprovalInput(sessionpresentation.ApprovalInputIntent{Version: input.Version, ApprovalInput: keyInput.Approval}, u.approvals.Approvals); err != nil {
 		u.setNotice(err.Error(), true)
 		return true, nil
 	}
@@ -382,7 +382,7 @@ func (u *appServerUI) applyApprovalInput(input terminalsession.PromptInput) (boo
 		u.hideApprovals()
 		u.approvals.AutoOpen = false
 	case conversationui.PromptSubmit:
-		view := u.sessionPresentation().View()
+		view := u.attached.presentation.View()
 		return true, u.decideApproval(sessionpresentation.ApprovalIntent{Version: view.Version, Request: a.ID, Choice: a.Choices[a.Selected].ID, Reason: u.Text})
 	}
 	return true, nil

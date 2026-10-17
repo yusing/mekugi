@@ -31,7 +31,7 @@ func TestAppServerContextWindow(t *testing.T) {
 	}
 	notify("main", 100000, 400000)
 	notify("child", 20000, 200000)
-	root := u.session.Agent("/root")
+	root := u.attached.session.Agent("/root")
 	if root.ContextTokens != 100000 || root.InputTokens != 900000 {
 		t.Fatalf("context conflated with cumulative usage: %+v", root)
 	}
@@ -80,7 +80,7 @@ func TestAppServerContextWindow(t *testing.T) {
 		t.Fatal(got)
 	}
 	u.startSession("fresh", t.TempDir())
-	if got := activityui.ContextWindowLabel(testActivityAgent(*u.session.Agent("/root"))); got != "0%" {
+	if got := activityui.ContextWindowLabel(testActivityAgent(*u.attached.session.Agent("/root"))); got != "0%" {
 		t.Fatal(got)
 	}
 }
@@ -104,7 +104,7 @@ func TestAppServerStartupRestoresContext(t *testing.T) {
 	}
 	write("child", 20000)
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-	child := u.session.Agent("/root/worker")
+	child := u.attached.session.Agent("/root/worker")
 	if child.ContextKnown {
 		t.Fatal("child context arrived without evidence")
 	}

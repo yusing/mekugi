@@ -20,19 +20,19 @@ func TestNonTerminalDisplayPublishesWithoutActivityOrPaint(t *testing.T) {
 			}
 			appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 			editOrdinaryInput(t, u, "Main draft")
-			before := u.sessionPresentation().View()
+			before := u.attached.presentation.View()
 			if !u.displaySession(sessionpresentation.DisplayIntent{Version: before.Version, Thread: sessionpresentation.Thread{ID: "child", Caller: "/root/worker"}}) {
-				t.Fatal(u.feedback.Text)
+				t.Fatal(u.attached.feedback.Text)
 			}
-			view := u.sessionPresentation().View()
+			view := u.attached.presentation.View()
 			if view.ReadOnly != sessionpresentation.ChildDisplayed || view.Status.Composer.Text != "Read-only" || view.Input != before.Input || view.Draft.Draft.Text != "Main draft" {
 				t.Fatalf("display did not publish a complete read-only view: %+v", view)
 			}
-			if u.displaySession(sessionpresentation.DisplayIntent{Version: before.Version, Thread: before.Main}) || u.sessionPresentation().View().Displayed.ID != "child" {
+			if u.displaySession(sessionpresentation.DisplayIntent{Version: before.Version, Thread: before.Main}) || u.attached.presentation.View().Displayed.ID != "child" {
 				t.Fatal("stale display changed the selected thread")
 			}
-			view = u.sessionPresentation().View()
-			if !u.displaySession(sessionpresentation.DisplayIntent{Version: view.Version, Thread: view.Main}) || u.sessionPresentation().View().ReadOnly != sessionpresentation.Editable || u.Text != "Main draft" {
+			view = u.attached.presentation.View()
+			if !u.displaySession(sessionpresentation.DisplayIntent{Version: view.Version, Thread: view.Main}) || u.attached.presentation.View().ReadOnly != sessionpresentation.Editable || u.Text != "Main draft" {
 				t.Fatal("Main did not regain its retained draft")
 			}
 		})
@@ -45,7 +45,7 @@ func TestSessionPaintDoesNotRefreshPublication(t *testing.T) {
 	u.clock = func() time.Time { return now }
 	appServerTestTurn(t, u, "turn")
 	questionTestSync(t, u, "request", false)
-	before := u.sessionPresentation().View()
+	before := u.attached.presentation.View()
 	if before.Questions.Call == nil || u.shell.Prompts.Ready() {
 		t.Fatal("prompt publication did not precede its display receipt")
 	}
@@ -54,7 +54,7 @@ func TestSessionPaintDoesNotRefreshPublication(t *testing.T) {
 		if err := u.paint(io.Discard, 100, 24); err != nil {
 			t.Fatal(err)
 		}
-		if !reflect.DeepEqual(u.sessionPresentation().View(), before) {
+		if !reflect.DeepEqual(u.attached.presentation.View(), before) {
 			t.Fatal("paint refreshed the publication or changed its version")
 		}
 	}
@@ -80,11 +80,11 @@ func TestNativeDisplayedThreadIndependentOfRosterFocus(t *testing.T) {
 		appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": thread, "agentNickname": thread}})
 		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "work"}})
 	}
-	first := u.session.Transcript("first", "work").Turn
+	first := u.attached.session.Transcript("first", "work").Turn
 	u.testActivity(u.shell.Agents).displayThread("/root/first")
 	u.shell.Agents.Selected = "/root/second"
 	u.testActivity(u.shell.Agents).testKeepSelection()
-	view := u.sessionPresentation().View()
+	view := u.attached.presentation.View()
 	if view.Displayed.ID != "first" || view.Input.ID != "main" || !u.composerReadOnly() || view.Displayed.Caller != "/root/first" {
 		t.Fatalf("roster focus changed display or admission: %+v", view)
 	}
@@ -95,7 +95,7 @@ func TestNativeDisplayedThreadIndependentOfRosterFocus(t *testing.T) {
 	if u.composerReadOnly() || u.transcriptView() != u.shell.Transcript || u.shell.Agents.Selected != "/root/second" {
 		t.Fatal("Main selection changed roster focus or retained child admission")
 	}
-	if first == nil || u.session.Transcript("first", "work").Turn != first || !u.session.Agent("/root/first").Responding {
+	if first == nil || u.attached.session.Transcript("first", "work").Turn != first || !u.attached.session.Agent("/root/first").Responding {
 		t.Fatal("display switching retired a child's work scope")
 	}
 }
@@ -114,7 +114,7 @@ func TestNativeDisplaySwitchKeepsHistoryObservation(t *testing.T) {
 		t.Fatal("display switching retired the observation or dispatched host work")
 	}
 	restoreContentReply(t, u, 5, map[string]any{"data": []any{historyItem("first", "older", 101000)}})
-	if u.historyLoading() != nil || u.sessionPresentation().View().ReadOnly != sessionpresentation.Editable {
+	if u.historyLoading() != nil || u.attached.presentation.View().ReadOnly != sessionpresentation.Editable {
 		t.Fatal("background history settlement changed Main admission")
 	}
 }
@@ -158,9 +158,9 @@ func TestMainFrameConsumesPublishedMetadata(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.title, u.backendVersion = "Published title", "1.2.3"
 	u.settlePresentation()
-	before := u.sessionPresentation().View()
-	u.title, u.backendVersion, u.cwd = "Unpublished title", "9.9.9", "/unpublished"
-	u.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Unpublished activity"}}})
+	before := u.attached.presentation.View()
+	u.title, u.backendVersion, u.attached.cwd = "Unpublished title", "9.9.9", "/unpublished"
+	u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Unpublished activity"}}})
 	rows, _ := u.mainFrame(100, 24, 0)
 	painted := strings.Join(rows, "\n")
 	if !strings.Contains(painted, "codex v1.2.3") || strings.Contains(painted, "9.9.9") || strings.Contains(painted, "Unpublished activity") || !strings.Contains(u.mainHeaderRight(100, true), "Published title") {
@@ -173,12 +173,12 @@ func TestMainFrameConsumesPublishedMetadata(t *testing.T) {
 	if !strings.Contains(outer, "Published title") || !strings.Contains(outer, "codex v1.2.3") || strings.Contains(outer, "Unpublished") {
 		t.Fatalf("outer frame consulted unpublished owners: %s", outer)
 	}
-	if !reflect.DeepEqual(u.sessionPresentation().View(), before) {
+	if !reflect.DeepEqual(u.attached.presentation.View(), before) {
 		t.Fatal("painting refreshed the session publication")
 	}
 	u.settlePresentation()
 	rows, _ = u.mainFrame(100, 24, 0)
-	if !strings.Contains(strings.Join(rows, "\n"), "Unpublished activity") || !strings.Contains(u.mainHeaderRight(100, true), "Unpublished title") || u.sessionPresentation().View().Info.Workspace != "/unpublished" {
+	if !strings.Contains(strings.Join(rows, "\n"), "Unpublished activity") || !strings.Contains(u.mainHeaderRight(100, true), "Unpublished title") || u.attached.presentation.View().Info.Workspace != "/unpublished" {
 		t.Fatal("explicit publication did not advance Main")
 	}
 }

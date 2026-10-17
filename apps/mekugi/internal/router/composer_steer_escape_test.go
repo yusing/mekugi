@@ -64,8 +64,8 @@ func TestComposerEscapeExpeditesSteersInHostEventOrder(t *testing.T) {
 					}
 				}
 				appServerOneRequest(t, wire, "turn/start", "older\nfirst\nsecond")
-				if u.Text != "draft" || u.CursorBack != 1 || len(u.conversation().Queued) != 1 || u.conversation().Queued[0].Text != "queued" {
-					t.Fatalf("expedite altered draft or queue: draft=%q caret=%d queued=%+v", u.Text, u.CursorBack, u.conversation().Queued)
+				if u.Text != "draft" || u.CursorBack != 1 || len(u.attached.conversation.Queued) != 1 || u.attached.conversation.Queued[0].Text != "queued" {
+					t.Fatalf("expedite altered draft or queue: draft=%q caret=%d queued=%+v", u.Text, u.CursorBack, u.attached.conversation.Queued)
 				}
 				appServerTestTurn(t, u, "expedited")
 				if wire.Len() != 0 {
@@ -97,7 +97,7 @@ func TestComposerEscapeCommittedSteerIsNotResent(t *testing.T) {
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, interrupt.ID))
 			if unsent {
 				appServerOneRequest(t, wire, "turn/start", "second")
-				if u.Text != "draft" || len(u.conversation().Queued) != 1 {
+				if u.Text != "draft" || len(u.attached.conversation.Queued) != 1 {
 					t.Fatal("remaining steer did not preserve editor and queue")
 				}
 			} else if wire.Len() != 0 || u.Text != "queued\ndraft" {
@@ -154,9 +154,9 @@ func TestComposerEscapeExpeditesAttachments(t *testing.T) {
 	if len(requests) != 1 || requests[0].Method != "turn/start" {
 		t.Fatalf("requests=%+v", requests)
 	}
-	input := conversationbinding.Input(u.conversation().Submitted[u.Submission().ID].Draft)
-	if input[0]["path"] != "first.png" || input[2]["path"] != "second.png" || len(u.conversation().Submitted[u.Submission().ID].Selections) != 1 || u.conversation().Submitted[u.Submission().ID].Selections[0].Text != "exact quote" || u.conversation().Submitted[u.Submission().ID].Text != "[Image 1][Selected message] \n[Image 2]" {
-		t.Fatalf("expedite corrupted attachments: %+v draft=%+v", input, u.conversation().Submitted[u.Submission().ID].Draft)
+	input := conversationbinding.Input(u.attached.conversation.Submitted[u.Submission().ID].Draft)
+	if input[0]["path"] != "first.png" || input[2]["path"] != "second.png" || len(u.attached.conversation.Submitted[u.Submission().ID].Selections) != 1 || u.attached.conversation.Submitted[u.Submission().ID].Selections[0].Text != "exact quote" || u.attached.conversation.Submitted[u.Submission().ID].Text != "[Image 1][Selected message] \n[Image 2]" {
+		t.Fatalf("expedite corrupted attachments: %+v draft=%+v", input, u.attached.conversation.Submitted[u.Submission().ID].Draft)
 	}
 }
 
@@ -250,7 +250,7 @@ func TestUISnapshotNativeExpeditedSteer(t *testing.T) {
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) }
 	appServerTestTurn(t, u, "t")
-	u.sessionPresentation().Status.Started = u.now()
+	u.attached.presentation.Status.Started = u.now()
 	appServerTestKeys(t, u, "Apply this instruction now.\r")
 	steer := appServerOneRequest(t, wire, "turn/steer", "Apply this instruction now.")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"t"}}`, steer.ID))

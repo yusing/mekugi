@@ -146,7 +146,7 @@ func (u *appServerUI) pasteImage(intent sessionpresentation.ComposerIntent) {
 		u.setNotice("Paste image: "+err.Error(), true)
 		return
 	}
-	if err := u.sessionPresentation().AdmitAcquiredInput(intent, u.conversation()); err != nil {
+	if err := u.attached.presentation.AdmitAcquiredInput(intent, u.attached.conversation); err != nil {
 		_ = os.Remove(path)
 		u.setNotice(err.Error(), true)
 		return
@@ -200,13 +200,13 @@ func clipboardImage(ctx context.Context) (string, error) {
 }
 
 func (u *appServerUI) applyPaste(paste terminalsession.PasteResult) {
-	if err := u.sessionPresentation().AdmitPaste(paste.Intent, u.conversation()); err != nil {
+	if err := u.attached.presentation.AdmitPaste(paste.Intent, u.attached.conversation); err != nil {
 		u.setNotice(err.Error(), true)
 		return
 	}
 	text := paste.Text
 	menu := sessionpresentation.MenuCompletion
-	if published := u.sessionPresentation().View().Menu; published != nil {
+	if published := u.attached.presentation.View().Menu; published != nil {
 		menu = published.Kind
 	}
 	switch {

@@ -10,7 +10,7 @@ import (
 
 func (u *appServerUI) referenceInput(intent sessionpresentation.ReferenceIntent) bool {
 	defer u.settlePresentation()
-	if err := u.sessionPresentation().Reference(intent, u.conversation()); err != nil {
+	if err := u.attached.presentation.Reference(intent, u.attached.conversation); err != nil {
 		u.setNotice(err.Error(), true)
 		return false
 	}
@@ -31,7 +31,7 @@ func (u *appServerUI) insertSelection(description, text, source string) {
 	if text == "" {
 		return
 	}
-	pending := slices.Concat(u.conversation().Submitted[u.Submission().ID].Parts, u.conversation().Unsent, u.conversation().Queued, u.conversation().Parts(u.Steers()))
+	pending := slices.Concat(u.attached.conversation.Submitted[u.Submission().ID].Parts, u.attached.conversation.Unsent, u.attached.conversation.Queued, u.attached.conversation.Parts(u.Steers()))
 	for _, call := range u.questionCalls() {
 		for i, question := range call.Questions {
 			draft := question.Editor.Snapshot.Draft

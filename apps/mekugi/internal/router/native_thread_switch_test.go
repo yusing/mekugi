@@ -120,7 +120,6 @@ func TestNativeChildReferenceReturnsToMain(t *testing.T) {
 	u := selectionTestUI("child answer")
 	u.Agents = activityui.NewView()
 	u.main.shell.Agents = u.Agents
-	u.main.sessionPresentation()
 	u.main.Text = "draft "
 	u.main.testActivity(u.main.shell.Agents).setDisplayFilter(true, "/root/reader")
 	u.main.publishPresentation(u.main.now())
@@ -168,8 +167,8 @@ func TestNativeChildComposerSettingsEvidence(t *testing.T) {
 	if got := caption(); !strings.Contains(got, "live-model (low) · flex") {
 		t.Fatalf("child caption ignored its confirmed thread tier: %s", got)
 	}
-	u.session.Collaboration((binding.ThreadItem{Tool: "spawnAgent", SenderThreadID: "main", ReceiverThreadIDs: []string{"spawned"}, Model: "spawn-model", ReasoningEffort: "high"}).Observation(), "spawn", u.now(), activitypresentation.ObservedCollaboration)
-	u.testActivity(u.shell.Agents).displayThread(u.session.KnownCaller("spawned"))
+	u.attached.session.Collaboration((binding.ThreadItem{Tool: "spawnAgent", SenderThreadID: "main", ReceiverThreadIDs: []string{"spawned"}, Model: "spawn-model", ReasoningEffort: "high"}).Observation(), "spawn", u.now(), activitypresentation.ObservedCollaboration)
+	u.testActivity(u.shell.Agents).displayThread(u.attached.session.KnownCaller("spawned"))
 	if got := caption(); !strings.Contains(got, "spawn-model (high)") || strings.Contains(got, "priority") {
 		t.Fatalf("spawn metadata was not scoped to the selected child: %s", got)
 	}

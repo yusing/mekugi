@@ -42,7 +42,7 @@ type appServerActivityRestore struct {
 func (u *appServerUI) restorePaneContent(root binding.ThreadInfo) error {
 	u.restoring = &appServerActivityRestore{root: root, threads: make(map[string]binding.ThreadInfo), state: sessionpresentation.NewRestoration(root.ID)}
 	u.restoreDiffThread(root, true)
-	u.sessionPresentation().Status.SetText("Restoring roster and Activity…")
+	u.attached.presentation.Status.SetText("Restoring roster and Activity…")
 	return u.restoreList()
 }
 
@@ -76,15 +76,15 @@ func (u *appServerUI) restoreContentNotice(message string) {
 
 func (u *appServerUI) restoreHistoryNotice(message string, incomplete bool) {
 	if incomplete {
-		u.childSource.Coverage = "History incomplete"
+		u.attached.childSource.Coverage = "History incomplete"
 	}
 	if r := u.restoring; r != nil && !r.state.View().Rendered {
 		r.notices = append(r.notices, restoredHistoryNotice{message, incomplete}) // Shown after Main's history.
 		return
 	}
-	u.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: message, Observed: time.Now()}}})
+	u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: message, Observed: time.Now()}}})
 	// Notices advance Main independently of the Activity sequence.
-	u.session.Activity().AdvanceSequence(u.source.LastSeq)
+	u.attached.session.Activity().AdvanceSequence(u.attached.source.LastSeq)
 }
 
 func (u *appServerUI) restoreActivityResponse(method string, m appserver.Message) error {
@@ -144,25 +144,25 @@ func (u *appServerUI) readRestoredChildren() error {
 		info := r.threads[id]
 		u.registerThread(info)
 		u.restoreDiffThread(info, false)
-		u.session.Lifecycle(id).RestoreTiming(restoredAgentIntervals(info.Turns))
+		u.attached.session.Lifecycle(id).RestoreTiming(restoredAgentIntervals(info.Turns))
 	}
 	u.readRestoredRollouts()
 	for _, turn := range r.root.Turns {
 		for _, item := range turn.Items {
 			if item.Type == "collabAgentToolCall" {
 				item.SenderThreadID = u.Thread
-				entries := u.session.Collaboration(item.Observation(), item.ID, historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt, r.root.UpdatedAt)), activitypresentation.HistoricalCollaboration)
+				entries := u.attached.session.Collaboration(item.Observation(), item.ID, historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt, r.root.UpdatedAt)), activitypresentation.HistoricalCollaboration)
 				u.applyRestoredActivity(entries)
 				for _, entry := range entries {
 					if main, ok := sessionpresentation.MainActivityEntry(entry); ok {
-						seq := u.childSource.EntrySeq(entry)
+						seq := u.attached.childSource.EntrySeq(entry)
 						r.main = append(r.main, &restoredPlacement{entry: main, turn: turn.ID, anchor: item.ID, at: entry.Observed, link: &seq})
 					}
 				}
 			}
 		}
 	}
-	u.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.Roster()})
+	u.attached.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.attached.session.Roster()})
 	return u.readNextRestoredChild()
 }
 
@@ -178,7 +178,7 @@ func (u *appServerUI) readRestoredRollouts() {
 		infos = append(infos, r.threads[id])
 	}
 	for _, info := range infos {
-		agent := u.session.Caller(info.ID)
+		agent := u.attached.session.Caller(info.ID)
 		rollout := readRestoredRollout(info, agent)
 		rollout.events = append(rollout.events, u.restoredHookEvents(info)...)
 		r.itemAt[info.ID] = rollout.itemAt
@@ -207,7 +207,7 @@ func (u *appServerUI) readNextRestoredChild() error {
 	r := u.restoring
 	view := r.state.View()
 	if view.Next < len(view.Threads) {
-		u.sessionPresentation().Status.SetText(fmt.Sprintf("Restoring Activity %d/%d…", view.Next+1, len(view.Threads)))
+		u.attached.presentation.Status.SetText(fmt.Sprintf("Restoring Activity %d/%d…", view.Next+1, len(view.Threads)))
 		return u.Request("thread/read", map[string]any{"threadId": view.Threads[view.Next], "includeTurns": r.threads[view.Threads[view.Next]].HistoryMode != "paginated"})
 	}
 	if !view.Rendered {
@@ -240,14 +240,14 @@ func (u *appServerUI) finishRestoredContent() error {
 		return nil
 	}
 	if u.review != nil && u.review.Restoring() {
-		u.sessionPresentation().Status.SetText("Restoring saved Diff…")
+		u.attached.presentation.Status.SetText("Restoring saved Diff…")
 		return nil
 	}
 
 	u.restoring = nil
-	u.sessionPresentation().Status.SetText("Ready")
+	u.attached.presentation.Status.SetText("Ready")
 	if u.Turn != "" {
-		u.sessionPresentation().Status.SetText("Working")
+		u.attached.presentation.Status.SetText("Working")
 	}
 	return u.replayResumePending()
 }
@@ -263,7 +263,7 @@ func (u *appServerUI) applyRestoredActivity(entries []sessionpresentation.Activi
 	for i := range entries {
 		entries[i].Agent = sessionpresentation.ActivityOwner(entries[i])
 	}
-	u.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: entries, Agents: u.session.Roster()})
+	u.attached.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: entries, Agents: u.attached.session.Roster()})
 	u.applyCapturedEdits()
 }
 
@@ -282,7 +282,7 @@ func restoredAgentIntervals(turns []binding.HistoryTurn) iter.Seq2[time.Time, ti
 func (u *appServerUI) restoreActivityThread(info binding.ThreadInfo, olderPage bool) {
 	previousSegments := u.restoredSegments
 	defer func() { u.restoredSegments = previousSegments }()
-	s := &u.session
+	s := &u.attached.session
 	name := s.KnownCaller(info.ID)
 	agent := s.Agent(name)
 	restoreContextUsage(agent, info)
@@ -292,7 +292,7 @@ func (u *appServerUI) restoreActivityThread(info binding.ThreadInfo, olderPage b
 		s.Lifecycle(info.ID).Restore(restoredAgentIntervals(info.Turns), uint64(len(info.Turns)), false)
 	}
 	u.observeCost(info.ID, agent)
-	u.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: s.Roster()})
+	u.attached.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: s.Roster()})
 	var r *appServerActivityRestore
 	var itemAt map[string]time.Time
 	byTurn := make(map[int][]*restoredPlacement)
@@ -360,7 +360,7 @@ func (u *appServerUI) restoreActivityThread(info binding.ThreadInfo, olderPage b
 		}
 		for i, entry := range entries {
 			if main, ok := sessionpresentation.MainActivityEntry(entry); ok {
-				seq := u.childSource.EntrySeq(entry)
+				seq := u.attached.childSource.EntrySeq(entry)
 				r.main = append(r.main, &restoredPlacement{entry: main, at: times[i], link: &seq})
 			}
 		}
@@ -369,7 +369,7 @@ func (u *appServerUI) restoreActivityThread(info binding.ThreadInfo, olderPage b
 
 func (u *appServerUI) restoreActivityItem(info binding.ThreadInfo, turn binding.HistoryTurn, item binding.ThreadItem, name string, observed time.Time, entries *[]sessionpresentation.ActivityEntry, text map[string]observation.TextUpdate) {
 	facts := item.Observation()
-	s := &u.session
+	s := &u.attached.session
 	if update, ok := text[item.ID]; ok {
 		update.Sequence, update.Observed = s.Activity().NextSequence(), observed
 		entry := sessionpresentation.TranscriptEntry(update, name)
@@ -408,7 +408,7 @@ func (u *appServerUI) restoreActivityItem(info binding.ThreadInfo, turn binding.
 			entry.Text = activitypresentation.HostEditText(facts, info.Cwd)
 			entry.Native.EditPages = activitypresentation.HostEditPages(facts, info.Cwd, entry.Native.Phase)
 		}
-		u.session.CompleteCommand(entry.Native, facts, u.activity.Outputs(u.session.Scope()))
+		u.attached.session.CompleteCommand(entry.Native, facts, u.activity.Outputs(u.attached.session.Scope()))
 		sessionpresentation.CommandOutput(&entry, facts, time.Time{})
 		u.restoreCommandSegments(&entry, item, info.Cwd)
 		*entries = append(*entries, entry)
@@ -418,6 +418,6 @@ func (u *appServerUI) restoreActivityItem(info binding.ThreadInfo, turn binding.
 			*entries = append(*entries, exit)
 		}
 	case "collabAgentToolCall":
-		*entries = append(*entries, u.session.Collaboration(facts, item.ID, observed, activitypresentation.HistoricalCollaboration)...)
+		*entries = append(*entries, u.attached.session.Collaboration(facts, item.ID, observed, activitypresentation.HistoricalCollaboration)...)
 	}
 }

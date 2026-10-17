@@ -118,7 +118,7 @@ func TestErrorDetailsRestoredRollout(t *testing.T) {
 			u.shell.Agents = terminalTest(u).Agents
 			detail := "CreateProcess: " + strings.Repeat("command ", 9000) + "\nrejected: forced cleanup is not permitted\n    at cell:17"
 			records := append([]map[string]any{rolloutRecord(1, "event_msg", map[string]any{"type": "task_started", "turn_id": "t"})}, rolloutFailedCell(2, "rejected", detail)...)
-			info := binding.ThreadInfo{ID: "main", Cwd: u.cwd, Turns: []binding.HistoryTurn{{ID: "t", Status: "failed"}}}
+			info := binding.ThreadInfo{ID: "main", Cwd: u.attached.cwd, Turns: []binding.HistoryTurn{{ID: "t", Status: "failed"}}}
 			if !child {
 				info.Path = writeTestRollout(t, "main", records...)
 			}
@@ -127,7 +127,7 @@ func TestErrorDetailsRestoredRollout(t *testing.T) {
 			}
 			var data []any
 			if child {
-				data = []any{map[string]any{"id": "child", "cwd": u.cwd, "path": writeTestRollout(t, "child", records...), "parentThreadId": "main",
+				data = []any{map[string]any{"id": "child", "cwd": u.attached.cwd, "path": writeTestRollout(t, "child", records...), "parentThreadId": "main",
 					"source": map[string]any{"subAgent": map[string]any{"thread_spawn": map[string]any{"agent_path": "/root/worker"}}}}}
 			}
 			restoreContentReply(t, u, 0, map[string]any{"data": data, "nextCursor": nil})

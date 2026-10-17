@@ -22,7 +22,7 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 			case "starting":
 				u.AwaitingTurn = true
 			case "queued":
-				u.conversation().Queued = []conversationmodel.Input{{Text: "next"}}
+				u.attached.conversation.Queued = []conversationmodel.Input{{Text: "next"}}
 			}
 			appServerTestKeys(t, u, "/lock\r")
 			if !u.shell.Main.InterruptLocked || u.Text != "" {
@@ -35,10 +35,10 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 			if err := terminalTest(u).send("\x1b"); err != nil {
 				t.Fatal(err)
 			}
-			if wire.Len() != 0 || u.Interruption.BeforeStart || u.Interruption.Target != "" || !strings.Contains(u.feedback.Text, "/unlock") {
+			if wire.Len() != 0 || u.Interruption.BeforeStart || u.Interruption.Target != "" || !strings.Contains(u.attached.feedback.Text, "/unlock") {
 				t.Fatalf("locked cancellation reached host: %s %+v", wire.Bytes(), u)
 			}
-			if state == "queued" && len(u.conversation().Queued) != 1 {
+			if state == "queued" && len(u.attached.conversation.Queued) != 1 {
 				t.Fatal("lock discarded queued input")
 			}
 			if !strings.Contains(ansi.Strip(terminalTest(u).nativeStatus()), "Locked") {
@@ -49,7 +49,7 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 			if err != nil || u.shell.Main.InterruptLocked {
 				t.Fatal("unlock did not restore keyboard handling")
 			}
-			if state == "running" && !strings.Contains(wire.String(), "turn/interrupt") || state == "starting" && !u.Interruption.BeforeStart || state == "idle" && !quit || state == "queued" && (len(u.conversation().Queued) != 0 || u.Text != "next") {
+			if state == "running" && !strings.Contains(wire.String(), "turn/interrupt") || state == "starting" && !u.Interruption.BeforeStart || state == "idle" && !quit || state == "queued" && (len(u.attached.conversation.Queued) != 0 || u.Text != "next") {
 				t.Fatalf("unlocked handling did not resume: quit=%v draft=%q wire=%s", quit, u.Text, wire.String())
 			}
 		})

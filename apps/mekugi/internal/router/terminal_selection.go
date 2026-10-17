@@ -12,14 +12,14 @@ func (main *appServerUI) openSelectionTarget(u *terminalsession.Attachment, targ
 	if target.Link == "" && target.Entry == 0 && target.Snippet == (activityui.Snippet{}) {
 		return
 	}
-	view := main.sessionPresentation().View()
-	if target.Version != view.Version || target.Thread != view.Displayed.ID || target.Workspace != view.Info.Workspace || target.Workspace != main.cwd || main.activitySource(target.View) == nil {
+	view := main.attached.presentation.View()
+	if target.Version != view.Version || target.Thread != view.Displayed.ID || target.Workspace != view.Info.Workspace || target.Workspace != main.attached.cwd || main.activitySource(target.View) == nil {
 		main.setNotice(sessionpresentation.ErrStaleIntent.Error(), true)
 		return
 	}
 	switch {
 	case target.Link != "":
-		if !main.detailFiles.openMarkdownFile(&main.session, main.sessionPresentation(), main.cwd, main.activitySource(target.View), u, target.View, target.Link) {
+		if !main.detailFiles.openMarkdownFile(&main.attached.session, main.attached.presentation, main.attached.cwd, main.activitySource(target.View), u, target.View, target.Link) {
 			link := target.Link
 			if parsed, err := url.Parse(link); err == nil && parsed.Scheme == "file" {
 				link = parsed.Path

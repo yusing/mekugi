@@ -85,8 +85,8 @@ func (u *appServerUI) writeTerminalTitle(now time.Time) {
 		frames := []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
 		parts = append(parts, string(frames[(now.UnixMilli()/100)%int64(len(frames))]))
 	}
-	if u.cwd != "" {
-		parts = append(parts, filepath.Base(u.cwd))
+	if u.attached.cwd != "" {
+		parts = append(parts, filepath.Base(u.attached.cwd))
 	}
 	title := strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) {

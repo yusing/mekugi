@@ -40,7 +40,7 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 		t.Fatalf("native delivery = %v, want root, child, and router-wide", first)
 	}
 
-	if len(u.source.Entries) != 0 || !u.feedback.Alert {
+	if len(u.attached.source.Entries) != 0 || !u.attached.feedback.Alert {
 		t.Fatal("router errors entered the transcript or missed the composer")
 	}
 
@@ -48,10 +48,10 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	if err := u.testPaint(io.Discard, 100, 16); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(u.feedback.Text, "/root/worker: ") || !strings.Contains(u.feedback.Text, "router-wide capacity warning") || strings.Count(u.feedback.Text, "Enable supported tools.") != 2 {
-		t.Fatalf("composer omitted or mis-scoped native notices: %s", u.feedback.Text)
+	if !strings.Contains(u.attached.feedback.Text, "/root/worker: ") || !strings.Contains(u.attached.feedback.Text, "router-wide capacity warning") || strings.Count(u.attached.feedback.Text, "Enable supported tools.") != 2 {
+		t.Fatalf("composer omitted or mis-scoped native notices: %s", u.attached.feedback.Text)
 	}
-	before := u.feedback.Text
+	before := u.attached.feedback.Text
 
 	rect := u.shell.Main.NoticeDetails
 	if rect.W == 0 {
@@ -77,8 +77,8 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	terminalTest(u).outputKey("q")
 	first.finish(terminalsession.NoticeReceipt{}) // Simulate an unpainted terminal frame.
 	retry := u.applyCriticalNotices()
-	if retry == nil || len(retry.errors.Messages) != 3 || len(u.source.Entries) != 0 || u.feedback.Text != before {
-		t.Fatalf("retry duplicated or lost entries: delivery=%v entries=%d", retry, len(u.source.Entries))
+	if retry == nil || len(retry.errors.Messages) != 3 || len(u.attached.source.Entries) != 0 || u.attached.feedback.Text != before {
+		t.Fatalf("retry duplicated or lost entries: delivery=%v entries=%d", retry, len(u.attached.source.Entries))
 	}
 	if err := u.testPaint(io.Discard, 100, 16); err != nil {
 		t.Fatal(err)
@@ -99,20 +99,20 @@ func TestNativeRequestNoticesWaitForHostTurnOutcome(t *testing.T) {
 					Phase: "inspect_response"}, fmt.Errorf("upstream closed: %s", cause))
 			}
 			record("StatusServiceRestart")
-			if delivery := u.applyCriticalNotices(); delivery != nil || u.feedback.Alert {
+			if delivery := u.applyCriticalNotices(); delivery != nil || u.attached.feedback.Alert {
 				t.Fatal("request attempt interrupted a retrying turn")
 			}
 			appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "turn", "status": status}})
 			record("late NormalClosure") // Finalization can follow the host notification.
 			delivery := u.applyCriticalNotices()
 			if status != "failed" {
-				if delivery != nil || len(u.issues.Notices.Pending()) != 0 || u.feedback.Alert {
+				if delivery != nil || len(u.issues.Notices.Pending()) != 0 || u.attached.feedback.Alert {
 					t.Fatal("recovered or interrupted turn retained a failure notice")
 				}
 				return
 			}
-			if delivery == nil || len(delivery.errors.Messages) != 2 || !strings.Contains(u.feedback.Text, "StatusServiceRestart") || !strings.Contains(u.feedback.Text, "NormalClosure") {
-				t.Fatalf("terminal failure lost its diagnostic batch: %s", u.feedback.Text)
+			if delivery == nil || len(delivery.errors.Messages) != 2 || !strings.Contains(u.attached.feedback.Text, "StatusServiceRestart") || !strings.Contains(u.attached.feedback.Text, "NormalClosure") {
+				t.Fatalf("terminal failure lost its diagnostic batch: %s", u.attached.feedback.Text)
 			}
 			delivery.errors.Finish(true)
 			if len(u.issues.Notices.Pending()) != 0 {
@@ -142,8 +142,8 @@ func TestNativeRequestNoticeChildOutcomeKeepsOtherTurnsPending(t *testing.T) {
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "turn", "status": "failed"}})
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "turn", "status": "completed"}})
 	delivery = u.applyCriticalNotices()
-	if delivery == nil || len(delivery.errors.Messages) != 1 || !strings.Contains(u.feedback.Text, "/root/worker: ") || strings.Contains(u.feedback.Text, "upstream closed for main") {
-		t.Fatalf("child completion crossed turn scope: %s", u.feedback.Text)
+	if delivery == nil || len(delivery.errors.Messages) != 1 || !strings.Contains(u.attached.feedback.Text, "/root/worker: ") || strings.Contains(u.attached.feedback.Text, "upstream closed for main") {
+		t.Fatalf("child completion crossed turn scope: %s", u.attached.feedback.Text)
 	}
 	delivery.errors.Finish(true)
 	if pending := u.issues.Notices.Pending(); len(pending) != 1 || !strings.Contains(pending[0], "upstream closed for other") {
@@ -167,7 +167,7 @@ func TestFailureStorageNoticeReachesOwningNativeRootBeforeShutdown(t *testing.T)
 	other, _ := newAppServerTestUI()
 	other.Thread = "unrelated-root"
 	other.issues = issues
-	if delivery := other.applyCriticalNotices(); delivery != nil || len(other.source.Entries) != 0 {
+	if delivery := other.applyCriticalNotices(); delivery != nil || len(other.attached.source.Entries) != 0 {
 		t.Fatal("another root claimed the storage notice")
 	}
 
@@ -177,8 +177,8 @@ func TestFailureStorageNoticeReachesOwningNativeRootBeforeShutdown(t *testing.T)
 	owner.shell.Transcript.Conversation = true
 	owner.testActivity(owner.shell.Transcript).testAudience()
 	delivery := owner.applyCriticalNotices()
-	if delivery == nil || len(delivery.errors.Messages) != 1 || len(owner.source.Entries) != 0 || !owner.feedback.Alert {
-		t.Fatalf("owning root did not receive the storage notice: delivery=%v entries=%d", delivery, len(owner.source.Entries))
+	if delivery == nil || len(delivery.errors.Messages) != 1 || len(owner.attached.source.Entries) != 0 || !owner.attached.feedback.Alert {
+		t.Fatalf("owning root did not receive the storage notice: delivery=%v entries=%d", delivery, len(owner.attached.source.Entries))
 	}
 	rows, receipt := owner.testDeliveredMainFrame(t, 100, 12, 0)
 	feed := ansi.Strip(strings.Join(rows, "\n"))
@@ -198,7 +198,7 @@ func TestNativeCriticalNoticeComposerVisibility(t *testing.T) {
 			u.issues = testCriticalErrors()
 			queueCritical(u.issues, u.Thread)
 			delivery := u.applyCriticalNotices()
-			claimedText := u.feedback.Text
+			claimedText := u.attached.feedback.Text
 
 			defer terminalTest(u).Diff.Close()
 			switch state {
@@ -225,9 +225,9 @@ func TestNativeCriticalNoticeComposerVisibility(t *testing.T) {
 				t.Fatal("hidden or replaced notice was acknowledged")
 			}
 			u.statusPanel = nil
-			u.sessionPresentation().ClosePanel()
+			u.attached.presentation.ClosePanel()
 			retry := u.applyCriticalNotices()
-			if retry == nil || u.feedback.Text != claimedText {
+			if retry == nil || u.attached.feedback.Text != claimedText {
 				t.Fatal("hidden batch could not retry")
 			}
 			_, receipt = u.testDeliveredMainFrame(t, 80, 12, 0)
@@ -263,7 +263,7 @@ func TestNativeCleanupNoticeTranscriptReplacement(t *testing.T) {
 			u.Thread = "replacement"
 			retry := u.applyCriticalNotices()
 			if delivered {
-				if retry != nil || len(u.source.Entries) != 0 {
+				if retry != nil || len(u.attached.source.Entries) != 0 {
 					t.Fatal("delivered progress returned in replacement transcript")
 				}
 				return
@@ -276,8 +276,8 @@ func TestNativeCleanupNoticeTranscriptReplacement(t *testing.T) {
 				t.Fatal("replacement transcript did not paint pending progress")
 			}
 			retry.finish(receipt)
-			if len(u.source.Entries) != 1 || len(u.issues.Notices.Pending()) != 0 {
-				t.Fatalf("retry: entries=%d pending=%v", len(u.source.Entries), u.issues.Notices.Pending())
+			if len(u.attached.source.Entries) != 1 || len(u.issues.Notices.Pending()) != 0 {
+				t.Fatalf("retry: entries=%d pending=%v", len(u.attached.source.Entries), u.issues.Notices.Pending())
 			}
 		})
 	}
@@ -300,7 +300,7 @@ func TestNativeCriticalNoticeMixedBatchDismissal(t *testing.T) {
 		t.Fatal(err)
 	}
 	retry := u.applyCriticalNotices()
-	if u.feedback.Text != "" || len(u.source.Entries) != 1 {
+	if u.attached.feedback.Text != "" || len(u.attached.source.Entries) != 1 {
 		t.Fatal("dismissed error returned or progress duplicated")
 	}
 	_, receipt = u.testDeliveredMainFrame(t, 80, 12, 0)
@@ -330,9 +330,9 @@ func TestNativeNoticeChildFrameCannotAcknowledgeMainProgress(t *testing.T) {
 	u.issues.CleanupNotice("", "", "planning", "Main cleanup progress")
 	delivery := u.applyCriticalNotices()
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-	view := u.sessionPresentation().View()
+	view := u.attached.presentation.View()
 	if !u.displaySession(sessionpresentation.DisplayIntent{Version: view.Version, Thread: sessionpresentation.Thread{ID: "child", Caller: "/root/worker"}}) {
-		t.Fatal(u.feedback.Text)
+		t.Fatal(u.attached.feedback.Text)
 	}
 	if err := u.testPaint(io.Discard, 100, 24); err != nil {
 		t.Fatal(err)
@@ -341,16 +341,16 @@ func TestNativeNoticeChildFrameCannotAcknowledgeMainProgress(t *testing.T) {
 	if len(u.issues.Notices.Pending()) != 1 {
 		t.Fatal("child transcript acknowledged hidden Main progress")
 	}
-	view = u.sessionPresentation().View()
+	view = u.attached.presentation.View()
 	if !u.displaySession(sessionpresentation.DisplayIntent{Version: view.Version, Thread: view.Main}) {
-		t.Fatal(u.feedback.Text)
+		t.Fatal(u.attached.feedback.Text)
 	}
 	retry := u.applyCriticalNotices()
 	if err := u.testPaint(io.Discard, 100, 24); err != nil {
 		t.Fatal(err)
 	}
 	retry.finish(terminalTest(u).Frame.Notices)
-	if len(u.issues.Notices.Pending()) != 0 || len(u.source.Entries) != 1 {
+	if len(u.issues.Notices.Pending()) != 0 || len(u.attached.source.Entries) != 1 {
 		t.Fatal("visible Main retry was lost or duplicated")
 	}
 }

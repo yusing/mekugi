@@ -35,25 +35,25 @@ func TestAppServerHookLifecycleUsesRunPresentation(t *testing.T) {
 	waitTargetTestStore(t, u, waitTargetTestOpenStore(t))
 	u.shell.Transcript.Conversation = true
 	u.testActivity(u.shell.Transcript).testAudience()
-	start := hookTestRun(u.cwd, "running")
+	start := hookTestRun(u.attached.cwd, "running")
 	start["completedAt"], start["durationMs"], start["entries"] = nil, nil, nil
 	appServerTestNotify(t, u, "hook/started", map[string]any{"threadId": "main", "run": start})
-	if len(u.source.Entries) != 1 || !u.testActivity(u.shell.Transcript).blocks(0)[0].Running {
+	if len(u.attached.source.Entries) != 1 || !u.testActivity(u.shell.Transcript).blocks(0)[0].Running {
 		t.Fatal("hook start did not create a running Run block")
 	}
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": binding.Turn{ID: "t", Status: "completed"}})
 	if !u.testActivity(u.shell.Transcript).blocks(0)[0].Running {
 		t.Fatal("turn completion ended an async hook")
 	}
-	appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "turnId": "later", "run": hookTestRun(u.cwd, "completed")})
+	appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "turnId": "later", "run": hookTestRun(u.attached.cwd, "completed")})
 	// Duplicate completion and a late start cannot add a row or revive work.
-	appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.cwd, "completed")})
+	appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.attached.cwd, "completed")})
 	appServerTestNotify(t, u, "hook/started", map[string]any{"threadId": "main", "run": start})
-	if len(u.source.Entries) != 1 {
-		t.Fatalf("hook notifications duplicated rows: %d", len(u.source.Entries))
+	if len(u.attached.source.Entries) != 1 {
+		t.Fatalf("hook notifications duplicated rows: %d", len(u.attached.source.Entries))
 	}
 	b := u.testActivity(u.shell.Transcript).blocks(0)[0]
-	if b.Running || u.source.RetainedOutput(b.Source, b.Output).View().Exited || b.Duration != 120*time.Millisecond || !b.Started.Equal(time.Unix(1000, 0)) {
+	if b.Running || u.attached.source.RetainedOutput(b.Source, b.Output).View().Exited || b.Duration != 120*time.Millisecond || !b.Started.Equal(time.Unix(1000, 0)) {
 		t.Fatalf("hook completion borrowed a shell exit or lost host timing: %+v", b)
 	}
 	u.shell.Transcript.Expansion = 1 // Default presentation omits hook runs.
@@ -75,20 +75,20 @@ func TestAppServerHookOutcomesInChildFeed(t *testing.T) {
 			waitTargetTestStore(t, u, waitTargetTestOpenStore(t))
 			u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 			_ = u.Requests.ReadThreadMetadata("main", "child", true, appServerRequest{})
-			run := hookTestRun(u.cwd, status)
+			run := hookTestRun(u.attached.cwd, status)
 			run["entries"] = []map[string]any{{"kind": "error", "text": "cannot execute\npermission denied\x1b]0;unsafe\a"}}
 			// Completion alone must be visible, independently of Main's same run ID.
-			appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.cwd, "completed")})
+			appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.attached.cwd, "completed")})
 			appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "child", "run": run})
-			b := u.testActivity(u.shell.Agents).blocks(len(u.childSource.Entries) - 1)[0]
-			if b.Running || b.Collapsible() || b.ExitCode != 0 || u.childSource.RetainedOutput(b.Source, b.Output).View().Exited || !b.Hook.HasError {
+			b := u.testActivity(u.shell.Agents).blocks(len(u.attached.childSource.Entries) - 1)[0]
+			if b.Running || b.Collapsible() || b.ExitCode != 0 || u.attached.childSource.RetainedOutput(b.Source, b.Output).View().Exited || !b.Hook.HasError {
 				t.Fatalf("hook outcome was flattened to a command exit: %+v", b)
 			}
-			page := u.shell.Agents.Painter.DialogPage(snapshotOutput(b, u.childSource.RetainedOutput(b.Source, b.Output)), 60)
+			page := u.shell.Agents.Painter.DialogPage(snapshotOutput(b, u.attached.childSource.RetainedOutput(b.Source, b.Output)), 60)
 			if !strings.Contains(page.Text, "error: cannot execute") || strings.Contains(page.Text, "unsafe") || strings.Contains(ansi.Strip(page.Detail), "exit") {
 				t.Fatalf("hook detail lost errors or fabricated an exit: %+v", page)
 			}
-			if len(u.source.Entries) != 1 {
+			if len(u.attached.source.Entries) != 1 {
 				t.Fatal("child hook leaked into Main")
 			}
 		})
@@ -99,11 +99,11 @@ func TestAppServerHookRetentionFailureKeepsLiveOutput(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	store := waitTargetTestOpenStore(t)
 	waitTargetTestStore(t, u, store)
-	if err := os.Mkdir(filepath.Join(store.directory, history.HookObservationsName(u.cwd, "main")), 0700); err != nil {
+	if err := os.Mkdir(filepath.Join(store.directory, history.HookObservationsName(u.attached.cwd, "main")), 0700); err != nil {
 		t.Fatal(err)
 	}
-	appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.cwd, "failed")})
-	if len(u.source.Entries) != 1 || !strings.Contains(u.feedback.Text, "could not be retained") {
+	appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.attached.cwd, "failed")})
+	if len(u.attached.source.Entries) != 1 || !strings.Contains(u.attached.feedback.Text, "could not be retained") {
 		t.Fatal("retention failure hid live output or lacked a notice")
 	}
 }
@@ -113,10 +113,10 @@ func TestAppServerHookOpenDialogTracksCompletion(t *testing.T) {
 		t.Run(status, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			waitTargetTestStore(t, u, waitTargetTestOpenStore(t))
-			start := hookTestRun(u.cwd, "running")
+			start := hookTestRun(u.attached.cwd, "running")
 			start["completedAt"], start["durationMs"], start["entries"] = nil, nil, nil
 			appServerTestNotify(t, u, "hook/started", map[string]any{"threadId": "main", "run": start})
-			if !terminalTest(u).openEntry(u.shell.Transcript, u.source.Entries[0].Source.Seq) {
+			if !terminalTest(u).openEntry(u.shell.Transcript, u.attached.source.Entries[0].Source.Seq) {
 				t.Fatal("hook dialog did not open")
 			}
 			d := terminalTest(u).Dialog
@@ -124,7 +124,7 @@ func TestAppServerHookOpenDialogTracksCompletion(t *testing.T) {
 			for _, key := range []string{"g", "/", "policy"} {
 				terminalTest(u).outputKey(key)
 			}
-			appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.cwd, status)})
+			appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.attached.cwd, status)})
 			terminalTest(u).layoutOutput(80)
 			want := "Hook Ran"
 			if status == "failed" {
@@ -145,11 +145,11 @@ func TestAppServerHookPagedChildWithoutTurns(t *testing.T) {
 	h := u.historyLoading()
 	observation := history.HookObservation{Run: history.HookRun{ID: "session-start-hook", EventName: "sessionStart", Status: "completed"},
 		At: time.Unix(100, 0), Completed: true, Output: "feedback: session ready"}
-	entry := hookEntry(&u.session, u.activity, u.cwd, "child", observation, false)
+	entry := hookEntry(&u.attached.session, u.activity, u.attached.cwd, "child", observation, false)
 	h.placements = append(h.placements, &restoredPlacement{entry: entry, at: observation.At})
 	restoreContentReply(t, u, 3, map[string]any{"data": []any{}})
-	if len(u.childSource.Entries) != 1 || u.childSource.Entries[0].Source.Kind != "hook" || len(h.placements) != 0 || historyLoadIntent(u).Thread != "" {
-		t.Fatalf("empty paginated history lost a hook or left false older history: entries=%d placements=%d", len(u.childSource.Entries), len(h.placements))
+	if len(u.attached.childSource.Entries) != 1 || u.attached.childSource.Entries[0].Source.Kind != "hook" || len(h.placements) != 0 || historyLoadIntent(u).Thread != "" {
+		t.Fatalf("empty paginated history lost a hook or left false older history: entries=%d placements=%d", len(u.attached.childSource.Entries), len(h.placements))
 	}
 }
 
@@ -167,32 +167,32 @@ func TestHookObservationRestartResumeAndReplay(t *testing.T) {
 	waitTargetTestStore(t, u, store)
 	clock := time.UnixMilli(replayTestEpoch + 1000)
 	u.clock = func() time.Time { return clock }
-	appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.cwd, "failed")})
+	appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.attached.cwd, "failed")})
 	clock = clock.Add(time.Second)
-	start := hookTestRun(u.cwd, "running")
+	start := hookTestRun(u.attached.cwd, "running")
 	start["id"], start["entries"] = "unfinished", nil
 	appServerTestNotify(t, u, "hook/started", map[string]any{"threadId": "main", "run": start})
 	// A fresh store and UI have no live parent or process handles.
-	fresh := newAppServerSessionTestUI(t, u.cwd)
+	fresh := newAppServerSessionTestUI(t, u.attached.cwd)
 	reopened, err := openMekugiReplayStore(directory)
 	if err != nil {
 		t.Fatal(err)
 	}
 	waitTargetTestStore(t, fresh, reopened)
-	root := binding.ThreadInfo{ID: "main", Cwd: u.cwd}
+	root := binding.ThreadInfo{ID: "main", Cwd: u.attached.cwd}
 	fresh.restoring = &appServerActivityRestore{root: root, state: sessionpresentation.NewRestoration(root.ID)}
 	fresh.readRestoredRollouts()
 	fresh.restoreMainHistory(nil, fresh.restoring.main, nil)
-	if len(fresh.source.Entries) != 2 {
-		t.Fatalf("resume lost hooks outside turns: %d", len(fresh.source.Entries))
+	if len(fresh.attached.source.Entries) != 2 {
+		t.Fatalf("resume lost hooks outside turns: %d", len(fresh.attached.source.Entries))
 	}
-	for _, entry := range fresh.source.Entries {
+	for _, entry := range fresh.attached.source.Entries {
 		b := fresh.shell.Transcript.Disclosure.Blocks(entry.Values)[0]
-		if b.Running || !fresh.source.RetainedOutput(b.Source, b.Output).View().Done {
+		if b.Running || !fresh.attached.source.RetainedOutput(b.Source, b.Output).View().Done {
 			t.Fatal("resume revived a hook")
 		}
 	}
-	if activityui.RowVerb(fresh.testActivity(fresh.shell.Transcript).blocks(1)[0]) != "Hook Run" || !strings.Contains(fresh.source.Entries[1].Source.Text, "outcome unknown") {
+	if activityui.RowVerb(fresh.testActivity(fresh.shell.Transcript).blocks(1)[0]) != "Hook Run" || !strings.Contains(fresh.attached.source.Entries[1].Source.Text, "outcome unknown") {
 		t.Fatal("unfinished restored hook claims completion")
 	}
 	foreign, err := reopened.publication.ReadHookObservations("/other", "main")
@@ -213,14 +213,14 @@ func TestHookObservationRestartResumeAndReplay(t *testing.T) {
 		t.Fatal("offline replay lost hooks or acquired live resources")
 	}
 	fresh.clock = u.clock
-	end := hookTestRun(u.cwd, "completed")
+	end := hookTestRun(u.attached.cwd, "completed")
 	end["id"] = "unfinished"
 	appServerTestNotify(t, fresh, "hook/completed", map[string]any{"threadId": "main", "run": end})
-	if len(fresh.source.Entries) != 2 || activityui.RowVerb(fresh.testActivity(fresh.shell.Transcript).blocks(1)[0]) != "Hook Ran" {
+	if len(fresh.attached.source.Entries) != 2 || activityui.RowVerb(fresh.testActivity(fresh.shell.Transcript).blocks(1)[0]) != "Hook Ran" {
 		t.Fatal("a fresh host completion could not settle a restored unknown hook")
 	}
 	// Corrupt optional hook history is disclosed without losing the host replay.
-	if err := os.WriteFile(filepath.Join(directory, history.HookObservationsName(u.cwd, "main")), []byte("invalid"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(directory, history.HookObservationsName(u.attached.cwd, "main")), []byte("invalid"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	rollout = replayTestWrite(t, t.TempDir(), "rollout-main.jsonl", replayTestMeta("main"),
@@ -237,7 +237,7 @@ func TestUISnapshotNativeHookVisibility(t *testing.T) {
 	waitTargetTestStore(t, u, waitTargetTestOpenStore(t))
 	u.shell.Transcript.Conversation = true
 	u.testActivity(u.shell.Transcript).testAudience()
-	global := filepath.Join(u.cwd, "hooks.json")
+	global := filepath.Join(u.attached.cwd, "hooks.json")
 	run := func(id, event, source, status, message string, entries ...map[string]any) {
 		appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": map[string]any{
 			"id": id, "eventName": event, "handlerType": "command", "executionMode": "sync", "sourcePath": source,
@@ -261,7 +261,7 @@ func TestUISnapshotNativeHookVisibility(t *testing.T) {
 		"startedAt": 1000, "completedAt": 1001, "durationMs": 5,
 		"entries": []map[string]any{{"kind": "feedback", "text": "mekugi: VCS guard instrumentation failed: VCS guard: cannot parse command: 1:10: reached EOF without closing quote `'`"}}}})
 	uisnapshot.Assert(t, "testdata/snapshots/native-hook-guard-rejection.txt", strings.Join(u.testActivity(u.shell.Transcript).testRenderConversation(80).Lines, "\n")+"\n")
-	if !terminalTest(u).openEntry(u.shell.Transcript, u.source.Entries[len(u.source.Entries)-1].Source.Seq) {
+	if !terminalTest(u).openEntry(u.shell.Transcript, u.attached.source.Entries[len(u.attached.source.Entries)-1].Source.Seq) {
 		t.Fatal("guard rejection dialog did not open")
 	}
 	uisnapshot.Assert(t, "testdata/snapshots/native-hook-guard-rejection-dialog.txt", drawOutputDialog(terminalTest(u))+"\n")
@@ -272,21 +272,21 @@ func TestHookObservationMovesReleasedStatusLine(t *testing.T) {
 	store := waitTargetTestOpenStore(t)
 	waitTargetTestStore(t, u, store)
 	// Observations retained before status messages were kept with the run.
-	released := history.HookObservations{Version: 1, Workspace: u.cwd, Thread: "main", Runs: []history.HookObservation{{
-		Run: history.HookRun{ID: "generated", EventName: "preToolUse", HandlerType: "command", SourcePath: filepath.Join(u.cwd, "hooks.json"), Status: "completed"},
+	released := history.HookObservations{Version: 1, Workspace: u.attached.cwd, Thread: "main", Runs: []history.HookObservation{{
+		Run: history.HookRun{ID: "generated", EventName: "preToolUse", HandlerType: "command", SourcePath: filepath.Join(u.attached.cwd, "hooks.json"), Status: "completed"},
 		At:  time.Unix(1000, 0), Output: "status: Checking for generated Go files\nfeedback: none found", Completed: true}}}
 	data, err := json.Marshal(released)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(store.directory, history.HookObservationsName(u.cwd, "main")), data, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(store.directory, history.HookObservationsName(u.attached.cwd, "main")), data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	r, err := store.publication.ReadHookObservations(u.cwd, "main")
+	r, err := store.publication.ReadHookObservations(u.attached.cwd, "main")
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry := hookEntry(&u.session, u.activity, u.cwd, "main", r.Runs[0], false)
+	entry := hookEntry(&u.attached.session, u.activity, u.attached.cwd, "main", r.Runs[0], false)
 	if !strings.Contains(entry.Text, "Checking for generated Go files") || r.Runs[0].Output != "feedback: none found" {
 		t.Fatalf("a released status line stayed output: %q, %q", entry.Text, r.Runs[0].Output)
 	}

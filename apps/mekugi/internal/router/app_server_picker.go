@@ -38,14 +38,14 @@ type composerPicker struct {
 }
 
 func (u *appServerUI) completionTarget() completion.Target {
-	if u.conversation().ShellMode() {
+	if u.attached.conversation.ShellMode() {
 		return completion.Target{}
 	}
 	return u.picker.FindTarget(u.Draft)
 }
 
 func (u *appServerUI) refreshPicker() {
-	for _, stack := range [][]conversationmodel.Input{u.conversation().Unsent, u.conversation().Queued} {
+	for _, stack := range [][]conversationmodel.Input{u.attached.conversation.Unsent, u.attached.conversation.Queued} {
 		for i := range stack {
 			before := len(stack[i].Skills)
 			u.bindSkills(&stack[i], true)
@@ -70,9 +70,9 @@ func (u *appServerUI) refreshPicker() {
 	}
 	target := u.completionTarget()
 	bindingOnly := false
-	if target.Kind == 0 && p.Kind == "" && (!p.SkillsLoaded || p.SkillsCwd != u.cwd) {
+	if target.Kind == 0 && p.Kind == "" && (!p.SkillsLoaded || p.SkillsCwd != u.attached.cwd) {
 		query := u.skillBindingQuery(draft, false)
-		for _, part := range slices.Concat(u.conversation().Unsent, u.conversation().Queued) {
+		for _, part := range slices.Concat(u.attached.conversation.Unsent, u.attached.conversation.Queued) {
 			if query == "" {
 				query = u.skillBindingQuery(part, true)
 			}
@@ -106,7 +106,7 @@ func (u *appServerUI) refreshPicker() {
 		u.filterCommands(target.Query)
 		return
 	}
-	cwd := u.cwd
+	cwd := u.attached.cwd
 	if !filepath.IsAbs(cwd) {
 		p.Loading, p.Problem = false, "Waiting for the thread workspace…"
 		return
@@ -249,7 +249,7 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 	}
 	if method == "skills/list" {
 		available := m.Error == nil && err == nil
-		if u.skillEnvironment != nil && p.Kind != "manage" && cwd == u.cwd {
+		if u.skillEnvironment != nil && p.Kind != "manage" && cwd == u.attached.cwd {
 			parent := u.ctx
 			if parent == nil {
 				parent = context.Background()
@@ -277,7 +277,7 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 		if p.Kind == "manage" && p.Initial == nil {
 			u.picker.RememberSkills()
 		}
-		if problem != "" && cwd == u.cwd {
+		if problem != "" && cwd == u.attached.cwd {
 			label := "Skill catalog incomplete: "
 			if !available {
 				label = "Skill attachment unavailable: "
@@ -285,7 +285,7 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 			u.setNotice(label+problem+". Unavailable references remain text.", true)
 		}
 	}
-	p.Resolve(target, cwd, u.cwd, choices, problem)
+	p.Resolve(target, cwd, u.attached.cwd, choices, problem)
 	u.refreshPicker()
 	return true
 }
@@ -318,7 +318,7 @@ func (u *appServerUI) acceptCompletion(choice completion.Choice) bool {
 	if target.Kind == '@' {
 		path := choice.Path
 		if !filepath.IsAbs(path) {
-			path = filepath.Join(u.cwd, path)
+			path = filepath.Join(u.attached.cwd, path)
 		}
 		if imageFile(path) {
 			imagePath = path

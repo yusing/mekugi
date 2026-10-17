@@ -21,18 +21,18 @@ func TestUISnapshotMarkdownFileLoading(t *testing.T) {
 	for _, extension := range []string{"go", "md"} {
 		t.Run(extension, func(t *testing.T) {
 			main, _ := newAppServerTestUI()
-			main.cwd = t.TempDir()
+			main.attached.cwd = t.TempDir()
 			main.shell.Transcript.Painter.Theme = diffrender.TerminalTheme
-			path := filepath.Join(main.cwd, "sample."+extension)
+			path := filepath.Join(main.attached.cwd, "sample."+extension)
 			content := strings.Repeat("// preceding line\n", 39) + "var target = 1\n"
 			if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 				t.Fatal(err)
 			}
 			u := terminalTest(main)
 			u.Width, u.Height = 80, 18
-			u.main.detailFiles.openMarkdownFile(&u.main.session, u.main.sessionPresentation(), u.main.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, "sample."+extension+":40")
+			u.main.detailFiles.openMarkdownFile(&u.main.attached.session, u.main.attached.presentation, u.main.attached.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, "sample."+extension+":40")
 			rows := make([]string, u.Height)
-			u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
+			u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
 			u.Dialog.Paint(rows, u.Width, u.Height)
 			if extension == "go" {
 				uisnapshot.AssertTerminal(t, "testdata/snapshots/native-markdown-file-loading.txt", rows, u.Width)
@@ -61,7 +61,7 @@ func TestUISnapshotMarkdownFileLoading(t *testing.T) {
 			if u.Frame.Clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte(content))+"\x07" {
 				t.Fatal("source copy reread the changed file")
 			}
-			u.main.detailFiles.openMarkdownFile(&u.main.session, u.main.sessionPresentation(), u.main.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, "sample."+extension)
+			u.main.detailFiles.openMarkdownFile(&u.main.attached.session, u.main.attached.presentation, u.main.attached.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, "sample."+extension)
 			awaitMarkdownFile(t, u)
 			if frame := drawOutputDialog(u); !strings.Contains(frame, "changed after opening") {
 				t.Fatalf("reopening did not read current content: %s", frame)
@@ -75,14 +75,14 @@ func TestMarkdownFileLateCompletion(t *testing.T) {
 		t.Run(boundary, func(t *testing.T) {
 			main, _ := newAppServerTestUI()
 
-			main.cwd = t.TempDir()
-			path := filepath.Join(main.cwd, "source.go")
+			main.attached.cwd = t.TempDir()
+			path := filepath.Join(main.attached.cwd, "source.go")
 			if err := os.WriteFile(path, []byte("package stale\n"), 0600); err != nil {
 				t.Fatal(err)
 			}
 			u := terminalTest(main)
 			u.Width, u.Height = 80, 18
-			u.main.detailFiles.openMarkdownFile(&u.main.session, u.main.sessionPresentation(), u.main.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, path)
+			u.main.detailFiles.openMarkdownFile(&u.main.attached.session, u.main.attached.presentation, u.main.attached.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, path)
 			results := u.main.fileReads
 			switch boundary {
 			case "close":
@@ -92,7 +92,7 @@ func TestMarkdownFileLateCompletion(t *testing.T) {
 			case "thread":
 				main.testActivity(main.shell.Agents).displayThread("/root/child")
 			case "retirement":
-				main.session.Retire()
+				main.attached.session.Retire()
 			case "attachment":
 				if err := main.clearSessionPresentation(); err != nil {
 					t.Fatal(err)
@@ -100,7 +100,7 @@ func TestMarkdownFileLateCompletion(t *testing.T) {
 			}
 			select {
 			case result := <-results:
-				u.main.detailFiles.loadedMarkdownFile(&u.main.session, u.main.presentationState, u.main.cwd, u.Attachment, result)
+				u.main.detailFiles.loadedMarkdownFile(&u.main.attached.session, u.main.presentationState, u.main.attached.cwd, u.Attachment, result)
 			case <-time.After(5 * time.Second):
 				t.Fatal("file read did not finish")
 			}
@@ -117,14 +117,14 @@ func TestMarkdownFileLateCompletion(t *testing.T) {
 
 func TestMarkdownFileCapacityAndReadErrors(t *testing.T) {
 	main, _ := newAppServerTestUI()
-	main.cwd = t.TempDir()
+	main.attached.cwd = t.TempDir()
 	main.fileReadSlot = make(chan struct{}, 1)
 	u := terminalTest(main)
 	u.Width, u.Height = 80, 18
 	// Reserve physical capacity independently of the dialog. This models an
 	// outstanding syscall, not a kernel-blocked filesystem fixture.
 	main.fileReadSlot <- struct{}{}
-	u.main.detailFiles.openMarkdownFile(&u.main.session, u.main.sessionPresentation(), u.main.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, "missing.go")
+	u.main.detailFiles.openMarkdownFile(&u.main.attached.session, u.main.attached.presentation, u.main.attached.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, "missing.go")
 	if frame := drawOutputDialog(u); !strings.Contains(frame, "capacity exhausted") {
 		t.Fatalf("exhausted read capacity was hidden: %s", frame)
 	}
@@ -134,7 +134,7 @@ func TestMarkdownFileCapacityAndReadErrors(t *testing.T) {
 	}
 	<-main.fileReadSlot
 	for _, name := range []string{"oversized.go", "unreadable.go"} {
-		path := filepath.Join(main.cwd, name)
+		path := filepath.Join(main.attached.cwd, name)
 		if err := os.WriteFile(path, nil, 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -145,7 +145,7 @@ func TestMarkdownFileCapacityAndReadErrors(t *testing.T) {
 		} else if err := os.Chmod(path, 0); err != nil {
 			t.Fatal(err)
 		}
-		u.main.detailFiles.openMarkdownFile(&u.main.session, u.main.sessionPresentation(), u.main.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, name)
+		u.main.detailFiles.openMarkdownFile(&u.main.attached.session, u.main.attached.presentation, u.main.attached.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, name)
 		awaitMarkdownFile(t, u)
 		drawOutputDialog(u)
 		if u.Dialog.Pages[0].Kind != "error" {

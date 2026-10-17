@@ -24,7 +24,7 @@ func TestQuestionAnswerWaitsForToolInput(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
 			setTestAppServerIntegration(u, proxy)
 			u.Turn = "turn"
-			u.cwd = t.TempDir()
+			u.attached.cwd = t.TempDir()
 			// Installed Codex may omit cwd in provider requests. Native thread
 			// identity must still protect the matching UI's question answer.
 			transform := prepareEmissionTest(t, proxy, "", u.Thread)
@@ -35,8 +35,8 @@ func TestQuestionAnswerWaitsForToolInput(t *testing.T) {
 			u.openQuestions()
 			questionTestPaint(t, u, 70)
 			appServerTestKeys(t, u, "1\r")
-			if requests := appServerTurnRequests(t, wire); len(requests) != 0 || len(u.conversation().Unsent) != 1 {
-				t.Fatalf("answer interrupted tool input: requests=%+v unsent=%+v", requests, u.conversation().Unsent)
+			if requests := appServerTurnRequests(t, wire); len(requests) != 0 || len(u.attached.conversation.Unsent) != 1 {
+				t.Fatalf("answer interrupted tool input: requests=%+v unsent=%+v", requests, u.attached.conversation.Unsent)
 			}
 			done := "response.custom_tool_call_input.done"
 			if kind == "function_call" {
@@ -48,7 +48,7 @@ func TestQuestionAnswerWaitsForToolInput(t *testing.T) {
 			if err := u.flushInput(); err != nil {
 				t.Fatal(err)
 			}
-			appServerOneRequest(t, wire, "turn/steer", u.conversation().Submitted[u.Submission().ID].Text)
+			appServerOneRequest(t, wire, "turn/steer", u.attached.conversation.Submitted[u.Submission().ID].Text)
 		})
 	}
 }
@@ -80,7 +80,7 @@ func TestToolInputEmissionDoesNotBlockNormalPromptsOrOtherSessions(t *testing.T)
 				questionTestPaint(t, u, 70)
 			}
 			appServerTestKeys(t, u, "1\r")
-			appServerOneRequest(t, wire, "turn/steer", u.conversation().Submitted[u.Submission().ID].Text)
+			appServerOneRequest(t, wire, "turn/steer", u.attached.conversation.Submitted[u.Submission().ID].Text)
 		})
 	}
 }
@@ -90,7 +90,7 @@ func TestNormalPromptBypassesDeferredQuestionAnswer(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	setTestAppServerIntegration(u, proxy)
 	u.Turn = "turn"
-	transform := prepareEmissionTest(t, proxy, u.cwd, u.Thread)
+	transform := prepareEmissionTest(t, proxy, u.attached.cwd, u.Thread)
 	defer transform.Close()
 	emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": map[string]any{"id": "emitting", "type": "custom_tool_call"}})
 	questionTestAsync(t, u, "question", "Who receives it?")
@@ -99,9 +99,9 @@ func TestNormalPromptBypassesDeferredQuestionAnswer(t *testing.T) {
 	appServerTestKeys(t, u, "1\r")
 	appServerTestKeys(t, u, "Stop and change direction\r")
 	if requests := appServerTurnRequests(t, wire); len(requests) != 1 || requests[0].text() != "Stop and change direction" {
-		t.Fatalf("normal prompt blocked behind deferred answer; queued entries=%d", len(u.conversation().Unsent))
+		t.Fatalf("normal prompt blocked behind deferred answer; queued entries=%d", len(u.attached.conversation.Unsent))
 	}
-	if len(u.conversation().Unsent) != 1 || u.conversation().Unsent[0].Question == nil {
+	if len(u.attached.conversation.Unsent) != 1 || u.attached.conversation.Unsent[0].Question == nil {
 		t.Fatal("normal prompt consumed the deferred answer")
 	}
 }

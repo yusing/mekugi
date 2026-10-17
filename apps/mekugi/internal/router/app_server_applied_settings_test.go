@@ -322,7 +322,7 @@ func TestAppServerAppliedSettingsStorageFailurePreservesHostResult(t *testing.T)
 		t.Fatal(err)
 	}
 	appliedSettingsTestNotify(t, u, "applied", "high", "priority")
-	if u.model != "applied" || u.reasoningEffort != "high" || u.serviceTier != "priority" || len(u.source.Entries) == 0 {
+	if u.model != "applied" || u.reasoningEffort != "high" || u.serviceTier != "priority" || len(u.attached.source.Entries) == 0 {
 		t.Fatal("storage failure hid the applied host settings or its warning")
 	}
 }
@@ -366,7 +366,7 @@ func TestAppServerAppliedSettingsMalformedAndLayoutOnly(t *testing.T) {
 				t.Fatalf("invalid or absent settings applied: %#v", params)
 			}
 			if body == "{" {
-				if len(fresh.source.Entries) == 0 {
+				if len(fresh.attached.source.Entries) == 0 {
 					t.Fatal("corrupt retention failed invisibly")
 				}
 			} else {
@@ -383,9 +383,9 @@ func TestUISnapshotNativeSettingsPersistenceFailure(t *testing.T) {
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
 	u.clock = func() time.Time { return now }
-	u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
+	u.attached.presentation.Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 	u.paneError(errors.New("session preferences storage unavailable"))
-	u.source.Entries[len(u.source.Entries)-1].Source.Observed = now
+	u.attached.source.Entries[len(u.attached.source.Entries)-1].Source.Observed = now
 	rows, _ := u.testMainFrame(100, 14, 0)
 	assertNativeUISnapshot(t, "native-settings-persistence-failure", rows)
 }
@@ -394,7 +394,7 @@ func TestUISnapshotNativeResumeReasoningRejected(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
-	u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "saved-model", "high"
+	u.attached.presentation.Status.Text, u.model, u.reasoningEffort = "Ready", "saved-model", "high"
 	u.Settings.RestoreEffort = true
 	u.Settings.Admit(sessioncontrol.SettingsPlan{Action: sessioncontrol.SettingsTurn})
 	appServerTestRequest(t, u, "1", "thread/settings/update")

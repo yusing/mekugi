@@ -754,15 +754,15 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	awaitCommandSegments(t, u)
-	restored := newAppServerSessionTestUI(t, u.cwd)
+	restored := newAppServerSessionTestUI(t, u.attached.cwd)
 	setTestAppServerIntegration(restored, testProxyWithStore(store))
 	restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
-	segments := restored.source.Entries[0].Source.Native.Segments
+	segments := restored.attached.source.Entries[0].Source.Native.Segments
 	if len(segments) != 2 || segments[0].Text != "Read `a.go`" || segments[1].Text != "Search `needle` in `src`" || segments[0].Source != "mcat "+quoteShellWord(cwd+"/a.go") {
 		t.Fatalf("restored paths or source changed: %+v", segments)
 	}
 	// Publish the child's inherited evidence in its own retained workspace.
-	retained := restored.prepareCommandSegments("main", u.cwd, binding.HistoryTurn{ID: "t", Items: []binding.ThreadItem{item}})[item.ID]
+	retained := restored.prepareCommandSegments("main", u.attached.cwd, binding.HistoryTurn{ID: "t", Items: []binding.ThreadItem{item}})[item.ID]
 	if retained == nil {
 		t.Fatal("fixture command segments were not retained")
 	}
@@ -771,11 +771,11 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 	}
 	// Child history can omit command cwd while retaining its own workspace.
 	item.Cwd = ""
-	child := newAppServerSessionTestUI(t, u.cwd)
+	child := newAppServerSessionTestUI(t, u.attached.cwd)
 	setTestAppServerIntegration(child, testProxyWithStore(store))
-	child.session.Caller("child")
+	child.attached.session.Caller("child")
 	child.restoreActivityThread(binding.ThreadInfo{ID: "child", Cwd: cwd, Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
-	parts := child.childSource.Entries[0].Source.Native.Segments
+	parts := child.attached.childSource.Entries[0].Source.Native.Segments
 	if len(parts) != 2 || parts[0].Text != "Read `a.go`" || parts[1].Text != "Search `needle` in `src`" {
 		t.Fatalf("restored child paths used main workspace: %+v", parts)
 	}
@@ -883,7 +883,7 @@ func (h *execTrackFixture) observeCommandStart(message appserver.Message) {
 
 func (h *execTrackFixture) run(key [3]string) *sessionpresentation.CommandOperation {
 	if h.ui != nil {
-		if run := h.ui.session.Commands()[key]; run != nil {
+		if run := h.ui.attached.session.Commands()[key]; run != nil {
 			return run
 		}
 	}

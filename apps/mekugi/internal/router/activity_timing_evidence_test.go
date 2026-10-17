@@ -78,7 +78,7 @@ func TestActivitySingleCommandActualTime(t *testing.T) {
 			u.retainCommandSegments(entry, item.Observation(), view)
 			u.finishCommandSegments()
 			entry.Native.Segments = nil
-			u.restoreCommandSegments(&entry, item, u.cwd)
+			u.restoreCommandSegments(&entry, item, u.attached.cwd)
 			blocks = parseLiveActivity(entry)
 			if len(blocks) != 1 || blocks[0].Duration != elapsed || blocks[0].Running {
 				t.Fatalf("single command timing lost on restore: %+v", blocks)
@@ -135,7 +135,7 @@ func TestActivityTimingRealShellBoundariesAndRestart(t *testing.T) {
 	restored := newAppServerSessionTestUI(t, workspace)
 	setTestAppServerIntegration(restored, testProxyWithStore(store))
 	restored.restoreHistory([]binding.HistoryTurn{{ID: key[1], Status: "completed", Items: []binding.ThreadItem{item}}})
-	for _, entry := range restored.source.Entries {
+	for _, entry := range restored.attached.source.Entries {
 		if entry.Source.CallID != item.ID || entry.Source.Native == nil {
 			continue
 		}

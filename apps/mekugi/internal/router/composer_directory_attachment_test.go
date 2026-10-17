@@ -232,7 +232,7 @@ func TestDirectoryAttachmentSnapshotAndProviderReplay(t *testing.T) {
 	root := directoryAttachmentRoot(t)
 	directoryAttachmentWrite(t, root, "src/original.go", "FILE CONTENT MUST NEVER APPEAR")
 	u, w := newAppServerTestUI()
-	u.cwd = root
+	u.attached.cwd = root
 	u.Text = "Review "
 	bindComposerFile(u, "@src", "src")
 	draft := u.takeDraft()

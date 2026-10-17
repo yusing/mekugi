@@ -223,7 +223,7 @@ func TestVCSCommitReadDoesNotBlockTheUI(t *testing.T) {
 func TestVCSTrackedCommitShowsItsRows(t *testing.T) {
 	g, output := vcsCommitFixture(t, "feat: tracked")
 	u, hub := newTrackedAppServerUI(t)
-	u.cwd = g.dir
+	u.attached.cwd = g.dir
 	script, err := shellinstrumentation.RewriteCommands("git add a.go b.go && timeout 90s git commit -F - <<'EOF'\nfeat: tracked\n\nbody\nEOF", displayGuardHelper, displayGuardDirectory, "", "")
 	if err != nil {
 		t.Fatal(err)

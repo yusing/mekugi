@@ -5,7 +5,7 @@ import (
 )
 
 func setSideTest(u *appServerUI, side *sessioncontrol.Side) {
-	u.conversation().Side = side.SideAnswer
+	u.attached.conversation.Side = side.SideAnswer
 	u.side = side
 	u.settlePresentation()
 }

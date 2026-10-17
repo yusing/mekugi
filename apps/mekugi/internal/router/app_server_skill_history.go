@@ -25,7 +25,7 @@ func (u *appServerUI) startSkillHistory() {
 		return
 	}
 	// One scan at a time keeps background history I/O independently bounded.
-	for thread := range u.session.Threads() {
+	for thread := range u.attached.session.Threads() {
 		h := u.childHistory(thread)
 		if h == nil {
 			continue
@@ -34,7 +34,7 @@ func (u *appServerUI) startSkillHistory() {
 			return
 		}
 	}
-	for thread := range u.session.Threads() {
+	for thread := range u.attached.session.Threads() {
 		h := u.childHistory(thread)
 		if h == nil {
 			continue
@@ -43,7 +43,7 @@ func (u *appServerUI) startSkillHistory() {
 			continue
 		}
 		h.skills = &appServerSkillHistory{cursors: make(map[string]bool)}
-		if !u.childSource.NeedsSkillHistory(u.session.Caller(h.info.ID)) {
+		if !u.attached.childSource.NeedsSkillHistory(u.attached.session.Caller(h.info.ID)) {
 			continue // A live boundary already established the current context.
 		}
 		if err := u.requestSkillHistory(h, ""); err != nil {
@@ -67,7 +67,7 @@ func (u *appServerUI) requestSkillHistory(h *appServerChildHistory, cursor strin
 
 func (u *appServerUI) failSkillHistory(h *appServerChildHistory, message string) error {
 	h.skills.request, h.skills.names = "", nil
-	u.restoreHistoryNotice("Could not restore active skills for "+u.session.Caller(h.info.ID)+": "+message, false)
+	u.restoreHistoryNotice("Could not restore active skills for "+u.attached.session.Caller(h.info.ID)+": "+message, false)
 	return nil
 }
 
@@ -103,13 +103,13 @@ func (u *appServerUI) skillHistoryResponse(thread string, m appserver.Message) e
 		switch item.Type {
 		case "userMessage":
 			record.Source.Kind, native.Item = "attachments", item.ID+"/attachments"
-			native.Attachments = sessionpresentation.AttachmentValues(u.cwd, item.Content)
+			native.Attachments = sessionpresentation.AttachmentValues(u.attached.cwd, item.Content)
 		case "commandExecution":
-			u.restoreCommandSegments(&record.Source, item, u.cwd)
+			u.restoreCommandSegments(&record.Source, item, u.attached.cwd)
 			if item.ExitCode != nil && *item.ExitCode != 0 && len(native.Segments) == 0 {
 				continue
 			}
-			record.Source.Text = sessionpresentation.ToolText(item.Observation(), u.cwd)
+			record.Source.Text = sessionpresentation.ToolText(item.Observation(), u.attached.cwd)
 		default:
 			continue
 		}
@@ -126,7 +126,7 @@ func (u *appServerUI) skillHistoryResponse(thread string, m appserver.Message) e
 		}
 		return nil
 	}
-	v, name := u.childSource, u.session.Caller(h.info.ID)
+	v, name := u.attached.childSource, u.attached.session.Caller(h.info.ID)
 	// Observe a live reset before adopting the historical snapshot. Its newer
 	// context wins, even if the reset's entry has already left the feed.
 	v.RestoreSkills(name, h.skills.names)

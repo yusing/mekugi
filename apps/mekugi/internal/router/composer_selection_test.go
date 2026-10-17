@@ -234,7 +234,7 @@ func TestComposerSelectionReviewEdges(t *testing.T) {
 	t.Run("pending labels stay distinct", func(t *testing.T) {
 		u, _ := newAppServerTestUI()
 		u.insertSelection("message", "one", "")
-		u.conversation().Queued = append(u.conversation().Queued, u.takeDraft())
+		u.attached.conversation.Queued = append(u.attached.conversation.Queued, u.takeDraft())
 		u.insertSelection("message", "two", "")
 		if u.Text != "[Selected message 2] " {
 			t.Fatalf("queued label reused: %q", u.Text)

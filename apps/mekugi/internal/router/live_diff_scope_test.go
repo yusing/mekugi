@@ -1,12 +1,13 @@
 package router
 
 import (
-"github.com/yusing/mekugi/libraries/legacycall"
 	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/libraries/legacycall"
 
 	sessionreview "github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 
@@ -239,7 +240,7 @@ func publishFixtureReview(t *testing.T, u *appServerUI) {
 	})
 	u.activity = activity.Value()
 	u.reviewSource = captured.Value()
-	u.reviewSource.PublishReview(u.session.Scope(), u.review.Projection.Data, u.cwd, u.review.Projection.Coverage, u.review.Failure)
+	u.reviewSource.PublishReview(u.attached.session.Scope(), u.review.Projection.Data, u.attached.cwd, u.review.Projection.Coverage, u.review.Failure)
 }
 
 func fixtureActivityWithoutDetails(t *testing.T) *feed.Service {

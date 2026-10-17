@@ -18,11 +18,11 @@ func TestActivityRendererConsumesOnlyDeliveredFacts(t *testing.T) {
 	if !strings.Contains(render(), "delivered") {
 		t.Fatal("application did not deliver its admitted source")
 	}
-	u.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 2, Agent: "Main", Kind: "text", Text: "next observation"}}})
+	u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 2, Agent: "Main", Kind: "text", Text: "next observation"}}})
 	if strings.Contains(render(), "next observation") {
 		t.Fatal("painting reached back into source state")
 	}
-	u.publishActivity()
+	publishActivity(&u.attached, u.shell)
 	if !strings.Contains(render(), "next observation") {
 		t.Fatal("explicit delivery did not advance the renderer")
 	}

@@ -30,7 +30,7 @@ func TestUISnapshotCommandSegmentRetentionNotice(t *testing.T) {
 			u.commandSegmentPending = 1
 			u.commandSegmentRetained(commandSegmentWrite{key: [3]string{"main", "turn", "command"}, err: tc.err})
 			delivery := u.applyCriticalNotices()
-			if delivery == nil || !strings.Contains(u.feedback.Text, tc.err.Error()) {
+			if delivery == nil || !strings.Contains(u.attached.feedback.Text, tc.err.Error()) {
 				t.Fatal("composer omitted the underlying error")
 			}
 			rows, receipt := u.testDeliveredMainFrame(t, 80, 12, 0)

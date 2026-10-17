@@ -41,11 +41,11 @@ func TestNativeUISessionLiveToggle(t *testing.T) {
 	for _, command := range []string{"/live invalid", "/live on extra"} {
 		u.loadDraft(conversationmodel.Input{})
 		appServerTestKeys(t, u, command+"\r")
-		if terminalTest(u).LiveHidden || u.Text != command || !u.feedback.Alert {
+		if terminalTest(u).LiveHidden || u.Text != command || !u.attached.feedback.Alert {
 			t.Fatal("invalid value changed preference or lost draft")
 		}
 	}
-	if len(u.source.Entries) != 0 {
+	if len(u.attached.source.Entries) != 0 {
 		t.Fatal("local toggle entered the transcript")
 	}
 	other, _ := newAppServerTestUI()
@@ -77,7 +77,7 @@ func TestNativeUILiveToggleDuringModelList(t *testing.T) {
 func TestUISnapshotNativeLiveToggle(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
-	u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
+	u.attached.presentation.Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	u.shell.Transcript.Clock = u.clock
 
@@ -85,7 +85,7 @@ func TestUISnapshotNativeLiveToggle(t *testing.T) {
 	screen := vt.NewEmulator(100, 28)
 	defer screen.Close()
 	preview := previewmodel.Preview{ID: "edit", Workspace: t.TempDir(), Caller: "/root", Status: previewmodel.PreviewEdit, Input: "*** Begin Patch\n*** Add File: live.txt\n+Live edit still in progress\n*** End Patch"}
-	u.cwd = preview.Workspace
+	u.attached.cwd = preview.Workspace
 	u.preview(projectStockPatchPreview(t.Context(), preview.Workspace, preview), false)
 	revealNativeDock(terminalTest(u))
 	for _, value := range []string{"off", "on"} {
@@ -103,7 +103,7 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			u, _ := newAppServerTestUI()
 
 			defer terminalTest(u).Diff.Close()
-			u.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root", Responding: true}, {Name: "/root/worker", Responding: true}}
+			u.attached.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root", Responding: true}, {Name: "/root/worker", Responding: true}}
 			screen := vt.NewEmulator(width, 40)
 			defer screen.Close()
 			paint := func() string {

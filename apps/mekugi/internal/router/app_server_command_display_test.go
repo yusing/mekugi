@@ -65,22 +65,22 @@ func TestAppServerFrontendCommandClassification(t *testing.T) {
 				for _, method := range []string{"item/started", "item/completed"} {
 					appServerTestNotify(t, u, method, map[string]any{"threadId": "main", "turnId": "t", "item": item})
 				}
-				if len(u.source.Entries) != 1 || u.source.Entries[0].Source.Text != tc.want || u.source.Entries[0].Source.Native.Command != command {
-					t.Fatalf("classified live entries: %+v; want %q", u.source.Entries, tc.want)
+				if len(u.attached.source.Entries) != 1 || u.attached.source.Entries[0].Source.Text != tc.want || u.attached.source.Entries[0].Source.Native.Command != command {
+					t.Fatalf("classified live entries: %+v; want %q", u.attached.source.Entries, tc.want)
 				}
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "t", "item": item})
-				if len(u.childSource.Entries) != 2 || u.childSource.Entries[1].Source.Text != tc.want || u.childSource.Entries[1].Source.Native.Command != command {
-					t.Fatalf("classified child text: %q; want %q", u.childSource.Entries[len(u.childSource.Entries)-1].Source.Text, tc.want)
+				if len(u.attached.childSource.Entries) != 2 || u.attached.childSource.Entries[1].Source.Text != tc.want || u.attached.childSource.Entries[1].Source.Native.Command != command {
+					t.Fatalf("classified child text: %q; want %q", u.attached.childSource.Entries[len(u.attached.childSource.Entries)-1].Source.Text, tc.want)
 				}
 				restored := newAppServerSessionTestUI(t, t.TempDir())
 				restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
-				if len(restored.source.Entries) != 1 || restored.source.Entries[0].Source.Text != tc.want {
-					t.Fatalf("classified restored entries: %+v", restored.source.Entries)
+				if len(restored.attached.source.Entries) != 1 || restored.attached.source.Entries[0].Source.Text != tc.want {
+					t.Fatalf("classified restored entries: %+v", restored.attached.source.Entries)
 				}
-				restored.session.Caller("child")
-				restored.restoreActivityThread(binding.ThreadInfo{ID: "child", Cwd: restored.cwd, Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
-				if len(restored.childSource.Entries) != 1 || restored.childSource.Entries[0].Source.Text != tc.want {
-					t.Fatalf("classified restored child text: %q; want %q", restored.childSource.Entries[len(restored.childSource.Entries)-1].Source.Text, tc.want)
+				restored.attached.session.Caller("child")
+				restored.restoreActivityThread(binding.ThreadInfo{ID: "child", Cwd: restored.attached.cwd, Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
+				if len(restored.attached.childSource.Entries) != 1 || restored.attached.childSource.Entries[0].Source.Text != tc.want {
+					t.Fatalf("classified restored child text: %q; want %q", restored.attached.childSource.Entries[len(restored.attached.childSource.Entries)-1].Source.Text, tc.want)
 				}
 			})
 		}
@@ -214,7 +214,7 @@ func TestAppServerImageViewLiveAndRestored(t *testing.T) {
 		restored := newAppServerSessionTestUI(t, workspace)
 		turns := []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}
 		if child {
-			restored.session.Caller(thread)
+			restored.attached.session.Caller(thread)
 			restored.restoreActivityThread(binding.ThreadInfo{ID: thread, Cwd: workspace, Turns: turns}, false)
 			check(restored.testActivity(restored.shell.Agents))
 		} else {
@@ -364,13 +364,13 @@ func TestAppServerCommandWorkdirDisplay(t *testing.T) {
 			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: tc.command, Cwd: tc.cwd, CommandActions: tc.actions}
 			check := func(u *appServerUI) {
 				t.Helper()
-				if len(u.source.Entries) != 1 || u.source.Entries[0].Source.Text != tc.text || u.source.Entries[0].Source.Native.Workdir != tc.workdir {
-					t.Fatalf("entries = %+v; want text %q in %q", u.source.Entries, tc.text, tc.workdir)
+				if len(u.attached.source.Entries) != 1 || u.attached.source.Entries[0].Source.Text != tc.text || u.attached.source.Entries[0].Source.Native.Workdir != tc.workdir {
+					t.Fatalf("entries = %+v; want text %q in %q", u.attached.source.Entries, tc.text, tc.workdir)
 				}
-				if u.source.Entries[0].Source.Native.Command != tc.command {
+				if u.attached.source.Entries[0].Source.Native.Command != tc.command {
 					t.Fatal("retained command source changed")
 				}
-				blocks := parseLiveActivity(u.source.Entries[0].Source)
+				blocks := parseLiveActivity(u.attached.source.Entries[0].Source)
 				if len(blocks) == 0 || blocks[0].Workdir != tc.workdir {
 					t.Fatalf("blocks = %+v; want workdir %q", blocks, tc.workdir)
 				}
@@ -417,10 +417,10 @@ func TestUISnapshotMCatSourceWithoutFilesystemDisambiguation(t *testing.T) {
 			restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 			t.Chdir(packageDirectory)
 			for name, ui := range map[string]*appServerUI{"live": live, "restored": restored} {
-				if len(ui.source.Entries) != 1 {
-					t.Fatalf("%s entries = %+v", name, ui.source.Entries)
+				if len(ui.attached.source.Entries) != 1 {
+					t.Fatalf("%s entries = %+v", name, ui.attached.source.Entries)
 				}
-				entry := ui.source.Entries[0].Source
+				entry := ui.attached.source.Entries[0].Source
 				if entry.Text != tc.text || entry.Native.Command != tc.command {
 					t.Fatalf("%s source = %q, command = %q; want %q, %q", name, entry.Text, entry.Native.Command, tc.text, tc.command)
 				}
@@ -436,12 +436,12 @@ func TestActivityReadsKeepInvocationWorkdirsApart(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	for _, item := range []binding.ThreadItem{
 		{ID: "a", Type: "commandExecution", Command: "rg x; cat a.go", Cwd: other, CommandActions: []binding.CommandAction{{Type: "search", Command: "rg x", Query: "x"}, {Type: "read", Command: "cat a.go", Path: other + "/a.go"}}},
-		{ID: "b", Type: "commandExecution", Command: "cat b.go", Cwd: u.cwd, CommandActions: []binding.CommandAction{{Type: "read", Command: "cat b.go", Path: u.cwd + "/b.go"}}},
+		{ID: "b", Type: "commandExecution", Command: "cat b.go", Cwd: u.attached.cwd, CommandActions: []binding.CommandAction{{Type: "read", Command: "cat b.go", Path: u.attached.cwd + "/b.go"}}},
 	} {
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	}
 	var blocks []activityui.Block
-	for _, entry := range u.source.Entries {
+	for _, entry := range u.attached.source.Entries {
 		blocks = append(blocks, parseLiveActivity(entry.Source)...)
 	}
 	if len(blocks) != 3 || !blocks[0].ShowWorkdir || blocks[1].ShowWorkdir || blocks[1].Workdir != other {
@@ -470,7 +470,7 @@ func TestAppServerWholeScriptTimeoutSuffix(t *testing.T) {
 			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: command, DurationMS: new(int64(500))}
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-			entry := u.source.Entries[0]
+			entry := u.attached.source.Entries[0]
 			blocks := parseLiveActivity(entry.Source)
 			var p activityui.Painter
 			var rows []string

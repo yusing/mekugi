@@ -61,7 +61,7 @@ func TestUISnapshotDirectoryDeletion(t *testing.T) {
 			u.applyCapturedEdits()
 			u.testActivity(u.shell.Transcript).testPace(u.shell.Transcript.Now().Add(time.Second))
 			var seq uint64
-			for _, entry := range u.source.Entries {
+			for _, entry := range u.attached.source.Entries {
 				if entry.Source.Native != nil && entry.Source.Native.Item == "delete-call" {
 					seq = entry.Source.Seq
 				}

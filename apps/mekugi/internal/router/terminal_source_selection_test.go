@@ -58,7 +58,6 @@ func TestTerminalSourceSelectionDirectionsAndActions(t *testing.T) {
 						u.Agents.FeedLeft, u.Agents.FeedTop = 1, 1
 						u.Agents.FeedRight, u.Agents.FeedRows = 40, len(rows)
 						u.main.shell.Agents = u.Agents
-						u.main.sessionPresentation()
 						u.main.testActivity(u.Agents).setDisplayFilter(true, "/root/worker")
 					}
 					u.main.publishPresentation(u.main.now())
@@ -244,7 +243,7 @@ func TestTerminalSourceRenderedTables(t *testing.T) {
 				view := u.testActivity(u.shell.Transcript)
 				if activity {
 					view = u.testActivity(u.shell.Agents)
-					u.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
+					u.attached.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
 					terminalTest(u).DiffOpen = false
 				}
 				applyTranscriptFixture(view, true, "", "main", "main", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: source})
@@ -288,7 +287,7 @@ func TestTerminalSourceActivityCodeTabs(t *testing.T) {
 	u, _ := newAppServerTestUI()
 
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
-	u.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
+	u.attached.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
 	terminalTest(u).DiffOpen = false
 	applyTranscriptFixture(u.testActivity(u.shell.Agents), true, "", "main", "main", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "```\n\tx := 1  \n```"})
 	var wire bytes.Buffer

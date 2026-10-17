@@ -104,7 +104,7 @@ func sessionMetricField(t *testing.T, u *appServerUI, group, label, want string)
 
 func TestAppServerSessionMetricsLocalNavigation(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.Turn, u.sessionPresentation().Status.Text = "active", "Working"
+	u.Turn, u.attached.presentation.Status.Text = "active", "Working"
 	appServerTestKeys(t, u, "/session\r")
 	if u.statusPanel == nil || u.statusPanel.metrics == nil || u.Text != "" {
 		t.Fatal("session command did not open a local dialog")
@@ -154,8 +154,8 @@ func TestAppServerSessionMetricsLocalNavigation(t *testing.T) {
 	}
 	u.statusPanelKey("r")
 	u.statusPanelKey("\x1b")
-	if u.statusPanel != nil || wire.Len() != 0 || len(u.source.Entries) != 0 || u.Turn != "active" || u.sessionPresentation().Status.Text != "Working" {
-		t.Fatalf("local dialog disturbed active session: wire=%q turn=%q status=%q", wire.String(), u.Turn, u.sessionPresentation().Status.Text)
+	if u.statusPanel != nil || wire.Len() != 0 || len(u.attached.source.Entries) != 0 || u.Turn != "active" || u.attached.presentation.Status.Text != "Working" {
+		t.Fatalf("local dialog disturbed active session: wire=%q turn=%q status=%q", wire.String(), u.Turn, u.attached.presentation.Status.Text)
 	}
 }
 
@@ -251,7 +251,7 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
-			u.cwd = "/workspace"
+			u.attached.cwd = "/workspace"
 			u.replayDebugDirectory = tc.debug
 			u.showSessionMetrics()
 			u.settlePresentation()

@@ -27,12 +27,12 @@ func (u *appServerUI) captureShellEdit(command string) *executionobservation.She
 	}
 	edit := executionobservation.PrepareShell(ctx, u.retained, u.changeSource, u.snapshots, u.recovered, u.publishChanges, u.execWindows, u.audience, u.captureNotice, executionobservation.ShellInput{
 		Thread: u.Thread, Turn: u.Turn, Namespace: u.retainedSession.Namespace,
-		Workspace: u.cwd, Caller: u.session.Caller(u.Thread), Command: command, Shell: u.shellEdits.shell,
+		Workspace: u.attached.cwd, Caller: u.attached.session.Caller(u.Thread), Command: command, Shell: u.shellEdits.shell,
 	})
 	if edit == nil {
 		return nil
 	}
-	u.restoreDiffThread(binding.ThreadInfo{ID: u.Thread, Cwd: u.cwd}, true)
+	u.restoreDiffThread(binding.ThreadInfo{ID: u.Thread, Cwd: u.attached.cwd}, true)
 	edit.Begin(u.review)
 	return edit
 }

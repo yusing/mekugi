@@ -84,7 +84,7 @@ func TestAppServerBTWCompactionRestoresAttachmentsOnce(t *testing.T) {
 		t.Run(map[bool]string{false: "error-first", true: "completion-first"}[completionFirst], func(t *testing.T) {
 			u, w := newAppServerTestUI()
 			setTestAppServerIntegration(u, newManagedMekugiProxy(t))
-			u.Turn, u.sessionPresentation().Status.Text = "main-turn", "Working"
+			u.Turn, u.attached.presentation.Status.Text = "main-turn", "Working"
 			appServerTestKeys(t, u, "/btw explain ")
 			image := filepath.Join(t.TempDir(), "side.png")
 			u.attachImage(image)
@@ -119,8 +119,8 @@ func TestAppServerBTWCompactionRestoresAttachmentsOnce(t *testing.T) {
 			if u.Text != before || strings.Count(before, "/btw") != 1 || !strings.HasSuffix(before, "newer draft") || len(u.Images) != 1 || u.Images[0].Path != image {
 				t.Fatalf("restoration lost/duplicated input: %q images=%+v", u.Text, u.Images)
 			}
-			if u.side.Busy || u.side.Pending.Text != "" || u.side.Status != conversationmodel.SideCompactionRequired || u.Turn != "main-turn" || u.sessionPresentation().Status.Text != "Working" {
-				t.Fatalf("failure state = %+v Main=%s/%s", u.side, u.Turn, u.sessionPresentation().Status.Text)
+			if u.side.Busy || u.side.Pending.Text != "" || u.side.Status != conversationmodel.SideCompactionRequired || u.Turn != "main-turn" || u.attached.presentation.Status.Text != "Working" {
+				t.Fatalf("failure state = %+v Main=%s/%s", u.side, u.Turn, u.attached.presentation.Status.Text)
 			}
 			if err := u.submitBTW(); err != nil {
 				t.Fatal(err)

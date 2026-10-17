@@ -117,7 +117,7 @@ func TestAppServerTranscriptOlderHistoryPreservesLiveReasoning(t *testing.T) {
 	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "live", "status": "inProgress"}})
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "live", "itemId": "shared", "delta": "Live prefix "})
 	var liveSeq uint64
-	for _, entry := range u.childSource.Entries {
+	for _, entry := range u.attached.childSource.Entries {
 		if n := entry.Source.Native; n != nil && n.Thread == "child" && n.Turn == "live" && n.Item == "shared" {
 			liveSeq = entry.Source.Seq
 		}
@@ -131,14 +131,14 @@ func TestAppServerTranscriptOlderHistoryPreservesLiveReasoning(t *testing.T) {
 	restoreContentReply(t, u, 5, map[string]any{"data": []any{map[string]any{
 		"turnId": "t", "completedAtMs": 101000, "item": map[string]any{"id": "shared", "type": "reasoning", "summary": []string{"Older public summary"}, "content": []string{"PRIVATE"}},
 	}}})
-	if !u.session.Agent("/root/worker").Responding {
+	if !u.attached.session.Agent("/root/worker").Responding {
 		t.Fatal("historical page reset the active child lifecycle")
 	}
 	at = at.Add(2 * time.Second)
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "live", "itemId": "shared", "delta": "continues after paging"})
 	reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "live", "item": map[string]any{"id": "shared", "type": "reasoning", "summary": []string{}}})
 	older, latest, live := -1, -1, -1
-	for i, entry := range u.childSource.Entries {
+	for i, entry := range u.attached.childSource.Entries {
 		n := entry.Source.Native
 		if n == nil || n.Thread != "child" {
 			continue

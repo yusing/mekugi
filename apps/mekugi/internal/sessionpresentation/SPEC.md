@@ -74,6 +74,12 @@ replacement preserves them. Late observations cannot repopulate a retired attach
 Backward replay reconstructs into a fresh attachment, and shutdown releases it.
 These boundaries restore no processes, handles, approval grants or dispatched operations.
 
+The application binds the attachment's existing Presentation and Conversation
+models, source feeds, transcript and feedback independently of the host connection
+and terminal. Startup identity discovery keeps those scoped models and parked
+input; accepted replacement constructs new bindings. History leases, physical
+file reads, host request correlation and terminal delivery retain their own lifetimes.
+
 Turn observations join Conversation's transcript and Activity's wait and agent
 models through these same scopes. Completion settles its own turn's presentation;
 an older turn cannot stop a newer response or consume its pending transcript.

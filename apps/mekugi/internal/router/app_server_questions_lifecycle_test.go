@@ -21,7 +21,7 @@ func TestQuestionQueuedSteerIsNotStillActionable(t *testing.T) {
 	u.openQuestions()
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "3Customers only\r")
-	request := appServerOneRequest(t, wire, "turn/steer", u.conversation().Submitted[u.Submission().ID].Text)
+	request := appServerOneRequest(t, wire, "turn/steer", u.attached.conversation.Submitted[u.Submission().ID].Text)
 	u.hideQuestions()
 	if u.questionCount() != 1 || u.questionCalls()[0].Resolved || !u.questionCalls()[0].Sent {
 		t.Fatalf("sent answer and separate unanswered question confused: count=%d call=%+v", u.questionCount(), u.questionCalls()[0])
@@ -59,7 +59,7 @@ func TestQuestionRejectedQueuedSteerReopensDockWithDraft(t *testing.T) {
 	u.openQuestions()
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "3Customers only\r")
-	request := appServerOneRequest(t, wire, "turn/steer", u.conversation().Submitted[u.Submission().ID].Text)
+	request := appServerOneRequest(t, wire, "turn/steer", u.attached.conversation.Submitted[u.Submission().ID].Text)
 	if u.questionCount() != 0 || len(testQuestionRows(u, 80, 10)) != 0 {
 		t.Fatal("queued answer still required action")
 	}
@@ -189,11 +189,11 @@ func TestQuestionAnswerOnlyAppearsUnderAsked(t *testing.T) {
 			u.openQuestions()
 			questionTestPaint(t, u, 70)
 			appServerTestKeys(t, u, "2\r")
-			reply, id := u.conversation().Submitted[u.Submission().ID].Text, u.Submission().ID
+			reply, id := u.attached.conversation.Submitted[u.Submission().ID].Text, u.Submission().ID
 			if len(binding.QuestionReplies(reply)) != 1 {
 				t.Fatal("reply not submitted")
 			}
-			for _, entry := range u.source.Entries {
+			for _, entry := range u.attached.source.Entries {
 				if entry.Source.Agent == "You" {
 					t.Fatal("pending reply created duplicate user band")
 				}
@@ -205,7 +205,7 @@ func TestQuestionAnswerOnlyAppearsUnderAsked(t *testing.T) {
 			if strings.Count(frame, "Who receives it?") != 1 || strings.Count(frame, "Internal") != 1 || !strings.Contains(frame, "answered") {
 				t.Fatalf("duplicate or missing answer:\n%s", frame)
 			}
-			for _, entry := range u.source.Entries {
+			for _, entry := range u.attached.source.Entries {
 				if entry.Source.Agent == "You" {
 					t.Fatal("committed reply created duplicate user band")
 				}
@@ -251,9 +251,9 @@ func TestQuestionRecordPreservesLiteralNotePrefix(t *testing.T) {
 			questionTestMessage(t, u, nil, "serverRequest/resolved", map[string]any{"threadId": "main", "requestId": "literal"})
 		} else {
 			appServerTestKeys(t, u, "3"+literal+"\r")
-			lifecycleUserMessage(t, u, "turn", "reply", u.conversation().Submitted[u.Submission().ID].Text)
+			lifecycleUserMessage(t, u, "turn", "reply", u.attached.conversation.Submitted[u.Submission().ID].Text)
 		}
-		entry := u.source.Entries[0].Source
+		entry := u.attached.source.Entries[0].Source
 		if got := entry.Native.Questions[0].Answer; got != literal {
 			t.Fatalf("sync=%v: displayed %q, want literal %q", sync, got, literal)
 		}
@@ -294,7 +294,7 @@ func TestQuestionReplyBecomesMainReplyAnchor(t *testing.T) {
 				}
 			}
 			var reply, ack sessionpresentation.ActivityEntry
-			for _, entry := range u.source.Entries {
+			for _, entry := range u.attached.source.Entries {
 				if entry.Source.Kind == "question_reply" {
 					reply = entry.Source
 				}
@@ -328,7 +328,7 @@ func TestQuestionReplyLinkSkipsContinuationHeading(t *testing.T) {
 	questionTestAsync(t, u, "ask", "Which audience?")
 	lifecycleUserMessage(t, u, "turn", "reply", lifecycleReply(t, "ask", 0, "Which audience?", "Customers"))
 	var reply uint64
-	for _, entry := range u.source.Entries {
+	for _, entry := range u.attached.source.Entries {
 		if entry.Source.Kind == "question_reply" {
 			reply = entry.Source.Seq
 		}

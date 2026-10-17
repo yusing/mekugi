@@ -24,8 +24,8 @@ func nativeBatchFixture(t *testing.T) *appServerUI {
 	u, _ := newAppServerTestUI()
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
-	u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
-	u.cwd = "/workspace"
+	u.attached.presentation.Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
+	u.attached.cwd = "/workspace"
 
 	u.shell.Transcript.Clock, u.shell.Agents.Clock = u.clock, u.clock
 

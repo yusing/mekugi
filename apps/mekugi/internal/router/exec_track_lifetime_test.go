@@ -37,7 +37,7 @@ func TestExecTrackSessionReplacementDropsRetainedChildOutput(t *testing.T) {
 	// A subsequent attachment may see the same still-running command. Losing
 	// its earlier bytes must not turn the remaining bytes into complete output.
 	u.Readmit("main")
-	u.startSession("main", u.cwd)
+	u.startSession("main", u.attached.cwd)
 	u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	report.send(segmenttransport.Message{Type: segmenttransport.Output, Index: 0, Data: "later\n"})
 	report.send(segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)})
@@ -60,10 +60,10 @@ func TestExecTrackSessionReplacementDropsRetainedChildOutput(t *testing.T) {
 	// retires tracking and presents its authoritative combined output.
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 3, "first\nlater\nsecond\n"
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": key[0], "turnId": key[1], "item": item})
-	if hub.Tracking(key) || u.session.Commands()[key] != nil {
+	if hub.Tracking(key) || u.attached.session.Commands()[key] != nil {
 		t.Fatal("host completion retained the old command observation")
 	}
-	for _, entry := range u.childSource.Entries {
+	for _, entry := range u.attached.childSource.Entries {
 		native := entry.Source.Native
 		if native == nil || native.Thread != key[0] || native.Item != key[2] {
 			continue

@@ -52,7 +52,7 @@ func TestNativeNavigationBatchStatusClicks(t *testing.T) {
 	for _, width := range []int{16, 30, 52, 120} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			u.sessionPresentation().Status.Text = "Ready"
+			u.attached.presentation.Status.Text = "Ready"
 			terminalTest(u).DiffUnseen = true
 			screen := navigationBatchPaint(t, u, width, 24)
 			footer := strings.Split(screen.String(), "\n")[23]
@@ -95,7 +95,7 @@ func TestNativeNavigationBatchStatusClicks(t *testing.T) {
 
 func TestNativeNavigationBatchDiffBadgeCells(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.sessionPresentation().Status.Text = "Ready"
+	u.attached.presentation.Status.Text = "Ready"
 	terminalTest(u).DiffUnseen = true
 	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/worker", Responding: true}}})
 	screen := navigationBatchPaint(t, u, 120, 24)
@@ -231,7 +231,7 @@ func navigationBatchDialog() *terminalUI {
 func navigationBatchDialogFrame(t *testing.T, u *terminalUI, width int) string {
 	t.Helper()
 	rows := make([]string, 18)
-	u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
+	u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
 	u.Dialog.Paint(rows, width, len(rows))
 	screen := vt.NewEmulator(width, len(rows))
 	defer screen.Close()
@@ -287,7 +287,7 @@ func TestUISnapshotNativeNavigationBatchStatus(t *testing.T) {
 			t.Run(fmt.Sprintf("%d/only%v", width, only), func(t *testing.T) {
 				u := newAppServerSessionTestUI(t, t.TempDir())
 				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-				u.sessionPresentation().Status.Text = "Ready"
+				u.attached.presentation.Status.Text = "Ready"
 				terminalTest(u).DiffUnseen = true
 				terminalTest(u).Focus = 3
 				u.testActivity(u.shell.Agents).setDisplayFilter(only, u.shell.Agents.Selected)

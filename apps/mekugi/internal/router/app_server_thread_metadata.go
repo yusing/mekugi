@@ -11,8 +11,8 @@ import (
 // Child event subscriptions do not imply a thread/started notification. Read
 // metadata once, without loading history or resuming/executing the child.
 func (u *appServerUI) requestThreadMetadata(thread string) error {
-	path := u.session.KnownCaller(thread)
-	known := path != "" && path != sessionpresentation.Placeholder(thread) && u.session.Agent(path).Role != ""
+	path := u.attached.session.KnownCaller(thread)
+	known := path != "" && path != sessionpresentation.Placeholder(thread) && u.attached.session.Agent(path).Role != ""
 	return u.Requests.ReadThreadMetadata("main", thread, known, appServerRequest{metadata: thread})
 }
 
@@ -27,17 +27,17 @@ func (u *appServerUI) applyThreadMetadata(m appserver.Message, thread string) bo
 	if err != nil {
 		return true
 	} // Metadata cannot block observed activity.
-	old := u.session.Caller(thread)
+	old := u.attached.session.Caller(thread)
 	u.registerThread(info)
-	u.renameThreadActivity(old, u.session.KnownCaller(thread))
-	u.applyActivity(nil, u.session.Roster())
+	u.renameThreadActivity(old, u.attached.session.KnownCaller(thread))
+	u.applyActivity(nil, u.attached.session.Roster())
 	return true
 }
 
 // Late metadata updates canonical labels before detached terminal delivery.
 func (u *appServerUI) renameThreadActivity(old, name string) {
-	u.sessionPresentation().RenameCaller(old, name)
-	for _, source := range []*sessionpresentation.ActivitySource{u.source, u.childSource} {
+	u.attached.presentation.RenameCaller(old, name)
+	for _, source := range []*sessionpresentation.ActivitySource{u.attached.source, u.attached.childSource} {
 		source.RenameCaller(old, name)
 	}
 	terminalsession.RenameSelection(old, name, u.shell.Transcript, u.shell.Agents)

@@ -10,7 +10,7 @@ import (
 
 func TestComposerCommandCatalog(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.cwd = "" // Local commands do not depend on workspace discovery.
+	u.attached.cwd = "" // Local commands do not depend on workspace discovery.
 	appServerTestKeys(t, u, "/")
 	if !u.picker.Open || len(u.picker.Choices) != len(nativeCommands) || len(pickerRequests(t, wire)) != 0 {
 		t.Fatalf("catalog = %+v, requests = %s", u.picker, wire.Bytes())
@@ -60,8 +60,8 @@ func TestComposerCommandBoundaries(t *testing.T) {
 	}
 	u, wire := newAppServerTestUI()
 	appServerTestKeys(t, u, "/nonexistent\r")
-	if !u.feedback.Alert || !strings.Contains(u.feedback.Text, "Unknown command") || len(pickerRequests(t, wire)) != 0 {
-		t.Fatalf("unknown command leaked or lacked feedback: %q", u.feedback.Text)
+	if !u.attached.feedback.Alert || !strings.Contains(u.attached.feedback.Text, "Unknown command") || len(pickerRequests(t, wire)) != 0 {
+		t.Fatalf("unknown command leaked or lacked feedback: %q", u.attached.feedback.Text)
 	}
 }
 

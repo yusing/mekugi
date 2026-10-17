@@ -34,7 +34,7 @@ func TestAppServerBatchFailureDoesNotFailEachOperation(t *testing.T) {
 				view = u.testActivity(u.shell.Agents)
 			}
 			finishPacing(u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents))
-			got := mainFeed(appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: view.View}, source: view.ActivitySource}), 140)
+			got := mainFeed(appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: view.View}, attached: attachedPresentation{source: view.ActivitySource}}), 140)
 			if mode == "resume" {
 				feed := view.RenderFeed(140, 10)
 				if !strings.Contains(got, "1 failed command") || !terminalTest(u).openOutput(view.bind(terminalTest(u)), feed.Snippets[0]) || len(terminalTest(u).Dialog.Pages) != 1 {

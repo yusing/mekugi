@@ -48,7 +48,7 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 	var seq, activity uint64
-	for _, entry := range u.source.Entries {
+	for _, entry := range u.attached.source.Entries {
 		if entry.Source.Native != nil && entry.Source.Native.Item == "target\x00main" {
 			seq, activity = entry.Source.Seq, entry.Source.ActivitySeq
 		}

@@ -79,7 +79,7 @@ func TestSavedReviewWithoutLivePreview(t *testing.T) {
 	}
 	assertCapturedCommand(t, u.testActivity(u.shell.Transcript), "main", "format", "Edit", 2)
 	foundReceipt := false
-	for _, record := range u.source.Entries {
+	for _, record := range u.attached.source.Entries {
 		entry := record.Source
 		if entry.Native != nil && entry.Native.Item == "format" {
 			foundReceipt = entry.Native.CapturedEdit != nil

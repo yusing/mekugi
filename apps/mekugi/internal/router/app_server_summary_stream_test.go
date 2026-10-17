@@ -103,19 +103,19 @@ func TestAppServerEmptyReasoningStartsDoNotCreateRows(t *testing.T) {
 			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": id, "type": "reasoning"}})
 		}
 		u.flushStreamOutput()
-		if len(u.source.Entries) != 0 || len(u.childSource.Entries) != 0 {
+		if len(u.attached.source.Entries) != 0 || len(u.attached.childSource.Entries) != 0 {
 			t.Fatal("empty reasoning starts created visible placeholders")
 		}
 		appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t", "status": "interrupted"}})
 		u.flushStreamOutput()
-		if len(u.source.Entries) != 0 || len(u.childSource.Entries) != 0 {
+		if len(u.attached.source.Entries) != 0 || len(u.attached.childSource.Entries) != 0 {
 			t.Fatal("empty reasoning left live state behind")
 		}
 		for _, id := range []string{"raw-one", "raw-two"} {
 			appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": id, "delta": "Late public summary."})
 		}
 		u.flushStreamOutput()
-		if len(u.source.Entries) != 0 || len(u.childSource.Entries) != 0 {
+		if len(u.attached.source.Entries) != 0 || len(u.attached.childSource.Entries) != 0 {
 			t.Fatal("late delta reopened interrupted empty reasoning")
 		}
 	}
@@ -130,9 +130,9 @@ func TestReasoningSourceCompletesBeforeTerminalReveal(t *testing.T) {
 			body := "Inspecting retained facts\n\n" + strings.Repeat("Public checkpoint.\n", 24)
 			appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": "r", "delta": body})
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{body}}})
-			source, view := u.source, u.shell.Transcript
+			source, view := u.attached.source, u.shell.Transcript
 			if thread == "child" {
-				source, view = u.childSource, u.shell.Agents
+				source, view = u.attached.childSource, u.shell.Agents
 			}
 			if len(source.Entries) != 1 || source.Entries[0].Source.Text != body || source.Entries[0].Source.Native.Phase != "item/completed" {
 				t.Fatalf("source completion waited for terminal reveal: %+v", source.Entries)
@@ -143,7 +143,7 @@ func TestReasoningSourceCompletesBeforeTerminalReveal(t *testing.T) {
 			revision, sequence := source.Revision, source.LastSeq
 			for range 20 {
 				u.flushSummaryOutput()
-				u.publishActivity()
+				publishActivity(&u.attached, u.shell)
 			}
 			if source.Revision != revision || source.LastSeq != sequence {
 				t.Fatal("terminal reveal revised semantic source state")

@@ -162,20 +162,20 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	}
 	pageBytes := drainHistoryLoader(t, u)
 	pageDuration := time.Since(started)
-	if u.restoring != nil || len(u.childSource.Entries) != 100 || pageBytes*10 >= len(full.Result) {
-		t.Fatalf("unbounded consumer hydration: entries=%d page=%d full=%d", len(u.childSource.Entries), pageBytes, len(full.Result))
+	if u.restoring != nil || len(u.attached.childSource.Entries) != 100 || pageBytes*10 >= len(full.Result) {
+		t.Fatalf("unbounded consumer hydration: entries=%d page=%d full=%d", len(u.attached.childSource.Entries), pageBytes, len(full.Result))
 	}
-	if !strings.HasPrefix(u.childSource.Entries[0].Source.Text, "item 1900 ") || !strings.HasPrefix(u.childSource.Entries[99].Source.Text, "item 1999 ") {
+	if !strings.HasPrefix(u.attached.childSource.Entries[0].Source.Text, "item 1900 ") || !strings.HasPrefix(u.attached.childSource.Entries[99].Source.Text, "item 1999 ") {
 		t.Fatal("host descending pages not rendered chronologically")
 	}
-	if u.session.Agent("/root/worker").Started.Unix() != 100 || u.session.Agent("/root/worker").LastResponse.Unix() != 110 {
+	if u.attached.session.Agent("/root/worker").Started.Unix() != 100 || u.attached.session.Agent("/root/worker").LastResponse.Unix() != 110 {
 		t.Fatal("host turn timing lost")
 	}
 	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
 	}
 	drainHistoryLoader(t, u)
-	if len(u.childSource.Entries) != 200 || !strings.HasPrefix(u.childSource.Entries[0].Source.Text, "item 1800 ") {
+	if len(u.attached.childSource.Entries) != 200 || !strings.HasPrefix(u.attached.childSource.Entries[0].Source.Text, "item 1800 ") {
 		t.Fatal("installed anchor page boundary lost or duplicated")
 	}
 	// Fork history is host-visible lineage, never an unscoped parent read.
@@ -229,8 +229,8 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if set := fresh.childSource.ActiveSkills()["/root/worker"]; len(set) != 1 || set[0] != "commit" || len(fresh.childSource.Entries) != 100 {
-		t.Fatalf("fresh inherited skills = %v; Activity entries=%d", set, len(fresh.childSource.Entries))
+	if set := fresh.attached.childSource.ActiveSkills()["/root/worker"]; len(set) != 1 || set[0] != "commit" || len(fresh.attached.childSource.Entries) != 100 {
+		t.Fatalf("fresh inherited skills = %v; Activity entries=%d", set, len(fresh.attached.childSource.Entries))
 	}
 	t.Logf("synthetic 2000-message restoration: full result + projection %d bytes / %s; metadata + recent100 %d bytes / %s (latency diagnostic, no timing threshold)", len(full.Result), fullDuration, pageBytes, pageDuration)
 }

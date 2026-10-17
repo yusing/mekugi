@@ -18,7 +18,7 @@ func (u *appServerUI) retainHook(thread string, observation history.HookObservat
 		return errors.New("native session store is unavailable")
 	}
 	return store.Transaction(u.retainedSession.Context, u.retainedSession.Writes, func(tx *history.Transaction) error {
-		r, err := store.ReadHookObservations(u.cwd, thread)
+		r, err := store.ReadHookObservations(u.attached.cwd, thread)
 		if err != nil {
 			return err
 		}
@@ -37,7 +37,7 @@ func (u *appServerUI) retainHook(thread string, observation history.HookObservat
 				return err
 			}
 			if len(data) <= history.MaxRecordBytes {
-				return writeRetainedRecord(tx, u.retainedSession.Thread, u.retainedSession.Limits, history.HookObservationsName(u.cwd, thread), "hooks-pending-", data)
+				return writeRetainedRecord(tx, u.retainedSession.Thread, u.retainedSession.Limits, history.HookObservationsName(u.attached.cwd, thread), "hooks-pending-", data)
 			}
 			if len(r.Runs) < 2 {
 				return errors.New("hook observation exceeds size limit")
@@ -51,7 +51,7 @@ func (u *appServerUI) retainHook(thread string, observation history.HookObservat
 
 func (u *appServerUI) restoredHookEvents(info binding.ThreadInfo) []restoredRolloutEvent {
 	store := u.retainedSession.Store
-	r, err := store.ReadHookObservations(u.cwd, info.ID)
+	r, err := store.ReadHookObservations(u.attached.cwd, info.ID)
 	if err != nil {
 		u.restoreContentNotice("Hook observations for " + info.ID + " unavailable: " + err.Error())
 		return nil
@@ -61,14 +61,14 @@ func (u *appServerUI) restoredHookEvents(info binding.ThreadInfo) []restoredRoll
 	}
 	if store != nil && len(r.Runs) > 0 {
 		if err := store.Transaction(u.retainedSession.Context, u.retainedSession.Writes, func(tx *history.Transaction) error {
-			return requestexecution.StoragePublicationError(tx.Retain(u.retainedSession.Thread, u.retainedSession.Limits, history.HookObservationsName(u.cwd, info.ID)))
+			return requestexecution.StoragePublicationError(tx.Retain(u.retainedSession.Thread, u.retainedSession.Limits, history.HookObservationsName(u.attached.cwd, info.ID)))
 		}); err != nil {
 			u.restoreContentNotice("Hook observations for " + info.ID + " could not be retained: " + err.Error())
 		}
 	}
 	var events []restoredRolloutEvent
 	for _, observation := range r.Runs {
-		entry := hookEntry(&u.session, u.activity, u.cwd, info.ID, observation, false)
+		entry := hookEntry(&u.attached.session, u.activity, u.attached.cwd, info.ID, observation, false)
 		// Position by time, including thread-scoped hooks outside any turn.
 		events = append(events, restoredRolloutEvent{at: observation.At, entry: entry})
 	}

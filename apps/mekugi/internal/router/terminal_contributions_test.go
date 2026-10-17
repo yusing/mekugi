@@ -41,7 +41,7 @@ func TestNativeAuxiliaryAbsencePreservesMainAndReviewSource(t *testing.T) {
 	if u.Text != "hello" || wire.Len() != 0 {
 		t.Fatalf("Main input changed: %q %q", u.Text, wire.String())
 	}
-	if view := u.reviewSource.ReviewView(u.session.Scope()); view.Workspace != "/workspace" || view.Coverage != "READY" {
+	if view := u.reviewSource.ReviewView(u.attached.session.Scope()); view.Workspace != "/workspace" || view.Coverage != "READY" {
 		t.Fatal("removing a view removed its independent source publication")
 	}
 	if state := shell.Shell.Preferences(shell.main.shell.Main); state.Focus != 0 || state.DiffOpen || state.NavigatorColumns != 0 {

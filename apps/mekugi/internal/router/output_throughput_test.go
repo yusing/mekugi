@@ -181,13 +181,13 @@ func TestOutputThroughputUIRefreshRetainsPreviousRound(t *testing.T) {
 		time.Sleep(time.Second)
 		first.Observe(inference.Usage{TotalsKnown: true, OutputTokens: 30})
 		u.applyObservedActivity()
-		if usagepresentation.OutputThroughputLabel(u.session.Agent("/root").OutputThroughput) != "30.0 tok/s" {
+		if usagepresentation.OutputThroughputLabel(u.attached.session.Agent("/root").OutputThroughput) != "30.0 tok/s" {
 			t.Fatal("main did not refresh")
 		}
 		next := usage.Observation(u.Thread, u.Thread, "gpt-6-sol", "")
 		next.Begin()
 		u.applyObservedActivity()
-		if got := usagepresentation.OutputThroughputLabel(u.session.Agent("/root").OutputThroughput); got != "30.0 tok/s" {
+		if got := usagepresentation.OutputThroughputLabel(u.attached.session.Agent("/root").OutputThroughput); got != "30.0 tok/s" {
 			t.Fatalf("previous rate disappeared: %s", got)
 		}
 	})
@@ -241,12 +241,12 @@ func TestUISnapshotOutputThroughputStreamingRetainsMeasuredRate(t *testing.T) {
 					}
 					synctest.Wait()
 					u.applyObservedActivity()
-					if got := u.session.Agent("/root").OutputThroughput; got != previous {
+					if got := u.attached.session.Agent("/root").OutputThroughput; got != previous {
 						t.Fatalf("%s replaced measured rate: %+v, want %+v", kind, got, previous)
 					}
 					time.Sleep(250 * time.Millisecond)
 				}
-				root := u.session.Agent("/root")
+				root := u.attached.session.Agent("/root")
 				u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: []sessionpresentation.ActivityAgent{*root}})
 				rows, _ := u.testMainFrame(80, 10, 0)
 				if prior {
@@ -282,11 +282,11 @@ func TestUISnapshotOutputThroughputComposerAndRoster(t *testing.T) {
 			u.startSession(u.Thread, "")
 
 			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
-			root := u.session.Agent("/root")
+			root := u.attached.session.Agent("/root")
 			root.ContextKnown, root.ContextTokens, root.ContextWindow = true, 24000, 200000
 			root.OutputThroughput = inference.OutputThroughput{OutputTokens: 83, DurationNanos: uint64(2 * time.Second), MeasuredRequests: 1}
-			u.session.Lifecycle(u.Thread).RestoreFinal(true)
-			u.sessionPresentation().Status.Text, u.model = "Ready", "gpt-6-sol"
+			u.attached.session.Lifecycle(u.Thread).RestoreFinal(true)
+			u.attached.presentation.Status.Text, u.model = "Ready", "gpt-6-sol"
 			rows, _ := u.testMainFrame(width, 10, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("output-throughput-composer-%d", width), rows)
 			u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: []sessionpresentation.ActivityAgent{*root,
@@ -318,9 +318,9 @@ func TestUISnapshotOutputThroughputRestoredRoster(t *testing.T) {
 			u.registerThread(info)
 			u.restoreActivityThread(info, false)
 		}
-		u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.Roster()})
+		u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.attached.session.Roster()})
 		u.shell.Agents.Painter.Theme = diffrender.DarkTheme
-		u.shell.Agents.Selected = u.session.KnownCaller("child")
+		u.shell.Agents.Selected = u.attached.session.KnownCaller("child")
 		assertNativeUISnapshot(t, "output-throughput-restored-roster", u.testActivity(u.shell.Agents).NativeRoster(120, 8, time.Now(), true))
 	})
 }
@@ -331,6 +331,7 @@ func TestOutputThroughputPresentationSelectionAndIsolation(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			if mode == "without usage" {
 				u.presentationState = new(sessionpresentation.Service)
+				u.attached.presentation = u.presentationState.Session(u.attached.session.Scope())
 				u.attachPresentation()
 			}
 			if mode == "without activity" {
@@ -339,17 +340,17 @@ func TestOutputThroughputPresentationSelectionAndIsolation(t *testing.T) {
 
 			u.model = "main-model"
 			rate := inference.OutputThroughput{OutputTokens: 40, DurationNanos: uint64(time.Second), MeasuredRequests: 1}
-			u.session.Agent("/root").OutputThroughput = rate
+			u.attached.session.Agent("/root").OutputThroughput = rate
 			before := u.publishPresentation(u.now())
 			frame, _ := u.testMainFrame(120, 12, 0)
 			if text := ansi.Strip(strings.Join(frame, "\n")); !strings.Contains(text, "main-model") || strings.Contains(text, "40.0 tok/s") != (mode != "without usage") {
 				t.Fatalf("Main contribution: %s", text)
 			}
 			u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "child"})
-			child := u.session.Agent("/root/child")
+			child := u.attached.session.Agent("/root/child")
 			rate.OutputTokens = 80
 			child.OutputThroughput = rate
-			u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.Roster()})
+			u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.attached.session.Roster()})
 			roster := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).NativeRoster(140, 8, u.now(), true), "\n"))
 			if strings.Contains(roster, "80.0 tok/s") != (mode != "without usage") {
 				t.Fatalf("roster contribution: %s", roster)

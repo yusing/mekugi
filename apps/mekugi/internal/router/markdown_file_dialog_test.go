@@ -20,7 +20,7 @@ func awaitMarkdownFile(t *testing.T, u *terminalUI) {
 	t.Helper()
 	select {
 	case result := <-u.main.fileReads:
-		if !u.main.detailFiles.loadedMarkdownFile(&u.main.session, u.main.presentationState, u.main.cwd, u.Attachment, result) {
+		if !u.main.detailFiles.loadedMarkdownFile(&u.main.attached.session, u.main.presentationState, u.main.attached.cwd, u.Attachment, result) {
 			t.Fatal("file result was not admitted")
 		}
 	case <-time.After(5 * time.Second):
@@ -40,9 +40,9 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 	}
 	fileURL := (&url.URL{Scheme: "file", Path: path}).String()
 	main, _ := newAppServerTestUI()
-	main.cwd = workspace
+	main.attached.cwd = workspace
 	main.settlePresentation()
-	painter := activityui.Painter{FileLink: markdownFileLinks(main.cwd)}
+	painter := activityui.Painter{FileLink: markdownFileLinks(main.attached.cwd)}
 	for _, target := range []string{"src/source #1?%.go", path + ":26", fileURL + ":26", "src/source #1?%.go:26-27", fileURL + ":26-27", "`" + path + ":26`"} {
 		t.Run(target, func(t *testing.T) {
 			row := painter.Inline("[source](<" + target + ">)")
@@ -51,7 +51,7 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 				target = strings.Trim(target, "`")
 			}
 			u := selectionTestUI(row)
-			u.main.cwd = workspace
+			u.main.attached.cwd = workspace
 			u.main.publishPresentation(u.main.now())
 			u.Frame.Source = selectionTestSource(u.main)
 			u.selectionMouse(0, 1, 0, false)
@@ -76,7 +76,7 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 				t.Fatal("whole-file copy changed source or trailing newlines")
 			}
 			u = selectionTestUI(row)
-			u.main.cwd = workspace
+			u.main.attached.cwd = workspace
 			u.main.publishPresentation(u.main.now())
 			u.Frame.Source = selectionTestSource(u.main)
 			selectionTestDrag(t, u, 0, 0, 5, 0)
@@ -96,23 +96,23 @@ func TestMarkdownSelectionClickRetainsWorkspace(t *testing.T) {
 		t.Run(change, func(t *testing.T) {
 			painter := activityui.Painter{FileLink: markdownFileLinks(workspace)}
 			u := selectionTestUI(painter.Inline("[source](source.go)"))
-			u.main.cwd = workspace
+			u.main.attached.cwd = workspace
 			u.main.publishPresentation(u.main.now())
 			u.Frame.Source = selectionTestSource(u.main)
 			if change == "workspace before press" {
-				u.main.cwd = t.TempDir()
+				u.main.attached.cwd = t.TempDir()
 				u.main.publishPresentation(u.main.now())
 			}
 			u.selectionMouse(0, 1, 0, false)
 			if change == "workspace" {
-				u.main.cwd = t.TempDir()
+				u.main.attached.cwd = t.TempDir()
 			} else {
 				u.main.setNotice("unrelated status", false)
 			}
 			u.main.publishPresentation(u.main.now())
 			u.selectionMouse(0, 1, 0, true)
 			if change != "status" {
-				if u.Dialog != nil || u.main.fileReads != nil || !u.main.feedback.Alert {
+				if u.Dialog != nil || u.main.fileReads != nil || !u.main.attached.feedback.Alert {
 					t.Fatal("old click acquired from a replacement workspace")
 				}
 			} else {
@@ -131,9 +131,9 @@ func TestMarkdownSelectionClickRetainsWorkspace(t *testing.T) {
 func TestUISnapshotMarkdownFileLinks(t *testing.T) {
 	u, _ := newAppServerTestUI()
 
-	u.cwd = t.TempDir()
+	u.attached.cwd = t.TempDir()
 	u.settlePresentation()
-	if err := os.WriteFile(filepath.Join(u.cwd, "sample.go"), []byte("package sample\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(u.attached.cwd, "sample.go"), []byte("package sample\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	text := "Historical replacement count or resulting speed/cost savings.\n" +
@@ -145,7 +145,7 @@ func TestUISnapshotMarkdownFileLinks(t *testing.T) {
 		rows := view.Painter.Markdown(text, 72, false)
 		uisnapshot.AssertTerminal(t, "testdata/snapshots/markdown-file-links.txt", append(rows, "plain after links"), 72)
 	}
-	u.cwd = ""
+	u.attached.cwd = ""
 	if !strings.Contains(u.shell.Transcript.Painter.Inline("sample.go"), "\x1b]8;") {
 		t.Fatal("painting consulted unpublished workspace metadata")
 	}
@@ -166,12 +166,12 @@ func TestMarkdownFileDialogSanitizesDisplayKeepsSourceCopy(t *testing.T) {
 		main, _ := newAppServerTestUI()
 		u := terminalTest(main)
 		u.Width, u.Height = 80, 18
-		if !u.main.detailFiles.openMarkdownFile(&u.main.session, u.main.sessionPresentation(), u.main.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, path) {
+		if !u.main.detailFiles.openMarkdownFile(&u.main.attached.session, u.main.attached.presentation, u.main.attached.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, path) {
 			t.Fatal("existing file did not open")
 		}
 		awaitMarkdownFile(t, u)
 		rows := make([]string, u.Height)
-		u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
+		u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
 		u.Dialog.Paint(rows, u.Width, u.Height)
 		if strings.Contains(strings.Join(rows, "\n"), control) {
 			t.Fatal("file emitted a clipboard control in the rendered frame")
@@ -194,11 +194,11 @@ func TestMarkdownFileDialogViews(t *testing.T) {
 		t.Fatal(err)
 	}
 	main, _ := newAppServerTestUI()
-	main.cwd = workspace
+	main.attached.cwd = workspace
 	main.settlePresentation()
 	u := terminalTest(main)
 	u.Width, u.Height = 80, 18
-	u.main.detailFiles.openMarkdownFile(&u.main.session, u.main.sessionPresentation(), u.main.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, path+":30-31")
+	u.main.detailFiles.openMarkdownFile(&u.main.attached.session, u.main.attached.presentation, u.main.attached.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, path+":30-31")
 	awaitMarkdownFile(t, u)
 	drawOutputDialog(u)
 	x, y := outputSelectionPoint(t, u, "bold")
@@ -244,16 +244,16 @@ func TestUISnapshotMarkdownFileViews(t *testing.T) {
 		t.Fatal(err)
 	}
 	main, _ := newAppServerTestUI()
-	main.cwd = workspace
+	main.attached.cwd = workspace
 	main.settlePresentation()
 	main.shell.Transcript.Painter.Theme = diffrender.TerminalTheme
 	u := terminalTest(main)
 	u.Width, u.Height = 80, 24
-	u.main.detailFiles.openMarkdownFile(&u.main.session, u.main.sessionPresentation(), u.main.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, path)
+	u.main.detailFiles.openMarkdownFile(&u.main.attached.session, u.main.attached.presentation, u.main.attached.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, path)
 	awaitMarkdownFile(t, u)
 	for _, view := range []string{"markdown", "file"} {
 		rows := make([]string, u.Height)
-		u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
+		u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
 		u.Dialog.Paint(rows, u.Width, u.Height)
 		uisnapshot.AssertTerminal(t, "testdata/snapshots/native-markdown-file-"+view+"-view.txt", append(rows, "plain after file view"), u.Width)
 		u.outputKey("\x1b[C")
@@ -266,7 +266,7 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 		t.Fatal(err)
 	}
 	main, _ := newAppServerTestUI()
-	main.cwd = workspace
+	main.attached.cwd = workspace
 	main.settlePresentation()
 	u := terminalTest(main)
 	u.Width, u.Height = 80, 18
@@ -296,7 +296,7 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 		if target != "https://example.com" && strings.Contains(main.shell.Transcript.Painter.Inline("[file](<"+target+">)"), "\x1b]8;") {
 			t.Fatalf("linked non-file destination %q", target)
 		}
-		if u.main.detailFiles.openMarkdownFile(&u.main.session, u.main.sessionPresentation(), u.main.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, target) {
+		if u.main.detailFiles.openMarkdownFile(&u.main.attached.session, u.main.attached.presentation, u.main.attached.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, target) {
 			t.Fatalf("opened non-file destination %q", target)
 		}
 	}
@@ -304,7 +304,7 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 		if !strings.Contains(main.shell.Transcript.Painter.Inline("[file](<"+target+">)"), "\x1b]8;") {
 			t.Fatalf("local destination was not linked: %q", target)
 		}
-		if !u.main.detailFiles.openMarkdownFile(&u.main.session, u.main.sessionPresentation(), u.main.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, target) {
+		if !u.main.detailFiles.openMarkdownFile(&u.main.attached.session, u.main.attached.presentation, u.main.attached.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, target) {
 			t.Fatalf("local destination was not admitted: %q", target)
 		}
 		awaitMarkdownFile(t, u)
@@ -318,12 +318,12 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 			t.Fatalf("local read error is not copyable: %q", target)
 		}
 	}
-	main.cwd = ""
-	if u.main.detailFiles.openMarkdownFile(&u.main.session, u.main.sessionPresentation(), u.main.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, "sample.go") {
+	main.attached.cwd = ""
+	if u.main.detailFiles.openMarkdownFile(&u.main.attached.session, u.main.attached.presentation, u.main.attached.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, "sample.go") {
 		t.Fatal("relative file resolved without workspace metadata")
 	}
 	path := filepath.Join(workspace, "sample.go")
-	if !u.main.detailFiles.openMarkdownFile(&u.main.session, u.main.sessionPresentation(), u.main.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, path) {
+	if !u.main.detailFiles.openMarkdownFile(&u.main.attached.session, u.main.attached.presentation, u.main.attached.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, path) {
 		t.Fatal("absolute path was not admitted")
 	}
 	awaitMarkdownFile(t, u)
@@ -334,7 +334,7 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 	if err := os.WriteFile(path, []byte("literal file name\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if !u.main.detailFiles.openMarkdownFile(&u.main.session, u.main.sessionPresentation(), u.main.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, path) {
+	if !u.main.detailFiles.openMarkdownFile(&u.main.attached.session, u.main.attached.presentation, u.main.attached.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, path) {
 		t.Fatal("literal file name was not admitted")
 	}
 	awaitMarkdownFile(t, u)
@@ -361,17 +361,17 @@ func TestUISnapshotMarkdownFileDialog(t *testing.T) {
 				t.Fatal(err)
 			}
 			main, _ := newAppServerTestUI()
-			main.cwd = workspace
+			main.attached.cwd = workspace
 			main.settlePresentation()
 			main.shell.Transcript.Painter.Theme = test.theme
 			u := terminalTest(main)
 			u.Width, u.Height = 80, 18
-			if !u.main.detailFiles.openMarkdownFile(&u.main.session, u.main.sessionPresentation(), u.main.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, path+test.location) {
+			if !u.main.detailFiles.openMarkdownFile(&u.main.attached.session, u.main.attached.presentation, u.main.attached.cwd, u.main.activitySource(main.shell.Transcript), u.Attachment, main.shell.Transcript, path+test.location) {
 				t.Fatal("existing file did not open")
 			}
 			awaitMarkdownFile(t, u)
 			rows := make([]string, u.Height)
-			u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
+			u.main.detailFiles.prepareOutput(&u.main.attached.session, u.Attachment)
 			u.Dialog.Paint(rows, u.Width, u.Height)
 			uisnapshot.AssertTerminal(t, "testdata/snapshots/"+test.name+".txt", append(rows, "plain after file dialog"), u.Width)
 			if failure {

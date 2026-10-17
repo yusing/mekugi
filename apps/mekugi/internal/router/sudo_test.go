@@ -133,7 +133,7 @@ func TestSudoUnlockDialog(t *testing.T) {
 			case <-time.After(10 * time.Second):
 				t.Fatal("sudo did not complete")
 			}
-			if input.Len() != 0 || len(u.conversation().Unsent) != 0 || len(u.InputHistory) != 0 || u.activeQuestionCall() != nil {
+			if input.Len() != 0 || len(u.attached.conversation.Unsent) != 0 || len(u.InputHistory) != 0 || u.activeQuestionCall() != nil {
 				t.Fatal("local sudo answer escaped into host input or history")
 			}
 			if strings.Contains(approvalTestTranscript(t, u), "1234-secret") {
@@ -146,7 +146,7 @@ func TestSudoUnlockDialog(t *testing.T) {
 func TestUISnapshotSudoDialogs(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
-	u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
+	u.attached.presentation.Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 	u.startSession("main", "/workspace")
 	u.Turn = "turn"
 	u.addGuardApproval(&sessioncontrol.ShellApprovalRequest{Kind: "sudo", Thread: "main", Cwd: "/workspace", Argv: []string{"sudo", "apt", "update"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})})
@@ -183,20 +183,20 @@ func TestSudoSecretEditorAndSessionSwitch(t *testing.T) {
 	u.openSudoPassword(&sessioncontrol.Approval{Approval: &prompt.Approval{Thread: "main", Turn: "old-turn", Subject: "sudo id"}, Guard: request})
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "fixture-secret")
-	neutral, err := json.Marshal(u.conversation())
-	if err != nil || strings.Contains(string(neutral), "fixture-secret") || u.Editor == &u.conversation().Editor {
+	neutral, err := json.Marshal(u.attached.conversation)
+	if err != nil || strings.Contains(string(neutral), "fixture-secret") || u.Editor == &u.attached.conversation.Editor {
 		t.Fatal("secret editor escaped into Conversation state", err)
 	}
 	questions := u.questions.Questions
 	call := u.activeQuestionCall().Call
-	if questions != &u.conversation().Questions || call.Questions[0].Editor.Snapshot.Text != "" || len(call.Questions[0].Answer) != 0 {
+	if questions != &u.attached.conversation.Questions || call.Questions[0].Editor.Snapshot.Text != "" || len(call.Questions[0].Answer) != 0 {
 		t.Fatal("secret entered neutral question state")
 	}
 	if _, err := u.key("\x07"); err != nil || u.Text != "fixture-secret" {
 		t.Fatalf("secret editor dispatch: %v", err)
 	}
 	u.hideQuestions()
-	if u.shell.Prompts.Secret.Text != "" || u.Editor != &u.conversation().Editor {
+	if u.shell.Prompts.Secret.Text != "" || u.Editor != &u.attached.conversation.Editor {
 		t.Fatal("hiding authentication did not return to the ordinary editor")
 	}
 	if err := u.clearSessionPresentation(); err != nil {

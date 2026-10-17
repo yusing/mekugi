@@ -31,7 +31,7 @@ func TestObservedEditReceiptBeforeHostItemSurvivesSegmentRefresh(t *testing.T) {
 	file := diffmodel.RenderReviewFile("a.go", "a.go", "before\n", "after\n")
 	// The tracker sees host starts on the transport reader. Its completion
 	// can reach the preview mailbox before the UI consumes that same item.
-	u.preview(previewmodel.Preview{ID: "early", Workspace: u.cwd, Thread: "main", Complete: true,
+	u.preview(previewmodel.Preview{ID: "early", Workspace: u.attached.cwd, Thread: "main", Complete: true,
 		HostItems: []string{"cmd"}, Files: []diffmodel.ReviewFile{file}, EditReceipt: "Edit `a.go` +1 -1 · python3"}, false)
 	command := "python3 - <<'PY'\np='a.go';s=open(p).read().replace('before','after');open(p,'w').write(s)\nPY\ngo test ./..."
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: command, Status: "inProgress"}})
@@ -108,7 +108,7 @@ func TestAppServerTrackedEditReceiptPreservesSegments(t *testing.T) {
 			for _, source := range sources {
 				segments = append(segments, sessionpresentation.ActivitySegment{Source: source, Text: execSegmentText(source)})
 			}
-			output := u.activity.Outputs(u.session.Scope()).New()
+			output := u.activity.Outputs(u.attached.session.Scope()).New()
 			output.Finish(new("edit diagnostic"), new(0))
 			segments[0].Output = output
 			segments[2].Exit, segments[2].Tail = 2, []string{"test failed"}
@@ -156,7 +156,7 @@ func TestUISnapshotTrackedEditReceiptOutputSourceOnlyInDialog(t *testing.T) {
 	var segments []sessionpresentation.ActivitySegment
 	for i, source := range []string{"cat > a.go", "go vet ./...", "cat > b.go"} {
 		line := strings.Fields(source)[len(strings.Fields(source))-1] + " diagnostic"
-		output := u.activity.Outputs(u.session.Scope()).New()
+		output := u.activity.Outputs(u.attached.session.Scope()).New()
 		output.Finish(new(line), new(0))
 		elapsed := time.Duration(i+1) * time.Second
 		segments = append(segments, sessionpresentation.ActivitySegment{Source: source, Text: execSegmentText(source), Output: output, Tail: []string{line},
@@ -167,7 +167,7 @@ func TestUISnapshotTrackedEditReceiptOutputSourceOnlyInDialog(t *testing.T) {
 		Seq: 1, Agent: "/root/child", Kind: "tool", CallID: "cmd", Text: toolActivityShell(command),
 		Native: &sessionpresentation.NativeItem{Thread: "child", Item: "cmd", Command: command, Segments: segments},
 	}}})
-	u.childSource.ApplyCapturedEdits(trackedEditReceiptData("child", "cmd"))
+	u.attached.childSource.ApplyCapturedEdits(trackedEditReceiptData("child", "cmd"))
 	var outputs []string
 	for _, block := range u.testActivity(u.shell.Agents).blocks(0) {
 		if block.Output == 0 {
@@ -181,7 +181,7 @@ func TestUISnapshotTrackedEditReceiptOutputSourceOnlyInDialog(t *testing.T) {
 	if want := []string{"Edited `a.go` 1s", "Run  2s", "Edited `b.go` 3s"}; !slices.Equal(outputs, want) {
 		t.Fatalf("output placement = %q, want %q", outputs, want)
 	}
-	pages := activityui.Disclosure(nil).Blocks(sessionpresentation.CommandPresentation(u.childSource.Entries[0].Source).DetailValues())
+	pages := activityui.Disclosure(nil).Blocks(sessionpresentation.CommandPresentation(u.attached.childSource.Entries[0].Source).DetailValues())
 	if len(pages) != 3 || pages[0].Code != "cat > a.go" || pages[2].Code != "cat > b.go" {
 		t.Fatalf("edit output dialog: %+v", pages)
 	}
@@ -192,7 +192,7 @@ func TestUISnapshotTrackedEditReceiptOutputSourceOnlyInDialog(t *testing.T) {
 		t.Fatalf("output row does not open its output: row %d", row)
 	}
 	rows := make([]string, 12)
-	u.detailFiles.prepareOutput(&u.session, terminalTest(u).Attachment)
+	u.detailFiles.prepareOutput(&u.attached.session, terminalTest(u).Attachment)
 	terminalTest(u).Dialog.Paint(rows, 100, len(rows))
 	assertNativeUISnapshot(t, "captured-edit-output-dialog", rows)
 }
@@ -245,7 +245,7 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 			u := newAppServerSessionTestUI(t, workspace)
 			setTestAppServerIntegration(u, testProxyWithStore(store))
 			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc 'cat > a.go; cat > b.go; go test ./...'", ExitCode: new(2), AggregatedOutput: new("test failed")}
-			output := u.activity.Outputs(u.session.Scope()).New()
+			output := u.activity.Outputs(u.attached.session.Scope()).New()
 			output.Finish(new("test failed"), new(2))
 			u.retainCommandSegments(sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Thread: thread, Turn: "turn", Item: item.ID}}, item.Observation(),
 				execTrackView{complete: true, output: true, code: 2, segments: []sessionpresentation.ActivitySegment{{}, {}, {Exit: 2, Output: output}}})
@@ -258,7 +258,7 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 			if thread == "main" {
 				restored.restoreHistory(turns)
 			} else {
-				restored.session.Caller(thread)
+				restored.attached.session.Caller(thread)
 				restored.restoreActivityThread(binding.ThreadInfo{ID: thread, Cwd: workspace, Turns: turns}, false)
 				view = restored.testActivity(restored.shell.Agents)
 			}
@@ -280,7 +280,7 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 func TestAppServerTrackedEditReceiptKeepsSiblingCombinedOutput(t *testing.T) {
 	for _, tail := range [][]string{nil, {"host diagnostic"}} {
 		u := newAppServerSessionTestUI(t, t.TempDir())
-		output := u.activity.Outputs(u.session.Scope()).New()
+		output := u.activity.Outputs(u.attached.session.Scope()).New()
 		output.Finish(new("host diagnostic"), new(0))
 		command := "cat > a.go; cat > b.go"
 		u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
@@ -292,12 +292,12 @@ func TestAppServerTrackedEditReceiptKeepsSiblingCombinedOutput(t *testing.T) {
 		}}})
 		data := trackedEditReceiptData("main", "anchor", "sibling")
 		for range 2 {
-			u.source.ApplyCapturedEdits(data)
+			u.attached.source.ApplyCapturedEdits(data)
 			blocks := u.testActivity(u.shell.Transcript).blocks(0)
-			if len(blocks) != 1 || blocks[0].Verb != "Edited" || blocks[0].Code != "" || u.source.RetainedOutput(blocks[0].Source, blocks[0].Output) != output || !reflect.DeepEqual(blocks[0].Tail, tail) {
+			if len(blocks) != 1 || blocks[0].Verb != "Edited" || blocks[0].Code != "" || u.attached.source.RetainedOutput(blocks[0].Source, blocks[0].Output) != output || !reflect.DeepEqual(blocks[0].Tail, tail) {
 				t.Fatalf("grouped sibling lost combined host output: %+v", blocks)
 			}
-			if page := u.shell.Transcript.Painter.DialogPage(snapshotOutput(blocks[0], u.source.RetainedOutput(blocks[0].Source, blocks[0].Output)), 100); page.Text != "host diagnostic" {
+			if page := u.shell.Transcript.Painter.DialogPage(snapshotOutput(blocks[0], u.attached.source.RetainedOutput(blocks[0].Source, blocks[0].Output)), 100); page.Text != "host diagnostic" {
 				t.Fatalf("combined output dialog lost content: %q", page.Text)
 			}
 		}
@@ -316,14 +316,14 @@ func TestObservedEditReceiptsBeforeHostRows(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			broker := newLivePreview(t.Context())
-			setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{u.cwd: {"main": true}}})
+			setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{u.attached.cwd: {"main": true}}})
 			sub := testReview(broker).Subscribe()
 			testReview(broker).TakePreviews(sub) // Initial scope event.
 			for i := range tc.calls {
 				path, call := fmt.Sprintf("a%d.go", i), fmt.Sprintf("cmd%d", i)
 				file := diffmodel.RenderReviewFile(path, path, strings.Repeat(fmt.Sprintf("before source %d\n", i), tc.lines), strings.Repeat(fmt.Sprintf("after source %d\n", i), tc.lines))
-				broker.Update(previewmodel.Preview{ID: call, Workspace: u.cwd, Thread: "main", Complete: true,
-					HostItems: []string{call}, Files: []diffmodel.ReviewFile{file}, EditReceipt: presentation.ReceiptText(u.cwd, receiptEvidence(legacycall.History{ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{file}), ExecOutcome: (*legacycall.Outcome)(&changecapture.Outcome{Labels: []string{"cat"}})}))}, false)
+				broker.Update(previewmodel.Preview{ID: call, Workspace: u.attached.cwd, Thread: "main", Complete: true,
+					HostItems: []string{call}, Files: []diffmodel.ReviewFile{file}, EditReceipt: presentation.ReceiptText(u.attached.cwd, receiptEvidence(legacycall.History{ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{file}), ExecOutcome: (*legacycall.Outcome)(&changecapture.Outcome{Labels: []string{"cat"}})}))}, false)
 				events := testReview(broker).TakePreviews(sub)
 				if len(events) != 1 || events[0].Preview == nil {
 					t.Fatal("completion was not published")
@@ -375,10 +375,10 @@ func TestObservedEditReceiptsBeforeHostRows(t *testing.T) {
 func TestPendingObservedEditReceiptsStayBounded(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	file := diffmodel.RenderReviewFile("a.go", "a.go", strings.Repeat("before "+strings.Repeat("x", 90)+"\n", 100), "after\n")
-	receipt := presentation.ReceiptText(u.cwd, receiptEvidence(legacycall.History{ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{file}), ExecOutcome: (*legacycall.Outcome)(&changecapture.Outcome{Labels: []string{"cat"}})}))
+	receipt := presentation.ReceiptText(u.attached.cwd, receiptEvidence(legacycall.History{ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{file}), ExecOutcome: (*legacycall.Outcome)(&changecapture.Outcome{Labels: []string{"cat"}})}))
 	for i := range 256 {
 		call := fmt.Sprintf("cmd%d", i)
-		u.preview(previewmodel.Preview{ID: call, Workspace: u.cwd, Thread: "main", Complete: true, HostItems: []string{call}, EditReceipt: receipt}, false)
+		u.preview(previewmodel.Preview{ID: call, Workspace: u.attached.cwd, Thread: "main", Complete: true, HostItems: []string{call}, EditReceipt: receipt}, false)
 	}
 	pending := u.pendingEditReceipts
 	if len(pending) == 0 || len(pending) >= 256 || pending[len(pending)-1].Calls[0] != "cmd255" {
