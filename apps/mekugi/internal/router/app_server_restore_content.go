@@ -381,7 +381,7 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 		delete(r.pane, name)
 	}
 	for index, turn := range info.Turns {
-		u.restoredSegments = u.prepareCommandSegments(info.ID, u.session.cwd, turn)
+		u.restoredSegments = u.prepareCommandSegments(info.ID, info.Cwd, turn)
 		observed := historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt, info.UpdatedAt))
 		var entries []activityPaneEntry
 		var times []time.Time // When each entry happened, to place Main's copy.
@@ -473,7 +473,7 @@ func (u *appServerUI) restoreActivityItem(info appServerThreadInfo, turn appServ
 		}
 		s.retainOutput(entry.native, item)
 		appServerCommandOutput(&entry, item, time.Time{})
-		u.restoreCommandSegments(&entry, item, u.session.cwd)
+		u.restoreCommandSegments(&entry, item, info.Cwd)
 		*entries = append(*entries, entry)
 		if len(entry.native.segments) == 0 && item.ExitCode != nil && *item.ExitCode != 0 {
 			exit := activityPaneEntry{Seq: s.next(), Agent: name, Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID, Observed: observed}

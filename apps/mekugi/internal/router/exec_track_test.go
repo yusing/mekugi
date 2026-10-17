@@ -10,6 +10,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/commandsegments/segments"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
@@ -770,6 +771,14 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 	segments := restored.view.Entries[0].Source.native.segments
 	if len(segments) != 2 || segments[0].text != "Read `a.go`" || segments[1].text != "Search `needle` in `src`" || segments[0].source != "mcat "+quoteShellWord(cwd+"/a.go") {
 		t.Fatalf("restored paths or source changed: %+v", segments)
+	}
+	// Publish the child's inherited evidence in its own retained workspace.
+	retained := restored.prepareCommandSegments("main", u.session.cwd, appServerHistoryTurn{ID: "t", Items: []appServerItem{item}})[item.ID]
+	if retained == nil {
+		t.Fatal("fixture command segments were not retained")
+	}
+	if err := u.segments.Publish(t.Context(), reports.Scope{Store: store.publication, Workspace: cwd, Thread: "child"}, reports.ID("t", item.ID), *retained); err != nil {
+		t.Fatal(err)
 	}
 	// Child history can omit command cwd while retaining its own workspace.
 	item.Cwd = ""

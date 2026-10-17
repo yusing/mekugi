@@ -227,15 +227,21 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 	if shell.hub.Tracking(key) {
 		t.Fatal("test still has a live report")
 	}
-	for _, target := range []string{"main", "fork", "child"} {
+	for _, target := range []string{"main", "fork", "child", "child-other-workspace", "child-missing-workspace"} {
 		t.Run(target, func(t *testing.T) {
 			restored := newAppServerSessionTestUI(t, workspace)
 			restored.proxy = &mekugiProxy{replayStore: store}
 			turns := []appServerHistoryTurn{{ID: key[1], Status: "completed", Items: []appServerItem{item}}}
 			view := restored.view
-			if target == "child" {
+			if strings.HasPrefix(target, "child") {
+				childWorkspace := workspace
+				if target == "child-other-workspace" {
+					restored.session.cwd = t.TempDir()
+				} else if target == "child-missing-workspace" {
+					childWorkspace = ""
+				}
 				restored.session.path(target)
-				restored.restoreActivityThread(appServerThreadInfo{ID: target, Cwd: workspace, Turns: turns})
+				restored.restoreActivityThread(appServerThreadInfo{ID: target, Cwd: childWorkspace, Turns: turns})
 				view = restored.agents
 			} else {
 				restored.Thread = target
@@ -248,7 +254,20 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 					break
 				}
 			}
-			if entry.native == nil || len(entry.native.segments) != 4 {
+			if entry.native == nil {
+				t.Fatal("missing restored command")
+			}
+			if target == "child-missing-workspace" {
+				pages := activityui.Disclosure(nil).Blocks(commandPresentation(entry).DetailValues())
+				if len(entry.native.segments) != 0 || len(pages) != 1 || pages[0].Label != "combined output" || strings.Join(view.retainedOutput(pages[0]).View().Lines, "\n") != "first\nsecond" {
+					t.Fatalf("missing workspace borrowed a report or lost combined output: %+v", entry)
+				}
+				if _, err := store.publication.ReadCatalog(history.SessionName(target)); !os.IsNotExist(err) {
+					t.Fatalf("missing workspace adopted a report: %v", err)
+				}
+				return
+			}
+			if len(entry.native.segments) != 4 {
 				t.Fatalf("missing restored segments: %+v", entry)
 			}
 			segments := entry.native.segments
