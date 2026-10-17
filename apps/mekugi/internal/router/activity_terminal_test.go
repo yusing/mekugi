@@ -46,9 +46,11 @@ func (v *activityAdapter) testRenderConversation(width int) activityui.Feed {
 	v.publishActivity()
 	for {
 		feed := v.View.RenderConversation(width)
-		if !v.hydrateActivity() {
+		demands := v.View.OutputDemands()
+		if len(demands) == 0 {
 			return feed
 		}
+		v.View.Hydrate(v.resolveOutputDemands(demands))
 	}
 }
 
@@ -56,9 +58,11 @@ func (v *activityAdapter) testConversationItem(first, last, width int, thread ac
 	v.publishActivity()
 	for {
 		run := v.View.ConversationItem(first, last, width, thread)
-		if !v.hydrateActivity() {
+		demands := v.View.OutputDemands()
+		if len(demands) == 0 {
 			return run
 		}
+		v.View.Hydrate(v.resolveOutputDemands(demands))
 	}
 }
 

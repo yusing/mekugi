@@ -406,8 +406,10 @@ func (v *activityAdapter) LayoutFeed(width int) activityui.Feed {
 	v.publishActivity()
 	for {
 		feed := v.View.LayoutFeed(width)
-		if !v.hydrateActivity() {
+		demands := v.View.OutputDemands()
+		if len(demands) == 0 {
 			return feed
 		}
+		v.View.Hydrate(v.resolveOutputDemands(demands))
 	}
 }

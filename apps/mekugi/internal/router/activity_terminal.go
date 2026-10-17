@@ -50,13 +50,9 @@ func (v *activityAdapter) publishActivity() {
 	v.View.Update(publication, activityui.Display{Caller: display.Displayed.Caller, Attachment: display.Version.Attachment, Revision: display.Version.Revision})
 }
 
-// hydrateActivity resolves only the scoped output requested by the actual
-// renderer. Output handles and their attachment lifetime remain in this adapter.
-func (v *activityAdapter) hydrateActivity() bool {
-	demands := v.View.OutputDemands()
-	if len(demands) == 0 {
-		return false
-	}
+// resolveOutputDemands reads admitted source handles without accessing a renderer.
+// Application integration delivers the detached results to the requesting view.
+func (v *activityAdapter) resolveOutputDemands(demands []activityui.OutputDemand) []activityui.OutputResult {
 	results := make([]activityui.OutputResult, 0, len(demands))
 	for _, demand := range demands {
 		result := activityui.OutputResult{Demand: demand}
@@ -70,17 +66,18 @@ func (v *activityAdapter) hydrateActivity() bool {
 		}
 		results = append(results, result)
 	}
-	v.View.Hydrate(results)
-	return true
+	return results
 }
 
 func (v *activityAdapter) Render(width, height int, now time.Time) []string {
 	v.publishActivity()
 	for {
 		lines := v.View.Render(width, height, now)
-		if !v.hydrateActivity() {
+		demands := v.View.OutputDemands()
+		if len(demands) == 0 {
 			return lines
 		}
+		v.View.Hydrate(v.resolveOutputDemands(demands))
 	}
 }
 
@@ -88,9 +85,11 @@ func (v *activityAdapter) RenderFeed(width, rows int) activityui.Feed {
 	v.publishActivity()
 	for {
 		feed := v.View.RenderFeed(width, rows)
-		if !v.hydrateActivity() {
+		demands := v.View.OutputDemands()
+		if len(demands) == 0 {
 			return feed
 		}
+		v.View.Hydrate(v.resolveOutputDemands(demands))
 	}
 }
 

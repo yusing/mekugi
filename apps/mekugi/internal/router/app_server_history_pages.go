@@ -379,7 +379,12 @@ func (u *appServerUI) hydrateChildHistoryMetadata(h *appServerChildHistory) {
 func (v *activityAdapter) insertHistory(before uint64, belongs func(activityPaneEntry) bool) {
 	v.publishActivity()
 	anchor := v.View.AnchorHistory(before)
-	for v.hydrateActivity() {
+	for {
+		demands := v.View.OutputDemands()
+		if len(demands) == 0 {
+			break
+		}
+		v.View.Hydrate(v.resolveOutputDemands(demands))
 		anchor = v.View.AnchorHistory(before)
 	}
 	var at uint64
@@ -393,8 +398,10 @@ func (v *activityAdapter) insertHistory(before uint64, belongs func(activityPane
 	v.publishActivity()
 	for {
 		v.View.HistoryInserted(anchor)
-		if !v.hydrateActivity() {
+		demands := v.View.OutputDemands()
+		if len(demands) == 0 {
 			break
 		}
+		v.View.Hydrate(v.resolveOutputDemands(demands))
 	}
 }
