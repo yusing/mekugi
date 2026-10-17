@@ -104,7 +104,7 @@ func (v *activityAdapter) apply(event activityPaneEvent) bool {
 						if replaced || activitypresentation.ReasoningSummaryHeader(previous.Source.Text) == activitypresentation.ReasoningSummaryHeader(entry.Text) {
 							entry.Observed = previous.Source.Observed
 						}
-						v.Model.Replace(i, entry, activityValues(entry))
+						v.Model.Replace(i, entry, activityContent(entry).Values())
 						updated = true
 						break
 					}
@@ -126,7 +126,7 @@ func (v *activityAdapter) apply(event activityPaneEvent) bool {
 			}
 			continue
 		}
-		blocks := activityValues(entry)
+		blocks := activityContent(entry).Values()
 		if entry.Kind == "tool" && entry.CallID != "" && len(blocks) > 0 &&
 			slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, blocks[0].Verb) {
 			// A confirmed receipt replaces the provisional Run or requested

@@ -61,6 +61,7 @@ type liveActivityNativeItem struct {
 	capturedEdit       *changepresentation.Receipt      // Exact invocation receipt reconciled by the live diff owner.
 	editPages          []activitypresentation.Value     // Completed host file changes, available before outer-cell capture.
 	segments           []commandSegment                 // A tracked command's own segments, replacing its single row.
+	segmentsPending    bool                             // Retained targets await independent report attribution.
 	output             *activitymodel.Output            // A command's retained host output, which the output dialog reads.
 	hook               *activitypresentation.HookDetails
 }
@@ -142,7 +143,7 @@ func (v *activityAdapter) mergeNative(entry activityPaneEntry) bool {
 		if previous.Source.native != nil && previous.Source.native.phase == "input/pending" && entry.Agent == "You" && entry.native.thread == previous.Source.native.thread && entry.Text == previous.Source.Text {
 			// Reconcile the local echo with Codex's authoritative user item.
 			entry.Seq, entry.Observed = previous.Source.Seq, previous.Source.Observed
-			v.Model.Replace(i, entry, activityValues(entry))
+			v.Model.Replace(i, entry, activityContent(entry).Values())
 			return true
 		}
 		if !entry.native.sameItem(previous.Source.native) {
@@ -155,7 +156,7 @@ func (v *activityAdapter) mergeNative(entry activityPaneEntry) bool {
 			current.native = &native
 			blocks := v.sourceValues(i)
 			if native.command != "" && len(blocks) > 1 && !slices.ContainsFunc(blocks, func(b activitypresentation.Value) bool { return b.BatchExit }) {
-				blocks = activitypresentation.RetainAnnotations(activityValues(current), blocks)
+				blocks = activitypresentation.RetainAnnotations(activityContent(current).Values(), blocks)
 			} else {
 				activitypresentation.ApplyApproval(blocks, native.approval)
 			}
@@ -175,7 +176,7 @@ func (v *activityAdapter) mergeNative(entry activityPaneEntry) bool {
 		}
 		entry.Seq, entry.Observed = previous.Source.Seq, previous.Source.Observed
 		entry.native.question = previous.Source.native.question
-		blocks := activityValues(entry)
+		blocks := activityContent(entry).Values()
 		blocks = activitypresentation.RetainAnnotations(blocks, v.Entries[i].Values)
 		v.Model.Replace(i, entry, blocks)
 		return true

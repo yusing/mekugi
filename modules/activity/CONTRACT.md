@@ -145,8 +145,12 @@ verb column or a separate earlier-lines row. Streaming includes unfinished lines
 and carriage-return replacement. Bursts reveal a quarter of pending lines per
 frame, at least one, with only the latest 64 lines queued. Displayed completion
 waits for rolling output; canonical outcome and retained aggregate output settle
-on host observation independently of that animation. Instant reads/searches/inspections/listings and Skill
-reads reveal immediately and never hold completion; skill programs still roll.
+on host observation independently of that animation. Command completion reaches
+the neutral feed before terminal settlement. Tracked reports enrich that same
+completed identity when their attribution settles; waiting for a report neither
+keeps the host operation running nor delays its aggregate result. Instant
+reads/searches/inspections/listings and Skill reads reveal immediately and never
+hold completion; skill programs still roll.
 
 An unsegmented invocation has one combined stream after its final operation,
 without guessed command attribution. [Tracked commands](../commandsegments/SPEC.md)

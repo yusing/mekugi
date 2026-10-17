@@ -44,18 +44,21 @@ func commandPresentation(entry activityPaneEntry) activitypresentation.Command {
 		}
 	}
 	for _, segment := range n.segments {
+		if n.segmentsPending {
+			break
+		}
 		value := activitypresentation.CommandSegment{
 			Source: segment.source, Text: segment.text, Running: segment.running, Skipped: segment.skipped, ExitCode: segment.exit,
 			Started: segment.timing.Started, Ended: segment.timing.Ended, Duration: time.Duration(segment.timing.ElapsedNS),
 			Tail: segment.tail, TailOmitted: segment.omit, Changes: segment.changes,
 		}
-		if c.Captured && !segment.running && !segment.skipped && segment.exit == 0 {
+		if !segment.running && !segment.skipped && segment.exit == 0 {
 			value.Writer = execSegmentEdits(segment.source)
 		}
 		if segment.output != nil {
 			snapshot, _ := segment.output.Context(0)
 			value.Output = &snapshot
-			value.OutputContent = c.Captured && !segment.running && !segment.skipped && segment.exit == 0 && segment.output.HasContent()
+			value.OutputContent = segment.output.HasContent()
 		}
 		c.Segments = append(c.Segments, value)
 	}

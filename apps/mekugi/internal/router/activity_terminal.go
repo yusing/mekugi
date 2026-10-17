@@ -10,6 +10,11 @@ import (
 
 func (v *activityAdapter) publishActivity() {
 	publication := v.Model.Publish()
+	for i, entry := range publication.Entries {
+		if frame, needed := v.View.CommandFrame(entry.Seq, entry.Revision); needed {
+			v.View.UpdateCommandFrame(commandFrame(v.Entries[i], frame))
+		}
+	}
 	for i := range publication.Roster {
 		agent := &publication.Roster[i].Agent
 		agent.StatusItems = v.display.StatusItems(presentationcontract.Thread{ID: agent.Thread, OutputThroughput: agent.OutputThroughput}, presentationcontract.AgentMetric)

@@ -88,7 +88,7 @@ func (v *activityAdapter) applyCapturedEdits(receipts []*changepresentation.Rece
 					native.capturedEdit = nil
 					entry.native = &native
 					entry.Text = activitypresentation.ShellSource(toolActivityShellSource(appServerDisplayCommand(native.command)), native.commandCwd)
-					v.Model.Replace(i, entry, activitypresentation.RetainAnnotations(activityValues(entry), v.Entries[i].Values))
+					v.Model.Replace(i, entry, activitypresentation.RetainAnnotations(activityContent(entry).Values(), v.Entries[i].Values))
 				}
 				continue
 			}
@@ -148,7 +148,7 @@ func (v *activityAdapter) applyCapturedEdits(receipts []*changepresentation.Rece
 				native.capturedEdit = receipt
 				entry.native = &native
 				entry.Text = text
-				blocks := activityValues(entry)
+				blocks := activityContent(entry).Values()
 				// Reparsed tracked blocks already carry each segment's own exit.
 				// A receipt must not spread one failure to successful siblings.
 				if len(v.Entries[i].Values) > 0 && len(entry.native.segments) == 0 {

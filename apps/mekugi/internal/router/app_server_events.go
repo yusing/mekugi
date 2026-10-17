@@ -52,8 +52,8 @@ type appServerCommandRun struct {
 	segments execTrackPresentation
 	entry    activityPaneEntry
 	output   activityui.CommandOutput
-	done     []activityPaneEntry // Completion, held until streamed output has rolled through.
-	// A tracked command's completion waits for its segment report to end.
+	holding  bool // Canonical completion published; terminal output is still rolling.
+	// Completed host facts await independent segment attribution.
 	completion  *activityPaneEntry
 	completed   observation.Item
 	completedAt time.Time
@@ -309,7 +309,7 @@ func (u *appServerUI) projectSessionEvent(p observation.Event, facts sessionEven
 
 	case "item/commandExecution/outputDelta":
 		// Bounded as it arrives; the next frame shows it, so bursts cost one render.
-		if run := s.commands[[3]string{p.ThreadID, p.TurnID, p.ItemID}]; run != nil && run.done == nil {
+		if run := s.commands[[3]string{p.ThreadID, p.TurnID, p.ItemID}]; run != nil && !run.holding {
 			run.output.Write(p.Delta)
 			run.entry.native.invocation.Write(p.Delta)
 		}
@@ -381,6 +381,8 @@ func (u *appServerUI) projectSessionEvent(p observation.Event, facts sessionEven
 			s.completeCommand(native, item)
 			if run := s.commands[key]; run != nil && facts.tracked {
 				run.completion, run.completed, run.completedAt = &entry, item, now
+				u.holdTrackedCommand(&entry)
+				entries = append(entries, s.commandDone(entry, item, now)...)
 				break
 			}
 			done := s.commandDone(entry, item, now)
@@ -388,7 +390,9 @@ func (u *appServerUI) projectSessionEvent(p observation.Event, facts sessionEven
 			// that prints only when it exits, rolls through before the final
 			// tail replaces it.
 			if run := s.commands[key]; run != nil && run.output.Pending() {
-				run.done = done
+				run.holding = true
+				u.holdCommand(run.entry, run.output.Snapshot())
+				entries = append(entries, done...)
 				break
 			}
 			delete(s.commands, key)
@@ -458,6 +462,15 @@ func (u *appServerUI) flushStreamOutput() {
 		if !changed {
 			continue
 		}
+		if run.holding {
+			u.holdCommand(run.entry, frame)
+			if !frame.Pending {
+				u.releaseCommand(run.entry)
+				delete(s.commands, key)
+			}
+			u.dirty = true
+			continue
+		}
 		entry := run.entry
 		native := *entry.native
 		native.phase = "item/commandExecution/outputDelta"
@@ -465,16 +478,7 @@ func (u *appServerUI) flushStreamOutput() {
 		entry.native, entry.Agent = &native, s.path(native.thread)
 		entry.outputTail, entry.outputOmit = frame.Tail, frame.Omitted
 		entries = append(entries, entry)
-		if run.done != nil && !frame.Pending {
-			for _, done := range run.done {
-				done.Agent = entry.Agent
-				if !done.completed.IsZero() {
-					done.completed = u.now() // Output settles once it has shown.
-				}
-				entries = append(entries, done)
-			}
-			delete(s.commands, key)
-		}
+
 	}
 	if len(entries) == 0 {
 		return

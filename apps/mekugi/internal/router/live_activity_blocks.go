@@ -16,7 +16,7 @@ func appServerDuration(item observation.Item) time.Duration {
 	return time.Duration(*item.DurationMS) * time.Millisecond
 }
 
-func activityValues(entry activityPaneEntry) []activitypresentation.Value {
+func activityContent(entry activityPaneEntry) activitypresentation.ItemContent {
 	content := activitypresentation.ItemContent{
 		Facts:   activitypresentation.Facts{Seq: entry.Seq, Agent: entry.Agent, Kind: entry.Kind, Text: entry.Text},
 		Command: commandPresentation(entry), ErrorDetail: entry.ErrorDetail,
@@ -39,7 +39,7 @@ func activityValues(entry activityPaneEntry) []activitypresentation.Value {
 			Wait: n.wait, Hook: n.hook, Thought: n.thought,
 		}
 	}
-	return content.Values()
+	return content
 }
 
 // instantOperations reports tool text whose every operation prints what it

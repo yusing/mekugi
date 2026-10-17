@@ -1,0 +1,82 @@
+package router
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/charmbracelet/x/ansi"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
+)
+
+func TestTrackedCompletionPrecedesReportSettlement(t *testing.T) {
+	for _, closeReport := range []bool{true, false} {
+		t.Run(map[bool]string{true: "closure", false: "deadline"}[closeReport], func(t *testing.T) {
+			u, hub := newTrackedAppServerUI(t)
+			now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+			u.clock = func() time.Time { return now }
+			key := [3]string{"main", "t", "cmd"}
+			script := "echo first; echo last"
+			item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "bash -lc " + quoteShellWord(script), "status": "inProgress"}
+			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+			report := dialExecTrackReport(t, hub, script)
+			report.send(
+				segmenttransport.Message{Type: segmenttransport.Begin, Index: 0},
+				segmenttransport.Message{Type: segmenttransport.Output, Index: 0, Data: "first\n"},
+				segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)},
+				segmenttransport.Message{Type: segmenttransport.Begin, Index: 1},
+			)
+			awaitMain(t, u, "┆ first")
+			awaitMain(t, u, "Running echo last")
+			seq := u.view.Entries[0].Source.Seq
+			target := activityui.Block{Source: seq, Output: 2}
+			retained := u.view.retainedOutput(target)
+			if retained == nil || strings.Join(retained.View().Lines, "\n") != "first" {
+				t.Fatal("running segment output was not retained")
+			}
+			item["status"], item["exitCode"], item["aggregatedOutput"] = "failed", 2, "first\nlast\n"
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+			for _, view := range []*activityAdapter{u.view, u.agents} {
+				entry := view.Model.Publish().Entries[0]
+				if entry.Seq != seq || !entry.ItemComplete || entry.Running || !entry.OutputFailed {
+					t.Fatalf("neutral completion waited for its report: %+v", entry)
+				}
+				if !strings.Contains(strings.Join(entry.Values[len(entry.Values)-1].Tail, "\n"), "last") {
+					t.Fatalf("neutral consumer lost completed aggregate: %+v", entry.Values)
+				}
+			}
+			if u.runningProcessCount() != 0 || u.view.retainedOutput(target) != retained {
+				t.Fatal("report wait revived execution or retired the displayed segment target")
+			}
+			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.session.next(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", native: &liveActivityNativeItem{thread: "main", item: "cmd"}}}})
+			now = now.Add(execTrackCompletionWait - time.Nanosecond)
+			u.flushStreamOutput()
+			frame := ansi.Strip(strings.Join(u.view.RenderFeed(100, 30).Lines, "\n"))
+			if u.session.commands[key] == nil || !strings.Contains(frame, "Running") || strings.Contains(frame, "exit 2") || strings.Count(frame, "Repeated fixture output") != 1 {
+				t.Fatalf("report wait lost its held frame or annotation:\n%s", frame)
+			}
+			if closeReport {
+				report.send(
+					segmenttransport.Message{Type: segmenttransport.Output, Index: 1, Data: "last\n"},
+					segmenttransport.Message{Type: segmenttransport.End, Index: 1, Code: new(2)},
+					segmenttransport.Message{Type: segmenttransport.Done, Code: new(2)},
+					segmenttransport.Message{Type: segmenttransport.Closed},
+				)
+				report.conn.Close()
+				frame = awaitMain(t, u, "exit 2")
+			} else {
+				now = now.Add(time.Nanosecond)
+				u.flushStreamOutput()
+				frame = ansi.Strip(strings.Join(u.view.RenderFeed(100, 30).Lines, "\n"))
+			}
+			entry := u.view.Entries[0]
+			if entry.Source.Seq != seq || entry.Source.native.segmentsPending || (len(entry.Source.native.segments) == 2) != closeReport || u.session.commands[key] != nil || hub.Tracking(key) {
+				t.Fatalf("report did not settle on its original identity: %+v", entry.Source)
+			}
+			if !strings.Contains(frame, "exit 2") || !strings.Contains(frame, "last") || strings.Count(frame, "Repeated fixture output") != 1 {
+				t.Fatalf("settlement lost outcome, output or annotation:\n%s", frame)
+			}
+		})
+	}
+}

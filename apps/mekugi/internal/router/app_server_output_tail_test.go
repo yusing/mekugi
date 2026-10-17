@@ -15,6 +15,7 @@ import (
 	"github.com/yusing/mekugi/libraries/diffmodel"
 
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
@@ -305,6 +306,10 @@ func TestAppServerCompletionWaitsForOutputBurst(t *testing.T) {
 	main := func() string { return ansi.Strip(strings.Join(u.view.RenderFeed(90, 60).Lines, "\n")) }
 	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "mrun -n 50 go test ./...", "status": "inProgress"}
 	notify("item/started", map[string]any{"item": item})
+	identities := map[*activityAdapter]uint64{}
+	for _, view := range []*activityAdapter{u.view, u.agents} {
+		identities[view] = view.Entries[len(view.Entries)-1].Source.Seq
+	}
 	var output strings.Builder
 	for i := range 20 {
 		fmt.Fprintf(&output, "ok %d\n", i)
@@ -318,8 +323,16 @@ func TestAppServerCompletionWaitsForOutputBurst(t *testing.T) {
 	if canonical.Running || !canonical.Exited || canonical.ExitCode != 1 || canonical.Ended.IsZero() || u.runningProcessCount() != 0 {
 		t.Fatalf("visual delay held canonical host completion: %+v", canonical)
 	}
+	completed := map[*activityAdapter]activitypresentation.Entry{}
+	for view, seq := range identities {
+		entry := view.Model.Publish().Entries[len(view.Entries)-1]
+		if entry.Seq != seq || entry.Running || !entry.ItemComplete || !entry.OutputFailed || len(entry.Values) == 0 || entry.Values[0].ExitCode != 1 {
+			t.Fatalf("neutral consumer did not receive completion under the original identity: %+v", entry)
+		}
+		completed[view] = entry
+	}
 	u.flushStreamOutput()
-	if got := main(); !strings.Contains(got, "Running") || strings.Contains(got, "ok 19") {
+	if got := main(); !strings.Contains(got, "Running") || strings.Contains(got, "ok 19") || strings.Contains(got, "exit 1") {
 		t.Fatalf("completion replaced the output before it rolled:\n%s", got)
 	}
 	rollCommandOutput(u)
@@ -328,6 +341,76 @@ func TestAppServerCompletionWaitsForOutputBurst(t *testing.T) {
 	}
 	if len(u.session.commands) != 0 {
 		t.Fatalf("completed command still tracked: %v", u.session.commands)
+	}
+	for view, before := range completed {
+		after := view.Model.Publish().Entries[len(view.Entries)-1]
+		if !reflect.DeepEqual(before, after) {
+			t.Fatalf("terminal animation rewrote canonical completion:\nbefore=%+v\nafter=%+v", before, after)
+		}
+	}
+}
+
+func TestAppServerHeldCompletionRefreshesAnnotations(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.view.Conversation = true
+	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "printf output > source.go", "status": "inProgress"}
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+	output := strings.Repeat("output\n", 20)
+	appServerTestNotify(t, u, "item/commandExecution/outputDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "cmd", "delta": output})
+	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 1, output
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+	u.flushStreamOutput()
+	view := u.view
+	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.session.next(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", native: &liveActivityNativeItem{thread: "main", item: "cmd"}}}})
+	if !view.markUnreturned("main", "cmd") {
+		t.Fatal("output note was not admitted")
+	}
+	for _, receiptText := range []string{"Edit `source.go` +1 -1", ""} {
+		view.applyCapturedEdits([]*changepresentation.Receipt{{Thread: "main", Calls: []string{"cmd"}, Text: receiptText}})
+		view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.session.next(), Agent: "Main", Kind: "tool", native: &liveActivityNativeItem{thread: "main", turn: "t", item: "cmd", phase: "approval/updated", approval: "Approved"}}}})
+		frame := ansi.Strip(strings.Join(view.RenderFeed(100, 30).Lines, "\n"))
+		if strings.Count(frame, "Repeated fixture output") != 1 || strings.Count(frame, unreturnedOutputNote) != 1 || strings.Contains(frame, "exit 1") {
+			t.Fatalf("held frame lost current annotations or exposed its delayed outcome:\n%s", frame)
+		}
+		if (receiptText != "") != strings.Contains(frame, "+1 -1") {
+			t.Fatalf("held frame retained stale receipt content:\n%s", frame)
+		}
+	}
+	rollCommandOutput(u)
+	frame := ansi.Strip(strings.Join(view.RenderFeed(100, 30).Lines, "\n"))
+	if !strings.Contains(frame, "exit 1") || strings.Count(frame, "Repeated fixture output") != 1 || strings.Count(frame, unreturnedOutputNote) != 1 {
+		t.Fatalf("released frame lost canonical failure or annotations:\n%s", frame)
+	}
+}
+
+func TestAppServerHeldCompletionSettlesFromDisplayTime(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.view.Conversation = true
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	u.clock = func() time.Time { return now }
+	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "echo output", "status": "inProgress"}
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+	output := strings.Repeat("output\n", 20)
+	appServerTestNotify(t, u, "item/commandExecution/outputDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "cmd", "delta": output})
+	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, output
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+	completed := u.view.Model.Publish().Entries[0].Completed
+	if !completed.Equal(now) {
+		t.Fatalf("neutral completion time = %v, want %v", completed, now)
+	}
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "next", "type": "reasoning", "summary": []string{"**Next step**"}}})
+	now = now.Add(time.Hour)
+	rollCommandOutput(u)
+	u.view.RenderFeed(100, 30)
+	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.session.next(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", native: &liveActivityNativeItem{thread: "main", item: "cmd"}}}})
+	if settleActivity(now.Add(activityui.OutputDebounce-time.Nanosecond), u.view) {
+		t.Fatal("annotation refresh reset display settlement to host completion")
+	}
+	if !settleActivity(now.Add(activityui.OutputDebounce), u.view) {
+		t.Fatal("displayed completion did not settle after its quiet period")
+	}
+	if got := u.view.Model.Publish().Entries[0].Completed; !got.Equal(completed) {
+		t.Fatalf("terminal settlement rewrote host completion: %v -> %v", completed, got)
 	}
 }
 

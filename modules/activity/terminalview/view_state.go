@@ -50,10 +50,26 @@ func (v *View) Update(publication presentation.Publication, display Display) {
 		previous[entry.Seq] = entry.Revision
 	}
 	v.Display = display
-	for _, entry := range publication.Entries {
+	if len(v.commandFrames) > 0 {
+		publication.Entries = slices.Clone(publication.Entries)
+	}
+	for i, entry := range publication.Entries {
+		frame := v.commandFrames[entry.Seq]
+		entry = v.commandEntry(entry)
+		publication.Entries[i] = entry
 		revision, exists := previous[entry.Seq]
-		if !exists || revision != entry.Revision {
+		if !exists || revision != entry.Revision || frame != nil && (frame.dirty || !frame.released.IsZero()) {
 			v.observe(entry, !exists)
+		}
+		if frame != nil {
+			if !frame.released.IsZero() {
+				if !entry.Completed.IsZero() && !v.collapsed[entry.Seq] {
+					v.completed[entry.Seq] = frame.released
+				}
+				delete(v.commandFrames, entry.Seq)
+			} else {
+				frame.dirty = false
+			}
 		}
 		delete(previous, entry.Seq)
 	}
@@ -133,7 +149,9 @@ func (v *View) observe(entry presentation.Entry, appended bool) {
 		if v.completed == nil {
 			v.completed = make(map[uint64]time.Time)
 		}
-		v.completed[entry.Seq] = entry.Completed
+		if _, exists := v.completed[entry.Seq]; !exists {
+			v.completed[entry.Seq] = entry.Completed
+		}
 	}
 	if appended && entry.Standalone() {
 		if v.Events == nil {
@@ -148,6 +166,7 @@ func (v *View) observe(entry presentation.Entry, appended bool) {
 }
 
 func (v *View) forget(seq uint64) {
+	delete(v.commandFrames, seq)
 	delete(v.completed, seq)
 	delete(v.collapsed, seq)
 	delete(v.Passed, seq)

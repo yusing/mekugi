@@ -2,11 +2,12 @@ package router
 
 import (
 	"context"
-	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -147,7 +148,7 @@ func TestSessionUIReplayPlaybackShowsOnlyArrivedContent(t *testing.T) {
 	if !strings.Contains(early, "printf") || strings.Contains(early, "Repaint diagnosis complete.") {
 		t.Fatalf("early frame lost running command or exposed final answer:\n%s", early)
 	}
-	if run := p.ui.session.commands[[3]string{"root", "turn", "command"}]; run == nil || run.done != nil || run.completedAt != (time.Time{}) {
+	if run := p.ui.session.commands[[3]string{"root", "turn", "command"}]; run == nil || run.holding || run.completedAt != (time.Time{}) {
 		t.Fatal("running command was prematurely completed")
 	}
 	if err := p.advance(8 * time.Second); err != nil {

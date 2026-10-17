@@ -113,7 +113,7 @@ func (u *appServerUI) skillHistoryResponse(thread string, m appserver.Message) e
 		default:
 			continue
 		}
-		record.Values = activityValues(record.Source)
+		record.Values = activityContent(record.Source).Values()
 		scan.names = scan.names.With(activitypresentation.SkillLoads(record)...)
 	}
 	if page.NextCursor != "" {

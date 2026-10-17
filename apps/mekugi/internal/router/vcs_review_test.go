@@ -88,7 +88,10 @@ func TestVCSCommitEnrichmentRequiresProvenSegmentDirectory(t *testing.T) {
 			hub.await(t, key, func(view execTrackView) bool { return view.complete })
 			item := binding.ThreadItem{ID: key[2], Type: "commandExecution", Command: "bash -lc " + quoteShellWord(prior+"; "+command), Cwd: g.dir, ExitCode: new(0), AggregatedOutput: &output}
 			entry := activityPaneEntry{Kind: "tool", native: &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2], command: item.Command}}
-			live := u.trackedCommandDone(key, entry, item.Observation())[0]
+			live, valid := u.reconcileTrackedCommand(key, entry, item.Observation())
+			if !valid {
+				t.Fatal("completed report was not admitted")
+			}
 			awaitCommandSegments(t, u)
 			restored := entry
 			restored.native = &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2]}

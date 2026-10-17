@@ -167,7 +167,7 @@ func (p *uiReplayPlayback) seek(position time.Duration) error {
 func (p *uiReplayPlayback) settleCompleted() {
 	p.ui.summaryStream.FinishCompleted()
 	for _, run := range p.ui.session.commands {
-		if run.done != nil {
+		if run.holding {
 			run.output.Settle()
 		}
 	}

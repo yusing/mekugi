@@ -44,6 +44,7 @@ type View struct {
 	outputCache    map[OutputDemand]OutputResult
 	outputDemands  []OutputDemand
 	completed      map[uint64]time.Time
+	commandFrames  map[uint64]*heldCommandFrame
 	collapsed      map[uint64]bool
 	Disclosure     Disclosure
 	Selected       string
@@ -699,6 +700,7 @@ func (v *View) Current(agent activitypresentation.Agent, now time.Time, widths .
 func (v *View) SummaryBlocks(entries []activitypresentation.Entry) []Block {
 	var blocks []Block
 	for i, entry := range entries {
+		entry = v.commandEntry(entry)
 		next := v.Disclosure.Blocks(entry.Values)
 		if pace, ok := v.Paced[entry.Seq]; ok && pace.Shown < len(next) {
 			next = next[:pace.Shown]

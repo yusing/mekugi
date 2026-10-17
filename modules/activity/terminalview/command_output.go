@@ -32,7 +32,7 @@ func (p *CommandOutput) Advance() (OutputFrame, bool) {
 		changed = p.tail.Roll() || changed
 	}
 	p.dirty = false
-	return p.frame(), changed
+	return p.Snapshot(), changed
 }
 
 // Pending reports animation debt, which never delays instant operations.
@@ -42,10 +42,10 @@ func (p *CommandOutput) Pending() bool { return !p.instant && p.tail.Pending() >
 func (p *CommandOutput) Settle() OutputFrame {
 	p.tail.Flush()
 	p.dirty = true
-	return p.frame()
+	return p.Snapshot()
 }
 
-func (p *CommandOutput) frame() OutputFrame {
+func (p *CommandOutput) Snapshot() OutputFrame {
 	tail, omitted := p.tail.Lines()
 	return OutputFrame{Tail: tail, Omitted: omitted, Pending: p.Pending()}
 }

@@ -95,7 +95,7 @@ func (v *activityAdapter) replaceEntry(index int, entry activityPaneEntry, block
 	v.Model.Replace(index, entry, activityui.Values(blocks))
 }
 func parseLiveActivity(entry activityPaneEntry) []activityui.Block {
-	return activityui.Disclosure(nil).Blocks(activityValues(entry))
+	return activityui.Disclosure(nil).Blocks(activityContent(entry).Values())
 }
 func commandSegmentBlocks(command activitypresentation.Command) []activityui.Block {
 	return activityui.Disclosure(nil).Blocks(activitypresentation.GroupOperations(command.SegmentValues(false)))

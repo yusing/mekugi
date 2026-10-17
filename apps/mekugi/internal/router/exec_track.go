@@ -333,16 +333,18 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 		view, _ := run.segments.view(u.execTrack, key, false, func(source string) string {
 			return execSegmentTextInDirectory(source, run.entry.native.commandCwd)
 		}, s.activity.Outputs(s.Scope()))
-		if !view.ended && time.Since(run.completedAt) < execTrackCompletionWait {
+		if !view.ended && u.now().Sub(run.completedAt) < execTrackCompletionWait {
 			return nil, true
 		}
-		done := u.trackedCommandDone(key, *run.completion, run.completed)
-		for i := range done {
-			done[i].Agent = s.path(key[0]) // The thread may have been renamed.
+		enriched, valid := u.reconcileTrackedCommand(key, *run.completion, run.completed)
+		for _, adapter := range []*activityAdapter{u.view, u.agents} {
+			adapter.settleCommandReport(enriched, valid)
 		}
+		u.releaseCommand(run.entry)
 		delete(s.commands, key)
 		u.execTrack.Forget(key)
-		return done, true
+		u.dirty = true
+		return nil, true
 	}
 	view, changed := run.segments.view(u.execTrack, key, false, func(source string) string {
 		return execSegmentTextInDirectory(source, run.entry.native.commandCwd)
@@ -380,20 +382,19 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 	return []activityPaneEntry{entry}, true
 }
 
-// trackedCommandDone shows each segment's outcome when the report ended with
+// reconcileTrackedCommand admits segment outcomes when the report ended with
 // the host's own exit status. Otherwise the report is incomplete, and the
-// command falls back to the host's combined result.
-func (u *appServerUI) trackedCommandDone(key [3]string, entry activityPaneEntry, item observation.Item) []activityPaneEntry {
-	now := time.Now()
+// already-published host aggregate remains authoritative.
+func (u *appServerUI) reconcileTrackedCommand(key [3]string, entry activityPaneEntry, item observation.Item) (activityPaneEntry, bool) {
 	run := u.session.commands[key]
 	view, _ := run.segments.view(u.execTrack, key, true, func(source string) string {
 		return execSegmentTextInDirectory(source, appServerCommandDirectory(item, u.session.cwd))
 	}, u.session.activity.Outputs(u.session.Scope()))
 	if !view.complete || item.ExitCode == nil || view.code != *item.ExitCode || len(view.segments) == 0 {
-		return u.session.commandDone(entry, item, now)
+		return entry, false
 	}
 	native := *entry.native
-	native.segments = view.segments
+	native.segments, native.segmentsPending = view.segments, false
 	u.retainCommandSegments(entry, item, view)
 	for i := range native.segments {
 		// A commit reads its object from the directory the host ran it in.
@@ -402,11 +403,34 @@ func (u *appServerUI) trackedCommandDone(key [3]string, entry activityPaneEntry,
 		}
 	}
 	// Successful segments' output stays open until the agent's next event.
-	entry.completed = now
+	entry.completed = entry.native.commandEnded
 	entry.native = &native
 	if !view.output {
 		entry.outputTail, entry.outputOmit = appServerOutputTail(item.AggregatedOutput)
 		native.changes, native.commit = commandOutputRows(item)
 	}
-	return []activityPaneEntry{entry}
+	return entry, true
+}
+
+// settleCommandReport updates attribution on the existing completed record. This is
+// separate from native merging, which must continue rejecting late host deltas.
+func (v *activityAdapter) settleCommandReport(enriched activityPaneEntry, valid bool) {
+	for i, record := range v.Entries {
+		if !enriched.native.sameItem(record.Source.native) {
+			continue
+		}
+		entry := record.Source
+		native := *entry.native
+		native.segments, native.segmentsPending = nil, false
+		entry.native = &native
+		values := record.Values
+		if valid {
+			native.segments, native.changes, native.commit = enriched.native.segments, enriched.native.changes, enriched.native.commit
+			entry.completed = enriched.completed
+			entry.outputTail, entry.outputOmit = enriched.outputTail, enriched.outputOmit
+			values = activitypresentation.RetainAnnotations(activityContent(entry).Values(), values)
+		}
+		v.Model.Replace(i, entry, values)
+		return
+	}
 }
