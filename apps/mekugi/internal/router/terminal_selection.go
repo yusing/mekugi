@@ -19,7 +19,7 @@ func (main *appServerUI) openSelectionTarget(u *terminalsession.Attachment, targ
 	}
 	switch {
 	case target.Link != "":
-		if !main.openMarkdownFile(u, target.View, target.Link) {
+		if !main.detailFiles.openMarkdownFile(&main.session, main.sessionPresentation(), main.cwd, main.activitySource(target.View), u, target.View, target.Link) {
 			link := target.Link
 			if parsed, err := url.Parse(link); err == nil && parsed.Scheme == "file" {
 				link = parsed.Path

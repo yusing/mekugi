@@ -2,18 +2,20 @@ package router
 
 import (
 	"slices"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 )
 
 // Refresh roles from host metadata without guessing from task names or colors.
-func (u *appServerUI) refreshRosterRoles() {
-	if u.childSource == nil {
+func refreshRosterRoles(session *sessionpresentation.Attachment, source *sessionpresentation.ActivitySource) {
+	if source == nil {
 		return
 	}
 	// History restoration can share this slice with the host session.
-	u.childSource.Agents = slices.Clone(u.childSource.Agents)
-	for i := range u.childSource.Agents {
-		agent := &u.childSource.Agents[i]
-		host := u.session.Agent(agent.Name)
+	source.Agents = slices.Clone(source.Agents)
+	for i := range source.Agents {
+		agent := &source.Agents[i]
+		host := session.Agent(agent.Name)
 		if host == nil {
 			continue
 		}

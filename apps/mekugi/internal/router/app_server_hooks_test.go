@@ -145,7 +145,7 @@ func TestAppServerHookPagedChildWithoutTurns(t *testing.T) {
 	h := u.historyLoading()
 	observation := history.HookObservation{Run: history.HookRun{ID: "session-start-hook", EventName: "sessionStart", Status: "completed"},
 		At: time.Unix(100, 0), Completed: true, Output: "feedback: session ready"}
-	entry := u.hookEntry("child", observation, false)
+	entry := hookEntry(&u.session, u.activity, u.cwd, "child", observation, false)
 	h.placements = append(h.placements, &restoredPlacement{entry: entry, at: observation.At})
 	restoreContentReply(t, u, 3, map[string]any{"data": []any{}})
 	if len(u.childSource.Entries) != 1 || u.childSource.Entries[0].Source.Kind != "hook" || len(h.placements) != 0 || historyLoadIntent(u).Thread != "" {
@@ -209,7 +209,7 @@ func TestHookObservationRestartResumeAndReplay(t *testing.T) {
 	if err := playback.advance(playback.Until); err != nil {
 		t.Fatal(err)
 	}
-	if len(playback.ui.source.Entries) != 2 || playback.ui.retainedSession.Store != nil || playback.ui.testActivity(playback.ui.view).blocks(1)[0].Running {
+	if len(playback.ui.source.Entries) != 2 || playback.ui.testActivity(playback.ui.view).blocks(1)[0].Running {
 		t.Fatal("offline replay lost hooks or acquired live resources")
 	}
 	fresh.clock = u.clock
@@ -286,7 +286,7 @@ func TestHookObservationMovesReleasedStatusLine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry := u.hookEntry("main", r.Runs[0], false)
+	entry := hookEntry(&u.session, u.activity, u.cwd, "main", r.Runs[0], false)
 	if !strings.Contains(entry.Text, "Checking for generated Go files") || r.Runs[0].Output != "feedback: none found" {
 		t.Fatalf("a released status line stayed output: %q, %q", entry.Text, r.Runs[0].Output)
 	}

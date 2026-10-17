@@ -32,7 +32,7 @@ func processNotify(t *testing.T, u *appServerUI, thread, id, command, status str
 // processDialog paints the open /ps dialog over a blank screen.
 func processDialog(u *appServerUI, width, height int) []string {
 	rows := make([]string, height)
-	terminalTest(u).main.prepareOutput(terminalTest(u).Attachment)
+	u.detailFiles.prepareOutput(&u.session, terminalTest(u).Attachment)
 	terminalTest(u).Dialog.Paint(rows, width, height)
 	return rows
 }

@@ -31,7 +31,7 @@ func deliverActivity(view *activityui.View, source *sessionpresentation.Activity
 }
 
 func (u *appServerUI) publishActivity() {
-	u.refreshRosterRoles()
+	refreshRosterRoles(&u.session, u.childSource)
 	session := u.sessionPresentation()
 	if u.view != nil {
 		u.view.StatusLabel = textsanitize.Safe(terminalsession.StatusText(session.View().Status.State), false)

@@ -184,7 +184,7 @@ func (u *appServerUI) clearSessionPresentation() error {
 	if u.shell != nil {
 		u.shell.Agents = u.agents
 		u.shell.Selection = nil
-		u.closeOutput(u.shell)
+		u.detailFiles.closeOutput(&u.session, u.shell)
 		u.shell.Focus = 0
 		u.shell.StopDrag()
 	}

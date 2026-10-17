@@ -72,13 +72,13 @@ func TestNativeUIExpansionFocus(t *testing.T) {
 			t.Fatal("pane hint is incorrect")
 		}
 	}
-	playback := uiReplayPlayback{ui: u}
+	playback := replayPlaybackTestNew(t)
 	for _, focus := range []int{0, 2} {
-		terminalTest(u).Focus = 0
-		u.testActivity(u.agents).setDisplayFilter(focus == 2, "/root/worker")
-		view := u.testActivity(u.view)
+		playback.ui.shell.Focus = 0
+		playback.ui.testActivity(playback.ui.agents).setDisplayFilter(focus == 2, "/root/worker")
+		view := playback.ui.testActivity(playback.ui.view)
 		if focus != 0 {
-			view = u.testActivity(u.agents)
+			view = playback.ui.testActivity(playback.ui.agents)
 		}
 		before := view.Expansion
 		if _, err := playback.key(5); err != nil {
@@ -170,7 +170,9 @@ func TestAppServerExpansionRetainedReads(t *testing.T) {
 		}
 		read("first")
 		read("second")
-		render := func() string { return ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(90, 100).Lines, "\n")) }
+		render := func() string {
+			return ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(90, 100).Lines, "\n"))
+		}
 		if strings.Contains(render(), "first-start") {
 			t.Fatal("read output must start compact")
 		}

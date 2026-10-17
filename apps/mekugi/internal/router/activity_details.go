@@ -7,47 +7,47 @@ import (
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
-func (main *appServerUI) openDetailSelection(u *terminalsession.Attachment, view *activityui.View, pages []activitypresentation.DetailPage, processes bool) {
+func (files *detailFiles) openDetailSelection(session *sessionpresentation.Attachment, version sessionpresentation.Version, source *sessionpresentation.ActivitySource, u *terminalsession.Attachment, view *activityui.View, pages []activitypresentation.DetailPage, processes bool) {
 	u.Selection = nil
-	main.fileReads = nil
-	id := main.session.OpenDetails(main.sessionPresentation().View().Version, main.activitySource(view), pages, processes)
+	files.fileReads = nil
+	id := session.OpenDetails(version, source, pages, processes)
 	u.Dialog = &terminalsession.ContentDialog{ID: id, View: view, Processes: processes}
-	main.prepareOutput(u)
+	files.prepareOutput(session, u)
 }
 
-func (main *appServerUI) closeOutput(u *terminalsession.Attachment) {
-	if u.Dialog != nil && main != nil {
-		main.session.CloseDetails(u.Dialog.ID)
-		main.fileReads = nil
+func (files *detailFiles) closeOutput(session *sessionpresentation.Attachment, u *terminalsession.Attachment) {
+	if u.Dialog != nil {
+		session.CloseDetails(u.Dialog.ID)
+		files.fileReads = nil
 	}
 	u.Dialog = nil
 }
 
-func (u *appServerUI) replaceDetails(terminal *terminalsession.Attachment, pages []activitypresentation.DetailPage) {
+func (files *detailFiles) replaceDetails(session *sessionpresentation.Attachment, terminal *terminalsession.Attachment, pages []activitypresentation.DetailPage) {
 	if terminal.Dialog == nil {
 		return
 	}
-	u.session.RefreshDetails(terminal.Dialog.ID, pages)
+	session.RefreshDetails(terminal.Dialog.ID, pages)
 	terminal.Dialog.Invalidate()
-	u.prepareOutput(terminal)
+	files.prepareOutput(session, terminal)
 }
 
 // prepareOutput resolves the selected content before the renderer lays out.
 // The terminal consumes one snapshot and owns no source or retained-output handle.
-func (u *appServerUI) prepareOutput(terminal *terminalsession.Attachment) {
+func (files *detailFiles) prepareOutput(session *sessionpresentation.Attachment, terminal *terminalsession.Attachment) {
 	d := terminal.Dialog
 	if d == nil || d.Selection != nil {
 		return
 	}
-	revision, current := u.session.RefreshDetails(d.ID, nil)
+	revision, current := session.RefreshDetails(d.ID, nil)
 	if !current {
-		u.closeOutput(terminal)
+		files.closeOutput(session, terminal)
 		return
 	}
 	if d.Revision != revision {
-		view, ok := u.session.DetailView(d.ID)
+		view, ok := session.DetailView(d.ID)
 		if !ok {
-			u.closeOutput(terminal)
+			files.closeOutput(session, terminal)
 			return
 		}
 		d.Update(view)
@@ -64,7 +64,7 @@ func (u *appServerUI) prepareOutput(terminal *terminalsession.Attachment) {
 		return
 	}
 	request := sessionpresentation.DetailOutputRequest{ID: d.ID, Page: page.ID, Version: page.OutputVersion}
-	if output, ok := u.session.DetailOutput(request); ok {
+	if output, ok := session.DetailOutput(request); ok {
 		d.Output = &output
 	}
 }

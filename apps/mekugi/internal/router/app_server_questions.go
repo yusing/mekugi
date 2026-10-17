@@ -11,7 +11,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
-	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -453,51 +452,7 @@ func pendingQuestionReplies(parts []conversationmodel.Input) []conversationmodel
 	return pending
 }
 func (u *appServerUI) renderQuestionRecord(c *sessioncontrol.Question) {
-	if c.Sudo != nil {
-		return
-	}
-	states := []string{}
-	var body []string
-	var records []activitypresentation.Question
-	for _, q := range c.View().Questions {
-		state := q.State
-		if !slices.Contains(states, state) {
-			states = append(states, state)
-		}
-		record := activitypresentation.Question{Text: q.Text, State: state}
-		line := q.Text
-		if len(q.Answer) > 0 {
-			answers := q.Answer
-			record.Answer = strings.Join(answers, "\n\n")
-			line += "\n└ " + record.Answer
-		} else if q.Pending && len(q.Choices) > 0 {
-			labels := []string{}
-			for _, o := range q.Choices {
-				labels = append(labels, o.Label)
-			}
-			record.Options = strings.Join(labels, " · ")
-			line += "\n" + record.Options
-		}
-		body = append(body, line)
-		records = append(records, record)
-	}
-	label := fmt.Sprintf("%d questions · %s", len(c.Questions), strings.Join(states, ", "))
-	if len(c.Questions) == 1 {
-		label = strings.Replace(label, "questions", "question", 1)
-	}
-	if len(c.RequestID) == 0 && !c.Resolved && u.Turn == "" {
-		label += " · answer starts a new turn"
-	}
-	text := label + "\n" + strings.Join(body, "\n\n")
-	id := c.Item
-	if len(c.RequestID) > 0 {
-		id = "question/" + string(c.RequestID)
-	}
-	for _, v := range []*sessionpresentation.ActivitySource{u.source, u.childSource} {
-		if v == nil {
-			continue
-		}
-		entry := sessionpresentation.ActivityEntry{Seq: v.LastSeq + 1, Agent: "Main", Kind: "question", Text: text, Observed: u.now(), Native: &sessionpresentation.NativeItem{Thread: c.Thread, Turn: c.Turn, Item: id, Phase: "question", Questions: records}}
-		v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
+	if c.Sudo == nil {
+		sessionpresentation.RecordQuestion(c.Call, string(c.RequestID), u.Turn, u.now(), u.source, u.childSource)
 	}
 }

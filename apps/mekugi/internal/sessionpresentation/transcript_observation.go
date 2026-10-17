@@ -28,3 +28,27 @@ func (s *Attachment) AdmitText(updates []observation.TextUpdate, main string) []
 	}
 	return entries
 }
+
+// ProjectMessage admits already-classified text after Conversation question handling.
+// Live and recorded consumers share source ordering and public-reasoning delivery.
+// Source: apps/mekugi/internal/router/app_server_transcript.go:92:113@4b40d245.
+func ProjectMessage(s *Attachment, mainSource, childSource *ActivitySource, transcript observation.Transcript, main bool, in ObservationInput) (deliveries []ActivityDelivery) {
+	updates := s.ObserveText(transcript, in.Text, main)
+	if !main {
+		ApplyActivity(mainSource, childSource, s.AdmitText(updates, in.Main), nil)
+		for _, update := range updates {
+			deliveries = append(deliveries, ActivityDelivery{Text: new(update)})
+		}
+		return
+	}
+	for _, update := range updates {
+		if update.Kind == "reasoning" {
+			values := []observation.TextUpdate{update}
+			ApplyActivity(mainSource, childSource, s.AdmitText(values, in.Main), nil)
+			deliveries = append(deliveries, ActivityDelivery{Text: new(values[0])})
+		} else {
+			mainSource.ApplyTranscript(update, in.Event.Item.Content, in.Workspace, in.Main, in.Event.Item.Type == "userMessage")
+		}
+	}
+	return
+}

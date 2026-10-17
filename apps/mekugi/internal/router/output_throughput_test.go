@@ -373,14 +373,16 @@ func TestOutputThroughputPresentationReplayReset(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.ui.session.Agent("/root").OutputThroughput = inference.OutputThroughput{OutputTokens: 40, DurationNanos: uint64(time.Second), MeasuredRequests: 1}
-	before := p.ui.publishPresentation(p.At)
+	p.publish()
+	before := p.ui.presentation.View()
 	if len(before.Caption.Items) != 1 {
 		t.Fatal("admitted replay fact was not published")
 	}
 	if err := p.seek(0); err != nil {
 		t.Fatal(err)
 	}
-	after := p.ui.publishPresentation(p.At)
+	p.publish()
+	after := p.ui.presentation.View()
 	if len(after.Caption.Items) != 0 || before.Version.Attachment == after.Version.Attachment {
 		t.Fatalf("backward replay retained future facts: %+v", after)
 	}

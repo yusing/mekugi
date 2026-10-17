@@ -75,12 +75,10 @@ func (u *appServerUI) hookEvent(method string, event binding.Notification) error
 	output, hasError := hookOutput(run)
 	observation := history.HookObservation{Turn: event.TurnID, Run: history.HookRun(run), At: u.now(), Output: output, HasError: hasError, Completed: completed}
 	observation.Run.Entries = nil
-	if u.replay == nil {
-		if err := u.retainHook(event.ThreadID, observation); err != nil {
-			u.setNotice("Hook observation could not be retained: "+err.Error(), true)
-		}
+	if err := u.retainHook(event.ThreadID, observation); err != nil {
+		u.setNotice("Hook observation could not be retained: "+err.Error(), true)
 	}
-	entry := u.hookEntry(event.ThreadID, observation, u.replay == nil)
+	entry := hookEntry(&u.session, u.activity, u.cwd, event.ThreadID, observation, true)
 	if previousOutput != nil {
 		previousOutput.Release()
 	}
@@ -89,8 +87,7 @@ func (u *appServerUI) hookEvent(method string, event binding.Notification) error
 	return nil
 }
 
-func (u *appServerUI) hookEntry(thread string, observation history.HookObservation, live bool) sessionpresentation.ActivityEntry {
-	s := &u.session
+func hookEntry(s *sessionpresentation.Attachment, activity *activitymodel.Service, cwd, thread string, observation history.HookObservation, live bool) sessionpresentation.ActivityEntry {
 	run := observation.Run
 	hook := &activitypresentation.HookDetails{HandlerType: run.HandlerType, ExecutionMode: run.ExecutionMode,
 		Status: run.Status, HasError: observation.HasError}
@@ -110,7 +107,7 @@ func (u *appServerUI) hookEntry(thread string, observation history.HookObservati
 	if run.DurationMS != nil {
 		n.Duration = time.Duration(*run.DurationMS) * time.Millisecond
 	}
-	if outputs := u.activity.Outputs(s.Scope()); outputs != nil {
+	if outputs := activity.Outputs(s.Scope()); outputs != nil {
 		n.Output = outputs.New()
 		n.Output.Write(observation.Output)
 		if !n.Running {
@@ -124,7 +121,7 @@ func (u *appServerUI) hookEntry(thread string, observation history.HookObservati
 	if run.SourcePath == builtinHookSource {
 		label += " · builtin"
 	} else {
-		label += " · " + markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(u.cwd, run.SourcePath))
+		label += " · " + markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(cwd, run.SourcePath))
 	}
 	if run.ExecutionMode == "async" {
 		label += " · async"

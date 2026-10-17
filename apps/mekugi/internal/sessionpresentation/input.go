@@ -28,7 +28,7 @@ type InputAdmission struct {
 }
 
 func (m *Model) inputAdmission(control *sessioncontrol.Live, ordinary, restoring bool) InputAdmission {
-	if m.View().ReadOnly != Editable {
+	if m.View().ReadOnly != Editable || control == nil {
 		return InputAdmission{Reason: ErrInputUnavailable.Error()}
 	}
 	if !ordinary {

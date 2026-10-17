@@ -10,7 +10,6 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/observation"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/transcript"
 )
@@ -32,9 +31,7 @@ func transcriptItem(item binding.ThreadItem, thread, turn, id string) observatio
 func (u *appServerUI) transcriptUpdates(updates []observation.TextUpdate, paced bool) []sessionpresentation.ActivityEntry {
 	entries := u.session.AdmitText(updates, u.Thread)
 	if paced {
-		for _, update := range u.streams.Reasoning.Queue(slices.Clone(updates)) {
-			u.holdReasoning(update)
-		}
+		u.streams.QueueText(slices.Clone(updates), u.view, u.agents)
 	}
 	return entries
 }
@@ -48,27 +45,13 @@ func historicalTranscript(items []binding.ThreadItem, thread, turn string, main,
 }
 
 func (u *appServerUI) flushSummaryOutput() {
-	updates := u.streams.Reasoning.Advance(u.now())
-	if len(updates) == 0 {
-		return
-	}
-	for _, update := range updates {
-		u.holdReasoning(update)
-	}
-	u.dirty = true
+	u.dirty = u.streams.AdvanceReasoning(u.now(), u.view, u.agents) || u.dirty
 }
 
-func (u *appServerUI) holdReasoning(update observation.TextUpdate) {
-	for _, view := range []*activityui.View{u.view, u.agents} {
-		if view != nil {
-			view.HoldReasoning(update)
-		}
-	}
-}
-
-// observeMessageQuestions is the single adapter for live, restored and playback
-// message admission. Parking precedes the model transition so external replies
-// cannot discard an active draft before it reaches the question's editor.
+// observeMessageQuestions binds live and restored message admission. Playback
+// uses the same Conversation reducer without response handles. Parking precedes
+// the model transition so external replies cannot discard an active draft before
+// it reaches the question's editor.
 func (u *appServerUI) observeMessageQuestions(text observation.TextEvent, item observation.Item, history bool) bool {
 	var userText string
 	if item.Type == "userMessage" {
@@ -99,31 +82,12 @@ func (u *appServerUI) messageTranscript(text observation.TextEvent, item observa
 	if u.observeMessageQuestions(text, item, false) {
 		return true
 	}
-	updates := u.session.ObserveText(u.transcript, text, main)
-	if !main {
-		u.applyActivity(u.transcriptUpdates(updates, true), nil)
-		return false
-	}
-	for _, update := range updates {
-		if update.Kind == "reasoning" {
-			u.applyActivity(u.transcriptUpdates([]observation.TextUpdate{update}, true), nil)
-			continue
-		}
-		u.source.ApplyTranscript(update, item.Content, u.cwd, u.Thread, item.Type == "userMessage")
+	deliveries := sessionpresentation.ProjectMessage(&u.session, u.source, u.childSource, u.transcript, main, sessionpresentation.ObservationInput{
+		Event: observation.Event{ThreadID: text.Item.Ref.ThreadID, Item: item}, Text: text, Main: u.Thread, Workspace: u.cwd,
+	})
+	u.streams.Deliver(deliveries, u.view, u.agents)
+	if !main || len(deliveries) > 0 {
+		u.applyActivity(nil, nil)
 	}
 	return false
-}
-
-// replayTranscript adapts retained text without live input or request settlement.
-func (u *appServerUI) replayTranscript(e observation.Event) bool {
-	text := binding.RetainedTranscript(e)
-	if e.Kind != observation.ReasoningDelta && e.Kind != observation.ReasoningPart && e.Kind != observation.AgentDelta && e.Item.Type != "reasoning" && e.Item.Type != "agentMessage" && e.Item.Type != "userMessage" {
-		return false
-	}
-	if u.messageTranscript(text, e.Item, e.ThreadID == u.Thread) {
-		return true
-	}
-	// Replay shares Main's progress identity and never revives operations.
-	u.sessionPresentation().ObserveProgress(e, u.Turn, false)
-	return true
 }

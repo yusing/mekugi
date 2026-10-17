@@ -75,9 +75,11 @@ These boundaries restore no processes, handles, approval grants or dispatched op
 Turn observations join Conversation's transcript and Activity's wait and agent
 models through these same scopes. Completion settles its own turn's presentation;
 an older turn cannot stop a newer response or consume its pending transcript.
-Main's selected turn remains owned by session control, including an active resume
-snapshot received before history. Presentation borrows that identity rather than
-maintaining another selection. Main status completes only for that selected turn.
+Main's live selected turn remains owned by session control, including an active
+resume snapshot received before history. Offline playback selects its recorded
+turn without constructing live control state. The same publisher consumes either
+selection; absent control exposes no pending operations or interrupt target.
+Main status completes only for that selected turn.
 Closing a turn retires its text/wait correlation without ending yielded commands.
 
 Live observation adapters perform metadata requests, command tracking, preview

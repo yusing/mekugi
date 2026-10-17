@@ -66,61 +66,59 @@ type appServerUI struct {
 	history  *history.Service
 	segments *reports.Service
 	sessioncontrol.Live
-	conversationState      *conversationmodel.Service
-	startup                sessioncontrol.Startup
-	resumePending          []appserver.Message
-	replay                 *uiReplayPlayback // Offline transport controls; nil for live sessions.
-	clock                  func() time.Time  // Optional presentation clock for offline replay.
-	backendVersion         string
-	title                  string // Host-confirmed thread name, independent of naming work.
-	names                  sessioncontrol.Names
-	titleGenerator         *sessionNaming
-	titleUpdates           <-chan sessionTitleUpdate
-	side                   *sessioncontrol.Side
-	notifications          *nativeNotifications
-	promptEditor           *prompt.Editor
-	questions              nativeQuestionDock
-	approvals              nativeApprovalDock
-	approvalMode           bool // Codex's configured policy applies, not --yolo's.
-	guardHookCheck         approvalHookCheck
-	statusPanel            *appServerStatusReport
-	statusSequence         uint64
-	sessionCapture         *transportcapture.Recorder
-	resumePicker           *appServerResumePicker
-	resumeSequence         uint64
-	statusConfig           appServerStatusConfig
-	menuSequence           uint64
-	picker                 composerPicker
-	skillEnvironment       []string
-	commits                *activitypresentation.CommitReader // Attached Activity enrichment owner.
-	commandSegmentWrites   chan commandSegmentWrite           // Completed replay writes, consumed only by the UI.
-	commandSegmentPending  int
-	restoredSegments       map[string]*reports.Report // Turn-local, validated and adopted history.
-	client                 *appserver.Client
-	view                   *activityui.View
-	source                 *sessionpresentation.ActivitySource
-	agents                 *activityui.View
-	childSource            *sessionpresentation.ActivitySource
-	controlObservations    *sessioncontrol.Observations
-	usage                  *accounting.Service
-	audience               *sessioncontrol.Audience
-	review                 *sessionreview.Review
-	execWindows            *executionobservation.Windows
-	nativeTrace            *nativetrace.Reader
-	retained               changes.Scope
-	changeSource           changes.Service
-	snapshots              *changecapture.Workspaces
-	recovered              *recovery.Service
-	publishChanges         func([]changes.Update)
-	captureNotice          func(string, string, string, string)
-	guard                  *sessioncontrol.ShellApprovals
-	execTrack              *commandsegments.Observer // Per-segment command reports; nil when not tracking.
-	shellEdits             appServerShellEdits
-	pendingEditReceipts    []*changepresentation.Receipt // Observed edits can precede their host Activity item.
-	issues                 *requestexecution.Failures
-	shell                  *terminalsession.Attachment
-	fileReadSlot           chan struct{} // Physical capacity survives dialog and attachment retirement.
-	fileReads              <-chan markdownFileResult
+	conversationState     *conversationmodel.Service
+	startup               sessioncontrol.Startup
+	resumePending         []appserver.Message
+	clock                 func() time.Time // Optional deterministic presentation clock.
+	backendVersion        string
+	title                 string // Host-confirmed thread name, independent of naming work.
+	names                 sessioncontrol.Names
+	titleGenerator        *sessionNaming
+	titleUpdates          <-chan sessionTitleUpdate
+	side                  *sessioncontrol.Side
+	notifications         *nativeNotifications
+	promptEditor          *prompt.Editor
+	questions             nativeQuestionDock
+	approvals             nativeApprovalDock
+	approvalMode          bool // Codex's configured policy applies, not --yolo's.
+	guardHookCheck        approvalHookCheck
+	statusPanel           *appServerStatusReport
+	statusSequence        uint64
+	sessionCapture        *transportcapture.Recorder
+	resumePicker          *appServerResumePicker
+	resumeSequence        uint64
+	statusConfig          appServerStatusConfig
+	menuSequence          uint64
+	picker                composerPicker
+	skillEnvironment      []string
+	commits               *activitypresentation.CommitReader // Attached Activity enrichment owner.
+	commandSegmentWrites  chan commandSegmentWrite           // Completed replay writes, consumed only by the UI.
+	commandSegmentPending int
+	restoredSegments      map[string]*reports.Report // Turn-local, validated and adopted history.
+	client                *appserver.Client
+	view                  *activityui.View
+	source                *sessionpresentation.ActivitySource
+	agents                *activityui.View
+	childSource           *sessionpresentation.ActivitySource
+	controlObservations   *sessioncontrol.Observations
+	usage                 *accounting.Service
+	audience              *sessioncontrol.Audience
+	review                *sessionreview.Review
+	execWindows           *executionobservation.Windows
+	nativeTrace           *nativetrace.Reader
+	retained              changes.Scope
+	changeSource          changes.Service
+	snapshots             *changecapture.Workspaces
+	recovered             *recovery.Service
+	publishChanges        func([]changes.Update)
+	captureNotice         func(string, string, string, string)
+	guard                 *sessioncontrol.ShellApprovals
+	execTrack             *commandsegments.Observer // Per-segment command reports; nil when not tracking.
+	shellEdits            appServerShellEdits
+	pendingEditReceipts   []*changepresentation.Receipt // Observed edits can precede their host Activity item.
+	issues                *requestexecution.Failures
+	shell                 *terminalsession.Attachment
+	detailFiles
 	streams                terminalsession.Streams
 	session                sessionpresentation.Attachment
 	activity               *activitymodel.Service
@@ -307,7 +305,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 						}
 						u.dirty = true
 					case result := <-u.fileReads:
-						u.dirty = u.loadedMarkdownFile(u.shell, result) || u.dirty
+						u.dirty = u.detailFiles.loadedMarkdownFile(&u.session, u.presentationState, u.cwd, u.shell, result) || u.dirty
 					case result := <-u.picker.scanResults:
 						u.applyPickerScan(result)
 					case <-u.commits.Updates():
@@ -956,12 +954,13 @@ func (u *appServerUI) paint(out io.Writer, width, height int) error {
 	u.ensureShell()
 	u.shell.Width, u.shell.Height = max(1, width), max(1, height)
 	u.mainView.ContentPainted = false
-	u.prepareOutput(u.shell)
+	u.detailFiles.prepareOutput(&u.session, u.shell)
 	ctx := u.ctx
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return u.paintNative(u.shell, ctx, out)
+	view := u.transcriptView()
+	return paintNative(u.shell, u.frameInput(u.shell), view, u.activitySource(view), ctx, out)
 }
 
 // Router-owned annotations and authenticated directed inputs supplement the

@@ -18,7 +18,7 @@ type appServerShellEdits struct {
 }
 
 func (u *appServerUI) captureShellEdit(command string) *executionobservation.ShellOperation {
-	if u.retained.Store == nil || u.replay != nil {
+	if u.retained.Store == nil {
 		return nil
 	}
 	ctx := u.retainedSession.Context

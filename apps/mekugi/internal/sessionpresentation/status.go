@@ -77,6 +77,7 @@ type MainInputs struct {
 	Menu                   *MenuView
 	Resume                 *ResumeView
 	Control                *sessioncontrol.Live
+	RecordedTurn           string // Playback selection, used only without live control.
 	Feedback               *noticepresentation.Model
 	Conversation           *conversationmodel.Session
 	Restoring, SideRunning bool
@@ -111,38 +112,47 @@ func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) (v View) 
 	v.Panel = in.Panel
 	v.Resume = in.Resume
 	v.Menu = in.Menu
-	v.Questions = in.Conversation.Questions.View(in.Control.Thread)
+	thread, turn := v.Main.ID, in.RecordedTurn
+	pending, archiving, shell := false, false, false
+	v.Pending = conversationmodel.PendingView{}
+	v.Interrupt = sessioncontrol.InterruptTarget{}
+	v.InterruptAvailable = false
+	if control := in.Control; control != nil {
+		thread, turn = control.Thread, control.Turn
+		pending = control.Starting() || control.InputPending() || in.Restoring || thread == ""
+		archiving, shell = control.Replacement.Archiving(), control.Shell.Standalone()
+		v.Pending = pendingInput(control, in.Conversation)
+		v.Interrupt = control.InterruptTarget()
+		v.InterruptAvailable = turn != "" || control.Starting() || control.InputPending() || len(in.Conversation.Unsent)+len(in.Conversation.Queued) > 0
+	}
+	v.Questions = in.Conversation.Questions.View(thread)
 	v.Approvals = in.Conversation.Approvals.View()
-	v.Pending = pendingInput(in.Control, in.Conversation)
 	v.Draft = in.Conversation.DraftView()
 	v.PromptDraft = in.Conversation.PromptDraftView()
 	v.Admission = m.inputAdmission(in.Control, v.Draft.Available, in.Restoring)
 	v.History = m.HistoryView(in.History)
-	v.Interrupt = in.Control.InterruptTarget()
-	v.InterruptAvailable = in.Control.Turn != "" || in.Control.Starting() || in.Control.InputPending() || len(in.Conversation.Unsent)+len(in.Conversation.Queued) > 0
 	v.Side, v.SideRunning = nil, false
 	if in.Conversation.Side != nil {
 		side := in.Conversation.Side.View()
 		v.Side, v.SideRunning = &side, in.SideRunning
 	}
 	s := &v.Status
-	state, control := m.Status, in.Control
+	state := m.Status
 	s.Session = Label{Text: state.Text, Alert: state.Alert, Failure: state.failure, FailureKnown: state.failureKnown,
 		Completion: state.completed, CompletionKnown: state.completionKnown}
 	s.State = s.Session
-	pending := control.Starting() || control.InputPending() || in.Restoring || control.Thread == ""
-	s.Animating = in.Processes > 0 || in.SideRunning || !state.Alert && (control.Turn != "" || pending)
+	s.Animating = in.Processes > 0 || in.SideRunning || !state.Alert && (turn != "" || pending)
 	switch {
-	case control.Replacement.Archiving():
+	case archiving:
 		s.Session = Label{Text: "Archiving session…", Animation: Pulse}
 	case state.Text == "" || state.Alert:
-	case control.Turn != "":
+	case turn != "":
 		s.Session.Running, s.Session.Animation = true, Pulse
 		s.Session.Elapsed, s.Session.ElapsedKnown = now.Sub(state.Started), !state.Started.IsZero()
 		if state.Text == "Working" {
 			s.Session.Animation = Working
 			switch {
-			case control.Shell.Standalone():
+			case shell:
 				s.Session.Text = "Running shell"
 			case m.compacting != [2]string{}:
 				s.Session.Text = "Compacting context"

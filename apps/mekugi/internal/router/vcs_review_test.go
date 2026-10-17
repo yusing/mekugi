@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -198,17 +200,17 @@ func TestSessionUIReplayVCSKeepsRetainedEvidenceAcrossReset(t *testing.T) {
 			t.Fatal(err)
 		}
 		replayPlaybackTestPaint(t, p, 90, 28)
-		if got := mainFeed(p.ui, 90); !strings.Contains(got, "A  b.go") || strings.Contains(got, "M  a.go") {
+		if got := ansi.Strip(strings.Join(p.ui.testActivity(p.ui.view).RenderFeed(90, 60).Lines, "\n")); !strings.Contains(got, "A  b.go") || strings.Contains(got, "M  a.go") {
 			t.Fatalf("replayed evidence:\n%s", got)
 		}
-		if p.ui.commits != nil {
+		if p.ui.session.Activity().Commits != nil {
 			t.Fatal("replay acquired a Git reader")
 		}
 		previous := p.ui.source.Model
 		if err := p.seek(0); err != nil {
 			t.Fatal(err)
 		}
-		if p.ui.source.Model == previous || strings.Contains(mainFeed(p.ui, 90), "b.go") {
+		if p.ui.source.Model == previous || strings.Contains(ansi.Strip(strings.Join(p.ui.testActivity(p.ui.view).RenderFeed(90, 60).Lines, "\n")), "b.go") {
 			t.Fatal("backward reset retained future VCS rows")
 		}
 	}

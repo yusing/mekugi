@@ -60,7 +60,7 @@ func TestSessionUIReplayTranscriptAttachmentQuestionSeek(t *testing.T) {
 	if err := p.seek(4 * time.Second); err != nil {
 		t.Fatal(err)
 	}
-	if p.ui.questionCount() != 1 {
+	if p.ui.conversation.Questions.Count(p.Source.Thread) != 1 {
 		t.Fatal("recorded async question did not become visible")
 	}
 	frame := replayPlaybackTestPaint(t, p, 120, 40)
@@ -73,7 +73,7 @@ func TestSessionUIReplayTranscriptAttachmentQuestionSeek(t *testing.T) {
 	if err := p.seek(time.Second); err != nil {
 		t.Fatal(err)
 	}
-	if p.ui == oldUI || p.ui.questionCount() != 0 || !p.ui.now().Equal(source.Start.Add(time.Second)) {
+	if p.ui == oldUI || p.ui.conversation.Questions.Count(p.Source.Thread) != 0 || !p.At.Equal(source.Start.Add(time.Second)) {
 		t.Fatal("seek retained future transcript/question state or lost recorded clock")
 	}
 	for _, entry := range p.ui.source.Entries {
@@ -85,7 +85,7 @@ func TestSessionUIReplayTranscriptAttachmentQuestionSeek(t *testing.T) {
 		t.Fatal(err)
 	}
 	frame = ansi.Strip(strings.Join(p.ui.testActivity(p.ui.view).RenderFeed(120, 80).Lines, "\n"))
-	if p.ui.questionCount() != 0 || !strings.Contains(frame, "Customers") || !strings.Contains(frame, "Review delivered") || strings.Contains(frame, "private attachment body") {
+	if p.ui.conversation.Questions.Count(p.Source.Thread) != 0 || !strings.Contains(frame, "Customers") || !strings.Contains(frame, "Review delivered") || strings.Contains(frame, "private attachment body") {
 		t.Fatalf("replayed reply/final or attachment privacy lost:\n%s", frame)
 	}
 	receipts, replies := 0, 0
@@ -101,7 +101,7 @@ func TestSessionUIReplayTranscriptAttachmentQuestionSeek(t *testing.T) {
 			}
 		}
 	}
-	if receipts != 1 || replies != 1 || p.ui.client != nil || p.ui.requests != nil {
+	if receipts != 1 || replies != 1 {
 		t.Fatalf("replay duplicated receipts/replies or constructed live transport: receipts=%d replies=%d", receipts, replies)
 	}
 }
@@ -189,8 +189,5 @@ func TestSessionUIReplayTranscriptMessageDeltaRetiresProviderThinking(t *testing
 	frame := replayPlaybackTestPaint(t, p, 120, 28)
 	if !strings.Contains(frame, "Arrived without an item start") || strings.Contains(frame, "Thinking") {
 		t.Fatalf("direct message delta did not replace pending thinking:\n%s", frame)
-	}
-	if p.ui.client != nil || p.ui.requests != nil {
-		t.Fatal("replay constructed live transport while replacing provider thinking")
 	}
 }

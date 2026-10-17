@@ -38,7 +38,7 @@ func TestSessionUIReplaySpeedPresetRoundTrips(t *testing.T) {
 		if err != nil || quit || p.Speed != want {
 			t.Fatalf("key %q: speed=%v want=%v quit=%v error=%v", key, p.Speed, want, quit, err)
 		}
-		if p.Position != position || !p.At.Equal(at) || p.Next != next || !p.Paused || !p.ui.now().Equal(at) {
+		if p.Position != position || !p.At.Equal(at) || p.Next != next || !p.Paused || !p.At.Equal(at) {
 			t.Fatal("speed control changed recorded clock, event cursor, or pause state")
 		}
 	}
@@ -231,7 +231,7 @@ func TestSessionUIReplayPaneControlsAndBackwardSeek(t *testing.T) {
 			}
 			assertPane := func() {
 				t.Helper()
-				shell := terminalTest(p.ui)
+				shell := p.ui.shell
 				if shell.Focus != map[byte]int{'1': 0, '2': 1, '3': 3}[tc.digit] || shell.DiffOpen != tc.diff {
 					t.Fatalf("pane=%s: focus=%d diff=%v", tc.name, shell.Focus, shell.DiffOpen)
 				}
@@ -267,7 +267,7 @@ func TestSessionUIReplayPanePrefixConsumesInvalidControls(t *testing.T) {
 					t.Fatalf("key %q: quit=%v error=%v", key, quit, err)
 				}
 			}
-			if p.prefix || terminalTest(p.ui).Focus != 0 || p.Speed != 1 || !p.Paused || p.Position != position || !p.At.Equal(at) || p.Next != next || p.ui.view.Offset != offset {
+			if p.prefix || p.ui.shell.Focus != 0 || p.Speed != 1 || !p.Paused || p.Position != position || !p.At.Equal(at) || p.Next != next || p.ui.view.Offset != offset {
 				t.Fatal("invalid pane suffix changed playback or kept the prefix armed")
 			}
 			if quit, err := p.key('+'); err != nil || quit || p.Speed != 2 {
@@ -289,7 +289,7 @@ func TestSessionUIReplayBarePaneDigitsAreInert(t *testing.T) {
 		if quit, err := p.control(digit, time.Second); err != nil || quit {
 			t.Fatalf("bare digit %q: quit=%v error=%v", digit, quit, err)
 		}
-		if terminalTest(p.ui).Focus != 3 || p.Position != 0 || p.Speed != 1 || !p.Paused || p.prefix {
+		if p.ui.shell.Focus != 3 || p.Position != 0 || p.Speed != 1 || !p.Paused || p.prefix {
 			t.Fatalf("bare digit %q changed the selected pane or playback", digit)
 		}
 	}

@@ -81,7 +81,7 @@ func TestTerminalSelectionSyntaxColors(t *testing.T) {
 					rows := slices.Clone(u.Frame.Rows)
 					if dialog {
 						rows = make([]string, u.Height)
-						u.main.prepareOutput(u.Attachment)
+						u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
 						u.Dialog.Paint(rows, u.Width, u.Height)
 					} else {
 						u.paintSelection(rows)

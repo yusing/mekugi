@@ -134,9 +134,6 @@ func TestSessionUIReplayMailboxWaitUsesRecordedRoster(t *testing.T) {
 			if !strings.Contains(frame, want) {
 				t.Fatalf("pass %d at %s roster hides %q:\n%s", pass, at, want, frame)
 			}
-			if p.ui.retainedSession.Store != nil {
-				t.Fatal("offline wait opened live retention")
-			}
 		}
 	}
 }
@@ -167,13 +164,10 @@ func TestSessionUIReplayRetainsQuestionAnswerWait(t *testing.T) {
 		if err := p.advance(step.at); err != nil {
 			t.Fatal(err)
 		}
-		if p.ui.questionCount() != step.questions || p.ui.questions.Questions != &p.ui.conversation().Questions {
-			t.Fatalf("at %s: questions=%d want=%d", step.at, p.ui.questionCount(), step.questions)
+		if p.ui.conversation.Questions.Count(p.Source.Thread) != step.questions || p.ui.conversation != p.conversation.Session(p.ui.session.Scope()) {
+			t.Fatalf("at %s: questions=%d want=%d", step.at, p.ui.conversation.Questions.Count(p.Source.Thread), step.questions)
 		}
 		replayPlaybackTestPaint(t, p, 120, 28)
-	}
-	if p.ui.client != nil || p.ui.requests != nil {
-		t.Fatal("playback constructed live question transport")
 	}
 }
 
@@ -334,8 +328,8 @@ func TestSessionUIReplayItemlessForkTurnUsesSettingsBoundary(t *testing.T) {
 	if err := p.advance(p.Until); err != nil {
 		t.Fatal(err)
 	}
-	if p.ui.Turn != "" || p.ui.sessionPresentation().Status.Text != "Interrupted" {
-		t.Fatalf("local abort lost: turn=%q status=%q", p.ui.Turn, p.ui.sessionPresentation().Status.Text)
+	if p.ui.Turn != "" || p.ui.presentation.Status.Text != "Interrupted" {
+		t.Fatalf("local abort lost: turn=%q status=%q", p.ui.Turn, p.ui.presentation.Status.Text)
 	}
 }
 

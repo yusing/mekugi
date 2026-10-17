@@ -46,8 +46,7 @@ func TestNonTerminalHistoryIntentsReachHostAndRetire(t *testing.T) {
 	if u.historyLoading() != nil || len(entryTexts(u.testActivity(u.agents))) != 1 || len(restoreContentRequests(t, wire)) != 6 {
 		t.Fatal("cancelled response revived history or issued host work")
 	}
-	u.replay = &uiReplayPlayback{}
-	u.attachPresentation()
+	u.sessionPresentation().Attach(sessionpresentation.Thread{ID: u.Thread, Caller: "/root"}, true)
 	v = u.publishPresentation(u.now())
 	if v.History.Target != "" {
 		t.Fatal("replay offered a host history target")
@@ -107,8 +106,7 @@ func TestNonTerminalInterruptionPendingStartAndReplay(t *testing.T) {
 	appServerTestTurn(t, u, "started")
 	appServerOneRequest(t, wire, "turn/interrupt", "")
 	u.Interruption.Finish()
-	u.replay = &uiReplayPlayback{}
-	u.attachPresentation()
+	u.sessionPresentation().Attach(sessionpresentation.Thread{ID: u.Thread, Caller: "/root"}, true)
 	v = u.publishPresentation(u.now())
 	intent.Version, intent.Target = v.Version, v.Interrupt
 	if err := u.interruptSession(intent); err != nil || wire.Len() != 0 || u.Interruption.Target != "" || u.feedback.Text != sessionpresentation.ErrReplayIntent.Error() {

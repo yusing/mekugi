@@ -18,8 +18,6 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/rollout"
-
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func (u *appServerUI) startSession(thread, cwd string) {
@@ -133,7 +131,7 @@ func (u *appServerUI) sessionEvent(method string, p binding.Notification) (bool,
 		}
 	}
 	if result.Publish {
-		u.deliverObservation(result.Deliveries)
+		u.streams.Deliver(result.Deliveries, u.view, u.agents)
 		u.applyActivity(nil, nil)
 	}
 	return result.Handled, nil
@@ -152,21 +150,8 @@ func (u *appServerUI) flushStreamOutput() {
 		entries = append(entries, tracked...)
 		handled[key] = trackedCommand
 	}
-	for key, stream := range u.streams.Commands {
-		if handled[key] {
-			continue
-		}
-		frame, changed := stream.Output.Advance()
-		if !changed {
-			continue
-		}
-		stream.Hold(u.view, u.agents, activityui.CommandFrame{Output: frame})
-		if stream.Holding && !frame.Pending {
-			stream.Release(u.view, u.agents, u.now())
-			delete(u.streams.Commands, key)
-		}
-		u.dirty = true
-	}
+	u.dirty = u.streams.AdvanceCommands(u.now(), handled, u.view, u.agents) || u.dirty
+
 	if len(entries) == 0 {
 		return
 	}

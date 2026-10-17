@@ -192,7 +192,7 @@ func TestUISnapshotTrackedEditReceiptOutputSourceOnlyInDialog(t *testing.T) {
 		t.Fatalf("output row does not open its output: row %d", row)
 	}
 	rows := make([]string, 12)
-	terminalTest(u).main.prepareOutput(terminalTest(u).Attachment)
+	u.detailFiles.prepareOutput(&u.session, terminalTest(u).Attachment)
 	terminalTest(u).Dialog.Paint(rows, 100, len(rows))
 	assertNativeUISnapshot(t, "captured-edit-output-dialog", rows)
 }

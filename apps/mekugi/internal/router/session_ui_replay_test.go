@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
@@ -63,13 +66,10 @@ func replayPlaybackTestNew(t *testing.T) *uiReplayPlayback {
 
 func replayPlaybackTestPaint(t *testing.T, p *uiReplayPlayback, width, height int) string {
 	t.Helper()
-	if p.ui.client != nil || p.ui.requests != nil || (p.ui.controlObservations != nil || p.ui.usage != nil || p.ui.audience != nil || p.ui.retained.Store != nil || p.ui.execWindows != nil || p.ui.nativeTrace != nil || p.ui.guard != nil) || p.ui.execTrack != nil || p.ui.retainedSession.Store != nil {
-		t.Fatal("playback constructed live execution dependencies")
-	}
 	screen := vt.NewEmulator(width, height)
 	defer screen.Close()
-	terminalTest(p.ui).Frame.Rows = nil
-	p.ui.settlePresentation()
+	p.ui.shell.Frame.Rows = nil
+	p.publish()
 	if err := p.paint(screen, width, height); err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestSessionUIReplayPlaybackUsesRecordedClockAndSeekReset(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantNow := p.Source.Start.Add(4500 * time.Millisecond)
-	if !p.At.Equal(wantNow) || !p.ui.now().Equal(wantNow) || !p.ui.view.Clock().Equal(wantNow) || !p.ui.agents.Clock().Equal(wantNow) {
+	if !p.At.Equal(wantNow) || !p.ui.view.Clock().Equal(wantNow) || !p.ui.agents.Clock().Equal(wantNow) {
 		t.Fatal("presentation clocks are not tied to recorded position")
 	}
 	command := p.ui.session.Commands()[[3]string{"root", "turn", "command"}]
@@ -96,7 +96,7 @@ func TestSessionUIReplayPlaybackUsesRecordedClockAndSeekReset(t *testing.T) {
 	next := p.Next
 	replayPlaybackTestPaint(t, p, 120, 28)
 	replayPlaybackTestPaint(t, p, 120, 28)
-	if p.Position != 4500*time.Millisecond || p.Next != next || !p.ui.now().Equal(wantNow) {
+	if p.Position != 4500*time.Millisecond || p.Next != next || !p.At.Equal(wantNow) {
 		t.Fatal("painting while paused advanced recorded time")
 	}
 	if err := p.advance(12 * time.Second); err != nil {
@@ -131,11 +131,8 @@ func TestSessionUIReplayPlaybackUsesRecordedClockAndSeekReset(t *testing.T) {
 			t.Fatalf("replay key %q: quit=%v error=%v", key, quit, err)
 		}
 	}
-	if p.Paused || p.Position != p.From || p.ui.Text != "" {
-		t.Fatalf("replay controls leaked into live composer/transport: paused=%v position=%v draft=%q", p.Paused, p.Position, p.ui.Text)
-	}
-	if p.ui.client != nil || p.ui.requests != nil || (p.ui.controlObservations != nil || p.ui.usage != nil || p.ui.audience != nil || p.ui.retained.Store != nil || p.ui.execWindows != nil || p.ui.nativeTrace != nil || p.ui.guard != nil) || p.ui.execTrack != nil || p.ui.retainedSession.Store != nil {
-		t.Fatal("offline playback constructed live execution dependencies")
+	if p.Paused || p.Position != p.From || p.ui.conversation.Editor.Text != "" {
+		t.Fatalf("replay controls leaked into live composer/transport: paused=%v position=%v draft=%q", p.Paused, p.Position, p.ui.conversation.Editor.Text)
 	}
 }
 
@@ -273,12 +270,25 @@ func newTestUIReplayPlayback(activity *activitymodel.Service, ctx context.Contex
 	conversation := new(conversationmodel.Service)
 	observations := conversationbinding.Codex.Observation(conversation)
 	reviewSource := new(changecapture.Service)
-	return newUIReplayPlayback(testTerminalViews(reviewSource), reviewSource, testPresentation(), conversation, &observations, activity, ctx, source, speed)
+	return newUIReplayPlayback(testTerminalViews(reviewSource), testPresentation(), conversation, &observations, activity, ctx, source, speed)
 }
 
 func runTestSessionUIReplay(activity *activitymodel.Service, service *playback.Service, ctx context.Context, args []string, stdin, stdout, stderr *os.File) int {
 	conversation := new(conversationmodel.Service)
 	observations := conversationbinding.Codex.Observation(conversation)
 	reviewSource := new(changecapture.Service)
-	return RunSessionUIReplay(testTerminalViews(reviewSource), reviewSource, testPresentation(), conversation, &observations, activity, service, ctx, args, stdin, stdout, stderr)
+	return RunSessionUIReplay(testTerminalViews(reviewSource), testPresentation(), conversation, &observations, activity, service, ctx, args, stdin, stdout, stderr)
+}
+
+func (u *replayAttachment) testActivity(view *activityui.View) *activityAdapter {
+	fixture := &activityAdapter{ActivitySource: u.activitySource(view), View: view, display: u.presentation}
+	if view == u.agents {
+		fixture.mainView = &activityAdapter{ActivitySource: u.source, View: u.view, display: u.presentation}
+	}
+	return fixture
+}
+
+func openReplayBlocks(p *uiReplayPlayback, view *activityui.View, pages []activityui.Block) {
+	u := p.ui
+	u.detailFiles.openDetailSelection(&u.session, u.presentation.View().Version, u.activitySource(view), u.shell, view, activitypresentation.DetailPages(activityui.Values(pages)), false)
 }

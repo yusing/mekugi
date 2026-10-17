@@ -77,6 +77,12 @@ completion exits.
 Each playback owns a bounded timeline, cursor and recorded clock. The application
 supplies elapsed time and resets presentation when seeking backward. Replay starts
 no independent timer or background worker and retains no live-session resources.
+Its application attachment constructs the scoped presentation, Conversation and
+Activity owners and the actual terminal directly. It shares observation reduction,
+publication, output hydration and renderer delivery with live sessions, without
+constructing a live application controller or request ledger. Backward reset
+retires those scopes and preserves only terminal preferences and physical file-read
+capacity until an outstanding read finishes.
 
 ## Codex connection
 

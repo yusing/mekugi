@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/contracts/observation"
@@ -38,79 +37,55 @@ import (
 
 type uiReplayPlayback struct {
 	terminalViews terminalsession.Views
-	reviewSource  *changecapture.Service
 	*playback.Player
 	views        *sessionpresentation.Service
 	conversation *conversationmodel.Service
 	observations *binding.Observation
 	activity     *activitymodel.Service
 	paintedAt    time.Time
-	ui           *appServerUI
+	ui           *replayAttachment
 	prefix       bool
 	frames       []time.Duration
 	writeTime    time.Duration
 	ctx          context.Context
 }
 
-func newUIReplayPlayback(terminalViews terminalsession.Views, reviewSource *changecapture.Service, views *sessionpresentation.Service, conversation *conversationmodel.Service, observations *binding.Observation, activity *activitymodel.Service, ctx context.Context, source *playback.Source, speed float64) *uiReplayPlayback {
-	p := &uiReplayPlayback{terminalViews: terminalViews, reviewSource: reviewSource, views: views, conversation: conversation, observations: observations, activity: activity, ctx: ctx, Player: playback.NewPlayer(source, speed)}
+func newUIReplayPlayback(terminalViews terminalsession.Views, views *sessionpresentation.Service, conversation *conversationmodel.Service, observations *binding.Observation, activity *activitymodel.Service, ctx context.Context, source *playback.Source, speed float64) *uiReplayPlayback {
+	p := &uiReplayPlayback{terminalViews: terminalViews, views: views, conversation: conversation, observations: observations, activity: activity, ctx: ctx, Player: playback.NewPlayer(source, speed)}
 	p.reset()
 	return p
 }
 
-func (p *uiReplayPlayback) reset() {
-	var previous *terminalsession.Attachment
-	if p.ui != nil {
-		previous = p.ui.shell
-		p.close()
-	}
-	p.paintedAt = time.Time{}
-	// The read-only terminal attachment uses shared projection without a backend
-	// client, request tracker, writable store, observers or notification sink.
-	u := &appServerUI{terminalViews: p.terminalViews, reviewSource: p.reviewSource, presentationState: p.views, conversationState: p.conversation, activity: p.activity, observations: p.observations, ctx: p.ctx, view: activityui.NewView(), agents: p.terminalViews.NewThreadView(), Thread: p.Source.Thread, clock: func() time.Time { return p.At }, replay: p}
-	u.attachPresentation()
-	u.sessionPresentation().Status.Set("Replay", false)
-	u.view.Clock, u.agents.Clock = u.clock, u.clock
-	u.startSession(p.Source.Thread, p.Source.Cwd)
-	u.ensureShell()
-	if previous != nil {
-		u.fileReadSlot = p.ui.fileReadSlot
-		u.shell.Focus = previous.Focus
-		u.shell.DiffOpen = previous.DiffOpen
-	}
-	u.shell.Shell.Clamp()
-	p.ui = u
-	u.settlePresentation()
-}
-
 func (p *uiReplayPlayback) close() {
-	p.ui.review.Close()
-	p.ui.commits.Close()
 	p.ui.shell.Diff.Close()
 	p.ui.session.Retire()
 }
 
 func (p *uiReplayPlayback) apply(e playback.Event) error {
-	defer func() { p.ui.settlePresentation() }()
+	defer p.publish()
 	if id := e.ThreadID; id != "" && id != p.Source.Thread && p.ui.session.KnownCaller(id) == "" {
 		p.ui.session.RegisterThread(observation.Thread{ID: id, Nickname: strings.TrimPrefix(p.Source.Threads[id], "/root/")})
 	}
 	switch {
 	case e.Hook != nil:
-		entry := p.ui.hookEntry(e.ThreadID, *e.Hook, false)
+		entry := hookEntry(&p.ui.session, p.activity, p.ui.cwd, e.ThreadID, *e.Hook, false)
 		entry.Seq = p.ui.session.Activity().NextSequence()
-		p.ui.applyActivity([]sessionpresentation.ActivityEntry{entry}, nil)
+		sessionpresentation.ApplyActivity(p.ui.source, p.ui.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
 	case e.Kind == observation.ProviderStarted:
-		p.ui.applyActivity(p.ui.transcriptUpdates(p.ui.providerStarted(e.ThreadID, e.At), false), nil)
-	case e.Kind == observation.ProviderCompleted:
-	default:
-		if p.ui.replayTranscript(e.Event) {
+		if e.ThreadID == "" {
 			return nil
 		}
-		result := sessionpresentation.ReduceObservation(&p.ui.session, p.ui.sessionPresentation(), p.ui.source, p.ui.childSource, p.ui.transcript, &p.ui.waits, p.ui.activity.Outputs(p.ui.session.Scope()), sessionpresentation.ObservationInput{Event: e.Event, Text: binding.RetainedTranscript(e.Event), Main: p.ui.Thread, Selected: p.ui.Turn, Workspace: p.ui.cwd})
+		updates := p.ui.transcript.ProviderStarted(e.ThreadID, e.At, p.ui.session.Thread(e.ThreadID))
+		sessionpresentation.ApplyActivity(p.ui.source, p.ui.childSource, p.ui.session.AdmitText(updates, p.Source.Thread), nil)
+	case e.Kind == observation.ProviderCompleted:
+	default:
+		if p.transcript(e.Event) {
+			return nil
+		}
+		result := sessionpresentation.ReduceObservation(&p.ui.session, p.ui.presentation, p.ui.source, p.ui.childSource, p.ui.transcript, &p.ui.waits, p.activity.Outputs(p.ui.session.Scope()), sessionpresentation.ObservationInput{Event: e.Event, Text: binding.RetainedTranscript(e.Event), Main: p.Source.Thread, Selected: p.ui.Turn, Workspace: p.ui.cwd})
 		if result.Publish {
-			p.ui.deliverObservation(result.Deliveries)
-			p.ui.applyActivity(nil, nil)
+			p.ui.streams.Deliver(result.Deliveries, p.ui.view, p.ui.agents)
+			p.ui.publishActivity()
 		}
 		// Playback selects recorded turns without creating or settling live
 		// control operations. Status uses the same admitted observation clock.
@@ -119,16 +94,16 @@ func (p *uiReplayPlayback) apply(e playback.Event) error {
 			case observation.TurnStarted:
 				if result.Started {
 					p.ui.Turn = e.TurnID
-					p.ui.sessionPresentation().Status.Started = e.At
-					p.ui.sessionPresentation().Status.Set("Working", false)
+					p.ui.presentation.Status.Started = e.At
+					p.ui.presentation.Status.Set("Working", false)
 				}
 			case observation.TurnCompleted:
 				if e.TurnID == p.ui.Turn {
 					p.ui.Turn = ""
-					p.ui.sessionPresentation().Status.Complete(e.TurnStatus, nil, e.At)
-					for _, call := range p.ui.questionCalls() {
+					p.ui.presentation.Status.Complete(e.TurnStatus, nil, e.At)
+					for _, call := range p.ui.conversation.Questions.Calls {
 						if !call.Resolved {
-							p.ui.renderQuestionRecord(call)
+							sessionpresentation.RecordQuestion(call, "", p.ui.Turn, p.At, p.ui.source, p.ui.childSource)
 						}
 					}
 				}
@@ -138,18 +113,17 @@ func (p *uiReplayPlayback) apply(e playback.Event) error {
 	return nil
 }
 func (p *uiReplayPlayback) advance(position time.Duration) error {
-	defer func() { p.ui.settlePresentation() }()
+	defer p.publish()
 	if err := p.Player.Advance(p.ctx, position, p.reset, p.apply); err != nil {
 		return err
 	}
 	if p.Position == p.Until {
 		p.settleCompleted()
 	}
-	p.ui.dirty = true
 	return nil
 }
 func (p *uiReplayPlayback) step(elapsed time.Duration, intent playback.Intent) error {
-	defer func() { p.ui.settlePresentation() }()
+	defer p.publish()
 	sought, err := p.Player.Step(p.ctx, elapsed, intent, p.reset, p.apply)
 	if err != nil {
 		return err
@@ -157,14 +131,13 @@ func (p *uiReplayPlayback) step(elapsed time.Duration, intent playback.Intent) e
 	if sought || p.Position == p.Until {
 		p.settleCompleted()
 	}
-	p.ui.dirty = true
 	return nil
 }
 
 // Seeking skips paint ticks, so completed output must not survive as running
 // merely because its synthetic chunks have not rolled through the viewport.
 func (p *uiReplayPlayback) seek(position time.Duration) error {
-	defer func() { p.ui.settlePresentation() }()
+	defer p.publish()
 	if err := p.advance(position); err != nil {
 		return err
 	}
@@ -179,14 +152,14 @@ func (p *uiReplayPlayback) settleCompleted() {
 			stream.Output.Settle()
 		}
 	}
-	p.ui.flushStreamOutput()
+	p.ui.flushStreamOutput(p.At)
 }
 
 func (p *uiReplayPlayback) paint(out io.Writer, width, height int) error {
 	start := time.Now()
 	u := p.ui
 	if !p.At.Equal(p.paintedAt) {
-		u.flushStreamOutput()
+		u.flushStreamOutput(p.At)
 		u.publishActivity()
 		activityui.Settle(p.At, u.view, u.agents)
 		u.view.Pace(p.At)
@@ -197,7 +170,7 @@ func (p *uiReplayPlayback) paint(out io.Writer, width, height int) error {
 	u.agents.ExpireFlash(p.At)
 	u.publishActivity()
 	w := &replayTimedWriter{Writer: out}
-	err := u.paint(w, width, height)
+	err := p.paintFrame(w, width, height)
 	p.writeTime += w.elapsed
 	p.frames = append(p.frames, time.Since(start))
 	return err
@@ -262,7 +235,7 @@ func (p *uiReplayPlayback) key(key byte) (bool, error) {
 		} else if key == terminalui.PaneWheelDown {
 			navigation = "j"
 		}
-		p.ui.outputIntent(shell, shell.Dialog.Key(navigation))
+		p.outputIntent(shell.Dialog.Key(navigation))
 		return false, nil
 	}
 	if key == 'q' || key == 3 || key == 27 {
@@ -271,15 +244,15 @@ func (p *uiReplayPlayback) key(key byte) (bool, error) {
 	if p.prefix {
 		p.prefix = false
 		if key == '1' || key == '2' {
-			return false, p.ui.applyInput(shell, p.ui.frameInput(shell).SelectPane(&shell.Interaction, int(key-'1')))
+			return false, p.applyInput(p.frameInput().SelectPane(&shell.Interaction, int(key-'1')))
 		}
 		if key == '3' {
-			return false, p.ui.applyInput(shell, p.ui.frameInput(shell).SelectPane(&shell.Interaction, 3))
+			return false, p.applyInput(p.frameInput().SelectPane(&shell.Interaction, 3))
 		}
 		return false, nil
 	}
 	if key == 5 {
-		return false, p.ui.applyInput(shell, p.ui.frameInput(shell).Send(&shell.Interaction, "\x05"))
+		return false, p.applyInput(p.frameInput().Send(&shell.Interaction, "\x05"))
 	}
 	switch key {
 	case 2:
@@ -333,7 +306,7 @@ func (p *uiReplayPlayback) run(keys <-chan byte, paint func() error, headless bo
 		case <-p.ctx.Done():
 			return p.ctx.Err()
 		case result := <-p.ui.fileReads:
-			if p.ui.loadedMarkdownFile(p.ui.shell, result) {
+			if p.ui.detailFiles.loadedMarkdownFile(&p.ui.session, p.views, p.ui.cwd, p.ui.shell, result) {
 				if err := paint(); err != nil {
 					return err
 				}
@@ -347,7 +320,7 @@ func (p *uiReplayPlayback) run(keys <-chan byte, paint func() error, headless bo
 			default:
 				input.ExpireEscape()
 				if p.ui.shell.Dialog != nil {
-					p.ui.outputIntent(p.ui.shell, p.ui.shell.Dialog.Key("\x1b"))
+					p.outputIntent(p.ui.shell.Dialog.Key("\x1b"))
 					if err := paint(); err != nil {
 						return err
 					}
@@ -403,7 +376,7 @@ func (p *uiReplayPlayback) run(keys <-chan byte, paint func() error, headless bo
 
 // RunSessionUIReplay is an offline entry point. It shares the native presenter,
 // but constructs no host, upstream connection, execution capability, or store.
-func RunSessionUIReplay(terminalViews terminalsession.Views, reviewSource *changecapture.Service, views *sessionpresentation.Service, conversation *conversationmodel.Service, observations *binding.Observation, activity *activitymodel.Service, service *playback.Service, ctx context.Context, args []string, stdin, stdout, stderr *os.File) (code int) {
+func RunSessionUIReplay(terminalViews terminalsession.Views, views *sessionpresentation.Service, conversation *conversationmodel.Service, observations *binding.Observation, activity *activitymodel.Service, service *playback.Service, ctx context.Context, args []string, stdin, stdout, stderr *os.File) (code int) {
 	f := flag.NewFlagSet("replay-session", flag.ContinueOnError)
 	f.SetOutput(stderr)
 	session := f.String("session", "", "Codex session ID (required; searches CODEX_HOME or ~/.codex)")
@@ -454,7 +427,7 @@ func RunSessionUIReplay(terminalViews terminalsession.Views, reviewSource *chang
 		return fail(err)
 	}
 	duration := source.End.Sub(source.Start)
-	p := newUIReplayPlayback(terminalViews, reviewSource, views, conversation, observations, activity, ctx, source, *speed)
+	p := newUIReplayPlayback(terminalViews, views, conversation, observations, activity, ctx, source, *speed)
 	defer p.close()
 	if err = p.Bounds(*from, *until); err != nil {
 		return fail(err)

@@ -139,8 +139,7 @@ func TestNonTerminalApprovalDecisionsPreserveIdentityAndReason(t *testing.T) {
 	if err := u.decideApproval(intent); err != nil || wire.Len() != 0 || u.feedback.Text != sessionpresentation.ErrStaleIntent.Error() {
 		t.Fatal("retired attachment answered a retained approval")
 	}
-	u.replay = &uiReplayPlayback{}
-	u.attachPresentation()
+	u.sessionPresentation().Attach(sessionpresentation.Thread{ID: u.Thread, Caller: "/root"}, true)
 	intent.Version = u.publishPresentation(u.now()).Version
 	if err := u.decideApproval(intent); err != nil || wire.Len() != 0 || u.feedback.Text != sessionpresentation.ErrReplayIntent.Error() {
 		t.Fatal("replay answered an approval")
@@ -682,7 +681,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 			if !tc.early {
 				notify("item/started")
 				terminalTest(u).openEntry(view.View, view.Entries[len(view.Entries)-1].Source.Seq)
-				terminalTest(u).main.prepareOutput(terminalTest(u).Attachment)
+				u.detailFiles.prepareOutput(&u.session, terminalTest(u).Attachment)
 				terminalTest(u).Dialog.Paint(make([]string, 18), 80, 18)
 			}
 			if tc.guard {
@@ -750,7 +749,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 				t.Fatal("approval command has no clickable output dialog")
 			}
 			rows = make([]string, 18)
-			terminalTest(u).main.prepareOutput(terminalTest(u).Attachment)
+			u.detailFiles.prepareOutput(&u.session, terminalTest(u).Attachment)
 			terminalTest(u).Dialog.Paint(rows, 80, len(rows))
 			if !strings.Contains(terminalTest(u).Dialog.Document.Title, color+label+terminalui.Reset) {
 				t.Fatalf("dialog lost the decision: %q", rows)

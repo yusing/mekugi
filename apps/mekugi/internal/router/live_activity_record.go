@@ -20,7 +20,7 @@ func (u *appServerUI) attachActivity() {
 	}
 
 	state := u.session.Activity()
-	if state.Commits == nil && u.activity != nil && u.replay == nil {
+	if state.Commits == nil && u.activity != nil {
 		ctx := u.ctx
 		if ctx == nil {
 			ctx = context.Background()

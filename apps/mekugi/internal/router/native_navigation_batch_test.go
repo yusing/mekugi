@@ -231,7 +231,7 @@ func navigationBatchDialog() *terminalUI {
 func navigationBatchDialogFrame(t *testing.T, u *terminalUI, width int) string {
 	t.Helper()
 	rows := make([]string, 18)
-	u.main.prepareOutput(u.Attachment)
+	u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
 	u.Dialog.Paint(rows, width, len(rows))
 	screen := vt.NewEmulator(width, len(rows))
 	defer screen.Close()

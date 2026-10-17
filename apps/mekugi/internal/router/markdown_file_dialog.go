@@ -62,6 +62,13 @@ func markdownFileLinks(workspace string) func(string) bool {
 	}
 }
 
+// detailFiles bounds asynchronous acquisition independently of live session control.
+// The physical slot survives attachment replacement until its read completes.
+type detailFiles struct {
+	fileReadSlot chan struct{}
+	fileReads    <-chan markdownFileResult
+}
+
 type markdownFileResult struct {
 	id           sessionpresentation.DetailID
 	thread       string
@@ -74,17 +81,16 @@ type markdownFileResult struct {
 
 // openMarkdownFile publishes loading before starting one bounded physical read.
 // Retiring a dialog cannot release the slot of a still-blocked filesystem call.
-func (u *appServerUI) openMarkdownFile(terminal *terminalsession.Attachment, view *activityui.View, target string) bool {
-	workspace := u.cwd
+func (u *detailFiles) openMarkdownFile(session *sessionpresentation.Attachment, model *sessionpresentation.Model, workspace string, source *sessionpresentation.ActivitySource, terminal *terminalsession.Attachment, view *activityui.View, target string) bool {
 	path, ok := markdownFileTarget(workspace, target)
 	if !ok {
 		return false
 	}
 	display := pathdisplay.ForWorkspace(workspace, path)
-	u.openDetails(terminal, view, activitypresentation.DetailPages([]activitypresentation.Value{{Kind: "reads", Verb: "Read", Path: display, Body: "Loading…"}}))
+	u.openDetailSelection(session, model.View().Version, source, terminal, view, activitypresentation.DetailPages([]activitypresentation.Value{{Kind: "reads", Verb: "Read", Path: display, Body: "Loading…"}}), false)
 	d := terminal.Dialog
 	d.File = &activitypresentation.DetailFile{Path: display}
-	result := markdownFileResult{id: d.ID, workspace: workspace, path: path, thread: u.sessionPresentation().View().Displayed.ID}
+	result := markdownFileResult{id: d.ID, workspace: workspace, path: path, thread: model.View().Displayed.ID}
 	if u.fileReadSlot == nil {
 		u.fileReadSlot = make(chan struct{}, 1)
 	}
@@ -92,7 +98,7 @@ func (u *appServerUI) openMarkdownFile(terminal *terminalsession.Attachment, vie
 	case u.fileReadSlot <- struct{}{}:
 	default:
 		result.err = fmt.Errorf("local file read capacity exhausted; close and reopen after the pending read finishes")
-		u.loadedMarkdownFile(terminal, result)
+		u.finishMarkdownFile(session, terminal, result)
 		return true
 	}
 	results := make(chan markdownFileResult, 1)
@@ -113,16 +119,21 @@ func (u *appServerUI) openMarkdownFile(terminal *terminalsession.Attachment, vie
 	return true
 }
 
-func (u *appServerUI) loadedMarkdownFile(terminal *terminalsession.Attachment, result markdownFileResult) bool {
+func (u *detailFiles) loadedMarkdownFile(session *sessionpresentation.Attachment, presentations *sessionpresentation.Service, workspace string, terminal *terminalsession.Attachment, result markdownFileResult) bool {
 	d := terminal.Dialog
 	if d == nil || d.ID != result.id {
 		return false
 	}
-	_, current := u.session.DetailView(result.id)
-	if !current || u.sessionPresentation().View().Displayed.ID != result.thread || u.cwd != result.workspace {
-		u.closeOutput(terminal)
+	_, current := session.DetailView(result.id)
+	if !current || presentations.Session(session.Scope()).View().Displayed.ID != result.thread || workspace != result.workspace {
+		u.closeOutput(session, terminal)
 		return true
 	}
+	return u.finishMarkdownFile(session, terminal, result)
+}
+
+func (u *detailFiles) finishMarkdownFile(session *sessionpresentation.Attachment, terminal *terminalsession.Attachment, result markdownFileResult) bool {
+	d := terminal.Dialog
 	display := pathdisplay.ForWorkspace(result.workspace, result.path)
 	block := activitypresentation.Value{Kind: "reads", Verb: "Read", Path: display + result.location, SyntaxPath: result.path, Reads: []activitymodel.Read{{Path: display + result.location}}}
 	content := textsanitize.Safe(result.source, false)
@@ -142,7 +153,7 @@ func (u *appServerUI) loadedMarkdownFile(terminal *terminalsession.Attachment, r
 	d.File = &activitypresentation.DetailFile{Path: display, Source: result.source, First: result.first, Last: result.last}
 	// Publish source now; layout applies tabs and the reveal after any frozen
 	// loading selection is cleared. Changing chrome here would dismiss it.
-	u.replaceDetails(terminal, activitypresentation.DetailPages(pages))
+	u.replaceDetails(session, terminal, activitypresentation.DetailPages(pages))
 	return true
 }
 

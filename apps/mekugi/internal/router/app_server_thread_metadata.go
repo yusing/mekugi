@@ -2,8 +2,8 @@ package router
 
 import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/binding"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
@@ -40,23 +40,5 @@ func (u *appServerUI) renameThreadActivity(old, name string) {
 	for _, source := range []*sessionpresentation.ActivitySource{u.source, u.childSource} {
 		source.RenameCaller(old, name)
 	}
-	u.renameActivitySelection(old, name)
-}
-
-func (u *appServerUI) renameActivitySelection(old, name string) {
-	if old == name {
-		return
-	}
-	for _, view := range []*activityui.View{u.view, u.agents} {
-		if view == nil {
-			continue
-		}
-		if view.Selected == old {
-			view.Selected = name
-		}
-		if view.RosterSelected == old {
-			view.RosterSelected = name
-		}
-		view.Runs = nil
-	}
+	terminalsession.RenameSelection(old, name, u.view, u.agents)
 }

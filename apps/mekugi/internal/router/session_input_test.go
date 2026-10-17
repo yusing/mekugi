@@ -153,8 +153,7 @@ func TestNonTerminalOrdinaryInputRejectsPromptAndReadOnlyViews(t *testing.T) {
 	if err := u.submitInput(ordinarySubmitIntent(u, sessioncontrol.SendInput)); err != nil || wire.Len() != 0 || u.publishPresentation(u.now()).Draft.Draft.Text != "keep draft" {
 		t.Fatal("child display submitted Main input")
 	}
-	u.replay = &uiReplayPlayback{}
-	u.attachPresentation()
+	u.sessionPresentation().Attach(sessionpresentation.Thread{ID: u.Thread, Caller: "/root"}, true)
 	if err := u.submitInput(ordinarySubmitIntent(u, sessioncontrol.SendInput)); err != nil || wire.Len() != 0 {
 		t.Fatal("replay submitted input")
 	}

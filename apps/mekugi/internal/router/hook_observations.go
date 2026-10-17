@@ -68,7 +68,7 @@ func (u *appServerUI) restoredHookEvents(info binding.ThreadInfo) []restoredRoll
 	}
 	var events []restoredRolloutEvent
 	for _, observation := range r.Runs {
-		entry := u.hookEntry(info.ID, observation, false)
+		entry := hookEntry(&u.session, u.activity, u.cwd, info.ID, observation, false)
 		// Position by time, including thread-scoped hooks outside any turn.
 		events = append(events, restoredRolloutEvent{at: observation.At, entry: entry})
 	}

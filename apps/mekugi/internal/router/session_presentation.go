@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	presentationcontract "github.com/yusing/mekugi/contracts/presentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -19,17 +21,7 @@ func (u *appServerUI) publishPresentation(now time.Time) sessionpresentation.Vie
 	if view.Displayed.ID == view.Main.ID {
 		caption.Model, caption.Effort, caption.Tier = u.model, u.reasoningEffort, u.displayServiceTier()
 	}
-	if agent := u.session.Agent(view.Displayed.Caller); agent != nil {
-		if view.Displayed.ID != view.Main.ID {
-			caption.Model, caption.Effort = agent.Settings.Model, agent.Settings.Effort
-			if agent.Settings.TierKnown {
-				caption.Tier = cmp.Or(agent.Settings.Tier, "default")
-			}
-			caption.Tier = u.serviceTiers.Effective(caption.Model, caption.Tier, agent.Thread)
-		}
-		caption.ContextKnown, caption.ContextTokens, caption.ContextWindow = agent.ContextKnown, agent.ContextTokens, agent.ContextWindow
-		caption.Items = m.StatusItems(presentationcontract.Thread{ID: view.Displayed.ID, OutputThroughput: agent.OutputThroughput}, presentationcontract.ComposerCaption)
-	}
+	caption = sessionCaption(&u.session, m, caption, u.serviceTiers)
 	info := sessionpresentation.MainInfo{Workspace: u.cwd, Title: cmp.Or(u.names.Pending(u.Thread), u.title), BackendVersion: u.backendVersion, Skills: u.source.ActiveSkills()["Main"]}
 	if approval := u.approvals.View(); approval.Count > 0 {
 		if caller := u.session.KnownCaller(approval.Approval.Thread); caller != "/root" {
@@ -60,7 +52,7 @@ func (u *appServerUI) attachPresentation() {
 	u.attachActivity()
 	u.bindConversation()
 	m := u.sessionPresentation()
-	m.Attach(sessionpresentation.Thread{ID: cmp.Or(u.Thread, "/root"), Caller: "/root"}, u.replay != nil)
+	m.Attach(sessionpresentation.Thread{ID: cmp.Or(u.Thread, "/root"), Caller: "/root"}, false)
 }
 
 // settlePresentation runs before another intent can observe this session.
@@ -85,4 +77,21 @@ func (u *appServerUI) displaySession(intent sessionpresentation.DisplayIntent) b
 		return false
 	}
 	return true
+}
+
+// sessionCaption borrows the selected source's facts; it retains no accounting state.
+func sessionCaption(session *sessionpresentation.Attachment, m *sessionpresentation.Model, caption sessionpresentation.Caption, tiers *inferencegateway.Tiers) sessionpresentation.Caption {
+	view := m.View()
+	if agent := session.Agent(view.Displayed.Caller); agent != nil {
+		if view.Displayed.ID != view.Main.ID {
+			caption.Model, caption.Effort = agent.Settings.Model, agent.Settings.Effort
+			if agent.Settings.TierKnown {
+				caption.Tier = cmp.Or(agent.Settings.Tier, "default")
+			}
+			caption.Tier = tiers.Effective(caption.Model, caption.Tier, agent.Thread)
+		}
+		caption.ContextKnown, caption.ContextTokens, caption.ContextWindow = agent.ContextKnown, agent.ContextTokens, agent.ContextWindow
+		caption.Items = m.StatusItems(presentationcontract.Thread{ID: view.Displayed.ID, OutputThroughput: agent.OutputThroughput}, presentationcontract.ComposerCaption)
+	}
+	return caption
 }

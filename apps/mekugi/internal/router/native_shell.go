@@ -51,22 +51,17 @@ func (main *appServerUI) frameInput(u *terminalsession.Attachment) terminalsessi
 		now = main.now()
 	}
 	in := u.FrameInput(now, mekugiVersion())
-	if main != nil && main.replay != nil {
-		in.Playback, in.PlaybackBar = true, main.replay.bar(u.Width)
-	}
 	return in
 }
 
-func (main *appServerUI) paintNative(u *terminalsession.Attachment, ctx context.Context, out io.Writer) error {
-	in := main.frameInput(u)
+func paintNative(u *terminalsession.Attachment, in terminalsession.FrameInput, transcript *activityui.View, source *sessionpresentation.ActivitySource, ctx context.Context, out io.Writer) error {
 	for {
 		frame, err := u.Frame.Render(ctx, in)
 		if err != nil {
 			return err
 		}
 		if len(frame.Demands) != 0 {
-			transcript := main.transcriptView()
-			transcript.Hydrate(main.activitySource(transcript).ResolveOutputDemands(frame.Demands))
+			transcript.Hydrate(source.ResolveOutputDemands(frame.Demands))
 			continue
 		}
 		if frame.DiffPainted {
@@ -79,7 +74,7 @@ func (main *appServerUI) paintNative(u *terminalsession.Attachment, ctx context.
 			return err
 		}
 		if frame.PromptVisible {
-			main.prompts.Delivered(frame.Prompt)
+			u.Prompts.Delivered(frame.Prompt)
 		}
 		return nil
 	}

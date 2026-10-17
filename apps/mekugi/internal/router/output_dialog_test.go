@@ -48,7 +48,7 @@ func TestUISnapshotCombinedEditOutput(t *testing.T) {
 			t.Fatal("missing combined output page")
 		}
 		rows := make([]string, 24)
-		u.main.prepareOutput(u.Attachment)
+		u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
 		u.Dialog.Paint(rows, 100, len(rows))
 		if u.Dialog.Document.Text != "build failed" {
 			t.Fatalf("combined output lost host text: %q", u.Dialog.Document.Text)
@@ -73,13 +73,13 @@ func dialogForOutput(output *activitymodel.Output) *terminalUI {
 }
 
 func (u *terminalUI) layoutOutput(width int) {
-	u.main.prepareOutput(u.Attachment)
+	u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
 	u.Dialog.Layout(width)
 }
 
 func drawOutputDialog(u *terminalUI) string {
 	rows := make([]string, 18)
-	u.main.prepareOutput(u.Attachment)
+	u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
 	u.Dialog.Paint(rows, 80, len(rows))
 	return ansi.Strip(strings.Join(rows, "\n"))
 }
@@ -320,7 +320,7 @@ func TestUISnapshotOutputDialogVTOverlayWideAndNarrow(t *testing.T) {
 			for i := range rows {
 				rows[i] = "background"
 			}
-			u.main.prepareOutput(u.Attachment)
+			u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
 			u.Dialog.Paint(rows, width, height)
 			// paintOutput overlays with cursor addressing, so snapshot its final VT rows.
 			screen := vt.NewEmulator(width, height)
@@ -586,9 +586,9 @@ func TestSharedDialogCloseButton(t *testing.T) {
 		u := dialogForOutput(&activitymodel.Output{})
 		page := u.Dialog.Pages[0].DetailPage
 		page.Body = "Dialog body"
-		u.main.replaceDetails(u.Attachment, []activitypresentation.DetailPage{page})
+		u.main.detailFiles.replaceDetails(&u.main.session, u.Attachment, []activitypresentation.DetailPage{page})
 		rows := make([]string, 20)
-		u.main.prepareOutput(u.Attachment)
+		u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
 		u.Dialog.Paint(rows, width, len(rows))
 		frame := ansi.Strip(strings.Join(rows, "\n"))
 		if !strings.Contains(frame, terminalui.DialogClose) {

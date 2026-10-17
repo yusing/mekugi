@@ -95,13 +95,11 @@ func TestNonTerminalQuestionRejectsSecretReplayAndRetiredView(t *testing.T) {
 	if u.answerQuestion(answer) || u.feedback.Text != prompt.ErrSecretAnswer.Error() || u.currentQuestion().Done || u.currentQuestion().Editor.Snapshot.Text != "" {
 		t.Fatal("ordinary intent entered secret state")
 	}
-	u.replay = &uiReplayPlayback{}
-	u.attachPresentation()
+	u.sessionPresentation().Attach(sessionpresentation.Thread{ID: u.Thread, Caller: "/root"}, true)
 	answer.Version = u.publishPresentation(u.now()).Version
 	if u.answerQuestion(answer) || u.feedback.Text != sessionpresentation.ErrReplayIntent.Error() {
 		t.Fatal("replay accepted an answer")
 	}
-	u.replay = nil
 	u.Thread = "replacement"
 	u.attachPresentation()
 	if u.answerQuestion(answer) || u.feedback.Text != sessionpresentation.ErrStaleIntent.Error() || wire.Len() != 0 {

@@ -48,6 +48,33 @@ func (c *statusConsumer) publish(caption sessionpresentation.Caption) sessionpre
 	}, caption, c.now)
 }
 
+func TestReplayPublicationWithoutControl(t *testing.T) {
+	var service sessionpresentation.Service
+	var store scope.Store
+	var conversation conversationmodel.Session
+	var feedback noticepresentation.Model
+	m := service.Session(&store)
+	m.Attach(sessionpresentation.Thread{ID: "recorded", Caller: "/root"}, true)
+	now := time.Unix(100, 0)
+	m.Status.Started = now.Add(-2 * time.Second)
+	m.Status.Set("Working", false)
+	conversation.Questions.Add(&prompt.Call{ID: "question", Thread: "recorded", Questions: []prompt.Question{{ID: "choice", Question: "Proceed?"}}}, true)
+	in := sessionpresentation.MainInputs{RecordedTurn: "turn", Conversation: &conversation, Feedback: &feedback}
+	v := m.Publish(in, sessionpresentation.Caption{}, now)
+	if !v.Status.Session.Running || v.Status.Session.Elapsed != 2*time.Second || v.Questions.Count != 1 {
+		t.Fatalf("recorded facts missing: %+v", v)
+	}
+	if v.Admission.Edit || v.Admission.Submit || v.InterruptAvailable || v.Interrupt != (sessioncontrol.InterruptTarget{}) || !reflect.DeepEqual(v.Pending, conversationmodel.PendingView{}) {
+		t.Fatalf("playback published live admission: %+v", v)
+	}
+	in.RecordedTurn = ""
+	m.Status.Complete("completed", nil, now)
+	v = m.Publish(in, sessionpresentation.Caption{}, now.Add(time.Second))
+	if v.Status.Session.Running || v.Status.Animating || v.InterruptAvailable {
+		t.Fatalf("recorded completion retained live status: %+v", v.Status)
+	}
+}
+
 func TestNonTerminalPublicationRetainsDetachedCurrentValue(t *testing.T) {
 	c := newStatusConsumer()
 	call := &prompt.Call{ID: "call", Thread: "main", Questions: []prompt.Question{{

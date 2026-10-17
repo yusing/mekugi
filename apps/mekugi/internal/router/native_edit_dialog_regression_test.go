@@ -150,7 +150,7 @@ func TestUISnapshotNativeEditDialogSurroundingContext(t *testing.T) {
 			after := strings.Replace(before, fmt.Sprintf("historical_line_%02d", tc.line), "changed_line", 1)
 			u, _ := openRegressionEditDialog(t, editDialogRegressionCase{kind: "update", before: before, after: after}, true)
 			rows := make([]string, 36)
-			u.main.prepareOutput(u.Attachment)
+			u.main.detailFiles.prepareOutput(&u.main.session, u.Attachment)
 			u.Dialog.Paint(rows, 100, len(rows))
 			uisnapshot.Assert(t, "testdata/snapshots/native-edit-dialog-context-"+tc.name+".txt", strings.Join(rows, "\n")+"\n")
 		})
