@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	inspectioncli "github.com/yusing/mekugi/apps/mekugi/internal/inspectioncli"
+
 	"github.com/yusing/mekugi/libraries/legacycall"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
@@ -147,7 +149,7 @@ func TestAgentMetricsSessionInspectionWholeRolloutAndDefectEvidence(t *testing.T
 		t.Helper()
 		var stdout, stderr bytes.Buffer
 		args := append([]string{"--session", rollout, "--replay-dir", replay}, options...)
-		status := RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), t.Context(), args, &stdout, &stderr)
+		status := inspectioncli.RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), t.Context(), args, &stdout, &stderr)
 		var result sessionInspection
 		if status == 0 {
 			if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {

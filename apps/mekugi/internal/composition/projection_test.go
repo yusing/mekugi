@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	history "github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 
 	"github.com/coder/websocket"
@@ -40,7 +42,7 @@ func TestFrontendsRunSessionLivePreviewInputProjection(t *testing.T) {
 			}
 			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 			defer cancel()
-			directory, err := router.ReplayDirectory()
+			directory, err := history.ReplayDirectory()
 			if err != nil {
 				t.Fatal(err)
 			}

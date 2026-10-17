@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	inspectioncli "github.com/yusing/mekugi/apps/mekugi/internal/inspectioncli"
+
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -124,7 +126,7 @@ func TestDiagnosticsAbsentRejectsOfflineQueriesWithoutMutation(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			code := RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), nil,
+			code := inspectioncli.RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), nil,
 				t.Context(), test.args, &stdout, &stderr)
 			if code != 1 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "diagnostics are unavailable") {
 				t.Fatalf("code=%d stdout=%q stderr=%q", code, &stdout, &stderr)

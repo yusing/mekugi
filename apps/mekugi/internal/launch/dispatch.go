@@ -11,6 +11,8 @@ import (
 	"slices"
 	"syscall"
 
+	inspectioncli "github.com/yusing/mekugi/apps/mekugi/internal/inspectioncli"
+
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
@@ -66,13 +68,13 @@ func Run() (exitCode int) {
 		}
 		switch operation {
 		case "inspect-sessions":
-			return router.RunSessionCorpusInspection(runtime.Inspection, ctx, os.Args[2:], os.Stdout, os.Stderr)
+			return inspectioncli.RunSessionCorpusInspection(runtime.Inspection, ctx, os.Args[2:], os.Stdout, os.Stderr)
 		case "replay-session":
 			return router.RunSessionUIReplay(runtime.Activity, runtime.Replay, ctx, os.Args[2:], os.Stdin, os.Stdout, os.Stderr)
 		case "inspect-session":
-			return router.RunSessionInspection(runtime.Inspection, runtime.Diagnostics, ctx, os.Args[2:], os.Stdout, os.Stderr)
+			return inspectioncli.RunSessionInspection(runtime.Inspection, runtime.Diagnostics, ctx, os.Args[2:], os.Stdout, os.Stderr)
 		case "inspect-storage":
-			return router.RunStorageInspection(runtime.History, runtime.Segments.Reports, ctx, os.Args[2:], os.Stdout, os.Stderr)
+			return inspectioncli.RunStorageInspection(runtime.History, runtime.Segments.Reports, ctx, os.Args[2:], os.Stdout, os.Stderr)
 		}
 	}
 	routerArgs, command, err := launchoptions.SplitCommand(os.Args[1:])

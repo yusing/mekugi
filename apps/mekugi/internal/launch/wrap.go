@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"time"
 
+	history "github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 
 	"github.com/yusing/mekugi/libraries/textsanitize"
@@ -119,7 +121,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	defer stopStartupInterrupts()
 	var captureDirectory string
 	if options.FrontendsEnabled() {
-		captureDirectory, err = router.ReplayDirectory()
+		captureDirectory, err = history.ReplayDirectory()
 		if err != nil {
 			return 1, fmt.Errorf("initialize replay storage: %w", err)
 		}

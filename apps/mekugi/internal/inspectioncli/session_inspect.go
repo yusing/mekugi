@@ -1,4 +1,5 @@
-package router
+// Source: apps/mekugi/internal/router/session_inspect.go@45b7fe8d
+package inspectioncli
 
 import (
 	"context"
@@ -10,6 +11,8 @@ import (
 	"fmt"
 	"io"
 	"slices"
+
+	history "github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 
@@ -91,7 +94,7 @@ func RunSessionInspection(inspector *query.Service, diagnostics *diagnostic.Serv
 		}
 		if *replayDir == "" {
 			var err error
-			*replayDir, err = ReplayDirectory()
+			*replayDir, err = history.ReplayDirectory()
 			if err != nil {
 				return fail(err)
 			}
@@ -116,7 +119,7 @@ func RunSessionInspection(inspector *query.Service, diagnostics *diagnostic.Serv
 	}
 	if *replayDir == "" {
 		var err error
-		*replayDir, err = ReplayDirectory()
+		*replayDir, err = history.ReplayDirectory()
 		if err != nil {
 			return fail(err)
 		}

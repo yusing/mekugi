@@ -10,7 +10,9 @@ The module owns single-rollout queries, retained-evidence joins, corpus filterin
 and static friction findings. The application exposes `inspect-session --session`
 and `inspect-sessions`; the Codex binding supplies decoded rollout facts.
 [Diagnostic inspection](../diagnostics/SPEC.md) owns debug-bundle and
-failure-reference queries. Neither inspection path starts a backend or changes stored state.
+failure-reference queries. Application dispatch and CLI option handling live in
+`apps/mekugi/internal/inspectioncli`, separate from live invocation and terminal
+coordination. Neither inspection path starts a backend or changes stored state.
 
 ## Behavior
 

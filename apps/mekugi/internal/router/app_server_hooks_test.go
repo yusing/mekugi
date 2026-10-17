@@ -154,7 +154,7 @@ func TestAppServerHookPagedChildWithoutTurns(t *testing.T) {
 
 func TestHookObservationRestartResumeAndReplay(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	directory, err := ReplayDirectory()
+	directory, err := history.ReplayDirectory()
 	if err != nil {
 		t.Fatal(err)
 	}

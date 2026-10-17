@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	inspectioncli "github.com/yusing/mekugi/apps/mekugi/internal/inspectioncli"
+
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -122,7 +124,7 @@ func TestTransportDiagnosticsAbsentDebugInspection(t *testing.T) {
 		writeDebugInspectionFixture(t, filepath.Join(directory, name), "invalid stale transport evidence")
 	}
 	var stdout, stderr bytes.Buffer
-	code := RunSessionInspection(testInspector(new(evidence.Service), nil), testDiagnostics(new(evidence.Service), nil), t.Context(), []string{"--debug-dir", directory, "--request-id", "req-b", "--field", "all"}, &stdout, &stderr)
+	code := inspectioncli.RunSessionInspection(testInspector(new(evidence.Service), nil), testDiagnostics(new(evidence.Service), nil), t.Context(), []string{"--debug-dir", directory, "--request-id", "req-b", "--field", "all"}, &stdout, &stderr)
 	var result diagnostic.Report
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil || code != 0 || stderr.Len() != 0 {
 		t.Fatalf("inspection code=%d stderr=%q decode=%v", code, &stderr, err)
@@ -163,14 +165,14 @@ func TestTransportDiagnosticsAbsentOfflineConsumers(t *testing.T) {
 		}
 	}
 	var stdout, stderr bytes.Buffer
-	code := RunSessionInspection(testInspector(new(evidence.Service), nil), testDiagnostics(new(evidence.Service), nil), t.Context(), []string{"--session", rollout, "--replay-dir", t.TempDir()}, &stdout, &stderr)
+	code := inspectioncli.RunSessionInspection(testInspector(new(evidence.Service), nil), testDiagnostics(new(evidence.Service), nil), t.Context(), []string{"--session", rollout, "--replay-dir", t.TempDir()}, &stdout, &stderr)
 	var single sessionInspection
 	if err := json.Unmarshal(stdout.Bytes(), &single); err != nil || code != 0 || stderr.Len() != 0 || single.TotalCalls != 1 || len(single.Calls) != 1 || single.Calls[0].CallID != "read" {
 		t.Fatalf("single code=%d result=%+v stderr=%q decode=%v", code, single, &stderr, err)
 	}
 	stdout.Reset()
 	stderr.Reset()
-	code = RunSessionCorpusInspection(testInspector(new(evidence.Service), nil), t.Context(), []string{"--sessions-dir", root, "--replay-dir", t.TempDir(), "--since", "2023-11-14T00:00:00Z", "--until", "2023-11-15T00:00:00Z"}, &stdout, &stderr)
+	code = inspectioncli.RunSessionCorpusInspection(testInspector(new(evidence.Service), nil), t.Context(), []string{"--sessions-dir", root, "--replay-dir", t.TempDir(), "--since", "2023-11-14T00:00:00Z", "--until", "2023-11-15T00:00:00Z"}, &stdout, &stderr)
 	var corpus sessionCorpus
 	if err := json.Unmarshal(stdout.Bytes(), &corpus); err != nil || code != 0 || stderr.Len() != 0 || len(corpus.Unavailable) != 0 || len(corpus.Sessions) != 1 || corpus.Sessions[0].SelectedCalls != 1 || corpus.Sessions[0].ProviderUsage.State != "unavailable" {
 		t.Fatalf("corpus code=%d result=%+v stderr=%q decode=%v", code, corpus, &stderr, err)
@@ -180,7 +182,7 @@ func TestTransportDiagnosticsAbsentOfflineConsumers(t *testing.T) {
 func TestTransportDiagnosticsAbsentRejectsCorpusCaptureBeforeInputs(t *testing.T) {
 	root := t.TempDir()
 	var stdout, stderr bytes.Buffer
-	code := RunSessionCorpusInspection(testInspector(new(evidence.Service), nil), t.Context(), []string{
+	code := inspectioncli.RunSessionCorpusInspection(testInspector(new(evidence.Service), nil), t.Context(), []string{
 		"--sessions-dir", filepath.Join(root, "missing-sessions"), "--capture", filepath.Join(root, "missing-capture"),
 	}, &stdout, &stderr)
 	if code != 1 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "transport diagnostics are unavailable") {

@@ -10,9 +10,10 @@ import (
 	"testing"
 	"time"
 
+	inspectioncli "github.com/yusing/mekugi/apps/mekugi/internal/inspectioncli"
+
 	"github.com/yusing/mekugi/libraries/commandargs"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/router"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -88,7 +89,7 @@ func TestUISnapshotDebugHandoffAfterCodexExit(t *testing.T) {
 				t.Fatalf("diagnostic handoff is not a session inspection command: %q", resolved)
 			}
 			var diagnosticErrors bytes.Buffer
-			if code := router.RunSessionInspection(testComposition(t).Inspection, testComposition(t).Diagnostics, t.Context(), argv[1:], io.Discard, &diagnosticErrors); code != 0 {
+			if code := inspectioncli.RunSessionInspection(testComposition(t).Inspection, testComposition(t).Diagnostics, t.Context(), argv[1:], io.Discard, &diagnosticErrors); code != 0 {
 				t.Fatalf("printed diagnostic command failed: %d: %s", code, &diagnosticErrors)
 			}
 			normalized := strings.ReplaceAll(after, commandargs.Quote(argv[2]), "'/tmp/mekugi-debug-session'")

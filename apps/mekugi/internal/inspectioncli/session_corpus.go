@@ -1,4 +1,5 @@
-package router
+// Source: apps/mekugi/internal/router/session_corpus.go@45b7fe8d
+package inspectioncli
 
 import (
 	"context"
@@ -13,6 +14,8 @@ import (
 	"path/filepath"
 	"slices"
 	"time"
+
+	history "github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/modules/sessioninspection/query"
 )
@@ -65,7 +68,7 @@ func RunSessionCorpusInspection(inspector *query.Service, ctx context.Context, a
 	}
 	if *replay == "" {
 		var err error
-		*replay, err = ReplayDirectory()
+		*replay, err = history.ReplayDirectory()
 		if err != nil {
 			return fail(err)
 		}

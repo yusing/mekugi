@@ -72,14 +72,6 @@ func durableHistory(h mekugiHistory) mekugiHistory {
 	return h
 }
 
-// ReplayDirectory resolves the invocation default for retained session records.
-func ReplayDirectory() (string, error) {
-	base, err := history.StateDirectory()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(base, "replay"), nil
-}
 func openReplayStore(ctx context.Context, service *history.Service, captured *changecapture.Service, directory string) (*mekugiReplayStore, error) {
 	publication, err := service.Open(ctx, directory)
 	if err != nil {

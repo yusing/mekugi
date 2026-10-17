@@ -3,6 +3,8 @@ package router
 import (
 	"context"
 
+	history "github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	json "encoding/json/v2"
@@ -414,7 +416,7 @@ func RunSessionUIReplay(activity *activitymodel.Service, service *playback.Servi
 	if len(paths) != 1 {
 		return fail(fmt.Errorf("session %q has multiple rollouts in Codex sessions or archived_sessions", *session))
 	}
-	directory, err := ReplayDirectory()
+	directory, err := history.ReplayDirectory()
 	if err != nil {
 		return fail(err)
 	}

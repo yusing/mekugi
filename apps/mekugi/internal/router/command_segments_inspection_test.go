@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	inspectioncli "github.com/yusing/mekugi/apps/mekugi/internal/inspectioncli"
+
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 )
@@ -59,7 +61,7 @@ func TestCommandSegmentsStorageInspection(t *testing.T) {
 			base := []string{"--replay-dir", directory, "--workspace", workspace, "--call-id", id}
 			if shape == "corrupt-old" || shape == "corrupt-new" || shape == "conflicting" {
 				var out, stderr bytes.Buffer
-				status := RunStorageInspection(testHistory(), service, t.Context(), base, &out, &stderr)
+				status := inspectioncli.RunStorageInspection(testHistory(), service, t.Context(), base, &out, &stderr)
 				if status != 1 || out.Len() != 0 || !strings.Contains(stderr.String(), "call "+id+":") {
 					t.Fatalf("invalid neighboring evidence: status=%d stdout=%s stderr=%s", status, &out, &stderr)
 				}
@@ -98,7 +100,7 @@ func TestCommandSegmentsStorageInspection(t *testing.T) {
 						selected = []byte("[]")
 					}
 					var out, stderr bytes.Buffer
-					if status := RunStorageInspection(testHistory(), service, t.Context(), args, &out, &stderr); status != 0 || stderr.Len() != 0 {
+					if status := inspectioncli.RunStorageInspection(testHistory(), service, t.Context(), args, &out, &stderr); status != 0 || stderr.Len() != 0 {
 						t.Fatalf("field %q: status=%d stderr=%s", field, status, &stderr)
 					}
 					var got storageInspection
@@ -172,7 +174,7 @@ func TestCommandSegmentsInspectionRelativeReplayDirectory(t *testing.T) {
 		for _, path := range []string{directory, relative} {
 			var out, stderr bytes.Buffer
 			args := []string{"--replay-dir", path, "--workspace", workspace, "--call-id", id, "--field", "all", "--text-bytes", "65536"}
-			if status := RunStorageInspection(testHistory(), service, t.Context(), args, &out, &stderr); status != 0 {
+			if status := inspectioncli.RunStorageInspection(testHistory(), service, t.Context(), args, &out, &stderr); status != 0 {
 				t.Fatalf("%s: status=%d stderr=%s", path, status, &stderr)
 			}
 			if path == directory {

@@ -12,8 +12,22 @@ import (
 	"strings"
 	"testing"
 
+	inspectioncli "github.com/yusing/mekugi/apps/mekugi/internal/inspectioncli"
+
 	"github.com/yusing/mekugi/libraries/legacycall"
 )
+
+type storageInspection struct {
+	Schema       string `json:"schema"`
+	Target       string `json:"target"`
+	Bytes        int    `json:"bytes"`
+	SHA256       string `json:"sha256"`
+	Dependencies int    `json:"dependencies"`
+	Field        string `json:"field,omitempty"`
+	Offset       int    `json:"offset,omitzero"`
+	NextOffset   *int   `json:"next_offset,omitempty"`
+	Text         string `json:"text,omitempty"`
+}
 
 func TestStorageInspectionBoundedPagesAndNoMutation(t *testing.T) {
 	t.Parallel()
@@ -30,7 +44,7 @@ func TestStorageInspectionBoundedPagesAndNoMutation(t *testing.T) {
 	base := []string{"--replay-dir", store.directory, "--workspace", "/w", "--call-id", "selected"}
 	run := func(args []string) storageInspection {
 		var out, stderr bytes.Buffer
-		if status := RunStorageInspection(testHistory(), testReports(), t.Context(), args, &out, &stderr); status != 0 || stderr.Len() != 0 {
+		if status := inspectioncli.RunStorageInspection(testHistory(), testReports(), t.Context(), args, &out, &stderr); status != 0 || stderr.Len() != 0 {
 			t.Fatalf("inspection: status=%d stderr=%s", status, &stderr)
 		}
 		var result storageInspection
@@ -48,13 +62,25 @@ func TestStorageInspectionBoundedPagesAndNoMutation(t *testing.T) {
 		for _, offset := range offsets {
 			var out, stderr bytes.Buffer
 			args := append(slices.Clone(args), "--offset", strconv.Itoa(offset))
-			status := RunStorageInspection(testHistory(), testReports(), t.Context(), args, &out, &stderr)
+			status := inspectioncli.RunStorageInspection(testHistory(), testReports(), t.Context(), args, &out, &stderr)
 			if status != 1 || out.Len() != 0 || !strings.Contains(stderr.String(), target) || !strings.Contains(stderr.String(), "UTF-8 boundary") {
 				t.Fatalf("offset %d for %s: status=%d stdout=%s stderr=%s", offset, target, status, &out, &stderr)
 			}
 		}
 	}
 	metadata := run(base)
+	expanded, found, err := store.read("/w", "selected", false)
+	if err != nil || !found {
+		t.Fatalf("read written evidence: found=%t err=%v", found, err)
+	}
+	want, err := json.Marshal(expanded, json.Deterministic(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	complete := run(append(slices.Clone(base), "--field", "all", "--text-bytes", "65536"))
+	if complete.Text != string(want) || complete.NextOffset != nil {
+		t.Fatal("offline inspection changed the expanded retained envelope")
+	}
 	if metadata.Text != "" || metadata.Dependencies != 4 || metadata.Bytes == 0 {
 		t.Fatalf("unexpected default disclosure: %+v", metadata)
 	}
@@ -103,7 +129,7 @@ func TestStorageInspectionPreciseErrorsAndCancellation(t *testing.T) {
 		{[]string{"--replay-dir", dir, "--object", "../outside"}, "invalid snapshot reference"},
 	} {
 		var out, stderr bytes.Buffer
-		if status := RunStorageInspection(testHistory(), testReports(), t.Context(), test.args, &out, &stderr); status != 1 || out.Len() != 0 || !strings.Contains(stderr.String(), test.want) {
+		if status := inspectioncli.RunStorageInspection(testHistory(), testReports(), t.Context(), test.args, &out, &stderr); status != 1 || out.Len() != 0 || !strings.Contains(stderr.String(), test.want) {
 			t.Fatalf("error diagnosis: status=%d stdout=%s stderr=%s", status, &out, &stderr)
 		}
 	}
@@ -113,7 +139,7 @@ func TestStorageInspectionPreciseErrorsAndCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	var out, stderr bytes.Buffer
-	if status := RunStorageInspection(testHistory(), testReports(), ctx, []string{"--replay-dir", dir, "--workspace", "/w", "--call-id", "call"}, &out, &stderr); status != 1 || !strings.Contains(stderr.String(), "context canceled") || out.Len() != 0 {
+	if status := inspectioncli.RunStorageInspection(testHistory(), testReports(), ctx, []string{"--replay-dir", dir, "--workspace", "/w", "--call-id", "call"}, &out, &stderr); status != 1 || !strings.Contains(stderr.String(), "context canceled") || out.Len() != 0 {
 		t.Fatalf("cancellation: status=%d stderr=%s", status, &stderr)
 	}
 }
@@ -140,7 +166,7 @@ func TestStorageInspectionMissingContentNamesExactObject(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out, stderr bytes.Buffer
-	status := RunStorageInspection(testHistory(), testReports(), t.Context(), []string{"--replay-dir", store.directory, "--workspace", "/w", "--call-id", "selected"}, &out, &stderr)
+	status := inspectioncli.RunStorageInspection(testHistory(), testReports(), t.Context(), []string{"--replay-dir", store.directory, "--workspace", "/w", "--call-id", "selected"}, &out, &stderr)
 	if status != 1 || out.Len() != 0 || !strings.Contains(stderr.String(), "call selected") || !strings.Contains(stderr.String(), name) || !strings.Contains(stderr.String(), "unavailable") {
 		t.Fatalf("missing content diagnosis: status=%d stderr=%s", status, &stderr)
 	}

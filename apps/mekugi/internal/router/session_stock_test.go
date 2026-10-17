@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	inspectioncli "github.com/yusing/mekugi/apps/mekugi/internal/inspectioncli"
+
 	"github.com/yusing/mekugi/libraries/legacycall"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
@@ -26,7 +28,7 @@ func TestSessionInspectionCanceledEmptySource(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	var stdout, stderr bytes.Buffer
-	code := RunSessionInspection(testInspector(nil, nil), testDiagnostics(nil, nil), ctx, []string{"--session", path, "--replay-dir", t.TempDir()}, &stdout, &stderr)
+	code := inspectioncli.RunSessionInspection(testInspector(nil, nil), testDiagnostics(nil, nil), ctx, []string{"--session", path, "--replay-dir", t.TempDir()}, &stdout, &stderr)
 	if code != 1 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "context canceled") {
 		t.Fatalf("canceled inspection: code=%d stdout=%q stderr=%q", code, &stdout, &stderr)
 	}
@@ -86,7 +88,7 @@ func TestSessionInspectionReadsObservedStockPatchOutcome(t *testing.T) {
 		stockRolloutItem(map[string]any{"type": "custom_tool_call_output", "call_id": "patch-call", "output": "Success. Added observed.txt."}),
 	)
 	var out, diagnostic bytes.Buffer
-	status := RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), t.Context(), []string{"--session", rollout, "--replay-dir", replay, "--field", "all", "--ax"}, &out, &diagnostic)
+	status := inspectioncli.RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), t.Context(), []string{"--session", rollout, "--replay-dir", replay, "--field", "all", "--ax"}, &out, &diagnostic)
 	if status != 0 {
 		t.Fatalf("inspection failed: %s", diagnostic.String())
 	}
@@ -138,7 +140,7 @@ func TestCorpusStockMcatRereadCandidate(t *testing.T) {
 				stockRolloutItem(map[string]any{"type": cmp.Or(tc.secondKind, "custom_tool_call"), "name": tc.prefix + "exec", "namespace": tc.secondNamespace, "call_id": "second", "input": `await tools.exec_command({cmd: ` + string(responses.MustMarshalJSON("mcat "+path+" 50:150")) + `});`}),
 			)
 			var out, diagnostic bytes.Buffer
-			status := RunSessionCorpusInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), t.Context(), []string{
+			status := inspectioncli.RunSessionCorpusInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), t.Context(), []string{
 				"--sessions-dir", root, "--replay-dir", filepath.Join(t.TempDir(), "replay"),
 				"--since", "2026-09-14T00:00:00Z", "--until", "2026-09-16T00:00:00Z",
 			}, &out, &diagnostic)

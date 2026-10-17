@@ -9,6 +9,8 @@ import (
 	"os"
 	"time"
 
+	history "github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
@@ -31,7 +33,7 @@ func openDebugOutput(service *diagnostic.Service, enabled bool, capturePath stri
 	if err != nil {
 		return nil, err
 	}
-	replay, err := ReplayDirectory()
+	replay, err := history.ReplayDirectory()
 	if err != nil {
 		return nil, err
 	}

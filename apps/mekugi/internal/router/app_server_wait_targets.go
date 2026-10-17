@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 
+	history "github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/activity/waittargets"
 )
@@ -21,7 +23,7 @@ func (u *appServerUI) openWaitStore(store *mekugiReplayStore) error {
 		ctx = context.Background()
 	}
 	if store == nil {
-		directory, err := ReplayDirectory()
+		directory, err := history.ReplayDirectory()
 		if err != nil {
 			return err
 		}

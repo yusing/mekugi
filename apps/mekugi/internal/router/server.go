@@ -232,7 +232,7 @@ func RunSession(conversation *conversationmodel.Service, live *previewmodel.Serv
 		issues.writes = writes
 	}
 	if options.Mode == "mekugi" {
-		replayDirectory, err := ReplayDirectory()
+		replayDirectory, err := history.ReplayDirectory()
 		if err != nil {
 			return fmt.Errorf("initialize replay storage: %w", err)
 		}

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	inspectioncli "github.com/yusing/mekugi/apps/mekugi/internal/inspectioncli"
+
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/livepreview/projection"
@@ -552,7 +554,7 @@ func TestCodeModeExecCommandRecordsUnconfirmedEffects(t *testing.T) {
 		stockRolloutItem(call),
 	)
 	var stdout, stderr strings.Builder
-	if code := RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), t.Context(), []string{"--session", rollout, "--replay-dir", proxy.replayStore.directory}, &stdout, &stderr); code != 0 {
+	if code := inspectioncli.RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), t.Context(), []string{"--session", rollout, "--replay-dir", proxy.replayStore.directory}, &stdout, &stderr); code != 0 {
 		t.Fatalf("inspection: %d %s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), `"outcome":"unconfirmed"`) ||

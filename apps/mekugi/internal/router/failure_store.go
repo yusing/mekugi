@@ -6,6 +6,8 @@ import (
 	"errors"
 	"time"
 
+	history "github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 )
 
@@ -25,7 +27,7 @@ func (c *CriticalErrors) persistFailure(f *requestFinalization) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	if store == nil {
-		directory, err := ReplayDirectory()
+		directory, err := history.ReplayDirectory()
 		if err == nil {
 			store, err = service.OpenFailures(ctx, directory)
 		}

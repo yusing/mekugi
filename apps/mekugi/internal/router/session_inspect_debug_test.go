@@ -12,6 +12,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	inspectioncli "github.com/yusing/mekugi/apps/mekugi/internal/inspectioncli"
+
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
@@ -53,7 +55,7 @@ func writeDebugInspectionFixture(t *testing.T, path, data string) {
 func runDebugInspection(t *testing.T, dir string, options ...string) (diagnostic.Report, int, string, string) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	code := RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), t.Context(), append([]string{"--debug-dir", dir}, options...), &stdout, &stderr)
+	code := inspectioncli.RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), t.Context(), append([]string{"--debug-dir", dir}, options...), &stdout, &stderr)
 	var result diagnostic.Report
 	if code != 2 {
 		if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
@@ -330,7 +332,7 @@ func TestSessionInspectionDebugRejectsInvalidArtifacts(t *testing.T) {
 				var stdout, stderr bytes.Buffer
 				var code int
 				go func() {
-					code = RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), t.Context(), []string{"--debug-dir", dir}, &stdout, &stderr)
+					code = inspectioncli.RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), t.Context(), []string{"--debug-dir", dir}, &stdout, &stderr)
 					close(done)
 				}()
 				select {
@@ -395,7 +397,7 @@ func TestSessionInspectionDebugInvalidOptions(t *testing.T) {
 		})
 	}
 	var stdout, stderr bytes.Buffer
-	if code := RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), t.Context(), []string{"--session", "unused", "--request-id", "req-b"}, &stdout, &stderr); code != 2 {
+	if code := inspectioncli.RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), t.Context(), []string{"--session", "unused", "--request-id", "req-b"}, &stdout, &stderr); code != 2 {
 		t.Fatalf("request-id without debug-dir: code=%d stderr=%s", code, &stderr)
 	}
 }
@@ -415,7 +417,7 @@ func TestDiagnosticInspectionCanceledEmptyEvidence(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
 			cancel()
 			var stdout, stderr bytes.Buffer
-			code := RunSessionInspection(testInspector(nil, nil), testDiagnostics(nil, nil), ctx, args, &stdout, &stderr)
+			code := inspectioncli.RunSessionInspection(testInspector(nil, nil), testDiagnostics(nil, nil), ctx, args, &stdout, &stderr)
 			if code != 1 || !strings.Contains(stderr.String(), context.Canceled.Error()) {
 				t.Fatalf("canceled inspection: code=%d stderr=%q stdout=%q", code, &stderr, &stdout)
 			}

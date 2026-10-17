@@ -1,4 +1,5 @@
-package router
+// Source: apps/mekugi/internal/router/storage_inspect.go@45b7fe8d
+package inspectioncli
 
 import (
 	"context"
@@ -73,7 +74,7 @@ func RunStorageInspection(service *history.Service, segments *reports.Service, c
 	}
 	if *replayDir == "" {
 		var err error
-		*replayDir, err = ReplayDirectory()
+		*replayDir, err = history.ReplayDirectory()
 		if err != nil {
 			return fail(err)
 		}
@@ -83,14 +84,14 @@ func RunStorageInspection(service *history.Service, segments *reports.Service, c
 		return fail(err)
 	}
 	*replayDir = selectedDirectory
-	store := &mekugiReplayStore{publication: service.Attach(*replayDir), directory: *replayDir}
+	publication := service.Attach(*replayDir)
 	result := storageInspection{Schema: "mekugi.storage.v1", Field: *field}
 	var data []byte
 	if *object != "" {
 		result.Target = *object
 		var found bool
 		var err error
-		data, found, err = legacycall.SnapshotData(store.directory, *object, maxReplayRecordBytes)
+		data, found, err = legacycall.SnapshotData(*replayDir, *object, history.MaxRecordBytes)
 		if err != nil {
 			return fail(fmt.Errorf("object %s: %w", *object, err))
 		}
@@ -102,23 +103,23 @@ func RunStorageInspection(service *history.Service, segments *reports.Service, c
 		}
 	} else {
 		result.Target = legacycall.Name(*workspace, *callID, false)
-		var r replayRecord
+		var r legacycall.Record
 		var found bool
 		var err error
 		var dependencies []string
 		if reports.IsID(*callID) {
-			selected, exists, readErr := segments.Inspect(store.directory, *workspace, *callID)
+			selected, exists, readErr := segments.Inspect(*replayDir, *workspace, *callID)
 			found, err = exists, readErr
 			if exists {
 				result.Target, dependencies, data = selected.Name, selected.Dependencies, selected.Data
 				if old := selected.Legacy; old != nil {
-					r = replayRecord{Version: old.Version, Workspace: old.Workspace, CallID: old.CallID, Commentary: old.Commentary, CaptureOrder: old.CaptureOrder, History: legacyHistory(old.History)}
+					r = *old
 				}
 			}
 		} else {
-			r, found, err = store.read(*workspace, *callID, false)
+			r, found, err = legacycall.Read(*replayDir, *workspace, *callID, false, history.MaxRecordBytes)
 			if err == nil && found {
-				dependencies, err = store.publication.Dependencies(result.Target)
+				dependencies, err = publication.Dependencies(result.Target)
 			}
 		}
 		if err != nil {

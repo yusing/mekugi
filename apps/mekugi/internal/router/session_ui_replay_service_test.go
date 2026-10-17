@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	history "github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/contracts/replaytiming"
@@ -29,6 +31,6 @@ func replayTestService(t *testing.T, diagnostics *transportcapture.Service) *pla
 }
 func replayReadTest(t *testing.T, diagnostics *transportcapture.Service, ctx context.Context, path, debug string, seed uint64) (*playback.Source, error) {
 	t.Helper()
-	directory, _ := ReplayDirectory()
+	directory, _ := history.ReplayDirectory()
 	return replayTestService(t, diagnostics).Read(ctx, playback.ReadOptions{Path: path, HistoryDirectory: directory, DebugDirectory: debug, Seed: seed})
 }

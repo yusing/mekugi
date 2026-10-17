@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	inspectioncli "github.com/yusing/mekugi/apps/mekugi/internal/inspectioncli"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/headless"
@@ -270,7 +272,7 @@ func TestRouterTransformFaultNativeCodexE2E(t *testing.T) {
 		t.Fatalf("reopen failure store after native Codex exits: %v", err)
 	}
 	var inspected, diagnostic bytes.Buffer
-	status := RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), t.Context(), []string{
+	status := inspectioncli.RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), t.Context(), []string{
 		"--failures", "--replay-dir", replayDirectory, reference,
 	}, &inspected, &diagnostic)
 	if status != 0 {

@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	history "github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -356,12 +358,12 @@ func TestMekugiReplayStoreCommentaryCannotConsumeCallQuota(t *testing.T) {
 func TestDefaultMekugiReplayDirectory(t *testing.T) {
 	state := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", state)
-	got, err := ReplayDirectory()
+	got, err := history.ReplayDirectory()
 	if err != nil || got != filepath.Join(state, "mekugi", "replay") {
 		t.Fatalf("explicit state path = %q, %v", got, err)
 	}
 	t.Setenv("XDG_STATE_HOME", "relative-state")
-	if _, err := ReplayDirectory(); err == nil {
+	if _, err := history.ReplayDirectory(); err == nil {
 		t.Fatal("accepted relative state home")
 	}
 	t.Setenv("XDG_STATE_HOME", "")
@@ -369,7 +371,7 @@ func TestDefaultMekugiReplayDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err = ReplayDirectory()
+	got, err = history.ReplayDirectory()
 	if err != nil || got != filepath.Join(home, ".local", "state", "mekugi", "replay") {
 		t.Fatalf("fallback state path = %q, %v", got, err)
 	}
