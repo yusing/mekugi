@@ -1,8 +1,14 @@
 package router
 
 import (
+	"context"
 	"slices"
 	"strings"
+	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/contracts/scope"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
@@ -36,23 +42,23 @@ func (p *composerPicker) menuView(workspace, text string, control *sessioncontro
 }
 
 // Apply each menu effect and publish before a continuation can derive another intent.
-func (u *appServerUI) applyMenuResult(result terminalsession.MenuResult) bool {
+func applyMenuResult(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], applied preferences.Applied, tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, panes *nativePreferences, dirty *bool, parent context.Context, environment []string, result terminalsession.MenuResult) bool {
 	if result.Action.Kind == sessionpresentation.MenuNoAction {
 		return result.Handled
 	}
-	accepted := u.applyMenuAction(result.Action)
-	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
-	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	accepted := applyMenuAction(attached, terminal, control, picker, editor, childKey, applied, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, owned, panes, dirty, parent, environment, result.Action)
+	picker.refreshPicker(attached, terminal, clock, control.Requests, (*editor), parent, environment)
+	settlePresentation(attached, terminal, control, picker, editor, childKey, applied, (*tiers), title, backend, restoring, side, clock, questions, approvals, overlay)
 	return result.Handled && !(accepted && result.Submit)
 }
-func (u *appServerUI) applyMenuAction(action sessionpresentation.MenuAction) bool {
-	if err := u.attached.presentation.AdmitMenu(action); err != nil {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
+func applyMenuAction(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], applied preferences.Applied, tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, panes *nativePreferences, dirty *bool, parent context.Context, environment []string, action sessionpresentation.MenuAction) bool {
+	if err := attached.presentation.AdmitMenu(action); err != nil {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return false
 	}
-	p := &u.picker
+	p := picker
 	if !p.Open || p.ID != action.Menu {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), sessionpresentation.ErrStaleIntent.Error(), true)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), sessionpresentation.ErrStaleIntent.Error(), true)
 		return false
 	}
 	switch action.Kind {
@@ -62,39 +68,39 @@ func (u *appServerUI) applyMenuAction(action sessionpresentation.MenuAction) boo
 	case sessionpresentation.MenuDismiss:
 		switch p.Kind {
 		case "menu", "manage":
-			u.picker.closeSkillsModal(&u.attached, u.shell, u.clock, u.Editor)
+			picker.closeSkillsModal(attached, terminal, clock, (*editor))
 		default:
 			p.Dismissed, p.Open = p.Target, false
 			p.Kind, p.Choices, p.CopyTexts = "", nil, nil
-			u.picker.Setting = ""
-			u.picker.cancelScan()
+			picker.Setting = ""
+			picker.cancelScan()
 		}
 		return true
 	case sessionpresentation.MenuAccept:
 		index := slices.IndexFunc(p.Choices, func(c completion.Choice) bool { return c.Identity() == action.Choice })
 		if index < 0 {
-			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), sessionpresentation.ErrStaleIntent.Error(), true)
+			setNotice(&attached.feedback, terminal, presentationTime(clock), sessionpresentation.ErrStaleIntent.Error(), true)
 			return false
 		}
 		choice := p.Choices[index]
 		switch p.Kind {
 		case "menu":
-			u.picker.chooseSkillsAction(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, choice)
+			picker.chooseSkillsAction(attached, (*editor), terminal, clock, owned, questions, approvals, side, choice)
 		case "manage":
-			toggleSkill(&u.picker, u.Requests, u.attached.cwd, choice)
+			toggleSkill(picker, control.Requests, attached.cwd, choice)
 		case "archive":
-			u.chooseArchive(choice.ID == archiveConfirmChoice)
+			chooseArchive(picker, control, &attached.feedback, terminal, clock, choice.ID == archiveConfirmChoice)
 		case "settings":
-			u.chooseSetting(choice)
+			chooseSetting(attached, terminal, control, applied, tiers, panes, dirty, restoring, clock, picker, choice)
 		case "copy":
-			if u.shell == nil {
-				setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Terminal clipboard unavailable", true)
+			if terminal == nil {
+				setNotice(&attached.feedback, terminal, presentationTime(clock), "Terminal clipboard unavailable", true)
 			} else {
-				u.copyText(u.shell, p.CopyTexts[index])
+				copyText(&attached.feedback, terminal, clock, terminal, p.CopyTexts[index])
 			}
 			p.Kind, p.Open, p.Choices, p.CopyTexts = "", false, nil, nil
 		default:
-			return acceptCompletion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, u.ctx, u.skillEnvironment, choice)
+			return acceptCompletion(attached, terminal, control, picker, editor, childKey, applied, (*tiers), title, backend, restoring, side, clock, questions, approvals, overlay, owned, parent, environment, choice)
 		}
 		return true
 	}

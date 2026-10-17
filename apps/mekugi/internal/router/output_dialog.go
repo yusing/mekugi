@@ -82,7 +82,7 @@ func (main *appServerUI) outputIntent(u *terminalsession.Attachment, intent term
 	case terminalsession.DialogClose:
 		main.detailFiles.closeOutput(&main.attached.session, u)
 	case terminalsession.DialogCopy:
-		main.copyText(u, intent.Text)
+		copyText(&main.attached.feedback, main.shell, main.clock, u, intent.Text)
 	case terminalsession.DialogReference:
 		if !main.referenceInput(main.shell.Main.Reference("dialog", intent.Text, "")) {
 			return

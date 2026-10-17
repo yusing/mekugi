@@ -21,7 +21,7 @@ func TestNonTerminalQuestionSubmissionKeepsOtherEditor(t *testing.T) {
 	answer := sessionpresentation.AnswerIntent{Version: v.Version, AnswerInput: prompt.AnswerInput{
 		Call: call.ID, Question: call.Questions[0].ID, Choice: 0, Draft: composer.Draft{Text: "explicit note"},
 	}}
-	if !u.answerQuestion(answer) {
+	if !answerQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, answer) {
 		t.Fatal(u.attached.feedback.Text)
 	}
 	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
@@ -40,7 +40,7 @@ func TestNonTerminalQuestionSubmissionKeepsOtherEditor(t *testing.T) {
 		t.Fatal("submission replaced another prompt's editor")
 	}
 	wire.Reset()
-	if u.answerQuestion(answer) || u.attached.feedback.Text != sessionpresentation.ErrStaleIntent.Error() {
+	if answerQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, answer) || u.attached.feedback.Text != sessionpresentation.ErrStaleIntent.Error() {
 		t.Fatal("answered call accepted another answer")
 	}
 	if err := u.submitQuestions(submit); err != nil || wire.Len() != 0 {
@@ -67,7 +67,7 @@ func TestNonTerminalQuestionBatchUsesOrdinarySubmission(t *testing.T) {
 	call := v.Questions.Call
 	for i, q := range call.Questions {
 		v = u.attached.presentation.View()
-		if !u.answerQuestion(sessionpresentation.AnswerIntent{Version: v.Version, AnswerInput: prompt.AnswerInput{Call: call.ID, Question: q.ID, Choice: i}}) {
+		if !answerQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, sessionpresentation.AnswerIntent{Version: v.Version, AnswerInput: prompt.AnswerInput{Call: call.ID, Question: q.ID, Choice: i}}) {
 			t.Fatal(u.attached.feedback.Text)
 		}
 	}
@@ -94,17 +94,17 @@ func TestNonTerminalQuestionRejectsSecretReplayAndRetiredView(t *testing.T) {
 		Call: v.Questions.Call.ID, Question: v.Questions.Call.Questions[0].ID,
 		Choice: 0, Draft: composer.Draft{Text: "ordinary input"},
 	}}
-	if u.answerQuestion(answer) || u.attached.feedback.Text != prompt.ErrSecretAnswer.Error() || u.questions.Current().Done || u.questions.Current().Editor.Snapshot.Text != "" {
+	if answerQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, answer) || u.attached.feedback.Text != prompt.ErrSecretAnswer.Error() || u.questions.Current().Done || u.questions.Current().Editor.Snapshot.Text != "" {
 		t.Fatal("ordinary intent entered secret state")
 	}
 	u.attached.presentation.Attach(sessionpresentation.Thread{ID: u.Thread, Caller: "/root"}, true)
 	answer.Version = publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Version
-	if u.answerQuestion(answer) || u.attached.feedback.Text != sessionpresentation.ErrReplayIntent.Error() {
+	if answerQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, answer) || u.attached.feedback.Text != sessionpresentation.ErrReplayIntent.Error() {
 		t.Fatal("replay accepted an answer")
 	}
 	u.Thread = "replacement"
 	attachPresentation(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread, &u.review, &u.commits, u.ctx, u.retained, u.changeSource, u.activity != nil)
-	if u.answerQuestion(answer) || u.attached.feedback.Text != sessionpresentation.ErrStaleIntent.Error() || wire.Len() != 0 {
+	if answerQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, answer) || u.attached.feedback.Text != sessionpresentation.ErrStaleIntent.Error() || wire.Len() != 0 {
 		t.Fatal("retired view answered a replacement prompt")
 	}
 }

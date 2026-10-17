@@ -161,7 +161,7 @@ func (u *appServerUI) resumeSession(id string) error {
 func (u *appServerUI) resumeSessionFailed(message string) error {
 	u.Replacement.Finish()
 	u.ResumeEffort = false
-	u.restoreDrafts(slices.Concat(u.attached.conversation.Unsent, u.attached.conversation.Queued)...)
+	restoreDrafts(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, u.Turn, u.clock, slices.Concat(u.attached.conversation.Unsent, u.attached.conversation.Queued)...)
 	u.attached.conversation.Unsent, u.attached.conversation.Queued = nil, nil
 	u.attached.presentation.Status.SetText("Ready")
 	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Could not resume session: "+message, true)

@@ -30,11 +30,11 @@ func (u *appServerUI) interruptTurn() error {
 }
 
 func (u *appServerUI) applyInterruption(intent sessioncontrol.Interrupt) error {
-	u.applyInputRestoration(u.attached.presentation.RestoreInterruptedInput(u.attached.conversation, intent))
+	applyInputRestoration(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, u.Turn, u.clock, u.attached.presentation.RestoreInterruptedInput(u.attached.conversation, intent))
 	if intent.Turn == "" {
 		return nil
 	}
-	u.endSyncQuestions(intent.Turn)
+	endSyncQuestions(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, u.review, &u.pendingEditReceipts, intent.Turn)
 	_, err := u.Requests.Send("turn/interrupt", map[string]any{"threadId": u.Thread, "turnId": intent.Turn}, "main", appServerRequest{label: intent.Label})
 	if err != nil && intent.Label == "steer/interrupt" {
 		u.SteerInterruptAckPending = false

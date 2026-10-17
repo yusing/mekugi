@@ -3,6 +3,7 @@ package router
 import (
 	"crypto/rand"
 	"strings"
+	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
@@ -38,29 +39,29 @@ func prepareDraft(picker *composerPicker, terminal *terminalsession.Attachment, 
 }
 
 // restoreDrafts returns input to the composer ahead of the current draft.
-func (u *appServerUI) restoreDrafts(parts ...conversationmodel.Input) {
-	u.applyInputRestoration(u.attached.conversation.RestoreInput(parts...))
+func restoreDrafts(attached *attachedPresentation, terminal *terminalsession.Attachment, questions *nativeQuestionDock, approvals *nativeApprovalDock, picker *composerPicker, turn string, clock func() time.Time, parts ...conversationmodel.Input) {
+	applyInputRestoration(attached, terminal, questions, approvals, picker, turn, clock, attached.conversation.RestoreInput(parts...))
 }
 
-func (u *appServerUI) applyInputRestoration(restored conversationmodel.InputRestoration) {
+func applyInputRestoration(attached *attachedPresentation, terminal *terminalsession.Attachment, questions *nativeQuestionDock, approvals *nativeApprovalDock, picker *composerPicker, turn string, clock func() time.Time, restored conversationmodel.InputRestoration) {
 	for _, id := range restored.Rejected {
-		for _, call := range u.questions.calls() {
+		for _, call := range questions.calls() {
 			if call.ID == id {
-				renderQuestionRecord(&u.attached, u.Turn, presentationTime(u.clock), call)
+				renderQuestionRecord(attached, turn, presentationTime(clock), call)
 				break
 			}
 		}
 	}
 	if restored.Parked {
 		if restored.Changed {
-			u.shell.Main.PromptColumn = nil
+			terminal.Main.PromptColumn = nil
 		}
-		if u.approvals.Open {
-			u.shell.Prompts.Reopen()
-			focusPrompt(&u.picker, u.shell)
+		if approvals.Open {
+			terminal.Prompts.Reopen()
+			focusPrompt(picker, terminal)
 		}
 	} else if restored.Changed {
-		u.shell.Main.CursorColumn = nil
+		terminal.Main.CursorColumn = nil
 	}
 }
 
@@ -69,7 +70,7 @@ func (u *appServerUI) applyInputRestoration(restored conversationmodel.InputRest
 func (u *appServerUI) editQueued() {
 	parts := u.attached.conversation.TakeWaiting()
 	u.Compaction.CancelQueued(true)
-	u.restoreDrafts(parts...)
+	restoreDrafts(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, u.Turn, u.clock, parts...)
 }
 
 // flushInput sends stacked input once nothing blocks it: unsent steers into
@@ -122,7 +123,7 @@ func (u *appServerUI) send(parts []conversationmodel.Input, steer bool) error {
 		textBytes += len(text)
 	}
 	if (len(s.Attachments) > 0 || len(s.Skills) > 0) && textBytes > codexresponses.UserTextLimit {
-		u.restoreDrafts(parts...)
+		restoreDrafts(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, u.Turn, u.clock, parts...)
 		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Input with attachments exceeds the safe 1 MiB text limit. Reduce the draft or attachments and retry.", true)
 		return nil
 	}
@@ -155,7 +156,7 @@ func (u *appServerUI) send(parts []conversationmodel.Input, steer bool) error {
 		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), notice, true)
 	}
 	if _, err := u.Requests.SendInput(request, appServerRequest{}); err != nil {
-		u.applyInputEffects(u.attached.presentation.ApplyInputResult(&u.Live, u.attached.conversation, u.SubmissionFailed()))
+		applyInputEffects(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, u.Turn, u.clock, u.attached.presentation.ApplyInputResult(&u.Live, u.attached.conversation, u.SubmissionFailed()))
 		return err
 	}
 	for _, part := range parts {
@@ -171,17 +172,17 @@ func (u *appServerUI) submissionResponse(method string, failure *appserver.Error
 	if failure != nil {
 		message = failure.Message
 	}
-	u.applyInputEffects(u.attached.presentation.AcknowledgeInput(&u.Live, u.attached.conversation, method, message, failure != nil))
+	applyInputEffects(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, u.Turn, u.clock, u.attached.presentation.AcknowledgeInput(&u.Live, u.attached.conversation, method, message, failure != nil))
 }
 
-func (u *appServerUI) applyInputEffects(effects sessionpresentation.InputEffects) {
+func applyInputEffects(attached *attachedPresentation, terminal *terminalsession.Attachment, questions *nativeQuestionDock, approvals *nativeApprovalDock, picker *composerPicker, turn string, clock func() time.Time, effects sessionpresentation.InputEffects) {
 	if effects.Withdrawn != "" {
-		u.attached.source.RemovePendingInput(effects.Withdrawn)
-		u.attached.presentation.SettleWithdrawnInput(effects, len(u.attached.source.Model.Entries) > 0)
+		attached.source.RemovePendingInput(effects.Withdrawn)
+		attached.presentation.SettleWithdrawnInput(effects, len(attached.source.Model.Entries) > 0)
 	}
-	u.applyInputRestoration(effects.Restored)
+	applyInputRestoration(attached, terminal, questions, approvals, picker, turn, clock, effects.Restored)
 	if effects.Notice != "" {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), effects.Notice, effects.NoticeError)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), effects.Notice, effects.NoticeError)
 	}
 }
 
@@ -192,6 +193,6 @@ func commitSteer(attached *attachedPresentation, control *sessioncontrol.Live, i
 
 func (u *appServerUI) settleInput(turn string, interrupted bool) {
 	for _, effects := range u.attached.presentation.SettleInput(&u.Live, u.attached.conversation, turn, interrupted) {
-		u.applyInputEffects(effects)
+		applyInputEffects(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, u.Turn, u.clock, effects)
 	}
 }

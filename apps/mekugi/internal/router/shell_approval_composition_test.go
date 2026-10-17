@@ -81,7 +81,7 @@ func TestShellApprovalCompositionSocket(t *testing.T) {
 						if pending.Kind != message.Kind || pending.Executable != message.Executable {
 							t.Fatal("socket changed the approval identity")
 						}
-						u.addGuardApproval(pending)
+						addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, pending)
 						if request.kind == "sudo-password" {
 							if len(u.questions.calls()) != 1 || len(u.approvals.calls()) != 0 {
 								t.Fatal("sudo password did not reach its secret-entry UI")
@@ -101,7 +101,7 @@ func TestShellApprovalCompositionSocket(t *testing.T) {
 						}
 						// Exercise the UI's own absence boundary independently of the socket.
 						pending := compositionApproval(request.kind)
-						u.addGuardApproval(pending)
+						addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, pending)
 						select {
 						case denied := <-pending.Reply:
 							if denied.OK || denied.Password != "" || denied.Reason == "" {
@@ -143,14 +143,14 @@ func TestShellApprovalCompositionGrantIsolation(t *testing.T) {
 		t.Run("from-"+kind, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			first := compositionApproval(kind)
-			u.addGuardApproval(first)
+			addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, first)
 			questionTestPaint(t, u, 80)
 			appServerTestKeys(t, u, "2\r")
 			if len(first.Reply) != 1 || !(<-first.Reply).OK {
 				t.Fatal("session grant was not accepted")
 			}
 			repeated := compositionApproval(kind)
-			u.addGuardApproval(repeated)
+			addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, repeated)
 			if len(repeated.Reply) != 1 || !(<-repeated.Reply).OK || len(u.approvals.calls()) != 0 {
 				t.Fatal("selected module did not reuse its own grant")
 			}
@@ -159,13 +159,13 @@ func TestShellApprovalCompositionGrantIsolation(t *testing.T) {
 				otherKind = ""
 			}
 			other := compositionApproval(otherKind)
-			u.addGuardApproval(other)
+			addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, other)
 			if len(other.Reply) != 0 || len(u.approvals.calls()) != 1 {
 				t.Fatal("session grant crossed module kinds for the same command identity")
 			}
 			fresh, _ := newAppServerTestUI()
 			newSession := compositionApproval(kind)
-			fresh.addGuardApproval(newSession)
+			addGuardApproval(&fresh.attached, fresh.shell, &fresh.Client, &fresh.picker, &fresh.Editor, &fresh.questions, &fresh.approvals, fresh.clock, fresh.statusPanel != nil || fresh.resumePicker != nil, fresh.notifications, fresh.review, &fresh.pendingEditReceipts, newSession)
 			if len(newSession.Reply) != 0 || len(fresh.approvals.calls()) != 1 {
 				t.Fatal("session grant crossed fresh UI instances")
 			}

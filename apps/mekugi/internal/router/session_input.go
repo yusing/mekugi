@@ -96,7 +96,7 @@ func (u *appServerUI) applyComposerCommand(intent sessionpresentation.ComposerIn
 	}
 	switch intent.Operation {
 	case sessionpresentation.IncreaseEffort, sessionpresentation.DecreaseEffort:
-		return false, u.stepReasoning(intent.Operation == sessionpresentation.IncreaseEffort)
+		return false, stepReasoning(&u.attached, u.shell, &u.Client, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, &u.serviceTiers, u.panes, &u.dirty, u.restoring != nil, u.clock, u.models, u.modelsLoading, &u.reasoningKey, intent.Operation == sessionpresentation.IncreaseEffort)
 	case sessionpresentation.RestoreWaiting:
 		u.editQueued()
 	case sessionpresentation.EditExternally:
@@ -143,7 +143,7 @@ func (u *appServerUI) applyComposerCommand(intent sessionpresentation.ComposerIn
 		}
 		text := strings.TrimSpace(u.Text)
 		if text == "/archive" {
-			u.showArchivePicker()
+			showArchivePicker(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, &u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages)
 			return false, nil
 		}
 		if handled, err := u.controlsCommand(text); handled {
@@ -194,7 +194,7 @@ func (u *appServerUI) applyComposerCommand(intent sessionpresentation.ComposerIn
 			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Interrupt the active turn before quitting", false)
 			return false, nil
 		}
-		if handled, err := u.settingsCommand(text); handled {
+		if handled, err := settingsCommand(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, &u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, u.panes, &u.dirty, u.models, u.modelsLoading, text); handled {
 			return false, err
 		}
 		if strings.HasPrefix(text, "/") {
@@ -224,7 +224,7 @@ func (u *appServerUI) applyComposerCommand(intent sessionpresentation.ComposerIn
 
 func (u *appServerUI) applyPromptInput(input terminalsession.PromptInput) (bool, error) {
 	if input.Approval.Request != "" {
-		return u.applyApprovalInput(input)
+		return applyApprovalInput(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, u.controlObservations, input)
 	}
 	return u.applyQuestionInput(input)
 }

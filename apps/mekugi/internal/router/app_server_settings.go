@@ -4,6 +4,9 @@ import (
 	"encoding/json/jsontext"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/scope"
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
@@ -56,54 +59,54 @@ func effortChoices(models []appServerModel, selected string) []string {
 // Codex owns configuration_update history items. These RPCs submit settings
 // intent, never synthetic Responses items or writes to the user's config file.
 // Source: codex-rs/app-server-protocol/src/protocol/v2/{thread,turn}.rs
-func (u *appServerUI) updateSettings(change map[string]any) (bool, error) {
-	decision := u.PrepareSettings(preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, change, u.restoring != nil)
+func updateSettings(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], applied preferences.Applied, tiers **inferencegateway.Tiers, panes *nativePreferences, dirty *bool, restoring bool, clock func() time.Time, change map[string]any) (bool, error) {
+	decision := control.PrepareSettings(applied, change, restoring)
 	switch decision.Action {
 	case sessioncontrol.SettingsUnavailable:
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Wait for the thread or turn to finish starting", true)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Wait for the thread or turn to finish starting", true)
 		return false, nil
 	case sessioncontrol.SettingsAlreadyPending:
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Settings update pending", false)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Settings update pending", false)
 		return false, nil
 	}
-	if err := u.Requests.ApplySettings(&u.Live, decision); err != nil {
+	if err := control.Requests.ApplySettings(&control.Live, decision); err != nil {
 		return false, err
 	}
 
 	if decision.RestoreDefault {
-		u.dirty = paneError(u.attached.source, u.panes.retainAppliedSettings(u.shell, preferences.Scope{Workspace: u.attached.cwd, Thread: u.Thread}, u.Settings.RestoreEffort, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier, Observed: presentationTime(u.clock)})) || u.dirty
+		(*dirty) = paneError(attached.source, panes.retainAppliedSettings(terminal, preferences.Scope{Workspace: attached.cwd, Thread: control.Thread}, control.Settings.RestoreEffort, preferences.Applied{Model: applied.Model, Effort: applied.Effort, Tier: applied.Tier, Observed: presentationTime(clock)})) || (*dirty)
 	}
 	if decision.ChooseTier {
-		u.serviceTiers = chooseServiceTier(u.serviceTiers, u.model, u.Thread, u.serviceTier)
+		(*tiers) = chooseServiceTier((*tiers), applied.Model, control.Thread, applied.Tier)
 	}
 	switch decision.Action {
 	case sessioncontrol.SettingsUnchanged:
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Settings unchanged", false)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Settings unchanged", false)
 		if decision.ChooseTier {
-			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Service tier updated", false)
+			setNotice(&attached.feedback, terminal, presentationTime(clock), "Service tier updated", false)
 		}
 	case sessioncontrol.SettingsTurn:
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Updating active turn…", false)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Updating active turn…", false)
 	case sessioncontrol.SettingsThread:
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Updating settings…", false)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Updating settings…", false)
 	}
 	return true, nil
 }
 
-func (u *appServerUI) stepReasoning(up bool) error {
-	if u.modelsLoading {
-		u.reasoningKey = new(up)
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Loading model choices…", false)
+func stepReasoning(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], applied preferences.Applied, tiers **inferencegateway.Tiers, panes *nativePreferences, dirty *bool, restoring bool, clock func() time.Time, models []appServerModel, loading bool, reasoningKey **bool, up bool) error {
+	if loading {
+		(*reasoningKey) = new(up)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Loading model choices…", false)
 		return nil
 	}
-	choices := effortChoices(u.models, u.model)
+	choices := effortChoices(models, applied.Model)
 	if len(choices) == 0 {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Reasoning choices unavailable · use /reasoning VALUE", true)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Reasoning choices unavailable · use /reasoning VALUE", true)
 		return nil
 	}
-	index := slices.Index(choices, u.reasoningEffort)
+	index := slices.Index(choices, applied.Effort)
 	if index < 0 {
-		index = slices.Index(choices, currentModel(u.models, u.model).DefaultEffort)
+		index = slices.Index(choices, currentModel(models, applied.Model).DefaultEffort)
 	}
 	if index < 0 {
 		index = 0
@@ -115,12 +118,12 @@ func (u *appServerUI) stepReasoning(up bool) error {
 	if next < 0 || next >= len(choices) {
 		return nil
 	}
-	_, err := u.updateSettings(map[string]any{"effort": choices[next]})
+	_, err := updateSettings(attached, terminal, control, applied, tiers, panes, dirty, restoring, clock, map[string]any{"effort": choices[next]})
 	return err
 }
 
 // Slash controls work while a turn runs and do not submit conversation input.
-func (u *appServerUI) settingsCommand(text string) (bool, error) {
+func settingsCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], applied preferences.Applied, tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, panes *nativePreferences, dirty *bool, models []appServerModel, loading bool, text string) (bool, error) {
 	fields := strings.Fields(text)
 	if len(fields) == 0 {
 		return false, nil
@@ -129,60 +132,60 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 	if command != "/model" && command != "/reasoning" && command != "/effort" && command != "/tier" && command != "/live" {
 		return false, nil
 	}
-	if u.Replacement.Pending() {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Wait for the new session · draft kept", false)
+	if control.Replacement.Pending() {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Wait for the new session · draft kept", false)
 		return true, nil
 	}
 	if command == "/live" {
 		value := "off"
-		if u.shell.LiveHidden {
+		if terminal.LiveHidden {
 			value = "on"
 		}
 		if len(fields) == 2 {
 			value = fields[1]
 		}
 		if len(fields) > 2 || value != "on" && value != "off" {
-			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Use /live, /live on, or /live off", true)
+			setNotice(&attached.feedback, terminal, presentationTime(clock), "Use /live, /live on, or /live off", true)
 			return true, nil
 		}
-		recordDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side)
-		u.Text, u.CursorBack, u.Images = "", 0, nil
-		u.Editor.Changed()
-		setLivePane(&u.attached.feedback, u.shell, u.clock, &u.dirty, value)
+		recordDraft(attached, (*editor), terminal, clock, owned, questions, approvals, side)
+		(*editor).Text, (*editor).CursorBack, (*editor).Images = "", 0, nil
+		(*editor).Changed()
+		setLivePane(&attached.feedback, terminal, clock, dirty, value)
 		return true, nil
 	}
 	var choices []string
-	current := u.model
+	current := applied.Model
 	switch command {
 	case "/model":
-		for _, model := range u.models {
+		for _, model := range models {
 			if !model.Hidden {
 				choices = append(choices, model.Model)
 			}
 		}
 	case "/reasoning", "/effort":
-		current = u.reasoningEffort
-		choices = effortChoices(u.models, u.model)
+		current = applied.Effort
+		choices = effortChoices(models, applied.Model)
 	case "/tier":
-		current = u.serviceTiers.Effective(u.model, u.serviceTier, u.Thread)
+		current = (*tiers).Effective(applied.Model, applied.Tier, control.Thread)
 		choices = []string{"default"}
-		if model := currentModel(u.models, u.model); model != nil {
+		if model := currentModel(models, applied.Model); model != nil {
 			for _, tier := range model.Tiers {
 				choices = append(choices, tier.ID)
 			}
 		}
 	}
 	if len(fields) == 1 {
-		deleteDraftRange(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, 0, len(u.Text))
-		u.picker.showSettingsPicker(u.modelsLoading, command, choices, current)
+		deleteDraftRange(attached, terminal, control, picker, editor, childKey, applied, (*tiers), title, backend, restoring, side, clock, questions, approvals, overlay, owned, 0, len((*editor).Text))
+		picker.showSettingsPicker(loading, command, choices, current)
 		return true, nil
 	}
 	if len(fields) != 2 {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Use "+command+" or "+command+" VALUE", true)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Use "+command+" or "+command+" VALUE", true)
 		return true, nil
 	}
-	if u.Settings.Pending() {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Settings update pending", false)
+	if control.Settings.Pending() {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Settings update pending", false)
 		return true, nil
 	}
 	change := make(map[string]any)
@@ -198,26 +201,26 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 		}
 	}
 	// The host validates explicit values, including custom models and tiers.
-	accepted, err := u.updateSettings(change)
+	accepted, err := updateSettings(attached, terminal, control, applied, tiers, panes, dirty, restoring, clock, change)
 	if accepted {
-		notice, alert := u.attached.feedback.Text, u.attached.feedback.Alert
-		recordDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side)
-		u.Text, u.CursorBack, u.Images = "", 0, nil
-		u.Editor.Changed()
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), notice, alert)
+		notice, alert := attached.feedback.Text, attached.feedback.Alert
+		recordDraft(attached, (*editor), terminal, clock, owned, questions, approvals, side)
+		(*editor).Text, (*editor).CursorBack, (*editor).Images = "", 0, nil
+		(*editor).Changed()
+		setNotice(&attached.feedback, terminal, presentationTime(clock), notice, alert)
 	}
 	return true, err
 }
 
-func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool, error) {
+func settingsMessage(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], tiers **inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, panes *nativePreferences, dirty *bool, model *string, effort *string, tier *string, models *[]appServerModel, loading *bool, reasoningKey **bool, status *appServerStatusConfig, method string, m appserver.Message) (bool, error) {
 	if method == "model/list" {
 		if m.Error != nil {
-			u.modelsLoading, u.reasoningKey = false, nil
-			if u.picker.Kind == "settings" {
-				u.picker.Loading = false
-				u.picker.Problem = "Model choices unavailable · Esc to close; use an explicit VALUE"
+			(*loading), (*reasoningKey) = false, nil
+			if picker.Kind == "settings" {
+				picker.Loading = false
+				picker.Problem = "Model choices unavailable · Esc to close; use an explicit VALUE"
 			}
-			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Model choices unavailable: "+m.Error.Message, true)
+			setNotice(&attached.feedback, terminal, presentationTime(clock), "Model choices unavailable: "+m.Error.Message, true)
 			return true, nil
 		}
 		var result struct {
@@ -227,26 +230,26 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 		if err := json.Unmarshal(m.Result, &result); err != nil {
 			return true, err
 		}
-		u.models = append(u.models, result.Data...)
+		(*models) = append((*models), result.Data...)
 		if result.NextCursor != "" {
-			return true, u.Request("model/list", map[string]any{"cursor": result.NextCursor, "includeHidden": true})
+			return true, control.Request("model/list", map[string]any{"cursor": result.NextCursor, "includeHidden": true})
 		}
-		u.modelsLoading = false
-		if u.picker.Setting != "" {
-			command := u.picker.Setting
-			if u.picker.Kind == "settings" {
-				_, _ = u.settingsCommand(command)
+		(*loading) = false
+		if picker.Setting != "" {
+			command := picker.Setting
+			if picker.Kind == "settings" {
+				_, _ = settingsCommand(attached, terminal, control, picker, editor, childKey, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, owned, panes, dirty, (*models), (*loading), command)
 			}
 		}
-		if u.reasoningKey != nil {
-			up := *u.reasoningKey
-			u.reasoningKey = nil
-			return true, u.stepReasoning(up)
+		if (*reasoningKey) != nil {
+			up := *(*reasoningKey)
+			(*reasoningKey) = nil
+			return true, stepReasoning(attached, terminal, control, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier)}, tiers, panes, dirty, restoring, clock, (*models), (*loading), reasoningKey, up)
 		}
 		return true, nil
 	}
 	if method == "thread/settings/update" || method == "turn/settings/update" {
-		ack, err := u.Settings.Acknowledge(method, m.Result, m.Error != nil)
+		ack, err := control.Settings.Acknowledge(method, m.Result, m.Error != nil)
 		if err != nil {
 			return true, err
 		}
@@ -254,7 +257,7 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 		if m.Error != nil {
 			failure = m.Error.Message
 		}
-		u.applyInputEffects(u.attached.presentation.SettingsAcknowledged(u.attached.conversation, method, failure, ack))
+		applyInputEffects(attached, terminal, questions, approvals, picker, control.Turn, clock, attached.presentation.SettingsAcknowledged(attached.conversation, method, failure, ack))
 		return true, nil
 	}
 	if m.Method != "thread/settings/updated" {
@@ -277,45 +280,45 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 	if err := json.Unmarshal(m.Params, &event); err != nil {
 		return true, fmt.Errorf("thread settings: %w", err)
 	}
-	if event.ThreadID != u.Thread {
-		if u.attached.session.KnownCaller(u.Thread) != "" && event.ThreadID != "" {
-			agent := u.attached.session.Agent(u.attached.session.Caller(event.ThreadID))
+	if event.ThreadID != control.Thread {
+		if attached.session.KnownCaller(control.Thread) != "" && event.ThreadID != "" {
+			agent := attached.session.Agent(attached.session.Caller(event.ThreadID))
 			agent.Settings = preferences.Evidence{Model: event.Settings.Model, Effort: event.Settings.Effort, Tier: event.Settings.ServiceTier, TierKnown: true}
 			agent.SettingsLive = true
 		}
 		return true, nil
 	}
 	if event.Settings.Provider != "" {
-		u.statusConfig.Provider = event.Settings.Provider
+		status.Provider = event.Settings.Provider
 	}
 	if len(event.Settings.Approval) > 0 {
-		u.statusConfig.Approval = event.Settings.Approval
+		status.Approval = event.Settings.Approval
 	}
 	if event.Settings.Sandbox != nil {
-		u.statusConfig.Sandbox.Type = event.Settings.Sandbox.Type
+		status.Sandbox.Type = event.Settings.Sandbox.Type
 	}
 	if event.Settings.Cwd != "" {
-		u.attached.cwd = event.Settings.Cwd
+		attached.cwd = event.Settings.Cwd
 	}
-	u.model, u.reasoningEffort, u.serviceTier = event.Settings.Model, event.Settings.Effort, event.Settings.ServiceTier
-	confirmation := u.Settings.Confirmed(u.Turn, u.reasoningEffort)
+	(*model), (*effort), (*tier) = event.Settings.Model, event.Settings.Effort, event.Settings.ServiceTier
+	confirmation := control.Settings.Confirmed(control.Turn, (*effort))
 	if confirmation.ChooseTier {
-		u.serviceTiers = chooseServiceTier(u.serviceTiers, u.model, u.Thread, u.serviceTier)
+		(*tiers) = chooseServiceTier((*tiers), (*model), control.Thread, (*tier))
 	}
-	u.dirty = paneError(u.attached.source, u.panes.retainAppliedSettings(u.shell, preferences.Scope{Workspace: u.attached.cwd, Thread: u.Thread}, u.Settings.RestoreEffort, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier, Observed: presentationTime(u.clock)})) || u.dirty
+	(*dirty) = paneError(attached.source, panes.retainAppliedSettings(terminal, preferences.Scope{Workspace: attached.cwd, Thread: control.Thread}, control.Settings.RestoreEffort, preferences.Applied{Model: (*model), Effort: (*effort), Tier: (*tier), Observed: presentationTime(clock)})) || (*dirty)
 	if !confirmation.Requested {
 		return true, nil
 	}
 	decision := confirmation.Update
 	if decision.Action == sessioncontrol.SettingsTurn {
-		if err := u.Requests.ApplySettings(&u.Live, decision); err != nil {
+		if err := control.Requests.ApplySettings(&control.Live, decision); err != nil {
 			return true, err
 		}
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Settings saved · updating active turn…", false)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Settings saved · updating active turn…", false)
 	} else {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Settings saved for next turn", false)
-		if u.Settings.RestoreEffort {
-			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Default reasoning still needs restoration · choose /effort VALUE or restart resume", true)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Settings saved for next turn", false)
+		if control.Settings.RestoreEffort {
+			setNotice(&attached.feedback, terminal, presentationTime(clock), "Default reasoning still needs restoration · choose /effort VALUE or restart resume", true)
 		}
 	}
 	return true, nil
@@ -365,13 +368,13 @@ func chooseServiceTier(tiers *inferencegateway.Tiers, model, thread, tier string
 	return tiers
 }
 
-func (u *appServerUI) chooseSetting(choice completion.Choice) {
-	p := &u.picker
+func chooseSetting(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], applied preferences.Applied, tiers **inferencegateway.Tiers, panes *nativePreferences, dirty *bool, restoring bool, clock func() time.Time, picker *composerPicker, choice completion.Choice) {
+	p := picker
 	if p.Loading {
 		return
 	}
 	field := "model"
-	switch u.picker.Setting {
+	switch picker.Setting {
 	case "/effort", "/reasoning":
 		field = "effort"
 	case "/tier":
@@ -381,15 +384,15 @@ func (u *appServerUI) chooseSetting(choice completion.Choice) {
 	if field == "serviceTier" && value == "default" {
 		value = nil
 	}
-	accepted, err := u.updateSettings(map[string]any{field: value})
+	accepted, err := updateSettings(attached, terminal, control, applied, tiers, panes, dirty, restoring, clock, map[string]any{field: value})
 	if err != nil {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Settings update failed: "+err.Error(), true)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Settings update failed: "+err.Error(), true)
 	}
 	if accepted {
 		p.Kind, p.Open, p.Choices = "", false, nil
-		u.picker.Setting = ""
+		picker.Setting = ""
 	} else {
-		p.Problem = u.attached.feedback.Text
+		p.Problem = attached.feedback.Text
 	}
 }
 

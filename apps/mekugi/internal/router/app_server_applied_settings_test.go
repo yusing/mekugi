@@ -3,6 +3,7 @@ package router
 import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	json "encoding/json/v2"
 	"errors"
@@ -251,7 +252,7 @@ func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T)
 				if !fresh.ResumeEffort || !reflect.DeepEqual(params["config"], map[string]any{"model": "saved-model"}) {
 					t.Fatal("fresh retry promoted transient resume defaults over saved null intent")
 				}
-				if _, err := u.updateSettings(map[string]any{"effort": effort}); err != nil {
+				if _, err := updateSettings(&u.attached, u.shell, &u.Client, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, &u.serviceTiers, u.panes, &u.dirty, u.restoring != nil, u.clock, map[string]any{"effort": effort}); err != nil {
 					t.Fatal(err)
 				}
 				if effort == "medium" {

@@ -38,7 +38,7 @@ func (u *terminalUI) openActivityEdit(view *activityui.View, seq uint64, path st
 	return openActivityEdit(&u.main.attached, u.main.shell, &u.main.detailFiles, u.main.activity, u.Attachment, view, seq, path)
 }
 func (u *terminalUI) copyText(text string) {
-	u.main.copyText(u.Attachment, text)
+	copyText(&u.main.attached.feedback, u.main.shell, u.main.clock, u.Attachment, text)
 }
 func (u *terminalUI) applyInput(effects iter.Seq[terminalsession.InputEffect]) error {
 	return u.main.applyInput(u.Attachment, effects)

@@ -70,7 +70,7 @@ func (u *appServerUI) flushBTW() error {
 
 func (u *appServerUI) applySideUpdate(update sessioncontrol.SideUpdate) {
 	if update.Restore.Text != "" {
-		u.restoreDrafts(update.Restore)
+		restoreDrafts(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, u.Turn, u.clock, update.Restore)
 		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Side question restored ahead of draft · edit before resending", true)
 	}
 	if update.Notice != "" {

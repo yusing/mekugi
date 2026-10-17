@@ -113,14 +113,14 @@ func TestNonTerminalApprovalDecisionsPreserveIdentityAndReason(t *testing.T) {
 	approvalTestCommand(t, u, "second", map[string]any{"availableDecisions": []string{"accept"}})
 	v := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 	intent := sessionpresentation.ApprovalIntent{Version: v.Version, Request: v.Approvals.Approval.ID, Choice: 99, Reason: "explicit reason"}
-	if err := u.decideApproval(intent); err != nil || wire.Len() != 0 || len(u.approvals.calls()) != 2 {
+	if err := decideApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, u.controlObservations, intent); err != nil || wire.Len() != 0 || len(u.approvals.calls()) != 2 {
 		t.Fatal("unoffered choice answered a request")
 	}
 	// This editor is deliberately unrelated to the submitted semantic reason.
 	u.Text = "editor content must not become the reason"
 	intent.Version = u.attached.presentation.View().Version
 	intent.Choice = v.Approvals.Approval.Choices[1].ID
-	if err := u.decideApproval(intent); err != nil {
+	if err := decideApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, u.controlObservations, intent); err != nil {
 		t.Fatal(err)
 	}
 	if got := wire.String(); !strings.Contains(got, `"id":"first"`) || !strings.Contains(got, `"decision":"decline"`) {
@@ -131,19 +131,19 @@ func TestNonTerminalApprovalDecisionsPreserveIdentityAndReason(t *testing.T) {
 		t.Fatalf("reason was reconstructed from terminal state: %s", feedback)
 	}
 	wire.Reset()
-	if err := u.decideApproval(intent); err != nil || wire.Len() != 0 || len(u.approvals.calls()) != 1 {
+	if err := decideApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, u.controlObservations, intent); err != nil || wire.Len() != 0 || len(u.approvals.calls()) != 1 {
 		t.Fatal("resolved identity answered the next request")
 	}
 	v = publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 	intent = sessionpresentation.ApprovalIntent{Version: v.Version, Request: v.Approvals.Approval.ID, Choice: v.Approvals.Approval.Choices[0].ID}
 	u.Thread = "replacement"
 	attachPresentation(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread, &u.review, &u.commits, u.ctx, u.retained, u.changeSource, u.activity != nil)
-	if err := u.decideApproval(intent); err != nil || wire.Len() != 0 || u.attached.feedback.Text != sessionpresentation.ErrStaleIntent.Error() {
+	if err := decideApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, u.controlObservations, intent); err != nil || wire.Len() != 0 || u.attached.feedback.Text != sessionpresentation.ErrStaleIntent.Error() {
 		t.Fatal("retired attachment answered a retained approval")
 	}
 	u.attached.presentation.Attach(sessionpresentation.Thread{ID: u.Thread, Caller: "/root"}, true)
 	intent.Version = publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Version
-	if err := u.decideApproval(intent); err != nil || wire.Len() != 0 || u.attached.feedback.Text != sessionpresentation.ErrReplayIntent.Error() {
+	if err := decideApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, u.controlObservations, intent); err != nil || wire.Len() != 0 || u.attached.feedback.Text != sessionpresentation.ErrReplayIntent.Error() {
 		t.Fatal("replay answered an approval")
 	}
 }
@@ -151,20 +151,20 @@ func TestNonTerminalApprovalDecisionsPreserveIdentityAndReason(t *testing.T) {
 func TestNonTerminalGuardDecisionUsesPublishedChoice(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/work")
 	request := &sessioncontrol.ShellApprovalRequest{Thread: "main", Cwd: "/work", Argv: []string{"git", "push"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})}
-	u.addGuardApproval(request)
+	addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, request)
 	v := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 	a := v.Approvals.Approval
 	if a.Choices[0].ID == a.Choices[1].ID || a.Choices[1].ID == a.Choices[2].ID {
 		t.Fatal("guard choices have ambiguous identities")
 	}
-	if err := u.decideApproval(sessionpresentation.ApprovalIntent{Version: v.Version, Request: a.ID, Choice: a.Choices[2].ID, Reason: "keep local"}); err != nil {
+	if err := decideApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, u.controlObservations, sessionpresentation.ApprovalIntent{Version: v.Version, Request: a.ID, Choice: a.Choices[2].ID, Reason: "keep local"}); err != nil {
 		t.Fatal(err)
 	}
 	if reply := <-request.Reply; reply.OK || reply.Reason != "user denied this command with a reason: keep local" {
 		t.Fatalf("wrong guard decision: %+v", reply)
 	}
 	request = &sessioncontrol.ShellApprovalRequest{Thread: "main", Cwd: "/work", Argv: []string{"git", "push"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})}
-	u.addGuardApproval(request)
+	addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, request)
 	if next := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Approvals.Approval.ID; next == "" || next == a.ID {
 		t.Fatal("retired local request identity was reused")
 	}
@@ -295,7 +295,7 @@ func TestNativeApprovalGuardedWrite(t *testing.T) {
 	}
 	approved, denied, expired := newRequest(), newRequest(), newRequest()
 	for _, request := range []*sessioncontrol.ShellApprovalRequest{approved, denied, expired} {
-		u.addGuardApproval(request)
+		addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, request)
 	}
 	paint := ansi.Strip(questionTestPaint(t, u, 80))
 	for _, want := range []string{"Allow this remote write?", "git push origin main", "Denying fails only this command with exit status 1.", "1. Yes, run it", "2. Yes, for this exact command", "3. No, fail this command"} {
@@ -325,10 +325,10 @@ func TestNativeApprovalGuardedWrite(t *testing.T) {
 		}
 	}
 	withdrawn := newRequest()
-	u.addGuardApproval(withdrawn)
+	addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, withdrawn)
 	withdrawn.Outcome = "withdrawn"
 	close(withdrawn.Done)
-	if !u.expireApprovals() || strings.Contains(approvalTestTranscript(t, u), "Approval") || u.attached.source.Entries[3].Source.Native.Approval != "Withdrawn: the command stopped\nCommand: git push origin main" {
+	if !expireApprovals(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.notifications, u.review, &u.pendingEditReceipts) || strings.Contains(approvalTestTranscript(t, u), "Approval") || u.attached.source.Entries[3].Source.Native.Approval != "Withdrawn: the command stopped\nCommand: git push origin main" {
 		t.Fatalf("transcript = %q", approvalTestTranscript(t, u))
 	}
 }
@@ -356,13 +356,13 @@ func TestNativeApprovalGuardSessionMatchesExactCommandAndWorkdir(t *testing.T) {
 				return &sessioncontrol.ShellApprovalRequest{Cwd: cwd, Kind: kind, Executable: "/bin/" + tool, Argv: argv, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})}
 			}
 			first, queued := request("/work", tool, "push", "origin", "main"), request("/work", tool, "push", "origin", "main")
-			u.addGuardApproval(first)
-			u.addGuardApproval(queued)
+			addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, first)
+			addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, queued)
 			questionTestPaint(t, u, 80)
 			appServerTestKeys(t, u, "2\r")
 			for _, r := range []*sessioncontrol.ShellApprovalRequest{first, queued, request("/work", tool, "push", "origin", "main")} {
 				if r != first && r != queued {
-					u.addGuardApproval(r)
+					addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, r)
 				}
 				if len(r.Reply) != 1 || !(<-r.Reply).OK || len(u.approvals.calls()) != 0 {
 					t.Fatal("exact session approval was not reused")
@@ -371,7 +371,7 @@ func TestNativeApprovalGuardSessionMatchesExactCommandAndWorkdir(t *testing.T) {
 			if tool == "sudo" {
 				password := request("/work", tool, "push", "origin", "main")
 				password.Kind = "sudo-password"
-				u.addGuardApproval(password)
+				addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, password)
 				if len(password.Reply) != 0 || len(u.approvals.calls()) != 0 || len(u.questions.calls()) != 1 {
 					t.Fatal("command session grant answered a password request")
 				}
@@ -384,13 +384,13 @@ func TestNativeApprovalGuardSessionMatchesExactCommandAndWorkdir(t *testing.T) {
 			otherExecutable := request("/work", tool, "push", "origin", "main")
 			otherExecutable.Executable = "/other/" + tool
 			for _, r := range []*sessioncontrol.ShellApprovalRequest{request("/other", tool, "push", "origin", "main"), request("/work", tool, "push", "origin", "other"), request("/work", tool, "push", "origin main"), otherExecutable} {
-				u.addGuardApproval(r)
+				addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, r)
 				if len(r.Reply) != 0 {
 					t.Fatal("session approval broadened to another command or workdir")
 				}
 			}
 			fresh, _ := newAppServerTestUI()
-			fresh.addGuardApproval(request("/work", tool, "push", "origin", "main"))
+			addGuardApproval(&fresh.attached, fresh.shell, &fresh.Client, &fresh.picker, &fresh.Editor, &fresh.questions, &fresh.approvals, fresh.clock, fresh.statusPanel != nil || fresh.resumePicker != nil, fresh.notifications, fresh.review, &fresh.pendingEditReceipts, request("/work", tool, "push", "origin", "main"))
 			if len(fresh.approvals.calls()) != 1 {
 				t.Fatal("approval survived a new UI session")
 			}
@@ -413,7 +413,7 @@ func TestNativeApprovalTypedDenialReachesCommand(t *testing.T) {
 			if request.Executable != shell.real+"/git" {
 				t.Fatalf("resolved executable = %q", request.Executable)
 			}
-			u.addGuardApproval(request)
+			addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, request)
 			openApprovals(&u.approvals, &u.questions, u.attached.conversation, u.shell, &u.picker, &u.Editor, u.Thread)
 			questionTestPaint(t, u, 80)
 			appServerTestKeys(t, u, keys)
@@ -624,10 +624,10 @@ func TestUISnapshotNativeApprovalDock(t *testing.T) {
 			approvalTestCommand(t, u, 1, map[string]any{"reason": "Publish the release branch."})
 		}},
 		{"approval-guarded-write", 80, func(t *testing.T, u *appServerUI) {
-			u.addGuardApproval(&sessioncontrol.ShellApprovalRequest{Thread: "main", Cwd: "/workspace", Argv: []string{"gh", "pr", "merge", "12", "--squash"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})})
+			addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, &sessioncontrol.ShellApprovalRequest{Thread: "main", Cwd: "/workspace", Argv: []string{"gh", "pr", "merge", "12", "--squash"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})})
 		}},
 		{"approval-guarded-denial", 80, func(t *testing.T, u *appServerUI) {
-			u.addGuardApproval(&sessioncontrol.ShellApprovalRequest{Cwd: "/workspace", Argv: []string{"git", "push"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})})
+			addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, &sessioncontrol.ShellApprovalRequest{Cwd: "/workspace", Argv: []string{"git", "push"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})})
 			questionTestPaint(t, u, 80)
 			appServerTestKeys(t, u, "do not publish yet")
 		}},
@@ -686,7 +686,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 				terminalTest(u).Dialog.Paint(make([]string, 18), 80, 18)
 			}
 			if tc.guard {
-				u.addGuardApproval(&sessioncontrol.ShellApprovalRequest{Thread: thread, Item: "cmd", Argv: []string{"git", "push", "origin", "main"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})})
+				addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, &sessioncontrol.ShellApprovalRequest{Thread: thread, Item: "cmd", Argv: []string{"git", "push", "origin", "main"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})})
 			} else {
 				approvalTestCommand(t, u, 7, map[string]any{"threadId": thread, "availableDecisions": []string{"accept", "decline"}})
 			}
@@ -704,7 +704,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 			if tc.name == "guard-approved" {
 				uisnapshot.AssertTerminal(t, "testdata/snapshots/approval-pending-"+tc.name+".txt", append(view.RenderFeed(48, 30).Lines, "plain after approval"), 48)
 			}
-			if err := u.decideApproval(sessionpresentation.ApprovalIntent{Version: publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Version, Request: a.ID, Choice: a.Choices[tc.choice].ID}); err != nil {
+			if err := decideApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, u.controlObservations, sessionpresentation.ApprovalIntent{Version: publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Version, Request: a.ID, Choice: a.Choices[tc.choice].ID}); err != nil {
 				t.Fatal(err)
 			}
 			if !tc.guard && !tc.early {
@@ -799,7 +799,7 @@ func TestUISnapshotNativeAutoApprovalStates(t *testing.T) {
 func TestNativeApprovalWithoutOfferedChoicesStaysBlocked(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.Turn = "turn"
-	u.addApproval(&sessioncontrol.Approval{Approval: &prompt.Approval{ID: "unknown", Title: "Unsupported host decision"}})
+	addApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, &sessioncontrol.Approval{Approval: &prompt.Approval{ID: "unknown", Title: "Unsupported host decision"}})
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "\x1b[A\x1b[B\r")
 	if len(u.approvals.calls()) != 1 || wire.Len() != 0 {
@@ -810,7 +810,7 @@ func TestNativeApprovalWithoutOfferedChoicesStaysBlocked(t *testing.T) {
 func TestGuardApprovalDrainKeepsUnmatchedRequests(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
 	for _, item := range []string{"later", "first", "second"} {
-		u.addGuardApproval(&sessioncontrol.ShellApprovalRequest{Thread: "main", Item: item,
+		addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, &sessioncontrol.ShellApprovalRequest{Thread: "main", Item: item,
 			Argv: []string{"git", "push"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})})
 	}
 	if len(u.approvals.unbound) != 3 {

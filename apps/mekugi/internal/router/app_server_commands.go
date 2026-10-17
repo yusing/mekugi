@@ -109,7 +109,7 @@ func (u *appServerUI) cancelQueuedCompact() bool {
 	if !cancelled {
 		return false
 	}
-	u.restoreDrafts(slices.Concat(u.attached.conversation.Unsent, u.attached.conversation.Queued)...)
+	restoreDrafts(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, u.Turn, u.clock, slices.Concat(u.attached.conversation.Unsent, u.attached.conversation.Queued)...)
 	u.attached.conversation.Unsent, u.attached.conversation.Queued = nil, nil
 	if interruptionIssued {
 		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Compaction cancelled · input restored · interruption already requested", false)

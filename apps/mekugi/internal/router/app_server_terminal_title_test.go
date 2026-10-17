@@ -47,7 +47,7 @@ func TestAppServerTerminalTitleLifecycle(t *testing.T) {
 	if out.Len() != 0 || u.notifications.lastTitle != "Mekugi [ ! ] Action Required project" {
 		t.Fatal("completion cleared a pending async question")
 	}
-	u.resolveQuestionCall(u.questions.calls()[len(u.questions.calls())-1], "answered")
+	resolveQuestionCall(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, u.review, &u.pendingEditReceipts, u.questions.calls()[len(u.questions.calls())-1], "answered")
 	title("Mekugi project")
 	out.Reset()
 	u.notifications.clearTerminalTitle(&u.attached.feedback, u.shell, u.clock)

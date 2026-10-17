@@ -104,7 +104,7 @@ func (u *appServerUI) approvalKey(key string) (bool, error) {
 	if input == nil {
 		return false, nil
 	}
-	return u.applyApprovalInput(*input)
+	return applyApprovalInput(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, u.controlObservations, *input)
 }
 func (u *appServerUI) questionKey(key string) (bool, error) {
 	publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))

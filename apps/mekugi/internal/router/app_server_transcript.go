@@ -61,11 +61,11 @@ func (u *appServerUI) observeMessageQuestions(text observation.TextEvent, item o
 	}
 	changes := u.questions.ObserveMessage(in)
 	if changes.Added != nil {
-		u.bindQuestion(&sessioncontrol.Question{Call: changes.Added}, history)
+		bindQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, &sessioncontrol.Question{Call: changes.Added}, history)
 	}
 	for _, change := range changes.Changed {
 		for _, draft := range change.Discarded {
-			u.saveUnsentAnswer(draft)
+			saveUnsentAnswer(&u.attached, u.shell, u.clock, draft)
 		}
 		c := u.questions.handles[change.Call]
 		if change.Superseded {

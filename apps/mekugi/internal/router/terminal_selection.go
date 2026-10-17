@@ -24,7 +24,7 @@ func (main *appServerUI) openSelectionTarget(u *terminalsession.Attachment, targ
 			if parsed, err := url.Parse(link); err == nil && parsed.Scheme == "file" {
 				link = parsed.Path
 			}
-			main.copyText(u, link)
+			copyText(&main.attached.feedback, main.shell, main.clock, u, link)
 		}
 	case target.Entry != 0:
 		if target.View == main.shell.Transcript && main.openActivityReply(u, target.Entry) {

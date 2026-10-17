@@ -393,7 +393,7 @@ func TestComposerPickerDoesNotMarkCoveredTranscriptPainted(t *testing.T) {
 // These fixtures publish the source transition before consuming terminal state.
 func (u *appServerUI) pickerKey(key string) bool {
 	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
-	return u.applyMenuResult(u.shell.Main.Menu.Key(key))
+	return applyMenuResult(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, &u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, u.panes, &u.dirty, u.ctx, u.skillEnvironment, u.shell.Main.Menu.Key(key))
 }
 func (u *appServerUI) pickerHeight(width int) int {
 	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)

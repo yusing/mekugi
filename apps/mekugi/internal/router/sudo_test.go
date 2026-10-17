@@ -112,7 +112,7 @@ func TestSudoUnlockDialog(t *testing.T) {
 				case <-time.After(10 * time.Second):
 					t.Fatal("sudo did not request approval or a password")
 				}
-				u.addGuardApproval(request)
+				addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, request)
 				questionTestPaint(t, u, 80)
 				for _, key := range keys {
 					appServerTestKeys(t, u, string(key))
@@ -149,12 +149,12 @@ func TestUISnapshotSudoDialogs(t *testing.T) {
 	u.attached.presentation.Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 	u.startSession("main", "/workspace")
 	u.Turn = "turn"
-	u.addGuardApproval(&sessioncontrol.ShellApprovalRequest{Kind: "sudo", Thread: "main", Cwd: "/workspace", Argv: []string{"sudo", "apt", "update"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})})
+	addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, &sessioncontrol.ShellApprovalRequest{Kind: "sudo", Thread: "main", Cwd: "/workspace", Argv: []string{"sudo", "apt", "update"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})})
 	rows, _ := u.testMainFrame(80, 20, 0)
 	assertNativeUISnapshot(t, "native-sudo-approval", rows)
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "1\r")
-	u.addGuardApproval(&sessioncontrol.ShellApprovalRequest{Kind: "sudo-password", Thread: "main", Cwd: "/workspace", Argv: []string{"sudo", "apt", "update"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})})
+	addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, &sessioncontrol.ShellApprovalRequest{Kind: "sudo-password", Thread: "main", Cwd: "/workspace", Argv: []string{"sudo", "apt", "update"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})})
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "1234-secret")
 	rows, _ = u.testMainFrame(80, 20, 0)
@@ -164,12 +164,12 @@ func TestUISnapshotSudoDialogs(t *testing.T) {
 func TestSudoPasswordWithdrawal(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	request := &sessioncontrol.ShellApprovalRequest{Kind: "sudo-password", Thread: "main", Argv: []string{"sudo", "id"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})}
-	u.addGuardApproval(request)
+	addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, request)
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "private-draft")
 	request.Outcome = "withdrawn"
 	close(request.Done)
-	if !u.expireApprovals() || u.questions.activeCall() != nil || len(u.InputHistory) != 0 || len(u.questions.calls()) != 0 {
+	if !expireApprovals(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.notifications, u.review, &u.pendingEditReceipts) || u.questions.activeCall() != nil || len(u.InputHistory) != 0 || len(u.questions.calls()) != 0 {
 		t.Fatal("withdrawal retained a secret draft")
 	}
 	if len(request.Reply) != 0 {
@@ -180,7 +180,7 @@ func TestSudoPasswordWithdrawal(t *testing.T) {
 func TestSudoSecretEditorAndSessionSwitch(t *testing.T) {
 	u, input := newAppServerTestUI()
 	request := &sessioncontrol.ShellApprovalRequest{Kind: "sudo-password", Thread: "main", Argv: []string{"sudo", "id"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})}
-	u.openSudoPassword(&sessioncontrol.Approval{Approval: &prompt.Approval{Thread: "main", Turn: "old-turn", Subject: "sudo id"}, Guard: request})
+	openSudoPassword(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, &sessioncontrol.Approval{Approval: &prompt.Approval{Thread: "main", Turn: "old-turn", Subject: "sudo id"}, Guard: request})
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "fixture-secret")
 	neutral, err := json.Marshal(u.attached.conversation)

@@ -297,7 +297,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 					case update := <-u.titleUpdates:
 						persistSessionTitle(&u.Client, u.titleGenerator, &u.attached.feedback, u.shell, u.clock, &u.dirty, update)
 					case request := <-u.guard.Requests():
-						u.addGuardApproval(request)
+						addGuardApproval(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, request)
 						u.dirty = true
 					case message, ok := <-c.Messages:
 						if !ok {
@@ -334,7 +334,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 						u.flushStreamOutput()
 						u.dirty = startCommitReads(&u.attached, u.commits) || u.dirty
 						u.dirty = paneError(u.attached.source, u.panes.save(u.shell.Shell.Preferences(u.shell.Main), presentationTime(u.clock), false)) || u.dirty
-						if expireNotice(&u.attached.feedback, u.shell, presentationTime(u.clock)) || u.expireApprovals() {
+						if expireNotice(&u.attached.feedback, u.shell, presentationTime(u.clock)) || expireApprovals(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.notifications, u.review, &u.pendingEditReceipts) {
 							u.dirty = true
 						}
 						now := presentationTime(u.clock)
@@ -563,7 +563,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		if method == "thread/list" && u.Startup.Thread == "--last" {
 			return u.resumeLastResponse(m)
 		}
-		if handled, err := u.settingsMessage(method, m); handled || err != nil {
+		if handled, err := settingsMessage(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, &u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, u.panes, &u.dirty, &u.model, &u.reasoningEffort, &u.serviceTier, &u.models, &u.modelsLoading, &u.reasoningKey, &u.statusConfig, method, m); handled || err != nil {
 			return err
 		}
 		if method == "thread/read" && u.applyThreadMetadata(m, response.Owner.metadata) {
@@ -599,9 +599,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				failure = m.Error.Message
 			}
 			if method == "thread/compact/start" {
-				u.applyInputEffects(u.attached.presentation.AcknowledgeCompaction(&u.Live, u.attached.conversation, failure, m.Error != nil))
+				applyInputEffects(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, u.Turn, u.clock, u.attached.presentation.AcknowledgeCompaction(&u.Live, u.attached.conversation, failure, m.Error != nil))
 			} else {
-				u.applyInputEffects(u.attached.presentation.AcknowledgeInterrupt(&u.Live, u.attached.conversation, method, failure, m.Error != nil))
+				applyInputEffects(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, u.Turn, u.clock, u.attached.presentation.AcknowledgeInterrupt(&u.Live, u.attached.conversation, method, failure, m.Error != nil))
 			}
 			return nil
 		}
@@ -610,7 +610,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		}
 		if method == "thread/start" && u.Replacement.Pending() && m.Error != nil {
 			u.Replacement.Finish()
-			u.restoreDrafts(slices.Concat(u.attached.conversation.Unsent, u.attached.conversation.Queued)...)
+			restoreDrafts(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, u.Turn, u.clock, slices.Concat(u.attached.conversation.Unsent, u.attached.conversation.Queued)...)
 			u.attached.conversation.Unsent, u.attached.conversation.Queued = nil, nil
 			u.attached.presentation.Status.SetText("Ready")
 			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Could not clear session: "+m.Error.Message, true)
@@ -795,7 +795,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 							u.dirty = paneError(u.attached.source, u.panes.attachment.Save(presentationTime(u.clock), true)) || u.dirty
 						}
 					}
-					if _, err := u.updateSettings(repair); err != nil {
+					if _, err := updateSettings(&u.attached, u.shell, &u.Client, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, &u.serviceTiers, u.panes, &u.dirty, u.restoring != nil, u.clock, repair); err != nil {
 						return err
 					}
 				}
@@ -811,10 +811,10 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		return nil
 	}
 	u.notifications.resolve(m)
-	if handled, err := u.approvalMessage(m); handled {
+	if handled, err := approvalMessage(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, u.controlObservations, m); handled {
 		return err
 	}
-	if handled, err := u.questionMessage(m); handled {
+	if handled, err := questionMessage(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, m); handled {
 		return err
 	}
 	if len(m.ID) != 0 {
@@ -825,7 +825,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: u.attached.presentation.Status.Text, Observed: presentationTime(u.clock)}}})
 		return nil
 	}
-	if handled, err := u.settingsMessage("", m); handled || err != nil {
+	if handled, err := settingsMessage(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, &u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, u.panes, &u.dirty, &u.model, &u.reasoningEffort, &u.serviceTier, &u.models, &u.modelsLoading, &u.reasoningKey, &u.statusConfig, "", m); handled || err != nil {
 		return err
 	}
 	switch m.Method {
@@ -870,7 +870,7 @@ func (u *appServerUI) observedEvent(method string, p binding.Notification) error
 		}
 		if p.ThreadID == u.Thread && p.Turn.ID == u.Turn {
 			u.Completed(p.Turn.Status == "completed")
-			u.endSyncQuestions(p.Turn.ID)
+			endSyncQuestions(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, u.review, &u.pendingEditReceipts, p.Turn.ID)
 			var failure *string
 			if p.Turn.Error != nil {
 				failure = &p.Turn.Error.Message
@@ -937,7 +937,7 @@ func (u *appServerUI) applyMainKey(next terminalsession.KeyContinuation) (bool, 
 			u.applyPanelAction(*input.Panel)
 			u.dirty = true
 		case input.Menu != nil:
-			if u.applyMenuResult(*input.Menu) {
+			if applyMenuResult(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, &u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, u.panes, &u.dirty, u.ctx, u.skillEnvironment, *input.Menu) {
 				return false, nil
 			}
 		case input.Composer != nil:

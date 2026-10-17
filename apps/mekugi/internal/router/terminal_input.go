@@ -63,7 +63,7 @@ func (main *appServerUI) applyEffect(u *terminalsession.Attachment, effect termi
 	case effect.Resume != nil:
 		return false, m.applyResumeAction(*effect.Resume)
 	case effect.Menu != nil:
-		return !m.applyMenuResult(*effect.Menu), nil
+		return !applyMenuResult(&m.attached, m.shell, &m.Client, &m.picker, &m.Editor, &m.childHistoryState, preferences.Applied{Model: m.model, Effort: m.reasoningEffort, Tier: m.serviceTier}, &m.serviceTiers, m.title, m.backendVersion, m.restoring != nil, m.side, m.clock, &m.questions, &m.approvals, m.statusPanel != nil || m.resumePicker != nil, m.ownedImages, m.panes, &m.dirty, m.ctx, m.skillEnvironment, *effect.Menu), nil
 	case effect.Side != nil:
 		return false, m.applyCloseSide(*effect.Side)
 	case effect.Dialog != nil:

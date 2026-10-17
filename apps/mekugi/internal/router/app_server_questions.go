@@ -6,6 +6,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+	"github.com/yusing/mekugi/contracts/scope"
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
@@ -145,43 +150,43 @@ func moveQuestion(questions *nativeQuestionDock, conversation *conversationmodel
 	questions.Move(step)
 	*editor = resumeQuestion(questions, conversation, terminal, main, questions.Current())
 }
-func (u *appServerUI) addQuestions(c *sessioncontrol.Question, replay bool) {
-	if c.Thread != u.Thread && !c.Local || !u.questions.Add(c.Call, replay) {
+func addQuestions(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, overlay bool, notifications *nativeNotifications, c *sessioncontrol.Question, replay bool) {
+	if c.Thread != control.Thread && !c.Local || !questions.Add(c.Call, replay) {
 		return
 	}
-	u.bindQuestion(c, replay)
+	bindQuestion(attached, terminal, control, picker, editor, questions, approvals, clock, overlay, notifications, c, replay)
 }
 
 // bindQuestion attaches live handles and terminal effects after neutral admission.
-func (u *appServerUI) bindQuestion(c *sessioncontrol.Question, replay bool) {
-	if u.questions.handles == nil {
-		u.questions.handles = make(map[*prompt.Call]*sessioncontrol.Question)
+func bindQuestion(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, overlay bool, notifications *nativeNotifications, c *sessioncontrol.Question, replay bool) {
+	if questions.handles == nil {
+		questions.handles = make(map[*prompt.Call]*sessioncontrol.Question)
 	}
-	u.questions.handles[c.Call] = c
+	questions.handles[c.Call] = c
 	if !replay && !c.Local {
 		if c.Sync {
-			u.notifications.notify(&u.attached.feedback, u.shell, u.clock, "plan-mode-prompt", "Input requested")
+			notifications.notify(&attached.feedback, terminal, clock, "plan-mode-prompt", "Input requested")
 		} else {
-			u.notifications.notify(&u.attached.feedback, u.shell, u.clock, "async-question", "Question pending")
+			notifications.notify(&attached.feedback, terminal, clock, "async-question", "Question pending")
 		}
 	}
-	renderQuestionRecord(&u.attached, u.Turn, presentationTime(u.clock), c)
+	renderQuestionRecord(attached, control.Turn, presentationTime(clock), c)
 	if !replay {
-		autoOpenQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread, u.statusPanel != nil || u.resumePicker != nil)
+		autoOpenQuestions(attached, terminal, picker, editor, questions, approvals, control.Thread, overlay)
 	}
 }
 
-func (u *appServerUI) questionMessage(m appserver.Message) (bool, error) {
+func questionMessage(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, overlay bool, notifications *nativeNotifications, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, m appserver.Message) (bool, error) {
 	if m.Method == "item/tool/requestUserInput" && len(m.ID) > 0 {
 		p, err := binding.DecodeQuestionRequest(m.Params)
 		if err != nil {
 			return true, err
 		}
-		if p.ThreadID != u.Thread {
+		if p.ThreadID != control.Thread {
 			return false, nil
 		}
 		call := conversationbinding.Questions(p.ThreadID, p.TurnID, p.ItemID, m.ID, p.Questions)
-		u.addQuestions(&sessioncontrol.Question{Call: &call, RequestID: slices.Clone(m.ID)}, false)
+		addQuestions(attached, terminal, control, picker, editor, questions, approvals, clock, overlay, notifications, &sessioncontrol.Question{Call: &call, RequestID: slices.Clone(m.ID)}, false)
 		return true, nil
 	}
 	if m.Method == "serverRequest/resolved" {
@@ -189,9 +194,9 @@ func (u *appServerUI) questionMessage(m appserver.Message) (bool, error) {
 		if err != nil {
 			return true, err
 		}
-		for _, c := range u.questions.calls() {
+		for _, c := range questions.calls() {
 			if c.Thread == p.ThreadID && string(c.RequestID) == string(p.RequestID) {
-				u.resolveQuestionCall(c, "answered elsewhere")
+				resolveQuestionCall(attached, terminal, control, editor, questions, approvals, clock, reviewOwner, receipts, c, "answered elsewhere")
 			}
 		}
 		return true, nil
@@ -199,34 +204,34 @@ func (u *appServerUI) questionMessage(m appserver.Message) (bool, error) {
 	return false, nil
 }
 
-func (u *appServerUI) saveUnsentAnswer(d composer.Draft) {
+func saveUnsentAnswer(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, d composer.Draft) {
 	if d.Text != "" {
-		rememberInput(u.attached.conversation, conversationmodel.Input{Draft: d})
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "unsent answer saved to input history", false)
+		rememberInput(attached.conversation, conversationmodel.Input{Draft: d})
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "unsent answer saved to input history", false)
 	}
 }
-func (u *appServerUI) resolveQuestionCall(c *sessioncontrol.Question, outcome string) {
+func resolveQuestionCall(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, c *sessioncontrol.Question, outcome string) {
 	if c.Resolved {
 		return
 	}
-	if u.questions.activeCall() == c {
-		u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
+	if questions.activeCall() == c {
+		(*editor) = hideQuestionEditor(questions, attached.conversation, terminal, (*editor), control.Thread)
 	}
 	for _, d := range c.Resolve(outcome) {
-		u.saveUnsentAnswer(d)
+		saveUnsentAnswer(attached, terminal, clock, d)
 	}
-	discardQuestionEditors(u.shell.Prompts, c)
+	discardQuestionEditors(terminal.Prompts, c)
 	if c.Sudo != nil {
 		if c.CancelPassword() {
-			recordApproval(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, &sessioncontrol.Approval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.Sudo.Item}}, "Denied: sudo authentication canceled")
+			recordApproval(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, &sessioncontrol.Approval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.Sudo.Item}}, "Denied: sudo authentication canceled")
 		}
-		u.questions.Remove(c.Call)
-		delete(u.questions.handles, c.Call)
+		questions.Remove(c.Call)
+		delete(questions.handles, c.Call)
 		return
 	}
-	renderQuestionRecord(&u.attached, u.Turn, presentationTime(u.clock), c)
+	renderQuestionRecord(attached, control.Turn, presentationTime(clock), c)
 	if c.Sync && c.Sent {
-		recordSyncQuestionAnswer(&u.attached, presentationTime(u.clock), c)
+		recordSyncQuestionAnswer(attached, presentationTime(clock), c)
 	}
 }
 
@@ -266,10 +271,10 @@ func recordSyncQuestionAnswer(attached *attachedPresentation, at time.Time, c *s
 		v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: v.LastSeq + 1, Agent: "Main", Kind: "question_reply", Text: strings.Join(answers, "\n"), Observed: at, Native: native}}})
 	}
 }
-func (u *appServerUI) endSyncQuestions(turn string) {
-	for _, c := range slices.Clone(u.questions.calls()) {
+func endSyncQuestions(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, turn string) {
+	for _, c := range slices.Clone(questions.calls()) {
 		if c.Turn == turn && (len(c.RequestID) > 0 || c.Sudo != nil) {
-			u.resolveQuestionCall(c, "interrupted")
+			resolveQuestionCall(attached, terminal, control, editor, questions, approvals, clock, reviewOwner, receipts, c, "interrupted")
 		}
 	}
 }
@@ -311,7 +316,7 @@ func (u *appServerUI) applyQuestionInput(input terminalsession.PromptInput) (boo
 			u.shell.Prompts.Secrets(c.ID).Answers[u.questions.Index] = answer.Answer
 		} else {
 			view := u.attached.presentation.View()
-			if !u.answerQuestion(sessionpresentation.AnswerIntent{Version: view.Version, AnswerInput: prompt.AnswerInput{
+			if !answerQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, sessionpresentation.AnswerIntent{Version: view.Version, AnswerInput: prompt.AnswerInput{
 				Call: c.ID, Question: view.Questions.Call.Questions[u.questions.Index].ID,
 				Choice: q.Selected, Draft: q.Editor.Snapshot.Draft, Skip: action == conversationui.PromptSkip,
 			}}) {
@@ -326,17 +331,17 @@ func (u *appServerUI) applyQuestionInput(input terminalsession.PromptInput) (boo
 	}
 	return true, nil
 }
-func (u *appServerUI) answerQuestion(intent sessionpresentation.AnswerIntent) bool {
+func answerQuestion(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, intent sessionpresentation.AnswerIntent) bool {
 	defer func() {
-		settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+		settlePresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay)
 	}()
-	q, err := u.attached.presentation.AnswerQuestion(intent, u.questions.Questions)
+	q, err := attached.presentation.AnswerQuestion(intent, questions.Questions)
 	if err != nil {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return false
 	}
-	if q == u.questions.Current() {
-		u.Editor = resumeQuestion(&u.questions, u.attached.conversation, u.shell, u.Thread, q)
+	if q == questions.Current() {
+		(*editor) = resumeQuestion(questions, attached.conversation, terminal, control.Thread, q)
 	}
 	return true
 }
