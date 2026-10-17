@@ -246,6 +246,8 @@ func TestNativeQuestionParkedEditorMidTypingAndSecret(t *testing.T) {
 
 func TestNativeQuestionsUseComposedAttachment(t *testing.T) {
 	u, _ := newAppServerTestUI()
+	u.insertDraft("pre-start draft")
+	editor := u.Editor
 	questions := &u.conversation().Questions
 	questionTestSync(t, u, "pending", false)
 	if u.questions.Questions != questions || questions.Count("main") != 1 {
@@ -253,13 +255,16 @@ func TestNativeQuestionsUseComposedAttachment(t *testing.T) {
 	}
 	u.session.start("main", "/workspace")
 	u.ensureShell()
-	if &u.conversation().Questions != questions || u.questionCount() != 1 {
+	if &u.conversation().Questions != questions || u.questionCount() != 1 || editor != &u.conversation().Editor || u.Text != "pre-start draft" {
 		t.Fatal("first host identity replaced pending question state")
 	}
 	if err := u.clearSessionPresentation(); err != nil {
 		t.Fatal(err)
 	}
 	u.Thread = "replacement"
+	if u.Editor == editor || u.Editor != &u.conversation().Editor || u.Text != "pre-start draft" || editor.Text != "" {
+		t.Fatal("replacement did not transfer editable input to its new owner")
+	}
 	if u.questions.Questions == questions || u.questions.Questions != &u.conversation().Questions || u.questionCount() != 0 {
 		t.Fatal("replacement retained the retired question owner")
 	}

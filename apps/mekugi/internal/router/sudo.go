@@ -41,7 +41,7 @@ func (u *appServerUI) submitSudoPassword(c *nativeQuestionCall) error {
 	if reply.OK {
 		outcome = "Password supplied"
 	}
-	u.recordApproval(&nativeApproval{Approval: prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.sudo.item}}, outcome)
+	u.recordApproval(&nativeApproval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.sudo.item}}, outcome)
 	return u.flushInput()
 }
 
@@ -54,7 +54,7 @@ func (u *appServerUI) expireSudoPasswords() bool {
 				outcome = "Withdrawn: the command stopped"
 			}
 			u.resolveQuestionCall(c, "interrupted")
-			u.recordApproval(&nativeApproval{Approval: prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.sudo.item}}, outcome)
+			u.recordApproval(&nativeApproval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.sudo.item}}, outcome)
 			changed = true
 		}
 	}

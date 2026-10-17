@@ -22,14 +22,14 @@ import (
 
 // Live response payloads and command-guard handles stay in this adapter.
 type nativeApproval struct {
-	prompt.Approval
+	*prompt.Approval
 	request   jsontext.Value
 	responses []map[string]any
 	guard     *vcsApproval
 	layout    conversationui.ApprovalLayout
 }
 type nativeApprovalDock struct {
-	prompt.Approvals
+	*prompt.Approvals
 	handles map[*prompt.Approval]*nativeApproval
 	unbound []*nativeApproval
 	painted bool
@@ -97,11 +97,11 @@ func (u *appServerUI) addApproval(a *nativeApproval) {
 	if a.ID == "" {
 		a.ID = fmt.Sprintf("guard/%p", a.guard)
 	}
-	u.approvals.Add(&a.Approval)
+	u.approvals.Add(a.Approval)
 	if u.approvals.handles == nil {
 		u.approvals.handles = make(map[*prompt.Approval]*nativeApproval)
 	}
-	u.approvals.handles[&a.Approval] = a
+	u.approvals.handles[a.Approval] = a
 	u.recordApproval(a, "Pending Approval")
 	u.approvals.AutoOpen = true
 	if a.request == nil {
@@ -122,7 +122,7 @@ func (u *appServerUI) addGuardApproval(request *vcsApproval) {
 	}
 	details := u.approvalDirectory(request.cwd)
 	details = append(details, "Denying fails only this command with exit status 1.")
-	a := &nativeApproval{Approval: prompt.Approval{Thread: request.thread, Item: request.item, Title: "Allow this remote write?", Subject: shellCommandString(request.argv[0], request.argv[1:]), Details: details, Choices: []prompt.Choice{
+	a := &nativeApproval{Approval: &prompt.Approval{Thread: request.thread, Item: request.item, Title: "Allow this remote write?", Subject: shellCommandString(request.argv[0], request.argv[1:]), Details: details, Choices: []prompt.Choice{
 		{Label: "Yes, run it", Approve: true, Outcome: "Approved"},
 		{Label: "Yes, for this exact command and workdir this session", Approve: true, Session: true, Outcome: "Approved for this session"},
 		{Label: "No, fail this command", Deny: true, Outcome: "Denied"},
@@ -162,7 +162,7 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 		}
 		record := conversationbinding.ApprovalReview(review)
 		if record.Item != "" && record.Outcome != "" {
-			u.recordApproval(&nativeApproval{Approval: record}, record.Outcome)
+			u.recordApproval(&nativeApproval{Approval: &record}, record.Outcome)
 		}
 		return true, nil
 	case "serverRequest/resolved":
@@ -229,7 +229,7 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 	if decoded == nil {
 		return false, nil
 	}
-	a := &nativeApproval{Approval: decoded.Record, request: slices.Clone(m.ID), responses: decoded.Responses}
+	a := &nativeApproval{Approval: &decoded.Record, request: slices.Clone(m.ID), responses: decoded.Responses}
 	if decoded.DisplayCommand {
 		a.Subject = appServerDisplayCommand(a.Subject)
 	}
@@ -264,8 +264,8 @@ func (u *appServerUI) endApproval(a *nativeApproval, outcome string) {
 	if wasOpen {
 		u.hideApprovals()
 	}
-	u.approvals.Remove(&a.Approval)
-	delete(u.approvals.handles, &a.Approval)
+	u.approvals.Remove(a.Approval)
+	delete(u.approvals.handles, a.Approval)
 	if wasOpen {
 		u.openApprovals()
 	}
@@ -406,7 +406,7 @@ func (u *appServerUI) openApprovals() bool {
 	u.hideQuestions()
 	if a := u.pendingApprovals()[0]; a.DenialChoice() >= 0 {
 		u.promptColumn = u.cursorColumn
-		u.promptEditor.Open(&u.Editor, a.Editor)
+		u.promptEditor.Open(u.Editor, a.Editor)
 		u.cursorColumn = a.layout.Column
 	}
 	u.approvals.Show()
@@ -419,7 +419,7 @@ func (u *appServerUI) hideApprovals() {
 	if u.approvals.Open && len(u.pendingApprovals()) > 0 {
 		if a := u.pendingApprovals()[0]; a.DenialChoice() >= 0 {
 			a.layout.Column = u.cursorColumn
-			a.Editor = u.promptEditor.Close(&u.Editor)
+			a.Editor = u.promptEditor.Close(u.Editor)
 			u.cursorColumn = u.promptColumn
 		}
 	}
@@ -431,7 +431,7 @@ func (u *appServerUI) approvalKey(key string) (bool, error) {
 		return false, nil
 	}
 	a := u.approvals.handles[u.approvals.Pending[0]]
-	switch a.layout.Key(&a.Approval, key, u.Text == "") {
+	switch a.layout.Key(a.Approval, key, u.Text == "") {
 	case conversationui.PromptPass:
 		return false, nil
 	case conversationui.PromptHide:

@@ -33,6 +33,15 @@ func (u *appServerUI) conversation() *conversationmodel.Session {
 	return u.conversationState.Session(u.session.Scope())
 }
 
+func (u *appServerUI) bindConversation() {
+	m := u.conversation()
+	if u.Editor != &u.secretEditor {
+		u.Editor = &m.Editor
+	}
+	u.promptEditor = &m.PromptEditor
+	u.questions.Questions, u.approvals.Approvals = &m.Questions, &m.Approvals
+}
+
 func (u *appServerUI) pruneInputPayloads() {
 	u.conversation().Retain(append([]string{u.Submission().ID, u.PendingStart()}, u.Steers()...))
 }
@@ -63,7 +72,7 @@ func (u *appServerUI) restoreDrafts(parts ...conversationmodel.Input) {
 		u.hideQuestions()
 		u.restoreDrafts(parts...)
 		u.promptColumn = u.cursorColumn
-		u.promptEditor.Open(&u.Editor, composer.State{})
+		u.promptEditor.Open(u.Editor, composer.State{})
 		u.questions.Active, u.questions.Index = c.Call, index
 		u.resumeQuestion(u.currentQuestion())
 		return

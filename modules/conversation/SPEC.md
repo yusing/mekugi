@@ -265,6 +265,12 @@ with host user input; local edit history remains attachment-lifetime state. One
 attached-session editor owns the active draft and local history; parked editors
 and submitted payloads are detached values.
 
+Conversation's scoped owner holds ordinary editors and pending approval records.
+Successful Main replacement carries editable input, its local history and still-live
+approvals forward without carrying submitted operations or host questions. The
+adapter preserves original approval handles and scopes. Secret editing uses a
+separate adapter-local editor, never the ordinary editor or its history.
+
 Clipboard image and managed-skill acquisition, plus image cleanup, remain with the
 session adapter. Cleanup accounts for active, parked, queued, undoable and
 side-question drafts before reclaiming unsubmitted files. User-owned files are

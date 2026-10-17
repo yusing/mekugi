@@ -1,6 +1,7 @@
 package router
 
 import (
+	json "encoding/json/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -180,9 +181,13 @@ func TestSudoPasswordWithdrawal(t *testing.T) {
 func TestSudoSecretEditorAndSessionSwitch(t *testing.T) {
 	u, input := newAppServerTestUI()
 	request := &vcsApproval{kind: "sudo-password", thread: "main", argv: []string{"sudo", "id"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})}
-	u.openSudoPassword(&nativeApproval{Approval: prompt.Approval{Thread: "main", Turn: "old-turn", Subject: "sudo id"}, guard: request})
+	u.openSudoPassword(&nativeApproval{Approval: &prompt.Approval{Thread: "main", Turn: "old-turn", Subject: "sudo id"}, guard: request})
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "fixture-secret")
+	neutral, err := json.Marshal(u.conversation())
+	if err != nil || strings.Contains(string(neutral), "fixture-secret") || u.Editor == &u.conversation().Editor {
+		t.Fatal("secret editor escaped into Conversation state", err)
+	}
 	questions := u.questions.Questions
 	call := u.activeQuestionCall().Call
 	if questions != &u.conversation().Questions || call.Questions[0].Editor.Snapshot.Text != "" || len(call.Questions[0].Answer) != 0 {
@@ -192,6 +197,9 @@ func TestSudoSecretEditorAndSessionSwitch(t *testing.T) {
 		t.Fatalf("secret editor dispatch: %v", err)
 	}
 	u.hideQuestions()
+	if u.secretEditor.Text != "" || u.Editor != &u.conversation().Editor {
+		t.Fatal("hiding authentication did not return to the ordinary editor")
+	}
 	if err := u.clearSessionPresentation(); err != nil {
 		t.Fatal(err)
 	}

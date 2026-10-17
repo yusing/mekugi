@@ -438,6 +438,31 @@ func TestNativeApprovalQuestionEditorOwnership(t *testing.T) {
 	}
 }
 
+func TestNativeApprovalSurvivesMainReplacement(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	u.insertDraft("main draft")
+	approvalTestCommand(t, u, 7, nil)
+	u.openApprovals()
+	questionTestPaint(t, u, 80)
+	appServerTestKeys(t, u, "wait for review")
+	previous := u.approvals.Approvals
+	approval := u.pendingApprovals()[0].Approval
+	if previous != &u.conversation().Approvals || u.Editor != &u.conversation().Editor {
+		t.Fatal("approval editor bypassed the composed owner")
+	}
+	if err := u.clearSessionPresentation(); err != nil {
+		t.Fatal(err)
+	}
+	u.Thread = "replacement"
+	if u.approvals.Approvals == previous || u.approvals.Approvals != &u.conversation().Approvals || !u.approvals.Open || u.pendingApprovals()[0].Approval != approval || u.Text != "wait for review" {
+		t.Fatal("replacement lost a pending approval or its editor")
+	}
+	appServerTestKeys(t, u, "\r")
+	if !strings.Contains(wire.String(), `"id":7`) || u.Text != "main draft" || len(u.pendingApprovals()) != 0 {
+		t.Fatal("retained approval did not settle its original request and restore Main")
+	}
+}
+
 func TestNativeApprovalWithoutProxyKeepsHostDecisions(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	questionTestMessage(t, u, 7, "item/commandExecution/requestApproval", map[string]any{

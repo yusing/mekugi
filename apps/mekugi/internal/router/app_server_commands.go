@@ -160,7 +160,8 @@ func (u *appServerUI) clearSessionPresentation() error {
 	waiting := u.conversation()
 	u.session.Retire()
 	u.session.Attachment = sessionpresentation.Attachment{}
-	u.conversation().Unsent, u.conversation().Queued = waiting.Unsent, waiting.Queued
+	u.conversation().CarryInput(waiting)
+	u.bindConversation()
 	u.questions = nativeQuestionDock{Questions: &u.conversation().Questions}
 	for _, c := range retainedQuestions {
 		if c.sudo != nil && !c.Resolved {

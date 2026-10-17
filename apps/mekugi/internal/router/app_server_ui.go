@@ -66,10 +66,11 @@ import (
 )
 
 type appServerUI struct {
-	composer.Editor
-	feedback noticepresentation.Model
-	history  *history.Service
-	segments *reports.Service
+	*composer.Editor
+	secretEditor composer.Editor
+	feedback     noticepresentation.Model
+	history      *history.Service
+	segments     *reports.Service
 	sessioncontrol.Live
 	conversationState       *conversationmodel.Service
 	resumeThread, resumeCwd string
@@ -85,7 +86,7 @@ type appServerUI struct {
 	titleUpdates            <-chan sessionTitleUpdate
 	btw                     *appServerBTW
 	notifications           *nativeNotifications
-	promptEditor            prompt.Editor
+	promptEditor            *prompt.Editor
 	promptColumn            *int
 	questions               nativeQuestionDock
 	approvals               nativeApprovalDock

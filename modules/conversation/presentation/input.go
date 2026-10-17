@@ -39,11 +39,25 @@ type Submission struct {
 }
 
 type Session struct {
+	Editor         composer.Editor
+	PromptEditor   prompt.Editor
 	Questions      prompt.Questions
+	Approvals      prompt.Approvals
 	Unsent, Queued []Input
 	Submitted      map[string]Submission
 	Shell          Input
 	Side           *SideAnswer
+}
+
+// CarryInput transfers locally editable state and still-live approvals during
+// Main replacement. Host questions and submitted operations stay retired.
+// Source: apps/mekugi/internal/router/app_server_commands.go:126:192@[59a0d2b9]
+func (m *Session) CarryInput(previous *Session) {
+	m.Editor, previous.Editor = previous.Editor, composer.Editor{}
+	m.PromptEditor, previous.PromptEditor = previous.PromptEditor, prompt.Editor{}
+	m.Approvals, previous.Approvals = previous.Approvals, prompt.Approvals{}
+	m.Unsent, previous.Unsent = previous.Unsent, nil
+	m.Queued, previous.Queued = previous.Queued, nil
 }
 
 func Drafts(parts []Input) []composer.Draft {

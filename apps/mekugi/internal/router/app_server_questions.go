@@ -76,7 +76,10 @@ func (u *appServerUI) parkQuestion(q *prompt.Question) {
 	}
 }
 func (u *appServerUI) resumeQuestion(q *prompt.Question) {
+	u.Editor = &u.conversation().Editor
+	u.secretEditor = composer.Editor{}
 	if q.IsSecret {
+		u.Editor = &u.secretEditor
 		u.loadQuestionEditor(u.activeQuestionCall().secrets[u.questions.Index])
 		return
 	}
@@ -132,7 +135,7 @@ func (u *appServerUI) openQuestionCall(c *nativeQuestionCall) {
 	u.hideApprovals()
 	u.questions.painted = false
 	u.promptColumn = u.cursorColumn
-	u.promptEditor.Open(&u.Editor, composer.State{})
+	u.promptEditor.Open(u.Editor, composer.State{})
 	if !u.questions.Open(c.Call) {
 		return
 	}
@@ -150,7 +153,9 @@ func (u *appServerUI) focusPrompt() {
 func (u *appServerUI) hideQuestions() {
 	if q := u.currentQuestion(); q != nil {
 		u.parkQuestion(q)
-		u.promptEditor.Close(&u.Editor)
+		u.Editor = &u.conversation().Editor
+		u.secretEditor = composer.Editor{}
+		u.promptEditor.Close(u.Editor)
 		u.cursorColumn = u.promptColumn
 		u.questions.Hide()
 	}
@@ -237,7 +242,7 @@ func (u *appServerUI) resolveQuestionCall(c *nativeQuestionCall, outcome string)
 	if c.sudo != nil {
 		if !c.Sent && !c.sudo.finished() {
 			c.sudo.reply <- shellapproval.Reply{Reason: "sudo authentication canceled"}
-			u.recordApproval(&nativeApproval{Approval: prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.sudo.item}}, "Denied: sudo authentication canceled")
+			u.recordApproval(&nativeApproval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.sudo.item}}, "Denied: sudo authentication canceled")
 		}
 		u.questions.Remove(c.Call)
 		delete(u.questions.handles, c.Call)

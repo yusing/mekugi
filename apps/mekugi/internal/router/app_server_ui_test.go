@@ -469,7 +469,7 @@ func appServerTestFeatures(u *appServerUI) *appServerUI {
 	observations := conversationbinding.Codex.Observation(u.conversationState)
 	u.session.observations = &observations
 	u.session.transcript = observations.NewTranscript(u.session.Scope())
-	u.questions.Questions = &u.conversation().Questions
+	u.bindConversation()
 	return u
 }
 

@@ -12,7 +12,7 @@ import (
 
 func (u *appServerUI) rememberInput(draft conversationmodel.Input) {
 	if draft.Question == nil && len(binding.QuestionReplies(draft.Text)) == 0 {
-		u.Editor.Remember(draft.Draft)
+		u.conversation().Editor.Remember(draft.Draft)
 	}
 }
 func (u *appServerUI) recallInput(backward bool) {
@@ -76,7 +76,7 @@ func (u *appServerUI) pruneDraftImages() {
 			}
 		}
 	}
-	for _, history := range [][]composer.Draft{u.InputHistory, {u.HistoryDraft}, conversationmodel.Drafts(u.conversation().Unsent), conversationmodel.Drafts(u.conversation().Queued)} {
+	for _, history := range [][]composer.Draft{u.conversation().Editor.InputHistory, {u.HistoryDraft}, conversationmodel.Drafts(u.conversation().Unsent), conversationmodel.Drafts(u.conversation().Queued)} {
 		for _, snapshot := range history {
 			for _, path := range snapshot.AnswerImages {
 				used[path] = true
