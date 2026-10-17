@@ -199,7 +199,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 	u.execTrack = integration.execTrack
 	u.guard = integration.guard
 	if u.guard != nil {
-		u.approvals.initGuards(integration.guards)
+		u.approvals.grants = sessioncontrol.NewApprovalGrants(integration.guards)
 	}
 	if integration.skillsManager {
 		u.skillEnvironment = cmd.Environ()
@@ -1251,7 +1251,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalsess
 		in.Question, in.Secret, in.QuestionLayout = true, q.IsSecret, u.questionLayout(q)
 	}
 	if presentation.Approvals.Count > 0 {
-		in.ApprovalLayout = &u.approvals.handles[u.approvals.Pending[0]].layout
+		in.ApprovalLayout = u.approvals.layout(u.approvals.handles[u.approvals.Pending[0]])
 		in.ApprovalAgent = u.approvalAgent(presentation.Approvals.Approval.Thread)
 	}
 	if b := u.btw; b != nil {

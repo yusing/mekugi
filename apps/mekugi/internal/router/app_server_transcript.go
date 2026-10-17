@@ -4,6 +4,8 @@ import (
 	"encoding/json/jsontext"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/observation"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
@@ -145,7 +147,7 @@ func (u *appServerUI) observeMessageQuestions(text observation.TextEvent, item o
 	}
 	changes := u.questions.ObserveMessage(in)
 	if changes.Added != nil {
-		u.bindQuestion(&nativeQuestionCall{Call: changes.Added}, history)
+		u.bindQuestion(&nativeQuestionCall{Question: &sessioncontrol.Question{Call: changes.Added}}, history)
 	}
 	for _, change := range changes.Changed {
 		for _, draft := range change.Discarded {

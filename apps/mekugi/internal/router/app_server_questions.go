@@ -1,7 +1,6 @@
 package router
 
 import (
-	"encoding/json/jsontext"
 	"fmt"
 	"slices"
 	"strings"
@@ -12,7 +11,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
@@ -28,9 +26,7 @@ import (
 )
 
 type nativeQuestionCall struct {
-	*prompt.Call
-	request jsontext.Value
-	sudo    *sessioncontrol.ShellApprovalRequest
+	*sessioncontrol.Question
 	// Secret state remains invocation-local and is never part of a neutral view.
 	secrets       map[int]questionEditor
 	secretAnswers map[int][]string
@@ -208,7 +204,7 @@ func (u *appServerUI) questionMessage(m appserver.Message) (bool, error) {
 			return false, nil
 		}
 		call := conversationbinding.Questions(p.ThreadID, p.TurnID, p.ItemID, m.ID, p.Questions)
-		u.addQuestions(&nativeQuestionCall{Call: &call, request: slices.Clone(m.ID)}, false)
+		u.addQuestions(&nativeQuestionCall{Question: &sessioncontrol.Question{Call: &call, RequestID: slices.Clone(m.ID)}}, false)
 		return true, nil
 	}
 	if m.Method == "serverRequest/resolved" {
@@ -217,7 +213,7 @@ func (u *appServerUI) questionMessage(m appserver.Message) (bool, error) {
 			return true, err
 		}
 		for _, c := range u.questionCalls() {
-			if c.Thread == p.ThreadID && string(c.request) == string(p.RequestID) {
+			if c.Thread == p.ThreadID && string(c.RequestID) == string(p.RequestID) {
 				u.resolveQuestionCall(c, "answered elsewhere")
 			}
 		}
@@ -243,10 +239,9 @@ func (u *appServerUI) resolveQuestionCall(c *nativeQuestionCall, outcome string)
 		u.saveUnsentAnswer(d)
 	}
 	u.discardQuestionEditors(c)
-	if c.sudo != nil {
-		if !c.Sent && !c.sudo.Finished() {
-			c.sudo.Reply <- shellapproval.Reply{Reason: "sudo authentication canceled"}
-			u.recordApproval(&nativeApproval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.sudo.Item}}, "Denied: sudo authentication canceled")
+	if c.Sudo != nil {
+		if c.CancelPassword() {
+			u.recordApproval(&sessioncontrol.Approval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.Sudo.Item}}, "Denied: sudo authentication canceled")
 		}
 		u.questions.Remove(c.Call)
 		delete(u.questions.handles, c.Call)
@@ -279,12 +274,12 @@ func (u *appServerUI) recordSyncQuestionAnswer(c *nativeQuestionCall) {
 		if v == nil {
 			continue
 		}
-		native := &liveActivityNativeItem{thread: c.Thread, turn: c.Turn, item: "question-answer/" + string(c.request), phase: "item/completed"}
+		native := &liveActivityNativeItem{thread: c.Thread, turn: c.Turn, item: "question-answer/" + string(c.RequestID), phase: "item/completed"}
 		for _, previous := range slices.Backward(v.Entries) {
 			if previous.Source.native == nil || previous.Source.native.thread != c.Thread {
 				continue
 			}
-			if previous.Source.Kind == "question" && previous.Source.native.item == "question/"+string(c.request) {
+			if previous.Source.Kind == "question" && previous.Source.native.item == "question/"+string(c.RequestID) {
 				native.question = previous.Source.Seq
 			}
 			if native.replySource == "" && previous.Source.Agent == "You" && previous.Source.native.turn == c.Turn {
@@ -296,7 +291,7 @@ func (u *appServerUI) recordSyncQuestionAnswer(c *nativeQuestionCall) {
 }
 func (u *appServerUI) endSyncQuestions(turn string) {
 	for _, c := range slices.Clone(u.questionCalls()) {
-		if c.Turn == turn && (len(c.request) > 0 || c.sudo != nil) {
+		if c.Turn == turn && (len(c.RequestID) > 0 || c.Sudo != nil) {
 			u.resolveQuestionCall(c, "interrupted")
 		}
 	}
@@ -379,12 +374,12 @@ func (u *appServerUI) submitQuestions(intent sessionpresentation.QuestionSubmitI
 		u.questions.AutoOpen = true
 		u.autoOpenQuestions()
 	}()
-	if c.sudo != nil {
+	if c.Sudo != nil {
 		return u.submitSudoPassword(c)
 	}
 	attached := questionAnswerAttachments(c.Call, c.secrets, c.secretAnswers)
-	if len(c.request) > 0 {
-		if err := u.requests.Respond(c.request, conversationbinding.QuestionResponse(c.Call, c.secretAnswers)); err != nil {
+	if len(c.RequestID) > 0 {
+		if err := c.Answer(u.requests, c.secretAnswers); err != nil {
 			return err
 		}
 		if u.questions.Active == c.Call {
@@ -498,7 +493,7 @@ func pendingQuestionReplies(parts []conversationmodel.Input) []conversationmodel
 	return pending
 }
 func (u *appServerUI) renderQuestionRecord(c *nativeQuestionCall) {
-	if c.sudo != nil {
+	if c.Sudo != nil {
 		return
 	}
 	states := []string{}
@@ -530,13 +525,13 @@ func (u *appServerUI) renderQuestionRecord(c *nativeQuestionCall) {
 	if len(c.Questions) == 1 {
 		label = strings.Replace(label, "questions", "question", 1)
 	}
-	if len(c.request) == 0 && !c.Resolved && u.Turn == "" {
+	if len(c.RequestID) == 0 && !c.Resolved && u.Turn == "" {
 		label += " · answer starts a new turn"
 	}
 	text := label + "\n" + strings.Join(body, "\n\n")
 	id := c.Item
-	if len(c.request) > 0 {
-		id = "question/" + string(c.request)
+	if len(c.RequestID) > 0 {
+		id = "question/" + string(c.RequestID)
 	}
 	for _, v := range []*activityAdapter{u.view, u.agents} {
 		if v == nil {

@@ -6,11 +6,16 @@ import (
 	"encoding/json/jsontext"
 )
 
+// Responder preserves the host-owned identity of an admitted server request.
+type Responder interface {
+	Respond(id jsontext.Value, result any) error
+}
+
 // Transport is the app-server's existing request and response surface.
 type Transport interface {
+	Responder
 	Initialize() (string, error)
 	Send(method string, params any, request bool) (string, error)
-	Respond(id jsontext.Value, result any) error
 }
 
 // Request retains only routing context. Scope identifies operations retired

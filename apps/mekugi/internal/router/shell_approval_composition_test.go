@@ -50,7 +50,7 @@ func TestShellApprovalCompositionSocket(t *testing.T) {
 			} {
 				t.Run(request.name, func(t *testing.T) {
 					u, _ := newAppServerTestUI()
-					u.approvals.initGuards(guards)
+					u.approvals.grants = sessioncontrol.NewApprovalGrants(guards)
 					conn, err := net.DialTimeout("unix", path, 5*time.Second)
 					if err != nil {
 						t.Fatal(err)

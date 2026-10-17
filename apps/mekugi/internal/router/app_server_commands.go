@@ -165,7 +165,7 @@ func (u *appServerUI) clearSessionPresentation() error {
 	u.bindConversation()
 	u.questions = nativeQuestionDock{Questions: &u.conversation().Questions}
 	for _, c := range retainedQuestions {
-		if c.sudo != nil && !c.Resolved {
+		if c.Sudo != nil && !c.Resolved {
 			u.addQuestions(c, true)
 		}
 	}

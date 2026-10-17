@@ -10,7 +10,6 @@ import (
 	json "encoding/json/v2"
 	"fmt"
 	"slices"
-	"strings"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
@@ -18,7 +17,6 @@ import (
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
-	"github.com/yusing/mekugi/contracts/approval"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
@@ -26,41 +24,32 @@ import (
 	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
 )
 
-// Live response payloads and command-guard handles stay in this adapter.
-type nativeApproval struct {
-	*prompt.Approval
-	request   jsontext.Value
-	responses []map[string]any
-	guard     *sessioncontrol.ShellApprovalRequest
-	layout    conversationui.ApprovalLayout
-}
 type nativeApprovalDock struct {
 	*prompt.Approvals
-	handles map[*prompt.Approval]*nativeApproval
-	unbound []*nativeApproval
+	handles map[*prompt.Approval]*sessioncontrol.Approval
+	unbound []*sessioncontrol.Approval
 	painted bool
 	patches map[string][]string
-	grants  map[binding.ShellGuardKind]binding.CommandGrants
+	grants  sessioncontrol.ApprovalGrants
+	layouts map[*prompt.Approval]*conversationui.ApprovalLayout
 }
 
-func (u *appServerUI) pendingApprovals() []*nativeApproval {
-	result := make([]*nativeApproval, 0, len(u.approvals.Pending))
+func (u *appServerUI) pendingApprovals() []*sessioncontrol.Approval {
+	result := make([]*sessioncontrol.Approval, 0, len(u.approvals.Pending))
 	for _, a := range u.approvals.Pending {
 		result = append(result, u.approvals.handles[a])
 	}
 	return result
 }
 
-func (d *nativeApprovalDock) initGuards(guards []binding.ShellApproval) {
-	d.grants = make(map[binding.ShellGuardKind]binding.CommandGrants, len(guards))
-	for _, guard := range guards {
-		d.grants[guard.Kind] = guard.NewSession()
+func (d *nativeApprovalDock) layout(a *sessioncontrol.Approval) *conversationui.ApprovalLayout {
+	if d.layouts == nil {
+		d.layouts = make(map[*prompt.Approval]*conversationui.ApprovalLayout)
 	}
-}
-
-func guardApprovalIdentity(request *sessioncontrol.ShellApprovalRequest) approval.Command {
-	command, _ := json.Marshal(request.Argv)
-	return approval.Command{Directory: request.Cwd, Executable: request.Executable, Arguments: string(command)}
+	if d.layouts[a.Approval] == nil {
+		d.layouts[a.Approval] = new(conversationui.ApprovalLayout)
+	}
+	return d.layouts[a.Approval]
 }
 
 // threadPermissions keeps --yolo's policy on thread requests. Approval mode
@@ -91,15 +80,15 @@ func (u *appServerUI) approvalDirectory(cwd string) []string {
 	return nil
 }
 
-func (u *appServerUI) addApproval(a *nativeApproval) {
+func (u *appServerUI) addApproval(a *sessioncontrol.Approval) {
 	u.approvals.Add(a.Approval)
 	if u.approvals.handles == nil {
-		u.approvals.handles = make(map[*prompt.Approval]*nativeApproval)
+		u.approvals.handles = make(map[*prompt.Approval]*sessioncontrol.Approval)
 	}
 	u.approvals.handles[a.Approval] = a
 	u.recordApproval(a, "Pending Approval")
 	u.approvals.AutoOpen = true
-	if a.request == nil {
+	if a.RequestID == nil {
 		u.notify("approval-requested", "Approval requested")
 	}
 	u.autoOpenApprovals()
@@ -109,20 +98,18 @@ func (u *appServerUI) addGuardApproval(request *sessioncontrol.ShellApprovalRequ
 	if request.Finished() {
 		return
 	}
-	kind, known := binding.GuardForRequest(request.Kind)
-	grants := u.approvals.grants[kind]
-	if !known || grants == nil {
+	if !u.approvals.grants.Available(request) {
 		request.Reply <- shellapproval.Reply{Reason: "approval module is not active"}
 		return
 	}
 	details := u.approvalDirectory(request.Cwd)
 	details = append(details, "Denying fails only this command with exit status 1.")
-	a := &nativeApproval{Approval: &prompt.Approval{Thread: request.Thread, Item: request.Item, Title: "Allow this remote write?", Subject: shellCommandString(request.Argv[0], request.Argv[1:]), Details: details, Choices: []prompt.Choice{
+	a := &sessioncontrol.Approval{Approval: &prompt.Approval{Thread: request.Thread, Item: request.Item, Title: "Allow this remote write?", Subject: shellCommandString(request.Argv[0], request.Argv[1:]), Details: details, Choices: []prompt.Choice{
 		{ID: 0, Label: "Yes, run it", Approve: true, Outcome: "Approved"},
 		{ID: 1, Label: "Yes, for this exact command and workdir this session", Approve: true, Session: true, Outcome: "Approved for this session"},
 		{ID: 2, Label: "No, fail this command", Deny: true, Outcome: "Denied"},
 	}},
-		guard: request}
+		Guard: request}
 	if request.Kind == "sudo" {
 		a.Title = "Allow this sudo command?"
 	}
@@ -138,7 +125,7 @@ func (u *appServerUI) addGuardApproval(request *sessioncontrol.ShellApprovalRequ
 		u.openSudoPassword(a)
 		return
 	}
-	if grants.Allows(guardApprovalIdentity(request)) {
+	if u.approvals.grants.Allows(request) {
 		u.recordApproval(a, "Approved for this session")
 		request.Reply <- shellapproval.Reply{OK: true}
 		return
@@ -157,7 +144,7 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 		}
 		record := conversationbinding.ApprovalReview(review)
 		if record.Item != "" && record.Outcome != "" {
-			u.recordApproval(&nativeApproval{Approval: &record}, record.Outcome)
+			u.recordApproval(&sessioncontrol.Approval{Approval: &record}, record.Outcome)
 		}
 		return true, nil
 	case "serverRequest/resolved":
@@ -167,7 +154,7 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 		}
 		if json.Unmarshal(m.Params, &p) == nil {
 			for _, a := range slices.Clone(u.pendingApprovals()) {
-				if a.request != nil && string(a.request) == string(p.RequestID) && (p.ThreadID == "" || a.Thread == p.ThreadID) {
+				if a.RequestID != nil && string(a.RequestID) == string(p.RequestID) && (p.ThreadID == "" || a.Thread == p.ThreadID) {
 					u.endApproval(a, "Resolved elsewhere")
 				}
 			}
@@ -180,7 +167,7 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 		}
 		if json.Unmarshal(m.Params, &p) == nil {
 			for _, a := range slices.Clone(u.pendingApprovals()) {
-				if a.request != nil && a.Thread == p.ThreadID && a.Turn == p.Turn.ID {
+				if a.RequestID != nil && a.Thread == p.ThreadID && a.Turn == p.Turn.ID {
 					u.endApproval(a, "Turn ended before an answer")
 				}
 			}
@@ -226,7 +213,7 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 	if decoded == nil {
 		return false, nil
 	}
-	a := &nativeApproval{Approval: &decoded.Record, request: slices.Clone(m.ID), responses: decoded.Responses}
+	a := &sessioncontrol.Approval{Approval: &decoded.Record, RequestID: slices.Clone(m.ID), Responses: decoded.Responses}
 	if decoded.DisplayCommand {
 		a.Subject = appServerDisplayCommand(a.Subject)
 	}
@@ -239,9 +226,9 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 func (u *appServerUI) expireApprovals() bool {
 	changed := u.expireSudoPasswords()
 	for _, a := range slices.Clone(u.pendingApprovals()) {
-		if a.guard != nil && a.guard.Finished() {
+		if a.Guard != nil && a.Guard.Finished() {
 			outcome := "Auto Denied: no answer within 5 minutes"
-			if a.guard.Outcome == "withdrawn" {
+			if a.Guard.Outcome == "withdrawn" {
 				outcome = "Withdrawn: the command stopped"
 			}
 			u.endApproval(a, outcome)
@@ -252,7 +239,7 @@ func (u *appServerUI) expireApprovals() bool {
 }
 
 // endApproval removes a pending approval and records how it ended.
-func (u *appServerUI) endApproval(a *nativeApproval, outcome string) {
+func (u *appServerUI) endApproval(a *sessioncontrol.Approval, outcome string) {
 	index := slices.Index(u.pendingApprovals(), a)
 	if index < 0 {
 		return
@@ -263,11 +250,12 @@ func (u *appServerUI) endApproval(a *nativeApproval, outcome string) {
 	}
 	u.approvals.Remove(a.Approval)
 	delete(u.approvals.handles, a.Approval)
+	delete(u.approvals.layouts, a.Approval)
 	if wasOpen {
 		u.openApprovals()
 	}
-	if a.request != nil && u.notifications != nil {
-		delete(u.notifications.blocked, string(a.request))
+	if a.RequestID != nil && u.notifications != nil {
+		delete(u.notifications.blocked, string(a.RequestID))
 	}
 	u.recordApproval(a, outcome)
 }
@@ -294,12 +282,12 @@ func (u *appServerUI) approvalItem(thread, turn, item string) *liveActivityNativ
 }
 
 // recordApproval updates the host item, never a separate approval event.
-func (u *appServerUI) recordApproval(a *nativeApproval, outcome string) {
+func (u *appServerUI) recordApproval(a *sessioncontrol.Approval, outcome string) {
 	if a.Item == "" {
 		return
 	}
-	if (a.Subject == "" || a.guard != nil) && u.approvalItem(a.Thread, a.Turn, a.Item) == nil {
-		if a.guard != nil {
+	if (a.Subject == "" || a.Guard != nil) && u.approvalItem(a.Thread, a.Turn, a.Item) == nil {
+		if a.Guard != nil {
 			a.Outcome = outcome
 			if !slices.Contains(u.approvals.unbound, a) {
 				u.approvals.unbound = append(u.approvals.unbound, a)
@@ -307,7 +295,7 @@ func (u *appServerUI) recordApproval(a *nativeApproval, outcome string) {
 		}
 		return
 	}
-	if a.guard != nil {
+	if a.Guard != nil {
 		owner := u.approvalItem(a.Thread, a.Turn, a.Item)
 		a.Thread, a.Turn = owner.thread, owner.turn
 		outcome += "\nCommand: " + a.Subject
@@ -348,42 +336,19 @@ func (u *appServerUI) decideApproval(intent sessionpresentation.ApprovalIntent) 
 
 // applyApproval also settles decisions covered by an existing exact-command
 // grant; those carry their admitted authority rather than a new renderer intent.
-func (u *appServerUI) applyApproval(a *nativeApproval, choice prompt.Choice, reason string) error {
-	reason = strings.TrimSpace(reason)
-	feedback := "user denied this command without a reason"
-	if reason != "" {
-		feedback = "user denied this command with a reason: " + reason
+func (u *appServerUI) applyApproval(a *sessioncontrol.Approval, choice prompt.Choice, reason string) error {
+	outcome, delivered, err := a.Decide(choice, reason, u.approvals.grants, u.requests, u.controlObservations)
+	if err != nil {
+		return err
 	}
-	if choice.Deny && reason != "" {
-		choice.Outcome += ": " + reason
+	if !delivered {
+		u.expireApprovals()
+		return nil
 	}
-	if a.guard != nil {
-		if a.guard.Finished() {
-			u.expireApprovals() // The command already has its answer.
-			return nil
-		}
-		reply := shellapproval.Reply{OK: choice.Approve}
-		if !choice.Approve {
-			reply.Reason = feedback
-		} else if choice.Session {
-			kind, _ := binding.GuardForRequest(a.guard.Kind)
-			u.approvals.grants[kind].Allow(guardApprovalIdentity(a.guard))
-		}
-		a.guard.Reply <- reply
-	} else {
-		answer := func() error { return u.requests.Respond(a.request, a.responses[choice.ID]) }
-		if choice.Deny && (u.controlObservations != nil || reason != "") {
-			if err := u.controlObservations.AnswerWithFeedback(a.Thread, a.Turn, "Command: "+a.Subject+"\n"+feedback, answer); err != nil {
-				return err
-			}
-		} else if err := answer(); err != nil {
-			return err
-		}
-	}
-	u.endApproval(a, choice.Outcome)
-	if a.guard != nil && choice.Approve && choice.Session {
+	u.endApproval(a, outcome)
+	if a.Guard != nil && choice.Approve && choice.Session {
 		for _, pending := range slices.Clone(u.pendingApprovals()) {
-			if pending.guard != nil && pending.guard.Kind == a.guard.Kind && guardApprovalIdentity(pending.guard) == guardApprovalIdentity(a.guard) {
+			if a.SameCommand(pending) {
 				if err := u.applyApproval(pending, prompt.Choice{Approve: true, Outcome: "Approved for this session"}, ""); err != nil {
 					return err
 				}
@@ -412,7 +377,7 @@ func (u *appServerUI) openApprovals() bool {
 	if a := u.pendingApprovals()[0]; a.DenialChoice() >= 0 {
 		u.mainView.PromptColumn = u.mainView.CursorColumn
 		u.promptEditor.Open(u.Editor, a.Editor)
-		u.mainView.CursorColumn = a.layout.Column
+		u.mainView.CursorColumn = u.approvals.layout(a).Column
 	}
 	u.approvals.Show()
 	u.approvals.painted = false
@@ -423,7 +388,7 @@ func (u *appServerUI) openApprovals() bool {
 func (u *appServerUI) hideApprovals() {
 	if u.approvals.Open && len(u.pendingApprovals()) > 0 {
 		if a := u.pendingApprovals()[0]; a.DenialChoice() >= 0 {
-			a.layout.Column = u.mainView.CursorColumn
+			u.approvals.layout(a).Column = u.mainView.CursorColumn
 			a.Editor = u.promptEditor.Close(u.Editor)
 			u.mainView.CursorColumn = u.mainView.PromptColumn
 		}
@@ -436,7 +401,7 @@ func (u *appServerUI) approvalKey(key string) (bool, error) {
 		return false, nil
 	}
 	a := u.approvals.handles[u.approvals.Pending[0]]
-	switch a.layout.Key(a.Approval, key, u.Text == "") {
+	switch u.approvals.layout(a).Key(a.Approval, key, u.Text == "") {
 	case conversationui.PromptPass:
 		return false, nil
 	case conversationui.PromptHide:

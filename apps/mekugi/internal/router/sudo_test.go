@@ -180,7 +180,7 @@ func TestSudoPasswordWithdrawal(t *testing.T) {
 func TestSudoSecretEditorAndSessionSwitch(t *testing.T) {
 	u, input := newAppServerTestUI()
 	request := &sessioncontrol.ShellApprovalRequest{Kind: "sudo-password", Thread: "main", Argv: []string{"sudo", "id"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})}
-	u.openSudoPassword(&nativeApproval{Approval: &prompt.Approval{Thread: "main", Turn: "old-turn", Subject: "sudo id"}, guard: request})
+	u.openSudoPassword(&sessioncontrol.Approval{Approval: &prompt.Approval{Thread: "main", Turn: "old-turn", Subject: "sudo id"}, Guard: request})
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "fixture-secret")
 	neutral, err := json.Marshal(u.conversation())
