@@ -30,7 +30,7 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 			u.view.Conversation = true
 			activity := sessioncontrol.NewAudience(nil)
 			activity.Attach("main")
-			proxy := &mekugiProxy{activity: activity}
+			proxy := &observationFixture{activity: activity}
 			setTestAppServerIntegration(u, proxy)
 			thread, view, focus := "main", u.view, 0
 			if child {
@@ -53,7 +53,7 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 			original := bytes.Clone(input)
 			request := &codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": input}}
 			for range 2 {
-				proxy.observeCodeModeFailures(thread, "exec", request, nil)
+				observeActivityRequest(t, proxy, thread, map[bool]string{false:"/root",true:"/root/worker"}[thread!="main"], request)
 				u.applyObservedActivity()
 			}
 			if !bytes.Equal(original, request.Fields["input"]) {

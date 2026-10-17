@@ -169,9 +169,7 @@ func TestRouterFaultNoticeDeduplicatesWithinTurnButSeparatesTurns(t *testing.T) 
 			Phase: "transform",
 		}
 	}
-	fault := translationDiagnostic(requestexecution.StaticError(
-		"inconsistent_stock_call", "the upstream completed an inconsistent stock tool call"),
-		"mekugi_sse", "Mekugi response translation failed while processing an upstream streaming event")
+	fault := &requestexecution.DiagnosticError{Code: "mekugi_sse:inconsistent_stock_call", Summary: "the upstream completed an inconsistent stock tool call", Distinct: true, Cause: requestexecution.StaticError("inconsistent_stock_call", "the upstream completed an inconsistent stock tool call")}
 
 	first := makeFault("turn-one")
 	firstResult := issues.Report(first, fault)

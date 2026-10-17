@@ -6,7 +6,13 @@ import (
 	"errors"
 	"path/filepath"
 
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
+
+	"maps"
+	"slices"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/recordtransactions"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/persistence"
@@ -22,7 +28,7 @@ type replayRecord struct {
 	CallID       string
 	Commentary   bool
 	CaptureOrder uint64 `json:",omitzero"`
-	History      mekugiHistory
+	History      legacycall.History
 	Snapshots    *legacycall.Snapshots `json:",omitempty"`
 }
 
@@ -31,30 +37,23 @@ func (s *mekugiReplayStore) read(workspace, callID string, commentary bool) (rep
 	if err != nil || !found {
 		return replayRecord{}, found, err
 	}
-	return replayRecord{Version: record.Version, Workspace: record.Workspace, CallID: record.CallID, Commentary: record.Commentary, CaptureOrder: record.CaptureOrder, History: legacyHistory(record.History)}, true, nil
+	return replayRecord{Version: record.Version, Workspace: record.Workspace, CallID: record.CallID, Commentary: record.Commentary, CaptureOrder: record.CaptureOrder, History: record.History}, true, nil
 }
-func (s *mekugiReplayStore) lookup(ctx context.Context, workspace, callID string) (mekugiHistory, bool, error) {
+func (s *mekugiReplayStore) lookup(ctx context.Context, workspace, callID string) (legacycall.History, bool, error) {
 	if s == nil {
-		return mekugiHistory{}, false, nil
+		return legacycall.History{}, false, nil
 	}
 	value, found, err := s.publication.LookupHostCall(ctx, workspace, callID)
-	return legacyHistory(value), found, err
-}
-func (s *mekugiReplayStore) hasCommentary(ctx context.Context, workspace, id string) (bool, error) {
-	if s == nil {
-		return false, nil
-	}
-	return s.publication.HasCommentary(ctx, workspace, id)
+	return value, found, err
 }
 func (s *mekugiReplayStore) write(r replayRecord) error {
-	return publishObservation(s.transaction, s.changeScope(), legacycall.Record{Version: r.Version, Workspace: r.Workspace, CallID: r.CallID, Commentary: r.Commentary, CaptureOrder: r.CaptureOrder, History: retainedHistory(r.History), Snapshots: r.Snapshots})
+	return requestexecution.StoragePublicationError(s.transaction.PublishHostCall(s.session.Thread, s.retentionLimits(), legacycall.Record{Version: r.Version, Workspace: r.Workspace, CallID: r.CallID, Commentary: r.Commentary, CaptureOrder: r.CaptureOrder, History: r.History, Snapshots: r.Snapshots}, r.History.ChangeID != "" && len(r.History.ReviewFiles) > 0))
 }
-func (s *mekugiReplayStore) prepareHandleScope(ctx context.Context, metadata codexresponses.TurnMetadata) (context.Context, error) {
-	if s == nil {
-		return ctx, nil
-	}
-	return prepareHandleScope(ctx, s.publication, s.writes, metadata)
-}
+
+// These identities select fixture records only. Requests select their own scope
+// through executionobservation.Preparer.
+type storageSessionKey struct{}
+type storageSessionIdentity struct{ Thread, Routing, Namespace string }
 
 // Readers acquire this lease before store.lock; cleanup only tries it without
 // waiting while holding store.lock. Thus input validation can span several
@@ -148,40 +147,53 @@ func (s *mekugiReplayStore) changeScope() changes.Scope {
 	return changes.Scope{Store: s.publication, Namespace: s.session.Namespace, Thread: s.session.Thread, Limits: s.retentionLimits(), Writes: s.writes}
 }
 
-func (s *mekugiReplayStore) put(ctx context.Context, workspace string, histories map[string]mekugiHistory) error {
+// put seeds neutral retained evidence through the actual publication owners.
+func (s *mekugiReplayStore) put(ctx context.Context, workspace string, histories map[string]legacycall.History) error {
 	if s == nil {
 		return nil
 	}
-	if s.transaction != nil {
-		return errors.New("nested replay publication transaction")
+	s = s.scoped(ctx)
+	publications := make(map[string]changes.Publication, len(histories))
+	for id, h := range histories {
+		managed := len(h.ReviewFiles) > 0
+		for _, f := range h.ReviewFiles {
+			managed = managed && f.Origin != ""
+		}
+		publications[id] = changes.Publication{ChangeID: h.ChangeID, CorrelationID: h.CorrelationID, ExecutingThread: h.ExecutingThread, Managed: managed}
 	}
-	return publishObservations(ctx, s.changeScope(), s.changes, s.liveDiff, workspace, histories)
-}
-func (s *mekugiReplayStore) retainInput(ctx context.Context, workspace string, raw json.RawMessage, histories map[string]mekugiHistory, release func()) error {
-	if s == nil {
+	updates, err := recordtransactions.PublishEvidence(ctx, s.changeScope(), s.changes, workspace, publications, func(tx *history.Transaction) error {
+		for _, id := range slices.Sorted(maps.Keys(histories)) {
+			h := histories[id]
+			if err := tx.PublishHostCall(s.session.Thread, s.retentionLimits(), legacycall.Record{Version: 1, Workspace: workspace, CallID: id, History: h}, h.ChangeID != "" && len(h.ReviewFiles) > 0); err != nil {
+				return requestexecution.StoragePublicationError(err)
+			}
+		}
 		return nil
+	})
+	if err == nil && s.liveDiff != nil {
+		s.liveDiff(updates)
 	}
-	if s.transaction != nil {
-		return errors.New("nested replay publication transaction")
-	}
-	return retainObservationInput(ctx, s.changeScope(), s.changes, s.recovery, workspace, raw, histories, release)
+	return err
 }
-func (s *mekugiReplayStore) putAfterMaintenance(ctx context.Context, workspace string, histories map[string]mekugiHistory) error {
-	if s == nil {
-		return nil
+func (s *mekugiReplayStore) retainInput(ctx context.Context, workspace string, raw json.RawMessage, histories map[string]legacycall.History, release func()) error {
+	if len(raw) != 0 {
+		return errors.New("integration fixture requires explicit retained references")
 	}
-	return publishAfterMaintenance(ctx, s.changeScope(), s.changes, s.liveDiff, workspace, histories)
-}
-func (s *mekugiReplayStore) agentEditNotice(ctx context.Context, workspace, call string, value mekugiHistory) (string, error) {
-	return agentEditNotice(ctx, s.changeScope(), s.changes, workspace, call, value)
+	s = s.scoped(ctx)
+	input := recordtransactions.Input{Workspace: workspace, ReleaseSnapshot: release}
+	for id, h := range histories {
+		input.Files = append(input.Files, legacycall.Name(workspace, id, false))
+		input.Changes = append(input.Changes, h.ChangeID)
+	}
+	return recordtransactions.RetainInput(ctx, s.changeScope(), s.changes, s.recovery, input)
 }
 
 // Fixture composition supplies production owners before preparing an operation.
-func setTestProxyStore(p *mekugiProxy, store *mekugiReplayStore) {
+func setTestProxyStore(p *observationFixture, store *mekugiReplayStore) {
 	p.retained, p.changeSource, p.snapshots, p.recovered, p.publishChanges = store.changeScope(), store.changes, store.snapshots, store.recovery, store.liveDiff
 }
-func testProxyWithStore(store *mekugiReplayStore, windows ...*execWindowRegistry) *mekugiProxy {
-	p := new(mekugiProxy)
+func testProxyWithStore(store *mekugiReplayStore, windows ...*executionobservation.Windows) *observationFixture {
+	p := new(observationFixture)
 	setTestProxyStore(p, store)
 	if len(windows) != 0 {
 		p.execWindows = windows[0]
@@ -197,12 +209,10 @@ func observationTestStore(selected changes.Scope, source changes.Service, snapsh
 	}
 	return &mekugiReplayStore{publication: selected.Store, directory: selected.Store.Directory(), writes: selected.Writes, maxBytes: selected.Limits.Total, maxCommentaryBytes: selected.Limits.Kinds["commentary"], session: storageSessionIdentity{Thread: selected.Thread, Namespace: selected.Namespace}, changes: source, snapshots: snapshots, recovery: recovered, liveDiff: publish}
 }
-func testProxyStore(p *mekugiProxy) *mekugiReplayStore {
+func testProxyStore(p *observationFixture) *mekugiReplayStore {
 	return observationTestStore(p.retained, p.changeSource, p.snapshots, p.recovered, p.publishChanges)
 }
-func testResponseStore(t *mekugiResponseTransform) *mekugiReplayStore {
-	return observationTestStore(t.retained, t.changeSource, t.snapshots, t.recovered, t.publishChanges)
-}
+
 func testUIStore(u *appServerUI) *mekugiReplayStore {
 	return observationTestStore(u.retained, u.changeSource, u.snapshots, u.recovered, u.publishChanges)
 }

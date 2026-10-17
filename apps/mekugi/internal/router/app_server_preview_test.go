@@ -1,6 +1,7 @@
 package router
 
 import (
+"github.com/yusing/mekugi/libraries/legacycall"
 	"cmp"
 	"encoding/json/jsontext"
 
@@ -418,7 +419,7 @@ type nativePreviewStep struct {
 type nativePreview struct {
 	t           *testing.T
 	ui          *appServerUI
-	proxy       *mekugiProxy
+	proxy       *observationFixture
 	input       *appServerTestInput
 	store       *mekugiReplayStore
 	usage       *accounting.Service
@@ -648,9 +649,9 @@ func (p *nativePreview) apply(edit nativePreviewEdit) {
 	id := fmt.Sprintf("call-%d", p.calls)
 	caller := p.ui.session.path(edit.thread)
 	if change, err := p.store.changes.Reserve(p.ui.ctx, p.store.scoped(p.ui.ctx).changeScope(), p.workspace, edit.thread, edit.item+"\x000"); err == nil {
-		_ = p.store.put(p.ui.ctx, p.workspace, map[string]mekugiHistory{id: {
+		_ = p.store.put(p.ui.ctx, p.workspace, map[string]legacycall.History{id: {
 			ToolName: applyPatchToolName, Caller: caller, ChangeID: change, CorrelationID: edit.item + "\x000", ExecutingThread: edit.thread,
-			ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile(beforePath, absolute, string(before), after)},
+			ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{diffmodel.RenderReviewFile(beforePath, absolute, string(before), after)}),
 		}})
 	}
 	item["status"] = "completed"

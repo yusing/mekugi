@@ -95,7 +95,7 @@ func TestAppServerRestoredAgentTimerUsesTurns(t *testing.T) {
 
 func TestAppServerSessionProjectsChildThreads(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	setTestAppServerIntegration(u, &mekugiProxy{usage: newTestUsage(t)})
+	setTestAppServerIntegration(u, &observationFixture{usage: newTestUsage(t)})
 	u.usage.Observation("child", "child", "gpt-6-luna", "").Observe(inference.Usage{InputTokens: 1200, UncachedInputTokens: 1200, OutputTokens: 30})
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentRole": "explore",
 		"source": map[string]any{"subAgent": map[string]any{"thread_spawn": map[string]any{"agent_path": "/root/worker"}}}}})

@@ -34,7 +34,7 @@ func TestCommandSegmentsBatchMixedCandidates(t *testing.T) {
 		t.Fatal(err)
 	}
 	turn := binding.HistoryTurn{ID: "turn", Status: "completed"}
-	histories := make(map[string]mekugiHistory)
+	histories := make(map[string]legacycall.History)
 	valid := make(map[string]bool)
 	// Span multiple bounded batches, with invalid records among valid ones.
 	for i := range 150 {
@@ -73,12 +73,12 @@ func TestCommandSegmentsBatchMixedCandidates(t *testing.T) {
 		}
 		turn.Items = append(turn.Items, item)
 		if record != nil {
-			histories[reports.ID(turn.ID, item.ID)] = mekugiHistory{CommandSegments: record}
+			histories[reports.ID(turn.ID, item.ID)] = legacycall.History{CommandSegments: record}
 		}
 	}
 	corrupt, record := batchCommandSegmentsFixture("corrupt")
 	turn.Items = slices.Insert(turn.Items, 1, corrupt)
-	histories[reports.ID(turn.ID, corrupt.ID)] = mekugiHistory{CommandSegments: record}
+	histories[reports.ID(turn.ID, corrupt.ID)] = legacycall.History{CommandSegments: record}
 	if err := store.put(t.Context(), workspace, histories); err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestCommandSegmentsBatchRejectsUnretainedRecords(t *testing.T) {
 	}
 	item, record := batchCommandSegmentsFixture("item")
 	turn := binding.HistoryTurn{ID: "turn", Items: []binding.ThreadItem{item}}
-	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{reports.ID(turn.ID, item.ID): {CommandSegments: record}}); err != nil {
+	if err := store.put(t.Context(), workspace, map[string]legacycall.History{reports.ID(turn.ID, item.ID): {CommandSegments: record}}); err != nil {
 		t.Fatal(err)
 	}
 	// Reading is possible, but ownership cannot be persisted for this target.
@@ -210,11 +210,11 @@ func BenchmarkCommandSegmentsBatchLargeHistory(b *testing.B) {
 				b.Fatal(err)
 			}
 			turn := binding.HistoryTurn{ID: "turn", Status: "completed"}
-			histories := make(map[string]mekugiHistory, count)
+			histories := make(map[string]legacycall.History, count)
 			for i := range count {
 				item, record := batchCommandSegmentsFixture(fmt.Sprintf("item-%d", i))
 				turn.Items = append(turn.Items, item)
-				histories[reports.ID(turn.ID, item.ID)] = mekugiHistory{CommandSegments: record}
+				histories[reports.ID(turn.ID, item.ID)] = legacycall.History{CommandSegments: record}
 			}
 			if err := store.put(b.Context(), workspace, histories); err != nil {
 				b.Fatal(err)

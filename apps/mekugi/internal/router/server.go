@@ -17,6 +17,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
+
 	previewbinding "github.com/yusing/mekugi/modules/livepreview/codexbinding"
 	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 
@@ -125,7 +127,7 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 	if debug != nil {
 		ctx = requestexecution.WithDebug(ctx, debug)
 	}
-	var mekugiCalls *mekugiProxy
+	var mekugiCalls *executionobservation.Preparer
 	var registry *frontends.Registry
 	var retained changehistory.Scope
 	var changeSource changehistory.Service
@@ -133,7 +135,7 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 	var calls *history.CallCache
 	var audience *sessioncontrol.Audience
 	var review *sessionreview.Review
-	var windows *execWindowRegistry
+	var windows *executionobservation.Windows
 	var nativeTrace *nativetrace.Reader
 	var control sessioncontrol.Observations
 	var guardServer *sessioncontrol.ShellApprovals
@@ -281,7 +283,7 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 		}
 		calls = service.Calls()
 		audience = sessioncontrol.NewAudience(func(category, message string) { issues.AddThreadNotice("", "", category, message) })
-		windows = &execWindowRegistry{}
+		windows = &executionobservation.Windows{}
 		if titleGenerator != nil {
 			titleGenerator.usage = usage
 		}
@@ -294,7 +296,7 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 		}
 		review = sessionreview.New(ctx, live, func(category, message string) { issues.AddNotice("", category, message) })
 		defer review.Close()
-		mekugiCalls = &mekugiProxy{registry: registry, inputProjections: slices.Clone(projections), usage: usage, review: review, activity: audience, execWindows: windows, nativeTrace: nativeTrace, control: &control, calls: calls, retained: retained, changeSource: changeSource, snapshots: checkpoints, recovered: recovered, publishChanges: review.Publish, noticeSink: issues.AddThreadNotice, previewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}}
+		mekugiCalls = executionobservation.New(executionobservation.Config{Registry: registry, InputProjections: slices.Clone(projections), Usage: usage, Review: review, Audience: audience, Windows: windows, NativeTrace: nativeTrace, Control: &control, Calls: calls, Retained: retained, Changes: changeSource, Checkpoints: checkpoints, Recovery: recovered, PublishChanges: review.Publish, Notice: issues.AddThreadNotice, PreviewTiming: previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain}})
 		usage.Configure(retained.Store.Directory(), retained.Writes, retained.Limits, func(thread string, err error) {
 			issues.AddThreadNotice("", thread, "usage_storage", "Provider usage could not be retained or restored: "+err.Error())
 		})
@@ -408,7 +410,7 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 					hub, reportErr = segmentservice.NewObserver(segments.Live, instrumentation, activitymodel.OutputBytes)
 					if reportErr == nil {
 						reportObserver = hub
-						windows.tracker = hub
+						windows.Reports = hub
 					} else {
 						segments.Live.Close()
 					}

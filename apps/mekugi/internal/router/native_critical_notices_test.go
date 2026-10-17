@@ -28,7 +28,7 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	issues.AddNotice("", "capacity", "router-wide capacity warning")
 	u, _ := newAppServerTestUI()
 	u.issues = issues
-	setTestAppServerIntegration(u, &mekugiProxy{activity: activity})
+	setTestAppServerIntegration(u, &observationFixture{activity: activity})
 	u.view.Conversation = true
 
 	first := u.applyCriticalNotices()
@@ -121,7 +121,7 @@ func TestNativeRequestNoticeChildOutcomeKeepsOtherTurnsPending(t *testing.T) {
 	activity := sessioncontrol.NewAudience(nil)
 	activity.Observe("main", "", "/root", false)
 	activity.Observe("child", "main", "/root/worker", true)
-	setTestAppServerIntegration(u, &mekugiProxy{activity: activity})
+	setTestAppServerIntegration(u, &observationFixture{activity: activity})
 	for _, thread := range []string{"main", "child", "other"} {
 		u.issues.Report(requestexecution.Failure{Session: "session", Thread: thread, Turn: "turn",
 			Phase: "inspect_response"}, fmt.Errorf("upstream closed for %s", thread))

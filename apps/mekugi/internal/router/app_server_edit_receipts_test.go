@@ -52,15 +52,15 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		history := mekugiHistory{
+		history := legacycall.History{
 			ToolName: nativeExecCommandToolName, Root: workspace, ExecutingThread: cmd.thread,
 			CorrelationID: cmd.carrier, ChangeID: id,
-			ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile(cmd.path, cmd.path, "old\n", "new\n")},
-			ExecOutcome: &changecapture.Outcome{Status: changecapture.StatusCompleted, Coverage: changecapture.CoverageExact,
-				CodeMode: cmd.codeMode, Labels: []string{cmd.program}},
+			ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{diffmodel.RenderReviewFile(cmd.path, cmd.path, "old\n", "new\n")}),
+			ExecOutcome: (*legacycall.Outcome)(&changecapture.Outcome{Status: changecapture.StatusCompleted, Coverage: changecapture.CoverageExact,
+				CodeMode: cmd.codeMode, Labels: []string{cmd.program}}),
 		}
 		if cmd.codeMode {
-			history.HostResults = []binding.ToolResult{
+			history.HostResults = []legacycall.HostResult{
 				{CallID: cmd.item, Tool: nativeExecCommandToolName, Status: "completed"},
 				{CallID: "sibling-call", Tool: nativeExecCommandToolName, Status: "completed"},
 			}
@@ -68,7 +68,7 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 			history.ExecOutcome.Status = changecapture.StatusFailed
 			history.ExecOutcome.Exit = new(2)
 		}
-		if err := store.put(t.Context(), workspace, map[string]mekugiHistory{cmd.carrier: history}); err != nil {
+		if err := store.put(t.Context(), workspace, map[string]legacycall.History{cmd.carrier: history}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -281,7 +281,6 @@ func TestCodeModeCellEditReceipt(t *testing.T) {
 	trace := newNativeTraceFixture(t)
 	proxy.nativeTrace = nativetrace.New(trace.root)
 	transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
-	transform.sessionShell = "bash"
 	target := filepath.Join(workspace, "file.txt")
 	if err := os.WriteFile(target, []byte("old\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -294,7 +293,8 @@ func TestCodeModeCellEditReceipt(t *testing.T) {
 	if _, err := transform.TransformJSON(mustTestJSON(t, map[string]any{"id": "response", "status": "completed", "output": []any{call}})); err != nil {
 		t.Fatal(err)
 	}
-	if transform.local["cell"].CarrierPayload != source {
+	retained, found, err := testProxyStore(proxy).lookup(t.Context(), workspace, "cell")
+	if err != nil || !found || retained.CarrierPayload != source {
 		t.Fatal("stock exec source changed")
 	}
 	trace.start("thread-1", "runtime", "cell", source)
@@ -311,9 +311,12 @@ func TestCodeModeCellEditReceipt(t *testing.T) {
 	request := codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": mustTestJSON(t, []any{visible, map[string]any{
 		"type": "custom_tool_call_output", "call_id": "cell", "output": "Script completed\nWall time 0.1 seconds\nOutput:\n",
 	}})}}
-	if _, err := proxy.reconcileVisibleInput(transform.ctx, &request, workspace, transform.historySessionID); err != nil {
+	request.Fields["tools"] = mustTestJSON(t, testExecResponsesTools())
+	next, err := proxy.prepareRequest(t.Context(), &request, "session-1", "thread-1", codexresponses.TurnMetadata{RequestKind: "turn", Directories: map[string]jsonv1.RawMessage{workspace: nil}}, true)
+	if err != nil {
 		t.Fatal(err)
 	}
+	defer next.Close()
 	record, found, err := testProxyStore(proxy).lookup(t.Context(), workspace, legacycall.ExecCallID("cell", true))
 	if err != nil || !found || record.ChangeID == "" || record.ExecOutcome.Status != changecapture.StatusCompleted {
 		t.Fatalf("exec record: found=%v err=%v record=%+v", found, err, record)
@@ -416,7 +419,7 @@ func TestAppServerCapturedEditKeepsCommandPaths(t *testing.T) {
 }
 
 // Assemble captured-effect values for renderer-only fixtures.
-func testCapturedEditActivity(workspace string, history mekugiHistory) *changepresentation.Receipt {
+func testCapturedEditActivity(workspace string, history legacycall.History) *changepresentation.Receipt {
 	if history.ExecOutcome == nil {
 		return nil
 	}

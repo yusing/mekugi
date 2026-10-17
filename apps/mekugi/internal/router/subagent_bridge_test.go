@@ -54,7 +54,7 @@ func TestOrdinaryCollaborationBridgeAtServerBoundary(t *testing.T) {
 	for _, enabled := range []bool{false, true} {
 		for _, stream := range []bool{false, true} {
 			t.Run(fmt.Sprintf("mekugi=%t/stream=%t", enabled, stream), func(t *testing.T) {
-				var proxy *mekugiProxy
+				var proxy *observationFixture
 				if enabled {
 					proxy = newManagedMekugiProxy(t)
 				}

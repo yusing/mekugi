@@ -22,7 +22,7 @@ func TestNativeActivityFollowupAssignments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	collectSubagentStart(a, "child", &request, "/root/reviewer")
+	observeActivityRequest(t, &observationFixture{activity:a}, "child", "/root/reviewer", &request)
 	observed := takeNativeActivity(a, "main")
 	if len(observed) != 1 || observed[0].assignment == nil || observed[0].assignment.text != "Check the original answer." {
 		t.Fatal("native assignment body was lost")
@@ -78,7 +78,7 @@ func TestNativeActivityAssignmentsPreserveOriginalTime(t *testing.T) {
 		a := sessioncontrol.NewAudience(nil)
 		a.Attach("main")
 		a.Observe("child", "main", "/root/reviewer", true)
-		collectSubagentStart(a, "child", &request, "/root/reviewer")
+		observeActivityRequest(t, &observationFixture{activity:a}, "child", "/root/reviewer", &request)
 		entries := takeNativeActivity(a, "main")
 		if len(entries) != 4 {
 			t.Fatalf("lost historical assignments: %+v", entries)
@@ -100,7 +100,7 @@ func TestNativeActivityAssignmentsPreserveOriginalTime(t *testing.T) {
 				t.Fatalf("original timestamp missing from feed: %s", rendered)
 			}
 		}
-		collectSubagentStart(a, "child", &request, "/root/reviewer")
+		observeActivityRequest(t, &observationFixture{activity:a}, "child", "/root/reviewer", &request)
 		if got := takeNativeActivity(a, "main"); len(got) != 0 {
 			t.Fatalf("repeated history duplicated assignments: %+v", got)
 		}

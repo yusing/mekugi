@@ -8,10 +8,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
+
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffmodel"
-	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
@@ -31,7 +32,7 @@ func newShellEditTestUI(t *testing.T) *appServerUI {
 	return u
 }
 
-func startShellEditTestCommand(t *testing.T, u *appServerUI, command, item string) *shellObservation {
+func startShellEditTestCommand(t *testing.T, u *appServerUI, command, item string) *executionobservation.ShellOperation {
 	t.Helper()
 	u.Text = "!" + command
 	if err := u.submitShell(); err != nil {
@@ -79,8 +80,8 @@ func TestAppServerShellEditsRevertApplyReplay(t *testing.T) {
 		if edit == nil {
 			t.Fatal("shell mutation has no pre-submission observation")
 		}
-		if _, found, err := store.lookup(ctx, workspace, legacycall.ExecCallID(edit.call, false)); found || err != nil {
-			t.Fatalf("start allocated completed evidence: %v, %v", found, err)
+		if _, found := lookupShellTestRecord(t, store, workspace, u.Thread, item); found {
+			t.Fatal("start allocated completed evidence")
 		}
 		if output, exit := mutateTestChanges(t, ctx, store, workspace, mutation, id); exit != 0 {
 			t.Fatalf("mutation failed: %s", output)
@@ -95,9 +96,9 @@ func TestAppServerShellEditsRevertApplyReplay(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		history, found, err := fresh.lookup(ctx, workspace, legacycall.ExecCallID(edit.call, false))
-		if err != nil || !found || history.ChangeID == "" || len(history.ReviewFiles) != 1 || len(history.HostResults) != 1 || history.HostResults[0].CallID != item || history.HostResults[0].Tool != "userShell" {
-			t.Fatalf("durable shell edit: %+v, %v, %v", history, found, err)
+		history := shellTestRecord(t, fresh, workspace, u.Thread, item).History
+		if history.ChangeID == "" || len(history.ReviewFiles) != 1 || len(history.HostResults) != 1 || history.HostResults[0].CallID != item || history.HostResults[0].Tool != "userShell" {
+			t.Fatalf("durable shell edit: %+v", history)
 		}
 		text, err := fresh.changes.Read(ctx, fresh.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{history.ChangeID}, View: "history"})
 		if err != nil || !strings.Contains(text, "mchanges "+mutation+" "+id) {
@@ -121,7 +122,7 @@ func TestAppServerShellEditsFailedWriterAndNoEffect(t *testing.T) {
 	u := newShellEditTestUI(t)
 	appServerTestTurn(t, u, "model")
 	for _, command := range []string{"printf 'saved\\n' > \"$SHELL_EDIT_TARGET\"; exit 7", "rm -f missing.txt"} {
-		edit := startShellEditTestCommand(t, u, command, command)
+		startShellEditTestCommand(t, u, command, command)
 		cmd := exec.Command(u.shellEdits.shell, "-c", command)
 		cmd.Dir = u.session.cwd
 		cmd.Env = append(mchangesSliceInvocation(u.session.cwd, u.Thread).environment, "SHELL_EDIT_TARGET=saved.txt")
@@ -140,9 +141,9 @@ func TestAppServerShellEditsFailedWriterAndNoEffect(t *testing.T) {
 		if u.feedback.Alert {
 			t.Fatal(u.feedback.Text)
 		}
-		history, found, err := testUIStore(u).lookup(u.session.waitContext, u.session.cwd, legacycall.ExecCallID(edit.call, false))
-		if err != nil || !found || history.ExecOutcome.Exit == nil || *history.ExecOutcome.Exit != exit {
-			t.Fatalf("shell outcome: %+v, %v, %v", history, found, err)
+		history := shellTestRecord(t, testUIStore(u), u.session.cwd, u.Thread, command).History
+		if history.ExecOutcome.Exit == nil || *history.ExecOutcome.Exit != exit {
+			t.Fatalf("shell outcome: %+v", history)
 		}
 		if exit == 7 && history.ChangeID == "" || exit == 0 && history.ChangeID != "" {
 			t.Fatalf("saved edits depend on command status: %+v", history)
@@ -186,10 +187,10 @@ func TestAppServerShellObservationKeepsOriginalOwnersAfterSwitch(t *testing.T) {
 	if u.feedback.Alert {
 		t.Fatal(u.feedback.Text)
 	}
-	id := legacycall.ExecCallID(edit.call, false)
-	record, found, err := retained.publication.LookupHostCall(t.Context(), workspace, id)
-	if err != nil || !found || record.ExecutingThread != thread || record.ChangeID == "" {
-		t.Fatalf("original observation: %+v, %v, %v", record, found, err)
+	record := shellTestRecord(t, retained, workspace, thread, "shell-original")
+	id := record.CallID
+	if record.History.ExecutingThread != thread || record.History.ChangeID == "" {
+		t.Fatalf("original observation: %+v", record)
 	}
 	if _, found, err := other.publication.LookupHostCall(t.Context(), workspace, id); err != nil || found {
 		t.Fatalf("observation crossed retained owners: %v, %v", found, err)

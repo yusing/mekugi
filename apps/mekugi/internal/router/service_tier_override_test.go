@@ -332,7 +332,7 @@ func TestServiceTierOverrideUsesEffectiveModel(t *testing.T) {
 			if got := responses.StringField(forwarded.Fields, "service_tier"); got != wantTier {
 				t.Fatalf("tier=%s want=%s", got, wantTier)
 			}
-			start := nativeSubagentStart(&forwarded)
+			start := observedSubagentStart(t, &forwarded)
 			if start == nil || start.Model != wantModel || start.Tier != strings.ReplaceAll(wantTier, "priority", "fast") {
 				t.Fatalf("start=%+v", start)
 			}
@@ -350,7 +350,7 @@ func TestSubagentStartServiceTier(t *testing.T) {
 				fields["service_tier"] = tc.tier
 			}
 		})
-		got := nativeSubagentStart(&request)
+		got := observedSubagentStart(t, &request)
 		if got == nil || *got != (binding.SubagentSettings{Model: "gpt-6-astra", Effort: "high", Tier: tc.want}) {
 			t.Fatalf("tier=%s start=%+v", tc.tier, got)
 		}

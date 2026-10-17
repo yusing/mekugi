@@ -13,7 +13,6 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
@@ -59,7 +58,7 @@ func retentionTestAge(t *testing.T, store *mekugiReplayStore, thread string, age
 
 func retentionTestPut(t *testing.T, store *mekugiReplayStore, ctx context.Context, workspace, call string) {
 	t.Helper()
-	if err := store.put(ctx, workspace, map[string]mekugiHistory{call: {ToolName: "shell", Script: "true"}}); err != nil {
+	if err := store.put(ctx, workspace, map[string]legacycall.History{call: {ToolName: "shell", Script: "true"}}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -141,7 +140,7 @@ func TestStoragePressureRemovesOldestInactiveSessionAcrossWorkspaces(t *testing.
 	}
 	store.maxBytes, _ = store.publication.Usage(store.retentionLimits(), files, "", 0)
 	retentionTestPressureRetry(t, store, current, func() error {
-		return store.put(current, "/third", map[string]mekugiHistory{"new": {ToolName: "shell", Script: "true"}})
+		return store.put(current, "/third", map[string]legacycall.History{"new": {ToolName: "shell", Script: "true"}})
 	})
 	retentionTestExists(t, store, "/first", "old", false)
 	retentionTestExists(t, store, "/second", "newer", true)
@@ -163,7 +162,7 @@ func TestStoragePressurePreservesRunningWorkAndReportsLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	store.maxBytes, _ = store.publication.Usage(store.retentionLimits(), files, "", 0)
-	err = store.put(current, "/w", map[string]mekugiHistory{"new": {Script: "true"}})
+	err = store.put(current, "/w", map[string]legacycall.History{"new": {Script: "true"}})
 	if err == nil || !strings.Contains(err.Error(), "limit is") || !strings.Contains(err.Error(), "Running sessions") {
 		t.Fatalf("storage pressure error = %v", err)
 	}
@@ -186,7 +185,7 @@ func TestStorageRetentionForkOwnershipSurvivesRestart(t *testing.T) {
 	if err != nil || !found {
 		t.Fatal(err)
 	}
-	if err := store.retainInput(child, "/w", nil, map[string]mekugiHistory{"shared": history}, nil); err != nil {
+	if err := store.retainInput(child, "/w", nil, map[string]legacycall.History{"shared": history}, nil); err != nil {
 		t.Fatal(err)
 	}
 	releaseChild()
@@ -270,7 +269,7 @@ func TestStorageCleanupRetiresChangesWithoutReusingIDs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.put(old, "/w", map[string]mekugiHistory{"call": {ChangeID: id, CorrelationID: "first", Attempt: 1}}); err != nil {
+	if err := store.put(old, "/w", map[string]legacycall.History{"call": {ChangeID: id, CorrelationID: "first", Attempt: 1}}); err != nil {
 		t.Fatal(err)
 	}
 	release()
@@ -304,7 +303,7 @@ func TestStorageChangeReadDependenciesSurviveOriginalSessionExpiry(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.put(parent, "/w", map[string]mekugiHistory{"edit-call": {
+	if err := store.put(parent, "/w", map[string]legacycall.History{"edit-call": {
 		ToolName: applyPatchToolName, ChangeID: id, CorrelationID: "edit", Attempt: 1, Script: "original",
 	}}); err != nil {
 		t.Fatal(err)
@@ -356,7 +355,7 @@ func TestStorageCatalogGrowthCountsAgainstQuota(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = store.retainInput(child, "/w", nil, map[string]mekugiHistory{"shared": history}, nil)
+	err = store.retainInput(child, "/w", nil, map[string]legacycall.History{"shared": history}, nil)
 	if err == nil || !strings.Contains(err.Error(), "limit is") {
 		t.Fatalf("catalog quota was not enforced: %v", err)
 	}
@@ -397,7 +396,7 @@ func TestStorageSnapshotLeaseBridgesForkValidationAndAdoption(t *testing.T) {
 		t.Fatal(err)
 	}
 	retentionTestExists(t, store, "/w", "shared", true)
-	if err := store.retainInput(child, "/w", nil, map[string]mekugiHistory{"shared": history}, releaseSnapshot); err != nil {
+	if err := store.retainInput(child, "/w", nil, map[string]legacycall.History{"shared": history}, releaseSnapshot); err != nil {
 		t.Fatal(err)
 	}
 	if err := other.cleanupSessions(otherCtx); err != nil {
@@ -493,7 +492,7 @@ func TestStorageIndexPressurePersistsRetiredAttempts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.put(old, "/w", map[string]mekugiHistory{
+	if err := store.put(old, "/w", map[string]legacycall.History{
 		"old-call": {ChangeID: id, CorrelationID: "original", Attempt: 1, Script: strings.Repeat("x", 2048)},
 	}); err != nil {
 		t.Fatal(err)
@@ -502,7 +501,7 @@ func TestStorageIndexPressurePersistsRetiredAttempts(t *testing.T) {
 	retentionTestAge(t, store, "old", time.Hour)
 	current, _ := retentionTestSession(t, store, "current", 0)
 	current = bindTestHandleScope(t, store, current, "old", "")
-	if err := store.put(current, "/w", map[string]mekugiHistory{
+	if err := store.put(current, "/w", map[string]legacycall.History{
 		"current-call": {ChangeID: id, CorrelationID: "original", Attempt: 2, ExecutingThread: "current"},
 	}); err != nil {
 		t.Fatal(err)
@@ -618,44 +617,6 @@ func TestStoragePreparationProtectsLeaseFromPreviousTerminal(t *testing.T) {
 		t.Fatalf("idle completion retained its lease: acquired=%v err=%v", acquired, err)
 	}
 	_ = lease.Unlock()
-}
-
-func TestStorageStaleTerminalPreservesNewerHandoff(t *testing.T) {
-	t.Parallel()
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	p := newManagedMekugiProxy(t)
-	setTestProxyStore(p, store)
-	workspace := t.TempDir()
-	start := func() *mekugiResponseTransform {
-		t.Helper()
-		request := activityAdmissionRequest(t, nil)
-		transform, err := p.prepareRequest(t.Context(), &request, "routing", "thread", codexresponses.TurnMetadata{
-			RequestKind: "turn", ThreadID: "thread", Directories: map[string]json.RawMessage{workspace: nil},
-		}, true)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return transform
-	}
-	older := start()
-	older.storageIdle = true
-	newer := start()
-	newer.Close() // The host has a tool to dispatch; no terminal was delivered.
-	older.Close() // Its terminal must not retire the newer request's lease.
-	lease := flock.New(filepath.Join(store.directory, strings.TrimSuffix(retainedhistory.SessionName("thread"), ".json")+".lock"))
-	acquired, err := lease.TryLock()
-	if acquired {
-		_ = lease.Unlock()
-	}
-	if err != nil || acquired {
-		t.Fatalf("newer handoff lost lease: acquired=%v err=%v", acquired, err)
-	}
-	if err := p.Close(); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func TestStorageRetentionRejectsObsoleteHandleNames(t *testing.T) {
@@ -840,7 +801,8 @@ func BenchmarkStorageReserveChange(b *testing.B) {
 
 // Retained-store fixtures select the actual History owner and application scope.
 func (s *mekugiReplayStore) beginSession(ctx context.Context, thread, routing string) (context.Context, func(), error) {
-	return beginRetainedSession(ctx, s.publication, s.writes, s.retentionLimits(), thread, routing)
+	namespace, release, err := s.publication.BeginSession(ctx, s.writes, s.retentionLimits(), thread)
+	return context.WithValue(ctx, storageSessionKey{}, storageSessionIdentity{Thread: thread, Routing: routing, Namespace: namespace}), release, err
 }
 
 func (s *mekugiReplayStore) retainFiles(names ...string) error {

@@ -24,6 +24,7 @@ contracts stay with their owning modules.
 - [Executable frontends](../apps/mekugi/internal/frontends/SPEC.md)
 - [Headless client](../apps/mekugi/internal/headless/SPEC.md)
 - [Request execution](../apps/mekugi/internal/requestexecution/SPEC.md)
+- [Execution observation](../apps/mekugi/internal/executionobservation/SPEC.md)
 - [Session control](../apps/mekugi/internal/sessioncontrol/SPEC.md)
 - [Session presentation](../apps/mekugi/internal/sessionpresentation/SPEC.md)
 - [Session review](../apps/mekugi/internal/sessionreview/SPEC.md)

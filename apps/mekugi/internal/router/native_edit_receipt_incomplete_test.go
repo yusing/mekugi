@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
@@ -14,16 +16,16 @@ import (
 func TestEditReceiptGroupsCaptureGapsWithoutClaimingEdits(t *testing.T) {
 	for _, known := range []bool{false, true} {
 		t.Run(fmt.Sprint(known), func(t *testing.T) {
-			history := mekugiHistory{ChangeID: "amber1", ExecOutcome: &changecapture.Outcome{Labels: []string{"python3"}}}
+			history := legacycall.History{ChangeID: "amber1", ExecOutcome: (*legacycall.Outcome)(&changecapture.Outcome{Labels: []string{"python3"}})}
 			if known {
-				history.ReviewFiles = append(history.ReviewFiles, diffmodel.RenderReviewFile("edited.go", "edited.go", "old\n", "new\n"))
+				history.ReviewFiles = append(history.ReviewFiles, legacycall.ReviewFile(diffmodel.RenderReviewFile("edited.go", "edited.go", "old\n", "new\n")))
 			}
 			for i := range 100 {
 				file := diffmodel.RenderIncompleteReviewFile(fmt.Sprintf("unknown-%d.go", i), fmt.Sprintf("unknown-%d.go", i), "capture limit")
 				if i%2 == 0 {
 					file.Origin = "generator"
 				}
-				history.ReviewFiles = append(history.ReviewFiles, file)
+				history.ReviewFiles = append(history.ReviewFiles, legacycall.ReviewFile(file))
 			}
 			text := changepresentation.ReceiptText(t.TempDir(), receiptEvidence(history))
 			blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: text})
@@ -47,11 +49,11 @@ func TestEditReceiptGroupsCaptureGapsWithoutClaimingEdits(t *testing.T) {
 }
 
 func TestEditReceiptCaptureReasonsAreBoundedAndRetained(t *testing.T) {
-	history := mekugiHistory{ChangeID: "amber1"}
+	history := legacycall.History{ChangeID: "amber1"}
 	reasons := []string{"capture deadline", "capture deadline", "capture budget exhausted", "a read error\n\x1b[31m", strings.Repeat("b long error ", 100)}
 	for i, reason := range reasons {
 		path := fmt.Sprintf("candidate-%d.go", i)
-		history.ReviewFiles = append(history.ReviewFiles, diffmodel.RenderIncompleteReviewFile(path, path, reason))
+		history.ReviewFiles = append(history.ReviewFiles, legacycall.ReviewFile(diffmodel.RenderIncompleteReviewFile(path, path, reason)))
 	}
 	text := changepresentation.ReceiptText("", receiptEvidence(history))
 	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: text})

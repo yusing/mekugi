@@ -69,7 +69,7 @@ func TestAppServerOldTurnCompletionPreservesCurrentTranscript(t *testing.T) {
 	activity := sessioncontrol.NewAudience(nil)
 	activity.Attach("main")
 	activity.Observe("child", "main", "/root/worker", true)
-	setTestAppServerIntegration(u, &mekugiProxy{activity: activity})
+	setTestAppServerIntegration(u, &observationFixture{activity: activity})
 	u.agents.setDisplayFilter(false, "/root/worker")
 	wait := binding.ThreadItem{ID: "old-wait", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress"}
 	reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "old", "item": wait})
@@ -147,7 +147,7 @@ func TestAppServerClosedCompletionKeepsCurrentTurnSelection(t *testing.T) {
 	activity := sessioncontrol.NewAudience(nil)
 	activity.Attach("main")
 	activity.Observe("child", "main", "/root/worker", true)
-	setTestAppServerIntegration(u, &mekugiProxy{activity: activity})
+	setTestAppServerIntegration(u, &observationFixture{activity: activity})
 	activity.BeginResponse("child", true, u.now())
 	u.applyObservedActivity()
 	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "current"}})
@@ -418,7 +418,7 @@ func TestAppServerThinkingFromRequestStart(t *testing.T) {
 	activity := sessioncontrol.NewAudience(nil)
 	activity.Attach("main")
 	activity.Observe("child", "main", "/root/worker", true)
-	setTestAppServerIntegration(u, &mekugiProxy{activity: activity})
+	setTestAppServerIntegration(u, &observationFixture{activity: activity})
 	reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 	u.agents.setDisplayFilter(false, "/root/worker")
 	feed := func(view *activityAdapter) string {
@@ -506,7 +506,7 @@ func TestAppServerDuplicateSummaryCompletionKeepsNextThinking(t *testing.T) {
 				activity := sessioncontrol.NewAudience(nil)
 				activity.Attach("main")
 				activity.Observe("child", "main", "/root/worker", true)
-				setTestAppServerIntegration(u, &mekugiProxy{activity: activity})
+				setTestAppServerIntegration(u, &observationFixture{activity: activity})
 				u.agents.setDisplayFilter(false, "/root/worker")
 				view := u.view
 				if thread == "child" {

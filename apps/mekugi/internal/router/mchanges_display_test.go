@@ -1,6 +1,7 @@
 package router
 
 import (
+"github.com/yusing/mekugi/libraries/legacycall"
 	"reflect"
 	"strconv"
 	"strings"
@@ -135,7 +136,7 @@ func TestMChangesOutputRowsReadStoreOutput(t *testing.T) {
 			t.Fatal(err)
 		}
 		ids = append(ids, id)
-		if err := store.put(ctx, workspace, map[string]mekugiHistory{call: {ChangeID: id, CorrelationID: call, ReviewFiles: files}}); err != nil {
+		if err := store.put(ctx, workspace, map[string]legacycall.History{call: {ChangeID: id, CorrelationID: call, ReviewFiles: retainedReviewFiles(files)}}); err != nil {
 			t.Fatal(err)
 		}
 	}

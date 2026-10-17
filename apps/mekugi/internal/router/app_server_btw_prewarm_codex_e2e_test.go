@@ -230,9 +230,9 @@ func testAppServerBuiltInOpenAI(t *testing.T, fallback bool) {
 		headers.Set(key, value)
 	}
 	metadata, valid := codexresponses.DecodeTurnMetadata(headers)
-	directory, selected := usableRoutingDirectory(metadata.Directories)
-	if !valid || !selected || directory != workspace {
-		t.Fatalf("selected workspace metadata missing: valid=%t selected=%t directory=%q want=%q", valid, selected, directory, workspace)
+	_, selected := metadata.Directories[workspace]
+	if !valid || !selected {
+		t.Fatalf("selected workspace metadata missing: valid=%t selected=%t want=%q", valid, selected, workspace)
 	}
 	metadataFound := false
 	for _, item := range firstRequest.Input {

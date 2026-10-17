@@ -149,16 +149,6 @@ func testCapture(t *testing.T, directory string) *changecapture.Service {
 	return service
 }
 
-func testCaptureWorkspaces(t *testing.T) *changecapture.Workspaces {
-	t.Helper()
-	directory := t.TempDir()
-	snapshots, err := testCapture(t, directory).Checkpoints(directory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return snapshots
-}
-
 func TestReplayStoreBorrowsCaptureLifetime(t *testing.T) {
 	directory := t.TempDir()
 	captured := testCapture(t, directory)

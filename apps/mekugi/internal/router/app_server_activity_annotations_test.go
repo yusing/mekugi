@@ -100,7 +100,7 @@ func TestAppServerFailedCodeModeCellShowsItsError(t *testing.T) {
 			u.view.Conversation = true
 			activity := sessioncontrol.NewAudience(nil)
 			activity.Attach("main")
-			proxy := &mekugiProxy{activity: activity}
+			proxy := &observationFixture{activity: activity}
 			setTestAppServerIntegration(u, proxy)
 			thread, view := "main", u.view
 			if child {
@@ -117,7 +117,7 @@ func TestAppServerFailedCodeModeCellShowsItsError(t *testing.T) {
 			request := &codexresponses.Request{Fields: map[string]json.RawMessage{"input": json.RawMessage(input)}}
 			// A repeated request carries the same output again; it is still one row.
 			for range 2 {
-				proxy.observeCodeModeFailures(thread, "exec", request, nil)
+				observeActivityRequest(t, proxy, thread, map[bool]string{false:"/root",true:"/root/worker"}[thread!="main"], request)
 				u.applyObservedActivity()
 			}
 			if len(view.Entries) != 1 || view.Entries[0].Source.Kind != "error" ||
@@ -142,7 +142,7 @@ func TestAppServerUnreturnedCodeModeOutputIsNoted(t *testing.T) {
 	activity := sessioncontrol.NewAudience(nil)
 	activity.Attach("main")
 	trace := newNativeTraceFixture(t)
-	proxy := &mekugiProxy{activity: activity, nativeTrace: nativetrace.New(trace.root)}
+	proxy := &observationFixture{activity: activity, nativeTrace: nativetrace.New(trace.root)}
 	setTestAppServerIntegration(u, proxy)
 	cells := []struct{ call, source, output string }{
 		{"silent", `await tools.exec_command({cmd: "git log"}); await tools.exec_command({cmd: "true"})`, `"Script completed\nWall time 0.1 seconds\nOutput:"`},
@@ -175,32 +175,12 @@ func TestAppServerUnreturnedCodeModeOutputIsNoted(t *testing.T) {
 	rollCommandOutput(u)
 	request := &codexresponses.Request{Fields: map[string]json.RawMessage{"input": json.RawMessage("[" + strings.Join(input, ",") + "]")}}
 	for range 2 { // A repeated request notes each command once.
-		proxy.observeCodeModeFailures("main", "exec", request, nil)
+		observeActivityRequest(t, proxy, "main", "/root", request)
 		u.applyObservedActivity()
 	}
 	got := ansi.Strip(strings.Join(u.view.RenderFeed(90, 60).Lines, "\n"))
 	under := "Ran git log\n│     ┆ commit abc\n│     " + unreturnedOutputNote + "\n"
 	if strings.Count(got, unreturnedOutputNote) != 1 || !strings.Contains(got, under) {
 		t.Fatalf("want one note, under git log's output:\n%s", got)
-	}
-}
-
-func TestCodeModeReturnedNothing(t *testing.T) {
-	header := "Script completed\nWall time 0.1 seconds\nOutput:\n"
-	for raw, want := range map[string]bool{
-		string(responses.MustMarshalJSON(header)):                                                                                                   true,
-		string(responses.MustMarshalJSON(strings.TrimSuffix(header, "\n"))):                                                                         true,
-		string(responses.MustMarshalJSON(header + "  \n")):                                                                                          true,
-		string(responses.MustMarshalJSON(header + "printed")):                                                                                       false,
-		`[{"type":"input_text","text":` + string(responses.MustMarshalJSON(header)) + `},{"type":"input_text","text":""}]`:                          true,
-		`[{"type":"input_text","text":` + string(responses.MustMarshalJSON(header)) + `},{"type":"input_text","text":"x"}]`:                         false,
-		`[{"type":"input_text","text":` + string(responses.MustMarshalJSON(header)) + `},{"type":"input_image","image_url":""}]`:                    false,
-		`[{"type":"input_text","text":"Script failed\nWall time 0.0 seconds\nOutput:\n"},{"type":"input_text","text":"Script error:\nTypeError"}]`:  true,
-		`[{"type":"input_text","text":"Script completed\nWall time 0.0 seconds\nOutput:\n"},{"type":"input_text","text":"Script error:\nprinted"}]`: false,
-		string(responses.MustMarshalJSON("Script running with cell ID 7\nWall time 10.0 seconds\nOutput:\n")):                                       false,
-	} {
-		if got := codeModeReturnedNothing(json.RawMessage(raw)); got != want {
-			t.Errorf("codeModeReturnedNothing(%s) = %v, want %v", raw, got, want)
-		}
 	}
 }

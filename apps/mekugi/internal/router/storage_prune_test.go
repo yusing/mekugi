@@ -1,6 +1,8 @@
 package router
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"os"
@@ -10,6 +12,8 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/yusing/mekugi/libraries/legacycall"
 
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
@@ -22,8 +26,35 @@ func TestBackgroundPruneDoesNotBlockSessionStartAndRejectsStaleOwnership(t *test
 			t.Fatal(err)
 		}
 		parent, releaseParent := retentionTestSession(t, store, "parent", 0)
-		h := snapshotTestHistory()
-		snapshotTestPut(t, store, parent, "shared", h)
+		// A historical envelope depends on a separate blob. Fork adoption must
+		// protect both after the background worker has planned parent removal.
+		snapshot := []byte(`{"Exec":[{"Path":"/w/text","Kind":"text","Content":"before\n"}]}`)
+		blob := legacycall.SnapshotName(snapshot)
+		var compressed bytes.Buffer
+		writer := gzip.NewWriter(&compressed)
+		if _, err := writer.Write(snapshot); err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.scoped(parent).locked(parent, func(selected *mekugiReplayStore) error {
+			if err := writeRetainedRecord(selected.transaction, selected.session.Thread, selected.retentionLimits(), blob, "snapshot-pending-", compressed.Bytes()); err != nil {
+				return err
+			}
+			return selected.transaction.PublishHostCall(selected.session.Thread, selected.retentionLimits(), legacycall.Record{
+				Version: 2, Workspace: "/w", CallID: "shared",
+				History:   legacycall.History{ToolName: "exec", ExecObservation: &legacycall.Observation{Class: "scoped"}},
+				Snapshots: &legacycall.Snapshots{ExecFiles: blob},
+			}, false)
+		}); err != nil {
+			t.Fatal(err)
+		}
+		record, found, err := store.publication.ReadHostCall("/w", "shared", false)
+		if err != nil || !found {
+			t.Fatalf("historical fixture: found=%v err=%v", found, err)
+		}
+		h := record.History
 		releaseParent()
 		retentionTestAge(t, store, "parent", 15*24*time.Hour)
 		ctx, cancel := context.WithCancel(t.Context())
@@ -70,7 +101,7 @@ func TestBackgroundPruneDoesNotBlockSessionStartAndRejectsStaleOwnership(t *test
 		t.Logf("session start while background plan paused: %s", time.Since(started))
 		// Refresh only the caller's lifetime; keep the identity established above.
 		child = context.WithValue(t.Context(), storageSessionKey{}, child.Value(storageSessionKey{}))
-		if err := store.retainInput(child, "/w", nil, map[string]mekugiHistory{"shared": h}, nil); err != nil {
+		if err := store.retainInput(child, "/w", nil, map[string]legacycall.History{"shared": h}, nil); err != nil {
 			t.Fatal(err)
 		}
 		close(resume)
@@ -86,6 +117,10 @@ func TestBackgroundPruneDoesNotBlockSessionStartAndRejectsStaleOwnership(t *test
 			t.Fatal("expired parent ownership was not reclaimed")
 		}
 		retentionTestExists(t, store, "/w", "shared", true)
+		retained, found, err := store.publication.ReadHostCall("/w", "shared", false)
+		if err != nil || !found || retained.History.ExecObservation == nil || len(retained.History.ExecObservation.Files) != 1 || retained.History.ExecObservation.Files[0].Content != "before\n" {
+			t.Fatalf("adopted snapshot unavailable after parent pruning: found=%v err=%v history=%+v", found, err, retained.History)
+		}
 	})
 }
 
@@ -129,7 +164,7 @@ func TestBackgroundPrunePressureIsQueuedWithoutForegroundDeletion(t *testing.T) 
 	}
 	store.maxBytes, _ = store.publication.Usage(store.retentionLimits(), files, "", 0)
 	write := func() error {
-		return store.put(current, "/w", map[string]mekugiHistory{"new": {ToolName: "shell", Script: "true"}})
+		return store.put(current, "/w", map[string]legacycall.History{"new": {ToolName: "shell", Script: "true"}})
 	}
 	if err := write(); err == nil || !strings.Contains(err.Error(), "do not rerun the host operation") {
 		t.Fatalf("missing pending-cleanup diagnosis: %v", err)
@@ -243,9 +278,25 @@ func TestBackgroundPruneDelayedAgeRetryPressureAndRecovery(t *testing.T) {
 					store.maxBytes, _ = store.publication.Usage(store.retentionLimits(), files, "", 0)
 					written := make(chan error, 1)
 					go func() {
-						written <- store.putAfterMaintenance(current, "/w", map[string]mekugiHistory{
-							"new": {ToolName: "shell", Script: "true"},
-						})
+						values := map[string]legacycall.History{"new": {ToolName: "shell", Script: "true"}}
+						err := store.put(current, "/w", values)
+						if _, ok := errors.AsType[*history.PressureError](err); !ok {
+							written <- err
+							return
+						}
+						for {
+							time.Sleep(100 * time.Millisecond)
+							pending := false
+							err = store.publication.Transaction(current, store.writes, func(tx *history.Transaction) error { var err error; pending, err = tx.PendingCleanup(); return err })
+							if err != nil {
+								written <- err
+								return
+							}
+							if !pending {
+								written <- store.put(current, "/w", values)
+								return
+							}
+						}
 					}()
 					synctest.Wait()
 					retentionTestExists(t, store, "/w", "new", false)

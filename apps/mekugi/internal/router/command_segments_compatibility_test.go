@@ -56,7 +56,7 @@ func TestCommandSegmentsHistoricalCompatMixedHistory(t *testing.T) {
 	// Migrate a decoded mixed record through the writer without discarding its
 	// non-segment facts or the opaque provider extension.
 	copyID := reports.ID("copy-turn", item.ID)
-	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{copyID: before.History}); err != nil {
+	if err := store.put(t.Context(), workspace, map[string]legacycall.History{copyID: before.History}); err != nil {
 		t.Fatal(err)
 	}
 	after, found, err := store.read(workspace, copyID, false)

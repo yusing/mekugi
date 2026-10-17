@@ -1,6 +1,7 @@
 package router
 
 import (
+"github.com/yusing/mekugi/libraries/legacycall"
 	"fmt"
 	"strings"
 	"testing"
@@ -38,9 +39,9 @@ func TestUISnapshotSavedDiffDependencyHistory(t *testing.T) {
 					t.Fatal(err)
 				}
 				ids = append(ids, id)
-				history := mekugiHistory{ChangeID: id, CorrelationID: call, Caller: "/root", ExecutingThread: "stock-thread", Source: "exec",
-					ExecOutcome: &changecapture.Outcome{Coverage: changecapture.CoveragePartial}, ReviewFiles: []diffmodel.ReviewFile{file}}
-				if err := store.put(t.Context(), "/w", map[string]mekugiHistory{call: history}); err != nil {
+				history := legacycall.History{ChangeID: id, CorrelationID: call, Caller: "/root", ExecutingThread: "stock-thread", Source: "exec",
+					ExecOutcome: (*legacycall.Outcome)(&changecapture.Outcome{Coverage: changecapture.CoveragePartial}), ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{file})}
+				if err := store.put(t.Context(), "/w", map[string]legacycall.History{call: history}); err != nil {
 					t.Fatal(err)
 				}
 			}

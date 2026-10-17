@@ -70,7 +70,7 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 	u := newAppServerSessionTestUI(t, workspace)
 	u.agents = u.shell.agents
 	activity := sessioncontrol.NewAudience(nil)
-	setTestAppServerIntegration(u, &mekugiProxy{activity: activity})
+	setTestAppServerIntegration(u, &observationFixture{activity: activity})
 	u.resumeThread = "main"
 
 	rootRecords := []map[string]any{
@@ -219,15 +219,12 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 		t.Fatal(err)
 	}
 	fields := map[string]jsonv1.RawMessage{"model": []byte(`"gpt-6-luna"`), "input": input}
-	collectSubagentStart(activity, "child", &codexresponses.Request{Fields: fields}, "/root/reviewer")
-	for _, reply := range prepareSubagentInputEnvelopes(fields, "/root/reviewer").replies {
-		activity.Collect(activitypresentation.Supplement{Thread: "child", Source: reply.source, Kind: "reply", Text: reply.message.Text, Message: &reply.message})
-	}
+	observeActivityRequest(t, &observationFixture{activity: activity}, "child", "/root/reviewer", &codexresponses.Request{Fields: fields})
 	var live []string
 	for _, entry := range takeNativeActivity(activity, "main") {
 		live = append(live, summary(entry))
 	}
-	if want := []string{"assignment|Now check the docs.", "reply|/root->/root/reviewer|Keep going."}; !slices.Equal(live, want) {
+	if want := []string{"reply|/root->/root/reviewer|Keep going.", "assignment|Now check the docs."}; !slices.Equal(live, want) {
 		t.Fatalf("live activity after restore = %q, want %q", live, want)
 	}
 }
@@ -245,7 +242,7 @@ func TestAppServerResumeDefersHistoryButKeepsActiveTurn(t *testing.T) {
 	}
 	// Attach only the activity collector.
 	activity := sessioncontrol.NewAudience(nil)
-	setTestAppServerIntegration(u, &mekugiProxy{activity: activity})
+	setTestAppServerIntegration(u, &observationFixture{activity: activity})
 	activity.Attach("saved")
 	activity.Collect(activitypresentation.Supplement{Thread: "saved", Source: "late", Kind: "error", Text: "exec script failed: late"})
 	appServerTestMessage(t, u, `{"id":2,"result":{"data":[],"nextCursor":null}}`)

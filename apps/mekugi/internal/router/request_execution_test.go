@@ -49,7 +49,7 @@ func executeRequest(
 	provider inferencegateway.Forwarder,
 	output io.Writer,
 	issues *requestexecution.Failures,
-	mekugiCalls *mekugiProxy,
+	mekugiCalls *observationFixture,
 ) error {
 	executor := testRequestExecutor(provider, issues, mekugiCalls)
 	executor.Output = output

@@ -17,14 +17,14 @@ func TestSubagentStartHasOnlyObservedModelHeader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := nativeSubagentStart(&request)
-	if got == nil || *got != (binding.SubagentSettings{Model: "gpt-effective", Effort: "high", Tier: "fast"}) || strings.Contains(testActivityStart(&request).label(), "Private assignment body") {
+	got := observedSubagentStart(t, &request)
+	if got == nil || *got != (binding.SubagentSettings{Model: "gpt-effective", Effort: "high", Tier: "fast"}) || strings.Contains(testActivityStart(t, &request).label(), "Private assignment body") {
 		t.Fatalf("native start = %+v", got)
 	}
 }
 
-func testActivityStart(request *codexresponses.Request) *activityStart {
-	observed := nativeSubagentStart(request)
+func testActivityStart(t *testing.T, request *codexresponses.Request) *activityStart {
+	observed := observedSubagentStart(t, request)
 	if observed == nil {
 		return nil
 	}

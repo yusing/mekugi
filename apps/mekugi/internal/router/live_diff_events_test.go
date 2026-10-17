@@ -134,20 +134,20 @@ func TestLiveDiffScopeReconciliationUsesCachedAttempts(t *testing.T) {
 
 func TestLiveDiffJSONBatchKeepsFollowAndRecency(t *testing.T) {
 	var viewPublication presentation.Publication
-	transform, proxy, _, workspace := newMekugiTestTransform(t)
+	_, proxy, _, workspace := newMekugiTestTransform(t)
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	setTestProxyStore(proxy, store)
 	broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{
-		Workspaces: map[string]map[string]bool{workspace: {transform.shellThreadID: true}},
+		Workspaces: map[string]map[string]bool{workspace: {"thread-1": true}},
 	})
 	sub := testReview(broker).Subscribe()
 	<-sub.Events()
-	histories := make(map[string]mekugiHistory)
+	histories := make(map[string]legacycall.History)
 	for _, name := range []string{"first", "second"} {
-		id, err := store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), workspace, transform.shellThreadID, name)
+		id, err := store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), workspace, "thread-1", name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -158,7 +158,7 @@ func TestLiveDiffJSONBatchKeepsFollowAndRecency(t *testing.T) {
 		if err := os.WriteFile(path, []byte("content\n"), 0600); err != nil {
 			t.Fatal(err)
 		}
-		histories[name] = mekugiHistory{ToolName: applyPatchToolName, ChangeID: id, CorrelationID: name, ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile(path, path, "", "content\n")}}
+		histories[name] = legacycall.History{ToolName: applyPatchToolName, ChangeID: id, CorrelationID: name, ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{diffmodel.RenderReviewFile(path, path, "", "content\n")})}
 	}
 	if err := store.put(t.Context(), workspace, histories); err != nil {
 		t.Fatal(err)

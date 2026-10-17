@@ -334,7 +334,7 @@ func TestCodeModePatchFinalPreviewUsesPreExecutionSource(t *testing.T) {
 	if err := os.WriteFile(path, []byte("old()\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {transform.threadID: true}}})
+	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"thread-1": true}}})
 	sub := testReview(broker).Subscribe()
 	<-sub.Events()
 
@@ -343,7 +343,7 @@ func TestCodeModePatchFinalPreviewUsesPreExecutionSource(t *testing.T) {
 	script := "const patch = " + string(responses.MustMarshalJSON(patch)) + "; text(await tools.apply_patch(patch));"
 	for _, event := range []map[string]any{
 		{"type": "response.output_item.added", "output_index": 0, "item": map[string]any{
-			"type": "custom_tool_call", "id": "code-item", "call_id": "code-call", "name": transform.codeModeToolName,
+			"type": "custom_tool_call", "id": "code-item", "call_id": "code-call", "name": "exec",
 			"input": "", "status": "in_progress"}},
 		{"type": "response.custom_tool_call_input.delta", "item_id": "code-item", "delta": script},
 		{"type": "response.custom_tool_call_input.done", "item_id": "code-item", "call_id": "code-call", "input": script},

@@ -20,7 +20,6 @@ import (
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
-	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
@@ -127,9 +126,9 @@ func TestAgentMetricsSessionInspectionWholeRolloutAndDefectEvidence(t *testing.T
 		t.Fatal(err)
 	}
 	const patch = "*** Begin Patch\n*** Add File: observed.txt\n+ready\n*** End Patch\n"
-	if err := store.put(t.Context(), root, map[string]mekugiHistory{
-		"edit":                            {ToolName: applyPatchToolName, Script: patch, CarrierName: applyPatchToolName, CarrierKind: codeModeCarrierCustom, CarrierPayload: patch, NativePatches: []changecapture.PatchObservation{{Input: patch}}},
-		legacycall.PatchCallID("edit", 0): {ToolName: applyPatchToolName, Script: patch, CorrelationID: "edit\x000", Report: "Success", ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", filepath.Join(root, "observed.txt"), "", "ready\n")}},
+	if err := store.put(t.Context(), root, map[string]legacycall.History{
+		"edit":                            {ToolName: applyPatchToolName, Script: patch, CarrierName: applyPatchToolName, CarrierKind: codeModeCarrierCustom, CarrierPayload: patch, NativePatches: []legacycall.NativePatch{{Input: patch}}},
+		legacycall.PatchCallID("edit", 0): {ToolName: applyPatchToolName, Script: patch, CorrelationID: "edit\x000", Report: "Success", ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{diffmodel.RenderReviewFile("", filepath.Join(root, "observed.txt"), "", "ready\n")})},
 	}); err != nil {
 		t.Fatal(err)
 	}

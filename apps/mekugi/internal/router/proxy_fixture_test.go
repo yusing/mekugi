@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -95,7 +97,7 @@ func (fixture *proxyRegistryFixture) get(t *testing.T) *frontends.Registry {
 	return fixture.registry
 }
 
-func newProxyWithSharedTestRegistry(t *testing.T, registry *frontends.Registry) *mekugiProxy {
+func newProxyWithSharedTestRegistry(t *testing.T, registry *frontends.Registry) *observationFixture {
 	t.Helper()
 	proxy := newMekugiProxy(registry, nil, newTestUsage(t), testHistory())
 	t.Cleanup(func() {
@@ -216,7 +218,7 @@ func runOwnedToolPluginWorker(service *history.Service, recovered *recovery.Serv
 }
 
 // Close releases the actual owners created by request fixtures.
-func (p *mekugiProxy) Close() error {
+func (p *observationFixture) Close() error {
 	if p == nil {
 		return nil
 	}
@@ -226,11 +228,11 @@ func (p *mekugiProxy) Close() error {
 	return nil
 }
 
-func newMekugiProxy(registry *frontends.Registry, projections []binding.InputProjection, usage *accounting.Service, service *history.Service) *mekugiProxy {
+func newMekugiProxy(registry *frontends.Registry, projections []binding.InputProjection, usage *accounting.Service, service *history.Service) *observationFixture {
 	if registry == nil {
 		return nil
 	}
-	proxy := &mekugiProxy{
+	proxy := &observationFixture{
 		registry:         registry,
 		calls:            service.Calls(),
 		review:           sessionreview.New(context.Background(), nil, nil),
@@ -238,7 +240,7 @@ func newMekugiProxy(registry *frontends.Registry, projections []binding.InputPro
 		usage:            usage,
 		control:          new(sessioncontrol.Observations),
 		previewTiming:    previewbinding.Timing{Frame: previewview.PreviewFrameDelay, Unit: previewview.PreviewUnitDelay, Finish: previewview.PreviewFinishDrain},
-		execWindows:      &execWindowRegistry{},
+		execWindows:      &executionobservation.Windows{},
 	}
 	proxy.activity = sessioncontrol.NewAudience(func(category, message string) { proxy.notice("", "", category, message) })
 	return proxy

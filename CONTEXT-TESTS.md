@@ -63,6 +63,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Rollout evidence and offline source decoding | `./backends/codex/rollout`, plus router context, resume-settings, restored-Activity, session-inspection, corpus and optional-AX consumers |
 | Offline reconstruction, scheduling and playback | `./modules/sessionreplay/... ./backends/codex/rollout`, plus router `SessionUIReplay`, hook and optional-transport consumers |
 | Authenticated catalog, pinned workers, dispatch and recovery delivery | `./apps/mekugi/internal/frontends`, plus launch `WorkerArguments` and affected router integration |
+| Prepared execution observations, running windows and native-shell capture | `./apps/mekugi/internal/executionobservation`, plus router request/terminal consumers; preserve compaction, failed/partial effects, fork/resume, report settlement, publication pressure and renderer snapshots; compile tagged app fixtures after API changes |
 | Router behavior | `./apps/mekugi/internal/router` |
 | Bounded notices, feedback and recovery | `./modules/notifications/...`, plus router `Critical`, `Notice`, `Notification`, request-fault, cleanup and title consumers |
 | Applied settings and renderer preferences | `./modules/sessionpreferences/...`, plus router `NativePaneState`, `AppliedSettings`, resume, controls and settings consumers |

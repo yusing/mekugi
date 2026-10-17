@@ -12,7 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/modules/commandsegments/segments"
+	json "encoding/json/v2"
+
+	"github.com/yusing/mekugi/modules/commandsegments/reports"
 
 	"github.com/yusing/mekugi/backends/codex/shellhook"
 
@@ -52,28 +54,13 @@ func TestAppServerExecTrackNativeCodexDash(t *testing.T) {
 		program:  `const result = await tools.exec_command({cmd:` + string(responses.MustMarshalJSON(command)) + `,shell:"/bin/sh",login:false}); text(result.output);`,
 		expected: []string{"DASH_ONE", "DASH_TWO"}, finalText: "Recovered after a retry.",
 	}
-	var tracked *segments.Subscription
 	during := func(t *testing.T, outer io.Writer, await func(string), _ func(func(string) bool), _ *vt.Emulator) {
 		t.Helper()
 		if _, err := io.WriteString(outer, "\x023"); err != nil {
 			t.Fatal(err)
 		}
 		await("┆ DASH_ONE")
-		proxy.execWindows.mu.Lock()
-		for _, window := range proxy.execWindows.windows {
-			if window.tracking == nil {
-				continue
-			}
-			for _, match := range window.tracking.State().Matches {
-				if match.Source == command && match.Report != nil && !match.Report.Ended {
-					tracked = window.tracking.Subscription
-				}
-			}
-		}
-		proxy.execWindows.mu.Unlock()
-		if tracked == nil {
-			t.Fatal("streamed output has no live dash observation")
-		}
+
 		if err := os.WriteFile(gate, nil, 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -156,23 +143,48 @@ func TestAppServerExecTrackNativeCodexDash(t *testing.T) {
 		codexArgs:   []string{"-c", hook, "-c", state},
 		duringTurn:  during, afterPrompt: after,
 	})
-	reportState := tracked.State()
-	if len(reportState.Matches) != 1 || reportState.Matches[0].Report == nil {
-		t.Fatalf("missing completed dash observation: %+v", reportState)
+	names, err := filepath.Glob(filepath.Join(proxy.retained.Store.Directory(), "segments-*.json"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	report := reportState.Matches[0].Report
-	if !report.Done || report.Code != 1 || len(report.Segments) != 5 {
+	var report *reports.Report
+	for _, name := range names {
+		data, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var record struct {
+			Workspace, CallID string
+			Report            reports.Report
+		}
+		if err := json.Unmarshal(data, &record); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(record.Report.Command, "echo DASH_ONE") {
+			continue
+		}
+		inspected, found, err := testReports().Inspect(proxy.retained.Store.Directory(), record.Workspace, record.CallID)
+		if err != nil || !found {
+			t.Fatalf("completed dash observation: %v, %v", found, err)
+		}
+		if err := json.Unmarshal(inspected.Data, &record); err != nil {
+			t.Fatal(err)
+		}
+		report = &record.Report
+	}
+	if report == nil || report.Exit != 1 || len(report.Parts) != 5 {
 		t.Fatalf("dash report = %+v", report)
 	}
-	for i, segment := range report.Segments[:4] {
-		elapsed := time.Duration(segment.Timing.ElapsedNS)
-		if !segment.Began || !segment.Ended || elapsed <= 0 || (i == 1 && elapsed < time.Second) {
-			t.Fatalf("segment %d lacks its own measured timing: %+v", i, segment)
+	for i, part := range report.Parts[:4] {
+		elapsed := time.Duration(part.Timing.ElapsedNS)
+		if part.Skipped || part.Timing.Started.IsZero() || part.Timing.Ended.IsZero() || elapsed <= 0 || (i == 1 && elapsed < time.Second) {
+			t.Fatalf("segment %d lacks measured timing: %+v", i, part)
 		}
 	}
-	if report.Segments[4].Began || report.Segments[3].Code != 1 {
-		t.Fatalf("dash short-circuit status = %+v", report.Segments)
+	if !report.Parts[4].Skipped || report.Parts[3].Exit != 1 {
+		t.Fatalf("dash short-circuit status = %+v", report.Parts)
 	}
+
 }
 
 // Real Codex runs a command list through the tracking hook: its command item

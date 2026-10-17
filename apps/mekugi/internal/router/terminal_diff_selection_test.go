@@ -1,6 +1,7 @@
 package router
 
 import (
+"github.com/yusing/mekugi/libraries/legacycall"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -41,8 +42,8 @@ func TestTerminalUIDiffSelectionUsesLastPaintedEvidence(t *testing.T) {
 					t.Fatal(err)
 				}
 				path := filepath.Join(workspace, name+".go")
-				history := mekugiHistory{ChangeID: id, CorrelationID: name, ExecutingThread: "main", Caller: "/root", ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile(path, path, "", liveDiffLinesFile(name, 80))}}
-				if err := store.put(t.Context(), workspace, map[string]mekugiHistory{name: history}); err != nil {
+				history := legacycall.History{ChangeID: id, CorrelationID: name, ExecutingThread: "main", Caller: "/root", ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{diffmodel.RenderReviewFile(path, path, "", liveDiffLinesFile(name, 80))})}
+				if err := store.put(t.Context(), workspace, map[string]legacycall.History{name: history}); err != nil {
 					t.Fatal(err)
 				}
 			}

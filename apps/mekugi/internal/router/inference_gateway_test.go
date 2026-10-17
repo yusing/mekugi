@@ -28,7 +28,7 @@ func testGatewayResponse(response *http.Response, err error) (*inferencegateway.
 	return &inferencegateway.Response{Response: response}, err
 }
 
-func testRequestExecutor(provider inferencegateway.Forwarder, issues *requestexecution.Failures, proxy *mekugiProxy) requestexecution.Executor {
+func testRequestExecutor(provider inferencegateway.Forwarder, issues *requestexecution.Failures, proxy *observationFixture) requestexecution.Executor {
 	executor := requestexecution.Executor{Provider: provider, Issues: issues}
 	if proxy != nil {
 		executor.Observations, executor.Guidance = proxy, proxy.registry.Guidance
@@ -39,11 +39,11 @@ func testRequestExecutor(provider inferencegateway.Forwarder, issues *requestexe
 	return executor
 }
 
-func testResponsesHandler(ctx context.Context, timeout time.Duration, provider inferencegateway.Forwarder, issues *requestexecution.Failures, proxy *mekugiProxy) http.HandlerFunc {
+func testResponsesHandler(ctx context.Context, timeout time.Duration, provider inferencegateway.Forwarder, issues *requestexecution.Failures, proxy *observationFixture) http.HandlerFunc {
 	return responsesHandler(ctx, timeout, testRequestExecutor(provider, issues, proxy))
 }
 
-func testWebSocketEndpoint(ctx context.Context, timeout time.Duration, provider *inferencegateway.Client, issues *requestexecution.Failures, proxy *mekugiProxy) *inferencegateway.WebSocketEndpoint {
+func testWebSocketEndpoint(ctx context.Context, timeout time.Duration, provider *inferencegateway.Client, issues *requestexecution.Failures, proxy *observationFixture) *inferencegateway.WebSocketEndpoint {
 	return inferencegateway.NewWebSocketEndpoint(ctx, timeout, provider, testRequestExecutor(provider, issues, proxy).ExecuteWebSocket)
 }
 

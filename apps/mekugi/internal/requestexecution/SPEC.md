@@ -10,25 +10,12 @@ attachment projection. Non-generating WebSocket prewarm cannot initialize live
 execution, retained history or agent lifecycle. Compaction keeps its existing
 request-wide projections and gains no collaboration tools.
 
-Prepared execution observations retain their capture and publication owner. They
-admit review identity before forwarding, supply the existing usage observation,
-and rebind to the execution lifetime after provider admission while preserving
-storage identity and turn leases. Prepared responses borrow the actual control,
-retained-call, review and observation-window owners independently of the preparer.
-Invocation startup owns their construction and shutdown; request cleanup closes
-only that response's observations. Preview timing is supplied by the selected
-frontend rather than importing its renderer into response observation.
-
-Retained reads, snapshot leases and publication transactions use Session History
-directly. Application observation converts working capture facts to neutral call
-records at publication; change membership and input adoption use the existing
-cross-owner transaction coordinator. Operation scope carries the selected thread,
-namespace and limits without a second storage owner or transaction wrapper.
-
-Native shell observation retains its admitted thread, namespace and workspace
-through host completion, independently of the displayed session. The terminal
-binds host identity and supplies completion facts to an opaque operation; capture
-and retained publication use the same workflow as model-originated execution.
+[Execution observation](../executionobservation/SPEC.md) supplies the prepared
+transformer, usage observation and cleanup lifetime. It admits review identity
+before forwarding and rebinds to the execution lifetime after provider admission
+while preserving storage identity and turn leases. Invocation startup constructs
+and closes its actual owners; request cleanup closes only that response's
+observations.
 
 Raw provider usage is observed before response projection. Definite provider
 rejections do not charge inferred execution; uncertain transport failures retain

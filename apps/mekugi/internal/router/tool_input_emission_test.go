@@ -1,14 +1,18 @@
 package router
 
 import (
+	"encoding/json"
 	"testing"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
-func emissionTestEvent(t *testing.T, transform *mekugiResponseTransform, event map[string]any) {
+func emissionTestEvent(t *testing.T, transform requestexecution.Prepared, event map[string]any) {
 	t.Helper()
-	if _, err := transform.transformActivitySSE(responses.MustMarshalJSON(event)); err != nil {
+	if _, err := transform.TransformSSE(responses.MustMarshalJSON(event)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -23,7 +27,7 @@ func TestQuestionAnswerWaitsForToolInput(t *testing.T) {
 			u.session.cwd = t.TempDir()
 			// Installed Codex may omit cwd in provider requests. Native thread
 			// identity must still protect the matching UI's question answer.
-			transform := &mekugiResponseTransform{control: proxy.control, review: proxy.review, execWindows: proxy.execWindows, calls: proxy.calls, retained: proxy.retained, changeSource: proxy.changeSource, snapshots: proxy.snapshots, recovered: proxy.recovered, publishChanges: proxy.publishChanges, previewTiming: proxy.previewTiming, threadID: u.Thread}
+			transform := prepareEmissionTest(t, proxy, "", u.Thread)
 			defer transform.Close()
 			item := map[string]any{"id": "emitting", "type": kind, "name": "unobserved", "call_id": "call", "status": "in_progress"}
 			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": item})
@@ -63,7 +67,11 @@ func TestToolInputEmissionDoesNotBlockNormalPromptsOrOtherSessions(t *testing.T)
 			proxy := newManagedMekugiProxy(t)
 			setTestAppServerIntegration(u, proxy)
 			u.Turn = "turn"
-			transform := &mekugiResponseTransform{control: proxy.control, review: proxy.review, execWindows: proxy.execWindows, calls: proxy.calls, retained: proxy.retained, changeSource: proxy.changeSource, snapshots: proxy.snapshots, recovered: proxy.recovered, publishChanges: proxy.publishChanges, previewTiming: proxy.previewTiming, threadID: tc.thread, directory: tc.workspace}
+			workspace := tc.workspace
+			if workspace != "" {
+				workspace = t.TempDir()
+			}
+			transform := prepareEmissionTest(t, proxy, workspace, tc.thread)
 			defer transform.Close()
 			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": map[string]any{"id": "emitting", "type": "custom_tool_call"}})
 			if tc.answer {
@@ -77,35 +85,12 @@ func TestToolInputEmissionDoesNotBlockNormalPromptsOrOtherSessions(t *testing.T)
 	}
 }
 
-func TestToolInputEmissionClearsOnItemDoneOrResponseClose(t *testing.T) {
-	for _, closeResponse := range []bool{false, true} {
-		t.Run(map[bool]string{false: "item done", true: "response close"}[closeResponse], func(t *testing.T) {
-			proxy := newManagedMekugiProxy(t)
-			transform := &mekugiResponseTransform{control: proxy.control, review: proxy.review, execWindows: proxy.execWindows, calls: proxy.calls, retained: proxy.retained, changeSource: proxy.changeSource, snapshots: proxy.snapshots, recovered: proxy.recovered, publishChanges: proxy.publishChanges, previewTiming: proxy.previewTiming, threadID: "main", directory: "/workspace"}
-			defer transform.Close()
-			item := map[string]any{"id": "emitting", "type": "custom_tool_call", "status": "incomplete"}
-			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": item})
-			if !proxy.control.EmittingToolInput("/workspace", "main") {
-				t.Fatal("emission was not observed")
-			}
-			if closeResponse {
-				transform.Close()
-			} else {
-				emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.done", "item": item})
-			}
-			if proxy.control.EmittingToolInput("/workspace", "main") {
-				t.Fatal("ended response still blocks answers")
-			}
-		})
-	}
-}
-
 func TestNormalPromptBypassesDeferredQuestionAnswer(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	proxy := newManagedMekugiProxy(t)
 	setTestAppServerIntegration(u, proxy)
 	u.Turn = "turn"
-	transform := &mekugiResponseTransform{control: proxy.control, review: proxy.review, execWindows: proxy.execWindows, calls: proxy.calls, retained: proxy.retained, changeSource: proxy.changeSource, snapshots: proxy.snapshots, recovered: proxy.recovered, publishChanges: proxy.publishChanges, previewTiming: proxy.previewTiming, threadID: u.Thread, directory: u.session.cwd}
+	transform := prepareEmissionTest(t, proxy, u.session.cwd, u.Thread)
 	defer transform.Close()
 	emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": map[string]any{"id": "emitting", "type": "custom_tool_call"}})
 	questionTestAsync(t, u, "question", "Who receives it?")
@@ -119,4 +104,18 @@ func TestNormalPromptBypassesDeferredQuestionAnswer(t *testing.T) {
 	if len(u.conversation().Unsent) != 1 || u.conversation().Unsent[0].Question == nil {
 		t.Fatal("normal prompt consumed the deferred answer")
 	}
+}
+
+func prepareEmissionTest(t *testing.T, p *observationFixture, workspace, thread string) requestexecution.Prepared {
+	t.Helper()
+	request := serverRequest(t, nil)
+	metadata := codexresponses.TurnMetadata{RequestKind: "turn", ThreadID: thread}
+	if workspace != "" {
+		metadata.Directories = map[string]json.RawMessage{workspace: nil}
+	}
+	prepared, err := p.prepareRequest(t.Context(), &request, "emission", thread, metadata, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return prepared
 }

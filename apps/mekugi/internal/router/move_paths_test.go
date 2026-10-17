@@ -1,6 +1,7 @@
 package router
 
 import (
+"github.com/yusing/mekugi/libraries/legacycall"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -21,7 +22,7 @@ import (
 func TestUISnapshotMoveActivityAndDialog(t *testing.T) {
 	workspace := "/workspace"
 	file := diffmodel.RenderReviewFile(workspace+"/internal/router/old.txt.new", workspace+"/internal/router/old.txt", "same\n", "same\n")
-	text := presentation.ReceiptText(workspace, receiptEvidence(mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{file}}))
+	text := presentation.ReceiptText(workspace, receiptEvidence(legacycall.History{ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{file})}))
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Painter.Theme = diffrender.DarkTheme
 	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: text, native: &liveActivityNativeItem{thread: "main", item: "move"}}}})
@@ -66,7 +67,7 @@ func TestMChangesMoveWorkspacePaths(t *testing.T) {
 	id := f.reserve(t, f.thread, "move")
 	before, after := filepath.Join(f.workspace, "internal", "old.txt"), filepath.Join(f.workspace, "internal", "new.txt")
 	file := diffmodel.RenderReviewFile(before, after, "same\n", "same\n")
-	f.publish(t, id, "move", "move", mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{file}})
+	f.publish(t, id, "move", "move", legacycall.History{ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{file})})
 	for _, mode := range []string{"", "--history", "--net"} {
 		stdout, stderr, status := f.run(t, "mchanges "+id+" "+mode)
 		if status != 0 || stderr != "" || !strings.Contains(stdout, "move \"internal/old.txt\" -> \"internal/new.txt\"\n") || strings.Contains(stdout, f.workspace) {

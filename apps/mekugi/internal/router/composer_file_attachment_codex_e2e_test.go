@@ -142,7 +142,7 @@ func TestSkillContentsNativeCodexE2E(t *testing.T) {
 			}
 			environment := routerFaultCodexEnvironment(t)
 			manager := ""
-			var proxy *mekugiProxy
+			var proxy *observationFixture
 			if managed {
 				bin := t.TempDir()
 				manager = filepath.Join(bin, "skills-mgr")

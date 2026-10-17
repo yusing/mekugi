@@ -71,14 +71,14 @@ func liveDiffTestChange(t *testing.T, store *mekugiReplayStore, workspace, call,
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := mekugiHistory{
+	h := legacycall.History{
 		ChangeID: id, CorrelationID: call,
-		ReviewFiles: []diffmodel.ReviewFile{{
+		ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{{
 			BeforePath: path, AfterPath: path,
 			Diff: "update\n--- \"" + path + "\"\n+++ \"" + path + "\"\n@@ -1,80 +1,80 @@\n" + strings.Repeat("-old\n+new\n", 80),
-		}},
+		}}),
 	}
-	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{call: h}); err != nil {
+	if err := store.put(t.Context(), workspace, map[string]legacycall.History{call: h}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -194,10 +194,10 @@ func TestLiveDiffDoesNotInferPrivateScopeFromScriptText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := mekugiHistory{ChangeID: id, CorrelationID: "private", Script: "in @shell/private\n",
-		ReviewFiles: []diffmodel.ReviewFile{{AfterPath: "private-script", Diff: "private-content\n"}},
+	h := legacycall.History{ChangeID: id, CorrelationID: "private", Script: "in @shell/private\n",
+		ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{{AfterPath: "private-script", Diff: "private-content\n"}}),
 	}
-	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"private": h}); err != nil {
+	if err := store.put(t.Context(), workspace, map[string]legacycall.History{"private": h}); err != nil {
 		t.Fatal(err)
 	}
 	files, err := store.liveDiffSnapshotFiles(t.Context(), previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: nil}})
@@ -235,8 +235,8 @@ func liveDiffIdentityCapture(t *testing.T, store *mekugiReplayStore, workspace, 
 			diff += "+" + after
 		}
 	}
-	h := mekugiHistory{ChangeID: id, CorrelationID: call, ReviewFiles: []diffmodel.ReviewFile{{BeforePath: from, AfterPath: to, Diff: diff}}}
-	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{call: h}); err != nil {
+	h := legacycall.History{ChangeID: id, CorrelationID: call, ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{{BeforePath: from, AfterPath: to, Diff: diff}})}
+	if err := store.put(t.Context(), workspace, map[string]legacycall.History{call: h}); err != nil {
 		t.Fatal(err)
 	}
 }

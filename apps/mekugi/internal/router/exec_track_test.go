@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"context"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
@@ -16,8 +18,6 @@ import (
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/commandsegments/segments"
 
-	"github.com/yusing/mekugi/libraries/commandanalysis"
-	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
@@ -199,13 +199,10 @@ func TestExecTrackCapturesMktempCreation(t *testing.T) {
 			}
 			proxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, proxy)
-			proxy.execWindows.tracker = shell.hub.Observer
-			transform := prepareNativeStockTransform(t, proxy, workspace, "exec-session")
-			transform.shellThreadID, transform.shellTurnID = "thread", "turn"
-			run := func(call, script string) (execTrackRun, mekugiHistory, *mekugiResponseTransform) {
+			proxy.execWindows.Reports = shell.hub.Observer
+			run := func(call, script string) (execTrackRun, legacycall.History, context.Context) {
 				t.Helper()
-				arguments := string(responses.MustMarshalJSON(map[string]any{"cmd": script, "workdir": workspace, "shell": "bash"}))
-				retainCommandObservation(t, transform, call, arguments)
+				operation, ctx := startShellObservationTest(t, proxy, workspace, "thread", "turn", call+"-host", script)
 				key := [3]string{"thread", "turn", call + "-host"}
 				shell.hub.start(key, "/bin/bash -c "+quoteShellWord(script))
 				got := runShell(t, shell.env, "bash", "--noprofile", "--norc", "-c", script)
@@ -217,15 +214,14 @@ func TestExecTrackCapturesMktempCreation(t *testing.T) {
 				}
 				// Changes outside the reported path are not this command's evidence.
 				writeTestFile(t, unrelated, call+"\n")
-				next := reconcileExecItems(t, proxy, workspace, []any{
-					map[string]any{"type": "function_call", "id": call + "-item", "call_id": call, "name": nativeExecCommandToolName, "arguments": arguments},
-					map[string]any{"type": "function_call_output", "call_id": call, "output": nativeExecOutput("Process exited with code 0") + got.stdout},
-				})
-				history, found, err := testProxyStore(proxy).lookup(t.Context(), workspace, call+":exec:1")
-				if err != nil || !found || history.ChangeID == "" || len(history.ReviewFiles) != 1 {
-					t.Fatalf("%s evidence: %+v, %v, %v", call, history, found, err)
+				if err := operation.Complete(binding.ToolResult{CallID: call + "-host", Tool: "exec_command", Status: "completed", ExitCode: new(0)}, got.stdout); err != nil {
+					t.Fatal(err)
 				}
-				return got, history, next
+				history := shellTestRecord(t, testProxyStore(proxy), workspace, "thread", call+"-host").History
+				if history.ChangeID == "" || len(history.ReviewFiles) != 1 {
+					t.Fatalf("%s evidence: %+v", call, history)
+				}
+				return got, history, ctx
 			}
 			created, creation, _ := run("create", `root=$(mktemp`+flag+`); printf 'entry\n' > "`+target+`"; printf '%s' "$root"`)
 			if filepath.Dir(created.stdout) != parent {
@@ -245,16 +241,16 @@ func TestExecTrackCapturesMktempCreation(t *testing.T) {
 			t.Cleanup(resumed.snapshots.Close)
 			ids := []string{creation.ChangeID, deletion.ChangeID}
 			for i, id := range ids {
-				history, err := resumed.changes.Read(next.ctx, resumed.scoped(next.ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{id}, View: "net", MaxTokens: 4000})
+				history, err := resumed.changes.Read(next, resumed.scoped(next).changeScope(), changes.Query{Workspace: workspace, IDs: []string{id}, View: "net", MaxTokens: 4000})
 				if err != nil || !strings.Contains(history, []string{"+entry", "-entry"}[i]) || strings.Contains(history, "unrelated") {
 					t.Fatalf("retained %s: %q, %v", id, history, err)
 				}
 			}
-			net, err := resumed.changes.Read(next.ctx, resumed.scoped(next.ctx).changeScope(), changes.Query{Workspace: workspace, IDs: ids, View: "net", MaxTokens: 4000})
+			net, err := resumed.changes.Read(next, resumed.scoped(next).changeScope(), changes.Query{Workspace: workspace, IDs: ids, View: "net", MaxTokens: 4000})
 			if err != nil || strings.Contains(net, "entry") {
 				t.Fatalf("creation and deletion do not cancel: %q, %v", net, err)
 			}
-			data, err := resumed.liveDiffSnapshot(next.ctx, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {creation.ExecutingThread: true, "stock-thread": true}}})
+			data, err := resumed.liveDiffSnapshot(next, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {creation.ExecutingThread: true, "stock-thread": true}}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -361,24 +357,6 @@ c.XXXXXX"`, created: 1, reported: true},
 			})
 		}
 	}
-}
-
-func TestExecWindowRepeatedOpenKeepsOneReportOwner(t *testing.T) {
-	t.Parallel()
-	shell := newExecTrackShell(t)
-	registry := &execWindowRegistry{tracker: shell.hub.Observer}
-	command := commandanalysis.Command{Command: "mktemp", Workdir: t.TempDir(), Shell: "bash"}
-	first := &execWindow{ref: "call", thread: "thread", turn: "turn"}
-	registry.open(first, command)
-	registry.open(&execWindow{ref: "call", thread: "thread", turn: "turn"}, command)
-	if first.tracking == nil {
-		t.Fatal("missing first subscription")
-	}
-	state := first.tracking.State()
-	if len(state.Matches) != 1 || state.Matches[0].Ambiguous {
-		t.Fatalf("repeated open changed report ownership: %+v", state)
-	}
-
 }
 
 func TestExecTrackReportsEachSegmentWithoutChangingTheCommand(t *testing.T) {

@@ -1,6 +1,7 @@
 package router
 
 import (
+"github.com/yusing/mekugi/libraries/legacycall"
 	"fmt"
 	"reflect"
 	"slices"
@@ -319,7 +320,7 @@ func TestObservedEditReceiptsBeforeHostRows(t *testing.T) {
 				path, call := fmt.Sprintf("a%d.go", i), fmt.Sprintf("cmd%d", i)
 				file := diffmodel.RenderReviewFile(path, path, strings.Repeat(fmt.Sprintf("before source %d\n", i), tc.lines), strings.Repeat(fmt.Sprintf("after source %d\n", i), tc.lines))
 				broker.Update(previewmodel.Preview{ID: call, Workspace: u.session.cwd, Thread: "main", Complete: true,
-					HostItems: []string{call}, Files: []diffmodel.ReviewFile{file}, EditReceipt: presentation.ReceiptText(u.session.cwd, receiptEvidence(mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{file}, ExecOutcome: &changecapture.Outcome{Labels: []string{"cat"}}}))}, false)
+					HostItems: []string{call}, Files: []diffmodel.ReviewFile{file}, EditReceipt: presentation.ReceiptText(u.session.cwd, receiptEvidence(legacycall.History{ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{file}), ExecOutcome: (*legacycall.Outcome)(&changecapture.Outcome{Labels: []string{"cat"}})}))}, false)
 				events := testReview(broker).TakePreviews(sub)
 				if len(events) != 1 || events[0].Preview == nil {
 					t.Fatal("completion was not published")
@@ -371,7 +372,7 @@ func TestObservedEditReceiptsBeforeHostRows(t *testing.T) {
 func TestPendingObservedEditReceiptsStayBounded(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	file := diffmodel.RenderReviewFile("a.go", "a.go", strings.Repeat("before "+strings.Repeat("x", 90)+"\n", 100), "after\n")
-	receipt := presentation.ReceiptText(u.session.cwd, receiptEvidence(mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{file}, ExecOutcome: &changecapture.Outcome{Labels: []string{"cat"}}}))
+	receipt := presentation.ReceiptText(u.session.cwd, receiptEvidence(legacycall.History{ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{file}), ExecOutcome: (*legacycall.Outcome)(&changecapture.Outcome{Labels: []string{"cat"}})}))
 	for i := range 256 {
 		call := fmt.Sprintf("cmd%d", i)
 		u.shell.preview(previewmodel.Preview{ID: call, Workspace: u.session.cwd, Thread: "main", Complete: true, HostItems: []string{call}, EditReceipt: receipt}, false)

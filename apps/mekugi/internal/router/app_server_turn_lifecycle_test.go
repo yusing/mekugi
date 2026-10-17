@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
@@ -60,7 +62,7 @@ func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 	defer u.shell.diffScreen.Close()
 	auto := newLivePreview(t.Context())
 	defer auto.Close()
-	setTestAppServerIntegration(u, &mekugiProxy{review: testReview(auto), execWindows: &execWindowRegistry{}})
+	setTestAppServerIntegration(u, &observationFixture{review: testReview(auto), execWindows: &executionobservation.Windows{}})
 	workspace := u.session.cwd
 	setLiveScope(auto, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}})
 	u.shell.saved.Scope = testReview(auto).Scope()
@@ -77,14 +79,9 @@ func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 	queued := main
 	queued.ID, queued.Complete, queued.Evaluated, queued.Tool = "queued-final", true, true, applyPatchToolName
 	auto.Update(queued, false)
-	canceled := false
-	u.execWindows.open(&execWindow{ref: "cell", thread: "main", turn: "turn", previewCancel: func() { canceled = true }})
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "turn", "status": "interrupted"}})
-	if !canceled || u.shell.liveDock.Views[main.ID] != nil || u.shell.liveDock.Views[child.ID] == nil {
+	if u.shell.liveDock.Views[main.ID] != nil || u.shell.liveDock.Views[child.ID] == nil {
 		t.Fatal("interrupt did not retire only its own live preview")
-	}
-	if !u.execWindows.find("cell").closed.IsZero() {
-		t.Fatal("display cleanup finalized capture")
 	}
 	// An asynchronous worker can race with interruption and the next turn.
 	for _, active := range []bool{false, true} {

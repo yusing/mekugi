@@ -52,7 +52,7 @@ func TestOutputThroughputRestoredThreadIsolation(t *testing.T) {
 		requireRoundThroughput(t, restored, "child", 50, true)
 		requireRoundThroughput(t, restored, "fork", 0, false)
 		u, _ := newAppServerTestUI()
-		setTestAppServerIntegration(u, &mekugiProxy{usage: restored})
+		setTestAppServerIntegration(u, &observationFixture{usage: restored})
 		child := activityPaneAgent{Name: "/root/child"}
 		u.observeCost("child", &child)
 		if usagepresentation.OutputThroughputLabel(child.OutputThroughput) != "50.0 tok/s" {
@@ -80,7 +80,7 @@ func TestOutputThroughputProviderRequestJSONAndSSE(t *testing.T) {
 		for _, stream := range []bool{false, true} {
 			t.Run(fmt.Sprintf("stream=%v/%s", stream, mode), func(t *testing.T) {
 				synctest.Test(t, func(t *testing.T) {
-					var proxy *mekugiProxy
+					var proxy *observationFixture
 					if mode != "no-proxy" {
 						proxy = newManagedMekugiProxy(t)
 						if mode == "module-absent" {
@@ -175,7 +175,7 @@ func TestOutputThroughputUIRefreshRetainsPreviousRound(t *testing.T) {
 		u.ensureShell()
 		usage := newTestUsage(t)
 
-		setTestAppServerIntegration(u, &mekugiProxy{usage: usage})
+		setTestAppServerIntegration(u, &observationFixture{usage: usage})
 		first := usage.Observation(u.Thread, u.Thread, "gpt-6-sol", "")
 		first.Begin()
 		time.Sleep(time.Second)
@@ -311,7 +311,7 @@ func TestUISnapshotOutputThroughputRestoredRoster(t *testing.T) {
 		interrupted.Begin()
 		usage.Close()
 		u := newAppServerSessionTestUI(t, t.TempDir())
-		setTestAppServerIntegration(u, &mekugiProxy{usage: storedUsageFixture(t, store)})
+		setTestAppServerIntegration(u, &observationFixture{usage: storedUsageFixture(t, store)})
 
 		for _, thread := range []string{"child", "interrupted", "legacy"} {
 			info := binding.ThreadInfo{ID: thread, AgentNickname: thread, Turns: []binding.HistoryTurn{{ID: "old", Status: "completed"}}}

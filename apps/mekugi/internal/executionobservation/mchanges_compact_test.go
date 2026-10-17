@@ -1,0 +1,179 @@
+package executionobservation
+
+import (
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/yusing/mekugi/libraries/diffmodel"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+)
+
+func TestMChangesCompactViewsKeepKnownStatsWithoutManagedNoise(t *testing.T) {
+	t.Parallel()
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	ctx, release, err := store.beginSession(t.Context(), "author", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	id, err := store.changes.Reserve(ctx, store.scoped(ctx).changeScope(), workspace, "author", "mixed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	direct := diffmodel.RenderReviewFile(filepath.Join(workspace, "direct.go"), filepath.Join(workspace, "direct.go"), "old\n", "new\n")
+	managed := diffmodel.RenderReviewFile("", filepath.Join(workspace, "formatted.go"), "", "package p\n")
+	managed.Origin = "gofmt"
+	unknown := diffmodel.RenderIncompleteReviewFile(filepath.Join(workspace, "unread.go"), filepath.Join(workspace, "unread.go"), "capture deadline")
+	unknown.Origin = "go test"
+	history := mekugiHistory{ChangeID: id, CorrelationID: "mixed", ExecOutcome: &changecapture.Outcome{Class: "scoped", Coverage: changecapture.CoveragePartial}, ReviewFiles: []diffmodel.ReviewFile{direct, managed, unknown}}
+	if err := store.put(ctx, workspace, map[string]mekugiHistory{"mixed": history}); err != nil {
+		t.Fatal(err)
+	}
+	list, err := store.changes.Read(ctx, store.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, View: "list"})
+	if err != nil || list != id+" +1 -1\n" {
+		t.Fatalf("compact list: %q %v", list, err)
+	}
+	summary, err := store.changes.Read(ctx, store.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{id}, View: "summary"})
+	if err != nil || summary != "M\t1\t1\tdirect.go\n" {
+		t.Fatalf("compact summary: %q %v", summary, err)
+	}
+	details, err := store.changes.Read(ctx, store.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{id}, View: "history"})
+	if err != nil || !strings.Contains(details, "unread.go") || !strings.Contains(details, "capture deadline") {
+		t.Fatalf("suggested history view lost managed gap details: %q %v", details, err)
+	}
+	review, err := store.changes.Read(ctx, store.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{id}})
+	if err != nil || !strings.Contains(review, "+new\n") || strings.Contains(review, "+package p\n") {
+		t.Fatalf("managed content leaked into default diff: %q %v", review, err)
+	}
+	named, err := store.changes.Read(ctx, store.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{id}, View: "summary", Paths: []string{"formatted.go"}})
+	if err != nil || !strings.Contains(named, "no files match paths after --") || strings.Contains(named, "incomplete") {
+		t.Fatalf("explicit managed path unavailable: %q %v", named, err)
+	}
+}
+
+func TestMChangesListCompressesAppliedChangesRegardlessOfCommandAttribution(t *testing.T) {
+	t.Parallel()
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	ctx, release, err := store.beginSession(t.Context(), "author", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	save := func(call string, overlaps []string) string {
+		t.Helper()
+		id, err := store.changes.Reserve(ctx, store.scoped(ctx).changeScope(), workspace, "author", call)
+		if err != nil {
+			t.Fatal(err)
+		}
+		file := diffmodel.RenderReviewFile(call, call, "old\n", "new\n")
+		outcome := &changecapture.Outcome{Status: changecapture.StatusCompleted, Class: "scoped", Coverage: changecapture.CoverageExact, Overlaps: overlaps}
+		if err := store.put(ctx, workspace, map[string]mekugiHistory{call: {ChangeID: id, CorrelationID: call, ExecOutcome: outcome, ReviewFiles: []diffmodel.ReviewFile{file}}}); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	shared := save("shared", []string{"other-call"})
+	exclusive := save("exclusive", nil)
+	list, err := store.changes.Read(ctx, store.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, View: "list"})
+	if err != nil || list != shared+".."+exclusive+" +2 -2\n" {
+		t.Fatalf("applied change range: %q %v", list, err)
+	}
+}
+
+func TestMChangesListHidesLegacyNoOpsWithoutRetiringEvidence(t *testing.T) {
+	t.Parallel()
+	f := newMChangesSliceFixture(t, "legacy-noops")
+	var ids []string
+	for _, call := range []string{"first", "noop", "last"} {
+		id := f.reserve(t, f.thread, call)
+		ids = append(ids, id)
+		history := mekugiHistory{}
+		if call != "noop" {
+			history.ReviewFiles = []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file.txt", "file.txt", "old\n", "new\n")}
+		} else {
+			history.AlreadySatisfied = true
+		}
+		f.publish(t, id, call, call, history)
+	}
+	pending := f.reserve(t, f.thread, "pending")
+	stdout, stderr, status := f.run(t, "mchanges --list")
+	want := ids[0] + " +1 -1\n" + ids[2] + " +1 -1\n" + pending + " pending\n"
+	if status != 0 || stderr != "" || stdout != want {
+		t.Fatalf("legacy no-op list = %q, %q, %d; want %q", stdout, stderr, status, want)
+	}
+	stdout, stderr, status = f.run(t, "mchanges "+ids[1]+" --history")
+	if status != 0 || stderr != "" || !strings.Contains(stdout, "noop") {
+		t.Fatalf("legacy attempt became unreadable: %q %q %d", stdout, stderr, status)
+	}
+}
+
+func TestMChangesSummaryFileStatusesMatchDiffPane(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name  string
+		files []diffmodel.ReviewFile
+		later []diffmodel.ReviewFile
+		want  string
+	}{
+		{name: "added then edited", files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", "file", "", "a\n"), diffmodel.RenderReviewFile("file", "file", "a\n", "b\n")}, want: "A\t1\t0\tfile\n"},
+		{name: "created then deleted", files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", "file", "", "a\n")}, later: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file", "", "a\n", "")}, want: ""},
+		{name: "deleted", files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file", "", "a\n", "")}, want: "D\t0\t1\tfile\n"},
+		{name: "unknown candidate", files: []diffmodel.ReviewFile{diffmodel.RenderIncompleteReviewFile("file", "file", "capture deadline")}, want: "?\t-\t-\tfile\t\"capture deadline\"\n"},
+		{name: "unknown then known edit", files: []diffmodel.ReviewFile{diffmodel.RenderIncompleteReviewFile("file", "file", "capture deadline")}, later: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file", "file", "a\n", "b\n")}, want: "?\t-\t-\tfile\t\"capture deadline\"\n"},
+		{name: "known edit then unknown", files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file", "file", "a\n", "b\n")}, later: []diffmodel.ReviewFile{diffmodel.RenderIncompleteReviewFile("file", "file", "capture budget exhausted")}, want: "?\t-\t-\tfile\t\"capture budget exhausted\"\n"},
+		{name: "modified", files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file", "file", "a\n", "b\n")}, want: "M\t1\t1\tfile\n"},
+		{name: "renamed", files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("old", "new", "a\n", "a\n")}, want: "R\t0\t0\told => new\n"},
+		{name: "renamed and modified", files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("old", "new", "a\n", "b\n")}, want: "RM\t1\t1\told => new\n"},
+		{name: "rename then edit in later change", files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("old", "new", "a\n", "a\n")}, later: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("new", "new", "a\n", "b\n")}, want: "RM\t1\t1\told => new\n"},
+		{name: "rename incomplete", files: []diffmodel.ReviewFile{diffmodel.RenderIncompleteReviewFile("old", "new", "capture unavailable")}, want: "?\t-\t-\told => new\t\"capture unavailable\"\n"},
+		{name: "binary rename", files: []diffmodel.ReviewFile{diffmodel.RenderBinaryReviewFile("old", "new", 3, 3, "abc", "abc")}, want: "R\t-\t-\told => new\n"},
+		{name: "conflict", files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file", "file", "a\n", "<<<<<<< workspace\na\n=======\nb\n>>>>>>> mchanges revert amber1\n")}, want: "UU\t4\t0\tfile\n"},
+		{name: "resolved conflict in later change", files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file", "file", "a\n", "<<<<<<< workspace\na\n=======\nb\n>>>>>>> mchanges revert amber1\n")}, later: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file", "file", "<<<<<<< workspace\na\n=======\nb\n>>>>>>> mchanges revert amber1\n", "c\n")}, want: "M\t1\t1\tfile\n"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store, err := openMekugiReplayStore(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			workspace := t.TempDir()
+			id, err := store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), workspace, "author", "edit")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"edit": {ChangeID: id, CorrelationID: "edit", ReviewFiles: test.files}}); err != nil {
+				t.Fatal(err)
+			}
+			ids := []string{id}
+			if len(test.later) > 0 {
+				laterID, err := store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), workspace, "other-author", "later")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"later": {ChangeID: laterID, CorrelationID: "later", ReviewFiles: test.later}}); err != nil {
+					t.Fatal(err)
+				}
+				ids = append(ids, laterID)
+			}
+			got, err := store.changes.Read(t.Context(), store.scoped(t.Context()).changeScope(), changes.Query{Workspace: workspace, IDs: ids, View: "summary"})
+			if err != nil || got != test.want {
+				t.Fatalf("summary = %q, %v; want %q", got, err, test.want)
+			}
+			if len(ids) > 1 {
+				got, err = store.changes.Read(t.Context(), store.scoped(t.Context()).changeScope(), changes.Query{Workspace: workspace, IDs: []string{ids[1], ids[0]}, View: "summary"})
+				if err != nil || got != test.want {
+					t.Fatalf("reversed cross-author summary = %q, %v; want %q", got, err, test.want)
+				}
+			}
+		})
+	}
+}

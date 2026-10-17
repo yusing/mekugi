@@ -1,6 +1,7 @@
 package router
 
 import (
+"github.com/yusing/mekugi/libraries/legacycall"
 	"fmt"
 	"reflect"
 	"slices"
@@ -84,7 +85,7 @@ func TestManagedFilesDoNotBecomeEditsInMain(t *testing.T) {
 		files[i] = diffmodel.RenderReviewFile("", fmt.Sprintf("gen-%d.txt", i), "", "x\n")
 		files[i].Origin = "generator"
 	}
-	if event := testCapturedEditActivity(t.TempDir(), mekugiHistory{ReviewFiles: files, ExecOutcome: &changecapture.Outcome{Labels: []string{"git"}}}); event != nil {
+	if event := testCapturedEditActivity(t.TempDir(), legacycall.History{ReviewFiles: retainedReviewFiles(files), ExecOutcome: (*legacycall.Outcome)(&changecapture.Outcome{Labels: []string{"git"}})}); event != nil {
 		t.Fatalf("generated effects created an Activity edit: %+v", event)
 	}
 }

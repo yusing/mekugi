@@ -59,7 +59,7 @@ func runAppServerPreview(t *testing.T, provider inferencegateway.Forwarder) {
 	runAppServerPreviewWithProxy(t, provider, nil)
 }
 
-func runAppServerPreviewWithProxy(t *testing.T, provider inferencegateway.Forwarder, proxy *mekugiProxy) {
+func runAppServerPreviewWithProxy(t *testing.T, provider inferencegateway.Forwarder, proxy *observationFixture) {
 	runAppServerPreviewWithProxyAndHooks(t, provider, proxy, nil, nil)
 }
 
@@ -107,7 +107,7 @@ func TestAppServerPreviewQuickSwitch(t *testing.T) {
 	runAppServerPreviewWithProxyAndHooks(t, &appPreviewProvider{}, nil, before, after)
 }
 
-func runAppServerPreviewWithProxyAndHooks(t *testing.T, provider inferencegateway.Forwarder, proxy *mekugiProxy, beforePrompt, afterPrompt func(*testing.T, io.Writer, func(string), func(func(string) bool), *vt.Emulator)) {
+func runAppServerPreviewWithProxyAndHooks(t *testing.T, provider inferencegateway.Forwarder, proxy *observationFixture, beforePrompt, afterPrompt func(*testing.T, io.Writer, func(string), func(func(string) bool), *vt.Emulator)) {
 	t.Helper()
 	runAppServerPreviewWithEnvironment(t, provider, proxy, nil, beforePrompt, afterPrompt)
 }
@@ -126,12 +126,12 @@ type appServerPreview struct {
 
 // runAppServerPreviewWithEnvironment appends environment to Codex's isolated
 // environment.
-func runAppServerPreviewWithEnvironment(t *testing.T, provider inferencegateway.Forwarder, proxy *mekugiProxy, environment []string, beforePrompt, afterPrompt func(*testing.T, io.Writer, func(string), func(func(string) bool), *vt.Emulator)) {
+func runAppServerPreviewWithEnvironment(t *testing.T, provider inferencegateway.Forwarder, proxy *observationFixture, environment []string, beforePrompt, afterPrompt func(*testing.T, io.Writer, func(string), func(func(string) bool), *vt.Emulator)) {
 	t.Helper()
 	runAppServerPreviewWith(t, provider, proxy, appServerPreview{environment: environment, beforePrompt: beforePrompt, afterPrompt: afterPrompt})
 }
 
-func runAppServerPreviewWith(t *testing.T, provider inferencegateway.Forwarder, proxy *mekugiProxy, options appServerPreview) {
+func runAppServerPreviewWith(t *testing.T, provider inferencegateway.Forwarder, proxy *observationFixture, options appServerPreview) {
 	t.Helper()
 	environment, beforePrompt, afterPrompt := options.environment, options.beforePrompt, options.afterPrompt
 	codex, err := exec.LookPath("codex")

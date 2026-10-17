@@ -12,7 +12,11 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/recordtransactions"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
@@ -60,16 +64,16 @@ func testExecResponsesTools() []any {
 	}
 }
 
-func newManagedMekugiProxy(t *testing.T) *mekugiProxy {
+func newManagedMekugiProxy(t *testing.T) *observationFixture {
 	t.Helper()
 	return newProxyWithSharedTestRegistry(t, sharedProxyTestRegistry(t))
 }
 
-func (p *mekugiProxy) prepareRequest(ctx context.Context, request *codexresponses.Request, sessionID, threadID string, metadata codexresponses.TurnMetadata, metadataValid bool) (*mekugiResponseTransform, error) {
-	return p.prepareModelRequest(ctx, request, sessionID, threadID, metadata, metadataValid, false)
+func (p *observationFixture) prepareRequest(ctx context.Context, request *codexresponses.Request, sessionID, threadID string, metadata codexresponses.TurnMetadata, metadataValid bool) (requestexecution.Prepared, error) {
+	return p.Prepare(ctx, request, requestexecution.Preparation{Session: sessionID, Thread: threadID, Metadata: metadata, MetadataValid: metadataValid})
 }
 
-func attachTestReplayStore(t *testing.T, proxy *mekugiProxy) {
+func attachTestReplayStore(t *testing.T, proxy *observationFixture) {
 	t.Helper()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -79,12 +83,12 @@ func attachTestReplayStore(t *testing.T, proxy *mekugiProxy) {
 	setTestProxyStore(proxy, store)
 }
 
-func newMekugiTestTransform(t *testing.T) (*mekugiResponseTransform, *mekugiProxy, *codexresponses.Request, string) {
+func newMekugiTestTransform(t *testing.T) (requestexecution.Prepared, *observationFixture, *codexresponses.Request, string) {
 	t.Helper()
 	return newMekugiTestTransformWithProxy(t, newManagedMekugiProxy(t))
 }
 
-func newMekugiTestTransformWithProxy(t *testing.T, proxy *mekugiProxy) (*mekugiResponseTransform, *mekugiProxy, *codexresponses.Request, string) {
+func newMekugiTestTransformWithProxy(t *testing.T, proxy *observationFixture) (requestexecution.Prepared, *observationFixture, *codexresponses.Request, string) {
 	t.Helper()
 	workspace := t.TempDir()
 	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
@@ -103,7 +107,7 @@ func newMekugiTestTransformWithProxy(t *testing.T, proxy *mekugiProxy) (*mekugiR
 	return transform, proxy, &request, workspace
 }
 
-func newTopLevelMekugiTestTransformWithProxy(t *testing.T, proxy *mekugiProxy) (*mekugiResponseTransform, *codexresponses.Request) {
+func newTopLevelMekugiTestTransformWithProxy(t *testing.T, proxy *observationFixture) (requestexecution.Prepared, *codexresponses.Request) {
 	t.Helper()
 	workspace := t.TempDir()
 	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
@@ -204,16 +208,19 @@ func prependToolFrontendPath(environment []string, frontendDirectory string) []s
 func bindTestHandleScope(t *testing.T, store *mekugiReplayStore, ctx context.Context, parent, fork string) context.Context {
 	t.Helper()
 	thread := store.scoped(ctx).session.Thread
-	metadata := codexresponses.TurnMetadata{ThreadID: thread, ParentThreadID: parent, ForkedFromThreadID: fork}
+	selected := store.scoped(ctx)
+	namespace := selected.session.Namespace
 	if parent != "" {
-		metadata.SubagentKind = "thread_spawn"
+		var err error
+		namespace, err = store.publication.NamespaceForThread(parent)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
-	ctx, err := store.prepareHandleScope(ctx, metadata)
-	if err == nil {
-		err = store.retainInput(ctx, "/w", nil, nil, nil)
-	}
-	if err != nil {
+	selected.session.Namespace = namespace
+	if err := recordtransactions.RetainInput(ctx, selected.changeScope(), selected.changes, selected.recovery, recordtransactions.Input{Workspace: "/w", Initialize: &history.Scope{Thread: thread, Namespace: namespace, Parent: parent, Fork: fork}}); err != nil {
 		t.Fatal(err)
 	}
+	ctx = context.WithValue(ctx, storageSessionKey{}, selected.session)
 	return ctx
 }

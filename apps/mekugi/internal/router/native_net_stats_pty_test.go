@@ -1,6 +1,7 @@
 package router
 
 import (
+"github.com/yusing/mekugi/libraries/legacycall"
 	"bytes"
 	"path/filepath"
 	"strings"
@@ -29,9 +30,9 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		history := mekugiHistory{ChangeID: id, CorrelationID: call, ExecutingThread: thread,
-			Caller: caller, ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile(beforePath, afterPath, before, after)}}
-		if err := store.put(t.Context(), workspace, map[string]mekugiHistory{call: history}); err != nil {
+		history := legacycall.History{ChangeID: id, CorrelationID: call, ExecutingThread: thread,
+			Caller: caller, ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{diffmodel.RenderReviewFile(beforePath, afterPath, before, after)})}
+		if err := store.put(t.Context(), workspace, map[string]legacycall.History{call: history}); err != nil {
 			t.Fatal(err)
 		}
 	}

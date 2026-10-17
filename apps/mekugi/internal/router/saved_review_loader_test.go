@@ -3,6 +3,7 @@
 package router
 
 import (
+"github.com/yusing/mekugi/libraries/legacycall"
 	"context"
 	"fmt"
 	"path/filepath"
@@ -95,10 +96,10 @@ func TestSavedReviewLoaderPublishesImmutableAtomicReceiptData(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(workspace, "receipt.go")
-	history := mekugiHistory{ChangeID: id, CorrelationID: call, ExecutingThread: "main", ToolName: nativeExecCommandToolName,
-		ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile(path, path, "before\n", "after\n")},
-		ExecOutcome: &changecapture.Outcome{Status: changecapture.StatusFailed, Coverage: changecapture.CoverageExact, Exit: new(2)}}
-	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{call: history}); err != nil {
+	history := legacycall.History{ChangeID: id, CorrelationID: call, ExecutingThread: "main", ToolName: nativeExecCommandToolName,
+		ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{diffmodel.RenderReviewFile(path, path, "before\n", "after\n")}),
+		ExecOutcome: (*legacycall.Outcome)(&changecapture.Outcome{Status: changecapture.StatusFailed, Coverage: changecapture.CoverageExact, Exit: new(2)})}
+	if err := store.put(t.Context(), workspace, map[string]legacycall.History{call: history}); err != nil {
 		t.Fatal(err)
 	}
 	savedReviewLoaderEnqueue(t, loader, savedReviewLoaderScope(workspace, true, "main"))

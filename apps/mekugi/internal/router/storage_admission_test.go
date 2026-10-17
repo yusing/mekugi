@@ -46,7 +46,7 @@ func TestStorageAdmissionTracksScopedWritesAndFailedPublication(t *testing.T) {
 	for _, commentary := range []bool{false, true} {
 		name := legacycall.Name("/w", "changing", commentary)
 		for _, size := range []int{100, 20} {
-			data := responses.MustMarshalJSON(replayRecord{Version: 1, Workspace: "/w", CallID: "changing", Commentary: commentary, History: mekugiHistory{Script: strings.Repeat("x", size)}})
+			data := responses.MustMarshalJSON(replayRecord{Version: 1, Workspace: "/w", CallID: "changing", Commentary: commentary, History: legacycall.History{Script: strings.Repeat("x", size)}})
 			if err := store.locked(ctx, func(store *mekugiReplayStore) error {
 				return store.scoped(ctx).writeManagedFile(name, "call-pending-", data)
 			}); err != nil {
@@ -84,7 +84,7 @@ func TestStorageAdmissionRefreshesAfterPeerPublicationAndCleanup(t *testing.T) {
 	}
 	store.maxBytes, _ = store.publication.Usage(store.retentionLimits(), files, "", 0)
 	name := legacycall.Name("/w", "peer-growth", false)
-	data := responses.MustMarshalJSON(replayRecord{Version: 1, Workspace: "/w", CallID: "peer-growth", History: mekugiHistory{Script: strings.Repeat("x", 100)}})
+	data := responses.MustMarshalJSON(replayRecord{Version: 1, Workspace: "/w", CallID: "peer-growth", History: legacycall.History{Script: strings.Repeat("x", 100)}})
 	if err := peer.locked(t.Context(), func(peer *mekugiReplayStore) error { return peer.transaction.Write(name, "call-pending-", data) }); err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func BenchmarkStorageAdmissionPublication(b *testing.B) {
 			iteration := 0
 			b.ReportAllocs()
 			for b.Loop() {
-				data := responses.MustMarshalJSON(replayRecord{Version: 1, Workspace: "/w", CallID: "changing", History: mekugiHistory{Script: strconv.Itoa(iteration)}})
+				data := responses.MustMarshalJSON(replayRecord{Version: 1, Workspace: "/w", CallID: "changing", History: legacycall.History{Script: strconv.Itoa(iteration)}})
 				if cold {
 					store.publication = testHistory().Attach(store.directory)
 				}

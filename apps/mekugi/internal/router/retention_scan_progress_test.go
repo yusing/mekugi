@@ -23,9 +23,9 @@ func retentionScanProgressFixture(tb testing.TB, owners int) *mekugiReplayStore 
 	if err != nil {
 		tb.Fatal(err)
 	}
-	histories := make(map[string]mekugiHistory)
+	histories := make(map[string]legacycall.History)
 	for i := range 8 {
-		histories[fmt.Sprint(i)] = mekugiHistory{ToolName: "shell", Script: "true", Report: strings.Repeat("retained output\n", 1<<16)}
+		histories[fmt.Sprint(i)] = legacycall.History{ToolName: "shell", Script: "true", Report: strings.Repeat("retained output\n", 1<<16)}
 	}
 	for i := range owners {
 		ctx, release, err := store.beginSession(tb.Context(), fmt.Sprint("fork-", i), "router")

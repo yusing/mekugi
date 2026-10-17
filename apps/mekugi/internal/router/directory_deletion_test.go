@@ -7,7 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
@@ -35,19 +36,16 @@ func TestUISnapshotDirectoryDeletion(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			transform := prepareNativeStockTransform(t, proxy, workspace, "main")
-			arguments := string(responses.MustMarshalJSON(map[string]any{"cmd": "rm -rf removed removed2", "workdir": workspace}))
-			retainCommandObservation(t, transform, "delete-call", arguments)
+			operation, _ := startShellObservationTest(t, proxy, workspace, "stock-thread", "t", "delete-call", "rm -rf removed removed2")
 			if err := os.RemoveAll(filepath.Join(workspace, "removed")); err != nil {
 				t.Fatal(err)
 			}
 			if err := os.RemoveAll(filepath.Join(workspace, "removed2")); err != nil {
 				t.Fatal(err)
 			}
-			reconcileExecItems(t, proxy, workspace, []any{
-				map[string]any{"type": "function_call", "call_id": "delete-call", "name": nativeExecCommandToolName, "arguments": arguments},
-				map[string]any{"type": "function_call_output", "call_id": "delete-call", "output": nativeExecOutput("Process exited with code 0")},
-			})
+			if err := operation.Complete(binding.ToolResult{CallID: "delete-call", Tool: "exec_command", Status: "completed", ExitCode: new(0)}, ""); err != nil {
+				t.Fatal(err)
+			}
 			store := testReplayStore(mekugiReplayStore{directory: testProxyStore(proxy).directory})
 			data, err := store.liveDiffSnapshot(t.Context(), previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"stock-thread": true}}})
 			if err != nil {
@@ -72,8 +70,8 @@ func TestUISnapshotDirectoryDeletion(t *testing.T) {
 			if contentGap {
 				wantPages++
 			}
-			if !u.shell.openActivityEdit(u.view, seq, "removed/") || len(u.shell.output.pages) != wantPages {
-				t.Fatal("directory link did not open all retained file pages")
+			if opened := u.shell.openActivityEdit(u.view, seq, "removed/"); !opened || len(u.shell.output.pages) != wantPages {
+				t.Fatalf("directory pages: opened=%v seq=%d want=%d", opened, seq, wantPages)
 			}
 			uisnapshot.Assert(t, "testdata/snapshots/"+name+".txt", strings.Join(u.view.RenderFeed(100, 30).Lines, "\n")+"\n")
 		})

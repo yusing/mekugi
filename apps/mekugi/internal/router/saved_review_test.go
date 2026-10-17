@@ -4,17 +4,13 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
-	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+	"github.com/yusing/mekugi/libraries/legacycall"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
-
-	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
 // Saved review and captured Activity receipts use the same application join
@@ -70,11 +66,11 @@ func TestSavedReviewWithoutLivePreview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	history := mekugiHistory{ToolName: nativeExecCommandToolName, Root: workspace, ExecutingThread: "main", CorrelationID: call, ChangeID: id,
-		ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile(filepath.Join(workspace, "formatted.go"), filepath.Join(workspace, "formatted.go"), "old\n", "new\n")},
-		ExecOutcome: &changecapture.Outcome{Status: changecapture.StatusFailed, Coverage: changecapture.CoverageExact, Exit: new(2)},
+	history := legacycall.History{ToolName: nativeExecCommandToolName, Root: workspace, ExecutingThread: "main", CorrelationID: call, ChangeID: id,
+		ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{diffmodel.RenderReviewFile(filepath.Join(workspace, "formatted.go"), filepath.Join(workspace, "formatted.go"), "old\n", "new\n")}),
+		ExecOutcome: (*legacycall.Outcome)(&changecapture.Outcome{Status: changecapture.StatusFailed, Coverage: changecapture.CoverageExact, Exit: new(2)}),
 	}
-	if err := writer.put(t.Context(), workspace, map[string]mekugiHistory{call: history}); err != nil {
+	if err := writer.put(t.Context(), workspace, map[string]legacycall.History{call: history}); err != nil {
 		t.Fatal(err)
 	}
 	apply()
@@ -100,8 +96,8 @@ func TestSavedReviewWithoutLivePreview(t *testing.T) {
 		t.Fatal("root switch retained old mailbox")
 	}
 	u.restoreDiffThread(binding.ThreadInfo{ID: "next", Cwd: workspace}, true)
-	observeReview(review, workspace, "old-child", codexresponses.TurnMetadata{RequestKind: "turn", ParentThreadID: "main", SubagentKind: "review"})
-	observeReview(review, workspace, "new-child", codexresponses.TurnMetadata{RequestKind: "turn", ParentThreadID: "next", SubagentKind: "review"})
+	review.Observe(workspace, "old-child", "main", false)
+	review.Observe(workspace, "new-child", "next", false)
 	sub = review.Subscribe()
 	apply()
 	if got := paths(); !slices.Equal(got, []string{"next.go"}) {
@@ -113,36 +109,5 @@ func TestSavedReviewWithoutLivePreview(t *testing.T) {
 	}
 	if review.Preview() != nil {
 		t.Fatal("saved review constructed an omitted preview feature")
-	}
-}
-
-func TestSavedReviewSwitchRetiresOnlyPreviewAttachment(t *testing.T) {
-	review := sessionreview.New(t.Context(), previewmodel.New(changecapture.ReadFile), nil)
-	defer review.Close()
-	review.IncludeThread("/workspace", "main", true)
-	old := review.Preview()
-	old.Enable()
-	frame := previewViewFixture("old", 1)
-	frame.Thread = "main"
-	old.Update(frame, false)
-	if len(old.Current()) != 1 {
-		t.Fatal("preview fixture was not admitted")
-	}
-	worker := startLiveDiffPreview(t.Context(), old, "/workspace", "main")
-	windows := new(execWindowRegistry)
-	windows.open(&execWindow{ref: "host-cell", thread: "main", turn: "turn"})
-	review.ResetScope()
-	review.IncludeThread("/workspace", "next", true)
-	select {
-	case <-worker.Done():
-	case <-time.After(time.Second):
-		t.Fatal("retired attachment kept its input projection worker")
-	}
-	next := review.Preview()
-	if next == old || old.Context().Err() == nil || next.Context().Err() != nil || len(next.Current()) != 0 || !next.Enabled() {
-		t.Fatal("session switch retained old preview ownership")
-	}
-	if window := windows.find("host-cell"); window == nil || !window.closed.IsZero() || t.Context().Err() != nil {
-		t.Fatal("preview retirement finalized capture or canceled host authority")
 	}
 }

@@ -44,7 +44,7 @@ func duplicateTestInput(command, id, body string) []any {
 	}
 }
 
-func duplicateTestPrepare(t *testing.T, proxy *mekugiProxy, input []any, metadata codexresponses.TurnMetadata) *codexresponses.Request {
+func duplicateTestPrepare(t *testing.T, proxy *observationFixture, input []any, metadata codexresponses.TurnMetadata) *codexresponses.Request {
 	t.Helper()
 	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 		"model": "gpt-test", "input": input, "tools": testExecResponsesTools(),

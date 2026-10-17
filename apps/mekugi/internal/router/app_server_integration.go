@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -19,7 +20,7 @@ type appServerIntegration struct {
 	usage               *accounting.Service
 	audience            *sessioncontrol.Audience
 	review              *sessionreview.Review
-	execWindows         *execWindowRegistry
+	execWindows         *executionobservation.Windows
 	nativeTrace         *nativetrace.Reader
 	retained            changes.Scope
 	changeSource        changes.Service

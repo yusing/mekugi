@@ -22,7 +22,7 @@ func restoredUsageRosterFixture(t *testing.T) *appServerUI {
 	usage.Observation("gap", "gap", "gpt-6-sol", "").Finish()
 	usage.Close()
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	setTestAppServerIntegration(u, &mekugiProxy{usage: storedUsageFixture(t, usageStoreFixture(t, directory))})
+	setTestAppServerIntegration(u, &observationFixture{usage: storedUsageFixture(t, usageStoreFixture(t, directory))})
 
 	for _, thread := range []string{"child", "gap", "historical"} {
 		info := binding.ThreadInfo{ID: thread, AgentNickname: thread, Turns: []binding.HistoryTurn{{ID: "old", Status: "completed"}}}

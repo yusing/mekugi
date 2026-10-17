@@ -1,6 +1,7 @@
 package router
 
 import (
+"github.com/yusing/mekugi/libraries/legacycall"
 	"fmt"
 	"strings"
 	"testing"
@@ -83,15 +84,15 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	if strings.Contains(frame, "PRIVATE_CAT_BODY") || strings.Contains(frame, "PRIVATE_PY_BODY") {
 		t.Fatalf("terminal displayed edit source:\n%s", frame)
 	}
-	history := mekugiHistory{ExecutingThread: "main", CorrelationID: "cmd\x00exec", ChangeID: "c1",
-		ExecOutcome: &changecapture.Outcome{Status: changecapture.StatusCompleted, Coverage: changecapture.CoverageExact, Labels: []string{"cat", "python3"}},
-		ReviewFiles: []diffmodel.ReviewFile{
+	history := legacycall.History{ExecutingThread: "main", CorrelationID: "cmd\x00exec", ChangeID: "c1",
+		ExecOutcome: (*legacycall.Outcome)(&changecapture.Outcome{Status: changecapture.StatusCompleted, Coverage: changecapture.CoverageExact, Labels: []string{"cat", "python3"}}),
+		ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{
 			diffmodel.RenderReviewFile("a.go", "a.go", "old\n", "new\n"),
 			diffmodel.RenderReviewFile("b.go", "b.go", "old\n", "first\nsecond\n"),
-		}}
+		})}
 	for i := range 8 {
 		path := fmt.Sprintf("PRIVATE_UNKNOWN_FILE_%02d.go", i)
-		history.ReviewFiles = append(history.ReviewFiles, diffmodel.ReviewFile{BeforePath: path, AfterPath: path, Incomplete: "unavailable"})
+		history.ReviewFiles = append(history.ReviewFiles, legacycall.ReviewFile{BeforePath: path, AfterPath: path, Incomplete: "unavailable"})
 	}
 	receipt := testCapturedEditActivity(workspace, history)
 	if receipt == nil {
@@ -114,7 +115,7 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	// the next model request can supply durable outer-cell evidence.
 	u.shell.saved.Data = new(presentation.Snapshot)
 	u.shell.preview(previewmodel.Preview{ID: "observed", Workspace: workspace, Thread: "main", Complete: true,
-		HostItems: []string{"cmd"}, EditReceipt: receipt.Text, Files: history.ReviewFiles}, false)
+		HostItems: []string{"cmd"}, EditReceipt: receipt.Text, Files: reviewFiles(history.ReviewFiles)}, false)
 	if err := u.testPaint(slave, width, height); err != nil {
 		t.Fatal(err)
 	}

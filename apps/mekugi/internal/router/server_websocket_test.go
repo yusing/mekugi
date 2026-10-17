@@ -85,7 +85,7 @@ func providerSocketSteeredSuccessor(ctx context.Context, conn *websocket.Conn, s
 	return nil
 }
 
-func testResponsesSocket(t *testing.T, ctx context.Context, upstream http.Handler, proxy *mekugiProxy, headers http.Header) *websocket.Conn {
+func testResponsesSocket(t *testing.T, ctx context.Context, upstream http.Handler, proxy *observationFixture, headers http.Header) *websocket.Conn {
 	t.Helper()
 	provider := httptest.NewServer(upstream)
 	t.Cleanup(provider.Close)
@@ -471,7 +471,7 @@ func TestMekugiPrewarmRequiresExplicitNonGeneratingRequest(t *testing.T) {
 			if generate != "" {
 				request.Fields["generate"] = json.RawMessage(generate)
 			}
-			proxy := &mekugiProxy{registry: &frontends.Registry{Guidance: testGuidance()}}
+			proxy := &observationFixture{registry: &frontends.Registry{Guidance: testGuidance()}}
 			if err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "prewarm", nil), "session", &inferencegateway.Exchange{}, io.Discard, nil, proxy); err == nil {
 				t.Fatal("generating prewarm bypassed turn validation")
 			}
@@ -486,7 +486,7 @@ func TestResponsesHTTPPrewarmCannotBypassPreparation(t *testing.T) {
 	request.Header.Set(codexresponses.ThreadIDHeader, "prewarm-thread")
 	provider := &serverFakeProvider{}
 	recorder := httptest.NewRecorder()
-	testResponsesHandler(t.Context(), time.Minute, provider, nil, &mekugiProxy{registry: &frontends.Registry{Guidance: testGuidance()}})(recorder, request)
+	testResponsesHandler(t.Context(), time.Minute, provider, nil, &observationFixture{registry: &frontends.Registry{Guidance: testGuidance()}})(recorder, request)
 	if len(provider.forwarded) != 0 {
 		t.Fatal("HTTP prewarm reached a potentially generating provider")
 	}
@@ -513,7 +513,7 @@ func TestResponsesWebSocketLocalErrorStatus(t *testing.T) {
 			headers := codexAuthHeaders()
 			headers.Set(codexresponses.RoutingSessionHeader, "error-session")
 			headers.Set(codexresponses.ThreadIDHeader, "error-thread")
-			var proxy *mekugiProxy
+			var proxy *observationFixture
 			if test.metadata != "" {
 				proxy = newManagedMekugiProxy(t)
 				metadata := serverMetadataHeaders(t, test.metadata, map[string]json.RawMessage{t.TempDir(): nil})

@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	json "encoding/json/v2"
@@ -12,11 +13,11 @@ import (
 // never captures a new baseline or revives an unfinished command.
 type appServerShellEdits struct {
 	shell   string
-	pending *shellObservation
-	running map[[2]string]*shellObservation
+	pending *executionobservation.ShellOperation
+	running map[[2]string]*executionobservation.ShellOperation
 }
 
-func (u *appServerUI) captureShellEdit(command string) *shellObservation {
+func (u *appServerUI) captureShellEdit(command string) *executionobservation.ShellOperation {
 	if u.retained.Store == nil || u.replay != nil {
 		return nil
 	}
@@ -24,7 +25,7 @@ func (u *appServerUI) captureShellEdit(command string) *shellObservation {
 	if ctx == nil {
 		ctx = u.ctx
 	}
-	edit := prepareShellObservation(ctx, u.retained, u.changeSource, u.snapshots, u.recovered, u.publishChanges, u.execWindows, u.audience, u.captureNotice, shellObservationInput{
+	edit := executionobservation.PrepareShell(ctx, u.retained, u.changeSource, u.snapshots, u.recovered, u.publishChanges, u.execWindows, u.audience, u.captureNotice, executionobservation.ShellInput{
 		Thread: u.Thread, Turn: u.Turn, Namespace: u.session.waitNamespace,
 		Workspace: u.session.cwd, Caller: u.session.path(u.Thread), Command: command, Shell: u.shellEdits.shell,
 	})
@@ -32,7 +33,7 @@ func (u *appServerUI) captureShellEdit(command string) *shellObservation {
 		return nil
 	}
 	u.restoreDiffThread(binding.ThreadInfo{ID: u.Thread, Cwd: u.session.cwd}, true)
-	edit.begin(u.review)
+	edit.Begin(u.review)
 	return edit
 }
 
@@ -60,7 +61,7 @@ func (u *appServerUI) observeShellEdit(thread, method string, item binding.Threa
 		}
 		u.shellEdits.pending = nil
 		if u.shellEdits.running == nil {
-			u.shellEdits.running = make(map[[2]string]*shellObservation)
+			u.shellEdits.running = make(map[[2]string]*executionobservation.ShellOperation)
 		}
 		edit.BindItem(item.ID)
 		u.shellEdits.running[key] = edit

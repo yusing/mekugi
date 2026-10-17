@@ -13,7 +13,6 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/binding"
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
 )
 
@@ -376,10 +375,7 @@ func TestLiveDiffResetScopeResynchronizes(t *testing.T) {
 	if got := paths(); !slices.Equal(got, []string{"old.go"}) {
 		t.Fatalf("initial scope files: %v", got)
 	}
-	child := func(thread, parent string) codexresponses.TurnMetadata {
-		return codexresponses.TurnMetadata{ThreadID: thread, ParentThreadID: parent, SubagentKind: "thread_spawn", RequestKind: "turn"}
-	}
-	observeReview(testReview(auto), workspace, "old-child", child("old-child", "old"))
+	testReview(auto).Observe(workspace, "old-child", "old", false)
 	stale := <-sub.Events() // Queued before the switch; the UI loop may still read it.
 	// Production order: reset, include the resumed root, then resubscribe on gap.
 	c.Reset()
@@ -394,8 +390,8 @@ func TestLiveDiffResetScopeResynchronizes(t *testing.T) {
 	if len(c.Data.Publication.Files) != 0 {
 		t.Fatalf("stale scope reached the reset view: %v", paths())
 	}
-	observeReview(testReview(auto), workspace, "old-child", child("old-child", "old"))
-	observeReview(testReview(auto), workspace, "new-child", child("new-child", "new"))
+	testReview(auto).Observe(workspace, "old-child", "old", false)
+	testReview(auto).Observe(workspace, "new-child", "new", false)
 	sub = testReview(auto).Subscribe()
 	apply(<-sub.Events())
 	if got := paths(); !slices.Equal(got, []string{"new-child.go", "new.go"}) || testReview(auto).Workspace() != workspace {
@@ -471,7 +467,7 @@ func TestAppServerResumeSwitchWaitsForDiffResync(t *testing.T) {
 	appServerTestKeys(t, u, "/clear\r")
 	start := resumeTestOne(t, w, "thread/start")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"fresh","cwd":%q}}}`, start.ID, workspace))
-	observeReview(testReview(auto), workspace, "fresh-child", codexresponses.TurnMetadata{ThreadID: "fresh-child", ParentThreadID: "fresh", SubagentKind: "thread_spawn", RequestKind: "turn"})
+	testReview(auto).Observe(workspace, "fresh-child", "fresh", false)
 	admitted := testReview(auto).Scope().Workspaces[workspace]["fresh"] && testReview(auto).Scope().Workspaces[workspace]["fresh-child"]
 	if !admitted {
 		t.Fatal("session cleared after a switch never entered the Diff")
