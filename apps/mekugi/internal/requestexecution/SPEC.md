@@ -32,6 +32,9 @@ Retained-publication diagnostics share one classification across request and nat
 session consumers. Conflicting host facts, storage capacity and storage I/O remain
 distinct; classification never retries publication or execution.
 
+Catalog transport failures use the same private classification and recording
+owner without becoming inference failures or terminal notices.
+
 Private failure records, optional notices and debug bundles remain independent
 consumers. Sanitized stream metrics contain classification, not prompt or error
 content. Debug instructions distinguish local projection from the actual wire

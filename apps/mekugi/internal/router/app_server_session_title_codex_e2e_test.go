@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
@@ -108,7 +110,7 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 	defer release()
 	provider := newTestProviderClient(upstream.URL, upstream.Client())
 	generator := newTestSessionNaming(ctx, provider)
-	handler := responsesHandler(ctx, time.Minute, requestexecution.Executor{Provider: provider, Client: provider, Naming: generator})
+	handler := inferencegateway.ResponsesHandler(ctx, time.Minute, (requestexecution.Executor{Provider: provider, Client: provider, Naming: generator}).ExecuteHTTP)
 	threads := make(chan string, 8)
 	router := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Fixture authentication is added only at the local router boundary.
@@ -245,7 +247,7 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 	quit()
 	// A fresh generator and host process restore only durable title metadata.
 	fresh := newTestSessionNaming(ctx, provider)
-	handler = responsesHandler(ctx, time.Minute, requestexecution.Executor{Provider: provider, Client: provider, Naming: fresh})
+	handler = inferencegateway.ResponsesHandler(ctx, time.Minute, (requestexecution.Executor{Provider: provider, Client: provider, Naming: fresh}).ExecuteHTTP)
 	awaitResume, sendResume, quitResume := start(thread, fresh)
 	awaitResume("persisted title after fresh app-server resume", func(frame string) bool { return headerHasTitle(frame) && strings.Contains(frame, "Ready") })
 	if fresh.acceptCandidate(thread) {

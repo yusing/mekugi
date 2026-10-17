@@ -1,4 +1,6 @@
-package router
+package inferencegateway
+
+// Source: apps/mekugi/internal/router/codex_auxiliary.go:1:111@[e5c6fadc].
 
 import (
 	"context"
@@ -6,8 +8,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/providers/openai"
@@ -33,7 +33,7 @@ var codexAuxiliaryPaths = []string{
 	"alpha/notes/v2/thread_hint",
 }
 
-func registerCodexAuxiliaryRoutes(mux *http.ServeMux, lifecycle context.Context, responseStartTimeout time.Duration, provider *inferencegateway.Client) {
+func RegisterCodexAuxiliaryRoutes(mux *http.ServeMux, lifecycle context.Context, responseStartTimeout time.Duration, provider *Client) {
 	if provider.ThirdPartyOnly {
 		return
 	}
@@ -44,7 +44,7 @@ func registerCodexAuxiliaryRoutes(mux *http.ServeMux, lifecycle context.Context,
 				http.Error(writer, err.Error(), http.StatusBadRequest)
 				return
 			}
-			startCtx, executionCtx, cancel := inferencegateway.RequestContexts(request.Context(), lifecycle, responseStartTimeout)
+			startCtx, executionCtx, cancel := RequestContexts(request.Context(), lifecycle, responseStartTimeout)
 			defer cancel()
 			ctx, cancelUpstream := context.WithCancel(executionCtx)
 			defer cancelUpstream()

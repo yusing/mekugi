@@ -12,8 +12,9 @@ The [backend adapter](../../backends/codex/responses/SPEC.md) owns envelopes,
 native identities, connection-local history and response framing. The
 [OpenAI provider](../../providers/openai/SPEC.md) owns credentials, upstream
 connections, pooled inference and its pre-send-only fallback. Application
-integration owns downstream admission, dedicated socket lifetime, deadlines,
-accounting and delivery diagnostics.
+inference gateway owns HTTP admission, the catalog cache, auxiliary routes and
+dedicated socket lifetime. The shared request executor owns accounting and
+delivery diagnostics; transport passes each admitted exchange to that executor.
 
 ## Catalog and auxiliary exchanges
 

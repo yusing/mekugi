@@ -1,7 +1,6 @@
 package router
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -14,7 +13,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
@@ -44,11 +42,9 @@ import (
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/httptransport"
-	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/libraries/persistence"
 
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
@@ -69,10 +65,9 @@ import (
 )
 
 const (
-	defaultListenAddress      = "127.0.0.1:0"
-	requestBodyReadTimeout    = 30 * time.Second
-	shutdownTimeout           = 5 * time.Second
-	modelsResponseBufferBytes = 8 << 20
+	defaultListenAddress   = "127.0.0.1:0"
+	requestBodyReadTimeout = 30 * time.Second
+	shutdownTimeout        = 5 * time.Second
 )
 
 // Session is available only after initialization and listener binding succeed.
@@ -351,8 +346,8 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 	if capture != nil {
 		mux.HandleFunc("GET /api/metrics", capture.ServeHTTP)
 	}
-	mux.HandleFunc("GET /v1/models", modelsHandler(provider, issues))
-	registerCodexAuxiliaryRoutes(mux, ctx, options.Timeout, provider)
+	mux.HandleFunc("GET /v1/models", inferencegateway.ModelsHandler(provider, issues.ReportCatalog))
+	inferencegateway.RegisterCodexAuxiliaryRoutes(mux, ctx, options.Timeout, provider)
 
 	executor := requestexecution.Executor{Provider: provider, Client: provider, Issues: issues, ServiceTiers: serviceTiers, Naming: titleGenerator}
 	if mekugiCalls != nil {
@@ -362,7 +357,7 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 	webSocketEndpoint := inferencegateway.NewWebSocketEndpoint(ctx, options.Timeout, provider, executor.ExecuteWebSocket)
 	defer webSocketEndpoint.Close()
 	mux.Handle("GET /v1/responses", webSocketEndpoint)
-	mux.HandleFunc("POST /v1/responses", responsesHandler(ctx, options.Timeout, executor))
+	mux.HandleFunc("POST /v1/responses", inferencegateway.ResponsesHandler(ctx, options.Timeout, executor.ExecuteHTTP))
 
 	var handler http.Handler = debug.Handler(mux)
 	if capture != nil {
@@ -451,163 +446,5 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 			serveErr = nil
 		}
 		return errors.Join(shutdownErr, serveErr)
-	}
-}
-
-func modelsHandler(provider *inferencegateway.Client, issues *requestexecution.Failures) http.HandlerFunc {
-	// Session-local, single-entry cache. The gate coalesces concurrent refreshes
-	// without keeping canceled callers waiting for an upstream operation.
-	gate := make(chan struct{}, 1)
-	var cached *modelsCacheEntry
-	return func(writer http.ResponseWriter, request *http.Request) {
-		tracked := &inferencegateway.ResponseWriter{ResponseWriter: writer}
-		writer = tracked
-		debug, requestID := requestexecution.DebugRequest(request.Context())
-		var upstreamStatus int
-		var failure error
-		defer func() {
-			if tracked.StatusCode() >= 400 && request.Context().Err() == nil {
-				if failure == nil {
-					failure = requestexecution.StaticError(fmt.Sprintf("models_http_%d", upstreamStatus),
-						fmt.Sprintf("the upstream model catalog returned HTTP %d", upstreamStatus))
-				}
-				result := issues.Report(requestexecution.Failure{Session: request.Header.Get(codexresponses.RoutingSessionHeader), Thread: codexresponses.ThreadID(request.Header), Phase: "models", UpstreamStatus: upstreamStatus}, failure)
-				if debug != nil {
-					debug.Event(map[string]any{
-						"event": "models_request_failure", "request_id": requestID,
-						"session_id": request.Header.Get(codexresponses.RoutingSessionHeader), "thread_id": codexresponses.ThreadID(request.Header),
-						"upstream_status": upstreamStatus, "downstream_status": tracked.StatusCode(),
-						"diagnostic_code":      result.Code,
-						"diagnostic_reference": result.Reference,
-						"error":                result.Error,
-					})
-				}
-			}
-		}()
-
-		release := func() {}
-		key, cacheable := modelsRequestCacheKey(request)
-		if cacheable {
-			select {
-			case gate <- struct{}{}:
-				release = sync.OnceFunc(func() { <-gate })
-				defer release()
-			case <-request.Context().Done():
-				return
-			}
-			if request.Context().Err() != nil {
-				return
-			}
-			if cached != nil && cached.key == key {
-				entry := cached
-				release()
-				writeModelsResponse(writer, http.StatusOK, entry.headers, entry.body)
-				return
-			}
-		}
-
-		response, err := provider.ForwardModels(request.Context(), request.Header, request.URL.RawQuery)
-		if err != nil {
-			failure = modelsForwardDiagnostic(err)
-			release()
-			http.Error(writer, failure.Error(), http.StatusBadGateway)
-			return
-		}
-		defer response.Body.Close()
-		upstreamStatus = response.StatusCode
-		body, err := io.ReadAll(io.LimitReader(response.Body, modelsResponseBufferBytes+1))
-		if err != nil {
-			failure = requestexecution.Classify(err, "models_body_read", "the upstream model catalog response could not be read", true)
-			release()
-			http.Error(writer, fmt.Sprintf("read upstream models response: %v", err), http.StatusBadGateway)
-			return
-		}
-		if len(body) > modelsResponseBufferBytes {
-			failure = requestexecution.StaticError("models_body_limit", "the upstream model catalog response exceeded the router buffer budget")
-			release()
-			http.Error(writer, "upstream models response exceeds the router buffer budget", http.StatusBadGateway)
-			return
-		}
-		if response.StatusCode >= http.StatusBadRequest {
-			cause := fmt.Sprintf("model catalog upstream returned HTTP %d", response.StatusCode)
-			if len(body) != 0 {
-				cause += ": " + string(body)
-			}
-			failure = requestexecution.Classify(errors.New(cause), fmt.Sprintf("models_http_%d", response.StatusCode),
-				fmt.Sprintf("the upstream model catalog returned HTTP %d", response.StatusCode), true)
-		}
-		if cacheable && response.StatusCode == http.StatusOK {
-			headers := make(http.Header)
-			for _, name := range []string{"Content-Type", "Cache-Control", "ETag"} {
-				for _, value := range response.Header.Values(name) {
-					headers.Add(name, value)
-				}
-			}
-			cached = &modelsCacheEntry{key: key, headers: headers, body: body}
-		}
-		release()
-		writeModelsResponse(writer, response.StatusCode, response.Header, body)
-	}
-}
-
-func modelsForwardDiagnostic(err error) error {
-	if _, invalid := errors.AsType[*inferencegateway.ModelCredentialsError](err); invalid {
-		return requestexecution.Classify(err, "models_auth_headers", "the model catalog request is missing valid Codex Authorization or account headers", true)
-	}
-	if _, classified := errors.AsType[*requestexecution.DiagnosticError](err); classified {
-		return err
-	}
-	diagnostic, _ := errors.AsType[*requestexecution.DiagnosticError](requestexecution.ForwardError(err))
-	code := diagnostic.Code
-	if !strings.HasPrefix(code, "models_") {
-		code = "models_" + code
-	}
-	return &requestexecution.DiagnosticError{Cause: err, Code: code,
-		Summary: "the model catalog could not be fetched: " + diagnostic.Summary, Distinct: true}
-}
-
-func responsesHandler(lifecycle context.Context, responseStartTimeout time.Duration, executor requestexecution.Executor) http.HandlerFunc {
-	return func(writer http.ResponseWriter, request *http.Request) {
-		trackedWriter := &inferencegateway.ResponseWriter{ResponseWriter: writer}
-		body, status, err := readCodexHTTPBody(request)
-		if err != nil {
-			http.Error(trackedWriter, err.Error(), status)
-			return
-		}
-		if len(bytes.TrimSpace(body)) == 0 {
-			http.Error(trackedWriter, "responses request body is empty", http.StatusBadRequest)
-			return
-		}
-		parsedRequest, err := codexresponses.ParseRequest(body)
-		if err != nil {
-			http.Error(trackedWriter, err.Error(), http.StatusBadRequest)
-			return
-		}
-		startCtx, executionCtx, cancelRequest := inferencegateway.RequestContexts(request.Context(), lifecycle, responseStartTimeout)
-		defer cancelRequest()
-		sessionID := codexresponses.RoutingSessionID(request.Header, parsedRequest)
-		executor := executor
-		executor.Output = trackedWriter
-		if err := executor.Execute(startCtx, executionCtx, parsedRequest, request.Header, sessionID); err != nil {
-			writeRequestError(trackedWriter, err)
-		}
-	}
-}
-
-func writeRequestError(writer *inferencegateway.ResponseWriter, requestErr error) {
-	if !writer.ResponseStarted() {
-		status := http.StatusBadGateway
-		if _, ok := errors.AsType[*inferencegateway.CompatibilityError](requestErr); ok {
-			status = http.StatusBadRequest
-		}
-		if rejection, ok := errors.AsType[*inferencegateway.ProviderHTTPError](requestErr); ok {
-			writer.Header().Set("Content-Type", "application/json")
-			writer.WriteHeader(rejection.Status)
-			_, _ = writer.Write(responses.MustMarshalJSON(map[string]any{"error": map[string]string{
-				"type": "provider_error", "message": rejection.Error(),
-			}}))
-			return
-		}
-		http.Error(writer, requestErr.Error(), status)
 	}
 }

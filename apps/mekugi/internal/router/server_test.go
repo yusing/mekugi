@@ -906,7 +906,7 @@ func TestModelsHandlerForwardsCodexAuthenticationQueryAndResponse(t *testing.T) 
 	request.Header = codexAuthHeaders()
 	recorder := httptest.NewRecorder()
 
-	modelsHandler(newTestProviderClient(testProviderBaseURL, httpClient), nil)(recorder, request)
+	inferencegateway.ModelsHandler(newTestProviderClient(testProviderBaseURL, httpClient), (*requestexecution.Failures)(nil).ReportCatalog)(recorder, request)
 
 	if recorder.Code != http.StatusOK || recorder.Body.String() != `{"models":[]}` {
 		t.Fatalf("response = %d %q", recorder.Code, recorder.Body.String())
@@ -937,7 +937,7 @@ func TestModelsHandlerRejectsUpstreamBodyReadFailure(t *testing.T) {
 	request.Header = codexAuthHeaders()
 	recorder := httptest.NewRecorder()
 
-	modelsHandler(newTestProviderClient(testProviderBaseURL, httpClient), nil)(recorder, request)
+	inferencegateway.ModelsHandler(newTestProviderClient(testProviderBaseURL, httpClient), (*requestexecution.Failures)(nil).ReportCatalog)(recorder, request)
 
 	if recorder.Code != http.StatusBadGateway || !strings.Contains(recorder.Body.String(), "upstream read failed") {
 		t.Fatalf("response = %d %q", recorder.Code, recorder.Body.String())
@@ -954,14 +954,14 @@ func TestModelsHandlerRejectsBodyBeyondRouterBufferBudget(t *testing.T) {
 	httpClient := &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusOK,
-			Body:       io.NopCloser(io.LimitReader(serverRepeatingReader{}, modelsResponseBufferBytes+1)),
+			Body:       io.NopCloser(io.LimitReader(serverRepeatingReader{}, inferencegateway.MaxCatalogBytes+1)),
 		}, nil
 	})}
 	request := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 	request.Header = codexAuthHeaders()
 	recorder := httptest.NewRecorder()
 
-	modelsHandler(newTestProviderClient(testProviderBaseURL, httpClient), nil)(recorder, request)
+	inferencegateway.ModelsHandler(newTestProviderClient(testProviderBaseURL, httpClient), (*requestexecution.Failures)(nil).ReportCatalog)(recorder, request)
 
 	if recorder.Code != http.StatusBadGateway || !strings.Contains(recorder.Body.String(), "router buffer budget") {
 		t.Fatalf("response = %d %q", recorder.Code, recorder.Body.String())
@@ -977,7 +977,7 @@ func TestModelsHandlerRejectsMissingAuthentication(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	issues := testCriticalErrors()
-	modelsHandler(newTestProviderClient(testProviderBaseURL, httpClient), issues)(
+	inferencegateway.ModelsHandler(newTestProviderClient(testProviderBaseURL, httpClient), issues.ReportCatalog)(
 		recorder,
 		httptest.NewRequest(http.MethodGet, "/v1/models", nil),
 	)
@@ -1006,7 +1006,7 @@ func TestModelsHandlerReportsCompleteForwardFailure(t *testing.T) {
 	request = request.WithContext(requestexecution.WithDebug(request.Context(), debug))
 	recorder := httptest.NewRecorder()
 
-	modelsHandler(newTestProviderClient(testProviderBaseURL, httpClient), issues)(recorder, request)
+	inferencegateway.ModelsHandler(newTestProviderClient(testProviderBaseURL, httpClient), issues.ReportCatalog)(recorder, request)
 
 	if recorder.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d", recorder.Code)
@@ -1049,7 +1049,7 @@ func TestModelsHandlerReportsUpstreamStatusAndBody(t *testing.T) {
 	request.Header = codexAuthHeaders()
 	recorder := httptest.NewRecorder()
 
-	modelsHandler(newTestProviderClient(testProviderBaseURL, httpClient), issues)(recorder, request)
+	inferencegateway.ModelsHandler(newTestProviderClient(testProviderBaseURL, httpClient), issues.ReportCatalog)(recorder, request)
 
 	if recorder.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d", recorder.Code)
@@ -1139,7 +1139,7 @@ func TestModelsHandlerCatalogFailuresDoNotProduceTerminalNotices(t *testing.T) {
 			issues := testCriticalErrors()
 			request := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 			request.Header = codexAuthHeaders()
-			modelsHandler(newTestProviderClient(testProviderBaseURL, client), issues)(httptest.NewRecorder(), request)
+			inferencegateway.ModelsHandler(newTestProviderClient(testProviderBaseURL, client), issues.ReportCatalog)(httptest.NewRecorder(), request)
 			if notices := issues.Notices.Pending(); len(notices) != 0 {
 				t.Fatalf("catalog failure produced terminal notices: %v", notices)
 			}

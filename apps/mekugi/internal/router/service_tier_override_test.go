@@ -294,7 +294,7 @@ func TestServiceTierOverrideAcrossTransports(t *testing.T) {
 				req := httptest.NewRequest("POST", "/v1/responses", bytes.NewReader(mustTestJSON(t, request.Fields)))
 				req.Header = codexAuthHeaders()
 				recorder := httptest.NewRecorder()
-				responsesHandler(ctx, 10*time.Second, executor)(recorder, req)
+				inferencegateway.ResponsesHandler(ctx, 10*time.Second, executor.ExecuteHTTP)(recorder, req)
 				if recorder.Code != 200 {
 					t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body)
 				}

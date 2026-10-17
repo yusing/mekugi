@@ -78,6 +78,12 @@ type requestAttempt struct {
 	finishUsage       bool
 }
 
+// ExecuteHTTP binds an admitted HTTP exchange to the shared request lifecycle.
+func (e Executor) ExecuteHTTP(startCtx, executionCtx context.Context, request codexresponses.Request, headers http.Header, output io.Writer) error {
+	e.Output = output
+	return e.Execute(startCtx, executionCtx, request, headers, codexresponses.RoutingSessionID(headers, request))
+}
+
 func (e Executor) ExecuteWebSocket(startCtx, executionCtx context.Context, request codexresponses.Request, headers http.Header, exchange *inferencegateway.Exchange, output io.Writer) error {
 	e.Provider, e.Exchange, e.Output = exchange, exchange, output
 	return e.Execute(startCtx, executionCtx, request, headers, codexresponses.RoutingSessionID(headers, request))

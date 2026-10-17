@@ -12,6 +12,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/providers/openai"
 )
@@ -70,7 +72,7 @@ func TestCodexAuxiliaryRoutesPreserveNativeOperations(t *testing.T) {
 				return response, nil
 			})})
 			mux := http.NewServeMux()
-			registerCodexAuxiliaryRoutes(mux, t.Context(), time.Minute, provider)
+			inferencegateway.RegisterCodexAuxiliaryRoutes(mux, t.Context(), time.Minute, provider)
 			request := httptest.NewRequest(http.MethodPost, "/v1/"+path+"?cursor=a%2Fb&cursor=c", bytes.NewReader(body))
 			request.Header = headers
 			recorder := httptest.NewRecorder()
@@ -100,7 +102,7 @@ func TestCodexAuxiliaryDoesNotFollowRedirects(t *testing.T) {
 			}))
 			defer upstream.Close()
 			mux := http.NewServeMux()
-			registerCodexAuxiliaryRoutes(mux, t.Context(), time.Minute, newTestProviderClient(upstream.URL, upstream.Client()))
+			inferencegateway.RegisterCodexAuxiliaryRoutes(mux, t.Context(), time.Minute, newTestProviderClient(upstream.URL, upstream.Client()))
 			request := httptest.NewRequest("POST", "/v1/alpha/notes/v2/append_to_file", bytes.NewBufferString(`{"text":"once"}`))
 			request.Header = codexAuthHeaders()
 			recorder := httptest.NewRecorder()
@@ -122,7 +124,7 @@ func TestCodexAuxiliaryPreservesEncodedStream(t *testing.T) {
 		return serverHTTPResponse("{}"), nil
 	})})
 	mux := http.NewServeMux()
-	registerCodexAuxiliaryRoutes(mux, t.Context(), time.Minute, provider)
+	inferencegateway.RegisterCodexAuxiliaryRoutes(mux, t.Context(), time.Minute, provider)
 	request := httptest.NewRequest("POST", "/v1/images/generations", io.NopCloser(bytes.NewReader(body)))
 	request.Header = codexAuthHeaders()
 	request.Header.Set("Content-Encoding", "zstd")
@@ -149,7 +151,7 @@ func TestCodexAuxiliaryRejectsUnsupportedRequests(t *testing.T) {
 			provider := newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) { calls++; return serverHTTPResponse("{}"), nil })})
 			provider.ThirdPartyOnly = test.thirdParty
 			mux := http.NewServeMux()
-			registerCodexAuxiliaryRoutes(mux, t.Context(), time.Minute, provider)
+			inferencegateway.RegisterCodexAuxiliaryRoutes(mux, t.Context(), time.Minute, provider)
 			request := httptest.NewRequest(test.method, test.path, bytes.NewBufferString("{}"))
 			if test.authenticated {
 				request.Header = codexAuthHeaders()
@@ -178,7 +180,7 @@ func TestCodexAuxiliaryFailuresNeverRetryWrites(t *testing.T) {
 				return response, nil
 			})})
 			mux := http.NewServeMux()
-			registerCodexAuxiliaryRoutes(mux, t.Context(), time.Minute, provider)
+			inferencegateway.RegisterCodexAuxiliaryRoutes(mux, t.Context(), time.Minute, provider)
 			request := httptest.NewRequest("POST", "/v1/alpha/notes/v2/append_to_file", bytes.NewBufferString(`{"text":"append once"}`))
 			request.Header = codexAuthHeaders()
 			recorder := httptest.NewRecorder()
@@ -206,7 +208,7 @@ func TestCodexAuxiliaryResponseStartTimeoutCancelsUpstream(t *testing.T) {
 			return nil, request.Context().Err()
 		})})
 		mux := http.NewServeMux()
-		registerCodexAuxiliaryRoutes(mux, t.Context(), time.Second, provider)
+		inferencegateway.RegisterCodexAuxiliaryRoutes(mux, t.Context(), time.Second, provider)
 		request := httptest.NewRequest("POST", "/v1/alpha/search", bytes.NewBufferString("{}"))
 		request.Header = codexAuthHeaders()
 		recorder := httptest.NewRecorder()

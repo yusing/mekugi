@@ -40,7 +40,7 @@ func testRequestExecutor(provider inferencegateway.Forwarder, issues *requestexe
 }
 
 func testResponsesHandler(ctx context.Context, timeout time.Duration, provider inferencegateway.Forwarder, issues *requestexecution.Failures, proxy *observationFixture) http.HandlerFunc {
-	return responsesHandler(ctx, timeout, testRequestExecutor(provider, issues, proxy))
+	return inferencegateway.ResponsesHandler(ctx, timeout, testRequestExecutor(provider, issues, proxy).ExecuteHTTP)
 }
 
 func testWebSocketEndpoint(ctx context.Context, timeout time.Duration, provider *inferencegateway.Client, issues *requestexecution.Failures, proxy *observationFixture) *inferencegateway.WebSocketEndpoint {

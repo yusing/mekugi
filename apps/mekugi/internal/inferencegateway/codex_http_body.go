@@ -1,4 +1,6 @@
-package router
+package inferencegateway
+
+// Source: apps/mekugi/internal/router/codex_http_body.go:1:42@[e5c6fadc].
 
 import (
 	"bytes"

@@ -14,6 +14,9 @@ import (
 	"testing/iotest"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
@@ -31,7 +34,7 @@ func TestModelsHandlerCacheReplaysBodyAndHeaders(t *testing.T) {
 		calls++
 		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}, "Cache-Control": {"private", "max-age=60"}, "Etag": {"version-one"}, "X-Private": {"not-forwarded"}}, Body: io.NopCloser(strings.NewReader(catalog))}, nil
 	})})
-	handler := modelsHandler(provider, nil)
+	handler := inferencegateway.ModelsHandler(provider, (*requestexecution.Failures)(nil).ReportCatalog)
 	for range 3 {
 		w := httptest.NewRecorder()
 		handler(w, catalogCacheRequest())
@@ -46,7 +49,7 @@ func TestModelsHandlerCacheReplaysBodyAndHeaders(t *testing.T) {
 	if calls != 1 {
 		t.Fatalf("upstream calls = %d, want 1", calls)
 	}
-	modelsHandler(provider, nil)(httptest.NewRecorder(), catalogCacheRequest())
+	inferencegateway.ModelsHandler(provider, (*requestexecution.Failures)(nil).ReportCatalog)(httptest.NewRecorder(), catalogCacheRequest())
 	if calls != 2 {
 		t.Fatalf("new handler reused old cache: calls = %d", calls)
 	}
@@ -56,10 +59,10 @@ func TestModelsHandlerCachePartitionsAndReplacesLatestEntry(t *testing.T) {
 	for _, field := range []string{"Authorization", "ChatGPT-Account-ID", codexresponses.RoutingSessionHeader, "query"} {
 		t.Run(field, func(t *testing.T) {
 			calls := 0
-			handler := modelsHandler(newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
+			handler := inferencegateway.ModelsHandler(newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
 				calls++
 				return serverHTTPResponse(fmt.Sprintf(`{"generation":%d}`, calls)), nil
-			})}), nil)
+			})}), (*requestexecution.Failures)(nil).ReportCatalog)
 			for i, want := range []int{1, 1, 2, 2, 3} {
 				r := catalogCacheRequest()
 				if i == 2 || i == 3 {
@@ -86,7 +89,7 @@ func TestModelsHandlerCacheDoesNotStoreFailures(t *testing.T) {
 	for _, kind := range []string{"transport", "status", "partial", "oversized"} {
 		t.Run(kind, func(t *testing.T) {
 			calls := 0
-			handler := modelsHandler(newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
+			handler := inferencegateway.ModelsHandler(newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
 				calls++
 				if calls > 1 {
 					return serverHTTPResponse(`{"models":[]}`), nil
@@ -99,9 +102,9 @@ func TestModelsHandlerCacheDoesNotStoreFailures(t *testing.T) {
 				case "partial":
 					return &http.Response{StatusCode: 200, Body: io.NopCloser(io.MultiReader(strings.NewReader("partial"), iotest.ErrReader(errors.New("broken body"))))}, nil
 				default:
-					return &http.Response{StatusCode: 200, Body: io.NopCloser(io.LimitReader(serverRepeatingReader{}, modelsResponseBufferBytes+1))}, nil
+					return &http.Response{StatusCode: 200, Body: io.NopCloser(io.LimitReader(serverRepeatingReader{}, inferencegateway.MaxCatalogBytes+1))}, nil
 				}
-			})}), nil)
+			})}), (*requestexecution.Failures)(nil).ReportCatalog)
 			for i := range 3 {
 				w := httptest.NewRecorder()
 				handler(w, catalogCacheRequest())
@@ -122,7 +125,7 @@ func TestModelsHandlerCacheDoesNotStoreFailures(t *testing.T) {
 
 func TestModelsHandlerWarmCacheStillValidatesAuthentication(t *testing.T) {
 	calls := 0
-	handler := modelsHandler(newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) { calls++; return serverHTTPResponse(`{"models":[]}`), nil })}), nil)
+	handler := inferencegateway.ModelsHandler(newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) { calls++; return serverHTTPResponse(`{"models":[]}`), nil })}), (*requestexecution.Failures)(nil).ReportCatalog)
 	handler(httptest.NewRecorder(), catalogCacheRequest())
 	for _, kind := range []string{"missing", "duplicate"} {
 		r := catalogCacheRequest()
@@ -146,13 +149,13 @@ func TestModelsHandlerCacheCoalescesConcurrentRequests(t *testing.T) {
 	var calls atomic.Int32
 	started := make(chan struct{})
 	release := make(chan struct{})
-	handler := modelsHandler(newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
+	handler := inferencegateway.ModelsHandler(newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
 		if calls.Add(1) == 1 {
 			close(started)
 		}
 		<-release
 		return serverHTTPResponse(`{"models":[]}`), nil
-	})}), nil)
+	})}), (*requestexecution.Failures)(nil).ReportCatalog)
 	var wg sync.WaitGroup
 	for range 12 {
 		wg.Go(func() {
@@ -176,13 +179,13 @@ func TestModelsHandlerCacheCanceledWaitDoesNotForward(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
 	done := make(chan struct{})
-	handler := modelsHandler(newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
+	handler := inferencegateway.ModelsHandler(newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
 		if calls.Add(1) == 1 {
 			close(started)
 		}
 		<-release
 		return serverHTTPResponse(`{"models":[]}`), nil
-	})}), nil)
+	})}), (*requestexecution.Failures)(nil).ReportCatalog)
 	go func() { defer close(done); handler(httptest.NewRecorder(), catalogCacheRequest()) }()
 	<-started
 	ctx, cancel := context.WithCancel(t.Context())
@@ -220,13 +223,13 @@ func TestModelsHandlerCacheGateReleasedBeforeDownstreamWrite(t *testing.T) {
 	for _, mode := range []string{"first success", "cache hit", "upstream error"} {
 		t.Run(mode, func(t *testing.T) {
 			var calls atomic.Int32
-			handler := modelsHandler(newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
+			handler := inferencegateway.ModelsHandler(newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
 				n := calls.Add(1)
 				if mode == "upstream error" && n == 1 {
 					return nil, errors.New("temporary upstream failure")
 				}
 				return serverHTTPResponse(`{"models":[]}`), nil
-			})}), nil)
+			})}), (*requestexecution.Failures)(nil).ReportCatalog)
 			if mode == "cache hit" {
 				w := httptest.NewRecorder()
 				handler(w, catalogCacheRequest())
@@ -276,14 +279,14 @@ func TestModelsHandlerCacheGateReleasedBeforeDownstreamWrite(t *testing.T) {
 func TestModelsHandlerCacheCanceledFetchDoesNotBlockRetry(t *testing.T) {
 	var calls atomic.Int32
 	started := make(chan struct{})
-	handler := modelsHandler(newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(request *http.Request) (*http.Response, error) {
+	handler := inferencegateway.ModelsHandler(newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(request *http.Request) (*http.Response, error) {
 		if calls.Add(1) == 1 {
 			close(started)
 			<-request.Context().Done()
 			return nil, request.Context().Err()
 		}
 		return serverHTTPResponse(`{"models":[]}`), nil
-	})}), nil)
+	})}), (*requestexecution.Failures)(nil).ReportCatalog)
 	ctx, cancel := context.WithCancel(t.Context())
 	firstDone := make(chan struct{})
 	go func() {

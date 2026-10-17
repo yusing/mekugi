@@ -1,4 +1,6 @@
-package router
+package inferencegateway
+
+// Source: apps/mekugi/internal/router/models_cache.go:1:47@[e5c6fadc].
 
 import (
 	"crypto/sha256"
