@@ -14,6 +14,7 @@ import (
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
@@ -367,17 +368,13 @@ func (u *appServerUI) hideApprovals() {
 	u.approvals.Hide()
 }
 
-func (u *appServerUI) approvalKey(key string) (bool, error) {
-	if !u.approvals.Open || len(u.approvals.Pending) == 0 {
-		return false, nil
-	}
-	a := u.approvals.handles[u.approvals.Pending[0]]
-	view := u.sessionPresentation().View()
-	keyInput := u.prompts.ApprovalLayout(view.Approvals.Approval.ID).Key(view.Approvals.Approval, key, u.Text == "")
-	if err := u.sessionPresentation().ApprovalInput(sessionpresentation.ApprovalInputIntent{Version: view.Version, ApprovalInput: keyInput.Approval}, u.approvals.Approvals); err != nil {
+func (u *appServerUI) applyApprovalInput(input terminalsession.PromptInput) (bool, error) {
+	keyInput := input.PromptKey
+	if err := u.sessionPresentation().ApprovalInput(sessionpresentation.ApprovalInputIntent{Version: input.Version, ApprovalInput: keyInput.Approval}, u.approvals.Approvals); err != nil {
 		u.setNotice(err.Error(), true)
 		return true, nil
 	}
+	a := u.approvals.handles[u.approvals.Pending[0]]
 	switch keyInput.Action {
 	case conversationui.PromptPass:
 		return false, nil

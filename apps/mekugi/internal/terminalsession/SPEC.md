@@ -117,6 +117,10 @@ and [session operations](../sessioncontrol/SPEC.md#interactive-operations):
 The terminal maps edit keys and wrapped caret movement to source-coordinate
 editor actions. Conversation retains the only ordinary editor and its undo/history
 state. Secret input edits the terminal-local masked editor instead.
+Main keyboard dispatch preserves prompt, panel, menu and composer precedence.
+Prompt and completion effects settle before a continuation derives its next
+target from the new publication. Continuation state stays terminal-local;
+application consumers receive typed effects rather than interpreting key bytes.
 
 Word edits skip punctuation and whitespace without splitting attachment tokens.
 Editing and the visible window follow the caret. Images, files, skills and selected

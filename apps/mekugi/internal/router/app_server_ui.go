@@ -875,63 +875,45 @@ func (u *appServerUI) key(key string) (bool, error) {
 	if !u.prepareComposerInput() {
 		return false, nil
 	}
-	// Explicit bindings and external editor changes can retire a completion target
-	// without another typed key. Refresh before interpreting the published menu.
+	// Acquisition stays application-owned; interpretation consumes its publication.
 	if u.picker.Open && u.picker.modal == "" && u.completionTarget() != u.picker.Target {
 		u.refreshPicker()
 	}
-	// Prompt dismissal and adapter-owned edits settle before this key derives a
-	// new intent. Detached callers keep their supplied version unchanged.
 	u.publishPresentation(u.now())
-	if handled, err := u.approvalKey(key); handled {
-		return false, err
-	}
-	if handled, err := u.questionKey(key); handled {
-		return false, err
-	}
-	defer u.refreshPicker()
-	if u.mainView.Panel.Open() {
-		action, clear := u.mainView.Panel.Key(key)
-		if clear && u.shell != nil {
-			u.shell.selection = nil
+	refresh := false
+	defer func() {
+		if refresh {
+			u.refreshPicker()
 		}
-		u.applyPanelAction(action)
-		u.dirty = true
-		return false, nil
-	}
-	if strings.HasPrefix(key, "\x1b") {
-		u.mainView.Keybindings = false
-	}
-	if key == "\x1b\x7f" || key == "\x1b\x08" {
-		u.applyComposerKey(key)
-		return false, nil
-	}
-	// macOS terminals commonly encode Option+Left/Right as Meta-b/f.
-	if key == "\x1bb" || key == "\x1bf" {
-		u.applyComposerKey(key)
-		return false, nil
-	}
-	// Unbound Meta input retains the ordinary key after dismissing help.
-	if len(key) == 2 && key[0] == 27 && key[1] != '[' && key[1] != 'O' {
-		u.applyMenuResult(u.mainView.Menu.Key("\x1b"))
-		key = key[1:]
-	}
-	// An exact /compact has a submission meaning for Tab, not just completion.
-	compactTab := key == "\t" && strings.TrimSpace(u.Text) == "/compact" && u.picker.modal == ""
-	if !compactTab {
-		handled := u.applyMenuResult(u.mainView.Menu.Key(key))
-		// Enter may complete a command and continue dispatching the same key.
-		u.publishPresentation(u.now())
-		if handled {
+	}()
+	focused := u.shell == nil || u.shell.Focus == 0
+	input := u.mainView.BeginKey(key, &u.prompts, u.transcriptView(), focused)
+	for {
+		refresh = refresh || input.Regular
+		switch {
+		case input.Prompt != nil:
+			if handled, err := u.applyPromptInput(*input.Prompt); handled || err != nil {
+				return false, err
+			}
+		case input.Panel != nil:
+			if input.ClearSelection && u.shell != nil {
+				u.shell.selection = nil
+			}
+			u.applyPanelAction(*input.Panel)
+			u.dirty = true
+		case input.Menu != nil:
+			if u.applyMenuResult(*input.Menu) {
+				return false, nil
+			}
+		case input.Composer != nil:
+			return u.applyComposerInput(*input.Composer)
+		}
+		if input.Next == nil {
 			return false, nil
 		}
+		u.publishPresentation(u.now())
+		input = u.mainView.ContinueKey(*input.Next, &u.prompts, u.transcriptView(), focused)
 	}
-	if u.currentQuestion() == nil && !u.approvals.Open && key == "?" && u.Text == "" && (u.shell == nil || u.shell.Focus == 0) {
-		u.mainView.Keybindings = !u.mainView.Keybindings
-		return false, nil
-	}
-	u.mainView.Keybindings = false
-	return u.applyComposerKey(key)
 }
 
 // historyPending reports resumed history that Main has yet to show. Router

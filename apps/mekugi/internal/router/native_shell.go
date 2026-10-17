@@ -50,16 +50,19 @@ func (u *appServerUI) transcriptView() *activityui.View {
 // exposing application records or callbacks to the compositor.
 func (u *terminalUI) frameInput() terminalsession.FrameInput {
 	in := terminalsession.FrameInput{
-		Main: &u.main.mainView, Prompts: &u.main.prompts, Transcript: u.main.view, Agents: u.agents,
-		Shell: &u.Shell, Dialog: u.output, Diff: u.diffScreen, Live: &u.liveDock,
-		Width: u.width, Height: u.height, Now: u.main.now(), Version: mekugiVersion(),
+		Agents: u.agents,
+		Shell:  &u.Shell, Dialog: u.output, Diff: u.diffScreen, Live: &u.liveDock,
+		Width: u.width, Height: u.height, Version: mekugiVersion(),
 		LiveHidden: u.liveHidden, DiffUnseen: u.diffUnseen, Prefix: u.prefix,
+	}
+	if u.main != nil {
+		in.Main, in.Prompts, in.Transcript, in.Now = &u.main.mainView, &u.main.prompts, u.main.view, u.main.now()
 	}
 	if u.selection != nil {
 		in.Selection, in.SelectionPane = u.selection.Selection, u.selection.Pane
 		in.SelectionSource = terminalsession.SourceContext{Attachment: u.selection.Attachment, Thread: u.selection.Thread, Workspace: u.selection.Workspace}
 	}
-	if u.main.replay != nil {
+	if u.main != nil && u.main.replay != nil {
 		in.Playback, in.PlaybackBar = true, u.main.replay.bar(u.width)
 	}
 	return in

@@ -8,6 +8,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -255,18 +256,13 @@ func (u *appServerUI) endSyncQuestions(turn string) {
 	}
 }
 
-func (u *appServerUI) questionKey(key string) (bool, error) {
-	q := u.currentQuestion()
-	if q == nil {
-		return false, nil
-	}
-	c := u.activeQuestionCall()
-	view := u.sessionPresentation().View()
-	keyInput := u.prompts.QuestionLayout(view.Questions).Key(view.Questions, key, u.Text == "")
-	if err := u.sessionPresentation().QuestionInput(sessionpresentation.QuestionInputIntent{Version: view.Version, QuestionInput: keyInput.Question}, u.questions.Questions); err != nil {
+func (u *appServerUI) applyQuestionInput(input terminalsession.PromptInput) (bool, error) {
+	keyInput := input.PromptKey
+	if err := u.sessionPresentation().QuestionInput(sessionpresentation.QuestionInputIntent{Version: input.Version, QuestionInput: keyInput.Question}, u.questions.Questions); err != nil {
 		u.setNotice(err.Error(), true)
 		return true, nil
 	}
+	q, c := u.currentQuestion(), u.activeQuestionCall()
 	action := keyInput.Action
 	switch action {
 	case conversationui.PromptPass:
@@ -275,7 +271,7 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 		u.questions.AutoOpen = false
 		u.hideQuestions()
 	case conversationui.PromptCursor:
-		u.applyComposerKey(key)
+		return false, nil
 	case conversationui.PromptPrevious:
 		u.moveQuestion(-1)
 	case conversationui.PromptNext:

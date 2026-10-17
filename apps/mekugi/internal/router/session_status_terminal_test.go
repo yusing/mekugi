@@ -91,3 +91,24 @@ func (u *appServerUI) testDeliveredMainFrame(t *testing.T, width, height, dock i
 	}
 	return frame.Rows, delivered.Notices
 }
+
+func (u *appServerUI) applyComposerKey(key string) (bool, error) {
+	u.publishPresentation(u.now())
+	return u.applyComposerInput(u.mainView.ComposerKey(key, &u.prompts, u.transcriptView()))
+}
+func (u *appServerUI) approvalKey(key string) (bool, error) {
+	u.publishPresentation(u.now())
+	input := u.mainView.PromptKey(key, &u.prompts)
+	if input == nil {
+		return false, nil
+	}
+	return u.applyApprovalInput(*input)
+}
+func (u *appServerUI) questionKey(key string) (bool, error) {
+	u.publishPresentation(u.now())
+	input := u.mainView.PromptKey(key, &u.prompts)
+	if input == nil {
+		return false, nil
+	}
+	return u.applyQuestionInput(*input)
+}

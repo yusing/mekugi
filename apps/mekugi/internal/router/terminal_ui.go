@@ -9,7 +9,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/contracts/scope"
-	"github.com/yusing/mekugi/libraries/diffrender"
 
 	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 
@@ -65,14 +64,14 @@ func (u *terminalUI) key(key byte) error {
 		_, err := u.main.input(event)
 		return err
 	case terminalsession.ColorInput:
-		u.terminalColor(event.Text)
+		u.frameInput().TerminalColor(event.Text)
 		return nil
 	case terminalsession.FocusInput:
 		if u.main != nil && u.main.notifications != nil {
 			u.main.notifications.focused = event.Text == "\x1b[I"
 		}
 		if event.Text == "\x1b[O" {
-			u.clearSkillsHover()
+			u.frameInput().ClearSkillsHover()
 		}
 		return nil
 	case terminalsession.MouseInput:
@@ -85,7 +84,7 @@ func (u *terminalUI) key(key byte) error {
 	if strings.HasPrefix(event.Text, "\x1b") {
 		if u.prefix {
 			u.prefix = false
-			u.resize(event.Text)
+			u.frameInput().Resize(event.Text)
 			return nil
 		}
 		return u.send(event.Text)
@@ -122,7 +121,7 @@ func (u *terminalUI) key(key byte) error {
 		case 'r':
 			u.liveDock.ScrollBatch(u.main.transcriptCaller(), 'r')
 		default:
-			u.resize(string(key))
+			u.frameInput().Resize(string(key))
 		}
 		return nil
 	}
@@ -134,70 +133,6 @@ func (u *terminalUI) key(key byte) error {
 		return nil
 	}
 	return u.send(event.Text)
-}
-
-func (u *terminalUI) resize(key string) {
-	if key == "\x1b[5~" || key == "\x1b[6~" {
-		if u.Layout.Live.H > 0 {
-			caller := u.main.transcriptCaller()
-			action := byte('b')
-			if key == "\x1b[6~" {
-				action = ' '
-			}
-			u.liveDock.ScrollBatch(caller, action)
-			return
-		}
-		if key == "\x1b[5~" {
-			u.main.transcriptView().ScrollKey('b')
-		} else {
-			u.main.transcriptView().ScrollKey(' ')
-		}
-		return
-	}
-	u.Panes.Resize(key, u.width)
-	if navigator, ok := u.Auxiliary.(terminalui.PaneNavigator); ok && (key == "[" || key == "]") {
-		columns := navigator.NavigatorColumns()
-		if columns == 0 {
-			columns = max(25, u.Layout.Diff.W/4)
-		}
-		if key == "[" {
-			columns -= 2
-		} else {
-			columns += 2
-		}
-		navigator.SetNavigatorColumns(max(16, columns))
-	}
-}
-
-// terminalColor applies OSC 10/11 default-color reports to every pane, as the
-// standalone Activity and diff views did for their own queries.
-func (u *terminalUI) terminalColor(reply string) {
-	views := []*activityui.View{u.agents}
-	if u.main != nil {
-		views = append(views, u.main.view)
-	}
-	if fg, ok := diffrender.ForegroundColor(reply); ok {
-		for _, view := range views {
-			if view != nil {
-				view.Painter.Colors.Foreground, view.Painter.Colors.HasForeground = fg, true
-			}
-		}
-	}
-	theme, ok := diffrender.BackgroundTheme(reply)
-	if !ok {
-		return
-	}
-	bg, _ := diffrender.BackgroundColor(reply)
-	for _, view := range views {
-		if view != nil {
-			view.Painter.Theme = theme
-			view.Painter.Colors.Background, view.Painter.Colors.HasBackground = bg, true
-		}
-	}
-	u.Theme = theme
-	if u.Auxiliary != nil {
-		u.Auxiliary.SetTheme(theme)
-	}
 }
 
 func (u *terminalUI) send(s string) error {
@@ -248,11 +183,10 @@ func (u *terminalUI) send(s string) error {
 	}
 
 	if s == "\x1b" && u.main != nil && u.Focus == 0 {
-		if handled, err := u.main.approvalKey(s); handled {
-			return err
-		}
-		if handled, err := u.main.questionKey(s); handled {
-			return err
+		if input := u.main.mainView.PromptKey(s, &u.main.prompts); input != nil {
+			if handled, err := u.main.applyPromptInput(*input); handled || err != nil {
+				return err
+			}
 		}
 	}
 	if s == "\x1b" && u.main != nil && u.Focus == 0 && u.main.mainView.Keybindings {
@@ -537,13 +471,4 @@ func (u *terminalUI) mouse(s string) error {
 		u.openRequested(u.agents)
 	}
 	return nil
-}
-
-func (u *terminalUI) clearSkillsHover() {
-	if u.main != nil {
-		u.main.view.SkillsHover = ""
-	}
-	if u.agents != nil {
-		u.agents.SkillsHover = ""
-	}
 }

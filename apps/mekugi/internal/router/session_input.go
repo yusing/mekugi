@@ -5,6 +5,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/modules/conversation/completion"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
@@ -39,11 +40,9 @@ func (u *appServerUI) submitInput(intent sessionpresentation.SubmitIntent) error
 	return u.flushInput()
 }
 
-// applyComposerKey resolves terminal output through the current owners. Every
+// applyComposerInput resolves terminal output through the current owners. Every
 // semantic action retains the publication and editor target it came from.
-func (u *appServerUI) applyComposerKey(key string) (bool, error) {
-	u.publishPresentation(u.now())
-	input := u.mainView.ComposerKey(key, &u.prompts, u.transcriptView())
+func (u *appServerUI) applyComposerInput(input terminalsession.ComposerInput) (bool, error) {
 	if input.Err != nil {
 		u.setNotice(input.Err.Error(), true)
 		return false, nil
@@ -212,4 +211,11 @@ func (u *appServerUI) applyComposerCommand(intent sessionpresentation.ComposerIn
 		return false, u.submitInput(sessionpresentation.SubmitIntent{Version: view.Version, Revision: view.Draft.Revision, Mode: sessioncontrol.QueueNextTurn})
 	}
 	return false, nil
+}
+
+func (u *appServerUI) applyPromptInput(input terminalsession.PromptInput) (bool, error) {
+	if input.Approval.Request != "" {
+		return u.applyApprovalInput(input)
+	}
+	return u.applyQuestionInput(input)
 }

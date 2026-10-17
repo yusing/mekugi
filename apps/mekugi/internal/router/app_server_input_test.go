@@ -61,6 +61,21 @@ func TestSecretPasteRejectsReopenedEditor(t *testing.T) {
 	}
 }
 
+func TestPromptInputRejectsRetiredDock(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	questionTestSync(t, u, "retired-dock", false)
+	questionTestPaint(t, u, 60)
+	input := u.mainView.PromptKey("x", &u.prompts)
+	if input == nil {
+		t.Fatal("question did not produce targeted input")
+	}
+	u.hideQuestions()
+	u.publishPresentation(u.now())
+	if handled, err := u.applyPromptInput(*input); !handled || err != nil || !u.feedback.Alert || u.Text != "" || wire.Len() != 0 {
+		t.Fatalf("retired prompt input escaped admission: handled=%v err=%v draft=%q", handled, err, u.Text)
+	}
+}
+
 func TestNativeUIQueuedEscapeContinuation(t *testing.T) {
 	for _, tc := range []struct{ name, suffix, want string }{
 		{"mouse", "[<35;4;30M\x1b[<35;21;31M", ""},
