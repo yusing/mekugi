@@ -168,8 +168,7 @@ func (p *uiReplayPlayback) settleCompleted() {
 	p.ui.summaryStream.FinishCompleted()
 	for _, run := range p.ui.session.commands {
 		if run.done != nil {
-			run.output.Flush()
-			run.dirty = true // Flush consumed the work that roll would otherwise detect.
+			run.output.Settle()
 		}
 	}
 	p.ui.flushStreamOutput()

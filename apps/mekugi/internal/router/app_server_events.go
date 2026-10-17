@@ -51,12 +51,8 @@ type appServerSession struct {
 type appServerCommandRun struct {
 	segments execTrackPresentation
 	entry    activityPaneEntry
-	output   activityui.OutputTail
-	dirty    bool
-	// Instant operations, such as reads, show their output at once; other
-	// commands roll a burst through.
-	instant bool
-	done    []activityPaneEntry // Completion, held until streamed output has rolled through.
+	output   activityui.CommandOutput
+	done     []activityPaneEntry // Completion, held until streamed output has rolled through.
 	// A tracked command's completion waits for its segment report to end.
 	completion  *activityPaneEntry
 	completed   observation.Item
@@ -316,7 +312,6 @@ func (u *appServerUI) projectSessionEvent(p observation.Event, facts sessionEven
 		if run := s.commands[[3]string{p.ThreadID, p.TurnID, p.ItemID}]; run != nil && run.done == nil {
 			run.output.Write(p.Delta)
 			run.entry.native.invocation.Write(p.Delta)
-			run.dirty = true
 		}
 	case "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded":
 		entries = append(entries, u.transcriptUpdates(s.observeTranscript(text, main), true)...)
@@ -365,7 +360,7 @@ func (u *appServerUI) projectSessionEvent(p observation.Event, facts sessionEven
 					if run := s.commands[key]; run == nil {
 						native.invocation = activitypresentation.NewInvocation(appServerCommandSource(item.Command, native.commandCwd), now, s.activity.Outputs(s.Scope()))
 						native.output = native.invocation.Output()
-						s.commands[key] = &appServerCommandRun{entry: entry, instant: instantOperations(entry.Text)}
+						s.commands[key] = &appServerCommandRun{entry: entry, output: activityui.NewCommandOutput(instantOperations(entry.Text))}
 					} else {
 						native.invocation = run.entry.native.invocation
 						native.output = native.invocation.Output()
@@ -392,7 +387,7 @@ func (u *appServerUI) projectSessionEvent(p observation.Event, facts sessionEven
 			// A burst that arrived just before completion, as from a command
 			// that prints only when it exits, rolls through before the final
 			// tail replaces it.
-			if run := s.commands[key]; run != nil && !run.instant && run.output.Pending() > 0 {
+			if run := s.commands[key]; run != nil && run.output.Pending() {
 				run.done = done
 				break
 			}
@@ -433,15 +428,6 @@ func (u *appServerUI) projectSessionEvent(p observation.Event, facts sessionEven
 	return result
 }
 
-// roll reveals one frame's share of pending output, or all of an instant
-// operation's.
-func (r *appServerCommandRun) roll() bool {
-	if r.instant {
-		return r.output.Flush()
-	}
-	return r.output.Roll()
-}
-
 // commandDone is a completed command's entry with its output, and a failure's
 // exit with the host's combined output tail.
 func (s *appServerSession) commandDone(entry activityPaneEntry, item observation.Item, now time.Time) []activityPaneEntry {
@@ -468,18 +454,18 @@ func (u *appServerUI) flushStreamOutput() {
 			entries = append(entries, tracked...)
 			continue
 		}
-		if rolled := run.roll(); !run.dirty && !rolled {
+		frame, changed := run.output.Advance()
+		if !changed {
 			continue
 		}
-		run.dirty = false
 		entry := run.entry
 		native := *entry.native
 		native.phase = "item/commandExecution/outputDelta"
 		// The thread may have been renamed since the command started.
 		entry.native, entry.Agent = &native, s.path(native.thread)
-		entry.outputTail, entry.outputOmit = run.output.Lines()
+		entry.outputTail, entry.outputOmit = frame.Tail, frame.Omitted
 		entries = append(entries, entry)
-		if run.done != nil && run.output.Pending() == 0 {
+		if run.done != nil && !frame.Pending {
 			for _, done := range run.done {
 				done.Agent = entry.Agent
 				if !done.completed.IsZero() {

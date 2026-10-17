@@ -32,11 +32,11 @@ type execTrackPresentation struct {
 }
 
 type execSegmentOutput struct {
-	text         string
-	instant, vcs bool
-	output       activityui.OutputTail
-	raw, fresh   []byte
-	full         *activitymodel.Output
+	text       string
+	vcs        bool
+	output     activityui.CommandOutput
+	raw, fresh []byte
+	full       *activitymodel.Output
 }
 
 func (p *execTrackPresentation) release() bool {
@@ -233,11 +233,13 @@ func (p *execTrackPresentation) view(observer *segments.Observer, key [3]string,
 		segment := &p.segments[i]
 		if segment.text == "" {
 			segment.text = text(observed.Source)
-			segment.instant = instantOperations(segment.text)
+			segment.output = activityui.NewCommandOutput(instantOperations(segment.text))
 			segment.vcs = activitypresentation.VCSOutputSource(toolActivityShellSource(observed.Source))
 		}
 		if !track.Lossy {
-			segment.output.Write(observed.Output)
+			if observed.Output != "" {
+				segment.output.Write(observed.Output)
+			}
 			segment.fresh = append(segment.fresh, observed.Output...)
 			if segment.vcs {
 				segment.raw = append(segment.raw, observed.Output...)
@@ -261,13 +263,8 @@ func (p *execTrackPresentation) view(observer *segments.Observer, key [3]string,
 				segment.full = nil
 			}
 		}
-		rolled := segment.output.Roll
-		if segment.instant {
-			rolled = segment.output.Flush
-		}
-		if rolled() {
-			changed = true
-		}
+		frame, advanced := segment.output.Advance()
+		changed = changed || advanced
 		shown := commandSegment{timing: observed.Timing, text: segment.text, exit: observed.Code, source: observed.Source}
 		switch {
 		case observed.Began && !observed.Ended && final:
@@ -281,7 +278,7 @@ func (p *execTrackPresentation) view(observer *segments.Observer, key [3]string,
 		}
 		if view.output {
 			if final {
-				segment.output.Flush()
+				frame = segment.output.Settle()
 			}
 			if outputs != nil && !shown.skipped {
 				if segment.full == nil {
@@ -294,7 +291,7 @@ func (p *execTrackPresentation) view(observer *segments.Observer, key [3]string,
 				}
 				shown.output = segment.full
 			}
-			shown.tail, shown.omit = segment.output.Lines()
+			shown.tail, shown.omit = frame.Tail, frame.Omitted
 			if final && !shown.skipped && shown.exit == 0 {
 				output := strings.Join(shown.tail, "\n")
 				shown.changes = mchangesOutputRows(observation.Item{Command: observed.Source, AggregatedOutput: &output})
@@ -356,15 +353,21 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 	if view.ended && !view.complete {
 		// The report ended early, as when the helper declined after the
 		// match; the host's combined output applies from here on.
-		run.dirty = run.dirty || changed
+		if changed {
+			run.output.Invalidate()
+		}
 		return nil, false
 	}
 	// Terminal and over-bound commands keep the host's combined output.
-	rolled := !view.output && run.roll()
-	if !changed && !rolled && !run.dirty {
+	var frame activityui.OutputFrame
+	if !view.output {
+		var advanced bool
+		frame, advanced = run.output.Advance()
+		changed = changed || advanced
+	}
+	if !changed {
 		return nil, true
 	}
-	run.dirty = false
 	entry := run.entry
 	native := *entry.native
 	native.phase = "item/commandExecution/outputDelta"
@@ -372,7 +375,7 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 	entry.native, entry.Agent = &native, s.path(native.thread)
 	entry.outputTail, entry.outputOmit = nil, 0
 	if !view.output {
-		entry.outputTail, entry.outputOmit = run.output.Lines()
+		entry.outputTail, entry.outputOmit = frame.Tail, frame.Omitted
 	}
 	return []activityPaneEntry{entry}, true
 }

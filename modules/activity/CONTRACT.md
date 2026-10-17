@@ -143,8 +143,9 @@ Output has a dashed gutter distinct from source. The tail shows five nonblank
 lines, or three in panes shorter than 40 rows, and counts omitted lines in the
 verb column or a separate earlier-lines row. Streaming includes unfinished lines
 and carriage-return replacement. Bursts reveal a quarter of pending lines per
-frame, at least one, with only the latest 64 lines queued. Pending completion
-waits for rolling output. Instant reads/searches/inspections/listings and Skill
+frame, at least one, with only the latest 64 lines queued. Displayed completion
+waits for rolling output; canonical outcome and retained aggregate output settle
+on host observation independently of that animation. Instant reads/searches/inspections/listings and Skill
 reads reveal immediately and never hold completion; skill programs still roll.
 
 An unsegmented invocation has one combined stream after its final operation,

@@ -364,7 +364,7 @@ func TestSessionUIReplayEndPaintSettlesQueuedCommandOutput(t *testing.T) {
 	}
 	replayPlaybackTestPaint(t, p, 120, 28)
 	run := p.ui.session.commands[[3]string{"root", "turn", command.ID}]
-	if run == nil || run.dirty || run.output.Pending() == 0 {
+	if run == nil || !run.output.Pending() {
 		t.Fatal("regression requires painted output with a remaining backlog")
 	}
 	if err := p.advance(p.Until); err != nil {
