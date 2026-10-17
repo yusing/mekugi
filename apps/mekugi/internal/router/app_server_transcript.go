@@ -6,6 +6,7 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/observation"
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/transcript"
 )
 
@@ -130,42 +131,66 @@ func (u *appServerUI) flushSummaryOutput() {
 	u.dirty = true
 }
 
-// replayTranscript skips live question, input and notification settlement. The
-// recorded item still supplies user content and observed questions for display.
+// observeMessageQuestions is the single adapter for live, restored and playback
+// message admission. Parking precedes the model transition so external replies
+// cannot discard an active draft before it reaches the question's editor.
+func (u *appServerUI) observeMessageQuestions(text observation.TextEvent, item binding.ThreadItem, history bool) bool {
+	var userText string
+	if item.Type == "userMessage" {
+		userText, _, _ = appServerUserText(item.Content)
+	}
+	in := conversationbinding.MessageQuestions(text, item, userText, text.Item.Ref.ThreadID == u.Thread, history)
+	if u.questions.NeedsParking(in) {
+		u.hideQuestions()
+	}
+	changes := u.questions.ObserveMessage(in)
+	if changes.Added != nil {
+		u.bindQuestion(&nativeQuestionCall{Call: changes.Added}, history)
+	}
+	for _, change := range changes.Changed {
+		for _, draft := range change.Discarded {
+			u.saveUnsentAnswer(draft)
+		}
+		c := u.questions.handles[change.Call]
+		if change.Superseded {
+			u.discardQuestionEditors(c)
+		}
+		u.renderQuestionRecord(c)
+	}
+	return changes.Suppress
+}
+
+func (u *appServerUI) messageTranscript(text observation.TextEvent, item binding.ThreadItem, main bool) bool {
+	if u.observeMessageQuestions(text, item, false) {
+		return true
+	}
+	updates := u.session.observeTranscript(text, main)
+	if !main {
+		u.applyActivity(u.transcriptUpdates(updates, true), nil)
+		return false
+	}
+	for _, update := range updates {
+		if update.Kind == "reasoning" {
+			u.applyActivity(u.transcriptUpdates([]observation.TextUpdate{update}, true), nil)
+			continue
+		}
+		u.view.applyTranscript(update, item.Content, u.session.cwd, u.Thread, item.Type == "userMessage")
+	}
+	return false
+}
+
+// replayTranscript adapts retained text without live input or request settlement.
 func (u *appServerUI) replayTranscript(e observation.Event) bool {
 	text := binding.RetainedTranscript(e)
 	if e.Kind != observation.ReasoningDelta && e.Kind != observation.ReasoningPart && e.Kind != observation.AgentDelta && e.Item.Type != "reasoning" && e.Item.Type != "agentMessage" && e.Item.Type != "userMessage" {
 		return false
 	}
-	main := e.ThreadID == u.Thread
-	if main && e.Item.Type == "userMessage" && e.Kind == observation.ItemCompleted {
-		u.commitQuestionReplies(binding.ThreadItem{Content: e.Item.Content, ClientID: e.Item.ClientID}, e.TurnID)
+	item := binding.ThreadItem{ID: e.Item.ID, Type: e.Item.Type, Delivery: e.Item.Delivery, Content: e.Item.Content, ClientID: e.Item.ClientID}
+	for _, q := range e.Item.Questions {
+		item.Questions = append(item.Questions, binding.Question{ID: q.ID, Header: q.Header, Question: q.Question, Title: q.Title, IsSecret: q.IsSecret, Options: q.Options})
 	}
-	if main && e.Item.Type == "agentMessage" && text.Item.AsyncQuestion {
-		// Recorded prompt content is presentation only; no request identity exists.
-		item := binding.ThreadItem{ID: e.Item.ID, Type: e.Item.Type, Delivery: e.Item.Delivery, Text: e.Item.Text}
-		for _, q := range e.Item.Questions {
-			item.Questions = append(item.Questions, binding.Question{ID: q.ID, Header: q.Header, Question: q.Question, Title: q.Title, IsSecret: q.IsSecret, Options: q.Options})
-		}
-		u.observeQuestionItem(e.ThreadID, e.TurnID, item, false)
+	if u.messageTranscript(text, item, e.ThreadID == u.Thread) {
 		return true
-	}
-	for _, call := range u.questionCalls() {
-		if call.Thread == e.ThreadID && call.Item == text.Item.Ref.ItemID && len(call.request) == 0 && e.Kind == observation.AgentDelta {
-			return true
-		}
-	}
-	updates := u.session.observeTranscript(text, main)
-	if !main {
-		u.applyActivity(u.transcriptUpdates(updates, true), nil)
-	} else {
-		for _, update := range updates {
-			if update.Kind == "reasoning" {
-				u.applyActivity(u.transcriptUpdates([]observation.TextUpdate{update}, true), nil)
-				continue
-			}
-			u.view.applyTranscript(update, e.Item.Content, u.session.cwd, u.Thread, e.Item.Type == "userMessage")
-		}
 	}
 	// Replay shares Main's progress identity and never revives operations.
 	u.sessionPresentation().ObserveProgress(e, u.Turn, false)

@@ -930,23 +930,8 @@ func (u *appServerUI) observedEvent(method string, p appServerEvent) error {
 		// Only completion commits, so one message cannot match two identical steers.
 		if p.ThreadID == u.Thread && p.Item.Type == "userMessage" && method == "item/completed" {
 			u.commitSteer(p.Item)
-			u.commitQuestionReplies(p.Item, p.TurnID)
 		}
-		if u.observeQuestionItem(p.ThreadID, p.TurnID, p.Item, false) {
-			return nil
-		}
-		for _, c := range u.questionCalls() {
-			if c.Thread == p.ThreadID && c.Item == p.ItemID && len(c.request) == 0 && method == "item/agentMessage/delta" {
-				return nil
-			}
-		}
-		for _, update := range u.session.observeTranscript(p.text, true) {
-			if update.Kind == "reasoning" {
-				u.applyActivity(u.transcriptUpdates([]observation.TextUpdate{update}, true), nil)
-				continue
-			}
-			u.view.applyTranscript(update, p.Item.Content, u.session.cwd, u.Thread, p.Item.Type == "userMessage")
-		}
+		u.messageTranscript(p.text, p.Item, true)
 	}
 	return nil
 }

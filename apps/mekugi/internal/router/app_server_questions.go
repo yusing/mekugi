@@ -169,6 +169,11 @@ func (u *appServerUI) addQuestions(c *nativeQuestionCall, replay bool) {
 	if c.Thread != u.Thread && !c.Local || !u.questions.Add(c.Call, replay) {
 		return
 	}
+	u.bindQuestion(c, replay)
+}
+
+// bindQuestion attaches live handles and terminal effects after neutral admission.
+func (u *appServerUI) bindQuestion(c *nativeQuestionCall, replay bool) {
 	if u.questions.handles == nil {
 		u.questions.handles = make(map[*prompt.Call]*nativeQuestionCall)
 	}
@@ -212,14 +217,6 @@ func (u *appServerUI) questionMessage(m appserver.Message) (bool, error) {
 		return true, nil
 	}
 	return false, nil
-}
-func (u *appServerUI) observeQuestionItem(thread, turn string, item binding.ThreadItem, replay bool) bool {
-	if item.Type != "agentMessage" || item.Delivery != "async" || len(item.Questions) == 0 {
-		return false
-	}
-	call := conversationbinding.Questions(thread, turn, item.ID, nil, item.Questions)
-	u.addQuestions(&nativeQuestionCall{Call: &call}, replay)
-	return true
 }
 
 func (u *appServerUI) saveUnsentAnswer(d composer.Draft) {
@@ -294,13 +291,6 @@ func (u *appServerUI) endSyncQuestions(turn string) {
 	for _, c := range slices.Clone(u.questionCalls()) {
 		if c.Turn == turn && (len(c.request) > 0 || c.sudo != nil) {
 			u.resolveQuestionCall(c, "interrupted")
-		}
-	}
-}
-func (u *appServerUI) supersedeQuestions(turn string) {
-	for _, c := range u.questionCalls() {
-		if c.sudo == nil && len(c.request) == 0 && c.Turn != turn && (!c.Sent || c.SubmissionID == "") {
-			u.resolveQuestionCall(c, "superseded")
 		}
 	}
 }
@@ -473,41 +463,6 @@ func pendingQuestionReplies(parts []conversationmodel.Input) []conversationmodel
 		pending = append(pending, part)
 	}
 	return pending
-}
-func (u *appServerUI) commitQuestionReplies(item binding.ThreadItem, turn string) {
-	text, _, _ := appServerUserText(item.Content)
-	replies := binding.QuestionReplies(text)
-	first := u.questions.InputTurn(turn)
-	if len(replies) == 0 {
-		if first {
-			u.supersedeQuestions(turn)
-		}
-		return
-	}
-	for _, r := range replies {
-		itemID, index, ok := binding.QuestionReplyIdentity(r)
-		if !ok {
-			continue
-		}
-		for _, c := range u.questionCalls() {
-			if c.Thread != u.Thread || c.Item != itemID || len(c.request) > 0 || index < 0 || index >= len(c.Questions) {
-				continue
-			}
-			q := &c.Questions[index]
-			if q.Outcome != "" {
-				continue
-			}
-			wasOpen := u.activeQuestionCall() == c
-			if wasOpen {
-				u.hideQuestions()
-			}
-			if discarded, changed := c.Commit(index, item.ClientID, r.Answer); changed {
-				u.saveUnsentAnswer(discarded)
-			}
-
-			u.renderQuestionRecord(c)
-		}
-	}
 }
 func (u *appServerUI) rejectQuestionParts(parts []conversationmodel.Input) []conversationmodel.Input {
 	var ordinary []conversationmodel.Input

@@ -157,6 +157,10 @@ resolution rules without opening an editor or issuing a request. Views and repla
 facts cannot revive live requests.
 
 The composed Conversation service owns question state in the attachment scope.
+Live messages, restored history and offline playback share question admission,
+reply matching, supersession and transcript suppression. Before a matching input
+changes an active call, the renderer parks its editor; the model then returns
+discarded ordinary drafts for local history. Secret editors stay in the renderer.
 Admitting the first host identity preserves that state. Successful Main replacement
 retires it; unresolved local authentication requests are explicitly reattached with
 their original identities, while host questions from the retired thread stay retired.

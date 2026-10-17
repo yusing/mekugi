@@ -6,8 +6,29 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 )
+
+// MessageQuestions translates native or retained message facts for the same
+// neutral admission path. User text is supplied by the content decoder.
+func MessageQuestions(text observation.TextEvent, item binding.ThreadItem, userText string, main, history bool) prompt.Message {
+	in := prompt.Message{Ref: text.Item.Ref, Kind: text.Kind, Main: main, User: item.Type == "userMessage", History: history, ClientID: item.ClientID}
+	if item.Type == "agentMessage" && text.Item.AsyncQuestion {
+		call := Questions(in.Ref.ThreadID, in.Ref.TurnID, in.Ref.ItemID, nil, item.Questions)
+		in.Call = &call
+	}
+	if in.User && text.Kind == observation.ItemCompleted {
+		replies := binding.QuestionReplies(userText)
+		in.HasReplies = len(replies) != 0
+		for _, r := range replies {
+			if item, index, ok := binding.QuestionReplyIdentity(r); ok {
+				in.Replies = append(in.Replies, prompt.Reply{Item: item, Index: index, Answer: r.Answer})
+			}
+		}
+	}
+	return in
+}
 
 func Questions(thread, turn, item string, request jsontext.Value, questions []binding.Question) prompt.Call {
 	c := prompt.Call{ID: binding.QuestionIdentity(thread, item, request), Thread: thread, Turn: turn, Item: item, Sync: len(request) > 0}

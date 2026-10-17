@@ -244,6 +244,52 @@ func TestNativeQuestionParkedEditorMidTypingAndSecret(t *testing.T) {
 	}
 }
 
+func TestNativeQuestionExternalReplyParksActiveAnswerBeforeCommit(t *testing.T) {
+	for _, secret := range []bool{false, true} {
+		t.Run(fmt.Sprintf("secret=%v", secret), func(t *testing.T) {
+			u, _ := newAppServerTestUI()
+			u.session.start("main", t.TempDir())
+			u.Turn = "turn"
+			u.insertDraft("Main draft")
+			questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{
+				"id": "call", "type": "agentMessage", "delivery": "async", "questions": []any{
+					map[string]any{"question": "First?", "isSecret": secret}, map[string]any{"question": "Second?"},
+				},
+			}})
+			u.openQuestions()
+			u.insertDraft("active answer")
+			commit := func(index int) {
+				text := binding.EncodeQuestionReplies([]binding.QuestionReply{{Answer: "external", QuestionItemID: binding.AsyncQuestionIdentity("call", index)}})
+				questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{
+					"id": fmt.Sprintf("reply-%d", index), "type": "userMessage", "content": []any{map[string]any{"type": "text", "text": text}},
+				}})
+			}
+			commit(1) // Another question in the active call commits first.
+			if u.activeQuestionCall() != nil || u.Text != "Main draft" || len(u.InputHistory) != 0 {
+				t.Fatal("external reply did not restore Main before commitment")
+			}
+			u.openQuestions()
+			if u.Text != "active answer" {
+				t.Fatal("reply to another question lost the active answer")
+			}
+			commit(0)
+			commit(0) // Duplicate delivery cannot remember or revive the draft.
+			u.hideQuestions()
+			u.openQuestions()
+			if u.activeQuestionCall() != nil || u.Text != "Main draft" || !u.questionCalls()[0].Resolved {
+				t.Fatal("resolved answer was revived or replaced Main")
+			}
+			if secret {
+				if len(u.InputHistory) != 0 || u.conversation().Editor.Text != "Main draft" {
+					t.Fatal("secret entered ordinary editor/history")
+				}
+			} else if len(u.InputHistory) != 1 || u.InputHistory[0].Text != "active answer" {
+				t.Fatal("discarded ordinary answer was not saved exactly once")
+			}
+		})
+	}
+}
+
 func TestNativeQuestionsUseComposedAttachment(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.insertDraft("pre-start draft")

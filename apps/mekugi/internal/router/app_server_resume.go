@@ -4,6 +4,7 @@ import (
 	"cmp"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/contracts/observation"
 
 	json "encoding/json/v2"
 	"fmt"
@@ -270,11 +271,9 @@ func (u *appServerUI) applyRestoredMain(placements []*restoredPlacement) {
 }
 
 func (u *appServerUI) restoreHistoryItem(turn binding.HistoryTurn, item binding.ThreadItem) {
-	if u.observeQuestionItem(u.Thread, turn.ID, item, true) {
+	text := observation.TextEvent{Kind: observation.ItemCompleted, Item: transcriptItem(item, u.Thread, turn.ID, item.ID)}
+	if u.observeMessageQuestions(text, item, true) {
 		return
-	}
-	if item.Type == "userMessage" {
-		u.commitQuestionReplies(item, turn.ID)
 	}
 	if item.Type == "userMessage" {
 		var content []composerUserContent

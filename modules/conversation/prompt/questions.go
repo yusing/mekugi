@@ -46,20 +46,18 @@ func (m *Questions) Add(c *Call, replay bool) bool {
 	if len(c.Questions) == 0 || slices.ContainsFunc(m.Calls, func(old *Call) bool { return old.ID == c.ID }) {
 		return false
 	}
-	m.InputTurn(c.Turn)
+	m.recordInputTurn(c.Turn)
 	m.Calls = append(m.Calls, c)
 	if !replay {
 		m.AutoOpen = true
 	}
 	return true
 }
-func (m *Questions) InputTurn(turn string) bool {
+func (m *Questions) recordInputTurn(turn string) {
 	if m.inputTurns == nil {
 		m.inputTurns = make(map[string]bool)
 	}
-	first := !m.inputTurns[turn]
 	m.inputTurns[turn] = true
-	return first
 }
 func (m *Questions) Count(thread string) int {
 	n := 0
