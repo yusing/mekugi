@@ -503,7 +503,7 @@ func newNativePreview(t *testing.T) *nativePreview {
 	u.terminalViews = testTerminalViews(u.reviewSource)
 	label, attachment := u.terminalViews.Attach(u.shell.Theme)
 	u.shell.AuxiliaryLabel, u.shell.Auxiliary, u.shell.preparePane = label, attachment.Pane, attachment.Prepare
-	u.shell.saved = savedDiff{workspace: workspace, store: store, data: new(presentation.Snapshot), coverage: "CONNECTING"}
+	u.shell.saved = sessionreview.Projection{Workspace: workspace, Changes: store.changes, Retained: store.changeScope(), Data: new(presentation.Snapshot), Coverage: "CONNECTING"}
 	u.session.start("main", workspace)
 	p := &nativePreview{t: t, ui: u, proxy: proxy, input: input, store: store, usage: usage, workspace: workspace, delay: "0", active: make(map[string]string), assignments: make(map[string]string), models: map[string]string{"t-explorer": nativePreviewGrokModel}}
 	store.liveDiff = func(updates []changes.Update) {
@@ -1445,7 +1445,7 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 			}
 			paint()
 			found := false
-			for attempt := range u.shell.saved.data.Attempts() {
+			for attempt := range u.shell.saved.Data.Attempts() {
 				if attempt.Correlation != item+"\x000" {
 					continue
 				}

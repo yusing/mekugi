@@ -276,7 +276,7 @@ func TestAppServerRestoreWaitsForDurableDiffBeforeInput(t *testing.T) {
 			auto := newLivePreview(t.Context())
 			defer auto.Close()
 			auto.Enable()
-			u.shell.saved.store = store
+			setSavedReviewStore(u.shell, store)
 			u.shell.review = testReview(auto)
 			sub := testReview(auto).Subscribe()
 			if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: workspace}); err != nil {
@@ -286,7 +286,7 @@ func TestAppServerRestoreWaitsForDurableDiffBeforeInput(t *testing.T) {
 			restoreContentReply(t, u, 1, map[string]any{"data": []any{}})
 			u.Text = "next turn"
 			appServerTestKeys(t, u, "\r")
-			if u.restoring == nil || len(u.shell.saved.data.Publication.Files) != 0 || len(restoreContentRequests(t, w)) != 2 {
+			if u.restoring == nil || len(u.shell.saved.Data.Publication.Files) != 0 || len(restoreContentRequests(t, w)) != 2 {
 				t.Fatal("input unlocked before the Diff controller consumed the restored scope")
 			}
 			if viaPreviews {
@@ -304,7 +304,7 @@ func TestAppServerRestoreWaitsForDurableDiffBeforeInput(t *testing.T) {
 					}
 				}
 			}
-			if u.restoring != nil || len(u.shell.saved.data.Publication.Files) != 1 || u.shell.diffFailure != "" {
+			if u.restoring != nil || len(u.shell.saved.Data.Publication.Files) != 1 || u.shell.diffFailure != "" {
 				t.Fatalf("durable Diff not hydrated: %s", u.shell.diffFailure)
 			}
 			appServerTestKeys(t, u, "\r")

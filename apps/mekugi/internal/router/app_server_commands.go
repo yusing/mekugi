@@ -222,9 +222,9 @@ func (u *appServerUI) resetDiffScope() {
 	if u.shell == nil || u.shell.review == nil {
 		return
 	}
-	u.shell.saved.reset()
-	u.shell.reviewLoader.replace(u.ctx, u.shell.saved)
-	u.shell.reviewScope = u.shell.saved.scope
+	u.shell.saved.Reset()
+	u.shell.reviewLoader.Replace(u.ctx, u.shell.saved)
+	u.shell.reviewScope = u.shell.saved.Scope
 	if u.shell.Auxiliary != nil {
 		u.shell.Auxiliary.Reset()
 	}

@@ -151,7 +151,7 @@ func TestAppServerSessionDocksSharedPreviewsByCaller(t *testing.T) {
 		t.Fatal(err)
 	}
 	u := newAppServerSessionTestUI(t, workspace)
-	u.shell.saved.scope = previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}}
+	u.shell.saved.Scope = previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}}
 	// The router captures the source before host execution. App-server may
 	// deliver its notifications only after the workspace has already changed.
 	preview := projectStockPatchPreview(t.Context(), workspace, previewmodel.Preview{

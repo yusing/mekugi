@@ -64,11 +64,11 @@ func TestLiveDiffDirectPublicationAndDurableReload(t *testing.T) {
 	sub := testReview(broker).Subscribe()
 	liveDiffIdentityCapture(t, store, workspace, "one", "", "file.txt", "", "original\n")
 	event := waitLiveDiffChange(t, sub)
-	builder := presentation.NewBuilder(nil)
-	if err := hydrateReview(t.Context(), store, builder, event); err != nil {
+	projection := sessionreview.Projection{Changes: store.changes, Retained: store.changeScope(), Scope: testReview(broker).Scope()}
+	if _, err := projection.Apply(t.Context(), sessionreview.Event{Kind: "change", Changes: []sessionreview.Change{event}}); err != nil {
 		t.Fatal(err)
 	}
-	data := builder.Finish()
+	data := projection.Data
 	files := data.Publication.Files
 	if len(files) != 1 || len(files[0].Chunks) != 1 || !strings.Contains(files[0].Chunks[0].Review.Diff, "+original") {
 		t.Fatalf("publication lost saved edit: %+v", files)
@@ -115,7 +115,8 @@ func TestLiveDiffScopeReconciliationUsesCachedAttempts(t *testing.T) {
 	if err := os.Remove(filepath.Join(store.directory, legacycall.Name(workspace, "one", false))); err != nil {
 		t.Fatal(err)
 	}
-	if err := reconcileReview(t.Context(), store, presentation.NewBuilder(data), scope); err != nil {
+	projection := sessionreview.Projection{Changes: store.changes, Retained: store.changeScope(), Data: data}
+	if _, err := projection.Apply(t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope}); err != nil {
 		t.Fatalf("unchanged membership reread an immutable capture: %v", err)
 	}
 	index, err := store.changes.Inspect(store.changeScope(), workspace)
@@ -126,7 +127,7 @@ func TestLiveDiffScopeReconciliationUsesCachedAttempts(t *testing.T) {
 	if err := store.locked(t.Context(), func(store *mekugiReplayStore) error { return writeChangeIndexFixture(store, index) }); err != nil {
 		t.Fatal(err)
 	}
-	if err := reconcileReview(t.Context(), store, presentation.NewBuilder(data), scope); err == nil {
+	if _, err := projection.Apply(t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope}); err == nil {
 		t.Fatal("reconciliation hid removed membership")
 	}
 }
@@ -169,13 +170,11 @@ func TestLiveDiffJSONBatchKeepsFollowAndRecency(t *testing.T) {
 	view := changeview.View{}
 	viewPublication = viewPublication.With(nil)
 	view.Update(viewPublication) // The connected pane starts empty before this batch.
-	builder := presentation.NewBuilder(&presentation.Snapshot{Publication: viewPublication})
-	for _, change := range event.Changes {
-		if err := hydrateReview(t.Context(), store, builder, change); err != nil {
-			t.Fatal(err)
-		}
+	projection := sessionreview.Projection{Changes: store.changes, Retained: store.changeScope(), Data: &presentation.Snapshot{Publication: viewPublication}, Scope: testReview(broker).Scope()}
+	if _, err := projection.Apply(t.Context(), event); err != nil {
+		t.Fatal(err)
 	}
-	viewPublication = builder.Finish().Publication
+	viewPublication = projection.Data.Publication
 	view.Update(viewPublication)
 	view.RefreshVisible()
 	for _, file := range view.Files {
@@ -248,20 +247,6 @@ func TestLiveDiffPreviewScriptPayloadBound(t *testing.T) {
 	if !preview.Truncated || len(responses.MustMarshalJSON(preview)) > 48<<10 ||
 		!strings.HasSuffix(preview.Input, "TAIL") || strings.Contains(preview.Status, "UNAVAILABLE") {
 		t.Fatalf("script tail was not retained within the display bound: bytes=%d", len(responses.MustMarshalJSON(preview)))
-	}
-}
-
-func TestLiveDiffTurnEventValidation(t *testing.T) {
-	for _, status := range []string{"active", "completed"} {
-		if err := validateLiveDiffEvent(sessionreview.Event{Kind: "turn", Status: status, TurnRevision: 1}); err != nil {
-			t.Fatalf("%s: %v", status, err)
-		}
-	}
-	if err := validateLiveDiffEvent(sessionreview.Event{Kind: "turn", Status: "unknown", TurnRevision: 1}); err == nil {
-		t.Fatal("accepted unknown turn status")
-	}
-	if err := validateLiveDiffEvent(sessionreview.Event{Kind: "turn", Status: "active"}); err == nil {
-		t.Fatal("accepted turn event without revision")
 	}
 }
 

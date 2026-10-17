@@ -52,7 +52,7 @@ func (u *appServerUI) restoreDiffThread(info binding.ThreadInfo, root bool) {
 	}
 	u.shell.review.IncludeThread(info.Cwd, info.ID, root)
 	if root {
-		u.shell.saved.workspace = info.Cwd
+		u.shell.saved.Workspace = info.Cwd
 		u.shell.publishReview()
 	}
 }
@@ -239,8 +239,8 @@ func (u *appServerUI) finishRestoredContent() error {
 	if r == nil || !r.state.Ready() {
 		return nil
 	}
-	if u.shell != nil && u.shell.review != nil && u.shell.saved.store != nil && u.shell.diffFailure == "" {
-		if loader := u.shell.reviewLoader; loader != nil && (loader.active || len(loader.pending) > 0 || loader.resync) {
+	if u.shell != nil && u.shell.review != nil && u.shell.saved.Retained.Store != nil && u.shell.diffFailure == "" {
+		if loader := u.shell.reviewLoader; loader != nil && loader.Pending() {
 			u.sessionPresentation().Status.SetText("Restoring saved Diff…")
 			return nil
 		}
@@ -248,7 +248,7 @@ func (u *appServerUI) finishRestoredContent() error {
 		scope := a.Scope()
 		for workspace, threads := range scope.Workspaces {
 			for thread := range threads {
-				if !u.shell.saved.scope.Workspaces[workspace][thread] {
+				if !u.shell.saved.Scope.Workspaces[workspace][thread] {
 					u.sessionPresentation().Status.SetText("Restoring saved Diff…")
 					return nil
 				}

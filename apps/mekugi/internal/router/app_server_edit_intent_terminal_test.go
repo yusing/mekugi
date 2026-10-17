@@ -93,12 +93,12 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 		path := fmt.Sprintf("PRIVATE_UNKNOWN_FILE_%02d.go", i)
 		history.ReviewFiles = append(history.ReviewFiles, diffmodel.ReviewFile{BeforePath: path, AfterPath: path, Incomplete: "unavailable"})
 	}
-	receipt := capturedEditActivity(workspace, history)
+	receipt := testCapturedEditActivity(workspace, history)
 	if receipt == nil {
 		t.Fatal("test receipt was not created")
 	}
 	data := []*presentation.Receipt{receipt}
-	u.shell.saved.data = reviewReceiptSnapshot(t, data)
+	u.shell.saved.Data = reviewReceiptSnapshot(t, data)
 	// Completed tracked edit segments must receive the same captured counts
 	// as untracked commands while the neighboring test keeps its own state.
 	for i := range u.view.Entries {
@@ -112,7 +112,7 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	}
 	// The observer finishes the edit before the command's test and before
 	// the next model request can supply durable outer-cell evidence.
-	u.shell.saved.data = new(presentation.Snapshot)
+	u.shell.saved.Data = new(presentation.Snapshot)
 	u.shell.preview(previewmodel.Preview{ID: "observed", Workspace: workspace, Thread: "main", Complete: true,
 		HostItems: []string{"cmd"}, EditReceipt: receipt.Text, Files: history.ReviewFiles}, false)
 	if err := u.testPaint(slave, width, height); err != nil {
@@ -147,8 +147,8 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
 		"id": "cmd", "type": "commandExecution", "command": command, "exitCode": 2}})
 	history.ReviewFiles = history.ReviewFiles[2:]
-	data = []*presentation.Receipt{capturedEditActivity(workspace, history)}
-	u.shell.saved.data = reviewReceiptSnapshot(t, data)
+	data = []*presentation.Receipt{testCapturedEditActivity(workspace, history)}
+	u.shell.saved.Data = reviewReceiptSnapshot(t, data)
 	u.applyCapturedEdits()
 	if err := u.testPaint(slave, width, height); err != nil {
 		t.Fatal(err)

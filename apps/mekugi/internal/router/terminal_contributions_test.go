@@ -22,7 +22,7 @@ func TestNativeAuxiliaryAbsencePreservesMainAndReviewSource(t *testing.T) {
 	u.terminalViews = terminalsession.Views{}
 	u.ensureShell()
 	u.shell.Panes.Restore(terminalsession.Preferences{Focus: 1, DiffOpen: true})
-	u.shell.saved.workspace, u.shell.saved.coverage = "/workspace", "READY"
+	u.shell.saved.Workspace, u.shell.saved.Coverage = "/workspace", "READY"
 	u.shell.publishReview()
 	if err := u.testPaint(io.Discard, 160, 32); err != nil {
 		t.Fatal(err)

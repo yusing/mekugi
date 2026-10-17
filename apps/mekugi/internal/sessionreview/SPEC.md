@@ -17,8 +17,15 @@ while capture and retained change commands remain available.
 
 Closing or replacing the attachment retires its preview observation and delivery,
 not captures, commands or host-owned work. Omitting Live Preview leaves saved
-review and captured Activity receipts available. Evidence hydration belongs to
-the application consumer and does not block this delivery owner.
+review and captured Activity receipts available.
+
+Retained hydration consumes the selected History and Changes owners directly.
+It validates complete attempts before replacing an immutable review projection;
+missing or inconsistent evidence cannot publish partial files or receipts.
+Asynchronous loading preserves that atomicity across attachment replacement and
+resynchronization. Retired results cannot update the current projection, and a
+retired read retains its physical capacity until storage actually returns.
+Loading does not block input, cancellation or independent preview delivery.
 
 Acceptance covers immutable membership, unrelated-thread isolation, subscriber
 overflow, scope-before-preview ordering, optional preview absence and replacement

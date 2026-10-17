@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	sessionreview "github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
@@ -68,11 +70,11 @@ func TestUISnapshotSavedDiffDependencyHistory(t *testing.T) {
 					})
 				}
 			}
-			builder := presentation.NewBuilder(data)
-			if err := reconcileReview(t.Context(), reader, builder, scope); err != nil {
+			projection := sessionreview.Projection{Changes: reader.changes, Retained: reader.changeScope(), Data: data}
+			if _, err := projection.Apply(t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope}); err != nil {
 				t.Fatal(err)
 			}
-			data = builder.Finish()
+			data = projection.Data
 			var captures []presentation.Chunk
 			for _, file := range data.Publication.Files {
 				captures = append(captures, file.Chunks...)

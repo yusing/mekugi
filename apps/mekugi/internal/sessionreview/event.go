@@ -1,13 +1,12 @@
-package router
+package sessionreview
 
 import (
 	"errors"
 	"fmt"
-
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 )
 
-func validateLiveDiffEvent(event sessionreview.Event) error {
+// Source: apps/mekugi/internal/router/live_diff_stream.go:10:35@[bab31cbe] validateLiveDiffEvent.
+func validateEvent(event Event) error {
 	switch event.Kind {
 	case "scope":
 		if event.Scope == nil || event.Scope.Workspaces == nil {

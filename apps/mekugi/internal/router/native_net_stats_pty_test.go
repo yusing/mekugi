@@ -47,7 +47,7 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 	u := newAppServerSessionTestUI(t, workspace)
 	u.agents.Agents = []activityPaneAgent{{Name: "/root"}, {Name: "/root/worker"}}
 	u.shell.Focus = 3
-	u.shell.saved.store = store
+	setSavedReviewStore(u.shell, store)
 	scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}}
 	refresh := func() {
 		t.Helper()
@@ -124,8 +124,8 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 
 	// A new store reader and controller projection can restore the outcome
 	// without any live parent, command execution, or workspace source files.
-	u.shell.saved.store = testReplayStore(mekugiReplayStore{directory: store.directory})
-	u.shell.saved.reset()
+	setSavedReviewStore(u.shell, testReplayStore(mekugiReplayStore{directory: store.directory}))
+	u.shell.saved.Reset()
 	savedPane(u.shell).Reset()
 	refresh()
 	savedPane(u.shell).Key("a")
@@ -134,7 +134,7 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 	if frame := paint(160); !strings.Contains(frame, "+3 -1") {
 		t.Fatalf("replay or caller filter changed overall outcome:\n%s", frame)
 	}
-	u.shell.saved.reset()
+	u.shell.saved.Reset()
 	savedPane(u.shell).Reset()
 	scope.Workspaces[workspace] = map[string]bool{"new-thread": true}
 	refresh()

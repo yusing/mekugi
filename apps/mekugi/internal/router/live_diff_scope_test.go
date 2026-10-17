@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	sessionreview "github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/module"
@@ -29,6 +31,10 @@ func (s *mekugiReplayStore) liveDiffSnapshotFiles(ctx context.Context, scope pre
 		return nil, err
 	}
 	return data.Publication.Files, nil
+}
+
+func setSavedReviewStore(ui *terminalUI, store *mekugiReplayStore) {
+	ui.saved.Changes, ui.saved.Retained = store.changes, store.changeScope()
 }
 
 func liveDiffScopeCapture(t *testing.T, store *mekugiReplayStore, workspace, thread, call, path, before, after string) {
@@ -168,11 +174,11 @@ func TestLiveDiffFreshSnapshotComposesCrossStreamCaptures(t *testing.T) {
 }
 
 func (s *mekugiReplayStore) liveDiffSnapshot(ctx context.Context, scope previewmodel.Scope) (*presentation.Snapshot, error) {
-	builder := presentation.NewBuilder(nil)
-	if err := reconcileReview(ctx, s, builder, scope); err != nil {
+	projection := sessionreview.Projection{Changes: s.changes, Retained: s.changeScope()}
+	if _, err := projection.Apply(ctx, sessionreview.Event{Kind: "scope", Scope: &scope}); err != nil {
 		return nil, err
 	}
-	return builder.Finish(), nil
+	return projection.Data, nil
 }
 
 func reviewSnapshotAttempt(t *testing.T, snapshot *presentation.Snapshot, workspace, call string) presentation.Attempt {
@@ -214,9 +220,9 @@ func publishFixtureReview(t *testing.T, u *appServerUI) {
 	history := composed.Add(sessionhistory.Module, func() sessionhistory.Deps { return sessionhistory.Deps{} })
 	activity := composed.Add(activity.Module, func() activity.Deps { return activity.Deps{} })
 	descriptor := changehistory.Module
-	store := u.shell.saved.store
-	if store != nil && store.captured != nil {
-		descriptor.New = func(changehistory.Deps, module.Slots) (*changecapture.Service, error) { return store.captured, nil }
+	source := u.reviewSource
+	if source != nil {
+		descriptor.New = func(changehistory.Deps, module.Slots) (*changecapture.Service, error) { return source, nil }
 		// The existing fixture owns its live capture lifetime.
 		descriptor.Start, descriptor.Stop, descriptor.Resources = nil, nil, nil
 	}
@@ -231,13 +237,8 @@ func publishFixtureReview(t *testing.T, u *appServerUI) {
 		}
 	})
 	u.session.activity = activity.Value()
-	if store == nil {
-		store = &mekugiReplayStore{}
-		u.shell.saved.store = store
-	}
-	store.captured = captured.Value()
 	u.reviewSource = captured.Value()
-	store.captured.PublishReview(u.session.Scope(), u.shell.saved.data, u.session.cwd, u.shell.saved.coverage, u.shell.diffFailure)
+	u.reviewSource.PublishReview(u.session.Scope(), u.shell.saved.Data, u.session.cwd, u.shell.saved.Coverage, u.shell.diffFailure)
 }
 
 func fixtureActivityWithoutDetails(t *testing.T) *feed.Service {

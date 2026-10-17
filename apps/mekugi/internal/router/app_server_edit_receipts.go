@@ -11,27 +11,6 @@ import (
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 )
 
-func capturedEditActivity(workspace string, history mekugiHistory) *changepresentation.Receipt {
-	if history.ExecOutcome == nil {
-		return nil
-	}
-	receipt := &changepresentation.Receipt{Thread: history.ExecutingThread, Text: changepresentation.ReceiptText(workspace, receiptEvidence(history))}
-	if !history.ExecOutcome.CodeMode {
-		if call, ok := strings.CutSuffix(history.CorrelationID, "\x00exec"); ok {
-			receipt.Calls = append(receipt.Calls, call)
-		}
-	}
-	for _, result := range history.HostResults {
-		if result.Tool == "exec_command" || result.Tool == "userShell" {
-			receipt.Calls = append(receipt.Calls, result.CallID)
-		}
-	}
-	if receipt.Text == "" && len(receipt.Calls) == 0 {
-		return nil
-	}
-	return receipt
-}
-
 func (u *appServerUI) applyCapturedEdits() {
 	u.pendingEditReceipts = slices.DeleteFunc(u.pendingEditReceipts, func(receipt *changepresentation.Receipt) bool {
 		// Main and Activity receive their host entries together. Keep a grouped
@@ -44,11 +23,11 @@ func (u *appServerUI) applyCapturedEdits() {
 			})
 		})
 	})
-	if u.shell == nil || u.shell.saved.data == nil {
+	if u.shell == nil || u.shell.saved.Data == nil {
 		return
 	}
-	u.view.applyCapturedEdits(u.shell.saved.data.Receipts())
-	u.agents.applyCapturedEdits(u.shell.saved.data.Receipts())
+	u.view.applyCapturedEdits(u.shell.saved.Data.Receipts())
+	u.agents.applyCapturedEdits(u.shell.saved.Data.Receipts())
 }
 
 // Both audiences reconcile using exact thread/tool identities, regardless of

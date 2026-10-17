@@ -58,7 +58,7 @@ func TestUISnapshotDirectoryDeletion(t *testing.T) {
 			u.session.start("stock-thread", workspace)
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "stock-thread", "turnId": "t", "item": map[string]any{
 				"id": "delete-call", "type": "commandExecution", "command": "rm -rf removed removed2", "exitCode": 0}})
-			u.shell.saved.data = data
+			u.shell.saved.Data = data
 			publishFixtureReview(t, u)
 			u.applyCapturedEdits()
 			u.view.testPace(u.view.Now().Add(time.Second))

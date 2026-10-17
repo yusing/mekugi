@@ -227,8 +227,8 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 	u.shell.faint = faint
 	u.settlePresentation()
 	return func() error {
-		u.shell.reviewLoader = newSavedReviewLoader(ctx, u.shell.saved)
-		defer u.shell.reviewLoader.close()
+		u.shell.reviewLoader = sessionreview.NewLoader(ctx, u.shell.saved)
+		defer u.shell.reviewLoader.Close()
 		defer func() {
 			if u.waitRelease != nil {
 				u.waitRelease()
@@ -251,14 +251,14 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 				review := u.shell.review
 				review.Preview().Enable()
 				defer func() { review.Preview().Disable() }()
-				u.shell.reviewLoader.awaitResync()
+				u.shell.reviewLoader.AwaitResync()
 				sub := review.Subscribe()
 				defer func() { review.Unsubscribe(sub) }()
 				diffEvents, diffGap, diffReady, previewGap := sub.Events(), sub.Gap(), sub.Ready(), sub.PreviewGap()
 				autoChanged := review.Changed()
 				resubscribe := func() {
 					review.Unsubscribe(sub)
-					u.shell.reviewLoader.awaitResync()
+					u.shell.reviewLoader.AwaitResync()
 					sub = review.Subscribe()
 					diffEvents, diffGap, diffReady, previewGap = sub.Events(), sub.Gap(), sub.Ready(), sub.PreviewGap()
 					u.dirty = true
@@ -272,14 +272,14 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 					case <-ctx.Done():
 						return ctx.Err()
 					case <-autoChanged:
-						u.shell.saved.workspace = review.Workspace()
+						u.shell.saved.Workspace = review.Workspace()
 						u.shell.publishReview()
 						u.dirty = true
 					case <-diffGap:
 						resubscribe()
 					case <-previewGap:
 						resubscribe()
-					case result := <-u.shell.reviewLoader.updates():
+					case result := <-u.shell.reviewLoader.Updates():
 						if sub.Invalidated() {
 							resubscribe()
 						}
@@ -1338,7 +1338,10 @@ func (u *appServerUI) ensureShell() {
 	shell.Theme = diffrender.EnvironmentTheme(os.Getenv("COLORFGBG"))
 	label, attachment := u.terminalViews.Attach(shell.Theme)
 	shell.AuxiliaryLabel, shell.Auxiliary, shell.preparePane = label, attachment.Pane, attachment.Prepare
-	shell.saved = savedDiff{store: store, data: new(changepresentation.Snapshot), coverage: "CONNECTING"}
+	shell.saved = sessionreview.Projection{Data: new(changepresentation.Snapshot), Coverage: "CONNECTING"}
+	if store != nil {
+		shell.saved.Changes, shell.saved.Retained = store.changes, store.changeScope()
+	}
 	u.shell = shell
 }
 

@@ -173,3 +173,15 @@ func ExecutionAnnotationMatches(part jsonv1.RawMessage, handle map[string]any) b
 	return responses.SameJSONValue([]byte(content.Text), responses.MustMarshalJSON(envelope)) &&
 		responses.SameJSONValue(responses.MustMarshalJSON(envelope.Continuation.Handle), responses.MustMarshalJSON(handle))
 }
+
+// EditReceiptSource projects a host tool/source identity into a receipt label.
+// Source: apps/mekugi/internal/router/native_edit_receipt.go:143:149@[bab31cbe] receiptEvidence.
+func EditReceiptSource(tool, source string) string {
+	if tool == "apply_patch" {
+		return "apply_patch"
+	}
+	if source == "exec_command" {
+		return ""
+	}
+	return source
+}

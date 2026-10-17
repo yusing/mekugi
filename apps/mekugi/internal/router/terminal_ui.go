@@ -27,8 +27,8 @@ type terminalUI struct {
 	fileReadSlot  chan struct{} // Physical read capacity survives dialog and attachment replacement.
 	diffScreen    *terminalsession.DiffScreen
 	preparePane   func(*scope.Store)
-	saved         savedDiff
-	reviewLoader  *savedReviewLoader
+	saved         sessionreview.Projection
+	reviewLoader  *sessionreview.Loader
 	reviewScope   previewmodel.Scope // Admitted preview authority, independent of retained loading.
 	agents        *activityAdapter
 	main          *appServerUI

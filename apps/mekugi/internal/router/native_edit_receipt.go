@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
@@ -142,11 +144,7 @@ func (s *mekugiReplayStore) agentEditNotice(ctx context.Context, workspace, call
 // receiptEvidence translates observation facts into renderer-neutral receipt input.
 func receiptEvidence(value mekugiHistory) changepresentation.ReceiptEvidence {
 	evidence := changepresentation.ReceiptEvidence{Files: value.ReviewFiles, Source: value.Source, ChangeID: value.ChangeID}
-	if value.ToolName == applyPatchToolName {
-		evidence.Source = applyPatchToolName
-	} else if value.Source == nativeExecCommandToolName {
-		evidence.Source = ""
-	}
+	evidence.Source = binding.EditReceiptSource(value.ToolName, value.Source)
 	if value.ExecOutcome != nil {
 		evidence.Labels, evidence.DeletedDirectories = value.ExecOutcome.Labels, value.ExecOutcome.DeletedDirectories
 	}

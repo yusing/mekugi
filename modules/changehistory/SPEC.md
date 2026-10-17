@@ -198,7 +198,7 @@ Full per-path evidence remains available through the retained change identity.
 
 Each attached session publishes one immutable retained-review snapshot for saved
 Diff, exact-operation details and edit totals. Detail requests use that snapshot
-without reopening storage. [Terminal-session loading](../../apps/mekugi/internal/terminalsession/SPEC.md#boundary)
+without reopening storage. [Session-review loading](../../apps/mekugi/internal/sessionreview/SPEC.md)
 owns admission, replacement and responsiveness.
 The publication includes workspace, coverage, loading failure and revision alongside
 its immutable evidence. The descriptor's terminal contribution consumes that publication in

@@ -36,7 +36,7 @@ metadata and exhausted observation capacity remain visible and bounded without
 terminating unrelated work. Presentation introduces no execution path, capturer,
 history store, accounting ledger or model-visible commentary.
 
-Saved-review loading leaves ordinary input, previews and host lifecycle delivery
+[Saved-review loading](../sessionreview/SPEC.md) leaves ordinary input, previews and host lifecycle delivery
 responsive. Restored input that depends on retained evidence waits for loading to
 settle. Successful views replace the previous retained view together; missing
 evidence or exhausted read capacity reports unavailability instead of empty

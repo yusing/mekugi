@@ -1,76 +1,75 @@
-package router
+package sessionreview
 
 import (
 	"context"
 	"errors"
 	"slices"
-
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 )
 
-type savedReviewResult struct {
+type Result struct {
 	attachment, generation uint64
-	state                  savedDiff
+	state                  Projection
 	err                    error
 }
 
-// The terminal owns admission and the bounded backlog. Each job owns a detached
-// copy, including its store identity, and publishes only a complete projection.
+// The application owns admission and the bounded backlog. Each job owns a detached
+// copy, including its selected retained scope, and publishes only a complete projection.
 // Slots belong to the invocation, not the attachment: cancellation cannot free a
 // slot while an uncancelable filesystem call still occupies its worker.
-type savedReviewLoader struct {
+// Source: apps/mekugi/internal/router/saved_review_loader.go:11:148@[bab31cbe] savedReviewLoader.
+type Loader struct {
 	ctx                    context.Context
 	cancel                 context.CancelFunc
 	attachment, generation uint64
-	state                  savedDiff
-	pending                []sessionreview.Event
+	state                  Projection
+	pending                []Event
 	active, resync         bool
 	slots                  chan struct{}
-	results                chan savedReviewResult
+	results                chan Result
 }
 
-func newSavedReviewLoader(ctx context.Context, state savedDiff) *savedReviewLoader {
-	if state.store == nil {
+func NewLoader(ctx context.Context, state Projection) *Loader {
+	if state.Retained.Store == nil {
 		return nil
 	}
-	l := &savedReviewLoader{slots: make(chan struct{}, 2), results: make(chan savedReviewResult, 2)}
-	l.replace(ctx, state)
+	l := &Loader{slots: make(chan struct{}, 2), results: make(chan Result, 2)}
+	l.Replace(ctx, state)
 	return l
 }
 
-func (l *savedReviewLoader) replace(ctx context.Context, state savedDiff) {
+func (l *Loader) Replace(ctx context.Context, state Projection) {
 	if l == nil {
 		return
 	}
-	l.close()
+	l.Close()
 	l.ctx, l.cancel = context.WithCancel(ctx)
 	l.attachment++
 	l.generation++
 	l.state, l.pending, l.active, l.resync = state, nil, false, false
 }
 
-func (l *savedReviewLoader) close() {
+func (l *Loader) Close() {
 	if l != nil && l.cancel != nil {
 		l.cancel()
 	}
 }
 
-func (l *savedReviewLoader) updates() <-chan savedReviewResult {
+func (l *Loader) Updates() <-chan Result {
 	if l == nil {
 		return nil
 	}
 	return l.results
 }
 
-func (l *savedReviewLoader) awaitResync() {
+func (l *Loader) AwaitResync() {
 	if l != nil {
 		l.generation++
 		l.pending, l.resync = nil, true
 	}
 }
 
-func (l *savedReviewLoader) enqueue(event sessionreview.Event) error {
-	if err := validateLiveDiffEvent(event); err != nil {
+func (l *Loader) Enqueue(event Event) error {
+	if err := validateEvent(event); err != nil {
 		return err
 	}
 	if event.Kind != "scope" && event.Kind != "change" && event.Kind != "coverage" {
@@ -85,11 +84,11 @@ func (l *savedReviewLoader) enqueue(event sessionreview.Event) error {
 	if len(l.pending) == 32 {
 		// Reuse the subscription's durable resync barrier rather than dropping
 		// a change or accumulating unbounded history behind slow storage.
-		l.awaitResync()
+		l.AwaitResync()
 		return nil
 	}
 	if event.Scope != nil {
-		scope := sessionreview.CloneScope(*event.Scope)
+		scope := CloneScope(*event.Scope)
 		event.Scope = &scope
 	}
 	event.Changes = slices.Clone(event.Changes)
@@ -100,7 +99,7 @@ func (l *savedReviewLoader) enqueue(event sessionreview.Event) error {
 	return l.start()
 }
 
-func (l *savedReviewLoader) start() error {
+func (l *Loader) start() error {
 	if l.active || len(l.pending) == 0 {
 		return nil
 	}
@@ -113,11 +112,9 @@ func (l *savedReviewLoader) start() error {
 	l.active = true
 	ctx, events := l.ctx, l.pending
 	l.pending = nil
-	result := savedReviewResult{attachment: l.attachment, generation: l.generation, state: l.state}
-	store := *result.state.store
-	result.state.store = &store
+	result := Result{attachment: l.attachment, generation: l.generation, state: l.state}
 	go func() {
-		_, result.err = result.state.applyEvent(ctx, events...)
+		_, result.err = result.state.Apply(ctx, events...)
 
 		<-l.slots
 		select {
@@ -128,7 +125,7 @@ func (l *savedReviewLoader) start() error {
 	return nil
 }
 
-func (l *savedReviewLoader) accept(result savedReviewResult) (bool, error) {
+func (l *Loader) Accept(result Result) (bool, error) {
 	if result.attachment != l.attachment {
 		return false, nil
 	}
@@ -140,9 +137,11 @@ func (l *savedReviewLoader) accept(result savedReviewResult) (bool, error) {
 		l.pending = nil
 		return false, result.err
 	}
-	// Preserve the selected store pointer. Jobs snapshot its invocation-local
-	// identity, while subsequent jobs may observe a confirmed session switch.
-	result.state.store = l.state.store
 	l.state = result.state
 	return true, l.start()
 }
+
+// Projection returns the current complete snapshot, never an in-flight job.
+func (l *Loader) Projection() Projection { return l.state }
+func (l *Loader) NeedsResync() bool      { return l != nil && l.resync }
+func (l *Loader) Pending() bool          { return l != nil && (l.active || len(l.pending) != 0 || l.resync) }

@@ -248,7 +248,7 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 			awaitCommandSegments(t, u)
 			restored := newAppServerSessionTestUI(t, workspace)
 			setTestAppServerIntegration(restored, &mekugiProxy{replayStore: testReplayStore(mekugiReplayStore{directory: store.directory})})
-			restored.shell.saved.data = reviewReceiptSnapshot(t, trackedEditReceiptData(thread, item.ID))
+			restored.shell.saved.Data = reviewReceiptSnapshot(t, trackedEditReceiptData(thread, item.ID))
 			turns := []binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}}
 			view := restored.view
 			if thread == "main" {
@@ -361,7 +361,7 @@ func TestObservedEditReceiptsBeforeHostRows(t *testing.T) {
 			if len(u.pendingEditReceipts) != 0 {
 				t.Fatal("matched receipts remained pending")
 			}
-			if u.shell.saved.data.Len() != 0 {
+			if u.shell.saved.Data.Len() != 0 {
 				t.Fatal("observed pages became durable evidence")
 			}
 		})
@@ -380,7 +380,7 @@ func TestPendingObservedEditReceiptsStayBounded(t *testing.T) {
 	if len(pending) == 0 || len(pending) >= 256 || pending[len(pending)-1].Calls[0] != "cmd255" {
 		t.Fatalf("unmatched receipt budget did not retain a bounded newest window: %d", len(pending))
 	}
-	if u.shell.saved.data.Len() != 0 {
+	if u.shell.saved.Data.Len() != 0 {
 		t.Fatal("unmatched receipts became durable evidence")
 	}
 }

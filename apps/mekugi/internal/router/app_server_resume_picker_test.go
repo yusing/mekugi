@@ -356,17 +356,17 @@ func TestLiveDiffResetScopeResynchronizes(t *testing.T) {
 	defer auto.Close()
 	auto.Enable()
 	testReview(auto).IncludeThread(workspace, "old", true)
-	c := savedDiff{store: store, data: new(presentation.Snapshot), coverage: "CONNECTING"}
+	c := sessionreview.Projection{Changes: store.changes, Retained: store.changeScope(), Data: new(presentation.Snapshot), Coverage: "CONNECTING"}
 	sub := testReview(auto).Subscribe()
 	apply := func(event sessionreview.Event) {
 		t.Helper()
-		if _, err := c.applyEvent(t.Context(), event); err != nil {
+		if _, err := c.Apply(t.Context(), event); err != nil {
 			t.Fatal(err)
 		}
 	}
 	paths := func() []string {
 		var paths []string
-		for _, file := range c.data.Publication.Files {
+		for _, file := range c.Data.Publication.Files {
 			paths = append(paths, filepath.Base(file.Path))
 		}
 		slices.Sort(paths)
@@ -382,7 +382,7 @@ func TestLiveDiffResetScopeResynchronizes(t *testing.T) {
 	observeReview(testReview(auto), workspace, "old-child", child("old-child", "old"))
 	stale := <-sub.Events() // Queued before the switch; the UI loop may still read it.
 	// Production order: reset, include the resumed root, then resubscribe on gap.
-	c.reset()
+	c.Reset()
 	testReview(auto).ResetScope()
 	testReview(auto).IncludeThread(workspace, "new", true)
 	select {
@@ -391,7 +391,7 @@ func TestLiveDiffResetScopeResynchronizes(t *testing.T) {
 		t.Fatal("reset did not detach the previous subscriber")
 	}
 	apply(stale)
-	if len(c.data.Publication.Files) != 0 {
+	if len(c.Data.Publication.Files) != 0 {
 		t.Fatalf("stale scope reached the reset view: %v", paths())
 	}
 	observeReview(testReview(auto), workspace, "old-child", child("old-child", "old"))
@@ -439,7 +439,7 @@ func TestAppServerResumeSwitchWaitsForDiffResync(t *testing.T) {
 	auto.Enable()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
-	u.shell.saved.store = store
+	setSavedReviewStore(u.shell, store)
 	u.shell.review = testReview(auto)
 	u.session.start("main", workspace)
 	testReview(auto).IncludeThread(workspace, "main", true)
@@ -464,8 +464,8 @@ func TestAppServerResumeSwitchWaitsForDiffResync(t *testing.T) {
 	if err := u.finishRestoredContent(); err != nil {
 		t.Fatal(err)
 	}
-	if u.sessionPresentation().Status.Text != "Ready" || u.shell.diffFailure != "" || len(u.shell.saved.data.Publication.Files) != 1 || filepath.Base(u.shell.saved.data.Publication.Files[0].Path) != "saved.go" {
-		t.Fatalf("resumed Diff: status=%q failure=%q files=%+v", u.sessionPresentation().Status.Text, u.shell.diffFailure, u.shell.saved.data.Publication.Files)
+	if u.sessionPresentation().Status.Text != "Ready" || u.shell.diffFailure != "" || len(u.shell.saved.Data.Publication.Files) != 1 || filepath.Base(u.shell.saved.Data.Publication.Files[0].Path) != "saved.go" {
+		t.Fatalf("resumed Diff: status=%q failure=%q files=%+v", u.sessionPresentation().Status.Text, u.shell.diffFailure, u.shell.saved.Data.Publication.Files)
 	}
 	// A later /clear session still joins the Diff, as do its children.
 	appServerTestKeys(t, u, "/clear\r")

@@ -144,7 +144,7 @@ func (u *terminalUI) admitReviewEvents(ctx context.Context, sub *sessionreview.S
 	for _, event := range events {
 		u.applyDiff(ctx, event)
 	}
-	return u.diffFailure != "" || u.reviewLoader == nil || !u.reviewLoader.resync
+	return u.diffFailure != "" || u.reviewLoader == nil || !u.reviewLoader.NeedsResync()
 }
 
 // applyDiff sends saved changes to the diff pane and live edit cards to
@@ -153,7 +153,7 @@ func (u *terminalUI) applyDiff(ctx context.Context, event sessionreview.Event) {
 	switch event.Kind {
 	case "preview":
 		preview := event.Preview
-		scope := u.saved.scope
+		scope := u.saved.Scope
 		if u.reviewLoader != nil {
 			scope = u.reviewScope
 		}
@@ -198,13 +198,13 @@ func (u *terminalUI) applyDiff(ctx context.Context, event sessionreview.Event) {
 		return
 	}
 	if u.reviewLoader != nil {
-		if err := u.reviewLoader.enqueue(event); err != nil {
+		if err := u.reviewLoader.Enqueue(event); err != nil {
 			u.diffFailure = err.Error()
 			u.publishReview()
 		}
 		return
 	}
-	if changed, err := u.saved.applyEvent(ctx, event); err != nil {
+	if changed, err := u.saved.Apply(ctx, event); err != nil {
 		u.diffFailure = err.Error()
 		u.publishReview()
 	} else if changed {
@@ -215,15 +215,15 @@ func (u *terminalUI) applyDiff(ctx context.Context, event sessionreview.Event) {
 	}
 }
 
-func (u *terminalUI) loadedReview(result savedReviewResult) {
-	accepted, err := u.reviewLoader.accept(result)
+func (u *terminalUI) loadedReview(result sessionreview.Result) {
+	accepted, err := u.reviewLoader.Accept(result)
 	if err != nil {
 		u.diffFailure = err.Error()
 		u.publishReview()
 	} else if accepted {
-		workspace := u.saved.workspace
-		u.saved = u.reviewLoader.state
-		u.saved.workspace = workspace
+		workspace := u.saved.Workspace
+		u.saved = u.reviewLoader.Projection()
+		u.saved.Workspace = workspace
 		u.publishReview()
 		if u.main != nil {
 			u.main.applyCapturedEdits()
@@ -232,9 +232,9 @@ func (u *terminalUI) loadedReview(result savedReviewResult) {
 }
 
 func (u *terminalUI) publishReview() {
-	snapshot := u.saved.data
+	snapshot := u.saved.Data
 	if u.main != nil {
-		u.main.reviewSource.PublishReview(u.main.session.Scope(), snapshot, u.saved.workspace, u.saved.coverage, u.diffFailure)
+		u.main.reviewSource.PublishReview(u.main.session.Scope(), snapshot, u.saved.Workspace, u.saved.Coverage, u.diffFailure)
 		if u.preparePane != nil {
 			u.preparePane(u.main.session.Scope())
 		}
