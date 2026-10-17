@@ -37,6 +37,11 @@ func TestProviderWebSocketStaleLeaseRelease(t *testing.T) {
 			if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"response.created"}`)); err != nil {
 				return
 			}
+			if n == 0 {
+				if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"response.output_text.delta","delta":"queued"}`)); err != nil {
+					return
+				}
+			}
 			if n == 1 {
 				select {
 				case <-secondTerminal:
@@ -58,6 +63,23 @@ func TestProviderWebSocketStaleLeaseRelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	old := first.Body.(*WebSocketBody)
+	// Keep the terminal behind a queued message so its delivery reservation can
+	// still be unwinding when the consumer completes and releases the lease.
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for {
+		client.websockets.mu.Lock()
+		reserved := old.lease.terminal && len(old.lease.messages) == 1
+		client.websockets.mu.Unlock()
+		if reserved {
+			break
+		}
+		select {
+		case <-ticker.C:
+		case <-ctx.Done():
+			t.Fatal("receiver did not reserve terminal behind queued message")
+		}
+	}
 	if _, err := io.ReadAll(first.Body); err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +250,7 @@ func TestProviderWebSocketEarlyCloseObservesReservedTerminal(t *testing.T) {
 	defer ticker.Stop()
 	for {
 		client.websockets.mu.Lock()
-		reserved := body.lease.pending && body.lease.terminal && len(body.lease.messages) == 1
+		reserved := body.lease.terminal && len(body.lease.messages) == 1
 		client.websockets.mu.Unlock()
 		if reserved {
 			break

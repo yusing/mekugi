@@ -71,7 +71,6 @@ type providerWebSocketLease struct {
 	messages    chan []byte
 	released    chan struct{}
 	observation observation
-	pending     bool
 	terminal    bool
 }
 
@@ -242,16 +241,12 @@ func (entry *providerWebSocket) readLoop(ctx context.Context) {
 		case lease.messages <- payload:
 			entry.pool.mu.Unlock()
 		default:
-			lease.pending = true
 			entry.pool.mu.Unlock()
 			select {
 			case lease.messages <- payload:
 			case <-entry.done:
 				return
 			}
-			entry.pool.mu.Lock()
-			lease.pending = false
-			entry.pool.mu.Unlock()
 		}
 		if lease.terminal {
 			// Never start another active read after the terminal message. Close
@@ -304,7 +299,9 @@ func (entry *providerWebSocket) release(lease *providerWebSocketLease, reuse boo
 	if _, present := p.entries[entry]; !present || entry.lease != lease {
 		return false
 	}
-	if !reuse || !lease.terminal || lease.pending || len(lease.messages) != 0 || time.Since(entry.born) >= providerWebSocketLifetime {
+	// Reuse requires the consumer to have drained a valid terminal. A reserved
+	// send may still be returning, but it retains this lease, not its successor.
+	if !reuse || !lease.terminal || len(lease.messages) != 0 || time.Since(entry.born) >= providerWebSocketLifetime {
 		p.discardLocked(entry, errors.New("websocket response closed"))
 		return false
 	}
