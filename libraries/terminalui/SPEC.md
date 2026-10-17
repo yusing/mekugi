@@ -16,7 +16,8 @@ Auxiliary panes share painting, decoded input, theme and attachment-reset
 contracts, with feature-owned titles and contextual hints. Source selection retains complete documents, attribution and pinned
 headings. Navigator preferences and editor targets are optional capabilities.
 Typed attachment bridges supply detached publications before painting; panes
-receive no source service, store or backend handle.
+receive no source service, store or backend handle. Typed roster declarations
+select a feature-owned painter without introducing feature dependencies here.
 
 ## Behavior
 

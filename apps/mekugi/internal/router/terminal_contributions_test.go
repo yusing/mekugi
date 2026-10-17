@@ -1,10 +1,17 @@
 package router
 
 import (
+	"fmt"
 	"io"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
+	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/modules/activity"
+	activityview "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/modules/sessionreplay/playback"
@@ -48,12 +55,114 @@ func TestReplayAuxiliaryAbsenceSurvivesReset(t *testing.T) {
 	start := time.Unix(1, 0)
 	p := newUIReplayPlayback(terminalsession.Views{}, owner.reviewSource, owner.presentationState, owner.conversationState, owner.session.observations, owner.session.activity, t.Context(), &playback.Source{Thread: "main", Start: start, End: start.Add(time.Second)}, 1)
 	defer p.close()
-	p.ui.shell.Focus, p.ui.shell.DiffOpen = 1, true
+	p.ui.shell.Focus, p.ui.shell.DiffOpen = 3, true
 	p.reset()
-	if p.ui.shell.Auxiliary != nil || p.ui.shell.Focus != 0 || p.ui.shell.DiffOpen {
+	if p.ui.shell.Auxiliary != nil || p.ui.shell.RosterLabel != "" || p.ui.shell.Focus != 0 || p.ui.shell.DiffOpen {
 		t.Fatal("replay recreated an absent contribution")
 	}
 	if err := p.ui.paint(io.Discard, 120, 24); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestUISnapshotNativeWithoutActivityRoster(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	u.terminalViews = terminalsession.Views{}
+	u.session.activity = nil
+	u.clock = func() time.Time { return time.Date(2026, 10, 1, 12, 0, 0, 0, time.Local) }
+	u.ensureShell()
+	defer u.shell.diffScreen.Close()
+	u.view.Clock, u.agents.Clock = u.clock, u.clock
+	u.session.start("main", "/workspace")
+	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "reader"}})
+	for _, thread := range []string{"main", "child"} {
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "turn", "item": map[string]any{"id": "answer", "type": "agentMessage", "phase": "final_answer", "text": thread + " Conversation result"}})
+	}
+	wire.Reset()
+	u.shell.Focus = 3
+	screen := vt.NewEmulator(100, 24)
+	defer screen.Close()
+	paint := func(name, text string) {
+		t.Helper()
+		if err := u.paint(screen, 100, 24); err != nil {
+			t.Fatal(err)
+		}
+		frame := screen.String()
+		if !strings.Contains(frame, text) {
+			t.Fatalf("Conversation missing: %s", frame)
+		}
+		if u.shell.Layout.Roster.H != 0 || u.shell.Tabs[3].W != 0 || len(u.agents.Hits) != 0 || strings.Contains(u.shell.nativeStatus(), "Agents") {
+			t.Fatal("absent roster retained rows or input targets")
+		}
+		assertNativeUISnapshot(t, name, strings.Split(frame, "\n"))
+	}
+	paint("native-no-roster-main", "main Conversation result")
+	if u.shell.Focus != 0 {
+		t.Fatal("unavailable persisted focus was not clamped")
+	}
+	for _, key := range []byte("\x023retained draft") {
+		if err := u.shell.key(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if u.Text != "retained draft" || wire.Len() != 0 {
+		t.Fatal("unavailable selector consumed ordinary input")
+	}
+	u.agents.displayThread("/root/reader")
+	paint("native-no-roster-child", "child Conversation result")
+	if !u.composerReadOnly() || u.Thread != "main" || u.Text != "retained draft" {
+		t.Fatal("child display changed Main input ownership")
+	}
+	u.shell.selectNativePane(0)
+	appServerTestKeys(t, u, "\r")
+	appServerOneRequest(t, wire, "turn/start", "retained draft")
+	if u.session.activity != nil {
+		t.Fatal("renderer recreated the optional source service")
+	}
+}
+
+func TestNativeRosterConstructorReplacementAndReplay(t *testing.T) {
+	var c composition.Composition
+	d := activity.Module
+	var created []*activityview.View
+	d.Views.New = func() *activityview.View {
+		v := activityview.NewView()
+		created = append(created, v)
+		return v
+	}
+	c.Add(d, func() activity.Deps { return activity.Deps{} })
+	runtime, err := c.Activate(t.Context(), new(binding.Registry))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := runtime.Close(t.Context()); err != nil {
+			t.Error(err)
+		}
+	}()
+	u, wire := newAppServerTestUI()
+	u.terminalViews = runtime.Terminal
+	u.ensureShell()
+	defer u.shell.diffScreen.Close()
+	if len(created) != 1 || u.agents.View != created[0] {
+		t.Fatal("native attachment bypassed descriptor")
+	}
+	appServerTestKeys(t, u, "/clear\r")
+	req := appServerOneRequest(t, wire, "thread/start", "")
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"fresh","cwd":"/workspace"}}}`, req.ID))
+	if len(created) != 2 || u.agents.View != created[1] || u.shell.agents.View != created[1] {
+		t.Fatal("replacement bypassed descriptor")
+	}
+	if err := u.paint(io.Discard, 100, 24); err != nil {
+		t.Fatal(err)
+	}
+	if u.shell.Layout.Roster.H == 0 || u.shell.Tabs[3].W == 0 {
+		t.Fatal("declared roster did not reach painting")
+	}
+	p := newUIReplayPlayback(runtime.Terminal, u.reviewSource, u.presentationState, u.conversationState, u.session.observations, u.session.activity, t.Context(), replayPlaybackTestSource(), 1)
+	defer p.close()
+	p.reset()
+	if len(created) != 4 || p.ui.agents.View != created[3] {
+		t.Fatal("replay reset bypassed descriptor")
 	}
 }

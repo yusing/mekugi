@@ -2,9 +2,14 @@ package composition
 
 import (
 	"bytes"
+	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/modules/activity"
+	activityview "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/module"
@@ -136,5 +141,65 @@ func TestCompositionTerminalPlacementValidation(t *testing.T) {
 		} else if err == nil {
 			t.Fatalf("accepted %d invalid contributions", count)
 		}
+	}
+}
+
+func TestCompositionRosterPlacement(t *testing.T) {
+	for _, count := range []int{0, 1, 2} {
+		t.Run(fmt.Sprint(count), func(t *testing.T) {
+			var c Composition
+			created := 0
+			for i := range count {
+				d := activity.Module
+				d.ID = module.ID(fmt.Sprintf("roster%d", i))
+				d.Views.New = func() *activityview.View { created++; return activityview.NewView() }
+				c.Add(d, func() activity.Deps { return activity.Deps{} })
+			}
+			runtime, err := c.Activate(t.Context(), new(binding.Registry))
+			if count == 2 {
+				if err == nil {
+					t.Fatal("duplicate roster placement accepted")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := runtime.Close(t.Context()); err != nil {
+					t.Error(err)
+				}
+			})
+			if created != 0 {
+				t.Fatal("composition constructed a renderer before attachment")
+			}
+			if runtime.Terminal.NewThreadView() == nil {
+				t.Fatal("missing child Conversation painter")
+			}
+			if created != count || (runtime.Terminal.RosterLabel() != "") != (count == 1) {
+				t.Fatalf("placement: constructors=%d label=%q", created, runtime.Terminal.RosterLabel())
+			}
+		})
+	}
+	for _, invalid := range []string{"name", "label", "constructor"} {
+		t.Run(invalid, func(t *testing.T) {
+			var c Composition
+			d := activity.Module
+			switch invalid {
+			case "name":
+				d.Views.Name = ""
+			case "label":
+				d.Views.Label = ""
+			case "constructor":
+				d.Views.New = nil
+			}
+			c.Add(d, func() activity.Deps { t.Fatal("invalid views reached construction"); return activity.Deps{} })
+			if _, err := c.Activate(t.Context(), new(binding.Registry)); err == nil {
+				t.Fatal("invalid roster accepted")
+			}
+		})
+	}
+	if !slices.Contains(activity.Module.Reference().Contributes, "terminal-roster") {
+		t.Fatal("reference omitted roster")
 	}
 }

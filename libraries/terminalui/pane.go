@@ -84,3 +84,12 @@ func (d Definitions[S, C]) ViewKinds() []string {
 	}
 	return []string{"terminal-auxiliary"}
 }
+
+// RosterDefinition selects a feature-owned roster painter. Its concrete value
+// type stays checked by composition without a dependency on feature packages.
+type RosterDefinition[V any] struct {
+	Name, Label string
+	New         func() V
+}
+
+func (d RosterDefinition[V]) ViewKinds() []string { return []string{"terminal-roster"} }

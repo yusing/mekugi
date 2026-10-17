@@ -14,6 +14,7 @@ type Shell struct {
 	Panes
 	Auxiliary      terminalui.Pane
 	AuxiliaryLabel string
+	RosterLabel    string
 	Theme          diffrender.Theme
 	Layout         Layout
 	Tabs           [4]Rect
@@ -45,6 +46,9 @@ type ShellStatus struct {
 func (s *Shell) Plan(width, height, roster int) ShellPlan {
 	s.Clamp()
 	width, height = max(1, width), max(1, height)
+	if s.RosterLabel == "" {
+		roster = 0
+	}
 	layout, left, right, framed, kept := s.Panes.Geometry(width, height, roster)
 	return ShellPlan{layout, left, right, width, height, kept, framed}
 }
@@ -140,7 +144,9 @@ func (s *Shell) Status(in ShellStatus, width, height int) string {
 	if s.Auxiliary != nil {
 		tab(2, s.AuxiliaryLabel, diffBadge, s.DiffOpen)
 	}
-	tab(3, "Agents", agentsBadge, true)
+	if s.RosterLabel != "" {
+		tab(3, s.RosterLabel, agentsBadge, true)
+	}
 	if in.Locked {
 		tabs.WriteString("  " + terminalui.Amber + "Locked · /unlock" + terminalui.Reset)
 	}
@@ -148,14 +154,23 @@ func (s *Shell) Status(in ShellStatus, width, height int) string {
 	if in.Child {
 		filter = "Main"
 	}
+	selector := "1"
+	switch {
+	case s.Auxiliary != nil && s.RosterLabel != "":
+		selector = "1-3"
+	case s.Auxiliary != nil:
+		selector = "1-2"
+	case s.RosterLabel != "":
+		selector = "1,3"
+	}
 	var hints terminalui.Hints
 	switch {
 	case in.Prefix:
-		hints = terminalui.Hints{{"ctrl+b 1-3", "select", 0}, {"2", "toggle " + strings.ToLower(s.AuxiliaryLabel), 0}, {"o", "older child history", 0}, {"e", "next live", 0}, {"←→", "resize", 0}, {"PgUp/PgDn", "history", 0}}
-		if s.Auxiliary == nil {
-			hints = append(hints[:1], hints[2:]...)
-			hints[0].Key = "ctrl+b 1,3"
+		hints = terminalui.Hints{{"ctrl+b " + selector, "select", 0}}
+		if s.Auxiliary != nil {
+			hints = append(hints, terminalui.Hint{"2", "toggle " + strings.ToLower(s.AuxiliaryLabel), 0})
 		}
+		hints = append(hints, terminalui.Hints{{"o", "older child history", 0}, {"e", "next live", 0}, {"←→", "resize", 0}, {"PgUp/PgDn", "history", 0}}...)
 		return tabs.String() + "  " + hints.Render()
 	case s.Focus == 1:
 		hints = s.Auxiliary.Hints()
@@ -165,11 +180,7 @@ func (s *Shell) Status(in ShellStatus, width, height int) string {
 	if in.LiveCount > 1 {
 		hints = append(hints, terminalui.Hint{"^B e", "next live", 0})
 	}
-	selector := "^B 1-3"
-	if s.Auxiliary == nil {
-		selector = "^B 1,3"
-	}
-	hints = append(hints, terminalui.Hint{selector, "views", 0})
+	hints = append(hints, terminalui.Hint{"^B " + selector, "views", 0})
 	if s.Focus == 0 {
 		hints = append(hints, terminalui.Hint{"^E", [3]string{"expand events", "expand all", "default"}[in.Expansion], 0})
 	}
@@ -187,6 +198,9 @@ func superscript(n int) string {
 
 // Clamp discards focus and geometry for an absent contribution.
 func (s *Shell) Clamp() {
+	if s.RosterLabel == "" && s.Focus == 3 {
+		s.Focus = 0
+	}
 	if s.Auxiliary == nil {
 		s.DiffOpen = false
 		if s.Focus == 1 {
@@ -196,7 +210,7 @@ func (s *Shell) Clamp() {
 }
 
 func (s *Shell) Select(pane int) {
-	if pane == 1 && s.Auxiliary == nil {
+	if pane == 1 && s.Auxiliary == nil || pane == 3 && s.RosterLabel == "" {
 		return
 	}
 	s.Panes.Select(pane)

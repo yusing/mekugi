@@ -22,6 +22,10 @@ is calculated against that geometry and active overlays; only successful termina
 delivery makes a visible prompt ready for input.
 The [attachment owner](../sessionpresentation/SPEC.md#attachment-lifetime) retires
 module state. Backward replay retains terminal focus and Diff visibility.
+Descriptor-selected roster and auxiliary views define available placements.
+Absent placements have no rows, selectors or pointer targets; restored focus on
+an absent placement returns to Main. Main and child Conversation remain readable
+without a roster contribution, and Main retains ordinary input ownership.
 The [saved-Diff view](../../../../modules/changehistory/SPEC.md#saved-review-presentation)
 supplies interaction and source-selection values; this attachment owns its terminal
 emulation surface and final frame delivery.

@@ -50,9 +50,10 @@ detached identity/text values; terminal layout, styling and separators remain wi
 the renderer. Empty contributions or unavailable facts add no item. Publication
 does not read storage, query a provider or establish a second accounting cache.
 
-Descriptors select terminal views through typed definitions. The auxiliary-pane
-placement accepts zero or one contribution, with a unique nonempty name and a
-constructor. A typed attachment bridge publishes the owning module's admitted
+Descriptors select terminal views through typed definitions. Auxiliary-pane and
+agent-roster placements each accept zero or one contribution, with a nonempty
+name, label and constructor. Roster constructors supply terminal views; the
+application delivers detached Activity publications to them. A typed attachment bridge publishes the owning module's admitted
 in-memory snapshot before rendering; the pane receives values and retains only
 terminal interaction state. Construction and publication callbacks belong to
 application wiring, never to published view values. Removing the contribution

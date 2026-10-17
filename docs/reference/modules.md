@@ -14,7 +14,7 @@ Own host-operation feeds, roster derivation and retained output
 
 - Composition: selected; lifetime: `attached-session`.
 - Requires: none.
-- Contributes: `record-kinds`.
+- Contributes: `record-kinds`, `terminal-roster`.
 - Hosts: `activity-details`.
 - Records: `wait`.
 - Codex connections: none.

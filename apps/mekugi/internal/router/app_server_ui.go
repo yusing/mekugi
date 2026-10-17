@@ -188,7 +188,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 	if err != nil {
 		return nil, err
 	}
-	u := &appServerUI{terminalViews: terminalViews, reviewSource: reviewSource, presentationState: views, conversationState: conversation, session: appServerSession{activity: activity, observations: observations}, history: service, segments: segments, client: c, view: newActivityAdapter(), agents: newActivityAdapter(), proxy: proxy, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
+	u := &appServerUI{terminalViews: terminalViews, reviewSource: reviewSource, presentationState: views, conversationState: conversation, session: appServerSession{activity: activity, observations: observations}, history: service, segments: segments, client: c, view: newTranscriptAdapter(activityui.NewView()), agents: newTranscriptAdapter(terminalViews.NewThreadView()), proxy: proxy, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
 	u.sessionPresentation().Status.Set("Connecting…", false)
 	u.attachActivity()
 	u.guardHookCheck.hash = guardHash
@@ -1314,7 +1314,7 @@ func (u *appServerUI) ensureShell() {
 		return
 	}
 	if u.agents == nil {
-		u.agents = newActivityAdapter()
+		u.agents = newTranscriptAdapter(u.terminalViews.NewThreadView())
 		u.sessionPresentation()
 		u.attachActivity()
 	}
@@ -1333,6 +1333,7 @@ func (u *appServerUI) ensureShell() {
 	}
 	u.agents.Bare = true
 	shell := &terminalUI{main: u, agents: u.agents, review: review, diffScreen: new(terminalsession.DiffScreen)}
+	shell.RosterLabel = u.terminalViews.RosterLabel()
 	shell.Theme = diffrender.EnvironmentTheme(os.Getenv("COLORFGBG"))
 	label, attachment := u.terminalViews.Attach(shell.Theme)
 	shell.AuxiliaryLabel, shell.Auxiliary, shell.preparePane = label, attachment.Pane, attachment.Prepare

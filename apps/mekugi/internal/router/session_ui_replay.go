@@ -67,7 +67,7 @@ func (p *uiReplayPlayback) reset() {
 	p.paintedAt = time.Time{}
 	// The read-only terminal attachment uses shared projection without a backend
 	// client, request tracker, writable store, observers or notification sink.
-	u := &appServerUI{terminalViews: p.terminalViews, reviewSource: p.reviewSource, presentationState: p.views, conversationState: p.conversation, session: appServerSession{activity: p.activity, observations: p.observations}, ctx: p.ctx, view: newActivityAdapter(), agents: newActivityAdapter(), Thread: p.Source.Thread, clock: func() time.Time { return p.At }, replay: p}
+	u := &appServerUI{terminalViews: p.terminalViews, reviewSource: p.reviewSource, presentationState: p.views, conversationState: p.conversation, session: appServerSession{activity: p.activity, observations: p.observations}, ctx: p.ctx, view: newTranscriptAdapter(activityui.NewView()), agents: newTranscriptAdapter(p.terminalViews.NewThreadView()), Thread: p.Source.Thread, clock: func() time.Time { return p.At }, replay: p}
 	u.sessionPresentation().Status.Set("Replay", false)
 	u.view.Clock, u.agents.Clock = u.clock, u.clock
 	u.session.start(p.Source.Thread, p.Source.Cwd)

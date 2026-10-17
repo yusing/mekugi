@@ -8,6 +8,10 @@ supply typed source facts and reconcile host items; the host retains authority o
 identity, execution, outcomes and captured changes. Parsing neither evaluates
 source nor establishes that an operation ran.
 
+The descriptor contributes its terminal roster constructor. Removing that
+contribution removes the roster placement and its input targets; independent
+Conversation transcripts remain available through their shared painter.
+
 ## Behavior
 
 ### Observation authority

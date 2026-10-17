@@ -17,6 +17,7 @@ import (
 	"github.com/yusing/mekugi/modules/livepreview/preview"
 
 	"github.com/yusing/mekugi/modules/activity/feed"
+	activityview "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/modules/notifications/notice"
 
@@ -65,6 +66,7 @@ func (h *Handle[S]) Value() S {
 
 type entry struct {
 	auxiliary       []terminalui.PaneFactory[*scope.Store]
+	roster          []terminalui.RosterDefinition[*activityview.View]
 	presentation    []presentation.Status
 	activityDetails []activitydetail.Provider
 	replayTiming    []replaytiming.Reader
@@ -94,7 +96,7 @@ type Composition struct {
 func (c *Composition) Add[D, S any, B interface {
 	module.NoBindings | binding.Bindings[S]
 }, V interface {
-	module.NoViews | terminalui.Definitions[S, *scope.Store]
+	module.NoViews | terminalui.Definitions[S, *scope.Store] | terminalui.RosterDefinition[*activityview.View]
 }](descriptor module.Descriptor[D, S, B, V], deps func() D) *Handle[S] {
 	if c.sealed {
 		panic("composition is already activated")
@@ -110,6 +112,9 @@ func (c *Composition) Add[D, S any, B interface {
 		guidance:     slices.Clone(descriptor.Contributes.Guidance),
 		capabilities: slices.Clone(backend.Requires),
 		validFactory: descriptor.New != nil && deps != nil,
+	}
+	if roster, ok := any(descriptor.Views).(terminalui.RosterDefinition[*activityview.View]); ok {
+		node.roster = []terminalui.RosterDefinition[*activityview.View]{roster}
 	}
 	views, _ := any(descriptor.Views).(terminalui.Definitions[S, *scope.Store])
 	for _, definition := range views.Auxiliary {
@@ -340,6 +345,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 	c.sealed = true
 	runtime := new(Runtime)
 	var auxiliary []terminalui.PaneFactory[*scope.Store]
+	var roster []terminalui.RosterDefinition[*activityview.View]
 	var status []presentation.Status
 	var records []recordkind.Spec
 	var activityDetails []activitydetail.Provider
@@ -360,6 +366,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 		positions[node.id] = i
 		runtime.Commands = append(runtime.Commands, node.commands...)
 		auxiliary = append(auxiliary, node.auxiliary...)
+		roster = append(roster, node.roster...)
 		status = append(status, node.presentation...)
 		activityDetails = append(activityDetails, node.activityDetails...)
 		records = append(records, node.records...)
@@ -414,7 +421,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 		}
 		names[spec.Name] = true
 	}
-	terminal, err := terminalsession.NewViews(auxiliary)
+	terminal, err := terminalsession.NewViews(auxiliary, roster)
 	if err != nil {
 		failures = append(failures, err)
 	}

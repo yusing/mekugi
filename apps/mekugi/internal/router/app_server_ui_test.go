@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/modules/activity"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/contracts/scope"
@@ -465,7 +468,7 @@ func testTerminalViews(source *changecapture.Service) terminalsession.Views {
 	definition := changeview.Views.Auxiliary[0]
 	views, err := terminalsession.NewViews([]terminalui.PaneFactory[*scope.Store]{{Name: definition.Name, Label: definition.Label, Attach: func(theme diffrender.Theme) terminalui.PaneAttachment[*scope.Store] {
 		return definition.Attach(source, theme)
-	}}})
+	}}}, []terminalui.RosterDefinition[*activityui.View]{activity.Module.Views})
 	if err != nil {
 		panic(err)
 	}
@@ -473,3 +476,5 @@ func testTerminalViews(source *changecapture.Service) terminalsession.Views {
 }
 
 func savedPane(u *terminalUI) *changeview.Pane { return u.Auxiliary.(*changeview.Pane) }
+
+func newActivityAdapter() *activityAdapter { return newTranscriptAdapter(activityui.NewView()) }

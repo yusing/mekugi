@@ -289,7 +289,12 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	mainEdit := !u.liveHidden && slices.Contains(u.liveDock.Callers(), caller)
 	u.agents.LivePreviews = nil
 
-	roster := u.agents.NativeRoster(width, u.Panes.RosterLimit(height), now, u.Focus == 3)
+	var roster []string
+	if u.RosterLabel != "" {
+		roster = u.agents.NativeRoster(width, u.Panes.RosterLimit(height), now, u.Focus == 3)
+	} else {
+		u.agents.Hits = nil
+	}
 	plan := u.Shell.Plan(width, height, len(roster))
 	content := terminalsession.ShellContent{Roster: roster, MainName: "Main"}
 	if plan.Left.W >= 4 && plan.Left.H >= 1 {

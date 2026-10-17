@@ -20,8 +20,8 @@ type activityAdapter struct {
 const liveActivityFeedLimit = activitypresentation.FeedLimit
 const unreturnedOutputNote = "output not returned to the model"
 
-func newActivityAdapter() *activityAdapter {
-	v := &activityAdapter{Model: new(activitypresentation.Model[activityPaneEntry, activityPaneAgent]), View: activityui.NewView(), display: new(sessionpresentation.Model)}
+func newTranscriptAdapter(view *activityui.View) *activityAdapter {
+	v := &activityAdapter{Model: new(activitypresentation.Model[activityPaneEntry, activityPaneAgent]), View: view, display: new(sessionpresentation.Model)}
 	v.display.Attach(sessionpresentation.Thread{ID: "/root", Caller: "/root"}, false)
 	return v
 }

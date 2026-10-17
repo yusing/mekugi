@@ -4,6 +4,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/conversation/completion"
 
 	json "encoding/json/v2"
@@ -169,11 +170,11 @@ func (u *appServerUI) clearSessionPresentation() error {
 		}
 	}
 	painter := u.view.Painter
-	*u.view = *newActivityAdapter()
+	*u.view = *newTranscriptAdapter(activityui.NewView())
 	u.view.Painter, u.view.Conversation = painter, true
 	if u.agents != nil {
 		painter = u.agents.Painter
-		*u.agents = *newActivityAdapter()
+		*u.agents = *newTranscriptAdapter(u.terminalViews.NewThreadView())
 		u.agents.Painter, u.agents.mainView = painter, u.view
 		u.agents.ChildrenOnly, u.agents.Bare = true, true
 	}
