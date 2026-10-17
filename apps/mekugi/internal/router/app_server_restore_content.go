@@ -420,7 +420,7 @@ func (u *appServerUI) restoreActivityItem(info binding.ThreadInfo, turn binding.
 			entry.Text = appServerEditText(item, info.Cwd)
 			entry.native.editPages = appServerEditPages(item, info.Cwd, entry.native.phase)
 		}
-		s.retainOutput(entry.native, item)
+		s.completeCommand(entry.native, item)
 		appServerCommandOutput(&entry, item, time.Time{})
 		u.restoreCommandSegments(&entry, item, info.Cwd)
 		*entries = append(*entries, entry)

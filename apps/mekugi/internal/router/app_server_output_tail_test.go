@@ -311,6 +311,11 @@ func TestAppServerCompletionWaitsForOutputBurst(t *testing.T) {
 	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "cmd", "delta": output.String()})
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 1, output.String()
 	notify("item/completed", map[string]any{"item": item})
+	run := u.session.commands[[3]string{"main", "t", "cmd"}]
+	canonical := run.entry.native.invocation.Snapshot()
+	if canonical.Running || !canonical.Exited || canonical.ExitCode != 1 || canonical.Ended.IsZero() || u.runningProcessCount() != 0 {
+		t.Fatalf("visual delay held canonical host completion: %+v", canonical)
+	}
 	u.flushStreamOutput()
 	if got := main(); !strings.Contains(got, "Running") || strings.Contains(got, "ok 19") {
 		t.Fatalf("completion replaced the output before it rolled:\n%s", got)

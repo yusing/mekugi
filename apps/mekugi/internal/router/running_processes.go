@@ -16,7 +16,7 @@ import (
 func (s *appServerSession) runningProcesses() iter.Seq[activityPaneEntry] {
 	return func(yield func(activityPaneEntry) bool) {
 		for key, run := range s.commands {
-			if run.done != nil || run.completion != nil {
+			if !run.entry.native.invocation.Running() {
 				continue
 			}
 			entry := run.entry

@@ -179,6 +179,14 @@ Absent exit status remains unknown. Later deltas cannot change completed output.
 Truncation records loss within the current stream or replacement aggregate, even
 when that line has subsequently been dropped.
 
+An invocation owns its admitted command source, host timing, completion and
+optional retained output. Live observations, restored history and offline replay
+share that owner. Its detached snapshot reports host completion immediately,
+independently of pending segment evidence or terminal output animation. The
+application's existing live-operation index supplies identity and lifetime;
+yielded invocations survive the originating turn. Completed feed and dialog
+references retain the same invocation after it leaves that index.
+
 Read-only snapshots keep their content and outcome after later append, replacement
 or release. Consumers can use the output version to avoid rebuilding unchanged
 views. Restored output comes from retained host aggregates or validated segment

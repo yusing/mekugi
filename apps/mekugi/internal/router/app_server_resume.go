@@ -331,7 +331,7 @@ func (u *appServerUI) restoreHistoryItem(turn binding.HistoryTurn, item binding.
 		if item.Type == "fileChange" {
 			entry.native.editPages = appServerEditPages(item, u.session.cwd, method)
 		}
-		u.session.retainOutput(entry.native, item)
+		u.session.completeCommand(entry.native, item)
 		appServerCommandOutput(&entry, item, time.Time{})
 		u.restoreCommandSegments(&entry, item, u.session.cwd)
 		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})

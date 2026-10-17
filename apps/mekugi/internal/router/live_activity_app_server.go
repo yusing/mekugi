@@ -32,6 +32,9 @@ func questionReplyText(replies []binding.QuestionReply) string {
 }
 
 type liveActivityNativeItem struct {
+	invocation *activitypresentation.Invocation // Canonical host state, shared while terminal output settles.
+	// These fields describe the displayed observation, including held completion
+	// and hook timing. Invocation snapshots retain immediate host completion.
 	commandStarted     time.Time // UI receipt of host start notification; not reconstructed on replay.
 	commandEnded       time.Time
 	duration           time.Duration

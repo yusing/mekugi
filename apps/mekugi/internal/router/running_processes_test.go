@@ -64,6 +64,9 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 	if u.runningProcessCount() != 2 || !u.mainPresentation(u.now()).Status.Animating {
 		t.Fatal("yielded command stopped counting or animating")
 	}
+	if u.session.Transcript("main", "t").Turn != nil || !u.session.commands[[3]string{"main", "t", "cmd"}].entry.native.invocation.Snapshot().Running {
+		t.Fatal("command lifetime followed its closed turn scope")
+	}
 	if err := u.shell.send("\x1b[C"); err != nil {
 		t.Fatal(err)
 	}

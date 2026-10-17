@@ -296,9 +296,7 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 		// Bounded as it arrives; the next frame shows it, so bursts cost one render.
 		if run := s.commands[[3]string{p.ThreadID, p.TurnID, p.ItemID}]; run != nil && run.done == nil {
 			run.output.Write(p.Delta)
-			if output := run.entry.native.output; output != nil {
-				output.Write(p.Delta)
-			}
+			run.entry.native.invocation.Write(p.Delta)
 			run.dirty = true
 		}
 	case "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded":
@@ -356,13 +354,13 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 				if item.Type == "commandExecution" {
 					native.running, native.commandStarted = true, now
 					if run := s.commands[key]; run == nil {
-						if outputs := s.activity.Outputs(s.Scope()); outputs != nil {
-							native.output = outputs.New()
-						}
+						native.invocation = activitypresentation.NewInvocation(appServerCommandSource(item.Command, native.commandCwd), now, s.activity.Outputs(s.Scope()))
+						native.output = native.invocation.Output()
 						s.commands[key] = &appServerCommandRun{entry: entry, instant: instantOperations(entry.Text)}
 					} else {
-						native.output = run.entry.native.output
-						native.commandStarted = run.entry.native.commandStarted
+						native.invocation = run.entry.native.invocation
+						native.output = native.invocation.Output()
+						native.commandStarted = native.invocation.Snapshot().Started
 						native.commandTimeout = cmp.Or(native.commandTimeout, run.entry.native.commandTimeout)
 					}
 				}
@@ -376,7 +374,7 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 					native.commandTimeout = cmp.Or(native.commandTimeout, run.entry.native.commandTimeout)
 				}
 			}
-			s.retainOutput(native, item)
+			s.completeCommand(native, item)
 			if run := s.commands[key]; run != nil && u.execTrack.Tracking(key) {
 				run.completion, run.completed, run.completedAt = &entry, item, now
 				break
@@ -614,23 +612,24 @@ func appServerCommandText(item binding.ThreadItem, cwd string) string {
 	return strings.Join(parts, "\n\n")
 }
 
-// retainOutput keeps a completed command's host output for the output dialog,
-// continuing what its stream retained.
-func (s *appServerSession) retainOutput(native *liveActivityNativeItem, item binding.ThreadItem) {
+// completeCommand adapts a host result into the shared invocation owner before
+// terminal or report settlement. History has no revived start/end clock.
+func (s *appServerSession) completeCommand(native *liveActivityNativeItem, item binding.ThreadItem) {
 	if item.Type != "commandExecution" {
 		return
 	}
-	native.exit = item.ExitCode
-	if s.activity == nil {
-		return
-	}
+	native.exit = item.ExitCode // Displayed outcome, separate from queued visual completion.
 	if run := s.commands[[3]string{native.thread, native.turn, native.item}]; run != nil {
-		native.output = run.entry.native.output
+		native.invocation = run.entry.native.invocation
 	}
-	if native.output == nil {
-		native.output = s.activity.Outputs(s.Scope()).New()
+	source := appServerCommandSource(item.Command, native.commandCwd)
+	if native.invocation == nil {
+		native.invocation = activitypresentation.NewInvocation(source, native.commandStarted, s.activity.Outputs(s.Scope()))
 	}
-	native.output.Finish(item.AggregatedOutput, item.ExitCode)
+	native.invocation.Complete(activitypresentation.CommandCompletion{
+		Source: source, At: native.commandEnded, Duration: appServerDuration(item), Aggregate: item.AggregatedOutput, Exit: item.ExitCode,
+	})
+	native.output = native.invocation.Output()
 }
 
 // appServerCommandOutput keeps aggregate output even when the host reports no

@@ -16,22 +16,26 @@ func commandPresentation(entry activityPaneEntry) activitypresentation.Command {
 	if n == nil {
 		return c
 	}
-	c.Script = n.command
-	if script, ok := binding.CommandScript(c.Script); ok {
-		c.Script = script
+	if n.invocation != nil {
+		canonical := n.invocation.Snapshot()
+		c.Script, c.Display, c.Directory = canonical.Script, canonical.Display, canonical.Directory
+		c.Output, c.OutputContent = canonical.Output, len(n.segments) > 0 && canonical.OutputContent
 	} else {
-		c.Script = shellinstrumentation.ShOriginal(c.Script)
+		// Non-command items, including hooks, share the terminal detail surface.
+		source := appServerCommandSource(n.command, n.commandCwd)
+		c.Script, c.Display, c.Directory = source.Script, source.Display, source.Directory
+		if n.output != nil {
+			snapshot, _ := n.output.Context(0)
+			c.Output = &snapshot
+			c.OutputContent = len(n.segments) > 0 && n.output.HasContent()
+		}
 	}
-	c.Display, c.Directory = toolActivityShellSource(appServerDisplayCommand(n.command)), n.commandCwd
+	// Terminal publication can lag host completion while a burst rolls through.
+	// Keep this overlay local; never turn the canonical invocation back to running.
 	c.Started, c.Ended, c.Duration = n.commandStarted, n.commandEnded, n.duration
 	c.Running, c.Approval, c.Changes = n.running, n.approval, n.changes
 	if n.exit != nil {
 		c.Exited, c.ExitCode = true, *n.exit
-	}
-	if n.output != nil {
-		snapshot, _ := n.output.Context(0)
-		c.Output = &snapshot
-		c.OutputContent = len(n.segments) > 0 && n.output.HasContent()
 	}
 	if receipt := n.capturedEdit; receipt != nil {
 		c.Captured = true
@@ -56,4 +60,12 @@ func commandPresentation(entry activityPaneEntry) activitypresentation.Command {
 		c.Segments = append(c.Segments, value)
 	}
 	return c
+}
+
+func appServerCommandSource(command, directory string) activitypresentation.CommandSource {
+	script, ok := binding.CommandScript(command)
+	if !ok {
+		script = shellinstrumentation.ShOriginal(command)
+	}
+	return activitypresentation.CommandSource{Script: script, Display: toolActivityShellSource(appServerDisplayCommand(command)), Directory: directory}
 }
