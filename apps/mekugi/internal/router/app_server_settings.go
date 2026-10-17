@@ -152,6 +152,7 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 		}
 		u.recordDraft()
 		u.Text, u.CursorBack, u.Images = "", 0, nil
+		u.Editor.Changed()
 		u.setLivePane(value)
 		return true, nil
 	}
@@ -204,6 +205,7 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 		notice, alert := u.feedback.Text, u.feedback.Alert
 		u.recordDraft()
 		u.Text, u.CursorBack, u.Images = "", 0, nil
+		u.Editor.Changed()
 		u.setNotice(notice, alert)
 	}
 	return true, err

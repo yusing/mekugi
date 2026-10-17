@@ -42,6 +42,8 @@ type View struct {
 	Questions prompt.QuestionDockView
 	Approvals prompt.ApprovalDockView
 	Pending   conversationmodel.PendingView
+	Draft     conversationmodel.DraftView
+	Admission InputAdmission
 	History   HistoryDock
 	Interrupt sessioncontrol.InterruptTarget
 }

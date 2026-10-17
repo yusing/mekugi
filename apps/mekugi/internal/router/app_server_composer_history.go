@@ -25,7 +25,7 @@ func (u *appServerUI) recallInput(backward bool) {
 func (u *appServerUI) draftSnapshot() conversationmodel.Input {
 	return conversationmodel.Input{Draft: u.Draft.Editable()}
 }
-func (u *appServerUI) loadDraft(d conversationmodel.Input) { u.Draft = d.Draft.Editable() }
+func (u *appServerUI) loadDraft(d conversationmodel.Input) { u.Editor.Replace(d.Draft) }
 func (u *appServerUI) recordDraft() {
 	u.Editor.Record()
 	u.setNotice("", false)

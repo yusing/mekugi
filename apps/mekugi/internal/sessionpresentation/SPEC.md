@@ -162,6 +162,21 @@ missing settings show defaults with a notice, and save failures do not undo appl
 host state. Provider selection stays invocation-local. No restoration issues model
 requests or manufactures host-resumable history.
 
+## Ordinary input
+
+Ordinary draft edits and submission name the attached view and draft revision.
+Admission precedes taking the draft or reading attachment sources, so a stale
+intent cannot clear, capture or submit newer input. Main owns the input destination;
+a displayed child, replay or a prompt-owned editor cannot admit ordinary input.
+Restoration and archival preserve the editable draft until submission is admitted.
+Pending session replacement accepts locally stacked input without sending it to the
+old thread; successful replacement carries that input into the new attachment.
+
+Submission explicitly selects send/steer or next-turn queueing. Acceptance into a
+local queue is separate from immediate host readiness. Attachment preparation and
+the existing control gates run before transport issuance, preserving rejection
+restoration, pending prompts, skill acquisition and provisional echo ordering.
+
 ## Session title and progress
 
 `/title NAME` immediately names Main without interrupting work or submitting model

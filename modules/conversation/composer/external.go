@@ -83,5 +83,6 @@ func (e *Editor) ApplyExternal(text string) error {
 	e.Skills = skills
 	e.Text, e.Images, e.CursorBack = text, images, 0
 	e.RenumberImages()
+	e.Changed()
 	return nil
 }

@@ -1110,6 +1110,7 @@ func (u *appServerUI) key(key string) (bool, error) {
 		if text == "/quit" {
 			if u.Turn == "" && !u.Starting() && !u.InputPending() {
 				u.Text = ""
+				u.Editor.Changed()
 				return true, nil
 			}
 			u.setNotice("Interrupt the active turn before quitting", false)
@@ -1125,16 +1126,8 @@ func (u *appServerUI) key(key string) (bool, error) {
 		if text == "" || u.Thread == "" || u.restoring != nil {
 			return false, nil
 		}
-		// A draft that cannot be sent yet stacks with earlier unsent steers.
-		if u.waitingQuestion() {
-			u.conversation().Queued = append(u.conversation().Queued, u.takeDraft())
-		} else {
-			u.conversation().Unsent = append(u.conversation().Unsent, u.takeDraft())
-		}
-		u.pruneDraftImages()
-		u.setNotice("", false)
-		u.view.Follow()
-		return false, u.flushInput()
+		view := u.mainPresentation(u.now())
+		return false, u.submitInput(sessionpresentation.SubmitIntent{Version: view.Version, Revision: view.Draft.Revision, Mode: sessioncontrol.SendInput})
 	case "\t":
 		// Tab queues busy input for the next turn; otherwise it sends like Enter.
 		text := strings.TrimSpace(u.Text)
@@ -1144,9 +1137,8 @@ func (u *appServerUI) key(key string) (bool, error) {
 		if u.conversation().ShellMode() || text == "" || strings.HasPrefix(text, "/") || u.Turn == "" && !u.Starting() && !u.InputPending() {
 			return u.key("\r")
 		}
-		u.conversation().Queued = append(u.conversation().Queued, u.takeDraft())
-		u.pruneDraftImages()
-		u.setNotice("", false)
+		view := u.mainPresentation(u.now())
+		return false, u.submitInput(sessionpresentation.SubmitIntent{Version: view.Version, Revision: view.Draft.Revision, Mode: sessioncontrol.QueueNextTurn})
 	default:
 		if len(key) > 0 && key[0] >= 32 {
 			u.insertDraft(key)

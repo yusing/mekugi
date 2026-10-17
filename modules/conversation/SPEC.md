@@ -43,6 +43,11 @@ never matching ordinary text, supply their identity. Character and word operatio
 respect Unicode graphemes, including combining marks beside attachments. Images
 are numbered in draft order after insertion, deletion, joining or external editing.
 
+The current ordinary draft publishes a detached snapshot and monotonic content
+revision. Edits, replacement, undo, restore and taking the draft advance that
+revision; restoring identical text does not revive an earlier submission target.
+Question and approval editors are excluded from ordinary-draft publication.
+
 Undo groups a typed word, a repeated deletion run, a paste, an attachment, a clear
 or an editor save. It retains at most 100 edits and resets on submission. Local
 input history retains at most 100 entries per thread. Browsing restores the saved

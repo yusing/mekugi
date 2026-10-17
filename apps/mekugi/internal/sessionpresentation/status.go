@@ -96,6 +96,8 @@ func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) View {
 	v.Questions = in.Conversation.Questions.View(in.Control.Thread)
 	v.Approvals = in.Conversation.Approvals.View()
 	v.Pending = pendingInput(in.Control, in.Conversation)
+	v.Draft = in.Conversation.DraftView()
+	v.Admission = m.inputAdmission(in.Control, v.Draft.Available, in.Restoring)
 	v.History = m.HistoryView(in.History)
 	v.Interrupt = in.Control.InterruptTarget()
 	s := &v.Status

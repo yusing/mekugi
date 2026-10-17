@@ -47,7 +47,11 @@ func (u *appServerUI) pruneInputPayloads() {
 // takeDraft empties the composer. The caller stacks the draft, which keeps its
 // image files until sent.
 func (u *appServerUI) takeDraft() conversationmodel.Input {
-	d := conversationmodel.Input{Draft: u.Editor.Take()}
+	return u.prepareDraft(u.Editor.Take())
+}
+
+func (u *appServerUI) prepareDraft(draft composer.Draft) conversationmodel.Input {
+	d := conversationmodel.Input{Draft: draft}
 	d.ReplyCount = len(binding.QuestionReplies(d.Text))
 	u.bindSkills(&d, true)
 	d.SnapshotFiles(u.session.cwd)

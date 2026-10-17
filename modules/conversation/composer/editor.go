@@ -35,11 +35,37 @@ type State struct {
 
 type Editor struct {
 	Draft
+	revision               uint64
 	UndoDrafts, RedoDrafts []Undo
 	InputHistory           []Draft
 	HistoryDraft           Draft
 	HistoryBack            int
 	Run                    Run
+}
+
+func (e *Editor) Revision() uint64 { return e.revision }
+
+// Changed marks adapter-owned binding changes in the same serialized owner.
+// Revisions never enter undo or parked state.
+func (e *Editor) Changed() { e.revision++ }
+
+func (e *Editor) Replace(draft Draft) {
+	e.Draft = draft.Editable()
+	e.Changed()
+}
+
+func (e *Editor) InsertText(text string) {
+	if text != "" {
+		e.Draft.InsertText(text)
+		e.Changed()
+	}
+}
+
+func (e *Editor) Remove(start, end int) {
+	if start != end {
+		e.Draft.Remove(start, end)
+		e.Changed()
+	}
 }
 
 func (e *Editor) Remember(draft Draft) {
@@ -69,7 +95,7 @@ func (e *Editor) Recall(backward bool) bool {
 	if next > 0 {
 		snapshot = e.InputHistory[len(e.InputHistory)-next]
 	}
-	e.Draft = snapshot.Editable()
+	e.Replace(snapshot)
 	return true
 }
 
@@ -97,7 +123,7 @@ func (e *Editor) Undo(redo bool) {
 	snapshot := (*from)[len(*from)-1]
 	*from = (*from)[:len(*from)-1]
 	e.HistoryBack, e.HistoryDraft = snapshot.HistoryBack, snapshot.HistoryDraft.Clone()
-	e.Draft = snapshot.Draft.Editable()
+	e.Replace(snapshot.Draft)
 }
 
 func (e *Editor) Insert(text string) {
@@ -130,7 +156,7 @@ func (e *Editor) Delete(start, end int, run Run) {
 func (e *Editor) Take() Draft {
 	draft := e.Draft.Editable()
 	draft.CursorBack = 0
-	e.Draft = Draft{}
+	e.Replace(Draft{})
 	e.HistoryBack, e.HistoryDraft = 0, Draft{}
 	e.UndoDrafts, e.RedoDrafts = nil, nil
 	e.Run = NoRun
@@ -139,11 +165,11 @@ func (e *Editor) Take() Draft {
 func (e *Editor) Restore(parts ...Draft) {
 	e.UndoDrafts, e.RedoDrafts = nil, nil
 	e.Run = NoRun
-	e.Draft = Join(append(slices.Clone(parts), e.Draft.Editable())...).Editable()
+	e.Replace(Join(append(slices.Clone(parts), e.Draft.Editable())...))
 }
 func (e *Editor) Park() State { return State{e.Snapshot(), e.UndoDrafts, e.RedoDrafts, e.Run} }
 func (e *Editor) Resume(s State) {
-	e.Draft = s.Snapshot.Draft.Editable()
+	e.Replace(s.Snapshot.Draft)
 	e.HistoryBack, e.HistoryDraft = s.Snapshot.HistoryBack, s.Snapshot.HistoryDraft.Clone()
 	e.UndoDrafts, e.RedoDrafts, e.Run = s.UndoDrafts, s.RedoDrafts, s.Run
 }

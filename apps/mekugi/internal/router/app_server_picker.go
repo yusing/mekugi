@@ -69,7 +69,10 @@ func (u *appServerUI) refreshPicker() {
 	p := &u.picker
 	draft := u.draftSnapshot()
 	u.bindSkills(&draft, false)
-	u.Skills = draft.Skills
+	if !slices.Equal(u.Skills, draft.Skills) {
+		u.Skills = draft.Skills
+		u.Editor.Changed()
+	}
 	target := u.completionTarget()
 	bindingOnly := false
 	if target.Kind == 0 && p.modal == "" && (!p.SkillsLoaded || p.SkillsCwd != u.session.cwd) {
