@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -53,7 +55,7 @@ func TestNativeSentMessagesBecomeExcerptsOutOfView(t *testing.T) {
 	var seq, activity uint64
 	for _, entry := range u.view.Entries {
 		if entry.Source.Kind == "assignment" {
-			seq, activity = entry.Source.Seq, entry.Source.activitySeq
+			seq, activity = entry.Source.Seq, entry.Source.ActivitySeq
 		}
 	}
 	if seq == 0 || activity == 0 || !u.shell.openActivityReply(seq) {
@@ -77,13 +79,14 @@ func TestNativeSentMessagesBecomeExcerptsOutOfView(t *testing.T) {
 func TestSentExcerptKeepsScrolledViewportStill(t *testing.T) {
 	v := newActivityAdapter()
 	v.Conversation, v.FeedOnly = true, true
+	v.testAudience()
 	start := time.Date(2026, 9, 28, 8, 44, 12, 0, time.Local)
 	task := strings.Repeat("Remove only the fixtures you created. ", 20)
-	v.Entries = []liveActivityRecord{
-		{Source: activityPaneEntry{Seq: 1, Agent: "Main", Kind: "assignment", Observed: start, activitySeq: 5, assignment: &activityAssignment{to: "/root/fixtures", text: task}}, Values: activityui.Values([]activityui.Block{{Kind: "message", From: "/root", To: "/root/fixtures", Body: task}})},
+	v.Entries = []sessionpresentation.ActivityRecord{
+		{Source: sessionpresentation.ActivityEntry{Seq: 1, Agent: "Main", Kind: "assignment", Observed: start, ActivitySeq: 5, Assignment: &sessionpresentation.ActivityAssignment{To: "/root/fixtures", Text: task}}, Values: activityui.Values([]activityui.Block{{Kind: "message", From: "/root", To: "/root/fixtures", Body: task}})},
 	}
 	for i := range 20 {
-		entry := activityPaneEntry{Seq: uint64(i + 2), Agent: "Main", Kind: "text", Text: fmt.Sprint("Note ", i, "."), Observed: start}
+		entry := sessionpresentation.ActivityEntry{Seq: uint64(i + 2), Agent: "Main", Kind: "text", Text: fmt.Sprint("Note ", i, "."), Observed: start}
 		v.appendEntry(entry, parseLiveActivity(entry))
 	}
 	const width, rows = 60, 6
@@ -102,8 +105,9 @@ func TestSentExcerptKeepsScrolledViewportStill(t *testing.T) {
 func TestMainBatchCollapsesOutOfView(t *testing.T) {
 	v := newActivityAdapter()
 	v.Conversation, v.FeedOnly = true, true
+	v.testAudience()
 	start := time.Date(2026, 9, 28, 8, 44, 12, 0, time.Local)
-	for _, entry := range []activityPaneEntry{
+	for _, entry := range []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "Main", Kind: "tool", Text: "Search `zzz`\n\nSearch `bbb`\n\nRun `foo`\n\nRead `bar`", Observed: start},
 		{Seq: 2, Agent: "Main", Kind: "text", Text: "Checking one more file.", Observed: start},
 		{Seq: 3, Agent: "Main", Kind: "tool", Text: "Read `single.go`", Observed: start},
@@ -111,7 +115,7 @@ func TestMainBatchCollapsesOutOfView(t *testing.T) {
 		v.appendEntry(entry, parseLiveActivity(entry))
 	}
 	for i := range 20 {
-		entry := activityPaneEntry{Seq: uint64(i + 4), Agent: "Main", Kind: "text", Text: fmt.Sprint("Note ", i, "."), Observed: start}
+		entry := sessionpresentation.ActivityEntry{Seq: uint64(i + 4), Agent: "Main", Kind: "text", Text: fmt.Sprint("Note ", i, "."), Observed: start}
 		v.appendEntry(entry, parseLiveActivity(entry))
 	}
 	const width, rows = 60, 6
@@ -146,6 +150,7 @@ func TestMainBatchKeepsUnconfirmedHostItemsOutOfView(t *testing.T) {
 	for _, status := range []string{"completed", "declined", "failed"} {
 		u := newAppServerSessionTestUI(t, t.TempDir())
 		u.view.Conversation = true
+		u.view.testAudience()
 		search := map[string]any{"id": "search", "type": "commandExecution", "command": "rg zzz", "status": status,
 			"commandActions": []map[string]any{{"type": "search", "command": "rg zzz", "query": "zzz"}}}
 		if status == "completed" {

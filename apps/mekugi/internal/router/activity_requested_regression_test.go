@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/charmbracelet/x/ansi"
@@ -18,12 +20,13 @@ func TestRequestedEditGroupsMergeAdjacentInvocations(t *testing.T) {
 	for _, agent := range []string{"Main", "/root/worker"} {
 		v := newActivityAdapter()
 		v.ChildrenOnly = agent != "Main"
+		v.testAudience()
 		text := "Edit `a.go` +2 -1 · python3\n\nCreate `b.go` +3 -0 · python3"
 		patch := activitypresentation.HostEditText((binding.ThreadItem{Status: "failed", Changes: []binding.FileChange{
 			{Path: "c.go", Diff: "+new\n-old\n"},
 			{Path: "d.go", Diff: "+new\n"},
 		}}).Observation(), "")
-		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
+		v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
 			{Seq: 1, Agent: agent, Kind: "tool", CallID: "one", Text: text},
 			{Seq: 2, Agent: agent, Kind: "tool", CallID: "two", Text: text},
 			{Seq: 3, Agent: agent, Kind: "tool", CallID: "patch", Text: patch},
@@ -62,15 +65,16 @@ func TestUISnapshotUnresolvedEditCommand(t *testing.T) {
 			t.Run(fmt.Sprintf("partial=%v/tracked=%v", partial, tracked), func(t *testing.T) {
 				u := newAppServerSessionTestUI(t, t.TempDir())
 				u.view.Conversation = true
+				u.view.testAudience()
 				u.view.Painter.Theme = diffrender.DarkTheme
 				now := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
 				u.view.Clock = func() time.Time { return now }
-				native := &liveActivityNativeItem{thread: "main", item: "cmd", command: command, status: "completed"}
+				native := &sessionpresentation.NativeItem{Thread: "main", Item: "cmd", Command: command, Status: "completed"}
 				if tracked {
-					native.segments = []commandSegment{{source: command, text: execSegmentText(command)}}
+					native.Segments = []sessionpresentation.ActivitySegment{{Source: command, Text: execSegmentText(command)}}
 				}
-				u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
-					Seq: 1, Agent: "Main", Kind: "tool", CallID: "cmd", Text: toolActivityShell(command), Observed: now, native: native,
+				u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
+					Seq: 1, Agent: "Main", Kind: "tool", CallID: "cmd", Text: toolActivityShell(command), Observed: now, Native: native,
 				}}})
 				feed := u.view.RenderFeed(100, 40)
 				var opened bool
@@ -110,11 +114,11 @@ func TestUISnapshotMoveIntent(t *testing.T) {
 	command := move + "; gofmt -w internal/router/native_shell.go"
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Painter.Theme = diffrender.DarkTheme
-	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+	u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
 		Seq: 1, Agent: "Main", Kind: "tool", CallID: "cmd", Text: toolActivityShell(command),
-		native: &liveActivityNativeItem{thread: "main", item: "cmd", command: command, status: "completed", segments: []commandSegment{
-			{source: move, text: execSegmentText(move)},
-			{source: "gofmt -w internal/router/native_shell.go", text: execSegmentText("gofmt -w internal/router/native_shell.go")},
+		Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd", Command: command, Status: "completed", Segments: []sessionpresentation.ActivitySegment{
+			{Source: move, Text: execSegmentText(move)},
+			{Source: "gofmt -w internal/router/native_shell.go", Text: execSegmentText("gofmt -w internal/router/native_shell.go")},
 		}},
 	}}})
 	assertNativeUISnapshot(t, "move-intent-ran", u.view.testRenderConversation(100).Lines)
@@ -128,8 +132,10 @@ func TestRequestedReasoningHeadsOperationTree(t *testing.T) {
 		} {
 			v := newActivityAdapter()
 			v.ChildrenOnly = agent != "Main"
+			v.testAudience()
 			v.Conversation = agent == "Main"
-			v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
+			v.testAudience()
+			v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
 				{Seq: 1, Agent: agent, Kind: "reasoning", Text: "**Locating targeted files**"},
 				{Seq: 2, Agent: agent, Kind: "tool", CallID: "op", Text: operation.text},
 			}})
@@ -149,7 +155,7 @@ func TestRequestedReasoningHeadsOperationTree(t *testing.T) {
 
 func TestRequestedInspectOperandsGroupLikeReads(t *testing.T) {
 	got := toolActivityShell("inspect_file --json --max-tokens 500 a.go b.go")
-	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: got})
+	blocks := parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "tool", Text: got})
 	if len(blocks) != 1 || blocks[0].Kind != "reads" || blocks[0].Verb != "Inspect" ||
 		len(blocks[0].Reads) != 2 || blocks[0].Reads[0].Path != "a.go" || blocks[0].Reads[1].Path != "b.go" {
 		t.Fatalf("inspect operands were not one grouped operation: %q, %+v", got, blocks)
@@ -159,7 +165,7 @@ func TestRequestedInspectOperandsGroupLikeReads(t *testing.T) {
 func TestRequestedConsecutiveInspectGroupingBoundaries(t *testing.T) {
 	now := time.Now()
 	view := newActivityAdapter()
-	view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/a"}, {Name: "/root/b"}}, Entries: []activityPaneEntry{
+	view.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/a"}, {Name: "/root/b"}}, Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root/a", Kind: "tool", Text: "Inspect `a.go`\n\nInspect `b.go`", Observed: now},
 		{Seq: 2, Agent: "/root/a", Kind: "tool", Text: "Inspect `c.go`", Observed: now},
 		{Seq: 3, Agent: "/root/a", Kind: "tool", Text: "Read `d.go`", Observed: now},
@@ -196,14 +202,14 @@ func TestRequestedRosterGlyphCenteredInThreeCellGutter(t *testing.T) {
 func TestRequestedRootRosterOwnActivityAndAddressedMessage(t *testing.T) {
 	now := time.Now()
 	view := newActivityAdapter()
-	view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root"}, {Name: "/root/a"}}, Entries: []activityPaneEntry{
+	view.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root"}, {Name: "/root/a"}}, Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root", Kind: "tool", Text: "Read `main.go`", Observed: now},
 		{Seq: 2, Agent: "/root/a", Kind: "tool", Text: "Read `child.go`", Observed: now},
 	}})
 	if summary, _ := view.testCurrent(view.Agents[0], now); !strings.Contains(summary, "main.go") {
 		t.Fatalf("root own activity missing: %q", summary)
 	}
-	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 3, Agent: "/root/a", Kind: "reply", message: &activityMessage{from: "/root/a", to: "/root", text: "Answer"}, Observed: now}}})
+	view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 3, Agent: "/root/a", Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root/a", To: "/root", Text: "Answer"}, Observed: now}}})
 	if summary, _ := view.testCurrent(view.Agents[0], now); !strings.Contains(ansi.Strip(summary), "← a") {
 		t.Fatalf("newer addressed message missing: %q", summary)
 	}

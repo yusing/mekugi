@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -61,7 +63,7 @@ func TestAppServerTypedTokensAcrossSubmissionAndResume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text, spans, ok := appServerUserText(content)
+	text, spans, ok := sessionpresentation.UserText(content)
 	if !ok || text != draft.Text || len(spans) != 3 {
 		t.Fatalf("lost typed spans or bound literal lookalike: %q %+v", text, spans)
 	}
@@ -71,8 +73,8 @@ func TestAppServerTypedTokensAcrossSubmissionAndResume(t *testing.T) {
 	check := func(v *activityAdapter) {
 		t.Helper()
 		entry := v.Entries[0].Source
-		if !reflect.DeepEqual(entry.native.spans, spans) {
-			t.Fatalf("wrong spans: %+v", entry.native.spans)
+		if !reflect.DeepEqual(entry.Native.Spans, spans) {
+			t.Fatalf("wrong spans: %+v", entry.Native.Spans)
 		}
 		out := v.testUserItem(entry, 24)
 		shown := ansi.Strip(strings.Join(out.Lines, "\n"))
@@ -103,7 +105,7 @@ func TestComposerElementSpansRejectInvalidRanges(t *testing.T) {
 		{binding.InputByteRange{3, 8}, "@file"},
 		{binding.InputByteRange{3, 8}, "@file"},
 	}
-	spans := composerElementSpans(text, elements)
+	spans := conversationbinding.ElementSpans(text, elements)
 	if len(spans) != 1 || spans[0].Start != 3 || spans[0].End != 8 {
 		t.Fatalf("invalid spans: %+v", spans)
 	}

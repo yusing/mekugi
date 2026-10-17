@@ -3,6 +3,8 @@ package router
 import (
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/modules/notifications/notice"
 
@@ -70,7 +72,7 @@ func (u *appServerUI) applyCriticalNotices() *nativeCriticalNoticeDelivery {
 	}
 	delivery := &nativeCriticalNoticeDelivery{ui: u, errors: claim.Errors, progress: claim.Progress}
 	for _, message := range u.feedback.Receive(claim, u.now()) {
-		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "progress", Text: message.Text, Observed: u.now()}}})
+		u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "progress", Text: message.Text, Observed: u.now()}}})
 	}
 	if len(claim.Errors.Messages) > 0 {
 		delivery.composerText = u.feedback.Text

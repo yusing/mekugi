@@ -91,8 +91,8 @@ func (u *appServerUI) observeProgress(p observation.Event) {
 	completed := false
 	if p.ThreadID == u.Thread && method == "item/started" && p.Item.Type == "contextCompaction" {
 		for _, entry := range u.view.Model.Entries {
-			native := entry.Source.native
-			if native != nil && native.thread == p.ThreadID && native.turn == p.TurnID && native.item == p.Item.ID && native.phase == "item/completed" {
+			native := entry.Source.Native
+			if native != nil && native.Thread == p.ThreadID && native.Turn == p.TurnID && native.Item == p.Item.ID && native.Phase == "item/completed" {
 				completed = true
 				break
 			}

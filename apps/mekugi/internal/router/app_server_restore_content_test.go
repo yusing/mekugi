@@ -159,7 +159,7 @@ func TestAppServerRestoreWrongChildIdentityContinues(t *testing.T) {
 		t.Fatal("wrong identity prevented remaining Activity reads")
 	}
 	restoreContentReply(t, u, 3, map[string]any{"thread": map[string]any{"id": "second", "turns": []any{map[string]any{"id": "t", "status": "completed", "items": []any{map[string]any{"id": "answer", "type": "agentMessage", "text": "Still available"}}}}}})
-	if u.restoring != nil || u.session.paths["wrong"] != "" || u.agents.StatusLabel != "History incomplete" || !strings.Contains(strings.Join(u.agents.RenderFeed(90, 50).Lines, "\n"), "Still available") {
+	if u.restoring != nil || u.session.paths["wrong"] != "" || u.agents.Coverage != "History incomplete" || !strings.Contains(strings.Join(u.agents.RenderFeed(90, 50).Lines, "\n"), "Still available") {
 		t.Fatal("partial failure leaked identity or suppressed later history")
 	}
 }
@@ -183,7 +183,7 @@ func TestAppServerRestoreChildReadErrorContinues(t *testing.T) {
 		t.Fatalf("read error stopped remaining history: %+v", requests)
 	}
 	restoreContentReply(t, u, 3, map[string]any{"thread": map[string]any{"id": "second", "turns": []any{map[string]any{"id": "t", "status": "completed", "items": []any{map[string]any{"id": "answer", "type": "agentMessage", "text": "Recovered answer"}}}}}})
-	if u.restoring != nil || u.agents.StatusLabel != "History incomplete" || !strings.Contains(strings.Join(u.agents.RenderFeed(90, 50).Lines, "\n"), "Recovered answer") {
+	if u.restoring != nil || u.agents.Coverage != "History incomplete" || !strings.Contains(strings.Join(u.agents.RenderFeed(90, 50).Lines, "\n"), "Recovered answer") {
 		t.Fatal("error hid partial notice or remaining Activity")
 	}
 }
@@ -257,7 +257,7 @@ func TestAppServerRestoreListPageBudget(t *testing.T) {
 	for i := range 8 {
 		restoreContentReply(t, u, i, map[string]any{"data": []any{}, "nextCursor": fmt.Sprint(i + 1)})
 	}
-	if len(restoreContentRequests(t, w)) != 8 || u.restoring != nil || u.agents.StatusLabel != "History incomplete" {
+	if len(restoreContentRequests(t, w)) != 8 || u.restoring != nil || u.agents.Coverage != "History incomplete" {
 		t.Fatalf("list-page budget not enforced before dispatch: %+v", restoreContentRequests(t, w))
 	}
 }

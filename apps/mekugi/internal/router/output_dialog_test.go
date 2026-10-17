@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/commandsegments/segments"
 
@@ -34,9 +36,9 @@ func TestUISnapshotCombinedEditOutput(t *testing.T) {
 		output.Write("build failed\n")
 		output.Finish(nil, new(2))
 		view := newActivityAdapter()
-		view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+		view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
 			Seq: 1, Agent: "Main", Kind: "tool", Text: toolActivityShell(command),
-			native: &liveActivityNativeItem{command: command, output: output},
+			Native: &sessionpresentation.NativeItem{Command: command, Output: output},
 		}}})
 		u := &terminalUI{}
 		if !u.openEntry(view, 1) || len(u.output.pages) != 1 {
@@ -200,6 +202,7 @@ func TestOutputDialogSearchRevealsWrappedNumberedMatch(t *testing.T) {
 func TestOutputDialogRestoredCommandUsesRetainedAggregate(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
+	u.view.testAudience()
 	output := "first\nsecond\nthird\n"
 	u.restoreHistory([]binding.HistoryTurn{{ID: "past", Status: "completed", Items: []binding.ThreadItem{{
 		ID: "cmd", Type: "commandExecution", Command: "go test ./...", AggregatedOutput: &output, ExitCode: new(1),
@@ -234,13 +237,13 @@ func TestOutputDialogNativeMergeKeepsRetainedOutputIdentity(t *testing.T) {
 	if len(u.view.Entries) != 1 || len(u.view.blocks(0)) == 0 {
 		t.Fatal("start did not create command block")
 	}
-	retained := u.view.retainedOutput(u.view.blocks(0)[len(u.view.blocks(0))-1].Source, u.view.blocks(0)[len(u.view.blocks(0))-1].Output)
+	retained := u.view.RetainedOutput(u.view.blocks(0)[len(u.view.blocks(0))-1].Source, u.view.blocks(0)[len(u.view.blocks(0))-1].Output)
 	if retained == nil {
 		t.Fatal("started command has no retained output")
 	}
 	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "cmd", "delta": "streamed\n"})
 	u.flushStreamOutput()
-	if got := u.view.retainedOutput(u.view.blocks(0)[len(u.view.blocks(0))-1].Source, u.view.blocks(0)[len(u.view.blocks(0))-1].Output); got != retained {
+	if got := u.view.RetainedOutput(u.view.blocks(0)[len(u.view.blocks(0))-1].Source, u.view.blocks(0)[len(u.view.blocks(0))-1].Output); got != retained {
 		t.Fatal("delta changed retained output identity")
 	}
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, "aggregate\nfinal\n"
@@ -274,10 +277,10 @@ func TestOutputDialogTrackedSegmentKeepsOwnRetention(t *testing.T) {
 	first.Finish(nil, new(0))
 	second.Write("segment two\n")
 	second.Finish(nil, new(2))
-	entry := activityPaneEntry{Kind: "tool", Text: "Run `echo one`; Run `echo two`", native: &liveActivityNativeItem{
-		segments: []commandSegment{{text: "Run `echo one`", output: first}, {text: "Run `echo two`", output: second, exit: 2}},
+	entry := sessionpresentation.ActivityEntry{Kind: "tool", Text: "Run `echo one`; Run `echo two`", Native: &sessionpresentation.NativeItem{
+		Segments: []sessionpresentation.ActivitySegment{{Text: "Run `echo one`", Output: first}, {Text: "Run `echo two`", Output: second, Exit: 2}},
 	}}
-	blocks := commandSegmentBlocks(commandPresentation(entry))
+	blocks := commandSegmentBlocks(sessionpresentation.CommandPresentation(entry))
 	if len(blocks) != 2 || blocks[0].Output != 2 || blocks[1].Output != 3 {
 		t.Fatalf("tracked segment output ownership = %+v", blocks)
 	}
@@ -327,6 +330,7 @@ func TestUISnapshotOutputDialogVTOverlayWideAndNarrow(t *testing.T) {
 func TestOutputDialogRestoredMultiReadKeepsCombinedOutput(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
+	u.view.testAudience()
 	combined := "content of a\ncontent of b\n"
 	u.restoreHistory([]binding.HistoryTurn{{ID: "past", Status: "completed", Items: []binding.ThreadItem{{
 		ID: "read", Type: "commandExecution", Command: "cat a; cat b", AggregatedOutput: &combined, ExitCode: new(0),
@@ -362,25 +366,25 @@ func TestOutputDialogTrackedOutputSettlesAndLossyFallsBack(t *testing.T) {
 	hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
 	report := hub.begin(t, key, "echo one; echo two")
 	report.send(segmenttransport.Message{Type: segmenttransport.Begin}, segmenttransport.Message{Type: segmenttransport.Output, Data: "initial\n"})
-	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 1 && len(view.segments[0].tail) != 0 })
+	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 1 && len(view.segments[0].Tail) != 0 })
 	view, _ := hub.view(key, false, execSegmentText)
-	retained := view.segments[0].output
+	retained := view.segments[0].Output
 	if !view.output || retained == nil {
 		t.Fatalf("live segment did not retain output: %+v", view)
 	}
 	report.send(segmenttransport.Message{Type: segmenttransport.End, Code: new(2)}, segmenttransport.Message{Type: segmenttransport.Done, Code: new(2)}, segmenttransport.Message{Type: segmenttransport.Closed})
 	hub.await(t, key, func(view execTrackView) bool { return view.complete })
 	view, _ = hub.view(key, true, execSegmentText)
-	if view.segments[0].output != retained || !retained.View().Done || retained.View().Exit != 2 {
+	if view.segments[0].Output != retained || !retained.View().Done || retained.View().Exit != 2 {
 		t.Fatalf("final segment did not settle retained output: %+v", retained.View())
 	}
 
 	other := [3]string{"main", "t", "overflow"}
 	overflowReport := hub.begin(t, other, "echo huge; echo done")
 	overflowReport.send(segmenttransport.Message{Type: segmenttransport.Begin}, segmenttransport.Message{Type: segmenttransport.Output, Data: "prior\n"})
-	hub.await(t, other, func(view execTrackView) bool { return len(view.segments) == 1 && len(view.segments[0].tail) != 0 })
+	hub.await(t, other, func(view execTrackView) bool { return len(view.segments) == 1 && len(view.segments[0].Tail) != 0 })
 	first, _ := hub.view(other, false, execSegmentText)
-	previous := first.segments[0].output
+	previous := first.segments[0].Output
 	if previous == nil {
 		t.Fatal("overflow setup did not allocate segment output")
 	}
@@ -396,9 +400,9 @@ func TestOutputDialogLossyMessageReleasesLiveSegment(t *testing.T) {
 	hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
 	report := hub.begin(t, key, "echo text; echo done")
 	report.send(segmenttransport.Message{Type: segmenttransport.Begin}, segmenttransport.Message{Type: segmenttransport.Output, Data: "partial"})
-	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 1 && len(view.segments[0].tail) != 0 })
+	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 1 && len(view.segments[0].Tail) != 0 })
 	view, _ := hub.view(key, false, execSegmentText)
-	output := view.segments[0].output
+	output := view.segments[0].Output
 	report.send(segmenttransport.Message{Type: segmenttransport.Lossy})
 	hub.await(t, key, func(view execTrackView) bool { return !view.output })
 	if !output.View().Done || !output.View().Released {
@@ -440,16 +444,16 @@ func TestOutputDialogTrackedViewDrainsRetainedOutput(t *testing.T) {
 	hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
 	report := hub.begin(t, key, "echo text; sleep 1")
 	report.send(segmenttransport.Message{Type: segmenttransport.Begin}, segmenttransport.Message{Type: segmenttransport.Output, Data: "first\n"})
-	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 1 && len(view.segments[0].tail) != 0 })
+	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 1 && len(view.segments[0].Tail) != 0 })
 	view, _ := hub.view(key, false, execSegmentText)
-	output := view.segments[0].output
+	output := view.segments[0].Output
 	if output == nil || output.View().Done || strings.Join(output.View().Lines, "\n") != "first" {
 		t.Fatal("live segment output missing")
 	}
 	report.send(segmenttransport.Message{Type: segmenttransport.Output, Data: "second\n"}, segmenttransport.Message{Type: segmenttransport.End, Code: new(3)})
-	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 1 && !view.segments[0].running })
+	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 1 && !view.segments[0].Running })
 	view, _ = hub.view(key, true, execSegmentText)
-	if view.segments[0].output != output || !output.View().Done || output.View().Exit != 3 || strings.Join(output.View().Lines, "\n") != "first\nsecond" {
+	if view.segments[0].Output != output || !output.View().Done || output.View().Exit != 3 || strings.Join(output.View().Lines, "\n") != "first\nsecond" {
 		t.Fatalf("settled segment: %+v", output.View())
 	}
 	hub.view(key, true, execSegmentText)
@@ -465,11 +469,11 @@ func TestOutputDialogCommandTabs(t *testing.T) {
 	first.Finish(nil, new(0))
 	second.Write("main.go:12:return 42\n")
 	view := newActivityAdapter()
-	entry := activityPaneEntry{Seq: 10, Agent: "Main", Kind: "tool", Text: "Read `main.go`\n\nSearch `return` in `main.go`", native: &liveActivityNativeItem{segments: []commandSegment{
-		{text: "Read `main.go`", output: first},
-		{text: "Search `return` in `main.go`", output: second, running: true},
+	entry := sessionpresentation.ActivityEntry{Seq: 10, Agent: "Main", Kind: "tool", Text: "Read `main.go`\n\nSearch `return` in `main.go`", Native: &sessionpresentation.NativeItem{Segments: []sessionpresentation.ActivitySegment{
+		{Text: "Read `main.go`", Output: first},
+		{Text: "Search `return` in `main.go`", Output: second, Running: true},
 	}}}
-	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+	view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
 	feed := view.RenderFeed(90, 30)
 	u := &terminalUI{}
 	for _, snippet := range feed.Snippets {
@@ -496,7 +500,7 @@ func TestOutputDialogCommandTabs(t *testing.T) {
 	third := retention.New()
 	third.Write("third only\n")
 	third.Finish(nil, new(0))
-	view.Entries[0].Source.native.segments = append(view.Entries[0].Source.native.segments, commandSegment{text: "Run `echo third`", output: third})
+	view.Entries[0].Source.Native.Segments = append(view.Entries[0].Source.Native.Segments, sessionpresentation.ActivitySegment{Text: "Run `echo third`", Output: third})
 	drawOutputDialog(u)
 	u.outputKey("\x1b[C")
 	drawOutputDialog(u)
@@ -507,8 +511,8 @@ func TestOutputDialogCommandTabs(t *testing.T) {
 	combined := retention.New()
 	combined.Write("first\nsecond\nthird\n")
 	combined.Finish(nil, new(1))
-	view.Entries[0].Source.native.output = combined
-	view.Entries[0].Source.outputTail = []string{"first", "second", "third"}
+	view.Entries[0].Source.Native.Output = combined
+	view.Entries[0].Source.OutputTail = []string{"first", "second", "third"}
 	frame = drawOutputDialog(u)
 	if len(u.output.pages) != 1 || !strings.Contains(frame, "combined output") || u.output.Document.Text != "first\nsecond\nthird" || !strings.Contains(frame, "exit 1") {
 		t.Fatalf("lossy report falsely attributed combined output: %s", frame)
@@ -519,8 +523,8 @@ func TestOutputDialogCommandTabs(t *testing.T) {
 func TestOutputDialogSingleObservedCommandWithoutTail(t *testing.T) {
 	output := new(activitymodel.Retention).New()
 	view := newActivityAdapter()
-	entry := activityPaneEntry{Seq: 10, Agent: "Main", Kind: "tool", Text: "Read `main.go`", native: &liveActivityNativeItem{command: "cat main.go", output: output, running: true, segments: []commandSegment{{source: "cat main.go", text: "Read `main.go`", running: true}}}}
-	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+	entry := sessionpresentation.ActivityEntry{Seq: 10, Agent: "Main", Kind: "tool", Text: "Read `main.go`", Native: &sessionpresentation.NativeItem{Command: "cat main.go", Output: output, Running: true, Segments: []sessionpresentation.ActivitySegment{{Source: "cat main.go", Text: "Read `main.go`", Running: true}}}}
+	view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
 	finishPacing(view)
 	feed := view.RenderFeed(90, 30)
 	for _, snippet := range feed.Snippets {
@@ -548,7 +552,7 @@ func TestOutputDialogMergedTrackedReadsKeepAllInvocations(t *testing.T) {
 		output.Write(path + " only\n")
 		output.Finish(nil, new(0))
 		text := "Read `" + path + "`"
-		view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: uint64(i + 1), Agent: "Main", Kind: "tool", Text: text, native: &liveActivityNativeItem{thread: "main", item: path, segments: []commandSegment{{text: text, output: output}}}}}})
+		view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: uint64(i + 1), Agent: "Main", Kind: "tool", Text: text, Native: &sessionpresentation.NativeItem{Thread: "main", Item: path, Segments: []sessionpresentation.ActivitySegment{{Text: text, Output: output}}}}}})
 	}
 	feed := view.RenderFeed(90, 30)
 	u := &terminalUI{}
@@ -607,7 +611,7 @@ func TestRunDurationLiveAndCompletedRendering(t *testing.T) {
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "timed", "type": "commandExecution", "command": "sleep 2", "status": "inProgress"}})
 	index := -1
 	for i, entry := range u.view.Entries {
-		if entry.Source.native != nil && entry.Source.native.item == "timed" {
+		if entry.Source.Native != nil && entry.Source.Native.Item == "timed" {
 			index = i
 			break
 		}
@@ -615,7 +619,7 @@ func TestRunDurationLiveAndCompletedRendering(t *testing.T) {
 	if index < 0 {
 		t.Fatal("missing running command")
 	}
-	u.view.Entries[index].Source.native.commandStarted = time.Now().Add(-2 * time.Second)
+	u.view.Entries[index].Source.Native.CommandStarted = time.Now().Add(-2 * time.Second)
 	u.view.replaceEntry(index, u.view.Entries[index].Source, parseLiveActivity(u.view.Entries[index].Source))
 	u.view.Runs = nil
 	feed := u.view.RenderFeed(100, 30)
@@ -651,12 +655,12 @@ func TestBatchDialogDoesNotAttributeInvocationTimingToSegments(t *testing.T) {
 			first.Write("first\n")
 			first.Finish(nil, new(0))
 			second.Write("second\n")
-			entry := activityPaneEntry{Seq: 1, Agent: "Main", Kind: "tool", Text: "Run `echo first`\n\nRun `echo second`", Observed: time.Now().Add(-4 * time.Second), native: &liveActivityNativeItem{command: "echo first; echo second", running: true, output: second}}
+			entry := sessionpresentation.ActivityEntry{Seq: 1, Agent: "Main", Kind: "tool", Text: "Run `echo first`\n\nRun `echo second`", Observed: time.Now().Add(-4 * time.Second), Native: &sessionpresentation.NativeItem{Command: "echo first; echo second", Running: true, Output: second}}
 			if segmented {
-				entry.native.segments = []commandSegment{{text: "Run `echo first`", output: first}, {text: "Run `echo second`", output: second, running: true}}
+				entry.Native.Segments = []sessionpresentation.ActivitySegment{{Text: "Run `echo first`", Output: first}, {Text: "Run `echo second`", Output: second, Running: true}}
 			}
 			view := newActivityAdapter()
-			view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+			view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
 			u := &terminalUI{}
 			if !u.openEntry(view, 1) {
 				t.Fatal("could not open batch")
@@ -672,9 +676,9 @@ func TestBatchDialogDoesNotAttributeInvocationTimingToSegments(t *testing.T) {
 					t.Fatalf("live batch title %q, want %q", title, want)
 				}
 			}
-			view.Entries[0].Source.native.running, view.Entries[0].Source.native.duration = false, 7*time.Second
+			view.Entries[0].Source.Native.Running, view.Entries[0].Source.Native.Duration = false, 7*time.Second
 			if segmented {
-				view.Entries[0].Source.native.segments[1].running = false
+				view.Entries[0].Source.Native.Segments[1].Running = false
 			}
 			second.Finish(nil, new(0))
 			want = " · 7s"
@@ -746,7 +750,7 @@ func TestNarrativeDialogRefreshesWhileStreaming(t *testing.T) {
 // testOutputBlock binds fixture output through the same source owner as live observations.
 func testOutputBlock(view *activityAdapter, block activityui.Block, output *activitymodel.Output) activityui.Block {
 	block.Source, block.Output = uint64(len(view.Entries)+1), 1
-	view.appendEntry(activityPaneEntry{Seq: block.Source, native: &liveActivityNativeItem{output: output}}, []activityui.Block{block})
+	view.appendEntry(sessionpresentation.ActivityEntry{Seq: block.Source, Native: &sessionpresentation.NativeItem{Output: output}}, []activityui.Block{block})
 	return block
 }
 
@@ -754,7 +758,7 @@ func TestOutputDialogFlatPagesSurviveFeedAgingAndRelease(t *testing.T) {
 	view := newActivityAdapter()
 	output := new(activitymodel.Retention).New()
 	output.Finish(new("first\nlast"), nil)
-	entry := activityPaneEntry{Seq: 41, Kind: "tool", Text: "Run `echo last`", outputTail: []string{"last"}, outputOmit: 1, native: &liveActivityNativeItem{output: output}}
+	entry := sessionpresentation.ActivityEntry{Seq: 41, Kind: "tool", Text: "Run `echo last`", OutputTail: []string{"last"}, OutputOmit: 1, Native: &sessionpresentation.NativeItem{Output: output}}
 	view.appendEntry(entry, parseLiveActivity(entry))
 	ui := &terminalUI{}
 	ui.openBlocks(view, view.blocks(0))
@@ -784,11 +788,11 @@ func TestOutputDialogHydratesOnlySelectedRetainedPage(t *testing.T) {
 	first, second := retention.New(), retention.New()
 	first.Finish(new(strings.Repeat("first\n", 1000)), new(0))
 	second.Finish(new(strings.Repeat("second\n", 1000)), new(0))
-	entry := activityPaneEntry{Seq: 1, Kind: "tool", native: &liveActivityNativeItem{
-		command: "printf first; printf second",
-		segments: []commandSegment{
-			{source: "printf first", text: "Run `printf first`", output: first},
-			{source: "printf second", text: "Run `printf second`", output: second},
+	entry := sessionpresentation.ActivityEntry{Seq: 1, Kind: "tool", Native: &sessionpresentation.NativeItem{
+		Command: "printf first; printf second",
+		Segments: []sessionpresentation.ActivitySegment{
+			{Source: "printf first", Text: "Run `printf first`", Output: first},
+			{Source: "printf second", Text: "Run `printf second`", Output: second},
 		},
 	}}
 	view.appendEntry(entry, parseLiveActivity(entry))
@@ -811,15 +815,15 @@ func TestOutputDialogFoldedStageKeepsSegmentPages(t *testing.T) {
 	stage.Finish(new("staged"), new(0))
 	commit.Finish(new("committed"), new(0))
 	view := newActivityAdapter()
-	entry := activityPaneEntry{Seq: 51, Agent: "Main", Kind: "tool", Text: "Stage `a.go` · git\n\nCommit `update` · git", native: &liveActivityNativeItem{segments: []commandSegment{
-		{text: "Stage `a.go` · git", output: stage}, {text: "Commit `update` · git", output: commit},
+	entry := sessionpresentation.ActivityEntry{Seq: 51, Agent: "Main", Kind: "tool", Text: "Stage `a.go` · git\n\nCommit `update` · git", Native: &sessionpresentation.NativeItem{Segments: []sessionpresentation.ActivitySegment{
+		{Text: "Stage `a.go` · git", Output: stage}, {Text: "Commit `update` · git", Output: commit},
 	}}}
 	view.appendEntry(entry, parseLiveActivity(entry))
 	if len(view.blocks(0)) != 1 || len(view.blocks(0)[0].Members) != 2 {
 		t.Fatal("feed lost folded stage membership")
 	}
-	pages := activityui.Disclosure(nil).Blocks(commandPresentation(entry).DetailValues())
-	if len(pages) != 2 || pages[0].Verb != "Stage" || pages[1].Verb != "Commit" || view.retainedOutput(pages[0].Source, pages[0].Output) != stage || view.retainedOutput(pages[1].Source, pages[1].Output) != commit {
+	pages := activityui.Disclosure(nil).Blocks(sessionpresentation.CommandPresentation(entry).DetailValues())
+	if len(pages) != 2 || pages[0].Verb != "Stage" || pages[1].Verb != "Commit" || view.RetainedOutput(pages[0].Source, pages[0].Output) != stage || view.RetainedOutput(pages[1].Source, pages[1].Output) != commit {
 		t.Fatalf("stage pages = %+v", pages)
 	}
 	ui := &terminalUI{}

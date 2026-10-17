@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/libraries/legacycall"
@@ -150,7 +152,7 @@ func TestCommandSegmentsBatchForkOwnershipSurvivesParentExpiry(t *testing.T) {
 			first, second := u.session.activity.Outputs(u.session.Scope()).New(), u.session.activity.Outputs(u.session.Scope()).New()
 			first.Finish(new("one"), new(0))
 			second.Finish(new(""), new(1))
-			u.retainCommandSegments(activityPaneEntry{native: &liveActivityNativeItem{thread: "parent", turn: turn.ID, item: item.ID}}, item.Observation(), execTrackView{complete: true, output: true, code: 1, segments: []commandSegment{{output: first}, {output: second, exit: 1}}})
+			u.retainCommandSegments(sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Thread: "parent", Turn: turn.ID, Item: item.ID}}, item.Observation(), execTrackView{complete: true, output: true, code: 1, segments: []sessionpresentation.ActivitySegment{{Output: first}, {Output: second, Exit: 1}}})
 			awaitCommandSegments(t, u)
 			if notices := u.issues.Notices.Pending(); len(notices) != 0 {
 				t.Fatal(notices)
@@ -169,13 +171,13 @@ func TestCommandSegmentsBatchForkOwnershipSurvivesParentExpiry(t *testing.T) {
 				u.restoreActivityThread(binding.ThreadInfo{ID: "fork", Cwd: workspace, Turns: []binding.HistoryTurn{turn}}, false)
 				view = u.agents
 			}
-			var restored *liveActivityNativeItem
+			var restored *sessionpresentation.NativeItem
 			for _, entry := range view.Entries {
 				if entry.Source.CallID == item.ID {
-					restored = entry.Source.native
+					restored = entry.Source.Native
 				}
 			}
-			if restored == nil || len(restored.segments) != 2 || strings.Join(restored.segments[0].output.View().Lines, "\n") != "one" {
+			if restored == nil || len(restored.Segments) != 2 || strings.Join(restored.Segments[0].Output.View().Lines, "\n") != "one" {
 				t.Fatal("consumer did not restore per-command evidence")
 			}
 			if u.restoredSegments != nil {

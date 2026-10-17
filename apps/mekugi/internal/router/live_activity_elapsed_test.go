@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -38,7 +40,7 @@ func TestLiveActivityElapsedFormatting(t *testing.T) {
 				}
 			}
 			v := newActivityAdapter()
-			agent := activityPaneAgent{Name: "/root/worker", Started: start, Responding: true, WorkTimer: activitypresentation.WorkTimer{Known: true, Since: start}}
+			agent := sessionpresentation.ActivityAgent{Name: "/root/worker", Started: start, Responding: true, WorkTimer: activitypresentation.WorkTimer{Known: true, Since: start}}
 			// Before its first response, the agent's last activity is its start.
 			last := tc.want + " ago"
 			if tc.age < 2*time.Second {

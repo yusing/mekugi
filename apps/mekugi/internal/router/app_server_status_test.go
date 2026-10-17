@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -193,7 +195,7 @@ func TestAppServerStatusPanelCloseScrollAndLateResponse(t *testing.T) {
 		t.Run(closeKey, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.Turn, u.sessionPresentation().Status.Text = "active", "Working"
-			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Existing transcript"}}})
+			u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Existing transcript"}}})
 			shell := &terminalUI{main: u, Shell: terminalsession.Shell{Layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 60, 12}}}}
 			appServerTestKeys(t, u, "/status\r")
 			u.statusPanel.body = nil
@@ -387,7 +389,7 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.model = "gpt-6-sol"
 			u.Turn = "active"
-			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Hidden transcript must not be selected"}}})
+			u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Hidden transcript must not be selected"}}})
 			appServerTestKeys(t, u, "/status\r")
 			screen := vt.NewEmulator(160, 48)
 			defer screen.Close()

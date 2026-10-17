@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"context"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/libraries/legacycall"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
@@ -364,57 +366,57 @@ func TestExecTrackReportsEachSegmentWithoutChangingTheCommand(t *testing.T) {
 	shell := newExecTrackShell(t)
 	for i, tc := range []struct {
 		script   string
-		segments []commandSegment
+		segments []sessionpresentation.ActivitySegment
 	}{
 		{
 			script: "echo one; echo two >&2 && false || echo three",
-			segments: []commandSegment{
-				{text: "echo one", tail: []string{"one"}},
-				{text: "echo two >&2", tail: []string{"two"}},
-				{text: "false", exit: 1},
-				{text: "echo three", tail: []string{"three"}},
+			segments: []sessionpresentation.ActivitySegment{
+				{Text: "echo one", Tail: []string{"one"}},
+				{Text: "echo two >&2", Tail: []string{"two"}},
+				{Text: "false", Exit: 1},
+				{Text: "echo three", Tail: []string{"three"}},
 			},
 		},
 		{
 			script: "echo a && false && echo never",
-			segments: []commandSegment{
-				{text: "echo a", tail: []string{"a"}},
-				{text: "false", exit: 1},
-				{text: "echo never", skipped: true},
+			segments: []sessionpresentation.ActivitySegment{
+				{Text: "echo a", Tail: []string{"a"}},
+				{Text: "false", Exit: 1},
+				{Text: "echo never", Skipped: true},
 			},
 		},
 		{
 			script: "false; echo \"status $?\"; cd / && pwd",
-			segments: []commandSegment{
-				{text: "false", exit: 1},
-				{text: "echo \"status $?\"", tail: []string{"status 1"}},
-				{text: "cd /"},
-				{text: "pwd", tail: []string{"/"}},
+			segments: []sessionpresentation.ActivitySegment{
+				{Text: "false", Exit: 1},
+				{Text: "echo \"status $?\"", Tail: []string{"status 1"}},
+				{Text: "cd /"},
+				{Text: "pwd", Tail: []string{"/"}},
 			},
 		},
 		{
 			script: "echo before; exit 3; echo after",
-			segments: []commandSegment{
-				{text: "echo before", tail: []string{"before"}},
-				{text: "exit 3", exit: 3},
-				{text: "echo after", skipped: true},
+			segments: []sessionpresentation.ActivitySegment{
+				{Text: "echo before", Tail: []string{"before"}},
+				{Text: "exit 3", Exit: 3},
+				{Text: "echo after", Skipped: true},
 			},
 		},
 		{
 			script: "set -e\necho x\nfalse\necho y",
-			segments: []commandSegment{
-				{text: "set -e\necho x\nfalse\necho y", exit: 1},
+			segments: []sessionpresentation.ActivitySegment{
+				{Text: "set -e\necho x\nfalse\necho y", Exit: 1},
 			},
 		},
 		{
 			script:   "ROOT=/tmp; export ROOT; printf '%s\\n' \"$ROOT\"; printf err >&2",
-			segments: []commandSegment{{text: "ROOT=/tmp; export ROOT; printf '%s\\n' \"$ROOT\"; printf err >&2"}},
+			segments: []sessionpresentation.ActivitySegment{{Text: "ROOT=/tmp; export ROOT; printf '%s\\n' \"$ROOT\"; printf err >&2"}},
 		},
 		{
 			script: "cat <<'EOF' && printf 'tail\\n'\nheredoc body\nEOF",
-			segments: []commandSegment{
-				{text: "cat <<'EOF'\nheredoc body\nEOF", tail: []string{"heredoc body"}},
-				{text: "printf 'tail\\n'", tail: []string{"tail"}},
+			segments: []sessionpresentation.ActivitySegment{
+				{Text: "cat <<'EOF'\nheredoc body\nEOF", Tail: []string{"heredoc body"}},
+				{Text: "printf 'tail\\n'", Tail: []string{"tail"}},
 			},
 		},
 	} {
@@ -429,8 +431,8 @@ func TestExecTrackReportsEachSegmentWithoutChangingTheCommand(t *testing.T) {
 		if !view.complete || view.code != plain.code || view.output != (len(tc.segments) > 1) {
 			t.Fatalf("%q: view = %+v, want a complete report with exit %d", tc.script, view, plain.code)
 		}
-		if !slices.EqualFunc(view.segments, tc.segments, func(a, b commandSegment) bool {
-			return a.text == b.text && a.exit == b.exit && a.skipped == b.skipped && !a.running && slices.Equal(a.tail, b.tail)
+		if !slices.EqualFunc(view.segments, tc.segments, func(a, b sessionpresentation.ActivitySegment) bool {
+			return a.Text == b.Text && a.Exit == b.Exit && a.Skipped == b.Skipped && !a.Running && slices.Equal(a.Tail, b.Tail)
 		}) {
 			t.Fatalf("%q: segments = %+v, want %+v", tc.script, view.segments, tc.segments)
 		}
@@ -574,7 +576,7 @@ func TestExecTrackMatchesDelayedHostStart(t *testing.T) {
 	if !view.complete || !view.output || view.code != 0 || len(view.segments) != 4 {
 		t.Fatalf("missing delayed command boundaries: %+v", view)
 	}
-	if strings.Join(view.segments[0].tail, "\n") != "first" || view.segments[1].exit != 1 || !view.segments[2].skipped || strings.Join(view.segments[3].tail, "\n") != "last" {
+	if strings.Join(view.segments[0].Tail, "\n") != "first" || view.segments[1].Exit != 1 || !view.segments[2].Skipped || strings.Join(view.segments[3].Tail, "\n") != "last" {
 		t.Fatalf("incorrect segment outputs/states: %+v", view.segments)
 	}
 }
@@ -593,7 +595,7 @@ func TestExecTrackLeavesNestedShellsAlone(t *testing.T) {
 		t.Fatalf("run = %+v, want %+v", tracked, want)
 	}
 	view := shell.awaitView(t, key)
-	if len(view.segments) != 2 || !slices.Equal(view.segments[1].tail, []string{"inner", "nested"}) {
+	if len(view.segments) != 2 || !slices.Equal(view.segments[1].Tail, []string{"inner", "nested"}) {
 		t.Fatalf("segments = %+v", view.segments)
 	}
 	if shell.hub.Tracking([3]string{"thread", "turn", "nested"}) {
@@ -754,8 +756,8 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 	restored := newAppServerSessionTestUI(t, u.session.cwd)
 	setTestAppServerIntegration(restored, testProxyWithStore(store))
 	restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
-	segments := restored.view.Entries[0].Source.native.segments
-	if len(segments) != 2 || segments[0].text != "Read `a.go`" || segments[1].text != "Search `needle` in `src`" || segments[0].source != "mcat "+quoteShellWord(cwd+"/a.go") {
+	segments := restored.view.Entries[0].Source.Native.Segments
+	if len(segments) != 2 || segments[0].Text != "Read `a.go`" || segments[1].Text != "Search `needle` in `src`" || segments[0].Source != "mcat "+quoteShellWord(cwd+"/a.go") {
 		t.Fatalf("restored paths or source changed: %+v", segments)
 	}
 	// Publish the child's inherited evidence in its own retained workspace.
@@ -772,8 +774,8 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 	setTestAppServerIntegration(child, testProxyWithStore(store))
 	child.session.path("child")
 	child.restoreActivityThread(binding.ThreadInfo{ID: "child", Cwd: cwd, Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
-	parts := child.agents.Entries[0].Source.native.segments
-	if len(parts) != 2 || parts[0].text != "Read `a.go`" || parts[1].text != "Search `needle` in `src`" {
+	parts := child.agents.Entries[0].Source.Native.Segments
+	if len(parts) != 2 || parts[0].Text != "Read `a.go`" || parts[1].Text != "Search `needle` in `src`" {
 		t.Fatalf("restored child paths used main workspace: %+v", parts)
 	}
 }
@@ -866,7 +868,7 @@ type execTrackFixture struct {
 }
 
 func (h *execTrackFixture) start(key [3]string, command string) {
-	if script, ok := binding.CommandScript(command); ok {
+	if script, ok := shellinstrumentation.CommandScript(command); ok {
 		h.Start(key, script)
 	}
 }
@@ -887,8 +889,8 @@ func (h *execTrackFixture) run(key [3]string) *appServerCommandRun {
 		h.views = make(map[[3]string]*appServerCommandRun)
 	}
 	if h.views[key] == nil {
-		h.views[key] = &appServerCommandRun{entry: activityPaneEntry{native: &liveActivityNativeItem{
-			invocation: activitypresentation.NewInvocation(activitypresentation.CommandSource{}, time.Time{}, new(activitymodel.Retention)),
+		h.views[key] = &appServerCommandRun{entry: sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{
+			Invocation: activitypresentation.NewInvocation(activitypresentation.CommandSource{}, time.Time{}, new(activitymodel.Retention)),
 		}}}
 	}
 	return h.views[key]
@@ -911,7 +913,7 @@ func (h *execTrackFixture) view(key [3]string, final bool, text func(string) str
 		h.reported[key][index] = append(h.reported[key][index], segment.Output...)
 	}
 	run := h.run(key)
-	view, changed := run.segments.view(run.entry.native.invocation, track, final, text)
+	view, changed := run.segments.view(run.entry.Native.Invocation, track, final, text)
 	if view.release {
 		h.ReleaseOutput(key)
 	}
@@ -958,6 +960,7 @@ func newTrackedAppServerUI(t *testing.T) (*appServerUI, *execTrackFixture) {
 	t.Helper()
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
+	u.view.testAudience()
 	hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
 	u.execTrack = hub.Observer
 	hub.ui = u
@@ -985,7 +988,7 @@ func TestExecTrackTracksTheCommandInsideCodexSnapshotWrapper(t *testing.T) {
 		t.Fatalf("output = %q, %v", output, err)
 	}
 	view := shell.awaitView(t, key)
-	if !view.complete || len(view.segments) != 2 || !slices.Equal(view.segments[1].tail, []string{"two"}) {
+	if !view.complete || len(view.segments) != 2 || !slices.Equal(view.segments[1].Tail, []string{"two"}) {
 		t.Fatalf("view = %+v", view)
 	}
 }
@@ -1011,7 +1014,7 @@ func TestExecTrackReportsTerminalCommandStatusOnly(t *testing.T) {
 		t.Fatalf("output = %q, want the command to see its terminal", output)
 	}
 	view := shell.awaitView(t, key)
-	if !view.complete || view.output || view.code != 1 || len(view.segments) != 3 || view.segments[2].exit != 1 {
+	if !view.complete || view.output || view.code != 1 || len(view.segments) != 3 || view.segments[2].Exit != 1 {
 		t.Fatalf("view = %+v", view)
 	}
 }
@@ -1057,8 +1060,8 @@ func TestExecTrackConcurrentReportsAreIsolated(t *testing.T) {
 			if !view.complete || view.code != got.code || len(view.segments) != 2 {
 				t.Fatalf("report = %+v, command = %+v", view, got)
 			}
-			if want := strings.TrimSpace(got.stdout); !slices.Equal(view.segments[0].tail, []string{want}) {
-				t.Fatalf("segment output = %v, want %q", view.segments[0].tail, want)
+			if want := strings.TrimSpace(got.stdout); !slices.Equal(view.segments[0].Tail, []string{want}) {
+				t.Fatalf("segment output = %v, want %q", view.segments[0].Tail, want)
 			}
 		})
 	}

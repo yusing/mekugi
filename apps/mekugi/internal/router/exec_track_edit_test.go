@@ -352,8 +352,8 @@ func TestExecTrackRapidSegmentsKeepOwnOutput(t *testing.T) {
 		t.Fatalf("rapid list incomplete: code=%d complete=%v segments=%d", result.code, view.complete, len(view.segments))
 	}
 	for i, segment := range view.segments {
-		if len(segment.tail) != 1 || segment.tail[0] != fmt.Sprint(i) {
-			t.Fatalf("segment %d borrowed or lost output: %q", i, segment.tail)
+		if len(segment.Tail) != 1 || segment.Tail[0] != fmt.Sprint(i) {
+			t.Fatalf("segment %d borrowed or lost output: %q", i, segment.Tail)
 		}
 	}
 }
@@ -504,7 +504,7 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 							}
 							for _, view := range []*activityAdapter{u.view, u.agents} {
 								for _, entry := range view.Entries {
-									if entry.Source.native != nil && entry.Source.native.item == "edit" {
+									if entry.Source.Native != nil && entry.Source.Native.Item == "edit" {
 										if !u.shell.openActivityEdit(view, entry.Source.Seq, "source.go") || !strings.Contains(u.shell.output.pages[0].Code, "+package p; var B=2") {
 											t.Fatal("completed shell edit waited for the next cell or sibling exit to become clickable")
 										}

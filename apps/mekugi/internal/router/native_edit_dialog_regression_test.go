@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/charmbracelet/x/ansi"
@@ -50,12 +52,12 @@ func openRegressionEditDialog(t *testing.T, tc editDialogRegressionCase, capture
 		u.shell.saved.Data = reviewFixtureSnapshot(t, presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: "/w", Call: "patch"}, Correlation: "patch\x000"}, Operation: activitydetail.Operation{Thread: "main", Item: "patch"}, Chunks: []presentation.Chunk{chunk}})
 		publishFixtureReview(t, u)
 		want = chunk.Review.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(c.Workspace(), chunk.Review.BeforePath), pathdisplay.ForWorkspace(c.Workspace(), chunk.Review.AfterPath))
-		u.view.Entries = []liveActivityRecord{{Source: activityPaneEntry{Seq: 1, native: &liveActivityNativeItem{thread: "main", item: "patch"}}}}
+		u.view.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch"}}}}
 	} else {
 		change := binding.FileChange{Path: path, Diff: tc.host}
 		change.Kind.Type = tc.kind
 		item := binding.ThreadItem{Type: "fileChange", Status: "completed", Changes: []binding.FileChange{change}}
-		u.view.Entries = []liveActivityRecord{{Source: activityPaneEntry{Seq: 1, native: &liveActivityNativeItem{thread: "main", item: "patch", editPages: activitypresentation.HostEditPages(item.Observation(), u.session.cwd, "item/completed")}}}}
+		u.view.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch", EditPages: activitypresentation.HostEditPages(item.Observation(), u.session.cwd, "item/completed")}}}}
 	}
 	if !u.shell.openActivityEdit(u.view, 1, path) {
 		t.Fatal("edit dialog did not open")

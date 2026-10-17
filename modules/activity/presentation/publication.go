@@ -45,11 +45,12 @@ type AgentRow struct {
 }
 
 type Publication struct {
-	Entries    []Entry
-	Roster     []AgentRow
-	LastSeq    uint64
-	LineCounts map[string]diffmodel.Counts
-	NetCounts  *diffmodel.Counts
+	Entries     []Entry
+	Roster      []AgentRow
+	MainSummary []Entry // Main's borrowed feed summary, including when no roster row is present.
+	LastSeq     uint64
+	LineCounts  map[string]diffmodel.Counts
+	NetCounts   *diffmodel.Counts
 }
 
 func (r Record[S]) Publish() Entry {

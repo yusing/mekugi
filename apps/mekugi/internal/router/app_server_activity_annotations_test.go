@@ -98,6 +98,7 @@ func TestAppServerFailedCodeModeCellShowsItsError(t *testing.T) {
 		t.Run(map[bool]string{false: "main", true: "child"}[child], func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.view.Conversation = true
+			u.view.testAudience()
 			activity := sessioncontrol.NewAudience(nil)
 			activity.Attach("main")
 			proxy := &observationFixture{activity: activity}
@@ -117,7 +118,7 @@ func TestAppServerFailedCodeModeCellShowsItsError(t *testing.T) {
 			request := &codexresponses.Request{Fields: map[string]json.RawMessage{"input": json.RawMessage(input)}}
 			// A repeated request carries the same output again; it is still one row.
 			for range 2 {
-				observeActivityRequest(t, proxy, thread, map[bool]string{false:"/root",true:"/root/worker"}[thread!="main"], request)
+				observeActivityRequest(t, proxy, thread, map[bool]string{false: "/root", true: "/root/worker"}[thread != "main"], request)
 				u.applyObservedActivity()
 			}
 			if len(view.Entries) != 1 || view.Entries[0].Source.Kind != "error" ||
@@ -139,6 +140,7 @@ func TestAppServerFailedCodeModeCellShowsItsError(t *testing.T) {
 func TestAppServerUnreturnedCodeModeOutputIsNoted(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
+	u.view.testAudience()
 	activity := sessioncontrol.NewAudience(nil)
 	activity.Attach("main")
 	trace := newNativeTraceFixture(t)
@@ -179,8 +181,8 @@ func TestAppServerUnreturnedCodeModeOutputIsNoted(t *testing.T) {
 		u.applyObservedActivity()
 	}
 	got := ansi.Strip(strings.Join(u.view.RenderFeed(90, 60).Lines, "\n"))
-	under := "Ran git log\n│     ┆ commit abc\n│     " + unreturnedOutputNote + "\n"
-	if strings.Count(got, unreturnedOutputNote) != 1 || !strings.Contains(got, under) {
+	under := "Ran git log\n│     ┆ commit abc\n│     " + "output not returned to the model" + "\n"
+	if strings.Count(got, "output not returned to the model") != 1 || !strings.Contains(got, under) {
 		t.Fatalf("want one note, under git log's output:\n%s", got)
 	}
 }

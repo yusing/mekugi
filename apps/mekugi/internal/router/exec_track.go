@@ -5,13 +5,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 
 	"github.com/yusing/mekugi/contracts/observation"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
-
-	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/commandsegments/segments"
@@ -32,26 +32,10 @@ type execSegmentOutput struct {
 	output activityui.CommandOutput
 }
 
-// commandSegment is one segment as the Activity shows it.
-type commandSegment struct {
-	timing  segmenttransport.Timing
-	text    string // Display operations for the segment's source.
-	running bool
-	skipped bool // The list short-circuited before it.
-	exit    int
-	tail    []string
-	omit    int
-	changes []activitypresentation.ChangeRow
-	output  *activitymodel.Output
-	source  string
-	raw     string                         // A finished VCS segment's complete output, for its change rows.
-	commit  activitypresentation.CommitKey // The commit object whose files complete changes.
-}
-
 // execTrackView is a report as presented at one frame.
 type execTrackView struct {
 	release  bool // Return attribution loss to the observation owner.
-	segments []commandSegment
+	segments []sessionpresentation.ActivitySegment
 	semantic bool // Observed segment or attribution facts changed, rather than only reveal.
 	output   bool // Segments carry their own output; otherwise the host's combined output applies.
 	ended    bool // The report connection closed.
@@ -93,20 +77,20 @@ func (p *execTrackPresentation) view(invocation *activitypresentation.Invocation
 		cursor := &p.segments[index]
 		frame, advanced := cursor.output.Advance()
 		changed = changed || advanced
-		shown := commandSegment{timing: segmenttransport.Timing{Started: segment.Started, Ended: segment.Ended, ElapsedNS: int64(segment.Duration)},
-			text: segment.Text, source: segment.Source, running: segment.Running, skipped: segment.Skipped, exit: segment.ExitCode, raw: segment.Raw,
-			output: invocation.SegmentOutput(index),
+		shown := sessionpresentation.ActivitySegment{Timing: segmenttransport.Timing{Started: segment.Started, Ended: segment.Ended, ElapsedNS: int64(segment.Duration)},
+			Text: segment.Text, Source: segment.Source, Running: segment.Running, Skipped: segment.Skipped, Exit: segment.ExitCode, Raw: segment.Raw,
+			Output: invocation.SegmentOutput(index),
 		}
 		if view.output {
 			if final {
 				frame = cursor.output.Settle()
 			}
-			shown.tail, shown.omit = frame.Tail, frame.Omitted
-			if final && !shown.skipped && shown.exit == 0 {
-				output := strings.Join(shown.tail, "\n")
-				shown.changes = mchangesOutputRows(observation.Item{Command: shown.source, AggregatedOutput: &output})
-				if len(shown.changes) > 0 && shown.omit > 0 {
-					shown.changes = append([]activitypresentation.ChangeRow{{Note: activityui.Elision{Hidden: shown.omit}.Text()}}, shown.changes...)
+			shown.Tail, shown.Omit = frame.Tail, frame.Omitted
+			if final && !shown.Skipped && shown.Exit == 0 {
+				output := strings.Join(shown.Tail, "\n")
+				shown.Changes = mchangesOutputRows(observation.Item{Command: shown.Source, AggregatedOutput: &output})
+				if len(shown.Changes) > 0 && shown.Omit > 0 {
+					shown.Changes = append([]activitypresentation.ChangeRow{{Note: activityui.Elision{Hidden: shown.Omit}.Text()}}, shown.Changes...)
 				}
 			}
 		}
@@ -122,7 +106,7 @@ func (u *appServerUI) commandReportView(key [3]string, run *appServerCommandRun,
 	if !ok {
 		return execTrackView{}, false
 	}
-	view, changed := run.segments.view(run.entry.native.invocation, track, final, func(source string) string {
+	view, changed := run.segments.view(run.entry.Native.Invocation, track, final, func(source string) string {
 		return (activitypresentation.CommandSource{Script: source, Display: frontends.ShellDisplaySource(source), Directory: directory}).SegmentText()
 	})
 	if view.release {
@@ -134,10 +118,10 @@ func (u *appServerUI) commandReportView(key [3]string, run *appServerCommandRun,
 // flushTrackedCommand re-sends a tracked command whose segments changed, and
 // completes it once its report ends. It reports false for an untracked
 // command, which keeps the host's single output stream.
-func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRun) ([]activityPaneEntry, bool) {
+func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRun) ([]sessionpresentation.ActivityEntry, bool) {
 	s := &u.session
 	if run.completion != nil {
-		view, _ := u.commandReportView(key, run, false, run.entry.native.commandCwd)
+		view, _ := u.commandReportView(key, run, false, run.entry.Native.CommandCwd)
 		if !view.ended && u.now().Sub(run.completedAt) < execTrackCompletionWait {
 			return nil, true
 		}
@@ -151,14 +135,14 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 		u.dirty = true
 		return nil, true
 	}
-	view, changed := u.commandReportView(key, run, false, run.entry.native.commandCwd)
+	view, changed := u.commandReportView(key, run, false, run.entry.Native.CommandCwd)
 	if !u.execTrack.Tracking(key) {
 		return nil, false
 	}
 	entry := run.entry
-	native := *entry.native
-	native.phase = "item/commandExecution/outputDelta"
-	entry.native, entry.Agent = &native, s.path(native.thread)
+	native := *entry.Native
+	native.Phase = "item/commandExecution/outputDelta"
+	entry.Native, entry.Agent = &native, s.path(native.Thread)
 	if view.ended && !view.complete {
 		// The report ended early, as when the helper declined after the
 		// match; the host's combined output applies from here on.
@@ -166,7 +150,7 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 			run.output.Invalidate()
 		}
 		if view.semantic {
-			return []activityPaneEntry{entry}, false
+			return []sessionpresentation.ActivityEntry{entry}, false
 		}
 		return nil, false
 	}
@@ -180,64 +164,64 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 	if !changed {
 		return nil, true
 	}
-	native.segments = view.segments
-	u.holdCommand(entry, activityui.CommandFrame{Output: frame, Segments: commandPresentation(entry).Segments})
+	native.Segments = view.segments
+	u.holdCommand(entry, activityui.CommandFrame{Output: frame, Segments: sessionpresentation.CommandPresentation(entry).Segments})
 	u.dirty = true
 	if !view.semantic {
 		return nil, true
 	}
-	native.segments = slices.Clone(view.segments)
-	for i := range native.segments {
-		native.segments[i].tail, native.segments[i].omit = nil, 0
+	native.Segments = slices.Clone(view.segments)
+	for i := range native.Segments {
+		native.Segments[i].Tail, native.Segments[i].Omit = nil, 0
 	}
-	return []activityPaneEntry{entry}, true
+	return []sessionpresentation.ActivityEntry{entry}, true
 }
 
 // reconcileTrackedCommand admits segment outcomes when the report ended with
 // the host's own exit status. Otherwise the report is incomplete, and the
 // already-published host aggregate remains authoritative.
-func (u *appServerUI) reconcileTrackedCommand(key [3]string, entry activityPaneEntry, item observation.Item) (activityPaneEntry, bool) {
+func (u *appServerUI) reconcileTrackedCommand(key [3]string, entry sessionpresentation.ActivityEntry, item observation.Item) (sessionpresentation.ActivityEntry, bool) {
 	run := u.session.commands[key]
 	view, _ := u.commandReportView(key, run, true, appServerCommandDirectory(item, u.session.cwd))
-	if !run.entry.native.invocation.ReportMatchesHost() || len(view.segments) == 0 {
+	if !run.entry.Native.Invocation.ReportMatchesHost() || len(view.segments) == 0 {
 		return entry, false
 	}
-	native := *entry.native
-	native.segments, native.segmentsPending = view.segments, false
+	native := *entry.Native
+	native.Segments, native.SegmentsPending = view.segments, false
 	u.retainCommandSegments(entry, item, view)
-	for i := range native.segments {
+	for i := range native.Segments {
 		// A commit reads its object from the directory the host ran it in.
-		if segment := &native.segments[i]; segment.raw != "" && segment.changes == nil {
-			segment.changes, segment.commit = activitypresentation.VCSOutputRows(frontends.ShellDisplaySource(appServerDisplayCommand(segment.source)), vcsSegmentCwd(item.Cwd, native.segments[:i]), segment.raw)
+		if segment := &native.Segments[i]; segment.Raw != "" && segment.Changes == nil {
+			segment.Changes, segment.Commit = activitypresentation.VCSOutputRows(frontends.ShellDisplaySource(sessionpresentation.DisplayCommand(segment.Source)), vcsSegmentCwd(item.Cwd, native.Segments[:i]), segment.Raw)
 		}
 	}
 	// Successful segments' output stays open until the agent's next event.
-	entry.completed = entry.native.commandEnded
-	entry.native = &native
+	entry.Completed = entry.Native.CommandEnded
+	entry.Native = &native
 	if !view.output {
-		entry.outputTail, entry.outputOmit = appServerOutputTail(item.AggregatedOutput)
-		native.changes, native.commit = commandOutputRows(item)
+		entry.OutputTail, entry.OutputOmit = appServerOutputTail(item.AggregatedOutput)
+		native.Changes, native.Commit = commandOutputRows(item)
 	}
 	return entry, true
 }
 
 // settleCommandReport updates attribution on the existing completed record. This is
 // separate from native merging, which must continue rejecting late host deltas.
-func (v *activityAdapter) settleCommandReport(enriched activityPaneEntry, valid bool) {
+func (v *activityAdapter) settleCommandReport(enriched sessionpresentation.ActivityEntry, valid bool) {
 	for i, record := range v.Entries {
-		if !enriched.native.sameItem(record.Source.native) {
+		if !enriched.Native.SameItem(record.Source.Native) {
 			continue
 		}
 		entry := record.Source
-		native := *entry.native
-		native.segments, native.segmentsPending = nil, false
-		entry.native = &native
+		native := *entry.Native
+		native.Segments, native.SegmentsPending = nil, false
+		entry.Native = &native
 		values := record.Values
 		if valid {
-			native.segments, native.changes, native.commit = enriched.native.segments, enriched.native.changes, enriched.native.commit
-			entry.completed = enriched.completed
-			entry.outputTail, entry.outputOmit = enriched.outputTail, enriched.outputOmit
-			values = activitypresentation.RetainAnnotations(activityContent(entry).Values(), values)
+			native.Segments, native.Changes, native.Commit = enriched.Native.Segments, enriched.Native.Changes, enriched.Native.Commit
+			entry.Completed = enriched.Completed
+			entry.OutputTail, entry.OutputOmit = enriched.OutputTail, enriched.OutputOmit
+			values = activitypresentation.RetainAnnotations(sessionpresentation.ActivityContent(entry).Values(), values)
 		}
 		v.Model.Replace(i, entry, values)
 		return

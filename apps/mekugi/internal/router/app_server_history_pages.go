@@ -127,7 +127,7 @@ func (u *appServerUI) childHistoryResponse(method string, m appserver.Message) e
 				if p.entry.Kind == "hook" {
 					entry := p.entry
 					entry.Seq = u.session.next()
-					u.applyRestoredActivity([]activityPaneEntry{entry})
+					u.applyRestoredActivity([]sessionpresentation.ActivityEntry{entry})
 				}
 			}
 			h.placements = slices.DeleteFunc(h.placements, func(p *restoredPlacement) bool { return p.entry.Kind == "hook" })
@@ -330,7 +330,7 @@ func (u *appServerUI) renderChildHistoryPage(h *appServerChildHistory, turn bind
 	agent := *u.session.agent(name)
 	u.restoreActivityThread(info, page.Older)
 	*u.session.agent(name) = agent
-	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: u.session.roster()})
+	u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.roster()})
 	first := uint64(0)
 	for _, entry := range u.agents.Entries {
 		if entry.Source.Seq > before {
@@ -339,28 +339,28 @@ func (u *appServerUI) renderChildHistoryPage(h *appServerChildHistory, turn bind
 		}
 	}
 	if !h.state.View(h.info.ID).Initial {
-		retained := slices.ContainsFunc(u.agents.Entries, func(entry liveActivityRecord) bool { return entry.Source.Seq == h.firstSeq })
-		u.agents.insertHistory(before, func(entry activityPaneEntry) bool {
-			return retained && entry.Seq == h.firstSeq || !retained && entry.native != nil && entry.native.thread == h.info.ID
+		retained := slices.ContainsFunc(u.agents.Entries, func(entry sessionpresentation.ActivityRecord) bool { return entry.Source.Seq == h.firstSeq })
+		u.agents.insertHistory(before, func(entry sessionpresentation.ActivityEntry) bool {
+			return retained && entry.Seq == h.firstSeq || !retained && entry.Native != nil && entry.Native.Thread == h.info.ID
 		})
 		for _, p := range r.main {
 			// A failed initial read may already have placed this retained
 			// assignment/message in Main without its Activity link. The same
 			// source observation keeps its identity through the pending slots.
-			existing := slices.IndexFunc(u.view.Entries, func(entry liveActivityRecord) bool {
-				return p.entry.assignment != nil && entry.Source.assignment == p.entry.assignment || p.entry.message != nil && entry.Source.message == p.entry.message
+			existing := slices.IndexFunc(u.view.Entries, func(entry sessionpresentation.ActivityRecord) bool {
+				return p.entry.Assignment != nil && entry.Source.Assignment == p.entry.Assignment || p.entry.Message != nil && entry.Source.Message == p.entry.Message
 			})
 			if existing >= 0 {
-				if p.link != nil && mainActivityLinked(p.entry) {
+				if p.link != nil && sessionpresentation.MainActivityLinked(p.entry) {
 					entry := u.view.Entries[existing].Source
-					entry.activitySeq = *p.link
-					u.view.Model.Replace(existing, entry, activityContent(entry).Values())
+					entry.ActivitySeq = *p.link
+					u.view.Model.Replace(existing, entry, sessionpresentation.ActivityContent(entry).Values())
 				}
 				continue
 			}
 			before := u.view.LastSeq
 			u.applyRestoredMain([]*restoredPlacement{p})
-			u.view.insertHistory(before, func(entry activityPaneEntry) bool { return entry.Observed.After(p.at) })
+			u.view.insertHistory(before, func(entry sessionpresentation.ActivityEntry) bool { return entry.Observed.After(p.at) })
 		}
 	}
 	if first != 0 {
@@ -380,12 +380,12 @@ func (u *appServerUI) hydrateChildHistoryMetadata(h *appServerChildHistory) {
 	u.restoreContextUsage(agent, h.info)
 	u.restoreUsage(h.info)
 	u.observeCost(h.info.ID, agent)
-	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: u.session.roster()})
+	u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.roster()})
 }
 
 // Insert the admitted source page through the shared model and terminal owners.
 // Domain membership stays with this adapter; output demands use normal hydration.
-func (v *activityAdapter) insertHistory(before uint64, belongs func(activityPaneEntry) bool) {
+func (v *activityAdapter) insertHistory(before uint64, belongs func(sessionpresentation.ActivityEntry) bool) {
 	v.publishActivity()
 	anchor := v.View.AnchorHistory(before)
 	for {
@@ -393,7 +393,7 @@ func (v *activityAdapter) insertHistory(before uint64, belongs func(activityPane
 		if len(demands) == 0 {
 			break
 		}
-		v.View.Hydrate(v.resolveOutputDemands(demands))
+		v.View.Hydrate(v.ResolveOutputDemands(demands))
 		anchor = v.View.AnchorHistory(before)
 	}
 	var at uint64
@@ -411,6 +411,6 @@ func (v *activityAdapter) insertHistory(before uint64, belongs func(activityPane
 		if len(demands) == 0 {
 			break
 		}
-		v.View.Hydrate(v.resolveOutputDemands(demands))
+		v.View.Hydrate(v.ResolveOutputDemands(demands))
 	}
 }

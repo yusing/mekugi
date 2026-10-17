@@ -1,15 +1,17 @@
 package router
 
 import (
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"encoding/json/jsontext"
+
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffrender"
-	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
@@ -86,8 +88,8 @@ func TestComposerSelectionSubmitsQuotedFrames(t *testing.T) {
 		t.Fatalf("projected input = %s", request.Fields["input"])
 	}
 	// The host echo keeps the concise label as one styled token.
-	spans := composerElementSpans(input[0]["text"].(string), elements)
-	if len(spans) != 1 || spans[0].Kind != activitypresentation.SelectionToken {
+	spans := conversationbinding.ElementSpans(input[0]["text"].(string), elements)
+	if len(spans) != 1 || spans[0].Kind != composer.Selection {
 		t.Fatalf("transcript spans = %+v", spans)
 	}
 }

@@ -155,7 +155,7 @@ func (u *appServerUI) clearSessionPresentation() error {
 	u.feedback = noticepresentation.Model{}
 	u.mainView.NoticeDetails, u.mainView.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
 	for key, run := range u.session.commands {
-		if run.entry.native.invocation.ReleaseSegmentOutputs() {
+		if run.entry.Native.Invocation.ReleaseSegmentOutputs() {
 			u.execTrack.ReleaseOutput(key)
 		}
 	}
@@ -171,11 +171,11 @@ func (u *appServerUI) clearSessionPresentation() error {
 		}
 	}
 	painter := u.view.Painter
-	*u.view = *newTranscriptAdapter(activityui.NewView())
+	*u.view = *newTranscriptAdapter(activityui.NewView(), sessionpresentation.MainAudience)
 	u.view.Painter, u.view.Conversation = painter, true
 	if u.agents != nil {
 		painter = u.agents.Painter
-		*u.agents = *newTranscriptAdapter(u.terminalViews.NewThreadView())
+		*u.agents = *newTranscriptAdapter(u.terminalViews.NewThreadView(), sessionpresentation.ChildAudience)
 		u.agents.Painter, u.agents.mainView = painter, u.view
 		u.agents.ChildrenOnly, u.agents.Bare = true, true
 	}

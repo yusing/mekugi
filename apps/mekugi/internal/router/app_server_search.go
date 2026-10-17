@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"strings"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/contracts/observation"
 
 	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
@@ -46,5 +48,5 @@ func appServerSearchResults(item observation.Item) *int {
 	if item.AggregatedOutput != nil && len(*item.AggregatedOutput) >= 1<<20 {
 		return nil
 	}
-	return activitypresentation.SearchResultCount(appServerDisplayCommand(item.Command), item.AggregatedOutput, *item.ExitCode)
+	return activitypresentation.SearchResultCount(sessionpresentation.DisplayCommand(item.Command), item.AggregatedOutput, *item.ExitCode)
 }

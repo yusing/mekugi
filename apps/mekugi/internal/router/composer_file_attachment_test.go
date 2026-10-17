@@ -3,6 +3,8 @@ package router
 import (
 	"bytes"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -53,7 +55,7 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 		t.Fatalf("snapshot lost: %q", frames)
 	}
 	content, _ := json.Marshal(input)
-	if text, _, ok := appServerUserText(content); !ok || text != draft.Text {
+	if text, _, ok := sessionpresentation.UserText(content); !ok || text != draft.Text {
 		t.Fatalf("transport envelope leaked into transcript: %q", text)
 	}
 	resumed, _ := newAppServerTestUI()

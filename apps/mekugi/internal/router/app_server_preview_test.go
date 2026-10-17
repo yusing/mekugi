@@ -1,9 +1,11 @@
 package router
 
 import (
-"github.com/yusing/mekugi/libraries/legacycall"
 	"cmp"
 	"encoding/json/jsontext"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/libraries/legacycall"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
@@ -244,7 +246,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	if got := agents(); strings.Contains(got, "Running") || !strings.Contains(got, "┆ ok      example.com") || !regexp.MustCompile(`Ran +│ for test in`).MatchString(got) {
 		t.Fatalf("passed test run lacks its settled state:\n%s", got)
 	}
-	nextEvent(t, p.ui, p.ui.agents.Entries[len(p.ui.agents.Entries)-1].Source.native.thread)
+	nextEvent(t, p.ui, p.ui.agents.Entries[len(p.ui.agents.Entries)-1].Source.Native.Thread)
 	settleActivity(time.Now().Add(activityui.OutputDebounce), p.ui.agents)
 	if got := agents(); strings.Contains(got, "┆ ok ") || !strings.Contains(got, "┆ … +6 lines") {
 		t.Fatalf("passed test run output did not collapse:\n%s", got)
@@ -325,7 +327,7 @@ func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 	}
 	p.until("main streams its patch")
 	keys("also check Unsubscribe\r")
-	if p.ui.conversation().Submitted[p.ui.Submission().ID].Text != "" || p.ui.Turn == "" || !slices.ContainsFunc(p.ui.view.Entries, func(e liveActivityRecord) bool {
+	if p.ui.conversation().Submitted[p.ui.Submission().ID].Text != "" || p.ui.Turn == "" || !slices.ContainsFunc(p.ui.view.Entries, func(e sessionpresentation.ActivityRecord) bool {
 		return e.Source.Agent == "You" && e.Source.Text == "also check Unsubscribe"
 	}) {
 		t.Fatalf("steer not accepted: submitted=%q turn=%q", p.ui.conversation().Submitted[p.ui.Submission().ID].Text, p.ui.Turn)
@@ -352,7 +354,9 @@ func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 		}
 	}
 	keys("hello\r")
-	if !strings.Contains(p.ui.sessionLabel(p.ui.now()), "Completed in ") || !slices.ContainsFunc(p.ui.view.Entries, func(e liveActivityRecord) bool { return strings.Contains(e.Source.Text, "I heard: hello") }) {
+	if !strings.Contains(p.ui.sessionLabel(p.ui.now()), "Completed in ") || !slices.ContainsFunc(p.ui.view.Entries, func(e sessionpresentation.ActivityRecord) bool {
+		return strings.Contains(e.Source.Text, "I heard: hello")
+	}) {
 		t.Fatalf("new turn not answered: %q", p.ui.sessionPresentation().Status.Text)
 	}
 	keys("\x03")
@@ -519,7 +523,7 @@ func newNativePreview(t *testing.T) *nativePreview {
 		scope.Workspaces[workspace][thread] = true
 	}
 	u.shell.applyDiff(t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope})
-	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: u.session.agents})
+	u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.agents})
 	u.sessionPresentation().Status.Text = "Ready"
 	p.populate()
 	return p
@@ -1358,24 +1362,25 @@ func TestNativeUIPreviewSessionReplyIdentity(t *testing.T) {
 	}
 	main := p.ui.view
 	main.Conversation = true
+	main.testAudience()
 	feed := main.RenderFeed(100, 100)
 	text := ansi.Strip(strings.Join(feed.Lines, "\n"))
 	if strings.Contains(text, "Message received:") || strings.Contains(text, "not loaded") || strings.Count(text, "The initial race test exposed") != 1 {
 		t.Fatalf("fake session repeated or misformatted reply: %s", text)
 	}
 	for _, entry := range main.Entries {
-		if entry.Source.Kind == "final" && entry.Source.activitySeq == 0 {
+		if entry.Source.Kind == "final" && entry.Source.ActivitySeq == 0 {
 			t.Fatal("preview child reply has no real Activity target")
 		}
-		if entry.Source.native != nil && entry.Source.native.item == "main-answer" {
-			if entry.Source.native.turn != "preview-turn-1" || entry.Source.native.question == 0 {
-				t.Fatalf("preview used a fabricated turn or omitted ordinary reply link: %+v", entry.Source.native)
+		if entry.Source.Native != nil && entry.Source.Native.Item == "main-answer" {
+			if entry.Source.Native.Turn != "preview-turn-1" || entry.Source.Native.Question == 0 {
+				t.Fatalf("preview used a fabricated turn or omitted ordinary reply link: %+v", entry.Source.Native)
 			}
 		}
 	}
 	var assignments int
 	for _, entry := range main.Entries {
-		if entry.Source.assignment != nil && entry.Source.assignment.to == "/root/tester" {
+		if entry.Source.Assignment != nil && entry.Source.Assignment.To == "/root/tester" {
 			assignments++
 		}
 	}
@@ -1413,7 +1418,7 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 			paint()
 			var seq uint64
 			for _, entry := range view.Entries {
-				if entry.Source.native != nil && entry.Source.native.item == item {
+				if entry.Source.Native != nil && entry.Source.Native.Item == item {
 					seq = entry.Source.Seq
 				}
 			}

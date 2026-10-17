@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
@@ -81,7 +83,7 @@ func TestShellEditIntentClassification(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := toolActivityShell(tc.command)
-			blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: got})
+			blocks := parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "tool", Text: got})
 			if len(blocks) != len(tc.wantVerbs) {
 				t.Fatalf("blocks = %+v; text = %q", blocks, got)
 			}
@@ -105,7 +107,7 @@ func TestShellEditIntentClassification(t *testing.T) {
 func TestShellEditIntentKeepsUnknownHeredocNeighbor(t *testing.T) {
 	command := "cat >> a.go <<'EDIT'; unknown-tool <<'UNKNOWN'\nPRIVATE_EDIT_SOURCE\nEDIT\nPRIVATE_UNKNOWN_BODY\nUNKNOWN"
 	got := toolActivityShell(command)
-	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: got})
+	blocks := parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "tool", Text: got})
 	if len(blocks) != 2 || blocks[0].Verb != "Edit" || blocks[1].Verb != "Run" ||
 		!strings.Contains(got, "Edit `a.go` · cat (requested)") ||
 		strings.Contains(got, "PRIVATE_EDIT_SOURCE") || !strings.Contains(got, "PRIVATE_UNKNOWN_BODY") ||
@@ -137,7 +139,7 @@ func TestCodeModeEditIntentBatchPreview(t *testing.T) {
 		t.Fatalf("exec call changed command: %+v, %v", arguments, err)
 	}
 	got := toolActivityShell(command)
-	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: got})
+	blocks := parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "tool", Text: got})
 	if len(blocks) != 3 || blocks[0].Verb != "Edit" || blocks[1].Verb != "Edit" || blocks[2].Verb != "Run" ||
 		!strings.Contains(got, "Edit `a.go` · python3 (requested)") ||
 		!strings.Contains(got, "Edit `b.go` · python3 (requested)") ||
@@ -148,13 +150,13 @@ func TestCodeModeEditIntentBatchPreview(t *testing.T) {
 
 func TestLiveActivityRequestedEditReplacedByReceipt(t *testing.T) {
 	view := newActivityAdapter()
-	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+	view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
 		Seq: 1, Agent: "/root/worker", Kind: "tool", CallID: "edit-call", Text: "Edit `a.go` · cat (requested)",
 	}}})
-	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+	view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
 		Seq: 2, Agent: "/root/worker", Kind: "exit", CallID: "edit-call", Text: "2",
 	}}})
-	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+	view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
 		Seq: 3, Agent: "/root/worker", Kind: "tool", CallID: "edit-call", Text: "Edit `a.go` +1 -1 · cat",
 	}}})
 	if len(view.Entries) != 1 || view.Entries[0].Source.Seq != 1 || view.Entries[0].Source.Text != "Edit `a.go` +1 -1 · cat" ||
@@ -207,7 +209,7 @@ func TestAppServerSedStartsAsEditBeforeReceipt(t *testing.T) {
 			data := []*presentation.Receipt{{
 				Thread: thread, Calls: []string{"sed-call"}, Text: "Edit `internal/router/live_activity_view_test.go` +1 -1 · sed",
 			}}
-			view.applyCapturedEdits(data)
+			view.ApplyCapturedEdits(data)
 			assertCapturedCommand(t, view, thread, "sed-call", "Edit", 0)
 			if len(view.Entries) != 1 || !strings.Contains(view.Entries[0].Source.Text, "+1 -1") || strings.Contains(view.Entries[0].Source.Text, "requested") {
 				t.Fatalf("receipt failed to replace requested edit in place: %+v", view.Entries)
@@ -249,7 +251,7 @@ func TestAppServerEditIntentLiveAndRestored(t *testing.T) {
 				t.Fatal("classification modified the native command item")
 			}
 			for _, entry := range view.Entries {
-				if entry.Source.native == nil || entry.Source.native.item != "cmd" {
+				if entry.Source.Native == nil || entry.Source.Native.Item != "cmd" {
 					continue
 				}
 				if !strings.Contains(entry.Source.Text, "Edit `a.go` · cat (requested)") || strings.Contains(entry.Source.Text, "PRIVATE_NATIVE_SOURCE") || !strings.Contains(entry.Source.Text, "Run `go test ./internal/router`") {

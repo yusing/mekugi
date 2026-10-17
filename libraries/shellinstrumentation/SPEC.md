@@ -74,6 +74,11 @@ their admission as observed filesystem targets.
 
 ## Guard and display source
 
+Literal shell-command decoding is shared by observation and presentation. It
+removes quoting without environment expansion or execution and rejects dynamic,
+compound, redirected or extra-argument wrappers. Original command bytes remain
+authoritative for execution and retention.
+
 The library composes selected VCS and sudo guards without deciding approval.
 The [remote-write](../../modules/remotewriteapproval/SPEC.md) and
 [sudo](../../modules/sudoapproval/SPEC.md) modules own supported operations,

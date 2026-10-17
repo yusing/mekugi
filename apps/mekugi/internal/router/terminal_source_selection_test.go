@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -198,7 +200,7 @@ func TestTerminalSourceScrolledMainReply(t *testing.T) {
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	// Scroll back to the original reply above a long trailing tool run.
 	u.Turn = "running"
-	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "**original reply**", Observed: time.Now()}, {Seq: 2, Agent: "Main", Kind: "tool", Text: "Run: go test\n" + strings.Repeat("output\n", 100), Observed: time.Now()}}})
+	u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "**original reply**", Observed: time.Now()}, {Seq: 2, Agent: "Main", Kind: "tool", Text: "Run: go test\n" + strings.Repeat("output\n", 100), Observed: time.Now()}}})
 	u.view.Following, u.view.Offset = false, 0
 	screen := vt.NewEmulator(80, 30)
 	defer screen.Close()
@@ -241,7 +243,7 @@ func TestTerminalSourceRenderedTables(t *testing.T) {
 				view := u.view
 				if activity {
 					view = u.agents
-					u.agents.Agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
+					u.agents.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
 					u.shell.DiffOpen = false
 				}
 				applyTranscriptFixture(view, true, "", "main", "main", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: source})
@@ -285,7 +287,7 @@ func TestTerminalSourceActivityCodeTabs(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
-	u.agents.Agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
+	u.agents.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
 	u.shell.DiffOpen = false
 	applyTranscriptFixture(u.agents, true, "", "main", "main", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "```\n\tx := 1  \n```"})
 	var wire bytes.Buffer

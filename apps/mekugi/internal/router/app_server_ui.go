@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
@@ -176,7 +178,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 			return
 		}
 		if command, ok := binding.DecodeCommandObservation(message.Method, message.Params); ok {
-			if script, ok := binding.CommandScript(command.Command); ok {
+			if script, ok := shellinstrumentation.CommandScript(command.Command); ok {
 				tracker.Start(command.Key, script)
 			}
 		}
@@ -184,7 +186,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 	if err != nil {
 		return nil, err
 	}
-	u := &appServerUI{terminalViews: terminalViews, reviewSource: reviewSource, presentationState: views, conversationState: conversation, session: appServerSession{activity: activity, observations: observations}, history: service, segments: segments, client: c, view: newTranscriptAdapter(activityui.NewView()), agents: newTranscriptAdapter(terminalViews.NewThreadView()), controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, changeSource: integration.changeSource, snapshots: integration.snapshots, recovered: integration.recovered, publishChanges: integration.publishChanges, captureNotice: integration.captureNotice, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), dirty: true, ctx: ctx, startup: sessioncontrol.Startup{Thread: resumeThread}, serviceTiers: serviceTiers, approvalMode: approvals}
+	u := &appServerUI{terminalViews: terminalViews, reviewSource: reviewSource, presentationState: views, conversationState: conversation, session: appServerSession{activity: activity, observations: observations}, history: service, segments: segments, client: c, view: newTranscriptAdapter(activityui.NewView(), sessionpresentation.MainAudience), agents: newTranscriptAdapter(terminalViews.NewThreadView(), sessionpresentation.ChildAudience), controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, changeSource: integration.changeSource, snapshots: integration.snapshots, recovered: integration.recovered, publishChanges: integration.publishChanges, captureNotice: integration.captureNotice, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), dirty: true, ctx: ctx, startup: sessioncontrol.Startup{Thread: resumeThread}, serviceTiers: serviceTiers, approvalMode: approvals}
 	u.attachPresentation()
 	u.sessionPresentation().Status.Set("Connecting…", false)
 	u.attachActivity()
@@ -417,7 +419,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 		}
 		u.finishCommandSegments()
 		for key, run := range u.session.commands {
-			if run.entry.native.invocation.ReleaseSegmentOutputs() {
+			if run.entry.Native.Invocation.ReleaseSegmentOutputs() {
 				u.execTrack.ReleaseOutput(key)
 			}
 		}
@@ -712,7 +714,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			u.restoreUsage(result.Thread)
 			u.observeCost(u.Thread, u.session.agent("/root"))
 			if u.agents != nil {
-				u.agents.apply(activityPaneEvent{Kind: "agents", Agents: u.session.roster()})
+				u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.roster()})
 			}
 			if u.audience != nil {
 				u.audience.Attach(u.Thread)
@@ -777,7 +779,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		// visibly blocked, until interrupted.
 		u.sessionPresentation().Status.Set("Blocked on unsupported request "+m.Method+" · Ctrl-C interrupts", true)
 		u.blockNotification(m)
-		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.LastSeq + 1, Agent: "Session", Kind: "text", Text: u.sessionPresentation().Status.Text, Observed: u.now()}}})
+		u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.view.LastSeq + 1, Agent: "Session", Kind: "text", Text: u.sessionPresentation().Status.Text, Observed: u.now()}}})
 		return nil
 	}
 	if handled, err := u.settingsMessage("", m); handled || err != nil {
@@ -1086,75 +1088,18 @@ func (u *appServerUI) key(key string) (bool, error) {
 	return false, nil
 }
 
-// paneActivityAgent names the Activity agent an entry belongs to. A directed
-// message shows under its sender, or under its recipient when Main sent it.
-func paneActivityAgent(entry activityPaneEntry) string {
-	if entry.Kind == "reply" && entry.message != nil {
-		if entry.message.from == "/root" {
-			return entry.message.to
-		}
-		return entry.message.from
-	}
-	return entry.Agent
-}
-
 // historyPending reports resumed history that Main has yet to show. Router
 // observations wait in their queues so they follow it, as live.
 func (u *appServerUI) historyPending() bool {
 	return u.restoring != nil && !u.restoring.state.View().Rendered
 }
 
-// mainActivityEntry projects one collector entry into Main's audience.
-// Ordinary root activity stays in Main, but a directed message belongs at
-// both ends, and a child's start and answer show where Main follows them.
-func mainActivityEntry(entry activityPaneEntry) (activityPaneEntry, bool) {
-	main := entry.Agent == "/root" && (entry.Kind == "output_dedupe" || entry.Kind == "tool" || entry.Kind == "hook" || entry.Kind == "exit" || entry.Kind == "error" || entry.Kind == "reasoning" || entry.Kind == "progress")
-	if (entry.Kind == "assignment" || entry.Kind == "start") && entry.assignment != nil {
-		main = true
-		entry.Agent = entry.assignment.from
-		if entry.Agent == "" {
-			entry.Agent = "Main"
-		}
-	}
-	if entry.Kind == "reply" && entry.message != nil {
-		main = entry.message.from == "/root" || entry.message.to == "/root"
-		entry.Agent = entry.message.from
-	}
-	main = main || (entry.Kind == "final" || entry.Kind == "start") && entry.Agent != "/root"
-	if entry.Agent == "/root" {
-		entry.Agent = "Main"
-	}
-	return entry, main
-}
-
-// mainActivityLinked reports a Main entry that excerpts its Activity entry.
-func mainActivityLinked(entry activityPaneEntry) bool {
-	return entry.Kind == "final" || entry.Kind == "reply" || entry.assignment != nil
-}
-
-func (u *appServerUI) applyMainActivity(entry activityPaneEntry) {
-	entry.Seq = u.view.LastSeq + 1
-	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
-}
-
-// applyActivity projects the collector once into the two audiences. Ordinary
-// root activity stays in Main, but a directed message belongs at both ends.
-func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activityPaneAgent) {
-	paneEntries := slices.Clone(entries)
-	for i := range paneEntries {
-		paneEntries[i].Agent = paneActivityAgent(paneEntries[i])
-	}
-	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: paneEntries, Agents: agents})
-	for i, entry := range entries {
-		if entry, main := mainActivityEntry(entry); main {
-			if mainActivityLinked(entry) {
-				entry.activitySeq = u.agents.entrySeq(paneEntries[i])
-			}
-			u.applyMainActivity(entry)
-		}
-	}
+func (u *appServerUI) applyActivity(entries []sessionpresentation.ActivityEntry, agents []sessionpresentation.ActivityAgent) {
+	sessionpresentation.ApplyActivity(u.view.ActivitySource, u.agents.ActivitySource, entries, agents)
 	u.applyCapturedEdits()
 	u.flushApprovalUpdates()
+	u.view.publishActivity()
+	u.agents.publishActivity()
 }
 
 // mainFrame is the transcript above a boxed composer. The top border carries
@@ -1244,19 +1189,21 @@ func scrollLabel(v *activityAdapter) string {
 
 func (u *appServerUI) ensureShell() {
 	u.attachActivity()
+	u.view.Audience = sessionpresentation.MainAudience
 	u.view.Conversation = true
 	u.view.Painter.FileLink = u.markdownFileAllowed
 	if u.shell != nil {
 		return
 	}
 	if u.agents == nil {
-		u.agents = newTranscriptAdapter(u.terminalViews.NewThreadView())
+		u.agents = newTranscriptAdapter(u.terminalViews.NewThreadView(), sessionpresentation.ChildAudience)
 		u.attachActivity()
 	}
 	u.agents.display = u.sessionPresentation()
 	u.agents.Painter.FileLink = u.markdownFileAllowed
+	u.agents.Audience = sessionpresentation.ChildAudience
 	u.agents.ChildrenOnly = true
-	u.agents.StatusLabel = "" // Fed by app-server directly, never by a collector connection.
+	u.agents.Coverage = "" // Fed by app-server directly, never by a collector connection.
 	u.agents.mainView = u.view
 	store, review := u.retained, u.review
 	if review == nil {
@@ -1306,7 +1253,7 @@ func (u *appServerUI) applyObservedActivity() {
 		}
 	}
 	if usageChanged {
-		u.agents.apply(activityPaneEvent{Kind: "agents", Agents: u.session.roster()})
+		u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.roster()})
 		u.dirty = true
 	}
 	if u.audience == nil {
@@ -1324,7 +1271,7 @@ func (u *appServerUI) applyObservedActivity() {
 		u.dirty = true
 	}
 	for _, ref := range u.audience.TakeUnreturned(u.Thread) {
-		if main, activity := u.view.markUnreturned(ref.Thread, ref.Call), u.agents.markUnreturned(ref.Thread, ref.Call); main || activity {
+		if main, activity := u.view.MarkUnreturned(ref.Thread, ref.Call), u.agents.MarkUnreturned(ref.Thread, ref.Call); main || activity {
 			u.dirty = true
 		}
 	}

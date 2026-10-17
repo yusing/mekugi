@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -51,30 +53,31 @@ func TestLiveActivityCacheEntryUpdates(t *testing.T) {
 		t.Run(change, func(t *testing.T) {
 			v := newActivityAdapter()
 			v.ChildrenOnly = true
+			v.testAudience()
 			v.Painter.Theme = diffrender.DarkTheme
 			v.Clock = func() time.Time { return now }
-			entry := activityPaneEntry{Seq: 3, Agent: "/root/working", Kind: "tool", CallID: "command", Text: "Run `printf hello`", Observed: now,
-				native:     &liveActivityNativeItem{thread: "child", turn: "turn", item: "command", phase: "item/commandExecution/outputDelta"},
-				outputTail: []string{"hello"}}
+			entry := sessionpresentation.ActivityEntry{Seq: 3, Agent: "/root/working", Kind: "tool", CallID: "command", Text: "Run `printf hello`", Observed: now,
+				Native:     &sessionpresentation.NativeItem{Thread: "child", Turn: "turn", Item: "command", Phase: "item/commandExecution/outputDelta"},
+				OutputTail: []string{"hello"}}
 			switch change {
 			case "reasoning":
 				entry.Kind, entry.Text, entry.CallID = "reasoning", "**Checking the result**\nInitial public summary", "summary"
 			case "paced reveal":
 				entry.Text = "List `.`\n\nSearch `needle`\n\nRead `a.go`"
-				entry.native.live = true
+				entry.Native.Live = true
 			case "settled output":
-				entry.native.phase, entry.completed = "item/completed", now
+				entry.Native.Phase, entry.Completed = "item/completed", now
 				// A one-line result is already compact and is not collapsible.
-				entry.outputTail = []string{"hello", "completed second output line"}
+				entry.OutputTail = []string{"hello", "completed second output line"}
 			}
-			entries := []activityPaneEntry{
+			entries := []sessionpresentation.ActivityEntry{
 				{Seq: 1, Agent: "/root/finished", Kind: "text", Text: "Completed independent agent work", Observed: now},
 				{Seq: 2, Agent: "/root/other", Kind: "text", Text: "Another independent result", Observed: now}, entry,
 			}
 			if change == "settled output" {
-				entries = append(entries, activityPaneEntry{Seq: 4, Agent: entry.Agent, Kind: "text", Text: "The next event settles output", Observed: now})
+				entries = append(entries, sessionpresentation.ActivityEntry{Seq: 4, Agent: entry.Agent, Kind: "text", Text: "The next event settles output", Observed: now})
 			}
-			v.apply(activityPaneEvent{Kind: "entries", Entries: entries})
+			v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: entries})
 			v.RenderFeed(90, 24)
 			stableKey, stable := liveActivityCacheRun(t, v, 1)
 			changedKey, before := liveActivityCacheRun(t, v, 3)
@@ -90,19 +93,19 @@ func TestLiveActivityCacheEntryUpdates(t *testing.T) {
 			default:
 				update := entry
 				update.Seq = v.LastSeq + 1
-				native := *entry.native
-				update.native = &native
+				native := *entry.Native
+				update.Native = &native
 				switch change {
 				case "output delta":
-					update.outputTail = []string{"hello", "second output line"}
+					update.OutputTail = []string{"hello", "second output line"}
 				case "reasoning":
 					update.Text = "**Checking the updated result**\nUpdated public summary"
 				case "exit":
-					update.Kind, update.Text, update.native = "exit", "1", nil
+					update.Kind, update.Text, update.Native = "exit", "1", nil
 				case "receipt":
-					update.Text, update.native = "Edit `result.go` +3 -1", nil
+					update.Text, update.Native = "Edit `result.go` +3 -1", nil
 				}
-				v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{update}})
+				v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{update}})
 			}
 			if _, present := v.Runs[changedKey]; present {
 				t.Fatal("in-place update retained its stale cached run")
@@ -130,10 +133,11 @@ func TestLiveActivityCacheEntryUpdates(t *testing.T) {
 func TestLiveActivityCacheMainUpdateRemainsFresh(t *testing.T) {
 	v := newActivityAdapter()
 	v.Conversation = true
+	v.testAudience()
 	v.Painter.Theme = diffrender.DarkTheme
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 	v.Clock = func() time.Time { return now }
-	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "You", Kind: "text", Text: "Explain the result", Observed: now}}})
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "You", Kind: "text", Text: "Explain the result", Observed: now}}})
 	applyTranscriptFixture(v, true, "", "main", "main", "turn", "reply", "item/agentMessage/delta", "Initial explanation", binding.ThreadItem{})
 	v.RenderFeed(90, 24)
 	stableKey, stable := liveActivityCacheRun(t, v, 1)
@@ -155,14 +159,15 @@ func TestLiveActivityCacheMainUpdateRemainsFresh(t *testing.T) {
 func TestLiveActivityCacheMainInvalidatesLaterQuotes(t *testing.T) {
 	v := newActivityAdapter()
 	v.Conversation = true
+	v.testAudience()
 	v.Painter.Theme = diffrender.DarkTheme
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 	v.Clock = func() time.Time { return now }
-	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "Main", Kind: "text", Text: "Completed prefix", Observed: now},
-		{Seq: 2, Agent: "You", Kind: "text", Text: "Original prompt", Observed: now, native: &liveActivityNativeItem{thread: "main", turn: "turn", item: "prompt"}},
+		{Seq: 2, Agent: "You", Kind: "text", Text: "Original prompt", Observed: now, Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "turn", Item: "prompt"}},
 		{Seq: 3, Agent: "/root/worker", Kind: "text", Text: "Intervening agent activity", Observed: now},
-		{Seq: 4, Agent: "Main", Kind: "text", Text: "Answer to the prompt", Observed: now, native: &liveActivityNativeItem{thread: "main", turn: "turn", item: "answer"}},
+		{Seq: 4, Agent: "Main", Kind: "text", Text: "Answer to the prompt", Observed: now, Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "turn", Item: "answer"}},
 	}})
 	v.RenderFeed(90, 24)
 	stableKey, stable := liveActivityCacheRun(t, v, 1)
@@ -204,6 +209,7 @@ func BenchmarkLiveActivityCacheCommandDelta(b *testing.B) {
 					now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 					v := newActivityAdapter()
 					v.Conversation, v.ChildrenOnly = main, !main
+					v.testAudience()
 					v.Painter.Theme = diffrender.DarkTheme
 					v.Clock = func() time.Time { return now }
 					for i := range 80 {
@@ -211,22 +217,22 @@ func BenchmarkLiveActivityCacheCommandDelta(b *testing.B) {
 						if main {
 							agent = "Main"
 						}
-						v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: uint64(i + 1), Agent: agent, Kind: "text", Text: strings.Repeat("Completed analysis of the implementation.\n", 8), Observed: now}}})
+						v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: uint64(i + 1), Agent: agent, Kind: "text", Text: strings.Repeat("Completed analysis of the implementation.\n", 8), Observed: now}}})
 					}
 					agent := "/root/working"
 					if main {
 						agent = "Main"
 					}
-					entry := activityPaneEntry{Seq: 81, Agent: agent, Kind: "tool", Text: "Run `go test ./...`", Observed: now,
-						native: &liveActivityNativeItem{thread: "child", turn: "turn", item: "command", phase: "item/commandExecution/outputDelta", running: true}, outputTail: []string{"package result 0"}}
-					v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+					entry := sessionpresentation.ActivityEntry{Seq: 81, Agent: agent, Kind: "tool", Text: "Run `go test ./...`", Observed: now,
+						Native: &sessionpresentation.NativeItem{Thread: "child", Turn: "turn", Item: "command", Phase: "item/commandExecution/outputDelta", Running: true}, OutputTail: []string{"package result 0"}}
+					v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
 					v.RenderFeed(90, 24)
 					b.ReportAllocs()
 					iteration := 0
 					for b.Loop() {
 						entry.Seq = v.LastSeq + 1
-						entry.outputTail = []string{fmt.Sprintf("package result %d", iteration%10)}
-						v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+						entry.OutputTail = []string{fmt.Sprintf("package result %d", iteration%10)}
+						v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
 						if cold {
 							v.Runs = nil
 						}

@@ -11,10 +11,6 @@ import (
 
 type activeSkillSet = activitypresentation.SkillSet
 
-func contextBoundary(entry activityPaneEntry) bool {
-	return entry.Kind == "progress" && entry.Text == "Context compacted"
-}
-
 func (u *terminalUI) openSkills(view *activityAdapter, agent string) {
 	names := slices.Clone(view.ActiveSkills()[agent])
 	if len(names) == 0 {

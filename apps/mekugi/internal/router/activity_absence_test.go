@@ -12,6 +12,7 @@ func TestActivityAbsenceKeepsHostOutput(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.session.activity = nil
 	u.view.Conversation = true
+	u.view.testAudience()
 	item := binding.ThreadItem{ID: "command", Type: "commandExecution", Command: "printf 'host output'", Status: "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	appServerTestNotify(t, u, "item/commandExecution/outputDelta", map[string]any{"threadId": "main", "turnId": "turn", "itemId": item.ID, "delta": "host output\n"})
@@ -50,7 +51,7 @@ func TestActivityAbsenceKeepsOfflineReplay(t *testing.T) {
 		t.Fatalf("absent activity blocked replay: %s", frame)
 	}
 	for _, entry := range p.ui.view.Entries {
-		if entry.Source.native != nil && entry.Source.native.output != nil {
+		if entry.Source.Native != nil && entry.Source.Native.Output != nil {
 			t.Fatal("offline replay retained output without activity")
 		}
 	}
@@ -101,6 +102,7 @@ func TestActivityAbsenceDialogRefresh(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.view.Conversation = true
+			u.view.testAudience()
 			if absent {
 				u.session.activity = nil
 			}
@@ -115,7 +117,7 @@ func TestActivityAbsenceDialogRefresh(t *testing.T) {
 			awaitMain(t, u, "first")
 			var seq uint64
 			for _, entry := range u.view.Entries {
-				if entry.Source.native != nil && entry.Source.native.item == item.ID {
+				if entry.Source.Native != nil && entry.Source.Native.Item == item.ID {
 					seq = entry.Source.Seq
 					break
 				}

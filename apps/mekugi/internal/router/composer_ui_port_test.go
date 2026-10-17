@@ -1,7 +1,6 @@
 package router
 
 import (
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"bytes"
 	"context"
 	"encoding/json/jsontext"
@@ -14,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 
@@ -37,7 +38,7 @@ import (
 func TestSubmittedAttachmentHostSchema(t *testing.T) {
 	// Raw Codex UserInput/TextElement wire spelling, not a loopback of input().
 	raw := jsontext.Value(`[{"type":"text","text":"$batch-agent-sessions @FIXME.md non-deferred items","text_elements":[{"byteRange":{"start":0,"end":21},"placeholder":"$batch-agent-sessions"},{"byteRange":{"start":22,"end":31},"placeholder":"@FIXME.md"}]}]`)
-	text, spans, ok := appServerUserText(raw)
+	text, spans, ok := sessionpresentation.UserText(raw)
 	want := []activitypresentation.TextSpan{{Start: 0, End: 21, Kind: activitypresentation.SkillToken}, {Start: 22, End: 31, Kind: activitypresentation.FileToken}}
 	if !ok || !reflect.DeepEqual(spans, want) {
 		t.Fatalf("host spans=%+v", spans)
@@ -63,8 +64,8 @@ func TestSubmittedAttachmentHostSchema(t *testing.T) {
 		} else {
 			applyTranscriptFixture(u.view, true, u.session.cwd, "main", "main", "t", "input", "item/completed", "", item)
 		}
-		if !reflect.DeepEqual(u.view.Entries[0].Source.native.spans, want) {
-			t.Fatalf("restore=%v spans=%+v", restore, u.view.Entries[0].Source.native.spans)
+		if !reflect.DeepEqual(u.view.Entries[0].Source.Native.Spans, want) {
+			t.Fatalf("restore=%v spans=%+v", restore, u.view.Entries[0].Source.Native.Spans)
 		}
 	}
 }
@@ -73,8 +74,8 @@ func TestUISnapshotSubmittedAttachmentTokens(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.view.Painter.Theme = diffrender.DarkTheme
 	raw := jsontext.Value(`[{"type":"text","text":"$batch-agent-sessions @FIXME.md non-deferred items","text_elements":[{"byteRange":{"start":0,"end":21},"placeholder":"$batch-agent-sessions"},{"byteRange":{"start":22,"end":31},"placeholder":"@FIXME.md"}]}]`)
-	text, spans, _ := appServerUserText(raw)
-	entry := activityPaneEntry{Agent: "You", Text: text, Observed: time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local), native: &liveActivityNativeItem{spans: spans}}
+	text, spans, _ := sessionpresentation.UserText(raw)
+	entry := sessionpresentation.ActivityEntry{Agent: "You", Text: text, Observed: time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local), Native: &sessionpresentation.NativeItem{Spans: spans}}
 	out := u.view.testUserItem(entry, 80)
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/submitted-attachment-tokens.txt", append(out.Lines, "plain after attachments"), 80)
 }

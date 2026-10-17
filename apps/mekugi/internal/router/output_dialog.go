@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
@@ -96,7 +97,7 @@ func (u *terminalUI) openEntry(view *activityAdapter, seq uint64) bool {
 		if entry.Source.Seq != seq {
 			continue
 		}
-		blocks := view.sourceValues(index)
+		blocks := view.SourceValues(index)
 		for i := range blocks {
 			blocks[i].Source = entry.Source.Seq
 			if blocks[i].Verb == "" {
@@ -143,19 +144,19 @@ func (d *outputDialog) refreshPages(requested []activitypresentation.DetailPage)
 			continue
 		}
 		source := activitypresentation.DetailSource{Entry: entry.Publish()}
-		if n := entry.Source.native; n != nil {
-			command := commandPresentation(entry.Source)
-			if n.output == nil && n.running {
+		if n := entry.Source.Native; n != nil {
+			command := sessionpresentation.CommandPresentation(entry.Source)
+			if n.Output == nil && n.Running {
 				if frame, _, ok := d.view.CurrentCommandFrame(entry.Source.Seq); ok {
 					source.Entry = commandFrame(entry, frame)
 					command.Tail, command.TailOmitted, command.Segments = frame.Output.Tail, frame.Output.Omitted, frame.Segments
 				}
 			}
 			source.Command = &command
-			source.Streaming = n.phase == "summary" || n.phase == "item/started" || n.phase == "item/agentMessage/delta"
-			retained := map[int]*activitymodel.Output{1: n.output}
-			for i, segment := range n.segments {
-				retained[i+2] = segment.output
+			source.Streaming = n.Phase == "summary" || n.Phase == "item/started" || n.Phase == "item/agentMessage/delta"
+			retained := map[int]*activitymodel.Output{1: n.Output}
+			for i, segment := range n.Segments {
+				retained[i+2] = segment.Output
 			}
 			outputs[entry.Source.Seq] = retained
 		}

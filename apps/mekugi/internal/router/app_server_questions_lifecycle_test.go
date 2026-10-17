@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -252,11 +254,12 @@ func TestQuestionRecordPreservesLiteralNotePrefix(t *testing.T) {
 			lifecycleUserMessage(t, u, "turn", "reply", u.conversation().Submitted[u.Submission().ID].Text)
 		}
 		entry := u.view.Entries[0].Source
-		if got := entry.native.questions[0].Answer; got != literal {
+		if got := entry.Native.Questions[0].Answer; got != literal {
 			t.Fatalf("sync=%v: displayed %q, want literal %q", sync, got, literal)
 		}
 		questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": binding.ThreadItem{ID: "ack", Type: "agentMessage", Text: "I will use that answer."}})
 		u.view.Conversation = true
+		u.view.testAudience()
 		if frame := mainFeed(u, 100); !strings.Contains(frame, "re: your answer") || strings.Count(frame, literal) != 2 {
 			t.Fatalf("sync=%v: reply changed the literal answer:\n%s", sync, frame)
 		}
@@ -268,6 +271,7 @@ func TestQuestionReplyBecomesMainReplyAnchor(t *testing.T) {
 		t.Run(map[bool]string{false: "live", true: "resume"}[replay], func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.view.Conversation = true
+			u.view.testAudience()
 			u.Turn = "turn"
 			content := func(text string) []byte {
 				data, err := json.Marshal([]map[string]string{{"type": "text", "text": text}})
@@ -289,16 +293,16 @@ func TestQuestionReplyBecomesMainReplyAnchor(t *testing.T) {
 					questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 				}
 			}
-			var reply, ack activityPaneEntry
+			var reply, ack sessionpresentation.ActivityEntry
 			for _, entry := range u.view.Entries {
 				if entry.Source.Kind == "question_reply" {
 					reply = entry.Source
 				}
-				if entry.Source.native != nil && entry.Source.native.item == "ack" {
+				if entry.Source.Native != nil && entry.Source.Native.Item == "ack" {
 					ack = entry.Source
 				}
 			}
-			if reply.Seq == 0 || ack.native == nil || ack.native.question != reply.Seq || reply.Text != "Customers" {
+			if reply.Seq == 0 || ack.Native == nil || ack.Native.Question != reply.Seq || reply.Text != "Customers" {
 				t.Fatalf("reply not bound to answer: reply=%+v ack=%+v", reply, ack)
 			}
 			frame := mainFeed(u, 100)
@@ -315,7 +319,8 @@ func TestQuestionReplyBecomesMainReplyAnchor(t *testing.T) {
 func TestQuestionReplyLinkSkipsContinuationHeading(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
-	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
+	u.view.testAudience()
+	u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "Main", Kind: "reasoning", Text: "Check the audience"},
 		{Seq: 2, Agent: "Main", Kind: "tool", Text: "Read `config.go`"},
 		{Seq: 3, Agent: "/root/worker", Kind: "final", Text: "Checked"},
@@ -338,6 +343,7 @@ func TestQuestionReplyLinkSkipsContinuationHeading(t *testing.T) {
 func TestSyncQuestionReplyBecomesMainAnchor(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
+	u.view.testAudience()
 	u.Turn = "turn"
 	lifecycleUserMessage(t, u, "turn", "prompt", "Original task")
 	questionTestSync(t, u, "sync", false)

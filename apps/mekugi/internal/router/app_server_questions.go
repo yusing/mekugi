@@ -274,19 +274,19 @@ func (u *appServerUI) recordSyncQuestionAnswer(c *nativeQuestionCall) {
 		if v == nil {
 			continue
 		}
-		native := &liveActivityNativeItem{thread: c.Thread, turn: c.Turn, item: "question-answer/" + string(c.RequestID), phase: "item/completed"}
+		native := &sessionpresentation.NativeItem{Thread: c.Thread, Turn: c.Turn, Item: "question-answer/" + string(c.RequestID), Phase: "item/completed"}
 		for _, previous := range slices.Backward(v.Entries) {
-			if previous.Source.native == nil || previous.Source.native.thread != c.Thread {
+			if previous.Source.Native == nil || previous.Source.Native.Thread != c.Thread {
 				continue
 			}
-			if previous.Source.Kind == "question" && previous.Source.native.item == "question/"+string(c.RequestID) {
-				native.question = previous.Source.Seq
+			if previous.Source.Kind == "question" && previous.Source.Native.Item == "question/"+string(c.RequestID) {
+				native.Question = previous.Source.Seq
 			}
-			if native.replySource == "" && previous.Source.Agent == "You" && previous.Source.native.turn == c.Turn {
-				native.replySource = previous.Source.Text
+			if native.ReplySource == "" && previous.Source.Agent == "You" && previous.Source.Native.Turn == c.Turn {
+				native.ReplySource = previous.Source.Text
 			}
 		}
-		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: v.LastSeq + 1, Agent: "Main", Kind: "question_reply", Text: strings.Join(answers, "\n"), Observed: u.now(), native: native}}})
+		v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: v.LastSeq + 1, Agent: "Main", Kind: "question_reply", Text: strings.Join(answers, "\n"), Observed: u.now(), Native: native}}})
 	}
 }
 func (u *appServerUI) endSyncQuestions(turn string) {
@@ -537,8 +537,8 @@ func (u *appServerUI) renderQuestionRecord(c *nativeQuestionCall) {
 		if v == nil {
 			continue
 		}
-		entry := activityPaneEntry{Seq: v.LastSeq + 1, Agent: "Main", Kind: "question", Text: text, Observed: u.now(), native: &liveActivityNativeItem{thread: c.Thread, turn: c.Turn, item: id, phase: "question", questions: records}}
-		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+		entry := sessionpresentation.ActivityEntry{Seq: v.LastSeq + 1, Agent: "Main", Kind: "question", Text: text, Observed: u.now(), Native: &sessionpresentation.NativeItem{Thread: c.Thread, Turn: c.Turn, Item: id, Phase: "question", Questions: records}}
+		v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
 	}
 }
 

@@ -1,13 +1,15 @@
 package router
 
 import (
-"github.com/yusing/mekugi/libraries/legacycall"
 	"fmt"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/libraries/legacycall"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
@@ -45,6 +47,7 @@ func TestAppServerOutputTailKeepsFinalLines(t *testing.T) {
 func TestAppServerFailedCommandShowsOutputTailInMain(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
+	u.view.testAudience()
 	for _, method := range []string{"item/started", "item/completed"} {
 		item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "go test ./...", "status": "inProgress"}
 		if method == "item/completed" {
@@ -66,8 +69,9 @@ func TestAppServerPendingPatchIsNotEdited(t *testing.T) {
 	for _, agent := range []string{"Main", "/root/worker"} {
 		v := newActivityAdapter()
 		v.ChildrenOnly = agent != "Main"
+		v.testAudience()
 		patch := activitypresentation.HostEditText((binding.ThreadItem{Status: "inProgress", Changes: []binding.FileChange{{Path: "c.go", Diff: "+new\n-old\n"}}}).Observation(), "")
-		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: agent, Kind: "tool", CallID: "patch", Text: patch}}})
+		v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: agent, Kind: "tool", CallID: "patch", Text: patch}}})
 		feed := v.RenderFeed(100, 80)
 		if agent == "Main" {
 			feed = v.testRenderConversation(100)
@@ -93,6 +97,7 @@ func TestManagedFilesDoNotBecomeEditsInMain(t *testing.T) {
 func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
+	u.view.testAudience()
 	notify := func(method string, params map[string]any) {
 		t.Helper()
 		params["threadId"], params["turnId"] = "main", "t"
@@ -186,6 +191,7 @@ func TestAppServerSingleLineOutputStaysVisible(t *testing.T) {
 	for _, conversation := range []bool{false, true} {
 		u := newAppServerSessionTestUI(t, t.TempDir())
 		u.view.Conversation = conversation
+		u.view.testAudience()
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
 			"id": "cmd", "type": "commandExecution", "command": "echo done", "status": "completed", "exitCode": 0, "aggregatedOutput": "done\n",
 		}})
@@ -213,6 +219,7 @@ func TestAppServerMixedCommandOutputFollowsFinalRead(t *testing.T) {
 		t.Run(fmt.Sprint(exit), func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.view.Conversation = true
+			u.view.testAudience()
 			item := map[string]any{
 				"id": "mixed", "type": "commandExecution",
 				"command": "pwd; skills-mgr get mekugi-owners; cat a.go",
@@ -270,6 +277,7 @@ func TestAppServerAdjacentReadOutputsStayWithInvocation(t *testing.T) {
 		t.Run(fmt.Sprint(conversation), func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.view.Conversation = conversation
+			u.view.testAudience()
 			for i, output := range []string{"", "first-output\n", "second-output\n"} {
 				appServerTestNotify(t, u, "item/completed", map[string]any{
 					"threadId": "main", "turnId": "t", "item": map[string]any{
@@ -303,6 +311,7 @@ func rollCommandOutput(u *appServerUI) {
 func TestAppServerCompletionWaitsForOutputBurst(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
+	u.view.testAudience()
 	notify := func(method string, params map[string]any) {
 		t.Helper()
 		params["threadId"], params["turnId"] = "main", "t"
@@ -324,7 +333,7 @@ func TestAppServerCompletionWaitsForOutputBurst(t *testing.T) {
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 1, output.String()
 	notify("item/completed", map[string]any{"item": item})
 	run := u.session.commands[[3]string{"main", "t", "cmd"}]
-	canonical := run.entry.native.invocation.Snapshot()
+	canonical := run.entry.Native.Invocation.Snapshot()
 	if canonical.Running || !canonical.Exited || canonical.ExitCode != 1 || canonical.Ended.IsZero() || u.runningProcessCount() != 0 {
 		t.Fatalf("visual delay held canonical host completion: %+v", canonical)
 	}
@@ -358,6 +367,7 @@ func TestAppServerCompletionWaitsForOutputBurst(t *testing.T) {
 func TestAppServerHeldCompletionRefreshesAnnotations(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
+	u.view.testAudience()
 	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "printf output > source.go", "status": "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	output := strings.Repeat("output\n", 20)
@@ -366,15 +376,15 @@ func TestAppServerHeldCompletionRefreshesAnnotations(t *testing.T) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	u.flushStreamOutput()
 	view := u.view
-	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.session.next(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", native: &liveActivityNativeItem{thread: "main", item: "cmd"}}}})
-	if !view.markUnreturned("main", "cmd") {
+	view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.session.next(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd"}}}})
+	if !view.MarkUnreturned("main", "cmd") {
 		t.Fatal("output note was not admitted")
 	}
 	for _, receiptText := range []string{"Edit `source.go` +1 -1", ""} {
-		view.applyCapturedEdits([]*changepresentation.Receipt{{Thread: "main", Calls: []string{"cmd"}, Text: receiptText}})
-		view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.session.next(), Agent: "Main", Kind: "tool", native: &liveActivityNativeItem{thread: "main", turn: "t", item: "cmd", phase: "approval/updated", approval: "Approved"}}}})
+		view.ApplyCapturedEdits([]*changepresentation.Receipt{{Thread: "main", Calls: []string{"cmd"}, Text: receiptText}})
+		view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.session.next(), Agent: "Main", Kind: "tool", Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "t", Item: "cmd", Phase: "approval/updated", Approval: "Approved"}}}})
 		frame := ansi.Strip(strings.Join(view.RenderFeed(100, 30).Lines, "\n"))
-		if strings.Count(frame, "Repeated fixture output") != 1 || strings.Count(frame, unreturnedOutputNote) != 1 || strings.Contains(frame, "exit 1") {
+		if strings.Count(frame, "Repeated fixture output") != 1 || strings.Count(frame, "output not returned to the model") != 1 || strings.Contains(frame, "exit 1") {
 			t.Fatalf("held frame lost current annotations or exposed its delayed outcome:\n%s", frame)
 		}
 		if (receiptText != "") != strings.Contains(frame, "+1 -1") {
@@ -383,7 +393,7 @@ func TestAppServerHeldCompletionRefreshesAnnotations(t *testing.T) {
 	}
 	rollCommandOutput(u)
 	frame := ansi.Strip(strings.Join(view.RenderFeed(100, 30).Lines, "\n"))
-	if !strings.Contains(frame, "exit 1") || strings.Count(frame, "Repeated fixture output") != 1 || strings.Count(frame, unreturnedOutputNote) != 1 {
+	if !strings.Contains(frame, "exit 1") || strings.Count(frame, "Repeated fixture output") != 1 || strings.Count(frame, "output not returned to the model") != 1 {
 		t.Fatalf("released frame lost canonical failure or annotations:\n%s", frame)
 	}
 }
@@ -391,6 +401,7 @@ func TestAppServerHeldCompletionRefreshesAnnotations(t *testing.T) {
 func TestAppServerHeldCompletionSettlesFromDisplayTime(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
+	u.view.testAudience()
 	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	u.clock = func() time.Time { return now }
 	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "echo output", "status": "inProgress"}
@@ -407,7 +418,7 @@ func TestAppServerHeldCompletionSettlesFromDisplayTime(t *testing.T) {
 	now = now.Add(time.Hour)
 	rollCommandOutput(u)
 	u.view.RenderFeed(100, 30)
-	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.session.next(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", native: &liveActivityNativeItem{thread: "main", item: "cmd"}}}})
+	u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.session.next(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd"}}}})
 	if settleActivity(now.Add(activityui.OutputDebounce-time.Nanosecond), u.view) {
 		t.Fatal("annotation refresh reset display settlement to host completion")
 	}
@@ -431,6 +442,7 @@ func nextEvent(t *testing.T, u *appServerUI, thread string) {
 func TestAppServerOutputCollapsesTogetherAfterEventsPause(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
+	u.view.testAudience()
 	run := func(id string) {
 		t.Helper()
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
@@ -463,6 +475,7 @@ func TestAppServerOutputCollapsesTogetherAfterEventsPause(t *testing.T) {
 func TestAppServerMainClipsLongCommandSourceUntilOpened(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
+	u.view.testAudience()
 	command := "python3 - <<'PY'\n" + strings.Repeat("print('row')\n", 30) + "PY"
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
 		"id": "cmd", "type": "commandExecution", "command": command, "status": "failed", "exitCode": 1, "aggregatedOutput": "boom\n"}})
@@ -504,6 +517,7 @@ func TestAppServerReadOutputStartsCollapsed(t *testing.T) {
 	} {
 		u := newAppServerSessionTestUI(t, t.TempDir())
 		u.view.Conversation = true
+		u.view.testAudience()
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
 			"id": "cmd", "type": "commandExecution", "command": tc.command, "status": "completed", "exitCode": 0, "aggregatedOutput": "one\ntwo\n"}})
 		got := ansi.Strip(strings.Join(u.view.RenderFeed(90, 60).Lines, "\n"))
@@ -516,6 +530,7 @@ func TestAppServerReadOutputStartsCollapsed(t *testing.T) {
 func TestAppServerShortPaneShowsCompactTail(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
+	u.view.testAudience()
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
 		"id": "cmd", "type": "commandExecution", "command": "go test ./...", "status": "completed", "exitCode": 0, "aggregatedOutput": "1\n2\n3\n4\n5\n6\n"}})
 	render := func(height int) string {
@@ -532,6 +547,7 @@ func TestAppServerShortPaneShowsCompactTail(t *testing.T) {
 func TestAppServerInstantOperationOutputDoesNotRoll(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
+	u.view.testAudience()
 	notify := func(method string, params map[string]any) {
 		t.Helper()
 		params["threadId"], params["turnId"] = "main", "t"
@@ -574,6 +590,7 @@ func TestAppServerCollapsedReadsMerge(t *testing.T) {
 		t.Run(fmt.Sprint(conversation), func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.view.Conversation = conversation
+			u.view.testAudience()
 			for i, command := range []string{"sed -n 1,3p a.go", "sed -n 1,2p b.go", "sed -n 5,6p a.go"} {
 				appServerTestNotify(t, u, "item/completed", map[string]any{
 					"threadId": "main", "turnId": "t", "item": map[string]any{
@@ -625,7 +642,7 @@ func TestOutputCollapseSharesFrameAcrossLateCompletions(t *testing.T) {
 				if i == 1 {
 					settled = late
 				}
-				v.appendEntry(activityPaneEntry{Seq: uint64(i + 1), Agent: agent, completed: settled, native: &liveActivityNativeItem{}}, []activityui.Block{{Kind: "op", Verb: "Run", Tail: []string{"one", "two"}}})
+				v.appendEntry(sessionpresentation.ActivityEntry{Seq: uint64(i + 1), Agent: agent, Completed: settled, Native: &sessionpresentation.NativeItem{}}, []activityui.Block{{Kind: "op", Verb: "Run", Tail: []string{"one", "two"}}})
 			}
 			v.publishActivity()
 			for _, agent := range agents {
@@ -650,6 +667,7 @@ func TestOutputCollapseSharesFrameAcrossLateCompletions(t *testing.T) {
 func TestOutputCollapseSharesFrameAcrossPanes(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
+	u.view.testAudience()
 	start := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
 	late := start.Add(activityui.OutputDebounce / 2)
 	for i, agent := range []string{"/root", "/root/worker"} {
@@ -657,9 +675,9 @@ func TestOutputCollapseSharesFrameAcrossPanes(t *testing.T) {
 		if i == 1 {
 			at = late
 		}
-		u.applyActivity([]activityPaneEntry{
-			{Seq: uint64(i*2 + 1), Agent: agent, Kind: "tool", Text: "Run `echo result`", Observed: at, completed: at, outputTail: []string{"first output line", "last output line"}, native: &liveActivityNativeItem{thread: agent, item: "cmd"}},
-			{Seq: uint64(i*2 + 2), Agent: agent, Kind: "reasoning", Text: "**Next step**", Observed: at, native: &liveActivityNativeItem{thread: agent, item: "next"}},
+		u.applyActivity([]sessionpresentation.ActivityEntry{
+			{Seq: uint64(i*2 + 1), Agent: agent, Kind: "tool", Text: "Run `echo result`", Observed: at, Completed: at, OutputTail: []string{"first output line", "last output line"}, Native: &sessionpresentation.NativeItem{Thread: agent, Item: "cmd"}},
+			{Seq: uint64(i*2 + 2), Agent: agent, Kind: "reasoning", Text: "**Next step**", Observed: at, Native: &sessionpresentation.NativeItem{Thread: agent, Item: "next"}},
 		}, nil)
 	}
 	render := func(view *activityAdapter) string {

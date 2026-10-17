@@ -1,8 +1,9 @@
 package router
 
 import (
-	"encoding/json/jsontext"
 	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
@@ -33,87 +34,22 @@ func transcriptItem(item binding.ThreadItem, thread, turn, id string) observatio
 	return (binding.TranscriptItem{ID: item.ID, Type: item.Type, Text: item.Text, Status: item.Status, Summary: item.Summary, Delivery: item.Delivery, Phase: item.Phase, Questions: item.Questions}).Observation(thread, turn, id)
 }
 
-func transcriptEntry(update observation.TextUpdate, agent string) activityPaneEntry {
-	call := ""
-	if update.Kind == "reasoning" {
-		call = update.Ref.ItemID
-	}
-	return activityPaneEntry{Seq: update.Sequence, Agent: agent, Kind: update.Kind, Text: update.Text, CallID: call, Observed: update.Observed, completed: update.Completed,
-		native: &liveActivityNativeItem{thread: update.Ref.ThreadID, turn: update.Ref.TurnID, item: update.Ref.ItemID, phase: update.Phase, status: update.Status, live: update.Live, thought: update.Thought, replaces: update.Replaces}}
-}
-
-func (u *appServerUI) transcriptUpdates(updates []observation.TextUpdate, paced bool) []activityPaneEntry {
+func (u *appServerUI) transcriptUpdates(updates []observation.TextUpdate, paced bool) []sessionpresentation.ActivityEntry {
 	for i := range updates {
 		updates[i].Sequence = u.session.next()
 	}
 	if paced {
 		updates = u.summaryStream.Queue(updates)
 	}
-	entries := make([]activityPaneEntry, 0, len(updates))
+	entries := make([]sessionpresentation.ActivityEntry, 0, len(updates))
 	for _, update := range updates {
 		agent := "/root"
 		if update.Ref.ThreadID != u.Thread {
 			agent = u.session.path(update.Ref.ThreadID)
 		}
-		entries = append(entries, transcriptEntry(update, agent))
+		entries = append(entries, sessionpresentation.TranscriptEntry(update, agent))
 	}
 	return entries
-}
-
-// applyTranscript enriches an existing feed with Conversation's user/span and
-// attachment interpretation. It owns no host lifecycle or message accumulation.
-func (v *activityAdapter) applyTranscript(update observation.TextUpdate, content jsontext.Value, cwd, main string, user bool) {
-	ref := update.Ref
-	if ref.ThreadID == "" || ref.TurnID == "" || ref.ItemID == "" {
-		return
-	}
-	agent := "Main"
-	if ref.ThreadID != main {
-		agent = "Thread " + ref.ThreadID
-	}
-	entry := transcriptEntry(update, agent)
-	entry.Seq = v.LastSeq + 1
-	if user {
-		var ok bool
-		if entry.Text, entry.native.spans, ok = appServerUserText(content); !ok {
-			return
-		}
-		if replies := binding.QuestionReplies(entry.Text); len(replies) > 0 {
-			entry.Kind, entry.native.replySource = "question_reply", entry.Text
-			for _, reply := range replies {
-				questionID, _, ok := binding.QuestionReplyIdentity(reply)
-				if ok && entry.native.question == 0 {
-					for _, question := range v.Entries {
-						if question.Source.Kind == "question" && question.Source.native != nil && question.Source.native.thread == ref.ThreadID && question.Source.native.item == questionID {
-							entry.native.question = question.Source.Seq
-							break
-						}
-					}
-				}
-			}
-			entry.Text = questionReplyText(replies)
-			v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
-			return
-		}
-		if ref.ThreadID == main {
-			entry.Agent = "You"
-		} else {
-			entry.Agent += " · user"
-		}
-	}
-	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
-	if user {
-		workspace := ""
-		if ref.ThreadID == main {
-			workspace = cwd
-		}
-		if blocks := appServerAttachmentValues(workspace, content); len(blocks) > 0 {
-			entry.Agent = agent
-			entry.Seq, entry.Kind, entry.Text = v.LastSeq+1, "attachments", ""
-			entry.native = &liveActivityNativeItem{thread: ref.ThreadID, turn: ref.TurnID, item: ref.ItemID + "/attachments", phase: update.Phase, live: update.Live, attachments: blocks}
-			v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
-		}
-	}
 }
 
 func historicalTranscript(items []binding.ThreadItem, thread, turn string, main, promote bool, at time.Time) map[string]observation.TextUpdate {
@@ -139,7 +75,7 @@ func (u *appServerUI) flushSummaryOutput() {
 func (u *appServerUI) observeMessageQuestions(text observation.TextEvent, item observation.Item, history bool) bool {
 	var userText string
 	if item.Type == "userMessage" {
-		userText, _, _ = appServerUserText(item.Content)
+		userText, _, _ = sessionpresentation.UserText(item.Content)
 	}
 	in := conversationbinding.MessageQuestions(text, item, userText, text.Item.Ref.ThreadID == u.Thread, history)
 	if u.questions.NeedsParking(in) {
@@ -176,7 +112,7 @@ func (u *appServerUI) messageTranscript(text observation.TextEvent, item observa
 			u.applyActivity(u.transcriptUpdates([]observation.TextUpdate{update}, true), nil)
 			continue
 		}
-		u.view.applyTranscript(update, item.Content, u.session.cwd, u.Thread, item.Type == "userMessage")
+		u.view.ApplyTranscript(update, item.Content, u.session.cwd, u.Thread, item.Type == "userMessage")
 	}
 	return false
 }

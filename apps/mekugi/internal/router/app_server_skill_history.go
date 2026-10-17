@@ -98,22 +98,22 @@ func (u *appServerUI) skillHistoryResponse(thread string, m appserver.Message) e
 			page.NextCursor = ""
 			break
 		}
-		native := &liveActivityNativeItem{thread: thread, turn: entry.TurnID, item: item.ID, status: item.Status, phase: "item/completed", command: item.Command}
-		record := liveActivityRecord{Source: activityPaneEntry{Kind: "tool", native: native}}
+		native := &sessionpresentation.NativeItem{Thread: thread, Turn: entry.TurnID, Item: item.ID, Status: item.Status, Phase: "item/completed", Command: item.Command}
+		record := sessionpresentation.ActivityRecord{Source: sessionpresentation.ActivityEntry{Kind: "tool", Native: native}}
 		switch item.Type {
 		case "userMessage":
-			record.Source.Kind, native.item = "attachments", item.ID+"/attachments"
-			native.attachments = appServerAttachmentValues(u.session.cwd, item.Content)
+			record.Source.Kind, native.Item = "attachments", item.ID+"/attachments"
+			native.Attachments = sessionpresentation.AttachmentValues(u.session.cwd, item.Content)
 		case "commandExecution":
 			u.restoreCommandSegments(&record.Source, item, u.session.cwd)
-			if item.ExitCode != nil && *item.ExitCode != 0 && len(native.segments) == 0 {
+			if item.ExitCode != nil && *item.ExitCode != 0 && len(native.Segments) == 0 {
 				continue
 			}
 			record.Source.Text = appServerToolText(item.Observation(), u.session.cwd)
 		default:
 			continue
 		}
-		record.Values = activityContent(record.Source).Values()
+		record.Values = sessionpresentation.ActivityContent(record.Source).Values()
 		scan.names = scan.names.With(activitypresentation.SkillLoads(record)...)
 	}
 	if page.NextCursor != "" {

@@ -3,6 +3,8 @@ package router
 import (
 	"bytes"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
 
@@ -81,7 +83,7 @@ func TestAppServerOldTurnCompletionPreservesCurrentTranscript(t *testing.T) {
 	if got := ansi.Strip(strings.Join(u.agents.RenderFeed(90, 40).Lines, "\n")); !strings.Contains(got, "Thinking") {
 		t.Fatalf("old completion removed current provider placeholder: %q", got)
 	}
-	if old := u.agents.Entries[0].Source; old.Text != "Wait ended" || old.native.phase != "turn/completed" {
+	if old := u.agents.Entries[0].Source; old.Text != "Wait ended" || old.Native.Phase != "turn/completed" {
 		t.Fatalf("old completion did not settle its wait: %+v", old)
 	}
 	*at = at.Add(2 * time.Second)
@@ -94,7 +96,7 @@ func TestAppServerOldTurnCompletionPreservesCurrentTranscript(t *testing.T) {
 	var summary, final bool
 	for _, entry := range u.agents.Entries {
 		if entry.Source.Kind == "reasoning" {
-			summary = entry.Source.Text == "First continued" && entry.Source.native.phase == "item/completed" && entry.Source.native.thought == 5*time.Second
+			summary = entry.Source.Text == "First continued" && entry.Source.Native.Phase == "item/completed" && entry.Source.Native.Thought == 5*time.Second
 		}
 		final = final || entry.Source.Kind == "final" && entry.Source.Text == "Current answer"
 	}
@@ -396,7 +398,7 @@ func TestAppServerThinkingFolds(t *testing.T) {
 
 func TestThinkingElapsedNamesWholeSecondsOnly(t *testing.T) {
 	for thought, want := range map[time.Duration]string{0: "", 900 * time.Millisecond: "", time.Second: "1s", 12500 * time.Millisecond: "12s"} {
-		entry := activityPaneEntry{Kind: "reasoning", Text: "Body.", native: &liveActivityNativeItem{phase: "item/completed", thought: thought}}
+		entry := sessionpresentation.ActivityEntry{Kind: "reasoning", Text: "Body.", Native: &sessionpresentation.NativeItem{Phase: "item/completed", Thought: thought}}
 		block := parseLiveActivity(entry)[0]
 		got := ""
 		if block.Thought >= time.Second {
@@ -415,6 +417,7 @@ func TestThinkingElapsedNamesWholeSecondsOnly(t *testing.T) {
 func TestAppServerThinkingFromRequestStart(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
+	u.view.testAudience()
 	activity := sessioncontrol.NewAudience(nil)
 	activity.Attach("main")
 	activity.Observe("child", "main", "/root/worker", true)
@@ -526,16 +529,16 @@ func TestAppServerDuplicateSummaryCompletionKeepsNextThinking(t *testing.T) {
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": binding.ThreadItem{ID: "first", Type: "reasoning", Summary: []string{"Original summary."}}})
 				if reveal == "painted" {
 					rollCommandOutput(u)
-					if got := view.Entries[0].Source; got.native.thought != 3*time.Second {
-						t.Fatalf("completion-only summary lost provider timing: %+v", got.native)
+					if got := view.Entries[0].Source; got.Native.Thought != 3*time.Second {
+						t.Fatalf("completion-only summary lost provider timing: %+v", got.Native)
 					}
 				}
 				*at = at.Add(2 * time.Second)
 				start()
 				*at = at.Add(time.Second)
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": binding.ThreadItem{ID: "first", Type: "reasoning", Summary: []string{completion.text}}})
-				if got := view.Entries[0].Source; reveal == "painted" && (got.native.phase != "item/completed" || got.Text != "Original summary.") {
-					t.Errorf("duplicate completion replayed a finished summary: phase=%s text=%q", got.native.phase, got.Text)
+				if got := view.Entries[0].Source; reveal == "painted" && (got.Native.Phase != "item/completed" || got.Text != "Original summary.") {
+					t.Errorf("duplicate completion replayed a finished summary: phase=%s text=%q", got.Native.Phase, got.Text)
 				}
 				rollCommandOutput(u)
 				paintedAt := completedAt
@@ -546,15 +549,15 @@ func TestAppServerDuplicateSummaryCompletionKeepsNextThinking(t *testing.T) {
 				if want == "" {
 					want = "Original summary."
 				}
-				if got := view.Entries[0].Source; got.Text != want || got.native.thought != 3*time.Second || got.Observed != completedAt || got.completed != paintedAt {
-					t.Errorf("refreshed completion lost content or original timing: text=%q thought=%v observed=%v completed=%v", got.Text, got.native.thought, got.Observed, got.completed)
+				if got := view.Entries[0].Source; got.Text != want || got.Native.Thought != 3*time.Second || got.Observed != completedAt || got.Completed != paintedAt {
+					t.Errorf("refreshed completion lost content or original timing: text=%q thought=%v observed=%v completed=%v", got.Text, got.Native.Thought, got.Observed, got.Completed)
 				}
 				if got := ansi.Strip(strings.Join(view.RenderFeed(90, 40).Lines, "\n")); !strings.Contains(got, strings.TrimSuffix(want, ".")) || !strings.Contains(got, "Thinking") {
 					t.Fatalf("duplicate completion removed next provider thinking: %q", got)
 				}
 				*at = at.Add(4 * time.Second)
 				complete("next", "Next summary.")
-				if len(view.Entries) != 2 || view.Entries[1].Source.native.item != "next" || view.Entries[1].Source.native.thought != 5*time.Second {
+				if len(view.Entries) != 2 || view.Entries[1].Source.Native.Item != "next" || view.Entries[1].Source.Native.Thought != 5*time.Second {
 					t.Fatalf("next completion lost provider correlation: %+v", view.Entries)
 				}
 				if got := ansi.Strip(strings.Join(view.RenderFeed(90, 40).Lines, "\n")); strings.Contains(got, "Thinking") || !strings.Contains(got, "Next summary") {

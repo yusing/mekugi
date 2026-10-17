@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -63,11 +65,11 @@ func (u *appServerUI) hookEvent(method string, event binding.Notification) error
 	// Use the existing item reconciliation to ignore duplicate starts and late
 	// starts after completion. Hook identity is thread + run, independently of turn.
 	for _, entry := range view.Entries {
-		if n := entry.Source.native; n != nil && n.hook != nil && n.thread == event.ThreadID && n.item == run.ID {
-			if n.phase == "item/completed" || !completed && n.phase != "hook/restored" {
+		if n := entry.Source.Native; n != nil && n.Hook != nil && n.Thread == event.ThreadID && n.Item == run.ID {
+			if n.Phase == "item/completed" || !completed && n.Phase != "hook/restored" {
 				return nil
 			}
-			previousOutput = n.output
+			previousOutput = n.Output
 		}
 	}
 	output, hasError := hookOutput(run)
@@ -83,35 +85,35 @@ func (u *appServerUI) hookEvent(method string, event binding.Notification) error
 		previousOutput.Release()
 	}
 	entry.Seq = s.next()
-	u.applyActivity([]activityPaneEntry{entry}, s.roster())
+	u.applyActivity([]sessionpresentation.ActivityEntry{entry}, s.roster())
 	return nil
 }
 
-func (s *appServerSession) hookEntry(thread string, observation history.HookObservation, live bool) activityPaneEntry {
+func (s *appServerSession) hookEntry(thread string, observation history.HookObservation, live bool) sessionpresentation.ActivityEntry {
 	run := observation.Run
 	hook := &activitypresentation.HookDetails{HandlerType: run.HandlerType, ExecutionMode: run.ExecutionMode,
 		Status: run.Status, HasError: observation.HasError}
-	n := &liveActivityNativeItem{thread: thread, turn: observation.Turn, item: run.ID, hook: hook,
-		phase: "item/completed", live: live, status: run.Status}
+	n := &sessionpresentation.NativeItem{Thread: thread, Turn: observation.Turn, Item: run.ID, Hook: hook,
+		Phase: "item/completed", Live: live, Status: run.Status}
 	if live && !observation.Completed {
-		n.phase, n.running = "item/started", true
+		n.Phase, n.Running = "item/started", true
 	} else if !observation.Completed {
-		n.phase = "hook/restored"
+		n.Phase = "hook/restored"
 	}
 	if run.StartedAt > 0 {
-		n.commandStarted = time.Unix(run.StartedAt, 0)
+		n.CommandStarted = time.Unix(run.StartedAt, 0)
 	}
 	if run.CompletedAt != nil {
-		n.commandEnded = time.Unix(*run.CompletedAt, 0)
+		n.CommandEnded = time.Unix(*run.CompletedAt, 0)
 	}
 	if run.DurationMS != nil {
-		n.duration = time.Duration(*run.DurationMS) * time.Millisecond
+		n.Duration = time.Duration(*run.DurationMS) * time.Millisecond
 	}
 	if outputs := s.activity.Outputs(s.Scope()); outputs != nil {
-		n.output = outputs.New()
-		n.output.Write(observation.Output)
-		if !n.running {
-			n.output.Finish(nil, nil) // Hook status does not imply a shell exit.
+		n.Output = outputs.New()
+		n.Output.Write(observation.Output)
+		if !n.Running {
+			n.Output.Finish(nil, nil) // Hook status does not imply a shell exit.
 		}
 	}
 	label := run.EventName
@@ -129,11 +131,11 @@ func (s *appServerSession) hookEntry(thread string, observation history.HookObse
 	if !observation.Completed && !live {
 		label += " · outcome unknown"
 	}
-	entry := activityPaneEntry{Agent: s.path(thread), Kind: "hook", CallID: run.ID, Text: label, Observed: observation.At, native: n}
-	entry.outputTail, entry.outputOmit = appServerOutputTail(&observation.Output)
+	entry := sessionpresentation.ActivityEntry{Agent: s.path(thread), Kind: "hook", CallID: run.ID, Text: label, Observed: observation.At, Native: n}
+	entry.OutputTail, entry.OutputOmit = appServerOutputTail(&observation.Output)
 	if observation.Completed && run.Status == "completed" && !observation.HasError {
-		if live && len(entry.outputTail) > 0 {
-			entry.completed = observation.At
+		if live && len(entry.OutputTail) > 0 {
+			entry.Completed = observation.At
 		}
 	}
 	return entry

@@ -7,8 +7,6 @@ import (
 
 	"context"
 
-	"github.com/yusing/mekugi/backends/codex/binding"
-
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/yusing/mekugi/modules/commandsegments/segments"
@@ -107,7 +105,7 @@ func newExecTrackFixture(t *testing.T, ctx context.Context, instrumentation segm
 	return &execTrackFixture{Observer: observer, server: server}
 }
 func (h *execTrackFixture) start(key [3]string, command string) {
-	if script, ok := binding.CommandScript(command); ok {
+	if script, ok := shellinstrumentation.CommandScript(command); ok {
 		h.Start(key, script)
 	}
 }

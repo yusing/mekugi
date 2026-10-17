@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	json "encoding/json/v2"
@@ -45,7 +46,7 @@ func TestUISnapshotLoadedSkillsRestoreClickAndReset(t *testing.T) {
 				view, owner = u.agents, "/root/worker"
 			}
 			for range liveActivityFeedLimit {
-				view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.session.next(), Agent: owner, Kind: "text", Text: "note"}}})
+				view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.session.next(), Agent: owner, Kind: "text", Text: "note"}}})
 			}
 			u.shell.Focus = 3
 			screen := vt.NewEmulator(120, 28)

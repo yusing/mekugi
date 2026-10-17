@@ -64,8 +64,8 @@ func TestAppServerAnchoredHistoryPages(t *testing.T) {
 		t.Fatalf("unbounded requests: %+v", requests)
 	}
 	restoreContentReply(t, u, 4, map[string]any{"data": []any{historyItem("last", "latest answer", 109000), historyItem("middle", "middle commentary", 105000)}, "nextCursor": "older"})
-	if u.restoring != nil || u.historyLoading() != nil || u.agents.StatusLabel != "" {
-		t.Fatalf("partial history blocked resume: restoring=%+v loading=%+v status=%q agents=%q", u.restoring, u.historyLoading(), u.sessionPresentation().Status.Text, u.agents.StatusLabel)
+	if u.restoring != nil || u.historyLoading() != nil || u.agents.Coverage != "" {
+		t.Fatalf("partial history blocked resume: restoring=%+v loading=%+v status=%q agents=%q", u.restoring, u.historyLoading(), u.sessionPresentation().Status.Text, u.agents.Coverage)
 	}
 	agent := u.session.agent("/root/worker")
 	if agent.Turns != 2 || agent.Started.Unix() != 90 || agent.LastResponse.Unix() != 110 || !agent.Final || agent.Responding {
@@ -163,9 +163,9 @@ func TestAppServerAnchoredHistoryDeferredEvidence(t *testing.T) {
 	historyTurnsReply(t, u)
 	h := u.historyLoading()
 	h.placements = []*restoredPlacement{
-		{turn: "t", anchor: "first", at: time.Unix(102, 0), entry: activityPaneEntry{Agent: "/root/worker", Kind: "error", Text: "old cell failure"}},
-		{turn: "t", anchor: "middle", at: time.Unix(106, 0), entry: activityPaneEntry{Agent: "/root/worker", Kind: "error", Text: "new cell failure"}},
-		{at: time.Unix(103, 0), entry: activityPaneEntry{Agent: "/root/worker", Kind: "reply", Text: "time placed message"}},
+		{turn: "t", anchor: "first", at: time.Unix(102, 0), entry: sessionpresentation.ActivityEntry{Agent: "/root/worker", Kind: "error", Text: "old cell failure"}},
+		{turn: "t", anchor: "middle", at: time.Unix(106, 0), entry: sessionpresentation.ActivityEntry{Agent: "/root/worker", Kind: "error", Text: "new cell failure"}},
+		{at: time.Unix(103, 0), entry: sessionpresentation.ActivityEntry{Agent: "/root/worker", Kind: "reply", Text: "time placed message"}},
 	}
 	restoreContentReply(t, u, 4, map[string]any{"data": []any{historyItem("last", "latest", 109000), historyItem("middle", "middle", 105000)}, "nextCursor": "older"})
 	if len(h.placements) != 2 || len(u.agents.Entries) != 3 {
@@ -332,7 +332,7 @@ func TestAppServerAnchoredHistoryRetainsPausedViewportAndLinks(t *testing.T) {
 		t.Fatal(err)
 	}
 	restoreContentReply(t, u, 5, map[string]any{"data": []any{historyItem("first", "older\ncommentary", 101000)}})
-	if u.agents.entrySeq(activityPaneEntry{native: &liveActivityNativeItem{thread: "child", turn: "t", item: "middle"}}) != stable {
+	if u.agents.EntrySeq(sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Thread: "child", Turn: "t", Item: "middle"}}) != stable {
 		t.Fatal("older insertion changed existing item links")
 	}
 	u.agents.RenderFeed(60, 3)
@@ -361,7 +361,7 @@ func TestAppServerAnchoredHistoryTurnBudgetKeepsRecentItems(t *testing.T) {
 		t.Fatalf("metadata limit discarded recent history or kept paging: %+v", requests)
 	}
 	restoreContentReply(t, u, 11, map[string]any{"data": []any{historyItem("recent", "still available", 101000)}})
-	if u.restoring != nil || u.agents.StatusLabel != "History incomplete" || len(u.agents.Entries) != 1 || u.session.agent("/root/worker").Turns != 8 {
+	if u.restoring != nil || u.agents.Coverage != "History incomplete" || len(u.agents.Entries) != 1 || u.session.agent("/root/worker").Turns != 8 {
 		t.Fatal("metadata limit pretended complete coverage or hid retained recent items")
 	}
 }
@@ -395,7 +395,7 @@ func TestAppServerAnchoredHistoryInitialFailureRetryKeepsEvidence(t *testing.T) 
 	historyTurnsReply(t, u)
 	u.restoring.root.Turns = []binding.HistoryTurn{{ID: "root-turn", Status: "completed", StartedAt: 80, CompletedAt: 120}}
 	h := u.historyLoading()
-	h.placements = []*restoredPlacement{{turn: "t", anchor: "last", at: time.Unix(109, 0), entry: activityPaneEntry{Agent: "/root/worker", Kind: "reply", Text: "retained directed message", message: &activityMessage{from: "/root/worker", to: "/root", text: "retained directed message"}}}}
+	h.placements = []*restoredPlacement{{turn: "t", anchor: "last", at: time.Unix(109, 0), entry: sessionpresentation.ActivityEntry{Agent: "/root/worker", Kind: "reply", Text: "retained directed message", Message: &sessionpresentation.ActivityMessage{From: "/root/worker", To: "/root", Text: "retained directed message"}}}}
 	restoreContentError(t, u, 4)
 	count := func() int {
 		n := 0
@@ -413,11 +413,11 @@ func TestAppServerAnchoredHistoryInitialFailureRetryKeepsEvidence(t *testing.T) 
 		t.Fatal(err)
 	}
 	restoreContentReply(t, u, 5, map[string]any{"data": []any{historyItem("last", "latest answer", 109000)}})
-	if count() != 1 || len(h.placements) != 0 || u.agents.StatusLabel == "History incomplete" {
+	if count() != 1 || len(h.placements) != 0 || u.agents.Coverage == "History incomplete" {
 		t.Fatal("recovery duplicated Main evidence or left a false gap")
 	}
 	for _, e := range u.view.Entries {
-		if e.Source.Text == "retained directed message" && e.Source.activitySeq == 0 {
+		if e.Source.Text == "retained directed message" && e.Source.ActivitySeq == 0 {
 			t.Fatal("recovered Activity link missing")
 		}
 	}

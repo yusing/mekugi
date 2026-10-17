@@ -17,6 +17,7 @@ func TestUISnapshotAppServerReasoningBeforeLaterActivity(t *testing.T) {
 			t.Run(thread+"_"+later, func(t *testing.T) {
 				u := newAppServerSessionTestUI(t, t.TempDir())
 				u.view.Conversation = true
+				u.view.testAudience()
 				at := time.Date(2026, 9, 30, 8, 0, 0, 0, time.Local)
 				u.clock = func() time.Time { return at }
 				u.view.Clock, u.agents.Clock = u.clock, u.clock

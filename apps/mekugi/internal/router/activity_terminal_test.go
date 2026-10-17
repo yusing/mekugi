@@ -3,15 +3,17 @@ package router
 import (
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
-func testActivityAgent(agent activityPaneAgent) activitypresentation.Agent {
+func testActivityAgent(agent sessionpresentation.ActivityAgent) activitypresentation.Agent {
 	return activitypresentation.Agent{AgentFacts: agent.ActivityAgent()}
 }
 
-func (v *activityAdapter) testAgent(agent activityPaneAgent) activitypresentation.Agent {
+func (v *activityAdapter) testAgent(agent sessionpresentation.ActivityAgent) activitypresentation.Agent {
 	v.publishActivity()
 	for _, row := range v.View.Roster() {
 		if row.Agent.Name == agent.Name {
@@ -28,7 +30,7 @@ func (v *activityAdapter) testAgent(agent activityPaneAgent) activitypresentatio
 	return neutral
 }
 
-func (v *activityAdapter) testCurrent(agent activityPaneAgent, now time.Time, widths ...int) (string, string) {
+func (v *activityAdapter) testCurrent(agent sessionpresentation.ActivityAgent, now time.Time, widths ...int) (string, string) {
 	return v.View.Current(v.testAgent(agent), now, widths...)
 }
 
@@ -37,7 +39,7 @@ func (v *activityAdapter) testRoster() []activitypresentation.AgentRow {
 	return v.View.Roster()
 }
 
-func (v *activityAdapter) testVisible(entry activityPaneEntry) bool {
+func (v *activityAdapter) testVisible(entry sessionpresentation.ActivityEntry) bool {
 	v.publishActivity()
 	return v.View.Visible(activitypresentation.Entry{Facts: entry.ActivityFacts()})
 }
@@ -50,7 +52,7 @@ func (v *activityAdapter) testRenderConversation(width int) activityui.Feed {
 		if len(demands) == 0 {
 			return feed
 		}
-		v.View.Hydrate(v.resolveOutputDemands(demands))
+		v.View.Hydrate(v.ResolveOutputDemands(demands))
 	}
 }
 
@@ -62,12 +64,12 @@ func (v *activityAdapter) testConversationItem(first, last, width int, thread ac
 		if len(demands) == 0 {
 			return run
 		}
-		v.View.Hydrate(v.resolveOutputDemands(demands))
+		v.View.Hydrate(v.ResolveOutputDemands(demands))
 	}
 }
 
 // Render one authored user item through the transcript's actual item consumer.
-func (v *activityAdapter) testUserItem(entry activityPaneEntry, width int) activityui.Run {
+func (v *activityAdapter) testUserItem(entry sessionpresentation.ActivityEntry, width int) activityui.Run {
 	view := activityui.NewView()
 	view.Painter = v.Painter
 	view.Update(activitypresentation.Publication{Entries: []activitypresentation.Entry{{Facts: entry.ActivityFacts()}}}, activityui.Display{})
@@ -102,4 +104,15 @@ func (v *activityAdapter) testPace(now time.Time) bool {
 func (v *activityAdapter) testKeepSelection() {
 	v.publishActivity()
 	v.View.KeepSelection()
+}
+
+// Fixtures choose semantic admission separately from the terminal layout flags.
+func (v *activityAdapter) testAudience() {
+	v.Audience = 0
+	if v.Conversation {
+		v.Audience = sessionpresentation.MainAudience
+	}
+	if v.ChildrenOnly {
+		v.Audience = sessionpresentation.ChildAudience
+	}
 }

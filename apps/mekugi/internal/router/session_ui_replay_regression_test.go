@@ -56,23 +56,23 @@ func TestSessionUIReplayRetainedCollaborationDelivery(t *testing.T) {
 		got := make(map[string]string)
 		for _, entry := range p.ui.agents.Entries {
 			e := entry.Source
-			if e.assignment == nil && e.message == nil {
+			if e.Assignment == nil && e.Message == nil {
 				continue
 			}
-			if _, duplicate := got[e.native.item]; duplicate {
-				t.Fatalf("duplicate collaboration identity %q", e.native.item)
+			if _, duplicate := got[e.Native.Item]; duplicate {
+				t.Fatalf("duplicate collaboration identity %q", e.Native.Item)
 			}
-			if e.assignment != nil {
-				got[e.native.item] = e.assignment.text
-			} else if e.message != nil {
-				got[e.native.item] = e.message.text
+			if e.Assignment != nil {
+				got[e.Native.Item] = e.Assignment.Text
+			} else if e.Message != nil {
+				got[e.Native.Item] = e.Message.Text
 			}
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("pass %d collaboration delivery = %#v, want %#v", pass, got, want)
 		}
 		child := p.ui.session.agent(p.ui.session.paths["child"])
-		if child == nil || child.settings.Model != "child-model" || child.settings.Effort != "high" {
+		if child == nil || child.Settings.Model != "child-model" || child.Settings.Effort != "high" {
 			t.Fatalf("spawn settings lost: %+v", child)
 		}
 		p.ui.agents.displayThread(child.Name)
@@ -249,7 +249,7 @@ func TestSessionUIReplayRustAgentStatusShapesReachFinalWaitDisplay(t *testing.T)
 	replayPlaybackTestPaint(t, p, 120, 28)
 	var finalWait string
 	for _, entry := range p.ui.view.Entries {
-		if entry.Source.native != nil && entry.Source.native.item == "wait" && entry.Source.native.wait != nil {
+		if entry.Source.Native != nil && entry.Source.Native.Item == "wait" && entry.Source.Native.Wait != nil {
 			finalWait = entry.Source.Text
 		}
 	}
@@ -377,10 +377,10 @@ func TestSessionUIReplayEndPaintSettlesQueuedCommandOutput(t *testing.T) {
 	}
 	var tail []string
 	for _, entry := range p.ui.view.Entries {
-		if entry.Source.native != nil && entry.Source.native.item == command.ID {
-			tail = entry.Source.outputTail
-			if entry.Source.native.phase != "item/completed" || !entry.Source.native.commandEnded.Equal(end) {
-				t.Fatalf("final command evidence unsettled: %+v", entry.Source.native)
+		if entry.Source.Native != nil && entry.Source.Native.Item == command.ID {
+			tail = entry.Source.OutputTail
+			if entry.Source.Native.Phase != "item/completed" || !entry.Source.Native.CommandEnded.Equal(end) {
+				t.Fatalf("final command evidence unsettled: %+v", entry.Source.Native)
 			}
 		}
 	}

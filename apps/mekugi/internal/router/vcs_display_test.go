@@ -72,6 +72,7 @@ func vcsCommandUI(t *testing.T, workspace string) *appServerUI {
 	t.Helper()
 	u := newAppServerSessionTestUI(t, workspace)
 	u.view.Conversation = true
+	u.view.testAudience()
 	return u
 }
 

@@ -3,6 +3,8 @@ package router
 import (
 	"bytes"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	json "encoding/json/v2"
@@ -121,7 +123,7 @@ func TestSkillAttachmentTranscriptAndHistoryMetadata(t *testing.T) {
 		{"selected second occurrence", `[{"type":"text","text":"$review then $review","text_elements":[{"byteRange":{"start":13,"end":20},"placeholder":"$review"}]},{"type":"skill","name":"review","path":"/work/review/SKILL.md"}]`, 13},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			text, spans, ok := appServerUserText([]byte(tc.content))
+			text, spans, ok := sessionpresentation.UserText([]byte(tc.content))
 			if !ok || len(spans) != 1 || spans[0].Kind != activitypresentation.SkillToken || spans[0].Start != tc.wantStart || text[spans[0].Start:spans[0].End] != "$review" {
 				t.Fatalf("skill display: %q %+v, ok=%v", text, spans, ok)
 			}
@@ -134,7 +136,7 @@ func TestSkillAttachmentTranscriptAndHistoryMetadata(t *testing.T) {
 				t.Fatal(err)
 			}
 			u.restoreHistory(turns)
-			if len(u.view.Entries) == 0 || u.view.Entries[0].Source.native == nil || len(u.view.Entries[0].Source.native.spans) != 1 || u.view.Entries[0].Source.native.spans[0].Start != tc.wantStart {
+			if len(u.view.Entries) == 0 || u.view.Entries[0].Source.Native == nil || len(u.view.Entries[0].Source.Native.Spans) != 1 || u.view.Entries[0].Source.Native.Spans[0].Start != tc.wantStart {
 				t.Fatalf("restored transcript did not preserve selected skill: %+v", u.view.Entries)
 			}
 			if len(u.InputHistory) != 1 || len(u.InputHistory[0].Skills) != 1 || u.InputHistory[0].Skills[0].Start != tc.wantStart {

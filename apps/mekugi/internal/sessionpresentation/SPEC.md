@@ -78,6 +78,15 @@ playback admits recorded metadata directly and constructs no backend client or
 request tracker. Both sources use the same item, turn and transcript projection;
 the terminal attachment retains its own pacing and navigation.
 
+The application's source binding borrows the existing attached Activity feed pair
+for source records, semantic revisions and enrichment. Conversation remains the
+transcript interpreter; its backend binding supplies neutral submitted-text spans
+and question-reply identities. Shared shell-source decoding supplies command facts. Audience admission and coverage belong to that binding,
+independently of painter configuration. Private host evidence and retained output
+handles stay in the binding; terminal consumers receive detached publications,
+identity-addressed details and output windows. Command reveal frames and animation
+cursors never become semantic source state.
+
 ## History
 
 Child history opens at the newest turn's recent items. Older pages continue from

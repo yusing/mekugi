@@ -389,7 +389,7 @@ func TestServiceTierChildRequestAndRootNotice(t *testing.T) {
 		t.Fatalf("provider tier=%s want=priority", got)
 	}
 	entries := takeNativeActivity(proxy.activity, "root")
-	if len(entries) != 1 || entries[0].Kind != "start" || entries[0].start == nil || entries[0].start.tier != "fast" {
+	if len(entries) != 1 || entries[0].Kind != "start" || entries[0].Start == nil || entries[0].Start.Tier != "fast" {
 		t.Fatalf("native start did not retain effective tier: %+v", entries)
 	}
 }

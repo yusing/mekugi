@@ -26,7 +26,7 @@ func TestAppServerInterruptedWaitEndsBeforeContinue(t *testing.T) {
 			if thread != "main" {
 				view = u.agents
 			}
-			if len(view.Entries) != 1 || view.Entries[0].Source.Text != "Wait ended · target" || view.Entries[0].Source.native.phase != "turn/completed" {
+			if len(view.Entries) != 1 || view.Entries[0].Source.Text != "Wait ended · target" || view.Entries[0].Source.Native.Phase != "turn/completed" {
 				t.Fatalf("interrupted wait survived continue: %+v", view.Entries)
 			}
 			// A late real item result replaces the display-only turn closure.
@@ -48,7 +48,7 @@ func TestAppServerRestoredStoppedWait(t *testing.T) {
 			u.session.registerThread(binding.ThreadInfo{ID: "child"})
 			u.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: history}, false)
 			for _, view := range []*activityAdapter{u.view, u.agents} {
-				if view.Entries[0].Source.Text != "Wait ended" || view.Entries[0].Source.native.phase != "turn/completed" {
+				if view.Entries[0].Source.Text != "Wait ended" || view.Entries[0].Source.Native.Phase != "turn/completed" {
 					t.Fatalf("stopped history revived waiting: %+v", view.Entries[0])
 				}
 			}

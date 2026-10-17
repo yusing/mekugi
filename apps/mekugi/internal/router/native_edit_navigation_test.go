@@ -43,7 +43,7 @@ func TestNativeEditClickOpensExactCapturedDiffDialog(t *testing.T) {
 				if repeated {
 					path = "file20.go"
 				}
-				u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "Edit `" + path + "` +1 -1 · apply_patch", native: &liveActivityNativeItem{thread: "main", item: "earlier"}}, {Seq: 2, Agent: "Main", Kind: "tool", Text: "Edit `file20.go` +1 -1 · apply_patch", native: &liveActivityNativeItem{thread: "main", item: "call"}}}})
+				u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "Edit `" + path + "` +1 -1 · apply_patch", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "earlier"}}, {Seq: 2, Agent: "Main", Kind: "tool", Text: "Edit `file20.go` +1 -1 · apply_patch", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "call"}}}})
 				u.shell.DiffOpen, u.shell.Focus = true, 1
 				for _, key := range []byte("a\t/amber1\r") {
 					if err := u.shell.key(key); err != nil {
@@ -147,13 +147,13 @@ func TestNativeHostEditNavigationRequiresCompletedSuccessfulItem(t *testing.T) {
 	u.session.activity = fixtureActivityWithoutDetails(t)
 	for _, tc := range []struct{ phase, status string }{{"item/started", ""}, {"item/completed", "failed"}, {"item/completed", "declined"}, {"item/completed", "inProgress"}} {
 		item := binding.ThreadItem{Type: "fileChange", Status: tc.status, Changes: []binding.FileChange{{Path: "a.go", Diff: "+not_confirmed\n"}}}
-		u.view.Entries = []liveActivityRecord{{Source: activityPaneEntry{Seq: 1, native: &liveActivityNativeItem{thread: "main", item: "patch", editPages: activitypresentation.HostEditPages(item.Observation(), u.session.cwd, tc.phase)}}}}
+		u.view.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch", EditPages: activitypresentation.HostEditPages(item.Observation(), u.session.cwd, tc.phase)}}}}
 		if u.shell.openActivityEdit(u.view, 1, "a.go") || u.shell.output != nil {
 			t.Fatalf("%s/%s opened a completed edit", tc.phase, tc.status)
 		}
 	}
 	item := binding.ThreadItem{Changes: []binding.FileChange{{Path: "first.go", Diff: "+first\n"}, {Path: "second.go", Diff: "+second\n"}}}
-	u.view.Entries = []liveActivityRecord{{Source: activityPaneEntry{Seq: 2, native: &liveActivityNativeItem{thread: "main", item: "patch", editPages: activitypresentation.HostEditPages(item.Observation(), u.session.cwd, "item/completed")}}}}
+	u.view.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 2, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch", EditPages: activitypresentation.HostEditPages(item.Observation(), u.session.cwd, "item/completed")}}}}
 	if u.shell.openActivityEdit(u.view, 2, "missing.go") || !u.shell.openActivityEdit(u.view, 2, "second.go") || u.shell.output.Page != 1 {
 		t.Fatal("host diff did not resolve the exact clicked path")
 	}
@@ -162,7 +162,7 @@ func TestNativeHostEditNavigationRequiresCompletedSuccessfulItem(t *testing.T) {
 func TestUISnapshotNativeCompletedHostEditDialog(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	item := binding.ThreadItem{Changes: []binding.FileChange{{Path: "internal/router/batch.go", Diff: "@@ -1 +1 @@\n-before_batch\n+after_batch\n"}}}
-	u.view.Entries = []liveActivityRecord{{Source: activityPaneEntry{Seq: 1, native: &liveActivityNativeItem{thread: "main", item: "patch", editPages: activitypresentation.HostEditPages(item.Observation(), u.session.cwd, "item/completed")}}}}
+	u.view.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch", EditPages: activitypresentation.HostEditPages(item.Observation(), u.session.cwd, "item/completed")}}}}
 	if !u.shell.openActivityEdit(u.view, 1, "internal/router/batch.go") {
 		t.Fatal("host edit did not open")
 	}
@@ -184,7 +184,7 @@ func TestNativeEditDialogShowsHistoricalHunkNotLaterCapture(t *testing.T) {
 	u.shell.saved.Data = reviewFixtureSnapshot(t, presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: "/w", Call: "clicked"}, Correlation: "call\x000", Change: "amber1"}, Operation: activitydetail.Operation{Thread: "main", Item: "call"}, Chunks: captures[:1]})
 	publishFixtureReview(t, u)
 
-	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "Edit `target.go` +1 -1 · apply_patch", native: &liveActivityNativeItem{thread: "main", item: "call"}}}})
+	u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "Edit `target.go` +1 -1 · apply_patch", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "call"}}}})
 	if err := os.WriteFile(filepath.Join(u.session.cwd, "target.go"), []byte("unrelated_workspace_content\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +212,7 @@ func TestNativeCapturedDetailIsAttachmentScoped(t *testing.T) {
 		Operation:       activitydetail.Operation{Thread: "main", Item: "edit"}, Chunks: []presentation.Chunk{chunk},
 	})
 	publishFixtureReview(t, u)
-	u.view.Entries = []liveActivityRecord{{Source: activityPaneEntry{Seq: 1, native: &liveActivityNativeItem{thread: "main", item: "edit"}}}}
+	u.view.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "edit"}}}}
 	// Retained reads are unavailable after publication. Detail navigation must
 	// consume the accepted snapshot without reopening evidence.
 	u.shell.saved.Changes = nil

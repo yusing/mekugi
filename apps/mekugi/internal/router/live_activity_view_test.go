@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
@@ -22,7 +24,7 @@ import (
 
 // invalidateEntry republishes direct fixture edits through the renderer cache.
 func (v *activityAdapter) invalidateEntry(seq uint64) {
-	if i := slices.IndexFunc(v.Entries, func(record liveActivityRecord) bool { return record.Source.Seq == seq }); i >= 0 {
+	if i := slices.IndexFunc(v.Entries, func(record sessionpresentation.ActivityRecord) bool { return record.Source.Seq == seq }); i >= 0 {
 		v.Model.Revise(i)
 	}
 	v.View.InvalidateRuns(seq)
@@ -32,6 +34,7 @@ func TestEditHoverDecoratesOnlyPointedText(t *testing.T) {
 	for _, main := range []bool{false, true} {
 		v := newActivityAdapter()
 		v.Conversation = main
+		v.testAudience()
 		v.FeedTop, v.FeedLeft, v.FeedRight = 1, 1, 100
 		target := activityui.Snippet{Run: 1, Block: activityui.EditNavigationSnippet}
 		bar := terminalui.Green + "━━━━━━━━" + terminalui.Red + "\x1b[39m" + terminalui.Dim + terminalui.Undim
@@ -87,7 +90,8 @@ func TestEditHoverDecoratesOnlyPointedText(t *testing.T) {
 func TestLiveActivityScrollStopsAtLastFullViewport(t *testing.T) {
 	v := newActivityAdapter()
 	v.Conversation = true
-	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: strings.Repeat("Content row\n", 30) + "Last row"}}})
+	v.testAudience()
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: strings.Repeat("Content row\n", 30) + "Last row"}}})
 	feed := v.RenderFeed(80, 8)
 	bottom := v.Viewport(feed, 8)
 	for _, key := range []byte{'j', terminalui.PaneWheelDown, ' ', 'G'} {
@@ -118,7 +122,7 @@ func TestLiveActivityJavaScriptStableIndent(t *testing.T) {
 				"text(1);\ntext(2);",
 				`const tool = ALL_TOOLS.find(x => /search_openai_docs$/.test(x.name)); text(tool);`,
 			} {
-				blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: "Run JavaScript\n" + toolActivityFenced("javascript", source)})
+				blocks := parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "tool", Text: "Run JavaScript\n" + toolActivityFenced("javascript", source)})
 				if len(blocks) != 1 {
 					t.Fatalf("blocks = %+v", blocks)
 				}
@@ -137,16 +141,16 @@ func TestLiveActivityJavaScriptStableIndent(t *testing.T) {
 }
 
 func TestParseLiveActivityBlocks(t *testing.T) {
-	message := parseLiveActivity(activityPaneEntry{Kind: "reply", message: &activityMessage{from: "/root/a", to: "/root", text: "Done.\n- `x.go`"}})
+	message := parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root/a", To: "/root", Text: "Done.\n- `x.go`"}})
 	if len(message) != 1 || message[0].Kind != "message" || message[0].From != "/root/a" || message[0].To != "/root" || message[0].Body != "Done.\n- `x.go`" {
 		t.Fatalf("message = %+v", message)
 	}
-	start := parseLiveActivity(activityPaneEntry{Kind: "start", start: &activityStart{model: "m", effort: "high", tier: "fast"}})
+	start := parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "start", Start: &sessionpresentation.ActivityStart{Model: "m", Effort: "high", Tier: "fast"}})
 	if len(start) != 1 || start[0].Kind != "start" || start[0].Label != "`m` `high` `fast`" || start[0].Body != "" {
 		t.Fatalf("start = %+v", start)
 	}
 	// Blank lines inside a fence do not split the operation.
-	ops := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: "Run `go test`\n```bash\ngo test ./...\n\necho done\n```\n\nRead `a.go 1:2`\n\nRead `a.go 5:6` `b.go`\n\nSearch `rg x`"})
+	ops := parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "tool", Text: "Run `go test`\n```bash\ngo test ./...\n\necho done\n```\n\nRead `a.go 1:2`\n\nRead `a.go 5:6` `b.go`\n\nSearch `rg x`"})
 	if len(ops) != 3 {
 		t.Fatalf("ops = %+v", ops)
 	}
@@ -161,7 +165,7 @@ func TestParseLiveActivityBlocks(t *testing.T) {
 		t.Fatalf("search = %+v", ops[2])
 	}
 	// Unrecognized text stays text.
-	if text := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: "Read `a.go` and more"}); text[0].Kind != "op" {
+	if text := parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "tool", Text: "Read `a.go` and more"}); text[0].Kind != "op" {
 		t.Fatalf("mixed read = %+v", text)
 	}
 }
@@ -175,9 +179,9 @@ func TestLiveActivityRendersSpawnAssignment(t *testing.T) {
 	}
 	now := time.Now()
 	view := newActivityAdapter()
-	view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/explorer"}}, Entries: []activityPaneEntry{{
-		Seq: 1, Agent: "/root/explorer", Kind: "start", start: testActivityStart(t, &request), Observed: now,
-		assignment: &activityAssignment{id: "task-1", from: "/root", to: "/root/explorer", text: "Inspect parser.\n\n- Preserve behavior."},
+	view.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/explorer"}}, Entries: []sessionpresentation.ActivityEntry{{
+		Seq: 1, Agent: "/root/explorer", Kind: "start", Start: testActivityStart(t, &request), Observed: now,
+		Assignment: &sessionpresentation.ActivityAssignment{ID: "task-1", From: "/root", To: "/root/explorer", Text: "Inspect parser.\n\n- Preserve behavior."},
 	}}})
 	view.setDisplayFilter(true, "/root/explorer")
 	frame := strings.Join(plainLines(view.Render(100, 20, now)), "\n")
@@ -191,16 +195,16 @@ func TestLiveActivityRendersSpawnAssignment(t *testing.T) {
 func TestLiveActivityConfirmedEditReplacesRun(t *testing.T) {
 	v := newActivityAdapter()
 	caller := "/root/worker"
-	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
 		Seq: 1, Agent: caller, Kind: "tool", CallID: "call", Text: "Run\n```bash\npython3 edit.py\n```",
 	}}})
 	if len(v.Entries) != 1 || v.blocks(0)[0].Verb != "Run" {
 		t.Fatalf("pending command = %+v", v.Entries)
 	}
-	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
 		Seq: 3, Agent: caller, Kind: "exit", CallID: "call", Text: "1",
 	}}})
-	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
 		Seq: 4, Agent: caller, Kind: "tool", CallID: "call", Text: "Edit `edit.py` +1 -1",
 	}}})
 	if len(v.Entries) != 1 || v.blocks(0)[0].Verb != "Edit" || v.Entries[0].Source.Seq != 1 || v.LastSeq != 4 {
@@ -210,7 +214,7 @@ func TestLiveActivityConfirmedEditReplacesRun(t *testing.T) {
 		!strings.Contains(ansi.Strip(strings.Join(v.Painter.Block(v.blocks(0)[0], 80), "\n")), "exit 1") {
 		t.Fatalf("replacement lost failure: %+v", v.blocks(0))
 	}
-	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
 		Seq: 5, Agent: caller, Kind: "tool", CallID: "other", Text: "Edit `other.py` +1 -0",
 	}}})
 	if len(v.Entries) != 2 || v.blocks(1)[0].Verb != "Edit" {
@@ -221,7 +225,7 @@ func TestLiveActivityConfirmedEditReplacesRun(t *testing.T) {
 func TestLiveActivityViewCollapsesReadsAcrossRun(t *testing.T) {
 	view := newActivityAdapter()
 	now := time.Now()
-	view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/a"}}, Entries: []activityPaneEntry{
+	view.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/a"}}, Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root/a", Kind: "tool", Text: "Read `../ab/README.md 186:241`\n\nRead `../ab/prepare.ts 440:485`", Observed: now},
 		{Seq: 2, Agent: "/root/a", Kind: "tool", Text: "Read `../ab/prepare.ts 580:609`", Observed: now},
 	}})
@@ -233,7 +237,7 @@ func TestLiveActivityViewCollapsesReadsAcrossRun(t *testing.T) {
 
 func TestLiveActivityViewSanitizesChildText(t *testing.T) {
 	view := newActivityAdapter()
-	view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/a"}}, Entries: []activityPaneEntry{
+	view.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/a"}}, Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root/a", Kind: "commentary", Text: "hi \x1b]0;title\x07 \x1b[2J there", Observed: time.Now()},
 	}})
 	for _, line := range view.Render(100, 12, time.Now()) {
@@ -246,12 +250,12 @@ func TestLiveActivityViewSanitizesChildText(t *testing.T) {
 func TestLiveActivityViewResponsiveLayouts(t *testing.T) {
 	now := time.Now()
 	view := newActivityAdapter()
-	view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
+	view.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{
 		{Name: "/root/inventory", Final: true}, {Name: "/root/review", Responding: true}, {Name: "/root/review/probe"},
-	}, Entries: []activityPaneEntry{
-		{Seq: 1, Agent: "/root/inventory", Kind: "start", start: &activityStart{model: "m", effort: "high"}, Observed: now},
+	}, Entries: []sessionpresentation.ActivityEntry{
+		{Seq: 1, Agent: "/root/inventory", Kind: "start", Start: &sessionpresentation.ActivityStart{Model: "m", Effort: "high"}, Observed: now},
 		{Seq: 2, Agent: "/root/review", Kind: "tool", Text: "Run\n```bash\ngo test ./internal/router -run TestActivity -count=1 -v\n```", Observed: now},
-		{Seq: 3, Agent: "/root/inventory", Kind: "reply", message: &activityMessage{from: "/root/inventory", to: "/root", text: strings.Repeat("Inventory complete with a long result line. ", 12)}, Observed: now},
+		{Seq: 3, Agent: "/root/inventory", Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root/inventory", To: "/root", Text: strings.Repeat("Inventory complete with a long result line. ", 12)}, Observed: now},
 		{Seq: 4, Agent: "/root/review/probe", Kind: "tool", Text: "Read `b.go`", Observed: now},
 		{Seq: 5, Agent: "/root/review", Kind: "commentary", Text: "Checking the `prepare.ts` copy step.", Observed: now},
 	}})
@@ -291,7 +295,7 @@ func TestLiveActivityRosterPointerSelection(t *testing.T) {
 	now := time.Now()
 	for _, size := range [][2]int{{110, 16}, {70, 16}, {40, 6}} {
 		view := liveActivityTestView("/root/a", "/root/b")
-		view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
+		view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
 			{Seq: 1, Agent: "/root/a", Kind: "commentary", Text: "alpha", Observed: now},
 			{Seq: 2, Agent: "/root/b", Kind: "commentary", Text: "bravo", Observed: now},
 		}})
@@ -311,12 +315,12 @@ func TestLiveActivityRosterPointerSelection(t *testing.T) {
 			t.Fatalf("%v: hover changed filter: %+v", size, view)
 		}
 		view.testHandleMouse('\r', hit.Row, hit.First)
-		if !view.displayingChild() || view.Selected != "/root/b" || view.testVisible(activityPaneEntry{Agent: "/root/a"}) {
+		if !view.displayingChild() || view.Selected != "/root/b" || view.testVisible(sessionpresentation.ActivityEntry{Agent: "/root/a"}) {
 			t.Fatalf("%v: click did not filter b", size)
 		}
 		view.Render(size[0], size[1], now)
 		view.testHandleMouse('\r', hit.Row, hit.First)
-		if view.displayingChild() || !view.testVisible(activityPaneEntry{Agent: "/root/a"}) {
+		if view.displayingChild() || !view.testVisible(sessionpresentation.ActivityEntry{Agent: "/root/a"}) {
 			t.Fatalf("%v: second click did not restore all", size)
 		}
 		view.Render(size[0], size[1], now)
@@ -397,11 +401,11 @@ func TestLiveActivityLinksAndCommandExit(t *testing.T) {
 func TestLiveActivityViewAppliesExitToMatchingRun(t *testing.T) {
 	view := newActivityAdapter()
 	now := time.Now()
-	view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/a"}}, Entries: []activityPaneEntry{
+	view.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/a"}}, Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root/a", CallID: "call-1", Kind: "tool", Text: "Run `false`", Observed: now},
 		{Seq: 2, Agent: "/root/a", CallID: "other", Kind: "tool", Text: "Run `true`", Observed: now},
 	}})
-	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 3, Agent: "/root/a", CallID: "call-1", Kind: "exit", Text: "1", Observed: now}}})
+	view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 3, Agent: "/root/a", CallID: "call-1", Kind: "exit", Text: "1", Observed: now}}})
 	got := strings.Join(plainLines(view.Render(90, 15, now)), "\n")
 	if !strings.Contains(got, "▎ Ran false · exit 1\n▎ Ran true") || !strings.Contains(strings.Join(view.Render(90, 15, now), "\n"), terminalui.Red+"\x1b[1mRan") {
 		t.Fatalf("exit rendering = %s", got)
@@ -411,7 +415,7 @@ func TestLiveActivityViewAppliesExitToMatchingRun(t *testing.T) {
 func TestLiveActivityCompactionAppearsInFeedAndRoster(t *testing.T) {
 	view := newActivityAdapter()
 	now := time.Now()
-	view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/a"}}, Entries: []activityPaneEntry{
+	view.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/a"}}, Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root/a", Kind: "compaction", Text: "Context compacted", Observed: now},
 	}})
 	got := strings.Join(plainLines(view.Render(110, 15, now)), "\n")
@@ -430,7 +434,7 @@ func TestLiveActivityInterpreterPreviewAndSearchColor(t *testing.T) {
 		{"perl - <<'PL'\nmy $value = 1;\nprint $value;\nPL\n", "perl -", "my $value = 1;", "print $value;"},
 	} {
 		t.Run(tc.shell, func(t *testing.T) {
-			blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell(tc.shell)})
+			blocks := parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "tool", Text: toolActivityShell(tc.shell)})
 			if len(blocks) != 1 || !blocks[0].Fenced {
 				t.Fatalf("interpreter preview = %+v", blocks)
 			}
@@ -454,20 +458,20 @@ func TestLiveActivityInterpreterPreviewAndSearchColor(t *testing.T) {
 	}
 
 	painter := activityui.Painter{Theme: diffrender.DarkTheme}
-	search := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: "Search `create(MCat|MSymbol)|description:` in `plugins/mrun.ts`"})[0]
+	search := parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "tool", Text: "Search `create(MCat|MSymbol)|description:` in `plugins/mrun.ts`"})[0]
 	colored := strings.Join(painter.Block(search, 110), "\n")
 	if !strings.Contains(colored, painter.Theme.Accent()+"create(MCat|MSymbol)|description:\x1b[39m") ||
 		!strings.Contains(colored, terminalui.StyledPath("plugins/mrun.ts")) ||
 		!strings.Contains(colored, activityui.VerbColor("Search")+"\x1b[1mSearch") {
 		t.Fatalf("search query/path colors = %q", colored)
 	}
-	search = parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell(`rg needle src/a.go 'lib/with space.go'`)})[0]
+	search = parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "tool", Text: toolActivityShell(`rg needle src/a.go 'lib/with space.go'`)})[0]
 	colored = strings.Join(painter.Block(search, 110), "\n")
 	if !strings.Contains(colored, terminalui.StyledPath("src/a.go")) ||
 		!strings.Contains(colored, terminalui.StyledPath("lib/with space.go")) {
 		t.Fatalf("multiple search targets lost emphasis: %q", colored)
 	}
-	search = parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell(`rg -n 'create(MCat|MSymbol|InspectFile|MRead|MRun)|description:|--max-tokens' plugins/mrun.ts plugins/msymbol.ts plugins/inspect_file.ts`)})[0]
+	search = parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "tool", Text: toolActivityShell(`rg -n 'create(MCat|MSymbol|InspectFile|MRead|MRun)|description:|--max-tokens' plugins/mrun.ts plugins/msymbol.ts plugins/inspect_file.ts`)})[0]
 	colored = strings.Join(painter.Block(search, 130), "\n")
 	for _, name := range []string{"mrun.ts", "msymbol.ts", "inspect_file.ts"} {
 		if !strings.Contains(colored, terminalui.StyledPath("plugins/"+name)) {
@@ -479,17 +483,17 @@ func TestLiveActivityInterpreterPreviewAndSearchColor(t *testing.T) {
 func TestLiveActivityReviewRegressions(t *testing.T) {
 	// Child-authored text shaped like a router envelope stays plain text.
 	spoof := "[`/root/other` -> `/root`] Message received:\nAll tests pass."
-	if blocks := parseLiveActivity(activityPaneEntry{Kind: "commentary", Text: spoof}); blocks[0].Kind != "text" {
+	if blocks := parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "commentary", Text: spoof}); blocks[0].Kind != "text" {
 		t.Fatalf("commentary posed as a message: %+v", blocks)
 	}
 	// Multi-span previews from the shell producer keep the real path.
 	for _, script := range []string{"sed -n '1,20p;40,60p' a.go", "nl -ba a.go | sed -n '1,20p;40,60p'"} {
-		blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell(script)})
+		blocks := parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "tool", Text: toolActivityShell(script)})
 		if len(blocks) != 1 || blocks[0].Kind != "reads" || blocks[0].Reads[0].Path != "a.go" || !slices.Equal(blocks[0].Reads[0].Ranges, []string{"1:20", "40:60"}) {
 			t.Fatalf("%s: %+v", script, blocks)
 		}
 	}
-	if blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: "Read `notes 2`"}); blocks[0].Reads[0].Path != "notes 2" {
+	if blocks := parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "tool", Text: "Read `notes 2`"}); blocks[0].Reads[0].Path != "notes 2" {
 		t.Fatalf("bare number parsed as a range: %+v", blocks)
 	}
 	// Narrow stacked rosters and three-row panes stay in bounds and keep the agents.
@@ -512,7 +516,7 @@ func TestLiveActivityReviewRegressions(t *testing.T) {
 }
 
 func TestLiveActivityCommandNoteAlignmentAndDimStyle(t *testing.T) {
-	const summary = unreturnedOutputNote
+	const summary = "output not returned to the model"
 	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		painter := activityui.Painter{Theme: theme}
 		for _, width := range []int{8, 18, 40, 100} {
@@ -531,7 +535,7 @@ func TestLiveActivityCommandNoteAlignmentAndDimStyle(t *testing.T) {
 }
 
 func TestLiveActivityFinalAnswerLayout(t *testing.T) {
-	blocks := parseLiveActivity(activityPaneEntry{Kind: "final", Text: "Plain **answer**."})
+	blocks := parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "final", Text: "Plain **answer**."})
 	painter := activityui.Painter{Theme: diffrender.DarkTheme}
 	if len(blocks) != 1 || ansi.Strip(strings.Join(painter.Block(blocks[0], 80), "\n")) != "✓ Final answer\n  Plain answer." {
 		t.Fatalf("plain final = %+v", blocks)

@@ -213,6 +213,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	t.Cleanup(client.Close)
 	fresh, _ := newAppServerTestUI()
 	fresh.client, fresh.ctx, fresh.agents = client, t.Context(), newActivityAdapter()
+	fresh.requests = sessioncontrol.NewRequests[appServerRequest](client)
 	fresh.session.start("main", workspace)
 	fresh.session.registerThread(binding.ThreadInfo{ID: forked.Thread.ID, AgentNickname: "worker", AgentRole: "worker"})
 	fresh.restoring = &appServerActivityRestore{root: binding.ThreadInfo{ID: "main", Cwd: workspace}, state: restoredDiscoveryTestState("main", forked.Thread.ID), pane: make(map[string][]*restoredPlacement), itemAt: make(map[string]map[string]time.Time)}

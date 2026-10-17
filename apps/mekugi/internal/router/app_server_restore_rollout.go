@@ -35,7 +35,7 @@ type restoredRollout struct {
 type restoredRolloutEvent struct {
 	turn, anchor string // anchor: the host item completed just before it in the turn
 	at           time.Time
-	entry        activityPaneEntry
+	entry        sessionpresentation.ActivityEntry
 	// repeated evidence reaches the thread's later live requests again: every
 	// task, and messages after the input's last user, assistant, reasoning or
 	// call item, which live Activity reads as newly delivered.
@@ -60,7 +60,7 @@ func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout 
 		}
 	}
 	var turn, anchor string
-	var settings *activityStart
+	var settings *sessionpresentation.ActivityStart
 	// A cut-off history cannot tell which task started the child.
 	started := start > 0
 	cells := make(map[string]bool)
@@ -122,7 +122,7 @@ func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout 
 		case "turn_context/":
 			settings = nil
 			if observed := binding.SubagentStart(p.Model, deref(p.Effort), deref(p.ServiceTier)); observed != nil {
-				settings = &activityStart{model: observed.Model, effort: observed.Effort, tier: observed.Tier}
+				settings = &sessionpresentation.ActivityStart{Model: observed.Model, Effort: observed.Effort, Tier: observed.Tier}
 			}
 		case "response_item/custom_tool_call":
 			if p.Name == "exec" && (p.Namespace == "" || p.Namespace == "functions") {
@@ -130,7 +130,7 @@ func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout 
 			}
 		case "response_item/custom_tool_call_output":
 			if text, failed := binding.CodeModeFailureText(binding.ExecutionOutputTexts(p.Output)); cells[p.CallID] && failed && turn != "" {
-				event.entry = activityPaneEntry{Agent: agent, Kind: "error", Text: activityui.ErrorPreview(text), ErrorDetail: text, CallID: p.CallID}
+				event.entry = sessionpresentation.ActivityEntry{Agent: agent, Kind: "error", Text: activityui.ErrorPreview(text), ErrorDetail: text, CallID: p.CallID}
 				r.events = append(r.events, event)
 			}
 		case "response_item/agent_message":
@@ -146,19 +146,19 @@ func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout 
 				if strings.TrimSpace(text) == "" {
 					continue // Opaque tasks never become an inferred plaintext assignment.
 				}
-				assignment := &activityAssignment{id: binding.SubagentMessageID("assignment\x00" + responses.StringField(p, "id") + "\x00" + sender + "\x00" + agent + "\x00" + text),
-					from: sender, to: agent, text: text, created: record.Timestamp}
-				event.entry = activityPaneEntry{Agent: agent, Kind: "assignment", Text: text, assignment: assignment}
+				assignment := &sessionpresentation.ActivityAssignment{ID: binding.SubagentMessageID("assignment\x00" + responses.StringField(p, "id") + "\x00" + sender + "\x00" + agent + "\x00" + text),
+					From: sender, To: agent, Text: text, Created: record.Timestamp}
+				event.entry = sessionpresentation.ActivityEntry{Agent: agent, Kind: "assignment", Text: text, Assignment: assignment}
 				event.repeated = true
 				if !started && settings != nil {
 					// As live, the first task arrives with the child's start,
 					// which needs the model it ran with.
-					event.entry.Kind, event.entry.Text, event.entry.start = "start", "", settings
+					event.entry.Kind, event.entry.Text, event.entry.Start = "start", "", settings
 				}
 				started = true
 				r.events = append(r.events, event)
 			} else if text, sender, final, ok := binding.SubagentResponse(p); ok && !final {
-				event.entry = activityPaneEntry{Agent: agent, Kind: "reply", Text: text, message: &activityMessage{from: sender, to: agent, text: text}}
+				event.entry = sessionpresentation.ActivityEntry{Agent: agent, Kind: "reply", Text: text, Message: &sessionpresentation.ActivityMessage{From: sender, To: agent, Text: text}}
 				r.events = append(r.events, event)
 			}
 		}
@@ -169,7 +169,7 @@ func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout 
 // history. Evidence from the thread's own rollout follows its anchor; another
 // thread's evidence is placed by completion time.
 type restoredPlacement struct {
-	entry        activityPaneEntry
+	entry        sessionpresentation.ActivityEntry
 	turn, anchor string // empty turn places by time
 	at           time.Time
 	// link is the Activity entry this Main copy excerpts, once applied.

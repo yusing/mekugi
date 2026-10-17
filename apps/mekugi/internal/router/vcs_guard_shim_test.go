@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
@@ -89,18 +91,18 @@ exit 127
 				}
 				// Approval and report streams are independent; await the report boundary.
 				shell.hub.await(t, key, func(view execTrackView) bool {
-					return len(view.segments) == 2 && !view.complete && !view.segments[0].running && view.segments[1].running
+					return len(view.segments) == 2 && !view.complete && !view.segments[0].Running && view.segments[1].Running
 				})
 				live, _ := shell.hub.view(key, false, execSegmentText)
 				first, second := live.segments[0], live.segments[1]
-				if first.timing.ElapsedNS < int64(20*time.Millisecond) || second.timing.Started.IsZero() || first.output == nil || second.output == nil || first.output == second.output {
+				if first.Timing.ElapsedNS < int64(20*time.Millisecond) || second.Timing.Started.IsZero() || first.Output == nil || second.Output == nil || first.Output == second.Output {
 					t.Fatal("commands lost individual elapsed time or output identity")
 				}
-				if strings.Join(first.output.View().Lines, "\n") != strings.TrimSpace(line) || len(second.output.View().Lines) != 0 {
+				if strings.Join(first.Output.View().Lines, "\n") != strings.TrimSpace(line) || len(second.Output.View().Lines) != 0 {
 					t.Fatal("live output crossed a command boundary")
 				}
 				view := newActivityAdapter()
-				view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: execSegmentText(args[3]), native: &liveActivityNativeItem{command: args[3], running: true, segments: live.segments}}}})
+				view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: execSegmentText(args[3]), Native: &sessionpresentation.NativeItem{Command: args[3], Running: true, Segments: live.segments}}}})
 				finishPacing(view)
 				feed := view.RenderFeed(100, 30)
 				if !strings.Contains(strings.Join(feed.Lines, "\n"), "RAN <argument with spaces>") {
@@ -128,7 +130,7 @@ exit 127
 				}
 				shell.awaitView(t, key)
 				final, _ := shell.hub.view(key, true, execSegmentText)
-				if !final.complete || final.segments[1].timing.ElapsedNS <= 0 || !strings.Contains(strings.Join(final.segments[1].output.View().Lines, "\n"), "remote write denied") || strings.Join(final.segments[0].output.View().Lines, "\n") != strings.TrimSpace(line) {
+				if !final.complete || final.segments[1].Timing.ElapsedNS <= 0 || !strings.Contains(strings.Join(final.segments[1].Output.View().Lines, "\n"), "remote write denied") || strings.Join(final.segments[0].Output.View().Lines, "\n") != strings.TrimSpace(line) {
 					t.Fatal("completion lost separate retained output or timing")
 				}
 			} else if output, err := cmd.CombinedOutput(); err != nil || len(shell.invoked(t)) != 1 {

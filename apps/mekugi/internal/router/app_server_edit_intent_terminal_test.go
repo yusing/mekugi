@@ -1,11 +1,13 @@
 package router
 
 import (
-"github.com/yusing/mekugi/libraries/legacycall"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/libraries/legacycall"
 
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
 
@@ -103,11 +105,11 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	// Completed tracked edit segments must receive the same captured counts
 	// as untracked commands while the neighboring test keeps its own state.
 	for i := range u.view.Entries {
-		if native := u.view.Entries[i].Source.native; native != nil && native.item == "cmd" {
-			native.segments = []commandSegment{
-				{source: "cat >> a.go", text: "Edit `a.go` · cat (requested)"},
-				{source: "python3", text: "Edit `b.go` · python3 (requested)"},
-				{source: "go test ./internal/router", text: "Run `go test ./internal/router`", running: true},
+		if native := u.view.Entries[i].Source.Native; native != nil && native.Item == "cmd" {
+			native.Segments = []sessionpresentation.ActivitySegment{
+				{Source: "cat >> a.go", Text: "Edit `a.go` · cat (requested)"},
+				{Source: "python3", Text: "Edit `b.go` · python3 (requested)"},
+				{Source: "go test ./internal/router", Text: "Run `go test ./internal/router`", Running: true},
 			}
 		}
 	}

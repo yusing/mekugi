@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/charmbracelet/x/ansi"
@@ -17,7 +19,7 @@ func TestAppServerRosterReasoningTitlePreservesTranscript(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 			reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
-			view, agent := u.view, activityPaneAgent{Name: "/root", Responding: true}
+			view, agent := u.view, sessionpresentation.ActivityAgent{Name: "/root", Responding: true}
 			if thread == "child" {
 				view, agent.Name = u.agents, "/root/worker"
 			}

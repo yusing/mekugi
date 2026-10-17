@@ -1,4 +1,4 @@
-package router
+package sessionpresentation
 
 import (
 	"strings"
@@ -11,15 +11,15 @@ import (
 func TestOutputDemandsWithoutRenderer(t *testing.T) {
 	output := new(activitymodel.Retention).New()
 	output.Finish(new(strings.Repeat("retained output\n", 100)), new(0))
-	v := &activityAdapter{Model: &activitypresentation.Model[activityPaneEntry, activityPaneAgent]{
-		Entries: []liveActivityRecord{{Source: activityPaneEntry{Seq: 7, native: &liveActivityNativeItem{output: output}}}},
+	v := &ActivitySource{Model: &activitypresentation.Model[ActivityEntry, ActivityAgent]{
+		Entries: []ActivityRecord{{Source: ActivityEntry{Seq: 7, Native: &NativeItem{Output: output}}}},
 	}}
 	demands := []activitypresentation.OutputDemand{
 		{Source: 7, Output: 1, Version: output.Version(), Bytes: 100},
 		{Source: 7, Output: 1, Version: output.Version()},
 		{Source: 8, Output: 1},
 	}
-	results := v.resolveOutputDemands(demands)
+	results := v.ResolveOutputDemands(demands)
 	for i, result := range results {
 		if result.Demand != demands[i] {
 			t.Fatal("response lost source/version/bound identity")

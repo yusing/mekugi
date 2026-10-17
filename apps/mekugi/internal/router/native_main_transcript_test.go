@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/charmbracelet/x/ansi"
@@ -19,11 +21,11 @@ func TestUISnapshotNativeMainRepliesStayInTranscript(t *testing.T) {
 			u.clock = func() time.Time { return now }
 			u.Turn, u.sessionPresentation().Status.Text, u.model = "active", "Working", "snapshot-model"
 			u.view.Painter.Theme = diffrender.DarkTheme
-			entries := []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Main reply stays in the transcript.", Observed: now}}
+			entries := []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Main reply stays in the transcript.", Observed: now}}
 			for i := range 20 {
-				entries = append(entries, activityPaneEntry{Seq: uint64(i + 2), Agent: "Main", Kind: "tool", Text: fmt.Sprintf("Ran `echo activity-%02d`", i+1), Observed: now})
+				entries = append(entries, sessionpresentation.ActivityEntry{Seq: uint64(i + 2), Agent: "Main", Kind: "tool", Text: fmt.Sprintf("Ran `echo activity-%02d`", i+1), Observed: now})
 			}
-			u.view.apply(activityPaneEvent{Kind: "entries", Entries: entries})
+			u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: entries})
 			rows, _ := u.testMainFrame(width, 16, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("native-main-transcript-following-%d", width), rows)
 			u.view.Following, u.view.Offset = false, 0

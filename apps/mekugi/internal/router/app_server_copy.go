@@ -20,11 +20,11 @@ func (u *appServerUI) showCopyPicker() {
 	u.deleteDraftRange(0, len(u.Text))
 	var response string
 	for _, entry := range slices.Backward(u.view.Entries) {
-		n := entry.Source.native
-		if n == nil || n.thread != u.Thread || entry.Source.Agent != "Main" {
+		n := entry.Source.Native
+		if n == nil || n.Thread != u.Thread || entry.Source.Agent != "Main" {
 			continue
 		}
-		if entry.Source.Kind == "text" && n.phase == "item/completed" {
+		if entry.Source.Kind == "text" && n.Phase == "item/completed" {
 			response = entry.Source.Text
 		}
 		if strings.TrimSpace(response) != "" {

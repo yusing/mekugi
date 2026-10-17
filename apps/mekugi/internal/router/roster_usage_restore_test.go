@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/charmbracelet/x/ansi"
@@ -55,7 +57,7 @@ func TestNativeRosterRestoredUsageUsesProviderTotals(t *testing.T) {
 	if child.InputTokens != 200_000 || child.OutputTokens != 20_000 || child.Roundtrips != 3 || !child.CostPartial || math.Abs(child.Cost-.6) > 1e-10 {
 		t.Fatalf("followup reset restored child totals: %+v", child)
 	}
-	unknown := activityPaneAgent{InputTokens: 9_000_000, OutputTokens: 8_000_000, Cost: 99, CostKnown: true}
+	unknown := sessionpresentation.ActivityAgent{InputTokens: 9_000_000, OutputTokens: 8_000_000, Cost: 99, CostKnown: true}
 	u.observeCost("unobserved", &unknown)
 	if unknown.InputTokens != 0 || unknown.OutputTokens != 0 || unknown.CostKnown || unknown.Roundtrips != 0 {
 		t.Fatalf("unobserved thread borrowed host consumption: %+v", unknown)
@@ -75,7 +77,7 @@ func TestUISnapshotNativeRosterRestoredUsage(t *testing.T) {
 	u := restoredUsageRosterFixture(t)
 	u.usage.Observation("historical", "historical", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 10_000})
 	u.observeCost("historical", u.session.agent(u.session.paths["historical"]))
-	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: u.session.agents})
+	u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.agents})
 	u.agents.Painter.Theme = diffrender.DarkTheme
 	u.agents.Selected = u.session.paths["child"]
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)

@@ -1,13 +1,15 @@
 package router
 
 import (
-"github.com/yusing/mekugi/libraries/legacycall"
 	"fmt"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/libraries/legacycall"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
@@ -35,14 +37,14 @@ func TestObservedEditReceiptBeforeHostItemSurvivesSegmentRefresh(t *testing.T) {
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: command, Status: "inProgress"}})
 	for _, view := range []*activityAdapter{u.view, u.agents} {
 		for _, entry := range view.Entries {
-			if entry.Source.native == nil || entry.Source.native.item != "cmd" {
+			if entry.Source.Native == nil || entry.Source.Native.Item != "cmd" {
 				continue
 			}
-			native := *entry.Source.native
-			native.phase = "item/commandExecution/outputDelta"
-			native.capturedEdit = nil // Host refresh carries no router receipt.
-			native.segments = []commandSegment{{source: "python3", text: "Edit `a.go` · python3 (requested)"}, {source: "go test ./...", text: "Run `go test ./...`", running: true}}
-			view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 99, Agent: entry.Source.Agent, Kind: "tool", CallID: entry.Source.CallID, Text: entry.Source.Text, native: &native}}})
+			native := *entry.Source.Native
+			native.Phase = "item/commandExecution/outputDelta"
+			native.CapturedEdit = nil // Host refresh carries no router receipt.
+			native.Segments = []sessionpresentation.ActivitySegment{{Source: "python3", Text: "Edit `a.go` · python3 (requested)"}, {Source: "go test ./...", Text: "Run `go test ./...`", Running: true}}
+			view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 99, Agent: entry.Source.Agent, Kind: "tool", CallID: entry.Source.CallID, Text: entry.Source.Text, Native: &native}}})
 			if !u.shell.openActivityEdit(view, entry.Source.Seq, "a.go") || !strings.Contains(u.shell.output.pages[0].Code, "+after") {
 				t.Fatal("early observed source was lost")
 			}
@@ -102,31 +104,31 @@ func TestAppServerTrackedEditReceiptPreservesSegments(t *testing.T) {
 				view = u.agents
 			}
 			sources := []string{"cat > a.go", "mv b.go.new b.go", "go test ./...", "mv failed.go.new failed.go", "mv skipped.go.new skipped.go"}
-			var segments []commandSegment
+			var segments []sessionpresentation.ActivitySegment
 			for _, source := range sources {
-				segments = append(segments, commandSegment{source: source, text: execSegmentText(source)})
+				segments = append(segments, sessionpresentation.ActivitySegment{Source: source, Text: execSegmentText(source)})
 			}
 			output := u.session.activity.Outputs(u.session.Scope()).New()
 			output.Finish(new("edit diagnostic"), new(0))
-			segments[0].output = output
-			segments[2].exit, segments[2].tail = 2, []string{"test failed"}
-			segments[3].exit, segments[3].tail = 1, []string{"permission denied"}
-			segments[4].skipped = true
+			segments[0].Output = output
+			segments[2].Exit, segments[2].Tail = 2, []string{"test failed"}
+			segments[3].Exit, segments[3].Tail = 1, []string{"permission denied"}
+			segments[4].Skipped = true
 			command := strings.Join(sources, "; ")
-			view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+			view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
 				Seq: 1, Agent: "Main", Kind: "tool", CallID: "cmd", Text: toolActivityShell(command),
-				native: &liveActivityNativeItem{thread: thread, item: "cmd", command: command, segments: segments},
+				Native: &sessionpresentation.NativeItem{Thread: thread, Item: "cmd", Command: command, Segments: segments},
 			}}})
 			data := trackedEditReceiptData(thread, "cmd")
 			for range 2 {
-				view.applyCapturedEdits(data)
+				view.ApplyCapturedEdits(data)
 				assertTrackedReceiptStats(t, view, 0)
 				var outputKept, testKept, failedKept, skippedKept bool
 				for _, block := range view.blocks(0) {
 					switch {
 					case block.Code == sources[0]:
 						t.Fatalf("successful edit source leaked into Activity: %+v", block)
-					case block.Verb == "Edited" && view.retainedOutput(block.Source, block.Output) == output:
+					case block.Verb == "Edited" && view.RetainedOutput(block.Source, block.Output) == output:
 						outputKept = block.ExitCode == 0 && block.Segment && block.Label == "`a.go`" && block.EditSource == ""
 					case block.Verb == "Run" && block.Code == sources[2]:
 						testKept = block.ExitCode == 2 && strings.Join(block.Tail, "") == "test failed"
@@ -151,21 +153,21 @@ func TestAppServerTrackedEditReceiptPreservesSegments(t *testing.T) {
 func TestUISnapshotTrackedEditReceiptOutputSourceOnlyInDialog(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	started := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
-	var segments []commandSegment
+	var segments []sessionpresentation.ActivitySegment
 	for i, source := range []string{"cat > a.go", "go vet ./...", "cat > b.go"} {
 		line := strings.Fields(source)[len(strings.Fields(source))-1] + " diagnostic"
 		output := u.session.activity.Outputs(u.session.Scope()).New()
 		output.Finish(new(line), new(0))
 		elapsed := time.Duration(i+1) * time.Second
-		segments = append(segments, commandSegment{source: source, text: execSegmentText(source), output: output, tail: []string{line},
-			timing: segmenttransport.Timing{Started: started, Ended: started.Add(elapsed), ElapsedNS: int64(elapsed)}})
+		segments = append(segments, sessionpresentation.ActivitySegment{Source: source, Text: execSegmentText(source), Output: output, Tail: []string{line},
+			Timing: segmenttransport.Timing{Started: started, Ended: started.Add(elapsed), ElapsedNS: int64(elapsed)}})
 	}
 	command := "cat > a.go; go vet ./...; cat > b.go"
-	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+	u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
 		Seq: 1, Agent: "/root/child", Kind: "tool", CallID: "cmd", Text: toolActivityShell(command),
-		native: &liveActivityNativeItem{thread: "child", item: "cmd", command: command, segments: segments},
+		Native: &sessionpresentation.NativeItem{Thread: "child", Item: "cmd", Command: command, Segments: segments},
 	}}})
-	u.agents.applyCapturedEdits(trackedEditReceiptData("child", "cmd"))
+	u.agents.ApplyCapturedEdits(trackedEditReceiptData("child", "cmd"))
 	var outputs []string
 	for _, block := range u.agents.blocks(0) {
 		if block.Output == 0 {
@@ -179,7 +181,7 @@ func TestUISnapshotTrackedEditReceiptOutputSourceOnlyInDialog(t *testing.T) {
 	if want := []string{"Edited `a.go` 1s", "Run  2s", "Edited `b.go` 3s"}; !slices.Equal(outputs, want) {
 		t.Fatalf("output placement = %q, want %q", outputs, want)
 	}
-	pages := activityui.Disclosure(nil).Blocks(commandPresentation(u.agents.Entries[0].Source).DetailValues())
+	pages := activityui.Disclosure(nil).Blocks(sessionpresentation.CommandPresentation(u.agents.Entries[0].Source).DetailValues())
 	if len(pages) != 3 || pages[0].Code != "cat > a.go" || pages[2].Code != "cat > b.go" {
 		t.Fatalf("edit output dialog: %+v", pages)
 	}
@@ -198,10 +200,10 @@ func TestAppServerTrackedEditReceiptExactAnchor(t *testing.T) {
 	view := newActivityAdapter()
 	add := func(seq uint64, thread, item string) {
 		source := "cat > a.go"
-		view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+		view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
 			Seq: seq, Agent: thread, Kind: "tool", CallID: thread + ":" + item, Text: toolActivityShell(source),
-			native: &liveActivityNativeItem{thread: thread, item: item, command: source,
-				segments: []commandSegment{{source: source, text: execSegmentText(source)}},
+			Native: &sessionpresentation.NativeItem{Thread: thread, Item: item, Command: source,
+				Segments: []sessionpresentation.ActivitySegment{{Source: source, Text: execSegmentText(source)}},
 			},
 		}}})
 	}
@@ -209,7 +211,7 @@ func TestAppServerTrackedEditReceiptExactAnchor(t *testing.T) {
 	add(2, "child", "anchor")
 	add(3, "main", "unrelated")
 	data := trackedEditReceiptData("main", "anchor", "sibling")
-	view.applyCapturedEdits(data)
+	view.ApplyCapturedEdits(data)
 	if len(view.blocks(0)) != 0 {
 		t.Fatalf("grouped sibling duplicated aggregate: %+v", view.blocks(0))
 	}
@@ -223,7 +225,7 @@ func TestAppServerTrackedEditReceiptExactAnchor(t *testing.T) {
 	}
 	add(4, "main", "anchor")
 	for range 2 {
-		view.applyCapturedEdits(data)
+		view.ApplyCapturedEdits(data)
 		assertTrackedReceiptStats(t, view, 3)
 		if len(view.blocks(0)) != 0 {
 			t.Fatal("late anchor revived sibling stats")
@@ -244,8 +246,8 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc 'cat > a.go; cat > b.go; go test ./...'", ExitCode: new(2), AggregatedOutput: new("test failed")}
 			output := u.session.activity.Outputs(u.session.Scope()).New()
 			output.Finish(new("test failed"), new(2))
-			u.retainCommandSegments(activityPaneEntry{native: &liveActivityNativeItem{thread: thread, turn: "turn", item: item.ID}}, item.Observation(),
-				execTrackView{complete: true, output: true, code: 2, segments: []commandSegment{{}, {}, {exit: 2, output: output}}})
+			u.retainCommandSegments(sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Thread: thread, Turn: "turn", Item: item.ID}}, item.Observation(),
+				execTrackView{complete: true, output: true, code: 2, segments: []sessionpresentation.ActivitySegment{{}, {}, {Exit: 2, Output: output}}})
 			awaitCommandSegments(t, u)
 			restored := newAppServerSessionTestUI(t, workspace)
 			setTestAppServerIntegration(restored, testProxyWithStore(testReplayStore(mekugiReplayStore{directory: store.directory})))
@@ -259,14 +261,14 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 				restored.restoreActivityThread(binding.ThreadInfo{ID: thread, Cwd: workspace, Turns: turns}, false)
 				view = restored.agents
 			}
-			if len(view.Entries) != 1 || view.Entries[0].Source.native == nil || len(view.Entries[0].Source.native.segments) != 3 {
+			if len(view.Entries) != 1 || view.Entries[0].Source.Native == nil || len(view.Entries[0].Source.Native.Segments) != 3 {
 				t.Fatalf("tracked history missing: %+v", view.Entries)
 			}
 			for range 2 {
 				restored.applyCapturedEdits()
 				assertTrackedReceiptStats(t, view, 0)
 				last := view.blocks(0)[len(view.blocks(0))-1]
-				if last.Verb != "Run" || last.ExitCode != 2 || last.Output == 0 || strings.Join(view.retainedOutput(last.Source, last.Output).View().Lines, "\n") != "test failed" {
+				if last.Verb != "Run" || last.ExitCode != 2 || last.Output == 0 || strings.Join(view.RetainedOutput(last.Source, last.Output).View().Lines, "\n") != "test failed" {
 					t.Fatalf("restored neighbor lost retained failure/output: %+v", last)
 				}
 			}
@@ -280,21 +282,21 @@ func TestAppServerTrackedEditReceiptKeepsSiblingCombinedOutput(t *testing.T) {
 		output := u.session.activity.Outputs(u.session.Scope()).New()
 		output.Finish(new("host diagnostic"), new(0))
 		command := "cat > a.go; cat > b.go"
-		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
-			Seq: 1, Agent: "Main", Kind: "tool", CallID: "sibling", Text: toolActivityShell(command), outputTail: tail,
-			native: &liveActivityNativeItem{thread: "main", item: "sibling", command: command, output: output, segments: []commandSegment{
-				{source: "cat > a.go", text: execSegmentText("cat > a.go")},
-				{source: "cat > b.go", text: execSegmentText("cat > b.go")},
+		u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
+			Seq: 1, Agent: "Main", Kind: "tool", CallID: "sibling", Text: toolActivityShell(command), OutputTail: tail,
+			Native: &sessionpresentation.NativeItem{Thread: "main", Item: "sibling", Command: command, Output: output, Segments: []sessionpresentation.ActivitySegment{
+				{Source: "cat > a.go", Text: execSegmentText("cat > a.go")},
+				{Source: "cat > b.go", Text: execSegmentText("cat > b.go")},
 			}},
 		}}})
 		data := trackedEditReceiptData("main", "anchor", "sibling")
 		for range 2 {
-			u.view.applyCapturedEdits(data)
+			u.view.ApplyCapturedEdits(data)
 			blocks := u.view.blocks(0)
-			if len(blocks) != 1 || blocks[0].Verb != "Edited" || blocks[0].Code != "" || u.view.retainedOutput(blocks[0].Source, blocks[0].Output) != output || !reflect.DeepEqual(blocks[0].Tail, tail) {
+			if len(blocks) != 1 || blocks[0].Verb != "Edited" || blocks[0].Code != "" || u.view.RetainedOutput(blocks[0].Source, blocks[0].Output) != output || !reflect.DeepEqual(blocks[0].Tail, tail) {
 				t.Fatalf("grouped sibling lost combined host output: %+v", blocks)
 			}
-			if page := u.view.Painter.DialogPage(snapshotOutput(blocks[0], u.view.retainedOutput(blocks[0].Source, blocks[0].Output)), 100); page.Text != "host diagnostic" {
+			if page := u.view.Painter.DialogPage(snapshotOutput(blocks[0], u.view.RetainedOutput(blocks[0].Source, blocks[0].Output)), 100); page.Text != "host diagnostic" {
 				t.Fatalf("combined output dialog lost content: %q", page.Text)
 			}
 		}
@@ -338,7 +340,7 @@ func TestObservedEditReceiptsBeforeHostRows(t *testing.T) {
 				for _, view := range []*activityAdapter{u.view, u.agents} {
 					found := false
 					for _, entry := range view.Entries {
-						if entry.Source.native == nil || entry.Source.native.item != call {
+						if entry.Source.Native == nil || entry.Source.Native.Item != call {
 							continue
 						}
 						found = true

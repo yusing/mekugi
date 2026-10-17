@@ -76,13 +76,13 @@ func (u *appServerUI) restoreContentNotice(message string) {
 
 func (u *appServerUI) restoreHistoryNotice(message string, incomplete bool) {
 	if incomplete {
-		u.agents.StatusLabel = "History incomplete"
+		u.agents.Coverage = "History incomplete"
 	}
 	if r := u.restoring; r != nil && !r.state.View().Rendered {
 		r.notices = append(r.notices, restoredHistoryNotice{message, incomplete}) // Shown after Main's history.
 		return
 	}
-	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.LastSeq + 1, Agent: "Session", Kind: "text", Text: message, Observed: time.Now()}}})
+	u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.view.LastSeq + 1, Agent: "Session", Kind: "text", Text: message, Observed: time.Now()}}})
 	// Notices advance Main independently of the Activity sequence.
 	u.session.seq = max(u.session.seq, u.view.LastSeq)
 }
@@ -154,15 +154,15 @@ func (u *appServerUI) readRestoredChildren() error {
 				entries := u.session.collab(item.Observation(), item.ID, historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt, r.root.UpdatedAt)), activitypresentation.HistoricalCollaboration)
 				u.applyRestoredActivity(entries)
 				for _, entry := range entries {
-					if main, ok := mainActivityEntry(entry); ok {
-						seq := u.agents.entrySeq(entry)
+					if main, ok := sessionpresentation.MainActivityEntry(entry); ok {
+						seq := u.agents.EntrySeq(entry)
 						r.main = append(r.main, &restoredPlacement{entry: main, turn: turn.ID, anchor: item.ID, at: entry.Observed, link: &seq})
 					}
 				}
 			}
 		}
 	}
-	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: u.session.roster()})
+	u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.roster()})
 	return u.readNextRestoredChild()
 }
 
@@ -184,13 +184,13 @@ func (u *appServerUI) readRestoredRollouts() {
 		r.itemAt[info.ID] = rollout.itemAt
 		for _, event := range rollout.events {
 			if event.repeated {
-				activity.Restore(activitypresentation.Supplement{Thread: info.ID, Kind: event.entry.Kind, Assignment: supplementAssignment(event.entry.assignment), Message: supplementMessage(event.entry.message)})
+				activity.Restore(activitypresentation.Supplement{Thread: info.ID, Kind: event.entry.Kind, Assignment: sessionpresentation.SupplementAssignment(event.entry.Assignment), Message: sessionpresentation.SupplementMessage(event.entry.Message)})
 			}
 			p := &restoredPlacement{entry: event.entry, turn: event.turn, anchor: event.anchor, at: event.at}
 			p.entry.Observed, p.entry.Text = event.at, activitypresentation.ClipSupplementMessage(event.entry.Text)
-			owner := paneActivityAgent(event.entry)
+			owner := sessionpresentation.ActivityOwner(event.entry)
 			if owner == "/root" {
-				p.entry, _ = mainActivityEntry(p.entry)
+				p.entry, _ = sessionpresentation.MainActivityEntry(p.entry)
 				r.main = append(r.main, p)
 				continue
 			}
@@ -214,7 +214,7 @@ func (u *appServerUI) readNextRestoredChild() error {
 		// Evidence for a child whose history could not be read still reaches Main.
 		for _, placements := range r.pane {
 			for _, p := range placements {
-				if main, ok := mainActivityEntry(p.entry); ok {
+				if main, ok := sessionpresentation.MainActivityEntry(p.entry); ok {
 					r.main = append(r.main, &restoredPlacement{entry: main, at: p.at})
 				}
 			}
@@ -271,11 +271,11 @@ func historyTime(seconds int64) time.Time {
 	return time.Unix(seconds, 0)
 }
 
-func (u *appServerUI) applyRestoredActivity(entries []activityPaneEntry) {
+func (u *appServerUI) applyRestoredActivity(entries []sessionpresentation.ActivityEntry) {
 	for i := range entries {
-		entries[i].Agent = paneActivityAgent(entries[i])
+		entries[i].Agent = sessionpresentation.ActivityOwner(entries[i])
 	}
-	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: entries, Agents: u.session.roster()})
+	u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: entries, Agents: u.session.roster()})
 	u.applyCapturedEdits()
 }
 
@@ -304,7 +304,7 @@ func (u *appServerUI) restoreActivityThread(info binding.ThreadInfo, olderPage b
 		s.lifecycle(info.ID).Restore(restoredAgentIntervals(info.Turns), uint64(len(info.Turns)), false)
 	}
 	u.observeCost(info.ID, agent)
-	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: s.roster()})
+	u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: s.roster()})
 	var r *appServerActivityRestore
 	var itemAt map[string]time.Time
 	byTurn := make(map[int][]*restoredPlacement)
@@ -315,12 +315,12 @@ func (u *appServerUI) restoreActivityThread(info binding.ThreadInfo, olderPage b
 			index := p.position().TurnFor(positions)
 			if index >= 0 {
 				byTurn[index] = append(byTurn[index], p)
-			} else if main, ok := mainActivityEntry(p.entry); ok && p.turn == "" {
+			} else if main, ok := sessionpresentation.MainActivityEntry(p.entry); ok && p.turn == "" {
 				r.main = append(r.main, &restoredPlacement{entry: main, at: p.at})
 			} else if p.entry.Kind == "hook" {
 				entry := p.entry
 				entry.Seq = s.next()
-				u.applyRestoredActivity([]activityPaneEntry{entry})
+				u.applyRestoredActivity([]sessionpresentation.ActivityEntry{entry})
 			}
 		}
 		delete(r.pane, name)
@@ -329,7 +329,7 @@ func (u *appServerUI) restoreActivityThread(info binding.ThreadInfo, olderPage b
 	for index, turn := range info.Turns {
 		u.restoredSegments = u.prepareCommandSegments(info.ID, info.Cwd, turn)
 		observed := historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt, info.UpdatedAt))
-		var entries []activityPaneEntry
+		var entries []sessionpresentation.ActivityEntry
 		var times []time.Time // When each entry happened, to place Main's copy.
 		placements := byTurn[index]
 		place := func(slot []int) {
@@ -363,7 +363,7 @@ func (u *appServerUI) restoreActivityThread(info binding.ThreadInfo, olderPage b
 			if turn.Error != nil {
 				text += ": " + turn.Error.Message
 			}
-			entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: name, Kind: "error", Text: text, Observed: observed})
+			entries = append(entries, sessionpresentation.ActivityEntry{Seq: s.next(), Agent: name, Kind: "error", Text: text, Observed: observed})
 			times = append(times, observed)
 		}
 		u.applyRestoredActivity(entries)
@@ -371,41 +371,41 @@ func (u *appServerUI) restoreActivityThread(info binding.ThreadInfo, olderPage b
 			continue
 		}
 		for i, entry := range entries {
-			if main, ok := mainActivityEntry(entry); ok {
-				seq := u.agents.entrySeq(entry)
+			if main, ok := sessionpresentation.MainActivityEntry(entry); ok {
+				seq := u.agents.EntrySeq(entry)
 				r.main = append(r.main, &restoredPlacement{entry: main, at: times[i], link: &seq})
 			}
 		}
 	}
 }
 
-func (u *appServerUI) restoreActivityItem(info binding.ThreadInfo, turn binding.HistoryTurn, item binding.ThreadItem, name string, observed time.Time, entries *[]activityPaneEntry, text map[string]observation.TextUpdate) {
+func (u *appServerUI) restoreActivityItem(info binding.ThreadInfo, turn binding.HistoryTurn, item binding.ThreadItem, name string, observed time.Time, entries *[]sessionpresentation.ActivityEntry, text map[string]observation.TextUpdate) {
 	facts := item.Observation()
 	s := &u.session
 	if update, ok := text[item.ID]; ok {
 		update.Sequence, update.Observed = s.next(), observed
-		entry := transcriptEntry(update, name)
+		entry := sessionpresentation.TranscriptEntry(update, name)
 		entry.CallID = item.ID
 		*entries = append(*entries, entry)
 		return
 	}
-	entry := activityPaneEntry{Seq: s.next(), Agent: name, Observed: observed, CallID: item.ID,
-		native: &liveActivityNativeItem{thread: info.ID, turn: turn.ID, item: item.ID, phase: "item/completed", status: item.Status, searchResults: appServerSearchResults(facts)}}
+	entry := sessionpresentation.ActivityEntry{Seq: s.next(), Agent: name, Observed: observed, CallID: item.ID,
+		Native: &sessionpresentation.NativeItem{Thread: info.ID, Turn: turn.ID, Item: item.ID, Phase: "item/completed", Status: item.Status, SearchResults: appServerSearchResults(facts)}}
 	progressPhase := appServerHistoryProgressPhase(facts, turn.Status)
 	if text, wait, handled := u.itemProgress(facts, info.ID, turn.ID, item.ID, progressPhase, false); handled {
 		if text != "" {
 			entry.Kind, entry.Text = "progress", text
-			entry.native.wait = wait
-			entry.native.phase = progressPhase
+			entry.Native.Wait = wait
+			entry.Native.Phase = progressPhase
 			*entries = append(*entries, entry)
 		}
 		return
 	}
 	switch item.Type {
 	case "userMessage":
-		if blocks := appServerAttachmentValues(info.Cwd, item.Content); len(blocks) > 0 {
-			entry.Kind, entry.native.item = "attachments", item.ID+"/attachments"
-			entry.native.attachments = blocks
+		if blocks := sessionpresentation.AttachmentValues(info.Cwd, item.Content); len(blocks) > 0 {
+			entry.Kind, entry.Native.Item = "attachments", item.ID+"/attachments"
+			entry.Native.Attachments = blocks
 			*entries = append(*entries, entry)
 		}
 	case "imageView":
@@ -413,20 +413,20 @@ func (u *appServerUI) restoreActivityItem(info binding.ThreadInfo, turn binding.
 		*entries = append(*entries, entry)
 	case "commandExecution", "fileChange", "webSearch":
 		entry.Kind, entry.Text = "tool", appServerToolText(facts, info.Cwd)
-		entry.native.command, entry.native.duration = item.Command, appServerDuration(facts)
-		entry.native.commandCwd = appServerCommandDirectory(facts, info.Cwd)
-		entry.native.workdir = appServerCommandWorkdir(facts, info.Cwd)
+		entry.Native.Command, entry.Native.Duration = item.Command, appServerDuration(facts)
+		entry.Native.CommandCwd = appServerCommandDirectory(facts, info.Cwd)
+		entry.Native.Workdir = appServerCommandWorkdir(facts, info.Cwd)
 		if item.Type == "fileChange" {
 			entry.Text = activitypresentation.HostEditText(facts, info.Cwd)
-			entry.native.editPages = activitypresentation.HostEditPages(facts, info.Cwd, entry.native.phase)
+			entry.Native.EditPages = activitypresentation.HostEditPages(facts, info.Cwd, entry.Native.Phase)
 		}
-		s.completeCommand(entry.native, facts)
+		s.completeCommand(entry.Native, facts)
 		appServerCommandOutput(&entry, facts, time.Time{})
 		u.restoreCommandSegments(&entry, item, info.Cwd)
 		*entries = append(*entries, entry)
-		if len(entry.native.segments) == 0 && item.ExitCode != nil && *item.ExitCode != 0 {
-			exit := activityPaneEntry{Seq: s.next(), Agent: name, Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID, Observed: observed}
-			exit.outputTail, exit.outputOmit = appServerOutputTail(item.AggregatedOutput)
+		if len(entry.Native.Segments) == 0 && item.ExitCode != nil && *item.ExitCode != 0 {
+			exit := sessionpresentation.ActivityEntry{Seq: s.next(), Agent: name, Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID, Observed: observed}
+			exit.OutputTail, exit.OutputOmit = appServerOutputTail(item.AggregatedOutput)
 			*entries = append(*entries, exit)
 		}
 	case "collabAgentToolCall":

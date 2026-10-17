@@ -1,42 +1,44 @@
-package router
+package sessionpresentation
 
 import (
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
 
-func retainedOutputID(output *activitymodel.Output, id int) int {
+// Source: apps/mekugi/internal/router/activity_output.go:1:50@45fbe279
+
+func RetainedOutputID(output *activitymodel.Output, id int) int {
 	if output == nil {
 		return 0
 	}
 	return id
 }
 
-func (v *activityAdapter) retainedOutput(source uint64, output int) *activitymodel.Output {
+func (v *ActivitySource) RetainedOutput(source uint64, output int) *activitymodel.Output {
 	if output == 0 {
 		return nil
 	}
 	for _, entry := range v.Entries {
-		if entry.Source.Seq != source || entry.Source.native == nil {
+		if entry.Source.Seq != source || entry.Source.Native == nil {
 			continue
 		}
 		if output == 1 {
-			return entry.Source.native.output
+			return entry.Source.Native.Output
 		}
-		if index := output - 2; index < len(entry.Source.native.segments) {
-			return entry.Source.native.segments[index].output
+		if index := output - 2; index < len(entry.Source.Native.Segments) {
+			return entry.Source.Native.Segments[index].Output
 		}
 	}
 	return nil
 }
 
-// resolveOutputDemands reads admitted source handles without accessing a renderer.
+// ResolveOutputDemands reads admitted source handles without accessing a renderer.
 // Application integration delivers the detached results to the requesting view.
-func (v *activityAdapter) resolveOutputDemands(demands []activitypresentation.OutputDemand) []activitypresentation.OutputResult {
+func (v *ActivitySource) ResolveOutputDemands(demands []activitypresentation.OutputDemand) []activitypresentation.OutputResult {
 	results := make([]activitypresentation.OutputResult, 0, len(demands))
 	for _, demand := range demands {
 		result := activitypresentation.OutputResult{Demand: demand}
-		output := v.retainedOutput(demand.Source, demand.Output)
+		output := v.RetainedOutput(demand.Source, demand.Output)
 		if output == nil {
 			result.View.Released = true
 		} else if demand.Bytes == 0 {

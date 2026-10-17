@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/base64"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/textsanitize"
@@ -28,6 +30,7 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 		t.Run(map[bool]string{false: "main", true: "child"}[child], func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.view.Conversation = true
+			u.view.testAudience()
 			activity := sessioncontrol.NewAudience(nil)
 			activity.Attach("main")
 			proxy := &observationFixture{activity: activity}
@@ -135,7 +138,9 @@ func TestErrorDetailsRestoredRollout(t *testing.T) {
 				view = u.agents
 			}
 			full := "exec script failed: " + detail
-			index := slices.IndexFunc(view.Entries, func(e liveActivityRecord) bool { return e.Source.Kind == "error" && e.Source.CallID == "rejected" })
+			index := slices.IndexFunc(view.Entries, func(e sessionpresentation.ActivityRecord) bool {
+				return e.Source.Kind == "error" && e.Source.CallID == "rejected"
+			})
 			if index < 0 || view.Entries[index].Source.ErrorDetail != full || view.Entries[index].Source.Text != activityui.ErrorPreview(full) {
 				t.Fatal("restoration clipped the full host error")
 			}
@@ -150,7 +155,7 @@ func TestErrorDetailsRestoredRollout(t *testing.T) {
 func TestErrorDetailsKeyboardPaginationAndFiltering(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.agents.setDisplayFilter(true, "/root/worker")
-	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
+	u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root/a", Kind: "error", Text: "old error"},
 		{Seq: 2, Agent: "/root/b", Kind: "error", Text: "other agent"},
 		{Seq: 3, Agent: "/root/a", Kind: "error", Text: "new error"},
@@ -175,7 +180,7 @@ func TestErrorDetailsSearchAcrossVisualWraps(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	query := strings.Repeat("q", 80) + " forced cleanup"
 	full := strings.Repeat("prefix ", 160) + query + strings.Repeat(" tail", 80) + "\n" + query
-	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "error", Text: full}}})
+	u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "error", Text: full}}})
 	if !u.shell.openEntry(u.view, 1) {
 		t.Fatal("could not open error")
 	}
@@ -208,7 +213,7 @@ func TestErrorDetailsTerminalClick(t *testing.T) {
 				u.agents.setDisplayFilter(true, "/root/worker")
 			}
 			full := "Failed: " + strings.Repeat("diagnostic ", 40) + "\nrejected: forced cleanup is not permitted"
-			view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: agent, Kind: "error", Text: full}}})
+			view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: agent, Kind: "error", Text: full}}})
 			u.Text = "preserve draft"
 			if child {
 				u.agents.setDisplayFilter(true, agent)
@@ -244,8 +249,9 @@ func TestErrorDetailsTerminalClick(t *testing.T) {
 func TestUISnapshotErrorDetailsConversation(t *testing.T) {
 	view := newActivityAdapter()
 	view.Conversation = true
+	view.testAudience()
 	view.Clock = func() time.Time { return time.Date(2026, 10, 2, 12, 40, 21, 0, time.Local) }
-	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "error", Observed: view.Now(),
+	view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "error", Observed: view.Now(),
 		Text: "exec script failed", ErrorDetail: "exec script failed: exec_command failed: CreateProcess { message: Rejected(\"" + strings.Repeat("escaped command ", 30) + "\") }\nrejected: forced cleanup is not permitted"}}})
 	assertNativeUISnapshot(t, "error-details-conversation", view.RenderFeed(80, 20).Lines)
 }

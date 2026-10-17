@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/nativetrace"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
@@ -116,7 +117,7 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 		{u.agents, "child", "python-call", "nested.go", "python3"},
 	} {
 		for i, entry := range tc.view.Entries {
-			if entry.Source.native == nil || entry.Source.native.thread != tc.thread || entry.Source.native.item != tc.item {
+			if entry.Source.Native == nil || entry.Source.Native.Thread != tc.thread || entry.Source.Native.Item != tc.item {
 				continue
 			}
 			if !strings.Contains(entry.Source.Text, "Edit `"+tc.path+"` +1 -1 · "+tc.program) ||
@@ -149,7 +150,7 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 	assertCapturedCommand(t, restored.agents, "child", sibling.ID, "Search", 0)
 	for _, view := range []*activityAdapter{u.agents, restored.agents} {
 		for _, entry := range view.Entries {
-			if entry.Source.native == nil || entry.Source.native.item != sibling.ID {
+			if entry.Source.Native == nil || entry.Source.Native.Item != sibling.ID {
 				continue
 			}
 			var rows []string
@@ -167,7 +168,7 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 func assertCapturedCommand(t *testing.T, view *activityAdapter, thread, item, verb string, exit int) {
 	t.Helper()
 	for i, entry := range view.Entries {
-		if entry.Source.native == nil || entry.Source.native.thread != thread || entry.Source.native.item != item || entry.Source.Kind != "tool" {
+		if entry.Source.Native == nil || entry.Source.Native.Thread != thread || entry.Source.Native.Item != item || entry.Source.Kind != "tool" {
 			continue
 		}
 		if len(view.blocks(i)) == 0 || view.blocks(i)[0].Verb != verb || view.blocks(i)[0].ExitCode != exit {
@@ -212,19 +213,19 @@ func TestAppServerCapturedEditsReuseReceipt(t *testing.T) {
 
 func TestAppServerCapturedEditsPreserveTrackedExits(t *testing.T) {
 	v := newActivityAdapter()
-	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
 		Seq: 1, Agent: "Main", Kind: "tool", CallID: "cmd", Text: "Run `git show`; Skill `mekugi-owners`; Run `git cherry-pick`",
-		native: &liveActivityNativeItem{thread: "main", item: "cmd", phase: "item/completed", segments: []commandSegment{
-			{text: "Run `git show`", tail: []string{"commit summary"}},
-			{text: "Skill `mekugi-owners`", tail: []string{"owners"}},
-			{text: "Run `git cherry-pick`", exit: 1, tail: []string{"conflict"}},
+		Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd", Phase: "item/completed", Segments: []sessionpresentation.ActivitySegment{
+			{Text: "Run `git show`", Tail: []string{"commit summary"}},
+			{Text: "Skill `mekugi-owners`", Tail: []string{"owners"}},
+			{Text: "Run `git cherry-pick`", Exit: 1, Tail: []string{"conflict"}},
 		}},
 	}}})
 	data := []*presentation.Receipt{{
 		Thread: "main", Calls: []string{"cmd"}, Text: "Edit `a.go` +1 -1",
 	}}
 	for range 2 {
-		v.applyCapturedEdits(data)
+		v.ApplyCapturedEdits(data)
 		blocks := v.blocks(0)
 		if len(blocks) != 4 || blocks[0].Verb != "Edit" || blocks[0].ExitCode != 0 || blocks[1].ExitCode != 0 || blocks[2].ExitCode != 0 || blocks[3].ExitCode != 1 {
 			t.Fatalf("receipt overwrote per-command statuses: %+v", blocks)
@@ -245,12 +246,12 @@ func TestAppServerGroupedReceiptOmitsBookkeeping(t *testing.T) {
 		"go test ./internal/router",
 		"python3 -c 'open(\"c.go\", \"w\").write(\"PRIVATE_FAILED_BODY\")'",
 	} {
-		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+		v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
 			Seq: uint64(i + 1), Agent: "Main", Kind: "tool", CallID: calls[i], Text: toolActivityShell(source),
-			native: &liveActivityNativeItem{thread: "main", item: calls[i], phase: "item/completed"},
+			Native: &sessionpresentation.NativeItem{Thread: "main", Item: calls[i], Phase: "item/completed"},
 		}}})
 	}
-	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 5, Agent: "Main", Kind: "exit", CallID: "tests", Text: "2"},
 		{Seq: 6, Agent: "Main", Kind: "exit", CallID: "failed-edit", Text: "1"},
 	}})
@@ -258,7 +259,7 @@ func TestAppServerGroupedReceiptOmitsBookkeeping(t *testing.T) {
 		Thread: "main", Calls: calls, Text: "Edit `a.go` +1 -0\n\nEdit `b.go` +1 -0",
 	}}
 	for range 2 {
-		v.applyCapturedEdits(data)
+		v.ApplyCapturedEdits(data)
 		if v.Entries[1].Source.Text != "" || len(v.blocks(1)) != 0 || v.testVisible(v.Entries[1].Source) {
 			t.Fatalf("successful sibling retained a placeholder: %+v", v.Entries[1])
 		}
@@ -369,7 +370,7 @@ func TestAppServerCapturedRemovalKeepsRunNeighbors(t *testing.T) {
 				data := []*presentation.Receipt{{Thread: thread, Calls: []string{"cmd"}, Text: "Delete `FILE` +0 -1 · rm"}}
 				check := func(view *activityAdapter) {
 					for range 2 {
-						view.applyCapturedEdits(data)
+						view.ApplyCapturedEdits(data)
 						blocks := view.blocks(0)
 						if len(blocks) != 2 {
 							t.Fatalf("lost neighbor: %+v", blocks)
@@ -405,7 +406,7 @@ func TestAppServerCapturedEditKeepsCommandPaths(t *testing.T) {
 	check := func(view *activityAdapter) {
 		t.Helper()
 		entry := view.Entries[0]
-		if !strings.Contains(entry.Source.Text, "Read `read.go`") || !strings.Contains(entry.Source.Text, "Search `/command-dir/query` in `src`") || !strings.Contains(entry.Source.Text, "Edit `edit.go` +1 -1") || entry.Source.native.command != item.Command {
+		if !strings.Contains(entry.Source.Text, "Read `read.go`") || !strings.Contains(entry.Source.Text, "Search `/command-dir/query` in `src`") || !strings.Contains(entry.Source.Text, "Edit `edit.go` +1 -1") || entry.Source.Native.Command != item.Command {
 			t.Fatalf("receipt changed neighboring paths, query or source: %q", entry.Source.Text)
 		}
 	}

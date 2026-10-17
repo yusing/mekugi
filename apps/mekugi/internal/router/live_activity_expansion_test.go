@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/charmbracelet/x/ansi"
@@ -16,6 +18,7 @@ import (
 func expansionFixture(main bool) *activityAdapter {
 	v := newActivityAdapter()
 	v.Conversation, v.ChildrenOnly = main, !main
+	v.testAudience()
 	v.Painter.Theme = diffrender.DarkTheme
 	now := time.Date(2026, 9, 30, 22, 31, 0, 0, time.Local)
 	v.Clock = func() time.Time { return now }
@@ -24,9 +27,9 @@ func expansionFixture(main bool) *activityAdapter {
 		agent = "Main"
 	}
 	narrative := strings.Repeat("An event with retained details.\n", 8)
-	v.appendEntry(activityPaneEntry{Seq: 1, Agent: agent, Kind: "text", Text: narrative, Observed: now}, []activityui.Block{{Kind: "text", Body: narrative}})
-	v.appendEntry(activityPaneEntry{Seq: 2, Agent: agent, Kind: "reasoning", Observed: now}, []activityui.Block{{Kind: "summary", Label: "Inspecting", Body: "**Inspecting**\n\n" + strings.Repeat("Public reasoning detail.\n\n", 6), Live: true}})
-	v.appendEntry(activityPaneEntry{Seq: 3, Agent: agent, Kind: "tool", Text: "Run printf", Observed: now}, []activityui.Block{{Kind: "op", Verb: "Run", Label: "printf", Code: strings.Repeat("echo retained-source\n", 8), Lang: "bash", Fenced: true, Tail: []string{"first output", "last output"}}})
+	v.appendEntry(sessionpresentation.ActivityEntry{Seq: 1, Agent: agent, Kind: "text", Text: narrative, Observed: now}, []activityui.Block{{Kind: "text", Body: narrative}})
+	v.appendEntry(sessionpresentation.ActivityEntry{Seq: 2, Agent: agent, Kind: "reasoning", Observed: now}, []activityui.Block{{Kind: "summary", Label: "Inspecting", Body: "**Inspecting**\n\n" + strings.Repeat("Public reasoning detail.\n\n", 6), Live: true}})
+	v.appendEntry(sessionpresentation.ActivityEntry{Seq: 3, Agent: agent, Kind: "tool", Text: "Run printf", Observed: now}, []activityui.Block{{Kind: "op", Verb: "Run", Label: "printf", Code: strings.Repeat("echo retained-source\n", 8), Lang: "bash", Fenced: true, Tail: []string{"first output", "last output"}}})
 	v.LastSeq = 3
 	v.publishActivity()
 	// Disclosure fixtures belong to the renderer, independently of source facts.
@@ -156,6 +159,7 @@ func TestAppServerExpansionRetainedReads(t *testing.T) {
 	for _, main := range []bool{false, true} {
 		u := newAppServerSessionTestUI(t, t.TempDir())
 		u.view.Conversation = main
+		u.view.testAudience()
 		read := func(id string) {
 			appServerTestNotify(t, u, "item/completed", map[string]any{
 				"threadId": "main", "turnId": "t", "item": map[string]any{
@@ -189,7 +193,7 @@ func TestAppServerExpansionRetainedReads(t *testing.T) {
 		if !strings.Contains(render(), "third-start") {
 			t.Fatal("arriving reads ignored pane expansion")
 		}
-		u.view.Entries[0].Source.native.output.Release()
+		u.view.Entries[0].Source.Native.Output.Release()
 		u.view.invalidateEntry(u.view.Entries[0].Source.Seq)
 		if !strings.Contains(render(), "first-end") {
 			t.Fatal("released output erased the retained inline tail")
@@ -206,8 +210,9 @@ func TestAppServerExpansionRetainedReads(t *testing.T) {
 func TestLiveActivityExpansionReusesUserPrompt(t *testing.T) {
 	v := newActivityAdapter()
 	v.Conversation = true
+	v.testAudience()
 	v.Clock = func() time.Time { return time.Date(2026, 9, 30, 22, 31, 0, 0, time.Local) }
-	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "You", Kind: "text", Text: "Keep this prompt and its wrapped source.\n\n```go\npackage example\n```", Observed: time.Date(2026, 9, 30, 22, 31, 0, 0, time.Local)},
 		{Seq: 2, Agent: "Main", Kind: "text", Text: strings.Repeat("An expandable event.\n", 8), Observed: time.Date(2026, 9, 30, 22, 31, 0, 0, time.Local)},
 	}})
@@ -232,16 +237,16 @@ func TestLiveActivityExpansionReusesUserPrompt(t *testing.T) {
 func TestUISnapshotExpansionDefaultPastBatches(t *testing.T) {
 	v := sharedEventsView(false)
 	appendTool := func(seq uint64, verb string) {
-		v.appendEntry(activityPaneEntry{Seq: seq, Agent: "Main", Kind: "tool", Text: verb,
-			native: &liveActivityNativeItem{live: true, status: "completed"}}, []activityui.Block{{Kind: "op", Verb: verb, Label: "target"}})
+		v.appendEntry(sessionpresentation.ActivityEntry{Seq: seq, Agent: "Main", Kind: "tool", Text: verb,
+			Native: &sessionpresentation.NativeItem{Live: true, Status: "completed"}}, []activityui.Block{{Kind: "op", Verb: verb, Label: "target"}})
 	}
 	appendTool(1, "Read")
 	appendTool(2, "Inspect")
-	v.appendEntry(activityPaneEntry{Seq: 3, Agent: "Main", Kind: "question", Text: "Asked", native: &liveActivityNativeItem{live: true}},
+	v.appendEntry(sessionpresentation.ActivityEntry{Seq: 3, Agent: "Main", Kind: "question", Text: "Asked", Native: &sessionpresentation.NativeItem{Live: true}},
 		[]activityui.Block{{Kind: "op", Verb: "Ask", Questions: []activityui.Question{{Text: "Continue?", State: "answered", Answer: "Yes"}}}})
 	appendTool(4, "Search")
 	appendTool(5, "Inspect")
-	v.appendEntry(activityPaneEntry{Seq: 6, Agent: "Main", Kind: "text", Text: strings.Repeat("Later visible event.\n", 10)},
+	v.appendEntry(sessionpresentation.ActivityEntry{Seq: 6, Agent: "Main", Kind: "text", Text: strings.Repeat("Later visible event.\n", 10)},
 		[]activityui.Block{{Kind: "text", Body: strings.Repeat("Later visible event.\n", 10)}})
 	v.Viewport(v.RenderFeed(80, 4), 4)
 	appendTool(7, "Read")
@@ -271,7 +276,7 @@ func BenchmarkLiveActivityExpansion(b *testing.B) {
 		for _, action := range []string{"toggle", "scroll", "cold-toggle"} {
 			b.Run(fmt.Sprintf("Main=%t/%s", main, action), func(b *testing.B) {
 				v := viewportSyntaxView(main, "go")
-				prefix := append([]liveActivityRecord(nil), v.Entries...)
+				prefix := append([]sessionpresentation.ActivityRecord(nil), v.Entries...)
 				for range 39 {
 					for _, record := range prefix {
 						entry := record.Source

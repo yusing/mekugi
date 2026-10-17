@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
 
@@ -16,12 +18,12 @@ import (
 func TestExecCompletedReceiptKeepsPythonValidation(t *testing.T) {
 	writer, check := "cat > source.go", "python3 -c 'assert True'"
 	command := writer + "; " + check
-	entry := activityPaneEntry{Kind: "tool", Text: toolActivityShell(command), native: &liveActivityNativeItem{
-		thread: "main", item: "cmd", command: command,
-		segments:     []commandSegment{{source: writer, text: execSegmentText(writer)}, {source: check, text: execSegmentText(check)}},
-		capturedEdit: &presentation.Receipt{Thread: "main", Calls: []string{"cmd"}, Text: "Edit `source.go` +1 -1 · cat"},
+	entry := sessionpresentation.ActivityEntry{Kind: "tool", Text: toolActivityShell(command), Native: &sessionpresentation.NativeItem{
+		Thread: "main", Item: "cmd", Command: command,
+		Segments:     []sessionpresentation.ActivitySegment{{Source: writer, Text: execSegmentText(writer)}, {Source: check, Text: execSegmentText(check)}},
+		CapturedEdit: &presentation.Receipt{Thread: "main", Calls: []string{"cmd"}, Text: "Edit `source.go` +1 -1 · cat"},
 	}}
-	blocks := commandSegmentBlocks(commandPresentation(entry))
+	blocks := commandSegmentBlocks(sessionpresentation.CommandPresentation(entry))
 	if !slices.ContainsFunc(blocks, func(block activityui.Block) bool {
 		return block.Code == check || strings.Contains(block.Label, "assert True")
 	}) {
@@ -39,7 +41,7 @@ func TestNativeCompletedReceiptWithdrawal(t *testing.T) {
 	u.shell.preview(frame, false)
 	for _, view := range []*activityAdapter{u.view, u.agents} {
 		for _, entry := range view.Entries {
-			if entry.Source.native != nil && entry.Source.native.capturedEdit != nil {
+			if entry.Source.Native != nil && entry.Source.Native.CapturedEdit != nil {
 				t.Fatal("UI retained a withdrawn receipt")
 			}
 		}

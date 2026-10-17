@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
@@ -55,16 +56,16 @@ func (u *appServerUI) renameThreadActivity(old, name string) {
 	}
 	for _, view := range []*activityAdapter{u.view, u.agents} {
 		for i := range view.Entries {
-			view.Model.Mutate(i, func(entry *liveActivityRecord) {
+			view.Model.Mutate(i, func(entry *sessionpresentation.ActivityRecord) {
 				if entry.Source.Agent == old {
 					entry.Source.Agent = name
 				}
-				if entry.Source.assignment != nil {
-					if entry.Source.assignment.from == old {
-						entry.Source.assignment.from = name
+				if entry.Source.Assignment != nil {
+					if entry.Source.Assignment.From == old {
+						entry.Source.Assignment.From = name
 					}
-					if entry.Source.assignment.to == old {
-						entry.Source.assignment.to = name
+					if entry.Source.Assignment.To == old {
+						entry.Source.Assignment.To = name
 					}
 				}
 				// Preserve merged exits, filters and answer links while renaming

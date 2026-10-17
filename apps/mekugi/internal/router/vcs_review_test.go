@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/commandsegments/segments"
 
@@ -78,7 +80,7 @@ func TestVCSCommitEnrichmentRequiresProvenSegmentDirectory(t *testing.T) {
 			command := "git commit -m directory"
 			hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
 			hub.ui, u.execTrack = u, hub.Observer
-			u.session.commands[key] = &appServerCommandRun{entry: activityPaneEntry{native: &liveActivityNativeItem{invocation: activitypresentation.NewInvocation(activitypresentation.CommandSource{}, time.Time{}, u.session.activity.Outputs(u.session.Scope()))}}}
+			u.session.commands[key] = &appServerCommandRun{entry: sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Invocation: activitypresentation.NewInvocation(activitypresentation.CommandSource{}, time.Time{}, u.session.activity.Outputs(u.session.Scope()))}}}
 			report := hub.begin(t, key, prior+"; "+command)
 			report.send(
 				segmenttransport.Message{Type: segmenttransport.Begin, Index: 0}, segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)},
@@ -87,22 +89,22 @@ func TestVCSCommitEnrichmentRequiresProvenSegmentDirectory(t *testing.T) {
 			)
 			hub.await(t, key, func(view execTrackView) bool { return view.complete })
 			item := binding.ThreadItem{ID: key[2], Type: "commandExecution", Command: "bash -lc " + quoteShellWord(prior+"; "+command), Cwd: g.dir, ExitCode: new(0), AggregatedOutput: &output}
-			entry := activityPaneEntry{Kind: "tool", native: &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2], command: item.Command}}
-			entry.native.invocation = u.session.commands[key].entry.native.invocation
-			entry.native.invocation.Complete(activitypresentation.CommandCompletion{Source: appServerCommandSource(item.Command, item.Cwd), Aggregate: item.AggregatedOutput, Exit: item.ExitCode})
+			entry := sessionpresentation.ActivityEntry{Kind: "tool", Native: &sessionpresentation.NativeItem{Thread: key[0], Turn: key[1], Item: key[2], Command: item.Command}}
+			entry.Native.Invocation = u.session.commands[key].entry.Native.Invocation
+			entry.Native.Invocation.Complete(activitypresentation.CommandCompletion{Source: sessionpresentation.CommandSource(item.Command, item.Cwd), Aggregate: item.AggregatedOutput, Exit: item.ExitCode})
 			live, valid := u.reconcileTrackedCommand(key, entry, item.Observation())
 			if !valid {
 				t.Fatal("completed report was not admitted")
 			}
 			awaitCommandSegments(t, u)
 			restored := entry
-			restored.native = &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2]}
+			restored.Native = &sessionpresentation.NativeItem{Thread: key[0], Turn: key[1], Item: key[2]}
 			u.restoreCommandSegments(&restored, item, g.dir)
-			for _, candidate := range []activityPaneEntry{live, restored} {
-				if len(candidate.native.segments) != 2 {
-					t.Fatalf("segments missing: %+v", candidate.native.segments)
+			for _, candidate := range []sessionpresentation.ActivityEntry{live, restored} {
+				if len(candidate.Native.Segments) != 2 {
+					t.Fatalf("segments missing: %+v", candidate.Native.Segments)
 				}
-				commit := candidate.native.segments[1].commit
+				commit := candidate.Native.Segments[1].Commit
 				if prior == "git add a.go" {
 					if commit.Directory != g.dir || commit.Hash == "" {
 						t.Fatalf("known directory lost: %+v", commit)

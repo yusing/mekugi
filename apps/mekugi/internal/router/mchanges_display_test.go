@@ -1,12 +1,13 @@
 package router
 
 import (
-"github.com/yusing/mekugi/libraries/legacycall"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/libraries/legacycall"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 
@@ -24,6 +25,7 @@ func mchangesDisplay(t *testing.T, command, output string) *appServerUI {
 	t.Helper()
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
+	u.view.testAudience()
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
 		"id": "cmd", "type": "commandExecution", "command": command, "status": "completed", "exitCode": 0, "aggregatedOutput": output}})
 	return u

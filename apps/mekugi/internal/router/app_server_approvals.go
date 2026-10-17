@@ -108,7 +108,7 @@ func (u *appServerUI) addGuardApproval(request *sessioncontrol.ShellApprovalRequ
 	// can omit the thread; an ambiguous item is never attributed by recency.
 	if request.Item != "" {
 		if owner := u.approvalItem(request.Thread, "", request.Item); owner != nil {
-			a.Thread, a.Turn, a.Item = owner.thread, owner.turn, owner.item
+			a.Thread, a.Turn, a.Item = owner.Thread, owner.Turn, owner.Item
 		}
 	}
 	// Password requests are never command approvals or session-grant lookups.
@@ -206,7 +206,7 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 	}
 	a := &sessioncontrol.Approval{Approval: &decoded.Record, RequestID: slices.Clone(m.ID), Responses: decoded.Responses}
 	if decoded.DisplayCommand {
-		a.Subject = appServerDisplayCommand(a.Subject)
+		a.Subject = sessionpresentation.DisplayCommand(a.Subject)
 	}
 	u.blockNotification(m)
 	u.addApproval(a)
@@ -252,18 +252,18 @@ func (u *appServerUI) endApproval(a *sessioncontrol.Approval, outcome string) {
 }
 
 // approvalItem finds one exact host identity across the two presentation views.
-func (u *appServerUI) approvalItem(thread, turn, item string) *liveActivityNativeItem {
-	var owner *liveActivityNativeItem
+func (u *appServerUI) approvalItem(thread, turn, item string) *sessionpresentation.NativeItem {
+	var owner *sessionpresentation.NativeItem
 	for _, view := range []*activityAdapter{u.view, u.agents} {
 		if view == nil {
 			continue
 		}
 		for _, entry := range view.Entries {
-			n := entry.Source.native
-			if n == nil || n.item != item || thread != "" && n.thread != thread || turn != "" && n.turn != turn {
+			n := entry.Source.Native
+			if n == nil || n.Item != item || thread != "" && n.Thread != thread || turn != "" && n.Turn != turn {
 				continue
 			}
-			if owner != nil && !owner.sameItem(n) {
+			if owner != nil && !owner.SameItem(n) {
 				return nil
 			}
 			owner = n
@@ -288,17 +288,17 @@ func (u *appServerUI) recordApproval(a *sessioncontrol.Approval, outcome string)
 	}
 	if a.Guard != nil {
 		owner := u.approvalItem(a.Thread, a.Turn, a.Item)
-		a.Thread, a.Turn = owner.thread, owner.turn
+		a.Thread, a.Turn = owner.Thread, owner.Turn
 		outcome += "\nCommand: " + a.Subject
 	}
-	entry := activityPaneEntry{Seq: u.session.next(), Kind: "tool", Text: activitypresentation.ShellSource(frontends.ShellDisplaySource(a.Subject), ""), Observed: u.now(),
-		native: &liveActivityNativeItem{thread: a.Thread, turn: a.Turn, item: a.Item, phase: "approval/updated", approval: outcome}}
+	entry := sessionpresentation.ActivityEntry{Seq: u.session.next(), Kind: "tool", Text: activitypresentation.ShellSource(frontends.ShellDisplaySource(a.Subject), ""), Observed: u.now(),
+		Native: &sessionpresentation.NativeItem{Thread: a.Thread, Turn: a.Turn, Item: a.Item, Phase: "approval/updated", Approval: outcome}}
 	if u.agents != nil {
 		entry.Agent = u.session.path(a.Thread)
-		u.applyActivity([]activityPaneEntry{entry}, nil)
+		u.applyActivity([]sessionpresentation.ActivityEntry{entry}, nil)
 	} else {
 		entry.Seq, entry.Agent = u.view.LastSeq+1, "Main"
-		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+		u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
 	}
 }
 

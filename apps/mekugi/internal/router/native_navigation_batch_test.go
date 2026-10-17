@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/libraries/terminalui"
 
 	"github.com/charmbracelet/x/ansi"
@@ -93,7 +95,7 @@ func TestNativeNavigationBatchDiffBadgeCells(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.sessionPresentation().Status.Text = "Ready"
 	u.shell.diffUnseen = true
-	u.agents.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/worker", Responding: true}}})
+	u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/worker", Responding: true}}})
 	screen := navigationBatchPaint(t, u, 120, 24)
 	footer := strings.Split(screen.String(), "\n")[23]
 	start := strings.Index(footer, "2 Diff ●")

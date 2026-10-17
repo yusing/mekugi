@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/charmbracelet/x/ansi"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
@@ -33,14 +35,14 @@ func TestTrackedRevealDoesNotReviseCommandFacts(t *testing.T) {
 	if after := u.view.Model.Publish().Entries[0]; !reflect.DeepEqual(before, after) {
 		t.Fatalf("terminal reveal revised command facts:\nbefore=%+v\nafter=%+v", before, after)
 	}
-	if !u.view.markUnreturned("main", "cmd") {
+	if !u.view.MarkUnreturned("main", "cmd") {
 		t.Fatal("running output presence depended on an animated model tail")
 	}
 	report.send(segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Begin, Index: 1})
 	awaitMain(t, u, "Running echo last")
-	frame = awaitMain(t, u, unreturnedOutputNote)
+	frame = awaitMain(t, u, "output not returned to the model")
 	after := u.view.Model.Publish().Entries[0]
-	if after.Seq != before.Seq || after.Revision == before.Revision || len(u.view.Entries[0].Source.native.segments) != 2 || !strings.Contains(frame, unreturnedOutputNote) {
+	if after.Seq != before.Seq || after.Revision == before.Revision || len(u.view.Entries[0].Source.Native.Segments) != 2 || !strings.Contains(frame, "output not returned to the model") {
 		t.Fatalf("segment lifecycle or output annotation was lost:\n%s", frame)
 	}
 }
@@ -66,7 +68,7 @@ func TestTrackedCompletionPrecedesReportSettlement(t *testing.T) {
 			awaitMain(t, u, "Running echo last")
 			seq := u.view.Entries[0].Source.Seq
 			target := activityui.Block{Source: seq, Output: 2}
-			retained := u.view.retainedOutput(target.Source, target.Output)
+			retained := u.view.RetainedOutput(target.Source, target.Output)
 			if retained == nil || strings.Join(retained.View().Lines, "\n") != "first" {
 				t.Fatal("running segment output was not retained")
 			}
@@ -81,10 +83,10 @@ func TestTrackedCompletionPrecedesReportSettlement(t *testing.T) {
 					t.Fatalf("neutral consumer lost completed aggregate: %+v", entry.Values)
 				}
 			}
-			if u.runningProcessCount() != 0 || u.view.retainedOutput(target.Source, target.Output) != retained {
+			if u.runningProcessCount() != 0 || u.view.RetainedOutput(target.Source, target.Output) != retained {
 				t.Fatal("report wait revived execution or retired the displayed segment target")
 			}
-			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.session.next(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", native: &liveActivityNativeItem{thread: "main", item: "cmd"}}}})
+			u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.session.next(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd"}}}})
 			now = now.Add(execTrackCompletionWait - time.Nanosecond)
 			u.flushStreamOutput()
 			frame := ansi.Strip(strings.Join(u.view.RenderFeed(100, 30).Lines, "\n"))
@@ -106,7 +108,7 @@ func TestTrackedCompletionPrecedesReportSettlement(t *testing.T) {
 				frame = ansi.Strip(strings.Join(u.view.RenderFeed(100, 30).Lines, "\n"))
 			}
 			entry := u.view.Entries[0]
-			if entry.Source.Seq != seq || entry.Source.native.segmentsPending || (len(entry.Source.native.segments) == 2) != closeReport || u.session.commands[key] != nil || hub.Tracking(key) {
+			if entry.Source.Seq != seq || entry.Source.Native.SegmentsPending || (len(entry.Source.Native.Segments) == 2) != closeReport || u.session.commands[key] != nil || hub.Tracking(key) {
 				t.Fatalf("report did not settle on its original identity: %+v", entry.Source)
 			}
 			if !strings.Contains(frame, "exit 2") || !strings.Contains(frame, "last") || strings.Count(frame, "Repeated fixture output") != 1 {

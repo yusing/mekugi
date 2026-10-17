@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -73,7 +75,7 @@ func TestAppServerGuardCommandDisplay(t *testing.T) {
 					if thread == "child" {
 						view = u.agents
 					}
-					if len(view.Entries) != 1 || view.Entries[0].Source.Text != want || view.Entries[0].Source.native.command != command {
+					if len(view.Entries) != 1 || view.Entries[0].Source.Text != want || view.Entries[0].Source.Native.Command != command {
 						t.Fatalf("command entries = %+v; want display %q with unchanged host command", view.Entries, want)
 					}
 				}
@@ -160,7 +162,7 @@ func TestUISnapshotGuardedHeredocCommit(t *testing.T) {
 	u.restoreHistory([]binding.HistoryTurn{{ID: "past", Status: "completed", Items: []binding.ThreadItem{{
 		ID: "cmd", Type: "commandExecution", Command: command, AggregatedOutput: &output, ExitCode: new(0), DurationMS: new(int64(500)),
 	}}}})
-	if entry := u.view.Entries[0]; entry.Source.native.command != command {
+	if entry := u.view.Entries[0]; entry.Source.Native.Command != command {
 		t.Fatal("host command changed")
 	}
 	assertNativeUISnapshot(t, "guarded-heredoc-commit", strings.Split(mainFeed(u, 90), "\n"))
@@ -212,8 +214,8 @@ func TestUISnapshotGuardCommandOutputDialog(t *testing.T) {
 		ID: "cmd", Type: "commandExecution", Command: command, AggregatedOutput: &output, ExitCode: new(1),
 	}}}})
 	entry := u.view.Entries[0]
-	pages := activityui.Disclosure(nil).Blocks(commandPresentation(entry.Source).DetailValues())
-	if len(pages) != 1 || pages[0].Code != source || entry.Source.native.command != command || u.view.retainedOutput(pages[0].Source, pages[0].Output) != entry.Source.native.output {
+	pages := activityui.Disclosure(nil).Blocks(sessionpresentation.CommandPresentation(entry.Source).DetailValues())
+	if len(pages) != 1 || pages[0].Code != source || entry.Source.Native.Command != command || u.view.RetainedOutput(pages[0].Source, pages[0].Output) != entry.Source.Native.Output {
 		t.Fatalf("combined output pages = %+v; want original command display and unchanged host output", pages)
 	}
 	terminal := &terminalUI{main: u}

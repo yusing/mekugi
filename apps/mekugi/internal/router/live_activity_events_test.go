@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -17,6 +19,7 @@ import (
 func sharedEventsView(child bool) *activityAdapter {
 	v := newActivityAdapter()
 	v.Conversation, v.ChildrenOnly = !child, child
+	v.testAudience()
 	v.Painter.Theme = diffrender.DarkTheme
 	v.Clock = func() time.Time { return time.Date(2026, 10, 2, 12, 34, 56, 0, time.Local) }
 	return v
@@ -31,7 +34,7 @@ func TestUISnapshotLiveActivitySharedEvents(t *testing.T) {
 				if child {
 					agent = "/root/reviewer"
 				}
-				entries := []activityPaneEntry{
+				entries := []sessionpresentation.ActivityEntry{
 					{Kind: "text", Text: "Reviewing the same event presentation."},
 					{Kind: "reasoning", Text: "Checking final changes"},
 					{Kind: "error", Text: "Provider request failed"},
@@ -53,7 +56,7 @@ func TestUISnapshotLiveActivitySharedEvents(t *testing.T) {
 func TestUISnapshotSymbolQueryDisplay(t *testing.T) {
 	v := sharedEventsView(false)
 	for i, source := range []string{`msymbol refs sample.go Target`, `msymbol -- refs 'other file.go' Other`, `msymbol def sample.go Target refs other.go Other`, `msymbol refs sample.go`} {
-		entry := activityPaneEntry{Seq: uint64(i + 1), Kind: "tool", Agent: "Main", Text: toolActivityShell(source), Observed: v.Now()}
+		entry := sessionpresentation.ActivityEntry{Seq: uint64(i + 1), Kind: "tool", Agent: "Main", Text: toolActivityShell(source), Observed: v.Now()}
 		v.appendEntry(entry, parseLiveActivity(entry))
 	}
 	uisnapshot.Assert(t, "testdata/snapshots/symbol-query-display.txt", strings.Join(v.RenderFeed(80, 100).Lines, "\n")+"\n")
@@ -79,7 +82,7 @@ func TestLiveActivityDetailsOnlyForHiddenContent(t *testing.T) {
 				if child {
 					agent = "/root/worker"
 				}
-				entry := activityPaneEntry{Seq: 1, Agent: agent, Kind: tc.kind, Text: tc.text, Observed: v.Now(), native: &liveActivityNativeItem{}}
+				entry := sessionpresentation.ActivityEntry{Seq: 1, Agent: agent, Kind: tc.kind, Text: tc.text, Observed: v.Now(), Native: &sessionpresentation.NativeItem{}}
 				v.appendEntry(entry, parseLiveActivity(entry))
 				feed := v.RenderFeed(36, 40)
 				v.Viewport(feed, 40)
@@ -119,7 +122,7 @@ func TestLiveActivityDetailsOnlyForHiddenContent(t *testing.T) {
 func TestLiveActivityClippedNarrativeRetainsDialog(t *testing.T) {
 	v := sharedEventsView(true)
 	body := strings.Repeat("A full narrative paragraph.\n\n", 12)
-	entry := activityPaneEntry{Seq: 1, Agent: "/root/worker", Kind: "text", Text: body, Observed: v.Now()}
+	entry := sessionpresentation.ActivityEntry{Seq: 1, Agent: "/root/worker", Kind: "text", Text: body, Observed: v.Now()}
 	v.appendEntry(entry, parseLiveActivity(entry))
 	feed := v.RenderFeed(40, 20)
 	if len(feed.Lines) != 6 || feed.Snippets[5].Run != 1 {
@@ -136,7 +139,7 @@ func TestLiveActivityClippedNarrativeRetainsDialog(t *testing.T) {
 
 func TestLiveActivitySharedEventJumpFlash(t *testing.T) {
 	v := sharedEventsView(true)
-	entry := activityPaneEntry{Seq: 1, Agent: "/root/worker", Kind: "final", Text: "Answer to the assignment.", Observed: v.Now()}
+	entry := sessionpresentation.ActivityEntry{Seq: 1, Agent: "/root/worker", Kind: "final", Text: "Answer to the assignment.", Observed: v.Now()}
 	v.appendEntry(entry, parseLiveActivity(entry))
 	before := v.RenderFeed(60, 20)
 	v.PendingTarget = 1
@@ -152,8 +155,8 @@ func TestLiveActivitySharedEventJumpFlash(t *testing.T) {
 
 func TestLiveActivitySharedNarrativeDialogRefresh(t *testing.T) {
 	v := sharedEventsView(true)
-	entry := activityPaneEntry{Seq: 1, Agent: "/root/worker", Kind: "text", Text: strings.Repeat("First paragraph.\n\n", 12), Observed: v.Now(),
-		native: &liveActivityNativeItem{thread: "child", item: "text", live: true, phase: "item/agentMessage/delta"}}
+	entry := sessionpresentation.ActivityEntry{Seq: 1, Agent: "/root/worker", Kind: "text", Text: strings.Repeat("First paragraph.\n\n", 12), Observed: v.Now(),
+		Native: &sessionpresentation.NativeItem{Thread: "child", Item: "text", Live: true, Phase: "item/agentMessage/delta"}}
 	v.appendEntry(entry, parseLiveActivity(entry))
 	feed := v.RenderFeed(40, 20)
 	u := &terminalUI{}
@@ -185,7 +188,7 @@ func TestLiveActivityTruncatedReasoningHeading(t *testing.T) {
 						phase = "summary"
 					}
 					body := "**Investigating the very long reasoning heading with UNIQUE_HIDDEN_SUFFIX**\n\nShort body."
-					entry := activityPaneEntry{Seq: 1, Agent: agent, Kind: "reasoning", Text: body, native: &liveActivityNativeItem{phase: phase}}
+					entry := sessionpresentation.ActivityEntry{Seq: 1, Agent: agent, Kind: "reasoning", Text: body, Native: &sessionpresentation.NativeItem{Phase: phase}}
 					v.appendEntry(entry, parseLiveActivity(entry))
 					feed := v.RenderFeed(width, 40)
 					var target activityui.Snippet

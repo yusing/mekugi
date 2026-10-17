@@ -44,11 +44,11 @@ type nativePendingPreview struct {
 func (u *terminalUI) openActivityReply(seq uint64) bool {
 	v := u.main.view
 	for _, entry := range v.Entries {
-		if entry.Source.Seq != seq || entry.Source.activitySeq == 0 {
+		if entry.Source.Seq != seq || entry.Source.ActivitySeq == 0 {
 			continue
 		}
 		for _, target := range u.agents.Entries {
-			if target.Source.Seq != entry.Source.activitySeq {
+			if target.Source.Seq != entry.Source.ActivitySeq {
 				continue
 			}
 			return u.openEntry(u.agents, target.Source.Seq)

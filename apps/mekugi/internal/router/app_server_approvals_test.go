@@ -245,7 +245,7 @@ func TestNativeApprovalEndsWhenResolvedElsewhere(t *testing.T) {
 	if strings.Contains(input.String(), `"decision"`) {
 		t.Fatalf("ended approval was answered: %s", input.String())
 	}
-	if got := approvalTestTranscript(t, u); strings.Contains(got, "Pending Approval") || len(u.view.Entries) != 1 || u.view.Entries[0].Source.native.approval != "Turn ended before an answer" {
+	if got := approvalTestTranscript(t, u); strings.Contains(got, "Pending Approval") || len(u.view.Entries) != 1 || u.view.Entries[0].Source.Native.Approval != "Turn ended before an answer" {
 		t.Fatalf("transcript = %q", got)
 	}
 }
@@ -326,7 +326,7 @@ func TestNativeApprovalGuardedWrite(t *testing.T) {
 	u.addGuardApproval(withdrawn)
 	withdrawn.Outcome = "withdrawn"
 	close(withdrawn.Done)
-	if !u.expireApprovals() || strings.Contains(approvalTestTranscript(t, u), "Approval") || u.view.Entries[3].Source.native.approval != "Withdrawn: the command stopped\nCommand: git push origin main" {
+	if !u.expireApprovals() || strings.Contains(approvalTestTranscript(t, u), "Approval") || u.view.Entries[3].Source.Native.Approval != "Withdrawn: the command stopped\nCommand: git push origin main" {
 		t.Fatalf("transcript = %q", approvalTestTranscript(t, u))
 	}
 }
@@ -691,11 +691,11 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 			a := u.pendingApprovals()[0]
 			if tc.guard && tc.early && !tc.child {
 				notify("item/started")
-				native := *view.Entries[0].Source.native
-				native.phase = "item/commandExecution/outputDelta"
-				native.segments = []commandSegment{{source: item.Command, text: toolActivityShell(item.Command), running: true}}
-				u.applyActivity([]activityPaneEntry{{Seq: u.session.next(), Agent: u.session.path(thread), Kind: "tool", Text: toolActivityShell(item.Command), native: &native}}, nil)
-				if len(view.Entries) != 1 || len(view.blocks(0)) != 1 || !strings.HasPrefix(view.Entries[0].Source.native.approval, "Pending Approval") {
+				native := *view.Entries[0].Source.Native
+				native.Phase = "item/commandExecution/outputDelta"
+				native.Segments = []sessionpresentation.ActivitySegment{{Source: item.Command, Text: toolActivityShell(item.Command), Running: true}}
+				u.applyActivity([]sessionpresentation.ActivityEntry{{Seq: u.session.next(), Agent: u.session.path(thread), Kind: "tool", Text: toolActivityShell(item.Command), Native: &native}}, nil)
+				if len(view.Entries) != 1 || len(view.blocks(0)) != 1 || !strings.HasPrefix(view.Entries[0].Source.Native.Approval, "Pending Approval") {
 					t.Fatal("early guard pending state was not reconciled")
 				}
 			}
@@ -726,7 +726,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 			if tc.guard {
 				outcome += "\nCommand: git push origin main"
 			}
-			if len(view.Entries) != count || view.Entries[count-1].Source.native.approval != outcome {
+			if len(view.Entries) != count || view.Entries[count-1].Source.Native.Approval != outcome {
 				t.Fatalf("entries = %+v", view.Entries)
 			}
 			entry := view.Entries[count-1]

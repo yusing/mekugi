@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/nativetrace"
@@ -63,11 +65,11 @@ func TestAppServerFrontendCommandClassification(t *testing.T) {
 				for _, method := range []string{"item/started", "item/completed"} {
 					appServerTestNotify(t, u, method, map[string]any{"threadId": "main", "turnId": "t", "item": item})
 				}
-				if len(u.view.Entries) != 1 || u.view.Entries[0].Source.Text != tc.want || u.view.Entries[0].Source.native.command != command {
+				if len(u.view.Entries) != 1 || u.view.Entries[0].Source.Text != tc.want || u.view.Entries[0].Source.Native.Command != command {
 					t.Fatalf("classified live entries: %+v; want %q", u.view.Entries, tc.want)
 				}
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "t", "item": item})
-				if len(u.agents.Entries) != 2 || u.agents.Entries[1].Source.Text != tc.want || u.agents.Entries[1].Source.native.command != command {
+				if len(u.agents.Entries) != 2 || u.agents.Entries[1].Source.Text != tc.want || u.agents.Entries[1].Source.Native.Command != command {
 					t.Fatalf("classified child text: %q; want %q", u.agents.Entries[len(u.agents.Entries)-1].Source.Text, tc.want)
 				}
 				restored := newAppServerSessionTestUI(t, t.TempDir())
@@ -151,7 +153,7 @@ func TestAppServerShellDisplay(t *testing.T) {
 	} {
 		t.Run(tt.input, func(t *testing.T) {
 			item := binding.ThreadItem{Command: tt.input}
-			if got := appServerDisplayCommand(item.Command); got != tt.want {
+			if got := sessionpresentation.DisplayCommand(item.Command); got != tt.want {
 				t.Fatalf("display = %q, want %q", got, tt.want)
 			}
 			if item.Command != tt.input {
@@ -163,7 +165,7 @@ func TestAppServerShellDisplay(t *testing.T) {
 
 func TestAppServerShellDisplayHighlight(t *testing.T) {
 	source := `printf '%s' "$HOME"; go test ./...`
-	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: appServerCommandText((binding.ThreadItem{Command: `/bin/bash -lc 'printf '\''%s'\'' "$HOME"; go test ./...'`}).Observation(), "")})
+	blocks := parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "tool", Text: appServerCommandText((binding.ThreadItem{Command: `/bin/bash -lc 'printf '\''%s'\'' "$HOME"; go test ./...'`}).Observation(), "")})
 	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		p := activityui.Painter{Theme: theme}
 		var rows []string
@@ -250,8 +252,8 @@ func TestAppServerCommandTimeoutInput(t *testing.T) {
 					view = u.agents
 				}
 				entry := view.Entries[len(view.Entries)-1]
-				if entry.Source.native.command != item.Command || entry.Source.native.commandTimeout != tc.want {
-					t.Fatalf("%s/%s timeout = %q, want %q", thread, tc.id, entry.Source.native.commandTimeout, tc.want)
+				if entry.Source.Native.Command != item.Command || entry.Source.Native.CommandTimeout != tc.want {
+					t.Fatalf("%s/%s timeout = %q, want %q", thread, tc.id, entry.Source.Native.CommandTimeout, tc.want)
 				}
 				blocks := parseLiveActivity(entry.Source)
 				if got := strings.Join(blocks[0].Timeouts, " "); got != tc.want {
@@ -275,14 +277,14 @@ func TestAppServerCommandTimeoutInput(t *testing.T) {
 
 func TestUISnapshotTimeoutSkill(t *testing.T) {
 	p := activityui.Painter{Theme: diffrender.DarkTheme}
-	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell("timeout 123 skills-mgr get skill")})
+	blocks := parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "tool", Text: toolActivityShell("timeout 123 skills-mgr get skill")})
 	blocks[0].Duration = 500 * time.Millisecond
 	assertNativeUISnapshot(t, "timeout-skill", p.Block(blocks[0], 90))
 }
 
 func TestUISnapshotTimeoutRun(t *testing.T) {
 	p := activityui.Painter{Theme: diffrender.DarkTheme}
-	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell("timeout 5 sleep 6")})
+	blocks := parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "tool", Text: toolActivityShell("timeout 5 sleep 6")})
 	blocks[0].Duration, blocks[0].ExitCode = 5*time.Second, 124
 	assertNativeUISnapshot(t, "timeout-run", p.Block(blocks[0], 90))
 }
@@ -320,7 +322,7 @@ func TestLiveActivitySkillRendering(t *testing.T) {
 	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		p := activityui.Painter{Theme: theme}
 		for _, command := range []string{"skills-mgr get golang-best-practices", "skills-mgr run use-modern-go/scripts/run-tool.sh list --go-version 1.27"} {
-			blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell(command)})
+			blocks := parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "tool", Text: toolActivityShell(command)})
 			if len(blocks) != 1 || blocks[0].Verb != "Skill" {
 				t.Fatalf("skill blocks: %+v", blocks)
 			}
@@ -362,10 +364,10 @@ func TestAppServerCommandWorkdirDisplay(t *testing.T) {
 			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: tc.command, Cwd: tc.cwd, CommandActions: tc.actions}
 			check := func(u *appServerUI) {
 				t.Helper()
-				if len(u.view.Entries) != 1 || u.view.Entries[0].Source.Text != tc.text || u.view.Entries[0].Source.native.workdir != tc.workdir {
+				if len(u.view.Entries) != 1 || u.view.Entries[0].Source.Text != tc.text || u.view.Entries[0].Source.Native.Workdir != tc.workdir {
 					t.Fatalf("entries = %+v; want text %q in %q", u.view.Entries, tc.text, tc.workdir)
 				}
-				if u.view.Entries[0].Source.native.command != tc.command {
+				if u.view.Entries[0].Source.Native.Command != tc.command {
 					t.Fatal("retained command source changed")
 				}
 				blocks := parseLiveActivity(u.view.Entries[0].Source)
@@ -419,8 +421,8 @@ func TestUISnapshotMCatSourceWithoutFilesystemDisambiguation(t *testing.T) {
 					t.Fatalf("%s entries = %+v", name, ui.view.Entries)
 				}
 				entry := ui.view.Entries[0].Source
-				if entry.Text != tc.text || entry.native.command != tc.command {
-					t.Fatalf("%s source = %q, command = %q; want %q, %q", name, entry.Text, entry.native.command, tc.text, tc.command)
+				if entry.Text != tc.text || entry.Native.Command != tc.command {
+					t.Fatalf("%s source = %q, command = %q; want %q, %q", name, entry.Text, entry.Native.Command, tc.text, tc.command)
 				}
 				blocks := parseLiveActivity(entry)
 				assertNativeUISnapshot(t, "mcat-source-"+tc.name, (&activityui.Painter{Theme: diffrender.DarkTheme}).Block(blocks[0], 80))
@@ -478,7 +480,7 @@ func TestAppServerWholeScriptTimeoutSuffix(t *testing.T) {
 			if got := strings.Join(rows, "\n"); !strings.Contains(got, "(timeout 10s)") {
 				t.Fatalf("missing timeout suffix: %s", got)
 			}
-			if entry.Source.native.command != command || blocks[0].Code != command {
+			if entry.Source.Native.Command != command || blocks[0].Code != command {
 				t.Fatalf("whole script source changed: %+v", blocks[0])
 			}
 		})

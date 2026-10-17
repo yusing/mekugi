@@ -2,6 +2,9 @@ package router
 
 import (
 	"cmp"
+
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
@@ -191,7 +194,7 @@ func (u *appServerUI) restoreMainHistory(turns []binding.HistoryTurn, placements
 			at := cmp.Or(itemAt[item.ID], historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt)))
 			if !at.IsZero() {
 				for j := len(u.view.Entries) - 1; j >= 0 && u.view.Entries[j].Source.Seq > before; j-- {
-					u.view.Model.Mutate(j, func(record *liveActivityRecord) { record.Source.Observed = at })
+					u.view.Model.Mutate(j, func(record *sessionpresentation.ActivityRecord) { record.Source.Observed = at })
 				}
 			}
 			place(slots[i+1])
@@ -202,7 +205,7 @@ func (u *appServerUI) restoreMainHistory(turns []binding.HistoryTurn, placements
 			if turn.Error != nil && strings.TrimSpace(turn.Error.Message) != "" {
 				text += ": " + turn.Error.Message
 			}
-			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "error", Text: text,
+			u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "error", Text: text,
 				Observed: historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt))}}})
 		}
 		if turn.Status == "inProgress" {
@@ -220,13 +223,13 @@ func (u *appServerUI) restoreMainHistory(turns []binding.HistoryTurn, placements
 func (u *appServerUI) applyRestoredMain(placements []*restoredPlacement) {
 	for _, p := range placements {
 		entry := p.entry
-		if p.link != nil && mainActivityLinked(entry) {
-			entry.activitySeq = *p.link
+		if p.link != nil && sessionpresentation.MainActivityLinked(entry) {
+			entry.ActivitySeq = *p.link
 		}
 		if entry.Observed.IsZero() {
 			entry.Observed = p.at
 		}
-		u.applyMainActivity(entry)
+		u.view.ApplyMain(entry)
 	}
 }
 
@@ -237,18 +240,18 @@ func (u *appServerUI) restoreHistoryItem(turn binding.HistoryTurn, item binding.
 		return
 	}
 	if item.Type == "userMessage" {
-		var content []composerUserContent
+		var content []conversationbinding.UserContent
 		if json.Unmarshal(item.Content, &content) == nil {
 			var text strings.Builder
 			var attached []string
-			var spans []activitypresentation.TextSpan
+			var spans []composer.Span
 			for _, part := range content {
 				if part.Type == "text" {
 					if frames, ok := attachments.Decode(part.Text); ok {
 						attached = append(attached, frames...)
 						continue
 					}
-					for _, span := range composerElementSpans(part.Text, part.Elements) {
+					for _, span := range conversationbinding.ElementSpans(part.Text, part.Elements) {
 						span.Start += text.Len()
 						span.End += text.Len()
 						spans = append(spans, span)
@@ -258,7 +261,7 @@ func (u *appServerUI) restoreHistoryItem(turn binding.HistoryTurn, item binding.
 			}
 			draft := conversationmodel.Input{Text: text.String()}
 			draft.Selections = composer.RestoreSelections(draft.Text, attached)
-			draft.Skills = unambiguousSkillBindings(draft.Text, composerContentSkills(content), spans)
+			draft.Skills = conversationbinding.SkillBindings(draft.Text, conversationbinding.ContentSkills(content), spans)
 			u.rememberInput(draft)
 		}
 	}
@@ -269,41 +272,41 @@ func (u *appServerUI) restoreHistoryItem(turn binding.HistoryTurn, item binding.
 	progressPhase := appServerHistoryProgressPhase(facts, turn.Status)
 	if text, wait, progress := u.itemProgress(facts, u.Thread, turn.ID, item.ID, progressPhase, false); progress {
 		if text != "" {
-			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+			u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
 				Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "progress", Text: text, Observed: time.Now(),
-				native: &liveActivityNativeItem{thread: u.Thread, turn: turn.ID, item: item.ID, phase: progressPhase, wait: wait},
+				Native: &sessionpresentation.NativeItem{Thread: u.Thread, Turn: turn.ID, Item: item.ID, Phase: progressPhase, Wait: wait},
 			}}})
 		}
 		return
 	}
 	switch item.Type {
 	case "imageView":
-		entry := activityPaneEntry{Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "tool", Text: "View " + markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(u.session.cwd, item.Path)), CallID: item.ID, Observed: time.Now(),
-			native: &liveActivityNativeItem{thread: u.Thread, turn: turn.ID, item: item.ID, phase: method, searchResults: appServerSearchResults(facts)}}
-		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+		entry := sessionpresentation.ActivityEntry{Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "tool", Text: "View " + markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(u.session.cwd, item.Path)), CallID: item.ID, Observed: time.Now(),
+			Native: &sessionpresentation.NativeItem{Thread: u.Thread, Turn: turn.ID, Item: item.ID, Phase: method, SearchResults: appServerSearchResults(facts)}}
+		u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
 	case "commandExecution", "fileChange", "webSearch":
 		text := appServerToolText(facts, u.session.cwd)
 		if item.Type == "fileChange" {
 			text = activitypresentation.HostEditText(facts, u.session.cwd)
 		}
-		entry := activityPaneEntry{Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "tool", Text: text, CallID: item.ID, Observed: time.Now(),
-			native: &liveActivityNativeItem{thread: u.Thread, turn: turn.ID, item: item.ID, phase: method, command: item.Command, commandCwd: appServerCommandDirectory(facts, u.session.cwd), status: item.Status, duration: appServerDuration(facts), searchResults: appServerSearchResults(facts), workdir: appServerCommandWorkdir(facts, u.session.cwd)}}
+		entry := sessionpresentation.ActivityEntry{Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "tool", Text: text, CallID: item.ID, Observed: time.Now(),
+			Native: &sessionpresentation.NativeItem{Thread: u.Thread, Turn: turn.ID, Item: item.ID, Phase: method, Command: item.Command, CommandCwd: appServerCommandDirectory(facts, u.session.cwd), Status: item.Status, Duration: appServerDuration(facts), SearchResults: appServerSearchResults(facts), Workdir: appServerCommandWorkdir(facts, u.session.cwd)}}
 		if item.Type == "fileChange" {
-			entry.native.editPages = activitypresentation.HostEditPages(facts, u.session.cwd, method)
+			entry.Native.EditPages = activitypresentation.HostEditPages(facts, u.session.cwd, method)
 		}
-		u.session.completeCommand(entry.native, facts)
+		u.session.completeCommand(entry.Native, facts)
 		appServerCommandOutput(&entry, facts, time.Time{})
 		u.restoreCommandSegments(&entry, item, u.session.cwd)
-		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
-		if len(entry.native.segments) == 0 && item.ExitCode != nil && *item.ExitCode != 0 {
-			exit := activityPaneEntry{Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID}
-			exit.outputTail, exit.outputOmit = appServerOutputTail(item.AggregatedOutput)
-			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{exit}})
+		u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
+		if len(entry.Native.Segments) == 0 && item.ExitCode != nil && *item.ExitCode != 0 {
+			exit := sessionpresentation.ActivityEntry{Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID}
+			exit.OutputTail, exit.OutputOmit = appServerOutputTail(item.AggregatedOutput)
+			u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{exit}})
 		}
 	default:
 		if update, ok := historicalTranscript([]binding.ThreadItem{item}, u.Thread, turn.ID, true, false, u.now())[item.ID]; ok {
 			update.Phase = method
-			u.view.applyTranscript(update, item.Content, u.session.cwd, u.Thread, item.Type == "userMessage")
+			u.view.ApplyTranscript(update, item.Content, u.session.cwd, u.Thread, item.Type == "userMessage")
 		}
 	}
 }

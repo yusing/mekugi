@@ -8,6 +8,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
@@ -19,6 +21,7 @@ import (
 func TestUISnapshotNativeMainQuotedReplyBoundary(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
+	u.view.testAudience()
 	u.view.Painter.Theme = diffrender.DarkTheme
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn",
 		"item": map[string]any{"id": "prompt", "type": "userMessage", "content": []map[string]string{{"type": "text", "text": "Show me how the new transcript search instruction looks like"}}}})
@@ -110,7 +113,7 @@ func TestNativeEmptyCollaborationRetainsParticipantOrder(t *testing.T) {
 	}})
 	var threads []string
 	for _, agent := range u.session.agents {
-		threads = append(threads, agent.thread)
+		threads = append(threads, agent.Thread)
 	}
 	if !slices.Equal(threads, []string{"main", "sender", "second", "first"}) {
 		t.Fatalf("participant admission order changed: %v", threads)
@@ -131,7 +134,7 @@ func TestNativeMainAnswerBindsOwnTurnPromptAcrossUpdates(t *testing.T) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "current-turn", "item": map[string]any{"id": "answer", "type": "agentMessage", "text": "First part"}})
 	var current uint64
 	for _, entry := range u.view.Entries {
-		if entry.Source.native != nil && entry.Source.native.item == "current" {
+		if entry.Source.Native != nil && entry.Source.Native.Item == "current" {
 			current = entry.Source.Seq
 		}
 	}
@@ -140,9 +143,9 @@ func TestNativeMainAnswerBindsOwnTurnPromptAcrossUpdates(t *testing.T) {
 	}
 	answerCount := 0
 	for _, entry := range u.view.Entries {
-		if entry.Source.native != nil && entry.Source.native.item == "answer" {
+		if entry.Source.Native != nil && entry.Source.Native.Item == "answer" {
 			answerCount++
-			if entry.Source.native.question != current || entry.Source.Text != "First part" {
+			if entry.Source.Native.Question != current || entry.Source.Text != "First part" {
 				t.Fatalf("answer lost its original same-turn prompt: %+v", entry)
 			}
 		}
@@ -151,6 +154,7 @@ func TestNativeMainAnswerBindsOwnTurnPromptAcrossUpdates(t *testing.T) {
 		t.Fatalf("delta/completion did not share one answer identity: %d", answerCount)
 	}
 	u.view.Conversation = true
+	u.view.testAudience()
 	feed := u.view.RenderFeed(90, 40)
 	if !strings.Contains(ansi.Strip(strings.Join(feed.Lines, "\n")), "↩ re: your message") {
 		t.Fatal("answer has no visible reply link")
@@ -193,7 +197,7 @@ func TestNativeDirectedMessageDisplayBudget(t *testing.T) {
 			if !strings.Contains(string(request.Fields["input"]), text) {
 				t.Fatal("display limit altered model input")
 			}
-			var reply activityPaneEntry
+			var reply sessionpresentation.ActivityEntry
 			for _, entry := range takeNativeActivity(p.activity, "r") {
 				if entry.Kind == "reply" {
 					reply = entry
@@ -216,6 +220,7 @@ func TestNativeDirectedMessageDisplayBudget(t *testing.T) {
 func TestNativeMainRepliesQuoteTheirMessageOnce(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
+	u.view.testAudience()
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn",
 		"item": map[string]any{"id": "prompt", "type": "userMessage", "content": []map[string]string{{"type": "text", "text": "Fix the build"}}}})
 	reply := func(id, text string) {
@@ -234,7 +239,7 @@ func TestNativeMainRepliesQuoteTheirMessageOnce(t *testing.T) {
 		t.Fatalf("replies separated only by Main's own tools quoted the message %d times", got)
 	}
 	// Another message between replies makes the next one quote it again.
-	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.LastSeq + 1, Agent: "Session", Kind: "text", Text: "Blocked on a request"}}})
+	u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.view.LastSeq + 1, Agent: "Session", Kind: "text", Text: "Blocked on a request"}}})
 	reply("third", "Continuing.")
 	if got := quotes(); got != 2 {
 		t.Fatalf("reply after another message quoted %d times; want 2\n%s", got, ansi.Strip(strings.Join(u.view.RenderFeed(90, 60).Lines, "\n")))

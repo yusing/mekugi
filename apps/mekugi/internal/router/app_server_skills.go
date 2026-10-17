@@ -2,6 +2,7 @@ package router
 
 import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 
 	json "encoding/json/v2"
 	"fmt"
@@ -128,7 +129,7 @@ func (u *appServerUI) bindSkills(d *conversationmodel.Input, final bool) {
 		}
 	}
 	spans := sessionpresentation.DraftSpans(d.Draft)
-	for _, binding := range unambiguousSkillBindings(d.Text, catalog, nil) {
+	for _, binding := range conversationbinding.SkillBindings(d.Text, catalog, nil) {
 		if !final && binding.End == len(d.Text) {
 			continue // A still-growing word stays editable.
 		}

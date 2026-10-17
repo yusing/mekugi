@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -24,6 +26,7 @@ func viewportSyntaxView(main bool, lang string) *activityAdapter {
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
 	v := newActivityAdapter()
 	v.Conversation, v.FeedOnly = main, true
+	v.testAudience()
 	v.Painter.Theme = diffrender.DarkTheme
 	v.Clock = func() time.Time { return now }
 	for i := range 12 {
@@ -33,9 +36,9 @@ func viewportSyntaxView(main bool, lang string) *activityAdapter {
 		}
 		seq := uint64(2*i + 1)
 		body := fmt.Sprintf("Inspect source %d before continuing.", i)
-		v.appendEntry(activityPaneEntry{Seq: seq, Agent: agent, Kind: "text", Text: body, Observed: now},
+		v.appendEntry(sessionpresentation.ActivityEntry{Seq: seq, Agent: agent, Kind: "text", Text: body, Observed: now},
 			[]activityui.Block{{Kind: "text", Body: body}})
-		v.appendEntry(activityPaneEntry{Seq: seq + 1, Agent: agent, Kind: "tool", Text: "Run source preview", Observed: now},
+		v.appendEntry(sessionpresentation.ActivityEntry{Seq: seq + 1, Agent: agent, Kind: "tool", Text: "Run source preview", Observed: now},
 			[]activityui.Block{{Kind: "op", Verb: "Run", Label: "source preview", Lang: lang, Fenced: true,
 				Code: fmt.Sprintf("package source%d\n\nfunc value%d() int {\n\treturn %d\n}\n", i, i, i)}})
 		v.LastSeq = seq + 1
@@ -215,7 +218,7 @@ func TestLiveActivityViewportSyntaxDefersTokenization(t *testing.T) {
 // viewport gate is insufficient: only intersecting blocks may be tokenized.
 func groupedViewportSyntaxView(main bool, lang string) *activityAdapter {
 	v := viewportSyntaxView(main, lang)
-	records := make([]liveActivityRecord, 0, len(v.Entries)/2)
+	records := make([]sessionpresentation.ActivityRecord, 0, len(v.Entries)/2)
 	for i := 1; i < len(v.Entries); i += 2 {
 		record := v.Entries[i]
 		if !main {
@@ -234,6 +237,7 @@ func TestLiveActivityViewportSyntaxGroupedBlocks(t *testing.T) {
 			clear(lexer.sources)
 			v := groupedViewportSyntaxView(mode.main, "viewportfixture")
 			v.ChildrenOnly = mode.children
+			v.testAudience()
 			first := strings.ReplaceAll(v.blocks(0)[0].Code, "\t", "    ")
 			last := strings.ReplaceAll(v.blocks(len(v.Entries) - 1)[0].Code, "\t", "    ")
 			v.Viewport(v.RenderFeed(70, 9), 9)
@@ -262,6 +266,7 @@ func TestLiveActivityViewportSyntaxGroupedBlocks(t *testing.T) {
 			// tokenize all blocks, but cannot hide excessive lazy tokenization.
 			eager := groupedViewportSyntaxView(mode.main, "viewportfixture")
 			eager.ChildrenOnly = mode.children
+			eager.testAudience()
 			eager.Following, eager.Offset = false, 0
 			assertViewportSyntaxEager(t, v, eager, 70, 9)
 			for _, view := range []*activityAdapter{v, eager} {
@@ -312,10 +317,10 @@ func TestLiveActivityViewportSyntaxScrollEveryRow(t *testing.T) {
 					// A tool group after agent traffic continues an earlier lead
 					// that already headed a read. Its extra heading shifts every
 					// block's syntax window by one row.
-					prefix := []liveActivityRecord{
-						{Source: activityPaneEntry{Seq: 1, Agent: "Main", Kind: "reasoning", Text: "**Preparing regression seed**", Observed: v.Now()}},
-						{Source: activityPaneEntry{Seq: 2, Agent: "Main", Kind: "tool", Text: "Read `main.go 1:2`", Observed: v.Now()}},
-						{Source: activityPaneEntry{Seq: 3, Agent: "/root/lookup", Kind: "final", Text: "Evidence collected.", Observed: v.Now()}},
+					prefix := []sessionpresentation.ActivityRecord{
+						{Source: sessionpresentation.ActivityEntry{Seq: 1, Agent: "Main", Kind: "reasoning", Text: "**Preparing regression seed**", Observed: v.Now()}},
+						{Source: sessionpresentation.ActivityEntry{Seq: 2, Agent: "Main", Kind: "tool", Text: "Read `main.go 1:2`", Observed: v.Now()}},
+						{Source: sessionpresentation.ActivityEntry{Seq: 3, Agent: "/root/lookup", Kind: "final", Text: "Evidence collected.", Observed: v.Now()}},
 					}
 					for i := range prefix {
 						prefix[i].Values = v.Disclosure.Keep(prefix[i].Source.Seq, parseLiveActivity(prefix[i].Source))
@@ -361,7 +366,7 @@ func TestActivityFeedOutputContextIsBounded(t *testing.T) {
 				output := new(activitymodel.Retention).New()
 				output.Finish(new(strings.Repeat("retained context\n", 20000)+"var answer = 42"), new(0))
 				entry := &view.Entries[1]
-				entry.Source.native = &liveActivityNativeItem{output: output}
+				entry.Source.Native = &sessionpresentation.NativeItem{Output: output}
 				blocks := view.blocks(1)
 				block := &blocks[0]
 				block.Output, block.Tail, block.TailOmitted, block.Collapsed = 1, []string{"var answer = 42"}, 20000, collapsed
@@ -389,8 +394,9 @@ func TestActivityFeedOutputContextIsBounded(t *testing.T) {
 			output.Write("amber1\n--- a/sample.go\n+++ b/sample.go\n@@ -1,3 +1,3 @@\n package main\n \n-var answer = 41\n+var answer = 42")
 			view := newActivityAdapter()
 			view.Conversation, view.FeedOnly = main, true
+			view.testAudience()
 			view.Painter.Theme = diffrender.DarkTheme
-			entry := activityPaneEntry{Seq: 1, Agent: "Main", Kind: "tool", Text: "Run `mchanges amber1`", outputTail: []string{"-var answer = 41", "+var answer = 42"}, outputOmit: 6, native: &liveActivityNativeItem{output: output, running: true}}
+			entry := sessionpresentation.ActivityEntry{Seq: 1, Agent: "Main", Kind: "tool", Text: "Run `mchanges amber1`", OutputTail: []string{"-var answer = 41", "+var answer = 42"}, OutputOmit: 6, Native: &sessionpresentation.NativeItem{Output: output, Running: true}}
 			view.appendEntry(entry, parseLiveActivity(entry))
 			rows := strings.Join(view.RenderFeed(100, 20).Lines, "\n")
 			if !strings.Contains(rows, diffrender.DarkTheme.RowBackground('+')) || !strings.Contains(ansi.Strip(rows), "+var answer = 42") {
@@ -411,6 +417,6 @@ func (v *activityAdapter) LayoutFeed(width int) activityui.Feed {
 		if len(demands) == 0 {
 			return feed
 		}
-		v.View.Hydrate(v.resolveOutputDemands(demands))
+		v.View.Hydrate(v.ResolveOutputDemands(demands))
 	}
 }

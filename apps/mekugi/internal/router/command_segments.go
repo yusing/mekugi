@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
@@ -29,30 +31,30 @@ type commandSegmentWrite struct {
 	err error
 }
 
-func (u *appServerUI) retainCommandSegments(entry activityPaneEntry, item observation.Item, view execTrackView) {
+func (u *appServerUI) retainCommandSegments(entry sessionpresentation.ActivityEntry, item observation.Item, view execTrackView) {
 	if u.segments == nil || u.retained.Store == nil || item.AggregatedOutput == nil || item.ExitCode == nil {
 		return
 	}
-	script, ok := binding.CommandScript(item.Command)
+	script, ok := shellinstrumentation.CommandScript(item.Command)
 	parts, split := shellinstrumentation.Split(script)
 	if !ok || !split || len(parts) != len(view.segments) || !view.complete || view.code != *item.ExitCode {
 		return
 	}
 	if u.commandSegmentPending == commandSegmentRetentionLimit {
-		u.commandSegmentRetentionFailed([3]string{entry.native.thread, entry.native.turn, entry.native.item}, fmt.Errorf("pending command segment reports reached the limit of %d", commandSegmentRetentionLimit))
+		u.commandSegmentRetentionFailed([3]string{entry.Native.Thread, entry.Native.Turn, entry.Native.Item}, fmt.Errorf("pending command segment reports reached the limit of %d", commandSegmentRetentionLimit))
 		return
 	}
 	record := &reports.Report{Command: item.Command, Exit: *item.ExitCode, Output: sha256.Sum256([]byte(*item.AggregatedOutput))}
 	for i, segment := range view.segments {
-		part := reports.Part{Timing: reports.Timing(segment.timing), Source: parts[i].Source, Skipped: segment.skipped, Exit: segment.exit}
-		if view.output && segment.output != nil {
-			output := segment.output.View()
+		part := reports.Part{Timing: reports.Timing(segment.Timing), Source: parts[i].Source, Skipped: segment.Skipped, Exit: segment.Exit}
+		if view.output && segment.Output != nil {
+			output := segment.Output.View()
 			if output.Done && !output.Released && !output.Truncated && output.Dropped == 0 {
 				part.Output = new(strings.Join(output.Lines, "\n"))
-				if segment.raw != "" {
+				if segment.Raw != "" {
 					// VCS parsers need original delimiters (not display-expanded
 					// tabs). Keep that complete evidence as the retained output.
-					part.Output = new(segment.raw)
+					part.Output = new(segment.Raw)
 				}
 			}
 		}
@@ -62,10 +64,10 @@ func (u *appServerUI) retainCommandSegments(entry activityPaneEntry, item observ
 	// store can be busy with capture or another session; that must neither
 	// freeze presentation nor discard a report after a one-second lock wait.
 	ctx, cancel := context.WithTimeout(u.ctx, 30*time.Second)
-	id := reports.ID(entry.native.turn, entry.native.item)
-	key := [3]string{entry.native.thread, entry.native.turn, entry.native.item}
+	id := reports.ID(entry.Native.Turn, entry.Native.Item)
+	key := [3]string{entry.Native.Thread, entry.Native.Turn, entry.Native.Item}
 	store := u.retained
-	scope := reports.Scope{Store: store.Store, Workspace: u.session.cwd, Thread: entry.native.thread, Limits: store.Limits, Writes: store.Writes}
+	scope := reports.Scope{Store: store.Store, Workspace: u.session.cwd, Thread: entry.Native.Thread, Limits: store.Limits, Writes: store.Writes}
 	if u.commandSegmentWrites == nil {
 		u.commandSegmentWrites = make(chan commandSegmentWrite, commandSegmentRetentionLimit)
 	}
@@ -111,16 +113,16 @@ func (u *appServerUI) finishCommandSegments() {
 
 // Restore only real, terminal observations that agree with visible host
 // history. Missing, corrupt or mismatched records leave the aggregate intact.
-func (u *appServerUI) restoreCommandSegments(entry *activityPaneEntry, item binding.ThreadItem, workspace string) {
+func (u *appServerUI) restoreCommandSegments(entry *sessionpresentation.ActivityEntry, item binding.ThreadItem, workspace string) {
 	if item.Type != "commandExecution" || item.ExitCode == nil || item.AggregatedOutput == nil || u.retained.Store == nil {
 		return
 	}
 	var record *reports.Report
 	if u.restoredSegments != nil {
-		record = u.restoredSegments[entry.native.item]
+		record = u.restoredSegments[entry.Native.Item]
 	} else {
-		item.ID = entry.native.item
-		record = u.prepareCommandSegments(entry.native.thread, workspace, binding.HistoryTurn{ID: entry.native.turn, Items: []binding.ThreadItem{item}})[item.ID]
+		item.ID = entry.Native.Item
+		record = u.prepareCommandSegments(entry.Native.Thread, workspace, binding.HistoryTurn{ID: entry.Native.Turn, Items: []binding.ThreadItem{item}})[item.ID]
 	}
 	if record == nil {
 		return
@@ -129,26 +131,26 @@ func (u *appServerUI) restoreCommandSegments(entry *activityPaneEntry, item bind
 	for _, part := range record.Parts {
 		separate = separate && (part.Skipped || part.Output != nil)
 	}
-	cwd := cmp.Or(entry.native.commandCwd, appServerCommandDirectory(item.Observation(), workspace))
+	cwd := cmp.Or(entry.Native.CommandCwd, appServerCommandDirectory(item.Observation(), workspace))
 	for _, part := range record.Parts {
-		segment := commandSegment{timing: segmenttransport.Timing(part.Timing), source: part.Source, text: (activitypresentation.CommandSource{Script: part.Source, Display: frontends.ShellDisplaySource(part.Source), Directory: cwd}).SegmentText(), skipped: part.Skipped, exit: part.Exit}
+		segment := sessionpresentation.ActivitySegment{Timing: segmenttransport.Timing(part.Timing), Source: part.Source, Text: (activitypresentation.CommandSource{Script: part.Source, Display: frontends.ShellDisplaySource(part.Source), Directory: cwd}).SegmentText(), Skipped: part.Skipped, Exit: part.Exit}
 		if separate && !part.Skipped {
 			if outputs := u.session.activity.Outputs(u.session.Scope()); outputs != nil {
-				segment.output = outputs.New()
-				segment.output.Finish(part.Output, &part.Exit)
+				segment.Output = outputs.New()
+				segment.Output.Finish(part.Output, &part.Exit)
 			}
-			segment.tail, segment.omit = appServerOutputTail(part.Output)
+			segment.Tail, segment.Omit = appServerOutputTail(part.Output)
 			if part.Exit == 0 {
-				segment.changes, segment.commit = commandOutputRows(observation.Item{Command: part.Source, Cwd: vcsSegmentCwd(item.Cwd, entry.native.segments), AggregatedOutput: part.Output})
+				segment.Changes, segment.Commit = commandOutputRows(observation.Item{Command: part.Source, Cwd: vcsSegmentCwd(item.Cwd, entry.Native.Segments), AggregatedOutput: part.Output})
 			}
 		}
-		entry.native.segments = append(entry.native.segments, segment)
+		entry.Native.Segments = append(entry.Native.Segments, segment)
 	}
-	entry.native.command = item.Command
-	entry.native.running = false
-	entry.outputTail, entry.outputOmit = nil, 0
+	entry.Native.Command = item.Command
+	entry.Native.Running = false
+	entry.OutputTail, entry.OutputOmit = nil, 0
 	if !separate {
-		entry.outputTail, entry.outputOmit = appServerOutputTail(item.AggregatedOutput)
+		entry.OutputTail, entry.OutputOmit = appServerOutputTail(item.AggregatedOutput)
 	}
 }
 
@@ -166,7 +168,7 @@ func (u *appServerUI) prepareCommandSegments(thread, workspace string, turn bind
 			if item.Type != "commandExecution" || item.ExitCode == nil || item.AggregatedOutput == nil {
 				continue
 			}
-			script, ok := binding.CommandScript(item.Command)
+			script, ok := shellinstrumentation.CommandScript(item.Command)
 			parts, split := shellinstrumentation.Split(script)
 			if !ok || !split {
 				continue

@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -87,7 +89,7 @@ func TestNativeRosterShowsActivityDetails(t *testing.T) {
 
 func TestNativeRosterRoleLegendAndCompactSpacing(t *testing.T) {
 	v := newActivityAdapter()
-	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{
 		{Name: "/root", Responding: true},
 		{Name: "/root/very_long_finished_agent", Role: "worker", Final: true},
 		{Name: "/root/other_finished_agent", Role: "worker", Final: true},
@@ -131,7 +133,7 @@ func TestNativeRosterRoleLegendAndCompactSpacing(t *testing.T) {
 
 func TestNativeRosterOverflowLegendKeepsSelectedRole(t *testing.T) {
 	v := newActivityAdapter()
-	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{
 		{Name: "/root"},
 		{Name: "/root/a", Role: "review-correctness"},
 		{Name: "/root/b", Role: "review-simplify"},
@@ -151,7 +153,7 @@ func TestNativeRosterOverflowLegendKeepsSelectedRole(t *testing.T) {
 func TestNativeRosterUnfocusedMetricsRightAligned(t *testing.T) {
 	v := newActivityAdapter()
 	now := time.Now()
-	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{
 		{Name: "/root", Responding: true, Started: now.Add(-13 * time.Second), WorkTimer: activitypresentation.WorkTimer{Known: true, Since: now.Add(-13 * time.Second)}, ContextKnown: true, ContextTokens: 47_600, ContextWindow: 200_000, InputTokens: 182_000, OutputTokens: 2_100, Turns: 1, Roundtrips: 1},
 		{Name: "/root/tester", Responding: true, Started: now.Add(-10 * time.Second), WorkTimer: activitypresentation.WorkTimer{Known: true, Since: now.Add(-10 * time.Second)}},
 		{Name: "/root/explorer_agent", Responding: true, Started: now.Add(-10 * time.Second), WorkTimer: activitypresentation.WorkTimer{Known: true, Since: now.Add(-10 * time.Second)}, ContextKnown: true, ContextTokens: 27_600, ContextWindow: 200_000},
@@ -182,11 +184,11 @@ func TestNativeRosterUnfocusedMetricsRightAligned(t *testing.T) {
 func TestNativeRosterMetricsAlignParts(t *testing.T) {
 	v := newActivityAdapter()
 	now := time.Now()
-	agents := []activityPaneAgent{
+	agents := []sessionpresentation.ActivityAgent{
 		{Name: "/root", Started: now.Add(-37 * time.Minute), WorkTimer: activitypresentation.WorkTimer{Known: true, ElapsedNS: int64(37 * time.Minute)}, ContextKnown: true, ContextTokens: 171_300, ContextWindow: 285_000, InputTokens: 7_500_000, OutputTokens: 30_000, Turns: 3, Roundtrips: 3},
 		{Name: "/root/a", Started: now.Add(-94 * time.Second), WorkTimer: activitypresentation.WorkTimer{Known: true, ElapsedNS: int64(94 * time.Second)}, ContextKnown: true, ContextTokens: 24_400, ContextWindow: 285_000, InputTokens: 411_600, OutputTokens: 4_000, Turns: 1, Roundtrips: 1},
 	}
-	v.apply(activityPaneEvent{Kind: "snapshot", Agents: agents})
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: agents})
 	var parts [][activityui.MetricParts]string
 	for _, agent := range agents {
 		parts = append(parts, activityui.RosterMetricParts(v.View, v.testAgent(agent), now))
@@ -213,7 +215,7 @@ func TestNativeRosterMetricsAlignParts(t *testing.T) {
 func TestNativeRosterShowsEditedLines(t *testing.T) {
 	v := newActivityAdapter()
 	now := time.Now()
-	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{
 		{Name: "/root", Started: now.Add(-time.Minute), InputTokens: 2000, OutputTokens: 100},
 		{Name: "/root/a", Started: now.Add(-time.Minute), InputTokens: 1000, OutputTokens: 100},
 		{Name: "/root/b", Started: now.Add(-time.Minute)},
@@ -277,8 +279,8 @@ func TestLiveDiffCallerCountsSkipFilesOutsideWorkspace(t *testing.T) {
 func TestNativeRosterMetricsEaseToNewValues(t *testing.T) {
 	v := newActivityAdapter()
 	now := time.Now()
-	agent := activityPaneAgent{Name: "/root", Started: now.Add(-time.Minute), Turns: 1, CostKnown: true, Cost: 1, InputTokens: 100_000, OutputTokens: 1000}
-	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{agent}})
+	agent := sessionpresentation.ActivityAgent{Name: "/root", Started: now.Add(-time.Minute), Turns: 1, CostKnown: true, Cost: 1, InputTokens: 100_000, OutputTokens: 1000}
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{agent}})
 	v.Model.LineCounts = map[string]diffmodel.Counts{"/root": {Added: 10, Removed: 2}}
 	row := func(at time.Time) string {
 		t.Helper()
@@ -289,7 +291,7 @@ func TestNativeRosterMetricsEaseToNewValues(t *testing.T) {
 		t.Fatalf("first frame eased: %q", got)
 	}
 	agent.InputTokens, agent.Cost = 200_000, 2
-	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{agent}})
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{agent}})
 	v.Model.LineCounts = map[string]diffmodel.Counts{"/root": {Added: 110, Removed: 2}}
 	row(now)
 	mid := row(now.Add(activityui.MetricEase / 4))
@@ -301,11 +303,11 @@ func TestNativeRosterMetricsEaseToNewValues(t *testing.T) {
 	}
 	// A change mid-ease continues from the value on screen.
 	agent.InputTokens = 300_000
-	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{agent}})
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{agent}})
 	later := now.Add(activityui.MetricEase)
 	row(later)
 	agent.InputTokens = 400_000
-	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{agent}})
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{agent}})
 	if got := row(later.Add(time.Millisecond)); !strings.Contains(got, "↑200K") && !strings.Contains(got, "↑200.") {
 		t.Fatalf("retarget restarted from the new value: %q", got)
 	}
@@ -329,7 +331,7 @@ func TestNativeRosterLineCountColorsAndZeros(t *testing.T) {
 		}
 		view := newActivityAdapter()
 		now := time.Now()
-		view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root", Started: now, InputTokens: 100}}})
+		view.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root", Started: now, InputTokens: 100}}})
 		view.Model.LineCounts = map[string]diffmodel.Counts{"/root": tt.count}
 		rows := view.NativeRoster(150, 8, now, true)
 		for _, row := range rows[1:2] {

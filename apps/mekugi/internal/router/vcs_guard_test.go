@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	"github.com/yusing/mekugi/libraries/commandanalysis"
@@ -124,28 +126,28 @@ func TestVCSGuardDenialFailsOnlyThePush(t *testing.T) {
 	for i, tc := range []struct {
 		script   string
 		code     int
-		segments []commandSegment
+		segments []sessionpresentation.ActivitySegment
 		invoked  []string
 	}{
 		{
 			script: "git add -A; git commit -m x; git push origin main; git log",
 			code:   0,
-			segments: []commandSegment{
-				{text: "git add -A"},
-				{text: "git commit -m x"},
-				{text: "git push origin main", exit: 1, tail: []string{"mekugi: remote write denied: denied in test"}},
-				{text: "git log"},
+			segments: []sessionpresentation.ActivitySegment{
+				{Text: "git add -A"},
+				{Text: "git commit -m x"},
+				{Text: "git push origin main", Exit: 1, Tail: []string{"mekugi: remote write denied: denied in test"}},
+				{Text: "git log"},
 			},
 			invoked: []string{"git_add_-A", "git_commit_-m_x", "git_log"},
 		},
 		{
 			script: "git add -A && git commit -m x && git push origin main && git log",
 			code:   1,
-			segments: []commandSegment{
-				{text: "git add -A"},
-				{text: "git commit -m x"},
-				{text: "git push origin main", exit: 1, tail: []string{"mekugi: remote write denied: denied in test"}},
-				{text: "git log", skipped: true},
+			segments: []sessionpresentation.ActivitySegment{
+				{Text: "git add -A"},
+				{Text: "git commit -m x"},
+				{Text: "git push origin main", Exit: 1, Tail: []string{"mekugi: remote write denied: denied in test"}},
+				{Text: "git log", Skipped: true},
 			},
 			invoked: []string{"git_add_-A", "git_commit_-m_x"},
 		},
@@ -157,8 +159,8 @@ func TestVCSGuardDenialFailsOnlyThePush(t *testing.T) {
 			t.Fatalf("%q: run = %+v", tc.script, run)
 		}
 		view := shell.awaitView(t, key)
-		if !slices.EqualFunc(view.segments, tc.segments, func(a, b commandSegment) bool {
-			return a.text == b.text && a.exit == b.exit && a.skipped == b.skipped && !a.running && slices.Equal(a.tail, b.tail)
+		if !slices.EqualFunc(view.segments, tc.segments, func(a, b sessionpresentation.ActivitySegment) bool {
+			return a.Text == b.Text && a.Exit == b.Exit && a.Skipped == b.Skipped && !a.Running && slices.Equal(a.Tail, b.Tail)
 		}) {
 			t.Fatalf("%q: segments = %+v, want %+v", tc.script, view.segments, tc.segments)
 		}

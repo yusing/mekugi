@@ -100,7 +100,7 @@ func TestExecTrackDashSegments(t *testing.T) {
 				output.Write(reported)
 			}
 			for i, segment := range view.segments {
-				if segment.source != segments[i].Source || !segment.skipped && segment.timing.ElapsedNS <= 0 {
+				if segment.Source != segments[i].Source || !segment.Skipped && segment.Timing.ElapsedNS <= 0 {
 					t.Fatalf("segment identity/timing: %+v", segment)
 				}
 			}
@@ -126,7 +126,7 @@ func TestExecTrackShEnvelopeKeepsBash(t *testing.T) {
 	if tracked := runShell(t, shell.env, "bash", "-c", wrapped); tracked != plain {
 		t.Fatalf("tracked=%+v plain=%+v", tracked, plain)
 	}
-	if view := shell.awaitView(t, key); !view.complete || len(view.segments) != 3 || view.segments[1].exit != 1 {
+	if view := shell.awaitView(t, key); !view.complete || len(view.segments) != 3 || view.segments[1].Exit != 1 {
 		t.Fatalf("Bash report lost: %+v", view)
 	}
 }

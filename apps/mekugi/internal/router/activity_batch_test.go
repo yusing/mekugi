@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffrender"
 
@@ -25,19 +27,19 @@ func TestActivityBatchDecorativeHeadings(t *testing.T) {
 			if chain != "Read `AGENTS.md`" {
 				t.Fatalf("chain preview: %q", chain)
 			}
-			entry := activityPaneEntry{Kind: "tool", native: &liveActivityNativeItem{command: command, segments: []commandSegment{
-				{source: heading, text: execSegmentText(heading), tail: []string{"Local instructions:"}},
-				{source: "printenv HERDR_ENV", text: execSegmentText("printenv HERDR_ENV"), tail: []string{"1"}},
-				{source: "cat AGENTS.md", text: execSegmentText("cat AGENTS.md")},
+			entry := sessionpresentation.ActivityEntry{Kind: "tool", Native: &sessionpresentation.NativeItem{Command: command, Segments: []sessionpresentation.ActivitySegment{
+				{Source: heading, Text: execSegmentText(heading), Tail: []string{"Local instructions:"}},
+				{Source: "printenv HERDR_ENV", Text: execSegmentText("printenv HERDR_ENV"), Tail: []string{"1"}},
+				{Source: "cat AGENTS.md", Text: execSegmentText("cat AGENTS.md")},
 			}}}
 			for _, running := range []bool{true, false} {
-				entry.native.segments[0].running = running
+				entry.Native.Segments[0].Running = running
 				blocks := parseLiveActivity(entry)
 				if len(blocks) != 2 || blocks[0].Code != "printenv HERDR_ENV" || strings.Join(blocks[0].Tail, "") != "1" {
 					t.Fatalf("tracked: %+v", blocks)
 				}
 			}
-			entry.native.segments[0].exit = 1
+			entry.Native.Segments[0].Exit = 1
 			if blocks := parseLiveActivity(entry); len(blocks) != 3 || blocks[0].ExitCode != 1 {
 				t.Fatalf("failed heading lost: %+v", blocks)
 			}
@@ -64,26 +66,26 @@ func TestUISnapshotActivityPlainPrintfHeadings(t *testing.T) {
 	const command = heading + `; ` + label + `; ls .codex/sessions/2026/09/30; ` + data + `; ` + ambiguous + `; printf '%s\n' 'count=42'`
 	for _, state := range []string{"preview", "completed", "failed-heading"} {
 		t.Run(state, func(t *testing.T) {
-			entry := activityPaneEntry{Seq: 1, Agent: "/root/probe", Kind: "tool", Text: toolActivityShell(command), Observed: now,
-				native: &liveActivityNativeItem{command: command}}
+			entry := sessionpresentation.ActivityEntry{Seq: 1, Agent: "/root/probe", Kind: "tool", Text: toolActivityShell(command), Observed: now,
+				Native: &sessionpresentation.NativeItem{Command: command}}
 			if state != "preview" {
-				entry.native.segments = []commandSegment{
-					{source: heading, text: execSegmentText(heading), tail: []string{"Today session files"}},
-					{source: label, text: execSegmentText(label), tail: []string{"GUIDANCE"}},
-					{source: "ls .codex/sessions/2026/09/30", text: execSegmentText("ls .codex/sessions/2026/09/30"), exit: 1,
-						tail: []string{"ls: cannot access '.codex/sessions/2026/09/30': No such file or directory"}},
-					{source: data, text: execSegmentText(data), tail: []string{"Alice Smith"}},
-					{source: ambiguous, text: execSegmentText(ambiguous), tail: []string{"Evidence-location metadata"}},
-					{source: `printf '%s\n' 'count=42'`, text: execSegmentText(`printf '%s\n' 'count=42'`), tail: []string{"count=42"}},
+				entry.Native.Segments = []sessionpresentation.ActivitySegment{
+					{Source: heading, Text: execSegmentText(heading), Tail: []string{"Today session files"}},
+					{Source: label, Text: execSegmentText(label), Tail: []string{"GUIDANCE"}},
+					{Source: "ls .codex/sessions/2026/09/30", Text: execSegmentText("ls .codex/sessions/2026/09/30"), Exit: 1,
+						Tail: []string{"ls: cannot access '.codex/sessions/2026/09/30': No such file or directory"}},
+					{Source: data, Text: execSegmentText(data), Tail: []string{"Alice Smith"}},
+					{Source: ambiguous, Text: execSegmentText(ambiguous), Tail: []string{"Evidence-location metadata"}},
+					{Source: `printf '%s\n' 'count=42'`, Text: execSegmentText(`printf '%s\n' 'count=42'`), Tail: []string{"count=42"}},
 				}
 				if state == "failed-heading" {
-					entry.native.segments[0].exit = 1
-					entry.native.segments[0].tail = []string{"printf: write error"}
+					entry.Native.Segments[0].Exit = 1
+					entry.Native.Segments[0].Tail = []string{"printf: write error"}
 				}
 			}
 			v := newActivityAdapter()
 			v.Painter.Theme = diffrender.DarkTheme
-			v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/probe", Final: true}}, Entries: []activityPaneEntry{entry}})
+			v.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/probe", Final: true}}, Entries: []sessionpresentation.ActivityEntry{entry}})
 			assertNativeUISnapshot(t, "activity-plain-printf-"+state, v.Render(100, 18, now))
 		})
 	}
@@ -97,9 +99,9 @@ func TestActivityBatchPreservesUnframedPrintfData(t *testing.T) {
 		if got := toolActivityShell(script); got != want {
 			t.Fatalf("unframed data preview: got %q, want %q", got, want)
 		}
-		entry := activityPaneEntry{Kind: "tool", native: &liveActivityNativeItem{command: script, segments: []commandSegment{
-			{source: "cat profile.txt", text: execSegmentText("cat profile.txt"), tail: []string{"profile"}},
-			{source: command, text: execSegmentText(command), tail: []string{value}},
+		entry := sessionpresentation.ActivityEntry{Kind: "tool", Native: &sessionpresentation.NativeItem{Command: script, Segments: []sessionpresentation.ActivitySegment{
+			{Source: "cat profile.txt", Text: execSegmentText("cat profile.txt"), Tail: []string{"profile"}},
+			{Source: command, Text: execSegmentText(command), Tail: []string{value}},
 		}}}
 		blocks := parseLiveActivity(entry)
 		if len(blocks) != 2 || blocks[1].Code != command || strings.Join(blocks[1].Tail, "\n") != value {
@@ -120,19 +122,19 @@ func TestActivityBatchLiteralSuccessMarkers(t *testing.T) {
 		if got := toolActivityShell(marker); !strings.Contains(got, marker) {
 			t.Fatalf("standalone output hidden: %q", got)
 		}
-		entry := activityPaneEntry{Kind: "tool", native: &liveActivityNativeItem{command: command, segments: []commandSegment{
-			{source: "test -f evidence.txt", text: execSegmentText("test -f evidence.txt")},
-			{source: marker, text: execSegmentText(marker)},
+		entry := sessionpresentation.ActivityEntry{Kind: "tool", Native: &sessionpresentation.NativeItem{Command: command, Segments: []sessionpresentation.ActivitySegment{
+			{Source: "test -f evidence.txt", Text: execSegmentText("test -f evidence.txt")},
+			{Source: marker, Text: execSegmentText(marker)},
 		}}}
 		for _, state := range []string{"running", "completed", "failed", "skipped"} {
-			segment := &entry.native.segments[1]
-			segment.running, segment.skipped, segment.exit = state == "running", state == "skipped", 0
+			segment := &entry.Native.Segments[1]
+			segment.Running, segment.Skipped, segment.Exit = state == "running", state == "skipped", 0
 			if state == "failed" {
-				segment.exit = 1
+				segment.Exit = 1
 			}
 			blocks := parseLiveActivity(entry)
 			if state == "failed" || state == "skipped" {
-				if len(blocks) != 2 || blocks[1].Code != marker || blocks[1].ExitCode != segment.exit || blocks[1].Skipped != segment.skipped {
+				if len(blocks) != 2 || blocks[1].Code != marker || blocks[1].ExitCode != segment.Exit || blocks[1].Skipped != segment.Skipped {
 					t.Fatalf("%s marker lost: %+v", state, blocks)
 				}
 			} else if len(blocks) != 1 {
@@ -166,20 +168,20 @@ func TestUISnapshotActivityPrintfSuccessMarkers(t *testing.T) {
 			t.Run(producer.name+"/"+state, func(t *testing.T) {
 				script := strings.Join(producer.parts, " && ")
 				command := "/usr/bin/bash -lc " + quoteShellWord(script)
-				entry := activityPaneEntry{Seq: 1, Agent: "/root/probe", Kind: "tool", Text: toolActivityShell(script), Observed: now,
-					native: &liveActivityNativeItem{command: command}}
+				entry := sessionpresentation.ActivityEntry{Seq: 1, Agent: "/root/probe", Kind: "tool", Text: toolActivityShell(script), Observed: now,
+					Native: &sessionpresentation.NativeItem{Command: command}}
 				if state != "preview" {
 					for _, source := range producer.parts {
-						entry.native.segments = append(entry.native.segments, commandSegment{source: source, text: execSegmentText(source)})
+						entry.Native.Segments = append(entry.Native.Segments, sessionpresentation.ActivitySegment{Source: source, Text: execSegmentText(source)})
 					}
 					if state == "failed-marker" {
-						last := &entry.native.segments[len(entry.native.segments)-1]
-						last.exit, last.tail = 1, []string{"printf: write error"}
+						last := &entry.Native.Segments[len(entry.Native.Segments)-1]
+						last.Exit, last.Tail = 1, []string{"printf: write error"}
 					}
 				}
 				v := newActivityAdapter()
 				v.Painter.Theme = diffrender.DarkTheme
-				v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/probe", Final: true}}, Entries: []activityPaneEntry{entry}})
+				v.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/probe", Final: true}}, Entries: []sessionpresentation.ActivityEntry{entry}})
 				assertNativeUISnapshot(t, "activity-printf-success-"+producer.name+"-"+state, v.Render(100, 18, now))
 			})
 		}
@@ -193,9 +195,9 @@ func TestActivityBatchTimingEvidence(t *testing.T) {
 			if wrapped {
 				source = "/bin/bash -lc " + quoteShellWord(command)
 			}
-			entry := activityPaneEntry{Kind: "tool", Text: "Run `sleep 2`", Observed: time.Now().Add(-time.Second), native: &liveActivityNativeItem{command: source, duration: 3 * time.Second}}
+			entry := sessionpresentation.ActivityEntry{Kind: "tool", Text: "Run `sleep 2`", Observed: time.Now().Add(-time.Second), Native: &sessionpresentation.NativeItem{Command: source, Duration: 3 * time.Second}}
 			for _, running := range []bool{false, true} {
-				entry.native.running = running
+				entry.Native.Running = running
 				for _, block := range parseLiveActivity(entry) {
 					if !block.BatchExit && (block.Duration != 0 || !block.Started.IsZero() || activityui.RunElapsed(block, time.Now()) != "") {
 						t.Fatalf("aggregate attributed to command: %+v", block)
@@ -204,7 +206,7 @@ func TestActivityBatchTimingEvidence(t *testing.T) {
 			}
 		}
 	}
-	entry := activityPaneEntry{Kind: "tool", Text: "Run `sleep 2`", native: &liveActivityNativeItem{command: "sleep 2", duration: 2 * time.Second}}
+	entry := sessionpresentation.ActivityEntry{Kind: "tool", Text: "Run `sleep 2`", Native: &sessionpresentation.NativeItem{Command: "sleep 2", Duration: 2 * time.Second}}
 	blocks := parseLiveActivity(entry)
 	if len(blocks) != 1 || activityui.RunElapsed(blocks[0], time.Now()) != "2s" {
 		t.Fatalf("single command evidence lost: %+v", blocks)
@@ -219,7 +221,7 @@ func TestActivitySingleCommandObservedTimestamps(t *testing.T) {
 	item["status"], item["durationMs"], item["exitCode"] = "completed", 123, 0
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	for _, entry := range u.view.Entries {
-		if entry.Source.CallID != "timestamps" || entry.Source.native == nil {
+		if entry.Source.CallID != "timestamps" || entry.Source.Native == nil {
 			continue
 		}
 		blocks := parseLiveActivity(entry.Source)
@@ -240,17 +242,17 @@ func TestActivityBatchRestoresVCSRows(t *testing.T) {
 	setTestAppServerIntegration(u, testProxyWithStore(store))
 	output := "2\t1\ta.go\n"
 	item := binding.ThreadItem{ID: "vcs", Type: "commandExecution", Command: "bash -lc 'echo before; git diff --numstat'", ExitCode: new(0), AggregatedOutput: new("before\n" + output)}
-	entry := activityPaneEntry{native: &liveActivityNativeItem{thread: "main", turn: "t", item: item.ID}}
+	entry := sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "t", Item: item.ID}}
 	first, second := u.session.activity.Outputs(u.session.Scope()).New(), u.session.activity.Outputs(u.session.Scope()).New()
 	first.Finish(new("before\n"), new(0))
 	second.Finish(&output, new(0))
-	u.retainCommandSegments(entry, item.Observation(), execTrackView{complete: true, output: true, segments: []commandSegment{{output: first}, {output: second, raw: output}}})
+	u.retainCommandSegments(entry, item.Observation(), execTrackView{complete: true, output: true, segments: []sessionpresentation.ActivitySegment{{Output: first}, {Output: second, Raw: output}}})
 	awaitCommandSegments(t, u)
 	u.restoreCommandSegments(&entry, item, u.session.cwd)
-	if len(entry.native.segments) != 2 {
-		t.Fatalf("missing segments: %+v", entry.native.segments)
+	if len(entry.Native.Segments) != 2 {
+		t.Fatalf("missing segments: %+v", entry.Native.Segments)
 	}
-	rows := entry.native.segments[1].changes
+	rows := entry.Native.Segments[1].Changes
 	if len(rows) != 1 || rows[0].Label != "a.go" || rows[0].Added != 2 || rows[0].Removed != 1 {
 		t.Fatalf("VCS rows lost on replay: %+v", rows)
 	}

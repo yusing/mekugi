@@ -47,8 +47,8 @@ func assertRestoredChildMainAnswer(t *testing.T, u *appServerUI, item, text stri
 				continue
 			}
 			finals++
-			n := entry.Source.native
-			if entry.Source.Text != text || n == nil || n.thread != "child" || n.turn != "t" || n.item != item {
+			n := entry.Source.Native
+			if entry.Source.Text != text || n == nil || n.Thread != "child" || n.Turn != "t" || n.Item != item {
 				t.Fatalf("restored final lost its answer or source identity: %+v", entry.Source)
 			}
 		}

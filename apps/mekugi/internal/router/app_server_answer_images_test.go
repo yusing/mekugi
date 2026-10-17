@@ -1,9 +1,9 @@
 package router
 
 import (
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"bytes"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	json "encoding/json/v2"
 	"fmt"
@@ -87,7 +87,7 @@ func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text, spans, ok := appServerUserText(content)
+	text, spans, ok := sessionpresentation.UserText(content)
 	if !ok || len(binding.QuestionReplies(text)) != 2 || len(spans) != 0 {
 		t.Fatalf("reply images created a user band: %q %+v", text, spans)
 	}

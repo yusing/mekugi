@@ -274,8 +274,8 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 	if event.ThreadID != u.Thread {
 		if u.session.paths != nil && event.ThreadID != "" {
 			agent := u.session.agent(u.session.path(event.ThreadID))
-			agent.settings = preferences.Evidence{Model: event.Settings.Model, Effort: event.Settings.Effort, Tier: event.Settings.ServiceTier, TierKnown: true}
-			agent.settingsLive = true
+			agent.Settings = preferences.Evidence{Model: event.Settings.Model, Effort: event.Settings.Effort, Tier: event.Settings.ServiceTier, TierKnown: true}
+			agent.SettingsLive = true
 		}
 		return true, nil
 	}

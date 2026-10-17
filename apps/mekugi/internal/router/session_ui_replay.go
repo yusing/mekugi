@@ -67,7 +67,7 @@ func (p *uiReplayPlayback) reset() {
 	p.paintedAt = time.Time{}
 	// The read-only terminal attachment uses shared projection without a backend
 	// client, request tracker, writable store, observers or notification sink.
-	u := &appServerUI{terminalViews: p.terminalViews, reviewSource: p.reviewSource, presentationState: p.views, conversationState: p.conversation, session: appServerSession{activity: p.activity, observations: p.observations}, ctx: p.ctx, view: newTranscriptAdapter(activityui.NewView()), agents: newTranscriptAdapter(p.terminalViews.NewThreadView()), Thread: p.Source.Thread, clock: func() time.Time { return p.At }, replay: p}
+	u := &appServerUI{terminalViews: p.terminalViews, reviewSource: p.reviewSource, presentationState: p.views, conversationState: p.conversation, session: appServerSession{activity: p.activity, observations: p.observations}, ctx: p.ctx, view: newTranscriptAdapter(activityui.NewView(), sessionpresentation.MainAudience), agents: newTranscriptAdapter(p.terminalViews.NewThreadView(), sessionpresentation.ChildAudience), Thread: p.Source.Thread, clock: func() time.Time { return p.At }, replay: p}
 	u.attachPresentation()
 	u.sessionPresentation().Status.Set("Replay", false)
 	u.view.Clock, u.agents.Clock = u.clock, u.clock
@@ -98,7 +98,7 @@ func (p *uiReplayPlayback) apply(e playback.Event) error {
 	case e.Hook != nil:
 		entry := p.ui.session.hookEntry(e.ThreadID, *e.Hook, false)
 		entry.Seq = p.ui.session.next()
-		p.ui.applyActivity([]activityPaneEntry{entry}, nil)
+		p.ui.applyActivity([]sessionpresentation.ActivityEntry{entry}, nil)
 	case e.Kind == observation.ProviderStarted:
 		p.ui.applyActivity(p.ui.transcriptUpdates(p.ui.session.providerStarted(e.ThreadID, e.At), false), nil)
 	case e.Kind == observation.ProviderCompleted:

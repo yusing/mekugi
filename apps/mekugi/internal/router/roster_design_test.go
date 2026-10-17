@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/terminalui"
 
@@ -23,7 +25,7 @@ func TestRosterDesignMessageOwnerAndAssignment(t *testing.T) {
 		{"/root/a/x", "/root/a/x", "/root/a", "→ a"},
 		{"/root/a", "/root/a/x", "/root/a", "← a/x"},
 	} {
-		blocks := parseLiveActivity(activityPaneEntry{Agent: tc.owner, Kind: "reply", message: &activityMessage{from: tc.from, to: tc.to, text: "Message body"}})
+		blocks := parseLiveActivity(sessionpresentation.ActivityEntry{Agent: tc.owner, Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: tc.from, To: tc.to, Text: "Message body"}})
 		if len(blocks) != 1 || blocks[0].Kind != "message" {
 			t.Fatalf("parsed message = %+v", blocks)
 		}
@@ -38,9 +40,9 @@ func TestRosterDesignMessageOwnerAndAssignment(t *testing.T) {
 	if empty, _ := v.testCurrent(v.Agents[0], now); ansi.Strip(empty) != "Read root.go" {
 		t.Errorf("main without inbound = %q", empty)
 	}
-	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
-		{Seq: 3, Agent: "/root/a", Kind: "reply", message: &activityMessage{from: "/root/a", to: "/root", text: "Older inbound"}, Observed: now},
-		{Seq: 4, Agent: "/root/a", Kind: "reply", message: &activityMessage{from: "/root/a", to: "/root", text: "Latest inbound"}, Observed: now},
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
+		{Seq: 3, Agent: "/root/a", Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root/a", To: "/root", Text: "Older inbound"}, Observed: now},
+		{Seq: 4, Agent: "/root/a", Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root/a", To: "/root", Text: "Latest inbound"}, Observed: now},
 	}})
 	summary, _ := v.testCurrent(v.Agents[0], now)
 	if !strings.Contains(ansi.Strip(summary), "Latest inbound") || strings.Contains(ansi.Strip(summary), "Older inbound") || !strings.Contains(ansi.Strip(summary), "← a") {
@@ -51,12 +53,12 @@ func TestRosterDesignMessageOwnerAndAssignment(t *testing.T) {
 func TestRosterDesignSeparateHeaderTreeAndMetrics(t *testing.T) {
 	now := time.Now()
 	v := newActivityAdapter()
-	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{
 		{Name: "/root", Role: "root-role"},
 		{Name: "/root/a", Role: "explorer", Turns: 1, Roundtrips: 1},
 		{Name: "/root/b", Responding: true},
 		{Name: "/root/a/x"}, {Name: "/root/a/y"},
-	}, Entries: []activityPaneEntry{{Seq: 1, Agent: "/root/a/x", Kind: "error", Text: "failed", Observed: now}}})
+	}, Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "/root/a/x", Kind: "error", Text: "failed", Observed: now}}})
 	rows := v.testRoster()
 	var names []string
 	for _, row := range rows {
@@ -115,7 +117,7 @@ func TestRosterDesignCompactViewportAndWheel(t *testing.T) {
 	v.Agents[0].Responding = true
 	v.Agents[7].Responding = true
 	// A responding agent's earlier error counts once, as its visible ◐ status.
-	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 9, Agent: "/root/g", Kind: "error", Text: "failed", Observed: now},
 		{Seq: 10, Agent: "/root/h", Kind: "error", Text: "failed", Observed: now},
 	}})
@@ -226,7 +228,8 @@ func TestRosterDesignScrolledTreeCards(t *testing.T) {
 func TestNativeActivitySkipsMainInNavigationAndCounts(t *testing.T) {
 	v := newActivityAdapter()
 	v.ChildrenOnly = true
-	v.apply(activityPaneEvent{Kind: "agents", Agents: []activityPaneAgent{{Name: "/root"}, {Name: "/root/a"}, {Name: "/root/b"}}})
+	v.testAudience()
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: []sessionpresentation.ActivityAgent{{Name: "/root"}, {Name: "/root/a"}, {Name: "/root/b"}}})
 	if v.Selected != "/root/a" {
 		t.Fatalf("default selection = %q, want the first child", v.Selected)
 	}

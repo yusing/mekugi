@@ -86,7 +86,7 @@ func TestSessionUIReplayPlaybackUsesRecordedClockAndSeekReset(t *testing.T) {
 		t.Fatal("presentation clocks are not tied to recorded position")
 	}
 	command := p.ui.session.commands[[3]string{"root", "turn", "command"}]
-	if command == nil || !command.entry.Observed.Equal(p.Source.Start.Add(4*time.Second)) || !command.entry.native.commandStarted.Equal(p.Source.Start.Add(4*time.Second)) {
+	if command == nil || !command.entry.Observed.Equal(p.Source.Start.Add(4*time.Second)) || !command.entry.Native.CommandStarted.Equal(p.Source.Start.Add(4*time.Second)) {
 		t.Fatalf("command start used playback wall time: %+v", command)
 	}
 	if quit, err := p.key(' '); err != nil || quit || !p.Paused {

@@ -62,7 +62,7 @@ func TestUISnapshotDirectoryDeletion(t *testing.T) {
 			u.view.testPace(u.view.Now().Add(time.Second))
 			var seq uint64
 			for _, entry := range u.view.Entries {
-				if entry.Source.native != nil && entry.Source.native.item == "delete-call" {
+				if entry.Source.Native != nil && entry.Source.Native.Item == "delete-call" {
 					seq = entry.Source.Seq
 				}
 			}

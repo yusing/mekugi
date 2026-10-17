@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -22,9 +24,9 @@ func TestNativeActivityFollowupAssignments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	observeActivityRequest(t, &observationFixture{activity:a}, "child", "/root/reviewer", &request)
+	observeActivityRequest(t, &observationFixture{activity: a}, "child", "/root/reviewer", &request)
 	observed := takeNativeActivity(a, "main")
-	if len(observed) != 1 || observed[0].assignment == nil || observed[0].assignment.text != "Check the original answer." {
+	if len(observed) != 1 || observed[0].Assignment == nil || observed[0].Assignment.Text != "Check the original answer." {
 		t.Fatal("native assignment body was lost")
 	}
 
@@ -37,17 +39,18 @@ func TestNativeActivityFollowupAssignments(t *testing.T) {
 	}
 	collab("task-1", "spawnAgent", "Check the original answer.")
 	collab("task-2", "followupTask", "Check the edited answer.")
-	var next []activityPaneEntry
+	var next []sessionpresentation.ActivityEntry
 	for _, entry := range u.view.Entries {
 		if entry.Source.Kind == "assignment" {
 			next = append(next, entry.Source)
 		}
 	}
-	if len(next) != 1 || next[0].assignment.text != "Check the edited answer." {
+	if len(next) != 1 || next[0].Assignment.Text != "Check the edited answer." {
 		t.Fatalf("follow-up was omitted or conflated with spawn: %+v", next)
 	}
-	u.applyActivity([]activityPaneEntry{{Seq: u.session.next(), Agent: "/root/reviewer", Kind: "final", Text: "The edited answer is correct."}}, nil)
+	u.applyActivity([]sessionpresentation.ActivityEntry{{Seq: u.session.next(), Agent: "/root/reviewer", Kind: "final", Text: "The edited answer is correct."}}, nil)
 	u.view.Conversation = true
+	u.view.testAudience()
 	feed := u.view.RenderFeed(100, 40)
 	main := ansi.Strip(strings.Join(feed.Lines, "\n"))
 	if !strings.Contains(main, "▶ reviewer started") || !strings.Contains(main, "├─→ follow-up") || !strings.Contains(main, "├─✓ finished") || strings.Contains(main, "↩ re:") {
@@ -78,7 +81,7 @@ func TestNativeActivityAssignmentsPreserveOriginalTime(t *testing.T) {
 		a := sessioncontrol.NewAudience(nil)
 		a.Attach("main")
 		a.Observe("child", "main", "/root/reviewer", true)
-		observeActivityRequest(t, &observationFixture{activity:a}, "child", "/root/reviewer", &request)
+		observeActivityRequest(t, &observationFixture{activity: a}, "child", "/root/reviewer", &request)
 		entries := takeNativeActivity(a, "main")
 		if len(entries) != 4 {
 			t.Fatalf("lost historical assignments: %+v", entries)
@@ -86,6 +89,7 @@ func TestNativeActivityAssignmentsPreserveOriginalTime(t *testing.T) {
 		u, _ := newAppServerTestUI()
 		u.ensureShell()
 		u.view.Conversation = true
+		u.view.testAudience()
 		for i := range entries {
 			want := time.Unix(1700000000+int64(i*60), 125000000)
 			if !entries[i].Observed.Equal(want) {
@@ -100,7 +104,7 @@ func TestNativeActivityAssignmentsPreserveOriginalTime(t *testing.T) {
 				t.Fatalf("original timestamp missing from feed: %s", rendered)
 			}
 		}
-		observeActivityRequest(t, &observationFixture{activity:a}, "child", "/root/reviewer", &request)
+		observeActivityRequest(t, &observationFixture{activity: a}, "child", "/root/reviewer", &request)
 		if got := takeNativeActivity(a, "main"); len(got) != 0 {
 			t.Fatalf("repeated history duplicated assignments: %+v", got)
 		}
@@ -119,7 +123,7 @@ func TestNativeActivityChildResultsStaySeparateAndLinked(t *testing.T) {
 			"tool": tool, "senderThreadId": "main", "receiverThreadIds": []string{receiver}, "prompt": prompt}})
 	}
 	result := func(agent, answer string) {
-		u.applyActivity([]activityPaneEntry{{Seq: u.session.next(), Agent: agent, Kind: "final", Text: answer}}, nil)
+		u.applyActivity([]sessionpresentation.ActivityEntry{{Seq: u.session.next(), Agent: agent, Kind: "final", Text: answer}}, nil)
 	}
 	collab("task-1", "spawnAgent", "child", "Review the first change.")
 	result("/root/reviewer", "FIRST ANSWER")
@@ -128,6 +132,7 @@ func TestNativeActivityChildResultsStaySeparateAndLinked(t *testing.T) {
 	result("/root/other", "OTHER ANSWER")
 	result("/root/reviewer", "SECOND ANSWER")
 	u.view.Conversation = true
+	u.view.testAudience()
 	main := ansi.Strip(strings.Join(u.view.RenderFeed(100, 80).Lines, "\n"))
 	first, second := strings.Index(main, "FIRST ANSWER"), strings.Index(main, "SECOND ANSWER")
 	if first < 0 || second < first || strings.Count(main, "SECOND ANSWER") != 1 {

@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/charmbracelet/x/ansi"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -18,9 +20,10 @@ func threadTestView() *activityAdapter {
 	reply := strings.Repeat("Inspection found no behavioral failure. ", 16)
 	v := newActivityAdapter()
 	v.Conversation, v.FeedOnly = true, true
-	v.Entries = []liveActivityRecord{
-		{Source: activityPaneEntry{Seq: 1, Agent: "Main", Kind: "start", Observed: start, assignment: &activityAssignment{to: "/root/reviewer", text: task}}, Values: activityui.Values([]activityui.Block{{Kind: "start", From: "/root", To: "/root/reviewer", Label: "gpt-6-astra", Body: task}})},
-		{Source: activityPaneEntry{Seq: 2, Agent: "/root/reviewer", Kind: "reply", Observed: start.Add(58 * time.Second), activitySeq: 9}, Values: activityui.Values([]activityui.Block{{Kind: "message", From: "/root/reviewer", To: "/root", Body: reply}})},
+	v.testAudience()
+	v.Entries = []sessionpresentation.ActivityRecord{
+		{Source: sessionpresentation.ActivityEntry{Seq: 1, Agent: "Main", Kind: "start", Observed: start, Assignment: &sessionpresentation.ActivityAssignment{To: "/root/reviewer", Text: task}}, Values: activityui.Values([]activityui.Block{{Kind: "start", From: "/root", To: "/root/reviewer", Label: "gpt-6-astra", Body: task}})},
+		{Source: sessionpresentation.ActivityEntry{Seq: 2, Agent: "/root/reviewer", Kind: "reply", Observed: start.Add(58 * time.Second), ActivitySeq: 9}, Values: activityui.Values([]activityui.Block{{Kind: "message", From: "/root/reviewer", To: "/root", Body: reply}})},
 	}
 	return v
 }
@@ -83,8 +86,8 @@ func TestConversationThreadEndsAtOtherTraffic(t *testing.T) {
 	// Another agent's traffic in between ends the thread; the reply keeps its
 	// own heading, and the closing connector.
 	v = threadTestView()
-	other := activityPaneEntry{Seq: 3, Agent: "/root/other", Kind: "reply", Observed: v.Entries[1].Source.Observed, activitySeq: 8}
-	v.Entries = []liveActivityRecord{
+	other := sessionpresentation.ActivityEntry{Seq: 3, Agent: "/root/other", Kind: "reply", Observed: v.Entries[1].Source.Observed, ActivitySeq: 8}
+	v.Entries = []sessionpresentation.ActivityRecord{
 		v.Entries[0],
 		{Source: other, Values: activityui.Values([]activityui.Block{{Kind: "message", From: "/root/other", To: "/root", Body: "Unrelated."}})},
 		v.Entries[1],
@@ -100,10 +103,10 @@ func TestConversationAsidesFollowThread(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			const width = 60
 			v := threadTestView()
-			reasoning := activityPaneEntry{Seq: 3, Agent: "Main", Kind: "reasoning", Text: "**Waiting on review**\n\nThe reviewer is still reading.", Observed: v.Entries[0].Source.Observed.Add(time.Second)}
+			reasoning := sessionpresentation.ActivityEntry{Seq: 3, Agent: "Main", Kind: "reasoning", Text: "**Waiting on review**\n\nThe reviewer is still reading.", Observed: v.Entries[0].Source.Observed.Add(time.Second)}
 			if kind != "reasoning" {
 				reasoning.Kind, reasoning.Text = "progress", kind+" · reviewer still reading"
-				reasoning.native = &liveActivityNativeItem{wait: &activitypresentation.Value{Kind: "progress", Body: reasoning.Text}}
+				reasoning.Native = &sessionpresentation.NativeItem{Wait: &activitypresentation.Value{Kind: "progress", Body: reasoning.Text}}
 			}
 			v.appendEntry(reasoning, parseLiveActivity(reasoning))
 			v.Model.Reorder([]int{0, 2, 1})
@@ -146,13 +149,14 @@ func TestConversationAsidesFollowThread(t *testing.T) {
 func TestConversationMainToolsFollowTheirLead(t *testing.T) {
 	const width = 70
 	at := time.Date(2026, 9, 27, 23, 21, 0, 0, time.Local)
-	reasoning := activityPaneEntry{Seq: 1, Agent: "Main", Kind: "reasoning", Text: "**Preparing regression seed**", Observed: at}
-	read := activityPaneEntry{Seq: 2, Agent: "Main", Kind: "tool", Text: "Read `mchanges.go 470:491`", Observed: at}
-	done := activityPaneEntry{Seq: 3, Agent: "/root/lookup", Kind: "final", Text: "Evidence points to a namespace-context loss.", Observed: at.Add(time.Minute), activitySeq: 9}
-	edit := activityPaneEntry{Seq: 4, Agent: "Main", Kind: "tool", Text: "Edit `change_capture_test.go` +65 -0", Observed: at.Add(2 * time.Minute)}
-	render := func(entries ...activityPaneEntry) []string {
+	reasoning := sessionpresentation.ActivityEntry{Seq: 1, Agent: "Main", Kind: "reasoning", Text: "**Preparing regression seed**", Observed: at}
+	read := sessionpresentation.ActivityEntry{Seq: 2, Agent: "Main", Kind: "tool", Text: "Read `mchanges.go 470:491`", Observed: at}
+	done := sessionpresentation.ActivityEntry{Seq: 3, Agent: "/root/lookup", Kind: "final", Text: "Evidence points to a namespace-context loss.", Observed: at.Add(time.Minute), ActivitySeq: 9}
+	edit := sessionpresentation.ActivityEntry{Seq: 4, Agent: "Main", Kind: "tool", Text: "Edit `change_capture_test.go` +65 -0", Observed: at.Add(2 * time.Minute)}
+	render := func(entries ...sessionpresentation.ActivityEntry) []string {
 		v := newActivityAdapter()
 		v.Conversation, v.FeedOnly = true, true
+		v.testAudience()
 		for _, entry := range entries {
 			v.appendEntry(entry, parseLiveActivity(entry))
 		}
@@ -195,13 +199,14 @@ func TestConversationConsecutiveReasoning(t *testing.T) {
 	for _, main := range []bool{true, false} {
 		v := newActivityAdapter()
 		v.Conversation, v.ChildrenOnly = main, !main
+		v.testAudience()
 		agent := "Main"
 		if !main {
 			agent = "/root/worker"
 		}
 		for i, body := range []string{"**First**\n\nOld body", "**Second**\n\nSecond body", "Latest body"} {
-			entry := activityPaneEntry{Seq: uint64(i + 1), Agent: agent, Kind: "reasoning", Text: body,
-				native: &liveActivityNativeItem{thread: "thread", turn: "turn", item: body, phase: "item/completed", thought: 12 * time.Second}}
+			entry := sessionpresentation.ActivityEntry{Seq: uint64(i + 1), Agent: agent, Kind: "reasoning", Text: body,
+				Native: &sessionpresentation.NativeItem{Thread: "thread", Turn: "turn", Item: body, Phase: "item/completed", Thought: 12 * time.Second}}
 			v.appendEntry(entry, parseLiveActivity(entry))
 		}
 		feed := v.RenderFeed(80, 40)
@@ -233,7 +238,8 @@ func TestConversationConsecutiveReasoning(t *testing.T) {
 func TestRosterJoinsConsecutiveReasoning(t *testing.T) {
 	v := newActivityAdapter()
 	v.ChildrenOnly = true
-	entries := []activityPaneEntry{
+	v.testAudience()
+	entries := []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root/worker", Kind: "reasoning", Text: "**Before action**"},
 		{Seq: 2, Agent: "/root/worker", Kind: "tool", Text: "Read `Makefile`"},
 		{Seq: 3, Agent: "/root/worker", Kind: "reasoning", Text: "**First**"},
@@ -244,7 +250,7 @@ func TestRosterJoinsConsecutiveReasoning(t *testing.T) {
 		v.appendEntry(entry, parseLiveActivity(entry))
 	}
 	for _, live := range []bool{false, true} {
-		summary, _ := v.testCurrent(activityPaneAgent{Name: "/root/worker", Responding: live}, time.Now())
+		summary, _ := v.testCurrent(sessionpresentation.ActivityAgent{Name: "/root/worker", Responding: live}, time.Now())
 		if got := ansi.Strip(summary); got != "First, Second" {
 			t.Fatalf("live=%v: inline = %q", live, got)
 		}

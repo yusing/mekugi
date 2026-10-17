@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/commandsegments/segments"
 
@@ -13,12 +15,12 @@ import (
 )
 
 func BenchmarkActivityTimingParse(b *testing.B) {
-	for _, entry := range []activityPaneEntry{
-		{Kind: "text", Text: "Completed the focused checks", native: &liveActivityNativeItem{}},
-		{Kind: "tool", Text: "Run `go test ./...`", native: &liveActivityNativeItem{command: "go test ./...", running: true}},
-		{Kind: "tool", Text: "Run `echo one`\n\nRun `echo two`", native: &liveActivityNativeItem{command: "echo one; echo two", running: true}},
+	for _, entry := range []sessionpresentation.ActivityEntry{
+		{Kind: "text", Text: "Completed the focused checks", Native: &sessionpresentation.NativeItem{}},
+		{Kind: "tool", Text: "Run `go test ./...`", Native: &sessionpresentation.NativeItem{Command: "go test ./...", Running: true}},
+		{Kind: "tool", Text: "Run `echo one`\n\nRun `echo two`", Native: &sessionpresentation.NativeItem{Command: "echo one; echo two", Running: true}},
 	} {
-		b.Run(entry.Kind+"/"+entry.native.command, func(b *testing.B) {
+		b.Run(entry.Kind+"/"+entry.Native.Command, func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
 				if len(parseLiveActivity(entry)) == 0 {
@@ -49,7 +51,7 @@ func TestActivitySingleCommandActualTime(t *testing.T) {
 			if !view.complete || view.output || len(view.segments) != 1 || got.code != plain.code || got.stdout != plain.stdout {
 				t.Fatalf("host result changed: tracked=%+v plain=%+v view=%+v", got, plain, view)
 			}
-			elapsed := time.Duration(view.segments[0].timing.ElapsedNS)
+			elapsed := time.Duration(view.segments[0].Timing.ElapsedNS)
 			if timed {
 				seconds, err := strconv.ParseFloat(strings.TrimSpace(got.stderr), 64)
 				if err != nil || elapsed < 15*time.Millisecond || elapsed > time.Duration(seconds*float64(time.Second))+50*time.Millisecond {
@@ -58,7 +60,7 @@ func TestActivitySingleCommandActualTime(t *testing.T) {
 			} else if got.stderr != plain.stderr {
 				t.Fatalf("stderr changed: %q vs %q", got.stderr, plain.stderr)
 			}
-			entry := activityPaneEntry{Kind: "tool", native: &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2], command: script, duration: time.Second, segments: view.segments}, outputTail: []string{got.stdout}}
+			entry := sessionpresentation.ActivityEntry{Kind: "tool", Native: &sessionpresentation.NativeItem{Thread: key[0], Turn: key[1], Item: key[2], Command: script, Duration: time.Second, Segments: view.segments}, OutputTail: []string{got.stdout}}
 			blocks := parseLiveActivity(entry)
 			if elapsed <= 0 || len(blocks) != 1 || blocks[0].Duration != elapsed || blocks[0].NotificationTiming || blocks[0].ExitCode != got.code {
 				t.Fatalf("command timing replaced by host time: %+v", blocks)
@@ -75,7 +77,7 @@ func TestActivitySingleCommandActualTime(t *testing.T) {
 			item := binding.ThreadItem{ID: key[2], Type: "commandExecution", Command: "bash -lc " + quoteShellWord(script), ExitCode: new(got.code), AggregatedOutput: new(got.stdout + got.stderr)}
 			u.retainCommandSegments(entry, item.Observation(), view)
 			u.finishCommandSegments()
-			entry.native.segments = nil
+			entry.Native.Segments = nil
 			u.restoreCommandSegments(&entry, item, u.session.cwd)
 			blocks = parseLiveActivity(entry)
 			if len(blocks) != 1 || blocks[0].Duration != elapsed || blocks[0].Running {
@@ -110,16 +112,16 @@ func TestActivityTimingRealShellBoundariesAndRestart(t *testing.T) {
 		t.Fatalf("segments: %+v", observed)
 	}
 	for i := range 3 {
-		timing := observed.segments[i].timing
+		timing := observed.segments[i].Timing
 		if timing.Started.IsZero() || timing.Ended.IsZero() || timing.ElapsedNS <= 0 || timing.Ended.Before(timing.Started) {
 			t.Fatalf("segment %d missing boundaries: %+v", i, timing)
 		}
 	}
-	short, long := observed.segments[0].timing.ElapsedNS, observed.segments[1].timing.ElapsedNS
+	short, long := observed.segments[0].Timing.ElapsedNS, observed.segments[1].Timing.ElapsedNS
 	if short < int64(20*time.Millisecond) || long < int64(80*time.Millisecond) || long == short {
 		t.Fatalf("distinct actual durations: %s, %s", time.Duration(short), time.Duration(long))
 	}
-	if observed.segments[2].exit != 1 || !observed.segments[3].skipped || observed.segments[3].timing != (segmenttransport.Timing{}) {
+	if observed.segments[2].Exit != 1 || !observed.segments[3].Skipped || observed.segments[3].Timing != (segmenttransport.Timing{}) {
 		t.Fatalf("failed/skipped boundaries: %+v", observed.segments)
 	}
 	item.Status, item.ExitCode, item.AggregatedOutput = "failed", new(1), new("")
@@ -134,22 +136,22 @@ func TestActivityTimingRealShellBoundariesAndRestart(t *testing.T) {
 	setTestAppServerIntegration(restored, testProxyWithStore(store))
 	restored.restoreHistory([]binding.HistoryTurn{{ID: key[1], Status: "completed", Items: []binding.ThreadItem{item}}})
 	for _, entry := range restored.view.Entries {
-		if entry.Source.CallID != item.ID || entry.Source.native == nil {
+		if entry.Source.CallID != item.ID || entry.Source.Native == nil {
 			continue
 		}
-		segments := entry.Source.native.segments
+		segments := entry.Source.Native.Segments
 		if len(segments) != 4 {
 			t.Fatalf("restored segments: %+v", segments)
 		}
 		for i := range 3 {
-			if segments[i].timing != observed.segments[i].timing {
-				t.Fatalf("segment %d timing changed on restart: %+v vs %+v", i, segments[i].timing, observed.segments[i].timing)
+			if segments[i].Timing != observed.segments[i].Timing {
+				t.Fatalf("segment %d timing changed on restart: %+v vs %+v", i, segments[i].Timing, observed.segments[i].Timing)
 			}
 		}
-		if segments[3].timing != (segmenttransport.Timing{}) {
-			t.Fatalf("skipped acquired timing: %+v", segments[3].timing)
+		if segments[3].Timing != (segmenttransport.Timing{}) {
+			t.Fatalf("skipped acquired timing: %+v", segments[3].Timing)
 		}
-		blocks := commandSegmentBlocks(commandPresentation(entry.Source))
+		blocks := commandSegmentBlocks(sessionpresentation.CommandPresentation(entry.Source))
 		for _, block := range blocks {
 			if block.Code == "sleep .04" && block.Duration != time.Duration(short) {
 				t.Fatalf("short block duration: %+v", block)
@@ -165,7 +167,7 @@ func TestActivityTimingRealShellBoundariesAndRestart(t *testing.T) {
 
 func TestActivityTimingDoesNotBorrowHostTotalWithoutMessageEvidence(t *testing.T) {
 	t.Parallel()
-	entry := activityPaneEntry{Kind: "tool", Text: "Run `sleep .04`\n\nRun `sleep .12`", Observed: time.Now().Add(-5 * time.Second), native: &liveActivityNativeItem{command: "sleep .04; sleep .12", duration: 5 * time.Second, segments: []commandSegment{{source: "sleep .04", text: "Run `sleep .04`"}, {source: "sleep .12", text: "Run `sleep .12`"}}}}
+	entry := sessionpresentation.ActivityEntry{Kind: "tool", Text: "Run `sleep .04`\n\nRun `sleep .12`", Observed: time.Now().Add(-5 * time.Second), Native: &sessionpresentation.NativeItem{Command: "sleep .04; sleep .12", Duration: 5 * time.Second, Segments: []sessionpresentation.ActivitySegment{{Source: "sleep .04", Text: "Run `sleep .04`"}, {Source: "sleep .12", Text: "Run `sleep .12`"}}}}
 	for _, block := range parseLiveActivity(entry) {
 		if block.Duration != 0 || !block.Started.IsZero() || !block.Ended.IsZero() {
 			t.Fatalf("borrowed host total: %+v", block)
@@ -178,11 +180,11 @@ func TestActivityTimingKeepsSeparateClassifiedReadCommands(t *testing.T) {
 	start := time.Date(2026, 9, 30, 10, 0, 0, 0, time.UTC)
 	first := segmenttransport.Timing{Started: start, Ended: start.Add(8 * time.Millisecond), ElapsedNS: int64(8 * time.Millisecond)}
 	second := segmenttransport.Timing{Started: start.Add(10 * time.Millisecond), Ended: start.Add(31 * time.Millisecond), ElapsedNS: int64(21 * time.Millisecond)}
-	entry := activityPaneEntry{Kind: "tool", native: &liveActivityNativeItem{command: "cat first.txt; cat second.txt", segments: []commandSegment{
-		{source: "cat first.txt", text: "Read `first.txt`", timing: first},
-		{source: "cat second.txt", text: "Read `second.txt`", timing: second},
+	entry := sessionpresentation.ActivityEntry{Kind: "tool", Native: &sessionpresentation.NativeItem{Command: "cat first.txt; cat second.txt", Segments: []sessionpresentation.ActivitySegment{
+		{Source: "cat first.txt", Text: "Read `first.txt`", Timing: first},
+		{Source: "cat second.txt", Text: "Read `second.txt`", Timing: second},
 	}}}
-	blocks := commandSegmentBlocks(commandPresentation(entry))
+	blocks := commandSegmentBlocks(sessionpresentation.CommandPresentation(entry))
 	if len(blocks) != 2 || blocks[0].Duration != 8*time.Millisecond || blocks[1].Duration != 21*time.Millisecond || blocks[0].Started != first.Started || blocks[1].Ended != second.Ended {
 		t.Fatalf("classified reads merged or mistimed: %+v", blocks)
 	}
@@ -208,17 +210,17 @@ func TestActivityTimingExitAndErrexitBoundaries(t *testing.T) {
 				t.Fatalf("host=%+v view=%+v", result, view)
 			}
 			exiting := view.segments[tc.ending]
-			if exiting.exit != tc.code || exiting.timing.Started.IsZero() || exiting.timing.Ended.IsZero() || exiting.timing.ElapsedNS <= 0 {
+			if exiting.Exit != tc.code || exiting.Timing.Started.IsZero() || exiting.Timing.Ended.IsZero() || exiting.Timing.ElapsedNS <= 0 {
 				t.Fatalf("exiting command lacks timing: %+v", exiting)
 			}
 			if tc.name == "errexit" {
-				if len(view.segments) != 1 || exiting.source != tc.script || result.stdout != "" {
+				if len(view.segments) != 1 || exiting.Source != tc.script || result.stdout != "" {
 					t.Fatalf("setup event split or ran after errexit: host=%+v view=%+v", result, view)
 				}
 				return
 			}
 			skipped := view.segments[tc.ending+1]
-			if !skipped.skipped || skipped.timing != (segmenttransport.Timing{}) {
+			if !skipped.Skipped || skipped.Timing != (segmenttransport.Timing{}) {
 				t.Fatalf("skipped command acquired timing: %+v", skipped)
 			}
 		})
@@ -237,7 +239,7 @@ func TestActivityTimingLiveEvidenceDoesNotInheritHostTotal(t *testing.T) {
 		segmenttransport.Message{Type: segmenttransport.Begin, Index: 1, Timing: segmenttransport.Timing{Started: start.Add(13 * time.Millisecond)}},
 	)
 	view := hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 2 })
-	entry := activityPaneEntry{Kind: "tool", Observed: start.Add(-5 * time.Second), native: &liveActivityNativeItem{command: "sleep .01; sleep .02", running: true, duration: 5 * time.Second, segments: view.segments}}
+	entry := sessionpresentation.ActivityEntry{Kind: "tool", Observed: start.Add(-5 * time.Second), Native: &sessionpresentation.NativeItem{Command: "sleep .01; sleep .02", Running: true, Duration: 5 * time.Second, Segments: view.segments}}
 	blocks := parseLiveActivity(entry)
 	if len(blocks) != 2 || blocks[0].Duration != 12*time.Millisecond || blocks[0].Started != start || blocks[1].Duration != 0 || blocks[1].Started != start.Add(13*time.Millisecond) || !blocks[1].Ended.IsZero() {
 		t.Fatalf("live command evidence lost or host total borrowed: %+v", blocks)

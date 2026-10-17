@@ -86,7 +86,7 @@ func TestNativeDisplayedThreadIndependentOfRosterFocus(t *testing.T) {
 	if view.Displayed.ID != "first" || view.Input.ID != "main" || !u.composerReadOnly() || u.transcriptCaller() != "/root/first" {
 		t.Fatalf("roster focus changed display or admission: %+v", view)
 	}
-	if !u.agents.testVisible(activityPaneEntry{Agent: "/root/first", Kind: "text"}) || u.agents.testVisible(activityPaneEntry{Agent: "/root/second", Kind: "text"}) {
+	if !u.agents.testVisible(sessionpresentation.ActivityEntry{Agent: "/root/first", Kind: "text"}) || u.agents.testVisible(sessionpresentation.ActivityEntry{Agent: "/root/second", Kind: "text"}) {
 		t.Fatal("transcript followed the focused roster row")
 	}
 	u.shell.selectNativePane(0)

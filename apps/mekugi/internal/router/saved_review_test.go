@@ -81,8 +81,8 @@ func TestSavedReviewWithoutLivePreview(t *testing.T) {
 	foundReceipt := false
 	for _, record := range u.view.Entries {
 		entry := record.Source
-		if entry.native != nil && entry.native.item == "format" {
-			foundReceipt = entry.native.capturedEdit != nil
+		if entry.Native != nil && entry.Native.Item == "format" {
+			foundReceipt = entry.Native.CapturedEdit != nil
 		}
 	}
 	if !foundReceipt {

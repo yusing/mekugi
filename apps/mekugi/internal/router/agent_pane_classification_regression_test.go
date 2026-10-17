@@ -3,6 +3,8 @@ package router
 import (
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 )
 
 func TestAgentPaneGlobAndToolReadClassification(t *testing.T) {
@@ -80,7 +82,7 @@ func TestAgentPaneUnsafeReadLikeCommandsRemainRun(t *testing.T) {
 }
 
 func TestAgentPaneRetainsUnknownJavaScriptToolParagraph(t *testing.T) {
-	blocks := parseLiveActivity(activityPaneEntry{
+	blocks := parseLiveActivity(sessionpresentation.ActivityEntry{
 		Kind: "tool",
 		Text: "Read `a.go`\n\nRun JavaScript · other code\n\nInspect `b.go`",
 	})
@@ -89,14 +91,14 @@ func TestAgentPaneRetainsUnknownJavaScriptToolParagraph(t *testing.T) {
 	}
 
 	const authored = "A note about Run JavaScript · other code should remain visible."
-	text := parseLiveActivity(activityPaneEntry{Kind: "commentary", Text: authored})
+	text := parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "commentary", Text: authored})
 	if len(text) != 1 || text[0].Kind != "text" || text[0].Body != authored {
 		t.Fatalf("non-tool authored text changed: %+v", text)
 	}
 }
 
 func TestAgentPaneEditLikeToolBlocksOmitDiffBodies(t *testing.T) {
-	entry := activityPaneEntry{
+	entry := sessionpresentation.ActivityEntry{
 		Kind: "tool",
 		Text: "Edit `a.go` +1 -1\n```diff\n@@ -1 +1 @@\n-old\n+new\n```\n\n" +
 			"Create `b.go` +1 -0 · cp\n```diff\n@@ -0,0 +1 @@\n+created\n```\n\n" +
@@ -121,7 +123,7 @@ func TestAgentPaneEditLikeToolBlocksOmitDiffBodies(t *testing.T) {
 
 func TestAgentPaneChainedMultilineFallback(t *testing.T) {
 	command := "cat a.go && python -c '\nprint(1)\n\nprint(2)\n'"
-	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell(command)})
+	blocks := parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "tool", Text: toolActivityShell(command)})
 	if len(blocks) != 2 || blocks[0].Kind != "reads" || blocks[1].Verb != "Run" || !blocks[1].Fenced || !strings.Contains(blocks[1].Code, "print(1)\n\nprint(2)") {
 		t.Fatalf("multiline && neighbor lost structure: %+v", blocks)
 	}

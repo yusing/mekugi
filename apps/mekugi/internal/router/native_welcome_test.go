@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 )
 
@@ -84,7 +86,7 @@ func TestNativeWelcomeDoesNotReplaceHistoryOrLiveDock(t *testing.T) {
 		t.Run(fmt.Sprint(dock), func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			if dock == 0 {
-				u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "You", Kind: "text", Text: "Submitted prompt"}}})
+				u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "You", Kind: "text", Text: "Submitted prompt"}}})
 			}
 			rows, _ := u.testMainFrame(80, 24, dock)
 			if strings.Contains(strings.Join(rows, "\n"), "Mekugi "+mekugiVersion()) {

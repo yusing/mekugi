@@ -150,8 +150,8 @@ func (u *appServerUI) send(parts []conversationmodel.Input, steer bool) error {
 		request.Tier = u.selectedServiceTier()
 		if len(binding.QuestionReplies(s.Text)) == 0 {
 			echo := u.view.LastSeq + 1
-			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: echo, Agent: "You", Kind: "text", Text: s.Text, Observed: u.now(),
-				native: &liveActivityNativeItem{thread: u.Thread, item: "input/" + id, phase: "input/pending", spans: sessionpresentation.DraftSpans(s.Draft)}}}})
+			u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: echo, Agent: "You", Kind: "text", Text: s.Text, Observed: u.now(),
+				Native: &sessionpresentation.NativeItem{Thread: u.Thread, Item: "input/" + id, Phase: "input/pending", Spans: sessionpresentation.DraftSpans(s.Draft)}}}})
 		}
 	}
 	for _, image := range s.Images {
@@ -193,7 +193,7 @@ func (u *appServerUI) submissionResponse(method string, failure *appserver.Error
 
 func (u *appServerUI) applyInputEffects(effects sessionpresentation.InputEffects) {
 	if effects.Withdrawn != "" {
-		u.view.removePendingInput(effects.Withdrawn)
+		u.view.RemovePendingInput(effects.Withdrawn)
 		u.sessionPresentation().SettleWithdrawnInput(effects, len(u.view.Model.Entries) > 0)
 	}
 	u.applyInputRestoration(effects.Restored)
@@ -203,7 +203,7 @@ func (u *appServerUI) applyInputEffects(effects sessionpresentation.InputEffects
 }
 
 func (u *appServerUI) commitSteer(item binding.ThreadItem) {
-	text, _, _ := appServerUserText(item.Content)
+	text, _, _ := sessionpresentation.UserText(item.Content)
 	u.sessionPresentation().CommitInput(&u.Live, u.conversation(), item.ClientID, text)
 }
 

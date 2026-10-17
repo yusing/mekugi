@@ -6,6 +6,8 @@ import (
 	"maps"
 	"slices"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -15,10 +17,10 @@ import (
 
 // Only live host commands enter this map. A completed command can stay there
 // while its output rolls through the transcript or its segment report drains.
-func (s *appServerSession) runningProcesses() iter.Seq[activityPaneEntry] {
-	return func(yield func(activityPaneEntry) bool) {
+func (s *appServerSession) runningProcesses() iter.Seq[sessionpresentation.ActivityEntry] {
+	return func(yield func(sessionpresentation.ActivityEntry) bool) {
 		for key, run := range s.commands {
-			if !run.entry.native.invocation.Running() {
+			if !run.entry.Native.Invocation.Running() {
 				continue
 			}
 			entry := run.entry
@@ -60,7 +62,7 @@ func (u *appServerUI) processPages(pages []outputPage) []activityui.Block {
 		}
 	}
 	for entry := range u.session.runningProcesses() {
-		if seq := u.agents.entrySeq(entry); seq != 0 {
+		if seq := u.agents.EntrySeq(entry); seq != 0 {
 			if _, known := bySource[seq]; !known {
 				bySource[seq] = activityui.Block{Source: seq, Owner: entry.Agent}
 			}
@@ -68,13 +70,13 @@ func (u *appServerUI) processPages(pages []outputPage) []activityui.Block {
 	}
 	for _, record := range u.agents.Entries {
 		page, ok := bySource[record.Source.Seq]
-		if n := record.Source.native; ok && n != nil {
+		if n := record.Source.Native; ok && n != nil {
 			bySource[record.Source.Seq] = activityui.Block{
 				Source: record.Source.Seq, Owner: page.Owner, Kind: "op", Verb: "Run", Lang: "bash",
-				Code:   frontends.ShellDisplaySource(appServerDisplayCommand(n.command)),
-				Output: retainedOutputID(n.output, 1), Tail: record.Source.outputTail, TailOmitted: record.Source.outputOmit,
-				Running: n.running, Approval: n.approval,
-				Started: n.commandStarted, Ended: n.commandEnded, Duration: n.duration, NotificationTiming: true,
+				Code:   frontends.ShellDisplaySource(sessionpresentation.DisplayCommand(n.Command)),
+				Output: sessionpresentation.RetainedOutputID(n.Output, 1), Tail: record.Source.OutputTail, TailOmitted: record.Source.OutputOmit,
+				Running: n.Running, Approval: n.Approval,
+				Started: n.CommandStarted, Ended: n.CommandEnded, Duration: n.Duration, NotificationTiming: true,
 			}
 		}
 	}

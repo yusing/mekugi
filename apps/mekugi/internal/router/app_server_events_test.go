@@ -3,6 +3,8 @@ package router
 import (
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -46,7 +48,7 @@ func TestAppServerAgentTimerStartsAtFirstTurn(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	u.session.path("early")
-	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "/root/worker", Kind: "status", Text: "Assigned", Observed: time.Now()}}})
+	u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "/root/worker", Kind: "status", Text: "Assigned", Observed: time.Now()}}})
 	for _, agent := range u.session.agents {
 		if !agent.Started.IsZero() {
 			t.Fatalf("thread registration started timer: %+v", agent)
@@ -129,6 +131,7 @@ func TestAppServerSessionProjectsChildThreads(t *testing.T) {
 		}
 	}
 	u.view.Conversation = true
+	u.view.testAudience()
 	main := ansi.Strip(strings.Join(u.view.RenderFeed(90, 60).Lines, "\n"))
 	for _, want := range []string{"▶ worker started", "├─✓ finished", "The pane waits on its first frame.", "╰─↩ Open reply"} {
 		if !strings.Contains(main, want) {

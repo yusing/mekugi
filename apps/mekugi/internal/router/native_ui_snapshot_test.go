@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/modules/conversation/completion"
@@ -29,7 +31,7 @@ func TestUISnapshotNativeMainComposer(t *testing.T) {
 			// An idle session avoids wall-clock durations and status animation.
 			u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 			now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
-			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
+			u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
 				{Seq: 1, Agent: "You", Kind: "text", Text: "Explain the snapshot workflow.", Observed: now},
 				{Seq: 2, Agent: "Main", Kind: "final", Text: "Review the **rendered frame**, accept its baseline, then rerun the offline check.", Observed: now},
 			}})
@@ -99,13 +101,13 @@ func snapshotActivityView(now time.Time) *activityAdapter {
 	v := newActivityAdapter()
 	v.Painter.Theme = diffrender.DarkTheme
 	v.Selected = "/root/review"
-	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{
 		{Name: "/root", Final: true, InputTokens: 1200, OutputTokens: 240, Cost: .02, CostKnown: true},
 		{Name: "/root/inventory", Role: "worker", Final: true},
 		{Name: "/root/review", Role: "review", Responding: true, Started: now.Add(-2 * time.Minute), WorkTimer: activitypresentation.WorkTimer{Known: true, Since: now.Add(-2 * time.Minute)}},
 		{Name: "/root/review/probe", Role: "explorer"},
-	}, Entries: []activityPaneEntry{
-		{Seq: 1, Agent: "/root/inventory", Kind: "reply", message: &activityMessage{from: "/root/inventory", to: "/root", text: "Found uncovered output dialogs and native pickers."}, Observed: now},
+	}, Entries: []sessionpresentation.ActivityEntry{
+		{Seq: 1, Agent: "/root/inventory", Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root/inventory", To: "/root", Text: "Found uncovered output dialogs and native pickers."}, Observed: now},
 		{Seq: 2, Agent: "/root/review", Kind: "tool", Text: "Read `native_ui_snapshot_test.go`", Observed: now},
 		{Seq: 3, Agent: "/root/review/probe", Kind: "commentary", Text: "Checking narrow layouts and baseline whitespace.", Observed: now},
 	}})
@@ -133,7 +135,7 @@ func TestUISnapshotNativeRosterEditCounts(t *testing.T) {
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 	v := newActivityAdapter()
 	v.Painter.Theme = diffrender.DarkTheme
-	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{
 		{Name: "/root", Final: true, InputTokens: 2000},
 		{Name: "/root/cleanup", Final: true, InputTokens: 1000},
 	}})
@@ -151,7 +153,7 @@ func TestUISnapshotNativeRosterContext(t *testing.T) {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			v := newActivityAdapter()
 			v.Painter.Theme = diffrender.DarkTheme
-			v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
+			v.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{
 				{Name: "/root", ContextKnown: true, ContextTokens: 171_300, ContextWindow: 285_000},
 				{Name: "/root/child", ContextKnown: true, ContextTokens: 24_400, ContextWindow: 285_000},
 			}})

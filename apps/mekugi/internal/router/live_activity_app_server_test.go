@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/charmbracelet/x/ansi"
@@ -22,6 +24,7 @@ import (
 func TestConversationJoinsConsecutiveUserMessagesInTurn(t *testing.T) {
 	v := newActivityAdapter()
 	v.Conversation = true
+	v.testAudience()
 	user := func(turn, id, text string) {
 		applyTranscriptFixture(v, true, "", "main", "main", turn, id, "item/completed", "", binding.ThreadItem{
 			Type: "userMessage", Content: []byte(fmt.Sprintf(`[{"type":"text","text":%q}]`, text)),
@@ -91,8 +94,8 @@ func TestLiveActivityMainQuestionBranchLink(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	v := u.view
 	question := "The original request"
-	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "You", Kind: "text", Text: question, Observed: time.Now(), native: &liveActivityNativeItem{thread: "root", turn: "turn", item: "prompt"}}}})
-	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 2, Agent: "Main", Kind: "text", Text: strings.Repeat("Working through the request.\n", 20)}}})
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "You", Kind: "text", Text: question, Observed: time.Now(), Native: &sessionpresentation.NativeItem{Thread: "root", Turn: "turn", Item: "prompt"}}}})
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 2, Agent: "Main", Kind: "text", Text: strings.Repeat("Working through the request.\n", 20)}}})
 	applyTranscriptFixture(v, true, "", "root", "root", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "The answer"})
 	if err := u.testPaint(&bytes.Buffer{}, 120, 24); err != nil {
 		t.Fatal(err)
@@ -125,10 +128,10 @@ func TestLiveActivityMainQuestionBranchLink(t *testing.T) {
 	}
 	// Editing an answer after the same prompt is submitted again must retain
 	// its original target, not jump to the newer identical question.
-	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: v.LastSeq + 1, Agent: "You", Kind: "text", Text: question}}})
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: v.LastSeq + 1, Agent: "You", Kind: "text", Text: question}}})
 	applyTranscriptFixture(v, true, "", "root", "root", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "Edited answer"})
 	for _, record := range v.Entries {
-		if record.Source.native != nil && record.Source.native.item == "answer" && record.Source.native.question != 1 {
+		if record.Source.Native != nil && record.Source.Native.Item == "answer" && record.Source.Native.Question != 1 {
 			t.Fatal("answer edit changed its original question link")
 		}
 	}
@@ -137,10 +140,10 @@ func TestLiveActivityMainQuestionBranchLink(t *testing.T) {
 func TestAppServerActivityExcludesMain(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
-	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
+	u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root", Kind: "text", Text: "MAIN_ONLY"},
 		{Seq: 2, Agent: "/root/reviewer", Kind: "text", Text: "CHILD_ONLY"},
-	}, Agents: []activityPaneAgent{{Name: "/root"}, {Name: "/root/reviewer"}}})
+	}, Agents: []sessionpresentation.ActivityAgent{{Name: "/root"}, {Name: "/root/reviewer"}}})
 	feed := strings.Join(u.agents.RenderFeed(80, 20).Lines, "\n")
 	if strings.Contains(feed, "MAIN_ONLY") || !strings.Contains(feed, "CHILD_ONLY") || len(u.agents.testRoster()) != 2 {
 		t.Fatal("Activity duplicated Main or removed its roster entry")
@@ -155,7 +158,7 @@ func TestAppServerMainRosterSummary(t *testing.T) {
 	if err := u.testPaint(&bytes.Buffer{}, 80, 40); err != nil {
 		t.Fatal(err)
 	}
-	root := activityPaneAgent{Name: "/root"}
+	root := sessionpresentation.ActivityAgent{Name: "/root"}
 	if got, _ := u.agents.testCurrent(root, time.Now()); ansi.Strip(got) != "Working" {
 		t.Fatalf("Main status missing: %q", got)
 	}
@@ -177,17 +180,17 @@ func TestAppServerActivityReasoningSummaries(t *testing.T) {
 	u.ensureShell()
 	legacy := newActivityAdapter()
 	for seq, text := range []string{"Initial public summary", "Updated public summary"} {
-		event := activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: uint64(seq + 1), Agent: "/root/reviewer", Kind: "reasoning", CallID: "summary-1", Text: text}}}
-		u.agents.apply(event)
-		legacy.apply(event)
-		u.view.apply(event)
+		event := sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: uint64(seq + 1), Agent: "/root/reviewer", Kind: "reasoning", CallID: "summary-1", Text: text}}}
+		u.agents.Apply(event)
+		legacy.Apply(event)
+		u.view.Apply(event)
 	}
 	feed := ansi.Strip(strings.Join(u.agents.RenderFeed(80, 20).Lines, "\n"))
-	status, _ := u.agents.testCurrent(activityPaneAgent{Name: "/root/reviewer"}, time.Now())
+	status, _ := u.agents.testCurrent(sessionpresentation.ActivityAgent{Name: "/root/reviewer"}, time.Now())
 	if !strings.Contains(feed, "Updated public summary") || !strings.Contains(status, "Updated public summary") || len(u.agents.Entries) != 1 {
 		t.Fatal("summary must remain in Activity and update status")
 	}
-	u.agents.Agents = []activityPaneAgent{{Name: "/root/reviewer", Responding: true}}
+	u.agents.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/reviewer", Responding: true}}
 	live := strings.Join(u.agents.RenderFeed(80, 20).Lines, "\n")
 	if !strings.Contains(ansi.Strip(live), "Updated public summary") {
 		t.Fatal("reasoning summary is missing from Activity")
@@ -196,7 +199,7 @@ func TestAppServerActivityReasoningSummaries(t *testing.T) {
 	if idle := strings.Join(u.agents.RenderFeed(80, 20).Lines, "\n"); !strings.Contains(idle, "Updated public summary") {
 		t.Fatal("reasoning transcript disappeared after completion")
 	}
-	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
+	u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 3, Agent: "/root/reviewer", Kind: "reasoning", CallID: "summary-2", Text: "Later public summary"},
 		{Seq: 4, Agent: "/root", Kind: "reasoning", CallID: "main-summary", Text: "Main only summary"},
 	}})
@@ -218,12 +221,13 @@ func TestAppServerCommunicationBothAudiences(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
 	assignment := "Check the original question link."
-	u.applyActivity([]activityPaneEntry{
-		{Seq: 1, Agent: "/root/reviewer", Kind: "reply", message: &activityMessage{from: "/root", to: "/root/reviewer", text: assignment}},
-		{Seq: 2, Agent: "/root/reviewer", Kind: "reply", message: &activityMessage{from: "/root/reviewer", to: "/root", text: "I checked the link."}},
+	u.applyActivity([]sessionpresentation.ActivityEntry{
+		{Seq: 1, Agent: "/root/reviewer", Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root", To: "/root/reviewer", Text: assignment}},
+		{Seq: 2, Agent: "/root/reviewer", Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root/reviewer", To: "/root", Text: "I checked the link."}},
 		{Seq: 3, Agent: "/root/reviewer", Kind: "final", Text: "The question link is correct."},
 	}, nil)
 	u.view.Conversation = true
+	u.view.testAudience()
 	main := ansi.Strip(strings.Join(u.view.RenderFeed(90, 40).Lines, "\n"))
 	agents := ansi.Strip(strings.Join(u.agents.RenderFeed(90, 40).Lines, "\n"))
 	for _, body := range []string{assignment, "I checked the link.", "The question link is correct."} {
@@ -240,7 +244,8 @@ func TestAppServerOutgoingMessageHeader(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
 	u.view.Conversation = true
-	u.applyActivity([]activityPaneEntry{{Seq: 1, Agent: "/root/reviewer", Kind: "reply", message: &activityMessage{from: "/root", to: "/root/reviewer", text: "Check the answer link."}}}, nil)
+	u.view.testAudience()
+	u.applyActivity([]sessionpresentation.ActivityEntry{{Seq: 1, Agent: "/root/reviewer", Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root", To: "/root/reviewer", Text: "Check the answer link."}}}, nil)
 	feed := u.view.RenderFeed(90, 20)
 	if len(feed.Lines) != 2 || !strings.HasPrefix(ansi.Strip(feed.Lines[0]), "→ reviewer") || ansi.Strip(feed.Lines[1]) != "│ Check the answer link." {
 		t.Fatalf("outgoing recipient must head Main's message, above its body: %q", feed.Lines)
@@ -259,9 +264,9 @@ func TestAppServerActivityGroupsAgentRun(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
 	start := time.Date(2026, 9, 26, 12, 30, 10, 0, time.Local)
-	u.applyActivity([]activityPaneEntry{
-		{Seq: 1, Agent: "/root/reviewer", Kind: "reply", message: &activityMessage{from: "/root", to: "/root/reviewer", text: "Check the link."}, Observed: start},
-		{Seq: 2, Agent: "/root/reviewer", Kind: "reply", message: &activityMessage{from: "/root/reviewer", to: "/root", text: "Link checked."}, Observed: start.Add(10 * time.Second)},
+	u.applyActivity([]sessionpresentation.ActivityEntry{
+		{Seq: 1, Agent: "/root/reviewer", Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root", To: "/root/reviewer", Text: "Check the link."}, Observed: start},
+		{Seq: 2, Agent: "/root/reviewer", Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root/reviewer", To: "/root", Text: "Link checked."}, Observed: start.Add(10 * time.Second)},
 		{Seq: 3, Agent: "/root/reviewer", Kind: "text", Text: "Checking the next item.", Observed: start.Add(20 * time.Second)},
 	}, nil)
 	u.agents.setDisplayFilter(true, "/root/reviewer")
@@ -310,12 +315,13 @@ func TestAppServerNativeAssignmentQuestionLink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	u.applyActivity([]activityPaneEntry{
-		{Seq: 1, Agent: "/root/reviewer", Kind: "start", start: testActivityStart(t, &request),
-			assignment: &activityAssignment{id: "task-1", from: "/root", to: "/root/reviewer", text: assignment}},
+	u.applyActivity([]sessionpresentation.ActivityEntry{
+		{Seq: 1, Agent: "/root/reviewer", Kind: "start", Start: testActivityStart(t, &request),
+			Assignment: &sessionpresentation.ActivityAssignment{ID: "task-1", From: "/root", To: "/root/reviewer", Text: assignment}},
 		{Seq: 2, Agent: "/root/reviewer", Kind: "final", Text: "The question link is correct."},
 	}, nil)
 	u.view.Conversation = true
+	u.view.testAudience()
 	main := ansi.Strip(strings.Join(u.view.RenderFeed(90, 40).Lines, "\n"))
 	agents := ansi.Strip(strings.Join(u.agents.RenderFeed(90, 40).Lines, "\n"))
 	if !strings.Contains(main, assignment) || !strings.Contains(agents, assignment) || !strings.Contains(main, "├─✓ finished") || strings.Contains(main, "↩ re:") {
@@ -326,12 +332,13 @@ func TestAppServerNativeAssignmentQuestionLink(t *testing.T) {
 func TestLiveActivityQuestionLinksKeepIndividualPrompts(t *testing.T) {
 	v := newActivityAdapter()
 	v.Conversation, v.FeedOnly = true, true
-	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
+	v.testAudience()
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "You", Kind: "text", Text: strings.Repeat("Long original prompt\n", 30)},
-		{Seq: 2, Agent: "You", Kind: "text", Text: "Steering prompt", native: &liveActivityNativeItem{thread: "root", turn: "turn", item: "steer"}},
+		{Seq: 2, Agent: "You", Kind: "text", Text: "Steering prompt", Native: &sessionpresentation.NativeItem{Thread: "root", Turn: "turn", Item: "steer"}},
 	}})
 	applyTranscriptFixture(v, true, "", "root", "root", "turn", "answer", "item/agentMessage/delta", "Live answer", binding.ThreadItem{})
-	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: v.LastSeq + 1, Agent: "You", Kind: "text", Text: "Steering prompt"}}})
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: v.LastSeq + 1, Agent: "You", Kind: "text", Text: "Steering prompt"}}})
 	applyTranscriptFixture(v, true, "", "root", "root", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "Final answer body"})
 	v.Render(80, 12, time.Now())
 	if v.QuestionRows[1] == v.QuestionRows[2] {
@@ -369,6 +376,7 @@ func TestLiveActivityConversationKeepsFullTextAndViewport(t *testing.T) {
 	applyTranscriptFixture(v, true, "", "root", "root", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: text})
 	compact := v.RenderFeed(80, 9)
 	v.Conversation = true
+	v.testAudience()
 	full := v.RenderFeed(80, 9)
 	if len(full.Lines) <= len(compact.Lines) || !strings.Contains(strings.Join(full.Lines, "\n"), "END_OF_ANSWER") {
 		t.Fatal("Main inherited compact answer clipping")
@@ -407,7 +415,8 @@ func TestLiveActivityMainShortTerminalKeepsNewestLine(t *testing.T) {
 func TestAppServerMainDoesNotPinItemFirstRow(t *testing.T) {
 	v := newActivityAdapter()
 	v.Conversation, v.FeedOnly = true, true
-	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "You", Kind: "text", Text: "Question?", Observed: time.Now()}}})
+	v.testAudience()
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "You", Kind: "text", Text: "Question?", Observed: time.Now()}}})
 	applyTranscriptFixture(v, true, "", "root", "root", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: strings.Repeat("answer row\n\n", 20)})
 	v.Render(60, 60, time.Now())
 	v.Offset, v.Following = 6, false
@@ -420,10 +429,11 @@ func TestAppServerMainDoesNotPinItemFirstRow(t *testing.T) {
 func TestAppServerActivityHeadingShowsLateRole(t *testing.T) {
 	v := newActivityAdapter()
 	v.ChildrenOnly = true
-	v.apply(activityPaneEvent{Kind: "entries", Agents: []activityPaneAgent{{Name: "/root/probe"}},
-		Entries: []activityPaneEntry{{Seq: 1, Agent: "/root/probe", Kind: "text", Text: "hello", Observed: time.Now()}}})
+	v.testAudience()
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/probe"}},
+		Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "/root/probe", Kind: "text", Text: "hello", Observed: time.Now()}}})
 	v.Render(60, 8, time.Now())
-	v.apply(activityPaneEvent{Kind: "agents", Agents: []activityPaneAgent{{Name: "/root/probe", Role: "explorer"}}})
+	v.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/probe", Role: "explorer"}}})
 	if frame := ansi.Strip(strings.Join(v.Render(60, 8, time.Now()), "\n")); !strings.Contains(frame, "probe · explorer") {
 		t.Fatalf("heading kept a stale role:\n%s", frame)
 	}
@@ -473,8 +483,8 @@ func TestAppServerPacesBatchedOperations(t *testing.T) {
 
 	// Restored history shows at once.
 	restored := newActivityAdapter()
-	restored.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "List `.`\n\nSearch `needle`",
-		native: &liveActivityNativeItem{thread: "main", turn: "t", item: "old", phase: "item/completed"}}}})
+	restored.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "List `.`\n\nSearch `needle`",
+		Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "t", Item: "old", Phase: "item/completed"}}}})
 	if len(restored.Paced) != 0 {
 		t.Fatal("restored history was paced")
 	}

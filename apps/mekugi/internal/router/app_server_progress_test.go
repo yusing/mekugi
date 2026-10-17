@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/binding"
 )
@@ -68,7 +70,7 @@ func TestAppServerProgressWaitAndReplay(t *testing.T) {
 		if got := ansi.Strip(u.sessionLabel(time.Now())); !strings.Contains(got, "Working") {
 			t.Fatalf("wait replaced composer: %q", got)
 		}
-		if len(u.view.Entries) != 1 || u.view.Entries[0].Source.Kind != "progress" || u.view.Entries[0].Source.native.question != 0 {
+		if len(u.view.Entries) != 1 || u.view.Entries[0].Source.Kind != "progress" || u.view.Entries[0].Source.Native.Question != 0 {
 			t.Fatalf("wait did not reconcile as an event: %+v", u.view.Entries)
 		}
 	}
@@ -106,7 +108,7 @@ func TestAppServerProgressUnfinishedChildWait(t *testing.T) {
 	}
 	wait.Status = "failed"
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "t", "item": wait})
-	if u.agents.Entries[0].Source.Text != "Wait failed" || u.agents.Entries[0].Source.native.phase != "item/completed" {
+	if u.agents.Entries[0].Source.Text != "Wait failed" || u.agents.Entries[0].Source.Native.Phase != "item/completed" {
 		t.Fatalf("live completion could not replace history: %+v", u.agents.Entries[0])
 	}
 }
@@ -126,7 +128,7 @@ func TestAppServerWaitRosterOnly(t *testing.T) {
 				if rows := feed.RenderFeed(100, 30).Lines; len(rows) != 0 {
 					t.Fatalf("wait leaked into transcript: %q", rows)
 				}
-				if got, _ := u.agents.testCurrent(activityPaneAgent{Name: name}, time.Now()); !strings.Contains(ansi.Strip(got), want) {
+				if got, _ := u.agents.testCurrent(sessionpresentation.ActivityAgent{Name: name}, time.Now()); !strings.Contains(ansi.Strip(got), want) {
 					t.Fatalf("roster = %q, want %q", got, want)
 				}
 			}

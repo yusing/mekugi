@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/charmbracelet/x/ansi"
@@ -123,7 +125,7 @@ func TestAppServerStartupRestoresContext(t *testing.T) {
 	if got := activityui.ContextWindowLabel(testActivityAgent(*child)); got != "40K/400K • 10%" {
 		t.Fatal(got)
 	}
-	other := activityPaneAgent{}
+	other := sessionpresentation.ActivityAgent{}
 	restoreContextUsage(&other, binding.ThreadInfo{ID: "other", Path: path})
 	if other.ContextKnown {
 		t.Fatal("borrowed another thread's usage")

@@ -23,11 +23,11 @@ func (u *terminalUI) openActivityEdit(view *activityAdapter, seq uint64, path st
 
 func (u *terminalUI) activityEditPages(view *activityAdapter, seq uint64, path string) ([]activitypresentation.DetailPage, string) {
 	for _, entry := range view.Entries {
-		native := entry.Source.native
+		native := entry.Source.Native
 		if entry.Source.Seq != seq || native == nil {
 			continue
 		}
-		request := activitydetail.Request{Operation: activitydetail.Operation{Thread: native.thread, Item: native.item}, Path: path}
+		request := activitydetail.Request{Operation: activitydetail.Operation{Thread: native.Thread, Item: native.Item}, Path: path}
 		for _, value := range entry.Values {
 			for _, original := range activitypresentation.Originals(value) {
 				request.Directory = request.Directory || original.DirectoryDeletion() && original.EditPath() == path
@@ -40,12 +40,12 @@ func (u *terminalUI) activityEditPages(view *activityAdapter, seq uint64, path s
 			}
 		}
 		var pages []activitypresentation.DetailPage
-		if receipt := native.capturedEdit; receipt != nil && len(receipt.Pages) > 0 {
+		if receipt := native.CapturedEdit; receipt != nil && len(receipt.Pages) > 0 {
 			pages = activitypresentation.ContributedDetails(receipt.Pages)
 		} else {
-			pages = activitypresentation.DetailPages(native.editPages)
+			pages = activitypresentation.DetailPages(native.EditPages)
 			for i := range pages {
-				pages[i].ID = fmt.Sprintf("host:%s\x00%s/%d", native.thread, native.item, i)
+				pages[i].ID = fmt.Sprintf("host:%s\x00%s/%d", native.Thread, native.Item, i)
 			}
 		}
 		for _, page := range pages {

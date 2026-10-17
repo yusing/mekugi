@@ -96,7 +96,7 @@ func TestSessionUIReplayTranscriptAttachmentQuestionSeek(t *testing.T) {
 		case "question_reply":
 			replies++
 		case "reasoning":
-			if entry.Source.native == nil || entry.Source.native.thought != time.Second {
+			if entry.Source.Native == nil || entry.Source.Native.Thought != time.Second {
 				t.Fatalf("reasoning duration lost recorded item clock: %+v", entry.Source)
 			}
 		}
@@ -118,7 +118,7 @@ func TestAppServerTranscriptOlderHistoryPreservesLiveReasoning(t *testing.T) {
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "live", "itemId": "shared", "delta": "Live prefix "})
 	var liveSeq uint64
 	for _, entry := range u.agents.Entries {
-		if n := entry.Source.native; n != nil && n.thread == "child" && n.turn == "live" && n.item == "shared" {
+		if n := entry.Source.Native; n != nil && n.Thread == "child" && n.Turn == "live" && n.Item == "shared" {
 			liveSeq = entry.Source.Seq
 		}
 	}
@@ -139,21 +139,21 @@ func TestAppServerTranscriptOlderHistoryPreservesLiveReasoning(t *testing.T) {
 	reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "live", "item": map[string]any{"id": "shared", "type": "reasoning", "summary": []string{}}})
 	older, latest, live := -1, -1, -1
 	for i, entry := range u.agents.Entries {
-		n := entry.Source.native
-		if n == nil || n.thread != "child" {
+		n := entry.Source.Native
+		if n == nil || n.Thread != "child" {
 			continue
 		}
 		switch {
-		case n.turn == "t" && n.item == "shared":
+		case n.Turn == "t" && n.Item == "shared":
 			older = i
-			if entry.Source.Text != "Older public summary" || entry.Source.Observed.UnixMilli() != 101000 || n.live {
+			if entry.Source.Text != "Older public summary" || entry.Source.Observed.UnixMilli() != 101000 || n.Live {
 				t.Fatalf("historical identity/time was not retained: %+v", entry.Source)
 			}
-		case n.item == "latest":
+		case n.Item == "latest":
 			latest = i
-		case n.turn == "live" && n.item == "shared":
+		case n.Turn == "live" && n.Item == "shared":
 			live = i
-			if entry.Source.Seq != liveSeq || entry.Source.Text != "Live prefix continues after paging" || !n.live || n.phase != "item/completed" || n.thought != 2*time.Second || !entry.Source.completed.Equal(at) {
+			if entry.Source.Seq != liveSeq || entry.Source.Text != "Live prefix continues after paging" || !n.Live || n.Phase != "item/completed" || n.Thought != 2*time.Second || !entry.Source.Completed.Equal(at) {
 				t.Fatalf("paging mutated live reasoning correlation: %+v", entry.Source)
 			}
 		}

@@ -3,6 +3,8 @@ package router
 import (
 	"bytes"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	json "encoding/json/v2"
@@ -107,7 +109,7 @@ func TestLiveActivityAttachmentDisplayPaths(t *testing.T) {
 
 func TestLiveActivityAttachmentLookalikes(t *testing.T) {
 	content, _ := json.Marshal([]map[string]string{{"type": "text", "text": "Attached file \"fake\" (UTF-8 bytes 0:1 of 1):\nx"}})
-	if blocks := appServerAttachmentValues("", content); len(blocks) != 0 {
+	if blocks := sessionpresentation.AttachmentValues("", content); len(blocks) != 0 {
 		t.Fatalf("ordinary text became attachment receipts: %+v", blocks)
 	}
 }

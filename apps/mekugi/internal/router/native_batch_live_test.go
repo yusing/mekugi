@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -26,8 +28,8 @@ func nativeBatchFixture(t *testing.T) *appServerUI {
 	u.view.Clock, u.agents.Clock = u.clock, u.clock
 
 	t.Cleanup(func() { _ = u.shell.diffScreen.Close() })
-	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "MAIN_TRANSCRIPT", Observed: u.clock()}}})
-	u.agents.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/editor"}, {Name: "/root/reviewer"}}, Entries: []activityPaneEntry{
+	u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "MAIN_TRANSCRIPT", Observed: u.clock()}}})
+	u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/editor"}, {Name: "/root/reviewer"}}, Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root/editor", Kind: "commentary", Text: "EDITOR_TRANSCRIPT", Observed: u.clock()},
 		{Seq: 2, Agent: "/root/reviewer", Kind: "commentary", Text: "OTHER_ACTIVITY remains readable", Observed: u.clock()},
 	}})

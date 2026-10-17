@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/binding"
 
@@ -344,7 +346,7 @@ func TestTerminalUISelectionKeepsPressedHitTarget(t *testing.T) {
 		u := selectionTestUI("click target")
 		u.agents = newActivityAdapter()
 		u.Auxiliary = changeview.NewPane("", diffrender.TerminalTheme)
-		for _, entry := range []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "First target"}, {Seq: 2, Agent: "Main", Kind: "text", Text: "Advanced target"}} {
+		for _, entry := range []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "First target"}, {Seq: 2, Agent: "Main", Kind: "text", Text: "Advanced target"}} {
 			u.main.view.appendEntry(entry, parseLiveActivity(entry))
 		}
 		old, next := activityui.Snippet{Run: 1}, activityui.Snippet{Run: 2}
@@ -381,7 +383,7 @@ func TestTerminalUISelectionRenderedClipboard(t *testing.T) {
 		view := u.view
 		if activity {
 			view = u.agents
-			u.agents.Agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
+			u.agents.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
 			u.shell.DiffOpen = false
 
 		}

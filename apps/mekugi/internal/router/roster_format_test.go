@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/libraries/terminalui"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -18,18 +20,18 @@ func TestRosterSummaryFormatting(t *testing.T) {
 	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		p := activityui.Painter{Theme: theme}
 		for _, source := range []string{"Run `git status --short`", "Run\n```bash\ngit status --short\n```"} {
-			summary := p.Summary(parseLiveActivity(activityPaneEntry{Kind: "tool", Text: source}), 80)
+			summary := p.Summary(parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "tool", Text: source}), 80)
 			command := strings.TrimPrefix(summary, activityui.SummaryVerb("Run"))
 			if ansi.Strip(summary) != "Run git status --short" || command == ansi.Strip(command) {
 				t.Fatalf("command lost syntax highlighting: %q", summary)
 			}
 		}
-		summary := p.Summary(parseLiveActivity(activityPaneEntry{Kind: "final", Text: "- **Herdr launch ownership:** preserved."}), 80)
+		summary := p.Summary(parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "final", Text: "- **Herdr launch ownership:** preserved."}), 80)
 		if summary != "Herdr launch ownership: preserved." {
 			t.Fatalf("list summary = %q", summary)
 		}
 		for _, recipient := range []string{"/root", "/root/worker", "/root/parent/worker"} {
-			blocks := parseLiveActivity(activityPaneEntry{Kind: "reply", message: &activityMessage{from: "/root/replier", to: recipient, text: "Done."}})
+			blocks := parseLiveActivity(sessionpresentation.ActivityEntry{Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root/replier", To: recipient, Text: "Done."}})
 			rows := strings.Join(p.Block(blocks[0], 80), "\n")
 			summary := p.Summary(blocks, 80)
 			for _, text := range []string{ansi.Strip(rows), ansi.Strip(summary)} {

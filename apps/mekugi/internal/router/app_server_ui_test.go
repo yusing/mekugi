@@ -260,7 +260,7 @@ func TestAppServerUIImmediateInputEcho(t *testing.T) {
 			appServerTestMessage(t, u, `{"method":"`+method+`","params":{"threadId":"main","turnId":"t","item":{"id":"user-1","type":"userMessage","content":[{"type":"text","text":"你好 first message"}]}}}`)
 		}
 		appServerTestMessage(t, u, `{"id":1,"result":{"turn":{"id":"t"}}}`)
-		if len(u.view.Entries) != 1 || u.view.Entries[0].Source.native.item != "user-1" {
+		if len(u.view.Entries) != 1 || u.view.Entries[0].Source.Native.Item != "user-1" {
 			t.Fatal("server echo duplicated the local user message")
 		}
 	}
@@ -478,4 +478,4 @@ func testTerminalViews(source *changecapture.Service) terminalsession.Views {
 
 func savedPane(u *terminalUI) *changeview.Pane { return u.Auxiliary.(*changeview.Pane) }
 
-func newActivityAdapter() *activityAdapter { return newTranscriptAdapter(activityui.NewView()) }
+func newActivityAdapter() *activityAdapter { return newTranscriptAdapter(activityui.NewView(), 0) }

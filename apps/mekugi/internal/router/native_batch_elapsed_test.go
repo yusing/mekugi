@@ -7,6 +7,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
@@ -23,6 +25,7 @@ func TestUISnapshotNativeGroupedSkills(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			view := u.view
 			view.Conversation, view.Bare, view.FeedOnly = main, !main, !main
+			view.testAudience()
 			view.Clock = func() time.Time { return time.Date(2026, 10, 9, 12, 0, 0, 0, time.Local) }
 			u.clock = view.Clock
 			var items []binding.ThreadItem
@@ -44,6 +47,7 @@ func TestUISnapshotNativeGroupedSkills(t *testing.T) {
 					*view = *newActivityAdapter()
 					view.Clock = clock
 					view.Conversation, view.Bare, view.FeedOnly = main, !main, !main
+					view.testAudience()
 					u.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", CompletedAt: clock().Unix(), Items: items}})
 				}
 				finishPacing(view)
@@ -76,8 +80,8 @@ func TestUISnapshotNativeGroupedSkills(t *testing.T) {
 
 func TestUISnapshotNativeSingleCommandElapsed(t *testing.T) {
 	start := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
-	entry := activityPaneEntry{Kind: "tool", native: &liveActivityNativeItem{command: "time skills-mgr get user-experience", duration: 100 * time.Millisecond,
-		segments: []commandSegment{{source: "time skills-mgr get user-experience", text: "Run `time skills-mgr get user-experience`", timing: segmenttransport.Timing{Started: start, Ended: start.Add(20 * time.Millisecond), ElapsedNS: int64(20 * time.Millisecond)}}}}}
+	entry := sessionpresentation.ActivityEntry{Kind: "tool", Native: &sessionpresentation.NativeItem{Command: "time skills-mgr get user-experience", Duration: 100 * time.Millisecond,
+		Segments: []sessionpresentation.ActivitySegment{{Source: "time skills-mgr get user-experience", Text: "Run `time skills-mgr get user-experience`", Timing: segmenttransport.Timing{Started: start, Ended: start.Add(20 * time.Millisecond), ElapsedNS: int64(20 * time.Millisecond)}}}}}
 	var p activityui.Painter
 	uisnapshot.Assert(t, "testdata/snapshots/native-single-command-elapsed.txt", strings.Join(p.Block(parseLiveActivity(entry)[0], 80), "\n")+"\n")
 }
@@ -89,10 +93,10 @@ func TestUISnapshotNativeBatchElapsed(t *testing.T) {
 				synctest.Test(t, func(t *testing.T) {
 					const elapsed = 191129 * time.Millisecond
 					start := time.Now().Add(-elapsed)
-					entry := activityPaneEntry{Seq: 1, Kind: "tool", Text: "Run `make test TEST_PACKAGES=./internal/router`\n\nDiff `amber1` · mchanges --net", Observed: start,
-						native: &liveActivityNativeItem{command: "make test TEST_PACKAGES=./internal/router; mchanges amber1 --net", running: running, commandStarted: start}}
+					entry := sessionpresentation.ActivityEntry{Seq: 1, Kind: "tool", Text: "Run `make test TEST_PACKAGES=./internal/router`\n\nDiff `amber1` · mchanges --net", Observed: start,
+						Native: &sessionpresentation.NativeItem{Command: "make test TEST_PACKAGES=./internal/router; mchanges amber1 --net", Running: running, CommandStarted: start}}
 					if !running {
-						entry.native.duration, entry.native.commandEnded = elapsed, time.Now()
+						entry.Native.Duration, entry.Native.CommandEnded = elapsed, time.Now()
 					}
 					blocks := parseLiveActivity(entry)
 					if len(blocks) != 3 || !blocks[2].BatchExit || blocks[2].Started != start {
@@ -165,13 +169,13 @@ func TestNativeCapturedBatchKeepsSingleElapsedResult(t *testing.T) {
 			var data []*presentation.Receipt
 			for range 2 {
 				data = []*presentation.Receipt{{Thread: "main", Calls: []string{"batch"}, Text: "Edit `a.txt` +1 -1 · printf"}}
-				u.view.applyCapturedEdits(data)
+				u.view.ApplyCapturedEdits(data)
 				count := 0
 				for _, entry := range u.view.Entries {
 					for _, block := range u.view.Disclosure.Blocks(entry.Values) {
 						if block.BatchExit {
 							count++
-							if block.Duration != time.Second || block.ExitCode != exit || block.Output == 0 || strings.Join(u.view.retainedOutput(block.Source, block.Output).View().Lines, "\n") != "retained batch output" {
+							if block.Duration != time.Second || block.ExitCode != exit || block.Output == 0 || strings.Join(u.view.RetainedOutput(block.Source, block.Output).View().Lines, "\n") != "retained batch output" {
 								t.Fatalf("receipt lost batch timing, exit or output: %+v", block)
 							}
 						} else if block.Duration != 0 || block.ExitCode != 0 {

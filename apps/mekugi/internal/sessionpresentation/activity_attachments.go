@@ -1,4 +1,4 @@
-package router
+package sessionpresentation
 
 import (
 	"encoding/json/jsontext"
@@ -18,9 +18,11 @@ import (
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
+// Source: apps/mekugi/internal/router/live_activity_attachments.go:1:120@45fbe279
+
 // Derive receipts from the submitted envelope, never from current filesystem
 // state or file-body text. The same host user item supplies live and replay UI.
-func appServerAttachmentValues(cwd string, content jsontext.Value) []activitypresentation.Value {
+func AttachmentValues(cwd string, content jsontext.Value) []activitypresentation.Value {
 	var parts []struct {
 		Type string `json:"type"`
 		Text string `json:"text"`

@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 
@@ -37,7 +39,7 @@ func mchangesOutputRows(item observation.Item) []activitypresentation.ChangeRow 
 	if item.AggregatedOutput == nil {
 		return nil
 	}
-	source := appServerDisplayCommand(item.Command)
+	source := sessionpresentation.DisplayCommand(item.Command)
 	program, err := syntax.NewParser().Parse(strings.NewReader(source), "")
 	if err != nil || len(program.Stmts) != 1 {
 		return nil

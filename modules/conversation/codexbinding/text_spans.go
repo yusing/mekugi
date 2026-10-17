@@ -1,4 +1,4 @@
-package router
+package codexbinding
 
 import (
 	"cmp"
@@ -6,15 +6,15 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
-
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 )
 
-func composerContentSkills(content []composerUserContent) []composer.Token {
+// Source: apps/mekugi/internal/router/app_server_text_spans.go:1:111@45fbe279
+
+func ContentSkills(content []UserContent) []composer.Token {
 	var skills []composer.Token
 	for _, part := range content {
 		if part.Type == "skill" && part.Path != "" {
@@ -32,7 +32,7 @@ func composerContentSkills(content []composerUserContent) []composer.Token {
 	return skills
 }
 
-type composerUserContent struct {
+type UserContent struct {
 	Type     string                     `json:"type"`
 	Text     string                     `json:"text"`
 	Name     string                     `json:"name"`
@@ -40,8 +40,8 @@ type composerUserContent struct {
 	Elements []binding.InputTextElement `json:"text_elements"`
 }
 
-func composerElementSpans(text string, elements []binding.InputTextElement) []activitypresentation.TextSpan {
-	var spans []activitypresentation.TextSpan
+func ElementSpans(text string, elements []binding.InputTextElement) []composer.Span {
+	var spans []composer.Span
 	for _, element := range elements {
 		start, end := element.ByteRange.Start, element.ByteRange.End
 		if start < 0 || end <= start || end > len(text) || !utf8.ValidString(text[:start]) || !utf8.ValidString(text[start:end]) {
@@ -51,21 +51,21 @@ func composerElementSpans(text string, elements []binding.InputTextElement) []ac
 		if element.Placeholder != label {
 			continue
 		}
-		kind := activitypresentation.FileToken
+		kind := composer.File
 		switch {
 		case strings.HasPrefix(label, "@"):
 		case strings.HasPrefix(label, "$"):
-			kind = activitypresentation.SkillToken
+			kind = composer.Skill
 		case composer.SelectionLabel(label):
-			kind = activitypresentation.SelectionToken
+			kind = composer.Selection
 		default:
 			continue
 		}
-		spans = append(spans, activitypresentation.TextSpan{Start: start, End: end, Kind: kind})
+		spans = append(spans, composer.Span{Start: start, End: end, Kind: kind})
 	}
-	slices.SortFunc(spans, func(a, b activitypresentation.TextSpan) int { return cmp.Compare(a.Start, b.Start) })
+	slices.SortFunc(spans, func(a, b composer.Span) int { return cmp.Compare(a.Start, b.Start) })
 	end := 0
-	return slices.DeleteFunc(spans, func(span activitypresentation.TextSpan) bool {
+	return slices.DeleteFunc(spans, func(span composer.Span) bool {
 		if span.Start < end {
 			return true
 		}
@@ -77,7 +77,7 @@ func composerElementSpans(text string, elements []binding.InputTextElement) []ac
 // Rebind only complete, unambiguous skill tokens from authoritative history or
 // the edited draft. A similarly prefixed word must not activate a stale skill.
 
-func unambiguousSkillBindings(text string, skills []composer.Token, spans []activitypresentation.TextSpan) []composer.Token {
+func SkillBindings(text string, skills []composer.Token, spans []composer.Span) []composer.Token {
 	paths := make(map[string]string)
 	ambiguous := make(map[string]bool)
 	for _, skill := range skills {
@@ -92,14 +92,14 @@ func unambiguousSkillBindings(text string, skills []composer.Token, spans []acti
 		if ambiguous[name] {
 			continue
 		}
-		var explicit []activitypresentation.TextSpan
+		var explicit []composer.Span
 		for _, span := range spans {
-			if span.Kind == activitypresentation.SkillToken && text[span.Start:span.End] == "$"+name {
+			if span.Kind == composer.Skill && text[span.Start:span.End] == "$"+name {
 				explicit = append(explicit, span)
 			}
 		}
 		for _, binding := range composer.SkillBindings(text, name, path) {
-			if len(explicit) == 0 || slices.ContainsFunc(explicit, func(span activitypresentation.TextSpan) bool {
+			if len(explicit) == 0 || slices.ContainsFunc(explicit, func(span composer.Span) bool {
 				return span.Start == binding.Start && span.End == binding.End
 			}) {
 				bindings = append(bindings, binding)

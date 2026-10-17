@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -16,14 +18,14 @@ import (
 
 func liveActivityTestView(names ...string) *activityAdapter {
 	view := newActivityAdapter()
-	var agents []activityPaneAgent
-	var entries []activityPaneEntry
+	var agents []sessionpresentation.ActivityAgent
+	var entries []sessionpresentation.ActivityEntry
 	now := time.Now()
 	for i, name := range names {
-		agents = append(agents, activityPaneAgent{Name: name})
-		entries = append(entries, activityPaneEntry{Seq: uint64(i + 1), Agent: name, Kind: "tool", Text: "Read `" + name + ".go`", Observed: now})
+		agents = append(agents, sessionpresentation.ActivityAgent{Name: name})
+		entries = append(entries, sessionpresentation.ActivityEntry{Seq: uint64(i + 1), Agent: name, Kind: "tool", Text: "Read `" + name + ".go`", Observed: now})
 	}
-	view.apply(activityPaneEvent{Kind: "snapshot", Agents: agents, Entries: entries})
+	view.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: agents, Entries: entries})
 	return view
 }
 
@@ -39,7 +41,7 @@ func TestLiveActivityViewRosterTreeOverflowAndSelection(t *testing.T) {
 	view := liveActivityTestView("/root/a", "/root/b", "/root/a/x", "/root/c", "/root/a/y", "/root/d", "/root/e")
 	view.Agents[0].Responding = true
 	view.Agents[1].Final = true
-	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 8, Agent: "/root/c", Kind: "error", Text: "failed", Observed: time.Now()}}})
+	view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 8, Agent: "/root/c", Kind: "error", Text: "failed", Observed: time.Now()}}})
 	var order []string
 	for _, row := range view.testRoster() {
 		order = append(order, strings.Repeat(">", row.Depth)+row.Agent.Name)
@@ -77,7 +79,7 @@ func TestLiveActivityViewRosterTreeOverflowAndSelection(t *testing.T) {
 func TestLiveActivityViewClampOnlyModeAndPausedCount(t *testing.T) {
 	view := liveActivityTestView("/root/a", "/root/b")
 	long := "Plan\n```go\n" + strings.Repeat("line\n", 20) + "```"
-	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 3, Agent: "/root/a", Text: long, Observed: time.Now()}}})
+	view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 3, Agent: "/root/a", Text: long, Observed: time.Now()}}})
 	all := strings.Join(plainLines(view.Render(80, 40, time.Now())), "\n")
 	if !strings.Contains(all, "… +") || !strings.Contains(all, "  line") {
 		t.Fatalf("clamped feed = %s", all)
@@ -94,7 +96,7 @@ func TestLiveActivityViewClampOnlyModeAndPausedCount(t *testing.T) {
 	}
 	view.Render(80, 5, time.Now()) // Make scrollback possible with five-row excerpts.
 	view.ScrollKey('k')
-	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
+	view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 4, Agent: "/root/a", Text: "more", Observed: time.Now()},
 		{Seq: 5, Agent: "/root/b", Text: "hidden", Observed: time.Now()},
 		{Seq: 4, Agent: "/root/a", Text: "duplicate", Observed: time.Now()},
@@ -114,7 +116,7 @@ func TestLiveActivitySnippetClick(t *testing.T) {
 	for _, size := range [][2]int{{80, 40}, {140, 40}} {
 		view := liveActivityTestView("/root/a", "/root/b")
 		now := time.Now()
-		view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 3, Agent: "/root/a", Text: long, Observed: now}}})
+		view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 3, Agent: "/root/a", Text: long, Observed: now}}})
 		lines := view.Render(size[0], size[1], now)
 		clipped := func(lines []string) bool {
 			return slices.ContainsFunc(plainLines(lines), func(line string) bool { return hint.MatchString(strings.TrimRight(line, " ")) })
@@ -230,7 +232,7 @@ func TestLiveActivityRosterUsesAvailableWidth(t *testing.T) {
 func TestLiveActivityViewSummarizesCodeModeBatches(t *testing.T) {
 	view := liveActivityTestView("/root/a", "/root/b")
 	batch := "Read `a.go`\n\nRun `go test`\n```bash\ngo test ./...\n\necho done\n```\n\nRead `c.go`\n\nRun JavaScript · other code"
-	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 3, Agent: "/root/a", Kind: "tool", Text: batch, Observed: time.Now()}}})
+	view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 3, Agent: "/root/a", Kind: "tool", Text: batch, Observed: time.Now()}}})
 	lines := plainLines(view.renderRosterPane(120, 6, time.Now()))
 	// The roster shows the latest operation of the batch.
 	if !strings.Contains(lines[1], "Run JavaScript · other code · +3 more") {

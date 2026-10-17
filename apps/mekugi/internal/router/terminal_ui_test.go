@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	"github.com/charmbracelet/x/vt"
@@ -117,7 +119,7 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 					u.shell.DiffOpen = saved
 
 					if child {
-						u.agents.Agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
+						u.agents.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
 					}
 					screen := vt.NewEmulator(120, 40)
 					defer screen.Close()
@@ -173,7 +175,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.ensureShell()
 			defer u.shell.diffScreen.Close()
-			u.agents.Agents = []activityPaneAgent{{Name: "/root/worker", Responding: true}}
+			u.agents.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Responding: true}}
 			view, caller := u.view, "/root"
 			if activity {
 				view, caller = u.agents, "/root/worker"
@@ -185,7 +187,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 				if i == 79 {
 					text = "LATEST_TRANSCRIPT"
 				}
-				view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: uint64(i + 1), Agent: caller, Kind: "text", Text: text}}})
+				view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: uint64(i + 1), Agent: caller, Kind: "text", Text: text}}})
 			}
 			screen := vt.NewEmulator(120, 40)
 			defer screen.Close()
@@ -246,7 +248,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 					t.Fatal("Activity still advertises r follow")
 				}
 			}
-			view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 2, Agent: caller, Kind: "text", Text: "LATEST_TRANSCRIPT new"}}})
+			view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 2, Agent: caller, Kind: "text", Text: "LATEST_TRANSCRIPT new"}}})
 			paint(140, 32)
 			if view.Following || view.Offset != offset {
 				t.Fatal("new output moved manual scrollback")

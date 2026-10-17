@@ -11,6 +11,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -52,11 +54,11 @@ func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing
 		first, second := u.session.activity.Outputs(u.session.Scope()).New(), u.session.activity.Outputs(u.session.Scope()).New()
 		first.Finish(new("first\n"), new(0))
 		second.Finish(new("second\n"), new(0))
-		view := execTrackView{complete: true, output: true, segments: []commandSegment{
-			{source: "echo first", output: first}, {source: "echo second", output: second},
+		view := execTrackView{complete: true, output: true, segments: []sessionpresentation.ActivitySegment{
+			{Source: "echo first", Output: first}, {Source: "echo second", Output: second},
 		}}
 		item := binding.ThreadItem{ID: key[2], Type: "commandExecution", Command: "bash -lc 'echo first; echo second'", ExitCode: new(0), AggregatedOutput: new("first\nsecond\n")}
-		entry := activityPaneEntry{native: &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2]}}
+		entry := sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Thread: key[0], Turn: key[1], Item: key[2]}}
 		lock := flock.New(filepath.Join(store.directory, "store.lock"))
 		if err := lock.Lock(); err != nil {
 			t.Fatal(err)
@@ -98,13 +100,13 @@ func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing
 		}
 		restored := newAppServerSessionTestUI(t, workspace)
 		setTestAppServerIntegration(restored, testProxyWithStore(reopened))
-		entry.native = &liveActivityNativeItem{thread: "fork", turn: key[1], item: key[2]}
+		entry.Native = &sessionpresentation.NativeItem{Thread: "fork", Turn: key[1], Item: key[2]}
 		restored.restoreCommandSegments(&entry, item, workspace)
-		if len(entry.native.segments) != 2 {
-			t.Fatalf("report not available after restart: %+v", entry.native)
+		if len(entry.Native.Segments) != 2 {
+			t.Fatalf("report not available after restart: %+v", entry.Native)
 		}
 		for i, want := range []string{"first", "second"} {
-			if got := strings.Join(entry.native.segments[i].output.View().Lines, "\n"); got != want {
+			if got := strings.Join(entry.Native.Segments[i].Output.View().Lines, "\n"); got != want {
 				t.Fatalf("retained output %d = %q, want %q", i, got, want)
 			}
 		}
@@ -136,8 +138,8 @@ func TestCommandSegmentsPendingRetentionIsBoundedAndCanceled(t *testing.T) {
 	defer lock.Unlock()
 	for i := range commandSegmentRetentionLimit + 1 {
 		item := binding.ThreadItem{ID: fmt.Sprint(i), Type: "commandExecution", Command: "bash -lc 'true; true'", ExitCode: new(0), AggregatedOutput: new("")}
-		entry := activityPaneEntry{native: &liveActivityNativeItem{thread: "main", turn: "turn", item: item.ID}}
-		u.retainCommandSegments(entry, item.Observation(), execTrackView{complete: true, segments: []commandSegment{{}, {}}})
+		entry := sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "turn", Item: item.ID}}
+		u.retainCommandSegments(entry, item.Observation(), execTrackView{complete: true, segments: []sessionpresentation.ActivitySegment{{}, {}}})
 	}
 	if notices := u.issues.Notices.Pending(); u.commandSegmentPending != commandSegmentRetentionLimit || len(notices) != 1 || !strings.Contains(notices[0], "reached the limit of 32") {
 		t.Fatalf("retention grew beyond its bound: %d, %v", u.commandSegmentPending, notices)
@@ -158,6 +160,7 @@ func TestCommandSegmentsRetentionErrorsStayWithOriginalThreadAndCause(t *testing
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.Thread = "other"
 	u.view.Conversation = true
+	u.view.testAudience()
 	first := errors.New("open replay record: permission denied; complete underlying cause")
 	second := errors.New("sync replay directory: no space left on device; different underlying cause")
 	for _, cause := range []error{first, second} {
@@ -251,19 +254,19 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 				restored.Thread = target
 				restored.restoreHistory(turns)
 			}
-			var entry activityPaneEntry
+			var entry sessionpresentation.ActivityEntry
 			for _, candidate := range view.Entries {
-				if candidate.Source.CallID == item.ID && candidate.Source.native != nil {
+				if candidate.Source.CallID == item.ID && candidate.Source.Native != nil {
 					entry = candidate.Source
 					break
 				}
 			}
-			if entry.native == nil {
+			if entry.Native == nil {
 				t.Fatal("missing restored command")
 			}
 			if target == "child-missing-workspace" {
-				pages := activityui.Disclosure(nil).Blocks(commandPresentation(entry).DetailValues())
-				if len(entry.native.segments) != 0 || len(pages) != 1 || pages[0].Label != "combined output" || strings.Join(view.retainedOutput(pages[0].Source, pages[0].Output).View().Lines, "\n") != "first\nsecond" {
+				pages := activityui.Disclosure(nil).Blocks(sessionpresentation.CommandPresentation(entry).DetailValues())
+				if len(entry.Native.Segments) != 0 || len(pages) != 1 || pages[0].Label != "combined output" || strings.Join(view.RetainedOutput(pages[0].Source, pages[0].Output).View().Lines, "\n") != "first\nsecond" {
 					t.Fatalf("missing workspace borrowed a report or lost combined output: %+v", entry)
 				}
 				if _, err := store.publication.ReadCatalog(history.SessionName(target)); !os.IsNotExist(err) {
@@ -271,23 +274,23 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 				}
 				return
 			}
-			if len(entry.native.segments) != 4 {
+			if len(entry.Native.Segments) != 4 {
 				t.Fatalf("missing restored segments: %+v", entry)
 			}
-			segments := entry.native.segments
+			segments := entry.Native.Segments
 			for i, want := range []string{"first", "second", ""} {
-				got := segments[i].output.View()
-				if !got.Done || !got.Exited || strings.Join(got.Lines, "\n") != want || segments[i].running {
+				got := segments[i].Output.View()
+				if !got.Done || !got.Exited || strings.Join(got.Lines, "\n") != want || segments[i].Running {
 					t.Fatalf("segment %d lost output/state: %+v", i, got)
 				}
 			}
-			if segments[2].exit != 1 || !segments[3].skipped || segments[3].output != nil {
+			if segments[2].Exit != 1 || !segments[3].Skipped || segments[3].Output != nil {
 				t.Fatal("failure/skipped state lost")
 			}
 			if names := view.ActiveSkills()[entry.Agent]; len(names) != 1 || names[0] != filepath.Base(filepath.Dir(path)) {
 				t.Fatalf("restored successful skill segment lost: %v", names)
 			}
-			pages := activityui.Disclosure(nil).Blocks(commandPresentation(entry).DetailValues())
+			pages := activityui.Disclosure(nil).Blocks(sessionpresentation.CommandPresentation(entry).DetailValues())
 			if len(pages) != 4 || pages[0].Output == pages[1].Output {
 				t.Fatalf("per-command pages lost: %+v", pages)
 			}
@@ -302,15 +305,15 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 			restored := newAppServerSessionTestUI(t, workspace)
 			setTestAppServerIntegration(restored, testProxyWithStore(store))
 			copy := item
-			entry := activityPaneEntry{native: &liveActivityNativeItem{thread: "unrelated", turn: key[1], item: key[2]}}
+			entry := sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Thread: "unrelated", Turn: key[1], Item: key[2]}}
 			scope := workspace
 			switch mismatch {
 			case "workspace":
 				scope = filepath.Join(workspace, "other")
 			case "turn":
-				entry.native.turn = "other"
+				entry.Native.Turn = "other"
 			case "item":
-				entry.native.item = "other"
+				entry.Native.Item = "other"
 			case "command":
 				copy.Command = "/bin/bash -lc " + quoteShellWord(script)
 			case "output":
@@ -319,7 +322,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 				copy.ExitCode = new(0)
 			}
 			restored.restoreCommandSegments(&entry, copy, scope)
-			if len(entry.native.segments) != 0 {
+			if len(entry.Native.Segments) != 0 {
 				t.Fatal("borrowed a mismatched invocation's report")
 			}
 		})
@@ -341,7 +344,7 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 			u := newAppServerSessionTestUI(t, workspace)
 			setTestAppServerIntegration(u, testProxyWithStore(store))
 			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc 'echo one; false'", AggregatedOutput: new("one\n"), ExitCode: new(1)}
-			entry := activityPaneEntry{Seq: 1, Text: "Run `echo one`\n\nRun `false`", native: &liveActivityNativeItem{thread: "main", turn: "t", item: item.ID, command: item.Command}}
+			entry := sessionpresentation.ActivityEntry{Seq: 1, Text: "Run `echo one`\n\nRun `false`", Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "t", Item: item.ID, Command: item.Command}}
 			first, second := u.session.activity.Outputs(u.session.Scope()).New(), u.session.activity.Outputs(u.session.Scope()).New()
 			if mode == "truncated" {
 				first.Write(strings.Repeat("line\n", activitymodel.OutputBytes/5))
@@ -352,7 +355,7 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 			}
 			first.Finish(nil, new(0))
 			second.Finish(nil, new(1))
-			view := execTrackView{complete: true, output: true, code: 1, segments: []commandSegment{{output: first}, {output: second, exit: 1}}}
+			view := execTrackView{complete: true, output: true, code: 1, segments: []sessionpresentation.ActivitySegment{{Output: first}, {Output: second, Exit: 1}}}
 			switch mode {
 			case "lossy":
 				view.output = false
@@ -379,18 +382,18 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			u.session.completeCommand(entry.native, item.Observation())
+			u.session.completeCommand(entry.Native, item.Observation())
 			u.restoreCommandSegments(&entry, item, workspace)
-			u.view.Entries = []liveActivityRecord{{Source: entry}}
-			pages := activityui.Disclosure(nil).Blocks(commandPresentation(entry).DetailValues())
-			if len(pages) != 1 || pages[0].Label != "combined output" || u.view.retainedOutput(pages[0].Source, pages[0].Output).View().Exit != 1 || strings.Join(u.view.retainedOutput(pages[0].Source, pages[0].Output).View().Lines, "\n") != "one" {
+			u.view.Entries = []sessionpresentation.ActivityRecord{{Source: entry}}
+			pages := activityui.Disclosure(nil).Blocks(sessionpresentation.CommandPresentation(entry).DetailValues())
+			if len(pages) != 1 || pages[0].Label != "combined output" || u.view.RetainedOutput(pages[0].Source, pages[0].Output).View().Exit != 1 || strings.Join(u.view.RetainedOutput(pages[0].Source, pages[0].Output).View().Lines, "\n") != "one" {
 				t.Fatalf("missing evidence fabricated output: %+v", pages)
 			}
 			wantStates := mode == "lossy" || mode == "released" || mode == "truncated" || mode == "long-line"
-			if (len(entry.native.segments) == 2) != wantStates {
-				t.Fatalf("wrong retained states: %+v", entry.native.segments)
+			if (len(entry.Native.Segments) == 2) != wantStates {
+				t.Fatalf("wrong retained states: %+v", entry.Native.Segments)
 			}
-			if wantStates && entry.native.segments[1].exit != 1 {
+			if wantStates && entry.Native.Segments[1].Exit != 1 {
 				t.Fatal("lost observed segment failure")
 			}
 		})
@@ -404,9 +407,9 @@ func TestCombinedOutputDialogUnwrapsOnlyLiteralShell(t *testing.T) {
 		`/usr/bin/bash -lc 'mcat a.go; mcat b.go' > output`,
 	} {
 		view := newActivityAdapter()
-		view.Entries = []liveActivityRecord{{Source: activityPaneEntry{Seq: 1, Text: "Read `a.go`\n\nRead `b.go`", native: &liveActivityNativeItem{command: command}}}}
-		pages := activityui.Disclosure(nil).Blocks(commandPresentation(view.Entries[0].Source).DetailValues())
-		if len(pages) != 1 || pages[0].Code != appServerDisplayCommand(command) || view.Entries[0].Source.native.command != command {
+		view.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Text: "Read `a.go`\n\nRead `b.go`", Native: &sessionpresentation.NativeItem{Command: command}}}}
+		pages := activityui.Disclosure(nil).Blocks(sessionpresentation.CommandPresentation(view.Entries[0].Source).DetailValues())
+		if len(pages) != 1 || pages[0].Code != sessionpresentation.DisplayCommand(command) || view.Entries[0].Source.Native.Command != command {
 			t.Fatalf("combined display changed execution or leaked wrapper: %+v", pages)
 		}
 		ui := &terminalUI{}
@@ -428,17 +431,17 @@ func TestCommandSegmentsRestoreRichChangeRows(t *testing.T) {
 	setTestAppServerIntegration(u, testProxyWithStore(store))
 	listing := "amber1..amber5 +343 -658\namber6 +158 -81\n"
 	item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc 'echo before; mchanges --list'", ExitCode: new(0), AggregatedOutput: new("before\n" + listing)}
-	entry := activityPaneEntry{native: &liveActivityNativeItem{thread: "main", turn: "t", item: item.ID}}
+	entry := sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "t", Item: item.ID}}
 	first, second := u.session.activity.Outputs(u.session.Scope()).New(), u.session.activity.Outputs(u.session.Scope()).New()
 	first.Finish(new("before"), new(0))
 	second.Finish(&listing, new(0))
-	u.retainCommandSegments(entry, item.Observation(), execTrackView{complete: true, output: true, segments: []commandSegment{{output: first}, {output: second}}})
+	u.retainCommandSegments(entry, item.Observation(), execTrackView{complete: true, output: true, segments: []sessionpresentation.ActivitySegment{{Output: first}, {Output: second}}})
 	awaitCommandSegments(t, u)
 	u.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 	// History starts collapsed; inspect the expanded retained command.
 	var rows []string
 	for _, restored := range u.view.Entries {
-		for _, block := range commandSegmentBlocks(commandPresentation(restored.Source)) {
+		for _, block := range commandSegmentBlocks(sessionpresentation.CommandPresentation(restored.Source)) {
 			block.Collapsed = false
 			rows = append(rows, u.view.Painter.Block(block, 90)...)
 		}

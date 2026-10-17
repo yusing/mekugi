@@ -120,7 +120,9 @@ recovers immutable instructions and identity without rerunning the manager.
 Host text elements retain file/skill byte ranges relative to each text part;
 native skill metadata can restore unambiguous bindings when elements are absent.
 Explicit elements take precedence for repeated labels; absent metadata leaves
-lookalikes literal. Oversized or unreadable instructions produce omissions rather
+lookalikes literal. The backend binding decodes these elements and question-reply
+envelopes into neutral composer spans and question identities; display adapters
+map those values without decoding the host protocol again. Oversized or unreadable instructions produce omissions rather
 than truncated instructions.
 
 Each draft has a 192 KiB encoded attachment budget, half reserved for omission

@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -101,7 +103,7 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.ensureShell()
 			defer u.shell.diffScreen.Close()
-			u.agents.Agents = []activityPaneAgent{{Name: "/root", Responding: true}, {Name: "/root/worker", Responding: true}}
+			u.agents.Agents = []sessionpresentation.ActivityAgent{{Name: "/root", Responding: true}, {Name: "/root/worker", Responding: true}}
 			screen := vt.NewEmulator(width, 40)
 			defer screen.Close()
 			paint := func() string {

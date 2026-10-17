@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
@@ -47,8 +49,8 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 	}
 	var seq, activity uint64
 	for _, entry := range u.view.Entries {
-		if entry.Source.native != nil && entry.Source.native.item == "target\x00main" {
-			seq, activity = entry.Source.Seq, entry.Source.activitySeq
+		if entry.Source.Native != nil && entry.Source.Native.Item == "target\x00main" {
+			seq, activity = entry.Source.Seq, entry.Source.ActivitySeq
 		}
 	}
 	if seq == 0 || activity == 0 {
@@ -146,18 +148,19 @@ func TestNativeRepliesShareHeaderQuoteAnswerLayout(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/%d", kind, width), func(t *testing.T) {
 				v := newActivityAdapter()
 				v.Conversation = true
-				question := activityPaneEntry{Seq: 1, Agent: "You", Kind: "text", Text: "Original request.\n\nSecond detail.\n\nThird detail.", Observed: time.Now()}
-				entry := activityPaneEntry{Seq: 2, Agent: "Main", Kind: "text", Text: "Answer body.", native: &liveActivityNativeItem{question: 1}}
+				v.testAudience()
+				question := sessionpresentation.ActivityEntry{Seq: 1, Agent: "You", Kind: "text", Text: "Original request.\n\nSecond detail.\n\nThird detail.", Observed: time.Now()}
+				entry := sessionpresentation.ActivityEntry{Seq: 2, Agent: "Main", Kind: "text", Text: "Answer body.", Native: &sessionpresentation.NativeItem{Question: 1}}
 				block := activityui.Block{Kind: "text", Body: entry.Text}
 				if strings.HasPrefix(kind, "agent") {
 					question.Kind = "assignment"
-					question.assignment = &activityAssignment{to: "/root/worker", text: question.Text}
+					question.Assignment = &sessionpresentation.ActivityAssignment{To: "/root/worker", Text: question.Text}
 					entry.Agent, entry.Kind, block.Kind = "/root/worker", "final", "final"
 				}
 				if kind == "agent excerpt" {
-					entry.activitySeq = 5
+					entry.ActivitySeq = 5
 				}
-				v.Entries = []liveActivityRecord{
+				v.Entries = []sessionpresentation.ActivityRecord{
 					{Source: question, Values: activityui.Values(nil)},
 					{Source: entry, Values: activityui.Values([]activityui.Block{block})},
 				}

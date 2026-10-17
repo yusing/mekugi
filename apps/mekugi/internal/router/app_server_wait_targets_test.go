@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/terminalui"
@@ -60,7 +62,7 @@ func TestAppServerWaitTargetsSnapshotAndRender(t *testing.T) {
 	waitTargetTestAgent(t, u, "b", "/root/beta", false)
 	waitTargetTestAgent(t, u, "nested", "/root/alpha/nested", true)
 	waitTargetTestEvent(t, u, "item/started", "main", "t", "w")
-	if u.view.Entries[0].Source.native.wait == nil {
+	if u.view.Entries[0].Source.Native.Wait == nil {
 		t.Fatal("live wait lacks structured roster status")
 	}
 	want := "Waiting for agent · alpha, alpha/nested"
@@ -70,7 +72,7 @@ func TestAppServerWaitTargetsSnapshotAndRender(t *testing.T) {
 	if rendered := u.view.RenderFeed(120, 30).Lines; len(rendered) != 0 {
 		t.Fatalf("wait leaked into transcript: %q", rendered)
 	}
-	rendered, _ := u.agents.testCurrent(activityPaneAgent{Name: "/root"}, time.Now())
+	rendered, _ := u.agents.testCurrent(sessionpresentation.ActivityAgent{Name: "/root"}, time.Now())
 	if !strings.Contains(rendered, terminalui.DimAgentColor("/root/alpha")+"alpha") || !strings.Contains(rendered, terminalui.DimAgentColor("/root/alpha/nested")+"alpha/nested") {
 		t.Fatalf("missing muted targets: %q", rendered)
 	}
@@ -153,7 +155,7 @@ func TestAppServerWaitTargetsDurableReplay(t *testing.T) {
 			}
 			waitTargetTestStore(t, restored, store)
 			restored.restoreHistory(history)
-			if restored.view.Entries[0].Source.native.wait == nil {
+			if restored.view.Entries[0].Source.Native.Wait == nil {
 				t.Fatal("restored wait lacks structured roster status")
 			}
 			if got := restored.view.Entries[0].Source.Text; got != "Finished waiting · alpha, alpha/nested" {
@@ -162,7 +164,7 @@ func TestAppServerWaitTargetsDurableReplay(t *testing.T) {
 			if rendered := restored.view.RenderFeed(120, 30).Lines; len(rendered) != 0 {
 				t.Fatalf("restored wait leaked into transcript: %q", rendered)
 			}
-			rendered, _ := restored.agents.testCurrent(activityPaneAgent{Name: "/root"}, time.Now())
+			rendered, _ := restored.agents.testCurrent(sessionpresentation.ActivityAgent{Name: "/root"}, time.Now())
 			if !strings.Contains(rendered, terminalui.DimAgentColor("/root/alpha")+"alpha") {
 				t.Fatalf("restored wait lost color: %q", rendered)
 			}

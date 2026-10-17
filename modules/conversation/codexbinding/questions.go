@@ -23,13 +23,7 @@ func MessageQuestions(text observation.TextEvent, item observation.Item, userTex
 		in.Call = &call
 	}
 	if in.User && text.Kind == observation.ItemCompleted {
-		replies := binding.QuestionReplies(userText)
-		in.HasReplies = len(replies) != 0
-		for _, r := range replies {
-			if item, index, ok := binding.QuestionReplyIdentity(r); ok {
-				in.Replies = append(in.Replies, prompt.Reply{Item: item, Index: index, Answer: r.Answer})
-			}
-		}
+		_, in.Replies, in.HasReplies = ReplyText(userText)
 	}
 	return in
 }
@@ -90,4 +84,19 @@ func PendingQuestionReply(c *prompt.Call, text string) string {
 		return ""
 	}
 	return binding.EncodeQuestionReplies(replies)
+}
+
+// ReplyText preserves the complete reply display even when a supplied target
+// identity cannot be decoded. Only valid targets can settle a question.
+func ReplyText(text string) (string, []prompt.Reply, bool) {
+	replies := binding.QuestionReplies(text)
+	answers := make([]string, 0, len(replies))
+	var targets []prompt.Reply
+	for _, reply := range replies {
+		answers = append(answers, reply.Answer)
+		if item, index, ok := binding.QuestionReplyIdentity(reply); ok {
+			targets = append(targets, prompt.Reply{Item: item, Index: index, Answer: reply.Answer})
+		}
+	}
+	return strings.Join(answers, "\n"), targets, len(replies) > 0
 }

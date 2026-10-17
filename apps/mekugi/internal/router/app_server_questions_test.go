@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -178,7 +180,7 @@ func TestNativeQuestionAsyncBatchAndExternalCommit(t *testing.T) {
 	if u.activeQuestionCall() == nil || u.questionCount() != 2 {
 		t.Fatal("async question did not open or was lost")
 	}
-	if slices.ContainsFunc(u.view.Entries, func(entry liveActivityRecord) bool { return entry.Source.Kind == "final" }) {
+	if slices.ContainsFunc(u.view.Entries, func(entry sessionpresentation.ActivityRecord) bool { return entry.Source.Kind == "final" }) {
 		t.Fatal("async question entered final-answer bookkeeping")
 	}
 	u.openQuestions()

@@ -105,7 +105,7 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 			var assignmentCount, messageCount, excerptCount int
 			var activitySeq, excerptSeq uint64
 			for _, entry := range u.agents.Entries {
-				if entry.Source.assignment != nil && entry.Source.assignment.text == assignment {
+				if entry.Source.Assignment != nil && entry.Source.Assignment.Text == assignment {
 					assignmentCount++
 				}
 				if entry.Source.Kind == "reply" && strings.Contains(entry.Source.Text, message) {
@@ -114,7 +114,7 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 				}
 			}
 			for _, entry := range u.view.Entries {
-				if entry.Source.Kind == "reply" && entry.Source.activitySeq == activitySeq && activitySeq != 0 {
+				if entry.Source.Kind == "reply" && entry.Source.ActivitySeq == activitySeq && activitySeq != 0 {
 					excerptCount++
 					excerptSeq = entry.Source.Seq
 				}
@@ -126,6 +126,7 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 				continue // The authenticated observer may arrive after app-server completion.
 			}
 			u.view.Conversation = true
+			u.view.testAudience()
 			feed := u.view.RenderFeed(100, 60)
 			main := ansi.Strip(strings.Join(feed.Lines, "\n"))
 			if strings.Contains(main, "Message received:") {

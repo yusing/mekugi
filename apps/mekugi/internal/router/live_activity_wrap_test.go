@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/charmbracelet/x/vt"
@@ -14,7 +16,7 @@ func TestLiveActivityWrappedUserBand(t *testing.T) {
 	for _, theme := range []diffrender.Theme{diffrender.LightTheme, diffrender.DarkTheme} {
 		v := newActivityAdapter()
 		v.Painter = activityui.Painter{Theme: theme}
-		out := v.testUserItem(activityPaneEntry{Agent: "You", Text: "one two three four five six seven eight"}, 12)
+		out := v.testUserItem(sessionpresentation.ActivityEntry{Agent: "You", Text: "one two three four five six seven eight"}, 12)
 		if len(out.Lines) < 2 {
 			t.Fatal("expected wrapped user message")
 		}

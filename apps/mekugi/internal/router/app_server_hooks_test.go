@@ -34,6 +34,7 @@ func TestAppServerHookLifecycleUsesRunPresentation(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	waitTargetTestStore(t, u, waitTargetTestOpenStore(t))
 	u.view.Conversation = true
+	u.view.testAudience()
 	start := hookTestRun(u.session.cwd, "running")
 	start["completedAt"], start["durationMs"], start["entries"] = nil, nil, nil
 	appServerTestNotify(t, u, "hook/started", map[string]any{"threadId": "main", "run": start})
@@ -52,7 +53,7 @@ func TestAppServerHookLifecycleUsesRunPresentation(t *testing.T) {
 		t.Fatalf("hook notifications duplicated rows: %d", len(u.view.Entries))
 	}
 	b := u.view.blocks(0)[0]
-	if b.Running || u.view.retainedOutput(b.Source, b.Output).View().Exited || b.Duration != 120*time.Millisecond || !b.Started.Equal(time.Unix(1000, 0)) {
+	if b.Running || u.view.RetainedOutput(b.Source, b.Output).View().Exited || b.Duration != 120*time.Millisecond || !b.Started.Equal(time.Unix(1000, 0)) {
 		t.Fatalf("hook completion borrowed a shell exit or lost host timing: %+v", b)
 	}
 	u.view.Expansion = 1 // Default presentation omits hook runs.
@@ -80,10 +81,10 @@ func TestAppServerHookOutcomesInChildFeed(t *testing.T) {
 			appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.session.cwd, "completed")})
 			appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "child", "run": run})
 			b := u.agents.blocks(len(u.agents.Entries) - 1)[0]
-			if b.Running || b.Collapsible() || b.ExitCode != 0 || u.agents.retainedOutput(b.Source, b.Output).View().Exited || !b.Hook.HasError {
+			if b.Running || b.Collapsible() || b.ExitCode != 0 || u.agents.RetainedOutput(b.Source, b.Output).View().Exited || !b.Hook.HasError {
 				t.Fatalf("hook outcome was flattened to a command exit: %+v", b)
 			}
-			page := u.agents.Painter.DialogPage(snapshotOutput(b, u.agents.retainedOutput(b.Source, b.Output)), 60)
+			page := u.agents.Painter.DialogPage(snapshotOutput(b, u.agents.RetainedOutput(b.Source, b.Output)), 60)
 			if !strings.Contains(page.Text, "error: cannot execute") || strings.Contains(page.Text, "unsafe") || strings.Contains(ansi.Strip(page.Detail), "exit") {
 				t.Fatalf("hook detail lost errors or fabricated an exit: %+v", page)
 			}
@@ -187,7 +188,7 @@ func TestHookObservationRestartResumeAndReplay(t *testing.T) {
 	}
 	for _, entry := range fresh.view.Entries {
 		b := fresh.view.Disclosure.Blocks(entry.Values)[0]
-		if b.Running || !fresh.view.retainedOutput(b.Source, b.Output).View().Done {
+		if b.Running || !fresh.view.RetainedOutput(b.Source, b.Output).View().Done {
 			t.Fatal("resume revived a hook")
 		}
 	}
@@ -235,6 +236,7 @@ func TestUISnapshotNativeHookVisibility(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	waitTargetTestStore(t, u, waitTargetTestOpenStore(t))
 	u.view.Conversation = true
+	u.view.testAudience()
 	global := filepath.Join(u.session.cwd, "hooks.json")
 	run := func(id, event, source, status, message string, entries ...map[string]any) {
 		appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": map[string]any{

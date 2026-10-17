@@ -26,6 +26,7 @@ func TestUISnapshotCommandSegmentRetentionNotice(t *testing.T) {
 			u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 			u.Thread = "main"
 			u.view.Conversation = true
+			u.view.testAudience()
 			u.commandSegmentPending = 1
 			u.commandSegmentRetained(commandSegmentWrite{key: [3]string{"main", "turn", "command"}, err: tc.err})
 			delivery := u.applyCriticalNotices()

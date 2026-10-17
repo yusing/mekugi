@@ -5,53 +5,27 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
-	presentationcontract "github.com/yusing/mekugi/contracts/presentation"
-
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func (v *activityAdapter) publishActivity() {
-	publication := v.Model.Publish()
+	var main *sessionpresentation.ActivitySource
+	if v.mainView != nil {
+		main = v.mainView.ActivitySource
+	}
+	publication := v.ActivitySource.Publication(v.display, main)
+
 	for i, entry := range publication.Entries {
 		if frame, needed := v.View.CommandFrame(entry.Seq, entry.Revision); needed {
 			v.View.UpdateCommandFrame(commandFrame(v.Entries[i], frame))
 		}
 	}
-	for i := range publication.Roster {
-		agent := &publication.Roster[i].Agent
-		agent.StatusItems = v.display.StatusItems(presentationcontract.Thread{ID: agent.Thread, OutputThroughput: agent.OutputThroughput}, presentationcontract.AgentMetric)
-	}
-	// Output versions belong to publication, not semantic scans of source facts.
-	for i := range publication.Entries {
-		native := v.Entries[i].Source.native
-		if native == nil || native.output == nil && len(native.segments) == 0 {
-			continue
-		}
-		versions := make(map[int]int)
-		if native.output != nil {
-			versions[1] = native.output.Version()
-		}
-		for j, segment := range native.segments {
-			if segment.output != nil {
-				versions[j+2] = segment.output.Version()
-			}
-		}
-		publication.Entries[i].Outputs = versions
+	if v.Audience != sessionpresentation.MainAudience {
+		v.View.StatusLabel = v.Coverage
 	}
 	if v.mainView != nil {
-		mainSummary := v.mainView.Model.SummaryEntries("Main", true)
-		v.View.MainSummary = v.mainView.View.SummaryBlocks(mainSummary)
-		for i := range publication.Roster {
-			agent := &publication.Roster[i].Agent
-			if agent.Name != "/root" {
-				continue
-			}
-			agent.Summary = mainSummary
-			if latest := v.mainView.Model.Latest("Main"); latest >= 0 {
-				agent.LatestKind = v.mainView.Entries[latest].Source.Kind
-			}
-		}
-		v.View.MainStatus = v.mainView.StatusLabel
+		v.View.MainSummary = v.mainView.View.SummaryBlocks(publication.MainSummary)
+		v.View.MainStatus = v.mainView.View.StatusLabel
 	}
 	display := v.display.View()
 	v.View.Update(publication, activityui.Display{Caller: display.Displayed.Caller, Attachment: display.Version.Attachment, Revision: display.Version.Revision})
@@ -65,7 +39,7 @@ func (v *activityAdapter) Render(width, height int, now time.Time) []string {
 		if len(demands) == 0 {
 			return lines
 		}
-		v.View.Hydrate(v.resolveOutputDemands(demands))
+		v.View.Hydrate(v.ResolveOutputDemands(demands))
 	}
 }
 
@@ -77,7 +51,7 @@ func (v *activityAdapter) RenderFeed(width, rows int) activityui.Feed {
 		if len(demands) == 0 {
 			return feed
 		}
-		v.View.Hydrate(v.resolveOutputDemands(demands))
+		v.View.Hydrate(v.ResolveOutputDemands(demands))
 	}
 }
 

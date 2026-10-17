@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -34,7 +36,7 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 			view := u.view
 			if surface == "Activity" {
 				view = u.agents
-				view.Agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
+				view.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
 			}
 			if surface == "btw" {
 				setSideTest(u, &sessioncontrol.Side{SideAnswer: &conversationmodel.SideAnswer{Question: "side question", Status: "completed", Answer: []conversationmodel.Answer{{Text: text}}}})

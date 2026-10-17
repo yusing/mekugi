@@ -3,6 +3,8 @@ package router
 import (
 	"bytes"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -133,15 +135,15 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 		t.Fatal("restoration did not finish")
 	}
 
-	summary := func(entry activityPaneEntry) string {
+	summary := func(entry sessionpresentation.ActivityEntry) string {
 		if entry.Kind == "tool" {
 			return entry.Kind // Tool labels have their own tests.
 		}
 		switch {
-		case entry.message != nil:
-			return entry.Kind + "|" + entry.message.from + "->" + entry.message.to + "|" + entry.message.text
-		case entry.start != nil:
-			return entry.Kind + "|" + entry.start.label() + "|" + entry.assignment.text
+		case entry.Message != nil:
+			return entry.Kind + "|" + entry.Message.From + "->" + entry.Message.To + "|" + entry.Message.Text
+		case entry.Start != nil:
+			return entry.Kind + "|" + entry.Start.Label() + "|" + entry.Assignment.Text
 		}
 		return entry.Kind + "|" + strings.SplitN(entry.Text, "\n", 2)[0]
 	}
@@ -165,7 +167,7 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 		t.Fatalf("Main history:\n%s\nwant:\n%s", strings.Join(main, "\n"), strings.Join(want, "\n"))
 	}
 	for _, entry := range u.view.Entries {
-		if (entry.Source.Kind == "start" || entry.Source.Kind == "reply" || entry.Source.Kind == "final") && entry.Source.activitySeq == 0 {
+		if (entry.Source.Kind == "start" || entry.Source.Kind == "reply" || entry.Source.Kind == "final") && entry.Source.ActivitySeq == 0 {
 			t.Fatalf("Main copy does not excerpt its Activity entry: %+v", entry)
 		}
 	}

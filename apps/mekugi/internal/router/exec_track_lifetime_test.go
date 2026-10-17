@@ -18,13 +18,13 @@ func TestExecTrackSessionReplacementDropsRetainedChildOutput(t *testing.T) {
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": key[0], "turnId": key[1], "item": item})
 	report := dialExecTrackReportThread(t, hub, key[0], script)
 	report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0}, segmenttransport.Message{Type: segmenttransport.Output, Index: 0, Data: "first\n"})
-	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 1 && len(view.segments[0].tail) != 0 })
+	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 1 && len(view.segments[0].Tail) != 0 })
 	u.flushStreamOutput()
 	before, _ := hub.view(key, false, execSegmentText)
-	if len(before.segments) != 1 || before.segments[0].output == nil || !slices.Equal(before.segments[0].output.View().Lines, []string{"first"}) {
+	if len(before.segments) != 1 || before.segments[0].Output == nil || !slices.Equal(before.segments[0].Output.View().Lines, []string{"first"}) {
 		t.Fatalf("child output was not retained before replacement: %+v", before)
 	}
-	retired := before.segments[0].output
+	retired := before.segments[0].Output
 	if err := u.clearSessionPresentation(); err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestExecTrackSessionReplacementDropsRetainedChildOutput(t *testing.T) {
 		t.Fatalf("detached report lost outcomes or claimed complete output: %+v", after)
 	}
 	for _, segment := range after.segments {
-		if segment.output != nil {
+		if segment.Output != nil {
 			t.Error("detached segment acquired retention in the new attachment")
 		}
 	}
@@ -64,14 +64,14 @@ func TestExecTrackSessionReplacementDropsRetainedChildOutput(t *testing.T) {
 		t.Fatal("host completion retained the old command observation")
 	}
 	for _, entry := range u.agents.Entries {
-		native := entry.Source.native
-		if native == nil || native.thread != key[0] || native.item != key[2] {
+		native := entry.Source.Native
+		if native == nil || native.Thread != key[0] || native.Item != key[2] {
 			continue
 		}
-		if native.running || len(native.segments) != 0 || native.output == nil {
+		if native.Running || len(native.Segments) != 0 || native.Output == nil {
 			t.Fatalf("completion did not use combined host output: %+v", native)
 		}
-		output := native.output.View()
+		output := native.Output.View()
 		if !output.Done || output.Exit != 3 || !slices.Equal(output.Lines, []string{"first", "later", "second"}) {
 			t.Fatalf("combined host output was lost: %+v", output)
 		}

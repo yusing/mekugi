@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
@@ -64,7 +66,7 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 	if u.runningProcessCount() != 2 || !u.publishPresentation(u.now()).Status.Animating {
 		t.Fatal("yielded command stopped counting or animating")
 	}
-	if u.session.Transcript("main", "t").Turn != nil || !u.session.commands[[3]string{"main", "t", "cmd"}].entry.native.invocation.Snapshot().Running {
+	if u.session.Transcript("main", "t").Turn != nil || !u.session.commands[[3]string{"main", "t", "cmd"}].entry.Native.Invocation.Snapshot().Running {
 		t.Fatal("command lifetime followed its closed turn scope")
 	}
 	if err := u.shell.send("\x1b[C"); err != nil {
@@ -86,11 +88,11 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 	if got := drawOutputDialog(u.shell); u.runningProcessCount() != 1 || strings.Contains(got, "● live") || !strings.Contains(got, "output 29") || !strings.Contains(got, "exit 0") {
 		t.Fatalf("completed command lost its open page: %s", got)
 	}
-	entries := make([]activityPaneEntry, liveActivityFeedLimit)
+	entries := make([]sessionpresentation.ActivityEntry, liveActivityFeedLimit)
 	for i := range entries {
-		entries[i] = activityPaneEntry{Seq: u.view.LastSeq + uint64(i) + 1, Agent: "Main", Kind: "text", Text: "Later event"}
+		entries[i] = sessionpresentation.ActivityEntry{Seq: u.view.LastSeq + uint64(i) + 1, Agent: "Main", Kind: "text", Text: "Later event"}
 	}
-	u.view.apply(activityPaneEvent{Kind: "entries", Entries: entries})
+	u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: entries})
 	u.session.seq = u.view.LastSeq
 	reopen := func() {
 		if err := u.shell.send("\x1b"); err != nil {

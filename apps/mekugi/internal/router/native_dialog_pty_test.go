@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -38,7 +40,7 @@ func TestNativeDialogPTYCloseAndResize(t *testing.T) {
 		}
 	}()
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Underlying conversation"}}})
+	u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Underlying conversation"}}})
 	screen := vt.NewEmulator(120, 32)
 	defer screen.Close()
 	paint := func(width, height int) string {

@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -104,14 +106,15 @@ func TestUISnapshotTemporaryWriteActivity(t *testing.T) {
 				command := temporaryPlanCommand(temporaryPlanSetup, source)
 				v := newActivityAdapter()
 				v.ChildrenOnly = agent != "Main"
+				v.testAudience()
 				v.Clock = func() time.Time { return now }
 				v.Painter.Theme = diffrender.DarkTheme
 				output := new(activitymodel.Retention).New()
 				output.Finish(new("/tmp/mekugi-batches.YcIbga/plan.json\n"), new(0))
-				v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+				v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
 					Seq: 1, Agent: agent, Kind: "tool", CallID: "plan", Text: toolActivityShell(command), Observed: now,
-					outputTail: []string{"/tmp/mekugi-batches.YcIbga/plan.json"},
-					native:     &liveActivityNativeItem{command: command, duration: 157 * time.Millisecond, output: output},
+					OutputTail: []string{"/tmp/mekugi-batches.YcIbga/plan.json"},
+					Native:     &sessionpresentation.NativeItem{Command: command, Duration: 157 * time.Millisecond, Output: output},
 				}}})
 				feed := v.RenderFeed(100, 80)
 				if agent == "Main" {

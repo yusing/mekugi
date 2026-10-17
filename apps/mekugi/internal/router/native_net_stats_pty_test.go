@@ -1,12 +1,14 @@
 package router
 
 import (
-"github.com/yusing/mekugi/libraries/legacycall"
 	"bytes"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/libraries/legacycall"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 
@@ -46,7 +48,7 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 	publish("unrelated", "/root/other", "unrelated", "", filepath.Join(workspace, "unrelated.txt"), "", "unrelated\n")
 
 	u := newAppServerSessionTestUI(t, workspace)
-	u.agents.Agents = []activityPaneAgent{{Name: "/root"}, {Name: "/root/worker"}}
+	u.agents.Agents = []sessionpresentation.ActivityAgent{{Name: "/root"}, {Name: "/root/worker"}}
 	u.shell.Focus = 3
 	setSavedReviewStore(u.shell, store)
 	scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}}

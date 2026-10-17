@@ -20,11 +20,11 @@ func (u *appServerUI) publishPresentation(now time.Time) sessionpresentation.Vie
 	}
 	if agent := u.session.agent(view.Displayed.Caller); agent != nil {
 		if view.Displayed.ID != view.Main.ID {
-			caption.Model, caption.Effort = agent.settings.Model, agent.settings.Effort
-			if agent.settings.TierKnown {
-				caption.Tier = cmp.Or(agent.settings.Tier, "default")
+			caption.Model, caption.Effort = agent.Settings.Model, agent.Settings.Effort
+			if agent.Settings.TierKnown {
+				caption.Tier = cmp.Or(agent.Settings.Tier, "default")
 			}
-			caption.Tier = u.serviceTiers.Effective(caption.Model, caption.Tier, agent.thread)
+			caption.Tier = u.serviceTiers.Effective(caption.Model, caption.Tier, agent.Thread)
 		}
 		caption.ContextKnown, caption.ContextTokens, caption.ContextWindow = agent.ContextKnown, agent.ContextTokens, agent.ContextWindow
 		caption.Items = m.StatusItems(presentationcontract.Thread{ID: view.Displayed.ID, OutputThroughput: agent.OutputThroughput}, presentationcontract.ComposerCaption)
@@ -54,6 +54,12 @@ func (u *appServerUI) settlePresentation() {
 	u.autoOpenApprovals()
 	u.autoOpenQuestions()
 	u.publishPresentation(u.now())
+	if u.view != nil {
+		u.view.publishActivity()
+	}
+	if u.agents != nil {
+		u.agents.publishActivity()
+	}
 }
 
 func (v *activityAdapter) displayingChild() bool {
@@ -87,7 +93,7 @@ func (v *activityAdapter) displayTarget(caller string) sessionpresentation.Threa
 		target = sessionpresentation.Thread{ID: caller, Caller: caller}
 		for _, row := range v.Model.Roster() {
 			if row.Agent.Name == caller {
-				target.ID = cmp.Or(row.Agent.thread, caller)
+				target.ID = cmp.Or(row.Agent.Thread, caller)
 				break
 			}
 		}

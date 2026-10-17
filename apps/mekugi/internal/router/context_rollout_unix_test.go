@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 )
 
@@ -18,9 +20,9 @@ func TestContextRolloutRejectsFIFOWithoutWriter(t *testing.T) {
 	if err := syscall.Mkfifo(path, 0600); err != nil {
 		t.Fatal(err)
 	}
-	done := make(chan activityPaneAgent, 1)
+	done := make(chan sessionpresentation.ActivityAgent, 1)
 	go func() {
-		var agent activityPaneAgent
+		var agent sessionpresentation.ActivityAgent
 		restoreContextUsage(&agent, binding.ThreadInfo{ID: "thread", Path: path})
 		done <- agent
 	}()
