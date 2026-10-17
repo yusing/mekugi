@@ -164,7 +164,6 @@ func TestSkillContentsNativeCodexE2E(t *testing.T) {
 					}
 				}
 				proxy = newManagedMekugiProxy(t)
-				proxy.skillsManager = true
 			}
 			provider := &appQueueProvider{requests: make(chan []byte, 2)}
 			server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, nil, nil))
@@ -175,7 +174,9 @@ func TestSkillContentsNativeCodexE2E(t *testing.T) {
 				return cmd
 			}
 			prompt := "Use $" + skill + " then $" + skill + " please"
-			first := startAppResumeTerminalWithProxy(t, command, "", proxy)
+			integration := testAppServerIntegration(proxy)
+			integration.skillsManager = managed
+			first := startAppResumeTerminalWithIntegration(t, command, "", integration)
 			first.await("Ready")
 			first.send("\x1b[200~" + prompt + "\x1b[201~")
 			first.awaitMatch("bound skill", func(screen string) bool {
@@ -247,12 +248,13 @@ func TestSkillContentsNativeCodexE2E(t *testing.T) {
 					t.Fatal(err)
 				}
 				proxy = newManagedMekugiProxy(t)
-				proxy.skillsManager = true
 			}
 			if err := os.Remove(source); err != nil {
 				t.Fatal(err)
 			}
-			resumed := startAppResumeTerminalWithProxy(t, command, "--last", proxy)
+			integration = testAppServerIntegration(proxy)
+			integration.skillsManager = managed
+			resumed := startAppResumeTerminalWithIntegration(t, command, "--last", integration)
 			resumed.await("Ready")
 			resumed.await("Attached skill")
 			resumed.awaitMatch("restored skill", func(screen string) bool {

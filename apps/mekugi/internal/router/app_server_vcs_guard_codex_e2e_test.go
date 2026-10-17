@@ -141,8 +141,9 @@ func TestAppServerVCSGuardNativeCodexYolo(t *testing.T) {
 			}
 			proxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, proxy) // As a session has.
-			proxy.execTrack = shell.hub.Observer
-			proxy.guard = shell.guard
+			integration := testAppServerIntegration(proxy)
+			integration.execTrack = shell.hub.Observer
+			integration.guard, integration.guards = shell.guard, testGuards()
 			// The absolute target is deliberately outside both the startup
 			// directory and PATH. Only the producer hook can guard this call.
 			absoluteDirectory := filepath.Join(t.TempDir(), "unlisted tools with spaces")
@@ -237,7 +238,7 @@ func TestAppServerVCSGuardNativeCodexYolo(t *testing.T) {
 					}
 				}
 			}
-			runAppServerPreviewWith(t, provider, proxy, appServerPreview{
+			runAppServerPreviewWith(t, provider, proxy, appServerPreview{integration: &integration,
 				environment: []string{"PATH=" + execTrackPath(), shellhook.Environment + "=" + hash},
 				codexArgs:   []string{"-c", hook, "-c", state, "-c", `sandbox_mode="danger-full-access"`, "-c", `approval_policy="never"`},
 				approvals:   false,

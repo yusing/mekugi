@@ -2,6 +2,9 @@ package router
 
 import (
 	"encoding/json/jsontext"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+
 	json "encoding/json/v2"
 	"net"
 	"path/filepath"
@@ -31,11 +34,11 @@ func TestShellApprovalCompositionSocket(t *testing.T) {
 				}
 			}
 			path := filepath.Join(t.TempDir(), "approval.sock")
-			server, err := listenShellApprovals(t.Context(), path, 5*time.Second, guards)
+			server, err := sessioncontrol.ListenShellApprovals(t.Context(), path, 5*time.Second, guards)
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(server.close)
+			t.Cleanup(server.Close)
 			for _, request := range []struct {
 				name, kind string
 				active     bool
@@ -71,11 +74,11 @@ func TestShellApprovalCompositionSocket(t *testing.T) {
 						answers <- got
 					}()
 					select {
-					case pending := <-server.requests:
+					case pending := <-server.Requests():
 						if !request.active {
 							t.Fatal("inactive kind reached the UI request channel")
 						}
-						if pending.kind != message.Kind || pending.executable != message.Executable {
+						if pending.Kind != message.Kind || pending.Executable != message.Executable {
 							t.Fatal("socket changed the approval identity")
 						}
 						u.addGuardApproval(pending)
@@ -100,7 +103,7 @@ func TestShellApprovalCompositionSocket(t *testing.T) {
 						pending := compositionApproval(request.kind)
 						u.addGuardApproval(pending)
 						select {
-						case denied := <-pending.reply:
+						case denied := <-pending.Reply:
 							if denied.OK || denied.Password != "" || denied.Reason == "" {
 								t.Fatalf("inactive UI reply = %+v", denied)
 							}
@@ -131,8 +134,8 @@ func TestShellApprovalCompositionSocket(t *testing.T) {
 	}
 }
 
-func compositionApproval(kind string) *vcsApproval {
-	return &vcsApproval{kind: kind, cwd: "/work", executable: "/bin/tool", argv: []string{"tool", "publish"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})}
+func compositionApproval(kind string) *sessioncontrol.ShellApprovalRequest {
+	return &sessioncontrol.ShellApprovalRequest{Kind: kind, Cwd: "/work", Executable: "/bin/tool", Argv: []string{"tool", "publish"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})}
 }
 
 func TestShellApprovalCompositionGrantIsolation(t *testing.T) {
@@ -143,12 +146,12 @@ func TestShellApprovalCompositionGrantIsolation(t *testing.T) {
 			u.addGuardApproval(first)
 			questionTestPaint(t, u, 80)
 			appServerTestKeys(t, u, "2\r")
-			if len(first.reply) != 1 || !(<-first.reply).OK {
+			if len(first.Reply) != 1 || !(<-first.Reply).OK {
 				t.Fatal("session grant was not accepted")
 			}
 			repeated := compositionApproval(kind)
 			u.addGuardApproval(repeated)
-			if len(repeated.reply) != 1 || !(<-repeated.reply).OK || len(u.pendingApprovals()) != 0 {
+			if len(repeated.Reply) != 1 || !(<-repeated.Reply).OK || len(u.pendingApprovals()) != 0 {
 				t.Fatal("selected module did not reuse its own grant")
 			}
 			otherKind := "sudo"
@@ -157,13 +160,13 @@ func TestShellApprovalCompositionGrantIsolation(t *testing.T) {
 			}
 			other := compositionApproval(otherKind)
 			u.addGuardApproval(other)
-			if len(other.reply) != 0 || len(u.pendingApprovals()) != 1 {
+			if len(other.Reply) != 0 || len(u.pendingApprovals()) != 1 {
 				t.Fatal("session grant crossed module kinds for the same command identity")
 			}
 			fresh, _ := newAppServerTestUI()
 			newSession := compositionApproval(kind)
 			fresh.addGuardApproval(newSession)
-			if len(newSession.reply) != 0 || len(fresh.pendingApprovals()) != 1 {
+			if len(newSession.Reply) != 0 || len(fresh.pendingApprovals()) != 1 {
 				t.Fatal("session grant crossed fresh UI instances")
 			}
 		})

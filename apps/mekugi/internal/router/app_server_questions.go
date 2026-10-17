@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -14,18 +14,23 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	"github.com/yusing/mekugi/libraries/terminalui"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
+
 	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
 )
 
 type nativeQuestionCall struct {
 	*prompt.Call
 	request jsontext.Value
-	sudo    *vcsApproval
+	sudo    *sessioncontrol.ShellApprovalRequest
 	// Secret state remains invocation-local and is never part of a neutral view.
 	secrets       map[int]questionEditor
 	secretAnswers map[int][]string
@@ -239,9 +244,9 @@ func (u *appServerUI) resolveQuestionCall(c *nativeQuestionCall, outcome string)
 	}
 	u.discardQuestionEditors(c)
 	if c.sudo != nil {
-		if !c.Sent && !c.sudo.finished() {
-			c.sudo.reply <- shellapproval.Reply{Reason: "sudo authentication canceled"}
-			u.recordApproval(&nativeApproval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.sudo.item}}, "Denied: sudo authentication canceled")
+		if !c.Sent && !c.sudo.Finished() {
+			c.sudo.Reply <- shellapproval.Reply{Reason: "sudo authentication canceled"}
+			u.recordApproval(&nativeApproval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.sudo.Item}}, "Denied: sudo authentication canceled")
 		}
 		u.questions.Remove(c.Call)
 		delete(u.questions.handles, c.Call)

@@ -169,7 +169,7 @@ func testAppServerBuiltInOpenAI(t *testing.T, fallback bool) {
 		cmd.Env, cmd.Dir = environment, workspace
 		return cmd
 	}
-	terminal := startAppResumeTerminalWithProxy(t, command, "", proxy, capture)
+	terminal := startAppResumeTerminalWithIntegration(t, command, "", testAppServerIntegration(proxy), capture)
 	if err := pty.Setsize(terminal.outer, &pty.Winsize{Cols: 200, Rows: 30}); err != nil {
 		t.Fatal(err)
 	}

@@ -140,7 +140,7 @@ func TestAppServerBTWNativeCodexE2E(t *testing.T) {
 				cmd.Env, cmd.Dir = environment, workspace
 				return cmd
 			}
-			terminal := startAppResumeTerminalWithProxy(t, command, "", proxy)
+			terminal := startAppResumeTerminalWithIntegration(t, command, "", testAppServerIntegration(proxy))
 			next := func() btwCodexRequest {
 				t.Helper()
 				select {
@@ -162,7 +162,7 @@ func TestAppServerBTWNativeCodexE2E(t *testing.T) {
 			if scenario == "resumed" {
 				metadata, _ := codexresponses.DecodeTurnMetadata(main.headers)
 				terminal.stopCanceled()
-				terminal = startAppResumeTerminalWithProxy(t, command, metadata.ThreadID, proxy)
+				terminal = startAppResumeTerminalWithIntegration(t, command, metadata.ThreadID, testAppServerIntegration(proxy))
 				terminal.await("Ready")
 				terminal.send("Main resumed\r")
 				main = next()

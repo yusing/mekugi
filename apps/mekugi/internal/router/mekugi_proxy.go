@@ -16,7 +16,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/nativetrace"
 	"github.com/yusing/mekugi/contracts/inference"
-	segments "github.com/yusing/mekugi/modules/commandsegments/segments"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 	"github.com/yusing/mekugi/providers/grok"
@@ -47,9 +46,6 @@ type mekugiProxy struct {
 	usage            *accounting.Service
 	review           *sessionreview.Review
 	activity         *sessioncontrol.Audience
-	guard            *shellApprovalServer
-	execTrack        *segments.Observer // Set for the UI when command shells are tracked.
-	skillsManager    bool
 	execWindows      *execWindowRegistry
 	nativeTrace      *nativetrace.Reader
 	control          sessioncontrol.Observations
@@ -78,20 +74,6 @@ func (p *mekugiProxy) notice(session, thread, category, message string) {
 	if p != nil && p.noticeSink != nil {
 		p.noticeSink(session, thread, category, message)
 	}
-}
-
-func (p *mekugiProxy) Close() error {
-	if p == nil {
-		return nil
-	}
-	p.calls.StopAdmission()
-	if p.execTrack != nil {
-		p.execTrack.Close()
-	}
-	p.guard.close()
-	p.calls.Close()
-	p.activity.Close()
-	return nil
 }
 
 type mekugiTranslationState struct {

@@ -111,7 +111,7 @@ type appServerUI struct {
 	nativeTrace             *nativetrace.Reader
 	retained                *mekugiReplayStore
 	captureNotice           func(string, string, string, string)
-	guard                   *shellApprovalServer
+	guard                   *sessioncontrol.ShellApprovals
 	execTrack               *commandsegments.Observer // Per-segment command reports; nil when not tracking.
 	shellEdits              appServerShellEdits
 	pendingEditReceipts     []*changepresentation.Receipt // Observed edits can precede their host Activity item.
@@ -204,7 +204,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 	u.execTrack = integration.execTrack
 	u.guard = integration.guard
 	if u.guard != nil {
-		u.approvals.initGuards(u.guard.guards)
+		u.approvals.initGuards(integration.guards)
 	}
 	if integration.skillsManager {
 		u.skillEnvironment = cmd.Environ()
@@ -314,7 +314,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 						u.commandSegmentRetained(err)
 					case update := <-u.titleUpdates:
 						u.persistSessionTitle(update)
-					case request := <-u.guardRequests():
+					case request := <-u.guard.Requests():
 						u.addGuardApproval(request)
 						u.dirty = true
 					case message, ok := <-c.Messages:

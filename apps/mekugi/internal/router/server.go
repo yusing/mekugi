@@ -16,22 +16,22 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 	"github.com/yusing/mekugi/backends/codex/nativetrace"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
-	"github.com/yusing/mekugi/backends/codex/binding"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
@@ -121,6 +121,8 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 		ctx = requestexecution.WithDebug(ctx, debug)
 	}
 	var mekugiCalls *mekugiProxy
+	var guardServer *sessioncontrol.ShellApprovals
+	var reportObserver *segmentservice.Observer
 	defer func() {
 		if debug != nil {
 			debug.Event(map[string]any{"event": "router_stop", "failed": runErr != nil, "storage_writes": debug.Writes().Snapshot()})
@@ -283,13 +285,16 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 			issues.Configure(requestexecution.FailureStorage{Diagnostics: diagnosis, Writes: writes, Store: replayStore.publication, Limits: replayStore.retentionLimits()})
 		}
 		defer func() {
-			runErr = errors.Join(runErr, mekugiCalls.Close())
+			mekugiCalls.calls.StopAdmission()
+			if reportObserver != nil {
+				reportObserver.Close()
+			}
+			guardServer.Close()
+			mekugiCalls.calls.Close()
+			mekugiCalls.activity.Close()
 		}()
 	}
 	skillsManagerAvailable := mekugiCalls != nil && skillsManagerInPath(frontendDirectory)
-	if mekugiCalls != nil {
-		mekugiCalls.skillsManager = skillsManagerAvailable
-	}
 
 	listener, err := net.Listen("tcp", defaultListenAddress)
 	if err != nil {
@@ -333,7 +338,7 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 	executor := requestexecution.Executor{Provider: provider, Client: provider, Issues: issues, ServiceTiers: serviceTiers, Naming: titleGenerator}
 	if mekugiCalls != nil {
 		executor.Observations, executor.Guidance = mekugiCalls, mekugiCalls.registry.Guidance
-		executor.SkillsManager, executor.Control, executor.Usage = mekugiCalls.skillsManager, &mekugiCalls.control, mekugiCalls.usage
+		executor.SkillsManager, executor.Control, executor.Usage = skillsManagerAvailable, &mekugiCalls.control, mekugiCalls.usage
 	}
 	webSocketEndpoint := inferencegateway.NewWebSocketEndpoint(ctx, options.Timeout, provider, executor.ExecuteWebSocket)
 	defer webSocketEndpoint.Close()
@@ -365,7 +370,7 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 				if len(session.Guards) != 0 {
 					guard, channel := shellapproval.Paths(frontendDirectory)
 					var approvalErr error
-					mekugiCalls.guard, approvalErr = listenShellApprovals(ctx, channel, shellapproval.Timeout, guards)
+					guardServer, approvalErr = sessioncontrol.ListenShellApprovals(ctx, channel, shellapproval.Timeout, guards)
 					if approvalErr != nil {
 						return nil, fmt.Errorf("listen for guarded shell commands: %w", approvalErr)
 					}
@@ -385,7 +390,7 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 					var hub *segmentservice.Observer
 					hub, reportErr = segmentservice.NewObserver(segments.Live, instrumentation, activitymodel.OutputBytes)
 					if reportErr == nil {
-						mekugiCalls.execTrack = hub
+						reportObserver = hub
 						mekugiCalls.execWindows.tracker = hub
 					} else {
 						segments.Live.Close()
@@ -399,7 +404,7 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 			if debug != nil {
 				debugDirectory = filepath.Dir(debug.Paths()[0])
 			}
-			return startAppServerUI(terminalViews, changes, views, conversation, activity, service, prefs, segments.Reports, ctx, cmd, stdin, stdout, appServerIntegration{controlObservations: &mekugiCalls.control, usage: mekugiCalls.usage, audience: mekugiCalls.activity, review: mekugiCalls.review, execWindows: mekugiCalls.execWindows, nativeTrace: mekugiCalls.nativeTrace, retained: mekugiCalls.replayStore, captureNotice: mekugiCalls.noticeSink, guard: mekugiCalls.guard, execTrack: mekugiCalls.execTrack, skillsManager: mekugiCalls.skillsManager}, issues, resumeThread, faint, serviceTiers, capture, resumeArgv, debugDirectory, titleGenerator, observations, approvals)
+			return startAppServerUI(terminalViews, changes, views, conversation, activity, service, prefs, segments.Reports, ctx, cmd, stdin, stdout, appServerIntegration{controlObservations: &mekugiCalls.control, usage: mekugiCalls.usage, audience: mekugiCalls.activity, review: mekugiCalls.review, execWindows: mekugiCalls.execWindows, nativeTrace: mekugiCalls.nativeTrace, retained: mekugiCalls.replayStore, captureNotice: mekugiCalls.noticeSink, guard: guardServer, guards: guards, execTrack: reportObserver, skillsManager: skillsManagerAvailable}, issues, resumeThread, faint, serviceTiers, capture, resumeArgv, debugDirectory, titleGenerator, observations, approvals)
 		}
 		if mekugiCalls != nil && mekugiCalls.nativeTrace != nil {
 			session.NativeTraceDirectory = mekugiCalls.nativeTrace.Directory()

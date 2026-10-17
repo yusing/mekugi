@@ -135,6 +135,13 @@ subsequent provider request can read it. Failed delivery publishes no feedback;
 turn completion retires only that turn's feedback. These observations carry no
 execution authority and do not replace the host request ledger.
 
+The invocation's shell-approval transport belongs to Session Control, independently
+of provider requests and command reports. It delivers guarded commands to the
+existing approval and secret-entry workflows. Withdrawal, timeout and shutdown
+retire pending questions; replies retain their original command identity. Guard
+policy and grants stay with the composed approval modules. Shutdown closes report
+observation and approval transport before draining retained request facts.
+
 ## Thread names
 
 Manual names entered before host identity wait for the admitted thread. Once

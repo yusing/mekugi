@@ -247,7 +247,7 @@ func TestInstantInterruptNativeCodexE2E(t *testing.T) {
 				cmd.Env, cmd.Dir = environment, workspace
 				return cmd
 			}
-			terminal := startAppResumeTerminalWithProxy(t, command, "", proxy)
+			terminal := startAppResumeTerminalWithIntegration(t, command, "", testAppServerIntegration(proxy))
 			terminal.await("Ready")
 			terminal.send("Start held work\r")
 			select {

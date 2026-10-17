@@ -433,7 +433,7 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 	auto.Enable()
 	setLiveScope(auto, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
 	sub := testReview(auto).Subscribe()
-	proxy := &mekugiProxy{execTrack: hub.Observer, execWindows: &execWindowRegistry{tracker: hub.Observer}, review: testReview(auto)}
+	proxy := &mekugiProxy{execWindows: &execWindowRegistry{tracker: hub.Observer}, review: testReview(auto)}
 	transform := &mekugiResponseTransform{proxy: proxy, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
 	transform.openExecWindow("cell", observation, nil)
 	defer proxy.execWindows.close("cell")
@@ -505,7 +505,7 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 			auto.Enable()
 			setLiveScope(auto, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
 			sub := testReview(auto).Subscribe()
-			proxy := &mekugiProxy{execTrack: hub.Observer, execWindows: &execWindowRegistry{tracker: hub.Observer}, review: testReview(auto)}
+			proxy := &mekugiProxy{execWindows: &execWindowRegistry{tracker: hub.Observer}, review: testReview(auto)}
 			transform := &mekugiResponseTransform{proxy: proxy, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
 			transform.openExecWindow("cell", observation, nil)
 			defer proxy.execWindows.close("cell")
@@ -636,7 +636,7 @@ func TestExecTrackPreviewDoesNotAdoptOlderInvocation(t *testing.T) {
 			auto.Enable()
 			setLiveScope(auto, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
 			sub := testReview(auto).Subscribe()
-			proxy := &mekugiProxy{execTrack: hub.Observer, execWindows: &execWindowRegistry{tracker: hub.Observer}, review: testReview(auto)}
+			proxy := &mekugiProxy{execWindows: &execWindowRegistry{tracker: hub.Observer}, review: testReview(auto)}
 			transform := &mekugiResponseTransform{proxy: proxy, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
 			transform.openExecWindow("new", observation, nil)
 			defer proxy.execWindows.close("new")
@@ -689,7 +689,7 @@ func TestExecTrackSiblingWindowsCannotShareFutureReport(t *testing.T) {
 	auto.Enable()
 	setLiveScope(auto, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
 	sub := testReview(auto).Subscribe()
-	proxy := &mekugiProxy{execTrack: hub.Observer, execWindows: &execWindowRegistry{tracker: hub.Observer}, review: testReview(auto)}
+	proxy := &mekugiProxy{execWindows: &execWindowRegistry{tracker: hub.Observer}, review: testReview(auto)}
 	transform := &mekugiResponseTransform{proxy: proxy, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
 	script := "cat > source.go <<'EOF'\nafter\nEOF\ngo test ./..."
 	for _, id := range []string{"one", "two"} {

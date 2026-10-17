@@ -206,3 +206,14 @@ func runOwnedToolPluginWorker(service *history.Service, recovered *recovery.Serv
 	}
 	return true, invocation.Run(service, recovered, new(evidence.Service), commands, command.DedicatedHostProcess, ctx, args, stdin, stdout, stderr)
 }
+
+// Close releases the actual owners created by request fixtures.
+func (p *mekugiProxy) Close() error {
+	if p == nil {
+		return nil
+	}
+	p.calls.StopAdmission()
+	p.calls.Close()
+	p.activity.Close()
+	return nil
+}

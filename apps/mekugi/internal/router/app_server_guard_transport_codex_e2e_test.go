@@ -31,8 +31,9 @@ func TestAppServerGuardTransportFailureNativeCodex(t *testing.T) {
 			shell := newVCSGuardShell(t)
 			proxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, proxy)
-			proxy.execTrack = shell.hub.Observer
-			proxy.guard = shell.guard
+			integration := testAppServerIntegration(proxy)
+			integration.execTrack = shell.hub.Observer
+			integration.guard, integration.guards = shell.guard, testGuards()
 			helper, err := execTrackHelper()
 			if err != nil {
 				t.Fatal(err)
@@ -98,7 +99,7 @@ func TestAppServerGuardTransportFailureNativeCodex(t *testing.T) {
 				observeRequest: func(_ []byte, _ http.Header) error { return injectOnce() },
 			}
 			prompted := false
-			runAppServerPreviewWith(t, provider, proxy, appServerPreview{
+			runAppServerPreviewWith(t, provider, proxy, appServerPreview{integration: &integration,
 				environment: []string{"PATH=" + execTrackPath(), shellhook.Environment + "=" + hash},
 				codexArgs:   args,
 				duringTurn: func(t *testing.T, outer io.Writer, _ func(string), awaitFrame func(func(string) bool), screen *vt.Emulator) {

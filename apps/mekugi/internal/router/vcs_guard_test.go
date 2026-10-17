@@ -9,26 +9,26 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
-
-	"github.com/yusing/mekugi/backends/codex/shellapproval"
 )
 
 type approvalShell struct {
 	*execTrackShell
-	guard *shellApprovalServer
+	guard *sessioncontrol.ShellApprovals
 }
 
 func newApprovalShell(t *testing.T, timeout time.Duration) *approvalShell {
 	t.Helper()
 	shell := newExecTrackShell(t)
 	_, channel := shellapproval.Paths(filepath.Join(shell.root, "bin"))
-	guard, err := listenShellApprovals(t.Context(), channel, timeout, testGuards())
+	guard, err := sessioncontrol.ListenShellApprovals(t.Context(), channel, timeout, testGuards())
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(guard.close)
+	t.Cleanup(guard.Close)
 	return &approvalShell{execTrackShell: shell, guard: guard}
 }
 
@@ -104,9 +104,9 @@ func (s *vcsGuardShell) answer(t *testing.T, ok bool) <-chan []string {
 	go func() {
 		for {
 			select {
-			case request := <-s.guard.requests:
-				asked <- request.argv
-				request.reply <- shellapproval.Reply{OK: ok, Reason: "denied in test"}
+			case request := <-s.guard.Requests():
+				asked <- request.Argv
+				request.Reply <- shellapproval.Reply{OK: ok, Reason: "denied in test"}
 			case <-t.Context().Done():
 				return
 			}
@@ -202,16 +202,16 @@ func TestVCSGuardDeniesWithoutAnswer(t *testing.T) {
 	if run.code != 0 || run.stdout != "1\n" || run.stderr != "mekugi: remote write denied: no answer within 5 minutes\n" {
 		t.Fatalf("unreceived run = %+v", run)
 	}
-	taken := make(chan *vcsApproval, 1)
-	go func() { taken <- <-shell.guard.requests }()
+	taken := make(chan *sessioncontrol.ShellApprovalRequest, 1)
+	go func() { taken <- <-shell.guard.Requests() }()
 	run = runExecTrackShell(t, shell.env, "gh pr merge 1; echo $?")
 	if run.stdout != "1\n" || !strings.Contains(run.stderr, "no answer within 5 minutes") {
 		t.Fatalf("received run = %+v", run)
 	}
 	request := <-taken
-	<-request.done
-	if request.outcome != "timed out" {
-		t.Fatalf("outcome = %q", request.outcome)
+	<-request.Done
+	if request.Outcome != "timed out" {
+		t.Fatalf("outcome = %q", request.Outcome)
 	}
 	if got := shell.invoked(t); len(got) != 0 {
 		t.Fatalf("real tools ran %q", got)
@@ -256,22 +256,22 @@ func TestVCSGuardSkipsAnotherSessionsGuard(t *testing.T) {
 func TestVCSGuardWithdrawalAndUnreachableRouter(t *testing.T) {
 	t.Parallel()
 	shell := newVCSGuardShell(t)
-	taken := make(chan *vcsApproval, 1)
-	go func() { taken <- <-shell.guard.requests }()
+	taken := make(chan *sessioncontrol.ShellApprovalRequest, 1)
+	go func() { taken <- <-shell.guard.Requests() }()
 	run := runExecTrackShell(t, shell.env, "timeout 1 git push; echo $?")
 	if run.stdout != "124\n" {
 		t.Fatalf("interrupted run = %+v", run)
 	}
 	request := <-taken
 	select {
-	case <-request.done:
+	case <-request.Done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("request was not withdrawn")
 	}
-	if request.outcome != "withdrawn" {
-		t.Fatalf("outcome = %q", request.outcome)
+	if request.Outcome != "withdrawn" {
+		t.Fatalf("outcome = %q", request.Outcome)
 	}
-	shell.guard.close()
+	shell.guard.Close()
 	run = runExecTrackShell(t, shell.env, "git push; echo $?; git status")
 	if run.stdout != "1\n" || run.stderr != "mekugi: remote write denied: Mekugi approval is unavailable\n" {
 		t.Fatalf("unreachable run = %+v", run)
@@ -327,17 +327,17 @@ func TestVCSGuardConcurrentApprovalRequests(t *testing.T) {
 	seen := make(map[string]bool)
 	for range commands {
 		select {
-		case request := <-shell.guard.requests:
-			if len(request.argv) != 5 || request.argv[0] != "gh" || request.argv[3] != "--body" {
-				t.Fatalf("request = %q", request.argv)
+		case request := <-shell.guard.Requests():
+			if len(request.Argv) != 5 || request.Argv[0] != "gh" || request.Argv[3] != "--body" {
+				t.Fatalf("request = %q", request.Argv)
 			}
-			body := request.argv[4]
+			body := request.Argv[4]
 			prefix, content, ok := strings.Cut(body, "-ünïcode")
 			if !ok || seen[prefix] || content != " body "+strings.Repeat("ünïcode body ", 999) {
 				t.Fatalf("request body was lost or mixed: prefix=%q, bytes=%d", prefix, len(body))
 			}
 			seen[prefix] = true
-			request.reply <- shellapproval.Reply{Reason: "concurrent denial"}
+			request.Reply <- shellapproval.Reply{Reason: "concurrent denial"}
 		case <-time.After(5 * time.Second):
 			t.Fatal("approval request missing")
 		}
@@ -363,18 +363,14 @@ func TestVCSGuardClosesPendingApproval(t *testing.T) {
 	}
 	results := make(chan execTrackRun, 1)
 	go func() { results <- runExecTrackShell(t, shell.env, "git push") }()
-	var request *vcsApproval
+	var request *sessioncontrol.ShellApprovalRequest
 	select {
-	case request = <-shell.guard.requests:
+	case request = <-shell.guard.Requests():
 	case <-time.After(5 * time.Second):
 		t.Fatal("approval did not arrive")
 	}
-	proxy := newManagedMekugiProxy(t)
-	proxy.execTrack = shell.hub.Observer
-	proxy.guard = shell.guard
-	if err := proxy.Close(); err != nil {
-		t.Fatal(err)
-	}
+	shell.hub.Observer.Close()
+	shell.guard.Close()
 	select {
 	case run := <-results:
 		if run.code != 1 || !strings.Contains(run.stderr, "remote write denied") {
@@ -383,9 +379,9 @@ func TestVCSGuardClosesPendingApproval(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("command did not finish after router close")
 	}
-	<-request.done
-	if request.outcome != "withdrawn" {
-		t.Fatalf("outcome = %q", request.outcome)
+	<-request.Done
+	if request.Outcome != "withdrawn" {
+		t.Fatalf("outcome = %q", request.Outcome)
 	}
 	for _, path := range []string{link, filepath.Dir(socket)} {
 		if _, err := os.Lstat(path); !os.IsNotExist(err) {

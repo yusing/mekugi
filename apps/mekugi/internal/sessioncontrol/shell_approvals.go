@@ -1,4 +1,4 @@
-package router
+package sessioncontrol
 
 import (
 	"context"
@@ -17,42 +17,43 @@ import (
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
 )
 
-// vcsApproval is one guarded remote write waiting for the user. The guard
-// handler owns its lifetime: it closes done when the command stops waiting,
-// after setting outcome, so the UI never answers a request nobody reads.
-type vcsApproval struct {
-	thread, cwd string
-	kind        string
-	item        string // Exact commandExecution item from the native hook.
-	executable  string
-	argv        []string
-	reply       chan shellapproval.Reply // Buffered; the UI's answer.
-	done        chan struct{}
-	outcome     string // Why the request ended without the UI's answer.
+// ShellApprovalRequest is one guarded command waiting for the user. The guard
+// handler owns its lifetime: it closes Done when the command stops waiting,
+// after setting Outcome, so the UI never answers a request nobody reads.
+// Source: apps/mekugi/internal/router/vcs_guard.go:20:167@[eaf0b69a] approval transport.
+type ShellApprovalRequest struct {
+	Thread, Cwd string
+	Kind        string
+	Item        string // Exact commandExecution item from the native hook.
+	Executable  string
+	Argv        []string
+	Reply       chan shellapproval.Reply // Buffered; the UI's answer.
+	Done        chan struct{}
+	Outcome     string // Why the request ended without the UI's answer.
 }
 
-func (a *vcsApproval) finished() bool {
+func (a *ShellApprovalRequest) Finished() bool {
 	select {
-	case <-a.done:
+	case <-a.Done:
 		return true
 	default:
 		return false
 	}
 }
 
-// shellApprovalServer owns the shared VCS/sudo decision channel independently
+// ShellApprovals owns the shared VCS/sudo decision channel independently
 // of command reports. Request completion and secret handling stay with callers.
-type shellApprovalServer struct {
+type ShellApprovals struct {
 	guards   []binding.ShellApproval
-	requests chan *vcsApproval
+	requests chan *ShellApprovalRequest
 	timeout  time.Duration
 	cancel   context.CancelFunc
 	done     chan struct{}
 }
 
-// listenShellApprovals accepts one connection per command. The invoking host
+// ListenShellApprovals accepts one connection per command. The invoking host
 // must permit connecting to the session-local approval socket.
-func listenShellApprovals(ctx context.Context, path string, timeout time.Duration, guards []binding.ShellApproval) (*shellApprovalServer, error) {
+func ListenShellApprovals(ctx context.Context, path string, timeout time.Duration, guards []binding.ShellApproval) (*ShellApprovals, error) {
 	// Frontend paths can exceed Unix socket limits. The link stays in the
 	// authenticated frontend snapshot; the actual socket has a short private path.
 	directory, err := os.MkdirTemp("/tmp", "mekugi-vcs-")
@@ -76,7 +77,7 @@ func listenShellApprovals(ctx context.Context, path string, timeout time.Duratio
 		os.Remove(directory)
 	})
 	ctx, cancel := context.WithCancel(ctx)
-	server := &shellApprovalServer{guards: slices.Clone(guards), requests: make(chan *vcsApproval), timeout: timeout, cancel: cancel, done: make(chan struct{})}
+	server := &ShellApprovals{guards: slices.Clone(guards), requests: make(chan *ShellApprovalRequest), timeout: timeout, cancel: cancel, done: make(chan struct{})}
 	stop := context.AfterFunc(ctx, cleanup)
 	go func() {
 		var requests sync.WaitGroup
@@ -98,7 +99,15 @@ func listenShellApprovals(ctx context.Context, path string, timeout time.Duratio
 	return server, nil
 }
 
-func (s *shellApprovalServer) close() {
+// Requests supplies invocation-local decisions, independent of report delivery.
+func (s *ShellApprovals) Requests() <-chan *ShellApprovalRequest {
+	if s == nil {
+		return nil
+	}
+	return s.requests
+}
+
+func (s *ShellApprovals) Close() {
 	if s == nil {
 		return
 	}
@@ -106,7 +115,7 @@ func (s *shellApprovalServer) close() {
 	<-s.done
 }
 
-func (h *shellApprovalServer) approve(ctx context.Context, conn net.Conn) {
+func (h *ShellApprovals) approve(ctx context.Context, conn net.Conn) {
 	defer conn.Close()
 	stop := context.AfterFunc(ctx, func() { conn.Close() })
 	defer stop()
@@ -135,26 +144,26 @@ func (h *shellApprovalServer) approve(ctx context.Context, conn net.Conn) {
 		close(gone)
 	}()
 	defer func() { conn.Close(); <-gone }()
-	request := &vcsApproval{kind: message.Kind, thread: message.Thread, item: message.Item, cwd: message.Cwd, executable: message.Executable, argv: message.Argv, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})}
-	defer close(request.done)
-	request.outcome = "withdrawn"
+	request := &ShellApprovalRequest{Kind: message.Kind, Thread: message.Thread, Item: message.Item, Cwd: message.Cwd, Executable: message.Executable, Argv: message.Argv, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})}
+	defer close(request.Done)
+	request.Outcome = "withdrawn"
 	timer := time.NewTimer(time.Until(deadline))
 	defer timer.Stop()
 	answer := shellapproval.Reply{Reason: "no answer within 5 minutes"}
 	select {
 	case h.requests <- request:
 		select {
-		case answer = <-request.reply:
-			request.outcome = ""
+		case answer = <-request.Reply:
+			request.Outcome = ""
 		case <-timer.C:
-			request.outcome = "timed out"
+			request.Outcome = "timed out"
 		case <-gone:
 			return
 		case <-ctx.Done():
 			return
 		}
 	case <-timer.C:
-		request.outcome = "timed out"
+		request.Outcome = "timed out"
 	case <-gone:
 		return
 	case <-ctx.Done():

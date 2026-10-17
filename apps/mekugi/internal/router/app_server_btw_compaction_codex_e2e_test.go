@@ -92,11 +92,11 @@ func TestAppServerBTWCompactionNativeCodexE2E(t *testing.T) {
 	}))
 	defer server.Close()
 	environment, workspace := routerFaultCodexEnvironment(t), t.TempDir()
-	terminal := startAppResumeTerminalWithProxy(t, func(ctx context.Context) *exec.Cmd {
+	terminal := startAppResumeTerminalWithIntegration(t, func(ctx context.Context) *exec.Cmd {
 		cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.btw_fixture={name="btw_fixture",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="btw_fixture"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false", "-c", "model_auto_compact_token_limit=100000")
 		cmd.Env, cmd.Dir = environment, workspace
 		return cmd
-	}, "", proxy)
+	}, "", testAppServerIntegration(proxy))
 	defer terminal.cancel()
 	terminal.await("Ready")
 	terminal.send("Seed Main context.\r")

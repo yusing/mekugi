@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
 )
 
@@ -25,12 +26,12 @@ func TestShellApprovalLifecycleIndependentOfReports(t *testing.T) {
 		go func() { results <- runExecTrackShell(t, shell.env, "git push origin main") }()
 		return results
 	}
-	awaitRequest := func(results <-chan execTrackRun) *vcsApproval {
+	awaitRequest := func(results <-chan execTrackRun) *sessioncontrol.ShellApprovalRequest {
 		t.Helper()
 		select {
-		case request := <-shell.guard.requests:
-			if !slices.Equal(request.argv, []string{"git", "push", "origin", "main"}) {
-				t.Fatalf("approval argv = %q", request.argv)
+		case request := <-shell.guard.Requests():
+			if !slices.Equal(request.Argv, []string{"git", "push", "origin", "main"}) {
+				t.Fatalf("approval argv = %q", request.Argv)
 			}
 			return request
 		case run := <-results:
@@ -56,7 +57,7 @@ func TestShellApprovalLifecycleIndependentOfReports(t *testing.T) {
 	if got := shell.invoked(t); len(got) != 0 {
 		t.Fatalf("command ran before approval: %q", got)
 	}
-	request.reply <- shellapproval.Reply{OK: true}
+	request.Reply <- shellapproval.Reply{OK: true}
 	if run := awaitRun(results); run.code != 0 || run.stderr != "" {
 		t.Fatalf("approved command: %+v", run)
 	}
@@ -66,11 +67,11 @@ func TestShellApprovalLifecycleIndependentOfReports(t *testing.T) {
 
 	results = start()
 	request = awaitRequest(results)
-	shell.guard.close()
+	shell.guard.Close()
 	select {
-	case <-request.done:
-		if request.outcome != "withdrawn" {
-			t.Fatalf("closed approval outcome = %q", request.outcome)
+	case <-request.Done:
+		if request.Outcome != "withdrawn" {
+			t.Fatalf("closed approval outcome = %q", request.Outcome)
 		}
 	default:
 		t.Fatal("approval owner returned before withdrawing its request")

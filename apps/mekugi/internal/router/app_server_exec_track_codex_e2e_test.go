@@ -44,7 +44,8 @@ func TestAppServerExecTrackNativeCodexDash(t *testing.T) {
 	}
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
-	proxy.execTrack = shell.hub.Observer
+	integration := testAppServerIntegration(proxy)
+	integration.execTrack = shell.hub.Observer
 	gate := filepath.Join(shell.root, "continue")
 	command := "echo DASH_ONE; { sleep 1; while [ ! -f " + quoteShellWord(gate) + " ]; do sleep 0.05; done; }; echo DASH_TWO >&2; false && echo DASH_NEVER"
 	provider := &toolFrontendCodexProvider{
@@ -150,7 +151,7 @@ func TestAppServerExecTrackNativeCodexDash(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	runAppServerPreviewWith(t, provider, proxy, appServerPreview{
+	runAppServerPreviewWith(t, provider, proxy, appServerPreview{integration: &integration,
 		environment: []string{"PATH=" + execTrackPath(), shellinstrumentation.ShTrackerEnvironment + "=" + tracker},
 		codexArgs:   []string{"-c", hook, "-c", state},
 		duringTurn:  during, afterPrompt: after,
@@ -190,7 +191,8 @@ func TestAppServerExecTrackNativeCodex(t *testing.T) {
 	}
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
-	proxy.execTrack = shell.hub.Observer
+	integration := testAppServerIntegration(proxy)
+	integration.execTrack = shell.hub.Observer
 	// Match the launcher: the parent test command's identity is not the new
 	// Codex process's hook environment. Codex injects identity into its tools.
 	environment := []string{"CODEX_THREAD_ID="}
@@ -219,7 +221,7 @@ func TestAppServerExecTrackNativeCodex(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	runAppServerPreviewWith(t, provider, proxy, appServerPreview{
+	runAppServerPreviewWith(t, provider, proxy, appServerPreview{integration: &integration,
 		environment: environment, afterPrompt: after,
 		codexArgs: []string{"-c", hook, "-c", state},
 	})
@@ -236,7 +238,8 @@ func TestAppServerExecTrackNativeCodexSandbox(t *testing.T) {
 			shell := newExecTrackShell(t)
 			proxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, proxy)
-			proxy.execTrack = shell.hub.Observer
+			integration := testAppServerIntegration(proxy)
+			integration.execTrack = shell.hub.Observer
 			var environment []string
 			for _, entry := range shell.env {
 				if strings.HasPrefix(entry, "BASH_ENV=") {
@@ -264,7 +267,7 @@ func TestAppServerExecTrackNativeCodexSandbox(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			runAppServerPreviewWith(t, provider, proxy, appServerPreview{
+			runAppServerPreviewWith(t, provider, proxy, appServerPreview{integration: &integration,
 				environment: environment,
 				codexArgs:   []string{"-c", `sandbox_mode="` + sandbox + `"`, "-c", `approval_policy="on-request"`},
 				approvals:   true,

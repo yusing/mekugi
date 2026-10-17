@@ -148,7 +148,7 @@ func TestNonTerminalApprovalDecisionsPreserveIdentityAndReason(t *testing.T) {
 
 func TestNonTerminalGuardDecisionUsesPublishedChoice(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/work")
-	request := &vcsApproval{thread: "main", cwd: "/work", argv: []string{"git", "push"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})}
+	request := &sessioncontrol.ShellApprovalRequest{Thread: "main", Cwd: "/work", Argv: []string{"git", "push"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})}
 	u.addGuardApproval(request)
 	v := u.publishPresentation(u.now())
 	a := v.Approvals.Approval
@@ -158,10 +158,10 @@ func TestNonTerminalGuardDecisionUsesPublishedChoice(t *testing.T) {
 	if err := u.decideApproval(sessionpresentation.ApprovalIntent{Version: v.Version, Request: a.ID, Choice: a.Choices[2].ID, Reason: "keep local"}); err != nil {
 		t.Fatal(err)
 	}
-	if reply := <-request.reply; reply.OK || reply.Reason != "user denied this command with a reason: keep local" {
+	if reply := <-request.Reply; reply.OK || reply.Reason != "user denied this command with a reason: keep local" {
 		t.Fatalf("wrong guard decision: %+v", reply)
 	}
-	request = &vcsApproval{thread: "main", cwd: "/work", argv: []string{"git", "push"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})}
+	request = &sessioncontrol.ShellApprovalRequest{Thread: "main", Cwd: "/work", Argv: []string{"git", "push"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})}
 	u.addGuardApproval(request)
 	if next := u.publishPresentation(u.now()).Approvals.Approval.ID; next == "" || next == a.ID {
 		t.Fatal("retired local request identity was reused")
@@ -285,14 +285,14 @@ func TestNativeApprovalWaitsForAnEmptyComposer(t *testing.T) {
 func TestNativeApprovalGuardedWrite(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/work")
 	id := 0
-	newRequest := func() *vcsApproval {
+	newRequest := func() *sessioncontrol.ShellApprovalRequest {
 		id++
 		item := fmt.Sprintf("cmd-%d", id)
 		appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": binding.ThreadItem{ID: item, Type: "commandExecution", Command: "git push origin main", Status: "inProgress"}})
-		return &vcsApproval{thread: "main", item: item, cwd: "/work", argv: []string{"git", "push", "origin", "main"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})}
+		return &sessioncontrol.ShellApprovalRequest{Thread: "main", Item: item, Cwd: "/work", Argv: []string{"git", "push", "origin", "main"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})}
 	}
 	approved, denied, expired := newRequest(), newRequest(), newRequest()
-	for _, request := range []*vcsApproval{approved, denied, expired} {
+	for _, request := range []*sessioncontrol.ShellApprovalRequest{approved, denied, expired} {
 		u.addGuardApproval(request)
 	}
 	paint := ansi.Strip(questionTestPaint(t, u, 80))
@@ -302,19 +302,19 @@ func TestNativeApprovalGuardedWrite(t *testing.T) {
 		}
 	}
 	appServerTestKeys(t, u, "\r")
-	if reply := <-approved.reply; !reply.OK {
+	if reply := <-approved.Reply; !reply.OK {
 		t.Fatalf("approval reply = %+v", reply)
 	}
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "3\r")
-	if reply := <-denied.reply; reply.OK || reply.Reason != "user denied this command without a reason" {
+	if reply := <-denied.Reply; reply.OK || reply.Reason != "user denied this command without a reason" {
 		t.Fatalf("denial reply = %+v", reply)
 	}
-	expired.outcome = "timed out"
-	close(expired.done)
+	expired.Outcome = "timed out"
+	close(expired.Done)
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "\r") // The command has its answer; nothing is sent.
-	if len(expired.reply) != 0 || len(u.pendingApprovals()) != 0 {
+	if len(expired.Reply) != 0 || len(u.pendingApprovals()) != 0 {
 		t.Fatal("expired write was answered")
 	}
 	for i, want := range []string{"Approved", "Denied", "Auto Denied: no answer within 5 minutes"} {
@@ -324,8 +324,8 @@ func TestNativeApprovalGuardedWrite(t *testing.T) {
 	}
 	withdrawn := newRequest()
 	u.addGuardApproval(withdrawn)
-	withdrawn.outcome = "withdrawn"
-	close(withdrawn.done)
+	withdrawn.Outcome = "withdrawn"
+	close(withdrawn.Done)
 	if !u.expireApprovals() || strings.Contains(approvalTestTranscript(t, u), "Approval") || u.view.Entries[3].Source.native.approval != "Withdrawn: the command stopped\nCommand: git push origin main" {
 		t.Fatalf("transcript = %q", approvalTestTranscript(t, u))
 	}
@@ -350,40 +350,40 @@ func TestNativeApprovalGuardSessionMatchesExactCommandAndWorkdir(t *testing.T) {
 			if tool == "sudo" {
 				kind = "sudo"
 			}
-			request := func(cwd string, argv ...string) *vcsApproval {
-				return &vcsApproval{cwd: cwd, kind: kind, executable: "/bin/" + tool, argv: argv, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})}
+			request := func(cwd string, argv ...string) *sessioncontrol.ShellApprovalRequest {
+				return &sessioncontrol.ShellApprovalRequest{Cwd: cwd, Kind: kind, Executable: "/bin/" + tool, Argv: argv, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})}
 			}
 			first, queued := request("/work", tool, "push", "origin", "main"), request("/work", tool, "push", "origin", "main")
 			u.addGuardApproval(first)
 			u.addGuardApproval(queued)
 			questionTestPaint(t, u, 80)
 			appServerTestKeys(t, u, "2\r")
-			for _, r := range []*vcsApproval{first, queued, request("/work", tool, "push", "origin", "main")} {
+			for _, r := range []*sessioncontrol.ShellApprovalRequest{first, queued, request("/work", tool, "push", "origin", "main")} {
 				if r != first && r != queued {
 					u.addGuardApproval(r)
 				}
-				if len(r.reply) != 1 || !(<-r.reply).OK || len(u.pendingApprovals()) != 0 {
+				if len(r.Reply) != 1 || !(<-r.Reply).OK || len(u.pendingApprovals()) != 0 {
 					t.Fatal("exact session approval was not reused")
 				}
 			}
 			if tool == "sudo" {
 				password := request("/work", tool, "push", "origin", "main")
-				password.kind = "sudo-password"
+				password.Kind = "sudo-password"
 				u.addGuardApproval(password)
-				if len(password.reply) != 0 || len(u.pendingApprovals()) != 0 || len(u.questionCalls()) != 1 {
+				if len(password.Reply) != 0 || len(u.pendingApprovals()) != 0 || len(u.questionCalls()) != 1 {
 					t.Fatal("command session grant answered a password request")
 				}
 				questionTestPaint(t, u, 80)
 				appServerTestKeys(t, u, "fixture-password\r")
-				if reply := <-password.reply; !reply.OK || reply.Password != "fixture-password" {
+				if reply := <-password.Reply; !reply.OK || reply.Password != "fixture-password" {
 					t.Fatal("session grant did not leave password entry independent")
 				}
 			}
 			otherExecutable := request("/work", tool, "push", "origin", "main")
-			otherExecutable.executable = "/other/" + tool
-			for _, r := range []*vcsApproval{request("/other", tool, "push", "origin", "main"), request("/work", tool, "push", "origin", "other"), request("/work", tool, "push", "origin main"), otherExecutable} {
+			otherExecutable.Executable = "/other/" + tool
+			for _, r := range []*sessioncontrol.ShellApprovalRequest{request("/other", tool, "push", "origin", "main"), request("/work", tool, "push", "origin", "other"), request("/work", tool, "push", "origin main"), otherExecutable} {
 				u.addGuardApproval(r)
-				if len(r.reply) != 0 {
+				if len(r.Reply) != 0 {
 					t.Fatal("session approval broadened to another command or workdir")
 				}
 			}
@@ -407,9 +407,9 @@ func TestNativeApprovalTypedDenialReachesCommand(t *testing.T) {
 			image := answerImageFixture(t)
 			u.attachImage(image)
 			kept := u.Text
-			request := <-shell.guard.requests
-			if request.executable != shell.real+"/git" {
-				t.Fatalf("resolved executable = %q", request.executable)
+			request := <-shell.guard.Requests()
+			if request.Executable != shell.real+"/git" {
+				t.Fatalf("resolved executable = %q", request.Executable)
 			}
 			u.addGuardApproval(request)
 			u.openApprovals()
@@ -623,10 +623,10 @@ func TestUISnapshotNativeApprovalDock(t *testing.T) {
 			approvalTestCommand(t, u, 1, map[string]any{"reason": "Publish the release branch."})
 		}},
 		{"approval-guarded-write", 80, func(t *testing.T, u *appServerUI) {
-			u.addGuardApproval(&vcsApproval{thread: "main", cwd: "/workspace", argv: []string{"gh", "pr", "merge", "12", "--squash"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})})
+			u.addGuardApproval(&sessioncontrol.ShellApprovalRequest{Thread: "main", Cwd: "/workspace", Argv: []string{"gh", "pr", "merge", "12", "--squash"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})})
 		}},
 		{"approval-guarded-denial", 80, func(t *testing.T, u *appServerUI) {
-			u.addGuardApproval(&vcsApproval{cwd: "/workspace", argv: []string{"git", "push"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})})
+			u.addGuardApproval(&sessioncontrol.ShellApprovalRequest{Cwd: "/workspace", Argv: []string{"git", "push"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})})
 			questionTestPaint(t, u, 80)
 			appServerTestKeys(t, u, "do not publish yet")
 		}},
@@ -684,7 +684,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 				u.shell.paintOutput(make([]string, 18), 80, 18)
 			}
 			if tc.guard {
-				u.addGuardApproval(&vcsApproval{thread: thread, item: "cmd", argv: []string{"git", "push", "origin", "main"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})})
+				u.addGuardApproval(&sessioncontrol.ShellApprovalRequest{Thread: thread, Item: "cmd", Argv: []string{"git", "push", "origin", "main"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})})
 			} else {
 				approvalTestCommand(t, u, 7, map[string]any{"threadId": thread, "availableDecisions": []string{"accept", "decline"}})
 			}

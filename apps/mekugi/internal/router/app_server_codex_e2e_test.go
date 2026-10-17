@@ -116,6 +116,7 @@ type appServerPreviewHook func(*testing.T, io.Writer, func(string), func(func(st
 
 // appServerPreview configures a preview run beyond its provider and proxy.
 type appServerPreview struct {
+	integration               *appServerIntegration
 	environment               []string // Appended to Codex's isolated environment.
 	codexArgs                 []string // Appended to the app-server invocation.
 	approvals                 bool     // Run in approval mode rather than --yolo's policy.
@@ -162,7 +163,11 @@ func runAppServerPreviewWith(t *testing.T, provider inferencegateway.Forwarder, 
 	conversation := new(conversationmodel.Service)
 	observations := conversationbinding.Codex.Observation(conversation)
 	reviewSource := new(changecapture.Service)
-	wait, err := startAppServerUI(testTerminalViews(reviewSource), reviewSource, testPresentation(), conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, cmd, terminal, terminal, testAppServerIntegration(proxy), nil, "", true, nil, nil, nil, "", nil, &observations, options.approvals)
+	integration := testAppServerIntegration(proxy)
+	if options.integration != nil {
+		integration = *options.integration
+	}
+	wait, err := startAppServerUI(testTerminalViews(reviewSource), reviewSource, testPresentation(), conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, cmd, terminal, terminal, integration, nil, "", true, nil, nil, nil, "", nil, &observations, options.approvals)
 	if err != nil {
 		t.Fatal(err)
 	}

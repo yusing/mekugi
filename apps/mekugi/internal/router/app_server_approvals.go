@@ -2,6 +2,9 @@ package router
 
 import (
 	"encoding/json/jsontext"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+
 	json "encoding/json/v2"
 	"fmt"
 	"slices"
@@ -9,15 +12,15 @@ import (
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
-	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	"github.com/yusing/mekugi/contracts/approval"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
+
 	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
 )
 
@@ -26,7 +29,7 @@ type nativeApproval struct {
 	*prompt.Approval
 	request   jsontext.Value
 	responses []map[string]any
-	guard     *vcsApproval
+	guard     *sessioncontrol.ShellApprovalRequest
 	layout    conversationui.ApprovalLayout
 }
 type nativeApprovalDock struct {
@@ -53,9 +56,9 @@ func (d *nativeApprovalDock) initGuards(guards []binding.ShellApproval) {
 	}
 }
 
-func guardApprovalIdentity(request *vcsApproval) approval.Command {
-	command, _ := json.Marshal(request.argv)
-	return approval.Command{Directory: request.cwd, Executable: request.executable, Arguments: string(command)}
+func guardApprovalIdentity(request *sessioncontrol.ShellApprovalRequest) approval.Command {
+	command, _ := json.Marshal(request.Argv)
+	return approval.Command{Directory: request.Cwd, Executable: request.Executable, Arguments: string(command)}
 }
 
 // threadPermissions keeps --yolo's policy on thread requests. Approval mode
@@ -65,14 +68,6 @@ func (u *appServerUI) threadPermissions(params map[string]any) map[string]any {
 		params["approvalPolicy"], params["sandbox"] = "never", "danger-full-access"
 	}
 	return params
-}
-
-// guardRequests receives shell decisions from the invocation approval server.
-func (u *appServerUI) guardRequests() <-chan *vcsApproval {
-	if u.guard == nil {
-		return nil
-	}
-	return u.guard.requests
 }
 
 func (u *appServerUI) approvalAgent(thread string) string {
@@ -108,42 +103,42 @@ func (u *appServerUI) addApproval(a *nativeApproval) {
 	u.autoOpenApprovals()
 }
 
-func (u *appServerUI) addGuardApproval(request *vcsApproval) {
-	if request.finished() {
+func (u *appServerUI) addGuardApproval(request *sessioncontrol.ShellApprovalRequest) {
+	if request.Finished() {
 		return
 	}
-	kind, known := binding.GuardForRequest(request.kind)
+	kind, known := binding.GuardForRequest(request.Kind)
 	grants := u.approvals.grants[kind]
 	if !known || grants == nil {
-		request.reply <- shellapproval.Reply{Reason: "approval module is not active"}
+		request.Reply <- shellapproval.Reply{Reason: "approval module is not active"}
 		return
 	}
-	details := u.approvalDirectory(request.cwd)
+	details := u.approvalDirectory(request.Cwd)
 	details = append(details, "Denying fails only this command with exit status 1.")
-	a := &nativeApproval{Approval: &prompt.Approval{Thread: request.thread, Item: request.item, Title: "Allow this remote write?", Subject: shellCommandString(request.argv[0], request.argv[1:]), Details: details, Choices: []prompt.Choice{
+	a := &nativeApproval{Approval: &prompt.Approval{Thread: request.Thread, Item: request.Item, Title: "Allow this remote write?", Subject: shellCommandString(request.Argv[0], request.Argv[1:]), Details: details, Choices: []prompt.Choice{
 		{ID: 0, Label: "Yes, run it", Approve: true, Outcome: "Approved"},
 		{ID: 1, Label: "Yes, for this exact command and workdir this session", Approve: true, Session: true, Outcome: "Approved for this session"},
 		{ID: 2, Label: "No, fail this command", Deny: true, Outcome: "Denied"},
 	}},
 		guard: request}
-	if request.kind == "sudo" {
+	if request.Kind == "sudo" {
 		a.Title = "Allow this sudo command?"
 	}
 	// Match only the hook's exact host item. An environment-clearing wrapper
 	// can omit the thread; an ambiguous item is never attributed by recency.
-	if request.item != "" {
-		if owner := u.approvalItem(request.thread, "", request.item); owner != nil {
+	if request.Item != "" {
+		if owner := u.approvalItem(request.Thread, "", request.Item); owner != nil {
 			a.Thread, a.Turn, a.Item = owner.thread, owner.turn, owner.item
 		}
 	}
 	// Password requests are never command approvals or session-grant lookups.
-	if request.kind == "sudo-password" {
+	if request.Kind == "sudo-password" {
 		u.openSudoPassword(a)
 		return
 	}
 	if grants.Allows(guardApprovalIdentity(request)) {
 		u.recordApproval(a, "Approved for this session")
-		request.reply <- shellapproval.Reply{OK: true}
+		request.Reply <- shellapproval.Reply{OK: true}
 		return
 	}
 	u.addApproval(a)
@@ -242,9 +237,9 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 func (u *appServerUI) expireApprovals() bool {
 	changed := u.expireSudoPasswords()
 	for _, a := range slices.Clone(u.pendingApprovals()) {
-		if a.guard != nil && a.guard.finished() {
+		if a.guard != nil && a.guard.Finished() {
 			outcome := "Auto Denied: no answer within 5 minutes"
-			if a.guard.outcome == "withdrawn" {
+			if a.guard.Outcome == "withdrawn" {
 				outcome = "Withdrawn: the command stopped"
 			}
 			u.endApproval(a, outcome)
@@ -361,7 +356,7 @@ func (u *appServerUI) applyApproval(a *nativeApproval, choice prompt.Choice, rea
 		choice.Outcome += ": " + reason
 	}
 	if a.guard != nil {
-		if a.guard.finished() {
+		if a.guard.Finished() {
 			u.expireApprovals() // The command already has its answer.
 			return nil
 		}
@@ -369,10 +364,10 @@ func (u *appServerUI) applyApproval(a *nativeApproval, choice prompt.Choice, rea
 		if !choice.Approve {
 			reply.Reason = feedback
 		} else if choice.Session {
-			kind, _ := binding.GuardForRequest(a.guard.kind)
+			kind, _ := binding.GuardForRequest(a.guard.Kind)
 			u.approvals.grants[kind].Allow(guardApprovalIdentity(a.guard))
 		}
-		a.guard.reply <- reply
+		a.guard.Reply <- reply
 	} else {
 		answer := func() error { return u.requests.Respond(a.request, a.responses[choice.ID]) }
 		if choice.Deny && (u.controlObservations != nil || reason != "") {
@@ -386,7 +381,7 @@ func (u *appServerUI) applyApproval(a *nativeApproval, choice prompt.Choice, rea
 	u.endApproval(a, choice.Outcome)
 	if a.guard != nil && choice.Approve && choice.Session {
 		for _, pending := range slices.Clone(u.pendingApprovals()) {
-			if pending.guard != nil && pending.guard.kind == a.guard.kind && guardApprovalIdentity(pending.guard) == guardApprovalIdentity(a.guard) {
+			if pending.guard != nil && pending.guard.Kind == a.guard.Kind && guardApprovalIdentity(pending.guard) == guardApprovalIdentity(a.guard) {
 				if err := u.applyApproval(pending, prompt.Choice{Approve: true, Outcome: "Approved for this session"}, ""); err != nil {
 					return err
 				}

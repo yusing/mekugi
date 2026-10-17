@@ -248,11 +248,11 @@ func TestAnswerInterruptNativeCodexE2E(t *testing.T) {
 				_ = os.WriteFile(gatePath, nil, 0o600)
 			}()
 			environment := routerFaultCodexEnvironment(t)
-			terminal := startAppResumeTerminalWithProxy(t, func(ctx context.Context) *exec.Cmd {
+			terminal := startAppResumeTerminalWithIntegration(t, func(ctx context.Context) *exec.Cmd {
 				cmd := exec.CommandContext(ctx, codex, "app-server", "--enable", "instant_interrupt", "-c", `model_providers.answer_fixture={name="OpenAI",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="answer_fixture"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "features.code_mode=true", "-c", "features.code_mode_host=true", "-c", "include_collaboration_mode_instructions=false", "-c", "features.default_mode_request_user_input=true")
 				cmd.Env, cmd.Dir = environment, workspace
 				return cmd
-			}, "", proxy)
+			}, "", testAppServerIntegration(proxy))
 			defer terminal.cancel()
 			next := func() []byte {
 				t.Helper()

@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
-
-	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // Model mise's system fallback: skip the manager and its active delegating
@@ -81,9 +81,9 @@ exit 127
 				if err != nil || line != "RAN <argument with spaces>\n" {
 					t.Fatalf("live stdout or arguments changed: %q, %v", line, err)
 				}
-				var request *vcsApproval
+				var request *sessioncontrol.ShellApprovalRequest
 				select {
-				case request = <-shell.guard.requests:
+				case request = <-shell.guard.Requests():
 				case <-ctx.Done():
 					t.Fatal("second command did not reach its approval")
 				}
@@ -122,7 +122,7 @@ exit 127
 				if len(seen) != 2 {
 					t.Fatalf("command snippets=%d: %q; records=%+v", len(seen), feed.Lines, view.Entries)
 				}
-				request.reply <- shellapproval.Reply{Reason: "denied in test"}
+				request.Reply <- shellapproval.Reply{Reason: "denied in test"}
 				if exit, ok := cmd.Wait().(*exec.ExitError); !ok || exit.ExitCode() != 1 || !strings.Contains(stderr.String(), "remote write denied") {
 					t.Fatalf("nested write escaped: %s", stderr.String())
 				}

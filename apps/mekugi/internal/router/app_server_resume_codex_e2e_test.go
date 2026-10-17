@@ -242,10 +242,10 @@ type appResumeTerminal struct {
 }
 
 func startAppResumeTerminal(t *testing.T, newCommand func(context.Context) *exec.Cmd, resumeThread string) *appResumeTerminal {
-	return startAppResumeTerminalWithProxy(t, newCommand, resumeThread, nil)
+	return startAppResumeTerminalWithIntegration(t, newCommand, resumeThread, appServerIntegration{})
 }
 
-func startAppResumeTerminalWithProxy(t *testing.T, newCommand func(context.Context) *exec.Cmd, resumeThread string, proxy *mekugiProxy, capture ...*transportcapture.Recorder) *appResumeTerminal {
+func startAppResumeTerminalWithIntegration(t *testing.T, newCommand func(context.Context) *exec.Cmd, resumeThread string, integration appServerIntegration, capture ...*transportcapture.Recorder) *appResumeTerminal {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	outer, inner, err := pty.Open()
@@ -268,7 +268,7 @@ func startAppResumeTerminalWithProxy(t *testing.T, newCommand func(context.Conte
 	conversation := new(conversationmodel.Service)
 	observations := conversationbinding.Codex.Observation(conversation)
 	reviewSource := new(changecapture.Service)
-	wait, err := startAppServerUI(testTerminalViews(reviewSource), reviewSource, testPresentation(), conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, newCommand(ctx), inner, inner, testAppServerIntegration(proxy), nil, resumeThread, true, nil, recorder, nil, "", nil, &observations, false)
+	wait, err := startAppServerUI(testTerminalViews(reviewSource), reviewSource, testPresentation(), conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, newCommand(ctx), inner, inner, integration, nil, resumeThread, true, nil, recorder, nil, "", nil, &observations, false)
 	if err != nil {
 		t.Fatal(err)
 	}

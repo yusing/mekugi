@@ -48,7 +48,7 @@ func TestAppServerRestoreChildContentNativeCodex(t *testing.T) {
 		return cmd
 	}
 
-	first := startAppResumeTerminalWithProxy(t, newCommand, "", proxy)
+	first := startAppResumeTerminalWithIntegration(t, newCommand, "", testAppServerIntegration(proxy))
 	first.await("Ready")
 	first.send("Create a child and report its completed findings.\r")
 	first.await("Parent received the child report.")
@@ -80,7 +80,7 @@ func TestAppServerRestoreChildContentNativeCodex(t *testing.T) {
 	defer auto.Close()
 
 	restoredProxy.review = testReview(auto)
-	second := startAppResumeTerminalWithProxy(t, newCommand, root, restoredProxy)
+	second := startAppResumeTerminalWithIntegration(t, newCommand, root, testAppServerIntegration(restoredProxy))
 	second.await("Ready") // Restoration is complete before accepting new input.
 	second.send("\x024")  // Focus the restored Agents roster.
 	second.awaitMatch("restored child roster", func(screen string) bool {

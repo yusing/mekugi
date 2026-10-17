@@ -1,6 +1,8 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+
 	json "encoding/json/v2"
 	"os"
 	"os/exec"
@@ -10,13 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/modules/conversation/prompt"
-
-	"github.com/yusing/mekugi/libraries/diffrender"
-
-	"github.com/yusing/mekugi/libraries/shellinstrumentation"
-
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+	"github.com/yusing/mekugi/modules/conversation/prompt"
 )
 
 // Exercise the installed wrapper, askpass pipe, approval socket and real input
@@ -100,14 +99,14 @@ func TestSudoUnlockDialog(t *testing.T) {
 			u, input := newAppServerTestUI()
 			u.Turn = "turn"
 			for i, keys := range tc.keys {
-				var request *vcsApproval
+				var request *sessioncontrol.ShellApprovalRequest
 				select {
-				case request = <-shell.guard.requests:
+				case request = <-shell.guard.Requests():
 					kind := "sudo"
 					if i > 0 {
 						kind = "sudo-password"
 					}
-					if request.kind != kind || request.item != "cmd" || request.executable != executable {
+					if request.Kind != kind || request.Item != "cmd" || request.Executable != executable {
 						t.Fatalf("wrong approval identity: %#v", request)
 					}
 				case <-time.After(10 * time.Second):
@@ -150,12 +149,12 @@ func TestUISnapshotSudoDialogs(t *testing.T) {
 	u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 	u.session.start("main", "/workspace")
 	u.Turn = "turn"
-	u.addGuardApproval(&vcsApproval{kind: "sudo", thread: "main", cwd: "/workspace", argv: []string{"sudo", "apt", "update"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})})
+	u.addGuardApproval(&sessioncontrol.ShellApprovalRequest{Kind: "sudo", Thread: "main", Cwd: "/workspace", Argv: []string{"sudo", "apt", "update"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})})
 	rows, _ := u.testMainFrame(80, 20, 0)
 	assertNativeUISnapshot(t, "native-sudo-approval", rows)
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "1\r")
-	u.addGuardApproval(&vcsApproval{kind: "sudo-password", thread: "main", cwd: "/workspace", argv: []string{"sudo", "apt", "update"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})})
+	u.addGuardApproval(&sessioncontrol.ShellApprovalRequest{Kind: "sudo-password", Thread: "main", Cwd: "/workspace", Argv: []string{"sudo", "apt", "update"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})})
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "1234-secret")
 	rows, _ = u.testMainFrame(80, 20, 0)
@@ -164,23 +163,23 @@ func TestUISnapshotSudoDialogs(t *testing.T) {
 
 func TestSudoPasswordWithdrawal(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	request := &vcsApproval{kind: "sudo-password", thread: "main", argv: []string{"sudo", "id"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})}
+	request := &sessioncontrol.ShellApprovalRequest{Kind: "sudo-password", Thread: "main", Argv: []string{"sudo", "id"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})}
 	u.addGuardApproval(request)
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "private-draft")
-	request.outcome = "withdrawn"
-	close(request.done)
+	request.Outcome = "withdrawn"
+	close(request.Done)
 	if !u.expireApprovals() || u.activeQuestionCall() != nil || len(u.InputHistory) != 0 || len(u.questionCalls()) != 0 {
 		t.Fatal("withdrawal retained a secret draft")
 	}
-	if len(request.reply) != 0 {
+	if len(request.Reply) != 0 {
 		t.Fatal("answered a withdrawn sudo request")
 	}
 }
 
 func TestSudoSecretEditorAndSessionSwitch(t *testing.T) {
 	u, input := newAppServerTestUI()
-	request := &vcsApproval{kind: "sudo-password", thread: "main", argv: []string{"sudo", "id"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})}
+	request := &sessioncontrol.ShellApprovalRequest{Kind: "sudo-password", Thread: "main", Argv: []string{"sudo", "id"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})}
 	u.openSudoPassword(&nativeApproval{Approval: &prompt.Approval{Thread: "main", Turn: "old-turn", Subject: "sudo id"}, guard: request})
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "fixture-secret")
@@ -218,7 +217,7 @@ func TestSudoSecretEditorAndSessionSwitch(t *testing.T) {
 		t.Fatal("session switch lost the password draft")
 	}
 	appServerTestKeys(t, u, "\r")
-	if reply := <-request.reply; !reply.OK || reply.Password != "fixture-secret" {
+	if reply := <-request.Reply; !reply.OK || reply.Password != "fixture-secret" {
 		t.Fatal("password did not resolve after switch")
 	}
 	if strings.Contains(input.String(), "fixture-secret") {
@@ -281,11 +280,11 @@ func TestSudoApprovalWithoutPassword(t *testing.T) {
 		}()
 		if tc.approval {
 			select {
-			case request := <-shell.guard.requests:
-				if request.kind != "sudo" || !slices.Equal(request.argv, append([]string{"sudo"}, args...)) {
+			case request := <-shell.guard.Requests():
+				if request.Kind != "sudo" || !slices.Equal(request.Argv, append([]string{"sudo"}, args...)) {
 					t.Fatal("command approval lost exact arguments")
 				}
-				request.reply <- shellapproval.Reply{OK: allow, Reason: "fixture denial"}
+				request.Reply <- shellapproval.Reply{OK: allow, Reason: "fixture denial"}
 			case <-result:
 				t.Fatal("sudo ran without command approval")
 			case <-time.After(10 * time.Second):
@@ -304,8 +303,8 @@ func TestSudoApprovalWithoutPassword(t *testing.T) {
 			if !allow && (got.code != 1 || got.stdout != "mekugi: sudo command denied: fixture denial\n") {
 				t.Fatalf("denied sudo ran: %+v", got)
 			}
-		case request := <-shell.guard.requests:
-			t.Fatalf("unexpected request kind=%s", request.kind)
+		case request := <-shell.guard.Requests():
+			t.Fatalf("unexpected request kind=%s", request.Kind)
 		case <-time.After(10 * time.Second):
 			t.Fatal("sudo did not complete")
 		}
@@ -454,11 +453,11 @@ func TestSudoNestedShellPreservesGuardResources(t *testing.T) {
 				result <- execTrackRun{stdout: string(output), code: code}
 			}()
 			select {
-			case request := <-shell.guard.requests:
-				if request.kind != "sudo" || request.executable != executable || !slices.Equal(request.argv, []string{executable, "-n", "probe", "arg with spaces"}) || !tc.path && request.item != "nested-command" {
+			case request := <-shell.guard.Requests():
+				if request.Kind != "sudo" || request.Executable != executable || !slices.Equal(request.Argv, []string{executable, "-n", "probe", "arg with spaces"}) || !tc.path && request.Item != "nested-command" {
 					t.Fatalf("nested approval lost command identity: %#v", request)
 				}
-				request.reply <- shellapproval.Reply{OK: tc.allow, Reason: "nested fixture denial"}
+				request.Reply <- shellapproval.Reply{OK: tc.allow, Reason: "nested fixture denial"}
 			case got := <-result:
 				t.Fatalf("nested sudo ran without approval: %+v", got)
 			case <-time.After(10 * time.Second):

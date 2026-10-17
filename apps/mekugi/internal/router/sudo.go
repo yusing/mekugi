@@ -20,7 +20,7 @@ func (u *appServerUI) openSudoPassword(a *nativeApproval) {
 }
 
 func (u *appServerUI) submitSudoPassword(c *nativeQuestionCall) error {
-	if c.sudo.finished() {
+	if c.sudo.Finished() {
 		u.expireSudoPasswords()
 		return nil
 	}
@@ -35,26 +35,26 @@ func (u *appServerUI) submitSudoPassword(c *nativeQuestionCall) error {
 		reply.OK, reply.Password = true, password
 	}
 	c.Sent = true
-	c.sudo.reply <- reply
+	c.sudo.Reply <- reply
 	u.resolveQuestionCall(c, "answered")
 	outcome := "Denied"
 	if reply.OK {
 		outcome = "Password supplied"
 	}
-	u.recordApproval(&nativeApproval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.sudo.item}}, outcome)
+	u.recordApproval(&nativeApproval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.sudo.Item}}, outcome)
 	return u.flushInput()
 }
 
 func (u *appServerUI) expireSudoPasswords() bool {
 	changed := false
 	for _, c := range slices.Clone(u.questionCalls()) {
-		if c.sudo != nil && !c.Resolved && c.sudo.finished() {
+		if c.sudo != nil && !c.Resolved && c.sudo.Finished() {
 			outcome := "Auto Denied: no answer within 5 minutes"
-			if c.sudo.outcome == "withdrawn" {
+			if c.sudo.Outcome == "withdrawn" {
 				outcome = "Withdrawn: the command stopped"
 			}
 			u.resolveQuestionCall(c, "interrupted")
-			u.recordApproval(&nativeApproval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.sudo.item}}, outcome)
+			u.recordApproval(&nativeApproval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.sudo.Item}}, outcome)
 			changed = true
 		}
 	}
