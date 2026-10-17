@@ -33,6 +33,28 @@ type PromptReceipt struct {
 	Call, Request       string
 }
 
+type InputPreparation struct {
+	Editable bool
+	Question *sessionpresentation.QuestionInputIntent
+	Approval *sessionpresentation.ApprovalInputIntent
+}
+
+// PrepareInput keeps an unseen dock from capturing input intended for the draft.
+func (m *Main) PrepareInput(ready bool) InputPreparation {
+	v := m.session
+	out := InputPreparation{Editable: v.ReadOnly == sessionpresentation.Editable}
+	if !out.Editable || ready {
+		return out
+	}
+	if call := v.Questions.Call; call != nil {
+		out.Question = &sessionpresentation.QuestionInputIntent{Version: v.Version, QuestionInput: prompt.QuestionInput{Call: call.ID, Question: call.Questions[v.Questions.Index].ID}}
+	}
+	if v.Approvals.Open && v.Approvals.Count > 0 {
+		out.Approval = &sessionpresentation.ApprovalInputIntent{Version: v.Version, ApprovalInput: prompt.ApprovalInput{Request: v.Approvals.Approval.ID}}
+	}
+	return out
+}
+
 func (p *Prompts) QuestionLayout(d prompt.QuestionDockView) *conversationui.QuestionLayout {
 	if d.Call == nil {
 		return nil

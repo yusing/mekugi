@@ -36,15 +36,26 @@ func (u *appServerUI) drainKeys(keys <-chan byte) error {
 	return nil
 }
 
-// prepareComposerInput keeps an unseen prompt from taking input intended for the draft.
+// prepareComposerInput admits terminal-selected prompt suspension before editing.
 func (u *appServerUI) prepareComposerInput() bool {
-	if u.composerReadOnly() {
+	ready := u.prompts.Ready()
+	u.publishPresentation(u.now())
+	preparation := u.mainView.PrepareInput(ready)
+	if !preparation.Editable {
 		return false
 	}
-	if u.activeQuestionCall() != nil && !u.prompts.Ready() {
+	if intent := preparation.Question; intent != nil {
+		if err := u.sessionPresentation().QuestionInput(*intent, u.questions.Questions); err != nil {
+			u.setNotice(err.Error(), true)
+			return false
+		}
 		u.hideQuestions()
 	}
-	if u.approvals.Open && !u.prompts.Ready() {
+	if intent := preparation.Approval; intent != nil {
+		if err := u.sessionPresentation().ApprovalInput(*intent, u.approvals.Approvals); err != nil {
+			u.setNotice(err.Error(), true)
+			return false
+		}
 		u.hideApprovals()
 	}
 	return true

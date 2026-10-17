@@ -45,7 +45,9 @@ the terminal. Layouts use stable call, question and approval identities rather
 than model pointers. Delivery receipts identify the attachment and dock opening;
 an old frame cannot ready a replacement, while ordinary publication updates keep
 an already visible dock ready. Prompt keys consume detached values and return
-targeted actions for application admission.
+targeted actions for application admission. Before composing, the terminal names
+unseen docks that must yield to the draft. Application admission suspends those
+exact prompts without changing their automatic-opening eligibility.
 The [attachment owner](../sessionpresentation/SPEC.md#attachment-lifetime) retires
 module state. Backward replay retains terminal focus and Diff visibility.
 Descriptor-selected roster and auxiliary views define available placements.
