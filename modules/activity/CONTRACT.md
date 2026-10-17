@@ -152,6 +152,13 @@ keeps the host operation running nor delays its aggregate result. Instant
 reads/searches/inspections/listings and Skill reads reveal immediately and never
 hold completion; skill programs still roll.
 
+Running output advances detached terminal frames without replacing its neutral
+activity record. Segment lifecycle and attribution changes update that record
+independently of tail reveal. Retained output remains available by its existing
+source and output identity.
+Without retained output, live dialogs use the same bounded terminal fallback;
+host completion still replaces that fallback immediately.
+
 An unsegmented invocation has one combined stream after its final operation,
 without guessed command attribution. [Tracked commands](../commandsegments/SPEC.md)
 have individual operations, starts, output and outcomes. Unreached commands say

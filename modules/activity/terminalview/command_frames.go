@@ -7,8 +7,8 @@ import (
 	"github.com/yusing/mekugi/modules/activity/presentation"
 )
 
-// CommandFrame is the detached output and segment snapshot still being displayed
-// while a completed command's terminal animation or report attribution settles.
+// CommandFrame is the detached output and segment snapshot being displayed while
+// terminal animation or report attribution catches up with admitted host facts.
 type CommandFrame struct {
 	Output   OutputFrame
 	Segments []presentation.CommandSegment
@@ -18,6 +18,7 @@ type heldCommandFrame struct {
 	snapshot       CommandFrame
 	entry          presentation.Entry
 	sourceRevision uint64
+	revision       uint64
 	project, dirty bool
 	released       time.Time
 }
@@ -33,6 +34,26 @@ func (v *View) HoldCommand(seq uint64, snapshot CommandFrame) {
 	}
 	snapshot.Output.Tail = slices.Clone(snapshot.Output.Tail)
 	frame.snapshot, frame.project = snapshot, true
+	frame.revision++
+}
+
+// CurrentCommandFrame supplies bounded terminal fallback content when the
+// optional retention owner is absent. Its revision is independent of source facts.
+func (v *View) CurrentCommandFrame(seq uint64) (CommandFrame, uint64, bool) {
+	if frame := v.commandFrames[seq]; frame != nil && frame.released.IsZero() {
+		return frame.snapshot, frame.revision, true
+	}
+	return CommandFrame{}, 0, false
+}
+
+// HoldCurrentCommand preserves the already displayed frame during report
+// settlement. A command with no reveal frame uses its admitted source snapshot.
+func (v *View) HoldCurrentCommand(seq uint64, fallback CommandFrame) {
+	if frame := v.commandFrames[seq]; frame != nil {
+		frame.project = true
+		return
+	}
+	v.HoldCommand(seq, fallback)
 }
 
 // CommandFrame requests reprojection when either source annotations or revealed

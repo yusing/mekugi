@@ -23,10 +23,10 @@ func commandFrame(record liveActivityRecord, frame activityui.CommandFrame) acti
 	return activitypresentation.Entry{Facts: facts, Revision: record.Revision, Values: values}
 }
 
-func (u *appServerUI) holdCommand(entry activityPaneEntry, output activityui.OutputFrame) {
+func (u *appServerUI) holdCommand(entry activityPaneEntry, frame activityui.CommandFrame) {
 	for _, view := range []*activityAdapter{u.view, u.agents} {
 		if seq := view.entrySeq(entry); seq != 0 {
-			view.View.HoldCommand(seq, activityui.CommandFrame{Output: output})
+			view.View.HoldCommand(seq, frame)
 		}
 	}
 }
@@ -40,7 +40,7 @@ func (u *appServerUI) holdTrackedCommand(entry *activityPaneEntry) {
 				// source until attribution settles; the neutral feed shows the
 				// completed aggregate rather than these provisional segments.
 				entry.native.segments, entry.native.segmentsPending = record.Source.native.segments, true
-				view.View.HoldCommand(record.Source.Seq, activityui.CommandFrame{
+				view.View.HoldCurrentCommand(record.Source.Seq, activityui.CommandFrame{
 					Output: activityui.OutputFrame{Tail: command.Tail, Omitted: command.TailOmitted}, Segments: command.Segments,
 				})
 				break

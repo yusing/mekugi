@@ -30,6 +30,7 @@ type outputPage struct {
 type outputDialogKey struct {
 	id             string
 	revision       uint64
+	frame          uint64
 	width, version int
 	output         *activitymodel.Output
 	theme          diffrender.Theme
@@ -144,6 +145,12 @@ func (d *outputDialog) refreshPages(requested []activitypresentation.DetailPage)
 		source := activitypresentation.DetailSource{Entry: entry.Publish()}
 		if n := entry.Source.native; n != nil {
 			command := commandPresentation(entry.Source)
+			if n.output == nil && n.running {
+				if frame, _, ok := d.view.CurrentCommandFrame(entry.Source.Seq); ok {
+					source.Entry = commandFrame(entry, frame)
+					command.Tail, command.TailOmitted, command.Segments = frame.Output.Tail, frame.Output.Omitted, frame.Segments
+				}
+			}
 			source.Command = &command
 			source.Streaming = n.phase == "summary" || n.phase == "item/started" || n.phase == "item/agentMessage/delta"
 			retained := map[int]*activitymodel.Output{1: n.output}
@@ -213,6 +220,8 @@ func (d *outputDialog) layout(width int) {
 		key.version = page.output.Version()
 		snapshot := page.output.View()
 		output = &snapshot
+	} else if page.Running {
+		_, key.frame, _ = d.view.CurrentCommandFrame(page.Source)
 	}
 	if key == d.laidKey {
 		d.Document.Title = d.view.Painter.DialogPageTitle(activityui.Block{Value: page.Value, OutputSnapshot: output}, d.view.Now(), width)

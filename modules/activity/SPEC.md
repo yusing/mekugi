@@ -195,7 +195,8 @@ share that owner. Its detached snapshot reports host completion immediately,
 independently of pending segment evidence or terminal output animation. The
 neutral feed admits the completed aggregate at the same boundary. Valid segment
 reports enrich that existing identity; terminal frames can retain provisional
-segment targets until attribution settles without delaying the neutral outcome. The application's existing live-operation index supplies identity and lifetime;
+segment targets until attribution settles without delaying the neutral outcome.
+The application's existing live-operation index supplies identity and lifetime;
 yielded invocations survive the originating turn. Completed feed and dialog
 references retain the same invocation after it leaves that index.
 

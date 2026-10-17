@@ -166,7 +166,10 @@ func (v *activityAdapter) markUnreturned(thread, call string) bool {
 		if entry.Source.Kind != "tool" || entry.Source.native == nil || entry.Source.native.thread != thread || entry.Source.native.item != call {
 			continue
 		}
-		output, noted := false, false
+		output, noted := entry.Source.native.output != nil && entry.Source.native.output.HasContent(), false
+		for _, segment := range entry.Source.native.segments {
+			output = output || segment.output != nil && segment.output.HasContent()
+		}
 		for _, block := range v.Entries[i].Values {
 			output = output || len(block.Tail)+block.TailOmitted > 0
 			noted = noted || block.Kind == "filter" && block.Body == unreturnedOutputNote

@@ -110,6 +110,7 @@ func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 	if got := main(); strings.Contains(got, "ok 7") {
 		t.Fatalf("output rendered before its frame:\n%s", got)
 	}
+	canonical := u.view.Model.Publish().Entries[0]
 	u.flushStreamOutput()
 	if got := main(); !strings.Contains(got, "┆ ok 1") || strings.Contains(got, "ok 2") {
 		t.Fatalf("burst jumped to its tail instead of rolling:\n%s", got)
@@ -118,6 +119,9 @@ func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 	want := "  +4      ┆ ok 4\n          ┆ ok 5\n          ┆ ok 6\n          ┆ ok 7\n          ┆ --- partial"
 	if got := main(); !strings.Contains(got, "└ Running go test ./...") || !strings.Contains(got, want) {
 		t.Fatalf("live tail missing header or %q:\n%s", want, got)
+	}
+	if got := u.view.Model.Publish().Entries[0]; !reflect.DeepEqual(got, canonical) {
+		t.Fatalf("output animation changed the neutral record:\nbefore=%+v\nafter=%+v", canonical, got)
 	}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "c", "item": map[string]any{
 		"id": "cmd", "type": "commandExecution", "command": "make lint", "status": "inProgress"}})

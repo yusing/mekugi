@@ -27,11 +27,14 @@ const execTrackCompletionWait = 300 * time.Millisecond
 // Activity output belongs to its existing application command scope, not the
 // invocation observer. Replacing that scope releases output without reviving it.
 type execTrackPresentation struct {
-	segments []execSegmentOutput
-	version  uint64
+	segments                []execSegmentOutput
+	version                 uint64
+	output, ended, complete bool
+	code                    int
 }
 
 type execSegmentOutput struct {
+	facts      segments.Segment // Last source facts, excluding drained output bytes.
 	text       string
 	vcs        bool
 	output     activityui.CommandOutput
@@ -208,6 +211,7 @@ type commandSegment struct {
 // execTrackView is a report as presented at one frame.
 type execTrackView struct {
 	segments []commandSegment
+	semantic bool // Observed segment or attribution facts changed, rather than only reveal.
 	output   bool // Segments carry their own output; otherwise the host's combined output applies.
 	ended    bool // The report connection closed.
 	complete bool // The report ended with the shell's own exit status.
@@ -253,9 +257,15 @@ func (p *execTrackPresentation) view(observer *segments.Observer, key [3]string,
 	}
 	complete := track.Complete()
 	view := execTrackView{output: !track.Terminal && len(track.Segments) != 1 && !track.Lossy && !(track.Ended && !complete), ended: track.Ended, complete: complete, code: track.Code}
+	view.semantic = p.output != view.output || p.ended != view.ended || p.complete != view.complete || p.code != view.code
+	p.output, p.ended, p.complete, p.code = view.output, view.ended, view.complete, view.code
 	last := track.LastStarted()
 	for i, observed := range track.Segments {
 		segment := &p.segments[i]
+		facts := observed
+		facts.Output = ""
+		view.semantic = view.semantic || segment.facts != facts
+		segment.facts = facts
 		if !view.output {
 			segment.fresh = nil
 			if segment.full != nil {
@@ -305,7 +315,7 @@ func (p *execTrackPresentation) view(observer *segments.Observer, key [3]string,
 		}
 		view.segments = append(view.segments, shown)
 	}
-	return view, changed
+	return view, changed || view.semantic
 }
 
 // execSegmentText is a segment's display operations, using the same shell
@@ -352,11 +362,18 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 	if !u.execTrack.Tracking(key) {
 		return nil, false
 	}
+	entry := run.entry
+	native := *entry.native
+	native.phase = "item/commandExecution/outputDelta"
+	entry.native, entry.Agent = &native, s.path(native.thread)
 	if view.ended && !view.complete {
 		// The report ended early, as when the helper declined after the
 		// match; the host's combined output applies from here on.
 		if changed {
 			run.output.Invalidate()
+		}
+		if view.semantic {
+			return []activityPaneEntry{entry}, false
 		}
 		return nil, false
 	}
@@ -370,14 +387,15 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 	if !changed {
 		return nil, true
 	}
-	entry := run.entry
-	native := *entry.native
-	native.phase = "item/commandExecution/outputDelta"
 	native.segments = view.segments
-	entry.native, entry.Agent = &native, s.path(native.thread)
-	entry.outputTail, entry.outputOmit = nil, 0
-	if !view.output {
-		entry.outputTail, entry.outputOmit = frame.Tail, frame.Omitted
+	u.holdCommand(entry, activityui.CommandFrame{Output: frame, Segments: commandPresentation(entry).Segments})
+	u.dirty = true
+	if !view.semantic {
+		return nil, true
+	}
+	native.segments = slices.Clone(view.segments)
+	for i := range native.segments {
+		native.segments[i].tail, native.segments[i].omit = nil, 0
 	}
 	return []activityPaneEntry{entry}, true
 }

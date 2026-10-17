@@ -1,6 +1,8 @@
 package router
 
 import (
+	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +11,39 @@ import (
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
+
+func TestTrackedRevealDoesNotReviseCommandFacts(t *testing.T) {
+	u, hub := newTrackedAppServerUI(t)
+	script := "echo first; echo last"
+	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "bash -lc " + quoteShellWord(script), "status": "inProgress"}
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+	report := dialExecTrackReport(t, hub, script)
+	var output strings.Builder
+	for i := range 20 {
+		fmt.Fprintf(&output, "line %d\n", i)
+	}
+	report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0}, segmenttransport.Message{Type: segmenttransport.Output, Index: 0, Data: output.String()})
+	awaitMain(t, u, "line 4")
+	before := u.view.Model.Publish().Entries[0]
+	rollCommandOutput(u)
+	frame := ansi.Strip(strings.Join(u.view.RenderFeed(100, 30).Lines, "\n"))
+	if !strings.Contains(frame, "line 19") {
+		t.Fatalf("tracked output did not advance:\n%s", frame)
+	}
+	if after := u.view.Model.Publish().Entries[0]; !reflect.DeepEqual(before, after) {
+		t.Fatalf("terminal reveal revised command facts:\nbefore=%+v\nafter=%+v", before, after)
+	}
+	if !u.view.markUnreturned("main", "cmd") {
+		t.Fatal("running output presence depended on an animated model tail")
+	}
+	report.send(segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Begin, Index: 1})
+	awaitMain(t, u, "Running echo last")
+	frame = awaitMain(t, u, unreturnedOutputNote)
+	after := u.view.Model.Publish().Entries[0]
+	if after.Seq != before.Seq || after.Revision == before.Revision || len(u.view.Entries[0].Source.native.segments) != 2 || !strings.Contains(frame, unreturnedOutputNote) {
+		t.Fatalf("segment lifecycle or output annotation was lost:\n%s", frame)
+	}
+}
 
 func TestTrackedCompletionPrecedesReportSettlement(t *testing.T) {
 	for _, closeReport := range []bool{true, false} {

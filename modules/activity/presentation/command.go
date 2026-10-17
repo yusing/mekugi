@@ -187,8 +187,8 @@ func (c Command) SegmentValues(detail bool) []Value {
 		last.Changes = segment.Changes
 		values = append(values, operations...)
 	}
-	singleOutput := len(c.Segments) == 1 && c.Segments[0].Output == nil && c.Output != nil
-	combined := singleOutput || len(c.Tail) > 0 || c.TailOmitted > 0 || len(values) == 0 && hasOutput(c.Output, c.OutputContent)
+	combinedOutput := c.Output != nil && slices.ContainsFunc(c.Segments, func(segment CommandSegment) bool { return !segment.Skipped && segment.Output == nil })
+	combined := combinedOutput || len(c.Tail) > 0 || c.TailOmitted > 0 || len(values) == 0 && hasOutput(c.Output, c.OutputContent)
 	if combined {
 		if len(values) == 0 && c.Captured {
 			values = append(values, edited(nil, c.Script))

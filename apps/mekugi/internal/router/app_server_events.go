@@ -309,7 +309,7 @@ func (u *appServerUI) projectSessionEvent(p observation.Event, facts sessionEven
 
 	case "item/commandExecution/outputDelta":
 		// Bounded as it arrives; the next frame shows it, so bursts cost one render.
-		if run := s.commands[[3]string{p.ThreadID, p.TurnID, p.ItemID}]; run != nil && !run.holding {
+		if run := s.commands[[3]string{p.ThreadID, p.TurnID, p.ItemID}]; run != nil && !run.holding && run.completion == nil {
 			run.output.Write(p.Delta)
 			run.entry.native.invocation.Write(p.Delta)
 		}
@@ -391,9 +391,12 @@ func (u *appServerUI) projectSessionEvent(p observation.Event, facts sessionEven
 			// tail replaces it.
 			if run := s.commands[key]; run != nil && run.output.Pending() {
 				run.holding = true
-				u.holdCommand(run.entry, run.output.Snapshot())
+				u.holdCommand(run.entry, activityui.CommandFrame{Output: run.output.Snapshot()})
 				entries = append(entries, done...)
 				break
+			}
+			if run := s.commands[key]; run != nil {
+				u.releaseCommand(run.entry)
 			}
 			delete(s.commands, key)
 			entries = append(entries, done...)
@@ -445,40 +448,29 @@ func (s *appServerSession) commandDone(entry activityPaneEntry, item observation
 	return done
 }
 
-// flushStreamOutput rolls public summaries and re-sends each live command whose output changed since
-// the last frame, with its current tail, rolling a burst through a share at a
-// time. A held completion follows once nothing is pending. Late output cannot
-// reopen a completed command, whose entry it would otherwise replace.
+// flushStreamOutput advances terminal frames and admits changed segment facts.
+// Reveal-only updates never replace neutral command records. Late output cannot
+// reopen a completed invocation.
 func (u *appServerUI) flushStreamOutput() {
 	u.flushSummaryOutput()
 	s := &u.session
 	var entries []activityPaneEntry
 	for key, run := range s.commands {
-		if tracked, handled := u.flushTrackedCommand(key, run); handled {
-			entries = append(entries, tracked...)
+		tracked, handled := u.flushTrackedCommand(key, run)
+		entries = append(entries, tracked...)
+		if handled {
 			continue
 		}
 		frame, changed := run.output.Advance()
 		if !changed {
 			continue
 		}
-		if run.holding {
-			u.holdCommand(run.entry, frame)
-			if !frame.Pending {
-				u.releaseCommand(run.entry)
-				delete(s.commands, key)
-			}
-			u.dirty = true
-			continue
+		u.holdCommand(run.entry, activityui.CommandFrame{Output: frame})
+		if run.holding && !frame.Pending {
+			u.releaseCommand(run.entry)
+			delete(s.commands, key)
 		}
-		entry := run.entry
-		native := *entry.native
-		native.phase = "item/commandExecution/outputDelta"
-		// The thread may have been renamed since the command started.
-		entry.native, entry.Agent = &native, s.path(native.thread)
-		entry.outputTail, entry.outputOmit = frame.Tail, frame.Omitted
-		entries = append(entries, entry)
-
+		u.dirty = true
 	}
 	if len(entries) == 0 {
 		return
