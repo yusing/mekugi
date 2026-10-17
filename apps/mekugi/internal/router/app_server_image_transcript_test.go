@@ -18,9 +18,9 @@ func TestAppServerImageTranscriptHighlight(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.shell.Transcript.Painter.Theme = theme
 			appServerTestKeys(t, u, "literal [Image 1] 世界 ")
-			u.insertImage("/tmp/one.png")
+			insertImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, u.ownedImages, u.side, "/tmp/one.png")
 			appServerTestKeys(t, u, " after ")
-			u.insertImage("/tmp/two.png")
+			insertImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, u.ownedImages, u.side, "/tmp/two.png")
 			appServerTestKeys(t, u, "\r")
 			check := func(v *activityAdapter) {
 				t.Helper()

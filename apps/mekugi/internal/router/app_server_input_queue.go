@@ -1,9 +1,14 @@
 package router
 
 import (
+	"context"
 	"crypto/rand"
 	"strings"
 	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
@@ -75,43 +80,43 @@ func (u *appServerUI) editQueued() {
 
 // flushInput sends stacked input once nothing blocks it: unsent steers into
 // the running turn, otherwise unsent steers, then queued input, as a new turn.
-func (u *appServerUI) flushInput() error {
-	u.attached.conversation.Unsent = pendingQuestionReplies(u.attached.conversation.Unsent)
-	u.attached.conversation.Queued = pendingQuestionReplies(u.attached.conversation.Queued)
-	if u.restoring != nil || !u.AcceptsInput() {
+func flushInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, model string, tiers *inferencegateway.Tiers, environment []string, owned map[string]bool, hook *approvalHookCheck, editor **composer.Editor, parent context.Context, restoring bool, observations *sessioncontrol.Observations, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt) error {
+	attached.conversation.Unsent = pendingQuestionReplies(attached.conversation.Unsent)
+	attached.conversation.Queued = pendingQuestionReplies(attached.conversation.Queued)
+	if restoring || !control.AcceptsInput() {
 		return nil
 	}
-	if len(u.attached.conversation.Unsent)+len(u.attached.conversation.Queued) > 0 {
-		if ready, err := u.guardHookCheck.check(&u.Client, &u.attached); !ready || err != nil {
+	if len(attached.conversation.Unsent)+len(attached.conversation.Queued) > 0 {
+		if ready, err := hook.check(control, attached); !ready || err != nil {
 			return err
 		}
 	}
-	emitting := u.controlObservations != nil && u.controlObservations.EmittingToolInput(u.attached.cwd, u.Thread)
-	next := u.attached.presentation.NextInput(&u.Live, u.attached.conversation, emitting)
+	emitting := observations != nil && observations.EmittingToolInput(attached.cwd, control.Thread)
+	next := attached.presentation.NextInput(&control.Live, attached.conversation, emitting)
 	if next.Interrupt {
-		return u.interruptTurn()
+		return applyInterruption(attached, terminal, control, picker, editor, questions, approvals, clock, reviewOwner, receipts, control.Interrupt())
 	}
 	if len(next.Batch.Parts) == 0 {
 		return nil
 	}
-	if u.picker.waitForSkillBindings(&u.attached, u.shell, u.clock, u.Requests, next.Batch.Parts) {
-		u.attached.conversation.ReturnBatch(next.Batch)
-		u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
+	if picker.waitForSkillBindings(attached, terminal, clock, control.Requests, next.Batch.Parts) {
+		attached.conversation.ReturnBatch(next.Batch)
+		picker.refreshPicker(attached, terminal, clock, control.Requests, (*editor), parent, environment)
 		return nil
 	}
-	return u.send(next.Batch.Parts, next.Steer)
+	return sendConversationInput(attached, terminal, control, picker, questions, approvals, clock, model, tiers, environment, owned, hook, next.Batch.Parts, next.Steer)
 }
 
-func (u *appServerUI) send(parts []conversationmodel.Input, steer bool) error {
-	defer u.attached.presentation.PruneInput(&u.Live, u.attached.conversation)
+func sendConversationInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, model string, tiers *inferencegateway.Tiers, environment []string, owned map[string]bool, hook *approvalHookCheck, parts []conversationmodel.Input, steer bool) error {
+	defer attached.presentation.PruneInput(&control.Live, attached.conversation)
 	if len(parts) == 1 && parts[0].Text == "/compact" {
-		u.Compaction.Begin(sessioncontrol.CompactIntent(parts[0].Compact))
-		u.attached.presentation.Status.SetText("Compacting context" + "…")
-		return u.Request("thread/compact/start", map[string]any{"threadId": u.Thread})
+		control.Compaction.Begin(sessioncontrol.CompactIntent(parts[0].Compact))
+		attached.presentation.Status.SetText("Compacting context" + "…")
+		return control.Request("thread/compact/start", map[string]any{"threadId": control.Thread})
 	}
 	for i := range parts {
-		u.picker.bindSkills(u.attached.cwd, &parts[i], true)
-		snapshotDraftSkills(u.attached.cwd, u.skillEnvironment, &parts[i])
+		picker.bindSkills(attached.cwd, &parts[i], true)
+		snapshotDraftSkills(attached.cwd, environment, &parts[i])
 		parts[i].ReplyCount = len(binding.QuestionReplies(parts[i].Text))
 	}
 	s := conversationmodel.Submission{Draft: composer.Join(conversationmodel.Drafts(parts)...), Parts: parts}
@@ -123,40 +128,40 @@ func (u *appServerUI) send(parts []conversationmodel.Input, steer bool) error {
 		textBytes += len(text)
 	}
 	if (len(s.Attachments) > 0 || len(s.Skills) > 0) && textBytes > codexresponses.UserTextLimit {
-		restoreDrafts(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, u.Turn, u.clock, parts...)
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Input with attachments exceeds the safe 1 MiB text limit. Reduce the draft or attachments and retry.", true)
+		restoreDrafts(attached, terminal, questions, approvals, picker, control.Turn, clock, parts...)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Input with attachments exceeds the safe 1 MiB text limit. Reduce the draft or attachments and retry.", true)
 		return nil
 	}
-	request := sessioncontrol.InputRequest{Thread: u.Thread, ID: id, Input: input}
+	request := sessioncontrol.InputRequest{Thread: control.Thread, ID: id, Input: input}
 	if steer {
-		request.Turn = u.Turn
+		request.Turn = control.Turn
 	} else {
-		request.Tier = selectedServiceTier(u.serviceTiers, u.model, u.Thread)
+		request.Tier = selectedServiceTier(tiers, model, control.Thread)
 		if len(binding.QuestionReplies(s.Text)) == 0 {
-			echo := u.attached.source.LastSeq + 1
-			u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: echo, Agent: "You", Kind: "text", Text: s.Text, Observed: presentationTime(u.clock),
-				Native: &sessionpresentation.NativeItem{Thread: u.Thread, Item: "input/" + id, Phase: "input/pending", Spans: sessionpresentation.DraftSpans(s.Draft)}}}})
+			echo := attached.source.LastSeq + 1
+			attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: echo, Agent: "You", Kind: "text", Text: s.Text, Observed: presentationTime(clock),
+				Native: &sessionpresentation.NativeItem{Thread: control.Thread, Item: "input/" + id, Phase: "input/pending", Spans: sessionpresentation.DraftSpans(s.Draft)}}}})
 		}
 	}
 	for _, image := range s.Images {
-		delete(u.ownedImages, image.Path)
+		delete(owned, image.Path)
 	}
 	for _, path := range s.AnswerImages {
-		delete(u.ownedImages, path)
+		delete(owned, path)
 	}
-	u.attached.presentation.StageInput(&u.Live, u.attached.conversation, id, s, steer)
+	attached.presentation.StageInput(&control.Live, attached.conversation, id, s, steer)
 	if !steer {
-		u.guardHookCheck.readyThread = ""
+		hook.readyThread = ""
 	}
 	if s.AttachmentNotice != "" {
 		notice := s.AttachmentNotice
-		if strings.HasPrefix(u.attached.feedback.Text, "Skill attachment unavailable:") || strings.HasPrefix(u.attached.feedback.Text, "Skill catalog incomplete:") {
-			notice = u.attached.feedback.Text + " " + notice
+		if strings.HasPrefix(attached.feedback.Text, "Skill attachment unavailable:") || strings.HasPrefix(attached.feedback.Text, "Skill catalog incomplete:") {
+			notice = attached.feedback.Text + " " + notice
 		}
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), notice, true)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), notice, true)
 	}
-	if _, err := u.Requests.SendInput(request, appServerRequest{}); err != nil {
-		applyInputEffects(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, u.Turn, u.clock, u.attached.presentation.ApplyInputResult(&u.Live, u.attached.conversation, u.SubmissionFailed()))
+	if _, err := control.Requests.SendInput(request, appServerRequest{}); err != nil {
+		applyInputEffects(attached, terminal, questions, approvals, picker, control.Turn, clock, attached.presentation.ApplyInputResult(&control.Live, attached.conversation, control.SubmissionFailed()))
 		return err
 	}
 	for _, part := range parts {

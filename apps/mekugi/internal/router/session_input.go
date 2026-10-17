@@ -46,7 +46,7 @@ func (u *appServerUI) submitInput(intent sessionpresentation.SubmitIntent) error
 		return nil
 	}
 	u.shell.Transcript.Follow()
-	return u.flushInput()
+	return flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, u.ctx, u.restoring != nil, u.controlObservations, u.review, &u.pendingEditReceipts)
 }
 
 // applyComposerInput resolves terminal output through the current owners. Every
@@ -106,7 +106,7 @@ func (u *appServerUI) applyComposerCommand(intent sessionpresentation.ComposerIn
 		}
 		return false, &composerEditorRequest{intent: intent}
 	case sessionpresentation.AttachClipboard:
-		u.pasteImage(intent)
+		pasteImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, &u.ownedImages, u.side, u.ctx, intent)
 	case sessionpresentation.CancelComposer:
 		if u.Replacement.Archiving() {
 			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Archiving session…", false)
@@ -226,5 +226,5 @@ func (u *appServerUI) applyPromptInput(input terminalsession.PromptInput) (bool,
 	if input.Approval.Request != "" {
 		return applyApprovalInput(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.notifications, u.review, &u.pendingEditReceipts, u.controlObservations, input)
 	}
-	return u.applyQuestionInput(input)
+	return applyQuestionInput(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.skillEnvironment, &u.ownedImages, &u.guardHookCheck, u.ctx, u.controlObservations, u.review, &u.pendingEditReceipts, input)
 }

@@ -320,7 +320,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 						u.dirty = true
 					case <-tick.C:
 						if len(u.attached.conversation.Unsent) > 0 && u.attached.conversation.Unsent[0].Question != nil && (u.controlObservations == nil || !u.controlObservations.EmittingToolInput(u.attached.cwd, u.Thread)) {
-							if err := u.flushInput(); err != nil {
+							if err := flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, u.ctx, u.restoring != nil, u.controlObservations, u.review, &u.pendingEditReceipts); err != nil {
 								return err
 							}
 						}
@@ -490,7 +490,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	// start or end, or settled settings.
 	defer func() {
 		if err == nil {
-			err = u.flushInput()
+			err = flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, u.ctx, u.restoring != nil, u.controlObservations, u.review, &u.pendingEditReceipts)
 		}
 		if err == nil {
 			err = u.flushBTW()
@@ -857,7 +857,7 @@ func (u *appServerUI) observedEvent(method string, p binding.Notification) error
 			u.attached.presentation.Status.Started = presentationTime(u.clock)
 			u.attached.presentation.Status.Set("Working", false)
 			if u.Interruption.BeforeStart || u.Compaction.InterruptTarget() != "" {
-				return u.interruptTurn()
+				return applyInterruption(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.review, &u.pendingEditReceipts, u.Interrupt())
 			}
 		}
 	case "turn/completed":

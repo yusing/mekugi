@@ -34,7 +34,7 @@ func TestAppServerTypedTokensAcrossSubmissionAndResume(t *testing.T) {
 	// This tests explicit attachment identity, not catalog discovery.
 	u.picker.SkillsLoaded, u.picker.SkillsCwd = true, u.attached.cwd
 	appServerTestKeys(t, u, "世界 literal $review @file ")
-	u.insertImage("/tmp/image.png")
+	insertImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, u.ownedImages, u.side, "/tmp/image.png")
 	appServerTestKeys(t, u, " ")
 	bindComposerFile(u, `@"file name.go"`, "/work/file name.go")
 	appServerTestKeys(t, u, " ")

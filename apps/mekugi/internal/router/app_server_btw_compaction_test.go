@@ -87,7 +87,7 @@ func TestAppServerBTWCompactionRestoresAttachmentsOnce(t *testing.T) {
 			u.Turn, u.attached.presentation.Status.Text = "main-turn", "Working"
 			appServerTestKeys(t, u, "/btw explain ")
 			image := filepath.Join(t.TempDir(), "side.png")
-			u.attachImage(image)
+			attachImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, &u.ownedImages, u.side, image)
 			appServerTestKeys(t, u, "\r")
 			fork := btwTestRequest(t, w, "thread/fork", "main")
 			btwTestReply(t, u, fork, `{"thread":{"id":"side"}}`)

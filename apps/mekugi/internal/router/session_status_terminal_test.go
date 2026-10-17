@@ -112,5 +112,5 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 	if input == nil {
 		return false, nil
 	}
-	return u.applyQuestionInput(*input)
+	return applyQuestionInput(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.skillEnvironment, &u.ownedImages, &u.guardHookCheck, u.ctx, u.controlObservations, u.review, &u.pendingEditReceipts, *input)
 }

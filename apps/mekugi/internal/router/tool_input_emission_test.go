@@ -45,7 +45,7 @@ func TestQuestionAnswerWaitsForToolInput(t *testing.T) {
 			emissionTestEvent(t, transform, map[string]any{"type": done, "item_id": "emitting"})
 			// No item/completed or turn/completed is needed: execution can wait
 			// indefinitely after generation finishes.
-			if err := u.flushInput(); err != nil {
+			if err := flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, u.ctx, u.restoring != nil, u.controlObservations, u.review, &u.pendingEditReceipts); err != nil {
 				t.Fatal(err)
 			}
 			appServerOneRequest(t, wire, "turn/steer", u.attached.conversation.Submitted[u.Submission().ID].Text)

@@ -226,7 +226,7 @@ func TestQuestionNewPromptSupersedesUnsentAnswer(t *testing.T) {
 	appServerTestKeys(t, u, "3Local draft\r")
 	lifecycleUserMessage(t, u, "ordinary-new-turn", "new-prompt", "Do something else")
 	u.AwaitingTurn = false
-	if err := u.flushInput(); err != nil {
+	if err := flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, u.ctx, u.restoring != nil, u.controlObservations, u.review, &u.pendingEditReceipts); err != nil {
 		t.Fatal(err)
 	}
 	if w.Len() != 0 || u.questions.calls()[0].Questions[0].Outcome != "superseded" {

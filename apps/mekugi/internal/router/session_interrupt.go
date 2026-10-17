@@ -1,8 +1,14 @@
 package router
 
 import (
+	"time"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
@@ -16,28 +22,24 @@ func (u *appServerUI) interruptSession(intent sessionpresentation.InterruptInten
 		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 		return nil
 	}
-	err = u.applyInterruption(decision)
+	err = applyInterruption(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.review, &u.pendingEditReceipts, decision)
 	if err != nil && intent.Mode == sessioncontrol.ExpediteSteers {
 		u.SendSteersAfterInterrupt = false
 	}
 	return err
 }
 
-// interruptTurn applies the owner's composer consequence and issues at most
+// applyInterruption applies the owner's composer consequence and issues at most
 // one native interruption. Host execution remains independent of presentation.
-func (u *appServerUI) interruptTurn() error {
-	return u.applyInterruption(u.Interrupt())
-}
-
-func (u *appServerUI) applyInterruption(intent sessioncontrol.Interrupt) error {
-	applyInputRestoration(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, u.Turn, u.clock, u.attached.presentation.RestoreInterruptedInput(u.attached.conversation, intent))
+func applyInterruption(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, intent sessioncontrol.Interrupt) error {
+	applyInputRestoration(attached, terminal, questions, approvals, picker, control.Turn, clock, attached.presentation.RestoreInterruptedInput(attached.conversation, intent))
 	if intent.Turn == "" {
 		return nil
 	}
-	endSyncQuestions(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, u.review, &u.pendingEditReceipts, intent.Turn)
-	_, err := u.Requests.Send("turn/interrupt", map[string]any{"threadId": u.Thread, "turnId": intent.Turn}, "main", appServerRequest{label: intent.Label})
+	endSyncQuestions(attached, terminal, control, editor, questions, approvals, clock, reviewOwner, receipts, intent.Turn)
+	_, err := control.Requests.Send("turn/interrupt", map[string]any{"threadId": control.Thread, "turnId": intent.Turn}, "main", appServerRequest{label: intent.Label})
 	if err != nil && intent.Label == "steer/interrupt" {
-		u.SteerInterruptAckPending = false
+		control.SteerInterruptAckPending = false
 	}
 	return err
 }

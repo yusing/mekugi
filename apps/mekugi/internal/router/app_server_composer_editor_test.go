@@ -54,9 +54,9 @@ func TestComposerEditorResultKeepsOriginalTarget(t *testing.T) {
 
 func TestAppServerComposerEditorDraft(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.attachImage(filepath.Join(t.TempDir(), "one.png"))
+	attachImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, &u.ownedImages, u.side, filepath.Join(t.TempDir(), "one.png"))
 	appServerTestKeys(t, u, "a")
-	u.attachImage(filepath.Join(t.TempDir(), "two.png"))
+	attachImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, &u.ownedImages, u.side, filepath.Join(t.TempDir(), "two.png"))
 	if err := u.applyEditorDraft(editorTestIntent(u), "[Image 2]b[Image 1]"); err != nil {
 		t.Fatal(err)
 	}

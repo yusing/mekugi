@@ -18,26 +18,27 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
 // attachImage takes ownership of a clipboard file for cleanup.
-func (u *appServerUI) attachImage(path string) {
-	u.insertImage(path)
-	if u.ownedImages == nil {
-		u.ownedImages = make(map[string]bool)
+func attachImage(attached *attachedPresentation, terminal *terminalsession.Attachment, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, owned *map[string]bool, side *sessioncontrol.Side, path string) {
+	insertImage(attached, terminal, editor, questions, approvals, clock, (*owned), side, path)
+	if (*owned) == nil {
+		(*owned) = make(map[string]bool)
 	}
-	u.ownedImages[path] = true
+	(*owned)[path] = true
 }
 
 // insertImage is its own undoable edit.
-func (u *appServerUI) insertImage(path string) {
-	u.Editor.InsertImage(path)
-	u.shell.Main.CursorColumn = nil
-	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "", false)
-	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
+func insertImage(attached *attachedPresentation, terminal *terminalsession.Attachment, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, owned map[string]bool, side *sessioncontrol.Side, path string) {
+	(*editor).InsertImage(path)
+	terminal.Main.CursorColumn = nil
+	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
+	pruneDraftImages(owned, (*editor), attached.conversation, questions, approvals, terminal.Prompts, side)
 }
 
 // finishPaste inserts a bracketed paste as one edit. A lone path to an image
@@ -55,7 +56,7 @@ func (u *appServerUI) finishPaste(text string) {
 		}
 		return
 	}
-	u.insertImage(path)
+	insertImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, u.ownedImages, u.side, path)
 	u.Run = composer.InsertRun // The separating space belongs to the attachment's edit.
 	insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, " ")
 	u.Run = composer.NoRun
@@ -134,8 +135,8 @@ func shellWord(text string) (string, bool) {
 	return word.String(), quote == 0 && word.Len() > 0
 }
 
-func (u *appServerUI) pasteImage(intent sessionpresentation.ComposerIntent) {
-	ctx := u.ctx
+func pasteImage(attached *attachedPresentation, terminal *terminalsession.Attachment, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, owned *map[string]bool, side *sessioncontrol.Side, parent context.Context, intent sessionpresentation.ComposerIntent) {
+	ctx := parent
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -143,16 +144,16 @@ func (u *appServerUI) pasteImage(intent sessionpresentation.ComposerIntent) {
 	defer cancel()
 	path, err := clipboardImage(ctx)
 	if err != nil {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Paste image: "+err.Error(), true)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Paste image: "+err.Error(), true)
 		return
 	}
-	if err := u.attached.presentation.AdmitAcquiredInput(intent, u.attached.conversation); err != nil {
+	if err := attached.presentation.AdmitAcquiredInput(intent, attached.conversation); err != nil {
 		_ = os.Remove(path)
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return
 	}
 	// The highlighted placeholder is the feedback; it also clears any earlier notice.
-	u.attachImage(path)
+	attachImage(attached, terminal, editor, questions, approvals, clock, owned, side, path)
 }
 
 // The retained local file lets Codex own image processing and XML framing, and

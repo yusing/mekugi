@@ -139,11 +139,11 @@ func TestComposerEscapeExpeditesAttachments(t *testing.T) {
 
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	appServerTestTurn(t, u, "t")
-	u.insertImage("first.png")
+	insertImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, u.ownedImages, u.side, "first.png")
 	u.insertSelection("message", "exact quote", "")
 	appServerTestKeys(t, u, "\r")
 	steer := appServerTurnRequests(t, wire)[0]
-	u.insertImage("second.png")
+	insertImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, u.ownedImages, u.side, "second.png")
 	appServerTestKeys(t, u, "\r")
 	composerShellEscape(t, u)
 	interrupt := appServerOneRequest(t, wire, "turn/interrupt", "")
@@ -234,7 +234,7 @@ func TestComposerEscapeExpeditesOnlyLocallyWaitingSteer(t *testing.T) {
 		t.Fatal("Escape bypassed pending settings")
 	}
 	u.Settings = sessioncontrol.Settings{}
-	if err := u.flushInput(); err != nil {
+	if err := flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, u.ctx, u.restoring != nil, u.controlObservations, u.review, &u.pendingEditReceipts); err != nil {
 		t.Fatal(err)
 	}
 	appServerOneRequest(t, wire, "turn/start", "first")

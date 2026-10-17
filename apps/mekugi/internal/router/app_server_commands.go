@@ -92,7 +92,7 @@ func (u *appServerUI) submitCompact(queue bool) error {
 	draft.Text = "/compact"
 	draft.Compact = conversationmodel.CompactIntent{WaitForIdle: queue, Continue: u.Turn != "" || u.Starting()}
 	u.attached.conversation.Unsent = append(u.attached.conversation.Unsent, draft)
-	return u.flushInput()
+	return flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, u.ctx, u.restoring != nil, u.controlObservations, u.review, &u.pendingEditReceipts)
 }
 
 // sessionBusy reports work that leaving the current thread would strand.

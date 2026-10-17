@@ -238,7 +238,7 @@ func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T)
 				if u.Text != "held" || !u.Settings.RestoreEffort || u.Settings.Pending() || w.Len() != 0 {
 					t.Fatal("rejected restoration ran input or lost its recovery draft")
 				}
-				if err := u.flushInput(); err != nil || w.Len() != 0 {
+				if err := flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, u.ctx, u.restoring != nil, u.controlObservations, u.review, &u.pendingEditReceipts); err != nil || w.Len() != 0 {
 					t.Fatal("rejected restoration released input on a later event")
 				}
 				after, err := u.panes.read("/workspace", "saved")

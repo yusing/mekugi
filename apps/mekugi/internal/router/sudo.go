@@ -1,9 +1,12 @@
 package router
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -23,19 +26,19 @@ func openSudoPassword(attached *attachedPresentation, terminal *terminalsession.
 	addQuestions(attached, terminal, control, picker, editor, questions, approvals, clock, overlay, notifications, c, false)
 }
 
-func (u *appServerUI) submitSudoPassword(c *sessioncontrol.Question) error {
-	outcome, delivered, err := c.AnswerPassword(u.shell.Prompts.SecretState(c.ID).Answers)
+func submitSudoPassword(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, model string, tiers *inferencegateway.Tiers, environment []string, owned map[string]bool, hook *approvalHookCheck, editor **composer.Editor, parent context.Context, restoring bool, observations *sessioncontrol.Observations, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, c *sessioncontrol.Question) error {
+	outcome, delivered, err := c.AnswerPassword(terminal.Prompts.SecretState(c.ID).Answers)
 	if err != nil {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return nil
 	}
 	if !delivered {
-		expireSudoPasswords(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, u.review, &u.pendingEditReceipts)
+		expireSudoPasswords(attached, terminal, control, editor, questions, approvals, clock, reviewOwner, receipts)
 		return nil
 	}
-	resolveQuestionCall(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, u.review, &u.pendingEditReceipts, c, "answered")
-	recordApproval(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, &sessioncontrol.Approval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.Sudo.Item}}, outcome)
-	return u.flushInput()
+	resolveQuestionCall(attached, terminal, control, editor, questions, approvals, clock, reviewOwner, receipts, c, "answered")
+	recordApproval(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, &sessioncontrol.Approval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.Sudo.Item}}, outcome)
+	return flushInput(attached, terminal, control, picker, questions, approvals, clock, model, tiers, environment, owned, hook, editor, parent, restoring, observations, reviewOwner, receipts)
 }
 
 func expireSudoPasswords(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt) bool {

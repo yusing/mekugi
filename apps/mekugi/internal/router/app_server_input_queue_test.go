@@ -193,7 +193,7 @@ func TestAppServerQueuedAttachmentsKeepFilesUntilSent(t *testing.T) {
 		t.Fatal(err)
 	}
 	appServerTestTurn(t, u, "t")
-	u.attachImage(path)
+	attachImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, &u.ownedImages, u.side, path)
 	appServerTestKeys(t, u, " see\t")
 	appServerTestKeys(t, u, "other\x7f")
 	if _, err := os.Stat(path); err != nil || !u.ownedImages[path] {
@@ -480,7 +480,7 @@ func TestAppServerEditQueuedStackPreservesImages(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	appServerTestTurn(t, u, "t")
 	for _, path := range []string{"first.png", "second.png"} {
-		u.insertImage(path)
+		insertImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, u.ownedImages, u.side, path)
 		appServerTestKeys(t, u, "\t")
 	}
 	appServerTestKeys(t, u, "\x1b[1;3A")

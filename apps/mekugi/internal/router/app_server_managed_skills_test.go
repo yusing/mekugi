@@ -94,7 +94,7 @@ func TestManagedSkillQueuedSnapshotAndNativeManagement(t *testing.T) {
 		t.Fatal(err)
 	}
 	u.Turn = ""
-	if err := u.flushInput(); err != nil {
+	if err := flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, u.ctx, u.restoring != nil, u.controlObservations, u.review, &u.pendingEditReceipts); err != nil {
 		t.Fatal(err)
 	}
 	frames, _ := attachments.Decode(u.attached.conversation.Submitted[u.Submission().ID].Attachments[0])

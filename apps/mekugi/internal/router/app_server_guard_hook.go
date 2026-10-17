@@ -40,7 +40,7 @@ func (u *appServerUI) guardHookResponse(message appserver.Message) error {
 	thread := u.guardHookCheck.pendingThread
 	u.guardHookCheck.pendingThread = ""
 	if thread != u.Thread {
-		return u.flushInput()
+		return flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, u.ctx, u.restoring != nil, u.controlObservations, u.review, &u.pendingEditReceipts)
 	}
 	var err error
 	if message.Error != nil {
@@ -56,5 +56,5 @@ func (u *appServerUI) guardHookResponse(message appserver.Message) error {
 		return nil
 	}
 	u.guardHookCheck.readyThread = thread
-	return u.flushInput()
+	return flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, u.ctx, u.restoring != nil, u.controlObservations, u.review, &u.pendingEditReceipts)
 }

@@ -309,7 +309,7 @@ func TestAppServerBTWRejectedAttachmentsReturnWithNewDraft(t *testing.T) {
 				t.Fatal(err)
 			}
 			u.Text = "/btw Explain "
-			u.insertImage(path)
+			insertImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, u.ownedImages, u.side, path)
 			u.ownedImages = map[string]bool{path: true}
 			insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, " ")
 			bindComposerFile(u, "@missing.txt", "missing.txt")

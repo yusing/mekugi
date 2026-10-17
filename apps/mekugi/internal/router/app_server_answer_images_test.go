@@ -129,7 +129,7 @@ func TestQuestionImageLifetimeAcrossNavigationAndRetry(t *testing.T) {
 	questionTestAsync(t, u, "retained", "First?", "Second?")
 	questionTestPaint(t, u, 70)
 	path := answerImageFixture(t)
-	u.attachImage(path)
+	attachImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, &u.ownedImages, u.side, path)
 	u.insertSelection("message", "retry quote", "")
 	appServerTestKeys(t, u, "\r")
 	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
@@ -158,7 +158,7 @@ func TestQuestionSkippedImageIsReclaimed(t *testing.T) {
 	questionTestAsync(t, u, "skip", "Image?")
 	questionTestPaint(t, u, 70)
 	path := answerImageFixture(t)
-	u.attachImage(path)
+	attachImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, &u.ownedImages, u.side, path)
 	appServerTestKeys(t, u, "\x1d\r")
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("skipped generated image retained: %v", err)
@@ -171,7 +171,7 @@ func TestQuestionSecretDraftKeepsImageWithoutExposingModelState(t *testing.T) {
 	questionTestSync(t, u, "secret-image", true)
 	questionTestPaint(t, u, 70)
 	path := answerImageFixture(t)
-	u.attachImage(path)
+	attachImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, &u.ownedImages, u.side, path)
 	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
 	if _, err := os.Stat(path); err != nil {

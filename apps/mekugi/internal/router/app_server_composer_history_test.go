@@ -41,7 +41,7 @@ func TestAppServerComposerUndoImageDeletionKeepsFile(t *testing.T) {
 	if err := os.WriteFile(path, []byte("fixture"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	u.attachImage(path)
+	attachImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, &u.ownedImages, u.side, path)
 	appServerTestKeys(t, u, "\x7f")
 	if u.Text != "" || len(u.Images) != 0 {
 		t.Fatalf("image deletion = %q, %+v", u.Text, u.Images)
@@ -95,7 +95,7 @@ func TestAppServerComposerTokenIsOneNavigationUnit(t *testing.T) {
 		attach      func(*testing.T, *appServerUI)
 	}{
 		{"image", "[Image 1]", func(t *testing.T, u *appServerUI) {
-			u.attachImage(filepath.Join(t.TempDir(), "image.png"))
+			attachImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, &u.ownedImages, u.side, filepath.Join(t.TempDir(), "image.png"))
 		}},
 		{"skill", "$review", func(_ *testing.T, u *appServerUI) {
 			start := len(u.Text)
@@ -142,7 +142,7 @@ func TestAppServerComposerTokenIsOneNavigationUnit(t *testing.T) {
 func TestAppServerComposerImageTokenStyledAndCaretVisible(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	appServerTestKeys(t, u, "a")
-	u.attachImage(filepath.Join(t.TempDir(), "image.png"))
+	attachImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, &u.ownedImages, u.side, filepath.Join(t.TempDir(), "image.png"))
 	appServerTestKeys(t, u, "b\x1b[D")
 	screen := vt.NewEmulator(24, 8)
 	t.Cleanup(func() { screen.Close() })

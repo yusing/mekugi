@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strings"
@@ -279,54 +280,59 @@ func endSyncQuestions(attached *attachedPresentation, terminal *terminalsession.
 	}
 }
 
-func (u *appServerUI) applyQuestionInput(input terminalsession.PromptInput) (bool, error) {
+func applyQuestionInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, environment []string, owned *map[string]bool, hook *approvalHookCheck, parent context.Context, observations *sessioncontrol.Observations, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, input terminalsession.PromptInput) (bool, error) {
 	keyInput := input.PromptKey
-	if err := u.attached.presentation.QuestionInput(sessionpresentation.QuestionInputIntent{Version: input.Version, QuestionInput: keyInput.Question}, u.questions.Questions); err != nil {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
+	if err := attached.presentation.QuestionInput(sessionpresentation.QuestionInputIntent{Version: input.Version, QuestionInput: keyInput.Question}, questions.Questions); err != nil {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return true, nil
 	}
-	q, c := u.questions.Current(), u.questions.activeCall()
+	q, c := questions.Current(), questions.activeCall()
 	action := keyInput.Action
 	switch action {
 	case conversationui.PromptPass:
 		return false, nil
 	case conversationui.PromptHide:
-		u.questions.AutoOpen = false
-		u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
+		questions.AutoOpen = false
+		(*editor) = hideQuestionEditor(questions, attached.conversation, terminal, (*editor), control.Thread)
 	case conversationui.PromptCursor:
 		return false, nil
 	case conversationui.PromptPrevious:
-		moveQuestion(&u.questions, u.attached.conversation, u.shell, &u.Editor, u.Thread, -1)
+		moveQuestion(questions, attached.conversation, terminal, editor, control.Thread, -1)
 	case conversationui.PromptNext:
-		moveQuestion(&u.questions, u.attached.conversation, u.shell, &u.Editor, u.Thread, 1)
+		moveQuestion(questions, attached.conversation, terminal, editor, control.Thread, 1)
 	case conversationui.PromptAttach:
-		view := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
-		_, err := u.applyComposerCommand(sessionpresentation.ComposerIntent{Version: view.Version, Target: view.EditorTarget(), Operation: sessionpresentation.AttachClipboard})
-		return true, err
+		view := publishPresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, presentationTime(clock))
+		intent := sessionpresentation.ComposerIntent{Version: view.Version, Target: view.EditorTarget(), Operation: sessionpresentation.AttachClipboard}
+		if err := attached.presentation.AdmitComposer(intent, attached.conversation); err != nil {
+			setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
+			return true, nil
+		}
+		pasteImage(attached, terminal, editor, questions, approvals, clock, owned, side, parent, intent)
+		return true, nil
 	case conversationui.PromptSubmit:
-		return true, u.submitQuestions(sessionpresentation.QuestionSubmitIntent{Version: u.attached.presentation.View().Version, Call: c.ID, Incomplete: true})
+		return true, submitQuestions(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, environment, (*owned), hook, parent, observations, reviewOwner, receipts, sessionpresentation.QuestionSubmitIntent{Version: attached.presentation.View().Version, Call: c.ID, Incomplete: true})
 	case conversationui.PromptAnswer, conversationui.PromptSkip:
-		parkQuestion(&u.questions, u.shell, u.Editor, u.Thread, q)
+		parkQuestion(questions, terminal, (*editor), control.Thread, q)
 		if q.IsSecret {
 			answer := *q
-			if !answer.Complete(u.Text, c.Sync, action == conversationui.PromptSkip) {
+			if !answer.Complete((*editor).Text, c.Sync, action == conversationui.PromptSkip) {
 				return true, nil
 			}
 			q.Done, q.Skipped = answer.Done, answer.Skipped
-			u.shell.Prompts.Secrets(c.ID).Answers[u.questions.Index] = answer.Answer
+			terminal.Prompts.Secrets(c.ID).Answers[questions.Index] = answer.Answer
 		} else {
-			view := u.attached.presentation.View()
-			if !answerQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, sessionpresentation.AnswerIntent{Version: view.Version, AnswerInput: prompt.AnswerInput{
-				Call: c.ID, Question: view.Questions.Call.Questions[u.questions.Index].ID,
+			view := attached.presentation.View()
+			if !answerQuestion(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, sessionpresentation.AnswerIntent{Version: view.Version, AnswerInput: prompt.AnswerInput{
+				Call: c.ID, Question: view.Questions.Call.Questions[questions.Index].ID,
 				Choice: q.Selected, Draft: q.Editor.Snapshot.Draft, Skip: action == conversationui.PromptSkip,
 			}}) {
 				return true, nil
 			}
 		}
-		if step, submit := u.questions.Advance(); step != 0 {
-			moveQuestion(&u.questions, u.attached.conversation, u.shell, &u.Editor, u.Thread, step)
+		if step, submit := questions.Advance(); step != 0 {
+			moveQuestion(questions, attached.conversation, terminal, editor, control.Thread, step)
 		} else if submit {
-			return true, u.submitQuestions(sessionpresentation.QuestionSubmitIntent{Version: u.attached.presentation.View().Version, Call: c.ID})
+			return true, submitQuestions(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, environment, (*owned), hook, parent, observations, reviewOwner, receipts, sessionpresentation.QuestionSubmitIntent{Version: attached.presentation.View().Version, Call: c.ID})
 		}
 	}
 	return true, nil
@@ -346,65 +352,65 @@ func answerQuestion(attached *attachedPresentation, terminal *terminalsession.At
 	return true
 }
 
-func (u *appServerUI) submitQuestions(intent sessionpresentation.QuestionSubmitIntent) error {
+func submitQuestions(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, environment []string, owned map[string]bool, hook *approvalHookCheck, parent context.Context, observations *sessioncontrol.Observations, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, intent sessionpresentation.QuestionSubmitIntent) error {
 	defer func() {
-		settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+		settlePresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay)
 	}()
-	record, err := u.attached.presentation.SubmitQuestions(intent, u.questions.Questions)
+	record, err := attached.presentation.SubmitQuestions(intent, questions.Questions)
 	if err != nil {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return nil
 	}
-	c := u.questions.handles[record]
+	c := questions.handles[record]
 	defer func() {
-		pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
-		u.questions.AutoOpen = true
-		autoOpenQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread, u.statusPanel != nil || u.resumePicker != nil)
+		pruneDraftImages(owned, (*editor), attached.conversation, questions, approvals, terminal.Prompts, side)
+		questions.AutoOpen = true
+		autoOpenQuestions(attached, terminal, picker, editor, questions, approvals, control.Thread, overlay)
 	}()
 	if c.Sudo != nil {
-		return u.submitSudoPassword(c)
+		return submitSudoPassword(attached, terminal, control, picker, questions, approvals, clock, settings.Model, tiers, environment, owned, hook, editor, parent, restoring, observations, reviewOwner, receipts, c)
 	}
-	attached := questionAnswerAttachments(c.Call, u.shell.Prompts.SecretState(c.ID).Editors, u.shell.Prompts.SecretState(c.ID).Answers)
+	answerDraft := questionAnswerAttachments(c.Call, terminal.Prompts.SecretState(c.ID).Editors, terminal.Prompts.SecretState(c.ID).Answers)
 	if len(c.RequestID) > 0 {
-		if err := c.Answer(u.Requests, u.shell.Prompts.SecretState(c.ID).Answers); err != nil {
+		if err := c.Answer(control.Requests, terminal.Prompts.SecretState(c.ID).Answers); err != nil {
 			return err
 		}
-		if u.questions.Active == c.Call {
-			u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
+		if questions.Active == c.Call {
+			(*editor) = hideQuestionEditor(questions, attached.conversation, terminal, (*editor), control.Thread)
 		}
 		c.Submitted()
-		clear(u.shell.Prompts.SecretState(c.ID).Editors)
-		clear(u.shell.Prompts.SecretState(c.ID).Answers)
-		renderQuestionRecord(&u.attached, u.Turn, presentationTime(u.clock), c)
-		if len(attached.AnswerImages) > 0 || len(attached.Attachments) > 0 {
-			d := conversationmodel.Input{Draft: attached}
+		clear(terminal.Prompts.SecretState(c.ID).Editors)
+		clear(terminal.Prompts.SecretState(c.ID).Answers)
+		renderQuestionRecord(attached, control.Turn, presentationTime(clock), c)
+		if len(answerDraft.AnswerImages) > 0 || len(answerDraft.Attachments) > 0 {
+			d := conversationmodel.Input{Draft: answerDraft}
 			d.Text, d.Question, d.InHistory = "Attachments accompanying answers to "+c.Item+":\n", c.Call, true
 			d.AnswerImages = nil
-			for i, path := range attached.AnswerImages {
+			for i, path := range answerDraft.AnswerImages {
 				label := fmt.Sprintf("[Image %d]", i+1)
 				start := len(d.Text)
 				d.Text += label + "\n"
 				d.Images = append(d.Images, composer.Token{Start: start, End: start + len(label), Path: path})
 			}
-			u.attached.conversation.Unsent = append(u.attached.conversation.Unsent, d)
-			return u.flushInput()
+			attached.conversation.Unsent = append(attached.conversation.Unsent, d)
+			return flushInput(attached, terminal, control, picker, questions, approvals, clock, settings.Model, tiers, environment, owned, hook, editor, parent, restoring, observations, reviewOwner, receipts)
 		}
 		return nil
 	}
 	reply := conversationbinding.QuestionReplies(c.Call)
-	if u.questions.Active == c.Call {
-		u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
+	if questions.Active == c.Call {
+		(*editor) = hideQuestionEditor(questions, attached.conversation, terminal, (*editor), control.Thread)
 	}
 	c.Submitted()
 	if reply == "" {
 		c.Resolved = true
-		renderQuestionRecord(&u.attached, u.Turn, presentationTime(u.clock), c)
+		renderQuestionRecord(attached, control.Turn, presentationTime(clock), c)
 		return nil
 	}
-	attached.Text, attached.InHistory = reply, true
-	u.attached.conversation.Unsent = append(u.attached.conversation.Unsent, conversationmodel.Input{Draft: attached, Question: c.Call, ReplyCount: len(binding.QuestionReplies(reply))})
-	renderQuestionRecord(&u.attached, u.Turn, presentationTime(u.clock), c)
-	return u.flushInput()
+	answerDraft.Text, answerDraft.InHistory = reply, true
+	attached.conversation.Unsent = append(attached.conversation.Unsent, conversationmodel.Input{Draft: answerDraft, Question: c.Call, ReplyCount: len(binding.QuestionReplies(reply))})
+	renderQuestionRecord(attached, control.Turn, presentationTime(clock), c)
+	return flushInput(attached, terminal, control, picker, questions, approvals, clock, settings.Model, tiers, environment, owned, hook, editor, parent, restoring, observations, reviewOwner, receipts)
 }
 
 // Answers use composer attachment snapshots. Keep the async reply envelope

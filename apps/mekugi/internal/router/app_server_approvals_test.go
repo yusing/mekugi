@@ -407,7 +407,7 @@ func TestNativeApprovalTypedDenialReachesCommand(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "kept draft")
 			image := answerImageFixture(t)
-			u.attachImage(image)
+			attachImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, &u.ownedImages, u.side, image)
 			kept := u.Text
 			request := <-shell.guard.Requests()
 			if request.Executable != shell.real+"/git" {
