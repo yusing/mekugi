@@ -14,6 +14,7 @@ import (
 // Frame retains the last successfully painted cells and their source metadata.
 // Clearing Rows invalidates incremental painting after an external editor.
 type Frame struct {
+	Notices   NoticeReceipt
 	Rows      []string
 	Copy      [][]terminalui.CopySpan
 	Width     int
@@ -29,9 +30,17 @@ func (f *Frame) CopyText(text string) (notice string, warning bool) {
 	return "Copy sent to terminal clipboard", false
 }
 
+// NoticeReceipt identifies the surfaces in one successfully delivered frame.
+type NoticeReceipt struct {
+	Attachment, Feedback uint64
+	Composer, Content    bool
+}
+
 // Write publishes the frame and clears pending clipboard bytes only on success.
 // Source: apps/mekugi/internal/router/native_shell.go:457:478@70e7ce50 terminalUI.paintNative
-func (f *Frame) Write(out io.Writer, rows []string, copied [][]terminalui.CopySpan, width int, faint bool) error {
+func (f *Frame) Write(out io.Writer, rendered RenderedFrame, width int, faint bool) error {
+	f.Notices = NoticeReceipt{}
+	rows, copied := rendered.Rows, rendered.Copy
 	var b strings.Builder
 	b.WriteString(f.Clipboard)
 	b.WriteString("\x1b[?2026h\x1b[?25l\x1b[0m")
@@ -48,6 +57,7 @@ func (f *Frame) Write(out io.Writer, rows []string, copied [][]terminalui.CopySp
 	}
 	_, err := io.WriteString(out, frame)
 	if err == nil {
+		f.Notices = rendered.Notices
 		f.Clipboard = ""
 		f.Rows, f.Width, f.Copy = rows, width, copied
 	}

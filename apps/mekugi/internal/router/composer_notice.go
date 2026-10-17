@@ -44,38 +44,37 @@ func (u *appServerUI) composerNoticeMouse(button, x, y int, release bool) bool {
 	return true
 }
 
-// Native delivery keeps the batch's complete composer text beside its claim.
-// This lets terminal acknowledgement distinguish visible errors from overlays.
+// Claims retain only the identity they published and their independent queues.
 type nativeCriticalNoticeDelivery struct {
-	ui               *appServerUI
-	composerText     string
-	errors, progress notice.Batch
+	attachment, feedback uint64
+	errors, progress     notice.Batch
 }
 
-// A successful write can show the composer while transcript progress is hidden.
-// Each subset keeps the queue owner's original claim and repeat-count snapshot.
-func (d *nativeCriticalNoticeDelivery) finish(success bool) {
+func (d *nativeCriticalNoticeDelivery) finish(receipt terminalsession.NoticeReceipt) {
 	if d == nil {
 		return
 	}
-	u := d.ui
-	visible := success && (u.shell == nil || u.shell.output == nil && u.shell.selection == nil)
-	d.errors.Finish(visible && u.feedback.Text == d.composerText && u.mainView.NoticeDismiss.W > 0)
-	d.progress.Finish(visible && u.mainView.ContentPainted)
+	attached := receipt.Attachment == d.attachment
+	d.errors.Finish(attached && receipt.Feedback == d.feedback && receipt.Composer)
+	d.progress.Finish(attached && receipt.Content)
 }
 
-func (u *appServerUI) applyCriticalNotices() *nativeCriticalNoticeDelivery {
-	defer func() { u.publishPresentation(u.now()) }()
+func (u *appServerUI) applyCriticalNotices() (delivery *nativeCriticalNoticeDelivery) {
+	defer func() {
+		view := u.publishPresentation(u.now())
+		if delivery != nil {
+			delivery.attachment, delivery.feedback = view.Version.Attachment, u.feedback.Revision
+		}
+	}()
 	claim := claimNativeNotices(u.issues, u.Thread, u.audience)
 	if claim == nil {
 		return nil
 	}
-	delivery := &nativeCriticalNoticeDelivery{ui: u, errors: claim.Errors, progress: claim.Progress}
+	delivery = &nativeCriticalNoticeDelivery{errors: claim.Errors, progress: claim.Progress}
 	for _, message := range u.feedback.Receive(claim, u.now()) {
 		u.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.source.LastSeq + 1, Agent: "Main", Kind: "progress", Text: message.Text, Observed: u.now()}}})
 	}
 	if len(claim.Errors.Messages) > 0 {
-		delivery.composerText = u.feedback.Text
 		u.mainView.NoticeDetails, u.mainView.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
 	}
 	u.dirty = true

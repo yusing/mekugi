@@ -82,7 +82,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		if !frame.SelectionRetained {
 			u.selection = nil
 		}
-		if err := u.frame.Write(out, frame.Rows, frame.Copy, u.width, u.faint); err != nil {
+		if err := u.frame.Write(out, frame, u.width, u.faint); err != nil {
 			return err
 		}
 		if frame.PromptVisible {

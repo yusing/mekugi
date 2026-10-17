@@ -387,16 +387,16 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 						}
 						w, h, err := term.GetSize(int(stdout.Fd()))
 						if err != nil {
-							notices.finish(false)
+							notices.finish(terminalsession.NoticeReceipt{})
 							return err
 						}
 						if u.dirty || w != width || h != height {
 							width, height = w, h
 							if err := u.paint(stdout, w, h); err != nil {
-								notices.finish(false)
+								notices.finish(terminalsession.NoticeReceipt{})
 								return err
 							}
-							notices.finish(true)
+							notices.finish(u.shell.frame.Notices)
 							u.dirty = false
 						}
 						u.writeTerminalTitle(u.now())

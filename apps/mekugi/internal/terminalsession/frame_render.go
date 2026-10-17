@@ -37,6 +37,7 @@ type FrameInput struct {
 }
 
 type RenderedFrame struct {
+	Notices                        NoticeReceipt
 	Rows                           []string
 	Copy                           [][]terminalui.CopySpan
 	Demands                        []activitypresentation.OutputDemand
@@ -80,6 +81,7 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 	in.Agents.HistoryHint = in.Main.historyHint()
 	out.Prompt = in.Prompts.Update(view)
 	in.Main.PromptRect, in.Main.ContentPainted = Rect{}, false
+	in.Main.NoticeDetails, in.Main.NoticeDismiss = Rect{}, Rect{}
 	width, height := max(1, in.Width), max(1, in.Height)
 	in.Agents.FeedOnly, in.Agents.Focused = true, shell.Focus == 3
 	in.Live.Motion.Enabled, in.Live.Motion.Now = true, in.Now
@@ -111,6 +113,7 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 			out.Demands = main.Demands
 			return out, nil
 		}
+		out.Notices = main.Notices
 		content.Main, content.Dock = main.Rows, main.Dock
 		dockAt, dockRows := content.Dock.Y, content.Dock.H
 		if dockRows > 0 && dockAt+dockRows <= len(content.Main) {
@@ -162,6 +165,9 @@ func (f *Frame) Render(ctx context.Context, in FrameInput) (out RenderedFrame, e
 	selected := Rect{}
 	if in.Selection != nil && out.SelectionRetained {
 		selected = in.Selection.Rect
+	}
+	if in.Dialog != nil || in.Selection != nil && out.SelectionRetained {
+		out.Notices.Composer, out.Notices.Content = false, false
 	}
 	out.PromptVisible = shell.PromptVisible(in.Main.PromptRect, in.Dialog != nil, selected)
 	return out, nil

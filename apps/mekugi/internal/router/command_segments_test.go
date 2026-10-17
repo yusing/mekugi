@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"os"
 	"path/filepath"
 	"strings"
@@ -182,12 +183,12 @@ func TestCommandSegmentsRetentionErrorsStayWithOriginalThreadAndCause(t *testing
 		}
 	}
 	before := u.feedback.Text
-	delivery.finish(false)
+	delivery.finish(terminalsession.NoticeReceipt{})
 	if retry := u.applyCriticalNotices(); retry == nil || u.feedback.Text != before || len(u.source.Entries) != 0 {
 		t.Fatal("unpainted error was lost or duplicated")
 	} else {
-		u.testMainFrame(100, 12, 0)
-		retry.finish(true)
+		_, receipt := u.testDeliveredMainFrame(t, 100, 12, 0)
+		retry.finish(receipt)
 	}
 	if len(u.issues.Notices.Pending()) != 0 {
 		t.Fatal("painted errors remained pending")

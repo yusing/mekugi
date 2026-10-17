@@ -3,6 +3,7 @@ package router
 import (
 	"errors"
 	"fmt"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"io"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 )
 
 func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) {
@@ -64,12 +66,15 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	if u.shell.output.Document.Text != before {
 		t.Fatal("router details lost a scoped error")
 	}
-	first.finish(true)
+	if err := u.testPaint(io.Discard, 100, 16); err != nil {
+		t.Fatal(err)
+	}
+	first.finish(u.shell.frame.Notices)
 	if len(issues.Notices.Pending()) != 4 {
 		t.Fatal("dialog acknowledged a hidden composer batch")
 	}
 	u.shell.outputKey("q")
-	first.finish(false) // Simulate an unpainted terminal frame.
+	first.finish(terminalsession.NoticeReceipt{}) // Simulate an unpainted terminal frame.
 	retry := u.applyCriticalNotices()
 	if retry == nil || len(retry.errors.Messages) != 3 || len(u.source.Entries) != 0 || u.feedback.Text != before {
 		t.Fatalf("retry duplicated or lost entries: delivery=%v entries=%d", retry, len(u.source.Entries))
@@ -77,7 +82,7 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	if err := u.testPaint(io.Discard, 100, 16); err != nil {
 		t.Fatal(err)
 	}
-	retry.finish(true)
+	retry.finish(u.shell.frame.Notices)
 	if len(issues.Notices.Pending()) != 1 || u.applyCriticalNotices() != nil {
 		t.Fatalf("paint acknowledged unrelated root or queued duplicate: %v", issues.Notices.Pending())
 	}
@@ -174,24 +179,25 @@ func TestFailureStorageNoticeReachesOwningNativeRootBeforeShutdown(t *testing.T)
 	if delivery == nil || len(delivery.errors.Messages) != 1 || len(owner.source.Entries) != 0 || !owner.feedback.Alert {
 		t.Fatalf("owning root did not receive the storage notice: delivery=%v entries=%d", delivery, len(owner.source.Entries))
 	}
-	rows, _ := owner.testMainFrame(100, 12, 0)
+	rows, receipt := owner.testDeliveredMainFrame(t, 100, 12, 0)
 	feed := ansi.Strip(strings.Join(rows, "\n"))
 	if !strings.Contains(feed, "could not retain the failure reference") {
 		t.Fatalf("storage failure did not appear in the composer before shutdown: %s", feed)
 	}
-	delivery.finish(true)
+	delivery.finish(receipt)
 	if len(issues.Notices.Pending()) != 0 {
 		t.Fatalf("painted notice remained pending: %v", issues.Notices.Pending())
 	}
 }
 
 func TestNativeCriticalNoticeComposerVisibility(t *testing.T) {
-	for _, state := range []string{"status", "replaced", "compact"} {
+	for _, state := range []string{"status", "replaced", "identical replacement", "compact"} {
 		t.Run(state, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.issues = testCriticalErrors()
 			queueCritical(u.issues, u.Thread)
 			delivery := u.applyCriticalNotices()
+			claimedText := u.feedback.Text
 			u.ensureShell()
 			defer u.shell.diffScreen.Close()
 			switch state {
@@ -199,13 +205,15 @@ func TestNativeCriticalNoticeComposerVisibility(t *testing.T) {
 				u.statusPanel = u.newStatusReport()
 			case "replaced":
 				u.setNotice("another error", true)
+			case "identical replacement":
+				u.setNotice(claimedText, true)
 			}
 			height := 12
 			if state == "compact" {
 				height = 3
 			}
-			u.testMainFrame(80, height, 0)
-			delivery.finish(true)
+			_, receipt := u.testDeliveredMainFrame(t, 80, height, 0)
+			delivery.finish(receipt)
 			if state == "compact" {
 				if u.mainView.ContentPainted || len(u.issues.Notices.Pending()) != 0 {
 					t.Fatal("compact composer did not deliver independently of transcript")
@@ -217,15 +225,15 @@ func TestNativeCriticalNoticeComposerVisibility(t *testing.T) {
 			}
 			u.statusPanel = nil
 			retry := u.applyCriticalNotices()
-			if retry == nil || u.feedback.Text != delivery.composerText {
+			if retry == nil || u.feedback.Text != claimedText {
 				t.Fatal("hidden batch could not retry")
 			}
-			u.testMainFrame(80, 12, 0)
-			retry.finish(true)
+			_, receipt = u.testDeliveredMainFrame(t, 80, 12, 0)
+			retry.finish(receipt)
 			if len(u.issues.Notices.Pending()) != 0 {
 				t.Fatal("visible retry remained pending")
 			}
-			u.applyCriticalNotices().finish(false) // Empty polls retain nil-safe acknowledgement.
+			u.applyCriticalNotices().finish(terminalsession.NoticeReceipt{}) // Empty polls retain nil-safe acknowledgement.
 		})
 	}
 }
@@ -242,8 +250,8 @@ func TestNativeCleanupNoticeTranscriptReplacement(t *testing.T) {
 			if delivered {
 				height = 12
 			}
-			u.testMainFrame(80, height, 0)
-			first.finish(true)
+			_, receipt := u.testDeliveredMainFrame(t, 80, height, 0)
+			first.finish(receipt)
 			if got := len(u.issues.Notices.Pending()); (got == 0) != delivered {
 				t.Fatalf("initial delivery: pending=%d delivered=%t", got, delivered)
 			}
@@ -261,11 +269,11 @@ func TestNativeCleanupNoticeTranscriptReplacement(t *testing.T) {
 			if retry == nil {
 				t.Fatal("pending progress did not retry")
 			}
-			rows, _ := u.testMainFrame(80, 12, 0)
+			rows, receipt := u.testDeliveredMainFrame(t, 80, 12, 0)
 			if !strings.Contains(ansi.Strip(strings.Join(rows, "\n")), "pending cleanup plan") {
 				t.Fatal("replacement transcript did not paint pending progress")
 			}
-			retry.finish(true)
+			retry.finish(receipt)
 			if len(u.source.Entries) != 1 || len(u.issues.Notices.Pending()) != 0 {
 				t.Fatalf("retry: entries=%d pending=%v", len(u.source.Entries), u.issues.Notices.Pending())
 			}
@@ -281,8 +289,8 @@ func TestNativeCriticalNoticeMixedBatchDismissal(t *testing.T) {
 	delivery := u.applyCriticalNotices()
 	u.ensureShell()
 	defer u.shell.diffScreen.Close()
-	u.testMainFrame(80, 3, 0)
-	delivery.finish(true)
+	_, receipt := u.testDeliveredMainFrame(t, 80, 3, 0)
+	delivery.finish(receipt)
 	if pending := u.issues.Notices.Pending(); len(pending) != 1 || !strings.Contains(pending[0], "cleanup progress") {
 		t.Fatalf("mixed batch acknowledged the wrong surface: %v", pending)
 	}
@@ -291,9 +299,54 @@ func TestNativeCriticalNoticeMixedBatchDismissal(t *testing.T) {
 	if u.feedback.Text != "" || len(u.source.Entries) != 1 {
 		t.Fatal("dismissed error returned or progress duplicated")
 	}
-	u.testMainFrame(80, 12, 0)
-	retry.finish(true)
+	_, receipt = u.testDeliveredMainFrame(t, 80, 12, 0)
+	retry.finish(receipt)
 	if len(u.issues.Notices.Pending()) != 0 {
 		t.Fatal("visible progress remained pending")
+	}
+}
+
+func TestNativeNoticeReceiptKeepsPaintedIdentity(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.issues = testCriticalErrors()
+	queueCritical(u.issues, u.Thread)
+	delivery := u.applyCriticalNotices()
+	_, receipt := u.testDeliveredMainFrame(t, 80, 12, 0)
+	u.setNotice("later feedback", true)
+	u.statusPanel = u.newStatusReport()
+	u.settlePresentation()
+	delivery.finish(receipt)
+	if len(u.issues.Notices.Pending()) != 0 {
+		t.Fatal("later UI state invalidated an already delivered notice")
+	}
+}
+
+func TestNativeNoticeChildFrameCannotAcknowledgeMainProgress(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.issues.CleanupNotice("", "", "planning", "Main cleanup progress")
+	delivery := u.applyCriticalNotices()
+	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
+	view := u.sessionPresentation().View()
+	if !u.displaySession(sessionpresentation.DisplayIntent{Version: view.Version, Thread: sessionpresentation.Thread{ID: "child", Caller: "/root/worker"}}) {
+		t.Fatal(u.feedback.Text)
+	}
+	if err := u.testPaint(io.Discard, 100, 24); err != nil {
+		t.Fatal(err)
+	}
+	delivery.finish(u.shell.frame.Notices)
+	if len(u.issues.Notices.Pending()) != 1 {
+		t.Fatal("child transcript acknowledged hidden Main progress")
+	}
+	view = u.sessionPresentation().View()
+	if !u.displaySession(sessionpresentation.DisplayIntent{Version: view.Version, Thread: view.Main}) {
+		t.Fatal(u.feedback.Text)
+	}
+	retry := u.applyCriticalNotices()
+	if err := u.testPaint(io.Discard, 100, 24); err != nil {
+		t.Fatal(err)
+	}
+	retry.finish(u.shell.frame.Notices)
+	if len(u.issues.Notices.Pending()) != 0 || len(u.source.Entries) != 1 {
+		t.Fatal("visible Main retry was lost or duplicated")
 	}
 }

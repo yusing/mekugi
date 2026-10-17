@@ -28,9 +28,17 @@ type MainOptions struct {
 // Render paints the attached views without resolving source output. The application
 // hydrates returned demands and renders again before delivering the frame.
 // Source: apps/mekugi/internal/router/app_server_ui.go:1131:1208@ceef0946.
-func (m *Main) Render(transcript *activityui.View, painter *activityui.Painter, prompts *Prompts, options MainOptions, width, height, dock int) MainFrame {
+func (m *Main) Render(transcript *activityui.View, painter *activityui.Painter, prompts *Prompts, options MainOptions, width, height, dock int) (out MainFrame) {
 	presentation := m.session
 	readOnly := presentation.Displayed.ID != presentation.Main.ID
+	defer func() {
+		out.Notices = NoticeReceipt{Attachment: presentation.Version.Attachment, Feedback: presentation.Status.FeedbackRevision}
+		if !readOnly {
+			out.Notices.Composer = m.NoticeDismiss.W > 0 && presentation.Status.Feedback.Alert
+			out.Notices.Content = m.ContentPainted
+		}
+	}()
+
 	picker := presentation.ReadOnly == sessionpresentation.Editable && m.Menu.Open() && options.Focused
 	width, height = max(1, width), max(1, height)
 	m.Menu.Rect, m.PromptRect = Rect{}, Rect{}

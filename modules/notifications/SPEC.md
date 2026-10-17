@@ -55,6 +55,9 @@ Full error text remains available independently of preview truncation.
 Non-error feedback expires after three seconds. Actionable feedback remains until
 editing or dismissal. Replacing feedback does not acknowledge a displaced batch.
 Feedback is user-only; model-visible error evidence retains its own presentation.
+Each replacement has a distinct feedback revision, including replacement with
+identical text. A rendered receipt names the attachment and feedback revision;
+acknowledgement never inspects a live application or compares text for identity.
 
 ### Desktop eligibility
 

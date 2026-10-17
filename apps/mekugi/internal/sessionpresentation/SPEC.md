@@ -22,7 +22,8 @@ the side removes its visible exchange immediately while Control retains any
 pending host acknowledgement and cleanup. Scrolling and copy geometry remain
 renderer-local.
 Clock-driven changes settle on explicit maintenance or replay transitions.
-Publication and prompt admission do not acknowledge display. Only successful
+Feedback publication includes its replacement revision. Publication and prompt
+admission do not acknowledge display. Only successful
 terminal delivery makes a newly opened dock eligible for keyboard input.
 The terminal paints those values without choosing semantic queue states or
 reconstructing prompt content. Approval intents retain their view version, request

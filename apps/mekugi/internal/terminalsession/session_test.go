@@ -60,25 +60,26 @@ type failedPaint struct{}
 func (failedPaint) Write([]byte) (int, error) { return 0, io.ErrClosedPipe }
 
 func TestFrameCommitsClipboardAndRowsTogether(t *testing.T) {
-	frame := Frame{Rows: []string{"old"}, Width: 8}
+	frame := Frame{Rows: []string{"old"}, Width: 8, Notices: NoticeReceipt{Attachment: 9, Composer: true}}
 	frame.CopyText("source")
 	clipboard := frame.Clipboard
 	rows := []string{"new"}
-	if err := frame.Write(failedPaint{}, rows, nil, 8, true); !errors.Is(err, io.ErrClosedPipe) {
+	rendered := RenderedFrame{Rows: rows, Notices: NoticeReceipt{Attachment: 3, Feedback: 7, Composer: true, Content: true}}
+	if err := frame.Write(failedPaint{}, rendered, 8, true); !errors.Is(err, io.ErrClosedPipe) {
 		t.Fatalf("write: %v", err)
 	}
-	if frame.Clipboard != clipboard || frame.Rows[0] != "old" {
+	if frame.Clipboard != clipboard || frame.Rows[0] != "old" || frame.Notices != (NoticeReceipt{}) {
 		t.Fatal("failed paint committed pending output")
 	}
 	var out bytes.Buffer
-	if err := frame.Write(&out, rows, nil, 8, true); err != nil {
+	if err := frame.Write(&out, rendered, 8, true); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(out.String(), clipboard) || !strings.Contains(out.String(), "new") || frame.Clipboard != "" {
+	if !strings.HasPrefix(out.String(), clipboard) || !strings.Contains(out.String(), "new") || frame.Clipboard != "" || frame.Notices != rendered.Notices {
 		t.Fatal("successful paint lost clipboard or frame")
 	}
 	out.Reset()
-	if err := frame.Write(&out, rows, nil, 8, true); err != nil {
+	if err := frame.Write(&out, rendered, 8, true); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(out.String(), "new") || strings.Contains(out.String(), "]52;") {

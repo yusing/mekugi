@@ -2,6 +2,7 @@ package router
 
 import (
 	"io"
+	"testing"
 	"time"
 
 	terminalsession "github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -58,12 +59,17 @@ func (u *appServerUI) mainHeaderRight(width int, focused bool) string {
 
 // mainFrame hydrates identified output between terminal-only render passes.
 func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalsession.Rect) {
+	frame := u.renderMainFrame(width, height, dock)
+	return frame.Rows, frame.Dock
+}
+
+func (u *appServerUI) renderMainFrame(width, height, dock int) terminalsession.MainFrame {
 	transcript := u.transcriptView()
 	options := terminalsession.MainOptions{Now: u.now(), Focused: u.shell == nil || u.shell.Focus == 0, Version: mekugiVersion()}
 	for {
 		frame := u.mainView.Render(transcript, &u.view.Painter, &u.prompts, options, width, height, dock)
 		if len(frame.Demands) == 0 {
-			return frame.Rows, frame.Dock
+			return frame
 		}
 		transcript.Hydrate(u.activitySource(transcript).ResolveOutputDemands(frame.Demands))
 	}
@@ -73,4 +79,15 @@ func (u *terminalUI) paintSelection(rows []string) {
 	if !u.frame.PaintSelection(u.frameInput(), rows) {
 		u.selection = nil
 	}
+}
+
+func (u *appServerUI) testDeliveredMainFrame(t *testing.T, width, height, dock int) ([]string, terminalsession.NoticeReceipt) {
+	t.Helper()
+	u.settlePresentation()
+	frame := u.renderMainFrame(width, height, dock)
+	var delivered terminalsession.Frame
+	if err := delivered.Write(io.Discard, terminalsession.RenderedFrame{Rows: frame.Rows, Notices: frame.Notices}, width, true); err != nil {
+		t.Fatal(err)
+	}
+	return frame.Rows, delivered.Notices
 }

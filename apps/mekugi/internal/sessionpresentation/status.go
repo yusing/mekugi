@@ -61,6 +61,7 @@ type Label struct {
 }
 
 type MainStatus struct {
+	FeedbackRevision                   uint64
 	State, Session, Composer, Feedback Label
 	ComposerOverride                   bool
 	Details                            [2]Label
@@ -182,6 +183,7 @@ func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) (v View) 
 		s.ComposerOverride = true
 	}
 	s.ShellMode, s.Processes = in.Conversation.ShellMode(), in.Processes
+	s.FeedbackRevision = in.Feedback.Revision
 	s.Feedback = Label{Text: in.Feedback.Text, Alert: in.Feedback.Alert}
 	return v
 }

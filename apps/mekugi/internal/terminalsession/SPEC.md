@@ -33,7 +33,10 @@ It composes Main, preview, roster, saved pane, dialog and frozen selection, then
 returns output demands or delivery-ready rows with prompt visibility. It owns
 header/status painting, frame decoration, status-tab targets and final pane geometry. Prompt visibility
 is calculated against that geometry and active overlays; only successful terminal
-delivery makes a visible prompt ready for input.
+delivery makes a visible prompt ready for input. Notice receipts name the painted
+attachment and feedback revision and distinguish the composer from Main transcript
+visibility. Hidden Main, child display, dialogs and frozen selections cannot
+acknowledge a covered notice surface; failed writes produce no receipt.
 Prompt layouts, preferred columns, masked secret editors and readiness belong to
 the terminal. Layouts use stable call, question and approval identities rather
 than model pointers. Delivery receipts identify the attachment and dock opening;

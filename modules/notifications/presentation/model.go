@@ -12,6 +12,7 @@ import (
 // the renderer; complete text and progress identity do not depend on its size.
 // Source: internal/router/composer_notice.go:14:29,156:200@b4d36aa2
 type Model struct {
+	Revision uint64
 	Text     string
 	Alert    bool
 	Until    time.Time
@@ -19,6 +20,7 @@ type Model struct {
 }
 
 func (m *Model) Set(text string, alert bool, now time.Time) {
+	m.Revision++
 	m.Text, m.Alert, m.Until = text, alert, time.Time{}
 	if text != "" && !alert {
 		m.Until = now.Add(3 * time.Second)

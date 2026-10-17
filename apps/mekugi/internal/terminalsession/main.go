@@ -44,6 +44,7 @@ type mainInput struct {
 }
 
 type MainFrame struct {
+	Notices               NoticeReceipt
 	Demands               []activitypresentation.OutputDemand
 	Rows                  []string
 	Feed, Dock, Questions Rect

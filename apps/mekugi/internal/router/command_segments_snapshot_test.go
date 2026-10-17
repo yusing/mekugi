@@ -33,9 +33,9 @@ func TestUISnapshotCommandSegmentRetentionNotice(t *testing.T) {
 			if delivery == nil || !strings.Contains(u.feedback.Text, tc.err.Error()) {
 				t.Fatal("composer omitted the underlying error")
 			}
-			rows, _ := u.testMainFrame(80, 12, 0)
+			rows, receipt := u.testDeliveredMainFrame(t, 80, 12, 0)
 			assertNativeUISnapshot(t, "command-segments-storage-failure", rows)
-			delivery.finish(true)
+			delivery.finish(receipt)
 		})
 	}
 }
