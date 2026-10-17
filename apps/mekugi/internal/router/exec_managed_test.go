@@ -35,8 +35,8 @@ func TestManagedExecMChangesSurface(t *testing.T) {
 		t.Fatalf("diagnostic history lost: %q, %v", text, err)
 	}
 	data, err := f.store.liveDiffSnapshot(f.ctx, previewmodel.Scope{Workspaces: map[string]map[string]bool{f.workspace: {f.thread: true}}})
-	if err != nil || len(data.files()) != 1 || !strings.HasSuffix(data.files()[0].Path, "direct.txt") {
-		t.Fatalf("managed saved Diff: %+v, %v", data.files(), err)
+	if err != nil || len(data.Publication.Files) != 1 || !strings.HasSuffix(data.Publication.Files[0].Path, "direct.txt") {
+		t.Fatalf("managed saved Diff: %+v, %v", data.Publication.Files, err)
 	}
 }
 

@@ -13,12 +13,12 @@ type View struct {
 	Scroll map[string]int
 }
 
-func (v *View) Merge(files []presentation.File) {
+func (v *View) Update(publication presentation.Publication) {
 	selected := ""
 	if len(v.Files) > 0 {
 		selected = v.Files[v.Selected].Key()
 	}
-	v.View.Merge(files)
+	v.View.Update(publication)
 	if selected != "" && len(v.Files) > 0 && v.Scroll != nil {
 		key := v.Files[v.Selected].Key()
 		if key != selected && slices.ContainsFunc(v.Files[v.Selected].Chunks, func(chunk presentation.Chunk) bool { return chunk.Key == selected }) {

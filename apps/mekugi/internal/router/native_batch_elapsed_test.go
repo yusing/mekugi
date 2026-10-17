@@ -7,6 +7,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
+
 	"github.com/charmbracelet/x/ansi"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
@@ -158,10 +160,9 @@ func TestNativeCapturedBatchKeepsSingleElapsedResult(t *testing.T) {
 			item := appServerItem{ID: "batch", Type: "commandExecution", Command: "printf new > a.txt; sleep 1", Status: status, ExitCode: new(exit), DurationMS: new(int64(1000)), AggregatedOutput: new("retained batch output\n")}
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 			finishPacing(u.view)
-			data := newLiveDiffData()
-			data.order = []string{"receipt"}
+			var data []*presentation.Receipt
 			for range 2 {
-				data.attempts["receipt"] = liveDiffAttempt{receipt: &capturedActivityEdit{thread: "main", calls: []string{"batch"}, text: "Edit `a.txt` +1 -1 · printf"}}
+				data = []*presentation.Receipt{{Thread: "main", Calls: []string{"batch"}, Text: "Edit `a.txt` +1 -1 · printf"}}
 				u.view.applyCapturedEdits(data)
 				count := 0
 				for _, entry := range u.view.Entries {

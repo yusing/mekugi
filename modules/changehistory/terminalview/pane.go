@@ -22,8 +22,6 @@ type Pane struct {
 	workspace                        string
 	coverage                         string
 	view                             View
-	callerCounts                     map[string]diffmodel.Counts
-	netCounts                        *diffmodel.Counts
 	renderer                         Renderer
 	rendering                        Render
 	rendered                         []presentation.File
@@ -70,23 +68,17 @@ func (c *Pane) Back() bool { return c.back.kind != 0 }
 func (c *Pane) Invalidate() { c.dirty = true }
 
 // Update consumes retained presentation values without reading their source store.
-func (c *Pane) Update(files []presentation.File, coverage string) {
+func (c *Pane) Update(publication presentation.Publication, coverage string) {
 	c.coverage = coverage
-	c.view.Merge(files)
-	c.view.RefreshVisible()
-	c.callerCounts = presentation.CallerCounts(c.view.Files)
-	c.netCounts = presentation.NetCounts(&c.view.View)
+	c.view.Update(publication)
 	c.refreshChanges()
 	c.dirty = true
 }
 func (c *Pane) SetCoverage(coverage string) { c.coverage, c.dirty = coverage, true }
-func (c *Pane) Counts() (map[string]diffmodel.Counts, *diffmodel.Counts) {
-	return c.callerCounts, c.netCounts
-}
 
 // Reset retires the selected review while retaining its tree/flat preference.
 func (c *Pane) Reset() {
-	c.coverage, c.callerCounts, c.netCounts = "CONNECTING", nil, nil
+	c.coverage = "CONNECTING"
 	c.view = View{Scroll: make(map[string]int)}
 	c.navigation = Navigation{Flat: c.navigation.Flat}
 	c.back = paneBack{}

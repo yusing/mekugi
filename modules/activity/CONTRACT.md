@@ -20,6 +20,8 @@ targets preserve source identity, and skill intents name their agent. Applicatio
 owners resolve host identities and retain output handles. Group members retain
 entry, operation and reasoning-section identity through read merges, reasoning compaction, batch
 flattening and stage folding. Dialogs consume that same flat membership.
+Contributed retained pages keep their provider's stable identity and frozen source;
+live command refresh cannot replace them with another invocation's content.
 
 ## Operation rows
 
@@ -412,12 +414,11 @@ output estimates about four bytes/token at one-second refresh, replaced by repor
 usage. Hidden reasoning is not estimated; input changes on reported usage only.
 Unknown historical accounting stays blank until consumption is observed.
 
-Per-agent edits are cumulative captures within their capturing workspace,
-including tool-managed files, independent of caller filter. Unknown captures add
-no counts; scratch/outside-workspace edits remain in Diff but not totals. The
-roster rule instead uses composed retained project changes across agents: exact
-cancellation is zero, no captures omit the metric, incomplete/binary/inconsistent
-history is unknown. It is neither a sum of agent counters nor Git/workspace state.
+[Change history](../changehistory/SPEC.md#saved-review-presentation) supplies
+captured caller totals and composed project totals from one admitted publication.
+Diff visibility, selection and caller filtering cannot alter roster counts. No
+captures omit the metric; an exact cancellation shows zero; unavailable net counts
+remain unknown. Neither total reads current Git or workspace state.
 
 Changed token/cost/context/edit metrics ease from displayed values over half a
 second; first observations appear immediately. Usage totals follow eased rows;

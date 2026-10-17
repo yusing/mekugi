@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -192,7 +194,7 @@ func TestOutputDialogMouseSelectionClearedByNavigation(t *testing.T) {
 	for _, action := range []string{"page", "wheel", "width", "height"} {
 		t.Run(action, func(t *testing.T) {
 			u, _ := outputSelectionFixture("alpha\nbeta\n", false)
-			u.output.refreshPages([]activityui.Block{{Value: u.output.pages[0].Value}, {Kind: "op", Verb: "Run", Code: "second"}})
+			u.output.refreshPages(activitypresentation.DetailPages(activityui.Values([]activityui.Block{{Value: u.output.pages[0].Value}, {Kind: "op", Verb: "Run", Code: "second"}})))
 			x, y := outputSelectionPoint(t, u, "alpha")
 			outputSelectionDrag(u, x, y, x+4, y)
 			switch action {
@@ -224,7 +226,7 @@ func TestOutputDialogSkillMarkdownSearchSelectionAndCopy(t *testing.T) {
 	u.main = &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: newActivityAdapter()}
 	block := activityui.Block{Content: activitymodel.ParseOperation("Skill `example`")}
 	block.Source, block.Output = u.output.pages[0].Source, u.output.pages[0].Output
-	u.output.refreshPages([]activityui.Block{block})
+	u.output.refreshPages(activitypresentation.DetailPages(activityui.Values([]activityui.Block{block})))
 	frame := drawOutputDialog(u)
 	if !strings.Contains(frame, "Use careful steps.") || strings.Contains(frame, "**") || strings.Contains(frame, "# Skill guide") {
 		t.Fatalf("skill Markdown not rendered in dialog: %q", frame)

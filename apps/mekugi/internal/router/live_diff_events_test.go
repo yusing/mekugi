@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -60,11 +62,12 @@ func TestLiveDiffDirectPublicationAndDurableReload(t *testing.T) {
 	sub := testReview(broker).Subscribe()
 	liveDiffIdentityCapture(t, store, workspace, "one", "", "file.txt", "", "original\n")
 	event := waitLiveDiffChange(t, sub)
-	data := newLiveDiffData()
-	if err := data.apply(t.Context(), store, event); err != nil {
+	builder := presentation.NewBuilder(nil)
+	if err := hydrateReview(t.Context(), store, builder, event); err != nil {
 		t.Fatal(err)
 	}
-	files := data.files()
+	data := builder.Finish()
+	files := data.Publication.Files
 	if len(files) != 1 || len(files[0].Chunks) != 1 || !strings.Contains(files[0].Chunks[0].Review.Diff, "+original") {
 		t.Fatalf("publication lost saved edit: %+v", files)
 	}
@@ -110,7 +113,7 @@ func TestLiveDiffScopeReconciliationUsesCachedAttempts(t *testing.T) {
 	if err := os.Remove(filepath.Join(store.directory, legacycall.Name(workspace, "one", false))); err != nil {
 		t.Fatal(err)
 	}
-	if err := data.reconcile(t.Context(), store, scope); err != nil {
+	if err := reconcileReview(t.Context(), store, presentation.NewBuilder(data), scope); err != nil {
 		t.Fatalf("unchanged membership reread an immutable capture: %v", err)
 	}
 	index, err := store.changes.Inspect(store.changeScope(), workspace)
@@ -121,12 +124,13 @@ func TestLiveDiffScopeReconciliationUsesCachedAttempts(t *testing.T) {
 	if err := store.locked(t.Context(), func(store *mekugiReplayStore) error { return writeChangeIndexFixture(store, index) }); err != nil {
 		t.Fatal(err)
 	}
-	if err := data.reconcile(t.Context(), store, scope); err == nil {
+	if err := reconcileReview(t.Context(), store, presentation.NewBuilder(data), scope); err == nil {
 		t.Fatal("reconciliation hid removed membership")
 	}
 }
 
 func TestLiveDiffJSONBatchKeepsFollowAndRecency(t *testing.T) {
+	var viewPublication presentation.Publication
 	transform, proxy, _, workspace := newMekugiTestTransform(t)
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -160,15 +164,17 @@ func TestLiveDiffJSONBatchKeepsFollowAndRecency(t *testing.T) {
 	if len(event.Changes) != 2 || len(sub.Events()) != 0 {
 		t.Fatalf("one durable batch was split into display updates: %+v", event)
 	}
-	data := newLiveDiffData()
 	view := changeview.View{}
-	view.Merge(nil) // The connected pane starts empty before this batch.
+	viewPublication = viewPublication.With(nil)
+	view.Update(viewPublication) // The connected pane starts empty before this batch.
+	builder := presentation.NewBuilder(&presentation.Snapshot{Publication: viewPublication})
 	for _, change := range event.Changes {
-		if err := data.apply(t.Context(), store, change); err != nil {
+		if err := hydrateReview(t.Context(), store, builder, change); err != nil {
 			t.Fatal(err)
 		}
 	}
-	view.Merge(data.files())
+	viewPublication = builder.Finish().Publication
+	view.Update(viewPublication)
 	view.RefreshVisible()
 	for _, file := range view.Files {
 		if !view.Visible[file.Key()].Highlighted {

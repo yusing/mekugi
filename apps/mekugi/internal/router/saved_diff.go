@@ -2,7 +2,8 @@ package router
 
 import (
 	"context"
-	"errors"
+
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
@@ -12,55 +13,58 @@ import (
 // Source: apps/mekugi/internal/router/live_diff_terminal.go:315:378@[fc0514ff]
 type savedDiff struct {
 	store          *mekugiReplayStore
-	data           *liveDiffData
+	data           *presentation.Snapshot
 	scope          previewmodel.Scope
 	coverage       string
 	awaitingResync bool
 }
 
 func (c *savedDiff) reset() {
-	c.data, c.scope, c.coverage = newLiveDiffData(), previewmodel.Scope{}, "CONNECTING"
+	c.data, c.scope, c.coverage = new(presentation.Snapshot), previewmodel.Scope{}, "CONNECTING"
 	c.awaitingResync = true
 }
 
-func (c *savedDiff) applyEvent(ctx context.Context, event reviewEvent) (bool, error) {
-	if err := validateLiveDiffEvent(event); err != nil {
-		return false, err
-	}
-	if c.awaitingResync {
-		if event.Kind != "scope" || !event.Resync {
-			return false, nil
-		}
-		c.awaitingResync = false
-	}
-	switch event.Kind {
-	case "coverage":
-		c.coverage = event.Status
-	case "scope":
-		if event.Resync {
-			next, err := c.store.liveDiffSnapshot(ctx, *event.Scope)
-			if err != nil {
-				return false, err
-			}
-			for key := range c.data.attempts {
-				if _, exists := next.attempts[key]; !exists {
-					return false, errors.New("change records were removed; restart the live view")
-				}
-			}
-			c.data = next
-		} else if err := c.data.reconcile(ctx, c.store, *event.Scope); err != nil {
+func (c *savedDiff) applyEvent(ctx context.Context, events ...reviewEvent) (bool, error) {
+	next := *c
+	builder := presentation.NewBuilder(c.data)
+	changed, content := false, false
+	for _, event := range events {
+		if err := ctx.Err(); err != nil {
 			return false, err
 		}
-		c.scope, c.coverage = *event.Scope, event.Status
-	case "change":
-		for _, change := range event.Changes {
-			if !c.scope.Workspaces[change.Workspace][change.Thread] {
+		if err := validateLiveDiffEvent(event); err != nil {
+			return false, err
+		}
+		if next.awaitingResync {
+			if event.Kind != "scope" || !event.Resync {
 				continue
 			}
-			if err := c.data.apply(ctx, c.store, change); err != nil {
+			next.awaitingResync = false
+		}
+		switch event.Kind {
+		case "coverage":
+			next.coverage, changed = event.Status, true
+		case "scope":
+			if err := reconcileReview(ctx, next.store, builder, *event.Scope); err != nil {
 				return false, err
 			}
+			next.scope, next.coverage = *event.Scope, event.Status
+			changed, content = true, true
+		case "change":
+			for _, change := range event.Changes {
+				if !next.scope.Workspaces[change.Workspace][change.Thread] {
+					continue
+				}
+				if err := hydrateReview(ctx, next.store, builder, change); err != nil {
+					return false, err
+				}
+			}
+			changed, content = true, true
 		}
 	}
-	return event.Kind == "scope" || event.Kind == "change" || event.Kind == "coverage", nil
+	if content {
+		next.data = builder.Finish()
+	}
+	*c = next
+	return changed, nil
 }

@@ -29,6 +29,7 @@ const maxReplayRecordBytes = history.MaxRecordBytes
 // ordering are intentionally absent. Session retention removes only inactive, unshared records.
 type mekugiReplayStore struct {
 	changes            changes.Service
+	captured           *changecapture.Service
 	recovery           *recovery.Service
 	writes             *persistence.Counter
 	directory          string
@@ -94,6 +95,7 @@ func openReplayStore(ctx context.Context, service *history.Service, captured *ch
 	}
 	store := &mekugiReplayStore{directory: directory, maxBytes: defaultReplayStorageBytes, maxCommentaryBytes: 16 << 20, snapshots: snapshots, publication: publication}
 	if captured != nil {
+		store.captured = captured
 		store.changes = captured.Service
 	}
 	return store, nil

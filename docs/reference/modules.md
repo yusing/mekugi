@@ -15,6 +15,7 @@ Own host-operation feeds, roster derivation and retained output
 - Composition: selected; lifetime: `attached-session`.
 - Requires: none.
 - Contributes: `record-kinds`.
+- Hosts: `activity-details`.
 - Records: `wait`.
 - Codex connections: `observation`.
 - Capabilities: `observation` (required).
@@ -56,7 +57,7 @@ Capture, retain, review, apply, and revert filesystem change evidence
 - Composition: selected; lifetime: `invocation`.
 - Requires: `sessionhistory`.
 - Resources: private workspace checkpoints and bounded warm-up tasks.
-- Contributes: `commands`, `guidance`, `record-kinds`, `references`.
+- Contributes: `commands`, `guidance`, `record-kinds`, `references`, `activity-details`.
 - Commands: `mchanges`.
 - Records: `changes`.
 - References: `changes`.

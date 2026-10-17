@@ -103,7 +103,7 @@ func TestSavedReviewLoadingSeparatesPreviewAuthorityFromRestoredInput(t *testing
 			if u.restoring != nil || (u.shell.diffFailure != "") != failure {
 				t.Fatalf("restoration did not settle after retained read: restoring=%v failure=%q", u.restoring != nil, u.shell.diffFailure)
 			}
-			if !failure && len(u.shell.saved.data.files()) != 1 {
+			if !failure && len(u.shell.saved.data.Publication.Files) != 1 {
 				t.Fatal("successful hydration did not publish saved Diff")
 			}
 			if failure {
@@ -157,7 +157,7 @@ func TestSavedReviewReplacementRejectsQueuedOldResync(t *testing.T) {
 		t.Fatal("current replacement scope was rejected")
 	}
 	u.shell.loadedReview(savedReviewLoaderResult(t, loader))
-	files := u.shell.saved.data.files()
+	files := u.shell.saved.data.Publication.Files
 	if u.shell.diffFailure != "" || len(files) != 1 || filepath.Base(files[0].Path) != "new.go" {
 		t.Fatalf("old subscription poisoned replacement Diff: failure=%q files=%+v", u.shell.diffFailure, files)
 	}

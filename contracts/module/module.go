@@ -3,6 +3,7 @@ package module
 import (
 	"context"
 
+	"github.com/yusing/mekugi/contracts/activitydetail"
 	"github.com/yusing/mekugi/contracts/diagnosticsection"
 
 	"github.com/yusing/mekugi/contracts/command"
@@ -29,6 +30,7 @@ const (
 // Slots contains the contribution families implemented by the current binder.
 // Further families are added with their first consumer, rather than placeholders.
 type Slots struct {
+	ActivityDetails    []activitydetail.Provider
 	ReplayTiming       []replaytiming.Reader
 	DiagnosticSections []diagnosticsection.Contribution
 	Inspection         []inspection.Contribution
@@ -38,9 +40,10 @@ type Slots struct {
 	References         []reference.Resolver
 }
 
-// Contributions declares typed commands before construction. Slots holds the
+// Contributions declares typed contributions before construction. Slots holds the
 // complete collected runtime values passed to hosts.
 type Contributions[S any] struct {
+	ActivityDetails    []activitydetail.Definition[S]
 	ReplayTiming       []replaytiming.Definition[S]
 	DiagnosticSections []diagnosticsection.Definition[S]
 	Inspection         []inspection.Definition[S]
@@ -64,6 +67,7 @@ type Descriptor[D, S, B any] struct {
 	HostsCommands           bool
 	HostsRecords            bool
 	HostsReferences         bool
+	HostsActivityDetails    bool
 	HostsInspection         bool
 	HostsReplayTiming       bool
 	HostsDiagnosticSections bool

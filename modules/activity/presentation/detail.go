@@ -1,6 +1,21 @@
 package presentation
 
-import "strconv"
+import (
+	"strconv"
+
+	"github.com/yusing/mekugi/contracts/activitydetail"
+	"github.com/yusing/mekugi/modules/activity/feed"
+)
+
+// ContributedDetails preserves provider identities and frozen source separately
+// from live feed refresh, whose Source identities belong to Activity itself.
+func ContributedDetails(pages []activitydetail.Page) []DetailPage {
+	result := make([]DetailPage, len(pages))
+	for i, page := range pages {
+		result[i] = DetailPage{ID: page.ID, Value: Value{Content: feed.Content{Kind: "op", Verb: page.Verb, Code: page.Code, Lang: page.Language, Fenced: true}, Path: page.Path}}
+	}
+	return result
+}
 
 // DetailPage retains original operation identity independently of feed grouping.
 // Output remains an identity within Source; the attached owner resolves its snapshot.

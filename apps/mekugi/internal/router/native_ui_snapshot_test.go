@@ -135,11 +135,11 @@ func TestUISnapshotNativeRosterEditCounts(t *testing.T) {
 		{Name: "/root", Final: true, InputTokens: 2000},
 		{Name: "/root/cleanup", Final: true, InputTokens: 1000},
 	}})
-	v.LineCounts = map[string]diffmodel.Counts{
+	v.Model.LineCounts = map[string]diffmodel.Counts{
 		"/root":         {Added: 3, Removed: 1},
 		"/root/cleanup": {Removed: 2},
 	}
-	v.NetCounts = new(diffmodel.Counts{Added: 2, Removed: 1})
+	v.Model.NetCounts = new(diffmodel.Counts{Added: 2, Removed: 1})
 	assertNativeUISnapshot(t, "native-roster-edit-counts", v.NativeRoster(100, 6, now, true))
 }
 

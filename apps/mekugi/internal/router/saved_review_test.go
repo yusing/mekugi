@@ -147,7 +147,7 @@ func TestSavedReviewWithoutLivePreview(t *testing.T) {
 	}
 	paths := func() []string {
 		var result []string
-		for _, file := range u.shell.saved.data.files() {
+		for _, file := range u.shell.saved.data.Publication.Files {
 			result = append(result, filepath.Base(file.Path))
 		}
 		slices.Sort(result)

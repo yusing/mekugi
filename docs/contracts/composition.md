@@ -12,8 +12,7 @@ module, provider or test-support member. The repository root owns workspace
 coordination and has no Go module or shared implementation package.
 
 The application builds both executables and composes the selected feature
-descriptors. Its remaining integration lives in `apps/mekugi/internal/router`,
-with one implementation and retained store for each responsibility. Executable
+descriptors, with one implementation and retained store for each responsibility. Executable
 commands come from descriptor contributions; the application authenticates,
 pins and dispatches that catalog under the [frontend contract](../../apps/mekugi/internal/frontends/SPEC.md).
 
@@ -37,6 +36,12 @@ order, including the partially started owner.
 The command host receives all collected contributions, including later entries,
 and accepts an empty catalog. Reader contributions declare read observation so
 the host can retain AX evidence without a command-name switch.
+
+Activity hosts detail providers with unique nonempty names and callable resolvers.
+It tries them in composition order and uses the first matching result. Resolution
+uses already-published memory only. Removing a contribution does not remove retained
+records. [Activity](../../modules/activity/SPEC.md#edit-evidence) owns detail selection
+and absence behavior.
 
 Session history receives record-kind recognition, dependency enumeration,
 retention budgets and semantic retirement policy. Record meaning stays with its

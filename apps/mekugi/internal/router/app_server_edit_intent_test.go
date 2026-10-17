@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -202,10 +204,8 @@ func TestAppServerSedStartsAsEditBeforeReceipt(t *testing.T) {
 				appServerTestNotify(t, u, method, map[string]any{"threadId": thread, "turnId": "turn", "item": item})
 				assertCapturedCommand(t, view, thread, "sed-call", "Edit", 0)
 			}
-			data := newLiveDiffData()
-			data.order = []string{"sed-change"}
-			data.attempts["sed-change"] = liveDiffAttempt{receipt: &capturedActivityEdit{
-				thread: thread, calls: []string{"sed-call"}, text: "Edit `internal/router/live_activity_view_test.go` +1 -1 · sed",
+			data := []*presentation.Receipt{{
+				Thread: thread, Calls: []string{"sed-call"}, Text: "Edit `internal/router/live_activity_view_test.go` +1 -1 · sed",
 			}}
 			view.applyCapturedEdits(data)
 			assertCapturedCommand(t, view, thread, "sed-call", "Edit", 0)

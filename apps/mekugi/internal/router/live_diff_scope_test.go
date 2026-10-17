@@ -2,9 +2,19 @@ package router
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
+	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/contracts/module"
+	"github.com/yusing/mekugi/modules/activity"
+	"github.com/yusing/mekugi/modules/activity/feed"
+	"github.com/yusing/mekugi/modules/changehistory"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	"github.com/yusing/mekugi/modules/sessionhistory"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
@@ -18,7 +28,7 @@ func (s *mekugiReplayStore) liveDiffSnapshotFiles(ctx context.Context, scope pre
 	if err != nil {
 		return nil, err
 	}
-	return data.files(), nil
+	return data.Publication.Files, nil
 }
 
 func liveDiffScopeCapture(t *testing.T, store *mekugiReplayStore, workspace, thread, call, path, before, after string) {
@@ -72,6 +82,7 @@ func TestLiveDiffSessionScopeStreamsAndWorkspaces(t *testing.T) {
 }
 
 func TestLiveDiffSessionCrossWorkspaceOverlap(t *testing.T) {
+	var viewPublication presentation.Publication
 	root := t.TempDir()
 	first, second := filepath.Join(root, "z"), filepath.Join(root, "a")
 	store, err := openMekugiReplayStore(t.TempDir())
@@ -88,7 +99,8 @@ func TestLiveDiffSessionCrossWorkspaceOverlap(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		view.Merge(files)
+		viewPublication = viewPublication.With(files)
+		view.Update(viewPublication)
 		view.RefreshVisible()
 	}
 	refresh()
@@ -111,6 +123,7 @@ func TestLiveDiffSessionCrossWorkspaceOverlap(t *testing.T) {
 }
 
 func TestLiveDiffFreshSnapshotComposesCrossStreamCaptures(t *testing.T) {
+	var viewPublication presentation.Publication
 	workspace := t.TempDir()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -137,7 +150,8 @@ func TestLiveDiffFreshSnapshotComposesCrossStreamCaptures(t *testing.T) {
 		t.Fatal(err)
 	}
 	var view changeview.View
-	view.Merge(files)
+	viewPublication = viewPublication.With(files)
+	view.Update(viewPublication)
 	view.RefreshVisible()
 	for _, file := range view.Files {
 		if file.Path == path {
@@ -151,4 +165,92 @@ func TestLiveDiffFreshSnapshotComposesCrossStreamCaptures(t *testing.T) {
 		}
 	}
 	t.Fatal("target missing from snapshot")
+}
+
+func (s *mekugiReplayStore) liveDiffSnapshot(ctx context.Context, scope previewmodel.Scope) (*presentation.Snapshot, error) {
+	builder := presentation.NewBuilder(nil)
+	if err := reconcileReview(ctx, s, builder, scope); err != nil {
+		return nil, err
+	}
+	return builder.Finish(), nil
+}
+
+func reviewSnapshotAttempt(t *testing.T, snapshot *presentation.Snapshot, workspace, call string) presentation.Attempt {
+	t.Helper()
+	for attempt := range snapshot.Attempts() {
+		if attempt.Key == (presentation.AttemptKey{Workspace: workspace, Call: call}) {
+			return attempt
+		}
+	}
+	t.Fatalf("missing attempt %q in %q", call, workspace)
+	return presentation.Attempt{}
+}
+
+func reviewFixtureSnapshot(t *testing.T, attempts ...presentation.Attempt) *presentation.Snapshot {
+	t.Helper()
+	builder := presentation.NewBuilder(nil)
+	for _, attempt := range attempts {
+		if err := builder.Add(attempt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return builder.Finish()
+}
+
+func reviewReceiptSnapshot(t *testing.T, receipts []*presentation.Receipt) *presentation.Snapshot {
+	t.Helper()
+	attempts := make([]presentation.Attempt, len(receipts))
+	for i, receipt := range receipts {
+		attempts[i] = presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: "/workspace", Call: fmt.Sprint(i)}}, Receipt: receipt}
+	}
+	return reviewFixtureSnapshot(t, attempts...)
+}
+
+// Publish through the real descriptor collector and Activity host. Retained
+// fixtures inject their selected capture instance so attachment keys agree.
+func publishFixtureReview(t *testing.T, u *appServerUI) {
+	t.Helper()
+	var composed composition.Composition
+	history := composed.Add(sessionhistory.Module, func() sessionhistory.Deps { return sessionhistory.Deps{} })
+	activity := composed.Add(activity.Module, func() activity.Deps { return activity.Deps{} })
+	descriptor := changehistory.Module
+	store := u.shell.saved.store
+	if store != nil && store.captured != nil {
+		descriptor.New = func(changehistory.Deps, module.Slots) (*changecapture.Service, error) { return store.captured, nil }
+		// The existing fixture owns its live capture lifetime.
+		descriptor.Start, descriptor.Stop, descriptor.Resources = nil, nil, nil
+	}
+	captured := composed.Add(descriptor, func() changehistory.Deps { return changehistory.Deps{History: history.Value()} })
+	runtime, err := composed.Activate(t.Context(), new(binding.Registry))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := runtime.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
+	u.session.activity = activity.Value()
+	if store == nil {
+		store = &mekugiReplayStore{}
+		u.shell.saved.store = store
+	}
+	store.captured = captured.Value()
+	store.captured.PublishReview(&u.session.state, u.shell.saved.data)
+}
+
+func fixtureActivityWithoutDetails(t *testing.T) *feed.Service {
+	t.Helper()
+	var composed composition.Composition
+	service := composed.Add(activity.Module, func() activity.Deps { return activity.Deps{} })
+	runtime, err := composed.Activate(t.Context(), new(binding.Registry))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := runtime.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
+	return service.Value()
 }

@@ -6,8 +6,12 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/yusing/mekugi/contracts/activitydetail"
+	"github.com/yusing/mekugi/contracts/scope"
+
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/changehistory/internal/retained"
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
@@ -18,6 +22,20 @@ type Service struct {
 	changes.Service
 	directory  string
 	workspaces *Workspaces
+	review     scope.Key[*presentation.Snapshot]
+}
+
+func (s *Service) PublishReview(store *scope.Store, snapshot *presentation.Snapshot) {
+	if s != nil {
+		*s.review.Value(store) = snapshot
+	}
+}
+
+func (s *Service) ActivityDetail(store *scope.Store, request activitydetail.Request) activitydetail.Result {
+	if s == nil || store == nil {
+		return activitydetail.Result{}
+	}
+	return (*s.review.Value(store)).ActivityDetail(request)
 }
 
 func New(service *history.Service, directory string) (*Service, error) {

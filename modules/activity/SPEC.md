@@ -151,10 +151,13 @@ failures, skipped work or output. Combined output stays with the final operation
 Edit receipts retain their source across tool-managed-file summaries. An edit with
 no resolved target says paths are unavailable. Generated edit operations omit diff
 bodies from the feed; authored Markdown and retained evidence remain unchanged.
-Completed native file-change items may open their host-supplied diffs before the
-batch exits, with durable review preferred when available. Pending, failed and
-declined items supply no completed-diff fallback. This navigation neither snapshots
-the workspace nor publishes change evidence; [live preview](../livepreview/SPEC.md) owns provisional diffs and
+Activity hosts composed detail contributions, preferring an exact retained match
+from [change history](../changehistory/SPEC.md#saved-review-presentation). With no
+matching contribution, captured receipts and completed native file-change items
+retain fallback details, including before an outer batch exits.
+Pending, failed and declined items supply no completed-host diff fallback. This
+navigation neither snapshots the workspace nor publishes change evidence;
+[live preview](../livepreview/SPEC.md) owns provisional diffs and
 [capture](../../docs/contracts/change-evidence.md) owns observed effects.
 
 ## Retained output
@@ -203,11 +206,7 @@ consumer-owned.
 Activity owns immutable start-time wait-target snapshots and their retained codec.
 The application binds proven workspace, caller, turn and item identity;
 [session history](../sessionhistory/SPEC.md) supplies publication, ordinary retention
-and active leases. The Codex observation binding supplies typed transcript and
-public-reasoning facts. Application adapters retain host admission and enrich
-those facts without changing original control or diagnostic messages. Execution,
-edit and hook observations retain their existing application adapters; restored
-evidence also comes from host history and command-segment records.
+and active leases.
 
 Explicit wait targets and reported states remain authoritative. When receivers
 are absent at start, the application snapshots currently running descendants and
@@ -229,9 +228,9 @@ compaction clears them, and bounded history restoration cannot overwrite a newer
 live reset. Unknown context is not an empty confirmed set.
 
 Roster tokens and cost consume [per-thread usage](../usage/SPEC.md), not a second
-ledger. Final edit totals consume composed saved-review evidence, not cumulative
-caller counters. Presentation cannot finalize captured changes, reconstruct missing
-provider usage or revive replayed processes.
+ledger. Edit totals consume the same admitted review publication as retained
+details, independent of Diff visibility or filters. Presentation cannot finalize
+captured changes, reconstruct missing provider usage or revive replayed processes.
 
 The [presentation contract](CONTRACT.md) defines terminal behavior and the boundary
 between retained observations, terminal state and application navigation.

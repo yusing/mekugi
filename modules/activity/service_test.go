@@ -1,9 +1,11 @@
 package activity_test
 
 import (
+	"reflect"
 	"slices"
 	"testing"
 
+	"github.com/yusing/mekugi/contracts/activitydetail"
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/activity"
@@ -46,6 +48,60 @@ func TestServiceAttachmentOutputs(t *testing.T) {
 		if got := check.output.View(); !got.Done || !slices.Equal(got.Lines, []string{check.line}) {
 			t.Errorf("retained output: got %+v, want completed %q", got, check.line)
 		}
+	}
+	if got := service.ActivityDetail(&mainAttachment, activitydetail.Request{}); len(got.Pages) != 0 || got.Selected != "" {
+		t.Fatalf("zero-provider host returned detail: %+v", got)
+	}
+	type model struct{ value string }
+	mainModel := service.Model[model](&mainAttachment)
+	mainModel.value = "retained model"
+	if service.Model[model](&mainAttachment) != mainModel || service.Model[model](&separateAttachment) == mainModel || service.Model[model](&separateAttachment).value != "" {
+		t.Fatal("zero-provider host lost attachment-local model state")
+	}
+}
+
+func TestServiceValidatesActivityDetailProviders(t *testing.T) {
+	resolve := func(*scope.Store, activitydetail.Request) activitydetail.Result { return activitydetail.Result{} }
+	for _, tt := range []struct {
+		name      string
+		providers []activitydetail.Provider
+	}{
+		{"empty name", []activitydetail.Provider{{Resolve: resolve}}},
+		{"missing resolver", []activitydetail.Provider{{Name: "missing"}}},
+		{"duplicate", []activitydetail.Provider{{Name: "same", Resolve: resolve}, {Name: "same", Resolve: resolve}}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if service, err := activity.Module.New(activity.Deps{}, module.Slots{ActivityDetails: tt.providers}); err == nil || service != nil {
+				t.Fatalf("invalid providers constructed service=%v err=%v", service, err)
+			}
+		})
+	}
+}
+
+func TestServiceActivityDetailProviderOrder(t *testing.T) {
+	if !activity.Module.HostsActivityDetails {
+		t.Fatal("activity does not declare its detail host")
+	}
+	var store scope.Store
+	request := activitydetail.Request{Operation: activitydetail.Operation{Thread: "thread", Item: "item"}, Path: "src", Directory: true}
+	want := activitydetail.Result{Pages: []activitydetail.Page{{ID: "chosen", Code: "captured"}}, Selected: "chosen"}
+	var calls []string
+	var providers []activitydetail.Provider
+	for _, name := range []string{"empty", "chosen", "later"} {
+		providers = append(providers, activitydetail.Provider{Name: name, Resolve: func(gotStore *scope.Store, gotRequest activitydetail.Request) activitydetail.Result {
+			calls = append(calls, name)
+			if gotStore != &store || gotRequest != request {
+				t.Fatal("provider lost the caller's store or request")
+			}
+			if name == "empty" {
+				return activitydetail.Result{}
+			}
+			return want
+		}})
+	}
+	service := moduletest.New(t, activity.Module, activity.Deps{}, module.Slots{ActivityDetails: providers}, new(moduletest.Scripted))
+	if got := service.ActivityDetail(&store, request); !reflect.DeepEqual(got, want) || !slices.Equal(calls, []string{"empty", "chosen"}) {
+		t.Fatalf("provider resolution: result=%+v calls=%v", got, calls)
 	}
 }
 

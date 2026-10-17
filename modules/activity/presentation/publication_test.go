@@ -6,8 +6,27 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/modules/activity/feed"
 )
+
+func TestPublicationDetachesSavedReviewCounts(t *testing.T) {
+	model := Model[modelSource, modelAgent]{
+		LineCounts: map[string]diffmodel.Counts{"/root": {Added: 2, Removed: 1}},
+		NetCounts:  new(diffmodel.Counts{Added: 1, Removed: 1}),
+	}
+	published := model.Publish()
+	model.LineCounts["/root"] = diffmodel.Counts{Added: 99}
+	*model.NetCounts = diffmodel.Counts{Removed: 99}
+	if published.LineCounts["/root"] != (diffmodel.Counts{Added: 2, Removed: 1}) ||
+		published.NetCounts == nil || *published.NetCounts != (diffmodel.Counts{Added: 1, Removed: 1}) {
+		t.Fatalf("publication counts changed with model: %+v", published)
+	}
+	model.LineCounts, model.NetCounts = nil, nil
+	if cleared := model.Publish(); cleared.LineCounts != nil || cleared.NetCounts != nil {
+		t.Fatalf("absent review retained counts: %+v", cleared)
+	}
+}
 
 func TestPublicationPreservesFactsAndDetachesValues(t *testing.T) {
 	now := time.Unix(100, 0)

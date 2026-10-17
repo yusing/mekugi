@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
+
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	"github.com/charmbracelet/x/ansi"
@@ -52,12 +54,10 @@ func TestObservedEditReceiptBeforeHostItemSurvivesSegmentRefresh(t *testing.T) {
 	}
 }
 
-func trackedEditReceiptData(thread string, calls ...string) *liveDiffData {
-	data := newLiveDiffData()
-	data.order = []string{"receipt"}
-	data.attempts["receipt"] = liveDiffAttempt{receipt: &capturedActivityEdit{
-		thread: thread, calls: calls,
-		text: "Edit `a.go` +3 -1 · cat\n\nEdit `b.go` +1 -2 · cat",
+func trackedEditReceiptData(thread string, calls ...string) []*presentation.Receipt {
+	data := []*presentation.Receipt{{
+		Thread: thread, Calls: calls,
+		Text: "Edit `a.go` +3 -1 · cat\n\nEdit `b.go` +1 -2 · cat",
 	}}
 	return data
 }
@@ -247,7 +247,7 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 			awaitCommandSegments(t, u)
 			restored := newAppServerSessionTestUI(t, workspace)
 			restored.proxy = &mekugiProxy{replayStore: testReplayStore(mekugiReplayStore{directory: store.directory})}
-			restored.shell.saved.data = trackedEditReceiptData(thread, item.ID)
+			restored.shell.saved.data = reviewReceiptSnapshot(t, trackedEditReceiptData(thread, item.ID))
 			turns := []appServerHistoryTurn{{ID: "turn", Status: "completed", Items: []appServerItem{item}}}
 			view := restored.view
 			if thread == "main" {
@@ -361,7 +361,7 @@ func TestObservedEditReceiptsBeforeHostRows(t *testing.T) {
 			if len(u.pendingEditReceipts) != 0 {
 				t.Fatal("matched receipts remained pending")
 			}
-			if len(u.shell.saved.data.order) != 0 {
+			if u.shell.saved.data.Len() != 0 {
 				t.Fatal("observed pages became durable evidence")
 			}
 		})
@@ -377,10 +377,10 @@ func TestPendingObservedEditReceiptsStayBounded(t *testing.T) {
 		u.shell.preview(previewmodel.Preview{ID: call, Workspace: u.session.cwd, Thread: "main", Complete: true, HostItems: []string{call}, EditReceipt: receipt}, false)
 	}
 	pending := u.pendingEditReceipts
-	if len(pending) == 0 || len(pending) >= 256 || pending[len(pending)-1].calls[0] != "cmd255" {
+	if len(pending) == 0 || len(pending) >= 256 || pending[len(pending)-1].Calls[0] != "cmd255" {
 		t.Fatalf("unmatched receipt budget did not retain a bounded newest window: %d", len(pending))
 	}
-	if len(u.shell.saved.data.order) != 0 {
+	if u.shell.saved.data.Len() != 0 {
 		t.Fatal("unmatched receipts became durable evidence")
 	}
 }

@@ -39,23 +39,27 @@ func TestLiveDiffRelativeDisplayKeepsSourceAndCapture(t *testing.T) {
 }
 
 func TestLiveDiffMergePreservesFileAndPosition(t *testing.T) {
+	var vPublication presentation.Publication
 	v := changeview.View{Scroll: map[string]int{"old": 40}}
-	v.Merge([]presentation.File{
+	vPublication = vPublication.With([]presentation.File{
 		{Path: "b", Chunks: []presentation.Chunk{{Key: "old", Status: "prepared"}}},
 		{Path: "c"},
 	})
-	v.Merge([]presentation.File{
+	v.Update(vPublication)
+	vPublication = vPublication.With([]presentation.File{
 		{Path: "c"},
 		{Path: "a"},
 		{Path: "b", Chunks: []presentation.Chunk{{Key: "new"}, {Key: "old"}}},
 	})
+	v.Update(vPublication)
 	if v.Files[v.Selected].Path != "b" || v.Scroll["old"] != 40 ||
 		v.Files[0].Chunks[0].Key != "old" ||
 		v.Files[0].Chunks[1].Key != "new" {
 		t.Fatalf("viewport shifted: %#v", v)
 	}
 	v.Selected = 1
-	v.Merge(append(slices.Clone(v.Files), presentation.File{Path: "d"}))
+	vPublication = vPublication.With(append(slices.Clone(v.Files), presentation.File{Path: "d"}))
+	v.Update(vPublication)
 	if v.Files[v.Selected].Path != "c" || v.Scroll["old"] != 40 {
 		t.Fatal("other-file update stole navigation")
 	}
@@ -100,6 +104,7 @@ func TestLiveDiffStoreRestartAndMissingEvidence(t *testing.T) {
 }
 
 func TestLiveDiffLegacyChangeFlagsDoNotAffectSavedEdits(t *testing.T) {
+	var viewPublication presentation.Publication
 	workspace := t.TempDir()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -136,7 +141,8 @@ func TestLiveDiffLegacyChangeFlagsDoNotAffectSavedEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 	view := changeview.View{}
-	view.Merge(files)
+	viewPublication = viewPublication.With(files)
+	view.Update(viewPublication)
 	view.RefreshVisible()
 	if len(view.Files) != 1 {
 		t.Fatalf("legacy files: %+v", view.Files)
@@ -236,12 +242,14 @@ func liveDiffIdentityCapture(t *testing.T, store *mekugiReplayStore, workspace, 
 }
 
 func liveDiffRefreshTest(t *testing.T, store *mekugiReplayStore, workspace string, view *changeview.View) {
+	var viewPublication presentation.Publication
 	t.Helper()
 	files, err := store.liveDiffSnapshotFiles(t.Context(), previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: nil}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	view.Merge(files)
+	viewPublication = viewPublication.With(files)
+	view.Update(viewPublication)
 	view.RefreshVisible()
 }
 

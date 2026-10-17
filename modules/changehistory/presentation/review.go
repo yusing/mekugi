@@ -45,7 +45,30 @@ type View struct {
 	Initialized bool
 	// Caller, when set, shows only captures whose CallerKey matches. Other
 	// callers' captures compose as baseline, so the net diff stays exact.
-	Caller string
+	Caller     string
+	unfiltered map[string]File
+}
+
+// Update installs immutable published content while preserving local selection
+// and caller filtering. Unfiltered consumers share the published composition.
+func (v *View) Update(publication Publication) {
+	selected := ""
+	if len(v.Files) > 0 {
+		selected = v.Files[v.Selected].Key()
+	}
+	v.Files, v.unfiltered = publication.Files, publication.Unfiltered
+	v.Visible = nil
+	if v.Caller == "" {
+		v.Visible = v.unfiltered
+	}
+	for i, file := range v.Files {
+		if file.Key() == selected || slices.ContainsFunc(file.Chunks, func(c Chunk) bool { return c.Key == selected }) {
+			v.Selected = i
+			break
+		}
+	}
+	v.Selected = min(v.Selected, max(0, len(v.Files)-1))
+	v.RefreshVisible()
 }
 
 func (file File) Key() string {
@@ -57,6 +80,7 @@ func (file File) Key() string {
 
 // Merge replaces membership and marks newly observed captures after initial history.
 func (v *View) Merge(files []File) {
+	v.unfiltered = nil
 	// The snapshot owns membership; retained capture order owns navigation.
 	// In particular, confirmation can repartition a prepared move's groups.
 	order := make(map[string]int)
@@ -270,6 +294,9 @@ func (v *View) FilterCaller(caller string) {
 		return
 	}
 	v.Caller, v.Visible = caller, nil
+	if caller == "" && v.unfiltered != nil {
+		v.Visible = v.unfiltered
+	}
 	v.RefreshVisible()
 }
 

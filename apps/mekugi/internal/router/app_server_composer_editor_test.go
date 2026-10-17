@@ -92,9 +92,9 @@ func testAppServerEditorTerminalHandoff(t *testing.T, selectedFile bool) {
 		}
 		c := u.shell.diff
 		c.SetWorkspace(dir)
-		c.Update([]presentation.File{{Path: path, Chunks: []presentation.Chunk{
+		c.Update((presentation.Publication{}).With([]presentation.File{{Path: path, Chunks: []presentation.Chunk{
 			liveDiffCapture("selected", path, 1, "before\n", "original file\n", presentation.Origin{}),
-		}}}, "")
+		}}}), "")
 		c.Key("s")
 		u.shell.Focus, u.shell.DiffOpen = 1, true
 	}

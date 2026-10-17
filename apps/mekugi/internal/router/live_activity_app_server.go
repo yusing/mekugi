@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -54,7 +56,7 @@ type liveActivityNativeItem struct {
 	thought            time.Duration                    // Reasoning time from its start to completion.
 	replaces           string                           // Pending thinking block this reasoning item takes over.
 	attachments        []activityui.Block               // Submitted file snapshot outcomes, recovered from host history.
-	capturedEdit       *capturedActivityEdit            // Exact invocation receipt reconciled by the live diff owner.
+	capturedEdit       *changepresentation.Receipt      // Exact invocation receipt reconciled by the live diff owner.
 	editPages          []activityui.Block               // Completed host file changes, available before outer-cell capture.
 	segments           []commandSegment                 // A tracked command's own segments, replacing its single row.
 	output             *activitymodel.Output            // A command's retained host output, which the output dialog reads.

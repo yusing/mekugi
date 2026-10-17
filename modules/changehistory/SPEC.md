@@ -189,6 +189,11 @@ composition and change navigation; receipt arrival and caller identity do not
 reorder effects. Files retain identity through moves, deletion and recreation.
 All authored captures participate regardless of command exit status.
 
+Each attached session publishes one immutable retained-review snapshot for saved
+Diff, exact-operation details and edit totals. Detail requests use that snapshot
+without reopening storage. [Terminal-session loading](../../apps/mekugi/internal/terminalsession/SPEC.md#boundary)
+owns admission, replacement and responsiveness.
+
 The model preserves selected file and change identities across updates. Initial
 history is a baseline; later captures carry recent-update marks. A caller filter
 composes other callers' edits as baseline, preserving the selected caller's exact
@@ -200,8 +205,14 @@ Inconsistent chains show their separate captured edits with change IDs instead
 of hiding evidence or inventing a combined result. Unknown, binary and incomplete
 history produce unavailable net counts. Project totals describe the unfiltered
 composed outcome; caller totals describe known captured edit activity. Captures
-outside their owning workspace contribute neither project total. No selected
+outside their owning workspace contribute to neither total. No selected
 project evidence remains distinct from a known zero net result.
+
+The [Activity-detail contribution](../activity/SPEC.md#edit-evidence) resolves exact host thread/item identity,
+including recorded grouped-call membership. It returns the original captured
+hunks, never later composed edits or a nearby matching path. Move targets select
+their destination; directory-deletion targets select a captured file within that
+directory.
 
 The terminal view owns Files/Changes navigation, focus, filters, viewport anchors
 and painting. It supplies source-selection snapshots with the same file identity,
@@ -242,23 +253,19 @@ nothing; filtering keeps `e` literal. The application releases the terminal and
 returns to the same selection after exit; missing files/editor failures report
 notices. This explicit current-file read does not replace captured evidence.
 
-Clicking an Activity edit opens the exact retained invocation and clicked file in
-the shared dialog, including grouped captures and superseded hunks. It never
-substitutes later composed edits or nearby matching paths. Closing preserves pane
-filters, scroll and focus; arriving changes remain available. Only the pointed
-edit text underlines, not its gutter, gaps or stat bar. Dialog copy/selection uses
+Clicking an Activity edit opens its exact-operation details in the shared dialog.
+Closing preserves pane filters, scroll and focus; arriving changes remain available.
+Only the pointed edit text underlines, not its gutter, gaps or stat bar. Dialog copy/selection uses
 the shared frozen-source lifecycle.
 
 ## Lifecycle
 
-The composed invocation service owns private workspace checkpoints and their
-background warm-ups. Composition binds their retained directory explicitly, starts
-the owner after construction and binding, and stops it after application observation
-windows finish. Shutdown cancels and joins warm-ups. Command workers and offline
-readers select retained operations without acquiring checkpoint resources. Replay
-stores borrow the selected owner and cannot create or close another one. Capture
-workers remain independently bounded so slow reads cannot hold host forwarding. Saved-review models and terminal
-viewports are attachment-local and restore no transient state on replay.
+The invocation service owns checkpoints and releases their background work at
+shutdown. Capture workers remain independently bounded so slow reads cannot hold
+host forwarding. Commands and offline readers use retained operations without
+starting capture resources or creating another capture owner.
+Saved-review publications and terminal viewports are attachment-local and restore
+no transient state on replay.
 Composition supplies session history;
 callers select the retained namespace, thread, and workspace explicitly. No
 operation restores a process, approval, or execution handle. The authenticated
@@ -285,11 +292,8 @@ and retirement markers. Historical record names, namespace ownership, and
 selection encodings remain readable. Immutable call envelopes remain the source
 of captured evidence, decoded through the shared historical codec.
 
-Evidence publication and index publication share the caller's borrowed session
-transaction, with evidence first. Repair adopts only verified durable attempts.
-Fork preparation enumerates inherited dependencies before publishing cloned
-indexes; the application publishes the fork namespace last. Interrupted setup is
-retryable. No module operation opens a nested publication transaction.
+Repair adopts only verified durable attempts. Evidence, index and fork publication
+follow the shared [publication contract](../../docs/contracts/record-publication.md#cross-owner-publication).
 
 Retention removes membership only for confirmed deletion facts. Allocation
 high-water marks survive payload expiry. Frozen selections retain their exact
@@ -306,24 +310,12 @@ status. Cancellation suppresses delivery without repeating completed effects.
 
 ## Acceptance
 
-- Passive capture tests cover bounded reads, stalled workers, patch endpoints,
-  omitted baselines, private-checkpoint recovery, and ignored-index transitions.
-  Application consumers cover exact host forwarding, yielded completion, overlap
-  attribution, shell commands, preview receipts, and publication.
-- Module tests run with temporary history and a scripted binder, without Codex,
-  network access, or a renderer.
-- Authenticated reads preserve cross-agent selection, capture order, partial
-  failures, frozen paging, and existing reference lookup after restart.
-- Apply/revert preserve conflicts, move and directory dependencies, incomplete
-  evidence handling, and exact-once effects across report recovery.
-- Failed publication exposes no unusable reference; mutation reports remain
-  available when paging or retention fails.
-- Evidence precedes membership, fork dependencies precede cloned indexes, and
-  namespace publication completes initialization. Faults leave retryable state.
-- Retention preserves active/shared dependencies and cannot revive retired
-  membership or reuse expired identities.
-- Live-view and receipt consumers receive the same committed membership and
-  authored evidence, while terminal snapshots remain unchanged.
-- Pure presentation tests cover composition, caller filtering, provenance,
-  selection and project-versus-caller counts. Renderer snapshots and application
-  consumers cover navigation, resize, viewport syntax, source copy and replay.
+- Capture acceptance covers bounded and failed reads, overlapping and partial
+  effects, yielded completion and unchanged host execution at the real consumers.
+- Retained command and fault checks cover restart, cross-agent selection, frozen
+  paging, mutation conflicts/dependencies, exact-once effects, usable references,
+  retryable publication and dependency-safe retention.
+- Saved-review acceptance covers exact-operation details, absence and host fallback,
+  immutable publication, caller/project counts and scope retirement. Actual renderer
+  and application checks preserve selection, move anchors, filtering, source copy
+  and replay without click-time storage reads.

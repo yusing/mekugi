@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
@@ -495,7 +497,7 @@ func newNativePreview(t *testing.T) *nativePreview {
 	u.ensureShell()
 
 	u.shell.diff = changeview.NewPane(workspace, diffrender.EnvironmentTheme(os.Getenv("COLORFGBG")))
-	u.shell.saved = savedDiff{store: store, data: newLiveDiffData(), coverage: "CONNECTING"}
+	u.shell.saved = savedDiff{store: store, data: new(presentation.Snapshot), coverage: "CONNECTING"}
 	u.session.start("main", workspace)
 	p := &nativePreview{t: t, ui: u, input: input, store: store, usage: usage, workspace: workspace, delay: "0", active: make(map[string]string), assignments: make(map[string]string), models: map[string]string{"t-explorer": nativePreviewGrokModel}}
 	store.liveDiff = func(changes []reviewChange) {
@@ -1379,6 +1381,7 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 			defer p.close()
 			p.until("agents apply")
 			u := p.ui
+			publishFixtureReview(t, u)
 			// Captured-edit links return with the transcript after the live batch settles.
 			u.shell.animating(time.Now().Add(nativeDockMinimum + time.Second))
 			if len(u.shell.liveDock.Order) != 0 {
@@ -1432,11 +1435,11 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 			}
 			paint()
 			found := false
-			for _, attempt := range u.shell.saved.data.attempts {
-				if attempt.correlation != item+"\x000" {
+			for attempt := range u.shell.saved.data.Attempts() {
+				if attempt.Correlation != item+"\x000" {
 					continue
 				}
-				for _, chunk := range attempt.chunks {
+				for _, chunk := range attempt.Chunks {
 					if u.shell.output.pages[u.shell.output.Page].Code == chunk.Review.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(u.shell.diff.Workspace(), chunk.Review.BeforePath), pathdisplay.ForWorkspace(u.shell.diff.Workspace(), chunk.Review.AfterPath)) {
 						found = true
 					}

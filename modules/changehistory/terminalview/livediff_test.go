@@ -21,9 +21,11 @@ func testChunk(key, path, diff string) presentation.Chunk {
 }
 
 func TestViewMergeRefresh(t *testing.T) {
+	var viewPublication presentation.Publication
 	first := testChunk("first", "file.txt", "@@ -1 +1 @@\n-old\n+new\n")
 	view := View{Scroll: make(map[string]int)}
-	view.Merge(presentation.GroupCaptures([]presentation.Chunk{first}))
+	viewPublication = viewPublication.With(presentation.GroupCaptures([]presentation.Chunk{first}))
+	view.Update(viewPublication)
 	view.RefreshVisible()
 	if len(view.Files) != 1 || len(view.Visible[view.Files[0].Key()].Chunks) != 1 {
 		t.Fatalf("visible view = %#v", view.Visible)

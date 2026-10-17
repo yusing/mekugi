@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
@@ -11,62 +13,51 @@ import (
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
-// Retain only the display projection and exact host identities, not scripts or
-// another filesystem snapshot. Observed writer effects can precede the durable
-// receipt; the live diff loader owns retained evidence and replay.
-type capturedActivityEdit struct {
-	thread string
-	calls  []string
-	text   string
-	pages  []activityui.Block // Observed source available before durable outer-cell capture.
-}
-
-func capturedEditActivity(workspace string, history mekugiHistory) *capturedActivityEdit {
+func capturedEditActivity(workspace string, history mekugiHistory) *changepresentation.Receipt {
 	if history.ExecOutcome == nil {
 		return nil
 	}
-	receipt := &capturedActivityEdit{thread: history.ExecutingThread, text: editReceiptText(workspace, history)}
+	receipt := &changepresentation.Receipt{Thread: history.ExecutingThread, Text: editReceiptText(workspace, history)}
 	if !history.ExecOutcome.CodeMode {
 		if call, ok := strings.CutSuffix(history.CorrelationID, "\x00exec"); ok {
-			receipt.calls = append(receipt.calls, call)
+			receipt.Calls = append(receipt.Calls, call)
 		}
 	}
 	for _, result := range history.HostResults {
 		if result.Tool == "exec_command" || result.Tool == "userShell" {
-			receipt.calls = append(receipt.calls, result.CallID)
+			receipt.Calls = append(receipt.Calls, result.CallID)
 		}
 	}
-	if receipt.text == "" && len(receipt.calls) == 0 {
+	if receipt.Text == "" && len(receipt.Calls) == 0 {
 		return nil
 	}
 	return receipt
 }
 
 func (u *appServerUI) applyCapturedEdits() {
-	u.pendingEditReceipts = slices.DeleteFunc(u.pendingEditReceipts, func(receipt *capturedActivityEdit) bool {
+	u.pendingEditReceipts = slices.DeleteFunc(u.pendingEditReceipts, func(receipt *changepresentation.Receipt) bool {
 		// Main and Activity receive their host entries together. Keep a grouped
 		// receipt until every host identity has arrived, including its anchor.
-		data := &liveDiffData{order: []string{"observed"}, attempts: map[string]liveDiffAttempt{"observed": {receipt: receipt}}}
-		u.view.applyCapturedEdits(data)
-		u.agents.applyCapturedEdits(data)
-		return !slices.ContainsFunc(receipt.calls, func(call string) bool {
+		u.view.applyCapturedEdits([]*changepresentation.Receipt{receipt})
+		u.agents.applyCapturedEdits([]*changepresentation.Receipt{receipt})
+		return !slices.ContainsFunc(receipt.Calls, func(call string) bool {
 			return !slices.ContainsFunc(u.agents.Entries, func(entry liveActivityRecord) bool {
-				return entry.Source.native != nil && entry.Source.native.thread == receipt.thread && entry.Source.native.item == call
+				return entry.Source.native != nil && entry.Source.native.thread == receipt.Thread && entry.Source.native.item == call
 			})
 		})
 	})
 	if u.shell == nil || u.shell.saved.data == nil {
 		return
 	}
-	u.view.applyCapturedEdits(u.shell.saved.data)
-	u.agents.applyCapturedEdits(u.shell.saved.data)
+	u.view.applyCapturedEdits(u.shell.saved.data.Receipts())
+	u.agents.applyCapturedEdits(u.shell.saved.data.Receipts())
 }
 
 // Both audiences reconcile using exact thread/tool identities, regardless of
 // whether the retained receipt or the app-server item arrived first. A grouped
 // capture is shown once, never attributed separately to each nested command.
-func (v *activityAdapter) applyCapturedEdits(data *liveDiffData) {
-	if len(data.order) == 0 {
+func (v *activityAdapter) applyCapturedEdits(receipts []*changepresentation.Receipt) {
+	if len(receipts) == 0 {
 		return
 	}
 	entries := make(map[[2]string]int)
@@ -75,16 +66,15 @@ func (v *activityAdapter) applyCapturedEdits(data *liveDiffData) {
 			entries[[2]string{entry.Source.native.thread, entry.Source.native.item}] = i
 		}
 	}
-	for _, key := range data.order {
-		receipt := data.attempts[key].receipt
+	for _, receipt := range receipts {
 		if receipt == nil {
 			continue
 		}
 		// Anchor the receipt to the first recorded host call, regardless of
 		// arrival order. Other grouped calls retain actual non-edit operations
 		// and failures, not a duplicate receipt or a bookkeeping placeholder.
-		for index, call := range receipt.calls {
-			i, found := entries[[2]string{receipt.thread, call}]
+		for index, call := range receipt.Calls {
+			i, found := entries[[2]string{receipt.Thread, call}]
 			if !found {
 				continue
 			}
@@ -94,7 +84,7 @@ func (v *activityAdapter) applyCapturedEdits(data *liveDiffData) {
 			if entry.native.capturedEdit == receipt {
 				continue
 			}
-			if receipt.text == "" {
+			if receipt.Text == "" {
 				if entry.native.capturedEdit != nil {
 					native := *entry.native
 					native.capturedEdit = nil
@@ -116,7 +106,7 @@ func (v *activityAdapter) applyCapturedEdits(data *liveDiffData) {
 					break
 				}
 			}
-			text := receipt.text
+			text := receipt.Text
 			if index == 0 && entry.native.command != "" {
 				// Rebuild from the host command so repeated reconciliation never
 				// duplicates receipts or drops neighboring operations.
@@ -129,7 +119,7 @@ func (v *activityAdapter) applyCapturedEdits(data *liveDiffData) {
 						block := activitymodel.ParseOperation(paragraph)
 						if slices.Contains([]string{"Edit", "Create", "Delete", "Move"}, block.Verb) {
 							if !inserted {
-								parts = append(parts, receipt.text)
+								parts = append(parts, receipt.Text)
 								inserted = true
 							}
 							continue
@@ -137,7 +127,7 @@ func (v *activityAdapter) applyCapturedEdits(data *liveDiffData) {
 						parts = append(parts, paragraph)
 					}
 					if !inserted {
-						parts = append(parts, receipt.text)
+						parts = append(parts, receipt.Text)
 					}
 					text = strings.Join(parts, "\n\n")
 				}

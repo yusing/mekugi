@@ -35,8 +35,8 @@ func commandPresentation(entry activityPaneEntry) activitypresentation.Command {
 	}
 	if receipt := n.capturedEdit; receipt != nil {
 		c.Captured = true
-		if len(receipt.calls) > 0 && receipt.calls[0] == n.item {
-			c.CaptureText = receipt.text
+		if len(receipt.Calls) > 0 && receipt.Calls[0] == n.item {
+			c.CaptureText = receipt.Text
 		}
 	}
 	for _, segment := range n.segments {

@@ -17,10 +17,10 @@ func TestPaneSelectionPinnedHeadingAndFrozenCopies(t *testing.T) {
 	for _, width := range []int{70, 120} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			pane := NewPane("/w", diffrender.DarkTheme)
-			pane.Update(presentation.GroupCaptures([]presentation.Chunk{
+			pane.Update((presentation.Publication{}).With(presentation.GroupCaptures([]presentation.Chunk{
 				liveDiffCapture("one", "a.go", 1, "", liveDiffLinesFile("a.go", 40), presentation.Origin{Change: "amber1", Caller: "/root"}),
 				liveDiffCapture("two", "b.go", 2, "", "second\n", presentation.Origin{Change: "apple1", Caller: "/root/worker"}),
-			}), "captured")
+			})), "captured")
 			var output bytes.Buffer
 			paint := func(w int) {
 				t.Helper()
@@ -91,9 +91,9 @@ func TestPaneSelectionPinnedHeadingAndFrozenCopies(t *testing.T) {
 			}
 			pane.Key("G")
 			paint(width + 30)
-			pane.Update(presentation.GroupCaptures([]presentation.Chunk{
+			pane.Update((presentation.Publication{}).With(presentation.GroupCaptures([]presentation.Chunk{
 				liveDiffCapture("replacement", "c.go", 3, "", "replacement\n", presentation.Origin{Change: "arch1"}),
-			}), "replaced")
+			})), "replaced")
 			paint(width)
 			pane.Reset()
 			if !reflect.DeepEqual(frozen, want) {

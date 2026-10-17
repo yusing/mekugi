@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
 
@@ -148,7 +150,7 @@ type appServerUI struct {
 	guard                   *shellApprovalServer
 	execTrack               *commandsegments.Observer // Per-segment command reports; nil when not tracking.
 	shellEdits              appServerShellEdits
-	pendingEditReceipts     []*capturedActivityEdit // Observed edits can precede their host Activity item.
+	pendingEditReceipts     []*changepresentation.Receipt // Observed edits can precede their host Activity item.
 	issues                  *CriticalErrors
 	shell                   *terminalUI
 	summaryStream           activityui.ReasoningStream
@@ -1575,7 +1577,7 @@ func (u *appServerUI) ensureShell() {
 	u.agents.Bare = true
 	shell := &terminalUI{main: u, agents: u.agents, review: review, diffScreen: new(terminalsession.DiffScreen)}
 	shell.diff = changeview.NewPane("", diffrender.EnvironmentTheme(os.Getenv("COLORFGBG")))
-	shell.saved = savedDiff{store: store, data: newLiveDiffData(), coverage: "CONNECTING"}
+	shell.saved = savedDiff{store: store, data: new(changepresentation.Snapshot), coverage: "CONNECTING"}
 	u.shell = shell
 }
 

@@ -42,7 +42,7 @@ func (u *terminalUI) openOutput(view *activityAdapter, snippet activityui.Snippe
 	if !ok || block.EditSource != "" || len(block.Questions) > 0 {
 		return false
 	}
-	pages := []activityui.Block{block}
+	pages := activitypresentation.DetailPages([]activitypresentation.Value{block.Value})
 	if len(block.Members) > 0 {
 		pages = nil
 		seen := make(map[uint64]bool)
@@ -58,10 +58,10 @@ func (u *terminalUI) openOutput(view *activityAdapter, snippet activityui.Snippe
 					continue
 				}
 			}
-			pages = append(pages, member)
+			pages = append(pages, activitypresentation.DetailPages([]activitypresentation.Value{member.Value})...)
 		}
 	}
-	u.openBlocks(view, pages)
+	u.openDetails(view, pages)
 	page := 0
 	if block.Output != 0 && (len(block.Members) == 0 || block.Kind == "op") {
 		for i, command := range u.output.pages {
@@ -77,6 +77,10 @@ func (u *terminalUI) openOutput(view *activityAdapter, snippet activityui.Snippe
 
 // openBlocks is the shared modal entry point. It never changes pane navigation.
 func (u *terminalUI) openBlocks(view *activityAdapter, pages []activityui.Block) {
+	u.openDetails(view, activitypresentation.DetailPages(activityui.Values(pages)))
+}
+
+func (u *terminalUI) openDetails(view *activityAdapter, pages []activitypresentation.DetailPage) {
 	if len(pages) == 0 {
 		return
 	}
@@ -117,14 +121,14 @@ func (u *terminalUI) openRequested(view *activityAdapter) {
 
 // refreshPages joins selected sources once, then binds their detached detail
 // values to app-owned output handles. Missing feed entries retain their last page.
-func (d *outputDialog) refreshPages(blocks []activityui.Block) {
+func (d *outputDialog) refreshPages(requested []activitypresentation.DetailPage) {
 	previous := make(map[string]outputPage, len(d.pages))
 	details := make([]activitypresentation.DetailPage, len(d.pages))
 	for i, page := range d.pages {
 		previous[page.ID], details[i] = page, page.DetailPage
 	}
-	if blocks != nil {
-		details = activitypresentation.DetailPages(activityui.Values(blocks))
+	if requested != nil {
+		details = requested
 	}
 	selected := make(map[uint64]bool)
 	for _, page := range details {
@@ -250,7 +254,7 @@ func (u *terminalUI) paintOutput(rows []string, width, height int) {
 	}
 	if d.Selection == nil {
 		if d.processes {
-			d.refreshPages(u.main.processPages(d.pages))
+			d.refreshPages(activitypresentation.DetailPages(activityui.Values(u.main.processPages(d.pages))))
 		}
 		d.layout(bodyWidth)
 	}

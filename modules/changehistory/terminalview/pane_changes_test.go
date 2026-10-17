@@ -16,10 +16,12 @@ import (
 
 // liveDiffChangesController renders captures in diff mode at a fixed size.
 func liveDiffChangesController(t *testing.T, width, height int, captures []presentation.Chunk) *Pane {
+	var cviewPublication presentation.Publication
 	t.Helper()
 	c := NewPane("/w", diffrender.DarkTheme)
 	c.lastWidth, c.lastHeight = width, height
-	c.view.Merge(presentation.GroupCaptures(captures))
+	cviewPublication = cviewPublication.With(presentation.GroupCaptures(captures))
+	c.view.Update(cviewPublication)
 	c.view.RefreshVisible()
 
 	c.frame(t)
@@ -322,6 +324,7 @@ func TestLiveDiffCallerFilterComposesOthersAsBaseline(t *testing.T) {
 // Keys may arrive between an update and the next paint; the Changes tab
 // must neither index removed files nor open the wrong one.
 func TestLiveDiffChangesSurviveShrinkingMerge(t *testing.T) {
+	var cviewPublication presentation.Publication
 	origin := func(change string) presentation.Origin {
 		return presentation.Origin{Change: change, Caller: "/root", Source: "apply_patch"}
 	}
@@ -331,7 +334,8 @@ func TestLiveDiffChangesSurviveShrinkingMerge(t *testing.T) {
 		liveDiffCapture("k3", "c.go", 3, "c\n", "C\n", origin("amber3")),
 	}
 	c := liveDiffChangesController(t, 130, 20, captures)
-	c.view.Merge(presentation.GroupCaptures(captures[2:]))
+	cviewPublication = cviewPublication.With(c.view.Files).With(presentation.GroupCaptures(captures[2:]))
+	c.view.Update(cviewPublication)
 	c.view.RefreshVisible()
 	for _, key := range []byte("}}{\t\r") {
 		c.Key(string(key))
@@ -371,6 +375,7 @@ func TestLiveDiffChangesFilterAndQueryDetails(t *testing.T) {
 
 // A change's captures of one file share a capture order; they are one change.
 func TestLiveDiffBaselineCountsChangesOnce(t *testing.T) {
+	var viewPublication presentation.Publication
 	main := presentation.Origin{Change: "amber1", Caller: "/root", Source: "apply_patch"}
 	first := liveDiffCapture("k1", "a.go", 1, "one\n", "", main)
 	first.Review = diffmodel.RenderReviewFile("/w/a.go", "", "one\n", "")
@@ -378,7 +383,8 @@ func TestLiveDiffBaselineCountsChangesOnce(t *testing.T) {
 	second.Review = diffmodel.RenderReviewFile("", "/w/a.go", "", "two\n")
 	third := liveDiffCapture("k3", "a.go", 2, "two\n", "TWO\n", presentation.Origin{Change: "apple1", Caller: "/root/worker"})
 	var view View
-	view.Merge(presentation.GroupCaptures([]presentation.Chunk{first, second, third}))
+	viewPublication = viewPublication.With(presentation.GroupCaptures([]presentation.Chunk{first, second, third}))
+	view.Update(viewPublication)
 	view.FilterCaller("/root/worker")
 	for _, file := range view.Visible {
 		if file.Baseline != 1 {

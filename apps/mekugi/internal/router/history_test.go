@@ -62,6 +62,13 @@ func openMekugiReplayStore(directory string) (*mekugiReplayStore, error) {
 func testReplayStore(store mekugiReplayStore) *mekugiReplayStore {
 	store.publication = testHistory().Attach(store.directory)
 	store.recovery, store.changes = testRecovery(), testChanges()
+	if store.captured == nil {
+		var err error
+		store.captured, err = changecapture.New(testHistory(), "")
+		if err != nil {
+			panic(err)
+		}
+	}
 	return &store
 }
 

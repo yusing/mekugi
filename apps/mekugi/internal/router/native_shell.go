@@ -6,8 +6,12 @@ import (
 	"io"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/yusing/mekugi/contracts/activitydetail"
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -56,23 +60,23 @@ func (u *terminalUI) openActivityReply(seq uint64) bool {
 // preview updates the shared dock by call ID, including caller-less completion markers.
 func (u *terminalUI) preview(preview previewmodel.Preview, restored bool) {
 	if u.main != nil && preview.Complete && len(preview.HostItems) > 0 {
-		receipt := &capturedActivityEdit{thread: preview.Thread, calls: preview.HostItems, text: preview.EditReceipt}
+		receipt := &changepresentation.Receipt{Thread: preview.Thread, Calls: preview.HostItems, Text: preview.EditReceipt}
 		for _, file := range preview.Files {
 			path := file.AfterPath
 			if path == "" {
 				path = file.BeforePath
 			}
-			receipt.pages = append(receipt.pages, activityui.Block{Kind: "op", Verb: file.Action().Title(),
-				Path: pathdisplay.ForWorkspace(preview.Workspace, path), Code: file.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(preview.Workspace, file.BeforePath), pathdisplay.ForWorkspace(preview.Workspace, file.AfterPath)), Lang: "diff", Fenced: true})
+			receipt.Pages = append(receipt.Pages, activitydetail.Page{ID: preview.ID + "/" + strconv.Itoa(len(receipt.Pages)), Verb: file.Action().Title(),
+				Path: pathdisplay.ForWorkspace(preview.Workspace, path), Code: file.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(preview.Workspace, file.BeforePath), pathdisplay.ForWorkspace(preview.Workspace, file.AfterPath)), Language: "diff"})
 		}
-		if len(receipt.pages) == 0 {
+		if len(receipt.Pages) == 0 {
 			// Large live cards discard Files. Their receipt still carries bounded
 			// observed hunks, including an explicit marker for omitted lines.
-			for _, paragraph := range activitymodel.Paragraphs(receipt.text) {
+			for _, paragraph := range activitymodel.Paragraphs(receipt.Text) {
 				block := activityui.Block{Content: activitymodel.ParseOperation(paragraph)}
 				if block.Lang == "diff" && block.Code != "" {
 					block.Path = block.EditPath()
-					receipt.pages = append(receipt.pages, block)
+					receipt.Pages = append(receipt.Pages, activitydetail.Page{ID: preview.ID + "/" + strconv.Itoa(len(receipt.Pages)), Verb: block.Verb, Path: block.Path, Code: block.Code, Language: block.Lang})
 				}
 			}
 		}
@@ -85,12 +89,12 @@ func (u *terminalUI) preview(preview previewmodel.Preview, restored bool) {
 		budget := 32 * (48 << 10)
 		for i := len(u.main.pendingEditReceipts) - 1; i >= 0; i-- {
 			pending := u.main.pendingEditReceipts[i]
-			budget -= 1024 + len(pending.thread) + len(pending.text)
-			for _, call := range pending.calls {
+			budget -= 1024 + len(pending.Thread) + len(pending.Text)
+			for _, call := range pending.Calls {
 				budget -= 32 + len(call)
 			}
-			for _, page := range pending.pages {
-				budget -= 1024 + len(page.Path) + len(page.Code) + len(page.Label)
+			for _, page := range pending.Pages {
+				budget -= 1024 + len(page.Path) + len(page.Code)
 			}
 			if budget < 0 {
 				u.main.pendingEditReceipts = slices.Delete(u.main.pendingEditReceipts, 0, i+1)
@@ -205,7 +209,7 @@ func (u *terminalUI) applyDiff(ctx context.Context, event reviewEvent) {
 		if event.Kind == "coverage" {
 			u.diff.SetCoverage(u.saved.coverage)
 		} else {
-			u.diff.Update(u.saved.data.files(), u.saved.coverage)
+			u.publishReview()
 		}
 	}
 	if u.main != nil && (event.Kind == "scope" || event.Kind == "change") {
@@ -219,11 +223,20 @@ func (u *terminalUI) loadedReview(result savedReviewResult) {
 		u.diffFailure = err.Error()
 	} else if accepted {
 		u.saved = u.reviewLoader.state
-		u.diff.Update(result.files, u.saved.coverage)
+		u.publishReview()
 		if u.main != nil {
 			u.main.applyCapturedEdits()
 		}
 	}
+}
+
+func (u *terminalUI) publishReview() {
+	snapshot := u.saved.data
+	if u.main != nil && u.saved.store != nil {
+		u.saved.store.captured.PublishReview(&u.main.session.state, snapshot)
+	}
+	u.diff.Update(snapshot.Publication, u.saved.coverage)
+	u.agents.Model.LineCounts, u.agents.Model.NetCounts = snapshot.Publication.Counts.Callers, snapshot.Publication.Counts.Net
 }
 
 // animating keeps frames coming while previews reveal or completed calls expire.
@@ -274,9 +287,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	caller := u.main.transcriptCaller()
 	mainEdit := !u.liveHidden && slices.Contains(u.liveDock.Callers(), caller)
 	u.agents.LivePreviews = nil
-	if u.diff != nil {
-		u.agents.LineCounts, u.agents.NetCounts = u.diff.Counts()
-	}
+
 	roster := u.agents.NativeRoster(width, u.Panes.RosterLimit(height), now, u.Focus == 3)
 	l, left, right, framed, rosterRows := u.Panes.Geometry(width, height, len(roster))
 	roster = roster[:rosterRows]

@@ -100,24 +100,24 @@ func TestSavedReviewLoaderPublishesImmutableAtomicReceiptData(t *testing.T) {
 	savedReviewLoaderEnqueue(t, loader, savedReviewLoaderScope(workspace, true, "main"))
 	published := savedReviewLoaderAccept(t, loader)
 	data := loader.state.data
-	attempt := data.attempts[workspace+"\x00"+call]
-	if attempt.receipt == nil || len(published.files) != 1 {
+	attempt := reviewSnapshotAttempt(t, data, workspace, call)
+	if attempt.Receipt == nil || len(published.state.data.Publication.Files) != 1 {
 		t.Fatal("retained failed-command receipt did not reach published projection")
 	}
-	receiptText := attempt.receipt.text
+	receiptText := attempt.Receipt.Text
 	liveDiffScopeCapture(t, store, workspace, "blocked-child", "child", filepath.Join(workspace, "child.go"), "old", "new")
 	blocked, release := savedReviewLoaderBlock(t, store)
 	savedReviewLoaderEnqueue(t, loader, savedReviewLoaderScope(workspace, false, "main", "blocked-child"))
 	savedReviewLoaderEntered(t, blocked)
-	if loader.state.data != data || len(data.attempts) != 1 || !reflect.DeepEqual(data.files(), published.files) {
+	if loader.state.data != data || data.Len() != 1 || !reflect.DeepEqual(data.Publication.Files, published.state.data.Publication.Files) {
 		t.Fatal("in-flight read mutated published Diff data")
 	}
 	release()
 	savedReviewLoaderAccept(t, loader)
-	if len(data.attempts) != 1 || !reflect.DeepEqual(data.files(), published.files) {
+	if data.Len() != 1 || !reflect.DeepEqual(data.Publication.Files, published.state.data.Publication.Files) {
 		t.Fatal("completed read mutated an earlier publication")
 	}
-	if got := loader.state.data.attempts[workspace+"\x00"+call].receipt; got != attempt.receipt || got.text != receiptText {
+	if got := reviewSnapshotAttempt(t, loader.state.data, workspace, call).Receipt; got != attempt.Receipt || got.Text != receiptText {
 		t.Fatal("scope expansion reloaded or changed immutable Activity receipt")
 	}
 
@@ -134,7 +134,7 @@ func TestSavedReviewLoaderPublishesImmutableAtomicReceiptData(t *testing.T) {
 	if accepted, err := loader.accept(result); accepted || err == nil {
 		t.Fatalf("partial read accepted=%v error=%v", accepted, err)
 	}
-	if loader.state.data != before || len(before.attempts) != 2 || before.attempts[workspace+"\x00"+call].receipt != attempt.receipt {
+	if loader.state.data != before || before.Len() != 2 || reviewSnapshotAttempt(t, before, workspace, call).Receipt != attempt.Receipt {
 		t.Fatal("failed read published partial state or replaced receipt")
 	}
 }
@@ -155,10 +155,10 @@ func TestSavedReviewLoaderRejectsStaleResults(t *testing.T) {
 			if accepted, err := loader.accept(stale); accepted || err != nil {
 				t.Fatalf("stale publication accepted=%v error=%v", accepted, err)
 			}
-			if len(loader.state.data.attempts) != 0 {
+			if loader.state.data.Len() != 0 {
 				t.Fatal("stale result changed current attachment")
 			}
-			if result := savedReviewLoaderAccept(t, loader); len(result.files) != 1 {
+			if result := savedReviewLoaderAccept(t, loader); len(result.state.data.Publication.Files) != 1 {
 				t.Fatal("current generation failed to recover retained evidence")
 			}
 		})
@@ -203,7 +203,7 @@ func TestSavedReviewLoaderPhysicalCapacitySurvivesReplacement(t *testing.T) {
 			t.Fatal(err)
 		}
 		if accepted {
-			if len(result.files) != 1 {
+			if len(result.state.data.Publication.Files) != 1 {
 				t.Fatal("released capacity did not recover retained evidence")
 			}
 			break
@@ -230,8 +230,8 @@ func TestSavedReviewLoaderBacklogOverflowResyncsRetainedEvidence(t *testing.T) {
 		t.Fatalf("pre-overflow generation accepted=%v error=%v", accepted, err)
 	}
 	result := savedReviewLoaderAccept(t, loader)
-	if loader.resync || len(result.files) != 34 || len(loader.state.data.attempts) != 34 {
-		t.Fatalf("resync lost durable backlog: files=%d attempts=%d resync=%v", len(result.files), len(loader.state.data.attempts), loader.resync)
+	if loader.resync || len(result.state.data.Publication.Files) != 34 || loader.state.data.Len() != 34 {
+		t.Fatalf("resync lost durable backlog: files=%d attempts=%d resync=%v", len(result.state.data.Publication.Files), loader.state.data.Len(), loader.resync)
 	}
 }
 

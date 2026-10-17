@@ -3,16 +3,12 @@ package router
 import (
 	"context"
 	"errors"
-	"maps"
 	"slices"
-
-	"github.com/yusing/mekugi/modules/changehistory/presentation"
 )
 
 type savedReviewResult struct {
 	attachment, generation uint64
 	state                  savedDiff
-	files                  []presentation.File
 	err                    error
 }
 
@@ -118,21 +114,9 @@ func (l *savedReviewLoader) start() error {
 	result := savedReviewResult{attachment: l.attachment, generation: l.generation, state: l.state}
 	store := *result.state.store
 	result.state.store = &store
-	data := *result.state.data
-	data.attempts, data.order = maps.Clone(data.attempts), slices.Clone(data.order)
-	result.state.data = &data
 	go func() {
-		for _, event := range events {
-			if result.err = ctx.Err(); result.err != nil {
-				break
-			}
-			if _, result.err = result.state.applyEvent(ctx, event); result.err != nil {
-				break
-			}
-		}
-		if result.err == nil {
-			result.files = result.state.data.files()
-		}
+		_, result.err = result.state.applyEvent(ctx, events...)
+
 		<-l.slots
 		select {
 		case l.results <- result:

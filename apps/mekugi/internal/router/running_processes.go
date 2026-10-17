@@ -6,6 +6,8 @@ import (
 	"maps"
 	"slices"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
@@ -40,7 +42,7 @@ func (u *appServerUI) showRunningProcesses() {
 	u.ensureShell()
 	u.shell.selection = nil
 	u.shell.output = &outputDialog{view: u.agents, processes: true}
-	u.shell.output.refreshPages(u.processPages(nil))
+	u.shell.output.refreshPages(activitypresentation.DetailPages(activityui.Values(u.processPages(nil))))
 }
 
 // processPages rebuilds the /ps pages from Activity, which retains every

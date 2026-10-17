@@ -45,6 +45,7 @@ func (d Descriptor[D, S, B]) Reference() Reference {
 		{"guidance", len(d.Contributes.Guidance), d.HostsGuidance},
 		{"record-kinds", len(d.Contributes.RecordKinds), d.HostsRecords},
 		{"references", len(d.Contributes.References), d.HostsReferences},
+		{"activity-details", len(d.Contributes.ActivityDetails), d.HostsActivityDetails},
 		{"inspection", len(d.Contributes.Inspection), d.HostsInspection},
 		{"diagnostic-sections", len(d.Contributes.DiagnosticSections), d.HostsDiagnosticSections},
 		{"replay-timing", len(d.Contributes.ReplayTiming), d.HostsReplayTiming},

@@ -20,7 +20,7 @@ import (
 func liveDiffChangesPane(t *testing.T, width, height int, captures []presentation.Chunk) *changeview.Pane {
 	t.Helper()
 	pane := changeview.NewPane("/w", diffrender.EnvironmentTheme(os.Getenv("COLORFGBG")))
-	pane.Update(presentation.GroupCaptures(captures), "CONNECTING")
+	pane.Update((presentation.Publication{}).With(presentation.GroupCaptures(captures)), "CONNECTING")
 	if err := pane.Paint(t.Context(), io.Discard, width, height); err != nil {
 		t.Fatal(err)
 	}

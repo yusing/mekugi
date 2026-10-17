@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"context"
 
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
+
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
@@ -174,6 +176,7 @@ func TestExecTrackKeepsSingleCommandShellObservations(t *testing.T) {
 }
 
 func TestExecTrackCapturesMktempCreation(t *testing.T) {
+	var viewPublication presentation.Publication
 	for _, kind := range []string{"file", "directory"} {
 		t.Run(kind, func(t *testing.T) {
 			shell := newExecTrackShell(t)
@@ -247,7 +250,8 @@ func TestExecTrackCapturesMktempCreation(t *testing.T) {
 				t.Fatal(err)
 			}
 			view := changeview.View{}
-			view.Merge(data.files())
+			viewPublication = viewPublication.With(data.Publication.Files)
+			view.Update(viewPublication)
 			view.RefreshVisible()
 			if len(view.Files) == 0 {
 				t.Fatal("Saved Diff omits the retained captures")

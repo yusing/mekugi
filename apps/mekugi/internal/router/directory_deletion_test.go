@@ -59,6 +59,7 @@ func TestUISnapshotDirectoryDeletion(t *testing.T) {
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "stock-thread", "turnId": "t", "item": map[string]any{
 				"id": "delete-call", "type": "commandExecution", "command": "rm -rf removed removed2", "exitCode": 0}})
 			u.shell.saved.data = data
+			publishFixtureReview(t, u)
 			u.applyCapturedEdits()
 			u.view.testPace(u.view.Now().Add(time.Second))
 			var seq uint64

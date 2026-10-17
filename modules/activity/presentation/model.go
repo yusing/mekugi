@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/contracts/inference"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 // Source identifies an application-supplied observation without interpreting host protocol.
@@ -58,6 +59,8 @@ type Model[S Source, A AgentSource] struct {
 	Entries           []Record[S]
 	Agents            []A
 	Revision, LastSeq uint64
+	LineCounts        map[string]diffmodel.Counts
+	NetCounts         *diffmodel.Counts
 	retiredSkills     map[string]SkillSet
 	skillHistory      map[string]bool
 	skills            map[string]SkillSet

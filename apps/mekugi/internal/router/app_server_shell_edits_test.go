@@ -99,14 +99,15 @@ func TestAppServerShellEditsRevertApplyReplay(t *testing.T) {
 			t.Fatalf("shell change history: %q, %v", text, err)
 		}
 		data, err := fresh.liveDiffSnapshot(ctx, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {u.Thread: true, "stock-thread": true}}})
-		if err != nil || len(data.order) != index+2 {
+		if err != nil || data.Len() != index+2 {
 			t.Fatalf("Changes history: %+v, %v", data, err)
 		}
 		u.shell.saved.data = data
-		u.shell.diff.Update(data.files(), "")
-		_, counts := u.shell.diff.Counts()
+		publishFixtureReview(t, u)
+		u.shell.diff.Update(data.Publication, "")
+		counts := u.shell.saved.data.Publication.Counts.Net
 		if counts == nil || index == 0 && (counts.Added != 0 || counts.Removed != 0) || index == 1 && (counts.Added != 1 || counts.Removed != 1) {
-			t.Fatalf("saved Diff after %s: files=%+v counts=%+v", mutation, data.files(), counts)
+			t.Fatalf("saved Diff after %s: files=%+v counts=%+v", mutation, data.Publication.Files, counts)
 		}
 	}
 }

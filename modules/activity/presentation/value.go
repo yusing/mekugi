@@ -1,11 +1,19 @@
 package presentation
 
 import (
+	"regexp"
 	"time"
 
 	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 	"github.com/yusing/mekugi/modules/activity/feed"
 )
+
+var directoryDeletionPattern = regexp.MustCompile(`^ • [0-9]+ files?(?: · .*)?$`)
+
+func (b Value) DirectoryDeletion() bool {
+	_, end, ok := markdownsyntax.CodeSpan(b.Label, 0)
+	return b.Verb == "Delete" && ok && directoryDeletionPattern.MatchString(b.Label[end:])
+}
 
 // Value is an enriched activity publication. Source and Operation identify the
 // observed item and its operation. Members is a flat list of original values,

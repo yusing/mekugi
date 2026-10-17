@@ -9,47 +9,26 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 
+	"github.com/yusing/mekugi/contracts/activitydetail"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
-
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
-type liveDiffAttempt struct {
-	change, correlation string
-	thread              string
-	stream              int
-	chunks              []presentation.Chunk
-	receipt             *capturedActivityEdit
-}
-
-// Only review projections are retained, not whole replay records or scripts.
-// A live event loads its exact new attempt once; repeated events reuse it.
-type liveDiffData struct {
-	attempts map[string]liveDiffAttempt
-	order    []string
-	bytes    int
-}
-
-func newLiveDiffData() *liveDiffData {
-	return &liveDiffData{attempts: make(map[string]liveDiffAttempt)}
-}
-
-func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, event reviewChange) error {
+// hydrateReview admits retained host evidence into one unpublished module job.
+// Backend/history interpretation and filesystem reads remain in this adapter.
+func hydrateReview(ctx context.Context, store *mekugiReplayStore, builder *presentation.Builder, event reviewChange) error {
 	for _, call := range event.Calls {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		key := event.Workspace + "\x00" + call
-		if old, found := d.attempts[key]; found {
-			if old.change != event.ID || old.correlation != event.Correlation || old.stream != event.Stream {
-				return errors.New("live diff attempt identity changed")
-			}
+		identity := presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: event.Workspace, Call: call}, Change: event.ID, Correlation: event.Correlation, Stream: event.Stream}
+		if found, err := builder.Known(identity); err != nil {
+			return err
+		} else if found {
 			continue
-		}
-		if len(d.attempts) >= 65536 {
-			return errors.New("live diff exceeds 65,536 attempts")
 		}
 		record, found, err := store.read(event.Workspace, call, false)
 		if err != nil {
@@ -59,12 +38,10 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 			return fmt.Errorf("change %s has a missing or inconsistent attempt", event.ID)
 		}
 		history := authoredChangeHistory(record.History)
-		attempt := liveDiffAttempt{thread: cmp.Or(history.ExecutingThread, event.Thread), change: event.ID, correlation: event.Correlation, stream: event.Stream}
+		item, _, _ := strings.Cut(history.CorrelationID, "\x00")
+		attempt := presentation.Attempt{AttemptIdentity: identity, Operation: activitydetail.Operation{Thread: cmp.Or(history.ExecutingThread, event.Thread), Item: item}}
 		if history.ExecOutcome != nil && history.ExecutingThread != "" {
-			attempt.receipt = capturedEditActivity(event.Workspace, history)
-			if attempt.receipt != nil {
-				d.bytes += len(attempt.receipt.text)
-			}
+			attempt.Receipt = capturedEditActivity(event.Workspace, history)
 		}
 		origin := presentation.Origin{Change: event.ID, Caller: history.Caller, Source: cmp.Or(history.Source, history.ToolName)}
 		for n, file := range history.ReviewFiles {
@@ -78,47 +55,27 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 				return filepath.Clean(path)
 			}
 			file.BeforePath, file.AfterPath = canonical(file.BeforePath), canonical(file.AfterPath)
-			d.bytes += len(file.Diff) + len(file.BeforePath) + len(file.AfterPath) + len(key) + len(origin.Caller) + len(origin.Source)
-			if d.bytes > changes.MaxReadBytes {
-				return errors.New("live diff exceeds 64 MiB; use mchanges with a narrower range")
-			}
-			attempt.chunks = append(attempt.chunks, presentation.Chunk{
-				Key: key + "/" + strconv.Itoa(n), Stream: event.Workspace + "\x00" + event.Namespace + "\x00" + strconv.Itoa(event.Stream),
-				Workspace: event.Workspace, CaptureOrder: record.CaptureOrder,
-				Review: file, Origin: origin,
+			attempt.Chunks = append(attempt.Chunks, presentation.Chunk{
+				Key: event.Workspace + "\x00" + call + "/" + strconv.Itoa(n), Stream: event.Workspace + "\x00" + event.Namespace + "\x00" + strconv.Itoa(event.Stream),
+				Workspace: event.Workspace, CaptureOrder: record.CaptureOrder, Review: file, Origin: origin,
 			})
 		}
-		d.attempts[key] = attempt
-		d.order = append(d.order, key)
+		if err := builder.Add(attempt); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func (d *liveDiffData) files() []presentation.File {
-	var captures []presentation.Chunk
-	for _, key := range d.order {
-		captures = append(captures, d.attempts[key].chunks...)
-	}
-	return presentation.GroupCaptures(captures)
-}
-
-func (s *mekugiReplayStore) liveDiffSnapshot(ctx context.Context, scope previewmodel.Scope) (*liveDiffData, error) {
-	data := newLiveDiffData()
-	if err := data.reconcile(ctx, s, scope); err != nil {
-		return nil, err
-	}
-	return data, nil
-}
-
-// Scope additions reconcile index membership and receipts without reloading
-// immutable attempts. Transport gaps use a fresh snapshot instead.
-func (d *liveDiffData) reconcile(ctx context.Context, s *mekugiReplayStore, scope previewmodel.Scope) error {
-	present := make(map[string]bool)
+// Reconciliation reuses admitted immutable attempts, while checking current
+// scope membership before a complete replacement can be published.
+func reconcileReview(ctx context.Context, store *mekugiReplayStore, builder *presentation.Builder, scope previewmodel.Scope) error {
+	present := make(map[presentation.AttemptKey]bool)
 	for _, workspace := range slices.Sorted(maps.Keys(scope.Workspaces)) {
 		if !filepath.IsAbs(workspace) {
 			return errors.New("live diff workspace must be absolute")
 		}
-		indexes, err := s.changes.InspectVisible(s.changeScope(), workspace, scope.Workspaces[workspace])
+		indexes, err := store.changes.InspectVisible(store.changeScope(), workspace, scope.Workspaces[workspace])
 		if err != nil {
 			return err
 		}
@@ -133,11 +90,10 @@ func (d *liveDiffData) reconcile(ctx context.Context, s *mekugiReplayStore, scop
 						return threads != nil && !threads[cmp.Or(call.Thread, info.Thread)]
 					})
 					for _, call := range change.Calls {
-						present[index.Workspace+"\x00"+call.ID] = true
+						present[presentation.AttemptKey{Workspace: index.Workspace, Call: call.ID}] = true
 					}
-					if err := d.apply(ctx, s, retainedReviewChange(changes.Update{
-						Workspace: index.Workspace, Namespace: index.Namespace, Thread: info.Thread, Stream: stream,
-						ID: id, Change: change,
+					if err := hydrateReview(ctx, store, builder, retainedReviewChange(changes.Update{
+						Workspace: index.Workspace, Namespace: index.Namespace, Thread: info.Thread, Stream: stream, ID: id, Change: change,
 					})); err != nil {
 						return err
 					}
@@ -145,10 +101,5 @@ func (d *liveDiffData) reconcile(ctx context.Context, s *mekugiReplayStore, scop
 			}
 		}
 	}
-	for key := range d.attempts {
-		if !present[key] {
-			return errors.New("change records were removed; restart the live view")
-		}
-	}
-	return nil
+	return builder.RequirePresent(present)
 }

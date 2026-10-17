@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/contracts/activitydetail"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
@@ -29,9 +31,8 @@ func TestUISnapshotMoveActivityAndDialog(t *testing.T) {
 	uisnapshot.Assert(t, "testdata/snapshots/move-paths-activity.txt", strings.Join(rows, "\n")+"\n")
 	c := liveDiffChangesPane(t, 100, 24, nil)
 	c.SetWorkspace(workspace)
-	u.shell.saved.data = newLiveDiffData()
-	u.shell.saved.data.order = []string{"move"}
-	u.shell.saved.data.attempts["move"] = liveDiffAttempt{thread: "main", correlation: "move\x000", chunks: []presentation.Chunk{{Workspace: workspace, Review: file}}}
+	u.shell.saved.data = reviewFixtureSnapshot(t, presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: workspace, Call: "move"}, Correlation: "move\x000"}, Operation: activitydetail.Operation{Thread: "main", Item: "move"}, Chunks: []presentation.Chunk{{Workspace: workspace, Review: file}}})
+	publishFixtureReview(t, u)
 	u.shell.diff = c
 	if !u.shell.openActivityEdit(u.view, 1, pathdisplay.Move(workspace, file.BeforePath, file.AfterPath)) {
 		t.Fatal("compressed move endpoint did not open exact captured dialog")
@@ -93,7 +94,8 @@ func TestUISnapshotHostMoveDialogSyntax(t *testing.T) {
 	pages := appServerEditPages(item, "/w", "item/completed")
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Painter.Theme = diffrender.DarkTheme
-	if !u.shell.openEditPages(u.view, pages, "internal/{old.go=>new.go}") {
+	u.view.Entries = []liveActivityRecord{{Source: activityPaneEntry{Seq: 1, native: &liveActivityNativeItem{thread: "main", item: "move", editPages: pages}}}}
+	if !u.shell.openActivityEdit(u.view, 1, "internal/{old.go=>new.go}") {
 		t.Fatal("compressed host move did not open its exact page")
 	}
 	frame := drawOutputDialog(u.shell)

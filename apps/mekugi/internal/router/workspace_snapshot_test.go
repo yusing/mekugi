@@ -389,7 +389,7 @@ func TestWorkspaceSnapshotVCSChangesStayOutOfAuthoredTotals(t *testing.T) {
 				t.Fatalf("VCS counted as authored: %q", list)
 			}
 			data, err := resumed.liveDiffSnapshot(ctx, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {history.ExecutingThread: true}}})
-			if err != nil || len(data.files()) != map[bool]int{false: 0, true: 1}[mixed] {
+			if err != nil || len(data.Publication.Files) != map[bool]int{false: 0, true: 1}[mixed] {
 				t.Fatalf("saved Diff: %+v, %v", data, err)
 			}
 			diagnostic, err := resumed.changes.Read(ctx, resumed.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{history.ChangeID}, View: "history"})

@@ -16,10 +16,10 @@ func TestNativeFileEditorSelectionAndFilter(t *testing.T) {
 	defer u.shell.diffScreen.Close()
 	c := u.shell.diff
 	c.SetWorkspace("/w")
-	c.Update(presentation.GroupCaptures([]presentation.Chunk{
+	c.Update((presentation.Publication{}).With(presentation.GroupCaptures([]presentation.Chunk{
 		liveDiffCapture("selected", "src/selected.go", 1, "old\n", "new\n", presentation.Origin{}),
 		liveDiffCapture("other", "other.go", 2, "old\n", "new\n", presentation.Origin{}),
-	}), "")
+	})), "")
 	u.shell.Focus = 1
 	for _, key := range []byte("sg") {
 		if err := u.shell.key(key); err != nil {

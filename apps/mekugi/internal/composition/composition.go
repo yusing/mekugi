@@ -22,6 +22,7 @@ import (
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/contracts/activitydetail"
 	"github.com/yusing/mekugi/contracts/capability"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/guidance"
@@ -30,6 +31,7 @@ import (
 	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/contracts/reference"
 	"github.com/yusing/mekugi/contracts/replaytiming"
+	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/commandsegments/segments"
@@ -56,21 +58,22 @@ func (h *Handle[S]) Value() S {
 }
 
 type entry struct {
-	replayTiming []replaytiming.Reader
-	diagnostics  []diagnosticsection.Contribution
-	inspection   []inspection.Contribution
-	id           module.ID
-	requires     []module.ID
-	lifetime     module.Lifetime
-	resources    []string
-	commands     []command.Contribution
-	records      []recordkind.Spec
-	references   []reference.Resolver
-	guidance     []guidance.Section
-	capabilities []capability.Requirement
-	validFactory bool
-	construct    func(module.Slots, binding.Binder, *Runtime) error
-	start, stop  func(context.Context) error
+	activityDetails []activitydetail.Provider
+	replayTiming    []replaytiming.Reader
+	diagnostics     []diagnosticsection.Contribution
+	inspection      []inspection.Contribution
+	id              module.ID
+	requires        []module.ID
+	lifetime        module.Lifetime
+	resources       []string
+	commands        []command.Contribution
+	records         []recordkind.Spec
+	references      []reference.Resolver
+	guidance        []guidance.Section
+	capabilities    []capability.Requirement
+	validFactory    bool
+	construct       func(module.Slots, binding.Binder, *Runtime) error
+	start, stop     func(context.Context) error
 }
 
 type Composition struct {
@@ -96,6 +99,15 @@ func (c *Composition) Add[D, S any, B interface {
 		guidance:     slices.Clone(descriptor.Contributes.Guidance),
 		capabilities: slices.Clone(backend.Requires),
 		validFactory: descriptor.New != nil && deps != nil,
+	}
+	for _, definition := range descriptor.Contributes.ActivityDetails {
+		provider := activitydetail.Provider{Name: definition.Name}
+		if definition.Resolve != nil {
+			provider.Resolve = func(store *scope.Store, request activitydetail.Request) activitydetail.Result {
+				return definition.Resolve(handle.Value(), store, request)
+			}
+		}
+		node.activityDetails = append(node.activityDetails, provider)
 	}
 	for _, definition := range descriptor.Contributes.Commands {
 		contribution := command.Contribution{Spec: definition.Spec, ObserveRead: definition.ObserveRead}
@@ -142,6 +154,9 @@ func (c *Composition) Add[D, S any, B interface {
 		node.diagnostics = append(node.diagnostics, contribution)
 	}
 	node.construct = func(slots module.Slots, binder binding.Binder, runtime *Runtime) error {
+		if !descriptor.HostsActivityDetails {
+			slots.ActivityDetails = nil
+		}
 		if !descriptor.HostsDiagnosticSections {
 			slots.DiagnosticSections = nil
 		}
@@ -302,6 +317,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 	c.sealed = true
 	runtime := new(Runtime)
 	var records []recordkind.Spec
+	var activityDetails []activitydetail.Provider
 	var inspections []inspection.Contribution
 	var replayTiming []replaytiming.Reader
 	var diagnostics []diagnosticsection.Contribution
@@ -318,6 +334,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 		}
 		positions[node.id] = i
 		runtime.Commands = append(runtime.Commands, node.commands...)
+		activityDetails = append(activityDetails, node.activityDetails...)
 		records = append(records, node.records...)
 		references = append(references, node.references...)
 		guidance = append(guidance, node.guidance...)
@@ -377,7 +394,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 		return nil, err
 	}
 	for _, node := range c.entries {
-		if err := node.construct(module.Slots{ReplayTiming: slices.Clone(replayTiming), DiagnosticSections: slices.Clone(diagnostics), Inspection: slices.Clone(inspections), Commands: slices.Clone(runtime.Commands), RecordKinds: slices.Clone(records), References: slices.Clone(references), Guidance: slices.Clone(guidance)}, binder, runtime); err != nil {
+		if err := node.construct(module.Slots{ActivityDetails: slices.Clone(activityDetails), ReplayTiming: slices.Clone(replayTiming), DiagnosticSections: slices.Clone(diagnostics), Inspection: slices.Clone(inspections), Commands: slices.Clone(runtime.Commands), RecordKinds: slices.Clone(records), References: slices.Clone(references), Guidance: slices.Clone(guidance)}, binder, runtime); err != nil {
 			return nil, fmt.Errorf("construct %s: %w", node.id, err)
 		}
 	}

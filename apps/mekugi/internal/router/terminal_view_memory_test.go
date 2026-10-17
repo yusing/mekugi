@@ -25,7 +25,7 @@ func TestTerminalViewMemory(t *testing.T) {
 	}
 	u.modelsLoading = true
 	u.shell.DiffOpen = true
-	u.shell.diff.Update(presentation.GroupCaptures([]presentation.Chunk{liveDiffCapture("main", "main.go", 1, "old\n", "new é\n", presentation.Origin{})}), "")
+	u.shell.diff.Update((presentation.Publication{}).With(presentation.GroupCaptures([]presentation.Chunk{liveDiffCapture("main", "main.go", 1, "old\n", "new é\n", presentation.Origin{})})), "")
 	var first string
 	for _, width := range []int{120, 100, 120} {
 		if err := u.paint(io.Discard, width, 32); err != nil {

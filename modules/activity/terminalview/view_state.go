@@ -44,6 +44,7 @@ func (v *View) requestDisplay(caller string) {
 
 // Update replaces detached input, retaining only renderer-owned state between frames.
 func (v *View) Update(publication presentation.Publication, display Display) {
+	v.LineCounts, v.NetCounts = publication.LineCounts, publication.NetCounts
 	versions := make(map[outputIdentity]int)
 	for _, entry := range publication.Entries {
 		for output, version := range entry.Outputs {

@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
+
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -351,7 +353,7 @@ func TestLiveDiffResetScopeResynchronizes(t *testing.T) {
 	defer auto.Close()
 	auto.Enable()
 	testReview(auto).IncludeThread(workspace, "old", true)
-	c := savedDiff{store: store, data: newLiveDiffData(), coverage: "CONNECTING"}
+	c := savedDiff{store: store, data: new(presentation.Snapshot), coverage: "CONNECTING"}
 	sub := testReview(auto).Subscribe()
 	apply := func(event reviewEvent) {
 		t.Helper()
@@ -361,7 +363,7 @@ func TestLiveDiffResetScopeResynchronizes(t *testing.T) {
 	}
 	paths := func() []string {
 		var paths []string
-		for _, file := range c.data.files() {
+		for _, file := range c.data.Publication.Files {
 			paths = append(paths, filepath.Base(file.Path))
 		}
 		slices.Sort(paths)
@@ -386,7 +388,7 @@ func TestLiveDiffResetScopeResynchronizes(t *testing.T) {
 		t.Fatal("reset did not detach the previous subscriber")
 	}
 	apply(stale)
-	if len(c.data.files()) != 0 {
+	if len(c.data.Publication.Files) != 0 {
 		t.Fatalf("stale scope reached the reset view: %v", paths())
 	}
 	observeReview(testReview(auto), workspace, "old-child", child("old-child", "old"))
@@ -459,8 +461,8 @@ func TestAppServerResumeSwitchWaitsForDiffResync(t *testing.T) {
 	if err := u.finishRestoredContent(); err != nil {
 		t.Fatal(err)
 	}
-	if u.sessionPresentation().Status.Text != "Ready" || u.shell.diffFailure != "" || len(u.shell.saved.data.files()) != 1 || filepath.Base(u.shell.saved.data.files()[0].Path) != "saved.go" {
-		t.Fatalf("resumed Diff: status=%q failure=%q files=%+v", u.sessionPresentation().Status.Text, u.shell.diffFailure, u.shell.saved.data.files())
+	if u.sessionPresentation().Status.Text != "Ready" || u.shell.diffFailure != "" || len(u.shell.saved.data.Publication.Files) != 1 || filepath.Base(u.shell.saved.data.Publication.Files[0].Path) != "saved.go" {
+		t.Fatalf("resumed Diff: status=%q failure=%q files=%+v", u.sessionPresentation().Status.Text, u.shell.diffFailure, u.shell.saved.data.Publication.Files)
 	}
 	// A later /clear session still joins the Diff, as do its children.
 	appServerTestKeys(t, u, "/clear\r")

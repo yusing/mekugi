@@ -8,6 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/contracts/activitydetail"
+	"github.com/yusing/mekugi/contracts/scope"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/charmbracelet/x/vt"
@@ -26,15 +29,15 @@ func TestNativeEditClickOpensExactCapturedDiffDialog(t *testing.T) {
 				}
 				c := liveDiffChangesPane(t, 120, 28, captures)
 				u.shell.diff = c
-				u.shell.saved.data = newLiveDiffData()
-				u.shell.saved.data.order = []string{"wrong", "target"}
-				u.shell.saved.data.attempts["wrong"] = liveDiffAttempt{thread: "child", correlation: "call\x000", change: "amber1", chunks: captures[:1]}
-				attempt := liveDiffAttempt{thread: "main", correlation: "call\x000", change: "amber20", chunks: captures[1:]}
+				wrong := presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: "/w", Call: "wrong"}, Correlation: "call\x000", Change: "amber1"}, Operation: activitydetail.Operation{Thread: "child", Item: "call"}, Chunks: captures[:1]}
+				attempt := presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: "/w", Call: "target"}, Correlation: "call\x000", Change: "amber20"}, Operation: activitydetail.Operation{Thread: "main", Item: "call"}, Chunks: captures[1:]}
 				if grouped {
-					attempt.correlation = "exec-carrier"
-					attempt.receipt = &capturedActivityEdit{thread: "main", calls: []string{"call"}}
+					attempt.Correlation = "exec-carrier"
+					attempt.Receipt = &presentation.Receipt{Thread: "main", Calls: []string{"call"}}
 				}
-				u.shell.saved.data.attempts["target"] = attempt
+				u.shell.saved.data = reviewFixtureSnapshot(t, wrong, attempt)
+				publishFixtureReview(t, u)
+
 				path := "earlier.go"
 				if repeated {
 					path = "file20.go"
@@ -94,7 +97,7 @@ func TestNativeCompletedBatchEditOpensBeforeSiblingCommandExits(t *testing.T) {
 			if err := u.paint(screen, 160, 40); err != nil {
 				t.Fatal(err)
 			}
-			if len(u.shell.saved.data.order) != 0 || u.session.commands[[3]string{thread, "batch", "slow-sibling"}] == nil {
+			if u.shell.saved.data.Len() != 0 || u.session.commands[[3]string{thread, "batch", "slow-sibling"}] == nil {
 				t.Fatal("fixture must have no durable capture and a running batch sibling")
 			}
 			// Click the actual rendered edit, through the shared pointer routing.
@@ -140,6 +143,7 @@ func TestNativeCompletedBatchEditOpensBeforeSiblingCommandExits(t *testing.T) {
 
 func TestNativeHostEditNavigationRequiresCompletedSuccessfulItem(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.session.activity = fixtureActivityWithoutDetails(t)
 	for _, tc := range []struct{ phase, status string }{{"item/started", ""}, {"item/completed", "failed"}, {"item/completed", "declined"}, {"item/completed", "inProgress"}} {
 		item := appServerItem{Type: "fileChange", Status: tc.status, Changes: []appServerFileChange{{Path: "a.go", Diff: "+not_confirmed\n"}}}
 		u.view.Entries = []liveActivityRecord{{Source: activityPaneEntry{Seq: 1, native: &liveActivityNativeItem{thread: "main", item: "patch", editPages: appServerEditPages(item, u.session.cwd, tc.phase)}}}}
@@ -176,9 +180,9 @@ func TestNativeEditDialogShowsHistoricalHunkNotLaterCapture(t *testing.T) {
 	}
 	c := liveDiffChangesPane(t, 120, 24, captures)
 	u.shell.diff = c
-	u.shell.saved.data = newLiveDiffData()
-	u.shell.saved.data.order = []string{"clicked"}
-	u.shell.saved.data.attempts["clicked"] = liveDiffAttempt{thread: "main", correlation: "call\x000", change: "amber1", chunks: captures[:1]}
+	u.shell.saved.data = reviewFixtureSnapshot(t, presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: "/w", Call: "clicked"}, Correlation: "call\x000", Change: "amber1"}, Operation: activitydetail.Operation{Thread: "main", Item: "call"}, Chunks: captures[:1]})
+	publishFixtureReview(t, u)
+
 	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "Edit `target.go` +1 -1 · apply_patch", native: &liveActivityNativeItem{thread: "main", item: "call"}}}})
 	if err := os.WriteFile(filepath.Join(u.session.cwd, "target.go"), []byte("unrelated_workspace_content\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -196,5 +200,28 @@ func TestNativeEditDialogShowsHistoricalHunkNotLaterCapture(t *testing.T) {
 	paintSavedDiff(t, c, 120, 24)
 	if !strings.Contains(strings.Join(c.Selection(119, 23).Document, "\n"), "later_hunk") {
 		t.Fatal("closing dialog lost later capture")
+	}
+}
+
+func TestNativeCapturedDetailIsAttachmentScoped(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	chunk := liveDiffCapture("edit", "scope.go", 1, "before\n", "after\n", presentation.Origin{})
+	u.shell.saved.data = reviewFixtureSnapshot(t, presentation.Attempt{
+		AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: "/w", Call: "edit"}},
+		Operation:       activitydetail.Operation{Thread: "main", Item: "edit"}, Chunks: []presentation.Chunk{chunk},
+	})
+	publishFixtureReview(t, u)
+	u.view.Entries = []liveActivityRecord{{Source: activityPaneEntry{Seq: 1, native: &liveActivityNativeItem{thread: "main", item: "edit"}}}}
+	// Retained reads are unavailable after publication. Detail navigation must
+	// consume the accepted snapshot without reopening evidence.
+	u.shell.saved.store.changes = nil
+	u.shell.saved.store.directory = filepath.Join(t.TempDir(), "unavailable")
+	if !u.shell.openActivityEdit(u.view, 1, "scope.go") || !strings.Contains(u.shell.output.pages[0].Code, "+after") {
+		t.Fatal("accepted capture did not resolve without retained storage")
+	}
+	u.shell.outputKey("\x1b")
+	u.session.state = scope.Store{}
+	if u.shell.openActivityEdit(u.view, 1, "scope.go") || u.shell.output != nil {
+		t.Fatal("new attachment inherited the prior captured-detail publication")
 	}
 }

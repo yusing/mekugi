@@ -218,11 +218,11 @@ func TestNativeRosterShowsEditedLines(t *testing.T) {
 	chunk := func(caller, diff string, incomplete string) presentation.Chunk {
 		return presentation.Chunk{Origin: presentation.Origin{Caller: caller}, Review: diffmodel.ReviewFile{Diff: diff, Incomplete: incomplete}}
 	}
-	v.LineCounts = presentation.CallerCounts([]presentation.File{
+	v.Model.LineCounts = presentation.CallerCounts([]presentation.File{
 		{Chunks: []presentation.Chunk{chunk("/root", "@@ -1 +1,2 @@\n-a\n+b\n+c", ""), chunk("/root/a", "@@ -1 +1 @@\n-x\n+y", ""), chunk("/root/a", "", "tool-managed coverage")}},
 		{Chunks: []presentation.Chunk{chunk("/root", "@@ -0,0 +1 @@\n+d", ""), chunk("/root/b", "", "truncated")}},
 	})
-	v.NetCounts = new(diffmodel.Counts{Added: 2, Removed: 1})
+	v.Model.NetCounts = new(diffmodel.Counts{Added: 2, Removed: 1})
 	lines := v.NativeRoster(150, 8, now, true)
 	var rows []string
 	for _, line := range lines {
@@ -243,7 +243,7 @@ func TestNativeRosterShowsEditedLines(t *testing.T) {
 	if at := strings.Index(rows[1], " -1"); ansi.StringWidth(rows[1][:at]) != ansi.StringWidth(rows[2][:strings.Index(rows[2], " -1")]) {
 		t.Fatalf("line counts are not aligned:\n%s", strings.Join(rows, "\n"))
 	}
-	delete(v.LineCounts, "/root/b")
+	delete(v.Model.LineCounts, "/root/b")
 	if header := ansi.Strip(v.NativeRoster(150, 8, now, true)[0]); !strings.Contains(header, "+2 -1 · ↑3K") {
 		t.Fatalf("session total missing: %q", header)
 	}
@@ -276,7 +276,7 @@ func TestNativeRosterMetricsEaseToNewValues(t *testing.T) {
 	now := time.Now()
 	agent := activityPaneAgent{Name: "/root", Started: now.Add(-time.Minute), Turns: 1, CostKnown: true, Cost: 1, InputTokens: 100_000, OutputTokens: 1000}
 	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{agent}})
-	v.LineCounts = map[string]diffmodel.Counts{"/root": {Added: 10, Removed: 2}}
+	v.Model.LineCounts = map[string]diffmodel.Counts{"/root": {Added: 10, Removed: 2}}
 	row := func(at time.Time) string {
 		t.Helper()
 		return ansi.Strip(v.NativeRoster(150, 8, at, true)[1])
@@ -287,7 +287,7 @@ func TestNativeRosterMetricsEaseToNewValues(t *testing.T) {
 	}
 	agent.InputTokens, agent.Cost = 200_000, 2
 	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{agent}})
-	v.LineCounts = map[string]diffmodel.Counts{"/root": {Added: 110, Removed: 2}}
+	v.Model.LineCounts = map[string]diffmodel.Counts{"/root": {Added: 110, Removed: 2}}
 	row(now)
 	mid := row(now.Add(activityui.MetricEase / 4))
 	if strings.Contains(mid, "↑100K") || strings.Contains(mid, "↑200K") || strings.Contains(mid, "+10 ") || strings.Contains(mid, "+110") || strings.Contains(mid, "$1.00") || strings.Contains(mid, "$2.00") || !v.RosterEasing {
@@ -327,7 +327,7 @@ func TestNativeRosterLineCountColorsAndZeros(t *testing.T) {
 		view := newActivityAdapter()
 		now := time.Now()
 		view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root", Started: now, InputTokens: 100}}})
-		view.LineCounts = map[string]diffmodel.Counts{"/root": tt.count}
+		view.Model.LineCounts = map[string]diffmodel.Counts{"/root": tt.count}
 		rows := view.NativeRoster(150, 8, now, true)
 		for _, row := range rows[1:2] {
 			if strings.Contains(row, "+0") || strings.Contains(row, "-0") {

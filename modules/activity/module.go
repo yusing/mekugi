@@ -11,5 +11,6 @@ import (
 var Module = module.Descriptor[Deps, *feed.Service, codexbinding.Bindings]{
 	ID: "activity", Summary: "Own host-operation feeds, roster derivation and retained output",
 	Lifetime: module.AttachedSession, New: newService, Bindings: codexbinding.Codex,
-	Contributes: module.Contributions[*feed.Service]{RecordKinds: []recordkind.Spec{waittargets.Record}},
+	HostsActivityDetails: true,
+	Contributes:          module.Contributions[*feed.Service]{RecordKinds: []recordkind.Spec{waittargets.Record}},
 }

@@ -45,11 +45,11 @@ func TestUISnapshotSavedDiffDependencyHistory(t *testing.T) {
 			reader := testReplayStore(mekugiReplayStore{directory: store.directory})
 			scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{"/w": {"stock-thread": true}}}
 			data, err := reader.liveDiffSnapshot(t.Context(), scope)
-			if err != nil || len(data.files()) != 0 {
+			if err != nil || len(data.Publication.Files) != 0 {
 				t.Fatalf("observation-only records became files: %+v, %v", data, err)
 			}
-			for _, attempt := range data.attempts {
-				if attempt.receipt != nil {
+			for attempt := range data.Attempts() {
+				if attempt.Receipt != nil {
 					t.Fatal("legacy observation generated an edit receipt")
 				}
 			}
@@ -68,11 +68,13 @@ func TestUISnapshotSavedDiffDependencyHistory(t *testing.T) {
 					})
 				}
 			}
-			if err := data.reconcile(t.Context(), reader, scope); err != nil {
+			builder := presentation.NewBuilder(data)
+			if err := reconcileReview(t.Context(), reader, builder, scope); err != nil {
 				t.Fatal(err)
 			}
+			data = builder.Finish()
 			var captures []presentation.Chunk
-			for _, file := range data.files() {
+			for _, file := range data.Publication.Files {
 				captures = append(captures, file.Chunks...)
 			}
 			c := liveDiffChangesPane(t, 100, 25, captures)
@@ -80,7 +82,7 @@ func TestUISnapshotSavedDiffDependencyHistory(t *testing.T) {
 			paintSavedDiff(t, c, 100, 25)
 			uisnapshot.Assert(t, fmt.Sprintf("testdata/snapshots/saved-diff-dependency-%t.txt", confirmed), strings.Join(c.Selection(99, 24).Document, "\n")+"\n")
 			view := presentation.View{}
-			view.Merge(data.files())
+			view.Merge(data.Publication.Files)
 			view.RefreshVisible()
 			for _, file := range view.Visible {
 				if file.Path == "/w/plugins/node_modules" && len(file.Chunks) != 1 {
@@ -92,6 +94,7 @@ func TestUISnapshotSavedDiffDependencyHistory(t *testing.T) {
 }
 
 func TestLiveDiffDirectoryLifecycleAndCallerFilter(t *testing.T) {
+	var viewPublication presentation.Publication
 	for _, paths := range [][4]string{
 		{"", "/w/node_modules", "/w/node_modules", ""},
 		{"/w/node_modules", "", "", "/w/node_modules"},
@@ -103,7 +106,8 @@ func TestLiveDiffDirectoryLifecycleAndCallerFilter(t *testing.T) {
 				Review: diffmodel.ReviewFile{BeforePath: paths[2*i], AfterPath: paths[2*i+1], Directory: true}})
 		}
 		view := changeview.View{}
-		view.Merge(presentation.GroupCaptures(captures))
+		viewPublication = viewPublication.With(presentation.GroupCaptures(captures))
+		view.Update(viewPublication)
 		view.RefreshVisible()
 		visible := view.Visible[view.Files[0].Key()]
 		if paths[0] == "" {

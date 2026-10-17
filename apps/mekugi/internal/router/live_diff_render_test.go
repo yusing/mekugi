@@ -214,9 +214,11 @@ func TestLiveDiffHiddenFilesKeepNavigationAndHistory(t *testing.T) {
 }
 
 func TestLiveDiffIncompleteHistory(t *testing.T) {
+	var viewPublication presentation.Publication
 	chunk := presentation.Chunk{Key: "unreadable", Review: diffmodel.RenderIncompleteReviewFile("file", "file", "permission denied")}
 	view := changeview.View{}
-	view.Merge([]presentation.File{{Path: "file", Chunks: []presentation.Chunk{chunk}}})
+	viewPublication = viewPublication.With([]presentation.File{{Path: "file", Chunks: []presentation.Chunk{chunk}}})
+	view.Update(viewPublication)
 	view.RefreshVisible()
 	render, err := new(changeview.Renderer).Render(t.Context(), diffrender.TerminalTheme,
 		[]presentation.File{view.Visible[view.Files[0].Key()]}, "", 100)
@@ -230,13 +232,15 @@ func TestLiveDiffIncompleteHistory(t *testing.T) {
 }
 
 func TestLiveDiffCompleteCaptureAfterIncompleteHistory(t *testing.T) {
+	var viewPublication presentation.Publication
 	{
 		incomplete := presentation.Chunk{Key: "unreadable", CaptureOrder: 1,
 			Review: diffmodel.RenderIncompleteReviewFile("file", "file", "permission denied")}
 		complete := presentation.Chunk{Key: "readable", CaptureOrder: 2,
 			Review: diffmodel.RenderReviewFile("file", "file", "before\n", "NEW KNOWN CONTENT\n")}
 		view := changeview.View{}
-		view.Merge([]presentation.File{{Path: "file", Chunks: []presentation.Chunk{incomplete, complete}}})
+		viewPublication = viewPublication.With([]presentation.File{{Path: "file", Chunks: []presentation.Chunk{incomplete, complete}}})
+		view.Update(viewPublication)
 		view.RefreshVisible()
 		render, err := new(changeview.Renderer).Render(t.Context(), diffrender.TerminalTheme,
 			[]presentation.File{view.Visible[view.Files[0].Key()]}, "", 100)

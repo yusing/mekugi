@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
+
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
@@ -158,7 +160,7 @@ func TestExecCompletedReceiptKeepsPythonValidation(t *testing.T) {
 	entry := activityPaneEntry{Kind: "tool", Text: toolActivityShell(command), native: &liveActivityNativeItem{
 		thread: "main", item: "cmd", command: command,
 		segments:     []commandSegment{{source: writer, text: execSegmentText(writer)}, {source: check, text: execSegmentText(check)}},
-		capturedEdit: &capturedActivityEdit{thread: "main", calls: []string{"cmd"}, text: "Edit `source.go` +1 -1 · cat"},
+		capturedEdit: &presentation.Receipt{Thread: "main", Calls: []string{"cmd"}, Text: "Edit `source.go` +1 -1 · cat"},
 	}}
 	blocks := commandSegmentBlocks(commandPresentation(entry))
 	if !slices.ContainsFunc(blocks, func(block activityui.Block) bool {

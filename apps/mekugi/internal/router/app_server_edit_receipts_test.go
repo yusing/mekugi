@@ -4,6 +4,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/nativetrace"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
@@ -77,8 +78,8 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(snapshot.order) != len(commands) {
-		t.Fatalf("retained attempts = %d, want %d", len(snapshot.order), len(commands))
+	if snapshot.Len() != len(commands) {
+		t.Fatalf("retained attempts = %d, want %d", snapshot.Len(), len(commands))
 	}
 	u := newAppServerSessionTestUI(t, workspace)
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
@@ -88,6 +89,7 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 		"id": "cat-call", "type": "commandExecution", "command": "cat > direct.go <<'EOF'\nnew\nEOF", "exitCode": 2}})
 	assertCapturedCommand(t, u.view, "main", "cat-call", "Edit", 2)
 	u.shell.saved.data = snapshot
+	publishFixtureReview(t, u)
 	u.applyCapturedEdits()
 	assertCapturedCommand(t, u.view, "main", "cat-call", "Edit", 2)
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "c", "item": map[string]any{
@@ -136,6 +138,7 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 	// History restored into a new UI still reconciles against retained receipts.
 	restored := newAppServerSessionTestUI(t, workspace)
 	restored.shell.saved.data = snapshot
+	publishFixtureReview(t, restored)
 	restored.restoreHistory([]appServerHistoryTurn{{ID: "prior", Status: "completed", Items: []appServerItem{{
 		ID: "cat-call", Type: "commandExecution", Command: "cat > direct.go", ExitCode: new(2),
 	}}}})
@@ -178,11 +181,10 @@ func TestAppServerCapturedEditsReuseReceipt(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "cat > a.go <<'EOF'\nnew\nEOF"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	data := newLiveDiffData()
-	data.order = []string{"receipt"}
-	receipt := &capturedActivityEdit{thread: "main", calls: []string{"cmd"}, text: "Edit `a.go` +1 -1"}
-	data.attempts["receipt"] = liveDiffAttempt{receipt: receipt}
-	u.shell.saved.data = data
+	var data []*presentation.Receipt
+	receipt := &presentation.Receipt{Thread: "main", Calls: []string{"cmd"}, Text: "Edit `a.go` +1 -1"}
+	data = []*presentation.Receipt{receipt}
+	u.shell.saved.data = reviewReceiptSnapshot(t, data)
 	u.applyCapturedEdits()
 	assertCapturedCommand(t, u.view, "main", "cmd", "Edit", 0)
 	if allocations := testing.AllocsPerRun(5, u.applyCapturedEdits); allocations > 1 {
@@ -197,8 +199,9 @@ func TestAppServerCapturedEditsReuseReceipt(t *testing.T) {
 	}
 	// A new receipt must replace the cached projection.
 	updated := *receipt
-	updated.text = "Edit `a.go` +2 -1"
-	data.attempts["receipt"] = liveDiffAttempt{receipt: &updated}
+	updated.Text = "Edit `a.go` +2 -1"
+	data[0] = &updated
+	u.shell.saved.data = reviewReceiptSnapshot(t, data)
 	u.applyCapturedEdits()
 	assertCapturedCommand(t, u.view, "main", "cmd", "Edit", 2)
 	if !strings.Contains(u.view.Entries[0].Source.Text, "+2 -1") {
@@ -216,10 +219,8 @@ func TestAppServerCapturedEditsPreserveTrackedExits(t *testing.T) {
 			{text: "Run `git cherry-pick`", exit: 1, tail: []string{"conflict"}},
 		}},
 	}}})
-	data := newLiveDiffData()
-	data.order = []string{"receipt"}
-	data.attempts["receipt"] = liveDiffAttempt{receipt: &capturedActivityEdit{
-		thread: "main", calls: []string{"cmd"}, text: "Edit `a.go` +1 -1",
+	data := []*presentation.Receipt{{
+		Thread: "main", Calls: []string{"cmd"}, Text: "Edit `a.go` +1 -1",
 	}}
 	for range 2 {
 		v.applyCapturedEdits(data)
@@ -252,10 +253,8 @@ func TestAppServerGroupedReceiptOmitsBookkeeping(t *testing.T) {
 		{Seq: 5, Agent: "Main", Kind: "exit", CallID: "tests", Text: "2"},
 		{Seq: 6, Agent: "Main", Kind: "exit", CallID: "failed-edit", Text: "1"},
 	}})
-	data := newLiveDiffData()
-	data.order = []string{"group"}
-	data.attempts["group"] = liveDiffAttempt{receipt: &capturedActivityEdit{
-		thread: "main", calls: calls, text: "Edit `a.go` +1 -0\n\nEdit `b.go` +1 -0",
+	data := []*presentation.Receipt{{
+		Thread: "main", Calls: calls, Text: "Edit `a.go` +1 -0\n\nEdit `b.go` +1 -0",
 	}}
 	for range 2 {
 		v.applyCapturedEdits(data)
@@ -336,6 +335,7 @@ func TestCodeModeCellEditReceipt(t *testing.T) {
 	live.Thread = "thread-1"
 	live.session.start(live.Thread, workspace)
 	live.shell.saved.data = snapshot
+	publishFixtureReview(t, live)
 	appServerTestNotify(t, live, "item/completed", map[string]any{"threadId": "thread-1", "turnId": "turn", "item": item})
 	live.applyCapturedEdits()
 	assertCapturedCommand(t, live.view, "thread-1", "edit-exec", "Edit", 0)
@@ -343,6 +343,7 @@ func TestCodeModeCellEditReceipt(t *testing.T) {
 	restored.Thread = "thread-1"
 	restored.session.start(restored.Thread, workspace)
 	restored.shell.saved.data = snapshot
+	publishFixtureReview(t, restored)
 	restored.restoreHistory([]appServerHistoryTurn{{ID: "turn", Status: "completed", Items: []appServerItem{item}}})
 	assertCapturedCommand(t, restored.view, "thread-1", "edit-exec", "Edit", 0)
 }
@@ -361,9 +362,7 @@ func TestAppServerCapturedRemovalKeepsRunNeighbors(t *testing.T) {
 				}
 				item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "/bin/bash -lc " + commandargs.QuoteArgument(source), ExitCode: new(0), AggregatedOutput: new(" M tracked.go\n")}
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": item})
-				data := newLiveDiffData()
-				data.order = []string{"receipt"}
-				data.attempts["receipt"] = liveDiffAttempt{receipt: &capturedActivityEdit{thread: thread, calls: []string{"cmd"}, text: "Delete `FILE` +0 -1 · rm"}}
+				data := []*presentation.Receipt{{Thread: thread, Calls: []string{"cmd"}, Text: "Delete `FILE` +0 -1 · rm"}}
 				check := func(view *activityAdapter) {
 					for range 2 {
 						view.applyCapturedEdits(data)
@@ -398,9 +397,7 @@ func TestAppServerCapturedEditKeepsCommandPaths(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
 	item := appServerItem{ID: "cmd", Type: "commandExecution", Cwd: "/command-dir", Command: "mcat /command-dir/read.go; rg '/command-dir/query' /command-dir/src; printf new > /command-dir/edit.go", Status: "completed", ExitCode: new(0)}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	data := newLiveDiffData()
-	data.order = []string{"receipt"}
-	data.attempts["receipt"] = liveDiffAttempt{receipt: &capturedActivityEdit{thread: "main", calls: []string{"cmd"}, text: "Edit `edit.go` +1 -1"}}
+	data := []*presentation.Receipt{{Thread: "main", Calls: []string{"cmd"}, Text: "Edit `edit.go` +1 -1"}}
 	check := func(view *activityAdapter) {
 		t.Helper()
 		entry := view.Entries[0]
@@ -408,11 +405,11 @@ func TestAppServerCapturedEditKeepsCommandPaths(t *testing.T) {
 			t.Fatalf("receipt changed neighboring paths, query or source: %q", entry.Source.Text)
 		}
 	}
-	u.shell.saved.data = data
+	u.shell.saved.data = reviewReceiptSnapshot(t, data)
 	u.applyCapturedEdits()
 	check(u.view)
 	restored := newAppServerSessionTestUI(t, u.session.cwd)
-	restored.shell.saved.data = data
+	restored.shell.saved.data = reviewReceiptSnapshot(t, data)
 	restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
 	check(restored.view)
 }

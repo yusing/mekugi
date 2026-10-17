@@ -3,6 +3,8 @@ package presentation
 import (
 	"maps"
 	"slices"
+
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 // Entry is a detached observation publication. Values are immutable until the
@@ -41,9 +43,11 @@ type AgentRow struct {
 }
 
 type Publication struct {
-	Entries []Entry
-	Roster  []AgentRow
-	LastSeq uint64
+	Entries    []Entry
+	Roster     []AgentRow
+	LastSeq    uint64
+	LineCounts map[string]diffmodel.Counts
+	NetCounts  *diffmodel.Counts
 }
 
 func (r Record[S]) Publish() Entry {
@@ -55,7 +59,10 @@ func (r Record[S]) Publish() Entry {
 
 // Publish projects the one retained feed into a terminal-independent value.
 func (m *Model[S, A]) Publish() Publication {
-	publication := Publication{LastSeq: m.LastSeq}
+	publication := Publication{LastSeq: m.LastSeq, LineCounts: maps.Clone(m.LineCounts)}
+	if m.NetCounts != nil {
+		publication.NetCounts = new(*m.NetCounts)
+	}
 	publication.Entries = make([]Entry, len(m.Entries))
 	for i, record := range m.Entries {
 		publication.Entries[i] = record.Publish()

@@ -272,6 +272,7 @@ func TestLiveDiffNavigationColoredInlineStatusAndStats(t *testing.T) {
 }
 
 func TestLiveDiffNavigationDockAndPickerKeys(t *testing.T) {
+	var cviewPublication presentation.Publication
 	files := []presentation.File{navigationFile("a.go")}
 	c := &Pane{files: files, lastWidth: 120, view: View{View: presentation.View{Files: files}}}
 	c.navigation.Rebuild(files, "")
@@ -296,7 +297,8 @@ func TestLiveDiffNavigationDockAndPickerKeys(t *testing.T) {
 		t.Fatal("first s did not open the narrow picker")
 	}
 	c.navigationKey('j')
-	c.view.Merge([]presentation.File{files[0], navigationFile("new.go")})
+	cviewPublication = cviewPublication.With(c.view.Files).With([]presentation.File{files[0], navigationFile("new.go")})
+	c.view.Update(cviewPublication)
 	if c.view.Selected != 0 {
 		t.Fatal("incoming update moved the file under the narrow picker")
 	}
@@ -373,11 +375,13 @@ func TestLiveDiffNavigationChainSplitKeepsAncestor(t *testing.T) {
 }
 
 func TestLiveDiffIndependentFocusArrows(t *testing.T) {
+	var cviewPublication presentation.Publication
 	for _, width := range []int{70, 120} {
 		c := NewPane("", diffrender.DarkTheme)
 		c.lastWidth = width
 		c.files = []presentation.File{navigationFile("a.go"), navigationFile("b.go")}
-		c.view.Merge(c.files)
+		cviewPublication = cviewPublication.With(c.view.Files).With(c.files)
+		c.view.Update(cviewPublication)
 		c.navigation.Flat = true
 		c.navigation.Rebuild(c.files, "")
 		c.navigationKey('s')
@@ -401,6 +405,7 @@ func TestLiveDiffIndependentFocusArrows(t *testing.T) {
 }
 
 func TestLiveDiffUpdatesPreserveManualChoice(t *testing.T) {
+	var cviewPublication presentation.Publication
 	c := liveDiffChangesController(t, 120, 12, []presentation.Chunk{
 		liveDiffCapture("one", "a.go", 1, "", strings.Repeat("first\n", 40), presentation.Origin{}),
 		liveDiffCapture("two", "b.go", 2, "", "second\n", presentation.Origin{}),
@@ -410,7 +415,8 @@ func TestLiveDiffUpdatesPreserveManualChoice(t *testing.T) {
 	selected, offset := c.view.Selected, c.offset
 	files := append([]presentation.File(nil), c.view.Files...)
 	files[1].Chunks = append(files[1].Chunks, liveDiffCapture("three", "b.go", 3, "second\n", "updated\n", presentation.Origin{}))
-	c.view.Merge(files)
+	cviewPublication = cviewPublication.With(c.view.Files).With(files)
+	c.view.Update(cviewPublication)
 	c.view.RefreshVisible()
 	c.frame(t)
 	c.Key(string('r'))

@@ -23,12 +23,15 @@ func liveDiffHighlightChunk(key, path, hunk string) presentation.Chunk {
 }
 
 func TestLiveDiffHighlightBatchAndRepeatedSnapshot(t *testing.T) {
+	var vPublication presentation.Publication
+	var restartedPublication presentation.Publication
 	first := liveDiffHighlightChunk("first", "a", "@@ -1 +1 @@\n-a\n+A\n")
 	second := liveDiffHighlightChunk("second", "a", "@@ -20 +20 @@\n-b\n+B\n")
 	other := liveDiffHighlightChunk("other", "b", "@@ -1 +1 @@\n-c\n+C\n")
 	v := changeview.View{Scroll: make(map[string]int)}
 	snapshot := []presentation.File{{Path: "a", Chunks: []presentation.Chunk{first}}}
-	v.Merge(snapshot)
+	vPublication = vPublication.With(snapshot)
+	v.Update(vPublication)
 	v.RefreshVisible()
 	if v.Visible[v.Files[0].Key()].Highlighted {
 		t.Fatal("initial history was labeled as a new update")
@@ -36,7 +39,8 @@ func TestLiveDiffHighlightBatchAndRepeatedSnapshot(t *testing.T) {
 
 	snapshot[0].Chunks = append(snapshot[0].Chunks, second)
 	snapshot = append(snapshot, presentation.File{Path: "b", Chunks: []presentation.Chunk{other}})
-	v.Merge(snapshot)
+	vPublication = vPublication.With(snapshot)
+	v.Update(vPublication)
 	v.RefreshVisible()
 	for _, file := range v.Files {
 		if !v.Visible[file.Key()].Highlighted {
@@ -50,7 +54,8 @@ func TestLiveDiffHighlightBatchAndRepeatedSnapshot(t *testing.T) {
 	if len(visible.Chunks) != 2 || visible.Chunks[0].Highlighted || !visible.Chunks[1].Highlighted {
 		t.Fatalf("changes-observed capture highlight = %#v", visible)
 	}
-	v.Merge(snapshot)
+	vPublication = vPublication.With(snapshot)
+	v.Update(vPublication)
 	v.RefreshVisible()
 	for _, file := range v.Files {
 		if !v.Visible[file.Key()].Highlighted {
@@ -63,7 +68,8 @@ func TestLiveDiffHighlightBatchAndRepeatedSnapshot(t *testing.T) {
 	}
 	third := liveDiffHighlightChunk("third", "c", "@@ -1 +1 @@\n-d\n+D\n")
 	snapshot = append(snapshot, presentation.File{Path: "c", Chunks: []presentation.Chunk{third}})
-	v.Merge(snapshot)
+	vPublication = vPublication.With(snapshot)
+	v.Update(vPublication)
 	v.RefreshVisible()
 	for _, file := range v.Files {
 		visible := v.Visible[file.Key()]
@@ -77,7 +83,8 @@ func TestLiveDiffHighlightBatchAndRepeatedSnapshot(t *testing.T) {
 		}
 	}
 	restarted := changeview.View{}
-	restarted.Merge(snapshot)
+	restartedPublication = restartedPublication.With(snapshot)
+	restarted.Update(restartedPublication)
 	restarted.RefreshVisible()
 	for _, file := range restarted.Files {
 		if restarted.Visible[file.Key()].Highlighted {
@@ -87,11 +94,14 @@ func TestLiveDiffHighlightBatchAndRepeatedSnapshot(t *testing.T) {
 }
 
 func TestLiveDiffHighlightEmptyStartAndRevert(t *testing.T) {
+	var vPublication presentation.Publication
 	v := changeview.View{}
-	v.Merge(nil)
+	vPublication = vPublication.With(nil)
+	v.Update(vPublication)
 	first := liveDiffHighlightChunk("first", "a", "@@ -1 +1 @@\n-a\n+A\n")
 	snapshot := []presentation.File{{Path: "a", Chunks: []presentation.Chunk{first}}}
-	v.Merge(snapshot)
+	vPublication = vPublication.With(snapshot)
+	v.Update(vPublication)
 	v.RefreshVisible()
 	if !v.Visible[v.Files[0].Key()].Highlighted {
 		t.Fatal("first edit after an empty baseline was not highlighted")
@@ -99,7 +109,8 @@ func TestLiveDiffHighlightEmptyStartAndRevert(t *testing.T) {
 	revert := liveDiffHighlightChunk("revert", "a", "@@ -1 +1 @@\n-A\n+a\n")
 	snapshot[0].Chunks = append(snapshot[0].Chunks, revert)
 
-	v.Merge(snapshot)
+	vPublication = vPublication.With(snapshot)
+	v.Update(vPublication)
 	v.RefreshVisible()
 	visible := v.Visible[v.Files[0].Key()]
 	if !visible.Highlighted || len(visible.Chunks) != 0 {
@@ -242,15 +253,18 @@ func TestLiveDiffHeaderWidthAndControls(t *testing.T) {
 }
 
 func TestLiveDiffHeaderCountsUseVisibleComposition(t *testing.T) {
+	var vPublication presentation.Publication
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "file.txt")
 	first := liveDiffHighlightChunk("first", path, "@@ -1 +1 @@\n-a\n+A\n")
 	second := liveDiffHighlightChunk("second", path, "@@ -1 +1,2 @@\n-A\n+B\n+C\n")
 	v := changeview.View{}
 	snapshot := []presentation.File{{Path: path, Chunks: []presentation.Chunk{first}}}
-	v.Merge(snapshot)
+	vPublication = vPublication.With(snapshot)
+	v.Update(vPublication)
 	snapshot[0].Chunks = append(snapshot[0].Chunks, second)
-	v.Merge(snapshot)
+	vPublication = vPublication.With(snapshot)
+	v.Update(vPublication)
 	v.RefreshVisible()
 	file := v.Visible[v.Files[0].Key()]
 	render, err := new(changeview.Renderer).Render(t.Context(), diffrender.TerminalTheme, []presentation.File{file}, workspace, 90)
@@ -264,6 +278,7 @@ func TestLiveDiffHeaderCountsUseVisibleComposition(t *testing.T) {
 }
 
 func TestLiveDiffPreparedRenameKeepsDestination(t *testing.T) {
+	var vPublication presentation.Publication
 	workspace := t.TempDir()
 	oldPath, newPath := filepath.Join(workspace, "old.go"), filepath.Join(workspace, "new.go")
 	diff := "--- " + strconv.Quote(oldPath) + "\n+++ " + strconv.Quote(newPath) +
@@ -273,7 +288,8 @@ func TestLiveDiffPreparedRenameKeepsDestination(t *testing.T) {
 		Review: diffmodel.ReviewFile{BeforePath: oldPath, AfterPath: newPath, Diff: diff},
 	}
 	v := changeview.View{}
-	v.Merge([]presentation.File{{Path: oldPath, Chunks: []presentation.Chunk{chunk}}})
+	vPublication = vPublication.With([]presentation.File{{Path: oldPath, Chunks: []presentation.Chunk{chunk}}})
+	v.Update(vPublication)
 	v.RefreshVisible()
 	render, err := new(changeview.Renderer).Render(t.Context(), diffrender.TerminalTheme, []presentation.File{v.Visible[v.Files[0].Key()]}, workspace, 90)
 	if err != nil {
@@ -294,6 +310,7 @@ func TestLiveDiffPreparedRenameKeepsDestination(t *testing.T) {
 }
 
 func TestLiveDiffNewFileRegionsStayCompact(t *testing.T) {
+	var vPublication presentation.Publication
 	workspace := t.TempDir()
 	rows := make([]string, 340)
 	for i := range rows {
@@ -324,9 +341,11 @@ func TestLiveDiffNewFileRegionsStayCompact(t *testing.T) {
 			liveDiffHighlightChunk("append-"+strconv.Itoa(end), path, hunk))
 		start = end
 	}
-	v.Merge(snapshot)
+	vPublication = vPublication.With(snapshot)
+	v.Update(vPublication)
 	snapshot[0].Chunks = append(snapshot[0].Chunks, recent)
-	v.Merge(snapshot)
+	vPublication = vPublication.With(snapshot)
+	v.Update(vPublication)
 	v.RefreshVisible()
 	file := v.Visible[v.Files[0].Key()]
 	if len(file.Chunks) < 3 {
@@ -363,14 +382,17 @@ func TestLiveDiffNewFileRegionsStayCompact(t *testing.T) {
 }
 
 func TestLiveDiffRenderLatestCombinedResult(t *testing.T) {
+	var vPublication presentation.Publication
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "file.txt")
 	old := liveDiffHighlightChunk("amber1", path, "@@ -20 +20 @@\n-before\n+FIRST20\n")
 	recent := liveDiffHighlightChunk("apple1", path,
 		"@@ -20 +20 @@\n-FIRST20\n+LATEST20\n@@ -337 +337 @@\n-before\n+LATEST337\n")
 	v := changeview.View{}
-	v.Merge([]presentation.File{{Path: path, Chunks: []presentation.Chunk{old}}})
-	v.Merge([]presentation.File{{Path: path, Chunks: []presentation.Chunk{old, recent}}})
+	vPublication = vPublication.With([]presentation.File{{Path: path, Chunks: []presentation.Chunk{old}}})
+	v.Update(vPublication)
+	vPublication = vPublication.With([]presentation.File{{Path: path, Chunks: []presentation.Chunk{old, recent}}})
+	v.Update(vPublication)
 	v.RefreshVisible()
 	file := v.Visible[v.Files[0].Key()]
 	text := liveDiffVisibleText(file)
@@ -397,6 +419,7 @@ func TestLiveDiffRenderLatestCombinedResult(t *testing.T) {
 }
 
 func TestLiveDiffOnlyShowsFinalComposition(t *testing.T) {
+	var vPublication presentation.Publication
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "file.txt")
 	first := liveDiffHighlightChunk("amber1", path,
@@ -404,7 +427,8 @@ func TestLiveDiffOnlyShowsFinalComposition(t *testing.T) {
 	second := liveDiffHighlightChunk("amber2", path,
 		"@@ -1 +1 @@\n-first1\n+second1\n@@ -20 +20 @@\n-first20\n+second20\n")
 	v := changeview.View{}
-	v.Merge([]presentation.File{{Path: path, Chunks: []presentation.Chunk{first, second}}})
+	vPublication = vPublication.With([]presentation.File{{Path: path, Chunks: []presentation.Chunk{first, second}}})
+	v.Update(vPublication)
 	v.RefreshVisible()
 	file := v.Visible[v.Files[0].Key()]
 	render, err := new(changeview.Renderer).Render(t.Context(), diffrender.TerminalTheme, []presentation.File{file}, workspace, 90)
@@ -425,12 +449,14 @@ func TestLiveDiffOnlyShowsFinalComposition(t *testing.T) {
 }
 
 func TestLiveDiffConflictingSavedEditsRemainReadable(t *testing.T) {
+	var vPublication presentation.Publication
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "file.txt")
 	first := liveDiffHighlightChunk("amber1", path, "@@ -1 +1 @@\n-old\n+first\n")
 	second := liveDiffHighlightChunk("amber2", path, "@@ -1 +1 @@\n-different\n+second\n")
 	v := changeview.View{}
-	v.Merge([]presentation.File{{Path: path, Chunks: []presentation.Chunk{first, second}}})
+	vPublication = vPublication.With([]presentation.File{{Path: path, Chunks: []presentation.Chunk{first, second}}})
+	v.Update(vPublication)
 	v.RefreshVisible()
 	file := v.Visible[v.Files[0].Key()]
 	render, err := new(changeview.Renderer).Render(t.Context(), diffrender.TerminalTheme, []presentation.File{file}, workspace, 90)

@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
+
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	"github.com/charmbracelet/x/ansi"
@@ -95,10 +97,8 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	if receipt == nil {
 		t.Fatal("test receipt was not created")
 	}
-	data := newLiveDiffData()
-	data.order = []string{"receipt"}
-	data.attempts["receipt"] = liveDiffAttempt{receipt: receipt}
-	u.shell.saved.data = data
+	data := []*presentation.Receipt{receipt}
+	u.shell.saved.data = reviewReceiptSnapshot(t, data)
 	// Completed tracked edit segments must receive the same captured counts
 	// as untracked commands while the neighboring test keeps its own state.
 	for i := range u.view.Entries {
@@ -112,9 +112,9 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	}
 	// The observer finishes the edit before the command's test and before
 	// the next model request can supply durable outer-cell evidence.
-	u.shell.saved.data = newLiveDiffData()
+	u.shell.saved.data = new(presentation.Snapshot)
 	u.shell.preview(previewmodel.Preview{ID: "observed", Workspace: workspace, Thread: "main", Complete: true,
-		HostItems: []string{"cmd"}, EditReceipt: receipt.text, Files: history.ReviewFiles}, false)
+		HostItems: []string{"cmd"}, EditReceipt: receipt.Text, Files: history.ReviewFiles}, false)
 	if err := u.paint(slave, width, height); err != nil {
 		t.Fatal(err)
 	}
@@ -147,8 +147,8 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
 		"id": "cmd", "type": "commandExecution", "command": command, "exitCode": 2}})
 	history.ReviewFiles = history.ReviewFiles[2:]
-	data.attempts["receipt"] = liveDiffAttempt{receipt: capturedEditActivity(workspace, history)}
-	u.shell.saved.data = data
+	data = []*presentation.Receipt{capturedEditActivity(workspace, history)}
+	u.shell.saved.data = reviewReceiptSnapshot(t, data)
 	u.applyCapturedEdits()
 	if err := u.paint(slave, width, height); err != nil {
 		t.Fatal(err)
