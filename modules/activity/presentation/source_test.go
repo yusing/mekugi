@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	markdownsyntax "github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
+
 	"github.com/yusing/mekugi/modules/activity/feed"
 )
 
@@ -25,7 +27,7 @@ func TestSubagentInterpreterWrapperProjection(t *testing.T) {
 		{"shell combined flag", "sh -ec 'cd dir\nprintf ok'", "sh -ec …", "sh", "cd dir\nprintf ok"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			want := "Run " + SourceCode(test.command) + "\n" + SourceFence(test.language, test.program)
+			want := "Run " + SourceCode(test.command) + "\n" + markdownsyntax.SourceFence(test.language, test.program)
 			if got := shellSource(test.source); got != want {
 				t.Fatalf("display = %q; want %q", got, want)
 			}
@@ -44,7 +46,7 @@ func TestSubagentInterpreterWrapperProjection(t *testing.T) {
 		"cat script.py | python3 -":           "Run",
 		"python3 - arg":                       "Run",
 	} {
-		if got, want := shellSource(source), label+"\n"+SourceFence("bash", source); got != want {
+		if got, want := shellSource(source), label+"\n"+markdownsyntax.SourceFence("bash", source); got != want {
 			t.Errorf("literal display = %q; want %q", got, want)
 		}
 	}
@@ -58,7 +60,7 @@ func TestSubagentInterpreterWrapperProjection(t *testing.T) {
 		`perl -e 'print "first\n"' -e 'print "second\n"'`,
 		`perl -e 'print "first\n"' '-eprint "second\n"'`,
 	} {
-		if got, want := shellSource(source), "Run\n"+SourceFence("bash", source); got != want {
+		if got, want := shellSource(source), "Run\n"+markdownsyntax.SourceFence("bash", source); got != want {
 			t.Errorf("dynamic or composed wrapper display = %q; want %q", got, want)
 		}
 	}
@@ -81,7 +83,7 @@ func TestToolActivityShellSetupStaysTogether(t *testing.T) {
 		"export ROOT=/tmp\ncat <<'EOF'\nbody\nEOF\ngit log -1",
 	} {
 		source := "cat before\n" + setup + "\nsed -n '1,20p' after"
-		if got, want := shellSource(source), "Run\n"+SourceFence("bash", source); got != want {
+		if got, want := shellSource(source), "Run\n"+markdownsyntax.SourceFence("bash", source); got != want {
 			t.Errorf("shell setup split: got %q, want %q", got, want)
 		}
 	}
@@ -110,7 +112,7 @@ func TestSubagentSedReadDisplay(t *testing.T) {
 		"sed -n '1,260p' a.go b.go",
 		"sed -n '1,260p' source.go > copy.go",
 	} {
-		want := "Run\n" + SourceFence("bash", source)
+		want := "Run\n" + markdownsyntax.SourceFence("bash", source)
 		if got := shellSource(source); got != want {
 			t.Errorf("%s: got %q, want raw source %q", source, got, want)
 		}
@@ -157,7 +159,7 @@ func TestSubagentCatSedReadDisplay(t *testing.T) {
 		"cat source.go |& sed -n '1,2p'",
 		"cat source.go | sed -n '1,2p' | head -1",
 	} {
-		if got := shellSource(source); got != "Run\n"+SourceFence("bash", source) {
+		if got := shellSource(source); got != "Run\n"+markdownsyntax.SourceFence("bash", source) {
 			t.Errorf("unsupported pipeline %q changed meaning: %q", source, got)
 		}
 	}
@@ -179,7 +181,7 @@ func TestSubagentNumberedReadDisplay(t *testing.T) {
 		"nl -ba source.go | sed -n '1,2p' > copy.go",
 		"nl -ba source.go | sed -n '1,2p' | head -n 1",
 	} {
-		want := "Run\n" + SourceFence("bash", invalid)
+		want := "Run\n" + markdownsyntax.SourceFence("bash", invalid)
 		if got := shellSource(invalid); got != want {
 			t.Errorf("invalid numbered read %q: got %q, want %q", invalid, got, want)
 		}
@@ -265,7 +267,7 @@ func TestShellBatchActivityDisplay(t *testing.T) {
 		t.Fatalf("mixed interpreters and inherited params = %q, want %q", got, want)
 	}
 	for _, invalid := range []string{"#!bash\n#!bash\ncat first", "cat first\n#!bash\n"} {
-		if got := shellSource(invalid); got != "Run\n"+SourceFence("", invalid) {
+		if got := shellSource(invalid); got != "Run\n"+markdownsyntax.SourceFence("", invalid) {
 			t.Fatalf("invalid batch lost source: %q", got)
 		}
 	}
@@ -274,12 +276,12 @@ func TestShellBatchActivityDisplay(t *testing.T) {
 func TestSubagentMixedHeredocPreview(t *testing.T) {
 	const body = "cat <<EOF; printf done\nhello\nEOF\n"
 	source := "printf 'Working'\n" + body + "printf 'Finished'\n"
-	want := "Run\n" + SourceFence("bash", strings.TrimRight(source, "\n"))
+	want := "Run\n" + markdownsyntax.SourceFence("bash", strings.TrimRight(source, "\n"))
 	if got := shellSource(source); got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 	source = "cat a\n" + body
-	if got, want := shellSource(source), "Run\n"+SourceFence("bash", source); got != want {
+	if got, want := shellSource(source), "Run\n"+markdownsyntax.SourceFence("bash", source); got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
@@ -311,7 +313,7 @@ func TestSubagentSymbolicReadPaths(t *testing.T) {
 		`mcat <(cat a)`,
 		`"$READER" a.go`,
 	} {
-		if got := shellSource(source); got != "Run\n"+SourceFence("bash", source) {
+		if got := shellSource(source); got != "Run\n"+markdownsyntax.SourceFence("bash", source) {
 			t.Errorf("%s: unexpected classification %q", source, got)
 		}
 	}
@@ -336,7 +338,7 @@ func TestSubagentSymbolQueryDisplay(t *testing.T) {
 		source := "msymbol " + tc.args
 		want := tc.label + " " + SourceCode(tc.args)
 		if tc.label == "Run" {
-			want = "Run\n" + SourceFence("bash", source)
+			want = "Run\n" + markdownsyntax.SourceFence("bash", source)
 		}
 		if got := shellSource(source); got != want {
 			t.Errorf("%s: got %q, want %q", source, got, want)

@@ -16,7 +16,7 @@ func ShellSource(script, cwd string) string {
 	if shellsyntax.IsBatch(script) {
 		programs, err := shellsyntax.Split(script)
 		if err != nil {
-			return "Run\n" + SourceFence("", script)
+			return "Run\n" + markdownsyntax.SourceFence("", script)
 		}
 		if len(programs) > 1 {
 			displays := make([]string, 0, len(programs))
@@ -42,7 +42,7 @@ func ShellSource(script, cwd string) string {
 	// program reads best as the literal command.
 	if projection, ok := shellInterpreterScriptProjection(script); ok && projection.Command != "" &&
 		strings.Contains(strings.TrimRight(projection.Source, "\n"), "\n") {
-		return "Run " + SourceCode(projection.Command) + "\n" + SourceFence(projection.Language, projection.Source)
+		return "Run " + SourceCode(projection.Command) + "\n" + markdownsyntax.SourceFence(projection.Language, projection.Source)
 	}
 	note := ""
 	if shellInterpreterReadsStdin(script) {
@@ -54,7 +54,7 @@ func ShellSource(script, cwd string) string {
 		language = parsed.Interpreter[0]
 	}
 	language = sourceLanguage(language)
-	return "Run" + note + "\n" + SourceFence(language, script)
+	return "Run" + note + "\n" + markdownsyntax.SourceFence(language, script)
 }
 
 func sourceLanguage(interpreter string) string {
@@ -101,25 +101,12 @@ func sourceLanguage(interpreter string) string {
 	return language
 }
 
-// SourceFence preserves source bytes inside a collision-free Markdown fence.
-func SourceFence(language, input string) string {
-	fence := "```"
-	for strings.Contains(input, fence) {
-		fence += "`"
-	}
-	trailer := "\n"
-	if strings.HasSuffix(input, "\n") {
-		trailer = ""
-	}
-	return fence + language + "\n" + input + trailer + fence
-}
-
 // SourceCode keeps operation labels literal, using fences for multiline content.
 func SourceCode(input string) string {
 	if !strings.ContainsAny(input, "\r\n") {
 		return markdownsyntax.QuoteCode(input)
 	}
-	return SourceFence("", input+"\n")
+	return markdownsyntax.SourceFence("", input+"\n")
 }
 
 // RunSource retains an unclassified command when a segment needs a visible row.

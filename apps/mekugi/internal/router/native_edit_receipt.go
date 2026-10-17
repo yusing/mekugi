@@ -6,21 +6,13 @@ import (
 	"slices"
 	"strings"
 
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
-	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
-
 	"github.com/yusing/mekugi/libraries/legacycall"
-	"github.com/yusing/mekugi/libraries/pathdisplay"
-	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
-)
-
-// Receipt diffs are display-only and stay well inside one publication.
-const (
-	maxEditReceiptDiffBytes = 8 << 10
-	maxEditReceiptFileLines = 80
 )
 
 // publishEditReceipt reads committed filesystem changes. It never accepts a
@@ -53,7 +45,7 @@ func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, t
 				continue
 			}
 			if len(record.History.ReviewFiles) != 0 {
-				if receipt := editReceiptText(workspace, record.History); receipt != "" {
+				if receipt := changepresentation.ReceiptText(workspace, receiptEvidence(record.History)); receipt != "" {
 					// The observed receipt and the invocation share one display identity.
 					// An opaque command stays Run until its actual effects are known.
 					identity := displayID
@@ -67,176 +59,6 @@ func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, t
 		}
 		return fmt.Errorf("edit receipt does not belong to publishing thread")
 	})
-}
-
-// editReceiptText summarizes each captured file with its line counts and a
-// bounded copy of its captured hunks. Command records name the command that
-// produced each file.
-func editReceiptText(workspace string, history mekugiHistory) string {
-	exec := history.ExecOutcome
-	var summaries []string
-	reasons := make(map[string]int)
-	budget := maxEditReceiptDiffBytes
-	directories := make(map[string]int)
-	var roots []string
-	if exec != nil {
-		roots = exec.DeletedDirectories
-		for _, root := range exec.DeletedDirectories {
-			count, removed := 0, true
-			for _, file := range history.ReviewFiles {
-				if !changecapture.PathWithin(file.BeforePath, root) {
-					continue
-				}
-				// Missing content does not undo the confirmed removal of a path.
-				if file.AfterPath != "" || !changes.AuthoredReview(file) {
-					removed = false
-				}
-				if !file.Directory {
-					count++
-				}
-			}
-			if count > 0 && removed {
-				directories[root] = count
-			}
-		}
-	}
-	for _, file := range history.ReviewFiles {
-		if !changes.AuthoredReview(file) {
-			continue
-		}
-		if file.Incomplete != "" {
-			reasons[file.Incomplete]++
-		}
-		grouped := false
-		for _, root := range roots {
-			count, compact := directories[root]
-			if !compact || !changecapture.PathWithin(file.BeforePath, root) {
-				continue
-			}
-			if count > 0 {
-				noun := "files"
-				if count == 1 {
-					noun = "file"
-				}
-				summaries = append(summaries, fmt.Sprintf("Delete %s • %d %s · %s", markdownsyntax.QuoteCode(strings.TrimSuffix(pathdisplay.ForWorkspace(workspace, root), "/")+"/"), count, noun, strings.Join(exec.Labels, ", ")))
-				directories[root] = 0
-			}
-			grouped = true
-			break
-		}
-		if grouped {
-			continue
-		}
-		action := file.Action().Title()
-		path := file.AfterPath
-		if path == "" {
-			path = file.BeforePath
-		}
-		path = pathdisplay.ForWorkspace(workspace, path)
-		if action == "Move" {
-			path = pathdisplay.Move(workspace, file.BeforePath, file.AfterPath)
-		}
-		if file.Directory {
-			summaries = append(summaries, action+" "+markdownsyntax.QuoteCode(path+"/"))
-			continue
-		}
-		if file.Incomplete != "" {
-			continue
-		}
-		summary := action + " " + markdownsyntax.QuoteCode(path)
-		if file.OriginNote != "" && !receiptNamesSharedOrigin(exec, file.OriginNote) {
-			summary += " (" + file.OriginNote + ")"
-		}
-		if file.CopyFrom != "" {
-			summary += " (copy of " + markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(workspace, file.CopyFrom)) + ")"
-		}
-		if file.Binary {
-			summary += " binary"
-		} else {
-			added, removed := file.LineCounts()
-			summary += fmt.Sprintf(" +%d -%d", added, removed)
-		}
-		if exec != nil && len(exec.Labels) != 0 {
-			summary += " · " + strings.Join(exec.Labels, ", ")
-		} else if history.ToolName == applyPatchToolName {
-			summary += " · apply_patch"
-		} else if history.Source != "" && history.Source != nativeExecCommandToolName {
-			summary += " · " + history.Source
-		}
-		if !file.Binary {
-			if hunks := editReceiptHunks(file.Diff, &budget); hunks != "" {
-				summary += "\n" + activitypresentation.SourceFence("diff", hunks)
-			}
-		}
-		summaries = append(summaries, summary)
-	}
-	if len(reasons) != 0 {
-		// Capture omissions are evidence gaps, not confirmed edits. Keep the
-		// full path/reason records in mchanges without flooding Activity.
-		summary := "Capture · " + captureGapSummary(reasons)
-		if history.ChangeID != "" {
-			summary += " · " + markdownsyntax.QuoteCode("mchanges "+history.ChangeID+" --summary")
-		}
-		summaries = append(summaries, summary)
-	}
-	return strings.Join(summaries, "\n\n")
-}
-
-// Keep Activity summaries useful without flooding them with
-// per-path errors. Full reasons remain on the retained per-path review records.
-func captureGapSummary(reasons map[string]int) string {
-	keys := make([]string, 0, len(reasons))
-	total := 0
-	for reason, count := range reasons {
-		keys = append(keys, reason)
-		total += count
-	}
-	slices.SortFunc(keys, func(a, b string) int {
-		if reasons[a] != reasons[b] {
-			return reasons[b] - reasons[a]
-		}
-		return strings.Compare(a, b)
-	})
-	var parts []string
-	for _, reason := range keys[:min(3, len(keys))] {
-		text := []rune(reason)
-		if len(text) > 120 {
-			text = append(text[:120], '…')
-		}
-		parts = append(parts, fmt.Sprintf("%d × %q", reasons[reason], string(text)))
-	}
-	if len(keys) > 3 {
-		parts = append(parts, fmt.Sprintf("other reasons: %d", len(keys)-3))
-	}
-	noun := "paths"
-	if total == 1 {
-		noun = "path"
-	}
-	return fmt.Sprintf("incomplete evidence for %d %s (not confirmed edits): %s", total, noun, strings.Join(parts, "; "))
-}
-
-// editReceiptHunks keeps hunk rows only; file headers repeat the summary.
-func editReceiptHunks(diff string, budget *int) string {
-	_, hunks, ok := strings.Cut(diff, "\n@@ ")
-	if !ok || *budget <= 0 {
-		return ""
-	}
-	lines := strings.Split(strings.TrimSuffix("@@ "+hunks, "\n"), "\n")
-	var kept strings.Builder
-	shown := 0
-	for _, line := range lines {
-		if shown == maxEditReceiptFileLines || kept.Len()+len(line)+1 > *budget {
-			break
-		}
-		kept.WriteString(line)
-		kept.WriteByte('\n')
-		shown++
-	}
-	if hidden := len(lines) - shown; hidden > 0 {
-		fmt.Fprintf(&kept, "… %d more diff lines\n", hidden)
-	}
-	*budget -= kept.Len()
-	return kept.String()
 }
 
 // agentEditNotice is projected only after observation records are durable. The
@@ -309,7 +131,7 @@ func (s *mekugiReplayStore) agentEditNotice(ctx context.Context, workspace, call
 		return "", err
 	}
 	const truncated = "[summary truncated; run the mchanges command above for full statistics]"
-	budget := maxEditReceiptDiffBytes - len(header) - len(truncated)
+	budget := changepresentation.MaxReceiptDiffBytes - len(header) - len(truncated)
 	if len(summary) > budget {
 		end := strings.LastIndexByte(summary[:max(0, budget)], '\n')
 		summary = summary[:end+1] + truncated
@@ -317,18 +139,16 @@ func (s *mekugiReplayStore) agentEditNotice(ctx context.Context, workspace, call
 	return header + summary, nil
 }
 
-// receiptNamesSharedOrigin reports whether the receipt's command labels
-// already name every tool in a shared-origin note, which then only repeats
-// them on each row.
-func receiptNamesSharedOrigin(exec *changecapture.Outcome, note string) bool {
-	tools, ok := strings.CutSuffix(note, changecapture.SharedOriginSuffix)
-	if !ok || exec == nil {
-		return false
+// receiptEvidence translates observation facts into renderer-neutral receipt input.
+func receiptEvidence(value mekugiHistory) changepresentation.ReceiptEvidence {
+	evidence := changepresentation.ReceiptEvidence{Files: value.ReviewFiles, Source: value.Source, ChangeID: value.ChangeID}
+	if value.ToolName == applyPatchToolName {
+		evidence.Source = applyPatchToolName
+	} else if value.Source == nativeExecCommandToolName {
+		evidence.Source = ""
 	}
-	for tool := range strings.SplitSeq(tools, ", ") {
-		if !slices.Contains(exec.Labels, tool) {
-			return false
-		}
+	if value.ExecOutcome != nil {
+		evidence.Labels, evidence.DeletedDirectories = value.ExecOutcome.Labels, value.ExecOutcome.DeletedDirectories
 	}
-	return true
+	return evidence
 }

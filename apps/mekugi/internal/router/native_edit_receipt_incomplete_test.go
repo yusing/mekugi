@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 )
@@ -23,7 +25,7 @@ func TestEditReceiptGroupsCaptureGapsWithoutClaimingEdits(t *testing.T) {
 				}
 				history.ReviewFiles = append(history.ReviewFiles, file)
 			}
-			text := editReceiptText(t.TempDir(), history)
+			text := changepresentation.ReceiptText(t.TempDir(), receiptEvidence(history))
 			blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: text})
 			wantBlocks := 1
 			if known {
@@ -51,7 +53,7 @@ func TestEditReceiptCaptureReasonsAreBoundedAndRetained(t *testing.T) {
 		path := fmt.Sprintf("candidate-%d.go", i)
 		history.ReviewFiles = append(history.ReviewFiles, diffmodel.RenderIncompleteReviewFile(path, path, reason))
 	}
-	text := editReceiptText("", history)
+	text := changepresentation.ReceiptText("", receiptEvidence(history))
 	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: text})
 	if len(blocks) != 1 || blocks[0].Verb != "Capture" || !strings.Contains(text, `2 × "capture deadline"`) || !strings.Contains(text, "other reasons: 1") || len(text) > 650 || strings.ContainsAny(text, "\n\x1b") {
 		t.Fatalf("unbounded or ambiguous capture receipt: %q", text)

@@ -15,7 +15,7 @@ func capturedEditActivity(workspace string, history mekugiHistory) *changepresen
 	if history.ExecOutcome == nil {
 		return nil
 	}
-	receipt := &changepresentation.Receipt{Thread: history.ExecutingThread, Text: editReceiptText(workspace, history)}
+	receipt := &changepresentation.Receipt{Thread: history.ExecutingThread, Text: changepresentation.ReceiptText(workspace, receiptEvidence(history))}
 	if !history.ExecOutcome.CodeMode {
 		if call, ok := strings.CutSuffix(history.CorrelationID, "\x00exec"); ok {
 			receipt.Calls = append(receipt.Calls, call)

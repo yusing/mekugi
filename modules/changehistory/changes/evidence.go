@@ -1,7 +1,9 @@
 package changes
 
 import (
+	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
@@ -24,4 +26,16 @@ func AuthoredEvidence(files []diffmodel.ReviewFile, coverage string) ([]diffmode
 		coverage = "partial"
 	}
 	return files, coverage
+}
+
+// Source: modules/changehistory/capture/command.go:36:39@6f68e18a.
+// SharedOriginSuffix follows the managed tools whose scope also held a direct
+// path. One snapshot pair spans the whole command, so the note says the tool
+// ran, not that it changed the file.
+const SharedOriginSuffix = " also ran"
+
+// Source: modules/changehistory/capture/command.go:815:817@6f68e18a.
+// PathWithin compares captured paths without reading the workspace.
+func PathWithin(path, root string) bool {
+	return path == root || strings.HasPrefix(path, strings.TrimSuffix(root, string(filepath.Separator))+string(filepath.Separator))
 }

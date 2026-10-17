@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	changes "github.com/yusing/mekugi/modules/changehistory/changes"
+
 	segments "github.com/yusing/mekugi/modules/commandsegments/segments"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
@@ -145,7 +147,7 @@ type execWindowView struct {
 func execRootsMeet(a, b []string) bool {
 	for _, left := range a {
 		for _, right := range b {
-			if changecapture.PathWithin(left, right) || changecapture.PathWithin(right, left) {
+			if changes.PathWithin(left, right) || changes.PathWithin(right, left) {
 				return true
 			}
 		}

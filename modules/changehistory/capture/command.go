@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	changes "github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
@@ -32,11 +34,6 @@ const (
 	maxExecRecordBytes    = 24 << 20
 	maxExecListingEntries = execscope.ListingLimit
 )
-
-// SharedOriginSuffix follows the managed tools whose scope also held a direct
-// path. One snapshot pair spans the whole command, so the note says the tool
-// ran, not that it changed the file.
-const SharedOriginSuffix = " also ran"
 
 type FileKind string
 
@@ -414,11 +411,11 @@ func execCaptureRoot(workdir, directory string) string {
 // roots it contains.
 func AddRoot(roots []string, root string) []string {
 	for _, existing := range roots {
-		if PathWithin(root, existing) {
+		if changes.PathWithin(root, existing) {
 			return roots
 		}
 	}
-	roots = slices.DeleteFunc(roots, func(existing string) bool { return PathWithin(existing, root) })
+	roots = slices.DeleteFunc(roots, func(existing string) bool { return changes.PathWithin(existing, root) })
 	return append(roots, root)
 }
 
@@ -538,7 +535,7 @@ func (c *execCapture) addCopy(path, source string) {
 		// Check their after-state against the window clock instead of
 		// fabricating a changed-file review for every unread path.
 		if slices.Contains([]string{"go fix", "gofmt", "goimports", "prettier", "eslint", "ruff format", "ruff check", "black", "rustfmt", "cargo fmt"}, c.origin) &&
-			slices.ContainsFunc(c.scopeRoots, func(root string) bool { return PathWithin(path, root) }) {
+			slices.ContainsFunc(c.scopeRoots, func(root string) bool { return changes.PathWithin(path, root) }) {
 			if !c.omittedPaths[path] {
 				c.omittedPaths[path] = true
 				c.omitted = append(c.omitted, Omission{Path: path, Reason: reason, Origin: c.origin, Deferred: true})
@@ -810,10 +807,6 @@ func (o Observation) SourceLabel() string {
 		labels = append(labels[:2], "…")
 	}
 	return strings.Join(labels, "+")
-}
-
-func PathWithin(path, root string) bool {
-	return path == root || strings.HasPrefix(path, strings.TrimSuffix(root, string(filepath.Separator))+string(filepath.Separator))
 }
 
 // Durable drops provisional metadata and normalizes omitted collections for

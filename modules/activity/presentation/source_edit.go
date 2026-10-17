@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	markdownsyntax "github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
@@ -124,7 +126,7 @@ func sourceEditStatement(script string, statement *syntax.Stmt) (string, bool) {
 		}
 	}
 	if result.Unresolved {
-		displays = append(displays, "Run "+SourceCode(projection.Command)+"\n"+SourceFence(projection.Language, projection.Source))
+		displays = append(displays, "Run "+SourceCode(projection.Command)+"\n"+markdownsyntax.SourceFence(projection.Language, projection.Source))
 	}
 	return strings.Join(displays, "\n\n"), true
 }

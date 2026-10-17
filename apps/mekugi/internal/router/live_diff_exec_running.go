@@ -5,6 +5,8 @@ import (
 	"slices"
 	"time"
 
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
@@ -97,7 +99,7 @@ func (c *execPreviewCapture) update(ctx context.Context, broker *previewmodel.Se
 	if current := tracking.state(); current.completed != state.completed || !slices.Equal(current.calls, state.calls) || ctx.Err() != nil {
 		return
 	}
-	text := editReceiptText(preview.Workspace, mekugiHistory{Source: previewmodel.CaptureTool(c.observation), ReviewFiles: files, ExecOutcome: &changecapture.Outcome{Labels: c.observation.Labels}})
+	text := changepresentation.ReceiptText(preview.Workspace, receiptEvidence(mekugiHistory{Source: previewmodel.CaptureTool(c.observation), ReviewFiles: files, ExecOutcome: &changecapture.Outcome{Labels: c.observation.Labels}}))
 	if (complete || text != "") && (text != c.text || text != "" && !slices.Equal(state.calls, c.calls)) {
 		preview.ID, preview.Files = "observed:"+c.ref, files
 		preview.EditReceipt, preview.HostItems, preview.Complete = text, slices.Clone(state.calls), true

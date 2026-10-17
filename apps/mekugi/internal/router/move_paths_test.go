@@ -21,7 +21,7 @@ import (
 func TestUISnapshotMoveActivityAndDialog(t *testing.T) {
 	workspace := "/workspace"
 	file := diffmodel.RenderReviewFile(workspace+"/internal/router/old.txt.new", workspace+"/internal/router/old.txt", "same\n", "same\n")
-	text := editReceiptText(workspace, mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{file}})
+	text := presentation.ReceiptText(workspace, receiptEvidence(mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{file}}))
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Painter.Theme = diffrender.DarkTheme
 	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: text, native: &liveActivityNativeItem{thread: "main", item: "move"}}}})

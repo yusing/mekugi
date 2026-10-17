@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+
 	inspectioncli "github.com/yusing/mekugi/apps/mekugi/internal/inspectioncli"
 
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
@@ -597,7 +599,7 @@ func TestExecReceiptAndSummaryText(t *testing.T) {
 		},
 	}
 	want := "Create `b.txt` (copy of `a.txt`) +1 -0 · cp\n```diff\n@@ -0,0 +1,1 @@\n+a\n```\n\nEdit `blob` binary · cp"
-	if got := editReceiptText(workspace, history); got != want {
+	if got := changepresentation.ReceiptText(workspace, receiptEvidence(history)); got != want {
 		t.Fatalf("receipt = %q, want %q", got, want)
 	}
 }

@@ -2,7 +2,6 @@ package router
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -61,38 +60,4 @@ func saveManagedExecChange(
 		t.Fatal(err)
 	}
 	return id
-}
-
-func TestManagedExecReceiptGroupsFiles(t *testing.T) {
-	workspace := t.TempDir()
-	files := make([]diffmodel.ReviewFile, 5)
-	for i := range files {
-		path := fmt.Sprintf("generated-%02d.txt", i+1)
-		files[i] = diffmodel.RenderReviewFile("", path, "", "content\n")
-		files[i].Origin = "generator"
-	}
-	got := editReceiptText(workspace, mekugiHistory{ReviewFiles: files})
-	want := ""
-	if got != want {
-		t.Fatalf("grouped receipt = %q, want %q", got, want)
-	}
-}
-
-func TestExecReceiptOmitsSharedOriginNamedByLabels(t *testing.T) {
-	workspace := t.TempDir()
-	file := diffmodel.RenderReviewFile("a.go", "a.go", "package a\n\nfunc A() {}\n", "package a\n")
-	file.OriginNote = "goimports" + changecapture.SharedOriginSuffix
-	for _, test := range []struct {
-		labels []string
-		note   bool
-	}{
-		{labels: []string{"python3", "goimports"}},
-		{labels: []string{"python3"}, note: true},
-		{note: true},
-	} {
-		got := editReceiptText(workspace, mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{file}, ExecOutcome: &changecapture.Outcome{Labels: test.labels}})
-		if strings.Contains(got, "(goimports also ran)") != test.note {
-			t.Errorf("labels %q receipt = %q, want note %v", test.labels, got, test.note)
-		}
-	}
 }

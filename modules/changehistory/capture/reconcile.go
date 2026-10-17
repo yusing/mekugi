@@ -15,6 +15,7 @@ import (
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	changehistory "github.com/yusing/mekugi/modules/changehistory/changes"
 )
 
 // Comparison supplies concurrent exclusions and an eligible workspace fallback.
@@ -127,7 +128,7 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 	}
 	omitted := func(path string) bool {
 		for _, omission := range observation.Omitted {
-			if PathWithin(path, omission.Path) {
+			if changehistory.PathWithin(path, omission.Path) {
 				return true
 			}
 		}
@@ -195,13 +196,13 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 		}
 		for _, roots := range [][]string{observation.Excluded, excluded} {
 			for _, root := range roots {
-				if PathWithin(path, root) {
+				if changehistory.PathWithin(path, root) {
 					return true
 				}
 			}
 		}
 		for _, listing := range observation.Listings {
-			if PathWithin(path, listing.Root) {
+			if changehistory.PathWithin(path, listing.Root) {
 				return true
 			}
 		}
@@ -319,7 +320,7 @@ func reconcile(observation Observation, excluded []string, snapshot []execSnapsh
 			}
 			file.Origin = meta.Origin
 			if meta.AlsoManaged != "" {
-				file.OriginNote = meta.AlsoManaged + SharedOriginSuffix
+				file.OriginNote = meta.AlsoManaged + changehistory.SharedOriginSuffix
 			}
 		} else {
 			for _, omission := range observation.Omitted {

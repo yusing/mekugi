@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -59,7 +61,7 @@ func TestNativeExecSedInPlaceCapturesEdit(t *testing.T) {
 			t.Errorf("mchanges history missing %q:\n%s", want, changes)
 		}
 	}
-	receipt := editReceiptText(workspace, history)
+	receipt := changepresentation.ReceiptText(workspace, receiptEvidence(history))
 	if !strings.HasPrefix(receipt, "Edit `"+relativePath+"`") || !strings.Contains(receipt, " · sed") {
 		t.Fatalf("sed receipt should identify an Edit and sed label: %q", receipt)
 	}

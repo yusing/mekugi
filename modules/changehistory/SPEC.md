@@ -191,6 +191,11 @@ composition and change navigation; receipt arrival and caller identity do not
 reorder effects. Files retain identity through moves, deletion and recreation.
 All authored captures participate regardless of command exit status.
 
+The presentation owner also supplies bounded source-text edit receipts for live
+observations and retained review. Receipts preserve captured provenance, group
+confirmed directory removals, and distinguish evidence gaps from confirmed edits.
+Full per-path evidence remains available through the retained change identity.
+
 Each attached session publishes one immutable retained-review snapshot for saved
 Diff, exact-operation details and edit totals. Detail requests use that snapshot
 without reopening storage. [Terminal-session loading](../../apps/mekugi/internal/terminalsession/SPEC.md#boundary)

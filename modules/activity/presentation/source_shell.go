@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	markdownsyntax "github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
@@ -67,7 +69,7 @@ func ClassifyShell(script, cwd string) (string, bool) {
 			return "", false
 		}
 		source.WriteString(script[offset:])
-		return activitymodel.AddTimeouts("Run\n"+SourceFence("bash", strings.Trim(source.String(), "\r\n")), timeouts), true
+		return activitymodel.AddTimeouts("Run\n"+markdownsyntax.SourceFence("bash", strings.Trim(source.String(), "\r\n")), timeouts), true
 	}
 	type statementDisplay struct {
 		display   string
@@ -108,7 +110,7 @@ func ClassifyShell(script, cwd string) (string, bool) {
 				if !hasHeredoc && strings.Trim(script[lineStart:start], " \t") == "" {
 					source = script[lineStart:end]
 				}
-				display = "Run\n" + SourceFence("bash", source)
+				display = "Run\n" + markdownsyntax.SourceFence("bash", source)
 			} else {
 				display = "Run " + SourceCode(source)
 			}
@@ -202,7 +204,7 @@ func sourceStatement(script string, statement *syntax.Stmt, cwd string) (result 
 		}
 		if !recognized {
 			source := sourceTimeoutSource(script, original)
-			result = "Run\n" + SourceFence("bash", source)
+			result = "Run\n" + markdownsyntax.SourceFence("bash", source)
 			recognized = true
 		}
 		result = activitymodel.AddTimeouts(result, timeouts)
@@ -221,7 +223,7 @@ func sourceStatement(script string, statement *syntax.Stmt, cwd string) (result 
 		if recognized && len(paragraphs) == 1 && activitymodel.ParseOperation(paragraphs[0]).Code == strings.Trim(argv[2], "\r\n") {
 			// Setup and heredoc programs must stay whole, including the wrapper.
 			innerTimeouts := activitymodel.ParseOperation(paragraphs[0]).Timeouts
-			return activitymodel.AddTimeouts("Run\n"+SourceFence("bash", sourceStatementSource(script, original)), innerTimeouts), true
+			return activitymodel.AddTimeouts("Run\n"+markdownsyntax.SourceFence("bash", sourceStatementSource(script, original)), innerTimeouts), true
 		}
 		return display, recognized
 	}

@@ -48,3 +48,17 @@ func CodeSpan(s string, i int) (string, int, bool) {
 	}
 	return code, i + run + end + run, true
 }
+
+// Source: modules/activity/presentation/source.go:104:116@6f68e18a.
+// SourceFence preserves source bytes inside a collision-free Markdown fence.
+func SourceFence(language, input string) string {
+	fence := "```"
+	for strings.Contains(input, fence) {
+		fence += "`"
+	}
+	trailer := "\n"
+	if strings.HasSuffix(input, "\n") {
+		trailer = ""
+	}
+	return fence + language + "\n" + input + trailer + fence
+}

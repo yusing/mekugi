@@ -3,6 +3,8 @@ package router
 import (
 	"context"
 
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+
 	"github.com/yusing/mekugi/libraries/legacycall"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
@@ -229,7 +231,7 @@ func TestAgentEditNoticeRetainsAllIDsWhenStatisticsTruncate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(notice, "mchanges "+strings.Join(ids, " ")+" --summary\n") || !strings.Contains(notice, "summary truncated") || len(notice) > maxEditReceiptDiffBytes {
+	if !strings.HasPrefix(notice, "mchanges "+strings.Join(ids, " ")+" --summary\n") || !strings.Contains(notice, "summary truncated") || len(notice) > changepresentation.MaxReceiptDiffBytes {
 		t.Fatalf("notice lost IDs or exceeded its bound: %q", notice)
 	}
 }
