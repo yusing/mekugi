@@ -154,7 +154,12 @@ func (s *execTrackShell) awaitView(t *testing.T, key [3]string) execTrackView {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		view, _ := s.hub.view(key, true, func(source string) string { return source })
+		view, _ := s.hub.view(key, false, func(source string) string { return source })
+		if view.ended {
+			// Process exit can precede report drainage. Final projection closes
+			// retained outputs, so admit it only after the report has ended.
+			view, _ = s.hub.view(key, true, func(source string) string { return source })
+		}
 		if view.ended || time.Now().After(deadline) {
 			return view
 		}
