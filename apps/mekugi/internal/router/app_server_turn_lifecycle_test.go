@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
@@ -11,8 +13,8 @@ func TestAppServerInterruptedWaitEndsBeforeContinue(t *testing.T) {
 	for _, thread := range []string{"main", "child"} {
 		t.Run(thread, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			u.session.registerThread(appServerThreadInfo{ID: "child"})
-			wait := appServerItem{ID: "wait", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress", ReceiverThreadIDs: []string{"target"}}
+			u.session.registerThread(binding.ThreadInfo{ID: "child"})
+			wait := binding.ThreadItem{ID: "wait", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress", ReceiverThreadIDs: []string{"target"}}
 			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "turn"}})
 			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "turn", "item": wait})
 			appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "turn", "status": "interrupted"}})
@@ -39,10 +41,10 @@ func TestAppServerRestoredStoppedWait(t *testing.T) {
 	for _, status := range []string{"completed", "interrupted", "failed"} {
 		t.Run(status, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			history := []appServerHistoryTurn{{ID: "old", Status: status, Items: []appServerItem{{ID: "wait", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress"}}}}
+			history := []binding.HistoryTurn{{ID: "old", Status: status, Items: []binding.ThreadItem{{ID: "wait", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress"}}}}
 			u.restoreHistory(history)
-			u.session.registerThread(appServerThreadInfo{ID: "child"})
-			u.restoreActivityThread(appServerThreadInfo{ID: "child", Turns: history})
+			u.session.registerThread(binding.ThreadInfo{ID: "child"})
+			u.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: history}, false)
 			for _, view := range []*activityAdapter{u.view, u.agents} {
 				if view.Entries[0].Source.Text != "Wait ended" || view.Entries[0].Source.native.phase != "turn/completed" {
 					t.Fatalf("stopped history revived waiting: %+v", view.Entries[0])

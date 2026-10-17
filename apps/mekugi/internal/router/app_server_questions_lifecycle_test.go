@@ -128,16 +128,16 @@ func TestQuestionAsyncRemainingSurvivesReplyTurnSteerAndReplay(t *testing.T) {
 	first, _ := json.Marshal(map[string]any{"id": "two", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Who receives it?", "questions": []any{
 		map[string]any{"title": "Who receives it?", "options": []string{"Customers", "Internal"}}, map[string]any{"title": "Who approves it?", "options": []string{"Customers", "Internal"}},
 	}})
-	var questionItem appServerItem
+	var questionItem binding.ThreadItem
 	if err := json.Unmarshal(first, &questionItem); err != nil {
 		t.Fatal(err)
 	}
 	second, _ := json.Marshal(map[string]any{"id": "reply", "type": "userMessage", "content": []any{map[string]any{"type": "text", "text": reply}}})
-	var replyItem appServerItem
+	var replyItem binding.ThreadItem
 	if err := json.Unmarshal(second, &replyItem); err != nil {
 		t.Fatal(err)
 	}
-	v.restoreHistory([]appServerHistoryTurn{{ID: "ask-turn", Status: "completed", Items: []appServerItem{questionItem}}, {ID: "answer-turn", Status: "completed", Items: []appServerItem{replyItem}}})
+	v.restoreHistory([]binding.HistoryTurn{{ID: "ask-turn", Status: "completed", Items: []binding.ThreadItem{questionItem}}, {ID: "answer-turn", Status: "completed", Items: []binding.ThreadItem{replyItem}}})
 	if v.questionCount() != 1 || input.Len() != 0 {
 		t.Fatalf("replay pending=%d outgoing=%q", v.questionCount(), input.String())
 	}
@@ -253,7 +253,7 @@ func TestQuestionRecordPreservesLiteralNotePrefix(t *testing.T) {
 		if got := entry.native.questions[0].Answer; got != literal {
 			t.Fatalf("sync=%v: displayed %q, want literal %q", sync, got, literal)
 		}
-		questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": appServerItem{ID: "ack", Type: "agentMessage", Text: "I will use that answer."}})
+		questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": binding.ThreadItem{ID: "ack", Type: "agentMessage", Text: "I will use that answer."}})
 		u.view.Conversation = true
 		if frame := mainFeed(u, 100); !strings.Contains(frame, "re: your answer") || strings.Count(frame, literal) != 2 {
 			t.Fatalf("sync=%v: reply changed the literal answer:\n%s", sync, frame)
@@ -274,14 +274,14 @@ func TestQuestionReplyBecomesMainReplyAnchor(t *testing.T) {
 				}
 				return data
 			}
-			items := []appServerItem{
+			items := []binding.ThreadItem{
 				{ID: "prompt", Type: "userMessage", Content: content("Original task")},
 				{ID: "ask", Type: "agentMessage", Delivery: "async", Questions: []binding.Question{{Title: "Which audience?"}}},
 				{ID: "reply", Type: "userMessage", Content: content(lifecycleReply(t, "ask", 0, "Which audience?", "Customers"))},
 				{ID: "ack", Type: "agentMessage", Text: "I will notify them."},
 			}
 			if replay {
-				u.restoreHistory([]appServerHistoryTurn{{ID: "turn", Status: "completed", Items: items}})
+				u.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: items}})
 			} else {
 				for _, item := range items {
 					questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
@@ -342,7 +342,7 @@ func TestSyncQuestionReplyBecomesMainAnchor(t *testing.T) {
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "1\r")
 	questionTestMessage(t, u, nil, "serverRequest/resolved", map[string]any{"threadId": "main", "requestId": "sync"})
-	questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": appServerItem{ID: "ack", Type: "agentMessage", Text: "I will use that scope."}})
+	questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": binding.ThreadItem{ID: "ack", Type: "agentMessage", Text: "I will use that scope."}})
 	frame := mainFeed(u, 100)
 	if !strings.Contains(frame, "re: your answer") || strings.Contains(frame, "re: your message") {
 		t.Fatalf("sync answer not used for reply:\n%s", frame)

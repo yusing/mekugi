@@ -105,7 +105,7 @@ func (s *appServerSession) hookEntry(thread string, observation history.HookObse
 	if run.DurationMS != nil {
 		n.duration = time.Duration(*run.DurationMS) * time.Millisecond
 	}
-	if outputs := s.activity.Outputs(&s.state); outputs != nil {
+	if outputs := s.activity.Outputs(s.Scope()); outputs != nil {
 		n.output = outputs.New()
 		n.output.Write(observation.Output)
 		if !n.running {

@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-
-	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
-	"github.com/yusing/mekugi/modules/conversation/prompt"
+	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
+	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
+	"github.com/yusing/mekugi/modules/conversation/prompt"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
@@ -391,7 +391,7 @@ func TestTerminalUISelectionRenderedClipboard(t *testing.T) {
 			u.shell.DiffOpen = false
 
 		}
-		applyTranscriptFixture(view, true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "hello [report](https://example.com/report)"})
+		applyTranscriptFixture(view, true, "", "main", "main", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "hello [report](https://example.com/report)"})
 		if activity {
 			u.agents.setDisplayFilter(true, "Main")
 		}

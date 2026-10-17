@@ -8,12 +8,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
-	"github.com/yusing/mekugi/libraries/commandanalysis"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -41,7 +43,7 @@ func TestExecCompletedCaptureOwnershipRetryAndWithdrawal(t *testing.T) {
 				if i > 0 {
 					call = "sibling"
 				}
-				appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": appServerItem{ID: call, Type: "commandExecution", Command: "/bin/bash -lc " + quoteShellWord(command.Command), Status: "inProgress"}})
+				appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": binding.ThreadItem{ID: call, Type: "commandExecution", Command: "/bin/bash -lc " + quoteShellWord(command.Command), Status: "inProgress"}})
 				report := dialExecTrackReport(t, hub, command.Command)
 				reports = append(reports, report)
 				if i == 0 {

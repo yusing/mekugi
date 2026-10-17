@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
 
@@ -77,7 +79,7 @@ func TestAppServerInputHistoryResumeAndRejectedInput(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.agents = newActivityAdapter()
 	u.session.start(u.Thread, "/workspace")
-	u.restoreHistory([]appServerHistoryTurn{{ID: "old", Status: "completed", Items: []appServerItem{{Type: "userMessage", ID: "input", Content: []byte(`[{"type":"text","text":"saved"}]`)}}}})
+	u.restoreHistory([]binding.HistoryTurn{{ID: "old", Status: "completed", Items: []binding.ThreadItem{{Type: "userMessage", ID: "input", Content: []byte(`[{"type":"text","text":"saved"}]`)}}}})
 	appServerTestKeys(t, u, "\x1b[A")
 	if u.Text != "saved" {
 		t.Fatalf("resumed history=%q", u.Text)

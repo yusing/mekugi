@@ -5,6 +5,9 @@ package router
 import (
 	"context"
 	"encoding/json/jsontext"
+
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	json "encoding/json/v2"
 	"errors"
 	"io"
@@ -20,9 +23,12 @@ import (
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/backends/codex/shellhook"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
@@ -58,7 +64,7 @@ func TestSavedReviewLoadingSeparatesPreviewAuthorityFromRestoredInput(t *testing
 			u.shell.saved, u.shell.reviewLoader = loader.state, loader
 			sub := u.shell.review.Subscribe()
 			defer func() { u.shell.review.Unsubscribe(sub) }()
-			if err := u.restorePaneContent(appServerThreadInfo{ID: "main", Cwd: workspace}); err != nil {
+			if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: workspace}); err != nil {
 				t.Fatal(err)
 			}
 			u.shell.review.IncludeThread(workspace, "blocked-child", false)

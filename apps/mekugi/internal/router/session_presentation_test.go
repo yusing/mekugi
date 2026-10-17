@@ -23,7 +23,7 @@ func TestNativeDisplayedThreadIndependentOfRosterFocus(t *testing.T) {
 		appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": thread, "agentNickname": thread}})
 		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "work"}})
 	}
-	first := u.session.turnStates[[2]string{"first", "work"}]
+	first := u.session.Transcript("first", "work").Turn
 	u.agents.displayThread("/root/first")
 	u.agents.Selected = "/root/second"
 	u.agents.testKeepSelection()
@@ -38,7 +38,7 @@ func TestNativeDisplayedThreadIndependentOfRosterFocus(t *testing.T) {
 	if u.composerReadOnly() || u.transcriptView() != u.view || u.agents.Selected != "/root/second" {
 		t.Fatal("Main selection changed roster focus or retained child admission")
 	}
-	if first == nil || u.session.turnStates[[2]string{"first", "work"}] != first || !u.session.agent("/root/first").Responding {
+	if first == nil || u.session.Transcript("first", "work").Turn != first || !u.session.agent("/root/first").Responding {
 		t.Fatal("display switching retired a child's work scope")
 	}
 }

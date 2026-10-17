@@ -1,11 +1,15 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	json "encoding/json/v2"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/appserver"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
@@ -23,7 +27,7 @@ func (u *appServerUI) startSkillHistory() {
 		return
 	}
 	// One scan at a time keeps background history I/O independently bounded.
-	for thread := range u.session.threadStates {
+	for thread := range u.session.Threads() {
 		h := u.childHistory(thread)
 		if h == nil {
 			continue
@@ -32,7 +36,7 @@ func (u *appServerUI) startSkillHistory() {
 			return
 		}
 	}
-	for thread := range u.session.threadStates {
+	for thread := range u.session.Threads() {
 		h := u.childHistory(thread)
 		if h == nil {
 			continue
@@ -83,13 +87,7 @@ func (u *appServerUI) skillHistoryResponse(thread string, m appserver.Message) e
 	if scan.bytes > restoredRolloutLimit || len(scan.cursors) >= 1024 {
 		return u.failSkillHistory(h, "Current-context history exceeds the observation limit; the count is unavailable.")
 	}
-	var page struct {
-		Data []struct {
-			TurnID string        `json:"turnId"`
-			Item   appServerItem `json:"item"`
-		} `json:"data"`
-		NextCursor string `json:"nextCursor"`
-	}
+	var page binding.ItemPage
 	if err := json.Unmarshal(m.Result, &page); err != nil {
 		return u.failSkillHistory(h, "Invalid item page: "+err.Error())
 	}

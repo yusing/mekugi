@@ -2,6 +2,9 @@ package router
 
 import (
 	"bytes"
+
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	json "encoding/json/v2"
 	"fmt"
 	"image"
@@ -11,13 +14,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/modules/conversation/completion"
-
-	"github.com/yusing/mekugi/modules/conversation/composer"
-
-	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
-
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+	"github.com/yusing/mekugi/modules/conversation/completion"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
 type pickerWireRequest struct {
@@ -239,7 +239,7 @@ func TestComposerSkillPickerResumeAndEditorBindings(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.session.start("main", "/work")
 	u.agents = newActivityAdapter()
-	var turns []appServerHistoryTurn
+	var turns []binding.HistoryTurn
 	if err := json.Unmarshal([]byte(`[{"id":"turn","status":"completed","items":[{"type":"userMessage","id":"message","content":[{"type":"text","text":"use $review please"},{"type":"skill","name":"review","path":"/work/review/SKILL.md"}]}]}]`), &turns); err != nil {
 		t.Fatal(err)
 	}

@@ -6,46 +6,27 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/observation"
-	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/activity/transcript"
 )
-
-// transcriptScope admits first observations even when no turn start was seen.
-// Closed turns keep only their identity until the attachment is retired.
-func (s *appServerSession) transcriptScope(thread, turn string) observation.TextScope {
-	if thread == "" || turn == "" {
-		return observation.TextScope{}
-	}
-	if s.turnStates == nil {
-		s.turnStates = make(map[[2]string]*scope.Store)
-	}
-	key := [2]string{thread, turn}
-	store, known := s.turnStates[key]
-	if !known {
-		store = new(scope.Store)
-		s.turnStates[key] = store
-	}
-	return observation.TextScope{Thread: s.threadState(thread), Turn: store}
-}
 
 func (s *appServerSession) observeTranscript(e observation.TextEvent, main bool) []observation.TextUpdate {
 	ref := e.Item.Ref
 	if ref.ThreadID == "" || ref.TurnID == "" || ref.ItemID == "" {
 		return nil
 	}
-	return s.transcript.Observe(e, main, s.transcriptScope(ref.ThreadID, ref.TurnID))
+	return s.transcript.Observe(e, main, s.Transcript(ref.ThreadID, ref.TurnID))
 }
 
 func (s *appServerSession) providerStarted(thread string, at time.Time) []observation.TextUpdate {
 	if thread == "" {
 		return nil
 	}
-	return s.transcript.ProviderStarted(thread, at, s.threadState(thread))
+	return s.transcript.ProviderStarted(thread, at, s.Thread(thread))
 }
 
 // Host snapshots retain their original payload for control and evidence; this
 // projection supplies only text facts to the shared transcript owner.
-func transcriptItem(item appServerItem, thread, turn, id string) observation.TextItem {
+func transcriptItem(item binding.ThreadItem, thread, turn, id string) observation.TextItem {
 	return (binding.TranscriptItem{ID: item.ID, Type: item.Type, Text: item.Text, Status: item.Status, Summary: item.Summary, Delivery: item.Delivery, Phase: item.Phase, Questions: item.Questions}).Observation(thread, turn, id)
 }
 
@@ -132,7 +113,7 @@ func (v *activityAdapter) applyTranscript(update observation.TextUpdate, content
 	}
 }
 
-func historicalTranscript(items []appServerItem, thread, turn string, main, promote bool, at time.Time) map[string]observation.TextUpdate {
+func historicalTranscript(items []binding.ThreadItem, thread, turn string, main, promote bool, at time.Time) map[string]observation.TextUpdate {
 	events := make([]observation.TextEvent, len(items))
 	for i, item := range items {
 		events[i] = observation.TextEvent{At: at, Kind: observation.ItemCompleted, Item: transcriptItem(item, thread, turn, item.ID)}
@@ -158,11 +139,11 @@ func (u *appServerUI) replayTranscript(e observation.Event) bool {
 	}
 	main := e.ThreadID == u.Thread
 	if main && e.Item.Type == "userMessage" && e.Kind == observation.ItemCompleted {
-		u.commitQuestionReplies(appServerItem{Content: e.Item.Content, ClientID: e.Item.ClientID}, e.TurnID)
+		u.commitQuestionReplies(binding.ThreadItem{Content: e.Item.Content, ClientID: e.Item.ClientID}, e.TurnID)
 	}
 	if main && e.Item.Type == "agentMessage" && text.Item.AsyncQuestion {
 		// Recorded prompt content is presentation only; no request identity exists.
-		item := appServerItem{ID: e.Item.ID, Type: e.Item.Type, Delivery: e.Item.Delivery, Text: e.Item.Text}
+		item := binding.ThreadItem{ID: e.Item.ID, Type: e.Item.Type, Delivery: e.Item.Delivery, Text: e.Item.Text}
 		for _, q := range e.Item.Questions {
 			item.Questions = append(item.Questions, binding.Question{ID: q.ID, Header: q.Header, Question: q.Question, Title: q.Title, IsSecret: q.IsSecret, Options: q.Options})
 		}

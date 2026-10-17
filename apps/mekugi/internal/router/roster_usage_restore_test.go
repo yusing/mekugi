@@ -5,13 +5,12 @@ import (
 	"testing"
 	"time"
 
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
-
-	"github.com/yusing/mekugi/libraries/diffrender"
-
-	"github.com/yusing/mekugi/contracts/inference"
+	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/contracts/inference"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func restoredUsageRosterFixture(t *testing.T) *appServerUI {
@@ -26,9 +25,9 @@ func restoredUsageRosterFixture(t *testing.T) *appServerUI {
 	u.proxy = &mekugiProxy{usage: storedUsageFixture(t, usageStoreFixture(t, directory))}
 
 	for _, thread := range []string{"child", "gap", "historical"} {
-		info := appServerThreadInfo{ID: thread, AgentNickname: thread, Turns: []appServerHistoryTurn{{ID: "old", Status: "completed"}}}
+		info := binding.ThreadInfo{ID: thread, AgentNickname: thread, Turns: []binding.HistoryTurn{{ID: "old", Status: "completed"}}}
 		u.session.registerThread(info)
-		u.restoreActivityThread(info)
+		u.restoreActivityThread(info, false)
 	}
 	return u
 }

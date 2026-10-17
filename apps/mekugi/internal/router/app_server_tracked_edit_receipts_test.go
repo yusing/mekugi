@@ -8,13 +8,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
-
-	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/terminalui"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -30,7 +31,7 @@ func TestObservedEditReceiptBeforeHostItemSurvivesSegmentRefresh(t *testing.T) {
 	u.shell.preview(previewmodel.Preview{ID: "early", Workspace: u.session.cwd, Thread: "main", Complete: true,
 		HostItems: []string{"cmd"}, Files: []diffmodel.ReviewFile{file}, EditReceipt: "Edit `a.go` +1 -1 · python3"}, false)
 	command := "python3 - <<'PY'\np='a.go';s=open(p).read().replace('before','after');open(p,'w').write(s)\nPY\ngo test ./..."
-	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": appServerItem{ID: "cmd", Type: "commandExecution", Command: command, Status: "inProgress"}})
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: command, Status: "inProgress"}})
 	for _, view := range []*activityAdapter{u.view, u.agents} {
 		for _, entry := range view.Entries {
 			if entry.Source.native == nil || entry.Source.native.item != "cmd" {
@@ -104,7 +105,7 @@ func TestAppServerTrackedEditReceiptPreservesSegments(t *testing.T) {
 			for _, source := range sources {
 				segments = append(segments, commandSegment{source: source, text: execSegmentText(source)})
 			}
-			output := u.session.activity.Outputs(&u.session.state).New()
+			output := u.session.activity.Outputs(u.session.Scope()).New()
 			output.Finish(new("edit diagnostic"), new(0))
 			segments[0].output = output
 			segments[2].exit, segments[2].tail = 2, []string{"test failed"}
@@ -152,7 +153,7 @@ func TestUISnapshotTrackedEditReceiptOutputSourceOnlyInDialog(t *testing.T) {
 	var segments []commandSegment
 	for i, source := range []string{"cat > a.go", "go vet ./...", "cat > b.go"} {
 		line := strings.Fields(source)[len(strings.Fields(source))-1] + " diagnostic"
-		output := u.session.activity.Outputs(&u.session.state).New()
+		output := u.session.activity.Outputs(u.session.Scope()).New()
 		output.Finish(new(line), new(0))
 		elapsed := time.Duration(i+1) * time.Second
 		segments = append(segments, commandSegment{source: source, text: execSegmentText(source), output: output, tail: []string{line},
@@ -239,8 +240,8 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 		t.Run(thread, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, workspace)
 			u.proxy = &mekugiProxy{replayStore: store}
-			item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc 'cat > a.go; cat > b.go; go test ./...'", ExitCode: new(2), AggregatedOutput: new("test failed")}
-			output := u.session.activity.Outputs(&u.session.state).New()
+			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc 'cat > a.go; cat > b.go; go test ./...'", ExitCode: new(2), AggregatedOutput: new("test failed")}
+			output := u.session.activity.Outputs(u.session.Scope()).New()
 			output.Finish(new("test failed"), new(2))
 			u.retainCommandSegments(activityPaneEntry{native: &liveActivityNativeItem{thread: thread, turn: "turn", item: item.ID}}, item,
 				execTrackView{complete: true, output: true, code: 2, segments: []commandSegment{{}, {}, {exit: 2, output: output}}})
@@ -248,13 +249,13 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 			restored := newAppServerSessionTestUI(t, workspace)
 			restored.proxy = &mekugiProxy{replayStore: testReplayStore(mekugiReplayStore{directory: store.directory})}
 			restored.shell.saved.data = reviewReceiptSnapshot(t, trackedEditReceiptData(thread, item.ID))
-			turns := []appServerHistoryTurn{{ID: "turn", Status: "completed", Items: []appServerItem{item}}}
+			turns := []binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}}
 			view := restored.view
 			if thread == "main" {
 				restored.restoreHistory(turns)
 			} else {
 				restored.session.path(thread)
-				restored.restoreActivityThread(appServerThreadInfo{ID: thread, Cwd: workspace, Turns: turns})
+				restored.restoreActivityThread(binding.ThreadInfo{ID: thread, Cwd: workspace, Turns: turns}, false)
 				view = restored.agents
 			}
 			if len(view.Entries) != 1 || view.Entries[0].Source.native == nil || len(view.Entries[0].Source.native.segments) != 3 {
@@ -275,7 +276,7 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 func TestAppServerTrackedEditReceiptKeepsSiblingCombinedOutput(t *testing.T) {
 	for _, tail := range [][]string{nil, {"host diagnostic"}} {
 		u := newAppServerSessionTestUI(t, t.TempDir())
-		output := u.session.activity.Outputs(&u.session.state).New()
+		output := u.session.activity.Outputs(u.session.Scope()).New()
 		output.Finish(new("host diagnostic"), new(0))
 		command := "cat > a.go; cat > b.go"
 		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
@@ -332,7 +333,7 @@ func TestObservedEditReceiptsBeforeHostRows(t *testing.T) {
 			}
 			for i := range tc.calls {
 				path, call := fmt.Sprintf("a%d.go", i), fmt.Sprintf("cmd%d", i)
-				appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": appServerItem{
+				appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": binding.ThreadItem{
 					ID: call, Type: "commandExecution", Command: "cat > " + path + " <<'EOF'\nafter\nEOF\ngo test ./...", Status: "inProgress"}})
 				for _, view := range []*activityAdapter{u.view, u.agents} {
 					found := false

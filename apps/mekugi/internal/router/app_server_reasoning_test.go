@@ -2,19 +2,21 @@ package router
 
 import (
 	"bytes"
+
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	json "encoding/json/v2"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
-	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
-
 	"github.com/yusing/mekugi/libraries/diffrender"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -68,7 +70,7 @@ func TestAppServerOldTurnCompletionPreservesCurrentTranscript(t *testing.T) {
 	activity.observe("child", "main", "/root/worker", true)
 	u.proxy = &mekugiProxy{activity: activity}
 	u.agents.setDisplayFilter(false, "/root/worker")
-	wait := appServerItem{ID: "old-wait", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress"}
+	wait := binding.ThreadItem{ID: "old-wait", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress"}
 	reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "old", "item": wait})
 	activity.beginResponse("child", true)
 	activity.starts[0].at = at.Add(-3 * time.Second)
@@ -116,7 +118,7 @@ func TestAppServerClosedTurnRejectsLateStreaming(t *testing.T) {
 			delta := map[string]any{"threadId": thread, "turnId": "without-start", "itemId": "summary", "delta": "Initial"}
 			reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", delta)
 			key := [2]string{thread, "without-start"}
-			if u.session.turnStates[key] == nil {
+			if u.session.Transcript(key[0], key[1]).Turn == nil {
 				t.Fatal("first item did not establish its turn scope")
 			}
 			reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "without-start", "status": "interrupted"}})
@@ -124,7 +126,7 @@ func TestAppServerClosedTurnRejectsLateStreaming(t *testing.T) {
 			reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", delta)
 			reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "without-start", "item": map[string]any{"id": "late", "type": "reasoning", "summary": []string{"leaked"}}})
 			reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "without-start"}})
-			if store, closed := u.session.turnStates[key]; !closed || store != nil || u.session.agent(u.session.path(thread)).Responding || u.Turn == "without-start" {
+			if u.session.Transcript(key[0], key[1]).Turn != nil || u.session.agent(u.session.path(thread)).Responding || u.Turn == "without-start" {
 				t.Fatal("late observations revived a closed turn")
 			}
 			view := u.view
@@ -151,13 +153,13 @@ func TestAppServerClosedCompletionKeepsCurrentTurnSelection(t *testing.T) {
 	u.applyObservedActivity()
 	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "current"}})
 	reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "current", "item": map[string]any{"id": "answer", "type": "agentMessage", "text": "Current answer"}})
-	for _, item := range []appServerItem{{ID: "late-summary", Type: "reasoning", Summary: []string{"Older summary"}}, {ID: "late-answer", Type: "agentMessage", Text: "Older answer"}} {
+	for _, item := range []binding.ThreadItem{{ID: "late-summary", Type: "reasoning", Summary: []string{"Older summary"}}, {ID: "late-answer", Type: "agentMessage", Text: "Older answer"}} {
 		reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "old", "item": item})
 	}
 	if got := ansi.Strip(strings.Join(u.agents.RenderFeed(90, 40).Lines, "\n")); !strings.Contains(got, "Thinking") || !strings.Contains(got, "Older summary") || !strings.Contains(got, "Older answer") {
 		t.Fatalf("late completion lost content or consumed current thinking: %q", got)
 	}
-	if u.session.turnStates[[2]string{"child", "old"}] != nil {
+	if u.session.Transcript("child", "old").Turn != nil {
 		t.Fatal("late completion recreated correlation")
 	}
 	reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "current", "status": "completed"}})
@@ -174,13 +176,13 @@ func TestAppServerClosedCompletionKeepsCurrentTurnSelection(t *testing.T) {
 
 func TestAppServerRestorePublicSummaries(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	var turns []appServerHistoryTurn
+	var turns []binding.HistoryTurn
 	if err := json.Unmarshal([]byte(`[{"id":"t","status":"completed","items":[{"id":"r","type":"reasoning","summary":["Public restored summary."],"content":["PRIVATE"]}]}]`), &turns); err != nil {
 		t.Fatal(err)
 	}
 	u.restoreHistory(turns)
-	u.session.registerThread(appServerThreadInfo{ID: "child", AgentNickname: "worker"})
-	u.restoreActivityThread(appServerThreadInfo{ID: "child", Turns: turns})
+	u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
+	u.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: turns}, false)
 	u.agents.setDisplayFilter(false, "/root/worker")
 	for _, view := range []*activityAdapter{u.view, u.agents} {
 		feed := view.RenderFeed(90, 40)
@@ -301,7 +303,7 @@ func TestAppServerPendingStatusPulses(t *testing.T) {
 			}
 			if strings.HasPrefix(status, "Restoring") {
 				u.Thread = "main"
-				if err := u.restorePaneContent(appServerThreadInfo{ID: "main"}); err != nil {
+				if err := u.restorePaneContent(binding.ThreadInfo{ID: "main"}); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -518,13 +520,13 @@ func TestAppServerDuplicateSummaryCompletionKeepsNextThinking(t *testing.T) {
 					u.applyObservedActivity()
 				}
 				complete := func(id, text string) {
-					reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": appServerItem{ID: id, Type: "reasoning", Summary: []string{text}}})
+					reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": binding.ThreadItem{ID: id, Type: "reasoning", Summary: []string{text}}})
 				}
 				reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
 				start()
 				*at = at.Add(3 * time.Second)
 				completedAt := *at
-				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": appServerItem{ID: "first", Type: "reasoning", Summary: []string{"Original summary."}}})
+				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": binding.ThreadItem{ID: "first", Type: "reasoning", Summary: []string{"Original summary."}}})
 				if reveal == "painted" {
 					rollCommandOutput(u)
 					if got := view.Entries[0].Source; got.native.thought != 3*time.Second {
@@ -534,7 +536,7 @@ func TestAppServerDuplicateSummaryCompletionKeepsNextThinking(t *testing.T) {
 				*at = at.Add(2 * time.Second)
 				start()
 				*at = at.Add(time.Second)
-				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": appServerItem{ID: "first", Type: "reasoning", Summary: []string{completion.text}}})
+				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": binding.ThreadItem{ID: "first", Type: "reasoning", Summary: []string{completion.text}}})
 				if got := view.Entries[0].Source; reveal == "painted" && (got.native.phase != "item/completed" || got.Text != "Original summary.") {
 					t.Errorf("duplicate completion replayed a finished summary: phase=%s text=%q", got.native.phase, got.Text)
 				}

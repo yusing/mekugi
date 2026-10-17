@@ -311,7 +311,7 @@ func TestNativeQuestionResumeOnlyUnanswered(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var turns []appServerHistoryTurn
+	var turns []binding.HistoryTurn
 	if err := json.Unmarshal(wire, &turns); err != nil {
 		t.Fatal(err)
 	}

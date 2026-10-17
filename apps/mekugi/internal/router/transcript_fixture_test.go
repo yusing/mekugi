@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/activity/transcript"
@@ -8,7 +9,7 @@ import (
 
 // applyTranscriptFixture feeds the real projector and reducer for view fixtures
 // that do not need an application control session.
-func applyTranscriptFixture(v *activityAdapter, live bool, cwd, main, thread, turn, id, method, delta string, item appServerItem) {
+func applyTranscriptFixture(v *activityAdapter, live bool, cwd, main, thread, turn, id, method, delta string, item binding.ThreadItem) {
 	if item.Type == "commandExecution" {
 		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: v.LastSeq + 1, Agent: "Main", Kind: "command", Text: item.Text, Observed: v.Now(), native: &liveActivityNativeItem{
 			thread: thread, turn: turn, item: id, phase: method, live: live, command: item.Command, status: item.Status, exit: item.ExitCode, duration: appServerDuration(item)}}}})

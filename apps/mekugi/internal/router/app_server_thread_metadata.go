@@ -1,7 +1,8 @@
 package router
 
 import (
-	json "encoding/json/v2"
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"slices"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
@@ -31,14 +32,16 @@ func (u *appServerUI) applyThreadMetadata(m appserver.Message) bool {
 			continue
 		}
 		u.session.metadata[thread] = ""
-		var result struct {
-			Thread appServerThreadInfo `json:"thread"`
+		if m.Error != nil {
+			return true
 		}
-		if m.Error != nil || json.Unmarshal(m.Result, &result) != nil || result.Thread.ID != thread {
-			return true // Keep the observed identity; metadata cannot block activity.
-		}
+		info, err := binding.DecodeHistoryThread(m.Result, thread)
+		if err != nil {
+			return true
+		} // Metadata cannot block observed activity.
+
 		old := u.session.path(thread)
-		u.session.registerThread(result.Thread)
+		u.session.registerThread(info)
 		u.renameThreadActivity(old, u.session.paths[thread])
 		u.applyActivity(nil, slices.Clone(u.session.agents))
 		return true

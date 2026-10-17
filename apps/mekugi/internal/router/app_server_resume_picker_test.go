@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/modules/changehistory/presentation"
-
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
 )
 
 type resumeTestRequest struct {
@@ -227,7 +227,7 @@ func TestAppServerResumePickerSearchFilterAndPages(t *testing.T) {
 
 func TestAppServerResumeSwitchesSession(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
-	outputs := u.session.activity.Outputs(&u.session.state)
+	outputs := u.session.activity.Outputs(u.session.Scope())
 	u.ensureShell()
 	feed := u.view.Model
 	appServerTestUserMessage(t, u, "old-user", "", "old transcript")
@@ -260,7 +260,7 @@ func TestAppServerResumeSwitchesSession(t *testing.T) {
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"saved","turnId":"old","item":{"type":"agentMessage","id":"answer","text":"Saved answer"}}}`)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"model":"model","thread":{"id":"saved","cwd":"/work","turns":[{"id":"old","status":"completed","items":[{"type":"userMessage","id":"question","content":[{"type":"text","text":"Saved question"}]},{"type":"agentMessage","id":"answer","text":"Saved answer"}]}]}}}`, resume.ID))
 	methods := resumeTestSettle(t, u, w)
-	if u.session.activity.Outputs(&u.session.state) == outputs || u.view.Model == feed {
+	if u.session.activity.Outputs(u.session.Scope()) == outputs || u.view.Model == feed {
 		t.Fatal("confirmed replacement retained the old activity scope")
 	}
 	if len(methods) == 0 || methods[0] != "thread/unsubscribe" || !slices.Contains(methods, "model/list") {
@@ -298,7 +298,7 @@ func TestAppServerResumeSwitchesSession(t *testing.T) {
 
 func TestAppServerResumeSwitchFailureKeepsSession(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
-	outputs := u.session.activity.Outputs(&u.session.state)
+	outputs := u.session.activity.Outputs(u.session.Scope())
 	u.ensureShell()
 	feed := u.view.Model
 	appServerTestUserMessage(t, u, "old-user", "", "keep this")
@@ -317,7 +317,7 @@ func TestAppServerResumeSwitchFailureKeepsSession(t *testing.T) {
 	if start := resumeTestOne(t, w, "turn/start"); start.Params.ThreadID != "main" {
 		t.Fatalf("input after failed switch targeted %q", start.Params.ThreadID)
 	}
-	if u.session.activity.Outputs(&u.session.state) != outputs || u.view.Model != feed {
+	if u.session.activity.Outputs(u.session.Scope()) != outputs || u.view.Model != feed {
 		t.Fatal("failed replacement discarded activity state")
 	}
 }
@@ -402,7 +402,7 @@ func TestLiveDiffResetScopeResynchronizes(t *testing.T) {
 
 func TestAppServerResumeSwitchKeepsCurrentSessionLive(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
-	u.session.registerThread(appServerThreadInfo{ID: "child", ParentThreadID: "main", AgentNickname: "worker", AgentRole: "worker",
+	u.session.registerThread(binding.ThreadInfo{ID: "child", ParentThreadID: "main", AgentNickname: "worker", AgentRole: "worker",
 		Source: jsontext.Value(`{"subAgent":{"thread_spawn":{"agent_path":"/root/worker","agent_role":"worker"}}}`)})
 	appServerTestKeys(t, u, "/resume saved\r")
 	resume := resumeTestPrepared(t, u, w)

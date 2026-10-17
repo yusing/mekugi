@@ -7,9 +7,10 @@ import (
 	"testing"
 	"time"
 
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // Compare the complete feed and hit targets, not just the visible text: an
@@ -133,11 +134,11 @@ func TestLiveActivityCacheMainUpdateRemainsFresh(t *testing.T) {
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 	v.Clock = func() time.Time { return now }
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "You", Kind: "text", Text: "Explain the result", Observed: now}}})
-	applyTranscriptFixture(v, true, "", "main", "main", "turn", "reply", "item/agentMessage/delta", "Initial explanation", appServerItem{})
+	applyTranscriptFixture(v, true, "", "main", "main", "turn", "reply", "item/agentMessage/delta", "Initial explanation", binding.ThreadItem{})
 	v.RenderFeed(90, 24)
 	stableKey, stable := liveActivityCacheRun(t, v, 1)
 	changedKey, _ := liveActivityCacheRun(t, v, 2)
-	applyTranscriptFixture(v, true, "", "main", "main", "turn", "reply", "item/agentMessage/delta", " with a continuation", appServerItem{})
+	applyTranscriptFixture(v, true, "", "main", "main", "turn", "reply", "item/agentMessage/delta", " with a continuation", binding.ThreadItem{})
 	if _, present := v.Runs[changedKey]; present {
 		t.Fatal("Main update retained its stale run")
 	}

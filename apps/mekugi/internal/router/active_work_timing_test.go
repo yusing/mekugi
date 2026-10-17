@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffrender"
 )
 
@@ -106,7 +107,7 @@ func TestAppServerActiveWorkRestoresClosedSpans(t *testing.T) {
 			}
 			t.Run(name, func(t *testing.T) {
 				u, at := newActiveWorkTestUI(t)
-				turns := []appServerHistoryTurn{
+				turns := []binding.HistoryTurn{
 					{ID: "missing", Status: "completed"},
 					{ID: "open", Status: "inProgress", StartedAt: 900},
 					{ID: "reversed", Status: "interrupted", StartedAt: 800, CompletedAt: 700},
@@ -114,14 +115,14 @@ func TestAppServerActiveWorkRestoresClosedSpans(t *testing.T) {
 				want := time.Duration(0)
 				if timed {
 					turns = append(turns,
-						appServerHistoryTurn{ID: "completed", Status: "completed", StartedAt: 100, CompletedAt: 120},
-						appServerHistoryTurn{ID: "interrupted", Status: "interrupted", StartedAt: 300, CompletedAt: 315})
+						binding.HistoryTurn{ID: "completed", Status: "completed", StartedAt: 100, CompletedAt: 120},
+						binding.HistoryTurn{ID: "interrupted", Status: "interrupted", StartedAt: 300, CompletedAt: 315})
 					want = 35 * time.Second
 				}
 				if thread == "main" {
 					u.restoreMainHistory(turns, nil, nil)
 				} else {
-					u.restoreActivityThread(appServerThreadInfo{ID: thread, Turns: turns})
+					u.restoreActivityThread(binding.ThreadInfo{ID: thread, Turns: turns}, false)
 				}
 				assertAgentWork(t, u, thread, *at, want, false)
 				*at = at.Add(24 * time.Hour)

@@ -76,6 +76,20 @@ Live notifications, retained items and simulated playback share these values.
 The consuming owner decides historical admission and presentation; projection does
 not settle input, notify the desktop or issue host requests.
 
+## History observations
+
+The history binding decodes thread lineage, turns and item pages while preserving
+host identity, status, failure and timing. Returned thread identities must match
+the requested scope. Payload fields do not acquire presentation state or filesystem
+authority. [Session presentation](../../apps/mekugi/internal/sessionpresentation/SPEC.md#history)
+owns discovery bounds, page admission, placement and restoration completion;
+session control owns request correlation and retirement.
+
+Paginated history uses turn and item lists. Legacy children require full-history
+reads because the item-list API does not support their rollouts. Errors never
+trigger an unbounded fallback. Decoding neither resumes a thread nor restores a
+live operation.
+
 ## Native shell hooks
 
 The backend owns the native PreToolUse schema, command-hook registration and

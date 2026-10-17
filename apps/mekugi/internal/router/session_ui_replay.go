@@ -2,6 +2,9 @@ package router
 
 import (
 	"context"
+
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	json "encoding/json/v2"
 	"errors"
 	"flag"
@@ -16,20 +19,18 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
-	"github.com/yusing/mekugi/contracts/scope"
-
 	activitybinding "github.com/yusing/mekugi/modules/activity/codexbinding"
-	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-
-	"github.com/yusing/mekugi/contracts/observation"
-	"github.com/yusing/mekugi/modules/sessionreplay/playback"
 
 	"github.com/charmbracelet/x/ansi"
-	"golang.org/x/term"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/contracts/observation"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	"github.com/yusing/mekugi/modules/sessionreplay/playback"
+	"golang.org/x/term"
+
 	terminalui "github.com/yusing/mekugi/libraries/terminalui"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
@@ -85,14 +86,12 @@ func (p *uiReplayPlayback) reset() {
 func (p *uiReplayPlayback) close() {
 	p.ui.commits.Close()
 	p.ui.shell.diffScreen.Close()
-	p.ui.session.state = scope.Store{}
-	p.ui.session.threadStates = nil
-	p.ui.session.turnStates = nil
+	p.ui.session.Retire()
 }
 
 func (p *uiReplayPlayback) apply(e playback.Event) error {
 	if id := e.ThreadID; id != "" && id != p.Source.Thread && p.ui.session.paths[id] == "" {
-		p.ui.session.registerThread(appServerThreadInfo{ID: id, AgentNickname: strings.TrimPrefix(p.Source.Threads[id], "/root/")})
+		p.ui.session.registerThread(binding.ThreadInfo{ID: id, AgentNickname: strings.TrimPrefix(p.Source.Threads[id], "/root/")})
 	}
 	switch {
 	case e.Hook != nil:

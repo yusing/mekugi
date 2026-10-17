@@ -6,14 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/contracts/activitydetail"
-
-	"github.com/yusing/mekugi/libraries/diffrender"
-
-	"github.com/yusing/mekugi/libraries/pathdisplay"
-
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/contracts/activitydetail"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -52,9 +50,9 @@ func openRegressionEditDialog(t *testing.T, tc editDialogRegressionCase, capture
 		want = chunk.Review.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(c.Workspace(), chunk.Review.BeforePath), pathdisplay.ForWorkspace(c.Workspace(), chunk.Review.AfterPath))
 		u.view.Entries = []liveActivityRecord{{Source: activityPaneEntry{Seq: 1, native: &liveActivityNativeItem{thread: "main", item: "patch"}}}}
 	} else {
-		change := appServerFileChange{Path: path, Diff: tc.host}
+		change := binding.FileChange{Path: path, Diff: tc.host}
 		change.Kind.Type = tc.kind
-		item := appServerItem{Type: "fileChange", Status: "completed", Changes: []appServerFileChange{change}}
+		item := binding.ThreadItem{Type: "fileChange", Status: "completed", Changes: []binding.FileChange{change}}
 		u.view.Entries = []liveActivityRecord{{Source: activityPaneEntry{Seq: 1, native: &liveActivityNativeItem{thread: "main", item: "patch", editPages: appServerEditPages(item, u.session.cwd, "item/completed")}}}}
 	}
 	if !u.shell.openActivityEdit(u.view, 1, path) {

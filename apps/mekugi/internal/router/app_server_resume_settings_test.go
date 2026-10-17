@@ -1,6 +1,8 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	json "encoding/json/v2"
 	"fmt"
 	"os"
@@ -10,14 +12,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/libraries/diffrender"
 )
 
-func resumeSettingsRollout(t *testing.T, records ...string) appServerThreadInfo {
+func resumeSettingsRollout(t *testing.T, records ...string) binding.ThreadInfo {
 	t.Helper()
-	info := appServerThreadInfo{ID: "saved", Path: filepath.Join(t.TempDir(), "rollout.jsonl")}
+	info := binding.ThreadInfo{ID: "saved", Path: filepath.Join(t.TempDir(), "rollout.jsonl")}
 	content := `{"type":"session_meta","payload":{"id":"saved"}}` + "\n" + strings.Join(records, "\n")
 	if err := os.WriteFile(info.Path, []byte(content), 0600); err != nil {
 		t.Fatal(err)

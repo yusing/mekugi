@@ -1,6 +1,10 @@
 package router
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/yusing/mekugi/backends/codex/binding"
+)
 
 func TestAppServerUnknownExitKeepsOutput(t *testing.T) {
 	for _, restored := range []bool{false, true} {
@@ -11,10 +15,10 @@ func TestAppServerUnknownExitKeepsOutput(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.view.Conversation = true
-			item := appServerItem{ID: "command", Type: "commandExecution", Command: "go test ./...", Status: "failed", AggregatedOutput: new("interrupted output\n")}
+			item := binding.ThreadItem{ID: "command", Type: "commandExecution", Command: "go test ./...", Status: "failed", AggregatedOutput: new("interrupted output\n")}
 			if restored {
 				var entries []activityPaneEntry
-				u.restoreActivityItem(appServerThreadInfo{ID: "main", Cwd: u.session.cwd}, appServerHistoryTurn{ID: "turn"}, item, "/root", u.now(), &entries, nil)
+				u.restoreActivityItem(binding.ThreadInfo{ID: "main", Cwd: u.session.cwd}, binding.HistoryTurn{ID: "turn"}, item, "/root", u.now(), &entries, nil)
 				u.applyActivity(entries, nil)
 			} else {
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})

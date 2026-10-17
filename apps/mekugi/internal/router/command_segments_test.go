@@ -11,11 +11,13 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/gofrs/flock"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
@@ -45,13 +47,13 @@ func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing
 		u := newAppServerSessionTestUI(t, workspace)
 		u.proxy = &mekugiProxy{replayStore: store}
 		key := [3]string{"main", "turn", "command"}
-		first, second := u.session.activity.Outputs(&u.session.state).New(), u.session.activity.Outputs(&u.session.state).New()
+		first, second := u.session.activity.Outputs(u.session.Scope()).New(), u.session.activity.Outputs(u.session.Scope()).New()
 		first.Finish(new("first\n"), new(0))
 		second.Finish(new("second\n"), new(0))
 		view := execTrackView{complete: true, output: true, segments: []commandSegment{
 			{source: "echo first", output: first}, {source: "echo second", output: second},
 		}}
-		item := appServerItem{ID: key[2], Type: "commandExecution", Command: "bash -lc 'echo first; echo second'", ExitCode: new(0), AggregatedOutput: new("first\nsecond\n")}
+		item := binding.ThreadItem{ID: key[2], Type: "commandExecution", Command: "bash -lc 'echo first; echo second'", ExitCode: new(0), AggregatedOutput: new("first\nsecond\n")}
 		entry := activityPaneEntry{native: &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2]}}
 		lock := flock.New(filepath.Join(store.directory, "store.lock"))
 		if err := lock.Lock(); err != nil {
@@ -131,7 +133,7 @@ func TestCommandSegmentsPendingRetentionIsBoundedAndCanceled(t *testing.T) {
 	}
 	defer lock.Unlock()
 	for i := range commandSegmentRetentionLimit + 1 {
-		item := appServerItem{ID: fmt.Sprint(i), Type: "commandExecution", Command: "bash -lc 'true; true'", ExitCode: new(0), AggregatedOutput: new("")}
+		item := binding.ThreadItem{ID: fmt.Sprint(i), Type: "commandExecution", Command: "bash -lc 'true; true'", ExitCode: new(0), AggregatedOutput: new("")}
 		entry := activityPaneEntry{native: &liveActivityNativeItem{thread: "main", turn: "turn", item: item.ID}}
 		u.retainCommandSegments(entry, item, execTrackView{complete: true, segments: []commandSegment{{}, {}}})
 	}
@@ -204,7 +206,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	script := "cat " + quoteShellWord(path) + "; printf 'second\\n' >&2; false && echo never"
-	item := appServerItem{ID: "command", Type: "commandExecution", Command: "/usr/bin/bash -lc " + quoteShellWord(script), Status: "inProgress"}
+	item := binding.ThreadItem{ID: "command", Type: "commandExecution", Command: "/usr/bin/bash -lc " + quoteShellWord(script), Status: "inProgress"}
 	key := [3]string{"main", "turn", item.ID}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": key[0], "turnId": key[1], "item": item})
 	result := runExecTrackShell(t, append(shell.env, "CODEX_THREAD_ID=main"), script)
@@ -231,7 +233,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 		t.Run(target, func(t *testing.T) {
 			restored := newAppServerSessionTestUI(t, workspace)
 			restored.proxy = &mekugiProxy{replayStore: store}
-			turns := []appServerHistoryTurn{{ID: key[1], Status: "completed", Items: []appServerItem{item}}}
+			turns := []binding.HistoryTurn{{ID: key[1], Status: "completed", Items: []binding.ThreadItem{item}}}
 			view := restored.view
 			if strings.HasPrefix(target, "child") {
 				childWorkspace := workspace
@@ -241,7 +243,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 					childWorkspace = ""
 				}
 				restored.session.path(target)
-				restored.restoreActivityThread(appServerThreadInfo{ID: target, Cwd: childWorkspace, Turns: turns})
+				restored.restoreActivityThread(binding.ThreadInfo{ID: target, Cwd: childWorkspace, Turns: turns}, false)
 				view = restored.agents
 			} else {
 				restored.Thread = target
@@ -333,9 +335,9 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 			}
 			u := newAppServerSessionTestUI(t, workspace)
 			u.proxy = &mekugiProxy{replayStore: store}
-			item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc 'echo one; false'", AggregatedOutput: new("one\n"), ExitCode: new(1)}
+			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc 'echo one; false'", AggregatedOutput: new("one\n"), ExitCode: new(1)}
 			entry := activityPaneEntry{Seq: 1, Text: "Run `echo one`\n\nRun `false`", native: &liveActivityNativeItem{thread: "main", turn: "t", item: item.ID, command: item.Command}}
-			first, second := u.session.activity.Outputs(&u.session.state).New(), u.session.activity.Outputs(&u.session.state).New()
+			first, second := u.session.activity.Outputs(u.session.Scope()).New(), u.session.activity.Outputs(u.session.Scope()).New()
 			if mode == "truncated" {
 				first.Write(strings.Repeat("line\n", activitymodel.OutputBytes/5))
 			} else if mode == "long-line" {
@@ -422,14 +424,14 @@ func TestCommandSegmentsRestoreRichChangeRows(t *testing.T) {
 	}
 	u.proxy = &mekugiProxy{replayStore: store}
 	listing := "amber1..amber5 +343 -658\namber6 +158 -81\n"
-	item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc 'echo before; mchanges --list'", ExitCode: new(0), AggregatedOutput: new("before\n" + listing)}
+	item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc 'echo before; mchanges --list'", ExitCode: new(0), AggregatedOutput: new("before\n" + listing)}
 	entry := activityPaneEntry{native: &liveActivityNativeItem{thread: "main", turn: "t", item: item.ID}}
-	first, second := u.session.activity.Outputs(&u.session.state).New(), u.session.activity.Outputs(&u.session.state).New()
+	first, second := u.session.activity.Outputs(u.session.Scope()).New(), u.session.activity.Outputs(u.session.Scope()).New()
 	first.Finish(new("before"), new(0))
 	second.Finish(&listing, new(0))
 	u.retainCommandSegments(entry, item, execTrackView{complete: true, output: true, segments: []commandSegment{{output: first}, {output: second}}})
 	awaitCommandSegments(t, u)
-	u.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
+	u.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 	// History starts collapsed; inspect the expanded retained command.
 	var rows []string
 	for _, restored := range u.view.Entries {

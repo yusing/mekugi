@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/terminalui"
-
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
 func waitTargetTestAgent(t *testing.T, u *appServerUI, id, path string, running bool) {
@@ -27,7 +27,7 @@ func waitTargetTestEvent(t *testing.T, u *appServerUI, method, caller, turn, id 
 	if method == "item/completed" {
 		status = "completed"
 	}
-	appServerTestNotify(t, u, method, map[string]any{"threadId": caller, "turnId": turn, "item": appServerItem{ID: id, Type: "collabAgentToolCall", Tool: "wait", Status: status}})
+	appServerTestNotify(t, u, method, map[string]any{"threadId": caller, "turnId": turn, "item": binding.ThreadItem{ID: id, Type: "collabAgentToolCall", Tool: "wait", Status: status}})
 }
 
 func waitTargetTestStore(t *testing.T, u *appServerUI, store *mekugiReplayStore) {
@@ -92,24 +92,24 @@ func TestAppServerWaitTargetsCallerTurnAndItemIsolation(t *testing.T) {
 	waitTargetTestAgent(t, u, "nested", "/root/alpha/nested", true)
 	waitTargetTestAgent(t, u, "idle", "/root/alpha/idle", false)
 	waitTargetTestAgent(t, u, "sibling", "/root/alphabeta", true)
-	item := appServerItem{Type: "collabAgentToolCall", Tool: "wait"}
-	root := u.waitItem(item, "main", "t", "w", true)
-	child := u.waitItem(item, "a", "t", "w", true)
+	item := binding.ThreadItem{Type: "collabAgentToolCall", Tool: "wait"}
+	root, _ := u.waitItem(item, "main", "t", "w", true)
+	child, _ := u.waitItem(item, "a", "t", "w", true)
 	if !slices.Equal(child.ReceiverThreadIDs, []string{"nested"}) {
 		t.Fatalf("child borrowed self, idle, or sibling targets: %+v", child)
 	}
 	u.session.agent("/root/alpha/nested").Responding = false
 	waitTargetTestAgent(t, u, "later", "/root/alpha/later", true)
 	for _, key := range [][2]string{{"next", "w"}, {"t", "other"}} {
-		got := u.waitItem(item, "a", key[0], key[1], true)
+		got, _ := u.waitItem(item, "a", key[0], key[1], true)
 		if !slices.Equal(got.ReceiverThreadIDs, []string{"later"}) {
 			t.Fatalf("new key reused old targets: %+v", got)
 		}
 	}
-	if got := u.waitItem(item, "a", "t", "w", false); !slices.Equal(got.ReceiverThreadIDs, child.ReceiverThreadIDs) {
+	if got, _ := u.waitItem(item, "a", "t", "w", false); !slices.Equal(got.ReceiverThreadIDs, child.ReceiverThreadIDs) {
 		t.Fatalf("child snapshot overwritten: %+v", got)
 	}
-	if got := u.waitItem(item, "main", "t", "w", false); !slices.Equal(got.ReceiverThreadIDs, root.ReceiverThreadIDs) {
+	if got, _ := u.waitItem(item, "main", "t", "w", false); !slices.Equal(got.ReceiverThreadIDs, root.ReceiverThreadIDs) {
 		t.Fatalf("caller snapshots collided: %+v", got)
 	}
 }
@@ -119,11 +119,11 @@ func TestAppServerWaitTargetsExplicitStatusMapping(t *testing.T) {
 	waitTargetTestStore(t, u, waitTargetTestOpenStore(t))
 	waitTargetTestAgent(t, u, "a", "/root/alpha", false)
 	waitTargetTestAgent(t, u, "other", "/root/other", true)
-	item := appServerItem{Type: "collabAgentToolCall", Tool: "wait", ReceiverThreadIDs: []string{"a", "unregistered"}}
+	item := binding.ThreadItem{Type: "collabAgentToolCall", Tool: "wait", ReceiverThreadIDs: []string{"a", "unregistered"}}
 	u.waitItem(item, "main", "t", "w", true)
-	item.AgentsStates = map[string]appServerAgentState{"a": {Status: "running"}, "unregistered": {Status: "completed"}}
-	got := u.waitItem(item, "main", "t", "w", false)
-	text, _, _ := appServerProgress(got, "item/completed")
+	item.AgentsStates = map[string]binding.AgentState{"a": {Status: "running"}, "unregistered": {Status: "completed"}}
+	got, names := u.waitItem(item, "main", "t", "w", false)
+	text, _, _ := appServerProgress(got, "item/completed", names)
 	if text != "Finished waiting · alpha: Still running, unregistered: completed" {
 		t.Fatalf("explicit targets/statuses changed: %q", text)
 	}
@@ -138,7 +138,7 @@ func TestAppServerWaitTargetsDurableReplay(t *testing.T) {
 	for _, caller := range []string{"main", "a"} {
 		waitTargetTestEvent(t, first, "item/started", caller, "t", "w")
 	}
-	history := []appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{{ID: "w", Type: "collabAgentToolCall", Tool: "wait", Status: "completed"}}}}
+	history := []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{{ID: "w", Type: "collabAgentToolCall", Tool: "wait", Status: "completed"}}}}
 	restored := newAppServerSessionTestUI(t, workspace)
 	waitTargetTestStore(t, restored, store)
 	restored.restoreHistory(history)
@@ -155,8 +155,8 @@ func TestAppServerWaitTargetsDurableReplay(t *testing.T) {
 	if !strings.Contains(rendered, terminalui.DimAgentColor("/root/alpha")+"alpha") {
 		t.Fatalf("restored wait lost color: %q", rendered)
 	}
-	restored.session.registerThread(appServerThreadInfo{ID: "a", AgentNickname: "alpha"})
-	restored.restoreActivityThread(appServerThreadInfo{ID: "a", Turns: history})
+	restored.session.registerThread(binding.ThreadInfo{ID: "a", AgentNickname: "alpha"})
+	restored.restoreActivityThread(binding.ThreadInfo{ID: "a", Turns: history}, false)
 	if got := restored.agents.Entries[0].Source.Text; got != "Finished waiting · alpha/nested" {
 		t.Fatalf("child replay lost targets: %q", got)
 	}
@@ -230,7 +230,7 @@ func TestAppServerWaitTargetsManagedRetention(t *testing.T) {
 		if err := u.openWaitStore(store); err != nil {
 			t.Fatal(err)
 		}
-		item := appServerItem{Type: "collabAgentToolCall", Tool: "wait", ReceiverThreadIDs: []string{"target"}}
+		item := binding.ThreadItem{Type: "collabAgentToolCall", Tool: "wait", ReceiverThreadIDs: []string{"target"}}
 		u.waitItem(item, thread, "turn", "wait", true)
 		path := u.session.waitTargetsPath([3]string{thread, "turn", "wait"})
 		if _, err := os.Stat(path); err != nil {

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/commandsegments/segments"
 
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
@@ -71,7 +72,7 @@ func TestActivitySingleCommandActualTime(t *testing.T) {
 			}
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.proxy = &mekugiProxy{replayStore: store}
-			item := appServerItem{ID: key[2], Type: "commandExecution", Command: "bash -lc " + quoteShellWord(script), ExitCode: new(got.code), AggregatedOutput: new(got.stdout + got.stderr)}
+			item := binding.ThreadItem{ID: key[2], Type: "commandExecution", Command: "bash -lc " + quoteShellWord(script), ExitCode: new(got.code), AggregatedOutput: new(got.stdout + got.stderr)}
 			u.retainCommandSegments(entry, item, view)
 			u.finishCommandSegments()
 			entry.native.segments = nil
@@ -96,7 +97,7 @@ func TestActivityTimingRealShellBoundariesAndRestart(t *testing.T) {
 	u.execTrack, u.proxy = shell.hub.Observer, &mekugiProxy{replayStore: store}
 	shell.hub.ui = u
 	script := "sleep .04; sleep .12; false && echo never"
-	item := appServerItem{ID: "timed", Type: "commandExecution", Command: "/usr/bin/bash -lc " + quoteShellWord(script), Status: "inProgress"}
+	item := binding.ThreadItem{ID: "timed", Type: "commandExecution", Command: "/usr/bin/bash -lc " + quoteShellWord(script), Status: "inProgress"}
 	key := [3]string{"main", "timed-turn", item.ID}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": key[0], "turnId": key[1], "item": item})
 	result := runExecTrackShell(t, append(shell.env, "CODEX_THREAD_ID=main"), script)
@@ -130,7 +131,7 @@ func TestActivityTimingRealShellBoundariesAndRestart(t *testing.T) {
 	}
 	restored := newAppServerSessionTestUI(t, workspace)
 	restored.proxy = &mekugiProxy{replayStore: store}
-	restored.restoreHistory([]appServerHistoryTurn{{ID: key[1], Status: "completed", Items: []appServerItem{item}}})
+	restored.restoreHistory([]binding.HistoryTurn{{ID: key[1], Status: "completed", Items: []binding.ThreadItem{item}}})
 	for _, entry := range restored.view.Entries {
 		if entry.Source.CallID != item.ID || entry.Source.native == nil {
 			continue

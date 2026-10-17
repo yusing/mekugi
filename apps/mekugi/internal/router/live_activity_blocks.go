@@ -6,16 +6,16 @@ import (
 	"strings"
 	"time"
 
-	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
-
-	"github.com/yusing/mekugi/libraries/textsanitize"
+	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/libraries/terminalui"
+	"github.com/yusing/mekugi/libraries/textsanitize"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
-func appServerDuration(item appServerItem) time.Duration {
+func appServerDuration(item binding.ThreadItem) time.Duration {
 	if item.DurationMS == nil {
 		return 0
 	}

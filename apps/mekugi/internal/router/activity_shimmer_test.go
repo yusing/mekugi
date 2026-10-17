@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
@@ -63,7 +64,7 @@ func TestUISnapshotNativeStatusBreathing(t *testing.T) {
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
 	waitTargetTestAgent(t, u, "child", "/root/reviewer", true)
 	waitTargetTestEvent(t, u, "item/started", "main", "t", "w")
-	item := appServerItem{ID: "r", Type: "reasoning", Summary: []string{"Checking results"}}
+	item := binding.ThreadItem{ID: "r", Type: "reasoning", Summary: []string{"Checking results"}}
 	reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "work", "item": item})
 	var rows []string
 	for _, state := range []string{"live", "completed"} {

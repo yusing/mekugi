@@ -4,12 +4,12 @@ import (
 	"slices"
 	"strings"
 
-	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
-
-	"github.com/yusing/mekugi/libraries/textsanitize"
+	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/libraries/textsanitize"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
 
 func (u *appServerUI) shellMode() bool {
@@ -94,7 +94,7 @@ func (u *appServerUI) shellResponse(failure *appserver.Error) {
 	u.rememberInput(draft)
 }
 
-func (u *appServerUI) observeShellItem(thread string, item appServerItem) {
+func (u *appServerUI) observeShellItem(thread string, item binding.ThreadItem) {
 	// Called only for starts: an older auxiliary command can complete while a
 	// newer shell request is still awaiting its execution identity.
 	if thread == u.Thread && item.Type == "commandExecution" && item.Source == "userShell" {

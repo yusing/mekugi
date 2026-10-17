@@ -194,7 +194,7 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 		return false, nil
 	case "item/started", "item/completed":
 		var p struct {
-			Item appServerItem `json:"item"`
+			Item binding.ThreadItem `json:"item"`
 		}
 		if json.Unmarshal(m.Params, &p) == nil && p.Item.Type == "fileChange" {
 			if u.approvals.patches == nil {

@@ -12,12 +12,14 @@ import (
 	"testing/synctest"
 	"time"
 
-	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+	"github.com/yusing/mekugi/backends/codex/binding"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 
 	"github.com/yusing/mekugi/contracts/inference"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 )
@@ -309,9 +311,9 @@ func TestUISnapshotOutputThroughputRestoredRoster(t *testing.T) {
 		u.proxy = &mekugiProxy{usage: storedUsageFixture(t, store)}
 
 		for _, thread := range []string{"child", "interrupted", "legacy"} {
-			info := appServerThreadInfo{ID: thread, AgentNickname: thread, Turns: []appServerHistoryTurn{{ID: "old", Status: "completed"}}}
+			info := binding.ThreadInfo{ID: thread, AgentNickname: thread, Turns: []binding.HistoryTurn{{ID: "old", Status: "completed"}}}
 			u.session.registerThread(info)
-			u.restoreActivityThread(info)
+			u.restoreActivityThread(info, false)
 		}
 		u.agents.apply(activityPaneEvent{Kind: "agents", Agents: u.session.agents})
 		u.agents.Painter.Theme = diffrender.DarkTheme

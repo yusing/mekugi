@@ -6,19 +6,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
-	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-
 	"github.com/yusing/mekugi/libraries/commandanalysis"
-
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
-
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	"mvdan.cc/sh/v3/syntax"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/commandsegments/segments"
+
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
 
@@ -297,7 +297,7 @@ func (p *execTrackPresentation) view(observer *segments.Observer, key [3]string,
 			shown.tail, shown.omit = segment.output.Lines()
 			if final && !shown.skipped && shown.exit == 0 {
 				output := strings.Join(shown.tail, "\n")
-				shown.changes = mchangesOutputRows(appServerItem{Command: observed.Source, AggregatedOutput: &output})
+				shown.changes = mchangesOutputRows(binding.ThreadItem{Command: observed.Source, AggregatedOutput: &output})
 				if len(shown.changes) > 0 && shown.omit > 0 {
 					shown.changes = append([]activitypresentation.ChangeRow{{Note: activityui.Elision{Hidden: shown.omit}.Text()}}, shown.changes...)
 				}
@@ -335,7 +335,7 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 	if run.completion != nil {
 		view, _ := run.segments.view(u.execTrack, key, false, func(source string) string {
 			return execSegmentTextInDirectory(source, run.entry.native.commandCwd)
-		}, s.activity.Outputs(&s.state))
+		}, s.activity.Outputs(s.Scope()))
 		if !view.ended && time.Since(run.completedAt) < execTrackCompletionWait {
 			return nil, true
 		}
@@ -349,7 +349,7 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 	}
 	view, changed := run.segments.view(u.execTrack, key, false, func(source string) string {
 		return execSegmentTextInDirectory(source, run.entry.native.commandCwd)
-	}, s.activity.Outputs(&s.state))
+	}, s.activity.Outputs(s.Scope()))
 	if !u.execTrack.Tracking(key) {
 		return nil, false
 	}
@@ -380,12 +380,12 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 // trackedCommandDone shows each segment's outcome when the report ended with
 // the host's own exit status. Otherwise the report is incomplete, and the
 // command falls back to the host's combined result.
-func (u *appServerUI) trackedCommandDone(key [3]string, entry activityPaneEntry, item appServerItem) []activityPaneEntry {
+func (u *appServerUI) trackedCommandDone(key [3]string, entry activityPaneEntry, item binding.ThreadItem) []activityPaneEntry {
 	now := time.Now()
 	run := u.session.commands[key]
 	view, _ := run.segments.view(u.execTrack, key, true, func(source string) string {
 		return execSegmentTextInDirectory(source, appServerCommandDirectory(item, u.session.cwd))
-	}, u.session.activity.Outputs(&u.session.state))
+	}, u.session.activity.Outputs(u.session.Scope()))
 	if !view.complete || item.ExitCode == nil || view.code != *item.ExitCode || len(view.segments) == 0 {
 		return u.session.commandDone(entry, item, now)
 	}

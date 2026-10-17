@@ -59,7 +59,7 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 	resumed, _ := newAppServerTestUI()
 	resumed.agents = newActivityAdapter()
 	resumed.session.start(resumed.Thread, cwd)
-	resumed.restoreHistory([]appServerHistoryTurn{{ID: "saved", Status: "completed", Items: []appServerItem{{Type: "userMessage", ID: "saved-input", Content: content}}}})
+	resumed.restoreHistory([]binding.HistoryTurn{{ID: "saved", Status: "completed", Items: []binding.ThreadItem{{Type: "userMessage", ID: "saved-input", Content: content}}}})
 	if len(resumed.InputHistory) != 1 || resumed.InputHistory[0].Text != draft.Text {
 		t.Fatal("resume leaked attachment framing into recalled prompt")
 	}

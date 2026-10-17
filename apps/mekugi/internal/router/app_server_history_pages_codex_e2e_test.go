@@ -5,6 +5,9 @@ package router
 import (
 	"context"
 	"encoding/json/jsontext"
+
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	json "encoding/json/v2"
 	"fmt"
 	"os"
@@ -122,7 +125,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	full := awaitHistoryRPC(t, client, id)
 	fullDuration := time.Since(started)
 	var read struct {
-		Thread appServerThreadInfo `json:"thread"`
+		Thread binding.ThreadInfo `json:"thread"`
 	}
 	if err := json.Unmarshal(full.Result, &read); err != nil {
 		t.Fatal(err)
@@ -136,9 +139,9 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	baseline.ensureShell()
 	t.Cleanup(func() { baseline.shell.diffScreen.Close() })
 	baseline.session.start("main", workspace)
-	baseline.session.registerThread(appServerThreadInfo{ID: thread, AgentNickname: "worker", AgentRole: "worker"})
+	baseline.session.registerThread(binding.ThreadInfo{ID: thread, AgentNickname: "worker", AgentRole: "worker"})
 	projectionStarted := time.Now()
-	baseline.restoreActivityThread(read.Thread)
+	baseline.restoreActivityThread(read.Thread, false)
 	fullDuration += time.Since(projectionStarted)
 	read.Thread.Turns = nil
 	u, _ := newAppServerTestUI()
@@ -150,8 +153,8 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.session.start("main", workspace)
 	u.resumeThread = "main"
-	u.session.registerThread(appServerThreadInfo{ID: thread, AgentNickname: "worker", AgentRole: "worker"})
-	u.restoring = &appServerActivityRestore{root: appServerThreadInfo{ID: "main", Cwd: workspace}, order: []string{thread}, listed: true, pane: make(map[string][]*restoredPlacement), itemAt: make(map[string]map[string]time.Time)}
+	u.session.registerThread(binding.ThreadInfo{ID: thread, AgentNickname: "worker", AgentRole: "worker"})
+	u.restoring = &appServerActivityRestore{root: binding.ThreadInfo{ID: "main", Cwd: workspace}, state: restoredDiscoveryTestState("main", thread), pane: make(map[string][]*restoredPlacement), itemAt: make(map[string]map[string]time.Time)}
 	started = time.Now()
 	if err := u.startChildHistory(read.Thread); err != nil {
 		t.Fatal(err)
@@ -181,7 +184,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	}
 	fork := awaitHistoryRPC(t, client, id)
 	var forked struct {
-		Thread appServerThreadInfo `json:"thread"`
+		Thread binding.ThreadInfo `json:"thread"`
 	}
 	if err := json.Unmarshal(fork.Result, &forked); err != nil {
 		t.Fatal(err)
@@ -193,7 +196,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	inherited := awaitHistoryRPC(t, client, id)
 	var items struct {
 		Data []struct {
-			Item appServerItem `json:"item"`
+			Item binding.ThreadItem `json:"item"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(inherited.Result, &items); err != nil {
@@ -211,8 +214,8 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	fresh, _ := newAppServerTestUI()
 	fresh.client, fresh.ctx, fresh.agents = client, t.Context(), newActivityAdapter()
 	fresh.session.start("main", workspace)
-	fresh.session.registerThread(appServerThreadInfo{ID: forked.Thread.ID, AgentNickname: "worker", AgentRole: "worker"})
-	fresh.restoring = &appServerActivityRestore{root: appServerThreadInfo{ID: "main", Cwd: workspace}, order: []string{forked.Thread.ID}, listed: true, pane: make(map[string][]*restoredPlacement), itemAt: make(map[string]map[string]time.Time)}
+	fresh.session.registerThread(binding.ThreadInfo{ID: forked.Thread.ID, AgentNickname: "worker", AgentRole: "worker"})
+	fresh.restoring = &appServerActivityRestore{root: binding.ThreadInfo{ID: "main", Cwd: workspace}, state: restoredDiscoveryTestState("main", forked.Thread.ID), pane: make(map[string][]*restoredPlacement), itemAt: make(map[string]map[string]time.Time)}
 	if err := fresh.startChildHistory(forked.Thread); err != nil {
 		t.Fatal(err)
 	}

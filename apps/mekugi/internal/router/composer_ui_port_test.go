@@ -14,19 +14,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
-	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
-	"github.com/yusing/mekugi/modules/conversation/composer"
-
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	terminalui "github.com/yusing/mekugi/libraries/terminalui"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -54,9 +56,9 @@ func TestSubmittedAttachmentHostSchema(t *testing.T) {
 	}
 	for _, restore := range []bool{false, true} {
 		u := newAppServerSessionTestUI(t, t.TempDir())
-		item := appServerItem{ID: "input", Type: "userMessage", Content: raw}
+		item := binding.ThreadItem{ID: "input", Type: "userMessage", Content: raw}
 		if restore {
-			u.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
+			u.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 		} else {
 			applyTranscriptFixture(u.view, true, u.session.cwd, "main", "main", "t", "input", "item/completed", "", item)
 		}

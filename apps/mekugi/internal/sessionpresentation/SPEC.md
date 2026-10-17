@@ -1,7 +1,7 @@
 # Session presentation
 
-The application owns displayed-thread identity, Main's input destination,
-read-only admission, child-history pagination, Main's status and displayed-thread
+The application owns attachment lifetime, displayed-thread identity, Main's input
+destination, read-only admission, history restoration, Main's status and displayed-thread
 caption values. [Activity](../../../../modules/activity/SPEC.md)
 owns transcript content, [session control](../sessioncontrol/SPEC.md) issues backend
 requests, and [terminal session](../terminalsession/SPEC.md) owns focus, navigation,
@@ -21,6 +21,14 @@ displayed. Display and pagination intents name their view version and target
 identity, so stale actions cannot affect a replacement session. View values are
 detached data without terminal or backend types. A highlighted roster row is not
 the displayed thread. Metadata can rename a caller without changing its identity.
+
+## Attachment lifetime
+
+Feature state follows the shared [scoped-state contract](../../../../docs/contracts/composition.md#construction-and-lifetime).
+Successful replacement retires prior scopes and observations together; rejected
+replacement preserves them. Late observations cannot repopulate a retired attachment.
+Backward replay reconstructs into a fresh attachment, and shutdown releases it.
+These boundaries restore no processes, handles, approval grants or dispatched operations.
 
 ## History
 
@@ -42,15 +50,13 @@ history never resumes a child or revives commands, previews or delivery receipts
 
 ### Codex history binding
 
-Codex supplies lineage, including inherited fork items and archived descendants.
+The [Codex binding](../../../../backends/codex/SPEC.md#history-observations) supplies
+lineage and decoded history, including inherited fork items and archived descendants.
 Fresh resume rediscovers history instead of reviving continuation handles. Child
 discovery is bounded to 128 descendants and eight list pages, with a partial-history
 notice at the limit. Paginated children read at most eight pages of 100 turns,
-then at most 100 items from one turn per page. Turn identity, status, failure and
-timing come from host metadata rather than item text. Legacy children require full
-history reads because Codex's item-list API does not support their rollouts.
-Errors never trigger an unbounded fallback. Limits bound item counts rather than
-bytes, so one large item can still require a large frame.
+then at most 100 items from one turn per page. These limits bound item counts rather
+than bytes, so one large item can still require a large frame.
 
 Active skills reconstruct from event history independently of lazy transcript
 pages, including inherited history since the latest completed compaction.
@@ -80,11 +86,12 @@ starts a new thread and Ctrl-C exits; in-session dismissal keeps the current thr
 `/resume THREAD_ID` and picker selection obey session control's idle gate. The
 current thread is marked and selecting it only reports that it is already open.
 The old session stays live until host acceptance, buffering events and locally
-stacking input. Success unsubscribes it and retires its and its descendants' late
-events, then restores the selected workspace, Main, roster, children, preferences
-and retained Diff. Returning to a left thread readmits it. Failure keeps the old
-session, replays its buffered events and restores waiting input. Drafts are not
-stored per thread.
+stacking input. Success unsubscribes it and replaces the attachment, then restores
+the selected workspace, Main, roster, children, preferences and retained Diff.
+Returning to a left thread readmits it. Failure replays buffered events into the
+preserved attachment and restores waiting input. Drafts are not stored per thread.
+
+### Restoration
 
 Main hydrates host messages and command/edit items after child histories, retaining
 their original placement and reconciling buffered items by identity. Failed turns
@@ -97,8 +104,10 @@ Roster restoration never treats historical unfinished turns as live work. Only
 completed collaboration items claim delivered assignments/messages. The
 host-selected rollout supplements missing cell failures and received task/message
 bodies, after identity validation,
-within its last 64 MiB. Evidence retains its item/time placement and deduplicates
-against later live requests under the [history contract](#history).
+within its last 64 MiB. Evidence joins its recorded item anchor, or its recorded
+time when no anchor is available, without reordering existing entries. Unloaded
+anchors defer insertion until their page arrives or history is exhausted. Later
+live requests deduplicate under the [history contract](#history).
 
 Restoration reports progress and preserves typed input as an unsent draft;
 `/quit` or Ctrl-C on an empty draft can exit. Missing
@@ -106,9 +115,10 @@ child history remains incomplete without blocking the parent. Ctrl-B o loads one
 older page for the selected child, or the first eligible child while Main is shown.
 Escape cancels that observational read without interrupting the child.
 
-Saved Diff restores only durable changes for the root and discovered descendants
-in their workspaces before new input. Later observations join only admitted lineage,
-not children of a previous session. Retention gaps cannot become successful recapture.
+Restoration releases new input only after retained review has consumed the admitted
+root/descendant lineage in its own workspaces. Missing evidence follows
+[saved-review loading](../terminalsession/SPEC.md#boundary); it cannot become successful
+recapture. Later observations join only the admitted lineage.
 Applied [settings](../../../../modules/sessionpreferences/SPEC.md) and
 [terminal preferences](../terminalsession/SPEC.md#preferences) restore independently;
 missing settings show defaults with a notice, and save failures do not undo applied

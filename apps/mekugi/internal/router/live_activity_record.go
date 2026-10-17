@@ -35,13 +35,6 @@ func (v *activityAdapter) blocks(index int) []activityui.Block {
 	return v.Disclosure.Blocks(v.Entries[index].Values)
 }
 
-// reorderEntries moves whole records; sequence IDs and parsed annotations stay
-// attached to the source they describe.
-func (v *activityAdapter) reorderEntries(indices []int) {
-	v.Model.Reorder(indices)
-	v.Runs = nil
-}
-
 // Parsed blocks are ephemeral. The model attaches canonical membership to their values.
 func identifyActivityBlocks(blocks []activityui.Block, source uint64) {
 	values := activityui.Values(blocks)
@@ -54,7 +47,7 @@ func identifyActivityBlocks(blocks []activityui.Block, source uint64) {
 // attachActivity transfers the initial adapter feed into the composed attachment.
 // Later frames retain the same model pointers; changing attachments drops both feeds.
 func (u *appServerUI) attachActivity() {
-	state := u.session.activity.Model[activitypresentation.Session[activityPaneEntry, activityPaneAgent]](&u.session.state)
+	state := u.session.activity.Model[activitypresentation.Session[activityPaneEntry, activityPaneAgent]](u.session.Scope())
 	if state == nil {
 		return
 	}

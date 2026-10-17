@@ -8,12 +8,13 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
@@ -241,7 +242,7 @@ func TestTerminalSourceRenderedTables(t *testing.T) {
 					u.agents.Agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
 					u.shell.DiffOpen = false
 				}
-				applyTranscriptFixture(view, true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: source})
+				applyTranscriptFixture(view, true, "", "main", "main", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: source})
 				var wire bytes.Buffer
 				if view == u.agents {
 					u.agents.setDisplayFilter(true, "Main")
@@ -284,7 +285,7 @@ func TestTerminalSourceActivityCodeTabs(t *testing.T) {
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.agents.Agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
 	u.shell.DiffOpen = false
-	applyTranscriptFixture(u.agents, true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "```\n\tx := 1  \n```"})
+	applyTranscriptFixture(u.agents, true, "", "main", "main", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "```\n\tx := 1  \n```"})
 	var wire bytes.Buffer
 	u.agents.setDisplayFilter(true, "Main")
 	if err := u.paint(&wire, 120, 40); err != nil {

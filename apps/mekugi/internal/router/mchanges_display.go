@@ -7,12 +7,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 
-	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
-
 	"github.com/yusing/mekugi/libraries/textsanitize"
-
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -34,7 +33,7 @@ const (
 // mchangesOutputRows reads a successful `mchanges --list` or `--summary` as
 // change rows. Other commands, and output without a recognized row, keep
 // their plain tail; unrecognized lines stay as muted notes.
-func mchangesOutputRows(item appServerItem) []activitypresentation.ChangeRow {
+func mchangesOutputRows(item binding.ThreadItem) []activitypresentation.ChangeRow {
 	if item.AggregatedOutput == nil {
 		return nil
 	}

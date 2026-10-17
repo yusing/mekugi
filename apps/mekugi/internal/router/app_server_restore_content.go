@@ -3,8 +3,9 @@ package router
 import (
 	"cmp"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/observation"
-
 	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 
 	json "encoding/json/v2"
@@ -17,41 +18,33 @@ import (
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
-const appServerRestoreThreadLimit = 128
-
 type restoredHistoryNotice struct {
 	message    string
 	incomplete bool // Permanent discovery/evidence gap, not a retryable item read.
 }
 
 type appServerActivityRestore struct {
-	root     appServerThreadInfo
-	threads  map[string]appServerThreadInfo
-	order    []string
-	archived bool
-	cursors  map[string]bool
-	next     int
-	pages    int
-	listed   bool
+	root    binding.ThreadInfo
+	threads map[string]binding.ThreadInfo
+	state   *sessionpresentation.Restoration
 	// Rollout evidence the host's history omits: item completion times by
 	// thread ID, Activity placements by agent path, and Main placements,
 	// which wait for every child so Main can follow them in time order.
-	itemAt   map[string]map[string]time.Time
-	pane     map[string][]*restoredPlacement
-	main     []*restoredPlacement
-	notices  []restoredHistoryNotice
-	rendered bool
-	paging   bool // Bind cumulative answers only after a page has its chronological position.
+	itemAt  map[string]map[string]time.Time
+	pane    map[string][]*restoredPlacement
+	main    []*restoredPlacement
+	notices []restoredHistoryNotice
+	paging  bool // Bind cumulative answers only after a page has its chronological position.
 }
 
-func (u *appServerUI) restorePaneContent(root appServerThreadInfo) error {
-	u.restoring = &appServerActivityRestore{root: root, threads: make(map[string]appServerThreadInfo), cursors: make(map[string]bool)}
+func (u *appServerUI) restorePaneContent(root binding.ThreadInfo) error {
+	u.restoring = &appServerActivityRestore{root: root, threads: make(map[string]binding.ThreadInfo), state: sessionpresentation.NewRestoration(root.ID)}
 	u.restoreDiffThread(root, true)
 	u.sessionPresentation().Status.SetText("Restoring roster and Activity…")
-	return u.restoreList("")
+	return u.restoreList()
 }
 
-func (u *appServerUI) restoreDiffThread(info appServerThreadInfo, root bool) {
+func (u *appServerUI) restoreDiffThread(info binding.ThreadInfo, root bool) {
 	if u.shell == nil || u.shell.review == nil {
 		return
 	}
@@ -61,18 +54,15 @@ func (u *appServerUI) restoreDiffThread(info appServerThreadInfo, root bool) {
 	}
 }
 
-func (u *appServerUI) restoreList(cursor string) error {
-	if u.restoring.pages >= 8 {
-		u.restoreContentNotice("Roster pagination exceeded the restoration limit.")
-		return u.readRestoredChildren()
-	}
+func (u *appServerUI) restoreList() error {
+	view := u.restoring.state.View()
 	params := map[string]any{
 		"ancestorThreadId": u.Thread, "modelProviders": []string{},
 		"sourceKinds": []string{"subAgentThreadSpawn"}, "limit": 100,
-		"archived": u.restoring.archived,
+		"archived": view.Archived,
 	}
-	if cursor != "" {
-		params["cursor"] = cursor
+	if view.Cursor != "" {
+		params["cursor"] = view.Cursor
 	}
 	return u.request("thread/list", params)
 }
@@ -85,7 +75,7 @@ func (u *appServerUI) restoreHistoryNotice(message string, incomplete bool) {
 	if incomplete {
 		u.agents.StatusLabel = "History incomplete"
 	}
-	if r := u.restoring; r != nil && !r.rendered {
+	if r := u.restoring; r != nil && !r.state.View().Rendered {
 		r.notices = append(r.notices, restoredHistoryNotice{message, incomplete}) // Shown after Main's history.
 		return
 	}
@@ -104,65 +94,50 @@ func (u *appServerUI) restoreActivityResponse(method string, m appserver.Message
 		if method == "thread/list" {
 			return u.readRestoredChildren()
 		}
-		r.next++
+		r.state.ReadComplete()
 		return u.readNextRestoredChild()
 	}
 	if method == "thread/list" {
-		r.pages++
-		var result struct {
-			Data       []appServerThreadInfo `json:"data"`
-			NextCursor string                `json:"nextCursor"`
-		}
+		var result binding.ThreadPage
 		if err := json.Unmarshal(m.Result, &result); err != nil {
 			u.restoreContentNotice("Invalid roster history: " + err.Error())
 			return u.readRestoredChildren()
 		}
-		for _, info := range result.Data {
-			if info.ID == "" || info.ID == u.Thread || r.threads[info.ID].ID != "" {
-				continue
-			}
-			if len(r.order) == appServerRestoreThreadLimit {
-				u.restoreContentNotice("Activity restoration is limited to 128 child threads; additional history was not loaded.")
-				return u.readRestoredChildren()
-			}
+		ids := make([]string, len(result.Data))
+		for i, info := range result.Data {
+			ids[i] = info.ID
+		}
+		accepted, notice := r.state.Discover(ids, result.NextCursor)
+		for _, index := range accepted {
+			info := result.Data[index]
 			r.threads[info.ID] = info
-			r.order = append(r.order, info.ID)
 		}
-		if result.NextCursor != "" {
-			if r.cursors[result.NextCursor] {
-				u.restoreContentNotice("Roster history returned a repeated pagination cursor.")
-				return u.readRestoredChildren()
-			}
-			r.cursors[result.NextCursor] = true
-			return u.restoreList(result.NextCursor)
+		if notice != "" {
+			u.restoreContentNotice(notice)
 		}
-		if !r.archived {
-			r.archived, r.cursors = true, make(map[string]bool)
-			return u.restoreList("")
+		if r.state.View().Listed {
+			return u.readRestoredChildren()
 		}
-		return u.readRestoredChildren()
+		return u.restoreList()
 	}
-	var result struct {
-		Thread appServerThreadInfo `json:"thread"`
-	}
-	if err := json.Unmarshal(m.Result, &result); err != nil {
+	view := r.state.View()
+	info, err := binding.DecodeHistoryThread(m.Result, view.Threads[view.Next])
+	if err != nil {
 		u.restoreContentNotice("Invalid Activity history: " + err.Error())
-	} else if result.Thread.ID != r.order[r.next] {
-		u.restoreContentNotice("Activity history returned a different thread identity.")
-	} else if result.Thread.HistoryMode == "paginated" {
-		return u.startChildHistory(result.Thread)
+	} else if info.HistoryMode == "paginated" {
+		return u.startChildHistory(info)
 	} else {
-		u.restoreActivityThread(result.Thread)
+		u.restoreActivityThread(info, false)
 	}
-	r.next++
+	r.state.ReadComplete()
 	return u.readNextRestoredChild()
 }
 
 func (u *appServerUI) readRestoredChildren() error {
 	r := u.restoring
-	r.listed = true
+	r.state.EndDiscovery()
 	// Register names before rendering cross-agent assignments and messages.
-	for _, id := range r.order {
+	for _, id := range r.state.View().Threads {
 		info := r.threads[id]
 		u.session.registerThread(info)
 		u.restoreDiffThread(info, false)
@@ -200,8 +175,8 @@ func (u *appServerUI) readRestoredRollouts() {
 	if u.proxy != nil {
 		activity = u.proxy.activity
 	}
-	infos := []appServerThreadInfo{r.root}
-	for _, id := range r.order {
+	infos := []binding.ThreadInfo{r.root}
+	for _, id := range r.state.View().Threads {
 		infos = append(infos, r.threads[id])
 	}
 	for _, info := range infos {
@@ -232,11 +207,12 @@ func (u *appServerUI) readRestoredRollouts() {
 
 func (u *appServerUI) readNextRestoredChild() error {
 	r := u.restoring
-	if r.next < len(r.order) {
-		u.sessionPresentation().Status.SetText(fmt.Sprintf("Restoring Activity %d/%d…", r.next+1, len(r.order)))
-		return u.request("thread/read", map[string]any{"threadId": r.order[r.next], "includeTurns": r.threads[r.order[r.next]].HistoryMode != "paginated"})
+	view := r.state.View()
+	if view.Next < len(view.Threads) {
+		u.sessionPresentation().Status.SetText(fmt.Sprintf("Restoring Activity %d/%d…", view.Next+1, len(view.Threads)))
+		return u.request("thread/read", map[string]any{"threadId": view.Threads[view.Next], "includeTurns": r.threads[view.Threads[view.Next]].HistoryMode != "paginated"})
 	}
-	if !r.rendered {
+	if !view.Rendered {
 		// Evidence for a child whose history could not be read still reaches Main.
 		for _, placements := range r.pane {
 			for _, p := range placements {
@@ -247,7 +223,8 @@ func (u *appServerUI) readNextRestoredChild() error {
 		}
 		r.pane = nil
 		u.restoreMainHistory(r.root.Turns, r.main, r.itemAt[r.root.ID])
-		r.root.Turns, r.main, r.rendered = nil, nil, true
+		r.root.Turns, r.main = nil, nil
+		r.state.ContentRendered()
 		for _, notice := range r.notices {
 			u.restoreHistoryNotice(notice.message, notice.incomplete)
 		}
@@ -261,7 +238,7 @@ func (u *appServerUI) readNextRestoredChild() error {
 // Codex's history replies have arrived.
 func (u *appServerUI) finishRestoredContent() error {
 	r := u.restoring
-	if r == nil || !r.listed || r.next < len(r.order) {
+	if r == nil || !r.state.Ready() {
 		return nil
 	}
 	if u.shell != nil && u.shell.review != nil && u.shell.saved.store != nil && u.shell.diffFailure == "" {
@@ -289,7 +266,7 @@ func (u *appServerUI) finishRestoredContent() error {
 	return u.replayResumePending()
 }
 
-func (u *appServerUI) restoredCollab(item appServerItem, observed time.Time) []activityPaneEntry {
+func (u *appServerUI) restoredCollab(item binding.ThreadItem, observed time.Time) []activityPaneEntry {
 	if item.Status == "completed" {
 		return u.session.collab(item, item.ID, observed)
 	}
@@ -317,7 +294,7 @@ func (u *appServerUI) applyRestoredActivity(entries []activityPaneEntry) {
 	u.applyCapturedEdits()
 }
 
-func restoredAgentTimes(info appServerThreadInfo) (start, last time.Time) {
+func restoredAgentTimes(info binding.ThreadInfo) (start, last time.Time) {
 	for _, turn := range info.Turns {
 		if at := historyTime(turn.StartedAt); !at.IsZero() && (start.IsZero() || at.Before(start)) {
 			start = at
@@ -331,7 +308,7 @@ func restoredAgentTimes(info appServerThreadInfo) (start, last time.Time) {
 
 // Restore only closed host intervals. Missing completion timing cannot prove
 // work duration, and an old in-progress turn must not revive a live clock.
-func restoredAgentWork(info appServerThreadInfo) (timer activeWorkTimer) {
+func restoredAgentWork(info binding.ThreadInfo) (timer activeWorkTimer) {
 	for _, turn := range info.Turns {
 		start, end := historyTime(turn.StartedAt), historyTime(turn.CompletedAt)
 		if start.IsZero() || end.IsZero() || end.Before(start) {
@@ -345,7 +322,7 @@ func restoredAgentWork(info appServerThreadInfo) (timer activeWorkTimer) {
 
 // Observational history never opens previews, resumes children, or fabricates
 // a live response. Only a subsequent live notification can mark an agent busy.
-func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
+func (u *appServerUI) restoreActivityThread(info binding.ThreadInfo, olderPage bool) {
 	previousSegments := u.restoredSegments
 	defer func() { u.restoredSegments = previousSegments }()
 	s := &u.session
@@ -363,11 +340,9 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 	byTurn := make(map[int][]*restoredPlacement)
 	if r = u.restoring; r != nil {
 		itemAt = r.itemAt[info.ID]
+		positions := historyPositions(info.Turns, itemAt)
 		for _, p := range r.pane[name] {
-			index := restoredTurnFor(info.Turns, itemAt, p.at)
-			if p.turn != "" {
-				index = slices.IndexFunc(info.Turns, func(turn appServerHistoryTurn) bool { return turn.ID == p.turn })
-			}
+			index := p.position().TurnFor(positions)
 			if index >= 0 {
 				byTurn[index] = append(byTurn[index], p)
 			} else if main, ok := mainActivityEntry(p.entry); ok && p.turn == "" {
@@ -380,21 +355,24 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 		}
 		delete(r.pane, name)
 	}
+	positions := historyPositions(info.Turns, itemAt)
 	for index, turn := range info.Turns {
 		u.restoredSegments = u.prepareCommandSegments(info.ID, info.Cwd, turn)
 		observed := historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt, info.UpdatedAt))
 		var entries []activityPaneEntry
 		var times []time.Time // When each entry happened, to place Main's copy.
-		place := func(slot []*restoredPlacement) {
-			for _, p := range slot {
+		placements := byTurn[index]
+		place := func(slot []int) {
+			for _, index := range slot {
+				p := placements[index]
 				entry := p.entry
 				entry.Seq = s.next()
 				entries, times = append(entries, entry), append(times, p.at)
 			}
 		}
-		slots := placeRestored(turn, itemAt, byTurn[index])
+		slots := positions[index].Slots(restoredPositions(placements))
 		place(slots[0])
-		text := historicalTranscript(turn.Items, info.ID, turn.ID, false, turn.Status == "completed" && !turn.olderPage, observed)
+		text := historicalTranscript(turn.Items, info.ID, turn.ID, false, turn.Status == "completed" && !olderPage, observed)
 		for i, item := range turn.Items {
 			first := len(entries)
 			at, ok := itemAt[item.ID]
@@ -409,7 +387,7 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 		}
 		agent = s.agent(name)
 		agent.Final = turn.Status == "completed"
-		if !turn.olderPage && (turn.Status == "failed" || turn.Status == "interrupted" || turn.Status == "inProgress") {
+		if !olderPage && (turn.Status == "failed" || turn.Status == "interrupted" || turn.Status == "inProgress") {
 			text := "Recorded turn: " + turn.Status + " (history only)"
 			if turn.Error != nil {
 				text += ": " + turn.Error.Message
@@ -430,7 +408,7 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 	}
 }
 
-func (u *appServerUI) restoreActivityItem(info appServerThreadInfo, turn appServerHistoryTurn, item appServerItem, name string, observed time.Time, entries *[]activityPaneEntry, text map[string]observation.TextUpdate) {
+func (u *appServerUI) restoreActivityItem(info binding.ThreadInfo, turn binding.HistoryTurn, item binding.ThreadItem, name string, observed time.Time, entries *[]activityPaneEntry, text map[string]observation.TextUpdate) {
 	s := &u.session
 	if update, ok := text[item.ID]; ok {
 		update.Sequence, update.Observed = s.next(), observed
@@ -442,8 +420,8 @@ func (u *appServerUI) restoreActivityItem(info appServerThreadInfo, turn appServ
 	entry := activityPaneEntry{Seq: s.next(), Agent: name, Observed: observed, CallID: item.ID,
 		native: &liveActivityNativeItem{thread: info.ID, turn: turn.ID, item: item.ID, phase: "item/completed", status: item.Status, searchResults: appServerSearchResults(item)}}
 	progressPhase := appServerHistoryProgressPhase(item, turn.Status)
-	item = u.waitItem(item, info.ID, turn.ID, item.ID, false)
-	if text, wait, handled := appServerProgress(item, progressPhase); handled {
+	item, waitNames := u.waitItem(item, info.ID, turn.ID, item.ID, false)
+	if text, wait, handled := appServerProgress(item, progressPhase, waitNames); handled {
 		if text != "" {
 			entry.Kind, entry.Text = "progress", text
 			entry.native.wait = wait

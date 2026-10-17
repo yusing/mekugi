@@ -32,7 +32,7 @@ func newSessionNaming(ctx context.Context, provider inferencegateway.Forwarder, 
 	return &sessionNaming{ctx: ctx, provider: provider, registration: registration, updates: make(chan sessionTitleUpdate, 16), threads: make(map[string]binding.ThreadNaming)}
 }
 
-func (g *sessionNaming) register(thread appServerThreadInfo) {
+func (g *sessionNaming) register(thread binding.ThreadInfo) {
 	if g == nil || thread.ID == "" {
 		return
 	}

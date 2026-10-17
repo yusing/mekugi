@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffrender"
 )
 
@@ -339,7 +340,7 @@ func TestUISnapshotNativeCompactQueuedContinuation(t *testing.T) {
 	r := queueBusyCompact(t, u, w)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID))
 	appServerTestTurn(t, u, "compact-turn")
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "compact-turn", "item": appServerItem{ID: "compaction", Type: "contextCompaction"}})
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "compact-turn", "item": binding.ThreadItem{ID: "compaction", Type: "contextCompaction"}})
 	appServerTestTurnEnd(t, u, "compact-turn", "completed")
 	appServerOneRequest(t, w, "turn/start", compactContinuationText)
 	for i := range u.view.Entries {

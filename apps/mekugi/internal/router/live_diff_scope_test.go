@@ -236,7 +236,7 @@ func publishFixtureReview(t *testing.T, u *appServerUI) {
 		u.shell.saved.store = store
 	}
 	store.captured = captured.Value()
-	store.captured.PublishReview(&u.session.state, u.shell.saved.data)
+	store.captured.PublishReview(u.session.Scope(), u.shell.saved.data)
 }
 
 func fixtureActivityWithoutDetails(t *testing.T) *feed.Service {

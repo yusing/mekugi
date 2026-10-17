@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
-
-	"github.com/yusing/mekugi/contracts/inference"
+	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/contracts/inference"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func TestAppServerContextWindow(t *testing.T) {
@@ -107,7 +107,7 @@ func TestAppServerStartupRestoresContext(t *testing.T) {
 		t.Fatal("child context arrived without evidence")
 	}
 	// thread/list may omit the rollout path; thread/read can supply it later.
-	u.restoring = &appServerActivityRestore{order: []string{"child"}, listed: true}
+	u.restoring = &appServerActivityRestore{state: restoredDiscoveryTestState("main", "child")}
 	appServerTestRequest(t, u, "2", "thread/read")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":2,"result":{"thread":{"id":"child","path":%q,"turns":[]}}}`, path))
 	if got := activityui.ContextWindowLabel(testActivityAgent(*child)); got != "20K/400K • 5%" {
@@ -119,19 +119,19 @@ func TestAppServerStartupRestoresContext(t *testing.T) {
 	}
 	// Metadata must never replace a newer live update with a stale disk snapshot.
 	appServerTestNotify(t, u, "thread/tokenUsage/updated", map[string]any{"threadId": "child", "tokenUsage": map[string]any{"last": map[string]any{"totalTokens": 40000}, "modelContextWindow": 400000}})
-	u.session.registerThread(appServerThreadInfo{ID: "child", Path: path})
+	u.session.registerThread(binding.ThreadInfo{ID: "child", Path: path})
 	if got := activityui.ContextWindowLabel(testActivityAgent(*child)); got != "40K/400K • 10%" {
 		t.Fatal(got)
 	}
 	other := activityPaneAgent{}
-	restoreContextUsage(&other, appServerThreadInfo{ID: "other", Path: path})
+	restoreContextUsage(&other, binding.ThreadInfo{ID: "other", Path: path})
 	if other.ContextKnown {
 		t.Fatal("borrowed another thread's usage")
 	}
 	if err := os.WriteFile(path, []byte("\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	restoreContextUsage(&other, appServerThreadInfo{ID: "child", Path: path})
+	restoreContextUsage(&other, binding.ThreadInfo{ID: "child", Path: path})
 	if other.ContextKnown {
 		t.Fatal("malformed history became usage")
 	}

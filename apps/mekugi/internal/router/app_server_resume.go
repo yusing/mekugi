@@ -2,32 +2,29 @@ package router
 
 import (
 	"cmp"
+
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	json "encoding/json/v2"
 	"fmt"
 	"maps"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
-	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
-
-	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
-
-	"github.com/yusing/mekugi/modules/conversation/composer"
-
-	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
-
-	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/BurntSushi/toml"
-
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/rollout"
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
+	"github.com/yusing/mekugi/modules/conversation/composer"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
 func (u *appServerUI) requestResume(thread string) error {
@@ -46,16 +43,12 @@ func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 	if m.Error != nil {
 		return fail(m.Error.Message)
 	}
-	var result struct {
-		Thread appServerThreadInfo `json:"thread"`
-	}
-	if err := json.Unmarshal(m.Result, &result); err != nil {
+	thread := cmp.Or(u.Replacement.Target, u.resumeThread)
+	info, err := binding.DecodeHistoryThread(m.Result, thread)
+	if err != nil {
 		return fail(err.Error())
 	}
-	thread := cmp.Or(u.Replacement.Target, u.resumeThread)
-	if result.Thread.ID != thread {
-		return fail("thread/read returned a different thread identity")
-	}
+
 	// Codex skips persisted model/effort when the routing provider is explicit.
 	// Read settings before resume can write its new defaults into the rollout.
 	config := maps.Clone(u.resumeConfig)
@@ -64,7 +57,7 @@ func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 	}
 	var retained preferences.Snapshot
 	if u.panes != nil {
-		state, err := u.panes.read(result.Thread.Cwd, thread)
+		state, err := u.panes.read(info.Cwd, thread)
 		if err != nil {
 			u.paneError(err)
 		} else {
@@ -72,7 +65,7 @@ func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 		}
 	}
 	evidence, newerThan := retained.ResumeBaseline()
-	u.resumeEvidence = evidence.WithNewer(resumeSettingsEvidence(rollout.ResumeSettings(result.Thread.ID, result.Thread.Path, newerThan)))
+	u.resumeEvidence = evidence.WithNewer(resumeSettingsEvidence(rollout.ResumeSettings(info.ID, info.Path, newerThan)))
 	saved := resumeSettingsConfig(u.resumeEvidence)
 	u.resumeNotice = ""
 	if len(saved) == 0 {
@@ -151,7 +144,7 @@ func (u *appServerUI) resumeLastResponse(m appserver.Message) error {
 		return fmt.Errorf("find latest thread: %s", m.Error.Message)
 	}
 	var result struct {
-		Data []appServerThreadInfo `json:"data"`
+		Data []binding.ThreadInfo `json:"data"`
 	}
 	if err := json.Unmarshal(m.Result, &result); err != nil {
 		return fmt.Errorf("find latest thread: %w", err)
@@ -200,33 +193,18 @@ func appServerResumeConfig(args, resumeArgv []string) map[string]any {
 	return config
 }
 
-type appServerHistoryTurn struct {
-	olderPage   bool            // An older item page must not repeat status or promote commentary to final.
-	ID          string          `json:"id"`
-	Status      string          `json:"status"`
-	Items       []appServerItem `json:"items"`
-	StartedAt   int64           `json:"startedAt"`
-	CompletedAt int64           `json:"completedAt"`
-	Error       *struct {
-		Message string `json:"message"`
-	} `json:"error"`
-}
-
 // History is presentation evidence, not a stream of live lifecycle events.
 // In particular, old edits and collaboration calls must not revive previews,
 // processes or child agents. restoreMainHistory
 // also places restored evidence the host's history omits among Main's items: at its rollout anchor, or by time for evidence from
 // another thread. itemAt holds the root's retained item completion times.
-func (u *appServerUI) restoreMainHistory(turns []appServerHistoryTurn, placements []*restoredPlacement, itemAt map[string]time.Time) {
+func (u *appServerUI) restoreMainHistory(turns []binding.HistoryTurn, placements []*restoredPlacement, itemAt map[string]time.Time) {
 	previousSegments := u.restoredSegments
 	defer func() { u.restoredSegments = previousSegments }()
+	positions := historyPositions(turns, itemAt)
 	byTurn := make(map[int][]*restoredPlacement)
 	for _, p := range placements {
-		index := restoredTurnFor(turns, itemAt, p.at)
-		if p.turn != "" {
-			// An anchor in a turn the host no longer shows has no position.
-			index = slices.IndexFunc(turns, func(turn appServerHistoryTurn) bool { return turn.ID == p.turn })
-		}
+		index := p.position().TurnFor(positions)
 		if index >= 0 {
 			byTurn[index] = append(byTurn[index], p)
 		} else if p.entry.Kind == "hook" {
@@ -235,8 +213,14 @@ func (u *appServerUI) restoreMainHistory(turns []appServerHistoryTurn, placement
 	}
 	for index, turn := range turns {
 		u.restoredSegments = u.prepareCommandSegments(u.Thread, u.session.cwd, turn)
-		slots := placeRestored(turn, itemAt, byTurn[index])
-		u.applyRestoredMain(slots[0])
+		placements := byTurn[index]
+		slots := positions[index].Slots(restoredPositions(placements))
+		place := func(indices []int) {
+			for _, index := range indices {
+				u.applyRestoredMain(placements[index : index+1])
+			}
+		}
+		place(slots[0])
 		for i, item := range turn.Items {
 			before := u.view.LastSeq
 			u.restoreHistoryItem(turn, item)
@@ -246,7 +230,7 @@ func (u *appServerUI) restoreMainHistory(turns []appServerHistoryTurn, placement
 					u.view.mutateEntry(j, func(record *liveActivityRecord) { record.Source.Observed = at })
 				}
 			}
-			u.applyRestoredMain(slots[i+1])
+			place(slots[i+1])
 		}
 		if turn.Status == "failed" {
 			// Live, the failure only reaches the status line, which resuming replaces.
@@ -264,8 +248,8 @@ func (u *appServerUI) restoreMainHistory(turns []appServerHistoryTurn, placement
 		}
 	}
 	root := u.session.agent("/root")
-	root.Started, root.LastResponse = restoredAgentTimes(appServerThreadInfo{Turns: turns})
-	root.WorkTimer = restoredAgentWork(appServerThreadInfo{Turns: turns})
+	root.Started, root.LastResponse = restoredAgentTimes(binding.ThreadInfo{Turns: turns})
+	root.WorkTimer = restoredAgentWork(binding.ThreadInfo{Turns: turns})
 	root.Turns = uint64(len(turns))
 	root.Responding = u.Turn != ""
 	// Keep future activity sequence numbers ahead of the hydrated transcript.
@@ -286,14 +270,14 @@ func (u *appServerUI) applyRestoredMain(placements []*restoredPlacement) {
 	}
 }
 
-func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServerItem) {
+func (u *appServerUI) restoreHistoryItem(turn binding.HistoryTurn, item binding.ThreadItem) {
 	if u.observeQuestionItem(u.Thread, turn.ID, item, true) {
 		return
 	}
 	if item.Type == "userMessage" {
 		u.commitQuestionReplies(item, turn.ID)
 	}
-	item = u.waitItem(item, u.Thread, turn.ID, item.ID, false)
+	item, waitNames := u.waitItem(item, u.Thread, turn.ID, item.ID, false)
 	if item.Type == "userMessage" {
 		var content []composerUserContent
 		if json.Unmarshal(item.Content, &content) == nil {
@@ -324,9 +308,9 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 	if turn.Status == "inProgress" && (item.Type == "agentMessage" || item.Status == "inProgress") {
 		method = "item/started"
 	}
-	if _, _, progress := appServerProgress(item, method); progress {
+	if _, _, progress := appServerProgress(item, method, waitNames); progress {
 		method = appServerHistoryProgressPhase(item, turn.Status)
-		if text, wait, _ := appServerProgress(item, method); text != "" {
+		if text, wait, _ := appServerProgress(item, method, waitNames); text != "" {
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
 				Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "progress", Text: text, Observed: time.Now(),
 				native: &liveActivityNativeItem{thread: u.Thread, turn: turn.ID, item: item.ID, phase: method, wait: wait},
@@ -359,7 +343,7 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{exit}})
 		}
 	default:
-		if update, ok := historicalTranscript([]appServerItem{item}, u.Thread, turn.ID, true, false, u.now())[item.ID]; ok {
+		if update, ok := historicalTranscript([]binding.ThreadItem{item}, u.Thread, turn.ID, true, false, u.now())[item.ID]; ok {
 			update.Phase = method
 			u.view.applyTranscript(update, item.Content, u.session.cwd, u.Thread, item.Type == "userMessage")
 		}

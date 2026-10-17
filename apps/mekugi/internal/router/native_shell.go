@@ -233,7 +233,7 @@ func (u *terminalUI) loadedReview(result savedReviewResult) {
 func (u *terminalUI) publishReview() {
 	snapshot := u.saved.data
 	if u.main != nil && u.saved.store != nil {
-		u.saved.store.captured.PublishReview(&u.main.session.state, snapshot)
+		u.saved.store.captured.PublishReview(u.main.session.Scope(), snapshot)
 	}
 	u.diff.Update(snapshot.Publication, u.saved.coverage)
 	u.agents.Model.LineCounts, u.agents.Model.NetCounts = snapshot.Publication.Counts.Callers, snapshot.Publication.Counts.Net

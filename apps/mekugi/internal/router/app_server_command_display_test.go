@@ -9,10 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/backends/codex/nativetrace"
-
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/backends/codex/nativetrace"
 	"github.com/yusing/mekugi/libraries/diffrender"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -57,8 +58,8 @@ func TestAppServerFrontendCommandClassification(t *testing.T) {
 					command = shellCommandString("/usr/bin/bash", []string{"-lc", command})
 				}
 				u := newAppServerSessionTestUI(t, t.TempDir())
-				item := appServerItem{ID: "cmd", Type: "commandExecution", Command: command,
-					CommandActions: []appServerCommandAction{{Type: "unknown", Command: command}}}
+				item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: command,
+					CommandActions: []binding.CommandAction{{Type: "unknown", Command: command}}}
 				for _, method := range []string{"item/started", "item/completed"} {
 					appServerTestNotify(t, u, method, map[string]any{"threadId": "main", "turnId": "t", "item": item})
 				}
@@ -70,12 +71,12 @@ func TestAppServerFrontendCommandClassification(t *testing.T) {
 					t.Fatalf("classified child text: %q; want %q", u.agents.Entries[len(u.agents.Entries)-1].Source.Text, tc.want)
 				}
 				restored := newAppServerSessionTestUI(t, t.TempDir())
-				restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
+				restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 				if len(restored.view.Entries) != 1 || restored.view.Entries[0].Source.Text != tc.want {
 					t.Fatalf("classified restored entries: %+v", restored.view.Entries)
 				}
 				restored.session.path("child")
-				restored.restoreActivityThread(appServerThreadInfo{ID: "child", Cwd: restored.session.cwd, Turns: []appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}}})
+				restored.restoreActivityThread(binding.ThreadInfo{ID: "child", Cwd: restored.session.cwd, Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
 				if len(restored.agents.Entries) != 1 || restored.agents.Entries[0].Source.Text != tc.want {
 					t.Fatalf("classified restored child text: %q; want %q", restored.agents.Entries[len(restored.agents.Entries)-1].Source.Text, tc.want)
 				}
@@ -93,7 +94,7 @@ func TestAppServerOpaqueCommandWrappers(t *testing.T) {
 		`env -u BASH_ENV bash -c 'cat app.go' > out`, `env -u BASH_ENV bash -c 'cat app.go' &`,
 		`env -u BASH_ENV bash -c 'cat app.go' | unknown`, `./cat app.go`,
 	} {
-		if got := appServerCommandText(appServerItem{Command: command}, ""); got != "Run\n"+toolActivityFenced("bash", command) {
+		if got := appServerCommandText(binding.ThreadItem{Command: command}, ""); got != "Run\n"+toolActivityFenced("bash", command) {
 			t.Errorf("unsafe wrapper %q classified: %s", command, got)
 		}
 	}
@@ -113,7 +114,7 @@ func TestUISnapshotWrappedCommands(t *testing.T) {
 			`/usr/bin/sed -n '2,4p' app.go; /bin/cat other.go | /usr/bin/head -80`,
 			`env -u BASH_ENV bash -c 'set -e; timeout 10 sleep 1; cat app.go'`,
 		} {
-			item := appServerItem{ID: fmt.Sprint(i), Type: "commandExecution", Command: command, Cwd: "/workspace", Status: "completed", ExitCode: new(0), DurationMS: new(int64(500))}
+			item := binding.ThreadItem{ID: fmt.Sprint(i), Type: "commandExecution", Command: command, Cwd: "/workspace", Status: "completed", ExitCode: new(0), DurationMS: new(int64(500))}
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": item})
 		}
 		view.testPace(u.clock().Add(time.Hour))
@@ -149,7 +150,7 @@ func TestAppServerShellDisplay(t *testing.T) {
 		{`bash -lc 'echo hi' | cat`, `bash -lc 'echo hi' | cat`},
 	} {
 		t.Run(tt.input, func(t *testing.T) {
-			item := appServerItem{Command: tt.input}
+			item := binding.ThreadItem{Command: tt.input}
 			if got := appServerDisplayCommand(item.Command); got != tt.want {
 				t.Fatalf("display = %q, want %q", got, tt.want)
 			}
@@ -162,7 +163,7 @@ func TestAppServerShellDisplay(t *testing.T) {
 
 func TestAppServerShellDisplayHighlight(t *testing.T) {
 	source := `printf '%s' "$HOME"; go test ./...`
-	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: appServerCommandText(appServerItem{Command: `/bin/bash -lc 'printf '\''%s'\'' "$HOME"; go test ./...'`}, "")})
+	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: appServerCommandText(binding.ThreadItem{Command: `/bin/bash -lc 'printf '\''%s'\'' "$HOME"; go test ./...'`}, "")})
 	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		p := activityui.Painter{Theme: theme}
 		var rows []string
@@ -185,7 +186,7 @@ func TestAppServerShellDisplayHighlight(t *testing.T) {
 
 func TestAppServerImageViewLiveAndRestored(t *testing.T) {
 	workspace := t.TempDir()
-	item := appServerItem{ID: "image", Type: "imageView", Path: workspace + "/images/a.png"}
+	item := binding.ThreadItem{ID: "image", Type: "imageView", Path: workspace + "/images/a.png"}
 	for _, child := range []bool{false, true} {
 		u := newAppServerSessionTestUI(t, workspace)
 		thread := "main"
@@ -209,10 +210,10 @@ func TestAppServerImageViewLiveAndRestored(t *testing.T) {
 		}
 		check(view)
 		restored := newAppServerSessionTestUI(t, workspace)
-		turns := []appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}}
+		turns := []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}
 		if child {
 			restored.session.path(thread)
-			restored.restoreActivityThread(appServerThreadInfo{ID: thread, Cwd: workspace, Turns: turns})
+			restored.restoreActivityThread(binding.ThreadInfo{ID: thread, Cwd: workspace, Turns: turns}, false)
 			check(restored.agents)
 		} else {
 			restored.restoreHistory(turns)
@@ -241,7 +242,7 @@ func TestAppServerCommandTimeoutInput(t *testing.T) {
 			if tc.args != "" {
 				f.tool(thread, thread, tc.id, "exec_command", tc.args)
 			}
-			item := appServerItem{ID: tc.id, Type: "commandExecution", Command: "sleep 1", DurationMS: new(int64(500))}
+			item := binding.ThreadItem{ID: tc.id, Type: "commandExecution", Command: "sleep 1", DurationMS: new(int64(500))}
 			for _, method := range []string{"item/started", "item/completed"} {
 				appServerTestNotify(t, u, method, map[string]any{"threadId": thread, "turnId": "t", "item": item})
 				view := u.view
@@ -266,7 +267,7 @@ func TestAppServerCommandTimeoutInput(t *testing.T) {
 		}
 	}
 	restored := newAppServerSessionTestUI(t, t.TempDir())
-	restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{{ID: "timed", Type: "commandExecution", Command: "skills-mgr get skill"}}}})
+	restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{{ID: "timed", Type: "commandExecution", Command: "skills-mgr get skill"}}}})
 	if len(restored.view.blocks(0)[0].Timeouts) != 0 {
 		t.Fatal("restored a timeout without original invocation input")
 	}
@@ -294,7 +295,7 @@ func TestUISnapshotShellSetupEvent(t *testing.T) {
 		"smoke_root=\"$probe_root\"\ngit show 99076ca:setup.sh > \"$probe_root/baseline.sh\"\n" +
 		"sed -n '1,20p' setup_test.sh\nsource \"$probe_root/baseline.sh\"\ntrap - ERR\n" +
 		"source \"$probe_root/policy.sh\"\nif check_apt_policy; then exit 1; fi"
-	item := appServerItem{ID: "setup", Type: "commandExecution", Command: command, Cwd: "/workspace", Status: "completed", ExitCode: new(0)}
+	item := binding.ThreadItem{ID: "setup", Type: "commandExecution", Command: command, Cwd: "/workspace", Status: "completed", ExitCode: new(0)}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	finishPacing(u.view)
 	assertNativeUISnapshot(t, "shell-setup-event", u.view.RenderFeed(100, 24).Lines)
@@ -308,7 +309,7 @@ func TestUISnapshotClassifiedCommandPaths(t *testing.T) {
 		"inspect_file /workspace/app.go /external/other.go",
 		"rg '/workspace/literal' /workspace/src /external",
 	} {
-		item := appServerItem{ID: fmt.Sprint(i), Type: "commandExecution", Command: command, Cwd: "/workspace", Status: "completed", ExitCode: new(0), DurationMS: new(int64(20))}
+		item := binding.ThreadItem{ID: fmt.Sprint(i), Type: "commandExecution", Command: command, Cwd: "/workspace", Status: "completed", ExitCode: new(0), DurationMS: new(int64(20))}
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	}
 	finishPacing(u.view)
@@ -339,26 +340,26 @@ func TestAppServerCommandWorkdirDisplay(t *testing.T) {
 	other := t.TempDir()
 	for _, tc := range []struct {
 		name, cwd, workdir string
-		actions            []appServerCommandAction
+		actions            []binding.CommandAction
 		command, text      string
 	}{
 		{name: "workspace", cwd: workspace, command: "go test ./...", text: "Run\n```bash\ngo test ./...\n```"},
 		{name: "unknown", command: "go test ./...", text: "Run\n```bash\ngo test ./...\n```"},
 		{name: "outside", cwd: other, workdir: other, command: "go test ./...", text: "Run\n```bash\ngo test ./...\n```"},
 		{name: "subdirectory", cwd: filepath.Join(workspace, "sub"), workdir: "sub", command: "cat a.go",
-			actions: []appServerCommandAction{{Type: "read", Command: "cat a.go", Path: filepath.Join(workspace, "sub", "a.go")}}, text: "Read `a.go`"},
+			actions: []binding.CommandAction{{Type: "read", Command: "cat a.go", Path: filepath.Join(workspace, "sub", "a.go")}}, text: "Read `a.go`"},
 		{name: "frontend read", cwd: workspace, command: "mcat " + quoteShellWord(workspace+"/a.go") + " 1:3", text: "Read `a.go 1:3`"},
 		{name: "inspect other directory", cwd: other, workdir: other, command: "inspect_file " + quoteShellWord(other+"/a.go") + " " + quoteShellWord(workspace+"/b.go"), text: "Inspect `a.go`\n\nInspect `" + workspace + "/b.go`"},
 		{name: "search path and literal query", cwd: workspace, command: "rg " + quoteShellWord(workspace+"/literal") + " " + quoteShellWord(workspace+"/src") + " " + quoteShellWord(other), text: "Search `" + workspace + "/literal` in `src` `" + other + "`"},
 		{name: "piped read", cwd: workspace, command: "nl -ba " + quoteShellWord(workspace+"/a.go") + " | sed -n '2,4p'", text: "Read `a.go 2:4`"},
 		{name: "list", cwd: other, workdir: other, command: "ls src",
-			actions: []appServerCommandAction{{Type: "listFiles", Command: "ls src", Path: "src"}}, text: "List `src`"},
+			actions: []binding.CommandAction{{Type: "listFiles", Command: "ls src", Path: "src"}}, text: "List `src`"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.actions == nil {
-				tc.actions = []appServerCommandAction{{Type: "unknown", Command: tc.command}}
+				tc.actions = []binding.CommandAction{{Type: "unknown", Command: tc.command}}
 			}
-			item := appServerItem{ID: "cmd", Type: "commandExecution", Command: tc.command, Cwd: tc.cwd, CommandActions: tc.actions}
+			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: tc.command, Cwd: tc.cwd, CommandActions: tc.actions}
 			check := func(u *appServerUI) {
 				t.Helper()
 				if len(u.view.Entries) != 1 || u.view.Entries[0].Source.Text != tc.text || u.view.Entries[0].Source.native.workdir != tc.workdir {
@@ -382,7 +383,7 @@ func TestAppServerCommandWorkdirDisplay(t *testing.T) {
 			}
 			check(u)
 			restored := newAppServerSessionTestUI(t, workspace)
-			restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
+			restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 			check(restored)
 		})
 	}
@@ -406,12 +407,12 @@ func TestUISnapshotMCatSourceWithoutFilesystemDisambiguation(t *testing.T) {
 		{"separate-range", "mcat source.go 1:3", "Read `source.go 1:3`"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			item := appServerItem{ID: "cmd", Type: "commandExecution", Command: tc.command, Cwd: workspace, Status: "completed", ExitCode: new(0), DurationMS: new(int64(20))}
+			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: tc.command, Cwd: workspace, Status: "completed", ExitCode: new(0), DurationMS: new(int64(20))}
 			live, restored := newAppServerSessionTestUI(t, workspace), newAppServerSessionTestUI(t, workspace)
 			for _, method := range []string{"item/started", "item/completed"} {
 				appServerTestNotify(t, live, method, map[string]any{"threadId": "main", "turnId": "t", "item": item})
 			}
-			restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
+			restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 			t.Chdir(packageDirectory)
 			for name, ui := range map[string]*appServerUI{"live": live, "restored": restored} {
 				if len(ui.view.Entries) != 1 {
@@ -431,9 +432,9 @@ func TestUISnapshotMCatSourceWithoutFilesystemDisambiguation(t *testing.T) {
 func TestActivityReadsKeepInvocationWorkdirsApart(t *testing.T) {
 	other := t.TempDir()
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	for _, item := range []appServerItem{
-		{ID: "a", Type: "commandExecution", Command: "rg x; cat a.go", Cwd: other, CommandActions: []appServerCommandAction{{Type: "search", Command: "rg x", Query: "x"}, {Type: "read", Command: "cat a.go", Path: other + "/a.go"}}},
-		{ID: "b", Type: "commandExecution", Command: "cat b.go", Cwd: u.session.cwd, CommandActions: []appServerCommandAction{{Type: "read", Command: "cat b.go", Path: u.session.cwd + "/b.go"}}},
+	for _, item := range []binding.ThreadItem{
+		{ID: "a", Type: "commandExecution", Command: "rg x; cat a.go", Cwd: other, CommandActions: []binding.CommandAction{{Type: "search", Command: "rg x", Query: "x"}, {Type: "read", Command: "cat a.go", Path: other + "/a.go"}}},
+		{ID: "b", Type: "commandExecution", Command: "cat b.go", Cwd: u.session.cwd, CommandActions: []binding.CommandAction{{Type: "read", Command: "cat b.go", Path: u.session.cwd + "/b.go"}}},
 	} {
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	}
@@ -464,7 +465,7 @@ func TestActivityReadsKeepWorkdirsApart(t *testing.T) {
 func TestAppServerWholeScriptTimeoutSuffix(t *testing.T) {
 	for _, command := range []string{"timeout 10 bash <<'EOF'\nsleep 1\nEOF", "set -e\ntimeout 10 sleep 1", "set -e\necho start && timeout 10 sleep 1"} {
 		t.Run(command, func(t *testing.T) {
-			item := appServerItem{ID: "cmd", Type: "commandExecution", Command: command, DurationMS: new(int64(500))}
+			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: command, DurationMS: new(int64(500))}
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 			entry := u.view.Entries[0]
@@ -494,7 +495,7 @@ func TestUISnapshotShellSetupTimeoutEvent(t *testing.T) {
 			view = u.agents
 		}
 		view.Clock, view.Painter.Theme = u.clock, diffrender.DarkTheme
-		item := appServerItem{ID: "setup", Type: "commandExecution", Command: "set -e\ntimeout 10 sleep 1", Cwd: "/workspace", Status: "inProgress"}
+		item := binding.ThreadItem{ID: "setup", Type: "commandExecution", Command: "set -e\ntimeout 10 sleep 1", Cwd: "/workspace", Status: "inProgress"}
 		appServerTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "t", "item": item})
 		now = now.Add(500 * time.Millisecond)
 		assertNativeUISnapshot(t, "timeout-setup-"+thread+"-running", view.RenderFeed(70, 24).Lines)

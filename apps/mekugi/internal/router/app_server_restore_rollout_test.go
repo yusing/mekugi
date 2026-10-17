@@ -3,6 +3,8 @@ package router
 import (
 	"bytes"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
 	jsonv1 "encoding/json"
@@ -99,8 +101,8 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 		// Delivered after the child's last output: live reads it as new.
 		rolloutAgentMessage(45, "/root", "/root/reviewer", "MESSAGE", "One more thing."),
 	)
-	root := appServerThreadInfo{ID: "main", Cwd: workspace, Path: writeTestRollout(t, "main", rootRecords...), Turns: []appServerHistoryTurn{
-		{ID: "r1", Status: "completed", StartedAt: 1001, CompletedAt: 1041, Items: []appServerItem{
+	root := binding.ThreadInfo{ID: "main", Cwd: workspace, Path: writeTestRollout(t, "main", rootRecords...), Turns: []binding.HistoryTurn{
+		{ID: "r1", Status: "completed", StartedAt: 1001, CompletedAt: 1041, Items: []binding.ThreadItem{
 			{ID: "question", Type: "userMessage", Content: []byte(`[{"type":"text","text":"Review it"}]`)},
 			{ID: "cmd1", Type: "commandExecution", Command: "go vet ./...", ExitCode: new(0)},
 			{ID: "spawn", Type: "subAgentActivity", AgentThreadID: "child", AgentPath: "/root/reviewer"},

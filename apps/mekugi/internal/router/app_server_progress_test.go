@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/backends/codex/binding"
 )
 
 func TestAppServerProgressCompactionLifecycle(t *testing.T) {
@@ -57,11 +58,11 @@ func TestAppServerProgressCompactionLifecycle(t *testing.T) {
 func TestAppServerProgressWaitAndReplay(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
-	wait := appServerItem{ID: "w", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress", ReceiverThreadIDs: []string{"child"}}
+	wait := binding.ThreadItem{ID: "w", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress", ReceiverThreadIDs: []string{"child"}}
 	for _, method := range []string{"item/started", "item/completed"} {
 		if method == "item/completed" {
 			wait.Status = "completed"
-			wait.AgentsStates = map[string]appServerAgentState{"child": {Status: "running"}}
+			wait.AgentsStates = map[string]binding.AgentState{"child": {Status: "running"}}
 		}
 		appServerTestNotify(t, u, method, map[string]any{"threadId": "main", "turnId": "t", "item": wait})
 		if got := ansi.Strip(u.sessionLabel(time.Now())); !strings.Contains(got, "Working") {
@@ -74,14 +75,14 @@ func TestAppServerProgressWaitAndReplay(t *testing.T) {
 	if !strings.Contains(u.view.Entries[0].Source.Text, "Finished waiting") || !strings.Contains(u.view.Entries[0].Source.Text, "child: Still running") {
 		t.Fatal("wait start did not complete")
 	}
-	history := []appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{wait, {ID: "c", Type: "contextCompaction"}}}}
+	history := []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{wait, {ID: "c", Type: "contextCompaction"}}}}
 	v := newAppServerSessionTestUI(t, t.TempDir())
 	v.restoreHistory(history)
 	if len(v.view.Entries) != 2 || v.Turn != "" {
 		t.Fatalf("restored events revived work or went missing: %+v", v.view.Entries)
 	}
-	v.session.registerThread(appServerThreadInfo{ID: "child"})
-	v.restoreActivityThread(appServerThreadInfo{ID: "child", Turns: history})
+	v.session.registerThread(binding.ThreadInfo{ID: "child"})
+	v.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: history}, false)
 	if len(v.agents.Entries) != 2 || v.agents.Entries[1].Source.Text != "Context compacted" {
 		t.Fatalf("child replay missing progress: %+v", v.agents.Entries)
 	}
@@ -89,9 +90,9 @@ func TestAppServerProgressWaitAndReplay(t *testing.T) {
 
 func TestAppServerProgressUnfinishedChildWait(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	wait := appServerItem{ID: "w", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress"}
-	u.session.registerThread(appServerThreadInfo{ID: "child"})
-	u.restoreActivityThread(appServerThreadInfo{ID: "child", Turns: []appServerHistoryTurn{{ID: "t", Status: "inProgress", Items: []appServerItem{wait}}}})
+	wait := binding.ThreadItem{ID: "w", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress"}
+	u.session.registerThread(binding.ThreadInfo{ID: "child"})
+	u.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: []binding.HistoryTurn{{ID: "t", Status: "inProgress", Items: []binding.ThreadItem{wait}}}}, false)
 	if !strings.Contains(u.agents.Entries[0].Source.Text, "Waiting for agent") || u.session.agent(u.session.paths["child"]).Responding {
 		t.Fatal("unfinished historical wait claimed completion or revived work")
 	}
@@ -114,7 +115,7 @@ func TestAppServerWaitRosterOnly(t *testing.T) {
 	for _, caller := range []string{"main", "child"} {
 		t.Run(caller, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			u.session.registerThread(appServerThreadInfo{ID: "child"})
+			u.session.registerThread(binding.ThreadInfo{ID: "child"})
 			feed := u.view
 			name := "/root"
 			if caller == "child" {
@@ -129,9 +130,9 @@ func TestAppServerWaitRosterOnly(t *testing.T) {
 					t.Fatalf("roster = %q, want %q", got, want)
 				}
 			}
-			var items []appServerItem
+			var items []binding.ThreadItem
 			for _, id := range []string{"w1", "w2", "w3"} {
-				wait := appServerItem{ID: id, Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress", ReceiverThreadIDs: []string{"target"}}
+				wait := binding.ThreadItem{ID: id, Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress", ReceiverThreadIDs: []string{"target"}}
 				notify := func(method string) {
 					appServerTestNotify(t, u, method, map[string]any{"threadId": caller, "turnId": "t", "item": wait})
 				}
@@ -139,7 +140,7 @@ func TestAppServerWaitRosterOnly(t *testing.T) {
 				check("Waiting for agent · target")
 				wait.Status = "completed"
 				want := "Finished waiting · target: Still running"
-				wait.AgentsStates = map[string]appServerAgentState{"target": {Status: "running"}}
+				wait.AgentsStates = map[string]binding.AgentState{"target": {Status: "running"}}
 				if id == "w3" {
 					wait.Status, want = "failed", "Wait failed · target: Still running"
 				}
@@ -153,11 +154,11 @@ func TestAppServerWaitRosterOnly(t *testing.T) {
 			}
 			// Full history and repeated live delivery must preserve roster-only
 			// presentation without resurrecting work or creating feed rows.
-			history := []appServerHistoryTurn{{ID: "t", Status: "completed", Items: items}}
+			history := []binding.HistoryTurn{{ID: "t", Status: "completed", Items: items}}
 			if caller == "main" {
 				u.restoreHistory(history)
 			} else {
-				u.restoreActivityThread(appServerThreadInfo{ID: caller, Turns: history})
+				u.restoreActivityThread(binding.ThreadInfo{ID: caller, Turns: history}, false)
 			}
 			check("Wait failed · target: Still running")
 		})
@@ -188,9 +189,9 @@ func TestAppServerProgressTerminalPolling(t *testing.T) {
 	if len(u.view.Entries) != 0 {
 		t.Fatal("polls flooded transcript")
 	}
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": appServerItem{ID: "other", Type: "commandExecution", ProcessID: "other"}})
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": binding.ThreadItem{ID: "other", Type: "commandExecution", ProcessID: "other"}})
 	label("Still running")
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": appServerItem{ID: "cmd", Type: "commandExecution", ProcessID: "proc"}})
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": binding.ThreadItem{ID: "cmd", Type: "commandExecution", ProcessID: "proc"}})
 	label("Working")
 	poll("main", "t", "proc", "")
 	poll("main", "t", "proc", "input")
@@ -199,7 +200,7 @@ func TestAppServerProgressTerminalPolling(t *testing.T) {
 	appServerTestNotify(t, u, "item/agentMessage/delta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "a", "delta": "Continuing"})
 	label("Working")
 	poll("main", "t", "proc", "")
-	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": appServerItem{ID: "compact", Type: "contextCompaction"}})
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": binding.ThreadItem{ID: "compact", Type: "contextCompaction"}})
 	poll("main", "t", "proc", "")
 	label("Compacting context")
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t", "status": "interrupted"}})

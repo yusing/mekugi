@@ -10,15 +10,16 @@ import (
 	"testing"
 	"time"
 
-	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/libraries/legacycall"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
-func batchCommandSegmentsFixture(id string) (appServerItem, *legacycall.Segments) {
-	item := appServerItem{ID: id, Type: "commandExecution", Status: "completed", Command: "bash -lc 'echo one; false'", AggregatedOutput: new("one\n"), ExitCode: new(1)}
+func batchCommandSegmentsFixture(id string) (binding.ThreadItem, *legacycall.Segments) {
+	item := binding.ThreadItem{ID: id, Type: "commandExecution", Status: "completed", Command: "bash -lc 'echo one; false'", AggregatedOutput: new("one\n"), ExitCode: new(1)}
 	record := &legacycall.Segments{
 		Command: item.Command, Exit: 1, Output: sha256.Sum256([]byte(*item.AggregatedOutput)),
 		Parts: []legacycall.Segment{{Source: "echo one", Output: new("one")}, {Source: "false", Exit: 1, Output: new("")}},
@@ -32,7 +33,7 @@ func TestCommandSegmentsBatchMixedCandidates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	turn := appServerHistoryTurn{ID: "turn", Status: "completed"}
+	turn := binding.HistoryTurn{ID: "turn", Status: "completed"}
 	histories := make(map[string]mekugiHistory)
 	valid := make(map[string]bool)
 	// Span multiple bounded batches, with invalid records among valid ones.
@@ -118,7 +119,7 @@ func TestCommandSegmentsBatchRejectsUnretainedRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 	item, record := batchCommandSegmentsFixture("item")
-	turn := appServerHistoryTurn{ID: "turn", Items: []appServerItem{item}}
+	turn := binding.HistoryTurn{ID: "turn", Items: []binding.ThreadItem{item}}
 	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{reports.ID(turn.ID, item.ID): {CommandSegments: record}}); err != nil {
 		t.Fatal(err)
 	}
@@ -142,11 +143,11 @@ func TestCommandSegmentsBatchForkOwnershipSurvivesParentExpiry(t *testing.T) {
 			}
 			parent, release := retentionTestSession(t, store, "parent", 0)
 			item, _ := batchCommandSegmentsFixture("item")
-			turn := appServerHistoryTurn{ID: "turn", Status: "completed", Items: []appServerItem{item}}
+			turn := binding.HistoryTurn{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}
 			u := newAppServerSessionTestUI(t, workspace)
 			u.ctx = parent
 			u.proxy = &mekugiProxy{replayStore: store}
-			first, second := u.session.activity.Outputs(&u.session.state).New(), u.session.activity.Outputs(&u.session.state).New()
+			first, second := u.session.activity.Outputs(u.session.Scope()).New(), u.session.activity.Outputs(u.session.Scope()).New()
 			first.Finish(new("one"), new(0))
 			second.Finish(new(""), new(1))
 			u.retainCommandSegments(activityPaneEntry{native: &liveActivityNativeItem{thread: "parent", turn: turn.ID, item: item.ID}}, item, execTrackView{complete: true, output: true, code: 1, segments: []commandSegment{{output: first}, {output: second, exit: 1}}})
@@ -162,10 +163,10 @@ func TestCommandSegmentsBatchForkOwnershipSurvivesParentExpiry(t *testing.T) {
 			view := u.view
 			if consumer == "main" {
 				u.Thread = "fork"
-				u.restoreHistory([]appServerHistoryTurn{turn})
+				u.restoreHistory([]binding.HistoryTurn{turn})
 			} else {
 				u.session.path("fork")
-				u.restoreActivityThread(appServerThreadInfo{ID: "fork", Cwd: workspace, Turns: []appServerHistoryTurn{turn}})
+				u.restoreActivityThread(binding.ThreadInfo{ID: "fork", Cwd: workspace, Turns: []binding.HistoryTurn{turn}}, false)
 				view = u.agents
 			}
 			var restored *liveActivityNativeItem
@@ -208,7 +209,7 @@ func BenchmarkCommandSegmentsBatchLargeHistory(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			turn := appServerHistoryTurn{ID: "turn", Status: "completed"}
+			turn := binding.HistoryTurn{ID: "turn", Status: "completed"}
 			histories := make(map[string]mekugiHistory, count)
 			for i := range count {
 				item, record := batchCommandSegmentsFixture(fmt.Sprintf("item-%d", i))

@@ -8,9 +8,11 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
@@ -38,7 +40,7 @@ func startShellEditTestCommand(t *testing.T, u *appServerUI, command, item strin
 		appServerTestTurn(t, u, "shell-turn")
 	}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": u.Thread, "turnId": u.Turn,
-		"item": appServerItem{ID: item, Type: "commandExecution", Source: "userShell", Command: command, Status: "inProgress"}})
+		"item": binding.ThreadItem{ID: item, Type: "commandExecution", Source: "userShell", Command: command, Status: "inProgress"}})
 	u.shellResponse(nil)
 	if edit != nil && u.shellEdits.running[[2]string{u.Thread, item}] != edit {
 		t.Fatalf("shell start was not matched: pending=%+v running=%+v notice=%s", u.shellEdits.pending, u.shellEdits.running, u.feedback.Text)
@@ -53,7 +55,7 @@ func completeShellEditTestCommand(t *testing.T, u *appServerUI, item string, exi
 		status = "failed"
 	}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": u.Thread, "turnId": u.Turn,
-		"item": appServerItem{ID: item, Type: "commandExecution", Source: "userShell", Status: status, ExitCode: &exit}})
+		"item": binding.ThreadItem{ID: item, Type: "commandExecution", Source: "userShell", Status: status, ExitCode: &exit}})
 	if u.Shell.Standalone() {
 		appServerTestTurnEnd(t, u, "shell-turn", "completed")
 	}

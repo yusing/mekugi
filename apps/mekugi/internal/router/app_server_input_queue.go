@@ -33,7 +33,7 @@ func (u *appServerUI) conversation() *conversationmodel.Session {
 	if u.conversationState == nil {
 		u.conversationState = new(conversationmodel.Service)
 	}
-	return u.conversationState.Session(&u.session.state)
+	return u.conversationState.Session(u.session.Scope())
 }
 
 func (u *appServerUI) pruneInputPayloads() {
@@ -280,7 +280,7 @@ func (u *appServerUI) applyInputResult(result sessioncontrol.InputResult) {
 
 // Host messages without a client ID retain payload matching at the composer.
 // Only the resulting canonical identity crosses into session control.
-func (u *appServerUI) commitSteer(item appServerItem) {
+func (u *appServerUI) commitSteer(item binding.ThreadItem) {
 	defer u.pruneInputPayloads()
 	if item.ClientID != "" {
 		u.CommitInput(item.ClientID)

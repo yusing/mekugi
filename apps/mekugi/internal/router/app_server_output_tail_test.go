@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -60,7 +62,7 @@ func TestAppServerPendingPatchIsNotEdited(t *testing.T) {
 	for _, agent := range []string{"Main", "/root/worker"} {
 		v := newActivityAdapter()
 		v.ChildrenOnly = agent != "Main"
-		patch := appServerEditText(appServerItem{Status: "inProgress", Changes: []appServerFileChange{{Path: "c.go", Diff: "+new\n-old\n"}}}, "")
+		patch := appServerEditText(binding.ThreadItem{Status: "inProgress", Changes: []binding.FileChange{{Path: "c.go", Diff: "+new\n-old\n"}}}, "")
 		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: agent, Kind: "tool", CallID: "patch", Text: patch}}})
 		feed := v.RenderFeed(100, 80)
 		if agent == "Main" {

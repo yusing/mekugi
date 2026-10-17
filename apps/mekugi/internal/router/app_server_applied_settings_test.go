@@ -1,6 +1,8 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -30,7 +32,7 @@ func appliedSettingsTestNotify(t *testing.T, u *appServerUI, model, effort, tier
 	appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": u.Thread, "threadSettings": map[string]any{"model": model, "effort": effort, "serviceTier": tier}})
 }
 
-func appliedSettingsTestResume(t *testing.T, u *appServerUI, w *appServerTestInput, info appServerThreadInfo) map[string]any {
+func appliedSettingsTestResume(t *testing.T, u *appServerUI, w *appServerTestInput, info binding.ThreadInfo) map[string]any {
 	t.Helper()
 	u.resumeThread = info.ID
 	if err := u.requestResume(info.ID); err != nil {
@@ -68,7 +70,7 @@ func TestAppServerAppliedSettingsFreshOwnerResumeBeforeFirstTurn(t *testing.T) {
 			// No live writer, parent, rollout, or previous UI is needed for recovery.
 			fresh, w := appliedSettingsTestUI(t, "/workspace", "other")
 			fresh.resumeConfig = map[string]any{"model_provider": "routed"}
-			params := appliedSettingsTestResume(t, fresh, w, appServerThreadInfo{ID: "saved", Cwd: "/workspace"})
+			params := appliedSettingsTestResume(t, fresh, w, binding.ThreadInfo{ID: "saved", Cwd: "/workspace"})
 			wantConfig := map[string]any{"model": "saved-model", "model_provider": "routed", "model_reasoning_effort": "high"}
 			var wantTier any = "priority"
 			if defaults {
@@ -90,7 +92,7 @@ func TestAppServerAppliedSettingsFlagsOverridePerField(t *testing.T) {
 			appliedSettingsTestNotify(t, u, "saved-model", "high", "priority")
 			fresh, w := appliedSettingsTestUI(t, "/workspace", "other")
 			fresh.resumeConfig = map[string]any{field: "explicit"}
-			params := appliedSettingsTestResume(t, fresh, w, appServerThreadInfo{ID: "saved", Cwd: "/workspace"})
+			params := appliedSettingsTestResume(t, fresh, w, binding.ThreadInfo{ID: "saved", Cwd: "/workspace"})
 			want := map[string]any{"model": "saved-model", "model_reasoning_effort": "high"}
 			var tier any = "priority"
 			if field == "service_tier" {
@@ -182,7 +184,7 @@ func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T)
 				t.Fatal(err)
 			}
 			observed = observed.Add(time.Hour)
-			appliedSettingsTestResume(t, u, w, appServerThreadInfo{ID: "saved", Cwd: "/workspace"})
+			appliedSettingsTestResume(t, u, w, binding.ThreadInfo{ID: "saved", Cwd: "/workspace"})
 			var resumeID string
 			for id, request := range u.requests.All() {
 				method := request.Method
@@ -350,7 +352,7 @@ func TestAppServerAppliedSettingsMalformedAndLayoutOnly(t *testing.T) {
 				t.Fatal(err)
 			}
 			fresh, w := appliedSettingsTestUI(t, "/workspace", "other")
-			params := appliedSettingsTestResume(t, fresh, w, appServerThreadInfo{ID: "saved", Cwd: "/workspace"})
+			params := appliedSettingsTestResume(t, fresh, w, binding.ThreadInfo{ID: "saved", Cwd: "/workspace"})
 			if !reflect.DeepEqual(params["config"], map[string]any{}) {
 				t.Fatalf("invalid or absent settings applied: %#v", params)
 			}

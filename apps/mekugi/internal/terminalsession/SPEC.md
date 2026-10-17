@@ -11,6 +11,8 @@ selected targets and intents to their owners.
 [Session presentation](../sessionpresentation/SPEC.md) owns displayed identity and
 Main admission; [session control](../sessioncontrol/SPEC.md) issues host operations.
 Feature views own disclosure, navigation and animation.
+The [attachment owner](../sessionpresentation/SPEC.md#attachment-lifetime) retires
+module state. Backward replay retains terminal focus and Diff visibility.
 The [saved-Diff view](../../../../modules/changehistory/SPEC.md#saved-review-presentation)
 supplies interaction and source-selection values; this attachment owns its terminal
 emulation surface and final frame delivery.

@@ -2,6 +2,9 @@ package router
 
 import (
 	"bytes"
+
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	json "encoding/json/v2"
 	"os"
 	"path/filepath"
@@ -11,11 +14,9 @@ import (
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
-	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
-
-	"github.com/yusing/mekugi/modules/conversation/composer"
-
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+	"github.com/yusing/mekugi/modules/conversation/composer"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
 
 func skillAttachmentCatalog(t *testing.T, u *appServerUI, w *appServerTestInput) {
@@ -127,7 +128,7 @@ func TestSkillAttachmentTranscriptAndHistoryMetadata(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.session.start("main", "/work")
 			u.agents = newActivityAdapter()
-			var turns []appServerHistoryTurn
+			var turns []binding.HistoryTurn
 			payload := `[{"id":"turn","status":"completed","items":[{"type":"userMessage","id":"message","content":` + tc.content + `}]}]`
 			if err := json.Unmarshal([]byte(payload), &turns); err != nil {
 				t.Fatal(err)

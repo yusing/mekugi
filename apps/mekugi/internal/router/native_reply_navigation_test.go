@@ -10,7 +10,9 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/terminalui"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -19,7 +21,7 @@ import (
 func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.Turn = "main-turn"
-	applyTranscriptFixture(u.view, true, "", "main", "main", u.Turn, "progress", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Checking the requested reply."})
+	applyTranscriptFixture(u.view, true, "", "main", "main", u.Turn, "progress", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "Checking the requested reply."})
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 	message := "The requested reply.\n\n" + strings.Repeat("More detail about this reply.\n", 16) + "End of requested reply."
 	send := func(id, body string) {

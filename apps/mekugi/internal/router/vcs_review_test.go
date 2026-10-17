@@ -7,10 +7,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/commandsegments/segments"
+
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
 
@@ -33,7 +36,7 @@ func TestVCSUnsupportedFormatsKeepLiteralOutput(t *testing.T) {
 		if !strings.HasPrefix(text, "Run") {
 			t.Fatalf("unsupported format classified: %s: %s", command, text)
 		}
-		rows, _ := commandOutputRows(appServerItem{Command: command, Cwd: g.dir, AggregatedOutput: &output})
+		rows, _ := commandOutputRows(binding.ThreadItem{Command: command, Cwd: g.dir, AggregatedOutput: &output})
 		if len(rows) != 0 {
 			t.Fatalf("metadata became file rows for %s: %+v", command, rows)
 		}
@@ -83,7 +86,7 @@ func TestVCSCommitEnrichmentRequiresProvenSegmentDirectory(t *testing.T) {
 				segmenttransport.Message{Type: segmenttransport.Done, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Closed},
 			)
 			hub.await(t, key, func(view execTrackView) bool { return view.complete })
-			item := appServerItem{ID: key[2], Type: "commandExecution", Command: "bash -lc " + quoteShellWord(prior+"; "+command), Cwd: g.dir, ExitCode: new(0), AggregatedOutput: &output}
+			item := binding.ThreadItem{ID: key[2], Type: "commandExecution", Command: "bash -lc " + quoteShellWord(prior+"; "+command), Cwd: g.dir, ExitCode: new(0), AggregatedOutput: &output}
 			entry := activityPaneEntry{Kind: "tool", native: &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2], command: item.Command}}
 			live := u.trackedCommandDone(key, entry, item)[0]
 			awaitCommandSegments(t, u)

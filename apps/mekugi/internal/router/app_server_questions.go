@@ -207,7 +207,7 @@ func (u *appServerUI) questionMessage(m appserver.Message) (bool, error) {
 	}
 	return false, nil
 }
-func (u *appServerUI) observeQuestionItem(thread, turn string, item appServerItem, replay bool) bool {
+func (u *appServerUI) observeQuestionItem(thread, turn string, item binding.ThreadItem, replay bool) bool {
 	if item.Type != "agentMessage" || item.Delivery != "async" || len(item.Questions) == 0 {
 		return false
 	}
@@ -467,7 +467,7 @@ func pendingQuestionReplies(parts []conversationmodel.Input) []conversationmodel
 	}
 	return pending
 }
-func (u *appServerUI) commitQuestionReplies(item appServerItem, turn string) {
+func (u *appServerUI) commitQuestionReplies(item binding.ThreadItem, turn string) {
 	text, _, _ := appServerUserText(item.Content)
 	replies := binding.QuestionReplies(text)
 	first := u.questions.InputTurn(turn)

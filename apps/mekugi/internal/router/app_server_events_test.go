@@ -2,6 +2,9 @@ package router
 
 import (
 	"encoding/json/jsontext"
+
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	json "encoding/json/v2"
 	"os"
 	"path/filepath"
@@ -9,12 +12,10 @@ import (
 	"testing"
 	"time"
 
-	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
-
-	"github.com/yusing/mekugi/contracts/inference"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/contracts/inference"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
 func appServerTestNotify(t *testing.T, u *appServerUI, method string, params any) {
@@ -41,7 +42,7 @@ func newAppServerSessionTestUI(t *testing.T, workspace string) *appServerUI {
 
 func TestAppServerAgentTimerStartsAtFirstTurn(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.session.registerThread(appServerThreadInfo{ID: "child", AgentNickname: "worker"})
+	u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	u.session.path("early")
 	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "/root/worker", Kind: "status", Text: "Assigned", Observed: time.Now()}}})
 	for _, agent := range u.session.agents {
@@ -70,20 +71,20 @@ func TestAppServerAgentTimerStartsAtFirstTurn(t *testing.T) {
 
 func TestAppServerRestoredAgentTimerUsesTurns(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	info := appServerThreadInfo{ID: "main", CreatedAt: 100, UpdatedAt: 900}
+	info := binding.ThreadInfo{ID: "main", CreatedAt: 100, UpdatedAt: 900}
 	u.restoreMainHistory(info.Turns, nil, nil)
 	agent := u.session.agent("/root")
 	if !agent.Started.IsZero() || !agent.LastResponse.IsZero() {
 		t.Fatal("empty restored thread started timer")
 	}
-	info.Turns = []appServerHistoryTurn{{ID: "a", StartedAt: 200, CompletedAt: 250}, {ID: "b", StartedAt: 300, CompletedAt: 350}}
+	info.Turns = []binding.HistoryTurn{{ID: "a", StartedAt: 200, CompletedAt: 250}, {ID: "b", StartedAt: 300, CompletedAt: 350}}
 	u.restoreMainHistory(info.Turns, nil, nil)
 	if !agent.Started.Equal(historyTime(200)) || !agent.LastResponse.Equal(historyTime(350)) {
 		t.Fatalf("restored timer used metadata instead of turns: %+v", agent)
 	}
-	u.session.registerThread(appServerThreadInfo{ID: "child", AgentNickname: "worker"})
+	u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	info.ID = "child"
-	u.restoreActivityThread(info)
+	u.restoreActivityThread(info, false)
 	child := u.session.agent("/root/worker")
 	if !child.Started.Equal(agent.Started) || !child.LastResponse.Equal(agent.LastResponse) {
 		t.Fatalf("child restored timer differs from Main: %+v", child)
@@ -202,7 +203,7 @@ func TestAppServerSessionDocksSharedPreviewsByCaller(t *testing.T) {
 }
 
 func TestAppServerChangeCounts(t *testing.T) {
-	change := appServerFileChange{Diff: "@@\n-x\n+y\n"}
+	change := binding.FileChange{Diff: "@@\n-x\n+y\n"}
 	change.Kind.Type = "update"
 	if added, removed := appServerChangeCounts(change); added != 1 || removed != 1 {
 		t.Fatalf("counts %d %d", added, removed)

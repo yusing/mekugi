@@ -3,17 +3,15 @@ package router
 import (
 	"slices"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/observation"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
-type appServerAgentState struct {
-	Status string `json:"status"`
-}
-
 // History can retain an unfinished item in a stopped turn. The owning turn
 // ends its waiting presentation without claiming a successful tool result.
-func appServerHistoryProgressPhase(item appServerItem, turnStatus string) string {
+func appServerHistoryProgressPhase(item binding.ThreadItem, turnStatus string) string {
 	if item.Status == "inProgress" {
 		if item.Type == "collabAgentToolCall" && item.Tool == "wait" && (turnStatus == "completed" || turnStatus == "interrupted" || turnStatus == "failed") {
 			return "turn/completed"
@@ -27,7 +25,7 @@ func appServerHistoryProgressPhase(item appServerItem, turnStatus string) string
 // Only compaction replaces Working; collaboration waits are roster-only status.
 // Source: codex-rs/tui/src/chatwidget/compaction.rs:6:56@1cc7e236
 // and codex-rs/tui/src/multi_agents.rs:375:414@1cc7e236.
-func appServerProgress(item appServerItem, method string) (text string, wait *activityui.Block, handled bool) {
+func appServerProgress(item binding.ThreadItem, method string, names map[string]string) (text string, wait *activityui.Block, handled bool) {
 	switch item.Type {
 	case "contextCompaction":
 		if method == "item/completed" {
@@ -35,13 +33,13 @@ func appServerProgress(item appServerItem, method string) (text string, wait *ac
 		}
 		return "", nil, true
 	}
-	if block := appServerWaitProgress(item, method); block != nil {
+	if block := appServerWaitProgress(item, method, names); block != nil {
 		return block.ProgressText(), block, true
 	}
 	return "", nil, false
 }
 
-func appServerWaitProgress(item appServerItem, method string) *activityui.Block {
+func appServerWaitProgress(item binding.ThreadItem, method string, names map[string]string) *activityui.Block {
 	if item.Type != "collabAgentToolCall" || item.Tool != "wait" {
 		return nil
 	}
@@ -65,7 +63,7 @@ func appServerWaitProgress(item appServerItem, method string) *activityui.Block 
 	}
 	slices.Sort(extra)
 	for _, id := range append(receivers, extra...) {
-		name := item.waitNames[id]
+		name := names[id]
 		if name == "" {
 			name = id
 		}

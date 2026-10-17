@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -11,7 +13,7 @@ import (
 
 func TestAppServerBatchFailureDoesNotFailEachOperation(t *testing.T) {
 	const script = "git show --stat --oneline 3333fb1c; skills-mgr get mekugi-owners; git cherry-pick 3333fb1c"
-	item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "/usr/bin/bash -lc " + quoteShellWord(script),
+	item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "/usr/bin/bash -lc " + quoteShellWord(script),
 		Status: "failed", ExitCode: new(1), AggregatedOutput: new("git output\nskill output\nconflict\n")}
 	for _, mode := range []string{"live", "resume", "child history"} {
 		t.Run(mode, func(t *testing.T) {
@@ -24,10 +26,10 @@ func TestAppServerBatchFailureDoesNotFailEachOperation(t *testing.T) {
 				appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": started})
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 			case "resume":
-				u.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
+				u.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 			case "child history":
 				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-				u.restoreActivityThread(appServerThreadInfo{ID: "child", Turns: []appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}}})
+				u.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
 				view = u.agents
 			}
 			finishPacing(u.view, u.agents)

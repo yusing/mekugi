@@ -436,7 +436,9 @@ Click selects the transcript, not input authority; Main's composer stays Main's.
 Arrows/k/j stop at either end; n/Tab/p also navigate, a toggles Main/current child.
 Roster wheel scrolling changes neither selection nor transcript follow. Transcript
 page/wheel scrolling pauses follow and Esc resumes it; frozen selections retain
-their own navigation. Running headers scroll normally; the composer process count
+their own navigation. Inserting older history preserves a paused viewport and
+existing output/navigation identities; [session presentation](../../apps/mekugi/internal/sessionpresentation/SPEC.md#history)
+owns page admission and evidence placement. Running headers scroll normally; the composer process count
 and `/ps` dialog follow [running processes](#running-processes).
 
 Statuses mean only observed open response, latest error, plaintext FINAL_ANSWER,

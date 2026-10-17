@@ -3,7 +3,6 @@ package router
 import (
 	"cmp"
 	"context"
-	"encoding/json/jsontext"
 
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
@@ -66,45 +65,6 @@ import (
 
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
-
-type appServerItem struct {
-	DurationMS       *int64                    `json:"durationMs"`
-	Delivery         string                    `json:"delivery"`
-	Questions        []binding.Question        `json:"questions"`
-	ID               string                    `json:"id"`
-	ClientID         string                    `json:"clientId"` // userMessage: the submission's clientUserMessageId.
-	Type             string                    `json:"type"`
-	Text             string                    `json:"text"`
-	Summary          []string                  `json:"summary"`
-	AgentThreadID    string                    `json:"agentThreadId"`
-	AgentPath        string                    `json:"agentPath"`
-	Kind             string                    `json:"kind"` // subAgentActivity lifecycle.
-	Command          string                    `json:"command"`
-	Cwd              string                    `json:"cwd"` // commandExecution: the directory the host ran it in.
-	Source           string                    `json:"source"`
-	ProcessID        string                    `json:"processId"`
-	Path             string                    `json:"path"`
-	Status           string                    `json:"status"`
-	AggregatedOutput *string                   `json:"aggregatedOutput"`
-	Query            string                    `json:"query"`
-	Action           *appServerWebSearchAction `json:"action"`
-	Results          []jsontext.Value          `json:"results"`
-	// Content is variant-specific: user input blocks or raw reasoning strings.
-	// Decode only userMessage content; reasoning presentation uses Summary.
-	Content           jsontext.Value                 `json:"content"`
-	Phase             string                         `json:"phase"`
-	ExitCode          *int                           `json:"exitCode"`
-	CommandActions    []appServerCommandAction       `json:"commandActions"`
-	Changes           []appServerFileChange          `json:"changes"`
-	Tool              string                         `json:"tool"`
-	SenderThreadID    string                         `json:"senderThreadId"`
-	ReceiverThreadIDs []string                       `json:"receiverThreadIds"`
-	AgentsStates      map[string]appServerAgentState `json:"agentsStates"`
-	Prompt            string                         `json:"prompt"`
-	Model             string                         `json:"model"`
-	ReasoningEffort   string                         `json:"reasoningEffort"`
-	waitNames         map[string]string              // Presentation-only names for retained wait targets.
-}
 
 type appServerUI struct {
 	composer.Editor
@@ -484,9 +444,7 @@ func startAppServerUI(conversation *conversationmodel.Service, activity *activit
 		if u.conversation().Shell.Text != "" {
 			fmt.Fprintln(stdout, "Shell submission outcome unknown; not automatically rerun:\n"+textsanitize.Safe(u.conversation().Shell.Text, false))
 		}
-		u.session.state = scope.Store{}
-		u.session.threadStates = nil
-		u.session.turnStates = nil
+		u.session.Retire()
 		if err != nil {
 			c.Diagnostics.Lock()
 			defer c.Diagnostics.Unlock()
@@ -736,11 +694,11 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			return u.startThread()
 		case "thread/start", "thread/resume":
 			var result struct {
-				Model             string              `json:"model"`
-				ReasoningEffort   string              `json:"reasoningEffort"`
-				ServiceTier       string              `json:"serviceTier"`
-				CollaborationMode map[string]any      `json:"collaborationMode"`
-				Thread            appServerThreadInfo `json:"thread"`
+				Model             string             `json:"model"`
+				ReasoningEffort   string             `json:"reasoningEffort"`
+				ServiceTier       string             `json:"serviceTier"`
+				CollaborationMode map[string]any     `json:"collaborationMode"`
+				Thread            binding.ThreadInfo `json:"thread"`
 			}
 			if err := json.Unmarshal(m.Result, &result); err != nil {
 				return err
@@ -1232,7 +1190,7 @@ func paneActivityAgent(entry activityPaneEntry) string {
 // historyPending reports resumed history that Main has yet to show. Router
 // observations wait in their queues so they follow it, as live.
 func (u *appServerUI) historyPending() bool {
-	return u.restoring != nil && !u.restoring.rendered
+	return u.restoring != nil && !u.restoring.state.View().Rendered
 }
 
 // mainActivityEntry projects one collector entry into Main's audience.

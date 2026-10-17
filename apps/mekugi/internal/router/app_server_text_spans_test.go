@@ -84,13 +84,13 @@ func TestAppServerTypedTokensAcrossSubmissionAndResume(t *testing.T) {
 	}
 	appServerTestKeys(t, u, "\r")
 	check(u.view)
-	item := appServerItem{ID: "user", Type: "userMessage", Content: content}
+	item := binding.ThreadItem{ID: "user", Type: "userMessage", Content: content}
 	for _, method := range []string{"item/started", "item/completed"} {
 		appServerTestNotify(t, u, method, map[string]any{"threadId": "main", "turnId": "t", "item": item})
 		check(u.view)
 	}
 	restored := newAppServerSessionTestUI(t, t.TempDir())
-	restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
+	restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 	check(restored.view)
 }
 

@@ -95,7 +95,7 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "c", "item": map[string]any{
 		"id": "cat-call", "type": "commandExecution", "command": "cat unrelated.go", "exitCode": 0}})
 	assertCapturedCommand(t, u.agents, "child", "cat-call", "Read", 0)
-	sibling := appServerItem{ID: "sibling-call", Type: "commandExecution", Command: "/bin/bash -lc " + commandargs.QuoteArgument("rg needle src; python3 - <<'PY'\nopen('nested.go', 'w').write('PRIVATE_EDIT_SOURCE')\nPY"), ExitCode: new(0), DurationMS: new(int64(64))}
+	sibling := binding.ThreadItem{ID: "sibling-call", Type: "commandExecution", Command: "/bin/bash -lc " + commandargs.QuoteArgument("rg needle src; python3 - <<'PY'\nopen('nested.go', 'w').write('PRIVATE_EDIT_SOURCE')\nPY"), ExitCode: new(0), DurationMS: new(int64(64))}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "c", "item": sibling})
 	assertCapturedCommand(t, u.agents, "child", "sibling-call", "Search", 0)
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "c", "item": map[string]any{
@@ -139,12 +139,12 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 	restored := newAppServerSessionTestUI(t, workspace)
 	restored.shell.saved.data = snapshot
 	publishFixtureReview(t, restored)
-	restored.restoreHistory([]appServerHistoryTurn{{ID: "prior", Status: "completed", Items: []appServerItem{{
+	restored.restoreHistory([]binding.HistoryTurn{{ID: "prior", Status: "completed", Items: []binding.ThreadItem{{
 		ID: "cat-call", Type: "commandExecution", Command: "cat > direct.go", ExitCode: new(2),
 	}}}})
 	assertCapturedCommand(t, restored.view, "main", "cat-call", "Edit", 2)
 	restored.session.path("child")
-	restored.restoreActivityThread(appServerThreadInfo{ID: "child", Cwd: workspace, Turns: []appServerHistoryTurn{{ID: "c", Status: "completed", Items: []appServerItem{sibling}}}})
+	restored.restoreActivityThread(binding.ThreadInfo{ID: "child", Cwd: workspace, Turns: []binding.HistoryTurn{{ID: "c", Status: "completed", Items: []binding.ThreadItem{sibling}}}}, false)
 	assertCapturedCommand(t, restored.agents, "child", sibling.ID, "Search", 0)
 	for _, view := range []*activityAdapter{u.agents, restored.agents} {
 		for _, entry := range view.Entries {
@@ -179,7 +179,7 @@ func assertCapturedCommand(t *testing.T, view *activityAdapter, thread, item, ve
 
 func TestAppServerCapturedEditsReuseReceipt(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "cat > a.go <<'EOF'\nnew\nEOF"}
+	item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "cat > a.go <<'EOF'\nnew\nEOF"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	var data []*presentation.Receipt
 	receipt := &presentation.Receipt{Thread: "main", Calls: []string{"cmd"}, Text: "Edit `a.go` +1 -1"}
@@ -330,7 +330,7 @@ func TestCodeModeCellEditReceipt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	item := appServerItem{ID: "edit-exec", Type: "commandExecution", Command: edit, ExitCode: new(0)}
+	item := binding.ThreadItem{ID: "edit-exec", Type: "commandExecution", Command: edit, ExitCode: new(0)}
 	live := newAppServerSessionTestUI(t, workspace)
 	live.Thread = "thread-1"
 	live.session.start(live.Thread, workspace)
@@ -344,7 +344,7 @@ func TestCodeModeCellEditReceipt(t *testing.T) {
 	restored.session.start(restored.Thread, workspace)
 	restored.shell.saved.data = snapshot
 	publishFixtureReview(t, restored)
-	restored.restoreHistory([]appServerHistoryTurn{{ID: "turn", Status: "completed", Items: []appServerItem{item}}})
+	restored.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}})
 	assertCapturedCommand(t, restored.view, "thread-1", "edit-exec", "Edit", 0)
 }
 
@@ -360,7 +360,7 @@ func TestAppServerCapturedRemovalKeepsRunNeighbors(t *testing.T) {
 				if thread == "child" {
 					view = u.agents
 				}
-				item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "/bin/bash -lc " + commandargs.QuoteArgument(source), ExitCode: new(0), AggregatedOutput: new(" M tracked.go\n")}
+				item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "/bin/bash -lc " + commandargs.QuoteArgument(source), ExitCode: new(0), AggregatedOutput: new(" M tracked.go\n")}
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": item})
 				data := []*presentation.Receipt{{Thread: thread, Calls: []string{"cmd"}, Text: "Delete `FILE` +0 -1 · rm"}}
 				check := func(view *activityAdapter) {
@@ -385,7 +385,7 @@ func TestAppServerCapturedRemovalKeepsRunNeighbors(t *testing.T) {
 				check(view)
 				if thread == "main" {
 					restored := newAppServerSessionTestUI(t, t.TempDir())
-					restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
+					restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 					check(restored.view)
 				}
 			})
@@ -395,7 +395,7 @@ func TestAppServerCapturedRemovalKeepsRunNeighbors(t *testing.T) {
 
 func TestAppServerCapturedEditKeepsCommandPaths(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
-	item := appServerItem{ID: "cmd", Type: "commandExecution", Cwd: "/command-dir", Command: "mcat /command-dir/read.go; rg '/command-dir/query' /command-dir/src; printf new > /command-dir/edit.go", Status: "completed", ExitCode: new(0)}
+	item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Cwd: "/command-dir", Command: "mcat /command-dir/read.go; rg '/command-dir/query' /command-dir/src; printf new > /command-dir/edit.go", Status: "completed", ExitCode: new(0)}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	data := []*presentation.Receipt{{Thread: "main", Calls: []string{"cmd"}, Text: "Edit `edit.go` +1 -1"}}
 	check := func(view *activityAdapter) {
@@ -410,6 +410,6 @@ func TestAppServerCapturedEditKeepsCommandPaths(t *testing.T) {
 	check(u.view)
 	restored := newAppServerSessionTestUI(t, u.session.cwd)
 	restored.shell.saved.data = reviewReceiptSnapshot(t, data)
-	restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
+	restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 	check(restored.view)
 }

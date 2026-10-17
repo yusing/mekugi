@@ -8,18 +8,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/commandsegments/segments"
-
-	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-
-	"github.com/yusing/mekugi/libraries/diffrender"
-	"github.com/yusing/mekugi/libraries/terminalui"
-
-	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+	"github.com/yusing/mekugi/libraries/terminalui"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -201,7 +201,7 @@ func TestOutputDialogRestoredCommandUsesRetainedAggregate(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
 	output := "first\nsecond\nthird\n"
-	u.restoreHistory([]appServerHistoryTurn{{ID: "past", Status: "completed", Items: []appServerItem{{
+	u.restoreHistory([]binding.HistoryTurn{{ID: "past", Status: "completed", Items: []binding.ThreadItem{{
 		ID: "cmd", Type: "commandExecution", Command: "go test ./...", AggregatedOutput: &output, ExitCode: new(1),
 	}}}})
 	feed := u.view.RenderFeed(90, 60)
@@ -328,9 +328,9 @@ func TestOutputDialogRestoredMultiReadKeepsCombinedOutput(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
 	combined := "content of a\ncontent of b\n"
-	u.restoreHistory([]appServerHistoryTurn{{ID: "past", Status: "completed", Items: []appServerItem{{
+	u.restoreHistory([]binding.HistoryTurn{{ID: "past", Status: "completed", Items: []binding.ThreadItem{{
 		ID: "read", Type: "commandExecution", Command: "cat a; cat b", AggregatedOutput: &combined, ExitCode: new(0),
-		CommandActions: []appServerCommandAction{{Type: "read", Path: "a", Command: "cat a"}, {Type: "read", Path: "b", Command: "cat b"}},
+		CommandActions: []binding.CommandAction{{Type: "read", Path: "a", Command: "cat a"}, {Type: "read", Path: "b", Command: "cat b"}},
 	}}}})
 	feed := u.view.RenderFeed(90, 60)
 	terminal := &terminalUI{main: u}
@@ -592,7 +592,7 @@ func TestSharedDialogCloseButton(t *testing.T) {
 func TestCommandDurationRestoresAndStopsInDialog(t *testing.T) {
 	v := newActivityAdapter()
 	duration := int64(70000)
-	item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "echo ok", DurationMS: &duration, Status: "completed"}
+	item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "echo ok", DurationMS: &duration, Status: "completed"}
 	applyTranscriptFixture(v, true, "/w", "main", "main", "turn", "cmd", "item/completed", "", item)
 	b := v.blocks(0)[0]
 	if b.Duration != 70*time.Second || b.Running {

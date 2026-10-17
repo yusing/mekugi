@@ -1,6 +1,8 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -46,7 +48,7 @@ func (s *appServerSession) retainHook(thread string, observation history.HookObs
 	})
 }
 
-func (u *appServerUI) restoredHookEvents(info appServerThreadInfo) []restoredRolloutEvent {
+func (u *appServerUI) restoredHookEvents(info binding.ThreadInfo) []restoredRolloutEvent {
 	store := u.session.waitStore
 	var published *history.Store
 	if store != nil {

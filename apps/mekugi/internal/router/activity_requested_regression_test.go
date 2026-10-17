@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/libraries/diffrender"
 )
 
 func TestRequestedEditGroupsMergeAdjacentInvocations(t *testing.T) {
@@ -17,7 +17,7 @@ func TestRequestedEditGroupsMergeAdjacentInvocations(t *testing.T) {
 		v := newActivityAdapter()
 		v.ChildrenOnly = agent != "Main"
 		text := "Edit `a.go` +2 -1 · python3\n\nCreate `b.go` +3 -0 · python3"
-		patch := appServerEditText(appServerItem{Status: "failed", Changes: []appServerFileChange{
+		patch := appServerEditText(binding.ThreadItem{Status: "failed", Changes: []binding.FileChange{
 			{Path: "c.go", Diff: "+new\n-old\n"},
 			{Path: "d.go", Diff: "+new\n"},
 		}}, "")

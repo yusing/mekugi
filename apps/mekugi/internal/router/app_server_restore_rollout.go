@@ -4,8 +4,8 @@ import (
 	"bufio"
 	"bytes"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/binding"
-
 	"github.com/yusing/mekugi/backends/codex/rollout"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
@@ -13,7 +13,6 @@ import (
 
 	json "encoding/json/v2"
 	"io"
-	"slices"
 	"strings"
 	"time"
 
@@ -45,7 +44,7 @@ type restoredRolloutEvent struct {
 
 // readRestoredRollout projects one thread's retained rollout. agent is the
 // thread's canonical path, which addressed messages must name exactly.
-func readRestoredRollout(info appServerThreadInfo, agent string) restoredRollout {
+func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout {
 	r := restoredRollout{itemAt: make(map[string]time.Time)}
 	f, stat, ok := rollout.Open(info.ID, info.Path)
 	if !ok {
@@ -174,54 +173,28 @@ type restoredPlacement struct {
 	link *uint64
 }
 
-// placeRestored splits placements among a turn's history items: slot 0
-// precedes the first item and slot i+1 follows item i.
-func placeRestored(turn appServerHistoryTurn, itemAt map[string]time.Time, placements []*restoredPlacement) [][]*restoredPlacement {
-	slots := make([][]*restoredPlacement, len(turn.Items)+1)
-	times := make([]time.Time, len(turn.Items))
-	at := historyTime(turn.StartedAt)
-	for i, item := range turn.Items {
-		if completed, ok := itemAt[item.ID]; ok {
-			at = completed
-		}
-		times[i] = at
-	}
-	for _, p := range placements {
-		slot := 0
-		if p.turn != "" {
-			slot = slices.IndexFunc(turn.Items, func(item appServerItem) bool { return item.ID == p.anchor }) + 1
-		}
-		if p.turn == "" || p.anchor != "" && slot == 0 {
-			// Without its anchor in the host's history, time orders it.
-			for i, completed := range times {
-				if !completed.After(p.at) {
-					slot = i + 1
-				}
-			}
-		}
-		slots[slot] = append(slots[slot], p)
-	}
-	for _, slot := range slots {
-		// Evidence from several threads can follow one item.
-		slices.SortStableFunc(slot, func(a, b *restoredPlacement) int { return a.at.Compare(b.at) })
-	}
-	return slots
+func (p *restoredPlacement) position() sessionpresentation.Placement {
+	return sessionpresentation.Placement{Turn: p.turn, Anchor: p.anchor, At: p.at}
 }
 
-// restoredTurnFor selects the turn a time-placed entry belongs to: the last
-// one started by then, else the first. It returns -1 without turns.
-func restoredTurnFor(turns []appServerHistoryTurn, itemAt map[string]time.Time, at time.Time) int {
-	index := min(0, len(turns)-1)
+func historyPositions(turns []binding.HistoryTurn, itemAt map[string]time.Time) []sessionpresentation.TurnPosition {
+	positions := make([]sessionpresentation.TurnPosition, len(turns))
 	for i, turn := range turns {
-		begin := historyTime(turn.StartedAt)
-		if begin.IsZero() && len(turn.Items) > 0 {
-			begin = itemAt[turn.Items[0].ID]
-		}
-		if !begin.After(at) {
-			index = i
+		positions[i] = sessionpresentation.TurnPosition{ID: turn.ID, Started: historyTime(turn.StartedAt), Items: make([]sessionpresentation.ItemPosition, len(turn.Items))}
+		for j, item := range turn.Items {
+			at, known := itemAt[item.ID]
+			positions[i].Items[j] = sessionpresentation.ItemPosition{ID: item.ID, At: at, Known: known}
 		}
 	}
-	return index
+	return positions
+}
+
+func restoredPositions(placements []*restoredPlacement) []sessionpresentation.Placement {
+	positions := make([]sessionpresentation.Placement, len(placements))
+	for i, placement := range placements {
+		positions[i] = placement.position()
+	}
+	return positions
 }
 
 func deref(value *string) string {

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
@@ -36,7 +36,7 @@ func processDialog(u *appServerUI, width, height int) []string {
 
 func TestRunningProcessesLifecycle(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
-	u.session.registerThread(appServerThreadInfo{ID: "child", AgentNickname: "worker"})
+	u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	appServerTestKeys(t, u, "/ps\r")
 	if got := drawOutputDialog(u.shell); !strings.Contains(got, "No running processes") {
 		t.Fatalf("missing empty state: %s", got)
@@ -128,7 +128,7 @@ func TestRunningProcessesTrackedCompletion(t *testing.T) {
 
 func TestRunningProcessesRestoredAndSwitched(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
-	u.restoreHistory([]appServerHistoryTurn{{ID: "old", Status: "completed", Items: []appServerItem{{ID: "old", Type: "commandExecution", Command: "sleep 100", Status: "inProgress"}}}})
+	u.restoreHistory([]binding.HistoryTurn{{ID: "old", Status: "completed", Items: []binding.ThreadItem{{ID: "old", Type: "commandExecution", Command: "sleep 100", Status: "inProgress"}}}})
 	if u.runningProcessCount() != 0 {
 		t.Fatal("restored history created a process")
 	}
@@ -185,7 +185,7 @@ func TestUISnapshotRunningProcesses(t *testing.T) {
 		view.Clock, view.Painter.Theme = u.clock, diffrender.DarkTheme
 		view.FeedOnly, view.Bare = true, true
 	}
-	u.session.registerThread(appServerThreadInfo{ID: "child", AgentNickname: "worker"})
+	u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	for _, thread := range []string{"main", "child"} {
 		processNotify(t, u, thread, "cmd", "go test ./...", "inProgress")
 		for i := range 3 {

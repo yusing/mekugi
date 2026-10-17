@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/activity/waittargets"
 )
 
@@ -41,9 +42,9 @@ func (u *appServerUI) openWaitStore(store *mekugiReplayStore) error {
 // Mailbox waits omit receivers. Snapshot the running descendants at start,
 // never the roster at completion or replay. These records are presentation
 // evidence only: they cannot resume work or change the host's tool arguments.
-func (u *appServerUI) waitItem(item appServerItem, thread, turn, id string, started bool) appServerItem {
+func (u *appServerUI) waitItem(item binding.ThreadItem, thread, turn, id string, started bool) (binding.ThreadItem, map[string]string) {
 	if item.Type != "collabAgentToolCall" || item.Tool != "wait" || thread == "" || turn == "" || id == "" {
-		return item
+		return item, nil
 	}
 	s := &u.session
 	if s.waits == nil {
@@ -88,10 +89,10 @@ func (u *appServerUI) waitItem(item appServerItem, thread, turn, id string, star
 	}
 	receivers := item.ReceiverThreadIDs
 	item.ReceiverThreadIDs = nil
-	item.waitNames = make(map[string]string)
+	names := make(map[string]string)
 	for _, target := range targets {
 		item.ReceiverThreadIDs = append(item.ReceiverThreadIDs, target.Thread)
-		item.waitNames[target.Thread] = target.Name
+		names[target.Thread] = target.Name
 	}
 	for _, target := range receivers {
 		if !slices.Contains(item.ReceiverThreadIDs, target) {
@@ -100,15 +101,15 @@ func (u *appServerUI) waitItem(item appServerItem, thread, turn, id string, star
 	}
 	for _, target := range item.ReceiverThreadIDs {
 		if name := s.paths[target]; name != "" {
-			item.waitNames[target] = name
+			names[target] = name
 		}
 	}
 	for target := range item.AgentsStates {
 		if name := s.paths[target]; name != "" {
-			item.waitNames[target] = name
+			names[target] = name
 		}
 	}
-	return item
+	return item, names
 }
 
 func (s *appServerSession) waitTargetsPath(key [3]string) string {

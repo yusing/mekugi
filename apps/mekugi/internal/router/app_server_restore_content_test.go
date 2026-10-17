@@ -3,6 +3,8 @@ package router
 import (
 	"bytes"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	json "encoding/json/v2"
@@ -80,7 +82,7 @@ func TestAppServerRestoreRosterAndActivityFromObservationalHistory(t *testing.T)
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.session.start("main", workspace)
 	u.resumeThread = "main"
-	root := appServerThreadInfo{ID: "main", Cwd: workspace, Turns: []appServerHistoryTurn{{ID: "root-turn", Status: "completed", Items: []appServerItem{
+	root := binding.ThreadInfo{ID: "main", Cwd: workspace, Turns: []binding.HistoryTurn{{ID: "root-turn", Status: "completed", Items: []binding.ThreadItem{
 		{ID: "spawn", Type: "collabAgentToolCall", Status: "completed", Tool: "spawnAgent", SenderThreadID: "main", ReceiverThreadIDs: []string{"child"}, Prompt: "Inspect the change."},
 		{ID: "followup", Type: "collabAgentToolCall", Status: "completed", Tool: "followupTask", SenderThreadID: "main", ReceiverThreadIDs: []string{"child"}, Prompt: "Check again."},
 	}}}}
@@ -145,7 +147,7 @@ func TestAppServerRestoreWrongChildIdentityContinues(t *testing.T) {
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.session.start("main", t.TempDir())
 	u.resumeThread = "main"
-	if err := u.restorePaneContent(appServerThreadInfo{ID: "main", Cwd: u.session.cwd}); err != nil {
+	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: u.session.cwd}); err != nil {
 		t.Fatal(err)
 	}
 	restoreContentReply(t, u, 0, map[string]any{"data": []any{map[string]any{"id": "first"}, map[string]any{"id": "second"}}})
@@ -168,7 +170,7 @@ func TestAppServerRestoreChildReadErrorContinues(t *testing.T) {
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.session.start("main", t.TempDir())
 	u.resumeThread = "main"
-	if err := u.restorePaneContent(appServerThreadInfo{ID: "main", Cwd: u.session.cwd}); err != nil {
+	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: u.session.cwd}); err != nil {
 		t.Fatal(err)
 	}
 	restoreContentReply(t, u, 0, map[string]any{"data": []any{map[string]any{"id": "first"}, map[string]any{"id": "second"}}})
@@ -204,8 +206,8 @@ func TestAppServerRestoreDiffScopeBeforeNewTurn(t *testing.T) {
 	u := newAppServerSessionTestUI(t, workspace)
 	u.shell.review = testReview(auto)
 	sub := testReview(auto).Subscribe()
-	u.restoreDiffThread(appServerThreadInfo{ID: "main", Cwd: workspace}, true)
-	u.restoreDiffThread(appServerThreadInfo{ID: "child", Cwd: workspace}, false)
+	u.restoreDiffThread(binding.ThreadInfo{ID: "main", Cwd: workspace}, true)
+	u.restoreDiffThread(binding.ThreadInfo{ID: "child", Cwd: workspace}, false)
 	var lastScope *previewmodel.Scope
 	for len(sub.Events()) > 0 {
 		event := <-sub.Events()
@@ -236,7 +238,7 @@ func TestAppServerRestoreDiffScopeBeforeNewTurn(t *testing.T) {
 func TestAppServerRestoreCollaborationRequiresCompletedStatus(t *testing.T) {
 	for _, status := range []string{"inProgress", "failed", "interrupted", ""} {
 		u := newAppServerSessionTestUI(t, t.TempDir())
-		entries := u.restoredCollab(appServerItem{ID: "send", Type: "collabAgentToolCall", Tool: "sendMessage", Status: status, SenderThreadID: "main", ReceiverThreadIDs: []string{"child"}, Prompt: "undelivered message"}, time.Now())
+		entries := u.restoredCollab(binding.ThreadItem{ID: "send", Type: "collabAgentToolCall", Tool: "sendMessage", Status: status, SenderThreadID: "main", ReceiverThreadIDs: []string{"child"}, Prompt: "undelivered message"}, time.Now())
 		if len(entries) != 1 || entries[0].Kind != "error" || !strings.Contains(entries[0].Text, "delivery not confirmed") || strings.Contains(entries[0].Text, "Message sent") {
 			t.Fatalf("unfinished delivery presented as successful: %+v", entries)
 		}
@@ -247,7 +249,7 @@ func TestAppServerRestoreListPageBudget(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.agents = newActivityAdapter()
 	u.session.start("main", t.TempDir())
-	if err := u.restorePaneContent(appServerThreadInfo{ID: "main"}); err != nil {
+	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main"}); err != nil {
 		t.Fatal(err)
 	}
 	for i := range 8 {
@@ -275,7 +277,7 @@ func TestAppServerRestoreWaitsForDurableDiffBeforeInput(t *testing.T) {
 			u.shell.saved.store = store
 			u.shell.review = testReview(auto)
 			sub := testReview(auto).Subscribe()
-			if err := u.restorePaneContent(appServerThreadInfo{ID: "main", Cwd: workspace}); err != nil {
+			if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: workspace}); err != nil {
 				t.Fatal(err)
 			}
 			restoreContentReply(t, u, 0, map[string]any{"data": []any{}})

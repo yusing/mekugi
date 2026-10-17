@@ -24,7 +24,7 @@ type commandSegmentWrite struct {
 	err error
 }
 
-func (u *appServerUI) retainCommandSegments(entry activityPaneEntry, item appServerItem, view execTrackView) {
+func (u *appServerUI) retainCommandSegments(entry activityPaneEntry, item binding.ThreadItem, view execTrackView) {
 	if u.segments == nil || u.proxy == nil || u.proxy.replayStore == nil || item.AggregatedOutput == nil || item.ExitCode == nil {
 		return
 	}
@@ -106,7 +106,7 @@ func (u *appServerUI) finishCommandSegments() {
 
 // Restore only real, terminal observations that agree with visible host
 // history. Missing, corrupt or mismatched records leave the aggregate intact.
-func (u *appServerUI) restoreCommandSegments(entry *activityPaneEntry, item appServerItem, workspace string) {
+func (u *appServerUI) restoreCommandSegments(entry *activityPaneEntry, item binding.ThreadItem, workspace string) {
 	if item.Type != "commandExecution" || item.ExitCode == nil || item.AggregatedOutput == nil || u.proxy == nil || u.proxy.replayStore == nil {
 		return
 	}
@@ -115,7 +115,7 @@ func (u *appServerUI) restoreCommandSegments(entry *activityPaneEntry, item appS
 		record = u.restoredSegments[entry.native.item]
 	} else {
 		item.ID = entry.native.item
-		record = u.prepareCommandSegments(entry.native.thread, workspace, appServerHistoryTurn{ID: entry.native.turn, Items: []appServerItem{item}})[item.ID]
+		record = u.prepareCommandSegments(entry.native.thread, workspace, binding.HistoryTurn{ID: entry.native.turn, Items: []binding.ThreadItem{item}})[item.ID]
 	}
 	if record == nil {
 		return
@@ -128,13 +128,13 @@ func (u *appServerUI) restoreCommandSegments(entry *activityPaneEntry, item appS
 	for _, part := range record.Parts {
 		segment := commandSegment{timing: segmenttransport.Timing(part.Timing), source: part.Source, text: execSegmentTextInDirectory(part.Source, cwd), skipped: part.Skipped, exit: part.Exit}
 		if separate && !part.Skipped {
-			if outputs := u.session.activity.Outputs(&u.session.state); outputs != nil {
+			if outputs := u.session.activity.Outputs(u.session.Scope()); outputs != nil {
 				segment.output = outputs.New()
 				segment.output.Finish(part.Output, &part.Exit)
 			}
 			segment.tail, segment.omit = appServerOutputTail(part.Output)
 			if part.Exit == 0 {
-				segment.changes, segment.commit = commandOutputRows(appServerItem{Command: part.Source, Cwd: vcsSegmentCwd(item.Cwd, entry.native.segments), AggregatedOutput: part.Output})
+				segment.changes, segment.commit = commandOutputRows(binding.ThreadItem{Command: part.Source, Cwd: vcsSegmentCwd(item.Cwd, entry.native.segments), AggregatedOutput: part.Output})
 			}
 		}
 		entry.native.segments = append(entry.native.segments, segment)
@@ -148,7 +148,7 @@ func (u *appServerUI) restoreCommandSegments(entry *activityPaneEntry, item appS
 }
 
 // Decode host facts before the report owner validates and adopts each batch.
-func (u *appServerUI) prepareCommandSegments(thread, workspace string, turn appServerHistoryTurn) map[string]*reports.Report {
+func (u *appServerUI) prepareCommandSegments(thread, workspace string, turn binding.HistoryTurn) map[string]*reports.Report {
 	result := make(map[string]*reports.Report)
 	if u.segments == nil || u.proxy == nil || u.proxy.replayStore == nil {
 		return result

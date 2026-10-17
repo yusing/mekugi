@@ -5,9 +5,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/nativetrace"
 
-	"github.com/charmbracelet/x/ansi"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
@@ -36,7 +37,7 @@ func TestAppServerSearchResultCounts(t *testing.T) {
 		{"rg needle; echo extra", "a.go:1:needle\nextra\n", 0, -1},
 	} {
 		t.Run(tc.command+"/"+tc.output, func(t *testing.T) {
-			item := appServerItem{Type: "commandExecution", ID: "s", Command: tc.command, Status: "completed", ExitCode: new(tc.exit), AggregatedOutput: new(tc.output)}
+			item := binding.ThreadItem{Type: "commandExecution", ID: "s", Command: tc.command, Status: "completed", ExitCode: new(tc.exit), AggregatedOutput: new(tc.output)}
 			count := appServerSearchResults(item)
 			if tc.want < 0 {
 				if count != nil {
@@ -57,13 +58,13 @@ func TestAppServerSearchResultCounts(t *testing.T) {
 				t.Fatalf("not muted: %q", painted)
 			}
 			restored := newAppServerSessionTestUI(t, t.TempDir())
-			restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
+			restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 			if *restored.view.blocks(0)[0].Results != tc.want {
 				t.Fatal("restored count lost")
 			}
 		})
 	}
-	item := appServerItem{Type: "commandExecution", Command: "rg needle", Status: "completed", ExitCode: new(0)}
+	item := binding.ThreadItem{Type: "commandExecution", Command: "rg needle", Status: "completed", ExitCode: new(0)}
 	if appServerSearchResults(item) != nil {
 		t.Fatal("missing output is not zero")
 	}
@@ -104,7 +105,7 @@ func TestAppServerFailedCodeModeCellShowsItsError(t *testing.T) {
 			if child {
 				thread, view = "child", u.agents
 				activity.observe("child", "main", "/root/worker", true)
-				u.session.registerThread(appServerThreadInfo{ID: "child", AgentNickname: "worker"})
+				u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 			}
 			failed := `[{"type":"input_text","text":"Script failed\nWall time 0.0 seconds\nOutput:\n"},{"type":"input_text","text":"Script error:\nSyntaxError: Unexpected token '<<'\n    at cell:1"}]`
 			completed := `[{"type":"input_text","text":"Script completed\nWall time 0.1 seconds\nOutput:\n"},{"type":"input_text","text":"Script error:\nprinted by the program"}]`

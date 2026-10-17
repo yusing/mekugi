@@ -5,13 +5,14 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/backends/codex/binding"
 )
 
 func TestActivityAbsenceKeepsHostOutput(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.session.activity = nil
 	u.view.Conversation = true
-	item := appServerItem{ID: "command", Type: "commandExecution", Command: "printf 'host output'", Status: "inProgress"}
+	item := binding.ThreadItem{ID: "command", Type: "commandExecution", Command: "printf 'host output'", Status: "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	appServerTestNotify(t, u, "item/commandExecution/outputDelta", map[string]any{"threadId": "main", "turnId": "turn", "itemId": item.ID, "delta": "host output\n"})
 	awaitMain(t, u, "host output")
@@ -66,7 +67,7 @@ func TestActivityAbsenceUnknownExit(t *testing.T) {
 			if absent {
 				u.session.activity = nil
 			}
-			item := appServerItem{ID: "command", Type: "commandExecution", Command: "go test ./...", Status: "failed", AggregatedOutput: new("interrupted\n")}
+			item := binding.ThreadItem{ID: "command", Type: "commandExecution", Command: "go test ./...", Status: "failed", AggregatedOutput: new("interrupted\n")}
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 			found := false
 			for _, entry := range u.view.Entries {
@@ -103,7 +104,7 @@ func TestActivityAbsenceDialogRefresh(t *testing.T) {
 			if absent {
 				u.session.activity = nil
 			}
-			item := appServerItem{ID: "command", Type: "commandExecution", Command: "go test ./...", Status: "inProgress"}
+			item := binding.ThreadItem{ID: "command", Type: "commandExecution", Command: "go test ./...", Status: "inProgress"}
 			notify := func(method string, extra map[string]any) {
 				extra["threadId"] = "main"
 				extra["turnId"] = "turn"

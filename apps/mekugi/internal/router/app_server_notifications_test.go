@@ -2,6 +2,9 @@ package router
 
 import (
 	"bytes"
+
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -155,7 +158,7 @@ func TestAppServerNotificationQuestions(t *testing.T) {
 func TestAppServerNotificationHistorySilent(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	out := notificationTestOutput(t, u)
-	var turns []appServerHistoryTurn
+	var turns []binding.HistoryTurn
 	if err := json.Unmarshal([]byte(`[{"id":"past","status":"completed","items":[{"id":"answer","type":"agentMessage","text":"Done"}]},{"id":"question-turn","status":"completed","items":[{"id":"question","type":"agentMessage","delivery":"async","phase":"finalAnswer","text":"Who receives it?","questions":[{"title":"Who receives it?","options":["Customers","Internal"]}]}]}]`), &turns); err != nil {
 		t.Fatal(err)
 	}

@@ -1,7 +1,9 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/conversation/completion"
 
 	json "encoding/json/v2"
@@ -9,9 +11,8 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
-	"github.com/yusing/mekugi/contracts/scope"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 
@@ -150,8 +151,6 @@ func (u *appServerUI) clearSessionPresentation() error {
 	}
 	u.statusPanel = nil
 	u.requests.Retire("main") // Retire old-thread response correlation.
-	u.session.threadStates = nil
-	u.session.turnStates = nil
 	if err := u.request("thread/unsubscribe", map[string]any{"threadId": u.Thread}); err != nil {
 		return err
 	}
@@ -165,7 +164,8 @@ func (u *appServerUI) clearSessionPresentation() error {
 		}
 	}
 	waiting := u.conversation()
-	u.session.state = scope.Store{}
+	u.session.Retire()
+	u.session.Attachment = sessionpresentation.Attachment{}
 	u.conversation().Unsent, u.conversation().Queued = waiting.Unsent, waiting.Queued
 	painter := u.view.Painter
 	*u.view = *newActivityAdapter()
@@ -191,8 +191,8 @@ func (u *appServerUI) retiredSessionEvent(m appserver.Message) bool {
 		return false
 	}
 	var p struct {
-		ThreadID string              `json:"threadId"`
-		Thread   appServerThreadInfo `json:"thread"`
+		ThreadID string             `json:"threadId"`
+		Thread   binding.ThreadInfo `json:"thread"`
 	}
 	if json.Unmarshal(m.Params, &p) != nil {
 		return false

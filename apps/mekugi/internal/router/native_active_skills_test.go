@@ -1,15 +1,16 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	json "encoding/json/v2"
 	"fmt"
 	"slices"
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/modules/conversation/composer"
-
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
@@ -21,7 +22,7 @@ func TestUISnapshotLoadedSkillsRestoreClickAndReset(t *testing.T) {
 		t.Run(thread, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			content, _ := json.Marshal([]map[string]string{{"type": "text", "text": attachments.Encode(composer.SkillFrames("council", "/work/council/SKILL.md", "# Council\n"))}})
-			info := appServerThreadInfo{ID: thread, Cwd: u.session.cwd, AgentNickname: "worker", AgentRole: "worker", Turns: []appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{
+			info := binding.ThreadInfo{ID: thread, Cwd: u.session.cwd, AgentNickname: "worker", AgentRole: "worker", Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{
 				{ID: "old", Type: "commandExecution", Command: "skills-mgr get old", ExitCode: new(0)},
 				{ID: "boundary", Type: "contextCompaction"},
 				{ID: "attached", Type: "userMessage", Content: content},
@@ -33,14 +34,14 @@ func TestUISnapshotLoadedSkillsRestoreClickAndReset(t *testing.T) {
 			view, owner := u.view, "Main"
 			label, body := "2 loaded skills", "- commit\n- council"
 			if thread == "child" {
-				info.Turns[0].Items = slices.DeleteFunc(info.Turns[0].Items, func(item appServerItem) bool { return item.ID == "attached" })
+				info.Turns[0].Items = slices.DeleteFunc(info.Turns[0].Items, func(item binding.ThreadItem) bool { return item.ID == "attached" })
 				label, body = "1 loaded skill", "- commit"
 			}
 			if thread == "main" {
 				u.restoreHistory(info.Turns)
 			} else {
 				u.session.registerThread(info)
-				u.restoreActivityThread(info)
+				u.restoreActivityThread(info, false)
 				view, owner = u.agents, "/root/worker"
 			}
 			for range liveActivityFeedLimit {

@@ -198,8 +198,8 @@ func TestAppServerSedStartsAsEditBeforeReceipt(t *testing.T) {
 				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": thread, "agentNickname": "worker"}})
 				view = u.agents
 			}
-			item := appServerItem{ID: "sed-call", Type: "commandExecution", Command: command,
-				CommandActions: []appServerCommandAction{{Type: "unknown", Command: command}}}
+			item := binding.ThreadItem{ID: "sed-call", Type: "commandExecution", Command: command,
+				CommandActions: []binding.CommandAction{{Type: "unknown", Command: command}}}
 			for _, method := range []string{"item/started", "item/completed"} {
 				appServerTestNotify(t, u, method, map[string]any{"threadId": thread, "turnId": "turn", "item": item})
 				assertCapturedCommand(t, view, thread, "sed-call", "Edit", 0)
@@ -219,8 +219,8 @@ func TestAppServerSedStartsAsEditBeforeReceipt(t *testing.T) {
 func TestAppServerEditIntentLiveAndRestored(t *testing.T) {
 	const source = "mv b.go.new b.go\ncat > a.go <<'EOF'\nPRIVATE_NATIVE_SOURCE\nEOF\ngo test ./internal/router"
 	command := "/usr/bin/bash -lc " + commandargs.QuoteArgument(source)
-	item := appServerItem{ID: "cmd", Type: "commandExecution", Command: command,
-		CommandActions: []appServerCommandAction{{Type: "unknown", Command: command}}}
+	item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: command,
+		CommandActions: []binding.CommandAction{{Type: "unknown", Command: command}}}
 	for _, thread := range []string{"main", "child"} {
 		t.Run(thread, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
@@ -258,7 +258,7 @@ func TestAppServerEditIntentLiveAndRestored(t *testing.T) {
 			}
 			if thread == "main" {
 				restored := newAppServerSessionTestUI(t, t.TempDir())
-				restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
+				restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 				assertCapturedCommand(t, restored.view, "main", "cmd", "Move", 0)
 			}
 		})

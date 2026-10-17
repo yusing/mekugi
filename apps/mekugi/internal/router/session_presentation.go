@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/contracts/scope"
 )
 
 // mainPresentation adapts current owner facts once for any consumer. Caption
@@ -35,18 +34,8 @@ func (u *appServerUI) mainPresentation(now time.Time) sessionpresentation.View {
 	}, caption, now)
 }
 
-func (s *appServerSession) threadState(thread string) *scope.Store {
-	if s.threadStates == nil {
-		s.threadStates = make(map[string]*scope.Store)
-	}
-	if s.threadStates[thread] == nil {
-		s.threadStates[thread] = new(scope.Store)
-	}
-	return s.threadStates[thread]
-}
-
 func (u *appServerUI) sessionPresentation() *sessionpresentation.Model {
-	m := u.presentationState.Session(&u.session.state)
+	m := u.presentationState.Session(u.session.Scope())
 	m.Attach(sessionpresentation.Thread{ID: cmp.Or(u.Thread, "/root"), Caller: "/root"}, u.replay != nil)
 	if u.agents != nil {
 		u.agents.display = m

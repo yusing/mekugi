@@ -1,6 +1,9 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	json "encoding/json/v2"
 	"fmt"
 	"os"
@@ -13,9 +16,9 @@ import (
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
+	"github.com/charmbracelet/x/ansi"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
-	"github.com/charmbracelet/x/ansi"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -57,7 +60,7 @@ func TestAppServerHookLifecycleUsesRunPresentation(t *testing.T) {
 	if !strings.Contains(rows, "Hook Ran") || !strings.Contains(rows, "hooks.toml") || !strings.Contains(rows, "feedback: policy checked") {
 		t.Fatalf("Main did not render hook source and output: %s", rows)
 	}
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "later", "item": appServerItem{ID: "next", Type: "commandExecution", Command: "true", ExitCode: new(0)}})
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "later", "item": binding.ThreadItem{ID: "next", Type: "commandExecution", Command: "true", ExitCode: new(0)}})
 	settleActivity(u.now().Add(activityui.OutputDebounce), u.view, u.agents)
 	if !u.view.blocks(0)[0].Collapsed {
 		t.Fatal("successful hook output did not use Run collapse")
@@ -69,7 +72,7 @@ func TestAppServerHookOutcomesInChildFeed(t *testing.T) {
 		t.Run(status, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			waitTargetTestStore(t, u, waitTargetTestOpenStore(t))
-			u.session.registerThread(appServerThreadInfo{ID: "child", AgentNickname: "worker"})
+			u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 			u.session.metadata["child"] = ""
 			run := hookTestRun(u.session.cwd, status)
 			run["entries"] = []map[string]any{{"kind": "error", "text": "cannot execute\npermission denied\x1b]0;unsafe\a"}}
@@ -175,8 +178,8 @@ func TestHookObservationRestartResumeAndReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitTargetTestStore(t, fresh, reopened)
-	root := appServerThreadInfo{ID: "main", Cwd: u.session.cwd}
-	fresh.restoring = &appServerActivityRestore{root: root}
+	root := binding.ThreadInfo{ID: "main", Cwd: u.session.cwd}
+	fresh.restoring = &appServerActivityRestore{root: root, state: sessionpresentation.NewRestoration(root.ID)}
 	fresh.readRestoredRollouts()
 	fresh.restoreMainHistory(nil, fresh.restoring.main, nil)
 	if len(fresh.view.Entries) != 2 {

@@ -742,7 +742,7 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 	u.proxy = &mekugiProxy{replayStore: store}
 	cwd := t.TempDir()
 	script := "mcat " + quoteShellWord(cwd+"/a.go") + "; rg needle " + quoteShellWord(cwd+"/src")
-	item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc " + quoteShellWord(script), Cwd: cwd, Status: "inProgress"}
+	item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc " + quoteShellWord(script), Cwd: cwd, Status: "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	report := dialExecTrackReport(t, hub, script)
 	report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0})
@@ -767,13 +767,13 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 	awaitCommandSegments(t, u)
 	restored := newAppServerSessionTestUI(t, u.session.cwd)
 	restored.proxy = &mekugiProxy{replayStore: store}
-	restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
+	restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 	segments := restored.view.Entries[0].Source.native.segments
 	if len(segments) != 2 || segments[0].text != "Read `a.go`" || segments[1].text != "Search `needle` in `src`" || segments[0].source != "mcat "+quoteShellWord(cwd+"/a.go") {
 		t.Fatalf("restored paths or source changed: %+v", segments)
 	}
 	// Publish the child's inherited evidence in its own retained workspace.
-	retained := restored.prepareCommandSegments("main", u.session.cwd, appServerHistoryTurn{ID: "t", Items: []appServerItem{item}})[item.ID]
+	retained := restored.prepareCommandSegments("main", u.session.cwd, binding.HistoryTurn{ID: "t", Items: []binding.ThreadItem{item}})[item.ID]
 	if retained == nil {
 		t.Fatal("fixture command segments were not retained")
 	}
@@ -785,7 +785,7 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 	child := newAppServerSessionTestUI(t, u.session.cwd)
 	child.proxy = &mekugiProxy{replayStore: store}
 	child.session.path("child")
-	child.restoreActivityThread(appServerThreadInfo{ID: "child", Cwd: cwd, Turns: []appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}}})
+	child.restoreActivityThread(binding.ThreadInfo{ID: "child", Cwd: cwd, Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
 	parts := child.agents.Entries[0].Source.native.segments
 	if len(parts) != 2 || parts[0].text != "Read `a.go`" || parts[1].text != "Search `needle` in `src`" {
 		t.Fatalf("restored child paths used main workspace: %+v", parts)

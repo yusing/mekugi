@@ -3,12 +3,14 @@ package router
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+	"github.com/yusing/mekugi/backends/codex/binding"
 
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -21,7 +23,7 @@ func newPagedHistoryUI(t *testing.T) (*appServerUI, *appServerTestInput) {
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.session.start("main", t.TempDir())
 	u.resumeThread = "main"
-	if err := u.restorePaneContent(appServerThreadInfo{ID: "main", Cwd: u.session.cwd}); err != nil {
+	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: u.session.cwd}); err != nil {
 		t.Fatal(err)
 	}
 	restoreContentReply(t, u, 0, map[string]any{"data": []any{map[string]any{"id": "child", "agentNickname": "worker", "agentRole": "worker", "historyMode": "paginated"}}})
@@ -209,7 +211,7 @@ func TestAppServerAnchoredHistoryTurnPagesAndIsolation(t *testing.T) {
 	u.Thread = "other"
 	u.session.start("other", u.session.cwd)
 	restoreContentReply(t, u, 6, map[string]any{"data": []any{historyItem("first", "foreign history", 101000)}})
-	if len(u.agents.Entries) != 0 || u.historyLoading() != nil || len(u.session.threadStates) != 1 || u.session.threadStates["other"] == nil {
+	if len(u.agents.Entries) != 0 || u.historyLoading() != nil || len(slices.Collect(u.session.Threads())) != 1 || u.session.FindThread("other") == nil {
 		t.Fatal("late old session response leaked across thread switch")
 	}
 }
@@ -370,7 +372,7 @@ func TestAppServerAnchoredHistoryArchivedChild(t *testing.T) {
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.session.start("main", t.TempDir())
 	u.resumeThread = "main"
-	if err := u.restorePaneContent(appServerThreadInfo{ID: "main", Cwd: u.session.cwd}); err != nil {
+	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: u.session.cwd}); err != nil {
 		t.Fatal(err)
 	}
 	restoreContentReply(t, u, 0, map[string]any{"data": []any{}})
@@ -389,7 +391,7 @@ func TestAppServerAnchoredHistoryArchivedChild(t *testing.T) {
 func TestAppServerAnchoredHistoryInitialFailureRetryKeepsEvidence(t *testing.T) {
 	u, _ := newPagedHistoryUI(t)
 	historyTurnsReply(t, u)
-	u.restoring.root.Turns = []appServerHistoryTurn{{ID: "root-turn", Status: "completed", StartedAt: 80, CompletedAt: 120}}
+	u.restoring.root.Turns = []binding.HistoryTurn{{ID: "root-turn", Status: "completed", StartedAt: 80, CompletedAt: 120}}
 	h := u.historyLoading()
 	h.placements = []*restoredPlacement{{turn: "t", anchor: "last", at: time.Unix(109, 0), entry: activityPaneEntry{Agent: "/root/worker", Kind: "reply", Text: "retained directed message", message: &activityMessage{from: "/root/worker", to: "/root", text: "retained directed message"}}}}
 	restoreContentError(t, u, 4)

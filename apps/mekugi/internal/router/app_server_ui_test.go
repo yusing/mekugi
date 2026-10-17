@@ -89,7 +89,7 @@ func newAppServerTestUI() (*appServerUI, *appServerTestInput) {
 	w := new(appServerTestInput)
 	client := &appserver.Client{Input: w}
 	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, issues: testCriticalErrors(), history: testHistory(), client: client, view: newActivityAdapter(), requests: sessioncontrol.NewRequests[appServerRequest](appServerTestTransport{client, w}), Thread: "main"}
-	u.session.transcript = u.session.activity.Transcript(&u.session.state)
+	u.session.transcript = u.session.activity.Transcript(u.session.Scope())
 	u.approvals.initGuards(testGuards())
 	u.view.Painter.FileLink = u.markdownFileExists
 	return u, w

@@ -10,6 +10,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
@@ -38,7 +40,7 @@ func TestNativeSentMessagesBecomeExcerptsOutOfView(t *testing.T) {
 		t.Fatalf("messages in view were shortened:\n%s", main)
 	}
 	for i := range 30 {
-		applyTranscriptFixture(u.view, true, "", "main", "main", u.Turn, fmt.Sprint("note-", i), "item/completed", "", appServerItem{Type: "agentMessage", Text: fmt.Sprint("Main note ", i, ".")})
+		applyTranscriptFixture(u.view, true, "", "main", "main", u.Turn, fmt.Sprint("note-", i), "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: fmt.Sprint("Main note ", i, ".")})
 	}
 	paint() // Scrolls both messages above the viewport.
 	main := paint()
@@ -173,23 +175,23 @@ func TestUISnapshotMainBatchWithFailedCommand(t *testing.T) {
 	for _, mode := range []string{"live", "resume"} {
 		t.Run(mode, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			var items []appServerItem
+			var items []binding.ThreadItem
 			for i, command := range []string{"rg zzz", "rg bbb", "cat bar", "go env GOMODCACHE"} {
-				item := appServerItem{ID: fmt.Sprint(i), Type: "commandExecution", Command: command, Status: "completed", ExitCode: new(0)}
+				item := binding.ThreadItem{ID: fmt.Sprint(i), Type: "commandExecution", Command: command, Status: "completed", ExitCode: new(0)}
 				if i == 1 {
 					item.Status, item.ExitCode = "failed", new(2)
 				}
 				items = append(items, item)
 			}
-			items = append(items, appServerItem{ID: "edit", Type: "fileChange", Status: "completed", Changes: []appServerFileChange{{Path: "bar.go", Diff: "+new\n-old\n"}, {Path: "baz.go", Diff: "+other\n"}}})
+			items = append(items, binding.ThreadItem{ID: "edit", Type: "fileChange", Status: "completed", Changes: []binding.FileChange{{Path: "bar.go", Diff: "+new\n-old\n"}, {Path: "baz.go", Diff: "+other\n"}}})
 			if mode == "resume" {
-				u.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: items}})
+				u.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: items}})
 			} else {
 				for _, item := range items {
 					appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 				}
 				for i := range 20 {
-					appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": appServerItem{ID: fmt.Sprint("note-", i), Type: "agentMessage", Text: fmt.Sprint("Note ", i, ".")}})
+					appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": binding.ThreadItem{ID: fmt.Sprint("note-", i), Type: "agentMessage", Text: fmt.Sprint("Note ", i, ".")}})
 				}
 			}
 			finishPacing(u.view, u.agents)

@@ -5,12 +5,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
@@ -63,7 +64,7 @@ func TestAppServerGuardCommandDisplay(t *testing.T) {
 		for _, thread := range []string{"main", "child"} {
 			t.Run(thread, func(t *testing.T) {
 				command := shellCommandString("/bin/bash", []string{"-lc", guarded})
-				item := appServerItem{ID: "cmd", Type: "commandExecution", Command: command, Status: "completed", ExitCode: new(0)}
+				item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: command, Status: "completed", ExitCode: new(0)}
 				check := func(u *appServerUI) {
 					t.Helper()
 					view := u.view
@@ -80,13 +81,13 @@ func TestAppServerGuardCommandDisplay(t *testing.T) {
 					check(u)
 				}
 				restored := newAppServerSessionTestUI(t, t.TempDir())
-				turns := []appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}}
+				turns := []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}
 				if thread == "main" {
 					restored.restoreHistory(turns)
 				} else {
-					info := appServerThreadInfo{ID: thread, AgentNickname: "worker", Turns: turns}
+					info := binding.ThreadInfo{ID: thread, AgentNickname: "worker", Turns: turns}
 					restored.session.registerThread(info)
-					restored.restoreActivityThread(info)
+					restored.restoreActivityThread(info, false)
 				}
 				check(restored)
 			})
@@ -154,7 +155,7 @@ func TestUISnapshotGuardedHeredocCommit(t *testing.T) {
 	output := "[main e9085377] docs(ui): describe content-detected inline highlighting\n 2 files changed, 6 insertions(+), 4 deletions(-)\n"
 	u := vcsCommandUI(t, "")
 	u.view.Painter.Theme = diffrender.DarkTheme
-	u.restoreHistory([]appServerHistoryTurn{{ID: "past", Status: "completed", Items: []appServerItem{{
+	u.restoreHistory([]binding.HistoryTurn{{ID: "past", Status: "completed", Items: []binding.ThreadItem{{
 		ID: "cmd", Type: "commandExecution", Command: command, AggregatedOutput: &output, ExitCode: new(0), DurationMS: new(int64(500)),
 	}}}})
 	if entry := u.view.Entries[0]; entry.Source.native.command != command {
@@ -205,7 +206,7 @@ func TestUISnapshotGuardCommandOutputDialog(t *testing.T) {
 	}
 	command := shellCommandString("/bin/bash", []string{"-lc", guarded})
 	output := "-- No entries --\n"
-	u.restoreHistory([]appServerHistoryTurn{{ID: "past", Status: "completed", Items: []appServerItem{{
+	u.restoreHistory([]binding.HistoryTurn{{ID: "past", Status: "completed", Items: []binding.ThreadItem{{
 		ID: "cmd", Type: "commandExecution", Command: command, AggregatedOutput: &output, ExitCode: new(1),
 	}}}})
 	entry := u.view.Entries[0]

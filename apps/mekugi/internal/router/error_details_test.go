@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -35,7 +36,7 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 				thread, view, focus = "child", u.agents, 0
 				u.agents.setDisplayFilter(true, "/root/worker")
 				activity.observe("child", "main", "/root/worker", true)
-				u.session.registerThread(appServerThreadInfo{ID: "child", AgentNickname: "worker"})
+				u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 			}
 			// The decisive reason is beyond both the old first-line clip and
 			// Activity's generic 64 KiB message limit. No shell is executed.
@@ -113,7 +114,7 @@ func TestErrorDetailsRestoredRollout(t *testing.T) {
 			u.agents = u.shell.agents
 			detail := "CreateProcess: " + strings.Repeat("command ", 9000) + "\nrejected: forced cleanup is not permitted\n    at cell:17"
 			records := append([]map[string]any{rolloutRecord(1, "event_msg", map[string]any{"type": "task_started", "turn_id": "t"})}, rolloutFailedCell(2, "rejected", detail)...)
-			info := appServerThreadInfo{ID: "main", Cwd: u.session.cwd, Turns: []appServerHistoryTurn{{ID: "t", Status: "failed"}}}
+			info := binding.ThreadInfo{ID: "main", Cwd: u.session.cwd, Turns: []binding.HistoryTurn{{ID: "t", Status: "failed"}}}
 			if !child {
 				info.Path = writeTestRollout(t, "main", records...)
 			}

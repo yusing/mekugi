@@ -7,10 +7,12 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
 
-	"github.com/charmbracelet/x/ansi"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -23,9 +25,9 @@ func TestUISnapshotNativeGroupedSkills(t *testing.T) {
 			view.Conversation, view.Bare, view.FeedOnly = main, !main, !main
 			view.Clock = func() time.Time { return time.Date(2026, 10, 9, 12, 0, 0, 0, time.Local) }
 			u.clock = view.Clock
-			var items []appServerItem
+			var items []binding.ThreadItem
 			for i, command := range []string{"skills-mgr get mekugi-owners", "skills-mgr get deliver-vertical-slice", "cat CONTEXT-TESTS.md"} {
-				item := appServerItem{ID: fmt.Sprint(i), Type: "commandExecution", Command: command, ExitCode: new(0), DurationMS: new(int64(40 + i)), AggregatedOutput: new(fmt.Sprintf("# Guide %d\nUse this guide.\n", i))}
+				item := binding.ThreadItem{ID: fmt.Sprint(i), Type: "commandExecution", Command: command, ExitCode: new(0), DurationMS: new(int64(40 + i)), AggregatedOutput: new(fmt.Sprintf("# Guide %d\nUse this guide.\n", i))}
 				appServerTestNotify(t, u, "item/started", map[string]any{"threadId": u.Thread, "turnId": "turn", "item": item})
 				if i == 1 && strings.Count(ansi.Strip(strings.Join(view.RenderFeed(60, 40).Lines, "\n")), "Skill") != 2 {
 					t.Fatal("running skill merged")
@@ -42,7 +44,7 @@ func TestUISnapshotNativeGroupedSkills(t *testing.T) {
 					*view = *newActivityAdapter()
 					view.Clock = clock
 					view.Conversation, view.Bare, view.FeedOnly = main, !main, !main
-					u.restoreHistory([]appServerHistoryTurn{{ID: "turn", Status: "completed", CompletedAt: clock().Unix(), Items: items}})
+					u.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", CompletedAt: clock().Unix(), Items: items}})
 				}
 				finishPacing(view)
 				feed := view.RenderFeed(60, 40)
@@ -117,14 +119,14 @@ func TestNativeBatchElapsedFailureAndResume(t *testing.T) {
 	for _, mode := range []string{"live", "resume", "child"} {
 		t.Run(mode, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			item := appServerItem{ID: "batch", Type: "commandExecution", Command: "sleep 1; false", Status: "failed", ExitCode: new(1), DurationMS: new(int64(191129)), AggregatedOutput: new("failed\n")}
+			item := binding.ThreadItem{ID: "batch", Type: "commandExecution", Command: "sleep 1; false", Status: "failed", ExitCode: new(1), DurationMS: new(int64(191129)), AggregatedOutput: new("failed\n")}
 			view := u.view
 			if mode == "child" {
 				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-				u.restoreActivityThread(appServerThreadInfo{ID: "child", Turns: []appServerHistoryTurn{{ID: "turn", Status: "completed", Items: []appServerItem{item}}}})
+				u.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: []binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
 				view = u.agents
 			} else if mode == "resume" {
-				u.restoreHistory([]appServerHistoryTurn{{ID: "turn", Status: "completed", Items: []appServerItem{item}}})
+				u.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}})
 			} else {
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 			}
@@ -157,7 +159,7 @@ func TestNativeCapturedBatchKeepsSingleElapsedResult(t *testing.T) {
 			if exit != 0 {
 				status = "failed"
 			}
-			item := appServerItem{ID: "batch", Type: "commandExecution", Command: "printf new > a.txt; sleep 1", Status: status, ExitCode: new(exit), DurationMS: new(int64(1000)), AggregatedOutput: new("retained batch output\n")}
+			item := binding.ThreadItem{ID: "batch", Type: "commandExecution", Command: "printf new > a.txt; sleep 1", Status: status, ExitCode: new(exit), DurationMS: new(int64(1000)), AggregatedOutput: new("retained batch output\n")}
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 			finishPacing(u.view)
 			var data []*presentation.Receipt

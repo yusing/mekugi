@@ -5,11 +5,12 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/backends/codex/binding"
 )
 
 func TestAppServerRestoredChildAnswerIgnoresTrailingWhitespace(t *testing.T) {
 	u, _ := newPagedHistoryUI(t)
-	u.restoring.root.Turns = []appServerHistoryTurn{{ID: "root-turn", Status: "completed", StartedAt: 100, CompletedAt: 110}}
+	u.restoring.root.Turns = []binding.HistoryTurn{{ID: "root-turn", Status: "completed", StartedAt: 100, CompletedAt: 110}}
 	historyTurnsReply(t, u)
 	restoreContentReply(t, u, 4, map[string]any{"data": []any{
 		historyItem("blank", " \n\t ", 109000),
@@ -20,7 +21,7 @@ func TestAppServerRestoredChildAnswerIgnoresTrailingWhitespace(t *testing.T) {
 
 func TestAppServerRestoredChildExplicitFinalSurvivesCommentary(t *testing.T) {
 	u, _ := newPagedHistoryUI(t)
-	u.restoring.root.Turns = []appServerHistoryTurn{{ID: "root-turn", Status: "completed", StartedAt: 100, CompletedAt: 110}}
+	u.restoring.root.Turns = []binding.HistoryTurn{{ID: "root-turn", Status: "completed", StartedAt: 100, CompletedAt: 110}}
 	historyTurnsReply(t, u)
 	final := historyItem("answer", "Explicit final answer", 105000)
 	final["item"].(map[string]any)["phase"] = "final_answer"

@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -219,7 +220,7 @@ func TestNativeApprovalGuardedWrite(t *testing.T) {
 	newRequest := func() *vcsApproval {
 		id++
 		item := fmt.Sprintf("cmd-%d", id)
-		appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": appServerItem{ID: item, Type: "commandExecution", Command: "git push origin main", Status: "inProgress"}})
+		appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": binding.ThreadItem{ID: item, Type: "commandExecution", Command: "git push origin main", Status: "inProgress"}})
 		return &vcsApproval{thread: "main", item: item, cwd: "/work", argv: []string{"git", "push", "origin", "main"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})}
 	}
 	approved, denied, expired := newRequest(), newRequest(), newRequest()
@@ -577,10 +578,10 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 			u.Turn = "turn"
 			thread, view := "main", u.view
 			if tc.child {
-				u.session.registerThread(appServerThreadInfo{ID: "child", AgentNickname: "worker"})
+				u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 				thread, view = "child", u.agents
 			}
-			item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "git push origin main", Status: "inProgress"}
+			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "git push origin main", Status: "inProgress"}
 			notify := func(method string) {
 				appServerTestNotify(t, u, method, map[string]any{"threadId": thread, "turnId": "turn", "item": item})
 			}
@@ -672,8 +673,8 @@ func TestUISnapshotNativeAutoApprovalStates(t *testing.T) {
 			u := newAppServerSessionTestUI(t, "/workspace")
 			u.clock = func() time.Time { return time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC) }
 			u.view.Clock, u.agents.Clock = u.clock, u.clock
-			u.session.registerThread(appServerThreadInfo{ID: "child", AgentNickname: "worker"})
-			item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "git push", Status: "inProgress"}
+			u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
+			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "git push", Status: "inProgress"}
 			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "turn", "item": item})
 			review := func(method, state, target string) {
 				appServerTestNotify(t, u, method, map[string]any{"threadId": "child", "turnId": "turn", "reviewId": "review", "targetItemId": target, "review": map[string]any{"status": state}, "decisionSource": "agent"})

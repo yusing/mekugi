@@ -5,13 +5,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/activitydetail"
-
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
@@ -42,14 +43,14 @@ func TestUISnapshotMoveActivityAndDialog(t *testing.T) {
 
 func TestHostMovePaths(t *testing.T) {
 	for _, camelCase := range []bool{false, true} {
-		change := appServerFileChange{Path: "/w/internal/old.go"}
+		change := binding.FileChange{Path: "/w/internal/old.go"}
 		change.Kind.Type = "update"
 		if camelCase {
 			change.Kind.MovePath2 = "/w/internal/new.go"
 		} else {
 			change.Kind.MovePath = "/w/internal/new.go"
 		}
-		item := appServerItem{Status: "completed", Changes: []appServerFileChange{change}}
+		item := binding.ThreadItem{Status: "completed", Changes: []binding.FileChange{change}}
 		if got := appServerEditText(item, "/w"); got != "Move `internal/{old.go=>new.go}` · +0 −0 · apply_patch" {
 			t.Fatalf("host move summary = %q", got)
 		}
@@ -76,9 +77,9 @@ func TestMChangesMoveWorkspacePaths(t *testing.T) {
 
 func TestHostMoveDialogMetadata(t *testing.T) {
 	for _, body := range []string{"", "@@ -1 +1 @@\n-/w/source-row\n+/w/source-row\n+Moved to: /w/internal/new.go\n"} {
-		change := appServerFileChange{Path: "/w/internal/old.go", Diff: body + "\n\nMoved to: /w/internal/new.go"}
+		change := binding.FileChange{Path: "/w/internal/old.go", Diff: body + "\n\nMoved to: /w/internal/new.go"}
 		change.Kind.MovePath = "/w/internal/new.go"
-		item := appServerItem{Status: "completed", Changes: []appServerFileChange{change}}
+		item := binding.ThreadItem{Status: "completed", Changes: []binding.FileChange{change}}
 		pages := appServerEditPages(item, "/w", "item/completed")
 		want := body + "\n\nMoved to: internal/new.go"
 		if len(pages) != 1 || pages[0].Code != want || item.Changes[0].Diff != change.Diff {
@@ -88,9 +89,9 @@ func TestHostMoveDialogMetadata(t *testing.T) {
 }
 
 func TestUISnapshotHostMoveDialogSyntax(t *testing.T) {
-	change := appServerFileChange{Path: "/w/internal/old.go", Diff: "@@ -1 +1 @@\n-var answer = 41\n+var answer = 42\n"}
+	change := binding.FileChange{Path: "/w/internal/old.go", Diff: "@@ -1 +1 @@\n-var answer = 41\n+var answer = 42\n"}
 	change.Kind.Type, change.Kind.MovePath = "update", "/w/internal/new.go"
-	item := appServerItem{Status: "completed", Changes: []appServerFileChange{change}}
+	item := binding.ThreadItem{Status: "completed", Changes: []binding.FileChange{change}}
 	pages := appServerEditPages(item, "/w", "item/completed")
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Painter.Theme = diffrender.DarkTheme

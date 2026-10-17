@@ -2,6 +2,9 @@ package router
 
 import (
 	"bytes"
+
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	json "encoding/json/v2"
 	"os"
 	"path/filepath"
@@ -11,15 +14,13 @@ import (
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
+	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+	"github.com/yusing/mekugi/libraries/terminalui"
+	"github.com/yusing/mekugi/libraries/textsanitize"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
-	"github.com/yusing/mekugi/libraries/terminalui"
-	"github.com/yusing/mekugi/libraries/textsanitize"
-
-	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
-
-	"github.com/charmbracelet/x/ansi"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -36,12 +37,12 @@ func TestLiveActivityAttachmentOutcomes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	item := appServerItem{Type: "userMessage", Content: content, ID: "input"}
+	item := binding.ThreadItem{Type: "userMessage", Content: content, ID: "input"}
 	u, _ := newAppServerTestUI()
 	for _, method := range []string{"item/started", "item/completed", "item/completed"} {
 		applyTranscriptFixture(u.view, true, cwd, u.Thread, u.Thread, "turn", item.ID, method, "", item)
 	}
-	applyTranscriptFixture(u.view, true, cwd, u.Thread, u.Thread, "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Agent response"})
+	applyTranscriptFixture(u.view, true, cwd, u.Thread, u.Thread, "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "Agent response"})
 	if len(u.view.Entries) != 3 || u.view.Entries[1].Source.Kind != "attachments" {
 		t.Fatalf("missing, duplicated, or reordered receipts: %+v", u.view.Entries)
 	}
@@ -70,7 +71,7 @@ func TestLiveActivityAttachmentOutcomes(t *testing.T) {
 	resumed, _ := newAppServerTestUI()
 	resumed.agents = newActivityAdapter()
 	resumed.session.start(resumed.Thread, cwd)
-	resumed.restoreHistory([]appServerHistoryTurn{{ID: "turn", Status: "completed", Items: []appServerItem{item}}})
+	resumed.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}})
 	if len(resumed.view.Entries) != 2 || resumed.view.blocks(1)[0].Verb != "Attached" || resumed.view.blocks(1)[1].Verb != "Attach failed" || resumed.view.blocks(1)[0].Path != "attached.txt" || resumed.view.blocks(1)[1].Path != "missing.txt" {
 		t.Fatal("resume did not preserve submitted outcomes")
 	}
@@ -96,7 +97,7 @@ func TestLiveActivityAttachmentDisplayPaths(t *testing.T) {
 				t.Fatal(err)
 			}
 			v := newActivityAdapter()
-			applyTranscriptFixture(v, true, tt.workspace, "main", tt.thread, "turn", "input", "item/completed", "", appServerItem{Type: "userMessage", Content: content})
+			applyTranscriptFixture(v, true, tt.workspace, "main", tt.thread, "turn", "input", "item/completed", "", binding.ThreadItem{Type: "userMessage", Content: content})
 			if len(v.Entries) != 2 || len(v.blocks(1)) != 1 || v.blocks(1)[0].Path != tt.want {
 				t.Fatalf("attachment display path: got %+v, want %q", v.Entries, tt.want)
 			}
@@ -123,7 +124,7 @@ func TestUISnapshotExpandedSkillMatchesDialog(t *testing.T) {
 		if child {
 			thread = "child"
 		}
-		applyTranscriptFixture(v, true, "/workspace", "main", thread, "turn", "input", "item/completed", "", appServerItem{Type: "userMessage", Content: content, ID: "input"})
+		applyTranscriptFixture(v, true, "/workspace", "main", thread, "turn", "input", "item/completed", "", binding.ThreadItem{Type: "userMessage", Content: content, ID: "input"})
 		v.ToggleExpansion()
 		v.ToggleExpansion()
 		feed := v.RenderFeed(70, 40)
@@ -160,7 +161,7 @@ func TestLiveActivityAttachmentDialogs(t *testing.T) {
 				if child {
 					thread = "child"
 				}
-				item := appServerItem{Type: "userMessage", Content: content, ID: "input"}
+				item := binding.ThreadItem{Type: "userMessage", Content: content, ID: "input"}
 				// The same host-owned item drives live delivery and fresh-process replay.
 				for _, phase := range []string{"item/started", "item/completed"} {
 					applyTranscriptFixture(v, true, "/workspace", "main", thread, "turn", "input", phase, "", item)
@@ -209,7 +210,7 @@ func TestLiveActivityAttachmentDialogs(t *testing.T) {
 				resumed, _ := newAppServerTestUI()
 				resumed.agents = newActivityAdapter()
 				resumed.session.start(resumed.Thread, "/workspace")
-				resumed.restoreHistory([]appServerHistoryTurn{{ID: "turn", Status: "completed", Items: []appServerItem{item}}})
+				resumed.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}})
 				page := resumed.view.Painter.DialogPage(resumed.view.blocks(1)[0], 80)
 				if page.Text != textsanitize.Safe(body, false) {
 					t.Fatal("replay lost submitted content")
@@ -225,7 +226,7 @@ func TestUISnapshotAttachmentDialogs(t *testing.T) {
 	frames = append(frames, composer.SkillFrames("guide", "/workspace/SKILL.md", "# Guide\n\nUse **submitted** instructions.\n")...)
 	frames = append(frames, "Attached file \"/workspace/missing.txt\": CONTENT NOT ATTACHED (\"missing\"). Read this separately if needed.")
 	content, _ := json.Marshal([]map[string]string{{"type": "text", "text": attachments.Encode(frames)}})
-	applyTranscriptFixture(v, true, "/workspace", "main", "main", "turn", "input", "item/completed", "", appServerItem{Type: "userMessage", Content: content})
+	applyTranscriptFixture(v, true, "/workspace", "main", "main", "turn", "input", "item/completed", "", binding.ThreadItem{Type: "userMessage", Content: content})
 	feed := v.RenderFeed(80, 40)
 	uisnapshot.Assert(t, "testdata/snapshots/attachment-receipts.txt", strings.Join(feed.Lines, "\n")+"\n")
 	for i, name := range []string{"file", "skill"} {
@@ -254,7 +255,7 @@ func TestUISnapshotDirectoryAttachment(t *testing.T) {
 	draft.SnapshotFiles(cwd)
 	content, _ := json.Marshal(conversationbinding.Input(draft.Draft))
 	v := sharedEventsView(false)
-	applyTranscriptFixture(v, true, cwd, "main", "main", "turn", "input", "item/completed", "", appServerItem{Type: "userMessage", Content: content})
+	applyTranscriptFixture(v, true, cwd, "main", "main", "turn", "input", "item/completed", "", binding.ThreadItem{Type: "userMessage", Content: content})
 	feed := v.RenderFeed(80, 40)
 	uisnapshot.Assert(t, "testdata/snapshots/directory-attachment-receipt.txt", strings.Join(feed.Lines, "\n")+"\n")
 	page := v.Painter.DialogPage(v.blocks(1)[0], 72)
@@ -283,7 +284,7 @@ func TestLiveActivityAttachmentStackedSnapshots(t *testing.T) {
 				t.Fatal(err)
 			}
 			v := sharedEventsView(false)
-			applyTranscriptFixture(v, true, "/workspace", "main", "main", "turn", "input", "item/completed", "", appServerItem{Type: "userMessage", Content: content})
+			applyTranscriptFixture(v, true, "/workspace", "main", "main", "turn", "input", "item/completed", "", binding.ThreadItem{Type: "userMessage", Content: content})
 			blocks := v.blocks(1)
 			if len(blocks) != 2 {
 				t.Fatalf("stacked snapshots collapsed together: %d receipts", len(blocks))

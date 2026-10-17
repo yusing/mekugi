@@ -3,14 +3,16 @@ package router
 import (
 	"bytes"
 	"encoding/json/jsontext"
+
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	json "encoding/json/v2"
 	"reflect"
 	"strings"
 	"testing"
 
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
-
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func TestAppServerResumeStartup(t *testing.T) {
@@ -88,9 +90,9 @@ func TestAppServerResumeRejectsFailureAndWrongIdentity(t *testing.T) {
 
 func TestAppServerResumeHistoryDoesNotReviveEffects(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.restoreHistory([]appServerHistoryTurn{{ID: "past", Status: "completed", Items: []appServerItem{
+	u.restoreHistory([]binding.HistoryTurn{{ID: "past", Status: "completed", Items: []binding.ThreadItem{
 		{ID: "cmd", Type: "commandExecution", Command: "false", ExitCode: new(2)},
-		{ID: "edit", Type: "fileChange", Changes: []appServerFileChange{{Path: "a.go", Diff: "+changed"}}},
+		{ID: "edit", Type: "fileChange", Changes: []binding.FileChange{{Path: "a.go", Diff: "+changed"}}},
 		{ID: "spawn", Type: "collabAgentToolCall", Tool: "spawnAgent", ReceiverThreadIDs: []string{"child"}},
 	}}})
 	if u.Turn != "" || len(u.session.agents) != 1 || u.session.agents[0].Responding || len(u.view.Entries) != 2 || u.view.blocks(0)[0].ExitCode != 2 {
@@ -100,7 +102,7 @@ func TestAppServerResumeHistoryDoesNotReviveEffects(t *testing.T) {
 		t.Fatal("restored completed host edit lost diff navigation")
 	}
 	u.shell.outputKey("\x1b")
-	u.restoreHistory([]appServerHistoryTurn{{ID: "active", Status: "inProgress", Items: []appServerItem{{ID: "partial", Type: "agentMessage", Text: "Partial"}}}})
+	u.restoreHistory([]binding.HistoryTurn{{ID: "active", Status: "inProgress", Items: []binding.ThreadItem{{ID: "partial", Type: "agentMessage", Text: "Partial"}}}})
 	if u.Turn != "active" || !u.session.agents[0].Responding {
 		t.Fatal("active snapshot did not restore steer/interrupt target")
 	}

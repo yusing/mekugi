@@ -8,6 +8,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/backends/codex/binding"
 )
 
 func TestContextRolloutRejectsFIFOWithoutWriter(t *testing.T) {
@@ -19,7 +21,7 @@ func TestContextRolloutRejectsFIFOWithoutWriter(t *testing.T) {
 	done := make(chan activityPaneAgent, 1)
 	go func() {
 		var agent activityPaneAgent
-		restoreContextUsage(&agent, appServerThreadInfo{ID: "thread", Path: path})
+		restoreContextUsage(&agent, binding.ThreadInfo{ID: "thread", Path: path})
 		done <- agent
 	}()
 	select {

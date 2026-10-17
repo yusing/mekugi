@@ -63,8 +63,8 @@ recorded time; pause freezes them.
 `--from` and `--until` select a positive interval inside the recorded duration;
 earlier events reconstruct the initial state. Seek intents move ten recorded
 seconds within that interval. Restart resumes at its start. Backward seeking
-rebuilds isolated presentation, including module-owned scope state, before applying
-earlier facts. Future content cannot survive that reset. Seeking skips paints
+uses [a fresh attachment](../../apps/mekugi/internal/sessionpresentation/SPEC.md#attachment-lifetime)
+before applying earlier facts. Seeking skips paints
 and settles completed output, so initial visibility/collapse timing can differ
 from continuous playback. Interactive completion holds the final frame; headless
 completion exits.

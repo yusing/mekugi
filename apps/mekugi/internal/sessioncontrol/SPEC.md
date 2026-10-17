@@ -14,8 +14,8 @@ method, payload and identity. Transport failures are returned without retry.
 [Conversation](../../../../modules/conversation/SPEC.md) owns composer payloads,
 queues and provisional transcript rows; control decides which submissions settle,
 return to the composer or requeue. [Session presentation](../sessionpresentation/SPEC.md)
-owns displayed-thread and child-history intent. Control issues its observational
-reads without changing execution or input identity.
+owns attachment lifetime, displayed-thread and history reconstruction. Control
+issues its observational reads without changing execution or input identity.
 
 ## Interactive operations
 

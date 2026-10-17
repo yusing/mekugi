@@ -47,7 +47,7 @@ func (u *appServerUI) captureShellEdit(command string) *appServerShellEdit {
 		return nil
 	}
 	call := "shell:" + rand.Text()
-	u.restoreDiffThread(appServerThreadInfo{ID: u.Thread, Cwd: u.session.cwd}, true)
+	u.restoreDiffThread(binding.ThreadInfo{ID: u.Thread, Cwd: u.session.cwd}, true)
 	t.openExecWindow(call, observation, nil)
 	u.proxy.execWindows.setSession(call, call)
 	return &appServerShellEdit{ctx: ctx, call: call, workspace: u.session.cwd, thread: u.Thread,
@@ -73,7 +73,7 @@ func (u *appServerUI) observeShellMessage(message appserver.Message) {
 	}
 }
 
-func (u *appServerUI) observeShellEdit(thread, method string, item appServerItem) {
+func (u *appServerUI) observeShellEdit(thread, method string, item binding.ThreadItem) {
 	if item.Type != "commandExecution" || item.Source != "userShell" || item.ID == "" {
 		return
 	}
