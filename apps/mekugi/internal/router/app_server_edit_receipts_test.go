@@ -147,7 +147,7 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 	}}}})
 	assertCapturedCommand(t, restored.testActivity(restored.shell.Transcript), "main", "cat-call", "Edit", 2)
 	restored.attached.session.Caller("child")
-	restored.restoreActivityThread(binding.ThreadInfo{ID: "child", Cwd: workspace, Turns: []binding.HistoryTurn{{ID: "c", Status: "completed", Items: []binding.ThreadItem{sibling}}}}, false)
+	restoreActivityThread(&restored.attached, restored.shell, restored.clock, &restored.restoring, restored.ctx, restored.review, &restored.pendingEditReceipts, restored.retained, restored.retainedSession, restored.activity, restored.usage, restored.segments, &restored.restoredSegments, binding.ThreadInfo{ID: "child", Cwd: workspace, Turns: []binding.HistoryTurn{{ID: "c", Status: "completed", Items: []binding.ThreadItem{sibling}}}}, false)
 	assertCapturedCommand(t, restored.testActivity(restored.shell.Agents), "child", sibling.ID, "Search", 0)
 	for _, view := range []*activityAdapter{u.testActivity(u.shell.Agents), restored.testActivity(restored.shell.Agents)} {
 		for _, entry := range view.Entries {

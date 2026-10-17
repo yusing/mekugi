@@ -70,7 +70,7 @@ func TestSavedReviewLoadingSeparatesPreviewAuthorityFromRestoredInput(t *testing
 			u.review.Projection, u.review.Loader = loader.Projection(), loader
 			sub := u.review.Subscribe()
 			defer func() { u.review.Unsubscribe(sub) }()
-			if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: workspace}); err != nil {
+			if err := restorePaneContent(&u.attached, u.shell, &u.Client, &u.restoring, u.review, u.reviewSource, u.preparePane, binding.ThreadInfo{ID: "main", Cwd: workspace}); err != nil {
 				t.Fatal(err)
 			}
 			u.review.IncludeThread(workspace, "blocked-child", false)

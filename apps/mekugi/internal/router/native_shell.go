@@ -11,17 +11,17 @@ import (
 )
 
 // A Main excerpt carries an Activity identity, not a nearby question or run.
-func (main *appServerUI) openActivityReply(u *terminalsession.Attachment, seq uint64) bool {
-	v := main.attached.source
+func openActivityReply(attached *attachedPresentation, terminal *terminalsession.Attachment, files *detailFiles, surface *terminalsession.Attachment, seq uint64) bool {
+	v := attached.source
 	for _, entry := range v.Entries {
 		if entry.Source.Seq != seq || entry.Source.ActivitySeq == 0 {
 			continue
 		}
-		for _, target := range main.attached.childSource.Entries {
+		for _, target := range attached.childSource.Entries {
 			if target.Source.Seq != entry.Source.ActivitySeq {
 				continue
 			}
-			return openEntry(&main.attached, main.shell, &main.detailFiles, u, u.Agents, target.Source.Seq)
+			return openEntry(attached, terminal, files, surface, surface.Agents, target.Source.Seq)
 		}
 	}
 	return false

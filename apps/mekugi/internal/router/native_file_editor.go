@@ -1,9 +1,13 @@
 package router
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/libraries/terminalui"
@@ -15,10 +19,10 @@ type openFileEditor struct{ path string }
 
 func (*openFileEditor) Error() string { return "open file editor" }
 
-func (u *appServerUI) openSelectedFileEditor(path string, stdin, stdout *os.File) {
-	u.shell.Frame.Rows = nil
+func openSelectedFileEditor(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, parent context.Context, path string, stdin, stdout *os.File) {
+	terminal.Frame.Rows = nil
 	if !filepath.IsAbs(path) {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Open editor: file has no absolute workspace path", true)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Open editor: file has no absolute workspace path", true)
 		return
 	}
 	info, err := os.Stat(path)
@@ -26,15 +30,15 @@ func (u *appServerUI) openSelectedFileEditor(path string, stdin, stdout *os.File
 		err = fmt.Errorf("not a regular file: %s", path)
 	}
 	if err == nil {
-		err = runEditor(u.ctx, path, stdin, stdout)
+		err = runEditor(parent, path, stdin, stdout)
 	}
 	if err != nil {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Open editor: "+err.Error(), true)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Open editor: "+err.Error(), true)
 		return
 	}
-	workspace := u.attached.cwd
-	if editor, ok := u.shell.Auxiliary.(terminalui.PaneEditor); ok {
+	workspace := attached.cwd
+	if editor, ok := terminal.Auxiliary.(terminalui.PaneEditor); ok {
 		workspace = editor.Workspace()
 	}
-	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Editor closed: "+pathdisplay.ForWorkspace(workspace, path), false)
+	setNotice(&attached.feedback, terminal, presentationTime(clock), "Editor closed: "+pathdisplay.ForWorkspace(workspace, path), false)
 }

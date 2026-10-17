@@ -3,6 +3,12 @@ package router
 import (
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/contracts/scope"
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
@@ -14,12 +20,12 @@ type sessionMetricsPanel struct {
 	refreshed time.Time
 }
 
-func (u *appServerUI) showSessionMetrics() {
-	u.statusPanel = newStatusReport(u.attached.presentation, u.replayDebugDirectory)
-	u.statusPanel.metrics = new(sessionMetricsPanel)
-	u.statusPanel.Metrics = new(transportcapture.MetricsSnapshot)
-	deleteDraftRange(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, 0, len(u.Text))
-	u.dirty = refreshSessionMetrics(u.statusPanel, u.sessionCapture, presentationTime(u.clock), true) || u.dirty
+func showSessionMetrics(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, dirty *bool, capture *transportcapture.Recorder, debugDirectory string) {
+	(*panel) = newStatusReport(attached.presentation, debugDirectory)
+	(*panel).metrics = new(sessionMetricsPanel)
+	(*panel).Metrics = new(transportcapture.MetricsSnapshot)
+	deleteDraftRange(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), 0, len((*editor).Text))
+	(*dirty) = refreshSessionMetrics((*panel), capture, presentationTime(clock), true) || (*dirty)
 }
 func refreshSessionMetrics(p *appServerStatusReport, capture *transportcapture.Recorder, at time.Time, force bool) bool {
 	if p == nil || p.metrics == nil {

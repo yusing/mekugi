@@ -166,21 +166,21 @@ func (u *appServerUI) applyComposerCommand(intent sessionpresentation.ComposerIn
 			return false, sessionCommand(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.restoring != nil, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations, u.ctx, u.review, &u.pendingEditReceipts, u.statusConfig.Provider, u.approvalMode, text)
 		}
 		if text == "/resume" || strings.HasPrefix(text, "/resume ") {
-			return false, u.resumeCommand(text)
+			return false, resumeCommand(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.restoring, &u.resumePicker, u.skillEnvironment, u.approvalMode, text)
 		}
 		if text == "/ps" {
-			u.showRunningProcesses()
+			showRunningProcesses(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, &u.ownedImages, &u.detailFiles)
 			return false, nil
 		}
 		if text == "/session" {
-			u.showSessionMetrics()
+			showSessionMetrics(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, &u.ownedImages, &u.dirty, u.sessionCapture, u.replayDebugDirectory)
 			return false, nil
 		}
 		if text == "/status" {
-			return false, u.showStatus()
+			return false, showStatus(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, &u.ownedImages, &u.dirty, u.statusConfig, u.replayDebugDirectory)
 		}
 		if text == "/copy" {
-			u.showCopyPicker()
+			showCopyPicker(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, &u.ownedImages)
 			return false, nil
 		}
 		if text == "/skills" {

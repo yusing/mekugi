@@ -185,7 +185,7 @@ func TestAppServerRestorePublicSummaries(t *testing.T) {
 	}
 	u.restoreHistory(turns)
 	registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
-	u.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: turns}, false)
+	restoreActivityThread(&u.attached, u.shell, u.clock, &u.restoring, u.ctx, u.review, &u.pendingEditReceipts, u.retained, u.retainedSession, u.activity, u.usage, u.segments, &u.restoredSegments, binding.ThreadInfo{ID: "child", Turns: turns}, false)
 	u.testActivity(u.shell.Agents).setDisplayFilter(false, "/root/worker")
 	for _, view := range []*activityAdapter{u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents)} {
 		feed := view.RenderFeed(90, 40)
@@ -306,7 +306,7 @@ func TestAppServerPendingStatusPulses(t *testing.T) {
 			}
 			if strings.HasPrefix(status, "Restoring") {
 				u.Thread = "main"
-				if err := u.restorePaneContent(binding.ThreadInfo{ID: "main"}); err != nil {
+				if err := restorePaneContent(&u.attached, u.shell, &u.Client, &u.restoring, u.review, u.reviewSource, u.preparePane, binding.ThreadInfo{ID: "main"}); err != nil {
 					t.Fatal(err)
 				}
 			}

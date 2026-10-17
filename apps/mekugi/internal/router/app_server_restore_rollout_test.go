@@ -116,7 +116,7 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 			Message string `json:"message"`
 		}{"stream disconnected"}},
 	}}
-	if err := u.restorePaneContent(root); err != nil {
+	if err := restorePaneContent(&u.attached, u.shell, &u.Client, &u.restoring, u.review, u.reviewSource, u.preparePane, root); err != nil {
 		t.Fatal(err)
 	}
 	if len(u.attached.source.Entries) != 0 {

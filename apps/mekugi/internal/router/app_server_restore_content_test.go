@@ -87,7 +87,7 @@ func TestAppServerRestoreRosterAndActivityFromObservationalHistory(t *testing.T)
 		{ID: "spawn", Type: "collabAgentToolCall", Status: "completed", Tool: "spawnAgent", SenderThreadID: "main", ReceiverThreadIDs: []string{"child"}, Prompt: "Inspect the change."},
 		{ID: "followup", Type: "collabAgentToolCall", Status: "completed", Tool: "followupTask", SenderThreadID: "main", ReceiverThreadIDs: []string{"child"}, Prompt: "Check again."},
 	}}}}
-	if err := u.restorePaneContent(root); err != nil {
+	if err := restorePaneContent(&u.attached, u.shell, &u.Client, &u.restoring, u.review, u.reviewSource, u.preparePane, root); err != nil {
 		t.Fatal(err)
 	}
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "live", "agentNickname": "late"}})
@@ -147,7 +147,7 @@ func TestAppServerRestoreWrongChildIdentityContinues(t *testing.T) {
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.startSession("main", t.TempDir())
 	u.Startup.Thread = "main"
-	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: u.attached.cwd}); err != nil {
+	if err := restorePaneContent(&u.attached, u.shell, &u.Client, &u.restoring, u.review, u.reviewSource, u.preparePane, binding.ThreadInfo{ID: "main", Cwd: u.attached.cwd}); err != nil {
 		t.Fatal(err)
 	}
 	restoreContentReply(t, u, 0, map[string]any{"data": []any{map[string]any{"id": "first"}, map[string]any{"id": "second"}}})
@@ -169,7 +169,7 @@ func TestAppServerRestoreChildReadErrorContinues(t *testing.T) {
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.startSession("main", t.TempDir())
 	u.Startup.Thread = "main"
-	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: u.attached.cwd}); err != nil {
+	if err := restorePaneContent(&u.attached, u.shell, &u.Client, &u.restoring, u.review, u.reviewSource, u.preparePane, binding.ThreadInfo{ID: "main", Cwd: u.attached.cwd}); err != nil {
 		t.Fatal(err)
 	}
 	restoreContentReply(t, u, 0, map[string]any{"data": []any{map[string]any{"id": "first"}, map[string]any{"id": "second"}}})
@@ -248,7 +248,7 @@ func TestAppServerRestoreListPageBudget(t *testing.T) {
 	u, w := newAppServerTestUI()
 
 	u.startSession("main", t.TempDir())
-	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main"}); err != nil {
+	if err := restorePaneContent(&u.attached, u.shell, &u.Client, &u.restoring, u.review, u.reviewSource, u.preparePane, binding.ThreadInfo{ID: "main"}); err != nil {
 		t.Fatal(err)
 	}
 	for i := range 8 {
@@ -276,7 +276,7 @@ func TestAppServerRestoreWaitsForDurableDiffBeforeInput(t *testing.T) {
 			u.review = testReview(auto)
 			setSavedReviewStore(terminalTest(u), store)
 			sub := testReview(auto).Subscribe()
-			if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: workspace}); err != nil {
+			if err := restorePaneContent(&u.attached, u.shell, &u.Client, &u.restoring, u.review, u.reviewSource, u.preparePane, binding.ThreadInfo{ID: "main", Cwd: workspace}); err != nil {
 				t.Fatal(err)
 			}
 			restoreContentReply(t, u, 0, map[string]any{"data": []any{}})

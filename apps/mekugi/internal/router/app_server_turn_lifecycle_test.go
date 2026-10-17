@@ -46,7 +46,7 @@ func TestAppServerRestoredStoppedWait(t *testing.T) {
 			history := []binding.HistoryTurn{{ID: "old", Status: status, Items: []binding.ThreadItem{{ID: "wait", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress"}}}}
 			u.restoreHistory(history)
 			registerThread(&u.attached.session, binding.ThreadInfo{ID: "child"})
-			u.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: history}, false)
+			restoreActivityThread(&u.attached, u.shell, u.clock, &u.restoring, u.ctx, u.review, &u.pendingEditReceipts, u.retained, u.retainedSession, u.activity, u.usage, u.segments, &u.restoredSegments, binding.ThreadInfo{ID: "child", Turns: history}, false)
 			for _, view := range []*activityAdapter{u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents)} {
 				if view.Entries[0].Source.Text != "Wait ended" || view.Entries[0].Source.Native.Phase != "turn/completed" {
 					t.Fatalf("stopped history revived waiting: %+v", view.Entries[0])

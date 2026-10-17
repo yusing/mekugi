@@ -325,10 +325,10 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 							}
 						}
 						u.dirty = refreshSessionMetrics(u.statusPanel, u.sessionCapture, presentationTime(u.clock), false) || u.dirty
-						u.startSkillHistory()
+						startSkillHistory(&u.attached, &u.Client, &u.childHistoryState, &u.restoring)
 						applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, &u.dirty, u.restoring, u.audience)
 						publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
-						if err := u.applyResumeAction(u.shell.Main.Resume.PageDemand()); err != nil {
+						if err := applyResumeAction(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, u.approvalMode, &u.quitRequested, u.shell.Main.Resume.PageDemand()); err != nil {
 							return err
 						}
 						flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
@@ -361,7 +361,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 						if err := u.drainKeys(keys); err != nil || u.quitRequested {
 							return err
 						}
-						notices := u.applyCriticalNotices()
+						notices := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues)
 						settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 						if u.shell.Live.Tick(presentationTime(u.clock)) || u.shell.Agents.RosterEasing {
 							u.dirty = true
@@ -390,9 +390,9 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 			var fileEditor *openFileEditor
 			var composerEditor *composerEditorRequest
 			if errors.As(err, &composerEditor) {
-				u.openComposerEditor(composerEditor.intent, stdin, stdout)
+				openComposerEditor(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, u.skillEnvironment, u.ctx, composerEditor.intent, stdin, stdout)
 			} else if errors.As(err, &fileEditor) {
-				u.openSelectedFileEditor(fileEditor.path, stdin, stdout)
+				openSelectedFileEditor(&u.attached, u.shell, u.clock, u.ctx, fileEditor.path, stdin, stdout)
 			} else {
 				break
 			}
@@ -539,7 +539,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			return nil
 		}
 		if strings.HasPrefix(method, "activity-skills/") {
-			return u.skillHistoryResponse(strings.TrimPrefix(method, "activity-skills/"), m)
+			return skillHistoryResponse(&u.attached, &u.Client, &u.childHistoryState, &u.restoring, u.ctx, u.retained, &u.dirty, u.activity, u.segments, &u.restoredSegments, strings.TrimPrefix(method, "activity-skills/"), m)
 		}
 		if strings.HasPrefix(method, "activity/") {
 			return u.childHistoryResponse(method, m)
@@ -552,7 +552,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			return nil
 		}
 		if method == resumePickerList {
-			return u.resumePickerResponse(m)
+			return resumePickerResponse(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, u.approvalMode, &u.quitRequested, m)
 		}
 		if handled, err := statusMessage(u.Requests, &u.dirty, u.statusPanel, method, m, response.Owner.status); handled {
 			return err
@@ -561,7 +561,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			return nil
 		}
 		if method == "thread/list" && u.Startup.Thread == "--last" {
-			return u.resumeLastResponse(m)
+			return resumeLastResponse(&u.attached, &u.Client, &u.picker, u.clock, &u.resumePicker, u.approvalMode, m)
 		}
 		if handled, err := settingsMessage(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, &u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, u.panes, &u.dirty, &u.model, &u.reasoningEffort, &u.serviceTier, &u.models, &u.modelsLoading, &u.reasoningKey, &u.statusConfig, method, m); handled || err != nil {
 			return err
@@ -637,7 +637,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			if err := u.Requests.Initialized(u.execWindows != nil); err != nil {
 				return err
 			}
-			return u.openSession()
+			return openSession(&u.attached, &u.Client, &u.picker, u.clock, &u.resumePicker, u.approvalMode)
 		case "thread/start", "thread/resume":
 			result, err := u.Startup.Accept(&u.Live, method, m.Result)
 			if err != nil {
@@ -804,7 +804,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 					u.Startup.MissingSettings = false
 				}
 				u.dirty = paneError(u.attached.source, u.panes.retainAppliedSettings(u.shell, preferences.Scope{Workspace: u.attached.cwd, Thread: u.Thread}, u.Settings.RestoreEffort, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier, Observed: presentationTime(u.clock)})) || u.dirty
-				return u.restorePaneContent(result.Thread)
+				return restorePaneContent(&u.attached, u.shell, &u.Client, &u.restoring, u.review, u.reviewSource, u.preparePane, result.Thread)
 			}
 			u.dirty = paneError(u.attached.source, u.panes.retainAppliedSettings(u.shell, preferences.Scope{Workspace: u.attached.cwd, Thread: u.Thread}, u.Settings.RestoreEffort, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier, Observed: presentationTime(u.clock)})) || u.dirty
 		}
@@ -839,65 +839,65 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	if err != nil {
 		return fmt.Errorf("%s: %w", m.Method, err)
 	}
-	return u.observedEvent(m.Method, p)
+	return observedEvent(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, &u.statusPanel, &u.resumePicker, u.review, &u.pendingEditReceipts, u.notifications, u.retainedSession, u.execWindows, u.activity, &u.streams, u.execTrack, u.nativeTrace, u.usage, &u.exitUsage, m.Method, p)
 }
 
 // observedEvent retains application lifecycle and control handling for decoded
 // host facts. Offline transcript observations bypass it through their reducer.
-func (u *appServerUI) observedEvent(method string, p binding.Notification) error {
-	text := binding.RetainedTranscript(p.Observation(method, presentationTime(u.clock)))
-	if handled, err := sessionEvent(&u.attached, u.shell, &u.Client, &u.streams, &u.childHistoryState, u.execTrack, u.activity, u.usage, u.nativeTrace, u.execWindows, u.review, &u.approvals, &u.pendingEditReceipts, u.retainedSession, &u.exitUsage, u.clock, method, p); handled || err != nil {
+func observedEvent(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], panel **appServerStatusReport, resumePicker **appServerResumePicker, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, notifications *nativeNotifications, retainedSession history.Session, windows *executionobservation.Windows, activityService *activitymodel.Service, streams *terminalsession.Streams, tracker *commandsegments.Observer, trace *nativetrace.Reader, usage *accounting.Service, exitUsage *binding.TokenUsage, method string, p binding.Notification) error {
+	text := binding.RetainedTranscript(p.Observation(method, presentationTime(clock)))
+	if handled, err := sessionEvent(attached, terminal, control, streams, childKey, tracker, activityService, usage, trace, windows, reviewOwner, approvals, receipts, retainedSession, exitUsage, clock, method, p); handled || err != nil {
 		return err
 	}
 
 	switch method {
 	case "turn/started":
-		if p.ThreadID == u.Thread {
-			u.Started(p.Turn.ID)
-			u.attached.presentation.Status.Started = presentationTime(u.clock)
-			u.attached.presentation.Status.Set("Working", false)
-			if u.Interruption.BeforeStart || u.Compaction.InterruptTarget() != "" {
-				return applyInterruption(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.review, &u.pendingEditReceipts, u.Interrupt())
+		if p.ThreadID == control.Thread {
+			control.Started(p.Turn.ID)
+			attached.presentation.Status.Started = presentationTime(clock)
+			attached.presentation.Status.Set("Working", false)
+			if control.Interruption.BeforeStart || control.Compaction.InterruptTarget() != "" {
+				return applyInterruption(attached, terminal, control, picker, editor, questions, approvals, clock, reviewOwner, receipts, control.Interrupt())
 			}
 		}
 	case "turn/completed":
-		if u.notifications != nil {
-			for id, request := range u.notifications.blocked {
+		if notifications != nil {
+			for id, request := range notifications.blocked {
 				if request.Thread == p.ThreadID && (request.Turn == "" || request.Turn == p.Turn.ID) {
-					delete(u.notifications.blocked, id)
+					delete(notifications.blocked, id)
 				}
 			}
 		}
-		if p.ThreadID == u.Thread && p.Turn.ID == u.Turn {
-			u.Completed(p.Turn.Status == "completed")
-			endSyncQuestions(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, u.review, &u.pendingEditReceipts, p.Turn.ID)
+		if p.ThreadID == control.Thread && p.Turn.ID == control.Turn {
+			control.Completed(p.Turn.Status == "completed")
+			endSyncQuestions(attached, terminal, control, editor, questions, approvals, clock, reviewOwner, receipts, p.Turn.ID)
 			var failure *string
 			if p.Turn.Error != nil {
 				failure = &p.Turn.Error.Message
 			}
-			u.attached.presentation.Status.Complete(p.Turn.Status, failure, presentationTime(u.clock))
-			settleInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, p.Turn.ID, p.Turn.Status == "interrupted")
-			if p.Turn.Status == "completed" && u.questions.Count(u.Thread) == 0 {
-				u.notifications.notify(&u.attached.feedback, u.shell, u.clock, "agent-turn-complete", "Agent turn complete")
+			attached.presentation.Status.Complete(p.Turn.Status, failure, presentationTime(clock))
+			settleInput(attached, terminal, control, picker, questions, approvals, clock, p.Turn.ID, p.Turn.Status == "interrupted")
+			if p.Turn.Status == "completed" && questions.Count(control.Thread) == 0 {
+				notifications.notify(&attached.feedback, terminal, clock, "agent-turn-complete", "Agent turn complete")
 			}
-			for _, c := range u.questions.calls() {
+			for _, c := range questions.calls() {
 				if !c.Resolved {
-					renderQuestionRecord(&u.attached, u.Turn, presentationTime(u.clock), c)
+					renderQuestionRecord(attached, control.Turn, presentationTime(clock), c)
 				}
 			}
 		}
 	case "item/started", "item/completed", "item/agentMessage/delta":
 		if method == "item/started" {
-			observeShellItem(&u.Shell, u.Thread, p.ThreadID, p.Item)
+			observeShellItem(&control.Shell, control.Thread, p.ThreadID, p.Item)
 		}
 		if p.ItemID == "" {
 			p.ItemID = p.Item.ID
 		}
 		// Only completion commits, so one message cannot match two identical steers.
-		if p.ThreadID == u.Thread && p.Item.Type == "userMessage" && method == "item/completed" {
-			commitSteer(&u.attached, &u.Live, p.Item)
+		if p.ThreadID == control.Thread && p.Item.Type == "userMessage" && method == "item/completed" {
+			commitSteer(attached, &control.Live, p.Item)
 		}
-		messageTranscript(&u.attached, u.shell, &u.Client, &u.streams, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, &u.questions, &u.Editor, &u.picker, u.statusPanel != nil || u.resumePicker != nil, u.notifications, text, p.Item.Observation(), true)
+		messageTranscript(attached, terminal, control, streams, reviewOwner, approvals, receipts, clock, questions, editor, picker, (*panel) != nil || (*resumePicker) != nil, notifications, text, p.Item.Observation(), true)
 	}
 	return nil
 }
@@ -934,7 +934,7 @@ func (u *appServerUI) applyMainKey(next terminalsession.KeyContinuation) (bool, 
 			if input.ClearSelection && u.shell != nil {
 				u.shell.Selection = nil
 			}
-			u.applyPanelAction(*input.Panel)
+			applyPanelAction(&u.attached, u.shell, u.clock, &u.statusPanel, &u.dirty, u.sessionCapture, *input.Panel)
 			u.dirty = true
 		case input.Menu != nil:
 			if applyMenuResult(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, &u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, u.panes, &u.dirty, u.ctx, u.skillEnvironment, *input.Menu) {

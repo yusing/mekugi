@@ -8,12 +8,12 @@ import (
 
 // openErrorDetails exposes the selected transcript's errors through the shared content
 // dialog, newest first on opening. Left/Right reaches earlier retained errors.
-func (main *appServerUI) openErrorDetails(u *terminalsession.Attachment, view *activityui.View) {
+func openErrorDetails(attached *attachedPresentation, terminal *terminalsession.Attachment, files *detailFiles, surface *terminalsession.Attachment, view *activityui.View) {
 	if view == nil {
 		return
 	}
 	var pages []activityui.Block
-	for _, entry := range activitySource(&main.attached, main.shell, view).Entries {
+	for _, entry := range activitySource(attached, terminal, view).Entries {
 		if entry.Source.Kind != "error" || !view.Visible(entry.Publish()) {
 			continue
 		}
@@ -23,7 +23,7 @@ func (main *appServerUI) openErrorDetails(u *terminalsession.Attachment, view *a
 		}
 	}
 	if len(pages) > 0 {
-		openBlocks(&main.attached, main.shell, &main.detailFiles, u, view, pages)
-		u.Dialog.ShowPage(len(u.Dialog.Pages) - 1)
+		openBlocks(attached, terminal, files, surface, view, pages)
+		surface.Dialog.ShowPage(len(surface.Dialog.Pages) - 1)
 	}
 }

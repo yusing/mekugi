@@ -46,11 +46,11 @@ func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 	if u.Text != "[Image 1] " || len(u.Images) != 1 || len(sessionpresentation.DraftSpans(draftSnapshot(u.Editor).Draft)) != 1 {
 		t.Fatalf("answer did not reuse composer: %q %+v", u.Text, u.Images)
 	}
-	u.insertSelection("message", "first quote", "")
+	insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "first quote", "")
 	appServerTestKeys(t, u, "\r")
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "\x1b[200~"+second+"\x1b[201~")
-	u.insertSelection("message", "second quote", "")
+	insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "second quote", "")
 	appServerTestKeys(t, u, "\r")
 	if u.Text != "main draft" {
 		t.Fatalf("parked editor changed: %q", u.Text)
@@ -130,7 +130,7 @@ func TestQuestionImageLifetimeAcrossNavigationAndRetry(t *testing.T) {
 	questionTestPaint(t, u, 70)
 	path := answerImageFixture(t)
 	attachImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, &u.ownedImages, u.side, path)
-	u.insertSelection("message", "retry quote", "")
+	insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "retry quote", "")
 	appServerTestKeys(t, u, "\r")
 	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
 	if _, err := os.Stat(path); err != nil {

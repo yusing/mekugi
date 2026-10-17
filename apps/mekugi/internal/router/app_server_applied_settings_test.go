@@ -37,7 +37,7 @@ func appliedSettingsTestNotify(t *testing.T, u *appServerUI, model, effort, tier
 func appliedSettingsTestResume(t *testing.T, u *appServerUI, w *appServerTestInput, info binding.ThreadInfo) (map[string]any, int) {
 	t.Helper()
 	u.Startup.Thread = info.ID
-	if err := u.openSession(); err != nil {
+	if err := openSession(&u.attached, &u.Client, &u.picker, u.clock, &u.resumePicker, u.approvalMode); err != nil {
 		t.Fatal(err)
 	}
 	read := resumeTestOne(t, w, "thread/read")

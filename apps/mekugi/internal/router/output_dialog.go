@@ -1,10 +1,18 @@
 package router
 
 import (
+	"context"
+	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/contracts/scope"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+	"github.com/yusing/mekugi/modules/conversation/composer"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
 // openOutput opens the operation a snippet names in the dialog, reporting
@@ -77,19 +85,19 @@ func openEntry(attached *attachedPresentation, terminal *terminalsession.Attachm
 	return false
 }
 
-func (main *appServerUI) outputIntent(u *terminalsession.Attachment, intent terminalsession.DialogIntent) {
+func outputIntent(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, environment []string, parent context.Context, files *detailFiles, surface *terminalsession.Attachment, intent terminalsession.DialogIntent) {
 	switch intent.Action {
 	case terminalsession.DialogClose:
-		main.detailFiles.closeOutput(&main.attached.session, u)
+		files.closeOutput(&attached.session, surface)
 	case terminalsession.DialogCopy:
-		copyText(&main.attached.feedback, main.shell, main.clock, u, intent.Text)
+		copyText(&attached.feedback, terminal, clock, surface, intent.Text)
 	case terminalsession.DialogReference:
-		if !main.referenceInput(main.shell.Main.Reference("dialog", intent.Text, "")) {
+		if !referenceInput(attached, terminal, control, picker, editor, questions, approvals, clock, childKey, settings, tiers, title, backend, restoring, side, panel, resumePicker, owned, environment, parent, terminal.Main.Reference("dialog", intent.Text, "")) {
 			return
 		}
-		u.Focus = 0
-		main.detailFiles.closeOutput(&main.attached.session, u)
+		surface.Focus = 0
+		files.closeOutput(&attached.session, surface)
 	case terminalsession.DialogOpenLink:
-		main.detailFiles.openMarkdownFile(&main.attached.session, main.attached.presentation, main.attached.cwd, activitySource(&main.attached, main.shell, u.Dialog.View), u, u.Dialog.View, intent.Text)
+		files.openMarkdownFile(&attached.session, attached.presentation, attached.cwd, activitySource(attached, terminal, surface.Dialog.View), surface, surface.Dialog.View, intent.Text)
 	}
 }

@@ -4,6 +4,12 @@ import (
 	"cmp"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/contracts/scope"
+	"github.com/yusing/mekugi/modules/conversation/composer"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
@@ -48,7 +54,7 @@ type appServerStatusConfig struct {
 	Instructions []string `json:"instructionSources"`
 }
 
-func (u *appServerUI) showStatus() error {
+func showStatus(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, dirty *bool, statusConfig appServerStatusConfig, debugDirectory string) error {
 	var rows []sessionpresentation.StatusField
 	group := "Model"
 	add := func(label, value string) {
@@ -56,17 +62,17 @@ func (u *appServerUI) showStatus() error {
 			rows = append(rows, sessionpresentation.StatusField{Group: group, Label: label, Value: value})
 		}
 	}
-	add("Model", u.model)
-	add("Reasoning", u.reasoningEffort)
-	add("Service tier", u.serviceTiers.Effective(u.model, u.serviceTier, u.Thread))
-	add("Model provider", u.statusConfig.Provider)
+	add("Model", settings.Model)
+	add("Reasoning", settings.Effort)
+	add("Service tier", tiers.Effective(settings.Model, settings.Tier, control.Thread))
+	add("Model provider", statusConfig.Provider)
 	group = "Session"
-	add("Directory", u.attached.cwd)
-	add("Session", u.Thread)
+	add("Directory", attached.cwd)
+	add("Session", control.Thread)
 	var approval string
-	if len(u.statusConfig.Approval) != 0 {
-		if json.Unmarshal(u.statusConfig.Approval, &approval) != nil {
-			approval = string(u.statusConfig.Approval)
+	if len(statusConfig.Approval) != 0 {
+		if json.Unmarshal(statusConfig.Approval, &approval) != nil {
+			approval = string(statusConfig.Approval)
 		}
 		if approval == "null" {
 			approval = ""
@@ -74,13 +80,13 @@ func (u *appServerUI) showStatus() error {
 	}
 	group = "Permissions"
 	add("Approvals", approval)
-	add("Sandbox", u.statusConfig.Sandbox.Type)
-	if len(u.statusConfig.Instructions) > 0 {
+	add("Sandbox", statusConfig.Sandbox.Type)
+	if len(statusConfig.Instructions) > 0 {
 		group = "Session"
-		add("Agents.md", strings.Join(u.statusConfig.Instructions, ", "))
+		add("Agents.md", strings.Join(statusConfig.Instructions, ", "))
 	}
-	report := newStatusReport(u.attached.presentation, u.replayDebugDirectory)
-	for _, agent := range u.attached.session.Roster() {
+	report := newStatusReport(attached.presentation, debugDirectory)
+	for _, agent := range attached.session.Roster() {
 		if agent.Name != "/root" {
 			continue
 		}
@@ -93,11 +99,11 @@ func (u *appServerUI) showStatus() error {
 		}
 	}
 	report.Body = rows
-	u.statusPanel = report
+	(*panel) = report
 	report.Render(statusNotice("Loading account…"))
-	u.dirty = true
-	deleteDraftRange(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, 0, len(u.Text))
-	return requestStatus(u.Requests, &u.dirty, "account/read", map[string]any{"refreshToken": false}, report)
+	(*dirty) = true
+	deleteDraftRange(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), 0, len((*editor).Text))
+	return requestStatus(control.Requests, dirty, "account/read", map[string]any{"refreshToken": false}, report)
 }
 
 func requestStatus(requests *sessioncontrol.Requests[appServerRequest], dirty *bool, method string, params any, report *appServerStatusReport) error {
@@ -273,20 +279,20 @@ func (limit appServerStatusLimit) rows(id string) []sessionpresentation.StatusFi
 	return rows
 }
 
-func (u *appServerUI) applyPanelAction(action sessionpresentation.PanelAction) {
+func applyPanelAction(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, panel **appServerStatusReport, dirty *bool, capture *transportcapture.Recorder, action sessionpresentation.PanelAction) {
 	if action.Kind == sessionpresentation.PanelNoAction {
 		return
 	}
-	if err := u.attached.presentation.AdmitPanel(action); err != nil {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
+	if err := attached.presentation.AdmitPanel(action); err != nil {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return
 	}
 	switch action.Kind {
 	case sessionpresentation.PanelClose:
-		u.statusPanel = nil
-		u.attached.presentation.ClosePanel()
+		(*panel) = nil
+		attached.presentation.ClosePanel()
 	case sessionpresentation.PanelRefresh:
-		u.dirty = refreshSessionMetrics(u.statusPanel, u.sessionCapture, presentationTime(u.clock), true) || u.dirty
+		(*dirty) = refreshSessionMetrics((*panel), capture, presentationTime(clock), true) || (*dirty)
 	}
-	u.dirty = true
+	(*dirty) = true
 }

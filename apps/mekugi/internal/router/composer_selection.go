@@ -1,7 +1,14 @@
 package router
 
 import (
+	"context"
 	"slices"
+	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/contracts/scope"
 
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
@@ -10,17 +17,17 @@ import (
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
 
-func (u *appServerUI) referenceInput(intent sessionpresentation.ReferenceIntent) bool {
+func referenceInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool, environment []string, parent context.Context, intent sessionpresentation.ReferenceIntent) bool {
 	defer func() {
-		settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+		settlePresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil)
 	}()
-	if err := u.attached.presentation.Reference(intent, u.attached.conversation); err != nil {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
+	if err := attached.presentation.Reference(intent, attached.conversation); err != nil {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return false
 	}
-	u.insertSelection(intent.Description, intent.Text, intent.Source)
-	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
-	u.Run = composer.NoRun
+	insertSelection(attached, terminal, control, editor, questions, approvals, clock, side, owned, intent.Description, intent.Text, intent.Source)
+	picker.refreshPicker(attached, terminal, clock, control.Requests, (*editor), parent, environment)
+	(*editor).Run = composer.NoRun
 	return true
 }
 
@@ -31,31 +38,31 @@ func (u *appServerUI) referenceInput(intent sessionpresentation.ReferenceIntent)
 // insertSelection mentions text at the caret as one undoable token. A label
 // already in the draft or pending input gains a counter, so the queued, steered
 // or restored input that joins them still names one quote per mention.
-func (u *appServerUI) insertSelection(description, text, source string) {
+func insertSelection(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, side **sessioncontrol.Side, owned *map[string]bool, description, text, source string) {
 	if text == "" {
 		return
 	}
-	pending := slices.Concat(u.attached.conversation.Submitted[u.Submission().ID].Parts, u.attached.conversation.Unsent, u.attached.conversation.Queued, u.attached.conversation.Parts(u.Steers()))
-	for _, call := range u.questions.calls() {
+	pending := slices.Concat(attached.conversation.Submitted[control.Submission().ID].Parts, attached.conversation.Unsent, attached.conversation.Queued, attached.conversation.Parts(control.Steers()))
+	for _, call := range questions.calls() {
 		for i, question := range call.Questions {
 			draft := question.Editor.Snapshot.Draft
 			if question.IsSecret {
-				draft = u.shell.Prompts.SecretState(call.ID).Editors[i].Snapshot.Draft
+				draft = terminal.Prompts.SecretState(call.ID).Editors[i].Snapshot.Draft
 			}
 			pending = append(pending, conversationmodel.Input{Draft: draft})
 		}
 	}
-	if u.questions.Current() != nil {
-		pending = append(pending, conversationmodel.Input{Draft: u.attached.conversation.PromptEditor.Parked.Snapshot.Draft})
+	if questions.Current() != nil {
+		pending = append(pending, conversationmodel.Input{Draft: attached.conversation.PromptEditor.Parked.Snapshot.Draft})
 	}
-	if err := u.Editor.InsertSelection(description, text, source, conversationmodel.Drafts(pending)); err != nil {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
+	if err := (*editor).InsertSelection(description, text, source, conversationmodel.Drafts(pending)); err != nil {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return
 	}
-	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "", false)
-	u.shell.Main.CursorColumn = nil
-	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
-	if q := u.questions.Current(); q != nil {
+	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
+	terminal.Main.CursorColumn = nil
+	pruneDraftImages((*owned), (*editor), attached.conversation, questions, approvals, terminal.Prompts, (*side))
+	if q := questions.Current(); q != nil {
 		q.Edit(!q.Note)
 	}
 }

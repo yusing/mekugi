@@ -92,7 +92,7 @@ func (u *appServerUI) input(event terminalsession.Input) (bool, error) {
 		if err != nil {
 			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 		} else if pasted != nil {
-			u.applyPaste(*pasted)
+			applyPaste(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, u.skillEnvironment, u.ctx, *pasted)
 		}
 	}
 	return false, nil

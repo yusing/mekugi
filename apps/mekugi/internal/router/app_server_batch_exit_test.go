@@ -30,7 +30,7 @@ func TestAppServerBatchFailureDoesNotFailEachOperation(t *testing.T) {
 				u.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 			case "child history":
 				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-				u.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
+				restoreActivityThread(&u.attached, u.shell, u.clock, &u.restoring, u.ctx, u.review, &u.pendingEditReceipts, u.retained, u.retainedSession, u.activity, u.usage, u.segments, &u.restoredSegments, binding.ThreadInfo{ID: "child", Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
 				view = u.testActivity(u.shell.Agents)
 			}
 			finishPacing(u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents))

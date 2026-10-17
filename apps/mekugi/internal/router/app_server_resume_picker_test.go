@@ -159,7 +159,7 @@ func TestAppServerResumePickerStartup(t *testing.T) {
 func TestAppServerResumePickerStartupEscapeAndQuit(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.Thread, u.Startup.Thread, u.Startup.Workspace = "", sessioncontrol.ResumePicker, "/work"
-	if err := u.openResumePicker(true); err != nil {
+	if err := openResumePicker(&u.attached, &u.Client, &u.picker, u.clock, &u.resumePicker, true); err != nil {
 		t.Fatal(err)
 	}
 	resumeTestOne(t, w, "thread/list")
@@ -175,7 +175,7 @@ func TestAppServerResumePickerStartupEscapeAndQuit(t *testing.T) {
 
 	u, w = newAppServerTestUI()
 	u.Thread, u.Startup.Thread = "", sessioncontrol.ResumePicker
-	if err := u.openResumePicker(true); err != nil {
+	if err := openResumePicker(&u.attached, &u.Client, &u.picker, u.clock, &u.resumePicker, true); err != nil {
 		t.Fatal(err)
 	}
 	resumeTestRequests(t, w)
@@ -188,7 +188,7 @@ func TestAppServerResumePickerStartupEscapeAndQuit(t *testing.T) {
 func TestAppServerResumePickerSearchFilterAndPages(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.startSession("main", "/work")
-	if err := u.openResumePicker(false); err != nil {
+	if err := openResumePicker(&u.attached, &u.Client, &u.picker, u.clock, &u.resumePicker, false); err != nil {
 		t.Fatal(err)
 	}
 	first := resumeTestOne(t, w, "thread/list")
@@ -482,7 +482,7 @@ func TestAppServerResumeSwitchWaitsForDiffResync(t *testing.T) {
 func TestAppServerResumePickerFailedPageStopsPaging(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.startSession("main", "/work")
-	if err := u.openResumePicker(false); err != nil {
+	if err := openResumePicker(&u.attached, &u.Client, &u.picker, u.clock, &u.resumePicker, false); err != nil {
 		t.Fatal(err)
 	}
 	first := resumeTestOne(t, w, "thread/list")
@@ -503,11 +503,11 @@ func TestAppServerResumePickerFailedPageStopsPaging(t *testing.T) {
 
 func (u *appServerUI) resumePickerKey(key string) error {
 	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
-	return u.applyResumeAction(u.shell.Main.Resume.Key(key))
+	return applyResumeAction(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, u.approvalMode, &u.quitRequested, u.shell.Main.Resume.Key(key))
 }
 func (u *appServerUI) fillResumePicker() error {
 	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
-	return u.applyResumeAction(u.shell.Main.Resume.PageDemand())
+	return applyResumeAction(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, u.approvalMode, &u.quitRequested, u.shell.Main.Resume.PageDemand())
 }
 func (u *appServerUI) resumePickerFrame(width, height int) []string {
 	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)

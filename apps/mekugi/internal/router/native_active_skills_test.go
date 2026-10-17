@@ -42,7 +42,7 @@ func TestUISnapshotLoadedSkillsRestoreClickAndReset(t *testing.T) {
 				u.restoreHistory(info.Turns)
 			} else {
 				registerThread(&u.attached.session, info)
-				u.restoreActivityThread(info, false)
+				restoreActivityThread(&u.attached, u.shell, u.clock, &u.restoring, u.ctx, u.review, &u.pendingEditReceipts, u.retained, u.retainedSession, u.activity, u.usage, u.segments, &u.restoredSegments, info, false)
 				view, owner = u.testActivity(u.shell.Agents), "/root/worker"
 			}
 			for range liveActivityFeedLimit {

@@ -20,13 +20,13 @@ func TestNonTerminalHistoryIntentsReachHostAndRetire(t *testing.T) {
 	}
 	load := sessionpresentation.HistoryIntent{Version: v.Version, Thread: v.History.Target}
 	u.testActivity(u.shell.Agents).displayThread("/root/worker")
-	if err := u.loadOlderActivity(load); err != nil {
+	if err := loadOlderActivity(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, load); err != nil {
 		t.Fatal(err)
 	}
 	if len(restoreContentRequests(t, wire)) != 5 || u.attached.feedback.Text != sessionpresentation.ErrStaleIntent.Error() {
 		t.Fatal("stale history intent issued a request or hid its rejection")
 	}
-	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
+	if err := loadOlderActivity(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
 	}
 	r := restoreContentRequests(t, wire)[5]
@@ -53,7 +53,7 @@ func TestNonTerminalHistoryIntentsReachHostAndRetire(t *testing.T) {
 	if v.History.Target != "" {
 		t.Fatal("replay offered a host history target")
 	}
-	if err := u.loadOlderActivity(sessionpresentation.HistoryIntent{Version: v.Version, Thread: "child"}); err != nil {
+	if err := loadOlderActivity(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, sessionpresentation.HistoryIntent{Version: v.Version, Thread: "child"}); err != nil {
 		t.Fatal(err)
 	}
 	if u.attached.feedback.Text != sessionpresentation.ErrReplayIntent.Error() || len(restoreContentRequests(t, wire)) != 6 {

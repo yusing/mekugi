@@ -93,7 +93,7 @@ func TestAppServerCopyEmptyCancelAndRestore(t *testing.T) {
 		t.Fatalf("empty notice=%q wire=%s", u.attached.feedback.Text, wire.Bytes())
 	}
 	u.startSession("main", "")
-	u.restoreMainHistory([]binding.HistoryTurn{{ID: "old", Status: "completed", Items: []binding.ThreadItem{{ID: "a", Type: "agentMessage", Text: "restored"}}}}, nil, nil)
+	restoreMainHistory(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.statusPanel, &u.resumePicker, u.ctx, u.review, &u.pendingEditReceipts, u.notifications, u.retained, u.retainedSession, u.activity, u.segments, &u.restoredSegments, []binding.HistoryTurn{{ID: "old", Status: "completed", Items: []binding.ThreadItem{{ID: "a", Type: "agentMessage", Text: "restored"}}}}, nil, nil)
 	appServerTestKeys(t, u, "/copy\r")
 	if u.picker.CopyTexts[0] != "restored" {
 		t.Fatal("resume lost copy source")

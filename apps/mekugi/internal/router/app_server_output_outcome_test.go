@@ -21,7 +21,7 @@ func TestAppServerUnknownExitKeepsOutput(t *testing.T) {
 			item := binding.ThreadItem{ID: "command", Type: "commandExecution", Command: "go test ./...", Status: "failed", AggregatedOutput: new("interrupted output\n")}
 			if restored {
 				var entries []sessionpresentation.ActivityEntry
-				u.restoreActivityItem(binding.ThreadInfo{ID: "main", Cwd: u.attached.cwd}, binding.HistoryTurn{ID: "turn"}, item, "/root", presentationTime(u.clock), &entries, nil)
+				restoreActivityItem(&u.attached, u.shell, u.clock, u.ctx, u.retained, u.retainedSession, u.activity, u.segments, &u.restoredSegments, binding.ThreadInfo{ID: "main", Cwd: u.attached.cwd}, binding.HistoryTurn{ID: "turn"}, item, "/root", presentationTime(u.clock), &entries, nil)
 				applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, entries, nil)
 			} else {
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})

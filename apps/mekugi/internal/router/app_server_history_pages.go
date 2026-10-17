@@ -2,6 +2,16 @@ package router
 
 import (
 	"cmp"
+	"context"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+	"github.com/yusing/mekugi/modules/commandsegments/reports"
+	"github.com/yusing/mekugi/modules/conversation/composer"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
@@ -49,20 +59,20 @@ func historyLoading(attached *attachedPresentation, key *scope.Key[*appServerChi
 	return childHistory(&attached.session, key, attached.presentation.View().Loading)
 }
 
-func (u *appServerUI) startChildHistory(info binding.ThreadInfo) error {
-	r := u.restoring
-	store := u.attached.session.Thread(info.ID)
-	h := &appServerChildHistory{state: u.presentationState.History(store), info: info,
-		itemAt: r.itemAt[info.ID], placements: r.pane[u.attached.session.Caller(info.ID)]}
+func startChildHistory(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], childKey *scope.Key[*appServerChildHistory], restoring **appServerActivityRestore, views *sessionpresentation.Service, info binding.ThreadInfo) error {
+	r := (*restoring)
+	store := attached.session.Thread(info.ID)
+	h := &appServerChildHistory{state: views.History(store), info: info,
+		itemAt: r.itemAt[info.ID], placements: r.pane[attached.session.Caller(info.ID)]}
 	if h.itemAt == nil {
 		h.itemAt = make(map[string]time.Time)
 	}
-	delete(r.pane, u.attached.session.Caller(info.ID))
+	delete(r.pane, attached.session.Caller(info.ID))
 	h.info.Turns = nil
-	*u.childHistoryState.Value(store) = h
-	request := u.attached.presentation.StartHistory(h.state, info.ID)
-	u.attached.childSource.MarkSkillHistoryUnknown(u.attached.session.Caller(info.ID))
-	return requestChildHistory(&u.attached, &u.childHistoryState, u.Requests, u.restoring, request)
+	*childKey.Value(store) = h
+	request := attached.presentation.StartHistory(h.state, info.ID)
+	attached.childSource.MarkSkillHistoryUnknown(attached.session.Caller(info.ID))
+	return requestChildHistory(attached, childKey, control.Requests, (*restoring), request)
 }
 
 func requestChildHistory(attached *attachedPresentation, key *scope.Key[*appServerChildHistory], requests *sessioncontrol.Requests[appServerRequest], restoring *appServerActivityRestore, request sessionpresentation.PageRequest) error {
@@ -170,7 +180,7 @@ func (u *appServerUI) childHistoryResponse(method string, m appserver.Message) e
 	// chronological positions while the adapter retains protocol payloads.
 	turn := h.info.Turns[decision.Turn]
 	turn.Items = items
-	u.renderChildHistoryPage(h, turn, decision)
+	renderChildHistoryPage(&u.attached, u.shell, &u.Client, u.clock, &u.restoring, u.ctx, u.review, &u.pendingEditReceipts, u.retained, u.retainedSession, u.activity, u.usage, u.segments, &u.restoredSegments, h, turn, decision)
 	return u.finishChildHistory()
 }
 
@@ -215,31 +225,31 @@ func historyViews(attached *attachedPresentation, key *scope.Key[*appServerChild
 	return views
 }
 
-func (u *appServerUI) loadOlderActivity(intent sessionpresentation.HistoryIntent) error {
+func loadOlderActivity(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, intent sessionpresentation.HistoryIntent) error {
 	defer func() {
-		settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+		settlePresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil)
 	}()
-	if u.restoring != nil {
+	if (*restoring) != nil {
 		return nil
 	}
-	h := childHistory(&u.attached.session, &u.childHistoryState, intent.Thread)
+	h := childHistory(&attached.session, childKey, intent.Thread)
 	if intent.Thread == "" {
 		return nil
 	}
-	model := u.attached.presentation
+	model := attached.presentation
 	var state *sessionpresentation.History
 	if h != nil {
 		state = h.state
 	}
 	request, err := model.LoadHistory(intent, state)
 	if err != nil {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return nil
 	}
 	if request.Kind == sessionpresentation.NoPage {
 		return nil
 	}
-	return requestChildHistory(&u.attached, &u.childHistoryState, u.Requests, u.restoring, request)
+	return requestChildHistory(attached, childKey, control.Requests, (*restoring), request)
 }
 
 func (u *appServerUI) cancelOlderActivity(intent sessionpresentation.HistoryIntent) error {
@@ -292,7 +302,7 @@ func (u *appServerUI) holdOlderHistoryEvent(m appserver.Message) (bool, error) {
 	return false, nil
 }
 
-func (u *appServerUI) renderChildHistoryPage(h *appServerChildHistory, turn binding.HistoryTurn, page sessionpresentation.ItemPage) {
+func renderChildHistoryPage(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], clock func() time.Time, restoring **appServerActivityRestore, parent context.Context, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, retained changes.Scope, retainedSession history.Session, activityService *activitymodel.Service, usage *accounting.Service, segments *reports.Service, restoredSegments *map[string]*reports.Report, h *appServerChildHistory, turn binding.HistoryTurn, page sessionpresentation.ItemPage) {
 	var selected, remaining []*restoredPlacement
 	positions := historyPositions(h.info.Turns, h.itemAt)
 	pagePosition := historyPositions([]binding.HistoryTurn{turn}, h.itemAt)[0]
@@ -305,56 +315,56 @@ func (u *appServerUI) renderChildHistoryPage(h *appServerChildHistory, turn bind
 		}
 	}
 	h.placements = remaining
-	name := u.attached.session.Caller(h.info.ID)
-	r := u.restoring
+	name := attached.session.Caller(h.info.ID)
+	r := (*restoring)
 	if r == nil {
-		r = &appServerActivityRestore{state: sessionpresentation.NewRestoration(u.Thread), pane: make(map[string][]*restoredPlacement), itemAt: make(map[string]map[string]time.Time)}
-		u.restoring = r
-		defer func() { u.restoring = nil }()
+		r = &appServerActivityRestore{state: sessionpresentation.NewRestoration(control.Thread), pane: make(map[string][]*restoredPlacement), itemAt: make(map[string]map[string]time.Time)}
+		(*restoring) = r
+		defer func() { (*restoring) = nil }()
 	}
 	wasPaging := r.paging
 	r.paging = true
 	defer func() { r.paging = wasPaging }()
 	r.pane[name], r.itemAt[h.info.ID] = selected, h.itemAt
-	before := u.attached.childSource.LastSeq
+	before := attached.childSource.LastSeq
 	info := h.info
 	info.Turns = []binding.HistoryTurn{turn}
 	// Historical pages may not reset a newer live lifecycle or cumulative
 	// counters. Initial metadata supplies the complete turn count and timing.
-	agent := *u.attached.session.Agent(name)
-	u.restoreActivityThread(info, page.Older)
-	*u.attached.session.Agent(name) = agent
-	u.attached.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.attached.session.Roster()})
+	agent := *attached.session.Agent(name)
+	restoreActivityThread(attached, terminal, clock, restoring, parent, reviewOwner, receipts, retained, retainedSession, activityService, usage, segments, restoredSegments, info, page.Older)
+	*attached.session.Agent(name) = agent
+	attached.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: attached.session.Roster()})
 	first := uint64(0)
-	for _, entry := range u.attached.childSource.Entries {
+	for _, entry := range attached.childSource.Entries {
 		if entry.Source.Seq > before {
 			first = entry.Source.Seq
 			break
 		}
 	}
 	if !h.state.View(h.info.ID).Initial {
-		retained := slices.ContainsFunc(u.attached.childSource.Entries, func(entry sessionpresentation.ActivityRecord) bool { return entry.Source.Seq == h.firstSeq })
-		insertActivityHistory(&u.attached, u.shell, u.attached.childSource, u.shell.Agents, before, func(entry sessionpresentation.ActivityEntry) bool {
+		retained := slices.ContainsFunc(attached.childSource.Entries, func(entry sessionpresentation.ActivityRecord) bool { return entry.Source.Seq == h.firstSeq })
+		insertActivityHistory(attached, terminal, attached.childSource, terminal.Agents, before, func(entry sessionpresentation.ActivityEntry) bool {
 			return retained && entry.Seq == h.firstSeq || !retained && entry.Native != nil && entry.Native.Thread == h.info.ID
 		})
 		for _, p := range r.main {
 			// A failed initial read may already have placed this retained
 			// assignment/message in Main without its Activity link. The same
 			// source observation keeps its identity through the pending slots.
-			existing := slices.IndexFunc(u.attached.source.Entries, func(entry sessionpresentation.ActivityRecord) bool {
+			existing := slices.IndexFunc(attached.source.Entries, func(entry sessionpresentation.ActivityRecord) bool {
 				return p.entry.Assignment != nil && entry.Source.Assignment == p.entry.Assignment || p.entry.Message != nil && entry.Source.Message == p.entry.Message
 			})
 			if existing >= 0 {
 				if p.link != nil && sessionpresentation.MainActivityLinked(p.entry) {
-					entry := u.attached.source.Entries[existing].Source
+					entry := attached.source.Entries[existing].Source
 					entry.ActivitySeq = *p.link
-					u.attached.source.Model.Replace(existing, entry, sessionpresentation.ActivityContent(entry).Values())
+					attached.source.Model.Replace(existing, entry, sessionpresentation.ActivityContent(entry).Values())
 				}
 				continue
 			}
-			before := u.attached.source.LastSeq
-			applyRestoredMain(u.attached.source, []*restoredPlacement{p})
-			insertActivityHistory(&u.attached, u.shell, u.attached.source, u.shell.Transcript, before, func(entry sessionpresentation.ActivityEntry) bool { return entry.Observed.After(p.at) })
+			before := attached.source.LastSeq
+			applyRestoredMain(attached.source, []*restoredPlacement{p})
+			insertActivityHistory(attached, terminal, attached.source, terminal.Transcript, before, func(entry sessionpresentation.ActivityEntry) bool { return entry.Observed.After(p.at) })
 		}
 	}
 	if first != 0 {

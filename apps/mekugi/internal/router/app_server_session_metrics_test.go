@@ -29,7 +29,7 @@ func TestSessionMetricsWrappedDirectoryCopy(t *testing.T) {
 	for _, width := range []int{35, 100} {
 		u, _ := newAppServerTestUI()
 		u.replayDebugDirectory = path
-		u.showSessionMetrics()
+		showSessionMetrics(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, &u.ownedImages, &u.dirty, u.sessionCapture, u.replayDebugDirectory)
 		screen := vt.NewEmulator(width, 24)
 		defer screen.Close()
 		if err := u.testPaint(screen, width, 24); err != nil {
@@ -163,7 +163,7 @@ func TestAppServerSessionMetricsLocalNavigation(t *testing.T) {
 
 func TestAppServerSessionMetricsSelectionSurvivesRetention(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.showSessionMetrics()
+	showSessionMetrics(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, &u.ownedImages, &u.dirty, u.sessionCapture, u.replayDebugDirectory)
 	*u.statusPanel.Metrics = sessionMetricsFixture(t)
 	u.statusPanelKey("\x1b[C")
 	u.statusPanelKey("\x1b[C")
@@ -189,7 +189,7 @@ func TestAppServerSessionMetricsRefreshAndBounds(t *testing.T) {
 	now := time.Unix(100, 0)
 	u.clock = func() time.Time { return now }
 	u.sessionCapture = capture
-	u.showSessionMetrics()
+	showSessionMetrics(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, &u.ownedImages, &u.dirty, u.sessionCapture, u.replayDebugDirectory)
 	handler := capture.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"id":"r","object":"response","status":"completed","output":[]}`))
@@ -255,7 +255,7 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			u.attached.cwd = "/workspace"
 			u.replayDebugDirectory = tc.debug
-			u.showSessionMetrics()
+			showSessionMetrics(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, &u.ownedImages, &u.dirty, u.sessionCapture, u.replayDebugDirectory)
 			settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 			m := u.statusPanel.Metrics
 			u.shell.Main.Panel.Tab = tc.tab

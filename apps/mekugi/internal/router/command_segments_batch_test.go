@@ -168,7 +168,7 @@ func TestCommandSegmentsBatchForkOwnershipSurvivesParentExpiry(t *testing.T) {
 				u.restoreHistory([]binding.HistoryTurn{turn})
 			} else {
 				u.attached.session.Caller("fork")
-				u.restoreActivityThread(binding.ThreadInfo{ID: "fork", Cwd: workspace, Turns: []binding.HistoryTurn{turn}}, false)
+				restoreActivityThread(&u.attached, u.shell, u.clock, &u.restoring, u.ctx, u.review, &u.pendingEditReceipts, u.retained, u.retainedSession, u.activity, u.usage, u.segments, &u.restoredSegments, binding.ThreadInfo{ID: "fork", Cwd: workspace, Turns: []binding.HistoryTurn{turn}}, false)
 				view = u.testActivity(u.shell.Agents)
 			}
 			var restored *sessionpresentation.NativeItem

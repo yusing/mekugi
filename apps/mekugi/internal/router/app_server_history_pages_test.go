@@ -25,7 +25,7 @@ func newPagedHistoryUI(t *testing.T) (*appServerUI, *appServerTestInput) {
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.startSession("main", t.TempDir())
 	u.Startup.Thread = "main"
-	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: u.attached.cwd}); err != nil {
+	if err := restorePaneContent(&u.attached, u.shell, &u.Client, &u.restoring, u.review, u.reviewSource, u.preparePane, binding.ThreadInfo{ID: "main", Cwd: u.attached.cwd}); err != nil {
 		t.Fatal(err)
 	}
 	restoreContentReply(t, u, 0, map[string]any{"data": []any{map[string]any{"id": "child", "agentNickname": "worker", "agentRole": "worker", "historyMode": "paginated"}}})
@@ -75,7 +75,7 @@ func TestAppServerAnchoredHistoryPages(t *testing.T) {
 	if got := strings.Join(entryTexts(u.testActivity(u.shell.Agents)), ","); got != "middle commentary,latest answer" {
 		t.Fatal(got)
 	}
-	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
+	if err := loadOlderActivity(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
 	}
 	requests = restoreContentRequests(t, wire)
@@ -94,7 +94,7 @@ func TestAppServerAnchoredHistoryPages(t *testing.T) {
 			t.Fatalf("incorrect older state: %+v", entry)
 		}
 	}
-	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
+	if err := loadOlderActivity(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
 	}
 	requests = restoreContentRequests(t, wire)
@@ -116,7 +116,7 @@ func TestAppServerAnchoredHistoryErrorsAndCancellation(t *testing.T) {
 			u, wire := newPagedHistoryUI(t)
 			historyTurnsReply(t, u)
 			restoreContentReply(t, u, 4, map[string]any{"data": []any{historyItem("middle", "saved", 105000)}, "nextCursor": "older"})
-			if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
+			if err := loadOlderActivity(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, historyLoadIntent(u)); err != nil {
 				t.Fatal(err)
 			}
 			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "live", "status": "inProgress"}})
@@ -145,7 +145,7 @@ func TestAppServerAnchoredHistoryErrorsAndCancellation(t *testing.T) {
 			if historyLoading(&u.attached, &u.childHistoryState) != nil || !u.attached.session.Agent("/root/worker").Responding || strings.Contains(strings.Join(entryTexts(u.testActivity(u.shell.Agents)), ","), "leak") || strings.Contains(strings.Join(entryTexts(u.testActivity(u.shell.Agents)), ","), "late response") {
 				t.Fatal("failure/cancel lost live status or admitted stale data")
 			}
-			if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
+			if err := loadOlderActivity(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, historyLoadIntent(u)); err != nil {
 				t.Fatal(err)
 			}
 			if len(restoreContentRequests(t, wire)) != 7 {
@@ -172,7 +172,7 @@ func TestAppServerAnchoredHistoryDeferredEvidence(t *testing.T) {
 	if len(h.placements) != 2 || len(u.attached.childSource.Entries) != 3 {
 		t.Fatalf("older rollout evidence shown early or lost: %+v", u.attached.childSource.Entries)
 	}
-	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
+	if err := loadOlderActivity(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
 	}
 	restoreContentReply(t, u, 5, map[string]any{"data": []any{historyItem("first", "first", 101000)}})
@@ -224,7 +224,7 @@ func TestUISnapshotNativeAnchoredHistory(t *testing.T) {
 			terminalTest(u).Focus = 0
 			u.testActivity(u.shell.Agents).setDisplayFilter(true, "/root/worker")
 			if state != "partial" {
-				if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
+				if err := loadOlderActivity(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, historyLoadIntent(u)); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -272,7 +272,7 @@ func TestAppServerAnchoredHistoryEmptyPageAndLiveCompletion(t *testing.T) {
 	u, wire := newPagedHistoryUI(t)
 	historyTurnsReply(t, u)
 	restoreContentReply(t, u, 4, map[string]any{"data": []any{}, "nextCursor": "empty-continuation"})
-	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
+	if err := loadOlderActivity(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
 	}
 	requests := restoreContentRequests(t, wire)
@@ -297,7 +297,7 @@ func TestAppServerAnchoredHistoryBufferSaturation(t *testing.T) {
 	u, _ := newPagedHistoryUI(t)
 	historyTurnsReply(t, u)
 	restoreContentReply(t, u, 4, map[string]any{"data": []any{historyItem("last", "saved", 109000)}, "nextCursor": "older"})
-	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
+	if err := loadOlderActivity(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
 	}
 	for i := range 257 {
@@ -325,7 +325,7 @@ func TestAppServerAnchoredHistoryRetainsPausedViewportAndLinks(t *testing.T) {
 	stable := u.attached.childSource.Entries[0].Source.Seq
 	beforeRow := u.shell.Agents.QuestionRows[stable]
 	beforeOffset := u.shell.Agents.Offset
-	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
+	if err := loadOlderActivity(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
 	}
 	restoreContentReply(t, u, 5, map[string]any{"data": []any{historyItem("first", "older\ncommentary", 101000)}})
@@ -370,7 +370,7 @@ func TestAppServerAnchoredHistoryArchivedChild(t *testing.T) {
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.startSession("main", t.TempDir())
 	u.Startup.Thread = "main"
-	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main", Cwd: u.attached.cwd}); err != nil {
+	if err := restorePaneContent(&u.attached, u.shell, &u.Client, &u.restoring, u.review, u.reviewSource, u.preparePane, binding.ThreadInfo{ID: "main", Cwd: u.attached.cwd}); err != nil {
 		t.Fatal(err)
 	}
 	restoreContentReply(t, u, 0, map[string]any{"data": []any{}})
@@ -408,7 +408,7 @@ func TestAppServerAnchoredHistoryInitialFailureRetryKeepsEvidence(t *testing.T) 
 	if count() != 1 || u.restoring != nil || historyLoadIntent(u).Thread == "" || u.shell.Agents.HistoryHint != "History unavailable · Ctrl-B o retry" {
 		t.Fatal("failed initial read lost evidence or its retry state")
 	}
-	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
+	if err := loadOlderActivity(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
 	}
 	restoreContentReply(t, u, 5, map[string]any{"data": []any{historyItem("last", "latest answer", 109000)}})
@@ -430,7 +430,7 @@ func TestAppServerAnchoredHistoryCancelledMetadataRetry(t *testing.T) {
 		t.Run(fmt.Sprint(saturation), func(t *testing.T) {
 			u, _ := newPagedHistoryUI(t)
 			restoreContentError(t, u, 3)
-			if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
+			if err := loadOlderActivity(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, historyLoadIntent(u)); err != nil {
 				t.Fatal(err)
 			}
 			if saturation {
@@ -443,7 +443,7 @@ func TestAppServerAnchoredHistoryCancelledMetadataRetry(t *testing.T) {
 			if historyLoadIntent(u).Thread == "" || historyLoading(&u.attached, &u.childHistoryState) != nil {
 				t.Fatal("metadata cancellation removed recovery eligibility")
 			}
-			if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
+			if err := loadOlderActivity(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, historyLoadIntent(u)); err != nil {
 				t.Fatal(err)
 			}
 			restoreContentReply(t, u, 5, map[string]any{"data": []any{map[string]any{"id": "t", "status": "completed", "startedAt": 100, "completedAt": 110}}})
@@ -463,7 +463,7 @@ func TestAppServerAnchoredHistoryMetadataRetryPreservesCompletedLiveTiming(t *te
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "live", "status": "inProgress"}})
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "live", "status": "completed"}})
 	live := *u.attached.session.Agent("/root/worker")
-	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
+	if err := loadOlderActivity(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
 	}
 	restoreContentReply(t, u, 5, map[string]any{"data": []any{map[string]any{"id": "old", "status": "completed", "startedAt": 90, "completedAt": 95}}})

@@ -120,9 +120,9 @@ func TestAppServerActiveWorkRestoresClosedSpans(t *testing.T) {
 					want = 35 * time.Second
 				}
 				if thread == "main" {
-					u.restoreMainHistory(turns, nil, nil)
+					restoreMainHistory(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.statusPanel, &u.resumePicker, u.ctx, u.review, &u.pendingEditReceipts, u.notifications, u.retained, u.retainedSession, u.activity, u.segments, &u.restoredSegments, turns, nil, nil)
 				} else {
-					u.restoreActivityThread(binding.ThreadInfo{ID: thread, Turns: turns}, false)
+					restoreActivityThread(&u.attached, u.shell, u.clock, &u.restoring, u.ctx, u.review, &u.pendingEditReceipts, u.retained, u.retainedSession, u.activity, u.usage, u.segments, &u.restoredSegments, binding.ThreadInfo{ID: thread, Turns: turns}, false)
 				}
 				assertAgentWork(t, u, thread, *at, want, false)
 				*at = at.Add(24 * time.Hour)

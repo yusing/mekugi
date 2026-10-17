@@ -2,7 +2,14 @@ package router
 
 import (
 	"cmp"
+	"context"
 	"iter"
+
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/commandsegments/reports"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+	"github.com/yusing/mekugi/modules/usage/accounting"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/contracts/scope"
@@ -47,11 +54,11 @@ type appServerActivityRestore struct {
 	paging  bool // Bind cumulative answers only after a page has its chronological position.
 }
 
-func (u *appServerUI) restorePaneContent(root binding.ThreadInfo) error {
-	u.restoring = &appServerActivityRestore{root: root, threads: make(map[string]binding.ThreadInfo), state: sessionpresentation.NewRestoration(root.ID)}
-	restoreDiffThread(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, root, true)
-	u.attached.presentation.Status.SetText("Restoring roster and Activity…")
-	return restoreList(&u.Client, u.restoring)
+func restorePaneContent(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], restoring **appServerActivityRestore, reviewOwner *sessionreview.Review, reviewSource *changecapture.Service, preparePane func(*scope.Store), root binding.ThreadInfo) error {
+	(*restoring) = &appServerActivityRestore{root: root, threads: make(map[string]binding.ThreadInfo), state: sessionpresentation.NewRestoration(root.ID)}
+	restoreDiffThread(attached, terminal, reviewOwner, reviewSource, preparePane, root, true)
+	attached.presentation.Status.SetText("Restoring roster and Activity…")
+	return restoreList(control, (*restoring))
 }
 
 func restoreDiffThread(attached *attachedPresentation, terminal *terminalsession.Attachment, review *sessionreview.Review, source *changecapture.Service, prepare func(*scope.Store), info binding.ThreadInfo, root bool) {
@@ -132,9 +139,9 @@ func (u *appServerUI) restoreActivityResponse(method string, m appserver.Message
 	if err != nil {
 		restoreHistoryNotice(&u.attached, u.restoring, "Invalid Activity history: "+err.Error(), true)
 	} else if info.HistoryMode == "paginated" {
-		return u.startChildHistory(info)
+		return startChildHistory(&u.attached, &u.Client, &u.childHistoryState, &u.restoring, u.presentationState, info)
 	} else {
-		u.restoreActivityThread(info, false)
+		restoreActivityThread(&u.attached, u.shell, u.clock, &u.restoring, u.ctx, u.review, &u.pendingEditReceipts, u.retained, u.retainedSession, u.activity, u.usage, u.segments, &u.restoredSegments, info, false)
 	}
 	r.state.ReadComplete()
 	return u.readNextRestoredChild()
@@ -150,7 +157,7 @@ func (u *appServerUI) readRestoredChildren() error {
 		restoreDiffThread(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, info, false)
 		u.attached.session.Lifecycle(id).RestoreTiming(restoredAgentIntervals(info.Turns))
 	}
-	u.readRestoredRollouts()
+	readRestoredRollouts(&u.attached, &u.restoring, u.retainedSession, u.audience, u.activity)
 	for _, turn := range r.root.Turns {
 		for _, item := range turn.Items {
 			if item.Type == "collabAgentToolCall" {
@@ -173,18 +180,18 @@ func (u *appServerUI) readRestoredChildren() error {
 // readRestoredRollouts reads each thread's retained rollout once every name
 // is known. Evidence belongs to the Activity agent live display would show
 // it under; the root's own evidence belongs to Main.
-func (u *appServerUI) readRestoredRollouts() {
-	r := u.restoring
+func readRestoredRollouts(attached *attachedPresentation, restoring **appServerActivityRestore, retainedSession history.Session, audience *sessioncontrol.Audience, activityService *activitymodel.Service) {
+	r := (*restoring)
 	r.itemAt, r.pane = make(map[string]map[string]time.Time), make(map[string][]*restoredPlacement)
-	activity := u.audience
+	activity := audience
 	infos := []binding.ThreadInfo{r.root}
 	for _, id := range r.state.View().Threads {
 		infos = append(infos, r.threads[id])
 	}
 	for _, info := range infos {
-		agent := u.attached.session.Caller(info.ID)
+		agent := attached.session.Caller(info.ID)
 		rollout := readRestoredRollout(info, agent)
-		rollout.events = append(rollout.events, restoredHookEvents(&u.attached, u.activity, u.retainedSession, u.restoring, info)...)
+		rollout.events = append(rollout.events, restoredHookEvents(attached, activityService, retainedSession, (*restoring), info)...)
 		r.itemAt[info.ID] = rollout.itemAt
 		for _, event := range rollout.events {
 			if event.repeated {
@@ -224,7 +231,7 @@ func (u *appServerUI) readNextRestoredChild() error {
 			}
 		}
 		r.pane = nil
-		u.restoreMainHistory(r.root.Turns, r.main, r.itemAt[r.root.ID])
+		restoreMainHistory(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.statusPanel, &u.resumePicker, u.ctx, u.review, &u.pendingEditReceipts, u.notifications, u.retained, u.retainedSession, u.activity, u.segments, &u.restoredSegments, r.root.Turns, r.main, r.itemAt[r.root.ID])
 		r.root.Turns, r.main = nil, nil
 		r.state.ContentRendered()
 		for _, notice := range r.notices {
@@ -283,24 +290,24 @@ func restoredAgentIntervals(turns []binding.HistoryTurn) iter.Seq2[time.Time, ti
 
 // Observational history never opens previews, resumes children, or fabricates
 // a live response. Only a subsequent live notification can mark an agent busy.
-func (u *appServerUI) restoreActivityThread(info binding.ThreadInfo, olderPage bool) {
-	previousSegments := u.restoredSegments
-	defer func() { u.restoredSegments = previousSegments }()
-	s := &u.attached.session
+func restoreActivityThread(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, restoring **appServerActivityRestore, parent context.Context, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, retained changes.Scope, retainedSession history.Session, activityService *activitymodel.Service, usage *accounting.Service, segments *reports.Service, restoredSegments *map[string]*reports.Report, info binding.ThreadInfo, olderPage bool) {
+	previousSegments := (*restoredSegments)
+	defer func() { (*restoredSegments) = previousSegments }()
+	s := &attached.session
 	name := s.KnownCaller(info.ID)
 	agent := s.Agent(name)
 	restoreContextUsage(agent, info)
-	restoreUsage(u.usage, info)
-	page := u.restoring != nil && u.restoring.paging
+	restoreUsage(usage, info)
+	page := (*restoring) != nil && (*restoring).paging
 	if !page {
 		s.Lifecycle(info.ID).Restore(restoredAgentIntervals(info.Turns), uint64(len(info.Turns)), false)
 	}
-	observeCost(u.usage, info.ID, agent)
-	u.attached.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: s.Roster()})
+	observeCost(usage, info.ID, agent)
+	attached.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: s.Roster()})
 	var r *appServerActivityRestore
 	var itemAt map[string]time.Time
 	byTurn := make(map[int][]*restoredPlacement)
-	if r = u.restoring; r != nil {
+	if r = (*restoring); r != nil {
 		itemAt = r.itemAt[info.ID]
 		positions := historyPositions(info.Turns, itemAt)
 		for _, p := range r.pane[name] {
@@ -312,14 +319,14 @@ func (u *appServerUI) restoreActivityThread(info binding.ThreadInfo, olderPage b
 			} else if p.entry.Kind == "hook" {
 				entry := p.entry
 				entry.Seq = s.Activity().NextSequence()
-				applyRestoredActivity(&u.attached, u.review, &u.pendingEditReceipts, []sessionpresentation.ActivityEntry{entry})
+				applyRestoredActivity(attached, reviewOwner, receipts, []sessionpresentation.ActivityEntry{entry})
 			}
 		}
 		delete(r.pane, name)
 	}
 	positions := historyPositions(info.Turns, itemAt)
 	for index, turn := range info.Turns {
-		u.restoredSegments = prepareCommandSegments(u.ctx, u.retained, u.segments, info.ID, info.Cwd, turn)
+		(*restoredSegments) = prepareCommandSegments(parent, retained, segments, info.ID, info.Cwd, turn)
 		observed := historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt, info.UpdatedAt))
 		var entries []sessionpresentation.ActivityEntry
 		var times []time.Time // When each entry happened, to place Main's copy.
@@ -341,7 +348,7 @@ func (u *appServerUI) restoreActivityThread(info binding.ThreadInfo, olderPage b
 			if !ok {
 				at = observed
 			}
-			u.restoreActivityItem(info, turn, item, name, at, &entries, text)
+			restoreActivityItem(attached, terminal, clock, parent, retained, retainedSession, activityService, segments, restoredSegments, info, turn, item, name, at, &entries, text)
 			for range entries[first:] {
 				times = append(times, at)
 			}
@@ -358,22 +365,22 @@ func (u *appServerUI) restoreActivityThread(info binding.ThreadInfo, olderPage b
 			entries = append(entries, sessionpresentation.ActivityEntry{Seq: s.Activity().NextSequence(), Agent: name, Kind: "error", Text: text, Observed: observed})
 			times = append(times, observed)
 		}
-		applyRestoredActivity(&u.attached, u.review, &u.pendingEditReceipts, entries)
+		applyRestoredActivity(attached, reviewOwner, receipts, entries)
 		if r == nil {
 			continue
 		}
 		for i, entry := range entries {
 			if main, ok := sessionpresentation.MainActivityEntry(entry); ok {
-				seq := u.attached.childSource.EntrySeq(entry)
+				seq := attached.childSource.EntrySeq(entry)
 				r.main = append(r.main, &restoredPlacement{entry: main, at: times[i], link: &seq})
 			}
 		}
 	}
 }
 
-func (u *appServerUI) restoreActivityItem(info binding.ThreadInfo, turn binding.HistoryTurn, item binding.ThreadItem, name string, observed time.Time, entries *[]sessionpresentation.ActivityEntry, text map[string]observation.TextUpdate) {
+func restoreActivityItem(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, parent context.Context, retained changes.Scope, retainedSession history.Session, activityService *activitymodel.Service, segments *reports.Service, restoredSegments *map[string]*reports.Report, info binding.ThreadInfo, turn binding.HistoryTurn, item binding.ThreadItem, name string, observed time.Time, entries *[]sessionpresentation.ActivityEntry, text map[string]observation.TextUpdate) {
 	facts := item.Observation()
-	s := &u.attached.session
+	s := &attached.session
 	if update, ok := text[item.ID]; ok {
 		update.Sequence, update.Observed = s.Activity().NextSequence(), observed
 		entry := sessionpresentation.TranscriptEntry(update, name)
@@ -384,7 +391,7 @@ func (u *appServerUI) restoreActivityItem(info binding.ThreadInfo, turn binding.
 	entry := sessionpresentation.ActivityEntry{Seq: s.Activity().NextSequence(), Agent: name, Observed: observed, CallID: item.ID,
 		Native: &sessionpresentation.NativeItem{Thread: info.ID, Turn: turn.ID, Item: item.ID, Phase: "item/completed", Status: item.Status, SearchResults: sessionpresentation.SearchResults(facts)}}
 	progressPhase := appServerHistoryProgressPhase(facts, turn.Status)
-	if text, wait, handled := itemProgress(&u.attached, u.shell, u.retainedSession, u.clock, facts, info.ID, turn.ID, item.ID, progressPhase, false); handled {
+	if text, wait, handled := itemProgress(attached, terminal, retainedSession, clock, facts, info.ID, turn.ID, item.ID, progressPhase, false); handled {
 		if text != "" {
 			entry.Kind, entry.Text = "progress", text
 			entry.Native.Wait = wait
@@ -412,9 +419,9 @@ func (u *appServerUI) restoreActivityItem(info binding.ThreadInfo, turn binding.
 			entry.Text = activitypresentation.HostEditText(facts, info.Cwd)
 			entry.Native.EditPages = activitypresentation.HostEditPages(facts, info.Cwd, entry.Native.Phase)
 		}
-		u.attached.session.CompleteCommand(entry.Native, facts, u.activity.Outputs(u.attached.session.Scope()))
+		attached.session.CompleteCommand(entry.Native, facts, activityService.Outputs(attached.session.Scope()))
 		sessionpresentation.CommandOutput(&entry, facts, time.Time{})
-		restoreCommandSegments(u.ctx, u.retained, u.segments, &u.attached, u.activity, u.restoredSegments, &entry, item, info.Cwd)
+		restoreCommandSegments(parent, retained, segments, attached, activityService, (*restoredSegments), &entry, item, info.Cwd)
 		*entries = append(*entries, entry)
 		if len(entry.Native.Segments) == 0 && item.ExitCode != nil && *item.ExitCode != 0 {
 			exit := sessionpresentation.ActivityEntry{Seq: s.Activity().NextSequence(), Agent: name, Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID, Observed: observed}
@@ -422,6 +429,6 @@ func (u *appServerUI) restoreActivityItem(info binding.ThreadInfo, turn binding.
 			*entries = append(*entries, exit)
 		}
 	case "collabAgentToolCall":
-		*entries = append(*entries, u.attached.session.Collaboration(facts, item.ID, observed, activitypresentation.HistoricalCollaboration)...)
+		*entries = append(*entries, attached.session.Collaboration(facts, item.ID, observed, activitypresentation.HistoricalCollaboration)...)
 	}
 }

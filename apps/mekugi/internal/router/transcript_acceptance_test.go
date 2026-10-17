@@ -15,6 +15,7 @@ import (
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 	"github.com/yusing/mekugi/modules/sessionreplay/playback"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
@@ -125,7 +126,7 @@ func TestAppServerTranscriptOlderHistoryPreservesLiveReasoning(t *testing.T) {
 	if liveSeq == 0 {
 		t.Fatal("live reasoning was not presented")
 	}
-	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
+	if err := loadOlderActivity(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
 	}
 	restoreContentReply(t, u, 5, map[string]any{"data": []any{map[string]any{

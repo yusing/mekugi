@@ -3,6 +3,13 @@ package router
 import (
 	"slices"
 	"strings"
+	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/contracts/scope"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
@@ -18,12 +25,12 @@ import (
 
 // Source: codex-rs/tui/src/chatwidget/copy_picker.rs:10:105@1cc7e236.
 // Reuse the transcript and OSC 52 owner rather than a second clipboard backend.
-func (u *appServerUI) showCopyPicker() {
-	deleteDraftRange(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, 0, len(u.Text))
+func showCopyPicker(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, panel **appServerStatusReport, resumePicker **appServerResumePicker, owned *map[string]bool) {
+	deleteDraftRange(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, (*restoring) != nil, (*side), clock, questions, approvals, (*panel) != nil || (*resumePicker) != nil, (*owned), 0, len((*editor).Text))
 	var response string
-	for _, entry := range slices.Backward(u.attached.source.Entries) {
+	for _, entry := range slices.Backward(attached.source.Entries) {
 		n := entry.Source.Native
-		if n == nil || n.Thread != u.Thread || entry.Source.Agent != "Main" {
+		if n == nil || n.Thread != control.Thread || entry.Source.Agent != "Main" {
 			continue
 		}
 		if entry.Source.Kind == "text" && n.Phase == "item/completed" {
@@ -34,12 +41,12 @@ func (u *appServerUI) showCopyPicker() {
 		}
 	}
 	if strings.TrimSpace(response) == "" {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "No agent response to copy", true)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "No agent response to copy", true)
 		return
 	}
-	u.picker.cancelScan()
-	p := &u.picker
-	u.picker.openMenu("copy")
+	picker.cancelScan()
+	p := picker
+	picker.openMenu("copy")
 	p.Target, p.Problem, p.Loading = completion.Target{}, "", false
 	p.Choices, p.CopyTexts = nil, nil
 	for _, choice := range responseCopyChoices(response) {

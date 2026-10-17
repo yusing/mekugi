@@ -44,22 +44,22 @@ func insertImage(attached *attachedPresentation, terminal *terminalsession.Attac
 // finishPaste inserts a bracketed paste as one edit. A lone path to an image
 // file, as terminals paste for copied or dropped files, attaches that file
 // instead, followed by a space as in Codex. The user's file is never removed.
-func (u *appServerUI) finishPaste(text string) {
-	if q := u.questions.Current(); q != nil {
+func finishPaste(attached *attachedPresentation, terminal *terminalsession.Attachment, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, side **sessioncontrol.Side, owned *map[string]bool, text string) {
+	if q := questions.Current(); q != nil {
 		q.Edit(!q.Note)
 	}
 	path, ok := pastedImagePath(text)
 	if !ok {
 		if text != "" {
-			insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, text)
-			u.Run = composer.NoRun
+			insertDraft(attached, (*editor), terminal, clock, (*owned), questions, approvals, (*side), text)
+			(*editor).Run = composer.NoRun
 		}
 		return
 	}
-	insertImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, u.ownedImages, u.side, path)
-	u.Run = composer.InsertRun // The separating space belongs to the attachment's edit.
-	insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, " ")
-	u.Run = composer.NoRun
+	insertImage(attached, terminal, editor, questions, approvals, clock, (*owned), (*side), path)
+	(*editor).Run = composer.InsertRun // The separating space belongs to the attachment's edit.
+	insertDraft(attached, (*editor), terminal, clock, (*owned), questions, approvals, (*side), " ")
+	(*editor).Run = composer.NoRun
 }
 
 // Source: codex-rs/tui/src/clipboard_paste.rs:251:287 and
@@ -200,29 +200,29 @@ func clipboardImage(ctx context.Context) (string, error) {
 	return file.Name(), nil
 }
 
-func (u *appServerUI) applyPaste(paste terminalsession.PasteResult) {
-	if err := u.attached.presentation.AdmitPaste(paste.Intent, u.attached.conversation); err != nil {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
+func applyPaste(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, side **sessioncontrol.Side, owned *map[string]bool, environment []string, parent context.Context, paste terminalsession.PasteResult) {
+	if err := attached.presentation.AdmitPaste(paste.Intent, attached.conversation); err != nil {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return
 	}
 	text := paste.Text
 	menu := sessionpresentation.MenuCompletion
-	if published := u.attached.presentation.View().Menu; published != nil {
+	if published := attached.presentation.View().Menu; published != nil {
 		menu = published.Kind
 	}
 	switch {
-	case u.approvals.Open:
-		if a := u.approvals.calls()[0]; a.DenialChoice() >= 0 && text != "" {
+	case approvals.Open:
+		if a := approvals.calls()[0]; a.DenialChoice() >= 0 && text != "" {
 			a.Selected = a.DenialChoice()
-			insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, text)
-			u.Run = composer.NoRun
+			insertDraft(attached, (*editor), terminal, clock, (*owned), questions, approvals, (*side), text)
+			(*editor).Run = composer.NoRun
 		}
 	case menu == sessionpresentation.MenuManageSkills:
-		u.picker.Query += text
+		picker.Query += text
 	case menu == sessionpresentation.MenuSkills || menu == sessionpresentation.MenuCopy || menu == sessionpresentation.MenuSettings || menu == sessionpresentation.MenuArchive:
 	default:
-		u.finishPaste(text)
+		finishPaste(attached, terminal, editor, questions, approvals, clock, side, owned, text)
 	}
-	u.picker.Dismissed, u.picker.Open = u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode()), false
-	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
+	picker.Dismissed, picker.Open = picker.completionTarget((*editor).Draft, attached.conversation.ShellMode()), false
+	picker.refreshPicker(attached, terminal, clock, control.Requests, (*editor), parent, environment)
 }

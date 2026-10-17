@@ -37,17 +37,17 @@ func TestComposerEditorResultKeepsOriginalTarget(t *testing.T) {
 	intent := editorTestIntent(u)
 	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "unrelated progress", false)
 	publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
-	if err := u.applyEditorDraft(intent, "edited"); err != nil || u.Text != "edited" {
+	if err := applyEditorDraft(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, u.skillEnvironment, u.ctx, intent, "edited"); err != nil || u.Text != "edited" {
 		t.Fatalf("unrelated publication discarded an editor result: %q, %v", u.Text, err)
 	}
 	intent = editorTestIntent(u)
 	u.Editor.Replace(composer.Draft{Text: "new draft"})
-	if err := u.applyEditorDraft(intent, "old editor result"); err == nil || u.Text != "new draft" {
+	if err := applyEditorDraft(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, u.skillEnvironment, u.ctx, intent, "old editor result"); err == nil || u.Text != "new draft" {
 		t.Fatalf("returned editor retargeted: %q, %v", u.Text, err)
 	}
 	questionTestSync(t, u, "replacement-editor", false)
 	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
-	if err := u.applyEditorDraft(intent, "old editor result"); err == nil || u.Text != "" {
+	if err := applyEditorDraft(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, u.skillEnvironment, u.ctx, intent, "old editor result"); err == nil || u.Text != "" {
 		t.Fatalf("returned editor reached a prompt: %q, %v", u.Text, err)
 	}
 }
@@ -57,7 +57,7 @@ func TestAppServerComposerEditorDraft(t *testing.T) {
 	attachImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, &u.ownedImages, u.side, filepath.Join(t.TempDir(), "one.png"))
 	appServerTestKeys(t, u, "a")
 	attachImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, &u.ownedImages, u.side, filepath.Join(t.TempDir(), "two.png"))
-	if err := u.applyEditorDraft(editorTestIntent(u), "[Image 2]b[Image 1]"); err != nil {
+	if err := applyEditorDraft(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, u.skillEnvironment, u.ctx, editorTestIntent(u), "[Image 2]b[Image 1]"); err != nil {
 		t.Fatal(err)
 	}
 	if u.Text != "[Image 1]b[Image 2]" || !strings.HasSuffix(u.Images[0].Path, "two.png") {
@@ -67,10 +67,10 @@ func TestAppServerComposerEditorDraft(t *testing.T) {
 	if u.Text != "[Image 1]a[Image 2]" || !strings.HasSuffix(u.Images[0].Path, "one.png") {
 		t.Fatalf("editor undo: %q %v", u.Text, u.Images)
 	}
-	if err := u.applyEditorDraft(editorTestIntent(u), "[Image 1][Image 1]"); err == nil {
+	if err := applyEditorDraft(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, u.skillEnvironment, u.ctx, editorTestIntent(u), "[Image 1][Image 1]"); err == nil {
 		t.Fatal("duplicate attachment accepted")
 	}
-	if err := u.applyEditorDraft(editorTestIntent(u), "cleared"); err != nil {
+	if err := applyEditorDraft(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, u.skillEnvironment, u.ctx, editorTestIntent(u), "cleared"); err != nil {
 		t.Fatal(err)
 	}
 	if len(u.Images) != 0 {
@@ -153,9 +153,9 @@ func testAppServerEditorTerminalHandoff(t *testing.T, selectedFile bool) {
 			return
 		}
 		if selectedFile {
-			u.openSelectedFileEditor(fileEditor.path, slave, slave)
+			openSelectedFileEditor(&u.attached, u.shell, u.clock, u.ctx, fileEditor.path, slave, slave)
 		} else {
-			u.openComposerEditor(composerEditor.intent, slave, slave)
+			openComposerEditor(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, u.skillEnvironment, u.ctx, composerEditor.intent, slave, slave)
 		}
 		if u.attached.feedback.Alert {
 			done <- errors.New(u.attached.feedback.Text)
@@ -263,7 +263,7 @@ func TestAppServerComposerEditorFailurePreservesRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer terminalTest(u).Diff.Close()
-	u.openComposerEditor(editorTestIntent(u), output, output)
+	openComposerEditor(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, u.skillEnvironment, u.ctx, editorTestIntent(u), output, output)
 	if u.Text != "original" || !u.attached.feedback.Alert {
 		t.Fatalf("editor failure: draft=%q notice=%q", u.Text, u.attached.feedback.Text)
 	}

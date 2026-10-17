@@ -58,18 +58,18 @@ func (main *appServerUI) applyEffect(u *terminalsession.Attachment, effect termi
 			openQuestions(&m.attached, m.shell, &m.picker, &m.Editor, &m.questions, &m.approvals, m.Thread)
 		}
 	case effect.Panel != nil:
-		m.applyPanelAction(*effect.Panel)
+		applyPanelAction(&m.attached, m.shell, m.clock, &m.statusPanel, &m.dirty, m.sessionCapture, *effect.Panel)
 		m.dirty = true
 	case effect.Resume != nil:
-		return false, m.applyResumeAction(*effect.Resume)
+		return false, applyResumeAction(&m.attached, m.shell, &m.Client, &m.picker, &m.Editor, &m.questions, &m.approvals, m.clock, &m.childHistoryState, preferences.Applied{Model: m.model, Effort: m.reasoningEffort, Tier: m.serviceTier}, m.serviceTiers, m.title, m.backendVersion, &m.restoring, &m.side, &m.statusPanel, &m.resumePicker, m.approvalMode, &m.quitRequested, *effect.Resume)
 	case effect.Menu != nil:
 		return !applyMenuResult(&m.attached, m.shell, &m.Client, &m.picker, &m.Editor, &m.childHistoryState, preferences.Applied{Model: m.model, Effort: m.reasoningEffort, Tier: m.serviceTier}, &m.serviceTiers, m.title, m.backendVersion, m.restoring != nil, m.side, m.clock, &m.questions, &m.approvals, m.statusPanel != nil || m.resumePicker != nil, m.ownedImages, m.panes, &m.dirty, m.ctx, m.skillEnvironment, *effect.Menu), nil
 	case effect.Side != nil:
 		return false, applyCloseSide(&m.attached, m.shell, &m.Client, &m.picker, &m.Editor, &m.questions, &m.approvals, m.clock, &m.childHistoryState, preferences.Applied{Model: m.model, Effort: m.reasoningEffort, Tier: m.serviceTier}, m.serviceTiers, m.title, m.backendVersion, m.restoring != nil, &m.side, m.statusPanel != nil || m.resumePicker != nil, &m.ownedImages, *effect.Side)
 	case effect.Dialog != nil:
-		main.outputIntent(u, *effect.Dialog)
+		outputIntent(&main.attached, main.shell, &main.Client, &main.picker, &main.Editor, &main.questions, &main.approvals, main.clock, &main.childHistoryState, preferences.Applied{Model: main.model, Effort: main.reasoningEffort, Tier: main.serviceTier}, main.serviceTiers, main.title, main.backendVersion, &main.restoring, &main.side, &main.statusPanel, &main.resumePicker, &main.ownedImages, main.skillEnvironment, main.ctx, &main.detailFiles, u, *effect.Dialog)
 	case effect.Reference != nil:
-		return m.referenceInput(*effect.Reference), nil
+		return referenceInput(&m.attached, m.shell, &m.Client, &m.picker, &m.Editor, &m.questions, &m.approvals, m.clock, &m.childHistoryState, preferences.Applied{Model: m.model, Effort: m.reasoningEffort, Tier: m.serviceTier}, m.serviceTiers, m.title, m.backendVersion, &m.restoring, &m.side, &m.statusPanel, &m.resumePicker, &m.ownedImages, m.skillEnvironment, m.ctx, *effect.Reference), nil
 	case effect.Selection != nil:
 		result := effect.Selection
 		if len(result.Demands) > 0 {
@@ -80,13 +80,13 @@ func (main *appServerUI) applyEffect(u *terminalsession.Attachment, effect termi
 			}
 			result.Selection.View.Hydrate(source.ResolveOutputDemands(result.Demands))
 		} else {
-			main.openSelectionTarget(u, result.Target)
+			openSelectionTarget(&main.attached, main.shell, main.clock, main.activity, &main.detailFiles, u, result.Target)
 		}
 	case effect.History != nil:
 		if effect.CancelHistory {
 			return false, m.cancelOlderActivity(*effect.History)
 		}
-		return false, m.loadOlderActivity(*effect.History)
+		return false, loadOlderActivity(&m.attached, m.shell, &m.Client, &m.picker, &m.Editor, &m.questions, &m.approvals, m.clock, &m.childHistoryState, preferences.Applied{Model: m.model, Effort: m.reasoningEffort, Tier: m.serviceTier}, m.serviceTiers, m.title, m.backendVersion, &m.restoring, &m.side, &m.statusPanel, &m.resumePicker, *effect.History)
 	case effect.Display != nil:
 		displaySession(&m.attached, m.shell, &m.Client, &m.picker, &m.Editor, &m.childHistoryState, preferences.Applied{Model: m.model, Effort: m.reasoningEffort, Tier: m.serviceTier}, m.serviceTiers, m.title, m.backendVersion, m.restoring != nil, m.side, m.clock, &m.questions, &m.approvals, m.statusPanel != nil || m.resumePicker != nil, *effect.Display)
 	case effect.Roster != nil:
@@ -103,9 +103,9 @@ func (main *appServerUI) applyEffect(u *terminalsession.Attachment, effect termi
 		}
 		switch intent.Kind {
 		case terminalsession.ErrorDetails:
-			main.openErrorDetails(u, intent.View)
+			openErrorDetails(&main.attached, main.shell, &main.detailFiles, u, intent.View)
 		case terminalsession.SkillDetails:
-			main.openSkills(u, intent.View, intent.Caller)
+			openSkills(&main.attached, main.shell, &main.detailFiles, u, intent.View, intent.Caller)
 		}
 	case effect.Notice != nil:
 		intent := effect.Notice

@@ -31,7 +31,7 @@ func TestUISnapshotNativeResumeSettingsUnavailable(t *testing.T) {
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	u.Thread, u.Startup.Thread = "", "saved"
-	if err := u.openSession(); err != nil {
+	if err := openSession(&u.attached, &u.Client, &u.picker, u.clock, &u.resumePicker, u.approvalMode); err != nil {
 		t.Fatal(err)
 	}
 	read := resumeTestOne(t, w, "thread/read")
@@ -66,7 +66,7 @@ func TestAppServerResumeSettingsOverridesPerField(t *testing.T) {
 			if field != "" {
 				u.Startup.Config[field] = "explicit"
 			}
-			if err := u.openSession(); err != nil {
+			if err := openSession(&u.attached, &u.Client, &u.picker, u.clock, &u.resumePicker, u.approvalMode); err != nil {
 				t.Fatal(err)
 			}
 			read := resumeTestOne(t, w, "thread/read")
@@ -112,7 +112,7 @@ func TestAppServerResumeSettingsNullIntent(t *testing.T) {
 	info := resumeSettingsRollout(t, `{"type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"model":"saved-model"}}}`, "")
 	u, w := newAppServerTestUI()
 	u.Thread, u.Startup.Thread = "", info.ID
-	if err := u.openSession(); err != nil {
+	if err := openSession(&u.attached, &u.Client, &u.picker, u.clock, &u.resumePicker, u.approvalMode); err != nil {
 		t.Fatal(err)
 	}
 	read := resumeTestOne(t, w, "thread/read")
@@ -200,7 +200,7 @@ func TestAppServerResumeSettingsPreflightFailure(t *testing.T) {
 			} else {
 				u.Thread, u.Startup.Thread = "", "saved"
 			}
-			if err := u.openSession(); err != nil {
+			if err := openSession(&u.attached, &u.Client, &u.picker, u.clock, &u.resumePicker, u.approvalMode); err != nil {
 				t.Fatal(err)
 			}
 			read := resumeTestOne(t, w, "thread/read")

@@ -1,8 +1,14 @@
 package router
 
 import (
+	"context"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/contracts/scope"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/commandsegments/reports"
 
 	json "encoding/json/v2"
 
@@ -21,13 +27,13 @@ type appServerSkillHistory struct {
 	bytes   int
 }
 
-func (u *appServerUI) startSkillHistory() {
-	if u.restoring != nil || u.Replacement.Target != "" {
+func startSkillHistory(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], childKey *scope.Key[*appServerChildHistory], restoring **appServerActivityRestore) {
+	if (*restoring) != nil || control.Replacement.Target != "" {
 		return
 	}
 	// One scan at a time keeps background history I/O independently bounded.
-	for thread := range u.attached.session.Threads() {
-		h := childHistory(&u.attached.session, &u.childHistoryState, thread)
+	for thread := range attached.session.Threads() {
+		h := childHistory(&attached.session, childKey, thread)
 		if h == nil {
 			continue
 		}
@@ -35,8 +41,8 @@ func (u *appServerUI) startSkillHistory() {
 			return
 		}
 	}
-	for thread := range u.attached.session.Threads() {
-		h := childHistory(&u.attached.session, &u.childHistoryState, thread)
+	for thread := range attached.session.Threads() {
+		h := childHistory(&attached.session, childKey, thread)
 		if h == nil {
 			continue
 		}
@@ -44,11 +50,11 @@ func (u *appServerUI) startSkillHistory() {
 			continue
 		}
 		h.skills = &appServerSkillHistory{cursors: make(map[string]bool)}
-		if !u.attached.childSource.NeedsSkillHistory(u.attached.session.Caller(h.info.ID)) {
+		if !attached.childSource.NeedsSkillHistory(attached.session.Caller(h.info.ID)) {
 			continue // A live boundary already established the current context.
 		}
-		if err := requestSkillHistory(u.Requests, h, ""); err != nil {
-			failSkillHistory(&u.attached, u.restoring, h, err.Error())
+		if err := requestSkillHistory(control.Requests, h, ""); err != nil {
+			failSkillHistory(attached, (*restoring), h, err.Error())
 		}
 		return
 	}
@@ -72,27 +78,27 @@ func failSkillHistory(attached *attachedPresentation, restoring *appServerActivi
 	return nil
 }
 
-func (u *appServerUI) skillHistoryResponse(thread string, m appserver.Message) error {
-	h := childHistory(&u.attached.session, &u.childHistoryState, thread)
+func skillHistoryResponse(attached *attachedPresentation, control *sessioncontrol.Client[appServerRequest], childKey *scope.Key[*appServerChildHistory], restoring **appServerActivityRestore, parent context.Context, retained changes.Scope, dirty *bool, activityService *activitymodel.Service, segments *reports.Service, restoredSegments *map[string]*reports.Report, thread string, m appserver.Message) error {
+	h := childHistory(&attached.session, childKey, thread)
 	if h == nil || h.skills == nil || h.skills.request != string(m.ID) {
 		return nil
 	}
 	scan := h.skills
 	scan.request = ""
 	if m.Error != nil {
-		return failSkillHistory(&u.attached, u.restoring, h, m.Error.Message)
+		return failSkillHistory(attached, (*restoring), h, m.Error.Message)
 	}
 	scan.bytes += len(m.Result)
 	if scan.bytes > restoredRolloutLimit || len(scan.cursors) >= 1024 {
-		return failSkillHistory(&u.attached, u.restoring, h, "Current-context history exceeds the observation limit; the count is unavailable.")
+		return failSkillHistory(attached, (*restoring), h, "Current-context history exceeds the observation limit; the count is unavailable.")
 	}
 	var page binding.ItemPage
 	if err := json.Unmarshal(m.Result, &page); err != nil {
-		return failSkillHistory(&u.attached, u.restoring, h, "Invalid item page: "+err.Error())
+		return failSkillHistory(attached, (*restoring), h, "Invalid item page: "+err.Error())
 	}
 	for _, entry := range page.Data {
 		if entry.TurnID == "" || entry.Item.ID == "" {
-			return failSkillHistory(&u.attached, u.restoring, h, "Item page returned no item or turn identity.")
+			return failSkillHistory(attached, (*restoring), h, "Item page returned no item or turn identity.")
 		}
 		item := entry.Item
 		if item.Type == "contextCompaction" && item.Status != "inProgress" {
@@ -104,13 +110,13 @@ func (u *appServerUI) skillHistoryResponse(thread string, m appserver.Message) e
 		switch item.Type {
 		case "userMessage":
 			record.Source.Kind, native.Item = "attachments", item.ID+"/attachments"
-			native.Attachments = sessionpresentation.AttachmentValues(u.attached.cwd, item.Content)
+			native.Attachments = sessionpresentation.AttachmentValues(attached.cwd, item.Content)
 		case "commandExecution":
-			restoreCommandSegments(u.ctx, u.retained, u.segments, &u.attached, u.activity, u.restoredSegments, &record.Source, item, u.attached.cwd)
+			restoreCommandSegments(parent, retained, segments, attached, activityService, (*restoredSegments), &record.Source, item, attached.cwd)
 			if item.ExitCode != nil && *item.ExitCode != 0 && len(native.Segments) == 0 {
 				continue
 			}
-			record.Source.Text = sessionpresentation.ToolText(item.Observation(), u.attached.cwd)
+			record.Source.Text = sessionpresentation.ToolText(item.Observation(), attached.cwd)
 		default:
 			continue
 		}
@@ -119,19 +125,19 @@ func (u *appServerUI) skillHistoryResponse(thread string, m appserver.Message) e
 	}
 	if page.NextCursor != "" {
 		if scan.cursors[page.NextCursor] {
-			return failSkillHistory(&u.attached, u.restoring, h, "Item history returned a repeated pagination cursor.")
+			return failSkillHistory(attached, (*restoring), h, "Item history returned a repeated pagination cursor.")
 		}
 		scan.cursors[page.NextCursor] = true
-		if err := requestSkillHistory(u.Requests, h, page.NextCursor); err != nil {
-			failSkillHistory(&u.attached, u.restoring, h, err.Error())
+		if err := requestSkillHistory(control.Requests, h, page.NextCursor); err != nil {
+			failSkillHistory(attached, (*restoring), h, err.Error())
 		}
 		return nil
 	}
-	v, name := u.attached.childSource, u.attached.session.Caller(h.info.ID)
+	v, name := attached.childSource, attached.session.Caller(h.info.ID)
 	// Observe a live reset before adopting the historical snapshot. Its newer
 	// context wins, even if the reset's entry has already left the feed.
 	v.RestoreSkills(name, h.skills.names)
 	h.skills.names = nil
-	u.dirty = true
+	(*dirty) = true
 	return nil
 }

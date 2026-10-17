@@ -166,7 +166,7 @@ func TestAppServerWaitTargetsDurableReplay(t *testing.T) {
 				t.Fatalf("restored wait lost color: %q", rendered)
 			}
 			registerThread(&restored.attached.session, binding.ThreadInfo{ID: "a", AgentNickname: "alpha"})
-			restored.restoreActivityThread(binding.ThreadInfo{ID: "a", Turns: history}, false)
+			restoreActivityThread(&restored.attached, restored.shell, restored.clock, &restored.restoring, restored.ctx, restored.review, &restored.pendingEditReceipts, restored.retained, restored.retainedSession, restored.activity, restored.usage, restored.segments, &restored.restoredSegments, binding.ThreadInfo{ID: "a", Turns: history}, false)
 			if got := restored.attached.childSource.Entries[0].Source.Text; got != "Finished waiting · alpha/nested" {
 				t.Fatalf("child replay lost targets: %q", got)
 			}

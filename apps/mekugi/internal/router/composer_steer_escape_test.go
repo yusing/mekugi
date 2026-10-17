@@ -140,7 +140,7 @@ func TestComposerEscapeExpeditesAttachments(t *testing.T) {
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	appServerTestTurn(t, u, "t")
 	insertImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, u.ownedImages, u.side, "first.png")
-	u.insertSelection("message", "exact quote", "")
+	insertSelection(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, "message", "exact quote", "")
 	appServerTestKeys(t, u, "\r")
 	steer := appServerTurnRequests(t, wire)[0]
 	insertImage(&u.attached, u.shell, &u.Editor, &u.questions, &u.approvals, u.clock, u.ownedImages, u.side, "second.png")

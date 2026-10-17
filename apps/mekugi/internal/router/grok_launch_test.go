@@ -62,7 +62,7 @@ func TestThirdPartyAutomaticModelPreservesSavedResumeSettings(t *testing.T) {
 				info := resumeSettingsRollout(t, fmt.Sprintf(`{"type":"turn_context","payload":{"model":%q,"effort":"high"}}`, model), "")
 				u.Thread, u.Startup.Thread = "", info.ID
 				u.Startup.Config = appServerResumeConfig(cmdArgs, argv)
-				if err := u.openSession(); err != nil {
+				if err := openSession(&u.attached, &u.Client, &u.picker, u.clock, &u.resumePicker, u.approvalMode); err != nil {
 					t.Fatal(err)
 				}
 				read := resumeTestOne(t, input, "thread/read")

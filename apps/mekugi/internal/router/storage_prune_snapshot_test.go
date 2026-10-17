@@ -9,6 +9,7 @@ import (
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
@@ -44,7 +45,7 @@ func TestUISnapshotBackgroundStorageCleanup(t *testing.T) {
 	u.testActivity(u.shell.Transcript).testAudience()
 	store.storageNotice = func(_, _ string, phase, message string) {
 		u.issues.CleanupNotice("", "", phase, message)
-		delivery := u.applyCriticalNotices()
+		delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues)
 		if delivery == nil {
 			t.Fatal("cleanup notice did not reach UI")
 		}

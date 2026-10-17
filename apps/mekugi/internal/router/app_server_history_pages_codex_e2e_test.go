@@ -7,6 +7,7 @@ import (
 	"encoding/json/jsontext"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 
@@ -143,7 +144,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	baseline.startSession("main", workspace)
 	registerThread(&baseline.attached.session, binding.ThreadInfo{ID: thread, AgentNickname: "worker", AgentRole: "worker"})
 	projectionStarted := time.Now()
-	baseline.restoreActivityThread(read.Thread, false)
+	restoreActivityThread(&baseline.attached, baseline.shell, baseline.clock, &baseline.restoring, baseline.ctx, baseline.review, &baseline.pendingEditReceipts, baseline.retained, baseline.retainedSession, baseline.activity, baseline.usage, baseline.segments, &baseline.restoredSegments, read.Thread, false)
 	fullDuration += time.Since(projectionStarted)
 	read.Thread.Turns = nil
 	u, _ := newAppServerTestUI()
@@ -157,7 +158,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	registerThread(&u.attached.session, binding.ThreadInfo{ID: thread, AgentNickname: "worker", AgentRole: "worker"})
 	u.restoring = &appServerActivityRestore{root: binding.ThreadInfo{ID: "main", Cwd: workspace}, state: restoredDiscoveryTestState("main", thread), pane: make(map[string][]*restoredPlacement), itemAt: make(map[string]map[string]time.Time)}
 	started = time.Now()
-	if err := u.startChildHistory(read.Thread); err != nil {
+	if err := startChildHistory(&u.attached, &u.Client, &u.childHistoryState, &u.restoring, u.presentationState, read.Thread); err != nil {
 		t.Fatal(err)
 	}
 	pageBytes := drainHistoryLoader(t, u)
@@ -171,7 +172,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	if u.attached.session.Agent("/root/worker").Started.Unix() != 100 || u.attached.session.Agent("/root/worker").LastResponse.Unix() != 110 {
 		t.Fatal("host turn timing lost")
 	}
-	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
+	if err := loadOlderActivity(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, &u.statusPanel, &u.resumePicker, historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
 	}
 	drainHistoryLoader(t, u)
@@ -218,11 +219,11 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	fresh.startSession("main", workspace)
 	registerThread(&fresh.attached.session, binding.ThreadInfo{ID: forked.Thread.ID, AgentNickname: "worker", AgentRole: "worker"})
 	fresh.restoring = &appServerActivityRestore{root: binding.ThreadInfo{ID: "main", Cwd: workspace}, state: restoredDiscoveryTestState("main", forked.Thread.ID), pane: make(map[string][]*restoredPlacement), itemAt: make(map[string]map[string]time.Time)}
-	if err := fresh.startChildHistory(forked.Thread); err != nil {
+	if err := startChildHistory(&fresh.attached, &fresh.Client, &fresh.childHistoryState, &fresh.restoring, fresh.presentationState, forked.Thread); err != nil {
 		t.Fatal(err)
 	}
 	drainHistoryLoader(t, fresh)
-	fresh.startSkillHistory()
+	startSkillHistory(&fresh.attached, &fresh.Client, &fresh.childHistoryState, &fresh.restoring)
 	h := childHistory(&fresh.attached.session, &fresh.childHistoryState, forked.Thread.ID)
 	for h.skills.request != "" {
 		if err := fresh.message(awaitHistoryRPC(t, client, h.skills.request)); err != nil {

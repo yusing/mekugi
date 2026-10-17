@@ -20,6 +20,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/gofrs/flock"
@@ -169,11 +170,11 @@ func TestCommandSegmentsRetentionErrorsStayWithOriginalThreadAndCause(t *testing
 		u.commandSegmentPending++
 		commandSegmentRetained(&u.commandSegmentPending, u.issues, &u.dirty, commandSegmentWrite{key: [3]string{"main", "turn", "item"}, err: requestexecution.StorageIOError(cause)})
 	}
-	if delivery := u.applyCriticalNotices(); delivery != nil || len(u.attached.source.Entries) != 0 {
+	if delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues); delivery != nil || len(u.attached.source.Entries) != 0 {
 		t.Fatal("switched thread borrowed another thread's retention errors")
 	}
 	u.Thread = "main"
-	delivery := u.applyCriticalNotices()
+	delivery := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues)
 
 	if delivery == nil || len(u.attached.source.Entries) != 0 || !u.attached.feedback.Alert {
 		t.Fatal("retention errors missed the composer")
@@ -185,7 +186,7 @@ func TestCommandSegmentsRetentionErrorsStayWithOriginalThreadAndCause(t *testing
 	}
 	before := u.attached.feedback.Text
 	delivery.finish(terminalsession.NoticeReceipt{})
-	if retry := u.applyCriticalNotices(); retry == nil || u.attached.feedback.Text != before || len(u.attached.source.Entries) != 0 {
+	if retry := applyCriticalNotices(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, &u.restoring, &u.side, u.audience, &u.dirty, u.issues); retry == nil || u.attached.feedback.Text != before || len(u.attached.source.Entries) != 0 {
 		t.Fatal("unpainted error was lost or duplicated")
 	} else {
 		_, receipt := u.testDeliveredMainFrame(t, 100, 12, 0)
@@ -250,7 +251,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 					childWorkspace = ""
 				}
 				restored.attached.session.Caller(target)
-				restored.restoreActivityThread(binding.ThreadInfo{ID: target, Cwd: childWorkspace, Turns: turns}, false)
+				restoreActivityThread(&restored.attached, restored.shell, restored.clock, &restored.restoring, restored.ctx, restored.review, &restored.pendingEditReceipts, restored.retained, restored.retainedSession, restored.activity, restored.usage, restored.segments, &restored.restoredSegments, binding.ThreadInfo{ID: target, Cwd: childWorkspace, Turns: turns}, false)
 				view = restored.testActivity(restored.shell.Agents)
 			} else {
 				restored.Thread = target

@@ -181,8 +181,8 @@ func TestHookObservationRestartResumeAndReplay(t *testing.T) {
 	waitTargetTestStore(t, fresh, reopened)
 	root := binding.ThreadInfo{ID: "main", Cwd: u.attached.cwd}
 	fresh.restoring = &appServerActivityRestore{root: root, state: sessionpresentation.NewRestoration(root.ID)}
-	fresh.readRestoredRollouts()
-	fresh.restoreMainHistory(nil, fresh.restoring.main, nil)
+	readRestoredRollouts(&fresh.attached, &fresh.restoring, fresh.retainedSession, fresh.audience, fresh.activity)
+	restoreMainHistory(&fresh.attached, fresh.shell, &fresh.Client, &fresh.picker, &fresh.Editor, &fresh.questions, &fresh.approvals, fresh.clock, &fresh.statusPanel, &fresh.resumePicker, fresh.ctx, fresh.review, &fresh.pendingEditReceipts, fresh.notifications, fresh.retained, fresh.retainedSession, fresh.activity, fresh.segments, &fresh.restoredSegments, nil, fresh.restoring.main, nil)
 	if len(fresh.attached.source.Entries) != 2 {
 		t.Fatalf("resume lost hooks outside turns: %d", len(fresh.attached.source.Entries))
 	}

@@ -3,6 +3,12 @@ package router
 import (
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/contracts/scope"
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
@@ -42,24 +48,24 @@ func (d *nativeCriticalNoticeDelivery) finish(receipt terminalsession.NoticeRece
 	d.progress.Finish(attached && receipt.Content)
 }
 
-func (u *appServerUI) applyCriticalNotices() (delivery *nativeCriticalNoticeDelivery) {
+func applyCriticalNotices(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring **appServerActivityRestore, side **sessioncontrol.Side, audience *sessioncontrol.Audience, dirty *bool, issues *requestexecution.Failures) (delivery *nativeCriticalNoticeDelivery) {
 	defer func() {
-		view := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
+		view := publishPresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, (*restoring) != nil, (*side), presentationTime(clock))
 		if delivery != nil {
-			delivery.attachment, delivery.feedback = view.Version.Attachment, u.attached.feedback.Revision
+			delivery.attachment, delivery.feedback = view.Version.Attachment, attached.feedback.Revision
 		}
 	}()
-	claim := claimNativeNotices(u.issues, u.Thread, u.audience)
+	claim := claimNativeNotices(issues, control.Thread, audience)
 	if claim == nil {
 		return nil
 	}
 	delivery = &nativeCriticalNoticeDelivery{errors: claim.Errors, progress: claim.Progress}
-	for _, message := range u.attached.feedback.Receive(claim, presentationTime(u.clock)) {
-		u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.source.LastSeq + 1, Agent: "Main", Kind: "progress", Text: message.Text, Observed: presentationTime(u.clock)}}})
+	for _, message := range attached.feedback.Receive(claim, presentationTime(clock)) {
+		attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: attached.source.LastSeq + 1, Agent: "Main", Kind: "progress", Text: message.Text, Observed: presentationTime(clock)}}})
 	}
 	if len(claim.Errors.Messages) > 0 {
-		u.shell.Main.NoticeDetails, u.shell.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
+		terminal.Main.NoticeDetails, terminal.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
 	}
-	u.dirty = true
+	(*dirty) = true
 	return delivery
 }

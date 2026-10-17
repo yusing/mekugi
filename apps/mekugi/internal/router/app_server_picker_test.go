@@ -252,13 +252,13 @@ func TestComposerSkillPickerResumeAndEditorBindings(t *testing.T) {
 	if len(u.Skills) != 1 || u.Skills[0].Start != 4 {
 		t.Fatalf("restored skills = %+v", u.Skills)
 	}
-	if err := u.applyEditorDraft(editorTestIntent(u), "now use $review please"); err != nil {
+	if err := applyEditorDraft(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, u.skillEnvironment, u.ctx, editorTestIntent(u), "now use $review please"); err != nil {
 		t.Fatal(err)
 	}
 	if len(u.Skills) != 1 || u.Skills[0].Start != 8 {
 		t.Fatalf("editor skills = %+v", u.Skills)
 	}
-	if err := u.applyEditorDraft(editorTestIntent(u), "$review-other"); err != nil {
+	if err := applyEditorDraft(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, u.skillEnvironment, u.ctx, editorTestIntent(u), "$review-other"); err != nil {
 		t.Fatal(err)
 	}
 	if len(u.Skills) != 0 {
@@ -357,7 +357,7 @@ func TestComposerPickerEditorRefreshBeforeSelection(t *testing.T) {
 		u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 		target := u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode())
 		u.attached.conversation.Completion = completion.State{Open: true, Target: target, Resolved: target, ResolvedCwd: "/work", Choices: []completion.Choice{{Name: "file.go", Path: "file.go"}}}
-		if err := u.applyEditorDraft(editorTestIntent(u), "new"); err != nil {
+		if err := applyEditorDraft(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.side, &u.ownedImages, u.skillEnvironment, u.ctx, editorTestIntent(u), "new"); err != nil {
 			t.Fatal(err)
 		}
 		if u.picker.Open {

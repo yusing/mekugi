@@ -122,7 +122,7 @@ func TestErrorDetailsRestoredRollout(t *testing.T) {
 			if !child {
 				info.Path = writeTestRollout(t, "main", records...)
 			}
-			if err := u.restorePaneContent(info); err != nil {
+			if err := restorePaneContent(&u.attached, u.shell, &u.Client, &u.restoring, u.review, u.reviewSource, u.preparePane, info); err != nil {
 				t.Fatal(err)
 			}
 			var data []any

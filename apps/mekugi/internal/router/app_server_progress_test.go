@@ -86,7 +86,7 @@ func TestAppServerProgressWaitAndReplay(t *testing.T) {
 		t.Fatalf("restored events revived work or went missing: %+v", v.attached.source.Entries)
 	}
 	registerThread(&v.attached.session, binding.ThreadInfo{ID: "child"})
-	v.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: history}, false)
+	restoreActivityThread(&v.attached, v.shell, v.clock, &v.restoring, v.ctx, v.review, &v.pendingEditReceipts, v.retained, v.retainedSession, v.activity, v.usage, v.segments, &v.restoredSegments, binding.ThreadInfo{ID: "child", Turns: history}, false)
 	if len(v.attached.childSource.Entries) != 2 || v.attached.childSource.Entries[1].Source.Text != "Context compacted" {
 		t.Fatalf("child replay missing progress: %+v", v.attached.childSource.Entries)
 	}
@@ -96,7 +96,7 @@ func TestAppServerProgressUnfinishedChildWait(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	wait := binding.ThreadItem{ID: "w", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress"}
 	registerThread(&u.attached.session, binding.ThreadInfo{ID: "child"})
-	u.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: []binding.HistoryTurn{{ID: "t", Status: "inProgress", Items: []binding.ThreadItem{wait}}}}, false)
+	restoreActivityThread(&u.attached, u.shell, u.clock, &u.restoring, u.ctx, u.review, &u.pendingEditReceipts, u.retained, u.retainedSession, u.activity, u.usage, u.segments, &u.restoredSegments, binding.ThreadInfo{ID: "child", Turns: []binding.HistoryTurn{{ID: "t", Status: "inProgress", Items: []binding.ThreadItem{wait}}}}, false)
 	if !strings.Contains(u.attached.childSource.Entries[0].Source.Text, "Waiting for agent") || u.attached.session.Agent(u.attached.session.KnownCaller("child")).Responding {
 		t.Fatal("unfinished historical wait claimed completion or revived work")
 	}
@@ -162,7 +162,7 @@ func TestAppServerWaitRosterOnly(t *testing.T) {
 			if caller == "main" {
 				u.restoreHistory(history)
 			} else {
-				u.restoreActivityThread(binding.ThreadInfo{ID: caller, Turns: history}, false)
+				restoreActivityThread(&u.attached, u.shell, u.clock, &u.restoring, u.ctx, u.review, &u.pendingEditReceipts, u.retained, u.retainedSession, u.activity, u.usage, u.segments, &u.restoredSegments, binding.ThreadInfo{ID: caller, Turns: history}, false)
 			}
 			check("Wait failed · target: Still running")
 		})

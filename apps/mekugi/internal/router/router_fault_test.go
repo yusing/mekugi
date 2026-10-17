@@ -5,6 +5,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -142,11 +143,11 @@ func TestRouterTransformFaultAfterCreatedEmitsActionableTerminalFailure(t *testi
 	}
 	ui, _ := newAppServerTestUI()
 	ui.Thread, ui.issues = metadata.ThreadID, issues
-	if ui.applyCriticalNotices() != nil {
+	if applyCriticalNotices(&ui.attached, ui.shell, &ui.Client, &ui.picker, &ui.Editor, ui.clock, &ui.childHistoryState, preferences.Applied{Model: ui.model, Effort: ui.reasoningEffort, Tier: ui.serviceTier}, ui.serviceTiers, ui.title, ui.backendVersion, &ui.restoring, &ui.side, ui.audience, &ui.dirty, ui.issues) != nil {
 		t.Fatal("request notice interrupted a retrying turn")
 	}
 	appServerTestNotify(t, ui, "turn/completed", map[string]any{"threadId": metadata.ThreadID, "turn": map[string]any{"id": metadata.TurnID, "status": "failed"}})
-	delivery := ui.applyCriticalNotices()
+	delivery := applyCriticalNotices(&ui.attached, ui.shell, &ui.Client, &ui.picker, &ui.Editor, ui.clock, &ui.childHistoryState, preferences.Applied{Model: ui.model, Effort: ui.reasoningEffort, Tier: ui.serviceTier}, ui.serviceTiers, ui.title, ui.backendVersion, &ui.restoring, &ui.side, ui.audience, &ui.dirty, ui.issues)
 	if delivery == nil || !strings.Contains(ui.attached.feedback.Text, message) {
 		t.Fatal("host-confirmed failure lost native notice delivery")
 	}

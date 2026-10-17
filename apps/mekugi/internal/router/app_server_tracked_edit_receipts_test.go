@@ -259,7 +259,7 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 				restored.restoreHistory(turns)
 			} else {
 				restored.attached.session.Caller(thread)
-				restored.restoreActivityThread(binding.ThreadInfo{ID: thread, Cwd: workspace, Turns: turns}, false)
+				restoreActivityThread(&restored.attached, restored.shell, restored.clock, &restored.restoring, restored.ctx, restored.review, &restored.pendingEditReceipts, restored.retained, restored.retainedSession, restored.activity, restored.usage, restored.segments, &restored.restoredSegments, binding.ThreadInfo{ID: thread, Cwd: workspace, Turns: turns}, false)
 				view = restored.testActivity(restored.shell.Agents)
 			}
 			if len(view.Entries) != 1 || view.Entries[0].Source.Native == nil || len(view.Entries[0].Source.Native.Segments) != 3 {

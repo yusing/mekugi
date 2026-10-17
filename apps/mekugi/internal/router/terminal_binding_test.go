@@ -8,6 +8,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
 type terminalUI struct {
@@ -32,7 +33,7 @@ func (u *terminalUI) openEntry(view *activityui.View, seq uint64) bool {
 	return openEntry(&u.main.attached, u.main.shell, &u.main.detailFiles, u.Attachment, view, seq)
 }
 func (u *terminalUI) outputIntent(intent terminalsession.DialogIntent) {
-	u.main.outputIntent(u.Attachment, intent)
+	outputIntent(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, &u.main.questions, &u.main.approvals, u.main.clock, &u.main.childHistoryState, preferences.Applied{Model: u.main.model, Effort: u.main.reasoningEffort, Tier: u.main.serviceTier}, u.main.serviceTiers, u.main.title, u.main.backendVersion, &u.main.restoring, &u.main.side, &u.main.statusPanel, &u.main.resumePicker, &u.main.ownedImages, u.main.skillEnvironment, u.main.ctx, &u.main.detailFiles, u.Attachment, intent)
 }
 func (u *terminalUI) openActivityEdit(view *activityui.View, seq uint64, path string) bool {
 	return openActivityEdit(&u.main.attached, u.main.shell, &u.main.detailFiles, u.main.activity, u.Attachment, view, seq, path)
@@ -44,10 +45,10 @@ func (u *terminalUI) applyInput(effects iter.Seq[terminalsession.InputEffect]) e
 	return u.main.applyInput(u.Attachment, effects)
 }
 func (u *terminalUI) openSelectionTarget(target terminalsession.SelectionTarget) {
-	u.main.openSelectionTarget(u.Attachment, target)
+	openSelectionTarget(&u.main.attached, u.main.shell, u.main.clock, u.main.activity, &u.main.detailFiles, u.Attachment, target)
 }
 func (u *terminalUI) openActivityReply(seq uint64) bool {
-	return u.main.openActivityReply(u.Attachment, seq)
+	return openActivityReply(&u.main.attached, u.main.shell, &u.main.detailFiles, u.Attachment, seq)
 }
 func (u *terminalUI) frameInput() terminalsession.FrameInput {
 	var now time.Time
@@ -62,6 +63,6 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 }
 func (u *terminalUI) openErrors() {
 	if u.Focus == 0 && u.main != nil {
-		u.main.openErrorDetails(u.Attachment, transcriptView(u.main.attached.presentation, u.main.shell))
+		openErrorDetails(&u.main.attached, u.main.shell, &u.main.detailFiles, u.Attachment, transcriptView(u.main.attached.presentation, u.main.shell))
 	}
 }

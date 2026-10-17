@@ -13,11 +13,11 @@ import (
 
 type activeSkillSet = activitypresentation.SkillSet
 
-func (main *appServerUI) openSkills(u *terminalsession.Attachment, view *activityui.View, agent string) {
-	names := slices.Clone(activitySource(&main.attached, main.shell, view).ActiveSkills()[agent])
+func openSkills(attached *attachedPresentation, terminal *terminalsession.Attachment, files *detailFiles, surface *terminalsession.Attachment, view *activityui.View, agent string) {
+	names := slices.Clone(activitySource(attached, terminal, view).ActiveSkills()[agent])
 	if len(names) == 0 {
 		return
 	}
 	slices.Sort(names)
-	openBlocks(&main.attached, main.shell, &main.detailFiles, u, view, []activityui.Block{{Kind: "op", Verb: "Skill", Label: activityui.SkillLabel(names), Body: "- " + strings.Join(names, "\n- ")}})
+	openBlocks(attached, terminal, files, surface, view, []activityui.Block{{Kind: "op", Verb: "Skill", Label: activityui.SkillLabel(names), Body: "- " + strings.Join(names, "\n- ")}})
 }

@@ -78,7 +78,7 @@ func TestAppServerFrontendCommandClassification(t *testing.T) {
 					t.Fatalf("classified restored entries: %+v", restored.attached.source.Entries)
 				}
 				restored.attached.session.Caller("child")
-				restored.restoreActivityThread(binding.ThreadInfo{ID: "child", Cwd: restored.attached.cwd, Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
+				restoreActivityThread(&restored.attached, restored.shell, restored.clock, &restored.restoring, restored.ctx, restored.review, &restored.pendingEditReceipts, restored.retained, restored.retainedSession, restored.activity, restored.usage, restored.segments, &restored.restoredSegments, binding.ThreadInfo{ID: "child", Cwd: restored.attached.cwd, Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
 				if len(restored.attached.childSource.Entries) != 1 || restored.attached.childSource.Entries[0].Source.Text != tc.want {
 					t.Fatalf("classified restored child text: %q; want %q", restored.attached.childSource.Entries[len(restored.attached.childSource.Entries)-1].Source.Text, tc.want)
 				}
@@ -215,7 +215,7 @@ func TestAppServerImageViewLiveAndRestored(t *testing.T) {
 		turns := []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}
 		if child {
 			restored.attached.session.Caller(thread)
-			restored.restoreActivityThread(binding.ThreadInfo{ID: thread, Cwd: workspace, Turns: turns}, false)
+			restoreActivityThread(&restored.attached, restored.shell, restored.clock, &restored.restoring, restored.ctx, restored.review, &restored.pendingEditReceipts, restored.retained, restored.retainedSession, restored.activity, restored.usage, restored.segments, &restored.restoredSegments, binding.ThreadInfo{ID: thread, Cwd: workspace, Turns: turns}, false)
 			check(restored.testActivity(restored.shell.Agents))
 		} else {
 			restored.restoreHistory(turns)
