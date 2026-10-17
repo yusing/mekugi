@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/contracts/presentation"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	"github.com/yusing/mekugi/modules/livepreview/preview"
@@ -58,6 +61,7 @@ func (h *Handle[S]) Value() S {
 }
 
 type entry struct {
+	presentation    []presentation.Status
 	activityDetails []activitydetail.Provider
 	replayTiming    []replaytiming.Reader
 	diagnostics     []diagnosticsection.Contribution
@@ -92,7 +96,8 @@ func (c *Composition) Add[D, S any, B interface {
 	backend, _ := any(descriptor.Bindings).(binding.Bindings[S])
 	handle := &Handle[S]{id: descriptor.ID}
 	node := entry{
-		id: descriptor.ID, requires: slices.Clone(descriptor.Requires),
+		presentation: slices.Clone(descriptor.Contributes.Presentation),
+		id:           descriptor.ID, requires: slices.Clone(descriptor.Requires),
 		lifetime: descriptor.Lifetime, resources: slices.Clone(descriptor.Resources),
 		records:      slices.Clone(descriptor.Contributes.RecordKinds),
 		references:   slices.Clone(descriptor.Contributes.References),
@@ -271,6 +276,7 @@ func (r *moduleRegistrar) ShellApproval(guard binding.ShellApproval) error {
 }
 
 type Runtime struct {
+	Presentation         *sessionpresentation.Service
 	Conversation         *conversationmodel.Service
 	Replay               *playback.Service
 	LivePreview          *preview.Service
@@ -316,6 +322,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 	}
 	c.sealed = true
 	runtime := new(Runtime)
+	var status []presentation.Status
 	var records []recordkind.Spec
 	var activityDetails []activitydetail.Provider
 	var inspections []inspection.Contribution
@@ -334,6 +341,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 		}
 		positions[node.id] = i
 		runtime.Commands = append(runtime.Commands, node.commands...)
+		status = append(status, node.presentation...)
 		activityDetails = append(activityDetails, node.activityDetails...)
 		records = append(records, node.records...)
 		references = append(references, node.references...)
@@ -387,6 +395,11 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 		}
 		names[spec.Name] = true
 	}
+	presentations, err := sessionpresentation.New(status)
+	if err != nil {
+		failures = append(failures, err)
+	}
+	runtime.Presentation = presentations
 	if err := errors.Join(failures...); err != nil {
 		return nil, err
 	}

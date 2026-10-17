@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/modules/usage"
+
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
@@ -461,9 +464,18 @@ func TestNativeUIEscapeInterruptPreservesDraft(t *testing.T) {
 
 // appServerTestFeatures supplies the same core owner to the composer and transcript.
 func appServerTestFeatures(u *appServerUI) *appServerUI {
+	u.presentationState = testPresentation()
 	u.conversationState = new(conversationmodel.Service)
 	observations := conversationbinding.Codex.Observation(u.conversationState)
 	u.session.observations = &observations
 	u.session.transcript = observations.NewTranscript(u.session.Scope())
 	return u
+}
+
+func testPresentation() *sessionpresentation.Service {
+	service, err := sessionpresentation.New(usage.Module.Contributes.Presentation)
+	if err != nil {
+		panic(err)
+	}
+	return service
 }

@@ -3,6 +3,8 @@ package router
 import (
 	"context"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	history "github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -37,6 +39,7 @@ import (
 
 type uiReplayPlayback struct {
 	*playback.Player
+	views        *sessionpresentation.Service
 	conversation *conversationmodel.Service
 	observations *binding.Observation
 	activity     *activitymodel.Service
@@ -52,8 +55,8 @@ type replayDiscard struct{ io.Writer }
 
 func (replayDiscard) Close() error { return nil }
 
-func newUIReplayPlayback(conversation *conversationmodel.Service, observations *binding.Observation, activity *activitymodel.Service, ctx context.Context, source *playback.Source, speed float64) *uiReplayPlayback {
-	p := &uiReplayPlayback{conversation: conversation, observations: observations, activity: activity, ctx: ctx, Player: playback.NewPlayer(source, speed)}
+func newUIReplayPlayback(views *sessionpresentation.Service, conversation *conversationmodel.Service, observations *binding.Observation, activity *activitymodel.Service, ctx context.Context, source *playback.Source, speed float64) *uiReplayPlayback {
+	p := &uiReplayPlayback{views: views, conversation: conversation, observations: observations, activity: activity, ctx: ctx, Player: playback.NewPlayer(source, speed)}
 	p.reset()
 	return p
 }
@@ -68,7 +71,7 @@ func (p *uiReplayPlayback) reset() {
 	// The real message/projector/render path, but no app-server process, router,
 	// replay store, filesystem observers, input submission, or notification sink.
 	client := &appserver.Client{Input: replayDiscard{io.Discard}}
-	u := &appServerUI{conversationState: p.conversation, session: appServerSession{activity: p.activity, observations: p.observations}, ctx: p.ctx, client: client, view: newActivityAdapter(), agents: newActivityAdapter(), Thread: p.Source.Thread, requests: sessioncontrol.NewRequests[appServerRequest](client), clock: func() time.Time { return p.At }, replay: p}
+	u := &appServerUI{presentationState: p.views, conversationState: p.conversation, session: appServerSession{activity: p.activity, observations: p.observations}, ctx: p.ctx, client: client, view: newActivityAdapter(), agents: newActivityAdapter(), Thread: p.Source.Thread, requests: sessioncontrol.NewRequests[appServerRequest](client), clock: func() time.Time { return p.At }, replay: p}
 	u.sessionPresentation().Status.Set("Replay", false)
 	u.view.Clock, u.agents.Clock = u.clock, u.clock
 	u.session.start(p.Source.Thread, p.Source.Cwd)
@@ -374,7 +377,7 @@ func (p *uiReplayPlayback) run(keys <-chan byte, paint func() error, headless bo
 
 // RunSessionUIReplay is an offline entry point. It shares the native presenter,
 // but constructs no host, upstream connection, execution capability, or store.
-func RunSessionUIReplay(conversation *conversationmodel.Service, observations *binding.Observation, activity *activitymodel.Service, service *playback.Service, ctx context.Context, args []string, stdin, stdout, stderr *os.File) (code int) {
+func RunSessionUIReplay(views *sessionpresentation.Service, conversation *conversationmodel.Service, observations *binding.Observation, activity *activitymodel.Service, service *playback.Service, ctx context.Context, args []string, stdin, stdout, stderr *os.File) (code int) {
 	f := flag.NewFlagSet("replay-session", flag.ContinueOnError)
 	f.SetOutput(stderr)
 	session := f.String("session", "", "Codex session ID (required; searches CODEX_HOME or ~/.codex)")
@@ -425,7 +428,7 @@ func RunSessionUIReplay(conversation *conversationmodel.Service, observations *b
 		return fail(err)
 	}
 	duration := source.End.Sub(source.Start)
-	p := newUIReplayPlayback(conversation, observations, activity, ctx, source, *speed)
+	p := newUIReplayPlayback(views, conversation, observations, activity, ctx, source, *speed)
 	defer p.close()
 	if err = p.Bounds(*from, *until); err != nil {
 		return fail(err)

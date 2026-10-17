@@ -43,6 +43,13 @@ uses already-published memory only. Removing a contribution does not remove reta
 records. [Activity](../../modules/activity/SPEC.md#edit-evidence) owns detail selection
 and absence behavior.
 
+Session presentation hosts descriptor-owned status contributions in composition
+order. Each declares a unique nonempty identity, an existing placement and a pure
+projection of admitted thread facts. Composer captions and agent metrics consume
+detached identity/text values; terminal layout, styling and separators remain with
+the renderer. Empty contributions or unavailable facts add no item. Publication
+does not read storage, query a provider or establish a second accounting cache.
+
 Session history receives record-kind recognition, dependency enumeration,
 retention budgets and semantic retirement policy. Record meaning stays with its
 feature owner. Composition supplies the constructed history service to live

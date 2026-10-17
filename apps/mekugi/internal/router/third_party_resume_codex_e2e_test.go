@@ -60,7 +60,7 @@ func startThirdPartyResumeTerminal(t *testing.T, newCommand func(context.Context
 	}
 	conversation := new(conversationmodel.Service)
 	observations := conversationbinding.Codex.Observation(conversation)
-	wait, err := startAppServerUI(conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, newCommand(ctx), inner, inner, nil, nil, thread, true, nil, nil, argv, "", nil, &observations, false)
+	wait, err := startAppServerUI(testPresentation(), conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, newCommand(ctx), inner, inner, nil, nil, thread, true, nil, nil, argv, "", nil, &observations, false)
 	if err != nil {
 		t.Fatal(err)
 	}

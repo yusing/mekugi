@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"time"
 
+	presentationcontract "github.com/yusing/mekugi/contracts/presentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 )
 
@@ -25,7 +27,7 @@ func (u *appServerUI) mainPresentation(now time.Time) sessionpresentation.View {
 			caption.Tier = effectiveServiceTier(caption.Model, caption.Tier, u.serviceTiers, agent.thread)
 		}
 		caption.ContextKnown, caption.ContextTokens, caption.ContextWindow = agent.ContextKnown, agent.ContextTokens, agent.ContextWindow
-		caption.OutputThroughput = agent.OutputThroughput
+		caption.Items = m.StatusItems(presentationcontract.Thread{ID: view.Displayed.ID, OutputThroughput: agent.OutputThroughput}, presentationcontract.ComposerCaption)
 	}
 	return m.Publish(sessionpresentation.MainInputs{
 		Control: &u.Live, Feedback: &u.feedback, Questions: &u.questions.Questions, Approvals: &u.approvals.Approvals,

@@ -99,7 +99,11 @@ The latest-started request determines display ordering. A late older result cann
 replace it; the last valid rate remains available while a newer request streams
 or lacks a valid sample. Before the first valid sample, throughput is absent.
 Only paired measurements restore by stable thread identity, without reviving a
-stopwatch. Renderer placement belongs to the activity and native UI contracts.
+stopwatch. Usage declares its throughput status contribution for composer captions
+and agent metrics. Session presentation supplies already-admitted facts for the
+displayed thread or roster row; the same projection serves live and offline views.
+Omitting Usage removes these items while preserving model and context captions.
+Renderer placement belongs to the activity and native UI contracts.
 
 ## Lifecycle
 

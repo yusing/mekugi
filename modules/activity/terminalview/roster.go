@@ -241,7 +241,12 @@ func RosterMetricParts(v *View, agent activitypresentation.Agent, now time.Time)
 	var parts [MetricParts]string
 	if agent.Name != "/root" {
 		// Main's context and output rate belong to the composer.
-		parts[10] = OutputThroughputLabel(agent.OutputThroughput)
+		for _, item := range agent.StatusItems {
+			if parts[10] != "" {
+				parts[10] += " • "
+			}
+			parts[10] += item.Text
+		}
 		context := ContextWindowLabel(agent)
 		if used, percent, ok := strings.Cut(context, " • "); ok {
 			parts[0], parts[1] = used, percent

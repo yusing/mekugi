@@ -2,6 +2,7 @@ package sessionpresentation_test
 
 import (
 	"errors"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -34,7 +35,7 @@ func TestNonTerminalDisplayAdmissionAndAttachment(t *testing.T) {
 	}
 	renamed := m.View()
 	m.RenameCaller("/root/renamed", "/root/renamed")
-	if m.View() != renamed {
+	if !reflect.DeepEqual(m.View(), renamed) {
 		t.Fatal("unchanged metadata retired the current view")
 	}
 	if err := m.Display(sessionpresentation.DisplayIntent{Version: m.View().Version, Thread: main}); err != nil {

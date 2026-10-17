@@ -49,6 +49,7 @@ func (d Descriptor[D, S, B]) Reference() Reference {
 		{"inspection", len(d.Contributes.Inspection), d.HostsInspection},
 		{"diagnostic-sections", len(d.Contributes.DiagnosticSections), d.HostsDiagnosticSections},
 		{"replay-timing", len(d.Contributes.ReplayTiming), d.HostsReplayTiming},
+		{"presentation", len(d.Contributes.Presentation), false},
 	} {
 		if slot.count != 0 {
 			r.Contributes = append(r.Contributes, slot.name)

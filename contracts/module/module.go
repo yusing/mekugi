@@ -9,6 +9,7 @@ import (
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/guidance"
 	"github.com/yusing/mekugi/contracts/inspection"
+	"github.com/yusing/mekugi/contracts/presentation"
 	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/contracts/reference"
 	"github.com/yusing/mekugi/contracts/replaytiming"
@@ -40,9 +41,10 @@ type Slots struct {
 	References         []reference.Resolver
 }
 
-// Contributions declares typed contributions before construction. Slots holds the
-// complete collected runtime values passed to hosts.
+// Contributions declares typed contributions before construction. Slots holds
+// values for module hosts; composition supplies presentation to its application host.
 type Contributions[S any] struct {
+	Presentation       []presentation.Status
 	ActivityDetails    []activitydetail.Definition[S]
 	ReplayTiming       []replaytiming.Definition[S]
 	DiagnosticSections []diagnosticsection.Definition[S]

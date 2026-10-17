@@ -3,8 +3,6 @@ package terminalview
 import (
 	"fmt"
 	"strings"
-
-	"github.com/yusing/mekugi/contracts/inference"
 )
 
 func FormatUsageTokens(count uint64) string {
@@ -17,13 +15,6 @@ func FormatUsageTokens(count uint64) string {
 		}
 	}
 	return fmt.Sprint(count)
-}
-
-func OutputThroughputLabel(throughput inference.OutputThroughput) string {
-	if rate, known := throughput.Rate(); known {
-		return fmt.Sprintf("%.1f tok/s", rate)
-	}
-	return ""
 }
 
 func SkillLabel(names []string) string {

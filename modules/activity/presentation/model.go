@@ -28,7 +28,7 @@ type Facts struct {
 }
 type AgentSource interface{ ActivityAgent() AgentFacts }
 type AgentFacts struct {
-	Name, Role                                   string
+	Name, Role, Thread                           string
 	Responding, Final                            bool
 	Started, LastResponse                        time.Time
 	WorkElapsed                                  time.Duration

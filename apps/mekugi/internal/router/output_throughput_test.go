@@ -12,13 +12,16 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+	usagepresentation "github.com/yusing/mekugi/modules/usage/presentation"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/contracts/inference"
 	"github.com/yusing/mekugi/libraries/diffrender"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	"github.com/yusing/mekugi/modules/usage/accounting"
@@ -52,7 +55,7 @@ func TestOutputThroughputRestoredThreadIsolation(t *testing.T) {
 		u.proxy = &mekugiProxy{usage: restored}
 		child := activityPaneAgent{Name: "/root/child"}
 		u.observeCost("child", &child)
-		if activityui.OutputThroughputLabel(child.OutputThroughput) != "50.0 tok/s" {
+		if usagepresentation.OutputThroughputLabel(child.OutputThroughput) != "50.0 tok/s" {
 			t.Fatal(child)
 		}
 		time.Sleep(time.Second)
@@ -179,13 +182,13 @@ func TestOutputThroughputUIRefreshRetainsPreviousRound(t *testing.T) {
 		time.Sleep(time.Second)
 		first.Observe(inference.Usage{TotalsKnown: true, OutputTokens: 30})
 		u.applyObservedActivity()
-		if activityui.OutputThroughputLabel(u.session.agent("/root").OutputThroughput) != "30.0 tok/s" {
+		if usagepresentation.OutputThroughputLabel(u.session.agent("/root").OutputThroughput) != "30.0 tok/s" {
 			t.Fatal("main did not refresh")
 		}
 		next := usage.Observation(u.Thread, u.Thread, "gpt-6-sol", "")
 		next.Begin()
 		u.applyObservedActivity()
-		if got := activityui.OutputThroughputLabel(u.session.agent("/root").OutputThroughput); got != "30.0 tok/s" {
+		if got := usagepresentation.OutputThroughputLabel(u.session.agent("/root").OutputThroughput); got != "30.0 tok/s" {
 			t.Fatalf("previous rate disappeared: %s", got)
 		}
 	})
@@ -320,4 +323,64 @@ func TestUISnapshotOutputThroughputRestoredRoster(t *testing.T) {
 		u.agents.Selected = u.session.paths["child"]
 		assertNativeUISnapshot(t, "output-throughput-restored-roster", u.agents.NativeRoster(120, 8, time.Now(), true))
 	})
+}
+
+func TestOutputThroughputPresentationSelectionAndIsolation(t *testing.T) {
+	for _, mode := range []string{"all", "without usage", "without activity"} {
+		t.Run(mode, func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			if mode == "without usage" {
+				u.presentationState = new(sessionpresentation.Service)
+			}
+			if mode == "without activity" {
+				u.session.activity = nil
+			}
+			u.ensureShell()
+			u.model = "main-model"
+			rate := inference.OutputThroughput{OutputTokens: 40, DurationNanos: uint64(time.Second), MeasuredRequests: 1}
+			u.session.agent("/root").OutputThroughput = rate
+			before := u.mainPresentation(u.now())
+			frame, _ := u.mainFrame(120, 12, 0)
+			if text := ansi.Strip(strings.Join(frame, "\n")); !strings.Contains(text, "main-model") || strings.Contains(text, "40.0 tok/s") != (mode != "without usage") {
+				t.Fatalf("Main contribution: %s", text)
+			}
+			u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "child"})
+			child := u.session.agent("/root/child")
+			rate.OutputTokens = 80
+			child.OutputThroughput = rate
+			u.agents.apply(activityPaneEvent{Kind: "agents", Agents: u.session.agents})
+			roster := ansi.Strip(strings.Join(u.agents.NativeRoster(140, 8, u.now(), true), "\n"))
+			if strings.Contains(roster, "80.0 tok/s") != (mode != "without usage") {
+				t.Fatalf("roster contribution: %s", roster)
+			}
+			u.agents.displayThread("/root/child")
+			frame, _ = u.mainFrame(120, 12, 0)
+			if text := ansi.Strip(strings.Join(frame, "\n")); strings.Contains(text, "40.0 tok/s") || strings.Contains(text, "80.0 tok/s") != (mode != "without usage") {
+				t.Fatalf("child contribution: %s", text)
+			}
+			if mode != "without usage" && (len(before.Caption.Items) != 1 || before.Caption.Items[0].Thread != "main" || before.Caption.Items[0].Text != "40.0 tok/s") {
+				t.Fatalf("earlier publication changed: %+v", before.Caption.Items)
+			}
+		})
+	}
+}
+
+func TestOutputThroughputPresentationReplayReset(t *testing.T) {
+	p := newTestUIReplayPlayback(nil, t.Context(), replayPlaybackTestSource(), 1)
+	defer p.close()
+	if err := p.seek(p.Until); err != nil {
+		t.Fatal(err)
+	}
+	p.ui.session.agent("/root").OutputThroughput = inference.OutputThroughput{OutputTokens: 40, DurationNanos: uint64(time.Second), MeasuredRequests: 1}
+	before := p.ui.mainPresentation(p.At)
+	if len(before.Caption.Items) != 1 {
+		t.Fatal("admitted replay fact was not published")
+	}
+	if err := p.seek(0); err != nil {
+		t.Fatal(err)
+	}
+	after := p.ui.mainPresentation(p.At)
+	if len(after.Caption.Items) != 0 || before.Version.Attachment == after.Version.Attachment {
+		t.Fatalf("backward replay retained future facts: %+v", after)
+	}
 }

@@ -270,11 +270,11 @@ func TestUISnapshotSessionUIReplay(t *testing.T) {
 func newTestUIReplayPlayback(activity *activitymodel.Service, ctx context.Context, source *playback.Source, speed float64) *uiReplayPlayback {
 	conversation := new(conversationmodel.Service)
 	observations := conversationbinding.Codex.Observation(conversation)
-	return newUIReplayPlayback(conversation, &observations, activity, ctx, source, speed)
+	return newUIReplayPlayback(testPresentation(), conversation, &observations, activity, ctx, source, speed)
 }
 
 func runTestSessionUIReplay(activity *activitymodel.Service, service *playback.Service, ctx context.Context, args []string, stdin, stdout, stderr *os.File) int {
 	conversation := new(conversationmodel.Service)
 	observations := conversationbinding.Codex.Observation(conversation)
-	return RunSessionUIReplay(conversation, &observations, activity, service, ctx, args, stdin, stdout, stderr)
+	return RunSessionUIReplay(testPresentation(), conversation, &observations, activity, service, ctx, args, stdin, stdout, stderr)
 }

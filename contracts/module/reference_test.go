@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/yusing/mekugi/contracts/presentation"
+
 	"github.com/yusing/mekugi/contracts/activitydetail"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/diagnosticsection"
@@ -28,6 +30,7 @@ func TestDescriptorReference(t *testing.T) {
 		Start:                func(context.Context, struct{}) error { panic("Start executed") },
 		Stop:                 func(context.Context, struct{}) error { panic("Stop executed") },
 		Contributes: Contributions[struct{}]{
+			Presentation: []presentation.Status{{ID: "example.status", Placements: []presentation.Placement{presentation.ComposerCaption}, Text: func(presentation.Thread) string { panic("status projection executed") }}},
 			ActivityDetails: []activitydetail.Definition[struct{}]{{
 				Name: "detail",
 				Resolve: func(struct{}, *scope.Store, activitydetail.Request) activitydetail.Result {
@@ -82,7 +85,7 @@ func TestDescriptorReference(t *testing.T) {
 	want := Reference{
 		ID: "example", Summary: "Declared metadata", Requires: []ID{"dependency"},
 		Lifetime: Invocation, Resources: []string{"retained store"},
-		Contributes: []string{"commands", "guidance", "record-kinds", "references", "activity-details", "inspection", "diagnostic-sections", "replay-timing"},
+		Contributes: []string{"commands", "guidance", "record-kinds", "references", "activity-details", "inspection", "diagnostic-sections", "replay-timing", "presentation"},
 		Hosts:       []string{"commands", "guidance", "record-kinds", "references", "activity-details", "inspection", "diagnostic-sections", "replay-timing"},
 		Commands:    []string{"reader", "writer"}, Records: []string{"changes", "cursor", "output"}, References: []string{"changes"},
 	}

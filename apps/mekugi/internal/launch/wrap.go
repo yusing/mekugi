@@ -156,7 +156,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		fmt.Fprintf(os.Stderr, "  mekugi inspect-session --debug-dir %s --field diagnostic\n", commandargs.Quote(directory))
 	}()
 	go func() {
-		routerDone <- router.RunSession(frontends.Conversation, frontends.LivePreview, frontends.Activity, frontends.History, frontends.Preferences, frontends.Recovery, frontends.Segments, frontends.Changes, frontends.Usage, frontends.AgentMetrics, frontends.TransportDiagnostics, frontends.Diagnostics, ctx, frontends.Commands, frontends.InputProjections, frontends.Guidance, frontends.Naming, frontends.Observation, frontends.Guards, options, issues, func(session router.Session) {
+		routerDone <- router.RunSession(frontends.Presentation, frontends.Conversation, frontends.LivePreview, frontends.Activity, frontends.History, frontends.Preferences, frontends.Recovery, frontends.Segments, frontends.Changes, frontends.Usage, frontends.AgentMetrics, frontends.TransportDiagnostics, frontends.Diagnostics, ctx, frontends.Commands, frontends.InputProjections, frontends.Guidance, frontends.Naming, frontends.Observation, frontends.Guards, options, issues, func(session router.Session) {
 			ready <- session
 		}, func(paths []string) { debugPaths = paths })
 	}()
@@ -288,7 +288,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 			if session.StartAppUI != nil {
 				waitCodex, err = session.StartAppUI(ctx, cmd, os.Stdin, os.Stdout, resumeThread, resumeArgv, approvals)
 			} else {
-				waitCodex, err = router.StartAppServerUI(frontends.Conversation, frontends.Observation, frontends.Activity, frontends.History, frontends.Preferences, frontends.Notifications, ctx, cmd, os.Stdin, os.Stdout, resumeThread, resumeArgv, approvals)
+				waitCodex, err = router.StartAppServerUI(frontends.Presentation, frontends.Conversation, frontends.Observation, frontends.Activity, frontends.History, frontends.Preferences, frontends.Notifications, ctx, cmd, os.Stdin, os.Stdout, resumeThread, resumeArgv, approvals)
 			}
 		} else {
 			err = cmd.Start()

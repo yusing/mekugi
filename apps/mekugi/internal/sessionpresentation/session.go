@@ -5,6 +5,7 @@ package sessionpresentation
 import (
 	"errors"
 
+	"github.com/yusing/mekugi/contracts/presentation"
 	"github.com/yusing/mekugi/contracts/scope"
 )
 
@@ -51,6 +52,7 @@ var ErrStaleIntent = errors.New("The displayed session changed; select the targe
 
 // Service owns entry keys and attachment identity. The application owns stores.
 type Service struct {
+	status     []presentation.Status
 	session    scope.Key[Model]
 	history    scope.Key[History]
 	attachment uint64
@@ -59,6 +61,7 @@ type Service struct {
 func (s *Service) Session(store *scope.Store) *Model {
 	m := s.session.Value(store)
 	if m.view.Version.Attachment == 0 {
+		m.status = s.status
 		s.attachment++
 		m.view.Version.Attachment = s.attachment
 	}
@@ -68,6 +71,7 @@ func (s *Service) History(store *scope.Store) *History { return s.history.Value(
 
 // Source: apps/mekugi/internal/router/native_shell.go:265:283@db279442
 type Model struct {
+	status              []presentation.Status
 	Status              MainState
 	compacting, polling [2]string
 	view                View
@@ -81,7 +85,7 @@ func (m *Model) Attach(main Thread, replay bool) {
 	}
 	version := m.view.Version
 	version.Revision++
-	*m = Model{view: View{Version: version, Main: main, Displayed: main, Input: main}, replay: replay}
+	*m = Model{status: m.status, view: View{Version: version, Main: main, Displayed: main, Input: main}, replay: replay}
 }
 
 func (m *Model) View() View {

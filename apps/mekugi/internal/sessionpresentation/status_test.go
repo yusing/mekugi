@@ -1,6 +1,7 @@
 package sessionpresentation_test
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -96,7 +97,7 @@ func TestNonTerminalStatusPromptsAndDisplayedCaption(t *testing.T) {
 		t.Fatal(err)
 	}
 	v = c.publish(sessionpresentation.Caption{})
-	if v.ReadOnly != sessionpresentation.ChildDisplayed || v.Status.Composer.Text != "Read-only" || v.Caption != (sessionpresentation.Caption{}) || v.Input.ID != "main" {
+	if v.ReadOnly != sessionpresentation.ChildDisplayed || v.Status.Composer.Text != "Read-only" || !reflect.DeepEqual(v.Caption, sessionpresentation.Caption{}) || v.Input.ID != "main" {
 		t.Fatalf("child inherited Main caption or input status: %+v", v)
 	}
 	if err := m.Display(sessionpresentation.DisplayIntent{Version: m.View().Version, Thread: m.View().Main}); err != nil {

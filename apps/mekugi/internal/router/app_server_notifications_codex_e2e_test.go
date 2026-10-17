@@ -49,7 +49,7 @@ func TestAppServerNotificationsNativeCodexE2E(t *testing.T) {
 	}
 	conversation := new(conversationmodel.Service)
 	observations := conversationbinding.Codex.Observation(conversation)
-	wait, err := startAppServerUI(conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, cmd, inner, inner, nil, nil, "", true, nil, nil, nil, "", nil, &observations, false)
+	wait, err := startAppServerUI(testPresentation(), conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, cmd, inner, inner, nil, nil, "", true, nil, nil, nil, "", nil, &observations, false)
 	if err != nil {
 		t.Fatal(err)
 	}

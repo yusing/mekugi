@@ -2,8 +2,8 @@
 
 The application owns attachment lifetime, displayed-thread identity, Main's input
 destination, read-only admission, history restoration, Main's status and displayed-thread
-caption values. [Activity](../../../../modules/activity/SPEC.md)
-owns transcript content, [session control](../sessioncontrol/SPEC.md) issues backend
+caption values. [Conversation](../../../../modules/conversation/SPEC.md#transcript-observations)
+owns transcript interpretation, Activity owns feeds, and [session control](../sessioncontrol/SPEC.md) issues backend
 requests, and [terminal session](../terminalsession/SPEC.md) owns focus, navigation,
 geometry and rendering.
 
@@ -12,6 +12,13 @@ remains the operation authority; Conversation, Notifications and Usage retain th
 drafts, prompts, feedback delivery and accounting. Presentation selects status
 precedence and retains progress timing; the terminal chooses styling, animation
 and geometry using the same presentation clock as replay.
+
+Descriptor-composed status contributions project admitted thread facts into
+detached items for composer captions and agent metrics. Publication selects the
+displayed thread, independently of Main and the highlighted roster row. It reads
+no storage and keeps no second accounting state. Zero contributions preserve the
+remaining caption and roster values; replacement and backward replay use the
+new attachment's facts.
 
 Displaying a child changes no execution identity and cancels no host work. Main
 remains the input, question and approval destination. Child display makes the

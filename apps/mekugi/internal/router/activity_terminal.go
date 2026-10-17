@@ -3,11 +3,17 @@ package router
 import (
 	"time"
 
+	presentationcontract "github.com/yusing/mekugi/contracts/presentation"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func (v *activityAdapter) publishActivity() {
 	publication := v.Model.Publish()
+	for i := range publication.Roster {
+		agent := &publication.Roster[i].Agent
+		agent.StatusItems = v.display.StatusItems(presentationcontract.Thread{ID: agent.Thread, OutputThroughput: agent.OutputThroughput}, presentationcontract.AgentMetric)
+	}
 	// Output versions belong to publication, not semantic scans of source facts.
 	for i := range publication.Entries {
 		native := v.Entries[i].Source.native

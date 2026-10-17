@@ -289,7 +289,7 @@ func (entry activityPaneEntry) ActivityFacts() activitypresentation.Facts {
 }
 func (agent activityPaneAgent) ActivityAgent() activitypresentation.AgentFacts {
 	return activitypresentation.AgentFacts{
-		Name: agent.Name, Role: agent.Role, Responding: agent.Responding, Final: agent.Final,
+		Name: agent.Name, Role: agent.Role, Thread: agent.thread, Responding: agent.Responding, Final: agent.Final,
 		Started: agent.Started, LastResponse: agent.LastResponse,
 		WorkElapsed: time.Duration(agent.WorkTimer.ElapsedNS), WorkSince: agent.WorkTimer.Since, WorkKnown: agent.WorkTimer.Known,
 		Turns: agent.Turns, Roundtrips: agent.Roundtrips, Cost: agent.Cost, CostKnown: agent.CostKnown, CostPartial: agent.CostPartial,

@@ -44,7 +44,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Changed owner | Focused check |
 | --- | --- |
 | Workspace enumeration and generated module reference | `./apps/mekugi/cmd/workspace ./contracts/module ./backends/codex/binding ./testsupport/moduletest`, plus composition consumers for binding changes; `make check-generated` verifies the checked-in reference |
-| Module descriptors, lifetimes, or contribution slots | `./apps/mekugi/internal/composition ./apps/mekugi/internal/launch`, including real frontend composition and startup, plus affected module acceptance |
+| Module descriptors, lifetimes, or contribution slots | `./apps/mekugi/internal/composition ./apps/mekugi/internal/launch ./apps/mekugi/internal/sessionpresentation`, including real frontend composition, selected status publications and startup, plus affected module acceptance |
 | Captured diff model, composition, merge and status | `./libraries/diffmodel/...`, plus affected router and terminal consumers |
 | Activity rendering, diff navigation/previews, terminal input, or session metrics dialog | `./modules/activity/terminalview ./modules/changehistory/terminalview ./modules/livepreview/terminalview`, plus affected router integration tests |
 | Shared content dialogs and detail pages | `./libraries/terminalui ./apps/mekugi/internal/terminalsession ./modules/activity/presentation ./modules/activity/terminalview`, plus router output-dialog, process, local-file, selection/copy and replay consumers; preserve wrapped search, page identity, retained output after feed aging and actual rendered frames |

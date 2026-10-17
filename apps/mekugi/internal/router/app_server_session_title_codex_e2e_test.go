@@ -139,7 +139,7 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 		}
 		conversation := new(conversationmodel.Service)
 		observations := conversationbinding.Codex.Observation(conversation)
-		wait, err := startAppServerUI(conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), runCtx, command(runCtx), inner, inner, nil, nil, resume, true, nil, nil, nil, "", naming, &observations, false)
+		wait, err := startAppServerUI(testPresentation(), conversation, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), runCtx, command(runCtx), inner, inner, nil, nil, resume, true, nil, nil, nil, "", naming, &observations, false)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/contracts/inference"
 	"github.com/yusing/mekugi/contracts/observation"
+	"github.com/yusing/mekugi/contracts/presentation"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
 	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
 )
@@ -83,7 +83,7 @@ type Caption struct {
 	Model, Effort, Tier          string
 	ContextTokens, ContextWindow uint64
 	ContextKnown                 bool
-	OutputThroughput             inference.OutputThroughput
+	Items                        []presentation.Item
 }
 
 // Publish joins current owner facts with this attachment's retained progress.

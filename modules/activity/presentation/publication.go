@@ -4,6 +4,7 @@ import (
 	"maps"
 	"slices"
 
+	"github.com/yusing/mekugi/contracts/presentation"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
@@ -32,6 +33,7 @@ func (e Entry) StatusAnimating() bool {
 
 type Agent struct {
 	AgentFacts
+	StatusItems        []presentation.Item
 	Status, LatestKind string
 	Summary            []Entry
 	Skills             SkillSet

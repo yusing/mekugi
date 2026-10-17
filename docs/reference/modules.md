@@ -255,7 +255,7 @@ Retain provider-authoritative thread usage, reference costs and throughput
 - Composition: selected; lifetime: `invocation`.
 - Requires: `sessionhistory`.
 - Resources: on-demand retained-usage publication worker.
-- Contributes: `record-kinds`.
+- Contributes: `record-kinds`, `presentation`.
 - Records: `usage`.
 - Codex connections: none.
 
