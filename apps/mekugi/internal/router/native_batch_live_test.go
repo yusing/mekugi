@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
@@ -217,7 +219,7 @@ func TestNativeBatchLivePTY(t *testing.T) {
 	}
 	u.preview(previewmodel.Preview{ID: "next"}, false)
 	revealNativeDock(u.shell)
-	u.shell.animating(time.Now().Add(nativeDockMinimum + time.Second))
+	u.shell.liveDock.Tick(time.Now().Add(previewview.CompletionHold + time.Second))
 	frame = paint(140, 48)
 	if !strings.Contains(frame, "MAIN_TRANSCRIPT") || strings.Contains(frame, "child_line_40") {
 		t.Fatal("batch close affected another caller or failed to restore transcript")

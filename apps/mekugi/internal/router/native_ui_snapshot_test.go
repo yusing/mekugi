@@ -86,12 +86,14 @@ func TestUISnapshotNativeResumePicker(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.view.Painter.Theme = diffrender.DarkTheme
-			u.resumePicker = &appServerResumePicker{cwd: "/workspace", all: tc.all, loading: tc.loading, query: tc.query, loadedAt: now, selected: 1,
-				rows: []appServerResumeRow{
-					{id: "main", title: "Improve rendered snapshot coverage", cwd: "/workspace", branch: "coverage/snapshot", updated: now.Add(-2 * time.Minute).Unix()},
-					{id: "older", title: "Investigate a long parser failure message", cwd: "/other/project", branch: "fix/parser", updated: now.Add(-2 * time.Hour).Unix()},
-					{id: "empty", cwd: "/workspace", branch: "main", updated: now.Add(-48 * time.Hour).Unix()},
+			u.resumePicker = &appServerResumePicker{cwd: "/workspace", all: tc.all, loading: tc.loading, query: tc.query, loadedAt: now, id: 1,
+				rows: []sessionpresentation.ResumeRow{
+					{ID: "main", Title: "Improve rendered snapshot coverage", Workspace: "/workspace", Branch: "coverage/snapshot", Updated: now.Add(-2 * time.Minute).Unix()},
+					{ID: "older", Title: "Investigate a long parser failure message", Workspace: "/other/project", Branch: "fix/parser", Updated: now.Add(-2 * time.Hour).Unix()},
+					{ID: "empty", Workspace: "/workspace", Branch: "main", Updated: now.Add(-48 * time.Hour).Unix()},
 				}}
+			u.settlePresentation()
+			u.mainView.Resume.Selected = 1
 			assertNativeUISnapshot(t, tc.name, u.resumePickerFrame(tc.width, 11))
 		})
 	}

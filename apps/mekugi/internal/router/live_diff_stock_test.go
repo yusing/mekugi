@@ -51,7 +51,7 @@ func TestUISnapshotLiveDiffCompactProvisionalContext(t *testing.T) {
 				t.Fatalf("provisional context is not compact: %+v", preview.Files)
 			}
 			var pane previewview.PreviewPane
-			pane.Update(preview)
+			pane.Update(preview, time.Now())
 			rows, err := pane.RenderBatch(t.Context(), preview.Caller, workspace, diffrender.DarkTheme, 80, 16, 15)
 			if err != nil {
 				t.Fatal(err)
@@ -81,7 +81,7 @@ func TestStockPatchPreviewUsesObservedSourceAndLanguageRenderer(t *testing.T) {
 		t.Fatalf("preview changed the workspace: %q, %v", got, err)
 	}
 	var pane previewview.PreviewPane
-	pane.Update(preview)
+	pane.Update(preview, time.Now())
 	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		lines, err := pane.RenderBatch(t.Context(), preview.Caller, workspace, theme, 100, 16, 15)
 		if err != nil {
@@ -139,8 +139,8 @@ func TestUnprojectableFinalPatchClearsPreviewWithoutClaimingFailure(t *testing.T
 		t.Fatalf("unprojectable patch claimed a result: %+v", clear)
 	}
 	var pane previewview.PreviewPane
-	pane.Update(preview)
-	pane.Update(clear)
+	pane.Update(preview, time.Now())
+	pane.Update(clear, time.Now())
 	if len(pane.Views) != 0 {
 		t.Fatal("unprojectable patch left a stale card")
 	}
@@ -181,8 +181,8 @@ func TestPendingPatchBetweenEditsKeepsLastProjectedDiff(t *testing.T) {
 		t.Fatalf("pending edit blanked the previous diff: %+v", between)
 	}
 	var pane previewview.PreviewPane
-	pane.Update(first)
-	pane.Update(between)
+	pane.Update(first, time.Now())
+	pane.Update(between, time.Now())
 	lines, err := pane.RenderBatch(t.Context(), first.Caller, workspace, diffrender.DarkTheme, 100, 16, 15)
 	if err != nil || !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "+new()") {
 		t.Fatalf("stream turned blank between edits: %q, %v", lines, err)
@@ -212,7 +212,7 @@ func TestNextCallPendingPatchKeepsCompletedDiffUntilItHasContent(t *testing.T) {
 	})
 	first.Complete = true
 	var pane previewview.PreviewPane
-	pane.Update(first)
+	pane.Update(first, time.Now())
 	pending := projectStockPatchPreview(t.Context(), workspace, previewmodel.Preview{
 		ID: "next", Workspace: workspace, Thread: "thread", Caller: "/root", Status: previewmodel.PreviewEdit,
 		Input: "*** Begin Patch\n*** Update File: first.go\n",
@@ -225,12 +225,12 @@ func TestNextCallPendingPatchKeepsCompletedDiffUntilItHasContent(t *testing.T) {
 		previewPatch := previewProjector(previewContext, applyPatchToolName)
 		adding, _ := previewPatch(input, workspace, false)
 		adding.ID, adding.Workspace, adding.Caller = pending.ID, workspace, "/root"
-		pane.Update(adding)
+		pane.Update(adding, time.Now())
 		if len(pane.Order) != 1 || pane.Order[0] != first.ID {
 			t.Fatalf("add header replaced completed edit: %v", pane.Order)
 		}
 	}
-	pane.Update(pending)
+	pane.Update(pending, time.Now())
 	if len(pane.Order) != 1 || pane.Order[0] != first.ID {
 		t.Fatalf("empty next call replaced completed edit: %v", pane.Order)
 	}
@@ -242,7 +242,7 @@ func TestNextCallPendingPatchKeepsCompletedDiffUntilItHasContent(t *testing.T) {
 		ID: pending.ID, Workspace: workspace, Thread: "thread", Caller: "/root", Status: previewmodel.PreviewEdit,
 		Input: "*** Begin Patch\n*** Update File: first.go\n@@\n-old()\n+later()\n*** End Patch\n",
 	})
-	pane.Update(next)
+	pane.Update(next, time.Now())
 	if len(pane.Order) != 2 || pane.Order[1] != next.ID || len(pane.Views[next.ID].Current.Files) != 1 {
 		t.Fatalf("next projected edit lost the settling call: %v", pane.Order)
 	}

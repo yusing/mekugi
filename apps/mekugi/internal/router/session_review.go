@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 
@@ -11,6 +12,7 @@ import (
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
@@ -73,7 +75,7 @@ func (u *appServerUI) preview(preview previewmodel.Preview, restored bool) {
 		}
 	}
 	if u.shell != nil {
-		u.shell.showPreview(preview, restored)
+		u.shell.liveDock.Observe(preview, restored, u.now())
 	}
 }
 
@@ -98,7 +100,18 @@ func (u *appServerUI) applyReview(ctx context.Context, event sessionreview.Event
 		return
 	}
 	if u.shell != nil {
-		u.shell.reviewEvent(event)
+		switch event.Kind {
+		case "scope":
+			if event.Resync && event.Scope != nil {
+				u.shell.liveDock.Resync(*event.Scope, event.PreviewIDs)
+			}
+		case "coverage":
+			if strings.HasPrefix(event.Status, "RECONNECTING:") {
+				u.shell.liveDock = previewview.PreviewPane{}
+			}
+		case "change":
+			u.shell.diffUnseen = u.shell.diffUnseen || !u.shell.DiffOpen
+		}
 	}
 	if published {
 		u.publishReview()

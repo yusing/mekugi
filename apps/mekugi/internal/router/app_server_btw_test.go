@@ -355,14 +355,14 @@ func TestAppServerBTWRenderAndScroll(t *testing.T) {
 	if err := shell.send("\x1b[5~"); err != nil {
 		t.Fatal(err)
 	}
-	if u.btw.scroll == 0 {
+	if u.mainView.Side.Scroll == 0 {
 		t.Fatal("PgUp did not scroll dock")
 	}
-	before := u.btw.scroll
+	before := u.mainView.Side.Scroll
 	if err := shell.send("\x1b[6~"); err != nil {
 		t.Fatal(err)
 	}
-	if u.btw.scroll >= before {
+	if u.mainView.Side.Scroll >= before {
 		t.Fatal("PgDn did not return toward tail")
 	}
 	for _, width := range []int{1, 2, 12, 60} {

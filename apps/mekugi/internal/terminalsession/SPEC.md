@@ -11,6 +11,11 @@ selected targets and intents to their owners.
 [Session presentation](../sessionpresentation/SPEC.md) owns displayed identity and
 Main admission; [session control](../sessioncontrol/SPEC.md) issues host operations.
 Feature views own disclosure, navigation and animation.
+The status panel consumes a detached session publication. It owns its selectable
+rectangle, scroll position, metrics tab and retained-exchange selection, preserving
+navigation across refreshes of the same panel and resetting it on replacement.
+Close and refresh return versioned panel intents; painting and navigation never
+read capture or issue account requests.
 The terminal's stream cursors pace command, segment and public-reasoning output
 separately from source-operation correlation and canonical completion.
 Activity source feeds and terminal views are separately bound by the application;

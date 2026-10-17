@@ -201,7 +201,7 @@ func TestAppServerStatusPanelCloseScrollAndLateResponse(t *testing.T) {
 			appServerTestKeys(t, u, "/status\r")
 			u.statusPanel.body = nil
 			for range 40 {
-				u.statusPanel.body = append(u.statusPanel.body, statusField{group: "Session", value: "long status row"})
+				u.statusPanel.body = append(u.statusPanel.body, sessionpresentation.StatusField{Group: "Session", Value: "long status row"})
 			}
 			u.renderStatus(u.statusPanel, statusNotice("Loading account…"))
 			for _, width := range []int{1, 12, 60} {
@@ -218,14 +218,14 @@ func TestAppServerStatusPanelCloseScrollAndLateResponse(t *testing.T) {
 			if err := shell.send("\x1b[6~"); err != nil {
 				t.Fatal(err)
 			}
-			if u.statusPanel.top == 0 {
+			if u.mainView.Panel.Top == 0 {
 				t.Fatal("panel did not scroll")
 			}
-			before := u.statusPanel.top
+			before := u.mainView.Panel.Top
 			if err := shell.mouse("\x1b[<65;2;3M"); err != nil {
 				t.Fatal(err)
 			}
-			if u.statusPanel.top != before+1 {
+			if u.mainView.Panel.Top != before+1 {
 				t.Fatal("wheel did not scroll panel")
 			}
 			if err := shell.send(closeKey); err != nil {
@@ -275,9 +275,9 @@ func TestAppServerStatusTerminalPasteCanClose(t *testing.T) {
 func statusReportText(p *appServerStatusReport) string {
 	var rows []string
 	for _, f := range p.fields {
-		text := f.value
-		if f.label != "" {
-			text = f.label + ": " + text
+		text := f.Value
+		if f.Label != "" {
+			text = f.Label + ": " + text
 		}
 		rows = append(rows, text)
 	}
@@ -341,7 +341,7 @@ func TestAppServerStatusPanelVisual(t *testing.T) {
 	// Render through the real pane compositor and terminal emulator, then verify
 	// closing clears the already-painted panel, not only its backing state.
 	u.view.Painter.Theme = diffrender.DarkTheme
-	u.statusPanel.top = 0
+	u.mainView.Panel.Top = 0
 	screen := vt.NewEmulator(160, 48)
 	defer screen.Close()
 	if err := u.testPaint(screen, 160, 48); err != nil {
@@ -373,9 +373,9 @@ func TestAppServerStatusPanelVisual(t *testing.T) {
 	}
 	u.statusPanel = saved
 	// A long off-screen label cannot change the visible value alignment.
-	u.statusPanel.top = 0
+	u.mainView.Panel.Top = 0
 	before := strings.Join(u.statusPanelFrame(72, 12), "\n")
-	u.statusPanel.fields = append(u.statusPanel.fields, statusField{group: "Permissions", label: "Offscreen", value: "not visible"})
+	u.statusPanel.fields = append(u.statusPanel.fields, sessionpresentation.StatusField{Group: "Permissions", Label: "Offscreen", Value: "not visible"})
 	after := strings.Join(u.statusPanelFrame(72, 12), "\n")
 	// Only the footer's total line count may differ.
 	beforeRows, afterRows := strings.Split(before, "\n"), strings.Split(after, "\n")
@@ -461,4 +461,24 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Fixtures publish source transitions before driving the actual terminal owner.
+func (u *appServerUI) statusPanelFrame(width, height int) []string {
+	u.settlePresentation()
+	return u.mainView.Panel.Render(&u.view.Painter.Painter, width, height)
+}
+func (u *appServerUI) statusPanelKey(key string) bool {
+	u.settlePresentation()
+	if !u.mainView.Panel.Open() {
+		return false
+	}
+	action, clear := u.mainView.Panel.Key(key)
+	if clear && u.shell != nil {
+		u.shell.selection = nil
+	}
+	u.applyPanelAction(action)
+	u.dirty = true
+	u.settlePresentation()
+	return true
 }

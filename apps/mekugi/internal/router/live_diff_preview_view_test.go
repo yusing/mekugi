@@ -142,7 +142,7 @@ func TestLiveDiffPreviewCallerUsesAvailableWidth(t *testing.T) {
 func BenchmarkLiveDiffConcurrentPreviewFrame(b *testing.B) {
 	var pane previewview.PreviewPane
 	for i := range 16 {
-		pane.Update(previewViewFixture(fmt.Sprint(i), 2000))
+		pane.Update(previewViewFixture(fmt.Sprint(i), 2000), time.Now())
 	}
 	b.ReportAllocs()
 	for b.Loop() {
@@ -194,12 +194,12 @@ func TestLiveDiffPreviewTitleShowsFileStatusAndCounts(t *testing.T) {
 func TestLiveDiffPendingEditRemovesEmptyCard(t *testing.T) {
 	t.Parallel()
 	var pane previewview.PreviewPane
-	pane.Update(previewmodel.Preview{ID: "one", Workspace: "/workspace", Thread: "thread", Status: previewmodel.PreviewEdit, Input: "\n"})
-	pane.Update(previewmodel.Preview{ID: "one", Workspace: "/workspace", Thread: "thread"})
+	pane.Update(previewmodel.Preview{ID: "one", Workspace: "/workspace", Thread: "thread", Status: previewmodel.PreviewEdit, Input: "\n"}, time.Now())
+	pane.Update(previewmodel.Preview{ID: "one", Workspace: "/workspace", Thread: "thread"}, time.Now())
 	if len(pane.Views) != 0 || len(pane.Order) != 0 {
 		t.Fatal("pending edit left an empty status card")
 	}
-	pane.Update(previewmodel.Preview{ID: "one", Workspace: "/workspace", Thread: "thread", Status: previewmodel.PreviewEdit})
+	pane.Update(previewmodel.Preview{ID: "one", Workspace: "/workspace", Thread: "thread", Status: previewmodel.PreviewEdit}, time.Now())
 	if len(pane.Views) != 1 {
 		t.Fatal("later projection did not restore the preview")
 	}

@@ -3,35 +3,18 @@ package router
 import (
 	"context"
 	"io"
-	"maps"
 	"slices"
 	"strings"
 	"time"
-
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/libraries/textsanitize"
-	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
-
-	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 )
-
-// Live edits temporarily replace their caller's transcript, never another pane.
-const (
-	nativeDockMinimum = 1500 * time.Millisecond // Settling interval before a completed call retires.
-	nativeDockReveal  = 300 * time.Millisecond  // Short edits never replace the transcript just to disappear.
-)
-
-type nativePendingPreview struct {
-	preview previewmodel.Preview
-	since   time.Time
-}
 
 // A Main excerpt carries an Activity identity, not a nearby question or run.
 func (u *terminalUI) openActivityReply(seq uint64) bool {
@@ -48,88 +31,6 @@ func (u *terminalUI) openActivityReply(seq uint64) bool {
 		}
 	}
 	return false
-}
-
-// preview updates the shared dock by call ID, including caller-less completion markers.
-func (u *terminalUI) showPreview(preview previewmodel.Preview, restored bool) {
-
-	dock := &u.liveDock
-	// Restoration may carry receipts for expired calls, but cannot reopen them.
-	if restored && preview.Complete && dock.Views[preview.ID] == nil {
-		delete(u.livePending, preview.ID)
-		return
-	}
-	if preview.Caller == "" && preview.Workspace != "" {
-		preview.Caller = "/root"
-	}
-	// Already visible callers retain their burst, without another reveal delay.
-	// A call completed or withdrawn before first reveal never opens a dock.
-	if dock.Views[preview.ID] == nil && !slices.Contains(dock.Callers(), preview.Caller) {
-		if preview.Complete || preview.Workspace == "" || preview.Status == "" && len(preview.Files) == 0 && preview.Input == "" {
-			delete(u.livePending, preview.ID)
-			return
-		}
-		if u.livePending == nil {
-			u.livePending = make(map[string]nativePendingPreview)
-		}
-		pending, exists := u.livePending[preview.ID]
-		if !exists {
-			pending.since = time.Now()
-		}
-		pending.preview = preview
-		u.livePending[preview.ID] = pending
-		return
-	}
-	delete(u.livePending, preview.ID)
-	dock.Update(preview)
-}
-
-// reviewEvent consumes only an admitted visual update. It has no retained store,
-// loader or membership authority.
-func (u *terminalUI) reviewEvent(event sessionreview.Event) {
-	switch event.Kind {
-	case "scope":
-		if event.Resync && event.Scope != nil {
-			retained := func(preview previewmodel.Preview, complete bool) bool {
-				return event.Scope.Workspaces[preview.Workspace][preview.Thread] &&
-					(complete || slices.Contains(event.PreviewIDs, preview.ID))
-			}
-			u.liveDock.Order = slices.DeleteFunc(u.liveDock.Order, func(id string) bool {
-				view := u.liveDock.Views[id]
-				if retained(view.Current, view.Complete) {
-					return false
-				}
-				delete(u.liveDock.Views, id)
-				return true
-			})
-			for id, pending := range u.livePending {
-				if !retained(pending.preview, false) {
-					delete(u.livePending, id)
-				}
-			}
-		}
-	case "coverage":
-		if strings.HasPrefix(event.Status, "RECONNECTING:") {
-			u.liveDock = previewview.PreviewPane{}
-			clear(u.livePending)
-		}
-	case "change":
-		u.diffUnseen = u.diffUnseen || !u.DiffOpen
-	}
-}
-
-// animating keeps frames coming while previews reveal or completed calls expire.
-func (u *terminalUI) animating(now time.Time) bool {
-	for _, pending := range slices.SortedFunc(maps.Values(u.livePending), func(a, b nativePendingPreview) int {
-		return a.since.Compare(b.since)
-	}) {
-		if now.Sub(pending.since) >= nativeDockReveal {
-			u.liveDock.Update(pending.preview)
-			delete(u.livePending, pending.preview.ID)
-		}
-	}
-	changed := u.liveDock.ExpireBatches(now, nativeDockMinimum)
-	return changed || len(u.liveDock.Order) > 0 || len(u.livePending) > 0
 }
 
 func (u *appServerUI) transcriptCaller() string {
@@ -160,6 +61,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	now := u.main.now()
 	u.agents.FeedOnly, u.agents.Focused = true, u.Focus == 3
 	u.liveDock.Motion.Enabled = true
+	u.liveDock.Motion.Now = now
 	u.liveDock.Motion.Canvas = u.Theme.Canvas()
 	if u.agents.Painter.Colors.HasBackground {
 		u.liveDock.Motion.Canvas.Background = u.agents.Painter.Colors.Background

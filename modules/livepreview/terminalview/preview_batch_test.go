@@ -28,7 +28,7 @@ func TestNativeBatchSourceScrollAndFollow(t *testing.T) {
 	pane := PreviewPane{}
 	preview := batchTestPreview("stream", "/root", "src/stream.go")
 	preview.Files = []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", "/workspace/src/stream.go", "", strings.Repeat("source line\n", 40))}
-	pane.Update(preview)
+	pane.Update(preview, time.Now())
 	view := pane.batches["/root"].files[previewFileKey{"stream", "/workspace/src/stream.go"}]
 	if view.Source != nil || view.Rendered.ID != "" {
 		t.Fatal("queued snapshot parsed source before painting")
@@ -40,7 +40,7 @@ func TestNativeBatchSourceScrollAndFollow(t *testing.T) {
 	}
 	pausedAt := view.ScrollRow
 	preview.Files = []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", "/workspace/src/stream.go", "", strings.Repeat("source line\n", 60))}
-	pane.Update(preview)
+	pane.Update(preview, time.Now())
 	batchTestRender(t, &pane, 16)
 	if !view.Paused || view.ScrollRow != pausedAt || view.Focus <= initialFocus {
 		t.Fatal("streaming update moved a manually paused viewport or failed to advance its live tip")
@@ -57,7 +57,7 @@ func TestNativeBatchSourceScrollAndFollow(t *testing.T) {
 			t.Fatalf("scroll %q to the live tip did not resume following", key)
 		}
 	}
-	pane.Update(batchTestPreview("new", "/root", "src/new.go"))
+	pane.Update(batchTestPreview("new", "/root", "src/new.go"), time.Now())
 	batchTestRender(t, &pane, 31)
 	pane.NextBatch("/root")
 	if !pane.ScrollBatch("/root", 'r') || view.Paused || pane.batches["/root"].pinned || pane.batches["/root"].selected.call != "new" {
@@ -81,33 +81,33 @@ func TestUISnapshotNativeBatch(t *testing.T) {
 		setup  func(*testing.T, *PreviewPane)
 	}{
 		{"one_call_multiple_files", 31, func(t *testing.T, pane *PreviewPane) {
-			pane.Update(batchTestPreview("first", "/root", "src/a.go", "src/b.go"))
+			pane.Update(batchTestPreview("first", "/root", "src/a.go", "src/b.go"), time.Now())
 		}},
 		{"capacity", 46, func(t *testing.T, pane *PreviewPane) {
-			pane.Update(batchTestPreview("first", "/root", "src/a.go", "src/b.go", "src/c.go"))
+			pane.Update(batchTestPreview("first", "/root", "src/a.go", "src/b.go", "src/c.go"), time.Now())
 		}},
 		{"overflow", 31, func(t *testing.T, pane *PreviewPane) {
-			pane.Update(batchTestPreview("first", "/root", "src/a.go", "src/b.go", "src/c.go"))
+			pane.Update(batchTestPreview("first", "/root", "src/a.go", "src/b.go", "src/c.go"), time.Now())
 		}},
 		{"new_arrival", 31, func(t *testing.T, pane *PreviewPane) {
-			pane.Update(batchTestPreview("first", "/root", "src/a.go", "src/b.go", "src/c.go"))
+			pane.Update(batchTestPreview("first", "/root", "src/a.go", "src/b.go", "src/c.go"), time.Now())
 			batchTestRender(t, pane, 31)
-			pane.Update(batchTestPreview("second", "/root", "src/d.go"))
+			pane.Update(batchTestPreview("second", "/root", "src/d.go"), time.Now())
 		}},
 		{"pinned_arrival", 31, func(t *testing.T, pane *PreviewPane) {
-			pane.Update(batchTestPreview("first", "/root", "src/a.go", "src/b.go", "src/c.go"))
+			pane.Update(batchTestPreview("first", "/root", "src/a.go", "src/b.go", "src/c.go"), time.Now())
 			batchTestRender(t, pane, 31)
 			if !pane.NextBatch("/root") {
 				t.Fatal("could not cycle batch")
 			}
-			pane.Update(batchTestPreview("second", "/root", "src/d.go"))
+			pane.Update(batchTestPreview("second", "/root", "src/d.go"), time.Now())
 		}},
 		{"resize_below_minimum", 15, func(t *testing.T, pane *PreviewPane) {
-			pane.Update(batchTestPreview("first", "/root", "src/a.go", "src/b.go"))
+			pane.Update(batchTestPreview("first", "/root", "src/a.go", "src/b.go"), time.Now())
 			batchTestRender(t, pane, 31)
 		}},
 		{"resize_one_slot", 30, func(t *testing.T, pane *PreviewPane) {
-			pane.Update(batchTestPreview("first", "/root", "src/a.go", "src/b.go"))
+			pane.Update(batchTestPreview("first", "/root", "src/a.go", "src/b.go"), time.Now())
 			batchTestRender(t, pane, 31)
 		}},
 	} {
@@ -122,11 +122,11 @@ func TestUISnapshotNativeBatch(t *testing.T) {
 func TestNativeBatchRetainsCompletedCall(t *testing.T) {
 	pane := PreviewPane{}
 	first := batchTestPreview("first", "/root", "src/a.go")
-	pane.Update(first)
+	pane.Update(first, time.Now())
 	first.Complete = true
-	pane.Update(first)
+	pane.Update(first, time.Now())
 	batchTestRender(t, &pane, 31)
-	pane.Update(batchTestPreview("second", "/root", "src/b.go"))
+	pane.Update(batchTestPreview("second", "/root", "src/b.go"), time.Now())
 	if !slices.Equal(pane.Order, []string{"first", "second"}) || !pane.Views["first"].Complete {
 		t.Fatalf("completed call replaced: order=%v", pane.Order)
 	}
@@ -135,7 +135,7 @@ func TestNativeBatchRetainsCompletedCall(t *testing.T) {
 		t.Fatal("retained call missing from per-file batch")
 	}
 	// A withdrawal removes only its call and projected file, including retained completions.
-	pane.Update(previewmodel.Preview{ID: "first", Workspace: "/workspace"})
+	pane.Update(previewmodel.Preview{ID: "first", Workspace: "/workspace"}, time.Now())
 	batchTestRender(t, &pane, 31)
 	if !slices.Equal(pane.Order, []string{"second"}) || len(pane.batches["/root"].files) != 1 {
 		t.Fatal("withdrawal left retained call or removed unrelated call")
@@ -144,11 +144,11 @@ func TestNativeBatchRetainsCompletedCall(t *testing.T) {
 
 func TestNativeBatchRetainsSequentialFilesInOneCall(t *testing.T) {
 	pane := PreviewPane{}
-	pane.Update(batchTestPreview("exec", "/root", "src/a.go"))
+	pane.Update(batchTestPreview("exec", "/root", "src/a.go"), time.Now())
 	batchTestRender(t, &pane, 31)
 	firstKey := previewFileKey{"exec", "/workspace/src/a.go"}
 	first := pane.batches["/root"].files[firstKey]
-	pane.Update(batchTestPreview("exec", "/root", "src/b.go"))
+	pane.Update(batchTestPreview("exec", "/root", "src/b.go"), time.Now())
 	batchTestRender(t, &pane, 31)
 	batch := pane.batches["/root"]
 	if !slices.Equal(batch.order, []previewFileKey{firstKey, {"exec", "/workspace/src/b.go"}}) || batch.files[firstKey] != first {
@@ -156,12 +156,12 @@ func TestNativeBatchRetainsSequentialFilesInOneCall(t *testing.T) {
 	}
 	completed := pane.Views["exec"].Current
 	completed.Complete = true
-	pane.Update(completed)
+	pane.Update(completed, time.Now())
 	batchTestRender(t, &pane, 31)
 	if !first.Complete || !batch.files[previewFileKey{"exec", "/workspace/src/b.go"}].Complete {
 		t.Fatal("completion did not settle all projected files in the call")
 	}
-	pane.Update(previewmodel.Preview{ID: "exec", Workspace: "/workspace"})
+	pane.Update(previewmodel.Preview{ID: "exec", Workspace: "/workspace"}, time.Now())
 	if rows := batchTestRender(t, &pane, 31); len(rows) != 0 || len(batch.files) != 0 || len(batch.order) != 0 {
 		t.Fatal("explicit withdrawal retained a sequential file projection")
 	}
@@ -183,7 +183,7 @@ func TestNativeBatchExpiryIsolation(t *testing.T) {
 	} {
 		preview := batchTestPreview(tc.id, tc.caller, tc.id+".go")
 		preview.Complete = tc.complete
-		pane.Update(preview)
+		pane.Update(preview, time.Now())
 		pane.Views[tc.id].updated = tc.updated
 		pane.batch(tc.caller)
 	}
@@ -202,7 +202,7 @@ func TestNativeBatchExpiryIsolation(t *testing.T) {
 	// Completion starts a fresh hold, even for a call that was live a long time.
 	finished := pane.Views["live"].Current
 	finished.Complete = true
-	pane.Update(finished)
+	pane.Update(finished, time.Now())
 	pane.Views["live"].updated = now.Add(time.Second)
 	if pane.ExpireBatches(now.Add(2*time.Second), hold) {
 		t.Fatal("just-completed call expired early")
@@ -220,12 +220,12 @@ func TestUISnapshotNativeBatchCompletedSiblingExpiry(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			pane := PreviewPane{}
-			pane.Update(batchTestPreview("running", "/root", "src/running.go"))
+			pane.Update(batchTestPreview("running", "/root", "src/running.go"), time.Now())
 			batchTestRender(t, &pane, 16)
 			pane.ScrollBatch("/root", 'b')
 			finished := batchTestPreview("finished", "/root", "src/done.go", "src/also_done.go")
 			finished.Complete = true
-			pane.Update(finished)
+			pane.Update(finished, time.Now())
 			batchTestRender(t, &pane, 31)
 			if pinned {
 				pane.NextBatch("/root") // Pin the surviving running file.
@@ -262,7 +262,7 @@ func TestUISnapshotNativeBatchToolIdentity(t *testing.T) {
 			pane := PreviewPane{}
 			preview := batchTestPreview("edit", "/root", "src/a.go")
 			preview.Tool = tc.tool
-			pane.Update(preview)
+			pane.Update(preview, time.Now())
 			rows, err := pane.RenderBatch(t.Context(), "/root", "/workspace", diffrender.DarkTheme, tc.width, tc.height, 15)
 			if err != nil {
 				t.Fatal(err)
@@ -273,17 +273,17 @@ func TestUISnapshotNativeBatchToolIdentity(t *testing.T) {
 	pane := PreviewPane{}
 	patch := batchTestPreview("patch", "/root", "src/patch.go")
 	patch.Tool = "apply_patch"
-	pane.Update(patch)
+	pane.Update(patch, time.Now())
 	batchTestRender(t, &pane, 16)
 	python := batchTestPreview("python", "/root", "src/python.go")
 	python.Tool = "python3"
-	pane.Update(python)
+	pane.Update(python, time.Now())
 	assertRowsSnapshot(t, "native_batch_tool_follow", batchTestRender(t, &pane, 16))
 	pane.NextBatch("/root")
 	assertRowsSnapshot(t, "native_batch_tool_pinned", batchTestRender(t, &pane, 16))
 	other := batchTestPreview("other-caller", "/root/worker", "src/worker.go")
 	other.Tool = "cat"
-	pane.Update(other)
+	pane.Update(other, time.Now())
 	// A sibling's tool must not change the pinned caller-local header.
 	assertRowsSnapshot(t, "native_batch_tool_pinned", batchTestRender(t, &pane, 16))
 }
@@ -292,12 +292,12 @@ func TestUISnapshotNativeBatchMixedToolCall(t *testing.T) {
 	pane := PreviewPane{}
 	preview := batchTestPreview("program", "/root", "src/python.go")
 	preview.Tool = "python3"
-	pane.Update(preview)
+	pane.Update(preview, time.Now())
 	assertRowsSnapshot(t, "native_batch_mixed_tool_initial", batchTestRender(t, &pane, 16))
 	// One streaming call can advance to a different editing command and file.
 	preview = batchTestPreview("program", "/root", "src/cat.go")
 	preview.Tool = "cat"
-	pane.Update(preview)
+	pane.Update(preview, time.Now())
 	assertRowsSnapshot(t, "native_batch_mixed_tool_follow", batchTestRender(t, &pane, 16))
 	if !pane.NextBatch("/root") {
 		t.Fatal("could not select the earlier editing command")
@@ -310,7 +310,7 @@ func TestUISnapshotNativeBatchOmitsDeletedFiles(t *testing.T) {
 	preview := batchTestPreview("mixed", "/root", "src/kept.go")
 	preview.Files[0] = diffmodel.RenderReviewFile("", "/workspace/src/kept.go", "", strings.Repeat("source line\n", 24))
 	preview.Files = append(preview.Files, diffmodel.RenderReviewFile("/workspace/src/deleted.go", "", "package old\n", ""))
-	pane.Update(preview)
+	pane.Update(preview, time.Now())
 	assertRowsSnapshot(t, "native_batch_omits_deleted", batchTestRender(t, &pane, 31))
 	if !slices.Equal(pane.Callers(), []string{"/root"}) || len(pane.batches["/root"].files) != 1 {
 		t.Fatal("deletion reserved a viewport")
@@ -319,19 +319,19 @@ func TestUISnapshotNativeBatchOmitsDeletedFiles(t *testing.T) {
 
 func TestNativeBatchDeletedFileRemovesRetainedViewport(t *testing.T) {
 	pane := PreviewPane{}
-	pane.Update(batchTestPreview("call", "/root", "src/a.go", "src/b.go"))
+	pane.Update(batchTestPreview("call", "/root", "src/a.go", "src/b.go"), time.Now())
 	batchTestRender(t, &pane, 31)
 	pane.NextBatch("/root") // Pin a.go before it disappears.
 	preview := batchTestPreview("call", "/root", "src/b.go")
 	preview.Files = append(preview.Files, diffmodel.RenderReviewFile("/workspace/src/a.go", "", "package old\n", ""))
-	pane.Update(preview)
+	pane.Update(preview, time.Now())
 	batchTestRender(t, &pane, 31)
 	b := pane.batches["/root"]
 	if len(b.order) != 1 || b.selected.path != "/workspace/src/b.go" || b.pinned {
 		t.Fatalf("deleted viewport retained: %+v", b)
 	}
 	preview.Files = []diffmodel.ReviewFile{diffmodel.RenderReviewFile("/workspace/src/b.go", "", "package old\n", "")}
-	pane.Update(preview)
+	pane.Update(preview, time.Now())
 	if rows := batchTestRender(t, &pane, 31); len(rows) != 0 || len(pane.Callers()) != 0 {
 		t.Fatal("deletion-only call still opens dock")
 	}

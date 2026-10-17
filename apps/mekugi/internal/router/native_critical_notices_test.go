@@ -196,7 +196,7 @@ func TestNativeCriticalNoticeComposerVisibility(t *testing.T) {
 			defer u.shell.diffScreen.Close()
 			switch state {
 			case "status":
-				u.statusPanel = &appServerStatusReport{}
+				u.statusPanel = u.newStatusReport()
 			case "replaced":
 				u.setNotice("another error", true)
 			}

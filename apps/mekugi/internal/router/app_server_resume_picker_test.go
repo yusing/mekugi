@@ -220,7 +220,7 @@ func TestAppServerResumePickerSearchFilterAndPages(t *testing.T) {
 		t.Fatalf("all-workspace frame:\n%s", frame)
 	}
 	resumeTestKeys(t, u, "f", "e", "a", "t")
-	if got := u.resumePicker.matches(); len(got) != 1 || got[0].id != "there" {
+	if got := u.resumePicker.matches(); len(got) != 1 || got[0].ID != "there" {
 		t.Fatalf("search matched %+v", got)
 	}
 	resumeTestKeys(t, u, "\x7f", "\x7f", "\x7f", "\x7f", "z", "z")
@@ -496,4 +496,29 @@ func TestAppServerResumePickerFailedPageStopsPaging(t *testing.T) {
 	}
 	resumeTestKeys(t, u, "\t")
 	resumeTestOne(t, w, "thread/list")
+}
+
+func (u *appServerUI) resumePickerKey(key string) error {
+	u.settlePresentation()
+	return u.applyResumeAction(u.mainView.Resume.Key(key))
+}
+func (u *appServerUI) fillResumePicker() error {
+	u.settlePresentation()
+	return u.applyResumeAction(u.mainView.Resume.PageDemand())
+}
+func (u *appServerUI) resumePickerFrame(width, height int) []string {
+	u.settlePresentation()
+	return u.mainView.Resume.Render(&u.view.Painter.Painter, width, height, u.pickerSelection())
+}
+
+func TestResumePickerRechecksIdleBeforeSwitch(t *testing.T) {
+	u, w := newResumeSessionTestUI(t)
+	appServerTestKeys(t, u, "/resume\r")
+	list := resumeTestOne(t, w, "thread/list")
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"data":[{"id":"saved"}]}}`, list.ID))
+	u.Started("now-running")
+	resumeTestKeys(t, u, "\r")
+	if u.resumePicker == nil || len(resumeTestRequests(t, w)) != 0 || !strings.Contains(u.feedback.Text, "task is in progress") {
+		t.Fatal("chooser stranded newly started work")
+	}
 }

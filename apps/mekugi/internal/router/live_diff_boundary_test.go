@@ -228,10 +228,10 @@ func TestLiveDiffEmptyHeredocRetainsCompletedCard(t *testing.T) {
 		var pane previewview.PreviewPane
 		first, _ := previewPatch("*** Begin Patch\n*** Add File: first.txt\n+visible\n*** End Patch\n", workspace, true)
 		first.ID, first.Workspace = "first", workspace
-		pane.Update(first)
+		pane.Update(first, time.Now())
 		pending, _ := previewProject(command+" <<'EOF'\n", workspace, false)
 		pending.ID, pending.Workspace = "next", workspace
-		pane.Update(pending)
+		pane.Update(pending, time.Now())
 		if len(pane.Order) != 1 || pane.Order[0] != first.ID {
 			t.Fatalf("empty %s header replaced prior diff: %v", command, pane.Order)
 		}
@@ -267,7 +267,7 @@ func TestLiveDiffBufferedStatementKeepsMultiFileSnapshot(t *testing.T) {
 				if len(batch) != 1 || batch[0].Preview == nil {
 					t.Fatalf("missing snapshot: %+v", batch)
 				}
-				pane.Update(*batch[0].Preview)
+				pane.Update(*batch[0].Preview, time.Now())
 				current := pane.Views["call"].Current
 				if len(current.Files) != 2 || !strings.Contains(current.Files[1].Diff, "+const x = 1;") || strings.Contains(current.Files[1].Diff, "+const y") {
 					t.Fatalf("buffered statement erased earlier files or leaked: %+v", current.Files)

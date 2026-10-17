@@ -119,7 +119,7 @@ func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 	if strings.Contains(wire.String(), "mekugi-copy") {
 		t.Fatal("private source transport escaped")
 	}
-	rect := u.btw.rect
+	rect := u.mainView.Side.Rect
 	rect.X += u.shell.Layout.Main.X
 	rect.Y += u.shell.Layout.Main.Y
 	y := -1

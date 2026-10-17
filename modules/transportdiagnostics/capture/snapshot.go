@@ -154,7 +154,7 @@ func (r *Recorder) Snapshot() MetricsSnapshot { return r.snapshot() }
 func (r *Recorder) snapshot() MetricsSnapshot {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	snapshot := cloneMetricsSnapshot(r.metrics)
+	snapshot := r.metrics.Clone()
 	snapshot.StorageWrites = r.writes.Snapshot()
 	diagnoseCacheExchanges(snapshot.Exchanges)
 	return snapshot
@@ -241,17 +241,28 @@ func (r *Recorder) addExchange(front captureRecord, providers []captureRecord) {
 	}
 }
 
-func cloneMetricsSnapshot(source MetricsSnapshot) MetricsSnapshot {
+// Clone isolates consumers of an already detached snapshot.
+func (source MetricsSnapshot) Clone() MetricsSnapshot {
 	clone := source
+	if source.StorageWrites != nil {
+		clone.StorageWrites = new(*source.StorageWrites)
+	}
 	if source.Cache.ProviderCacheRate != nil {
 		rate := *source.Cache.ProviderCacheRate
 		clone.Cache.ProviderCacheRate = &rate
 	}
-	clone.Exchanges = make([]exchangeMetrics, len(source.Exchanges))
+	clone.Exchanges = slices.Clone(source.Exchanges)
 	for index, exchange := range source.Exchanges {
 		clone.Exchanges[index] = exchange
+		if exchange.CacheDiagnosis != nil {
+			diagnosis := *exchange.CacheDiagnosis
+			diagnosis.Client.ChangedFields = slices.Clone(diagnosis.Client.ChangedFields)
+			diagnosis.Projected.ChangedFields = slices.Clone(diagnosis.Projected.ChangedFields)
+			diagnosis.Provider.ChangedFields = slices.Clone(diagnosis.Provider.ChangedFields)
+			clone.Exchanges[index].CacheDiagnosis = &diagnosis
+		}
 		clone.Exchanges[index].ClientFingerprint = cloneFingerprint(exchange.ClientFingerprint)
-		clone.Exchanges[index].ProviderAttempts = make([]providerAttemptMetrics, len(exchange.ProviderAttempts))
+		clone.Exchanges[index].ProviderAttempts = slices.Clone(exchange.ProviderAttempts)
 		for attemptIndex, attempt := range exchange.ProviderAttempts {
 			clone.Exchanges[index].ProviderAttempts[attemptIndex] = attempt
 			clone.Exchanges[index].ProviderAttempts[attemptIndex].ProviderResponse = cloneProviderEvidence(attempt.ProviderResponse)

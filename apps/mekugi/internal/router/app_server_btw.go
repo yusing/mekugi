@@ -4,16 +4,9 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
-
-// sideDock retains only terminal interaction state for the published side view.
-type sideDock struct {
-	scroll, rows int
-	rect         terminalsession.Rect
-	copyAnswer   []string
-}
 
 func (u *appServerUI) submitBTW() error {
 	text := strings.TrimSpace(u.Text)
@@ -37,14 +30,12 @@ func (u *appServerUI) submitBTW() error {
 	if u.side == nil {
 		u.conversation().Side = new(conversationmodel.SideAnswer)
 		u.side = &sessioncontrol.Side{SideAnswer: u.conversation().Side}
-		u.btw = new(sideDock)
 	}
 	b := u.side
 	// Remove the command through the composer so attachment offsets stay valid.
 	prefix := strings.Index(u.Text, "/btw") + len("/btw")
 	u.deleteDraftRange(0, prefix)
 	b.Begin(question, u.takeDraft())
-	u.btw.scroll = 0
 	b.Busy = true
 	u.setNotice("", false)
 	return u.flushBTW()
@@ -90,27 +81,18 @@ func (u *appServerUI) closeBTW() error {
 	if b == nil {
 		return nil
 	}
-	u.side, u.btw = nil, nil
+	u.side = nil
 	b.Close()
 	u.conversation().Side = nil
 	u.pruneDraftImages()
 	return u.requests.ReleaseSide(b)
 }
 
-func (u *appServerUI) btwKey(key string) (bool, error) {
-	b := u.btw
-	if b == nil {
-		return false, nil
+func (u *appServerUI) applyCloseSide(in sessionpresentation.CloseSideIntent) error {
+	defer u.settlePresentation()
+	if err := u.sessionPresentation().AdmitCloseSide(in); err != nil {
+		u.setNotice(err.Error(), true)
+		return nil
 	}
-	switch key {
-	case "\x1b":
-		return true, u.closeBTW()
-	case "\x1b[5~":
-		b.scroll += max(1, b.rows-1)
-		return true, nil
-	case "\x1b[6~":
-		b.scroll = max(0, b.scroll-max(1, b.rows-1))
-		return true, nil
-	}
-	return false, nil
+	return u.closeBTW()
 }

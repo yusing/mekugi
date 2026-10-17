@@ -267,8 +267,12 @@ Submitted payload identities are independent of renderer sequence numbers.
 
 `/btw QUESTION` opens a temporary conversation without changing Main's input,
 execution, transcript or settings. Follow-ups reuse its host snapshot and replace
-the displayed exchange. Pending Main input settles before the first snapshot;
-an already-running turn continues. Later Main activity does not enter follow-ups.
+the displayed exchange. Each exchange has an attachment-local identity, including
+repeated questions.
+Terminal navigation resets for a new exchange, while closing names the published
+exchange and session version so delayed input cannot dismiss a newer answer.
+Pending Main input settles before the first snapshot; an already-running turn
+continues. Later Main activity does not enter follow-ups.
 The snapshot uses Main's effective model, reasoning effort and service tier.
 Codex owns its ephemeral history and context. The answer requests no tools,
 disables environment access and uses read-only permissions without approvals;

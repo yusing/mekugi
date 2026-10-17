@@ -13,6 +13,7 @@ type Answer struct{ ID, Text string }
 
 // SideAnswer retains only the current exchange. Codex owns the full side context.
 type SideAnswer struct {
+	ID               uint64
 	Question, Status string
 	Pending          Input
 	Answer           []Answer
@@ -22,6 +23,7 @@ type SideAnswer struct {
 }
 
 type SideView struct {
+	ID               uint64
 	Question, Status string
 	Answer           []Answer
 	Alert, Truncated bool
@@ -30,11 +32,11 @@ type SideView struct {
 }
 
 func (s *SideAnswer) View() SideView {
-	return SideView{Question: s.Question, Status: s.Status, Answer: slices.Clone(s.Answer), Alert: s.Alert, Truncated: s.Truncated, AttachmentNotice: s.AttachmentNotice, Started: s.Started}
+	return SideView{ID: s.ID, Question: s.Question, Status: s.Status, Answer: slices.Clone(s.Answer), Alert: s.Alert, Truncated: s.Truncated, AttachmentNotice: s.AttachmentNotice, Started: s.Started}
 }
 
 func (s *SideAnswer) Begin(question string, pending Input) {
-	*s = SideAnswer{Question: question, Pending: pending, AttachmentNotice: pending.AttachmentNotice, Status: "Waiting for Main's submission…"}
+	*s = SideAnswer{ID: s.ID + 1, Question: question, Pending: pending, AttachmentNotice: pending.AttachmentNotice, Status: "Waiting for Main's submission…"}
 }
 
 func (s *SideAnswer) Fail(message string, closed bool) Input {

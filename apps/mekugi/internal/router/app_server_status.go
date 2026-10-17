@@ -6,7 +6,7 @@ import (
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	json "encoding/json/v2"
 	"fmt"
@@ -23,29 +23,29 @@ import (
 // Unlike Codex, status is an ephemeral panel, never a transcript entry.
 // Each asynchronous refresh belongs only to the panel that requested it.
 type appServerStatusReport struct {
-	title     string
-	groups    []string
-	controls  string
-	metrics   *sessionMetricsPanel
-	rect      terminalsession.Rect // Selectable body, relative to Main.
-	fields    []statusField
-	top, rows int
-	body      []statusField
-	tokens    []statusField
-	account   []statusField
+	id                            uint64
+	metrics                       *sessionMetricsPanel
+	fields, body, tokens, account []sessionpresentation.StatusField
 }
 
-// Values remain structured through rendering; meters are host observations,
-// not percentages reconstructed from presentation text.
-type statusField struct {
-	group, label, value, detail string
-	remaining                   *float64
-	alert                       bool
-	path                        bool
+func (u *appServerUI) newStatusReport() *appServerStatusReport {
+	u.statusSequence++
+	return &appServerStatusReport{id: u.statusSequence}
+}
+func (u *appServerUI) panelView() *sessionpresentation.PanelView {
+	p := u.statusPanel
+	if p == nil {
+		return nil
+	}
+	view := &sessionpresentation.PanelView{ID: p.id, Fields: p.fields, Workspace: u.cwd, DebugDirectory: u.replayDebugDirectory}
+	if p.metrics != nil {
+		view.Metrics = &p.metrics.snapshot
+	}
+	return view
 }
 
-func statusNotice(value string) []statusField {
-	return []statusField{{group: "Account", value: value}}
+func statusNotice(value string) []sessionpresentation.StatusField {
+	return []sessionpresentation.StatusField{{Group: "Account", Value: value}}
 }
 
 type appServerStatusConfig struct {
@@ -62,11 +62,11 @@ func (u *appServerUI) displayServiceTier() string {
 }
 
 func (u *appServerUI) showStatus() error {
-	var rows []statusField
+	var rows []sessionpresentation.StatusField
 	group := "Model"
 	add := func(label, value string) {
 		if value != "" {
-			rows = append(rows, statusField{group: group, label: label, value: value})
+			rows = append(rows, sessionpresentation.StatusField{Group: group, Label: label, Value: value})
 		}
 	}
 	add("Model", u.model)
@@ -92,17 +92,17 @@ func (u *appServerUI) showStatus() error {
 		group = "Session"
 		add("Agents.md", strings.Join(u.statusConfig.Instructions, ", "))
 	}
-	report := new(appServerStatusReport)
+	report := u.newStatusReport()
 	for _, agent := range u.session.Roster() {
 		if agent.Name != "/root" {
 			continue
 		}
 		if agent.ContextKnown && agent.ContextWindow > 0 {
 			remaining := 100 * (1 - min(1, float64(agent.ContextTokens)/float64(agent.ContextWindow)))
-			rows = append(rows, statusField{group: "Usage", label: "Context window", value: fmt.Sprintf("%.0f%% left", remaining), detail: fmt.Sprintf("%s used / %s", activityui.FormatUsageTokens(agent.ContextTokens), activityui.FormatUsageTokens(agent.ContextWindow)), remaining: new(remaining)})
+			rows = append(rows, sessionpresentation.StatusField{Group: "Usage", Label: "Context window", Value: fmt.Sprintf("%.0f%% left", remaining), Detail: fmt.Sprintf("%s used / %s", activityui.FormatUsageTokens(agent.ContextTokens), activityui.FormatUsageTokens(agent.ContextWindow)), Remaining: new(remaining)})
 		}
 		if agent.InputTokens > 0 || agent.OutputTokens > 0 {
-			report.tokens = []statusField{{group: "Usage", label: "Token usage", value: fmt.Sprintf("%s input · %s output", activityui.FormatUsageTokens(agent.InputTokens), activityui.FormatUsageTokens(agent.OutputTokens))}}
+			report.tokens = []sessionpresentation.StatusField{{Group: "Usage", Label: "Token usage", Value: fmt.Sprintf("%s input · %s output", activityui.FormatUsageTokens(agent.InputTokens), activityui.FormatUsageTokens(agent.OutputTokens))}}
 		}
 	}
 	report.body = rows
@@ -115,13 +115,13 @@ func (u *appServerUI) showStatus() error {
 func (u *appServerUI) requestStatus(method string, params any, report *appServerStatusReport) error {
 	_, err := u.requests.Send(method, params, "main", appServerRequest{status: report})
 	if err != nil {
-		u.renderStatus(report, []statusField{{group: "Account", value: "Status refresh failed: " + err.Error(), alert: true}})
+		u.renderStatus(report, []sessionpresentation.StatusField{{Group: "Account", Value: "Status refresh failed: " + err.Error(), Alert: true}})
 		return err
 	}
 	return nil
 }
 
-func (u *appServerUI) renderStatus(report *appServerStatusReport, extra []statusField) {
+func (u *appServerUI) renderStatus(report *appServerStatusReport, extra []sessionpresentation.StatusField) {
 	report.fields = slices.Concat(report.body, report.account, extra)
 	u.dirty = true
 }
@@ -135,7 +135,7 @@ func (u *appServerUI) statusMessage(method string, m appserver.Message, report *
 		return true, nil
 	}
 	fail := func(message string) (bool, error) {
-		u.renderStatus(report, []statusField{{group: "Account", value: message, alert: true}})
+		u.renderStatus(report, []sessionpresentation.StatusField{{Group: "Account", Value: message, Alert: true}})
 		return true, nil
 	}
 	if m.Error != nil {
@@ -159,19 +159,19 @@ func (u *appServerUI) statusMessage(method string, m appserver.Message, report *
 		account := result.Account
 		switch account.Type {
 		case "chatgpt":
-			report.account = []statusField{{group: "Account", label: "Sign-in", value: "ChatGPT"}}
+			report.account = []sessionpresentation.StatusField{{Group: "Account", Label: "Sign-in", Value: "ChatGPT"}}
 			if account.Email != "" {
-				report.account = append(report.account, statusField{group: "Account", label: "Email", value: account.Email})
+				report.account = append(report.account, sessionpresentation.StatusField{Group: "Account", Label: "Email", Value: account.Email})
 			}
 			if account.Plan != "" && account.Plan != "unknown" {
-				report.account = append(report.account, statusField{group: "Account", label: "Plan", value: account.Plan})
+				report.account = append(report.account, sessionpresentation.StatusField{Group: "Account", Label: "Plan", Value: account.Plan})
 			}
 			u.renderStatus(report, statusNotice("Loading usage limits…"))
 			return true, u.requestStatus("account/rateLimits/read", nil, report)
 		case "apiKey":
-			report.account = []statusField{{group: "Account", label: "Sign-in", value: "API key"}}
+			report.account = []sessionpresentation.StatusField{{Group: "Account", Label: "Sign-in", Value: "API key"}}
 		case "amazonBedrock":
-			report.account = []statusField{{group: "Account", label: "Sign-in", value: "Amazon Bedrock"}}
+			report.account = []sessionpresentation.StatusField{{Group: "Account", Label: "Sign-in", Value: "Amazon Bedrock"}}
 		}
 		u.renderStatus(report, report.tokens)
 		return true, nil
@@ -184,7 +184,7 @@ func (u *appServerUI) statusMessage(method string, m appserver.Message, report *
 	if err := json.Unmarshal(m.Result, &result); err != nil {
 		return fail("Usage limits response could not be read")
 	}
-	var rows []statusField
+	var rows []sessionpresentation.StatusField
 	if len(result.ByID) == 0 {
 		rows = result.Limits.rows("Usage")
 	} else {
@@ -193,7 +193,7 @@ func (u *appServerUI) statusMessage(method string, m appserver.Message, report *
 		}
 	}
 	rows = append(rows, result.Resets.rows()...)
-	rows = append(rows, statusField{group: "Account", label: "Usage details", value: "https://chatgpt.com/codex/settings/usage"})
+	rows = append(rows, sessionpresentation.StatusField{Group: "Account", Label: "Usage details", Value: "https://chatgpt.com/codex/settings/usage"})
 	u.renderStatus(report, rows)
 	return true, nil
 }
@@ -210,12 +210,12 @@ type appServerStatusResets struct {
 	} `json:"credits"`
 }
 
-func (resets *appServerStatusResets) rows() []statusField {
+func (resets *appServerStatusResets) rows() []sessionpresentation.StatusField {
 	if resets == nil || resets.Available == nil {
 		return nil
 	}
 	const group = "Usage limit resets"
-	rows := []statusField{{group: group, label: "Available", value: fmt.Sprint(*resets.Available)}}
+	rows := []sessionpresentation.StatusField{{Group: group, Label: "Available", Value: fmt.Sprint(*resets.Available)}}
 	for _, credit := range resets.Credits {
 		if credit.Status != "available" {
 			continue
@@ -228,7 +228,7 @@ func (resets *appServerStatusResets) rows() []statusField {
 		if credit.Expires != nil {
 			value = "Expires " + time.Unix(*credit.Expires, 0).Local().Format("Jan 2 15:04 UTC-07:00")
 		}
-		rows = append(rows, statusField{group: group, label: cmp.Or(title, "Reset"), value: value})
+		rows = append(rows, sessionpresentation.StatusField{Group: group, Label: cmp.Or(title, "Reset"), Value: value})
 	}
 	return rows
 }
@@ -248,8 +248,8 @@ type appServerStatusWindow struct {
 	Resets  *int64  `json:"resetsAt"`
 }
 
-func (limit appServerStatusLimit) rows(id string) []statusField {
-	var rows []statusField
+func (limit appServerStatusLimit) rows(id string) []sessionpresentation.StatusField {
+	var rows []sessionpresentation.StatusField
 	name := cmp.Or(limit.Name, id)
 	for i, window := range []*appServerStatusWindow{limit.Primary, limit.Secondary} {
 		if window == nil {
@@ -268,47 +268,35 @@ func (limit appServerStatusLimit) rows(id string) []statusField {
 			}
 		}
 		remaining := max(0, min(100, 100-window.Used))
-		row := statusField{group: "Usage", label: name + " " + label + " limit", value: fmt.Sprintf("%.0f%% left", remaining), remaining: new(remaining)}
+		row := sessionpresentation.StatusField{Group: "Usage", Label: name + " " + label + " limit", Value: fmt.Sprintf("%.0f%% left", remaining), Remaining: new(remaining)}
 		if window.Resets != nil {
-			row.detail = "resets " + time.Unix(*window.Resets, 0).Local().Format("Jan 2 15:04 UTC-07:00")
+			row.Detail = "resets " + time.Unix(*window.Resets, 0).Local().Format("Jan 2 15:04 UTC-07:00")
 		}
 		rows = append(rows, row)
 	}
 	if limit.Credits != nil {
 		if limit.Credits.Unlimited {
-			rows = append(rows, statusField{group: "Usage", label: name + " credits", value: "unlimited"})
+			rows = append(rows, sessionpresentation.StatusField{Group: "Usage", Label: name + " credits", Value: "unlimited"})
 		} else if limit.Credits.Balance != nil {
-			rows = append(rows, statusField{group: "Usage", label: name + " credits", value: *limit.Credits.Balance})
+			rows = append(rows, sessionpresentation.StatusField{Group: "Usage", Label: name + " credits", Value: *limit.Credits.Balance})
 		}
 	}
 	return rows
 }
 
-func (u *appServerUI) statusPanelKey(key string) bool {
-	p := u.statusPanel
-	if p == nil {
-		return false
+func (u *appServerUI) applyPanelAction(action sessionpresentation.PanelAction) {
+	if action.Kind == sessionpresentation.PanelNoAction {
+		return
 	}
-	if p.metrics != nil && u.sessionMetricsKey(key) {
-		return true
+	if err := u.sessionPresentation().AdmitPanel(action); err != nil {
+		u.setNotice(err.Error(), true)
+		return
 	}
-	switch key {
-	case "\x1b", "q", "\r", "\x03":
-		if u.shell != nil {
-			u.shell.selection = nil
-		}
+	switch action.Kind {
+	case sessionpresentation.PanelClose:
 		u.statusPanel = nil
-	case "\x1b[A":
-		p.top = max(0, p.top-1)
-	case "\x1b[B":
-		p.top++
-	case "\x1b[5~":
-		p.top = max(0, p.top-max(1, p.rows))
-	case "\x1b[6~":
-		p.top += max(1, p.rows)
-	case "\x1b[H", "\x1b[1~":
-		p.top = 0
+	case sessionpresentation.PanelRefresh:
+		u.refreshSessionMetrics(true)
 	}
 	u.dirty = true
-	return true
 }

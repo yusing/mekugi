@@ -75,7 +75,6 @@ type appServerUI struct {
 	names                  sessioncontrol.Names
 	titleGenerator         *sessionNaming
 	titleUpdates           <-chan sessionTitleUpdate
-	btw                    *sideDock
 	side                   *sessioncontrol.Side
 	notifications          *nativeNotifications
 	promptEditor           *prompt.Editor
@@ -84,8 +83,10 @@ type appServerUI struct {
 	approvalMode           bool // Codex's configured policy applies, not --yolo's.
 	guardHookCheck         approvalHookCheck
 	statusPanel            *appServerStatusReport
+	statusSequence         uint64
 	sessionCapture         *transportcapture.Recorder
 	resumePicker           *appServerResumePicker
+	resumeSequence         uint64
 	statusConfig           appServerStatusConfig
 	picker                 composerPicker
 	skillEnvironment       []string
@@ -346,7 +347,8 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 						u.refreshSessionMetrics(false)
 						u.startSkillHistory()
 						u.applyObservedActivity()
-						if err := u.fillResumePicker(); err != nil {
+						u.publishPresentation(u.now())
+						if err := u.applyResumeAction(u.mainView.Resume.PageDemand()); err != nil {
 							return err
 						}
 						u.flushStreamOutput()
@@ -381,7 +383,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 						}
 						notices := u.applyCriticalNotices()
 						u.settlePresentation()
-						if u.shell.animating(u.now()) || u.agents.RosterEasing {
+						if u.shell.liveDock.Tick(u.now()) || u.agents.RosterEasing {
 							u.dirty = true
 						}
 						w, h, err := term.GetSize(int(stdout.Fd()))
@@ -884,7 +886,13 @@ func (u *appServerUI) key(key string) (bool, error) {
 		return false, err
 	}
 	defer u.refreshPicker()
-	if u.statusPanelKey(key) {
+	if u.mainView.Panel.Open() {
+		action, clear := u.mainView.Panel.Key(key)
+		if clear && u.shell != nil {
+			u.shell.selection = nil
+		}
+		u.applyPanelAction(action)
+		u.dirty = true
 		return false, nil
 	}
 	if strings.HasPrefix(key, "\x1b") {
@@ -1121,11 +1129,15 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalsess
 	u.picker.rect = terminalsession.Rect{}
 	u.mainView.NoticeDetails, u.mainView.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
 	u.prompts.Rect = terminalsession.Rect{}
-	if !readOnly && u.statusPanel != nil {
-		return u.statusPanelFrame(width, height), terminalsession.Rect{}
+	if !readOnly && presentation.Panel != nil {
+		u.mainView.ContentPainted = false
+		u.mainView.ComposerRect = terminalsession.Rect{}
+		return u.mainView.Panel.Render(&u.view.Painter.Painter, width, height), terminalsession.Rect{}
 	}
-	if !readOnly && u.resumePicker != nil {
-		return u.resumePickerFrame(width, height), terminalsession.Rect{}
+	if !readOnly && presentation.Resume != nil {
+		u.mainView.ContentPainted = false
+		u.mainView.ComposerRect = terminalsession.Rect{}
+		return u.mainView.Resume.Render(&u.view.Painter.Painter, width, height, u.pickerSelection()), terminalsession.Rect{}
 	}
 	if u.pickerVisible() && u.picker.modal != "" {
 		return u.skillsModalFrame(width, height), terminalsession.Rect{}
@@ -1149,9 +1161,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalsess
 			in.Draft = presentation.PromptDraft.Draft
 		}
 	}
-	if b := u.btw; b != nil && presentation.Side != nil {
-		in.Side = &terminalsession.SideInput{View: *presentation.Side, Running: presentation.SideRunning, Scroll: b.scroll}
-	}
+
 	frame := u.mainView.Layout(in, &u.view.Painter, width, height, dock)
 	transcript.Conversation, transcript.FeedOnly, transcript.StatusLabel = true, true, textsanitize.Safe(terminalsession.StatusText(presentation.Status.State), false)
 	transcript.FeedRows = 0
@@ -1176,12 +1186,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalsess
 	}
 	transcript.FeedTop += frame.Feed.Y
 	u.prompts.Rect = frame.Questions
-	if b := u.btw; b != nil {
-		b.rect = frame.SideRect
-		if !readOnly && frame.Side.Rows != nil {
-			b.copyAnswer, b.rows, b.scroll = frame.Side.CopyAnswer, frame.Side.AnswerRows, frame.Side.Scroll
-		}
-	}
+
 	return frame.Rows, frame.Dock
 }
 

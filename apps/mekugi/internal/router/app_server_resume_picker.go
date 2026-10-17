@@ -2,22 +2,14 @@ package router
 
 import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	"github.com/yusing/mekugi/libraries/terminalui"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	json "encoding/json/v2"
-	"fmt"
 	"slices"
 	"strings"
 	"time"
-	"unicode/utf8"
 
-	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	"github.com/yusing/mekugi/libraries/diffrender"
-	"github.com/yusing/mekugi/libraries/pathdisplay"
-
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // Source: codex-rs/tui/src/resume_picker.rs:92,989:1000,2033:2088,3469:3490
@@ -26,41 +18,32 @@ import (
 const (
 	resumePickerList = "thread/list#picker" // Request label, distinct from --last and restore listings.
 	resumePickerPage = 25
-	resumePickerNear = 5    // Rows below the selection that trigger the next page.
 	resumePickerScan = 1000 // Sessions a search loads before it stops fetching.
 )
 
-type appServerResumeRow struct {
-	id, title, cwd, branch string
-	updated                int64
-}
-
 type appServerResumePicker struct {
+	id       uint64
 	startup  bool   // No session exists yet: Esc starts one, Ctrl-C quits.
 	cwd      string // Workspace filter; empty when unavailable.
 	all      bool
 	query    string
-	rows     []appServerResumeRow
+	rows     []sessionpresentation.ResumeRow
 	seen     map[string]bool
 	cursor   string
 	request  string // The in-flight page; any other response is stale.
 	loading  bool
 	problem  string
-	selected int // Index into the rows matching query.
-	top      int
-	viewport int // Row capacity at the last paint.
 	loadedAt time.Time
-	rowStart int
 }
 
-func (p *appServerResumePicker) matches() []appServerResumeRow {
+func (p *appServerResumePicker) matches() []sessionpresentation.ResumeRow {
 	query := strings.ToLower(strings.TrimSpace(p.query))
 	if query == "" {
 		return p.rows
 	}
-	var rows []appServerResumeRow
+	var rows []sessionpresentation.ResumeRow
 	for _, row := range p.rows {
-		for _, field := range []string{row.title, row.id, row.branch, row.cwd} {
+		for _, field := range []string{row.Title, row.ID, row.Branch, row.Workspace} {
 			if strings.Contains(strings.ToLower(field), query) {
 				rows = append(rows, row)
 				break
@@ -100,15 +83,16 @@ func (u *appServerUI) openResumePicker(startup bool) error {
 	}
 	u.cancelPickerScan()
 	u.picker.Open = false
-	u.resumePicker = &appServerResumePicker{startup: startup, cwd: cwd, all: cwd == ""}
+	u.resumeSequence++
+	u.resumePicker = &appServerResumePicker{id: u.resumeSequence, startup: startup, cwd: cwd, all: cwd == ""}
 	return u.loadResumePage(true)
 }
 
 func (u *appServerUI) loadResumePage(reset bool) error {
 	p := u.resumePicker
 	if reset {
-		p.rows, p.seen, p.cursor, p.selected, p.top = nil, make(map[string]bool), "", 0, 0
-		p.loadedAt = time.Now()
+		p.rows, p.seen, p.cursor = nil, make(map[string]bool), ""
+		p.loadedAt = u.now()
 	}
 	params := sessioncontrol.ResumableThreads(resumePickerPage)
 	if !p.all {
@@ -158,17 +142,18 @@ func (u *appServerUI) resumePickerResponse(m appserver.Message) error {
 			continue
 		}
 		p.seen[thread.ID] = true
-		row := appServerResumeRow{id: thread.ID, title: strings.TrimSpace(thread.Name), cwd: thread.Cwd, updated: thread.UpdatedAt}
-		if row.title == "" {
-			row.title = strings.TrimSpace(thread.Preview)
+		row := sessionpresentation.ResumeRow{ID: thread.ID, Title: strings.TrimSpace(thread.Name), Workspace: thread.Cwd, Updated: thread.UpdatedAt}
+		if row.Title == "" {
+			row.Title = strings.TrimSpace(thread.Preview)
 		}
 		if thread.GitInfo != nil {
-			row.branch = thread.GitInfo.Branch
+			row.Branch = thread.GitInfo.Branch
 		}
 		p.rows = append(p.rows, row)
 	}
 	p.cursor = result.NextCursor
-	return u.fillResumePicker()
+	u.publishPresentation(u.now())
+	return u.applyResumeAction(u.mainView.Resume.PageDemand())
 }
 
 // A failed page stops automatic paging, so the failure stays visible rather
@@ -176,23 +161,6 @@ func (u *appServerUI) resumePickerResponse(m appserver.Message) error {
 func (u *appServerUI) resumePickerFailed(problem string) {
 	p := u.resumePicker
 	p.request, p.loading, p.cursor, p.problem = "", false, "", problem
-}
-
-// fillResumePicker loads another page while the selection nears the end of
-// the matching rows, including a search that has not matched yet, or while
-// the painted viewport is not yet full.
-func (u *appServerUI) fillResumePicker() error {
-	p := u.resumePicker
-	if p == nil || p.loading || p.cursor == "" {
-		return nil
-	}
-	if p.query != "" && len(p.rows) >= resumePickerScan {
-		return nil
-	}
-	if len(p.matches()) > max(p.selected+resumePickerNear, p.viewport) {
-		return nil
-	}
-	return u.loadResumePage(false)
 }
 
 func (u *appServerUI) closeResumePicker() {
@@ -230,248 +198,62 @@ func (u *appServerUI) resumeSessionFailed(message string) error {
 	return u.replayResumePending()
 }
 
-// resumePickerKey handles every key while the picker is open.
-func (u *appServerUI) resumePickerKey(key string) error {
+func (u *appServerUI) resumeView() *sessionpresentation.ResumeView {
 	p := u.resumePicker
-	rows := p.matches()
-	move := func(to int) {
-		p.selected = max(0, min(len(rows)-1, to))
+	if p == nil {
+		return nil
 	}
-	switch key {
-	case "\x1b":
-		if p.query != "" {
-			p.query, p.selected, p.top = "", 0, 0
-			break
+	v := &sessionpresentation.ResumeView{ID: p.id, Workspace: p.cwd, Query: p.query, Problem: p.problem,
+		Startup: p.startup, All: p.all, Loading: p.loading, HasMore: p.cursor != "", Rows: p.matches(), Scanned: len(p.rows), LoadedAt: p.loadedAt}
+	v.CanPage = v.HasMore && !p.loading && (p.query == "" || len(p.rows) < resumePickerScan)
+	if len(p.rows) > 0 {
+		v.PageAfter = p.rows[len(p.rows)-1].ID
+	}
+	return v
+}
+func (u *appServerUI) applyResumeAction(action sessionpresentation.ResumeAction) error {
+	if action.Kind == sessionpresentation.ResumeNoAction {
+		return nil
+	}
+	defer u.settlePresentation()
+	if err := u.sessionPresentation().AdmitResume(action); err != nil {
+		u.setNotice(err.Error(), true)
+		return nil
+	}
+	p := u.resumePicker
+	switch action.Kind {
+	case sessionpresentation.ResumeSearch:
+		p.query = action.Query
+		u.publishPresentation(u.now())
+		return u.applyResumeAction(u.mainView.Resume.PageDemand())
+	case sessionpresentation.ResumeToggleWorkspace:
+		if p.cwd != "" {
+			p.all = !p.all
+			return u.loadResumePage(true)
 		}
+	case sessionpresentation.ResumePage:
+		return u.loadResumePage(false)
+	case sessionpresentation.ResumeChoose:
+		if !p.startup && u.sessionBusy() {
+			u.setNotice("/resume is disabled while a task is in progress", true)
+			return nil
+		}
+		u.closeResumePicker()
+		if p.startup {
+			u.startup.Thread = action.Thread
+			return u.openSession()
+		}
+		return u.resumeSession(action.Thread)
+	case sessionpresentation.ResumeDismiss:
 		u.closeResumePicker()
 		if p.startup {
 			u.startup.Thread = ""
 			return u.openSession()
 		}
-		return nil
-	case "\x03":
+	case sessionpresentation.ResumeCancel:
 		u.closeResumePicker()
 		if p.startup {
 			u.quitRequested = true
-		}
-		return nil
-	case "\x1b[A", "\x1bOA", "\x10":
-		move(p.selected - 1)
-	case "\x1b[B", "\x1bOB", "\x0e":
-		move(p.selected + 1)
-	case "\x1b[5~":
-		move(p.selected - max(1, p.viewport))
-	case "\x1b[6~":
-		move(p.selected + max(1, p.viewport))
-	case "\x1b[H", "\x1bOH":
-		move(0)
-	case "\x1b[F", "\x1bOF":
-		move(len(rows) - 1)
-	case "\t":
-		if p.cwd != "" {
-			p.all = !p.all
-			return u.loadResumePage(true)
-		}
-	case "\r":
-		if len(rows) == 0 {
-			break
-		}
-		id := rows[p.selected].id
-		u.closeResumePicker()
-		if p.startup {
-			u.startup.Thread = id
-			return u.openSession()
-		}
-		return u.resumeSession(id)
-	case "\x7f", "\b":
-		if p.query != "" {
-			_, n := utf8.DecodeLastRuneInString(p.query)
-			p.query, p.selected, p.top = p.query[:len(p.query)-n], 0, 0
-		}
-	default:
-		// Other control and escape sequences are not search text.
-		if key == "" || key[0] < 32 || key[0] == 0x7f {
-			return nil
-		}
-		p.query += key
-		p.selected, p.top = 0, 0
-	}
-	return u.fillResumePicker()
-}
-
-func resumePickerAge(now time.Time, updated int64) string {
-	if updated == 0 {
-		return "-"
-	}
-	d := now.Sub(time.Unix(updated, 0))
-	if d < time.Second {
-		return "now"
-	}
-	return activityui.FormatDuration(d) + " ago"
-}
-
-// The picker replaces Main, as the stock resume screen replaces the chat.
-// Column widths come from the visible rows only.
-func (u *appServerUI) resumePickerFrame(width, height int) []string {
-	p := u.resumePicker
-	u.mainView.ContentPainted = false
-	u.mainView.ComposerRect = terminalsession.Rect{}
-	frame := make([]string, height)
-	put := func(y int, text string) {
-		if y >= 0 && y < height {
-			frame[y] = ansi.Truncate(text, width, "…")
-		}
-	}
-	bold, dim, reset := "\x1b[1m", terminalui.Dim, terminalui.Reset
-	accent := "\x1b[38;2;104;174;245m"
-	if u.view.Painter.Theme == diffrender.LightTheme {
-		accent = "\x1b[38;2;25;94;164m"
-	}
-	option := func(label string, on bool) string {
-		if on {
-			return bold + accent + label + reset
-		}
-		return dim + label + reset
-	}
-	put(0, "  "+bold+"Resume a previous session"+reset)
-	filter := "  " + dim + "Filter:" + reset + " "
-	if p.cwd != "" {
-		filter += option("Cwd", !p.all) + " " + option("All", p.all)
-		if !p.all {
-			filter += dim + " · " + reset + pickerText(p.cwd)
-		}
-	} else {
-		filter += option("All", true)
-	}
-	put(1, filter)
-	search := "  " + dim + "Type to search" + reset
-	if p.query != "" {
-		search = "  Search: " + pickerText(p.query)
-	}
-	if p.problem != "" {
-		search = "  \x1b[38;2;239;117;117m" + pickerText(p.problem) + reset
-	}
-	put(2, search)
-	footer := "  " + bold + "enter" + reset + dim + " resume · " + reset + bold + "esc" + reset + dim
-	switch {
-	case p.query != "":
-		footer += " clear search"
-	case p.startup:
-		footer += " start new"
-	default:
-		footer += " close"
-	}
-	if p.cwd != "" {
-		footer += " · " + reset + bold + "tab" + reset + dim + " cwd/all"
-	}
-	footer += " · " + reset + bold + "ctrl+c" + reset + dim
-	if p.startup {
-		footer += " quit"
-	} else {
-		footer += " close"
-	}
-	footer += " · " + reset + bold + "↑/↓" + reset + dim + " browse" + reset
-	put(height-1, footer)
-
-	rows := p.matches()
-	first, last := 5, height-2 // Header row at 4; the row before the footer marks more.
-	if height < 8 {
-		first, last = min(3, height-1), height-1
-	}
-	p.viewport = max(1, last-first)
-	p.selected = max(0, min(p.selected, len(rows)-1))
-	p.top = max(0, min(p.top, p.selected, len(rows)-p.viewport))
-	if p.selected >= p.top+p.viewport {
-		p.top = p.selected - p.viewport + 1
-	}
-	p.rowStart = first
-	if len(rows) == 0 {
-		message := "No sessions yet"
-		switch {
-		case p.loading && p.query != "":
-			message = "Searching…"
-		case p.loading:
-			message = "Loading sessions…"
-		case p.query != "" && p.cursor != "":
-			message = fmt.Sprintf("Search scanned first %d sessions; more may exist", len(p.rows))
-		case p.query != "":
-			message = "No results for your search"
-		}
-		put(first, "  "+dim+message+reset)
-		return frame
-	}
-	visible := rows[p.top:min(len(rows), p.top+p.viewport)]
-	ageWidth, branchWidth, cwdWidth := len("Updated"), len("Branch"), len("Directory")
-	for _, row := range visible {
-		ageWidth = max(ageWidth, ansi.StringWidth(resumePickerAge(p.loadedAt, row.updated)))
-		branchWidth = max(branchWidth, ansi.StringWidth(pickerText(row.branch)))
-		cwdWidth = max(cwdWidth, ansi.StringWidth(pickerText(pathdisplay.ForWorkspace(p.cwd, row.cwd))))
-	}
-	branchWidth, cwdWidth = min(branchWidth, 24), min(cwdWidth, max(12, width/3))
-	showBranch := width >= 60
-	showCwd := p.all && width >= 90
-	pad := func(text string, n int) string {
-		text = ansi.Truncate(text, n, "…")
-		return text + strings.Repeat(" ", max(0, n-ansi.StringWidth(text)))
-	}
-	columns := func(age, branch, cwd, title string) string {
-		text := pad(age, ageWidth) + "  "
-		if showBranch {
-			text += pad(branch, branchWidth) + "  "
-		}
-		if showCwd {
-			text += pad(cwd, cwdWidth) + "  "
-		}
-		return text + title
-	}
-	if first > 3 {
-		header := columns("Updated", "Branch", "Directory", "Conversation")
-		if p.top > 0 {
-			header += "  ↑ more"
-		}
-		put(first-1, "  "+dim+header+reset)
-	}
-	for i, row := range visible {
-		index := p.top + i
-		title := pickerText(row.title)
-		if title == "" {
-			title = "(no message yet)"
-		}
-		if row.id == u.Thread {
-			title += dim + " · current" + reset
-		}
-		prefix := "  "
-		if index == p.selected {
-			prefix = "› "
-		}
-		text := prefix + columns(resumePickerAge(p.loadedAt, row.updated), pickerText(row.branch), pickerText(pathdisplay.ForWorkspace(p.cwd, row.cwd)), title)
-		text = ansi.Truncate(text, width, "…")
-		if index == p.selected {
-			text = u.pickerSelection() + ansi.Strip(text) + strings.Repeat(" ", max(0, width-ansi.StringWidth(text))) + reset
-		}
-		put(first+i, text)
-	}
-	switch {
-	case last == height-1: // The footer keeps its row in a short pane.
-	case p.loading:
-		put(last, "  "+dim+"↓ loading more"+reset)
-	case p.top+p.viewport < len(rows) || p.cursor != "" && p.query == "":
-		put(last, "  "+dim+"↓ more"+reset)
-	}
-	return frame
-}
-
-// resumePickerMouse scrolls with the wheel and selects a clicked row.
-func (u *appServerUI) resumePickerMouse(button, y int) error {
-	p := u.resumePicker
-	switch button {
-	case 64:
-		return u.resumePickerKey("\x1b[A")
-	case 65:
-		return u.resumePickerKey("\x1b[B")
-	case 0:
-		if row := p.top + y - p.rowStart; y >= p.rowStart && y-p.rowStart < p.viewport && row < len(p.matches()) {
-			p.selected = row
 		}
 	}
 	return nil

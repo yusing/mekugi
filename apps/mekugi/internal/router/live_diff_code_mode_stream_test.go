@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 
@@ -89,7 +90,7 @@ func TestLiveDiffCompletionOnlyShellDoesNotOpenNativeDock(t *testing.T) {
 			worker.Finish(input)
 			u := &terminalUI{}
 			preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview previewmodel.Preview) bool {
-				u.showPreview(preview, false)
+				u.liveDock.Observe(preview, false, time.Now())
 				if len(u.liveDock.Order) != 0 {
 					t.Fatal("completion-only worker manufactured a live dock")
 				}

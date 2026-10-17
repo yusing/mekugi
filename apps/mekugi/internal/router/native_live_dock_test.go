@@ -36,7 +36,7 @@ func TestNativeUIRunningChildRemovalReleasesDock(t *testing.T) {
 	}
 	broker.DiscardRunning(preview)
 	deliver()
-	if len(u.shell.liveDock.Order) != 0 || u.shell.animating(time.Now()) {
+	if len(u.shell.liveDock.Order) != 0 || u.shell.liveDock.Tick(time.Now()) {
 		t.Fatal("removed child retained a live card or animation loop")
 	}
 	screen := vt.NewEmulator(120, 40)

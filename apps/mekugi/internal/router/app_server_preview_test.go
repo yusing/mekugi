@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"encoding/json/jsontext"
 
+	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/libraries/legacycall"
 
@@ -118,7 +120,7 @@ func TestNativeUIPreview(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || p.ui.publishPresentation(p.ui.now()).Status.Animating || p.ui.agents.HasLiveStatus() || flashExpired || settled || noticeExpired || p.ui.shell.animating(now) {
+				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || p.ui.publishPresentation(p.ui.now()).Status.Animating || p.ui.agents.HasLiveStatus() || flashExpired || settled || noticeExpired || p.ui.shell.liveDock.Tick(now) {
 					if err := paint(); err != nil {
 						return err
 					}
@@ -398,7 +400,7 @@ func TestNativeUIPreviewSessionControlsRendered(t *testing.T) {
 	}
 	p.until("done")
 	p.serve()
-	p.ui.shell.animating(time.Now().Add(nativeDockMinimum + time.Second))
+	p.ui.shell.liveDock.Tick(time.Now().Add(previewview.CompletionHold + time.Second))
 	if p.ui.Turn != "" || p.ui.Compaction.AcknowledgementPending() || !strings.Contains(render(), "Context compacted") {
 		t.Fatal("queued compaction did not complete visibly")
 	}
@@ -1399,7 +1401,7 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 			u := p.ui
 			publishFixtureReview(t, u)
 			// Captured-edit links return with the transcript after the live batch settles.
-			u.shell.animating(time.Now().Add(nativeDockMinimum + time.Second))
+			u.shell.liveDock.Tick(time.Now().Add(previewview.CompletionHold + time.Second))
 			if len(u.shell.liveDock.Order) != 0 {
 				t.Fatal("completed live batch did not restore the transcript")
 			}

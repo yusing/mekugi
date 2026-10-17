@@ -145,7 +145,7 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			preview.Complete = true
 			u.preview(projectStockPatchPreview(t.Context(), workspace, preview), false)
 			revealNativeDock(u.shell)
-			u.shell.animating(time.Now().Add(time.Hour))
+			u.shell.liveDock.Tick(time.Now().Add(time.Hour))
 			appServerTestKeys(t, u, "/live\r")
 			if strings.Contains(paint(), "VISIBLE_EDIT") {
 				t.Fatal("expired edit revived")

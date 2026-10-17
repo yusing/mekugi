@@ -168,6 +168,13 @@ Loading, empty, no-match and failure states stay visible; failed paging waits fo
 a Tab restart. Enter selects; Escape first clears search. Startup Escape then
 starts a new thread and Ctrl-C exits; in-session dismissal keeps the current thread.
 
+The chooser publishes identified rows, query and workspace-filter state without
+terminal geometry. Search, selection, dismissal and page requests carry the
+originating session version and chooser identity. A selection names a thread,
+not a row index. The application owns list requests and bounded scanning; the
+terminal owns highlight, scrolling and viewport-driven page demand. Replacing
+the chooser or changing its query/filter resets terminal navigation.
+
 `/resume THREAD_ID` and picker selection obey session control's idle gate. The
 current thread is marked and selecting it only reports that it is already open.
 The old session stays live until host acceptance, buffering events and locally
@@ -284,6 +291,13 @@ are never auto-approved.
 
 ## Session status
 
+The session publishes an identified, detached panel with structured fields or a
+capture-owned metrics snapshot. Refresh and close intents name that panel and the
+originating session version. Late actions cannot affect a replacement panel.
+Application integration retains account-request correlation and refresh timing;
+terminal layout, scrolling, metrics tabs and retained-exchange selection stay with
+the terminal attachment.
+
 `/status` opens a temporary responsive, scrollable, selectable panel without model
 input, configuration changes or transcript entries. It shows known model, effort,
 effective tier, provider, directory, identity, approval/sandbox policy, instruction
@@ -316,7 +330,7 @@ deduplication estimates remain separate from provider evidence.
 
 Snapshots refresh once per second only while open, or immediately with `r`.
 `[`/`]` selects retained exchanges; newest follows, older selection stays fixed
-until reclaimed. Scope is the router invocation across all threads, never historical
+until reclaimed. Scope is the invocation across all threads, never historical
 launch metrics reconstructed by resume/replay. Unavailable capture and empty history
 have explicit states. Debug launch shows its actual artifact directory even without
 capture, using shared workspace-relative formatting; it stays invocation-local and

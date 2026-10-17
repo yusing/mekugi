@@ -136,8 +136,8 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 	rect.W = min(rect.W, pane.X+pane.W-rect.X)
 	rect.H = min(rect.H, pane.Y+pane.H-rect.Y)
 	questions, snippets := view.FeedQuestions, view.FeedSnippets
-	if u.main.btw != nil {
-		btw := u.main.btw.rect
+	if u.main.mainView.Side.Open() {
+		btw := u.main.mainView.Side.Rect
 		btw.X += pane.X
 		btw.Y += pane.Y
 		if btw.Contains(x, y) {
@@ -153,8 +153,8 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 			questions, snippets = nil, nil
 		}
 	}
-	if !u.main.composerReadOnly() && u.main.statusPanel != nil {
-		rect, mention = u.main.statusPanel.rect, "status"
+	if !u.main.composerReadOnly() && u.main.mainView.Panel.Open() {
+		rect, mention = u.main.mainView.Panel.Rect, "status"
 		rect.X += pane.X
 		rect.Y += pane.Y
 		questions, snippets = nil, nil
@@ -216,14 +216,14 @@ func (u *terminalUI) selectionDocument(s *terminalSelection) {
 			}
 		}
 	case "side answer":
-		b := u.main.btw
+		b := &u.main.mainView.Side
 		var lines []string
-		fixed := s.Rect.H - min(b.rows, len(b.copyAnswer))
+		fixed := s.Rect.H - min(b.Rows, len(b.CopyAnswer))
 		for y := s.Rect.Y; y < s.Rect.Y+fixed; y++ {
 			lines = append(lines, ansi.Cut(s.Rows[y], s.Rect.X, s.Rect.X+s.Rect.W))
 		}
-		lines = append(lines, b.copyAnswer...)
-		s.Document(lines, max(0, len(b.copyAnswer)-b.rows-b.scroll), fixed)
+		lines = append(lines, b.CopyAnswer...)
+		s.Document(lines, max(0, len(b.CopyAnswer)-b.Rows-b.Scroll), fixed)
 	}
 }
 

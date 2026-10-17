@@ -28,12 +28,11 @@ type terminalUI struct {
 	main          *appServerUI
 	width, height int
 	terminalsession.Shell
-	diffUnseen  bool // Saved changes arrived while Diff was closed.
-	liveDock    previewview.PreviewPane
-	livePending map[string]nativePendingPreview
-	liveHidden  bool // Presentation only, local to this frontend session.
-	prefix      bool
-	faint       bool // Output capability is local to this terminal, not request or global state.
+	diffUnseen bool // Saved changes arrived while Diff was closed.
+	liveDock   previewview.PreviewPane
+	liveHidden bool // Presentation only, local to this frontend session.
+	prefix     bool
+	faint      bool // Output capability is local to this terminal, not request or global state.
 }
 
 // Decode once before routing. In particular, mouse reports and bracketed paste
@@ -56,7 +55,7 @@ func (u *terminalUI) key(key byte) error {
 		if u.main == nil {
 			return nil
 		}
-		if u.output != nil || u.Focus != 0 || u.main.statusPanel != nil || u.main.resumePicker != nil || u.main.composerReadOnly() {
+		if u.output != nil || u.Focus != 0 || u.main.mainView.Panel.Open() || u.main.mainView.Resume.Open() || u.main.composerReadOnly() {
 			u.main.pasted = nil
 			return nil
 		}
@@ -229,18 +228,23 @@ func (u *terminalUI) send(s string) error {
 		}
 		return nil
 	}
-	if u.main != nil && u.Focus == 0 && u.main.statusPanel != nil {
+	if u.main != nil && u.Focus == 0 && u.main.mainView.Panel.Open() {
 		if u.selection != nil && !u.selection.Dragging() {
 			u.selection = nil
 			if s == "\x1b" {
 				return nil
 			}
 		}
-		u.main.statusPanelKey(s)
+		action, clear := u.main.mainView.Panel.Key(s)
+		if clear {
+			u.selection = nil
+		}
+		u.main.applyPanelAction(action)
+		u.main.dirty = true
 		return nil
 	}
-	if u.main != nil && u.Focus == 0 && u.main.resumePicker != nil {
-		return u.main.resumePickerKey(s)
+	if u.main != nil && u.Focus == 0 && u.main.mainView.Resume.Open() {
+		return u.main.applyResumeAction(u.main.mainView.Resume.Key(s))
 	}
 
 	if s == "\x1b" && u.main != nil && u.Focus == 0 {
@@ -262,9 +266,12 @@ func (u *terminalUI) send(s string) error {
 		if s == "\x1b" && u.selectionKey(s) {
 			return nil
 		}
-		if handled, err := u.main.btwKey(s); handled {
+		if handled, close := u.main.mainView.Side.Key(s); handled {
 			u.selection = nil
-			return err
+			if close != nil {
+				return u.main.applyCloseSide(*close)
+			}
+			return nil
 		}
 	}
 
@@ -355,7 +362,7 @@ func (u *terminalUI) mouse(s string) error {
 			}
 		}
 	}
-	if u.main != nil && !u.main.composerReadOnly() && u.main.statusPanel != nil && u.Layout.Main.Contains(x, y) {
+	if u.main != nil && !u.main.composerReadOnly() && u.main.mainView.Panel.Open() && u.Layout.Main.Contains(x, y) {
 		if u.selectionMouse(button, x, y, release) {
 			return nil
 		}
@@ -364,21 +371,25 @@ func (u *terminalUI) mouse(s string) error {
 			case 0:
 				u.Focus = 0
 			case 64:
-				u.main.statusPanelKey("\x1b[A")
+				action, _ := u.main.mainView.Panel.Key("\x1b[A")
+				u.main.applyPanelAction(action)
+				u.main.dirty = true
 			case 65:
-				u.main.statusPanelKey("\x1b[B")
+				action, _ := u.main.mainView.Panel.Key("\x1b[B")
+				u.main.applyPanelAction(action)
+				u.main.dirty = true
 			}
 		}
 		return nil
 	}
-	if u.main != nil && !u.main.composerReadOnly() && u.main.resumePicker != nil && u.Layout.Main.Contains(x, y) {
+	if u.main != nil && !u.main.composerReadOnly() && u.main.mainView.Resume.Open() && u.Layout.Main.Contains(x, y) {
 		if release {
 			return nil
 		}
 		if button&^28 == 0 {
 			u.Focus = 0
 		}
-		return u.main.resumePickerMouse(button&^28, y-u.Layout.Main.Y)
+		return u.main.applyResumeAction(u.main.mainView.Resume.Mouse(button&^28, y-u.Layout.Main.Y))
 	}
 	if u.main != nil && u.main.prompts.Rect.Contains(x-u.Layout.Main.X, y-u.Layout.Main.Y) {
 		if !release && button&^28 == 0 {
@@ -414,8 +425,8 @@ func (u *terminalUI) mouse(s string) error {
 	if u.selection == nil && !u.Dragging() && u.main != nil && u.main.composerNoticeMouse(button, x-u.Layout.Main.X, y-u.Layout.Main.Y, release) {
 		return nil
 	}
-	if u.main != nil && u.main.btw != nil && !release && button&64 != 0 {
-		r := u.main.btw.rect
+	if u.main != nil && u.main.mainView.Side.Open() && !release && button&64 != 0 {
+		r := u.main.mainView.Side.Rect
 		r.X += u.Layout.Main.X
 		r.Y += u.Layout.Main.Y
 		if r.Contains(x, y) {
@@ -423,7 +434,7 @@ func (u *terminalUI) mouse(s string) error {
 			if button&1 != 0 {
 				delta = -delta
 			}
-			u.main.btw.scroll = max(0, u.main.btw.scroll+delta)
+			u.main.mainView.Side.Scroll = max(0, u.main.mainView.Side.Scroll+delta)
 			return nil
 		}
 	}

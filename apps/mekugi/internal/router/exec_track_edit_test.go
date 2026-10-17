@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"context"
 
+	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
 
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
@@ -230,7 +232,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 				}
 				assertNativeUISnapshot(t, name, rows)
 			}
-			u.shell.animating(time.Now().Add(nativeDockMinimum + time.Second))
+			u.shell.liveDock.Tick(time.Now().Add(previewview.CompletionHold + time.Second))
 			if len(u.shell.liveDock.Order) != 0 || u.sessionPresentation().Status.Text != "Working" {
 				t.Fatal("edit completion retained the dock or completed the host lifecycle")
 			}
@@ -493,7 +495,7 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 							if !streamDone || !receiptDone {
 								continue
 							}
-							u.shell.animating(time.Now().Add(nativeDockMinimum + time.Millisecond))
+							u.shell.liveDock.Tick(time.Now().Add(previewview.CompletionHold + time.Millisecond))
 							screen := vt.NewEmulator(100, 30)
 							defer screen.Close()
 							if err := u.testPaint(screen, 100, 30); err != nil {

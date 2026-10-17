@@ -11,12 +11,12 @@ func TestPreviewRepeatedCompletionKeepsOriginalHold(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		pane := PreviewPane{}
 		preview := batchTestPreview("call", "/root", "source.go")
-		pane.Update(preview)
+		pane.Update(preview, time.Now())
 		batchTestRender(t, &pane, 16)
 		preview.Complete = true
-		pane.Update(preview)
+		pane.Update(preview, time.Now())
 		time.Sleep(time.Second)
-		pane.Update(preview)
+		pane.Update(preview, time.Now())
 		time.Sleep(600 * time.Millisecond)
 		if !pane.ExpireBatches(time.Now(), 1500*time.Millisecond) || len(batchTestRender(t, &pane, 16)) != 0 {
 			t.Fatal("replayed completion extended the original settling interval")

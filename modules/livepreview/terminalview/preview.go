@@ -39,10 +39,12 @@ const (
 // diff's selection, scroll, acknowledgements, or follow mode.
 // Updates replace snapshots; only a displayed frame parses and lays out rows.
 type PreviewPane struct {
-	Views   map[string]*PreviewView
-	Order   []string
-	Motion  PreviewMotion
-	batches map[string]*previewBatch
+	Views    map[string]*PreviewView
+	Order    []string
+	Motion   PreviewMotion
+	batches  map[string]*previewBatch
+	pending  map[string]pendingPreview
+	sequence uint64
 }
 
 // Motion is display-only. Without it, rows appear at their final colors.
@@ -74,7 +76,7 @@ type PreviewRow struct {
 	Text   string
 }
 
-func (p *PreviewPane) Update(preview previewmodel.Preview) {
+func (p *PreviewPane) Update(preview previewmodel.Preview, now time.Time) {
 	view := p.Views[preview.ID]
 	if preview.Workspace != "" && preview.Status == "" && preview.Input == "" && len(preview.Files) == 0 {
 		delete(p.Views, preview.ID)
@@ -84,7 +86,7 @@ func (p *PreviewPane) Update(preview previewmodel.Preview) {
 	if preview.Workspace == "" {
 		if view != nil && !view.Complete {
 			view.Complete = true
-			view.updated = time.Now()
+			view.updated = now
 		}
 		return
 	}
@@ -107,7 +109,7 @@ func (p *PreviewPane) Update(preview previewmodel.Preview) {
 	}
 	// Replayed completion may refresh content, but cannot restart its hold.
 	if !view.Complete || !preview.Complete {
-		view.updated = time.Now()
+		view.updated = now
 	}
 	view.Current, view.Complete = preview, preview.Complete
 	p.batch(preview.Caller)
@@ -312,9 +314,6 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme diffre
 		return nil, nil
 	}
 	now := motion.Now
-	if !motion.Enabled {
-		now = time.Now()
-	}
 	if err := p.prepare(now); err != nil {
 		return nil, err
 	}

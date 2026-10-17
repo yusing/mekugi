@@ -120,9 +120,6 @@ func (p *PreviewPane) RenderBatch(ctx context.Context, caller, workspace string,
 	}
 	lines := []string{ansi.Truncate(theme.Accent()+label+"\x1b[0m", width, "…")}
 	motion := p.Motion
-	if motion.Enabled {
-		motion.Now = time.Now()
-	}
 	for i, key := range b.order[start : start+slots] {
 		rows := (height - len(lines)) / (slots - i)
 		part, err := b.files[key].Render(ctx, workspace, theme, width, rows, motion)

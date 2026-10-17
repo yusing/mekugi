@@ -1,4 +1,4 @@
-package router
+package terminalsession
 
 import (
 	"cmp"
@@ -6,18 +6,16 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
+	"github.com/yusing/mekugi/libraries/textsanitize"
 )
 
 // A compact instrument panel: model settings, quota gauges, then account and
 // workspace details. The border and controls stay fixed while the body scrolls.
-func (u *appServerUI) statusPanelFrame(width, height int) []string {
-	p := u.statusPanel
-	u.mainView.ContentPainted = false
-	u.mainView.ComposerRect = terminalsession.Rect{}
-	p.rect = terminalsession.Rect{}
+// Source: apps/mekugi/internal/router/app_server_status_render.go@630ce384.
+func (p *StatusPanel) Render(painter *terminalui.Painter, width, height int) []string {
+	p.Rect = Rect{}
 	frame := make([]string, height)
 	if width < 1 || height < 1 {
 		return frame
@@ -26,7 +24,7 @@ func (u *appServerUI) statusPanelFrame(width, height int) []string {
 	const bold = "\x1b[1m"
 	const dim = "\x1b[2m"
 	accent, warning, danger := "\x1b[38;2;104;174;245m", "\x1b[38;2;230;181;94m", "\x1b[38;2;239;117;117m"
-	if u.view.Painter.Theme == diffrender.LightTheme {
+	if painter.Theme == diffrender.LightTheme {
 		accent, warning, danger = "\x1b[38;2;25;94;164m", "\x1b[38;2;134;86;16m", "\x1b[38;2;178;43;43m"
 	}
 	panelWidth := min(82, width)
@@ -40,24 +38,24 @@ func (u *appServerUI) statusPanelFrame(width, height int) []string {
 		contentWidth = max(1, panelWidth-2)
 	}
 	labelLimit, valueColumn := 14, 16
-	if p.metrics != nil {
+	if p.body.Metrics != nil {
 		labelLimit, valueColumn = 26, 28
 	}
 	type line struct{ label, text string }
 	var lines []line
 	appendText := func(text string) {
-		for _, part := range pickerWrap(text, contentWidth) {
+		for _, part := range panelWrap(text, contentWidth) {
 			lines = append(lines, line{text: part})
 		}
 	}
-	groups := p.groups
+	groups := p.Groups
 	if groups == nil {
 		groups = []string{"Model", "Usage", "Usage limit resets", "Account", "Session", "Permissions"}
 	}
 	for _, group := range groups {
 		started := false
-		for index, field := range p.fields {
-			if field.group != group {
+		for index, field := range p.Fields {
+			if field.Group != group {
 				continue
 			}
 			if !started {
@@ -69,12 +67,12 @@ func (u *appServerUI) statusPanelFrame(width, height int) []string {
 				appendText(title + "  " + dim + strings.Repeat("─", rule) + reset)
 				started = true
 			}
-			label, value, detail := pickerText(field.label), pickerText(field.value), pickerText(field.detail)
-			if field.path {
+			label, value, detail := panelText(field.Label), panelText(field.Value), panelText(field.Detail)
+			if field.Path {
 				value = terminalui.StyledPath(value)
 			}
-			if field.remaining != nil {
-				percent := max(0, min(100, *field.remaining))
+			if field.Remaining != nil {
+				percent := max(0, min(100, *field.Remaining))
 				color := accent
 				if percent <= 10 {
 					color = danger
@@ -96,7 +94,7 @@ func (u *appServerUI) statusPanelFrame(width, height int) []string {
 				continue
 			}
 			style := ""
-			if field.alert {
+			if field.Alert {
 				style = danger
 			} else if label == "" {
 				style = dim
@@ -104,7 +102,7 @@ func (u *appServerUI) statusPanelFrame(width, height int) []string {
 				style = bold + accent
 			}
 			wrapValue := func(width int) []string {
-				return u.view.Painter.CopyWrapped(pickerWrap(value, width), terminalui.CopyFragment{ID: uint64(index + 1), Text: ansi.Strip(value)}, 0)
+				return painter.CopyWrapped(panelWrap(value, width), terminalui.CopyFragment{ID: uint64(index + 1), Text: ansi.Strip(value)}, 0)
 			}
 			// Reserve a bounded label column for wrapping. Actual alignment is measured
 			// below from visible rows only, so off-screen labels cannot widen it.
@@ -135,8 +133,8 @@ func (u *appServerUI) statusPanelFrame(width, height int) []string {
 		chrome = 4
 	}
 	panelHeight := min(height, len(lines)+chrome)
-	p.rows = max(0, panelHeight-chrome)
-	p.top = min(p.top, max(0, len(lines)-max(1, p.rows)))
+	p.Rows = max(0, panelHeight-chrome)
+	p.Top = min(p.Top, max(0, len(lines)-max(1, p.Rows)))
 	y := (height - panelHeight) / 2
 	put := func(row int, text string) {
 		if row >= 0 && row < height {
@@ -148,7 +146,7 @@ func (u *appServerUI) statusPanelFrame(width, height int) []string {
 		return text + strings.Repeat(" ", max(0, n-ansi.StringWidth(text)))
 	}
 	if boxed {
-		title := ansi.Truncate(" "+cmp.Or(p.title, "Session status")+" ", panelWidth-2, "")
+		title := ansi.Truncate(" "+cmp.Or(p.Title, "Session status")+" ", panelWidth-2, "")
 		closeHint := " Esc close "
 		if panelWidth < 36 {
 			closeHint = ""
@@ -156,17 +154,17 @@ func (u *appServerUI) statusPanelFrame(width, height int) []string {
 		put(y, dim+"╭"+reset+bold+accent+title+reset+dim+strings.Repeat("─", max(0, panelWidth-2-ansi.StringWidth(title+closeHint)))+reset+closeHint+dim+"╮"+reset)
 		put(y+1, dim+"│"+reset+strings.Repeat(" ", panelWidth-2)+dim+"│"+reset)
 	} else {
-		put(y, bold+accent+cmp.Or(p.title, "Status")+reset)
+		put(y, bold+accent+cmp.Or(p.Title, "Status")+reset)
 	}
 	start := y + 1
 	if boxed {
 		start++
 	}
-	p.rect = terminalsession.Rect{x + 1, start, contentWidth, p.rows}
+	p.Rect = Rect{x + 1, start, contentWidth, p.Rows}
 	if boxed {
-		p.rect.X = x + 3
+		p.Rect.X = x + 3
 	}
-	visible := lines[p.top:min(len(lines), p.top+p.rows)]
+	visible := lines[p.Top:min(len(lines), p.Top+p.Rows)]
 	labelWidth := 0
 	for _, row := range visible {
 		labelWidth = max(labelWidth, ansi.StringWidth(row.label))
@@ -196,8 +194,8 @@ func (u *appServerUI) statusPanelFrame(width, height int) []string {
 	if panelWidth < 40 {
 		controls = "↑↓ scroll  Esc close"
 	}
-	if p.controls != "" {
-		controls = p.controls
+	if p.Controls != "" {
+		controls = p.Controls
 		if panelWidth < 54 {
 			controls = "←→ views  ↑↓ scroll  Esc"
 		}
@@ -205,8 +203,8 @@ func (u *appServerUI) statusPanelFrame(width, height int) []string {
 			controls = "←→  ↑↓  Esc"
 		}
 	}
-	if len(lines) > p.rows && panelWidth >= 54 {
-		controls += fmt.Sprintf("  %d–%d / %d", p.top+1, p.top+len(visible), len(lines))
+	if len(lines) > p.Rows && panelWidth >= 54 {
+		controls += fmt.Sprintf("  %d–%d / %d", p.Top+1, p.Top+len(visible), len(lines))
 	}
 	if boxed {
 		put(y+panelHeight-2, dim+"│"+reset+strings.Repeat(" ", panelWidth-2)+dim+"│"+reset)
@@ -217,4 +215,11 @@ func (u *appServerUI) statusPanelFrame(width, height int) []string {
 		put(y+panelHeight-1, dim+"Esc close"+reset)
 	}
 	return frame
+}
+
+func panelWrap(text string, width int) []string {
+	return strings.Split(ansi.Wrap(text, max(1, width), ""), "\n")
+}
+func panelText(text string) string {
+	return strings.ReplaceAll(textsanitize.Safe(text, false), "\n", " ")
 }

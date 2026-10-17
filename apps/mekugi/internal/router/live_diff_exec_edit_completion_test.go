@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
 
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
@@ -81,7 +83,7 @@ func TestNativeUIExecEditCompletionRetainsWorkingStatusAndClearsDock(t *testing.
 	if !strings.Contains(screen.String(), "LIVE ·") {
 		t.Fatal("completed edit was not rendered during its minimum display time")
 	}
-	u.shell.animating(time.Now().Add(nativeDockMinimum + time.Millisecond))
+	u.shell.liveDock.Tick(time.Now().Add(previewview.CompletionHold + time.Millisecond))
 	if len(u.shell.liveDock.Order) != 0 || u.sessionPresentation().Status.Text != "Working" {
 		t.Fatal("completed dock did not clear independently of process Working status")
 	}

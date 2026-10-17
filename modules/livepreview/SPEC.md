@@ -132,6 +132,10 @@ the card never closes a host observation window or its report subscription.
 
 The [terminal session contract](../../apps/mekugi/internal/terminalsession/SPEC.md#live-changes)
 defines live-view controls, pane precedence, geometry, scrolling and settling.
+The feature's terminal view owns reveal admission, pending bursts, per-call
+settling and resynchronization pruning. Observation and frame time come from the
+attached presentation clock, including replay; rendering does not consult a
+second wall clock. Calls admitted at the same instant retain observation order.
 
 ## Lifecycle and failure
 

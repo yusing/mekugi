@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -55,7 +57,7 @@ func TestNativePreviewMailboxKeepsNewestFile(t *testing.T) {
 	older.Complete, older.Evaluated = true, true
 	broker.Update(older, false)
 	drain(u)
-	u.shell.liveDock.ExpireBatches(time.Now().Add(2*time.Second), nativeDockMinimum)
+	u.shell.liveDock.ExpireBatches(time.Now().Add(2*time.Second), previewview.CompletionHold)
 	if u.shell.liveDock.Views[older.ID] != nil {
 		t.Fatal("completed source did not retire")
 	}
@@ -80,7 +82,7 @@ func TestNativePreviewMailboxKeepsNewestFile(t *testing.T) {
 	resyncLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{}})
 	sub = testReview(broker).Subscribe()
 	drain(restored)
-	if len(restored.shell.liveDock.Order) != 0 || len(restored.shell.livePending) != 0 {
+	if len(restored.shell.liveDock.Order) != 0 || restored.shell.liveDock.Tick(restored.now().Add(previewview.RevealDelay)) {
 		t.Fatal("resynchronization retained previews outside its scope")
 	}
 }

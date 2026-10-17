@@ -12,13 +12,15 @@ import (
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/conversation/composer"
-	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
 )
 
-// Main retains only renderer geometry and caret navigation. It owns no editor,
+// Main retains renderer geometry, overlay navigation and caret navigation. It owns no editor,
 // transcript, backend handles, or prompt records.
 type Main struct {
+	Side                                                   SideDock
+	Resume                                                 ResumePicker
+	Panel                                                  StatusPanel
 	ComposerRect, PromptRect, NoticeDetails, NoticeDismiss Rect
 	ComposerWidth                                          int
 	ContentPainted                                         bool
@@ -36,29 +38,11 @@ type MainInput struct {
 	Selection                                                    string
 	QuestionLayout                                               *conversationui.QuestionLayout
 	ApprovalLayout                                               *conversationui.ApprovalLayout
-	Side                                                         *SideInput
 }
 
 type MainFrame struct {
-	Rows                            []string
-	Feed, Dock, Questions, SideRect Rect
-	Side                            conversationui.SideFrame
-}
-
-type SideInput struct {
-	View    conversationmodel.SideView
-	Running bool
-	Scroll  int
-}
-
-// Source: apps/mekugi/internal/router/app_server_btw.go:349:362@[ce8700a8].
-func RenderSide(in SideInput, painter *activityui.Painter, now time.Time, width, height int) conversationui.SideFrame {
-	status := textsanitize.Safe(in.View.Status, false)
-	if in.Running && in.View.Status == "Answering" && !in.View.Alert && !in.View.Started.IsZero() {
-		elapsed := max(time.Duration(0), now.Sub(in.View.Started))
-		status = activityui.ReasoningShimmer("Answering", elapsed, painter.Colors) + terminalui.Dim + " · " + activityui.FormatDuration(elapsed) + terminalui.Reset
-	}
-	return conversationui.Side(in.View, &painter.Painter, status, width, height, in.Scroll)
+	Rows                  []string
+	Feed, Dock, Questions Rect
 }
 
 // Layout paints Main around an unfilled transcript window. The caller supplies
@@ -66,6 +50,8 @@ func RenderSide(in SideInput, painter *activityui.Painter, now time.Time, width,
 // Source: apps/mekugi/internal/router/app_server_ui.go:1241:1455@[ce8700a8].
 func (m *Main) Layout(in MainInput, painter *activityui.Painter, width, height, dock int) (out MainFrame) {
 	presentation, readOnly := in.Session, in.ReadOnly
+	var sideRect Rect
+	defer func() { m.Side.Rect = sideRect }()
 	width, height = max(1, width), max(1, height)
 	m.NoticeDetails, m.NoticeDismiss = Rect{}, Rect{}
 	boxed := width >= 12 && height >= 3
@@ -104,8 +90,8 @@ func (m *Main) Layout(in MainInput, painter *activityui.Painter, width, height, 
 			m.PromptRect.Y++
 			m.NoticeDetails.Y++
 			m.NoticeDismiss.Y++
-			if out.SideRect.H > 0 {
-				out.SideRect.Y++
+			if sideRect.H > 0 {
+				sideRect.Y++
 			}
 			out.Feed.Y++
 		}()
@@ -133,9 +119,9 @@ func (m *Main) Layout(in MainInput, painter *activityui.Painter, width, height, 
 		dock = 0
 		room -= len(questionRows)
 	}
-	if !readOnly && in.Side != nil {
-		out.Side = RenderSide(*in.Side, painter, in.Now, width, max(0, min(height/2, room)))
-		btwRows = out.Side.Rows
+	if !readOnly && m.Side.Open() {
+		side := m.Side.Render(painter, in.Now, width, max(0, min(height/2, room)))
+		btwRows = side.Rows
 	}
 	if len(btwRows) > 0 {
 		dock = 0
@@ -164,8 +150,8 @@ func (m *Main) Layout(in MainInput, painter *activityui.Painter, width, height, 
 	dockAt := len(frame)
 	frame = append(frame, make([]string, dock)...)
 	frame = append(frame, pending...)
-	if in.Side != nil {
-		out.SideRect = Rect{2, len(frame) + 1, max(0, width-2), max(0, len(btwRows)-2)}
+	if m.Side.Open() {
+		sideRect = Rect{2, len(frame) + 1, max(0, width-2), max(0, len(btwRows)-2)}
 	}
 	frame = append(frame, btwRows...)
 	out.Questions = Rect{0, len(frame), width, len(questionRows)}

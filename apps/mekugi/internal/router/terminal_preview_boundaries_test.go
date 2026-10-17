@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
@@ -27,7 +28,7 @@ func TestLiveDiffPreviewBoundaryExpectations(t *testing.T) {
 	baselineProject := previewProjector(baselineContext, applyPatchToolName)
 	previous, _ := baselineProject("*** Begin Patch\n*** Add File: previous.txt\n+PREVIOUS DIFF\n*** End Patch\n", workspace, true)
 	previous.ID, previous.Workspace, previous.Thread, previous.Complete = "baseline", workspace, "root", true
-	pane.Update(previous)
+	pane.Update(previous, time.Now())
 	for index, fixture := range previewBoundaryCases() {
 		previewContext := t.Context()
 		previewProject := previewProjector(previewContext, fixture.Kind)
@@ -45,7 +46,7 @@ func TestLiveDiffPreviewBoundaryExpectations(t *testing.T) {
 			broker.Update(preview, false)
 			for _, event := range testReview(broker).TakePreviews(sub) {
 				if event.Preview != nil {
-					pane.Update(*event.Preview)
+					pane.Update(*event.Preview, time.Now())
 				}
 			}
 			lines, err := pane.RenderBatch(t.Context(), "", workspace, diffrender.DarkTheme, 110, 24, 15)
@@ -72,6 +73,6 @@ func TestLiveDiffPreviewBoundaryExpectations(t *testing.T) {
 		}
 		previous, _ = previewProject(fixture.Final, workspace, true)
 		previous.ID, previous.Workspace, previous.Thread, previous.Complete = fmt.Sprint(index), workspace, "root", true
-		pane.Update(previous)
+		pane.Update(previous, time.Now())
 	}
 }

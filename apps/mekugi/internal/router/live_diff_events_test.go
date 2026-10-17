@@ -214,7 +214,7 @@ func TestUISnapshotLiveDiffRequiresHunk(t *testing.T) {
 		}
 		for _, event := range testReview(broker).TakePreviews(sub) {
 			if event.Preview != nil {
-				pane.Update(*event.Preview)
+				pane.Update(*event.Preview, time.Now())
 			}
 		}
 	}
@@ -229,7 +229,7 @@ func TestUISnapshotLiveDiffRequiresHunk(t *testing.T) {
 		t.Fatalf("mixed admission lost a valid hunk or changed evidence: %+v", shown)
 	}
 	for _, event := range testReview(broker).TakePreviews(sub) {
-		pane.Update(*event.Preview)
+		pane.Update(*event.Preview, time.Now())
 	}
 	rows, err := pane.RenderBatch(t.Context(), "", workspace, diffrender.DarkTheme, 60, 16, 15)
 	if err != nil {
@@ -281,7 +281,7 @@ func TestLiveDiffBoundedPreviewOmitsDeletedFiles(t *testing.T) {
 			t.Fatal("original deletion evidence changed")
 		}
 		var pane previewview.PreviewPane
-		pane.Update(bounded)
+		pane.Update(bounded, time.Now())
 		rows, err := pane.RenderBatch(t.Context(), "/root", "/workspace", diffrender.DarkTheme, 72, 31, 15)
 		if err != nil {
 			t.Fatal(err)

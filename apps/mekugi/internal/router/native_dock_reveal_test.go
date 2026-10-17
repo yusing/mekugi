@@ -6,6 +6,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
@@ -15,12 +17,14 @@ import (
 
 // Existing layout fixtures exercise an established stream, after admission.
 func revealNativeDock(u *terminalUI) {
-	u.animating(time.Now().Add(nativeDockReveal))
+	u.liveDock.Tick(u.main.now().Add(previewview.RevealDelay))
 }
 
 func TestUISnapshotNativeDockReveal(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		u := nativeBatchFixture(t)
+		now := u.now()
+		u.clock = func() time.Time { return now }
 		screen := vt.NewEmulator(100, 28)
 		defer screen.Close()
 		paint := func(name string) {
@@ -32,25 +36,25 @@ func TestUISnapshotNativeDockReveal(t *testing.T) {
 		}
 		p := nativeBatchPreview("small", "/root", "small")
 		u.preview(p, false)
-		time.Sleep(nativeDockReveal - time.Millisecond)
-		u.shell.animating(time.Now())
+		now = now.Add(previewview.RevealDelay - time.Millisecond)
+		u.shell.liveDock.Tick(now)
 		paint("native-dock-before-reveal")
 		p.Complete = true
 		u.preview(p, false)
-		time.Sleep(nativeDockReveal)
-		if u.shell.animating(time.Now()) || len(u.shell.liveDock.Order) != 0 {
+		now = now.Add(previewview.RevealDelay)
+		if u.shell.liveDock.Tick(now) || len(u.shell.liveDock.Order) != 0 {
 			t.Fatal("short edit opened a dock after completion")
 		}
 		paint("native-dock-short-completed")
 		p.ID, p.Complete = "stream", false
 		u.preview(p, false)
-		time.Sleep(nativeDockReveal)
-		u.shell.animating(time.Now())
+		now = now.Add(previewview.RevealDelay)
+		u.shell.liveDock.Tick(now)
 		paint("native-dock-stream-revealed")
 		p.Complete = true
 		u.preview(p, false)
-		time.Sleep(nativeDockMinimum)
-		u.shell.animating(time.Now())
+		now = now.Add(previewview.CompletionHold)
+		u.shell.liveDock.Tick(now)
 		paint("native-dock-stream-settled")
 	})
 }
@@ -76,7 +80,7 @@ func TestNativeDockPendingLifecycle(t *testing.T) {
 				u.applyReview(t.Context(), sessionreview.Event{Kind: "coverage", Status: "RECONNECTING: test"})
 			}
 			revealNativeDock(u.shell)
-			if u.shell.liveDock.Views[p.ID] != nil || len(u.shell.livePending) != 0 {
+			if u.shell.liveDock.Views[p.ID] != nil {
 				t.Fatal("retired pending preview reappeared")
 			}
 			if finish != "reconnect" && u.shell.liveDock.Views[child.ID] == nil {

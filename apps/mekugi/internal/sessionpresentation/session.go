@@ -32,6 +32,7 @@ type Version struct {
 }
 
 type View struct {
+	Resume      *ResumeView
 	Version     Version
 	Main        Thread
 	Displayed   Thread
@@ -50,6 +51,7 @@ type View struct {
 	Interrupt   sessioncontrol.InterruptTarget
 	Side        *conversationmodel.SideView
 	SideRunning bool
+	Panel       *PanelView
 }
 
 type DisplayIntent struct {
@@ -118,6 +120,26 @@ func (m *Model) View() View {
 // cloneView keeps both retained publications and subsequent readers isolated
 // from mutable values supplied by another owner or a previous consumer.
 func cloneView(v View) View {
+	if v.Resume != nil {
+		resume := *v.Resume
+		resume.Rows = slices.Clone(resume.Rows)
+		v.Resume = &resume
+	}
+	if v.Panel != nil {
+		panel := *v.Panel
+		panel.Fields = slices.Clone(panel.Fields)
+		for i := range panel.Fields {
+			if value := panel.Fields[i].Remaining; value != nil {
+				panel.Fields[i].Remaining = new(*value)
+			}
+		}
+		if panel.Metrics != nil {
+			metrics := panel.Metrics.Clone()
+			panel.Metrics = &metrics
+		}
+		v.Panel = &panel
+	}
+
 	if v.Side != nil {
 		side := *v.Side
 		side.Answer = slices.Clone(side.Answer)

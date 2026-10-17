@@ -1,11 +1,5 @@
 package router
 
-import (
-	"slices"
-
-	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
-)
-
 // Native turn completion retires display state even when interrupted tools
 // never return. It neither finalizes capture nor stops a host-owned process.
 func (u *appServerUI) endTurnPreviews(thread, turn string) {
@@ -15,16 +9,6 @@ func (u *appServerUI) endTurnPreviews(thread, turn string) {
 		live.FinishTurn(u.cwd, thread, turn)
 	}
 	if u.shell != nil {
-		for id, pending := range u.shell.livePending {
-			if pending.preview.Thread == thread && pending.preview.Turn == turn {
-				delete(u.shell.livePending, id)
-			}
-		}
-		for _, id := range slices.Clone(u.shell.liveDock.Order) {
-			view := u.shell.liveDock.Views[id]
-			if view != nil && view.Current.Thread == thread && view.Current.Turn == turn {
-				u.preview(previewmodel.Preview{ID: id, Workspace: view.Current.Workspace, Thread: thread, Turn: turn}, false)
-			}
-		}
+		u.shell.liveDock.EndTurn(thread, turn, u.now())
 	}
 }

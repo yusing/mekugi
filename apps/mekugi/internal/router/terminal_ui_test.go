@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
@@ -27,10 +29,10 @@ func TestTerminalUIBatchKeepsSettlingTime(t *testing.T) {
 	u.preview(p, false)
 	revealNativeDock(u.shell)
 	now := time.Now()
-	if !u.shell.animating(now) || len(u.shell.liveDock.Order) != 1 {
+	if !u.shell.liveDock.Tick(now) || len(u.shell.liveDock.Order) != 1 {
 		t.Fatal("completed batch did not wait for another edit")
 	}
-	u.shell.animating(now.Add(nativeDockMinimum + time.Millisecond))
+	u.shell.liveDock.Tick(now.Add(previewview.CompletionHold + time.Millisecond))
 	if len(u.shell.liveDock.Order) != 0 {
 		t.Fatal("settled batch did not close")
 	}
@@ -149,12 +151,12 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 					preview.Complete = true
 					u.preview(preview, false)
 					now := time.Now()
-					u.shell.animating(now.Add(nativeDockMinimum - time.Millisecond))
+					u.shell.liveDock.Tick(now.Add(previewview.CompletionHold - time.Millisecond))
 					paint()
 					if len(u.shell.liveDock.Order) != 1 || strings.Contains(screen.String(), "LIVE ·") != (caller == "/root") {
 						t.Fatal("retained Live batch did not respect the owning pane")
 					}
-					u.shell.animating(now.Add(nativeDockMinimum))
+					u.shell.liveDock.Tick(now.Add(previewview.CompletionHold))
 					assertCollapsed()
 					preview.Complete = false
 					u.preview(preview, false)

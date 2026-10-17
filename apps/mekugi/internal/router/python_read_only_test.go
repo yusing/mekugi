@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 	"github.com/yusing/mekugi/modules/livepreview/projection"
@@ -26,7 +27,7 @@ func TestUISnapshotPythonReadOnlyScriptSource(t *testing.T) {
 		t.Fatalf("script source preview: %+v %t %v", files, recognized, err)
 	}
 	var pane previewview.PreviewPane
-	pane.Update(previewmodel.Preview{ID: "read-only", Workspace: directory, Caller: "/root", Status: previewmodel.PreviewEdit, Files: files})
+	pane.Update(previewmodel.Preview{ID: "read-only", Workspace: directory, Caller: "/root", Status: previewmodel.PreviewEdit, Files: files}, time.Now())
 	rows, err := pane.RenderBatch(t.Context(), "/root", directory, diffrender.DarkTheme, 80, 16, 15)
 	if err != nil {
 		t.Fatal(err)
