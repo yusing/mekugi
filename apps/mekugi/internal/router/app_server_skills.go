@@ -24,21 +24,21 @@ import (
 func (u *appServerUI) closeSkillsModal() {
 	p := &u.picker
 	p.toggleOwnsManager = false
-	if p.modal == "manage" {
+	if p.Kind == "manage" {
 		enabled, disabled := p.SkillChanges()
 		if enabled+disabled > 0 {
 			u.setNotice(fmt.Sprintf("%d skills enabled, %d skills disabled", enabled, disabled), false)
 		}
 		p.SkillsLoaded = false // Codex reloads the catalog after leaving management.
 	}
-	p.modal, p.Open, p.Query, p.Initial = "", false, "", nil
+	p.Kind, p.Open, p.Query, p.Initial = "", false, "", nil
 	p.Dismissed = u.completionTarget()
 }
 
 func (u *appServerUI) chooseSkillsAction(choice completion.Choice) {
 	p := &u.picker
 	if choice.Name == "list" {
-		p.modal, p.Open = "", false
+		p.Kind, p.Open = "", false
 		p.Dismissed = completion.Target{}
 		u.insertDraft("$")
 	} else {
@@ -64,12 +64,12 @@ func (u *appServerUI) toggleSkill(choice completion.Choice) {
 		return
 	}
 	p.toggleID, p.togglePath, p.toggleCwd = id, choice.Path, u.cwd
-	p.toggleOwnsManager, p.Problem = p.modal == "manage", ""
+	p.toggleOwnsManager, p.Problem = p.Kind == "manage", ""
 }
 
 func (u *appServerUI) skillSaveOwnsManager() bool {
 	p := &u.picker
-	return p.toggleOwnsManager && p.modal == "manage" && p.toggleCwd == u.cwd
+	return p.toggleOwnsManager && p.Kind == "manage" && p.toggleCwd == u.cwd
 }
 
 func (u *appServerUI) skillToggleResponse(m appserver.Message) {
@@ -103,7 +103,7 @@ func (u *appServerUI) skillToggleResponse(m appserver.Message) {
 	if !updated || cwd != u.cwd {
 		return
 	}
-	if p.modal == "manage" {
+	if p.Kind == "manage" {
 		p.FilterSkills(p.Query, true)
 	} else if p.Open && p.Target.Kind == '$' {
 		p.FilterSkills(p.Target.Query, false)

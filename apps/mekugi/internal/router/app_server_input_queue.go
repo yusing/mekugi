@@ -34,6 +34,7 @@ func (u *appServerUI) bindConversation() {
 	if u.Editor != &u.prompts.Secret {
 		u.Editor = &m.Editor
 	}
+	u.picker.State, u.picker.MenuState = &m.Completion, u.sessionPresentation().Menu()
 	u.promptEditor = &m.PromptEditor
 	u.questions.Questions, u.approvals.Approvals = &m.Questions, &m.Approvals
 }

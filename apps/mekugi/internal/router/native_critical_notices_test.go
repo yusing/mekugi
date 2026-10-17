@@ -225,6 +225,7 @@ func TestNativeCriticalNoticeComposerVisibility(t *testing.T) {
 				t.Fatal("hidden or replaced notice was acknowledged")
 			}
 			u.statusPanel = nil
+			u.sessionPresentation().ClosePanel()
 			retry := u.applyCriticalNotices()
 			if retry == nil || u.feedback.Text != claimedText {
 				t.Fatal("hidden batch could not retry")

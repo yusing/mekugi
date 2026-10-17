@@ -200,9 +200,9 @@ func TestAppServerStatusPanelCloseScrollAndLateResponse(t *testing.T) {
 			u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Existing transcript"}}})
 			shell := &terminalUI{main: u, Attachment: &terminalsession.Attachment{Shell: terminalsession.Shell{Layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 60, 12}}}}}
 			appServerTestKeys(t, u, "/status\r")
-			u.statusPanel.body = nil
+			u.statusPanel.Body = nil
 			for range 40 {
-				u.statusPanel.body = append(u.statusPanel.body, sessionpresentation.StatusField{Group: "Session", Value: "long status row"})
+				u.statusPanel.Body = append(u.statusPanel.Body, sessionpresentation.StatusField{Group: "Session", Value: "long status row"})
 			}
 			u.renderStatus(u.statusPanel, statusNotice("Loading account…"))
 			for _, width := range []int{1, 12, 60} {
@@ -275,7 +275,7 @@ func TestAppServerStatusTerminalPasteCanClose(t *testing.T) {
 
 func statusReportText(p *appServerStatusReport) string {
 	var rows []string
-	for _, f := range p.fields {
+	for _, f := range p.Fields {
 		text := f.Value
 		if f.Label != "" {
 			text = f.Label + ": " + text
@@ -372,11 +372,12 @@ func TestAppServerStatusPanelVisual(t *testing.T) {
 	if strings.Contains(screen.String(), "Session status") || strings.Contains(screen.String(), "78% left") {
 		t.Fatal("closed panel left painted residue")
 	}
-	u.statusPanel = saved
+	u.statusPanel = u.newStatusReport()
+	u.statusPanel.Fields = saved.Fields
 	// A long off-screen label cannot change the visible value alignment.
 	u.mainView.Panel.Top = 0
 	before := strings.Join(u.statusPanelFrame(72, 12), "\n")
-	u.statusPanel.fields = append(u.statusPanel.fields, sessionpresentation.StatusField{Group: "Permissions", Label: "Offscreen", Value: "not visible"})
+	u.statusPanel.Fields = append(u.statusPanel.Fields, sessionpresentation.StatusField{Group: "Permissions", Label: "Offscreen", Value: "not visible"})
 	after := strings.Join(u.statusPanelFrame(72, 12), "\n")
 	// Only the footer's total line count may differ.
 	beforeRows, afterRows := strings.Split(before, "\n"), strings.Split(after, "\n")

@@ -163,7 +163,7 @@ func TestAppServerResumePickerStartupEscapeAndQuit(t *testing.T) {
 	}
 	resumeTestOne(t, w, "thread/list")
 	resumeTestKeys(t, u, "x", "\x1b")
-	if u.resumePicker == nil || u.resumePicker.query != "" || len(resumeTestRequests(t, w)) != 0 {
+	if u.resumePicker == nil || u.resumePicker.Query != "" || len(resumeTestRequests(t, w)) != 0 {
 		t.Fatal("first Escape must only clear the search")
 	}
 	resumeTestKeys(t, u, "\x1b")
@@ -212,8 +212,8 @@ func TestAppServerResumePickerSearchFilterAndPages(t *testing.T) {
 	// Tab restarts the listing for every workspace; the old page is stale.
 	resumeTestKeys(t, u, "\t")
 	all := resumeTestOne(t, w, "thread/list")
-	if all.Params.Cwd != nil || all.Params.Cursor != "" || len(u.resumePicker.rows) != 0 {
-		t.Fatalf("all-workspace listing: %+v rows=%d", all.Params, len(u.resumePicker.rows))
+	if all.Params.Cwd != nil || all.Params.Cursor != "" || len(u.resumePicker.Rows) != 0 {
+		t.Fatalf("all-workspace listing: %+v rows=%d", all.Params, len(u.resumePicker.Rows))
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"data":[{"id":"stale","preview":"stale"}],"nextCursor":null}}`, next.ID))
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"data":[{"id":"here","preview":"Here","cwd":"/work/sub","updatedAt":1},{"id":"there","preview":"There","cwd":"/elsewhere","updatedAt":1,"gitInfo":{"branch":"feature-y"}}],"nextCursor":null}}`, all.ID))
@@ -222,7 +222,7 @@ func TestAppServerResumePickerSearchFilterAndPages(t *testing.T) {
 		t.Fatalf("all-workspace frame:\n%s", frame)
 	}
 	resumeTestKeys(t, u, "f", "e", "a", "t")
-	if got := u.resumePicker.matches(); len(got) != 1 || got[0].ID != "there" {
+	if got := u.resumePicker.Matches(); len(got) != 1 || got[0].ID != "there" {
 		t.Fatalf("search matched %+v", got)
 	}
 	resumeTestKeys(t, u, "\x7f", "\x7f", "\x7f", "\x7f", "z", "z")
@@ -493,8 +493,8 @@ func TestAppServerResumePickerFailedPageStopsPaging(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if requests := resumeTestRequests(t, w); len(requests) != 0 || !strings.Contains(u.resumePicker.problem, "store offline") {
-		t.Fatalf("failed page retried: %+v problem=%q", requests, u.resumePicker.problem)
+	if requests := resumeTestRequests(t, w); len(requests) != 0 || !strings.Contains(u.resumePicker.Problem, "store offline") {
+		t.Fatalf("failed page retried: %+v problem=%q", requests, u.resumePicker.Problem)
 	}
 	resumeTestKeys(t, u, "\t")
 	resumeTestOne(t, w, "thread/list")

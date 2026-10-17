@@ -75,7 +75,6 @@ type MainStatus struct {
 type MainInputs struct {
 	Info                   MainInfo
 	Menu                   *MenuView
-	Resume                 *ResumeView
 	Control                *sessioncontrol.Live
 	RecordedTurn           string // Playback selection, used only without live control.
 	Feedback               *noticepresentation.Model
@@ -83,7 +82,6 @@ type MainInputs struct {
 	Restoring, SideRunning bool
 	Processes              int
 	History                []HistoryView
-	Panel                  *PanelView
 }
 
 type Caption struct {
@@ -109,8 +107,8 @@ func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) (v View) 
 	}()
 	v.Info = in.Info
 	v.Caption = caption
-	v.Panel = in.Panel
-	v.Resume = in.Resume
+	v.Panel = m.panel.View(in.Info.Workspace)
+	v.Resume = m.resume.View()
 	v.Menu = in.Menu
 	thread, turn := v.Main.ID, in.RecordedTurn
 	pending, archiving, shell := false, false, false

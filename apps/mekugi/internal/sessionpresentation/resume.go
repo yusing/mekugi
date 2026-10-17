@@ -1,6 +1,9 @@
 package sessionpresentation
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 type ResumeRow struct {
 	ID, Title, Workspace, Branch string
@@ -58,4 +61,80 @@ func (m *Model) AdmitResume(in ResumeAction) error {
 		}
 	}
 	return nil
+}
+
+// ResumeChooser owns the attached chooser's source values and paging policy.
+// Source: apps/mekugi/internal/router/app_server_resume_picker.go:24:54,201:213@0ce86dd5.
+type ResumeChooser struct {
+	ID        uint64
+	Startup   bool   // No session exists yet; dismissal starts one and cancellation quits.
+	Workspace string // Workspace filter; empty when unavailable.
+	All       bool
+	Query     string
+	Rows      []ResumeRow
+	seen      map[string]bool
+	Cursor    string
+	Loading   bool
+	Problem   string
+	LoadedAt  time.Time
+}
+
+func (p *ResumeChooser) Matches() []ResumeRow {
+	query := strings.ToLower(strings.TrimSpace(p.Query))
+	if query == "" {
+		return p.Rows
+	}
+	var rows []ResumeRow
+	for _, row := range p.Rows {
+		for _, field := range []string{row.Title, row.ID, row.Branch, row.Workspace} {
+			if strings.Contains(strings.ToLower(field), query) {
+				rows = append(rows, row)
+				break
+			}
+		}
+	}
+	return rows
+}
+
+func (m *Model) OpenResume(startup bool, workspace string) *ResumeChooser {
+	m.resumeSequence++
+	m.resume = &ResumeChooser{ID: m.resumeSequence, Startup: startup, Workspace: workspace, All: workspace == "", seen: make(map[string]bool)}
+	return m.resume
+}
+
+func (m *Model) CloseResume() { m.resume = nil }
+
+func (p *ResumeChooser) Reset(now time.Time) {
+	p.Rows, p.seen, p.Cursor = nil, make(map[string]bool), ""
+	p.LoadedAt = now
+}
+
+func (p *ResumeChooser) Sent() { p.Loading, p.Problem = true, "" }
+
+func (p *ResumeChooser) Fail(problem string) {
+	p.Loading, p.Cursor, p.Problem = false, "", problem
+}
+
+func (p *ResumeChooser) Append(rows []ResumeRow, cursor string) {
+	for _, row := range rows {
+		if row.ID == "" || p.seen[row.ID] {
+			continue
+		}
+		p.seen[row.ID] = true
+		p.Rows = append(p.Rows, row)
+	}
+	p.Loading, p.Cursor = false, cursor
+}
+
+func (p *ResumeChooser) View() *ResumeView {
+	if p == nil {
+		return nil
+	}
+	v := &ResumeView{ID: p.ID, Workspace: p.Workspace, Query: p.Query, Problem: p.Problem,
+		Startup: p.Startup, All: p.All, Loading: p.Loading, HasMore: p.Cursor != "", Rows: p.Matches(), Scanned: len(p.Rows), LoadedAt: p.LoadedAt}
+	v.CanPage = v.HasMore && !p.Loading && (p.Query == "" || len(p.Rows) < 1000)
+	if len(p.Rows) > 0 {
+		v.PageAfter = p.Rows[len(p.Rows)-1].ID
+	}
+	return v
 }

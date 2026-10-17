@@ -131,7 +131,7 @@ func TestUISnapshotNativeTierPicker(t *testing.T) {
 				u, input := newServiceTierPickerTestUI(t, tc.model, tc.hostTier, tc.overrides)
 				appServerTestKeys(t, u, "/tier\r")
 				u.settlePresentation()
-				if !u.picker.Open || u.settingsChoices != "/tier" || u.mainView.Menu.Selected != tc.selected {
+				if !u.picker.Open || u.picker.Setting != "/tier" || u.mainView.Menu.Selected != tc.selected {
 					t.Fatalf("picker did not select effective tier: %+v", u.picker)
 				}
 				if input.Len() != 0 || u.serviceTier != tc.hostTier || u.model != tc.model {

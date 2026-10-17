@@ -17,6 +17,8 @@ The session retains the latest complete publication after each observation or
 semantic intent, including failed operations and restoration. Reading it neither
 refreshes owner state nor advances its version. Repeated publication of unchanged
 facts keeps the version; nested values returned to consumers are detached copies.
+Menu identity, active kind and preferred choice belong to this attachment;
+completion targets and choices remain Conversation values.
 The current side answer and its running state share this publication. Closing
 the side removes its visible exchange immediately while Control retains any
 pending host acknowledgement and cleanup. Scrolling and copy geometry remain
@@ -174,8 +176,10 @@ Loading, empty, no-match and failure states stay visible; failed paging waits fo
 a Tab restart. Enter selects; Escape first clears search. Startup Escape then
 starts a new thread and Ctrl-C exits; in-session dismissal keeps the current thread.
 
-The chooser publishes identified rows, query and workspace-filter state without
-terminal geometry. Search, selection, dismissal and page requests carry the
+The attached presentation model owns chooser identity, rows, query, workspace
+filter and paging state without terminal geometry. Application integration keeps
+only the in-flight host request and supplies decoded rows. Search, selection,
+dismissal and page requests carry the
 originating session version and chooser identity. A selection names a thread,
 not a row index. The application owns list requests and bounded scanning; the
 terminal owns highlight, scrolling and viewport-driven page demand. Replacing
@@ -314,8 +318,8 @@ are never auto-approved.
 
 ## Session status
 
-The session publishes an identified, detached panel with structured fields or a
-capture-owned metrics snapshot. Refresh and close intents name that panel and the
+The attached presentation model owns the identified panel, structured fields and
+detached capture-owned metrics snapshot. Refresh and close intents name that panel and the
 originating session version. Late actions cannot affect a replacement panel.
 Application integration retains account-request correlation and refresh timing;
 terminal layout, scrolling, metrics tabs and retained-exchange selection stay with

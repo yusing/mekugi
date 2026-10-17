@@ -34,6 +34,7 @@ func (c Choice) Label() string {
 // State belongs to the attached composer. Pending retains query identity only;
 // the application owns requests, scan cancellation, and skill-write correlation.
 type State struct {
+	CopyTexts         []string
 	Target, Dismissed Target
 	Open              bool
 	Choices           []Choice

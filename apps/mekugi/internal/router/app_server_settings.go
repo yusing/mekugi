@@ -207,7 +207,7 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 	if method == "model/list" {
 		if m.Error != nil {
 			u.modelsLoading, u.reasoningKey = false, nil
-			if u.picker.modal == "settings" {
+			if u.picker.Kind == "settings" {
 				u.picker.Loading = false
 				u.picker.Problem = "Model choices unavailable · Esc to close; use an explicit VALUE"
 			}
@@ -226,9 +226,9 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 			return true, u.request("model/list", map[string]any{"cursor": result.NextCursor, "includeHidden": true})
 		}
 		u.modelsLoading = false
-		if u.settingsChoices != "" {
-			command := u.settingsChoices
-			if u.picker.modal == "settings" {
+		if u.picker.Setting != "" {
+			command := u.picker.Setting
+			if u.picker.Kind == "settings" {
 				_, _ = u.settingsCommand(command)
 			}
 		}
@@ -322,7 +322,7 @@ func (u *appServerUI) showSettingsPicker(command string, choices []string) {
 	u.openMenu("settings")
 	p.Target, p.Problem, p.Loading = completion.Target{}, "", u.modelsLoading
 	p.Choices = nil
-	u.settingsChoices = command
+	u.picker.Setting = command
 	current := u.model
 	switch command {
 	case "/reasoning", "/effort":
@@ -343,7 +343,7 @@ func (u *appServerUI) showSettingsPicker(command string, choices []string) {
 		choice := completion.Choice{Name: value}
 		if value == current {
 			choice.Description = "Current"
-			p.preferred = choice.Identity()
+			p.Preferred = choice.Identity()
 		}
 		p.Choices = append(p.Choices, choice)
 	}
@@ -370,7 +370,7 @@ func (u *appServerUI) chooseSetting(choice completion.Choice) {
 		return
 	}
 	field := "model"
-	switch u.settingsChoices {
+	switch u.picker.Setting {
 	case "/effort", "/reasoning":
 		field = "effort"
 	case "/tier":
@@ -385,8 +385,8 @@ func (u *appServerUI) chooseSetting(choice completion.Choice) {
 		u.setNotice("Settings update failed: "+err.Error(), true)
 	}
 	if accepted {
-		p.modal, p.Open, p.Choices = "", false, nil
-		u.settingsChoices = ""
+		p.Kind, p.Open, p.Choices = "", false, nil
+		u.picker.Setting = ""
 	} else {
 		p.Problem = u.feedback.Text
 	}

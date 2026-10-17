@@ -83,12 +83,9 @@ type appServerUI struct {
 	approvalMode          bool // Codex's configured policy applies, not --yolo's.
 	guardHookCheck        approvalHookCheck
 	statusPanel           *appServerStatusReport
-	statusSequence        uint64
 	sessionCapture        *transportcapture.Recorder
 	resumePicker          *appServerResumePicker
-	resumeSequence        uint64
 	statusConfig          appServerStatusConfig
-	menuSequence          uint64
 	picker                composerPicker
 	skillEnvironment      []string
 	commits               *activitypresentation.CommitReader // Attached Activity enrichment owner.
@@ -139,7 +136,6 @@ type appServerUI struct {
 	models                 []appServerModel
 	modelsLoading          bool
 	reasoningKey           *bool
-	settingsChoices        string
 	requests               *sessioncontrol.Requests[appServerRequest]
 	retiredThreads         map[string]string
 	ownedImages            map[string]bool
@@ -876,7 +872,7 @@ func (u *appServerUI) applyMainKey(next terminalsession.KeyContinuation) (bool, 
 		return false, nil
 	}
 	// Acquisition stays application-owned; interpretation consumes its publication.
-	if u.picker.Open && u.picker.modal == "" && u.completionTarget() != u.picker.Target {
+	if u.picker.Open && u.picker.Kind == "" && u.completionTarget() != u.picker.Target {
 		u.refreshPicker()
 	}
 	u.publishPresentation(u.now())

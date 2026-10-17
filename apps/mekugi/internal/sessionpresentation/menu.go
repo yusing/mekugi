@@ -64,3 +64,19 @@ func (m *Model) AdmitMenu(in MenuAction) error {
 	}
 	return nil
 }
+
+// MenuState identifies the current application menu; Conversation owns its choices.
+// Source: apps/mekugi/internal/router/composer_menu.go:12:16@0ce86dd5.
+type MenuState struct {
+	Setting   string
+	ID        uint64
+	Kind      MenuKind
+	Preferred completion.ChoiceID
+}
+
+func (m *Model) Menu() *MenuState { return &m.menu }
+
+func (m *MenuState) Begin(kind MenuKind) {
+	m.ID++
+	m.Kind, m.Preferred = kind, completion.ChoiceID{}
+}

@@ -7,7 +7,6 @@ import (
 	json "encoding/json/v2"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
@@ -18,39 +17,12 @@ import (
 const (
 	resumePickerList = "thread/list#picker" // Request label, distinct from --last and restore listings.
 	resumePickerPage = 25
-	resumePickerScan = 1000 // Sessions a search loads before it stops fetching.
 )
 
+// appServerResumePicker correlates one host read with its presentation owner.
 type appServerResumePicker struct {
-	id       uint64
-	startup  bool   // No session exists yet: Esc starts one, Ctrl-C quits.
-	cwd      string // Workspace filter; empty when unavailable.
-	all      bool
-	query    string
-	rows     []sessionpresentation.ResumeRow
-	seen     map[string]bool
-	cursor   string
-	request  string // The in-flight page; any other response is stale.
-	loading  bool
-	problem  string
-	loadedAt time.Time
-}
-
-func (p *appServerResumePicker) matches() []sessionpresentation.ResumeRow {
-	query := strings.ToLower(strings.TrimSpace(p.query))
-	if query == "" {
-		return p.rows
-	}
-	var rows []sessionpresentation.ResumeRow
-	for _, row := range p.rows {
-		for _, field := range []string{row.Title, row.ID, row.Branch, row.Workspace} {
-			if strings.Contains(strings.ToLower(field), query) {
-				rows = append(rows, row)
-				break
-			}
-		}
-	}
-	return rows
+	*sessionpresentation.ResumeChooser
+	request string
 }
 
 // /resume follows /clear's rule: the current thread must be idle, so no turn,
@@ -83,30 +55,29 @@ func (u *appServerUI) openResumePicker(startup bool) error {
 	}
 	u.cancelPickerScan()
 	u.picker.Open = false
-	u.resumeSequence++
-	u.resumePicker = &appServerResumePicker{id: u.resumeSequence, startup: startup, cwd: cwd, all: cwd == ""}
+	u.resumePicker = &appServerResumePicker{ResumeChooser: u.sessionPresentation().OpenResume(startup, cwd)}
 	return u.loadResumePage(true)
 }
 
 func (u *appServerUI) loadResumePage(reset bool) error {
 	p := u.resumePicker
 	if reset {
-		p.rows, p.seen, p.cursor = nil, make(map[string]bool), ""
-		p.loadedAt = u.now()
+		p.Reset(u.now())
 	}
 	params := sessioncontrol.ResumableThreads(resumePickerPage)
-	if !p.all {
-		params["cwd"] = p.cwd
+	if !p.All {
+		params["cwd"] = p.Workspace
 	}
-	if p.cursor != "" {
-		params["cursor"] = p.cursor
+	if p.Cursor != "" {
+		params["cursor"] = p.Cursor
 	}
 	id, err := u.requests.Send("thread/list", params, "main", appServerRequest{label: resumePickerList})
 	if err != nil {
 		u.resumePickerFailed("Could not list sessions: " + err.Error())
 		return nil
 	}
-	p.request, p.loading, p.problem = id, true, ""
+	p.request = id
+	p.Sent()
 	return nil
 }
 
@@ -115,7 +86,7 @@ func (u *appServerUI) resumePickerResponse(m appserver.Message) error {
 	if p == nil || string(m.ID) != p.request {
 		return nil
 	}
-	p.request, p.loading = "", false
+	p.request = ""
 	if m.Error != nil {
 		u.resumePickerFailed("Could not list sessions: " + m.Error.Message)
 		return nil
@@ -137,11 +108,8 @@ func (u *appServerUI) resumePickerResponse(m appserver.Message) error {
 		u.resumePickerFailed("Invalid session list: " + err.Error())
 		return nil
 	}
+	var rows []sessionpresentation.ResumeRow
 	for _, thread := range result.Data {
-		if thread.ID == "" || p.seen[thread.ID] {
-			continue
-		}
-		p.seen[thread.ID] = true
 		row := sessionpresentation.ResumeRow{ID: thread.ID, Title: strings.TrimSpace(thread.Name), Workspace: thread.Cwd, Updated: thread.UpdatedAt}
 		if row.Title == "" {
 			row.Title = strings.TrimSpace(thread.Preview)
@@ -149,9 +117,9 @@ func (u *appServerUI) resumePickerResponse(m appserver.Message) error {
 		if thread.GitInfo != nil {
 			row.Branch = thread.GitInfo.Branch
 		}
-		p.rows = append(p.rows, row)
+		rows = append(rows, row)
 	}
-	p.cursor = result.NextCursor
+	p.Append(rows, result.NextCursor)
 	u.publishPresentation(u.now())
 	return u.applyResumeAction(u.mainView.Resume.PageDemand())
 }
@@ -160,11 +128,13 @@ func (u *appServerUI) resumePickerResponse(m appserver.Message) error {
 // than being retried every frame. Tab restarts the listing.
 func (u *appServerUI) resumePickerFailed(problem string) {
 	p := u.resumePicker
-	p.request, p.loading, p.cursor, p.problem = "", false, "", problem
+	p.request = ""
+	p.Fail(problem)
 }
 
 func (u *appServerUI) closeResumePicker() {
 	u.resumePicker = nil
+	u.sessionPresentation().CloseResume()
 	if u.shell != nil {
 		u.shell.Selection = nil
 	}
@@ -198,19 +168,6 @@ func (u *appServerUI) resumeSessionFailed(message string) error {
 	return u.replayResumePending()
 }
 
-func (u *appServerUI) resumeView() *sessionpresentation.ResumeView {
-	p := u.resumePicker
-	if p == nil {
-		return nil
-	}
-	v := &sessionpresentation.ResumeView{ID: p.id, Workspace: p.cwd, Query: p.query, Problem: p.problem,
-		Startup: p.startup, All: p.all, Loading: p.loading, HasMore: p.cursor != "", Rows: p.matches(), Scanned: len(p.rows), LoadedAt: p.loadedAt}
-	v.CanPage = v.HasMore && !p.loading && (p.query == "" || len(p.rows) < resumePickerScan)
-	if len(p.rows) > 0 {
-		v.PageAfter = p.rows[len(p.rows)-1].ID
-	}
-	return v
-}
 func (u *appServerUI) applyResumeAction(action sessionpresentation.ResumeAction) error {
 	if action.Kind == sessionpresentation.ResumeNoAction {
 		return nil
@@ -223,36 +180,36 @@ func (u *appServerUI) applyResumeAction(action sessionpresentation.ResumeAction)
 	p := u.resumePicker
 	switch action.Kind {
 	case sessionpresentation.ResumeSearch:
-		p.query = action.Query
+		p.Query = action.Query
 		u.publishPresentation(u.now())
 		return u.applyResumeAction(u.mainView.Resume.PageDemand())
 	case sessionpresentation.ResumeToggleWorkspace:
-		if p.cwd != "" {
-			p.all = !p.all
+		if p.Workspace != "" {
+			p.All = !p.All
 			return u.loadResumePage(true)
 		}
 	case sessionpresentation.ResumePage:
 		return u.loadResumePage(false)
 	case sessionpresentation.ResumeChoose:
-		if !p.startup && u.sessionBusy() {
+		if !p.Startup && u.sessionBusy() {
 			u.setNotice("/resume is disabled while a task is in progress", true)
 			return nil
 		}
 		u.closeResumePicker()
-		if p.startup {
+		if p.Startup {
 			u.startup.Thread = action.Thread
 			return u.openSession()
 		}
 		return u.resumeSession(action.Thread)
 	case sessionpresentation.ResumeDismiss:
 		u.closeResumePicker()
-		if p.startup {
+		if p.Startup {
 			u.startup.Thread = ""
 			return u.openSession()
 		}
 	case sessionpresentation.ResumeCancel:
 		u.closeResumePicker()
-		if p.startup {
+		if p.Startup {
 			u.quitRequested = true
 		}
 	}

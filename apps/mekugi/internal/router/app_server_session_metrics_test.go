@@ -109,7 +109,7 @@ func TestAppServerSessionMetricsLocalNavigation(t *testing.T) {
 	if u.statusPanel == nil || u.statusPanel.metrics == nil || u.Text != "" {
 		t.Fatal("session command did not open a local dialog")
 	}
-	u.statusPanel.metrics.snapshot = sessionMetricsFixture(t)
+	*u.statusPanel.Metrics = sessionMetricsFixture(t)
 	u.settlePresentation()
 	sessionMetricField(t, u, "Requests", "Attempts", "3")
 	sessionMetricField(t, u, "Usage", "Average output", "1.2 tok/s")
@@ -162,18 +162,18 @@ func TestAppServerSessionMetricsLocalNavigation(t *testing.T) {
 func TestAppServerSessionMetricsSelectionSurvivesRetention(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.showSessionMetrics()
-	u.statusPanel.metrics.snapshot = sessionMetricsFixture(t)
+	*u.statusPanel.Metrics = sessionMetricsFixture(t)
 	u.statusPanelKey("\x1b[C")
 	u.statusPanelKey("\x1b[C")
 	u.statusPanelKey("[")
 	sessionMetricField(t, u, "Exchange", "Sequence", "8")
-	m := u.statusPanel.metrics
-	m.snapshot.Exchanges = m.snapshot.Exchanges[1:]
+	m := u.statusPanel.Metrics
+	m.Exchanges = m.Exchanges[1:]
 	sessionMetricField(t, u, "Exchange", "Sequence", "9")
 	if u.mainView.Panel.Sequence != 0 {
 		t.Fatal("reclaimed selection must follow newest")
 	}
-	m.snapshot.Exchanges = nil
+	m.Exchanges = nil
 	sessionMetricField(t, u, "Exchanges", "", "No completed exchanges yet. Active requests appear when they settle.")
 }
 
@@ -255,25 +255,25 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 			u.replayDebugDirectory = tc.debug
 			u.showSessionMetrics()
 			u.settlePresentation()
-			m := u.statusPanel.metrics
+			m := u.statusPanel.Metrics
 			u.mainView.Panel.Tab = tc.tab
 			if !tc.missing {
-				m.snapshot = sessionMetricsFixture(t)
+				*m = sessionMetricsFixture(t)
 			}
 			if strings.HasPrefix(tc.name, "deduplication") {
-				m.snapshot.OutputDeduplication = transportcapture.OutputDeduplicationMetrics{Projections: 3, Occurrences: 12, SavedTokens: 1234}
+				m.OutputDeduplication = transportcapture.OutputDeduplicationMetrics{Projections: 3, Occurrences: 12, SavedTokens: 1234}
 			}
 			if strings.HasPrefix(tc.name, "storage") {
-				m.snapshot.StorageWrites = &persistence.Snapshot{Bytes: 12345, Scope: new(persistence.Counter).Snapshot().Scope}
+				m.StorageWrites = &persistence.Snapshot{Bytes: 12345, Scope: new(persistence.Counter).Snapshot().Scope}
 			}
 			if tc.throughput == "absent" {
-				m.snapshot.Usage.OutputThroughput = inference.OutputThroughput{}
+				m.Usage.OutputThroughput = inference.OutputThroughput{}
 			}
 			if tc.throughput == "zero" {
-				m.snapshot.Usage.OutputThroughput.OutputTokens = 0
+				m.Usage.OutputThroughput.OutputTokens = 0
 			}
 			if tc.empty {
-				m.snapshot.Exchanges = nil
+				m.Exchanges = nil
 			}
 			u.settlePresentation()
 			u.mainView.Panel.Top = tc.top

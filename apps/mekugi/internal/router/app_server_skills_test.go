@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/yusing/mekugi/modules/conversation/completion"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -20,11 +22,11 @@ func TestUISnapshotSkillsMenuAndActions(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.view.Painter.Theme = diffrender.DarkTheme
 	appServerTestKeys(t, u, "/skills\r")
-	if u.picker.modal != "menu" || !u.picker.Open || u.pickerHeight(80) != 8 {
+	if u.picker.Kind != "menu" || !u.picker.Open || u.pickerHeight(80) != 8 {
 		t.Fatalf("menu state/height = %+v, %d", u.picker, u.pickerHeight(80))
 	}
 	uisnapshot.Assert(t, "testdata/snapshots/skills_menu_default.txt", strings.Join(u.renderPicker(80, 8), "\n")+"\n")
-	if !u.pickerKey("2") || u.picker.modal != "manage" {
+	if !u.pickerKey("2") || u.picker.Kind != "manage" {
 		t.Fatalf("numeric manage action = %+v", u.picker)
 	}
 	u.closeSkillsModal()
@@ -40,7 +42,7 @@ func TestUISnapshotSkillsMenuAndActions(t *testing.T) {
 		t.Fatalf("up selected = %d", u.mainView.Menu.Selected)
 	}
 	appServerTestKeys(t, u, "\r")
-	if !u.picker.Open || u.picker.modal != "" || u.picker.Target.Kind != '$' || u.Text != "$" {
+	if !u.picker.Open || u.picker.Kind != "" || u.picker.Target.Kind != '$' || u.Text != "$" {
 		t.Fatalf("list action = open %v, draft %q", u.picker.Open, u.Text)
 	}
 }
@@ -49,7 +51,7 @@ func TestUISnapshotSkillsManageFilteringAndSave(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.view.Painter.Theme = diffrender.DarkTheme
 	u.cwd = "/work"
-	u.picker.modal, u.picker.Open = "manage", true
+	u.picker.Kind, u.picker.Open = "manage", true
 	u.picker.Skills = []completion.Choice{
 		{Name: "repo_scout", Display: "Repo Scout", Description: "Summarize the repo layout", Path: "/tmp/skills/repo_scout.toml", Enabled: true},
 		{Name: "changelog_writer", Display: "Changelog Writer", Description: "Draft release notes", Path: "/tmp/skills/changelog_writer.toml"},
@@ -57,7 +59,7 @@ func TestUISnapshotSkillsManageFilteringAndSave(t *testing.T) {
 	u.picker.SkillsLoaded = true
 	u.picker.SkillsCwd = "/work"
 	u.picker.RememberSkills()
-	u.picker.FilterSkills("", u.picker.modal == "manage")
+	u.picker.FilterSkills("", u.picker.Kind == "manage")
 	if len(u.picker.Choices) != 2 || u.pickerHeight(72) != 12 {
 		t.Fatalf("management rows/height = %d, %d", len(u.picker.Choices), u.pickerHeight(72))
 	}
@@ -67,7 +69,7 @@ func TestUISnapshotSkillsManageFilteringAndSave(t *testing.T) {
 		t.Fatalf("disabled skill missing from management filter: %+v", u.picker.Choices)
 	}
 	u.picker.Query = ""
-	u.picker.FilterSkills("", u.picker.modal == "manage")
+	u.picker.FilterSkills("", u.picker.Kind == "manage")
 	u.settlePresentation()
 	u.mainView.Menu.Selected = 1
 	u.pickerKey(" ")
@@ -91,7 +93,7 @@ func TestUISnapshotSkillsManagerViewportAndPaste(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.view.Painter.Theme = diffrender.DarkTheme
 	u.cwd = "/work"
-	u.picker.modal, u.picker.Open = "manage", true
+	u.picker.Kind, u.picker.Open = "manage", true
 	u.picker.SkillsLoaded, u.picker.SkillsCwd = true, "/work"
 	for i := range 15 {
 		u.picker.Skills = append(u.picker.Skills, completion.Choice{Name: fmt.Sprintf("skill-%02d", i), Path: fmt.Sprintf("/work/%d/SKILL.md", i), Enabled: true})
@@ -129,7 +131,7 @@ func TestUISnapshotSkillsColumnsMeasureOnlyVisibleRows(t *testing.T) {
 		t.Run("modal="+modal, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.view.Painter.Theme = diffrender.DarkTheme
-			u.picker.modal, u.picker.Target.Kind, u.picker.Open = modal, '$', true
+			u.picker.Kind, u.picker.Target.Kind, u.picker.Open = sessionpresentation.MenuKind(modal), '$', true
 			for i := range 9 {
 				u.picker.Choices = append(u.picker.Choices, completion.Choice{
 					Name: fmt.Sprintf("row%d", i), Description: "description", Enabled: true,

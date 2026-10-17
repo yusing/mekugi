@@ -23,25 +23,12 @@ import (
 // Unlike Codex, status is an ephemeral panel, never a transcript entry.
 // Each asynchronous refresh belongs only to the panel that requested it.
 type appServerStatusReport struct {
-	id                            uint64
-	metrics                       *sessionMetricsPanel
-	fields, body, tokens, account []sessionpresentation.StatusField
+	*sessionpresentation.PanelState
+	metrics *sessionMetricsPanel
 }
 
 func (u *appServerUI) newStatusReport() *appServerStatusReport {
-	u.statusSequence++
-	return &appServerStatusReport{id: u.statusSequence}
-}
-func (u *appServerUI) panelView() *sessionpresentation.PanelView {
-	p := u.statusPanel
-	if p == nil {
-		return nil
-	}
-	view := &sessionpresentation.PanelView{ID: p.id, Fields: p.fields, Workspace: u.cwd, DebugDirectory: u.replayDebugDirectory}
-	if p.metrics != nil {
-		view.Metrics = &p.metrics.snapshot
-	}
-	return view
+	return &appServerStatusReport{PanelState: u.sessionPresentation().OpenPanel(u.replayDebugDirectory)}
 }
 
 func statusNotice(value string) []sessionpresentation.StatusField {
@@ -102,10 +89,10 @@ func (u *appServerUI) showStatus() error {
 			rows = append(rows, sessionpresentation.StatusField{Group: "Usage", Label: "Context window", Value: fmt.Sprintf("%.0f%% left", remaining), Detail: fmt.Sprintf("%s used / %s", activityui.FormatUsageTokens(agent.ContextTokens), activityui.FormatUsageTokens(agent.ContextWindow)), Remaining: new(remaining)})
 		}
 		if agent.InputTokens > 0 || agent.OutputTokens > 0 {
-			report.tokens = []sessionpresentation.StatusField{{Group: "Usage", Label: "Token usage", Value: fmt.Sprintf("%s input · %s output", activityui.FormatUsageTokens(agent.InputTokens), activityui.FormatUsageTokens(agent.OutputTokens))}}
+			report.Tokens = []sessionpresentation.StatusField{{Group: "Usage", Label: "Token usage", Value: fmt.Sprintf("%s input · %s output", activityui.FormatUsageTokens(agent.InputTokens), activityui.FormatUsageTokens(agent.OutputTokens))}}
 		}
 	}
-	report.body = rows
+	report.Body = rows
 	u.statusPanel = report
 	u.renderStatus(report, statusNotice("Loading account…"))
 	u.deleteDraftRange(0, len(u.Text))
@@ -122,7 +109,7 @@ func (u *appServerUI) requestStatus(method string, params any, report *appServer
 }
 
 func (u *appServerUI) renderStatus(report *appServerStatusReport, extra []sessionpresentation.StatusField) {
-	report.fields = slices.Concat(report.body, report.account, extra)
+	report.Render(extra)
 	u.dirty = true
 }
 
@@ -153,27 +140,27 @@ func (u *appServerUI) statusMessage(method string, m appserver.Message, report *
 			return fail("Account response could not be read")
 		}
 		if result.Account == nil {
-			u.renderStatus(report, report.tokens)
+			u.renderStatus(report, report.Tokens)
 			return true, nil
 		}
 		account := result.Account
 		switch account.Type {
 		case "chatgpt":
-			report.account = []sessionpresentation.StatusField{{Group: "Account", Label: "Sign-in", Value: "ChatGPT"}}
+			report.Account = []sessionpresentation.StatusField{{Group: "Account", Label: "Sign-in", Value: "ChatGPT"}}
 			if account.Email != "" {
-				report.account = append(report.account, sessionpresentation.StatusField{Group: "Account", Label: "Email", Value: account.Email})
+				report.Account = append(report.Account, sessionpresentation.StatusField{Group: "Account", Label: "Email", Value: account.Email})
 			}
 			if account.Plan != "" && account.Plan != "unknown" {
-				report.account = append(report.account, sessionpresentation.StatusField{Group: "Account", Label: "Plan", Value: account.Plan})
+				report.Account = append(report.Account, sessionpresentation.StatusField{Group: "Account", Label: "Plan", Value: account.Plan})
 			}
 			u.renderStatus(report, statusNotice("Loading usage limits…"))
 			return true, u.requestStatus("account/rateLimits/read", nil, report)
 		case "apiKey":
-			report.account = []sessionpresentation.StatusField{{Group: "Account", Label: "Sign-in", Value: "API key"}}
+			report.Account = []sessionpresentation.StatusField{{Group: "Account", Label: "Sign-in", Value: "API key"}}
 		case "amazonBedrock":
-			report.account = []sessionpresentation.StatusField{{Group: "Account", Label: "Sign-in", Value: "Amazon Bedrock"}}
+			report.Account = []sessionpresentation.StatusField{{Group: "Account", Label: "Sign-in", Value: "Amazon Bedrock"}}
 		}
-		u.renderStatus(report, report.tokens)
+		u.renderStatus(report, report.Tokens)
 		return true, nil
 	}
 	var result struct {
@@ -295,6 +282,7 @@ func (u *appServerUI) applyPanelAction(action sessionpresentation.PanelAction) {
 	switch action.Kind {
 	case sessionpresentation.PanelClose:
 		u.statusPanel = nil
+		u.sessionPresentation().ClosePanel()
 	case sessionpresentation.PanelRefresh:
 		u.refreshSessionMetrics(true)
 	}

@@ -32,7 +32,7 @@ func (u *appServerUI) archivePrompt() string {
 
 func (u *appServerUI) chooseArchive(confirm bool) {
 	p := &u.picker
-	p.modal, p.Open, p.Choices = "", false, nil
+	p.Kind, p.Open, p.Choices = "", false, nil
 	if confirm {
 		u.Replacement.Archive()
 		if err := u.request("thread/archive", map[string]any{"threadId": u.Thread}); err != nil {

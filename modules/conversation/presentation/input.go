@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/modules/conversation/completion"
+
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 	"github.com/yusing/mekugi/modules/conversation/prompt"
@@ -39,6 +41,7 @@ type Submission struct {
 }
 
 type Session struct {
+	Completion     completion.State
 	Editor         composer.Editor
 	PromptEditor   prompt.Editor
 	Questions      prompt.Questions

@@ -86,12 +86,14 @@ func TestUISnapshotNativeResumePicker(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.view.Painter.Theme = diffrender.DarkTheme
-			u.resumePicker = &appServerResumePicker{cwd: "/workspace", all: tc.all, loading: tc.loading, query: tc.query, loadedAt: now, id: 1,
-				rows: []sessionpresentation.ResumeRow{
-					{ID: "main", Title: "Improve rendered snapshot coverage", Workspace: "/workspace", Branch: "coverage/snapshot", Updated: now.Add(-2 * time.Minute).Unix()},
-					{ID: "older", Title: "Investigate a long parser failure message", Workspace: "/other/project", Branch: "fix/parser", Updated: now.Add(-2 * time.Hour).Unix()},
-					{ID: "empty", Workspace: "/workspace", Branch: "main", Updated: now.Add(-48 * time.Hour).Unix()},
-				}}
+			chooser := u.sessionPresentation().OpenResume(false, "/workspace")
+			chooser.All, chooser.Loading, chooser.Query, chooser.LoadedAt = tc.all, tc.loading, tc.query, now
+			chooser.Rows = []sessionpresentation.ResumeRow{
+				{ID: "main", Title: "Improve rendered snapshot coverage", Workspace: "/workspace", Branch: "coverage/snapshot", Updated: now.Add(-2 * time.Minute).Unix()},
+				{ID: "older", Title: "Investigate a long parser failure message", Workspace: "/other/project", Branch: "fix/parser", Updated: now.Add(-2 * time.Hour).Unix()},
+				{ID: "empty", Workspace: "/workspace", Branch: "main", Updated: now.Add(-48 * time.Hour).Unix()},
+			}
+			u.resumePicker = &appServerResumePicker{ResumeChooser: chooser}
 			u.settlePresentation()
 			u.mainView.Resume.Selected = 1
 			assertNativeUISnapshot(t, tc.name, u.resumePickerFrame(tc.width, 11))
@@ -189,11 +191,11 @@ func TestUISnapshotNativeFilePicker(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.view.Painter.Theme = diffrender.DarkTheme
 			u.cwd = "/workspace"
-			u.picker = composerPicker{State: completion.State{Open: true, Target: completion.Target{Kind: '@', Query: "snapshot"}, Choices: []completion.Choice{
+			u.conversation().Completion = completion.State{Open: true, Target: completion.Target{Kind: '@', Query: "snapshot"}, Choices: []completion.Choice{
 				{Name: "internal/uisnapshot/snapshot.go", Path: "internal/uisnapshot/snapshot.go"},
 				{Name: "internal/ui/activity/snapshot_test.go", Path: "internal/ui/activity/snapshot_test.go"},
 				{Name: "internal/ui/diffview/snapshot_test.go", Path: "internal/ui/diffview/snapshot_test.go"},
-			}}}
+			}}
 			u.settlePresentation()
 			u.mainView.Menu.Selected = 1
 			assertNativeUISnapshot(t, fmt.Sprintf("native-file-picker-%d", width), u.renderPicker(width, 7))

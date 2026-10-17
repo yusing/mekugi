@@ -26,18 +26,15 @@ import (
 // remain Codex-owned, through app-server rather than a second filesystem index.
 
 type composerPicker struct {
-	id        uint64
-	preferred completion.ChoiceID
-	completion.State
+	*completion.State
+	*sessionpresentation.MenuState
 	scanResults                     chan pickerScanResult
 	scanCancel                      context.CancelFunc
 	scanID                          uint64
 	scanTarget                      completion.Target
 	scanCwd                         string
-	modal                           string
 	toggleID, togglePath, toggleCwd string
 	toggleOwnsManager               bool
-	copyTexts                       []string
 }
 
 func (u *appServerUI) completionTarget() completion.Target {
@@ -73,7 +70,7 @@ func (u *appServerUI) refreshPicker() {
 	}
 	target := u.completionTarget()
 	bindingOnly := false
-	if target.Kind == 0 && p.modal == "" && (!p.SkillsLoaded || p.SkillsCwd != u.cwd) {
+	if target.Kind == 0 && p.Kind == "" && (!p.SkillsLoaded || p.SkillsCwd != u.cwd) {
 		query := u.skillBindingQuery(draft, false)
 		for _, part := range slices.Concat(u.conversation().Unsent, u.conversation().Queued) {
 			if query == "" {
@@ -89,11 +86,11 @@ func (u *appServerUI) refreshPicker() {
 			p.Open = false
 		}
 	}()
-	if p.modal == "menu" || p.modal == "copy" || p.modal == "settings" || p.modal == "archive" {
+	if p.Kind == "menu" || p.Kind == "copy" || p.Kind == "settings" || p.Kind == "archive" {
 		p.Open = true
 		return
 	}
-	if p.modal == "manage" {
+	if p.Kind == "manage" {
 		target = completion.Target{Kind: '$', Query: p.Query}
 	}
 	wasOpen := p.Open
@@ -102,8 +99,7 @@ func (u *appServerUI) refreshPicker() {
 		return
 	}
 	if !wasOpen && !bindingOnly {
-		u.menuSequence++
-		p.id = u.menuSequence
+		p.ID++
 	}
 	if target.Kind == '/' {
 		u.cancelPickerScan()
@@ -120,7 +116,7 @@ func (u *appServerUI) refreshPicker() {
 	}
 	if target.Kind == '$' && (p.SkillsLoaded || p.SkillsProblem != "") && p.SkillsCwd == cwd {
 		p.Loading = false
-		u.picker.FilterSkills(target.Query, u.picker.modal == "manage")
+		u.picker.FilterSkills(target.Query, u.picker.Kind == "manage")
 
 		return
 	}
@@ -253,7 +249,7 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 	}
 	if method == "skills/list" {
 		available := m.Error == nil && err == nil
-		if u.skillEnvironment != nil && p.modal != "manage" && cwd == u.cwd {
+		if u.skillEnvironment != nil && p.Kind != "manage" && cwd == u.cwd {
 			parent := u.ctx
 			if parent == nil {
 				parent = context.Background()
@@ -278,7 +274,7 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 		}
 		p.toggleOwnsManager = false
 		p.Catalog(choices, cwd, available, problem)
-		if p.modal == "manage" && p.Initial == nil {
+		if p.Kind == "manage" && p.Initial == nil {
 			u.picker.RememberSkills()
 		}
 		if problem != "" && cwd == u.cwd {

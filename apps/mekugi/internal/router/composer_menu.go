@@ -10,23 +10,23 @@ import (
 )
 
 func (u *appServerUI) openMenu(kind string) {
-	u.menuSequence++
 	p := &u.picker
-	p.id, p.modal, p.Open, p.preferred = u.menuSequence, kind, true, completion.ChoiceID{}
+	p.MenuState.Begin(sessionpresentation.MenuKind(kind))
+	p.Open = true
 }
 func (u *appServerUI) menuView() *sessionpresentation.MenuView {
 	p := &u.picker
 	if !p.Open {
 		return nil
 	}
-	view := &sessionpresentation.MenuView{ID: p.id, Kind: sessionpresentation.MenuKind(p.modal), View: p.View(), Preferred: p.preferred}
+	view := &sessionpresentation.MenuView{ID: p.ID, Kind: p.Kind, View: p.View(), Preferred: p.Preferred}
 	switch view.Kind {
 	case sessionpresentation.MenuManageSkills:
 		view.Saving = u.skillSaveOwnsManager()
 	case sessionpresentation.MenuCompletion:
 		view.QueueCompact = strings.TrimSpace(u.Text) == "/compact"
 	case sessionpresentation.MenuSettings:
-		view.Setting = u.settingsChoices
+		view.Setting = u.picker.Setting
 	case sessionpresentation.MenuArchive:
 		view.Explanation = u.archivePrompt()
 	}
@@ -49,7 +49,7 @@ func (u *appServerUI) applyMenuAction(action sessionpresentation.MenuAction) boo
 		return false
 	}
 	p := &u.picker
-	if !p.Open || p.id != action.Menu {
+	if !p.Open || p.ID != action.Menu {
 		u.setNotice(sessionpresentation.ErrStaleIntent.Error(), true)
 		return false
 	}
@@ -58,13 +58,13 @@ func (u *appServerUI) applyMenuAction(action sessionpresentation.MenuAction) boo
 		p.Query = action.Query
 		return true
 	case sessionpresentation.MenuDismiss:
-		switch p.modal {
+		switch p.Kind {
 		case "menu", "manage":
 			u.closeSkillsModal()
 		default:
 			p.Dismissed, p.Open = p.Target, false
-			p.modal, p.Choices, p.copyTexts = "", nil, nil
-			u.settingsChoices = ""
+			p.Kind, p.Choices, p.CopyTexts = "", nil, nil
+			u.picker.Setting = ""
 			u.cancelPickerScan()
 		}
 		return true
@@ -75,7 +75,7 @@ func (u *appServerUI) applyMenuAction(action sessionpresentation.MenuAction) boo
 			return false
 		}
 		choice := p.Choices[index]
-		switch p.modal {
+		switch p.Kind {
 		case "menu":
 			u.chooseSkillsAction(choice)
 		case "manage":
@@ -88,9 +88,9 @@ func (u *appServerUI) applyMenuAction(action sessionpresentation.MenuAction) boo
 			if u.shell == nil {
 				u.setNotice("Terminal clipboard unavailable", true)
 			} else {
-				u.copyText(u.shell, p.copyTexts[index])
+				u.copyText(u.shell, p.CopyTexts[index])
 			}
-			p.modal, p.Open, p.Choices, p.copyTexts = "", false, nil, nil
+			p.Kind, p.Open, p.Choices, p.CopyTexts = "", false, nil, nil
 		default:
 			return u.acceptCompletion(choice)
 		}

@@ -84,8 +84,10 @@ matching results. Choosing a file or skill preserves its exact identity through
 ordinary undo and attachment handling. Terminal completion and management controls
 follow [composer controls](../../apps/mekugi/internal/terminalsession/SPEC.md#composer-controls).
 
-Completion publications retain query targets and choice identities. Highlight and
-viewport navigation belong to the renderer, including preserving a selected skill
+The attached Conversation owner retains completion targets, admitted choices and
+full response-copy values. Application integration retains searches and pending
+skill writes. Completion publications retain query targets and choice identities.
+Highlight and viewport navigation belong to the renderer, including preserving a selected skill
 or command as results change. Accepting a choice names its identity and originating
 session/menu publication before applying the token edit or skill write. A delayed
 choice cannot target a replacement menu, workspace or draft.

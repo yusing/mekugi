@@ -30,7 +30,7 @@ func (u *appServerUI) publishPresentation(now time.Time) sessionpresentation.Vie
 	}
 	view = m.Publish(sessionpresentation.MainInputs{
 		Info: info,
-		Menu: u.menuView(), Resume: u.resumeView(), Panel: u.panelView(), Control: &u.Live, Feedback: &u.feedback, Conversation: u.conversation(), Restoring: u.restoring != nil,
+		Menu: u.menuView(), Control: &u.Live, Feedback: &u.feedback, Conversation: u.conversation(), Restoring: u.restoring != nil,
 		SideRunning: u.side != nil && (u.side.Busy || u.side.Starting), Processes: u.runningProcessCount(), History: u.historyViews(),
 	}, caption, now)
 	u.prompts.Update(view)

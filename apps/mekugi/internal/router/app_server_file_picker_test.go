@@ -121,11 +121,11 @@ func TestComposerFilePickerLateSkillSaveDoesNotReplaceResults(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(u.cwd, "target.txt"), []byte("test"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	u.picker.modal, u.picker.Open = "manage", true
+	u.picker.Kind, u.picker.Open = "manage", true
 	u.picker.Skills = []completion.Choice{{Name: "review", Path: "/work/review/SKILL.md", Enabled: true}}
 	u.picker.SkillsLoaded, u.picker.SkillsCwd = true, u.cwd
 	u.picker.RememberSkills()
-	u.picker.FilterSkills("", u.picker.modal == "manage")
+	u.picker.FilterSkills("", u.picker.Kind == "manage")
 	u.toggleSkill(u.picker.Choices[0])
 	request := pickerRequests(t, w)[0]
 	u.closeSkillsModal()

@@ -56,7 +56,7 @@ func TestAppServerCopyPicker(t *testing.T) {
 	applyTranscriptFixture(u.testActivity(u.view), true, "", "main", "main", "new", "stream", "item/agentMessage/delta", "Partial", binding.ThreadItem{})
 	u.Turn = "new"
 	appServerTestKeys(t, u, "/cop\r")
-	if u.picker.modal != "copy" || u.Text != "" || len(u.picker.Choices) != 2 {
+	if u.picker.Kind != "copy" || u.Text != "" || len(u.picker.Choices) != 2 {
 		t.Fatalf("picker=%+v draft=%q", u.picker, u.Text)
 	}
 	frame := ansi.Strip(strings.Join(u.renderPicker(80, 8), "\n"))
@@ -64,7 +64,7 @@ func TestAppServerCopyPicker(t *testing.T) {
 		t.Fatalf("frame=%s", frame)
 	}
 	appServerTestKeys(t, u, "\x1b[200~pasted\rtext\x1b[201~")
-	if u.Text != "" || terminalTest(u).Frame.Clipboard != "" || u.picker.modal != "copy" {
+	if u.Text != "" || terminalTest(u).Frame.Clipboard != "" || u.picker.Kind != "copy" {
 		t.Fatal("paste changed draft or copied a choice")
 	}
 	appServerTestKeys(t, u, "\x1b[B\r")
@@ -95,7 +95,7 @@ func TestAppServerCopyEmptyCancelAndRestore(t *testing.T) {
 	u.startSession("main", "")
 	u.restoreMainHistory([]binding.HistoryTurn{{ID: "old", Status: "completed", Items: []binding.ThreadItem{{ID: "a", Type: "agentMessage", Text: "restored"}}}}, nil, nil)
 	appServerTestKeys(t, u, "/copy\r")
-	if u.picker.copyTexts[0] != "restored" {
+	if u.picker.CopyTexts[0] != "restored" {
 		t.Fatal("resume lost copy source")
 	}
 	u.pickerKey("\x1b")

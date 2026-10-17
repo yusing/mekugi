@@ -158,7 +158,7 @@ func TestAppServerSettingsModelListPagination(t *testing.T) {
 		t.Fatalf("catalog=%+v", u.models)
 	}
 	appServerTestKeys(t, u, "/model\r")
-	if (u.picker.modal != "settings" || len(u.picker.Choices) != 2 || u.picker.Choices[0].Name != "one" || u.picker.Choices[1].Name != "two") || w.Len() != 0 {
+	if (u.picker.Kind != "settings" || len(u.picker.Choices) != 2 || u.picker.Choices[0].Name != "one" || u.picker.Choices[1].Name != "two") || w.Len() != 0 {
 		t.Fatalf("choices=%q", u.feedback.Text)
 	}
 }
@@ -243,7 +243,7 @@ func TestAppServerSettingsPickerSelection(t *testing.T) {
 					t.Fatal(err)
 				}
 				appServerTestKeys(t, u, command+"\r")
-				if u.picker.modal != "settings" || len(u.picker.Choices) != 2 || u.Text != "" || w.Len() != 0 {
+				if u.picker.Kind != "settings" || len(u.picker.Choices) != 2 || u.Text != "" || w.Len() != 0 {
 					t.Fatalf("picker did not open locally: %+v", u.picker)
 				}
 				appServerTestKeys(t, u, "\x1b[B\r")
@@ -269,7 +269,7 @@ func TestAppServerSettingsPickerLoadingAndCancellation(t *testing.T) {
 		u.modelsLoading = true
 		appServerTestRequest(t, u, "99", "model/list")
 		appServerTestKeys(t, u, "/model\r")
-		if !u.picker.Loading || u.picker.modal != "settings" {
+		if !u.picker.Loading || u.picker.Kind != "settings" {
 			t.Fatal("missing loading picker")
 		}
 		appServerTestKeys(t, u, "\r")
@@ -298,12 +298,12 @@ func TestAppServerSettingsPickerEmptyFailureAndPaste(t *testing.T) {
 		t.Fatal("empty catalog lacks feedback or submits")
 	}
 	appServerTestKeys(t, u, "\x1b[200~do not submit\x1b[201~")
-	if u.Text != "" || u.picker.modal != "settings" {
+	if u.Text != "" || u.picker.Kind != "settings" {
 		t.Fatal("paste escaped modal")
 	}
 	u.pickerKey("\x1b")
 	u.refreshPicker()
-	if u.picker.Open || u.settingsChoices != "" {
+	if u.picker.Open || u.picker.Setting != "" {
 		t.Fatal("Escape did not cancel")
 	}
 	u.modelsLoading = true

@@ -39,10 +39,10 @@ func (u *appServerUI) showCopyPicker() {
 	p := &u.picker
 	u.openMenu("copy")
 	p.Target, p.Problem, p.Loading = completion.Target{}, "", false
-	p.Choices, p.copyTexts = nil, nil
+	p.Choices, p.CopyTexts = nil, nil
 	for _, choice := range responseCopyChoices(response) {
 		p.Choices = append(p.Choices, choice.Choice)
-		p.copyTexts = append(p.copyTexts, choice.copyText)
+		p.CopyTexts = append(p.CopyTexts, choice.copyText)
 	}
 }
 

@@ -75,6 +75,26 @@ func TestReplayPublicationWithoutControl(t *testing.T) {
 	}
 }
 
+func TestNonTerminalSurfaceScopeLifetime(t *testing.T) {
+	c := newStatusConsumer()
+	m := c.model()
+	m.Menu().Begin(sessionpresentation.MenuCopy)
+	m.OpenPanel("").Fields = []sessionpresentation.StatusField{{Value: "retained panel"}}
+	m.OpenResume(false, "/work").Append([]sessionpresentation.ResumeRow{{ID: "saved"}}, "next")
+	m.Attach(sessionpresentation.Thread{ID: "accepted", Caller: "/root"}, false)
+	v := c.publish(sessionpresentation.Caption{})
+	if v.Panel == nil || v.Panel.Fields[0].Value != "retained panel" || v.Resume == nil || v.Resume.Rows[0].ID != "saved" || m.Menu().Kind != sessionpresentation.MenuCopy {
+		t.Fatal("host identity discovery discarded scoped presentation")
+	}
+	var replacement scope.Store
+	fresh := c.service.Session(&replacement)
+	fresh.Attach(sessionpresentation.Thread{ID: "replacement", Caller: "/root"}, false)
+	v = fresh.Publish(sessionpresentation.MainInputs{Control: &c.control, Conversation: &c.conversation, Feedback: &c.feedback}, sessionpresentation.Caption{}, c.now)
+	if v.Panel != nil || v.Resume != nil || fresh.Menu().Kind != "" || fresh.Menu().ID != 0 {
+		t.Fatal("replacement inherited a retired surface")
+	}
+}
+
 func TestNonTerminalPublicationRetainsDetachedCurrentValue(t *testing.T) {
 	c := newStatusConsumer()
 	call := &prompt.Call{ID: "call", Thread: "main", Questions: []prompt.Question{{

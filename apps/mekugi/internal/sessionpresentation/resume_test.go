@@ -2,16 +2,18 @@ package sessionpresentation_test
 
 import (
 	"errors"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"testing"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 )
 
 func TestResumePublicationRejectsStaleAndUnpublishedTargets(t *testing.T) {
 	c := newStatusConsumer()
 	m := c.model()
-	source := &sessionpresentation.ResumeView{ID: 1, Rows: []sessionpresentation.ResumeRow{{ID: "saved"}}, CanPage: true, PageAfter: "saved"}
+	source := m.OpenResume(false, "/work")
+	source.Append([]sessionpresentation.ResumeRow{{ID: "saved"}}, "next")
 	publish := func() sessionpresentation.View {
-		return m.Publish(sessionpresentation.MainInputs{Control: &c.control, Feedback: &c.feedback, Conversation: &c.conversation, Resume: source}, sessionpresentation.Caption{}, c.now)
+		return m.Publish(sessionpresentation.MainInputs{Control: &c.control, Feedback: &c.feedback, Conversation: &c.conversation}, sessionpresentation.Caption{}, c.now)
 	}
 	v := publish()
 	if publish().Version != v.Version {
@@ -38,12 +40,15 @@ func TestResumePublicationRejectsStaleAndUnpublishedTargets(t *testing.T) {
 	if err := m.AdmitResume(action); err != nil {
 		t.Fatal(err)
 	}
-	source.ID++
+	source = m.OpenResume(false, "/work")
+	source.Append([]sessionpresentation.ResumeRow{{ID: "saved"}}, "next")
 	publish()
 	if !errors.Is(m.AdmitResume(action), sessionpresentation.ErrStaleIntent) {
 		t.Fatal("old chooser action admitted")
 	}
 	m.Attach(sessionpresentation.Thread{ID: "main", Caller: "/root"}, true)
+	source = m.OpenResume(false, "/work")
+	source.Append([]sessionpresentation.ResumeRow{{ID: "saved"}}, "next")
 	action.Version = publish().Version
 	action.Picker, action.Kind, action.Thread = source.ID, sessionpresentation.ResumeChoose, "saved"
 	if !errors.Is(m.AdmitResume(action), sessionpresentation.ErrReplayIntent) {

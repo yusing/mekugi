@@ -32,7 +32,7 @@ func TestComposerCommandEnterAndDismiss(t *testing.T) {
 		t.Fatalf("filtered choices = %+v", u.picker.Choices)
 	}
 	appServerTestKeys(t, u, "\r")
-	if u.picker.modal != "menu" || u.Text != "" || len(pickerRequests(t, wire)) != 0 {
+	if u.picker.Kind != "menu" || u.Text != "" || len(pickerRequests(t, wire)) != 0 {
 		t.Fatalf("Enter did not open skills menu: %+v", u.picker)
 	}
 	u, _ = newAppServerTestUI()
@@ -93,7 +93,7 @@ func TestComposerCommandMouseSelection(t *testing.T) {
 	if err := shell.mouse("\x1b[<0;2;2M"); err != nil {
 		t.Fatal(err)
 	}
-	if u.picker.modal != "menu" || len(pickerRequests(t, wire)) != 0 {
+	if u.picker.Kind != "menu" || len(pickerRequests(t, wire)) != 0 {
 		t.Fatalf("click did not dispatch local command: %+v", u.picker)
 	}
 }

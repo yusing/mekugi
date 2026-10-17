@@ -24,7 +24,7 @@ func TestUISnapshotAppServerArchive(t *testing.T) {
 			}
 			appServerTestKeys(t, u, "/arch\r")
 			u.settlePresentation()
-			if u.picker.modal != "archive" || u.mainView.Menu.Selected != 0 || wire.Len() != 0 {
+			if u.picker.Kind != "archive" || u.mainView.Menu.Selected != 0 || wire.Len() != 0 {
 				t.Fatal("archive must first ask for confirmation, defaulting to No")
 			}
 			for _, width := range []int{40, 80} {
@@ -81,7 +81,7 @@ func TestAppServerArchiveCancelAndUnavailable(t *testing.T) {
 			u.Replacement.Clear()
 		}
 		appServerTestKeys(t, u, "/archive\r")
-		if wire.Len() != 0 || u.picker.modal == "archive" || !strings.Contains(u.feedback.Text, "ready") {
+		if wire.Len() != 0 || u.picker.Kind == "archive" || !strings.Contains(u.feedback.Text, "ready") {
 			t.Fatalf("archive allowed during %s", state)
 		}
 	}

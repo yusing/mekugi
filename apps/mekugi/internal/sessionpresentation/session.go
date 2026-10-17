@@ -97,6 +97,11 @@ func (s *Service) History(store *scope.Store) *History { return s.history.Value(
 
 // Source: apps/mekugi/internal/router/native_shell.go:265:283@db279442
 type Model struct {
+	menu                MenuState
+	panel               *PanelState
+	panelSequence       uint64
+	resume              *ResumeChooser
+	resumeSequence      uint64
 	status              []presentation.Status
 	Status              MainState
 	compacting, polling [2]string
@@ -111,7 +116,13 @@ func (m *Model) Attach(main Thread, replay bool) {
 	}
 	version := m.view.Version
 	version.Revision++
-	*m = Model{status: m.status, view: View{Version: version, Main: main, Displayed: main, Input: main}, replay: replay}
+	// Identity discovery retains scoped surfaces; replacement uses a fresh scope.
+	*m = Model{
+		status: m.status, menu: m.menu,
+		panel: m.panel, panelSequence: m.panelSequence,
+		resume: m.resume, resumeSequence: m.resumeSequence,
+		view: View{Version: version, Main: main, Displayed: main, Input: main}, replay: replay,
+	}
 }
 
 func (m *Model) View() View {

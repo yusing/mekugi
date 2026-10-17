@@ -330,7 +330,7 @@ func TestComposerFilePickerImageAndUndoCapacity(t *testing.T) {
 	}
 	u.insertDraft("@s")
 	target := u.completionTarget()
-	u.picker = composerPicker{State: completion.State{Open: true, Target: target, Choices: []completion.Choice{{Name: "shot.png", Path: "shot.png"}}}}
+	u.conversation().Completion = completion.State{Open: true, Target: target, Choices: []completion.Choice{{Name: "shot.png", Path: "shot.png"}}}
 	before := u.Text
 	if !u.pickerKey("\t") || len(u.Images) != 1 || u.Images[0].Path != path {
 		t.Fatalf("image choice: %q %+v", u.Text, u.Images)
@@ -355,7 +355,7 @@ func TestComposerPickerEditorRefreshBeforeSelection(t *testing.T) {
 		u.Text = "long prompt @file"
 		u.refreshPicker()
 		target := u.completionTarget()
-		u.picker = composerPicker{State: completion.State{Open: true, Target: target, Resolved: target, ResolvedCwd: "/work", Choices: []completion.Choice{{Name: "file.go", Path: "file.go"}}}}
+		u.conversation().Completion = completion.State{Open: true, Target: target, Resolved: target, ResolvedCwd: "/work", Choices: []completion.Choice{{Name: "file.go", Path: "file.go"}}}
 		if err := u.applyEditorDraft(editorTestIntent(u), "new"); err != nil {
 			t.Fatal(err)
 		}
@@ -401,4 +401,21 @@ func (u *appServerUI) pickerHeight(width int) int {
 func (u *appServerUI) renderPicker(width, height int) []string {
 	u.settlePresentation()
 	return u.mainView.Menu.Render(&u.view.Painter.Painter, terminalsession.SelectionStyle(&u.view.Painter.Painter), width, height)
+}
+
+func TestComposerCompletionAttachmentLifetime(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	previous := u.conversation()
+	u.picker.Catalog([]completion.Choice{{Name: "skill", Path: "/work/SKILL.md"}}, "/work", true, "")
+	u.picker.CopyTexts = []string{"retained response"}
+	u.attachPresentation()
+	if !u.conversation().Completion.SkillsLoaded || len(u.conversation().Completion.CopyTexts) != 1 {
+		t.Fatal("attachment binding discarded Conversation completion values")
+	}
+	if err := u.clearSessionPresentation(); err != nil {
+		t.Fatal(err)
+	}
+	if u.conversation() == previous || u.picker.State != &u.conversation().Completion || u.picker.SkillsLoaded || len(u.picker.CopyTexts) != 0 {
+		t.Fatal("replacement retained old completion or copy choices")
+	}
 }

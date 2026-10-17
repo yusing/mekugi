@@ -1,20 +1,21 @@
 package router
 
 import (
-	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	"time"
+
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
-// The application retains refresh timing and detached source facts. Terminal
-// navigation belongs to the attached renderer.
+// The application retains refresh timing. Detached source facts belong to the
+// presentation panel and navigation belongs to the attached renderer.
 type sessionMetricsPanel struct {
-	snapshot  transportcapture.MetricsSnapshot
 	refreshed time.Time
 }
 
 func (u *appServerUI) showSessionMetrics() {
 	u.statusPanel = u.newStatusReport()
 	u.statusPanel.metrics = new(sessionMetricsPanel)
+	u.statusPanel.Metrics = new(transportcapture.MetricsSnapshot)
 	u.deleteDraftRange(0, len(u.Text))
 	u.refreshSessionMetrics(true)
 }
@@ -29,7 +30,7 @@ func (u *appServerUI) refreshSessionMetrics(force bool) {
 	}
 	m.refreshed = u.now()
 	if u.sessionCapture != nil {
-		m.snapshot = u.sessionCapture.Snapshot()
+		*p.Metrics = u.sessionCapture.Snapshot()
 	}
 	u.dirty = true
 }

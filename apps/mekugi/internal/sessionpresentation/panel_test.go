@@ -2,18 +2,21 @@ package sessionpresentation_test
 
 import (
 	"errors"
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	"reflect"
 	"testing"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 func TestNonTerminalPanelPublicationAndAdmission(t *testing.T) {
 	c := newStatusConsumer()
 	m := c.model()
-	source := &sessionpresentation.PanelView{ID: 1, Fields: []sessionpresentation.StatusField{{Group: "Usage", Remaining: new(50.0)}}, Metrics: new(transportcapture.MetricsSnapshot)}
+	source := m.OpenPanel("")
+	source.Fields = []sessionpresentation.StatusField{{Group: "Usage", Remaining: new(50.0)}}
+	source.Metrics = new(transportcapture.MetricsSnapshot)
 	publish := func() sessionpresentation.View {
-		return m.Publish(sessionpresentation.MainInputs{Control: &c.control, Feedback: &c.feedback, Conversation: &c.conversation, Panel: source}, sessionpresentation.Caption{}, c.now)
+		return m.Publish(sessionpresentation.MainInputs{Control: &c.control, Feedback: &c.feedback, Conversation: &c.conversation}, sessionpresentation.Caption{}, c.now)
 	}
 	v := publish()
 	want := m.View()
@@ -32,7 +35,7 @@ func TestNonTerminalPanelPublicationAndAdmission(t *testing.T) {
 	if err := m.AdmitPanel(action); err != nil {
 		t.Fatal(err)
 	}
-	source.ID = 2
+	m.OpenPanel("")
 	v = publish()
 	if !errors.Is(m.AdmitPanel(action), sessionpresentation.ErrStaleIntent) {
 		t.Fatal("replacement admitted an old close")
@@ -41,7 +44,7 @@ func TestNonTerminalPanelPublicationAndAdmission(t *testing.T) {
 	if !errors.Is(m.AdmitPanel(action), sessionpresentation.ErrStaleIntent) {
 		t.Fatal("wrong panel ID admitted")
 	}
-	source = nil
+	m.ClosePanel()
 	publish()
 	if m.View().Panel != nil {
 		t.Fatal("closed panel remains published")
