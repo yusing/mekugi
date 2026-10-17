@@ -13,7 +13,7 @@ import (
 
 func (u *appServerUI) openSudoPassword(a *nativeApproval) {
 	id := fmt.Sprintf("sudo-password/%p", a.guard)
-	c := &nativeQuestionCall{Call: prompt.Call{ID: id, Thread: a.Thread, Turn: a.Turn, Item: id, Local: true,
+	c := &nativeQuestionCall{Call: &prompt.Call{ID: id, Thread: a.Thread, Turn: a.Turn, Item: id, Local: true,
 		Questions: []prompt.Question{{ID: "password", Header: "Sudo password", IsSecret: true,
 			Question: "Enter your sudo password:\n" + a.Subject + "\nCtrl-] skips and denies authentication."}}}, sudo: a.guard}
 	u.addQuestions(c, false)

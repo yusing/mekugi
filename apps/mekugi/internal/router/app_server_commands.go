@@ -140,12 +140,6 @@ func (u *appServerUI) clearSessionPresentation() error {
 	}
 	u.hideQuestions()
 	retainedQuestions := u.questionCalls()
-	u.questions = nativeQuestionDock{}
-	for _, c := range retainedQuestions {
-		if c.sudo != nil && !c.Resolved {
-			u.addQuestions(c, true)
-		}
-	}
 	if u.notifications != nil {
 		clear(u.notifications.blocked)
 	}
@@ -167,6 +161,12 @@ func (u *appServerUI) clearSessionPresentation() error {
 	u.session.Retire()
 	u.session.Attachment = sessionpresentation.Attachment{}
 	u.conversation().Unsent, u.conversation().Queued = waiting.Unsent, waiting.Queued
+	u.questions = nativeQuestionDock{Questions: &u.conversation().Questions}
+	for _, c := range retainedQuestions {
+		if c.sudo != nil && !c.Resolved {
+			u.addQuestions(c, true)
+		}
+	}
 	painter := u.view.Painter
 	*u.view = *newActivityAdapter()
 	u.view.Painter, u.view.Conversation = painter, true

@@ -156,6 +156,11 @@ host identities and detached views. Restored questions retain their identities a
 resolution rules without opening an editor or issuing a request. Views and replay
 facts cannot revive live requests.
 
+The composed Conversation service owns question state in the attachment scope.
+Admitting the first host identity preserves that state. Successful Main replacement
+retires it; unresolved local authentication requests are explicitly reattached with
+their original identities, while host questions from the retired thread stay retired.
+
 Questions prefer waiting synchronous requests before asynchronous calls. Approvals
 are ordered oldest first and take precedence when explicitly opened. Opening either
 prompt parks Main's text, caret, undo/redo and history navigation. Hiding, answering

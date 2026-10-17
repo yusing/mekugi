@@ -183,12 +183,20 @@ func TestSudoSecretEditorAndSessionSwitch(t *testing.T) {
 	u.openSudoPassword(&nativeApproval{Approval: prompt.Approval{Thread: "main", Turn: "old-turn", Subject: "sudo id"}, guard: request})
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "fixture-secret")
+	questions := u.questions.Questions
+	call := u.activeQuestionCall().Call
+	if questions != &u.conversation().Questions || call.Questions[0].Editor.Snapshot.Text != "" || len(call.Questions[0].Answer) != 0 {
+		t.Fatal("secret entered neutral question state")
+	}
 	if _, err := u.key("\x07"); err != nil || u.Text != "fixture-secret" {
 		t.Fatalf("secret editor dispatch: %v", err)
 	}
 	u.hideQuestions()
 	if err := u.clearSessionPresentation(); err != nil {
 		t.Fatal(err)
+	}
+	if u.questions.Questions == questions || len(u.questions.Calls) != 1 || u.questions.Calls[0] != call {
+		t.Fatal("local authentication did not retain identity in its replacement owner")
 	}
 	input.Reset()
 	u.Thread, u.Turn = "new-thread", ""

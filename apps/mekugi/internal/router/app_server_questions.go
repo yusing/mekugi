@@ -20,7 +20,7 @@ import (
 )
 
 type nativeQuestionCall struct {
-	prompt.Call
+	*prompt.Call
 	request jsontext.Value
 	sudo    *vcsApproval
 	// Secret state remains invocation-local and is never part of a neutral view.
@@ -33,7 +33,7 @@ type questionEditor struct {
 	column *int
 }
 type nativeQuestionDock struct {
-	prompt.Questions
+	*prompt.Questions
 	handles map[*prompt.Call]*nativeQuestionCall
 	layout  map[*prompt.Question]*conversationui.QuestionLayout
 	rect    terminalsession.Rect
@@ -133,7 +133,7 @@ func (u *appServerUI) openQuestionCall(c *nativeQuestionCall) {
 	u.questions.painted = false
 	u.promptColumn = u.cursorColumn
 	u.promptEditor.Open(&u.Editor, composer.State{})
-	if !u.questions.Open(&c.Call) {
+	if !u.questions.Open(c.Call) {
 		return
 	}
 	u.resumeQuestion(u.currentQuestion())
@@ -161,13 +161,13 @@ func (u *appServerUI) moveQuestion(step int) {
 	u.resumeQuestion(u.currentQuestion())
 }
 func (u *appServerUI) addQuestions(c *nativeQuestionCall, replay bool) {
-	if c.Thread != u.Thread && !c.Local || !u.questions.Add(&c.Call, replay) {
+	if c.Thread != u.Thread && !c.Local || !u.questions.Add(c.Call, replay) {
 		return
 	}
 	if u.questions.handles == nil {
 		u.questions.handles = make(map[*prompt.Call]*nativeQuestionCall)
 	}
-	u.questions.handles[&c.Call] = c
+	u.questions.handles[c.Call] = c
 	if !replay && !c.Local {
 		if c.Sync {
 			u.notify("plan-mode-prompt", "Input requested")
@@ -190,7 +190,8 @@ func (u *appServerUI) questionMessage(m appserver.Message) (bool, error) {
 		if p.ThreadID != u.Thread {
 			return false, nil
 		}
-		u.addQuestions(&nativeQuestionCall{Call: conversationbinding.Questions(p.ThreadID, p.TurnID, p.ItemID, m.ID, p.Questions), request: slices.Clone(m.ID)}, false)
+		call := conversationbinding.Questions(p.ThreadID, p.TurnID, p.ItemID, m.ID, p.Questions)
+		u.addQuestions(&nativeQuestionCall{Call: &call, request: slices.Clone(m.ID)}, false)
 		return true, nil
 	}
 	if m.Method == "serverRequest/resolved" {
@@ -211,7 +212,8 @@ func (u *appServerUI) observeQuestionItem(thread, turn string, item binding.Thre
 	if item.Type != "agentMessage" || item.Delivery != "async" || len(item.Questions) == 0 {
 		return false
 	}
-	u.addQuestions(&nativeQuestionCall{Call: conversationbinding.Questions(thread, turn, item.ID, nil, item.Questions)}, replay)
+	call := conversationbinding.Questions(thread, turn, item.ID, nil, item.Questions)
+	u.addQuestions(&nativeQuestionCall{Call: &call}, replay)
 	return true
 }
 
@@ -237,8 +239,8 @@ func (u *appServerUI) resolveQuestionCall(c *nativeQuestionCall, outcome string)
 			c.sudo.reply <- shellapproval.Reply{Reason: "sudo authentication canceled"}
 			u.recordApproval(&nativeApproval{Approval: prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.sudo.item}}, "Denied: sudo authentication canceled")
 		}
-		u.questions.Remove(&c.Call)
-		delete(u.questions.handles, &c.Call)
+		u.questions.Remove(c.Call)
+		delete(u.questions.handles, c.Call)
 		return
 	}
 	u.renderQuestionRecord(c)
@@ -304,7 +306,7 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 		return false, nil
 	}
 	c := u.activeQuestionCall()
-	action := u.questionLayout(q).Key(&u.questions.Questions, key, u.Text == "")
+	action := u.questionLayout(q).Key(u.questions.Questions, key, u.Text == "")
 	switch action {
 	case conversationui.PromptPass:
 		return false, nil
@@ -356,9 +358,9 @@ func (u *appServerUI) submitQuestions() error {
 	if c.sudo != nil {
 		return u.submitSudoPassword(c)
 	}
-	attached := questionAnswerAttachments(&c.Call, c.secrets, c.secretAnswers)
+	attached := questionAnswerAttachments(c.Call, c.secrets, c.secretAnswers)
 	if len(c.request) > 0 {
-		if err := u.requests.Respond(c.request, conversationbinding.QuestionResponse(&c.Call, c.secretAnswers)); err != nil {
+		if err := u.requests.Respond(c.request, conversationbinding.QuestionResponse(c.Call, c.secretAnswers)); err != nil {
 			return err
 		}
 		u.hideQuestions()
@@ -368,7 +370,7 @@ func (u *appServerUI) submitQuestions() error {
 		u.renderQuestionRecord(c)
 		if len(attached.AnswerImages) > 0 || len(attached.Attachments) > 0 {
 			d := conversationmodel.Input{Draft: attached}
-			d.Text, d.Question, d.InHistory = "Attachments accompanying answers to "+c.Item+":\n", &c.Call, true
+			d.Text, d.Question, d.InHistory = "Attachments accompanying answers to "+c.Item+":\n", c.Call, true
 			d.AnswerImages = nil
 			for i, path := range attached.AnswerImages {
 				label := fmt.Sprintf("[Image %d]", i+1)
@@ -381,7 +383,7 @@ func (u *appServerUI) submitQuestions() error {
 		}
 		return nil
 	}
-	reply := conversationbinding.QuestionReplies(&c.Call)
+	reply := conversationbinding.QuestionReplies(c.Call)
 	u.hideQuestions()
 	c.Submitted()
 	if reply == "" {
@@ -390,7 +392,7 @@ func (u *appServerUI) submitQuestions() error {
 		return nil
 	}
 	attached.Text, attached.InHistory = reply, true
-	u.conversation().Unsent = append(u.conversation().Unsent, conversationmodel.Input{Draft: attached, Question: &c.Call, ReplyCount: len(binding.QuestionReplies(reply))})
+	u.conversation().Unsent = append(u.conversation().Unsent, conversationmodel.Input{Draft: attached, Question: c.Call, ReplyCount: len(binding.QuestionReplies(reply))})
 	u.renderQuestionRecord(c)
 	return u.flushInput()
 }

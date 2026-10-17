@@ -48,7 +48,7 @@ func TestSessionUIReplayRetainsQuestionAnswerWait(t *testing.T) {
 		if err := p.advance(step.at); err != nil {
 			t.Fatal(err)
 		}
-		if p.ui.questionCount() != step.questions {
+		if p.ui.questionCount() != step.questions || p.ui.questions.Questions != &p.ui.conversation().Questions {
 			t.Fatalf("at %s: questions=%d want=%d", step.at, p.ui.questionCount(), step.questions)
 		}
 		replayPlaybackTestPaint(t, p, 120, 28)

@@ -244,6 +244,31 @@ func TestNativeQuestionParkedEditorMidTypingAndSecret(t *testing.T) {
 	}
 }
 
+func TestNativeQuestionsUseComposedAttachment(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	questions := &u.conversation().Questions
+	questionTestSync(t, u, "pending", false)
+	if u.questions.Questions != questions || questions.Count("main") != 1 {
+		t.Fatal("native question did not reach the composed owner")
+	}
+	u.session.start("main", "/workspace")
+	u.ensureShell()
+	if &u.conversation().Questions != questions || u.questionCount() != 1 {
+		t.Fatal("first host identity replaced pending question state")
+	}
+	if err := u.clearSessionPresentation(); err != nil {
+		t.Fatal(err)
+	}
+	u.Thread = "replacement"
+	if u.questions.Questions == questions || u.questions.Questions != &u.conversation().Questions || u.questionCount() != 0 {
+		t.Fatal("replacement retained the retired question owner")
+	}
+	questionTestMessage(t, u, nil, "serverRequest/resolved", map[string]any{"threadId": "main", "requestId": "pending"})
+	if len(u.questions.Calls) != 0 {
+		t.Fatal("retired response populated replacement questions")
+	}
+}
+
 func TestNativeQuestionSupersedeBannerAndRejectedSend(t *testing.T) {
 	t.Run("rejected send", func(t *testing.T) {
 		u, input := newAppServerTestUI()

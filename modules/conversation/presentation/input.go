@@ -39,6 +39,7 @@ type Submission struct {
 }
 
 type Session struct {
+	Questions      prompt.Questions
 	Unsent, Queued []Input
 	Submitted      map[string]Submission
 	Shell          Input

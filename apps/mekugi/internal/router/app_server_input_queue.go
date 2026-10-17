@@ -64,7 +64,7 @@ func (u *appServerUI) restoreDrafts(parts ...conversationmodel.Input) {
 		u.restoreDrafts(parts...)
 		u.promptColumn = u.cursorColumn
 		u.promptEditor.Open(&u.Editor, composer.State{})
-		u.questions.Active, u.questions.Index = &c.Call, index
+		u.questions.Active, u.questions.Index = c.Call, index
 		u.resumeQuestion(u.currentQuestion())
 		return
 	}

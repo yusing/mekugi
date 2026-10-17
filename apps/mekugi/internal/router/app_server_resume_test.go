@@ -77,12 +77,13 @@ func TestAppServerResumeRejectsFailureAndWrongIdentity(t *testing.T) {
 	for _, wire := range []string{`{"id":1,"error":{"code":-1,"message":"missing thread"}}`, `{"id":1,"result":{"thread":{"id":"other"}}}`, `{"id":1,"result":{"thread":{}}}`} {
 		u, w := newAppServerTestUI()
 		u.Thread, u.resumeThread = "", "saved"
+		questions := u.questions.Questions
 		appServerTestRequest(t, u, "1", "thread/resume")
 		var m appserver.Message
 		if err := json.Unmarshal([]byte(wire), &m); err != nil {
 			t.Fatal(err)
 		}
-		if err := u.message(m); err == nil || u.Thread != "" || w.Len() != 0 {
+		if err := u.message(m); err == nil || u.Thread != "" || w.Len() != 0 || u.questions.Questions != questions {
 			t.Fatalf("resume must fail without creating another thread: %v", err)
 		}
 	}
