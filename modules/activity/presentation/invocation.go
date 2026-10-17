@@ -22,21 +22,23 @@ type CommandCompletion struct {
 // terminal pacing. The application's operation index and retained feed records
 // reference this same object; it has no registry, process or storage capability.
 type Invocation struct {
-	source   CommandSource
-	started  time.Time
-	ended    time.Time
-	duration time.Duration
-	complete bool
-	exited   bool
-	exit     int
-	output   *feed.Output
+	source    CommandSource
+	started   time.Time
+	ended     time.Time
+	duration  time.Duration
+	complete  bool
+	exited    bool
+	exit      int
+	output    *feed.Output
+	retention *feed.Retention
+	report    invocationReport
 }
 
 // NewInvocation accepts a zero start when only completion evidence is available.
 // Nil retention preserves lifecycle and source without retaining full output.
 // Source: apps/mekugi/internal/router/app_server_events.go:354:368@[26c7bc92].
 func NewInvocation(source CommandSource, started time.Time, retention *feed.Retention) *Invocation {
-	i := &Invocation{source: source, started: started}
+	i := &Invocation{source: source, started: started, retention: retention}
 	if retention != nil {
 		i.output = retention.New()
 	}

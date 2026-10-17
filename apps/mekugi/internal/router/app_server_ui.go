@@ -415,7 +415,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 		}
 		u.finishCommandSegments()
 		for key, run := range u.session.commands {
-			if run.segments.release() {
+			if run.entry.native.invocation.ReleaseSegmentOutputs() {
 				u.execTrack.ReleaseOutput(key)
 			}
 		}

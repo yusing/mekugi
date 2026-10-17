@@ -20,7 +20,7 @@ func TestExecTrackSessionReplacementDropsRetainedChildOutput(t *testing.T) {
 	report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0}, segmenttransport.Message{Type: segmenttransport.Output, Index: 0, Data: "first\n"})
 	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 1 && len(view.segments[0].tail) != 0 })
 	u.flushStreamOutput()
-	before, _ := hub.view(key, false, execSegmentText, u.session.activity.Outputs(u.session.Scope()))
+	before, _ := hub.view(key, false, execSegmentText)
 	if len(before.segments) != 1 || before.segments[0].output == nil || !slices.Equal(before.segments[0].output.View().Lines, []string{"first"}) {
 		t.Fatalf("child output was not retained before replacement: %+v", before)
 	}
@@ -47,7 +47,7 @@ func TestExecTrackSessionReplacementDropsRetainedChildOutput(t *testing.T) {
 	report.send(segmenttransport.Message{Type: segmenttransport.Done, Code: new(3)})
 	report.send(segmenttransport.Message{Type: segmenttransport.Closed})
 	hub.await(t, key, func(view execTrackView) bool { return view.complete })
-	after, _ := hub.view(key, true, execSegmentText, u.session.activity.Outputs(u.session.Scope()))
+	after, _ := hub.view(key, true, execSegmentText)
 	if after.output || !after.complete || after.code != 3 || len(after.segments) != 2 {
 		t.Fatalf("detached report lost outcomes or claimed complete output: %+v", after)
 	}

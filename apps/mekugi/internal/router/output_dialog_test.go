@@ -359,19 +359,18 @@ func TestOutputDialogRestoredMultiReadKeepsCombinedOutput(t *testing.T) {
 
 func TestOutputDialogTrackedOutputSettlesAndLossyFallsBack(t *testing.T) {
 	key := [3]string{"main", "t", "cmd"}
-	retention := new(activitymodel.Retention)
 	hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
 	report := hub.begin(t, key, "echo one; echo two")
 	report.send(segmenttransport.Message{Type: segmenttransport.Begin}, segmenttransport.Message{Type: segmenttransport.Output, Data: "initial\n"})
 	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 1 && len(view.segments[0].tail) != 0 })
-	view, _ := hub.view(key, false, execSegmentText, retention)
+	view, _ := hub.view(key, false, execSegmentText)
 	retained := view.segments[0].output
 	if !view.output || retained == nil {
 		t.Fatalf("live segment did not retain output: %+v", view)
 	}
 	report.send(segmenttransport.Message{Type: segmenttransport.End, Code: new(2)}, segmenttransport.Message{Type: segmenttransport.Done, Code: new(2)}, segmenttransport.Message{Type: segmenttransport.Closed})
 	hub.await(t, key, func(view execTrackView) bool { return view.complete })
-	view, _ = hub.view(key, true, execSegmentText, retention)
+	view, _ = hub.view(key, true, execSegmentText)
 	if view.segments[0].output != retained || !retained.View().Done || retained.View().Exit != 2 {
 		t.Fatalf("final segment did not settle retained output: %+v", retained.View())
 	}
@@ -380,7 +379,7 @@ func TestOutputDialogTrackedOutputSettlesAndLossyFallsBack(t *testing.T) {
 	overflowReport := hub.begin(t, other, "echo huge; echo done")
 	overflowReport.send(segmenttransport.Message{Type: segmenttransport.Begin}, segmenttransport.Message{Type: segmenttransport.Output, Data: "prior\n"})
 	hub.await(t, other, func(view execTrackView) bool { return len(view.segments) == 1 && len(view.segments[0].tail) != 0 })
-	first, _ := hub.view(other, false, execSegmentText, retention)
+	first, _ := hub.view(other, false, execSegmentText)
 	previous := first.segments[0].output
 	if previous == nil {
 		t.Fatal("overflow setup did not allocate segment output")
@@ -398,8 +397,7 @@ func TestOutputDialogLossyMessageReleasesLiveSegment(t *testing.T) {
 	report := hub.begin(t, key, "echo text; echo done")
 	report.send(segmenttransport.Message{Type: segmenttransport.Begin}, segmenttransport.Message{Type: segmenttransport.Output, Data: "partial"})
 	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 1 && len(view.segments[0].tail) != 0 })
-	var retention activitymodel.Retention
-	view, _ := hub.view(key, false, execSegmentText, &retention)
+	view, _ := hub.view(key, false, execSegmentText)
 	output := view.segments[0].output
 	report.send(segmenttransport.Message{Type: segmenttransport.Lossy})
 	hub.await(t, key, func(view execTrackView) bool { return !view.output })
@@ -443,20 +441,20 @@ func TestOutputDialogTrackedViewDrainsRetainedOutput(t *testing.T) {
 	report := hub.begin(t, key, "echo text; sleep 1")
 	report.send(segmenttransport.Message{Type: segmenttransport.Begin}, segmenttransport.Message{Type: segmenttransport.Output, Data: "first\n"})
 	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 1 && len(view.segments[0].tail) != 0 })
-	var retention activitymodel.Retention
-	view, _ := hub.view(key, false, execSegmentText, &retention)
+	view, _ := hub.view(key, false, execSegmentText)
 	output := view.segments[0].output
 	if output == nil || output.View().Done || strings.Join(output.View().Lines, "\n") != "first" {
 		t.Fatal("live segment output missing")
 	}
 	report.send(segmenttransport.Message{Type: segmenttransport.Output, Data: "second\n"}, segmenttransport.Message{Type: segmenttransport.End, Code: new(3)})
 	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 1 && !view.segments[0].running })
-	view, _ = hub.view(key, true, execSegmentText, &retention)
+	view, _ = hub.view(key, true, execSegmentText)
 	if view.segments[0].output != output || !output.View().Done || output.View().Exit != 3 || strings.Join(output.View().Lines, "\n") != "first\nsecond" {
 		t.Fatalf("settled segment: %+v", output.View())
 	}
-	if len(hub.presentation(key).segments[0].fresh) != 0 {
-		t.Fatal("pending output not drained")
+	hub.view(key, true, execSegmentText)
+	if strings.Join(output.View().Lines, "\n") != "first\nsecond" {
+		t.Fatal("repeated observation duplicated retained output")
 	}
 }
 

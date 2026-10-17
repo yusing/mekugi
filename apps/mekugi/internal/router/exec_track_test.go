@@ -10,6 +10,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/commandsegments/segments"
 
@@ -153,7 +154,7 @@ func (s *execTrackShell) awaitView(t *testing.T, key [3]string) execTrackView {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		view, _ := s.hub.view(key, true, func(source string) string { return source }, nil)
+		view, _ := s.hub.view(key, true, func(source string) string { return source })
 		if view.ended || time.Now().After(deadline) {
 			return view
 		}
@@ -499,8 +500,8 @@ func TestExecTrackRelaysExternalCommandIO(t *testing.T) {
 			}
 			if tc.name != "single" {
 				var reported strings.Builder
-				for _, segment := range shell.hub.presentation(key).segments {
-					reported.Write(segment.fresh)
+				for _, output := range shell.hub.reported[key] {
+					reported.Write(output)
 				}
 				if reported.String() != tc.want.stdout+tc.want.stderr {
 					t.Fatalf("reported bytes changed: got %d, want %d", reported.Len(), len(tc.want.stdout)+len(tc.want.stderr))
@@ -872,10 +873,11 @@ func TestAppServerEarlyEndedReportShowsHostOutputLive(t *testing.T) {
 
 type execTrackFixture struct {
 	*segments.Observer
-	mu     sync.Mutex // Test shells can view distinct commands concurrently.
-	server *segmenttransport.Server
-	views  map[[3]string]*execTrackPresentation
-	ui     *appServerUI
+	mu       sync.Mutex // Test shells can view distinct commands concurrently.
+	server   *segmenttransport.Server
+	views    map[[3]string]*appServerCommandRun
+	reported map[[3]string][][]byte
+	ui       *appServerUI
 }
 
 func (h *execTrackFixture) start(key [3]string, command string) {
@@ -890,32 +892,52 @@ func (h *execTrackFixture) observeCommandStart(message appserver.Message) {
 	}
 }
 
-func (h *execTrackFixture) presentation(key [3]string) *execTrackPresentation {
+func (h *execTrackFixture) run(key [3]string) *appServerCommandRun {
 	if h.ui != nil {
 		if run := h.ui.session.commands[key]; run != nil {
-			return &run.segments
+			return run
 		}
 	}
 	if h.views == nil {
-		h.views = make(map[[3]string]*execTrackPresentation)
+		h.views = make(map[[3]string]*appServerCommandRun)
 	}
 	if h.views[key] == nil {
-		h.views[key] = &execTrackPresentation{}
+		h.views[key] = &appServerCommandRun{entry: activityPaneEntry{native: &liveActivityNativeItem{
+			invocation: activitypresentation.NewInvocation(activitypresentation.CommandSource{}, time.Time{}, new(activitymodel.Retention)),
+		}}}
 	}
 	return h.views[key]
 }
 
-func (h *execTrackFixture) view(key [3]string, final bool, text func(string) string, outputs *activitymodel.Retention) (execTrackView, bool) {
+func (h *execTrackFixture) view(key [3]string, final bool, text func(string) string) (execTrackView, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return h.presentation(key).view(h.Observer, key, final, text, outputs)
+	track, ok := h.Read(key)
+	if !ok {
+		return execTrackView{}, false
+	}
+	if h.reported == nil {
+		h.reported = make(map[[3]string][][]byte)
+	}
+	for len(h.reported[key]) < len(track.Segments) {
+		h.reported[key] = append(h.reported[key], nil)
+	}
+	for index, segment := range track.Segments {
+		h.reported[key][index] = append(h.reported[key][index], segment.Output...)
+	}
+	run := h.run(key)
+	view, changed := run.segments.view(run.entry.native.invocation, track, final, text)
+	if view.release {
+		h.ReleaseOutput(key)
+	}
+	return view, changed
 }
 
 func (h *execTrackFixture) await(t *testing.T, key [3]string, ready func(execTrackView) bool) execTrackView {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		view, _ := h.view(key, false, execSegmentText, nil)
+		view, _ := h.view(key, false, execSegmentText)
 		if ready(view) {
 			return view
 		}

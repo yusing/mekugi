@@ -154,7 +154,7 @@ func (u *appServerUI) clearSessionPresentation() error {
 	u.feedback = noticepresentation.Model{}
 	u.mainView.NoticeDetails, u.mainView.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
 	for key, run := range u.session.commands {
-		if run.segments.release() {
+		if run.entry.native.invocation.ReleaseSegmentOutputs() {
 			u.execTrack.ReleaseOutput(key)
 		}
 	}

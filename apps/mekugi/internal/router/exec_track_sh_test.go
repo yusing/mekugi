@@ -96,8 +96,8 @@ func TestExecTrackDashSegments(t *testing.T) {
 				t.Fatalf("incomplete report: %+v", view)
 			}
 			var output strings.Builder
-			for _, segment := range shell.hub.presentation(key).segments {
-				output.Write(segment.fresh)
+			for _, reported := range shell.hub.reported[key] {
+				output.Write(reported)
 			}
 			for i, segment := range view.segments {
 				if segment.source != segments[i].Source || !segment.skipped && segment.timing.ElapsedNS <= 0 {

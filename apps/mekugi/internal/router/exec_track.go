@@ -24,35 +24,15 @@ import (
 
 const execTrackCompletionWait = 300 * time.Millisecond
 
-// Activity output belongs to its existing application command scope, not the
-// invocation observer. Replacing that scope releases output without reviving it.
+// Terminal cursors reveal the existing invocation's admitted segment output.
 type execTrackPresentation struct {
-	segments                []execSegmentOutput
-	version                 uint64
-	output, ended, complete bool
-	code                    int
+	segments []execSegmentOutput
+	version  uint64
 }
 
 type execSegmentOutput struct {
-	facts      segments.Segment // Last source facts, excluding drained output bytes.
-	text       string
-	vcs        bool
-	output     activityui.CommandOutput
-	raw, fresh []byte
-	full       *activitymodel.Output
-}
-
-func (p *execTrackPresentation) release() bool {
-	released := false
-	for i := range p.segments {
-		segment := &p.segments[i]
-		if segment.full != nil {
-			segment.full.Release()
-			segment.full = nil
-			released = true
-		}
-	}
-	return released
+	text   string
+	output activityui.CommandOutput
 }
 
 // execPreviewTrack interprets matched reports within the application's admitted
@@ -210,6 +190,7 @@ type commandSegment struct {
 
 // execTrackView is a report as presented at one frame.
 type execTrackView struct {
+	release  bool // Return attribution loss to the observation owner.
 	segments []commandSegment
 	semantic bool // Observed segment or attribution facts changed, rather than only reveal.
 	output   bool // Segments carry their own output; otherwise the host's combined output applies.
@@ -221,101 +202,73 @@ type execTrackView struct {
 // view reports the command's segments, and whether they changed since the
 // last view. While live, a segment appears once it starts. Final views mark
 // segments the list never reached as skipped; a segment still open when the
-// shell finished is the one the shell exited in. Segment output is retained
-// in outputs, when given, on the UI goroutine that views it.
-func (p *execTrackPresentation) view(observer *segments.Observer, key [3]string, final bool, text func(string) string, outputs *activitymodel.Retention) (execTrackView, bool) {
-	track, ok := observer.Read(key)
-	if !ok {
-		return execTrackView{}, false
-	}
+// shell finished is the one the shell exited in. The invocation owns facts and
+// retained output; this adapter owns text projection and terminal reveal.
+func (p *execTrackPresentation) view(invocation *activitypresentation.Invocation, track segments.Report, final bool, text func(string) string) (execTrackView, bool) {
 	changed := p.version != track.Version
 	p.version = track.Version
 	for len(p.segments) < len(track.Segments) {
 		p.segments = append(p.segments, execSegmentOutput{})
 	}
+	report := activitypresentation.SegmentReport{Terminal: track.Terminal, Lossy: track.Lossy, Ended: track.Ended, Closed: track.Closed, Done: track.Done, ExitCode: track.Code}
 	for i, observed := range track.Segments {
-		segment := &p.segments[i]
-		if segment.text == "" {
-			segment.text = text(observed.Source)
-			segment.output = activityui.NewCommandOutput(instantOperations(segment.text))
-			segment.vcs = activitypresentation.VCSOutputSource(toolActivityShellSource(observed.Source))
+		cursor := &p.segments[i]
+		if cursor.text == "" {
+			cursor.text = text(observed.Source)
+			cursor.output = activityui.NewCommandOutput(instantOperations(cursor.text))
 		}
-		if !track.Lossy {
-			if observed.Output != "" {
-				segment.output.Write(observed.Output)
-			}
-			segment.fresh = append(segment.fresh, observed.Output...)
-			if segment.vcs {
-				segment.raw = append(segment.raw, observed.Output...)
-			}
-			if max(len(segment.raw), len(segment.fresh)) > activitymodel.OutputBytes {
-				segment.raw, segment.fresh = nil, nil
-				track.Lossy = true
-				observer.ReleaseOutput(key)
-			}
+		if !track.Lossy && observed.Output != "" {
+			cursor.output.Write(observed.Output)
 		}
+		report.Segments = append(report.Segments, activitypresentation.SegmentObservation{
+			Source: observed.Source, Text: cursor.text, Analysis: toolActivityShellSource(observed.Source),
+			Started: observed.Timing.Started, Ended: observed.Timing.Ended, Duration: time.Duration(observed.Timing.ElapsedNS),
+			Began: observed.Began, Finished: observed.Ended, ExitCode: observed.Code, Output: observed.Output,
+		})
 	}
-	complete := track.Complete()
-	view := execTrackView{output: !track.Terminal && len(track.Segments) != 1 && !track.Lossy && !(track.Ended && !complete), ended: track.Ended, complete: complete, code: track.Code}
-	view.semantic = p.output != view.output || p.ended != view.ended || p.complete != view.complete || p.code != view.code
-	p.output, p.ended, p.complete, p.code = view.output, view.ended, view.complete, view.code
-	last := track.LastStarted()
-	for i, observed := range track.Segments {
-		segment := &p.segments[i]
-		facts := observed
-		facts.Output = ""
-		view.semantic = view.semantic || segment.facts != facts
-		segment.facts = facts
-		if !view.output {
-			segment.fresh = nil
-			if segment.full != nil {
-				segment.full.Release()
-				segment.full = nil
-			}
-		}
-		frame, advanced := segment.output.Advance()
+	semantic, release := invocation.ObserveSegments(report)
+	snapshot := invocation.ReportSnapshot(final)
+	view := execTrackView{output: snapshot.SeparateOutput, ended: snapshot.Ended, complete: snapshot.Complete, code: snapshot.ExitCode, semantic: semantic, release: release}
+	for index, segment := range snapshot.Segments {
+		cursor := &p.segments[index]
+		frame, advanced := cursor.output.Advance()
 		changed = changed || advanced
-		shown := commandSegment{timing: observed.Timing, text: segment.text, exit: observed.Code, source: observed.Source}
-		switch {
-		case observed.Began && !observed.Ended && final:
-			shown.exit = track.Code
-		case observed.Began && !observed.Ended:
-			shown.running = true
-		case !observed.Began && (final || i < last):
-			shown.skipped = true
-		case !observed.Began:
-			continue
+		shown := commandSegment{timing: segmenttransport.Timing{Started: segment.Started, Ended: segment.Ended, ElapsedNS: int64(segment.Duration)},
+			text: segment.Text, source: segment.Source, running: segment.Running, skipped: segment.Skipped, exit: segment.ExitCode, raw: segment.Raw,
+			output: invocation.SegmentOutput(index),
 		}
 		if view.output {
 			if final {
-				frame = segment.output.Settle()
-			}
-			if outputs != nil && !shown.skipped {
-				if segment.full == nil {
-					segment.full = outputs.New()
-				}
-				segment.full.Write(string(segment.fresh))
-				segment.fresh = segment.fresh[:0]
-				if !shown.running {
-					segment.full.Finish(nil, &shown.exit)
-				}
-				shown.output = segment.full
+				frame = cursor.output.Settle()
 			}
 			shown.tail, shown.omit = frame.Tail, frame.Omitted
 			if final && !shown.skipped && shown.exit == 0 {
 				output := strings.Join(shown.tail, "\n")
-				shown.changes = mchangesOutputRows(observation.Item{Command: observed.Source, AggregatedOutput: &output})
+				shown.changes = mchangesOutputRows(observation.Item{Command: shown.source, AggregatedOutput: &output})
 				if len(shown.changes) > 0 && shown.omit > 0 {
 					shown.changes = append([]activitypresentation.ChangeRow{{Note: activityui.Elision{Hidden: shown.omit}.Text()}}, shown.changes...)
-				}
-				if segment.vcs {
-					shown.raw = string(segment.raw)
 				}
 			}
 		}
 		view.segments = append(view.segments, shown)
 	}
-	return view, changed || view.semantic
+	return view, changed || semantic
+}
+
+// commandReportView drains the observer once before Activity reduction and
+// terminal reveal. Attribution loss returns to the transport owner explicitly.
+func (u *appServerUI) commandReportView(key [3]string, run *appServerCommandRun, final bool, directory string) (execTrackView, bool) {
+	track, ok := u.execTrack.Read(key)
+	if !ok {
+		return execTrackView{}, false
+	}
+	view, changed := run.segments.view(run.entry.native.invocation, track, final, func(source string) string {
+		return execSegmentTextInDirectory(source, directory)
+	})
+	if view.release {
+		u.execTrack.ReleaseOutput(key)
+	}
+	return view, changed
 }
 
 // execSegmentText is a segment's display operations, using the same shell
@@ -340,9 +293,7 @@ func execSegmentTextInDirectory(source, cwd string) string {
 func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRun) ([]activityPaneEntry, bool) {
 	s := &u.session
 	if run.completion != nil {
-		view, _ := run.segments.view(u.execTrack, key, false, func(source string) string {
-			return execSegmentTextInDirectory(source, run.entry.native.commandCwd)
-		}, s.activity.Outputs(s.Scope()))
+		view, _ := u.commandReportView(key, run, false, run.entry.native.commandCwd)
 		if !view.ended && u.now().Sub(run.completedAt) < execTrackCompletionWait {
 			return nil, true
 		}
@@ -356,9 +307,7 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 		u.dirty = true
 		return nil, true
 	}
-	view, changed := run.segments.view(u.execTrack, key, false, func(source string) string {
-		return execSegmentTextInDirectory(source, run.entry.native.commandCwd)
-	}, s.activity.Outputs(s.Scope()))
+	view, changed := u.commandReportView(key, run, false, run.entry.native.commandCwd)
 	if !u.execTrack.Tracking(key) {
 		return nil, false
 	}
@@ -405,10 +354,8 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 // already-published host aggregate remains authoritative.
 func (u *appServerUI) reconcileTrackedCommand(key [3]string, entry activityPaneEntry, item observation.Item) (activityPaneEntry, bool) {
 	run := u.session.commands[key]
-	view, _ := run.segments.view(u.execTrack, key, true, func(source string) string {
-		return execSegmentTextInDirectory(source, appServerCommandDirectory(item, u.session.cwd))
-	}, u.session.activity.Outputs(u.session.Scope()))
-	if !view.complete || item.ExitCode == nil || view.code != *item.ExitCode || len(view.segments) == 0 {
+	view, _ := u.commandReportView(key, run, true, appServerCommandDirectory(item, u.session.cwd))
+	if !run.entry.native.invocation.ReportMatchesHost() || len(view.segments) == 0 {
 		return entry, false
 	}
 	native := *entry.native

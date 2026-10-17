@@ -200,6 +200,11 @@ The application's existing live-operation index supplies identity and lifetime;
 yielded invocations survive the originating turn. Completed feed and dialog
 references retain the same invocation after it leaves that index.
 
+The invocation also owns admitted segment facts, retained segment output and
+attribution reduction. Application integration supplies ordered report facts and
+drained bytes once; transport correlation and durable report publication remain
+outside Activity. Terminal reveal cursors consume detached segment snapshots.
+
 Read-only snapshots keep their content and outcome after later append, replacement
 or release. Consumers can use the output version to avoid rebuilding unchanged
 views. Restored output comes from retained host aggregates or validated segment

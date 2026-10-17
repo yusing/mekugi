@@ -78,7 +78,7 @@ func TestVCSCommitEnrichmentRequiresProvenSegmentDirectory(t *testing.T) {
 			command := "git commit -m directory"
 			hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
 			hub.ui, u.execTrack = u, hub.Observer
-			u.session.commands[key] = &appServerCommandRun{}
+			u.session.commands[key] = &appServerCommandRun{entry: activityPaneEntry{native: &liveActivityNativeItem{invocation: activitypresentation.NewInvocation(activitypresentation.CommandSource{}, time.Time{}, u.session.activity.Outputs(u.session.Scope()))}}}
 			report := hub.begin(t, key, prior+"; "+command)
 			report.send(
 				segmenttransport.Message{Type: segmenttransport.Begin, Index: 0}, segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)},
@@ -88,6 +88,8 @@ func TestVCSCommitEnrichmentRequiresProvenSegmentDirectory(t *testing.T) {
 			hub.await(t, key, func(view execTrackView) bool { return view.complete })
 			item := binding.ThreadItem{ID: key[2], Type: "commandExecution", Command: "bash -lc " + quoteShellWord(prior+"; "+command), Cwd: g.dir, ExitCode: new(0), AggregatedOutput: &output}
 			entry := activityPaneEntry{Kind: "tool", native: &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2], command: item.Command}}
+			entry.native.invocation = u.session.commands[key].entry.native.invocation
+			entry.native.invocation.Complete(activitypresentation.CommandCompletion{Source: appServerCommandSource(item.Command, item.Cwd), Aggregate: item.AggregatedOutput, Exit: item.ExitCode})
 			live, valid := u.reconcileTrackedCommand(key, entry, item.Observation())
 			if !valid {
 				t.Fatal("completed report was not admitted")

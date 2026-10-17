@@ -13,8 +13,6 @@ import (
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
-	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
@@ -89,12 +87,11 @@ exit 127
 				case <-ctx.Done():
 					t.Fatal("second command did not reach its approval")
 				}
-				outputs := new(activitymodel.Retention)
 				// Approval and report streams are independent; await the report boundary.
 				shell.hub.await(t, key, func(view execTrackView) bool {
 					return len(view.segments) == 2 && !view.complete && !view.segments[0].running && view.segments[1].running
 				})
-				live, _ := shell.hub.view(key, false, execSegmentText, outputs)
+				live, _ := shell.hub.view(key, false, execSegmentText)
 				first, second := live.segments[0], live.segments[1]
 				if first.timing.ElapsedNS < int64(20*time.Millisecond) || second.timing.Started.IsZero() || first.output == nil || second.output == nil || first.output == second.output {
 					t.Fatal("commands lost individual elapsed time or output identity")
@@ -130,7 +127,7 @@ exit 127
 					t.Fatalf("nested write escaped: %s", stderr.String())
 				}
 				shell.awaitView(t, key)
-				final, _ := shell.hub.view(key, true, execSegmentText, outputs)
+				final, _ := shell.hub.view(key, true, execSegmentText)
 				if !final.complete || final.segments[1].timing.ElapsedNS <= 0 || !strings.Contains(strings.Join(final.segments[1].output.View().Lines, "\n"), "remote write denied") || strings.Join(final.segments[0].output.View().Lines, "\n") != strings.TrimSpace(line) {
 					t.Fatal("completion lost separate retained output or timing")
 				}
