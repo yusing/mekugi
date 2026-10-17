@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -33,6 +35,6 @@ func newTestSessionNaming(ctx context.Context, provider inferencegateway.Forward
 func runNamingOperation(ctx context.Context, g *sessionNaming, thread, prompt string) (string, error) {
 	entry := testNaming().NewThread("", false)
 	entry.ObserveInput(responses.MustMarshalJSON(prompt))
-	complete := namingCompletion(g.provider, g.usage, thread, sessionTitleAuthHeaders())
+	complete := requestexecution.NamingCompletion(g.provider, g.usage, thread, sessionTitleAuthHeaders())
 	return entry.Admit()(ctx, complete)
 }

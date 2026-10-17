@@ -1,12 +1,11 @@
 // Source: internal/router/session_title_generate.go:107:238@[e2ee92a9] inference adapter.
-package router
+package requestexecution
 
 import (
 	"context"
 	"encoding/json/jsontext"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
-	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 
 	json "encoding/json/v2"
@@ -22,7 +21,8 @@ import (
 	"github.com/yusing/mekugi/providers/openai"
 )
 
-func namingCompletion(provider inferencegateway.Forwarder, totals *accounting.Service, thread string, headers http.Header) inference.Complete {
+// NamingCompletion captures only authentication for one auxiliary title operation.
+func NamingCompletion(provider inferencegateway.Forwarder, totals *accounting.Service, thread string, headers http.Header) inference.Complete {
 	if provider == nil {
 		return nil
 	}
@@ -63,11 +63,11 @@ func namingCompletion(provider inferencegateway.Forwarder, totals *accounting.Se
 			return "", err
 		}
 		collector := new(sessionTitleCollector)
-		hooks := &requestexecution.ResponseHooks{Transport: response.Transport}
+		hooks := &ResponseHooks{Transport: response.Transport}
 		if usage != nil {
 			hooks.OnUsage = usage.Observe
 		}
-		state, err := requestexecution.CopyResponse(io.Discard, response.Response, stream, collector, hooks)
+		state, err := CopyResponse(io.Discard, response.Response, stream, collector, hooks)
 		if err != nil {
 			return "", err
 		}

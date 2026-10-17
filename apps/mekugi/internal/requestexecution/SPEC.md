@@ -20,7 +20,10 @@ observations.
 Raw provider usage is observed before response projection. Definite provider
 rejections do not charge inferred execution; uncertain transport failures retain
 the existing accounting distinction. Pinned provider prices survive catalog
-refreshes. Naming admission follows a successfully delivered completed response.
+refreshes. Naming admission follows a successfully delivered completed response. The
+auxiliary naming adapter captures only provider authentication, validates terminal
+completion and attributes usage to the originating thread. It carries no Main
+execution or steering identity; optional naming policy stays with its module.
 
 Non-stream responses are staged and terminal-validated before headers or delivery
 confirmation. Streams confirm only successful writes and flushes. Partial or

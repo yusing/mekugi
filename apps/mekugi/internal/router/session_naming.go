@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -82,7 +84,7 @@ func (g *sessionNaming) Completed(thread string, headers http.Header) {
 	}
 	// Admission precedes availability: absent credentials cannot enable a retry
 	// on a later exchange. Capture this exchange's auth and originating thread.
-	complete := namingCompletion(g.provider, g.usage, thread, headers)
+	complete := requestexecution.NamingCompletion(g.provider, g.usage, thread, headers)
 	if complete == nil {
 		return
 	}
