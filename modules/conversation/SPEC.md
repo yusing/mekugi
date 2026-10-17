@@ -210,6 +210,11 @@ Edits offer once/session approval or cancel and name the matching live item path
 Permissions offer turn, strict-review turn, session or an empty grant. Terminal
 input requests name the running terminal and quote the proposed input.
 
+Approval decisions name a pending request and one of its published choice identities.
+A retired request or unavailable choice leaves current approvals unchanged. Denial
+reasons are explicit ordinary input; choosing a request never reads another prompt’s
+editor. Local guard requests receive attachment-local monotonic identities.
+
 Unknown choices leave an unanswerable request visibly blocked. Supported command
 denial can carry a reason under the [backend execution contract](../../backends/codex/SPEC.md#execution-authority).
 External resolution and turn end clear pending approvals without claiming approval

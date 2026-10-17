@@ -3,6 +3,7 @@ package prompt
 
 import (
 	"slices"
+	"strconv"
 
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
@@ -30,9 +31,33 @@ func (a *Approval) DenialChoice() int {
 type Approvals struct {
 	Pending        []*Approval
 	Open, AutoOpen bool
+	nextLocal      uint64
 }
 
-func (m *Approvals) Add(a *Approval) { m.Pending = append(m.Pending, a); m.AutoOpen = true }
+func (m *Approvals) Add(a *Approval) {
+	if a.ID == "" {
+		m.nextLocal++
+		a.ID = "local/" + strconv.FormatUint(m.nextLocal, 10)
+	}
+	m.Pending = append(m.Pending, a)
+	m.AutoOpen = true
+}
+
+// Decision resolves only offered choices on a still-pending request. Host
+// response payloads and local command grants remain with the application.
+func (m *Approvals) Decision(id string, choice int) (*Approval, Choice, bool) {
+	for _, a := range m.Pending {
+		if a.ID == id {
+			for _, c := range a.Choices {
+				if c.ID == choice {
+					return a, c, true
+				}
+			}
+			break
+		}
+	}
+	return nil, Choice{}, false
+}
 func (m *Approvals) Remove(a *Approval) bool {
 	i := slices.Index(m.Pending, a)
 	if i < 0 {

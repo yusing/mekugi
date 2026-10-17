@@ -11,6 +11,7 @@ import (
 
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
@@ -94,9 +95,6 @@ func (u *appServerUI) approvalDirectory(cwd string) []string {
 }
 
 func (u *appServerUI) addApproval(a *nativeApproval) {
-	if a.ID == "" {
-		a.ID = fmt.Sprintf("guard/%p", a.guard)
-	}
 	u.approvals.Add(a.Approval)
 	if u.approvals.handles == nil {
 		u.approvals.handles = make(map[*prompt.Approval]*nativeApproval)
@@ -123,9 +121,9 @@ func (u *appServerUI) addGuardApproval(request *vcsApproval) {
 	details := u.approvalDirectory(request.cwd)
 	details = append(details, "Denying fails only this command with exit status 1.")
 	a := &nativeApproval{Approval: &prompt.Approval{Thread: request.thread, Item: request.item, Title: "Allow this remote write?", Subject: shellCommandString(request.argv[0], request.argv[1:]), Details: details, Choices: []prompt.Choice{
-		{Label: "Yes, run it", Approve: true, Outcome: "Approved"},
-		{Label: "Yes, for this exact command and workdir this session", Approve: true, Session: true, Outcome: "Approved for this session"},
-		{Label: "No, fail this command", Deny: true, Outcome: "Denied"},
+		{ID: 0, Label: "Yes, run it", Approve: true, Outcome: "Approved"},
+		{ID: 1, Label: "Yes, for this exact command and workdir this session", Approve: true, Session: true, Outcome: "Approved for this session"},
+		{ID: 2, Label: "No, fail this command", Deny: true, Outcome: "Denied"},
 	}},
 		guard: request}
 	if request.kind == "sudo" {
@@ -339,11 +337,18 @@ func (u *appServerUI) flushApprovalUpdates() {
 	}
 }
 
-func (u *appServerUI) answerApproval(a *nativeApproval, choice prompt.Choice) error {
-	reason := a.Editor.Snapshot.Text
-	if u.approvals.Open && u.pendingApprovals()[0] == a && a.DenialChoice() >= 0 {
-		reason = u.Text
+func (u *appServerUI) decideApproval(intent sessionpresentation.ApprovalIntent) error {
+	record, choice, err := u.sessionPresentation().Approval(intent, u.approvals.Approvals)
+	if err != nil {
+		u.setNotice(err.Error(), true)
+		return nil
 	}
+	return u.applyApproval(u.approvals.handles[record], choice, intent.Reason)
+}
+
+// applyApproval also settles decisions covered by an existing exact-command
+// grant; those carry their admitted authority rather than a new renderer intent.
+func (u *appServerUI) applyApproval(a *nativeApproval, choice prompt.Choice, reason string) error {
 	reason = strings.TrimSpace(reason)
 	feedback := "user denied this command without a reason"
 	if reason != "" {
@@ -379,7 +384,7 @@ func (u *appServerUI) answerApproval(a *nativeApproval, choice prompt.Choice) er
 	if a.guard != nil && choice.Approve && choice.Session {
 		for _, pending := range slices.Clone(u.pendingApprovals()) {
 			if pending.guard != nil && pending.guard.kind == a.guard.kind && guardApprovalIdentity(pending.guard) == guardApprovalIdentity(a.guard) {
-				if err := u.answerApproval(pending, prompt.Choice{Approve: true, Outcome: "Approved for this session"}); err != nil {
+				if err := u.applyApproval(pending, prompt.Choice{Approve: true, Outcome: "Approved for this session"}, ""); err != nil {
 					return err
 				}
 			}
@@ -438,7 +443,8 @@ func (u *appServerUI) approvalKey(key string) (bool, error) {
 		u.hideApprovals()
 		u.approvals.AutoOpen = false
 	case conversationui.PromptSubmit:
-		return true, u.answerApproval(a, a.Choices[a.Selected])
+		view := u.mainPresentation(u.now())
+		return true, u.decideApproval(sessionpresentation.ApprovalIntent{Version: view.Version, Request: a.ID, Choice: a.Choices[a.Selected].ID, Reason: u.Text})
 	}
 	return true, nil
 }
