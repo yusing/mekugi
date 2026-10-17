@@ -87,8 +87,8 @@ func assertTrackedReceiptStats(t *testing.T, view *activityAdapter, entry int) {
 	if !strings.Contains(ansi.Strip(painted), "+3 -1") || !strings.Contains(ansi.Strip(painted), "+1 -2") || !strings.Contains(painted, terminalui.Green+"━") || !strings.Contains(painted, terminalui.Red+"━") {
 		t.Fatalf("counts not painted with diff colors: %q", painted)
 	}
-	if reparsed := parseLiveActivity(view.Entries[entry].Source); !reflect.DeepEqual(reparsed, blocks) {
-		t.Fatalf("reparse discarded corrected projection:\n%+v\n%+v", blocks, reparsed)
+	if reparsed := activityui.Values(parseLiveActivity(view.Entries[entry].Source)); !reflect.DeepEqual(reparsed, view.Entries[entry].Values) {
+		t.Fatalf("reparse discarded corrected projection:\n%+v\n%+v", view.Entries[entry].Values, reparsed)
 	}
 }
 
