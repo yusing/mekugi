@@ -4,6 +4,7 @@ import (
 	"slices"
 	"time"
 
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
@@ -50,22 +51,13 @@ func (r *execWindowRegistry) stopTurnPreviews(thread, turn string) {
 // only that turn's presentation, without claiming any child has finished.
 func (u *appServerUI) endTurnWaits(thread, turn string, now time.Time) []activityPaneEntry {
 	var entries []activityPaneEntry
-	for _, view := range []*activityAdapter{u.view, u.agents} {
-		if view == nil {
-			continue
-		}
-		for _, entry := range view.Entries {
-			n := entry.Source.native
-			if n == nil || n.thread != thread || n.turn != turn || n.wait == nil || (n.phase == "item/completed" || n.phase == "turn/completed") {
-				continue
-			}
-			native, block := *n, *n.wait
-			block.Body = "Wait ended"
-			native.phase, native.wait = "turn/completed", &block
-			entry.Source.native, entry.Source.Text = &native, block.ProgressText()
-			entry.Source.Seq, entry.Source.Observed = u.session.next(), now
-			entries = append(entries, entry.Source)
-		}
+	for _, progress := range u.session.waits.EndTurn(u.session.Transcript(thread, turn).Turn) {
+		value := progress.Value
+		entries = append(entries, activityPaneEntry{
+			Seq: u.session.next(), Agent: u.session.path(thread), Kind: "progress",
+			Text: (activityui.Block{Value: value}).ProgressText(), Observed: now,
+			native: &liveActivityNativeItem{thread: thread, turn: turn, item: progress.ID, phase: "turn/completed", wait: &value, live: value.Live},
+		})
 	}
 	return entries
 }

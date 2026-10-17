@@ -276,7 +276,6 @@ func (u *appServerUI) restoreHistoryItem(turn binding.HistoryTurn, item binding.
 	if item.Type == "userMessage" {
 		u.commitQuestionReplies(item, turn.ID)
 	}
-	item, waitNames := u.waitItem(item, u.Thread, turn.ID, item.ID, false)
 	if item.Type == "userMessage" {
 		var content []composerUserContent
 		if json.Unmarshal(item.Content, &content) == nil {
@@ -307,12 +306,12 @@ func (u *appServerUI) restoreHistoryItem(turn binding.HistoryTurn, item binding.
 	if turn.Status == "inProgress" && (item.Type == "agentMessage" || item.Status == "inProgress") {
 		method = "item/started"
 	}
-	if _, _, progress := appServerProgress(item, method, waitNames); progress {
-		method = appServerHistoryProgressPhase(item, turn.Status)
-		if text, wait, _ := appServerProgress(item, method, waitNames); text != "" {
+	progressPhase := appServerHistoryProgressPhase(item, turn.Status)
+	if text, wait, progress := u.itemProgress(item, u.Thread, turn.ID, item.ID, progressPhase, false); progress {
+		if text != "" {
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
 				Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "progress", Text: text, Observed: time.Now(),
-				native: &liveActivityNativeItem{thread: u.Thread, turn: turn.ID, item: item.ID, phase: method, wait: wait},
+				native: &liveActivityNativeItem{thread: u.Thread, turn: turn.ID, item: item.ID, phase: progressPhase, wait: wait},
 			}}})
 		}
 		return

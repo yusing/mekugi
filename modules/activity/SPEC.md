@@ -49,6 +49,9 @@ Wait/input observations retain typed host command/item identity; an uncorrelated
 poll cannot name a guessed command. A turn ending before its wait item completes
 shows `Wait ended`, without claiming any child finished. A later host wait result
 replaces it; restoring a stopped turn applies the same rule without reviving waits.
+Activity owns active waits in the admitted turn scope. Turn completion closes
+them in observation order without consulting rendered feeds. Publications remain
+detached from active state, including their target names and statuses.
 
 ### Source interpretation
 
@@ -205,11 +208,13 @@ The application binds proven workspace, caller, turn and item identity;
 and active leases.
 
 Explicit wait targets and reported states remain authoritative. When receivers
-are absent at start, the application snapshots currently running descendants and
+are absent at start, Activity snapshots the supplied running descendants and
 retains those names through completion; absent state never claims success or
 continued work. Resume may restore recorded names but cannot infer old targets
 from today's roster or revive waits. Storage failures report a notice without
-blocking live display.
+blocking live display. Offline replay supplies the roster at the recorded start
+instant, freezes the same targets through completion and rebuilds them on seek;
+it neither opens the live wait store nor consults today's roster.
 
 Feeds retain the newest 2,000 records while protecting live invocations.
 Reordering preserves source identity independently of publication order.

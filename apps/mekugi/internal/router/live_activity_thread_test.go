@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
@@ -102,7 +103,7 @@ func TestConversationAsidesFollowThread(t *testing.T) {
 			reasoning := activityPaneEntry{Seq: 3, Agent: "Main", Kind: "reasoning", Text: "**Waiting on review**\n\nThe reviewer is still reading.", Observed: v.Entries[0].Source.Observed.Add(time.Second)}
 			if kind != "reasoning" {
 				reasoning.Kind, reasoning.Text = "progress", kind+" · reviewer still reading"
-				reasoning.native = &liveActivityNativeItem{wait: &activityui.Block{Kind: "progress", Body: reasoning.Text}}
+				reasoning.native = &liveActivityNativeItem{wait: &activitypresentation.Value{Kind: "progress", Body: reasoning.Text}}
 			}
 			v.appendEntry(reasoning, parseLiveActivity(reasoning))
 			v.Model.Reorder([]int{0, 2, 1})

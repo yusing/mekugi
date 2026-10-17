@@ -39,7 +39,7 @@ type liveActivityNativeItem struct {
 	replySource        string // Stock async envelope or synchronous turn prompt.
 	thread, turn, item string
 	phase              string
-	wait               *activityui.Block // Structured wait progress is roster-only.
+	wait               *activitypresentation.Value // Structured wait progress is roster-only.
 	command, status    string
 	exit               *int   // Observed exit presence is independent of retained output.
 	commandCwd         string // Metadata-owned directory for classified paths and receipt refreshes.

@@ -100,7 +100,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		}
 	case "progress":
 		if entry.native != nil && entry.native.wait != nil {
-			block := *entry.native.wait
+			block := activityui.Block{Value: *entry.native.wait}
 			block.Live = entry.native.live && entry.native.phase == "item/started"
 			return []activityui.Block{block}
 		}

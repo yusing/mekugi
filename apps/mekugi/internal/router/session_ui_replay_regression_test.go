@@ -89,6 +89,59 @@ func TestSessionUIReplayRetainedCollaborationDelivery(t *testing.T) {
 	}
 }
 
+func TestSessionUIReplayMailboxWaitUsesRecordedRoster(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	root := replayTestWrite(t, dir, "root.jsonl", replayTestMeta("root"),
+		replayTestRecord("event_msg", replayTestEpoch, map[string]any{"type": "task_started", "turn_id": "turn"}),
+		replayTestItem("root", "turn", replayTestEpoch+100, replayTestEpoch+100, map[string]any{"type": "SubAgentActivity", "id": "a", "agent_thread_id": "a", "agent_path": "/root/alpha", "kind": "spawn"}),
+		replayTestItem("root", "turn", replayTestEpoch+200, replayTestEpoch+200, map[string]any{"type": "SubAgentActivity", "id": "b", "agent_thread_id": "b", "agent_path": "/root/beta", "kind": "spawn"}),
+		replayTestItem("root", "turn", replayTestEpoch+2000, replayTestEpoch+4000, map[string]any{"type": "CollabAgentToolCall", "id": "wait", "tool": "wait", "status": "completed", "sender_thread_id": "root"}),
+		replayTestRecord("event_msg", replayTestEpoch+6000, map[string]any{"type": "task_complete", "turn_id": "turn"}),
+	)
+	for i, id := range []string{"a", "b"} {
+		replayTestWrite(t, dir, "rollout-2023-"+id+".jsonl", replayTestMeta(id),
+			replayTestRecord("event_msg", replayTestEpoch+int64(1000+i*2000), map[string]any{"type": "task_started", "turn_id": "work"}),
+			replayTestRecord("event_msg", replayTestEpoch+5000, map[string]any{"type": "task_complete", "turn_id": "work"}),
+		)
+	}
+	source, err := replayReadTest(t, new(transportcapture.Service), t.Context(), root, "", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := newTestUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
+	t.Cleanup(p.close)
+	for pass := range 2 {
+		if pass > 0 {
+			if err := p.seek(0); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for _, at := range []time.Duration{2 * time.Second, 3 * time.Second, 4 * time.Second} {
+			if err := p.advance(at); err != nil {
+				t.Fatal(err)
+			}
+			want := "Waiting for agent · alpha"
+			if at == 4*time.Second {
+				want = "Finished waiting · alpha"
+			}
+			if len(p.ui.view.Entries) != 1 || p.ui.view.Entries[0].Source.Text != want {
+				t.Fatalf("pass %d at %s changed recorded targets: %+v", pass, at, p.ui.view.Entries)
+			}
+			if rows := p.ui.view.RenderFeed(120, 30).Lines; len(rows) != 0 {
+				t.Fatalf("wait entered ordinary transcript: %q", rows)
+			}
+			frame := replayPlaybackTestPaint(t, p, 140, 40)
+			if !strings.Contains(frame, want) {
+				t.Fatalf("pass %d at %s roster hides %q:\n%s", pass, at, want, frame)
+			}
+			if p.ui.session.waitStore != nil {
+				t.Fatal("offline wait opened live retention")
+			}
+		}
+	}
+}
+
 func TestSessionUIReplayRetainsQuestionAnswerWait(t *testing.T) {
 	t.Parallel()
 	path := replayTestWrite(t, t.TempDir(), "root.jsonl", replayTestMeta("root"),
@@ -200,7 +253,7 @@ func TestSessionUIReplayRustAgentStatusShapesReachFinalWaitDisplay(t *testing.T)
 	var finalWait string
 	for _, entry := range p.ui.view.Entries {
 		if entry.Source.native != nil && entry.Source.native.item == "wait" && entry.Source.native.wait != nil {
-			finalWait = entry.Source.native.wait.ProgressText()
+			finalWait = entry.Source.Text
 		}
 	}
 	if !strings.Contains(finalWait, "Finished waiting") {

@@ -17,7 +17,6 @@ import (
 	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
-	"github.com/yusing/mekugi/modules/activity/waittargets"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -42,7 +41,7 @@ type appServerSession struct {
 	activity     *activitymodel.Service
 	sessionpresentation.Attachment
 	cwd         string
-	waits       map[[3]string][]waittargets.Target // Start-time targets by thread, turn, item.
+	waits       activitypresentation.Waits
 	waitStore   *mekugiReplayStore
 	waitContext context.Context
 
@@ -112,7 +111,6 @@ func (s *appServerSession) start(thread, cwd string) {
 	s.transcript = s.observations.NewTranscript(s.Scope())
 	s.metadata = make(map[string]string)
 	s.commands = make(map[[3]string]*appServerCommandRun)
-	s.waits = make(map[[3]string][]waittargets.Target)
 	s.waitStore, s.waitContext = nil, nil
 	s.cwd = cwd
 }
@@ -277,11 +275,6 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 	case "turn/completed":
 		u.endTurnPreviews(p.ThreadID, p.Turn.ID)
 		entries = append(entries, u.endTurnWaits(p.ThreadID, p.Turn.ID, now)...)
-		for key := range s.waits {
-			if key[0] == p.ThreadID && key[1] == p.Turn.ID {
-				delete(s.waits, key)
-			}
-		}
 		agent := s.agent(s.path(p.ThreadID))
 		active := u.Turn
 		if !main {
@@ -314,7 +307,6 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 	case "item/started", "item/completed", "item/agentMessage/delta":
 		item := p.Item
 		id := cmp.Or(p.ItemID, item.ID)
-		item, waitNames := u.waitItem(item, p.ThreadID, p.TurnID, id, method == "item/started")
 		native := &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: id, phase: method, live: true, command: item.Command, status: item.Status, duration: appServerDuration(item), workdir: appServerCommandWorkdir(item, s.cwd)}
 		agent := s.path(p.ThreadID)
 		if method != "item/completed" && item.Type != "reasoning" && item.Type != "userMessage" && s.Transcript(p.ThreadID, p.TurnID).Turn != nil {
@@ -323,7 +315,7 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 			}
 		}
 
-		if text, wait, handled := appServerProgress(item, method, waitNames); handled {
+		if text, wait, handled := u.itemProgress(item, p.ThreadID, p.TurnID, id, method, true); handled {
 			if text != "" {
 				native.wait = wait
 				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "progress", Text: text, Observed: now, native: native})

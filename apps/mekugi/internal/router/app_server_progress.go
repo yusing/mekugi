@@ -1,11 +1,9 @@
 package router
 
 import (
-	"slices"
-
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/observation"
-
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
@@ -21,62 +19,47 @@ func appServerHistoryProgressPhase(item binding.ThreadItem, turnStatus string) s
 	return "item/completed"
 }
 
-// appServerProgress owns host progress presentation for live and restored items.
-// Only compaction replaces Working; collaboration waits are roster-only status.
-// Source: codex-rs/tui/src/chatwidget/compaction.rs:6:56@1cc7e236
-// and codex-rs/tui/src/multi_agents.rs:375:414@1cc7e236.
-func appServerProgress(item binding.ThreadItem, method string, names map[string]string) (text string, wait *activityui.Block, handled bool) {
-	switch item.Type {
-	case "contextCompaction":
-		if method == "item/completed" {
+// itemProgress adapts host progress and supplies admitted wait evidence. Activity
+// owns wait selection and lifecycle; storage failures remain auxiliary notices.
+func (u *appServerUI) itemProgress(item binding.ThreadItem, thread, turn, id, phase string, observed bool) (string, *activitypresentation.Value, bool) {
+	if item.Type == "contextCompaction" {
+		if phase == "item/completed" {
 			return "Context compacted", nil, true
 		}
 		return "", nil, true
 	}
-	if block := appServerWaitProgress(item, method, names); block != nil {
-		return block.ProgressText(), block, true
-	}
-	return "", nil, false
-}
-
-func appServerWaitProgress(item binding.ThreadItem, method string, names map[string]string) *activityui.Block {
 	if item.Type != "collabAgentToolCall" || item.Tool != "wait" {
-		return nil
+		return "", nil, false
 	}
-	text := "Waiting for agent"
-	if method == "item/completed" || method == "turn/completed" {
-		text = "Finished waiting"
-		if item.Status == "inProgress" {
-			text = "Wait ended"
-		}
-		if item.Status == "failed" {
-			text = "Wait failed"
+	s := &u.session
+	in := activitypresentation.WaitObservation{
+		Item:  observation.Item{ID: id, Status: item.Status, ReceiverThreadIDs: item.ReceiverThreadIDs},
+		Phase: phase, Observed: observed && thread != "" && turn != "" && id != "", Caller: s.path(thread),
+	}
+	in.Item.AgentsStates = make(map[string]observation.AgentState, len(item.AgentsStates))
+	for target, state := range item.AgentsStates {
+		in.Item.AgentsStates[target] = observation.AgentState{Status: state.Status}
+	}
+	for target, name := range s.paths {
+		agent := s.agent(name)
+		in.Agents = append(in.Agents, activitypresentation.WaitAgent{Thread: target, Name: name, Responding: agent != nil && agent.Responding})
+	}
+	store := s.Transcript(thread, turn).Turn
+	key := [3]string{thread, turn, id}
+	if thread != "" && turn != "" && id != "" && !s.waits.HasSnapshot(store, id) && s.waitStore != nil {
+		var err error
+		in.Snapshot, in.SnapshotFound, err = s.readWaitTargets(key)
+		if err != nil {
+			u.setNotice("Wait targets could not be restored: "+err.Error(), true)
 		}
 	}
-	block := &activityui.Block{Kind: "progress", Body: text}
-	receivers := slices.Clone(item.ReceiverThreadIDs)
-	var extra []string
-	for id := range item.AgentsStates {
-		if !slices.Contains(receivers, id) {
-			extra = append(extra, id)
+	progress := s.waits.Observe(store, in)
+	if progress.Retain {
+		if err := s.writeWaitTargets(key, progress.Snapshot); err != nil {
+			u.setNotice("Wait targets could not be retained: "+err.Error(), true)
 		}
 	}
-	slices.Sort(extra)
-	for _, id := range append(receivers, extra...) {
-		name := names[id]
-		if name == "" {
-			name = id
-		}
-		status := ""
-		if method == "item/completed" {
-			status = item.AgentsStates[id].Status
-			if status == "running" {
-				status = "Still running"
-			}
-		}
-		block.WaitTargets = append(block.WaitTargets, activityui.WaitTarget{Name: name, Status: status})
-	}
-	return block
+	return (activityui.Block{Value: progress.Value}).ProgressText(), &progress.Value, true
 }
 
 // Main progress consumes Activity's authoritative retained item evidence. The
