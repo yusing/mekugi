@@ -76,6 +76,11 @@ Live notifications, retained items and simulated playback share these values.
 The consuming owner decides historical admission and presentation; projection does
 not settle input, notify the desktop or issue host requests.
 
+Item projection also retains observed command classifications, optional outcomes,
+web-search facts, file changes and collaboration identities. Native field aliases
+normalize at this boundary. Presentation consumes these decoded facts directly;
+playback does not reconstruct a native notification to reach the same consumer.
+
 ## History observations
 
 The history binding decodes thread lineage, turns and item pages while preserving

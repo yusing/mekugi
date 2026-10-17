@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/contracts/observation"
 
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/libraries/textsanitize"
@@ -15,7 +15,7 @@ import (
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
-func appServerDuration(item binding.ThreadItem) time.Duration {
+func appServerDuration(item observation.Item) time.Duration {
 	if item.DurationMS == nil {
 		return 0
 	}

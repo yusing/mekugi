@@ -931,7 +931,7 @@ func (u *appServerUI) observedEvent(method string, p appServerEvent) error {
 		if p.ThreadID == u.Thread && p.Item.Type == "userMessage" && method == "item/completed" {
 			u.commitSteer(p.Item)
 		}
-		u.messageTranscript(p.text, p.Item, true)
+		u.messageTranscript(p.text, p.Item.Observation(), true)
 	}
 	return nil
 }

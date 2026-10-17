@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/contracts/observation"
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
@@ -24,7 +25,7 @@ type commandSegmentWrite struct {
 	err error
 }
 
-func (u *appServerUI) retainCommandSegments(entry activityPaneEntry, item binding.ThreadItem, view execTrackView) {
+func (u *appServerUI) retainCommandSegments(entry activityPaneEntry, item observation.Item, view execTrackView) {
 	if u.segments == nil || u.proxy == nil || u.proxy.replayStore == nil || item.AggregatedOutput == nil || item.ExitCode == nil {
 		return
 	}
@@ -124,7 +125,7 @@ func (u *appServerUI) restoreCommandSegments(entry *activityPaneEntry, item bind
 	for _, part := range record.Parts {
 		separate = separate && (part.Skipped || part.Output != nil)
 	}
-	cwd := cmp.Or(entry.native.commandCwd, appServerCommandDirectory(item, workspace))
+	cwd := cmp.Or(entry.native.commandCwd, appServerCommandDirectory(item.Observation(), workspace))
 	for _, part := range record.Parts {
 		segment := commandSegment{timing: segmenttransport.Timing(part.Timing), source: part.Source, text: execSegmentTextInDirectory(part.Source, cwd), skipped: part.Skipped, exit: part.Exit}
 		if separate && !part.Skipped {
@@ -134,7 +135,7 @@ func (u *appServerUI) restoreCommandSegments(entry *activityPaneEntry, item bind
 			}
 			segment.tail, segment.omit = appServerOutputTail(part.Output)
 			if part.Exit == 0 {
-				segment.changes, segment.commit = commandOutputRows(binding.ThreadItem{Command: part.Source, Cwd: vcsSegmentCwd(item.Cwd, entry.native.segments), AggregatedOutput: part.Output})
+				segment.changes, segment.commit = commandOutputRows(observation.Item{Command: part.Source, Cwd: vcsSegmentCwd(item.Cwd, entry.native.segments), AggregatedOutput: part.Output})
 			}
 		}
 		entry.native.segments = append(entry.native.segments, segment)

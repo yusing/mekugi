@@ -4,13 +4,13 @@ import (
 	"cmp"
 	"strings"
 
-	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/contracts/observation"
 
 	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
 
-func appServerToolText(item binding.ThreadItem, cwd string) string {
+func appServerToolText(item observation.Item, cwd string) string {
 	if item.Type != "webSearch" {
 		return appServerCommandText(item, cwd)
 	}
@@ -31,10 +31,10 @@ func appServerToolText(item binding.ThreadItem, cwd string) string {
 // Count returned records only when host evidence is complete and attributable
 // to one search. Missing output, errors, context rows and truncated output are
 // not zero results. No command is executed to infer a count.
-func appServerSearchResults(item binding.ThreadItem) *int {
+func appServerSearchResults(item observation.Item) *int {
 	if item.Type == "webSearch" {
 		if item.Results != nil {
-			return new(len(item.Results))
+			return item.Results
 		}
 		return nil
 	}

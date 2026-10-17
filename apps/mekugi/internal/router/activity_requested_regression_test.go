@@ -19,10 +19,10 @@ func TestRequestedEditGroupsMergeAdjacentInvocations(t *testing.T) {
 		v := newActivityAdapter()
 		v.ChildrenOnly = agent != "Main"
 		text := "Edit `a.go` +2 -1 · python3\n\nCreate `b.go` +3 -0 · python3"
-		patch := appServerEditText(binding.ThreadItem{Status: "failed", Changes: []binding.FileChange{
+		patch := appServerEditText((binding.ThreadItem{Status: "failed", Changes: []binding.FileChange{
 			{Path: "c.go", Diff: "+new\n-old\n"},
 			{Path: "d.go", Diff: "+new\n"},
-		}}, "")
+		}}).Observation(), "")
 		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
 			{Seq: 1, Agent: agent, Kind: "tool", CallID: "one", Text: text},
 			{Seq: 2, Agent: agent, Kind: "tool", CallID: "two", Text: text},

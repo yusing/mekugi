@@ -243,7 +243,7 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc 'cat > a.go; cat > b.go; go test ./...'", ExitCode: new(2), AggregatedOutput: new("test failed")}
 			output := u.session.activity.Outputs(u.session.Scope()).New()
 			output.Finish(new("test failed"), new(2))
-			u.retainCommandSegments(activityPaneEntry{native: &liveActivityNativeItem{thread: thread, turn: "turn", item: item.ID}}, item,
+			u.retainCommandSegments(activityPaneEntry{native: &liveActivityNativeItem{thread: thread, turn: "turn", item: item.ID}}, item.Observation(),
 				execTrackView{complete: true, output: true, code: 2, segments: []commandSegment{{}, {}, {exit: 2, output: output}}})
 			awaitCommandSegments(t, u)
 			restored := newAppServerSessionTestUI(t, workspace)

@@ -88,17 +88,17 @@ func TestMChangesOutputRowsOnlyReadListingsAndSummaries(t *testing.T) {
 	t.Parallel()
 	output := "M\t1\t0\ta.go\n"
 	for _, command := range []string{"mchanges", "mchanges amber1", "mchanges --history", "mchanges --summary | head", "mchanges -- --summary", "echo --summary"} {
-		if rows := mchangesOutputRows(binding.ThreadItem{Command: command, AggregatedOutput: &output}); rows != nil {
+		if rows := mchangesOutputRows((binding.ThreadItem{Command: command, AggregatedOutput: &output}).Observation()); rows != nil {
 			t.Fatalf("%s read as change rows: %v", command, rows)
 		}
 	}
 	// Output without any recognized row keeps its plain tail.
 	plain := "error: something else\n"
-	if rows := mchangesOutputRows(binding.ThreadItem{Command: "mchanges --summary", AggregatedOutput: &plain}); rows != nil {
+	if rows := mchangesOutputRows((binding.ThreadItem{Command: "mchanges --summary", AggregatedOutput: &plain}).Observation()); rows != nil {
 		t.Fatalf("unrecognized output read as change rows: %v", rows)
 	}
 	mixed := "M\t1\t0\ta.go\nomitted 3 rows; mread r1\n"
-	rows := mchangesOutputRows(binding.ThreadItem{Command: "/tmp/bin/mchanges amber1..amber4 --summary -- a.go", AggregatedOutput: &mixed})
+	rows := mchangesOutputRows((binding.ThreadItem{Command: "/tmp/bin/mchanges amber1..amber4 --summary -- a.go", AggregatedOutput: &mixed}).Observation())
 	want := []activitypresentation.ChangeRow{{Verb: "Edited", Label: "a.go", Added: 1}, {Note: "omitted 3 rows; mread r1"}}
 	if !reflect.DeepEqual(rows, want) {
 		t.Fatalf("rows = %#v, want %#v", rows, want)
@@ -152,7 +152,7 @@ func TestMChangesOutputRowsReadStoreOutput(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		rows := mchangesOutputRows(binding.ThreadItem{Command: "mchanges --" + view, AggregatedOutput: &output})
+		rows := mchangesOutputRows((binding.ThreadItem{Command: "mchanges --" + view, AggregatedOutput: &output}).Observation())
 		if len(rows) == 0 || len(rows) != strings.Count(output, "\n") {
 			t.Fatalf("%s rows = %#v from %q", view, rows, output)
 		}

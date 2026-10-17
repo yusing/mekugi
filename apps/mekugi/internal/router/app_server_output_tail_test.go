@@ -62,7 +62,7 @@ func TestAppServerPendingPatchIsNotEdited(t *testing.T) {
 	for _, agent := range []string{"Main", "/root/worker"} {
 		v := newActivityAdapter()
 		v.ChildrenOnly = agent != "Main"
-		patch := appServerEditText(binding.ThreadItem{Status: "inProgress", Changes: []binding.FileChange{{Path: "c.go", Diff: "+new\n-old\n"}}}, "")
+		patch := appServerEditText((binding.ThreadItem{Status: "inProgress", Changes: []binding.FileChange{{Path: "c.go", Diff: "+new\n-old\n"}}}).Observation(), "")
 		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: agent, Kind: "tool", CallID: "patch", Text: patch}}})
 		feed := v.RenderFeed(100, 80)
 		if agent == "Main" {

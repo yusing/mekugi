@@ -244,7 +244,7 @@ func TestActivityBatchRestoresVCSRows(t *testing.T) {
 	first, second := u.session.activity.Outputs(u.session.Scope()).New(), u.session.activity.Outputs(u.session.Scope()).New()
 	first.Finish(new("before\n"), new(0))
 	second.Finish(&output, new(0))
-	u.retainCommandSegments(entry, item, execTrackView{complete: true, output: true, segments: []commandSegment{{output: first}, {output: second, raw: output}}})
+	u.retainCommandSegments(entry, item.Observation(), execTrackView{complete: true, output: true, segments: []commandSegment{{output: first}, {output: second, raw: output}}})
 	awaitCommandSegments(t, u)
 	u.restoreCommandSegments(&entry, item, u.session.cwd)
 	if len(entry.native.segments) != 2 {

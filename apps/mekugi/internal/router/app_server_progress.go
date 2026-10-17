@@ -1,7 +1,6 @@
 package router
 
 import (
-	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/observation"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -10,7 +9,7 @@ import (
 
 // History can retain an unfinished item in a stopped turn. The owning turn
 // ends its waiting presentation without claiming a successful tool result.
-func appServerHistoryProgressPhase(item binding.ThreadItem, turnStatus string) string {
+func appServerHistoryProgressPhase(item observation.Item, turnStatus string) string {
 	if item.Status == "inProgress" {
 		if item.Type == "collabAgentToolCall" && item.Tool == "wait" && (turnStatus == "completed" || turnStatus == "interrupted" || turnStatus == "failed") {
 			return "turn/completed"
@@ -26,7 +25,7 @@ type waitEvidence struct {
 	found   bool
 }
 
-func (u *appServerUI) readWaitEvidence(item binding.ThreadItem, key [3]string) waitEvidence {
+func (u *appServerUI) readWaitEvidence(item observation.Item, key [3]string) waitEvidence {
 	s := &u.session
 	var evidence waitEvidence
 	if item.Type != "collabAgentToolCall" || item.Tool != "wait" || key[0] == "" || key[1] == "" || key[2] == "" || s.waitStore == nil || s.waits.HasSnapshot(s.Transcript(key[0], key[1]).Turn, key[2]) {
@@ -49,14 +48,14 @@ func (u *appServerUI) retainWaitProgress(key [3]string, progress *activitypresen
 }
 
 // itemProgress retains the live/history storage boundary around shared projection.
-func (u *appServerUI) itemProgress(item binding.ThreadItem, thread, turn, id, phase string, observed bool) (string, *activitypresentation.Value, bool) {
+func (u *appServerUI) itemProgress(item observation.Item, thread, turn, id, phase string, observed bool) (string, *activitypresentation.Value, bool) {
 	key := [3]string{thread, turn, id}
 	text, wait, handled, progress := u.session.itemProgress(item, thread, turn, id, phase, observed, u.readWaitEvidence(item, key))
 	u.retainWaitProgress(key, progress)
 	return text, wait, handled
 }
 
-func (s *appServerSession) itemProgress(item binding.ThreadItem, thread, turn, id, phase string, observed bool, evidence waitEvidence) (string, *activitypresentation.Value, bool, *activitypresentation.WaitProgress) {
+func (s *appServerSession) itemProgress(item observation.Item, thread, turn, id, phase string, observed bool, evidence waitEvidence) (string, *activitypresentation.Value, bool, *activitypresentation.WaitProgress) {
 	if item.Type == "contextCompaction" {
 		if phase == "item/completed" {
 			return "Context compacted", nil, true, nil
@@ -67,14 +66,11 @@ func (s *appServerSession) itemProgress(item binding.ThreadItem, thread, turn, i
 		return "", nil, false, nil
 	}
 	in := activitypresentation.WaitObservation{
-		Item:  observation.Item{ID: id, Status: item.Status, ReceiverThreadIDs: item.ReceiverThreadIDs},
+		Item:  item,
 		Phase: phase, Observed: observed && thread != "" && turn != "" && id != "", Caller: s.path(thread),
 		Snapshot: evidence.targets, SnapshotFound: evidence.found,
 	}
-	in.Item.AgentsStates = make(map[string]observation.AgentState, len(item.AgentsStates))
-	for target, state := range item.AgentsStates {
-		in.Item.AgentsStates[target] = observation.AgentState{Status: state.Status}
-	}
+	in.Item.ID = id
 	for target, name := range s.paths {
 		agent := s.agent(name)
 		in.Agents = append(in.Agents, activitypresentation.WaitAgent{Thread: target, Name: name, Responding: agent != nil && agent.Responding})
@@ -85,7 +81,8 @@ func (s *appServerSession) itemProgress(item binding.ThreadItem, thread, turn, i
 
 // Main progress consumes Activity's authoritative retained item evidence. The
 // application adapts host facts; session presentation owns precedence and keys.
-func (u *appServerUI) observeProgress(method string, p appServerEvent) {
+func (u *appServerUI) observeProgress(p observation.Event) {
+	method := string(p.Kind)
 	m := u.sessionPresentation()
 	if method == "item/commandExecution/terminalInteraction" {
 		m.TerminalInteraction(p.ThreadID, p.TurnID, u.Turn, p.ProcessID, p.Stdin)
@@ -101,10 +98,5 @@ func (u *appServerUI) observeProgress(method string, p appServerEvent) {
 			}
 		}
 	}
-	turn := p.TurnID
-	if method == "turn/started" || method == "turn/completed" {
-		turn = p.Turn.ID
-	}
-	m.ObserveProgress(observation.Event{Kind: observation.Kind(method), ThreadID: p.ThreadID, TurnID: turn,
-		Item: observation.Item{ID: p.Item.ID, Type: p.Item.Type, ProcessID: p.Item.ProcessID}}, u.Turn, completed)
+	m.ObserveProgress(p, u.Turn, completed)
 }

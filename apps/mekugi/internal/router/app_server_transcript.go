@@ -134,7 +134,7 @@ func (u *appServerUI) flushSummaryOutput() {
 // observeMessageQuestions is the single adapter for live, restored and playback
 // message admission. Parking precedes the model transition so external replies
 // cannot discard an active draft before it reaches the question's editor.
-func (u *appServerUI) observeMessageQuestions(text observation.TextEvent, item binding.ThreadItem, history bool) bool {
+func (u *appServerUI) observeMessageQuestions(text observation.TextEvent, item observation.Item, history bool) bool {
 	var userText string
 	if item.Type == "userMessage" {
 		userText, _, _ = appServerUserText(item.Content)
@@ -160,7 +160,7 @@ func (u *appServerUI) observeMessageQuestions(text observation.TextEvent, item b
 	return changes.Suppress
 }
 
-func (u *appServerUI) messageTranscript(text observation.TextEvent, item binding.ThreadItem, main bool) bool {
+func (u *appServerUI) messageTranscript(text observation.TextEvent, item observation.Item, main bool) bool {
 	if u.observeMessageQuestions(text, item, false) {
 		return true
 	}
@@ -185,11 +185,7 @@ func (u *appServerUI) replayTranscript(e observation.Event) bool {
 	if e.Kind != observation.ReasoningDelta && e.Kind != observation.ReasoningPart && e.Kind != observation.AgentDelta && e.Item.Type != "reasoning" && e.Item.Type != "agentMessage" && e.Item.Type != "userMessage" {
 		return false
 	}
-	item := binding.ThreadItem{ID: e.Item.ID, Type: e.Item.Type, Delivery: e.Item.Delivery, Content: e.Item.Content, ClientID: e.Item.ClientID}
-	for _, q := range e.Item.Questions {
-		item.Questions = append(item.Questions, binding.Question{ID: q.ID, Header: q.Header, Question: q.Question, Title: q.Title, IsSecret: q.IsSecret, Options: q.Options})
-	}
-	if u.messageTranscript(text, item, e.ThreadID == u.Thread) {
+	if u.messageTranscript(text, e.Item, e.ThreadID == u.Thread) {
 		return true
 	}
 	// Replay shares Main's progress identity and never revives operations.

@@ -73,7 +73,7 @@ func TestActivitySingleCommandActualTime(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.proxy = &mekugiProxy{replayStore: store}
 			item := binding.ThreadItem{ID: key[2], Type: "commandExecution", Command: "bash -lc " + quoteShellWord(script), ExitCode: new(got.code), AggregatedOutput: new(got.stdout + got.stderr)}
-			u.retainCommandSegments(entry, item, view)
+			u.retainCommandSegments(entry, item.Observation(), view)
 			u.finishCommandSegments()
 			entry.native.segments = nil
 			u.restoreCommandSegments(&entry, item, u.session.cwd)

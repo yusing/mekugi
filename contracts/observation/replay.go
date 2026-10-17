@@ -28,6 +28,17 @@ type Event struct {
 	Kind                                        Kind
 	ThreadID, TurnID, ItemID, Delta, TurnStatus string
 	Item                                        Item
+	Thread                                      Thread
+	ThreadStatus, ProcessID, Stdin              string
+	Context                                     Context
+}
+
+// Thread is admitted metadata, not a filesystem or host-request capability.
+type Thread struct{ ID, Nickname, Path, Role string }
+
+type Context struct {
+	Tokens, Window uint64
+	Known          bool
 }
 
 // Item contains the retained facts used by session presentation. Content and
@@ -47,6 +58,16 @@ type Item struct {
 	AgentsStates                                             map[string]AgentState
 	Questions                                                []Question
 	Changes                                                  []FileChange
+	CommandActions                                           []CommandAction
+	Query                                                    string
+	Action                                                   *WebSearchAction
+	Results                                                  *int
+}
+
+type CommandAction struct{ Type, Command, Path, Query string }
+type WebSearchAction struct {
+	Type, Query, URL, Pattern string
+	Queries                   []string
 }
 
 type AgentState struct{ Status string }

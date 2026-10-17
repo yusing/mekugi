@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/contracts/observation"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
@@ -297,7 +297,7 @@ func (p *execTrackPresentation) view(observer *segments.Observer, key [3]string,
 			shown.tail, shown.omit = segment.output.Lines()
 			if final && !shown.skipped && shown.exit == 0 {
 				output := strings.Join(shown.tail, "\n")
-				shown.changes = mchangesOutputRows(binding.ThreadItem{Command: observed.Source, AggregatedOutput: &output})
+				shown.changes = mchangesOutputRows(observation.Item{Command: observed.Source, AggregatedOutput: &output})
 				if len(shown.changes) > 0 && shown.omit > 0 {
 					shown.changes = append([]activitypresentation.ChangeRow{{Note: activityui.Elision{Hidden: shown.omit}.Text()}}, shown.changes...)
 				}
@@ -380,7 +380,7 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 // trackedCommandDone shows each segment's outcome when the report ended with
 // the host's own exit status. Otherwise the report is incomplete, and the
 // command falls back to the host's combined result.
-func (u *appServerUI) trackedCommandDone(key [3]string, entry activityPaneEntry, item binding.ThreadItem) []activityPaneEntry {
+func (u *appServerUI) trackedCommandDone(key [3]string, entry activityPaneEntry, item observation.Item) []activityPaneEntry {
 	now := time.Now()
 	run := u.session.commands[key]
 	view, _ := run.segments.view(u.execTrack, key, true, func(source string) string {

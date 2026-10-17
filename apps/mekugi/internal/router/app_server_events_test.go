@@ -205,7 +205,7 @@ func TestAppServerSessionDocksSharedPreviewsByCaller(t *testing.T) {
 func TestAppServerChangeCounts(t *testing.T) {
 	change := binding.FileChange{Diff: "@@\n-x\n+y\n"}
 	change.Kind.Type = "update"
-	if added, removed := appServerChangeCounts(change); added != 1 || removed != 1 {
+	if added, removed := appServerChangeCounts(change.Observation()); added != 1 || removed != 1 {
 		t.Fatalf("counts %d %d", added, removed)
 	}
 }

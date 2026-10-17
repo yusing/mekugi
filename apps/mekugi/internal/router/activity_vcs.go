@@ -3,14 +3,14 @@ package router
 import (
 	"slices"
 
-	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/contracts/observation"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
 
 // commandOutputRows adapts observed change-history or VCS output, retaining the
 // immutable commit key whose files can complete the output-observed rows.
-func commandOutputRows(item binding.ThreadItem) ([]activitypresentation.ChangeRow, activitypresentation.CommitKey) {
+func commandOutputRows(item observation.Item) ([]activitypresentation.ChangeRow, activitypresentation.CommitKey) {
 	if rows := mchangesOutputRows(item); rows != nil || item.AggregatedOutput == nil {
 		return rows, activitypresentation.CommitKey{}
 	}

@@ -67,7 +67,7 @@ func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing
 			t.Fatalf("shared-store contention did not produce the diagnosed deadline error: %v", err)
 		}
 		started := time.Now()
-		u.retainCommandSegments(entry, item, view)
+		u.retainCommandSegments(entry, item.Observation(), view)
 		if elapsed := time.Since(started); elapsed > 250*time.Millisecond {
 			t.Fatalf("storage contention blocked command presentation for %s", elapsed)
 		}
@@ -135,7 +135,7 @@ func TestCommandSegmentsPendingRetentionIsBoundedAndCanceled(t *testing.T) {
 	for i := range commandSegmentRetentionLimit + 1 {
 		item := binding.ThreadItem{ID: fmt.Sprint(i), Type: "commandExecution", Command: "bash -lc 'true; true'", ExitCode: new(0), AggregatedOutput: new("")}
 		entry := activityPaneEntry{native: &liveActivityNativeItem{thread: "main", turn: "turn", item: item.ID}}
-		u.retainCommandSegments(entry, item, execTrackView{complete: true, segments: []commandSegment{{}, {}}})
+		u.retainCommandSegments(entry, item.Observation(), execTrackView{complete: true, segments: []commandSegment{{}, {}}})
 	}
 	if notices := u.issues.Notices.Pending(); u.commandSegmentPending != commandSegmentRetentionLimit || len(notices) != 1 || !strings.Contains(notices[0], "reached the limit of 32") {
 		t.Fatalf("retention grew beyond its bound: %d, %v", u.commandSegmentPending, notices)
@@ -361,7 +361,7 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 				store.maxBytes = 1
 			}
 			if mode != "missing" {
-				u.retainCommandSegments(entry, item, view)
+				u.retainCommandSegments(entry, item.Observation(), view)
 				awaitCommandSegments(t, u)
 			}
 			if mode == "storage-failure" {
@@ -376,7 +376,7 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			u.session.completeCommand(entry.native, item)
+			u.session.completeCommand(entry.native, item.Observation())
 			u.restoreCommandSegments(&entry, item, workspace)
 			u.view.Entries = []liveActivityRecord{{Source: entry}}
 			pages := activityui.Disclosure(nil).Blocks(commandPresentation(entry).DetailValues())
@@ -429,7 +429,7 @@ func TestCommandSegmentsRestoreRichChangeRows(t *testing.T) {
 	first, second := u.session.activity.Outputs(u.session.Scope()).New(), u.session.activity.Outputs(u.session.Scope()).New()
 	first.Finish(new("before"), new(0))
 	second.Finish(&listing, new(0))
-	u.retainCommandSegments(entry, item, execTrackView{complete: true, output: true, segments: []commandSegment{{output: first}, {output: second}}})
+	u.retainCommandSegments(entry, item.Observation(), execTrackView{complete: true, output: true, segments: []commandSegment{{output: first}, {output: second}}})
 	awaitCommandSegments(t, u)
 	u.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 	// History starts collapsed; inspect the expanded retained command.

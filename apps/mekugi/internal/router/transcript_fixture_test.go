@@ -12,7 +12,7 @@ import (
 func applyTranscriptFixture(v *activityAdapter, live bool, cwd, main, thread, turn, id, method, delta string, item binding.ThreadItem) {
 	if item.Type == "commandExecution" {
 		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: v.LastSeq + 1, Agent: "Main", Kind: "command", Text: item.Text, Observed: v.Now(), native: &liveActivityNativeItem{
-			thread: thread, turn: turn, item: id, phase: method, live: live, command: item.Command, status: item.Status, exit: item.ExitCode, duration: appServerDuration(item)}}}})
+			thread: thread, turn: turn, item: id, phase: method, live: live, command: item.Command, status: item.Status, exit: item.ExitCode, duration: appServerDuration(item.Observation())}}}})
 		return
 	}
 	event := observation.TextEvent{At: v.Now(), Kind: observation.Kind(method), Delta: delta, Item: transcriptItem(item, thread, turn, id)}

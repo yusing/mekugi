@@ -12,10 +12,14 @@ import (
 
 // MessageQuestions translates native or retained message facts for the same
 // neutral admission path. User text is supplied by the content decoder.
-func MessageQuestions(text observation.TextEvent, item binding.ThreadItem, userText string, main, history bool) prompt.Message {
+func MessageQuestions(text observation.TextEvent, item observation.Item, userText string, main, history bool) prompt.Message {
 	in := prompt.Message{Ref: text.Item.Ref, Kind: text.Kind, Main: main, User: item.Type == "userMessage", History: history, ClientID: item.ClientID}
 	if item.Type == "agentMessage" && text.Item.AsyncQuestion {
-		call := Questions(in.Ref.ThreadID, in.Ref.TurnID, in.Ref.ItemID, nil, item.Questions)
+		questions := make([]binding.Question, len(item.Questions))
+		for i, q := range item.Questions {
+			questions[i] = binding.Question{ID: q.ID, Header: q.Header, Question: q.Question, Title: q.Title, IsSecret: q.IsSecret, Options: q.Options}
+		}
+		call := Questions(in.Ref.ThreadID, in.Ref.TurnID, in.Ref.ItemID, nil, questions)
 		in.Call = &call
 	}
 	if in.User && text.Kind == observation.ItemCompleted {

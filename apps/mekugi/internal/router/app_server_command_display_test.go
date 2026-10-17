@@ -94,7 +94,7 @@ func TestAppServerOpaqueCommandWrappers(t *testing.T) {
 		`env -u BASH_ENV bash -c 'cat app.go' > out`, `env -u BASH_ENV bash -c 'cat app.go' &`,
 		`env -u BASH_ENV bash -c 'cat app.go' | unknown`, `./cat app.go`,
 	} {
-		if got := appServerCommandText(binding.ThreadItem{Command: command}, ""); got != "Run\n"+toolActivityFenced("bash", command) {
+		if got := appServerCommandText((binding.ThreadItem{Command: command}).Observation(), ""); got != "Run\n"+toolActivityFenced("bash", command) {
 			t.Errorf("unsafe wrapper %q classified: %s", command, got)
 		}
 	}
@@ -163,7 +163,7 @@ func TestAppServerShellDisplay(t *testing.T) {
 
 func TestAppServerShellDisplayHighlight(t *testing.T) {
 	source := `printf '%s' "$HOME"; go test ./...`
-	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: appServerCommandText(binding.ThreadItem{Command: `/bin/bash -lc 'printf '\''%s'\'' "$HOME"; go test ./...'`}, "")})
+	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: appServerCommandText((binding.ThreadItem{Command: `/bin/bash -lc 'printf '\''%s'\'' "$HOME"; go test ./...'`}).Observation(), "")})
 	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		p := activityui.Painter{Theme: theme}
 		var rows []string

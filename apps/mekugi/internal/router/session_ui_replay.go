@@ -85,7 +85,7 @@ func (p *uiReplayPlayback) close() {
 
 func (p *uiReplayPlayback) apply(e playback.Event) error {
 	if id := e.ThreadID; id != "" && id != p.Source.Thread && p.ui.session.paths[id] == "" {
-		p.ui.session.registerThreadFacts(binding.ThreadInfo{ID: id, AgentNickname: strings.TrimPrefix(p.Source.Threads[id], "/root/")})
+		p.ui.session.registerThreadFacts(observation.Thread{ID: id, Nickname: strings.TrimPrefix(p.Source.Threads[id], "/root/")})
 	}
 	switch {
 	case e.Hook != nil:
@@ -99,7 +99,7 @@ func (p *uiReplayPlayback) apply(e playback.Event) error {
 		if p.ui.replayTranscript(e.Event) {
 			return nil
 		}
-		result := p.ui.projectSessionEvent(string(e.Kind), replayPresentationEvent(e.Event), sessionEventFacts{})
+		result := p.ui.projectSessionEvent(e.Event, sessionEventFacts{})
 		if result.publish {
 			p.ui.applyActivity(result.entries, slices.Clone(p.ui.session.agents))
 		}

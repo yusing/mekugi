@@ -152,7 +152,7 @@ func (u *appServerUI) readRestoredChildren() error {
 		for _, item := range turn.Items {
 			if item.Type == "collabAgentToolCall" {
 				item.SenderThreadID = u.Thread
-				entries := u.session.collab(item, item.ID, historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt, r.root.UpdatedAt)), activitypresentation.HistoricalCollaboration)
+				entries := u.session.collab(item.Observation(), item.ID, historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt, r.root.UpdatedAt)), activitypresentation.HistoricalCollaboration)
 				u.applyRestoredActivity(entries)
 				for _, entry := range entries {
 					if main, ok := mainActivityEntry(entry); ok {
@@ -381,6 +381,7 @@ func (u *appServerUI) restoreActivityThread(info binding.ThreadInfo, olderPage b
 }
 
 func (u *appServerUI) restoreActivityItem(info binding.ThreadInfo, turn binding.HistoryTurn, item binding.ThreadItem, name string, observed time.Time, entries *[]activityPaneEntry, text map[string]observation.TextUpdate) {
+	facts := item.Observation()
 	s := &u.session
 	if update, ok := text[item.ID]; ok {
 		update.Sequence, update.Observed = s.next(), observed
@@ -390,9 +391,9 @@ func (u *appServerUI) restoreActivityItem(info binding.ThreadInfo, turn binding.
 		return
 	}
 	entry := activityPaneEntry{Seq: s.next(), Agent: name, Observed: observed, CallID: item.ID,
-		native: &liveActivityNativeItem{thread: info.ID, turn: turn.ID, item: item.ID, phase: "item/completed", status: item.Status, searchResults: appServerSearchResults(item)}}
-	progressPhase := appServerHistoryProgressPhase(item, turn.Status)
-	if text, wait, handled := u.itemProgress(item, info.ID, turn.ID, item.ID, progressPhase, false); handled {
+		native: &liveActivityNativeItem{thread: info.ID, turn: turn.ID, item: item.ID, phase: "item/completed", status: item.Status, searchResults: appServerSearchResults(facts)}}
+	progressPhase := appServerHistoryProgressPhase(facts, turn.Status)
+	if text, wait, handled := u.itemProgress(facts, info.ID, turn.ID, item.ID, progressPhase, false); handled {
 		if text != "" {
 			entry.Kind, entry.Text = "progress", text
 			entry.native.wait = wait
@@ -412,16 +413,16 @@ func (u *appServerUI) restoreActivityItem(info binding.ThreadInfo, turn binding.
 		entry.Kind, entry.Text = "tool", "View "+markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(info.Cwd, item.Path))
 		*entries = append(*entries, entry)
 	case "commandExecution", "fileChange", "webSearch":
-		entry.Kind, entry.Text = "tool", appServerToolText(item, info.Cwd)
-		entry.native.command, entry.native.duration = item.Command, appServerDuration(item)
-		entry.native.commandCwd = appServerCommandDirectory(item, info.Cwd)
-		entry.native.workdir = appServerCommandWorkdir(item, info.Cwd)
+		entry.Kind, entry.Text = "tool", appServerToolText(facts, info.Cwd)
+		entry.native.command, entry.native.duration = item.Command, appServerDuration(facts)
+		entry.native.commandCwd = appServerCommandDirectory(facts, info.Cwd)
+		entry.native.workdir = appServerCommandWorkdir(facts, info.Cwd)
 		if item.Type == "fileChange" {
-			entry.Text = appServerEditText(item, info.Cwd)
-			entry.native.editPages = appServerEditPages(item, info.Cwd, entry.native.phase)
+			entry.Text = appServerEditText(facts, info.Cwd)
+			entry.native.editPages = appServerEditPages(facts, info.Cwd, entry.native.phase)
 		}
-		s.completeCommand(entry.native, item)
-		appServerCommandOutput(&entry, item, time.Time{})
+		s.completeCommand(entry.native, facts)
+		appServerCommandOutput(&entry, facts, time.Time{})
 		u.restoreCommandSegments(&entry, item, info.Cwd)
 		*entries = append(*entries, entry)
 		if len(entry.native.segments) == 0 && item.ExitCode != nil && *item.ExitCode != 0 {
@@ -430,6 +431,6 @@ func (u *appServerUI) restoreActivityItem(info binding.ThreadInfo, turn binding.
 			*entries = append(*entries, exit)
 		}
 	case "collabAgentToolCall":
-		*entries = append(*entries, u.session.collab(item, item.ID, observed, activitypresentation.HistoricalCollaboration)...)
+		*entries = append(*entries, u.session.collab(facts, item.ID, observed, activitypresentation.HistoricalCollaboration)...)
 	}
 }

@@ -6,7 +6,6 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
-	json "encoding/json/v2"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -61,7 +60,7 @@ type appServerCommandRun struct {
 	done    []activityPaneEntry // Completion, held until streamed output has rolled through.
 	// A tracked command's completion waits for its segment report to end.
 	completion  *activityPaneEntry
-	completed   binding.ThreadItem
+	completed   observation.Item
 	completedAt time.Time
 }
 
@@ -104,6 +103,24 @@ type appServerEvent struct {
 	Turn appServerTurn `json:"turn"`
 }
 
+func (p appServerEvent) observation(method string, at time.Time) observation.Event {
+	e := observation.Event{At: at, Kind: observation.Kind(method), ThreadID: p.ThreadID, TurnID: p.TurnID,
+		ItemID: cmp.Or(p.ItemID, p.Item.ID), Delta: p.Delta, Item: p.Item.Observation(),
+		ThreadStatus: p.Status.Type, ProcessID: p.ProcessID, Stdin: p.Stdin,
+		TurnStatus: p.Turn.Status, Context: observation.Context{Window: p.TokenUsage.ModelContextWindow},
+	}
+	if p.Thread.ID != "" {
+		e.Thread = p.Thread.Observation()
+	}
+	if p.TokenUsage.Last != nil {
+		e.Context.Tokens, e.Context.Known = p.TokenUsage.Last.TotalTokens, true
+	}
+	if method == "turn/started" || method == "turn/completed" {
+		e.TurnID = p.Turn.ID
+	}
+	return e
+}
+
 func (s *appServerSession) start(thread, cwd string) {
 	s.paths = map[string]string{thread: "/root"}
 	s.Start(thread)
@@ -116,32 +133,22 @@ func (s *appServerSession) start(thread, cwd string) {
 }
 
 func (s *appServerSession) registerThread(info binding.ThreadInfo) {
-	s.registerThreadFacts(info)
+	s.registerThreadFacts(info.Observation())
 	s.restoreThreadSettings(info)
 }
 
 // registerThreadFacts admits supplied metadata without reading retained state.
-func (s *appServerSession) registerThreadFacts(info binding.ThreadInfo) {
+func (s *appServerSession) registerThreadFacts(info observation.Thread) {
 	if info.ID != "" {
 		s.Thread(info.ID)
 	}
-	var source struct {
-		SubAgent struct {
-			ThreadSpawn struct {
-				AgentPath string `json:"agent_path"`
-				AgentRole string `json:"agent_role"`
-			} `json:"thread_spawn"`
-		} `json:"subAgent"`
-	}
-	_ = json.Unmarshal(info.Source, &source)
-	spawn := source.SubAgent.ThreadSpawn
-	path := spawn.AgentPath
+	path := info.Path
 	old := s.paths[info.ID]
 	if path == "" && old != appServerPlaceholder(info.ID) {
 		path = old
 	}
-	if path == "" && info.AgentNickname != "" {
-		path = "/root/" + info.AgentNickname
+	if path == "" && info.Nickname != "" {
+		path = "/root/" + info.Nickname
 	}
 	path = cmp.Or(path, appServerPlaceholder(info.ID))
 	if old := s.paths[info.ID]; old != "" {
@@ -151,7 +158,7 @@ func (s *appServerSession) registerThreadFacts(info binding.ThreadInfo) {
 	}
 	s.paths[info.ID] = path
 	s.agent(path).thread = info.ID
-	s.agent(path).Role = cmp.Or(info.AgentRole, spawn.AgentRole, s.agent(path).Role)
+	s.agent(path).Role = cmp.Or(info.Role, s.agent(path).Role)
 }
 
 func (s *appServerSession) restoreThreadSettings(info binding.ThreadInfo) {
@@ -236,7 +243,8 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 	}
 
 	key := [3]string{p.ThreadID, p.TurnID, cmp.Or(p.ItemID, p.Item.ID)}
-	facts := sessionEventFacts{tracked: u.execTrack.Tracking(key), wait: u.readWaitEvidence(p.Item, key)}
+	event := p.observation(method, u.now())
+	facts := sessionEventFacts{tracked: u.execTrack.Tracking(key), wait: u.readWaitEvidence(event.Item, key)}
 	if p.Item.Type == "commandExecution" && u.proxy != nil {
 		if ms, known := u.proxy.nativeTrace.CommandTimeout(p.ThreadID, key[2]); known {
 			facts.commandTimeout = strconv.FormatUint(ms/1000, 10)
@@ -249,7 +257,7 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 	if method == "turn/completed" {
 		u.endTurnPreviews(p.ThreadID, p.Turn.ID)
 	}
-	result := u.projectSessionEvent(method, p, facts)
+	result := u.projectSessionEvent(event, facts)
 	if result.started && u.proxy != nil {
 		u.proxy.review.Preview().SetTurn(p.ThreadID, p.Turn.ID, true)
 	}
@@ -295,13 +303,15 @@ type sessionProjection struct {
 // projectSessionEvent applies admitted observations through the existing model
 // owners. It performs no host requests, storage operations or execution tracking;
 // the source adapter supplies enrichment and publishes the returned entries.
-func (u *appServerUI) projectSessionEvent(method string, p appServerEvent, facts sessionEventFacts) sessionProjection {
+func (u *appServerUI) projectSessionEvent(p observation.Event, facts sessionEventFacts) sessionProjection {
 	s := &u.session
-	u.observeProgress(method, p)
+	method := string(p.Kind)
+	text := binding.RetainedTranscript(p)
+	u.observeProgress(p)
 	main := p.ThreadID == u.Thread
 	result := sessionProjection{publish: true}
 	var entries []activityPaneEntry
-	now := u.now()
+	now := p.At
 	switch method {
 	case "thread/started":
 		info := p.Thread
@@ -314,7 +324,7 @@ func (u *appServerUI) projectSessionEvent(method string, p appServerEvent, facts
 
 	case "thread/status/changed":
 		agent := s.agent(s.path(p.ThreadID))
-		switch p.Status.Type {
+		switch p.ThreadStatus {
 		case "active":
 			agent.ObserveActive(true, now)
 		case "idle", "notLoaded", "systemError":
@@ -323,12 +333,7 @@ func (u *appServerUI) projectSessionEvent(method string, p appServerEvent, facts
 	case "thread/tokenUsage/updated":
 		agent := s.agent(s.path(p.ThreadID))
 		agent.LastResponse = now // Usage arrives once per provider response.
-		agent.ContextWindow = p.TokenUsage.ModelContextWindow
-		agent.ContextKnown = p.TokenUsage.Last != nil
-		agent.ContextTokens = 0
-		if p.TokenUsage.Last != nil {
-			agent.ContextTokens = p.TokenUsage.Last.TotalTokens
-		}
+		agent.ContextWindow, agent.ContextKnown, agent.ContextTokens = p.Context.Window, p.Context.Known, p.Context.Tokens
 	case "turn/started", "turn/completed":
 		agent := s.agent(s.path(p.ThreadID))
 		active := u.Turn
@@ -338,8 +343,8 @@ func (u *appServerUI) projectSessionEvent(method string, p appServerEvent, facts
 		updates := s.ObserveTurn(sessionpresentation.TurnModels{
 			Transcript: s.transcript, Waits: &s.waits, Agent: &agent.AgentLifecycle, Selected: active,
 		}, sessionpresentation.TurnObservation{
-			Kind: observation.Kind(method), Thread: p.ThreadID, Turn: p.Turn.ID,
-			Status: p.Turn.Status, At: now,
+			Kind: observation.Kind(method), Thread: p.ThreadID, Turn: p.TurnID,
+			Status: p.TurnStatus, At: now,
 		})
 		if method == "turn/started" {
 			if !updates.Admitted {
@@ -347,7 +352,7 @@ func (u *appServerUI) projectSessionEvent(method string, p appServerEvent, facts
 			}
 			result.started = true
 			if !main {
-				agent.turn = p.Turn.ID
+				agent.turn = p.TurnID
 			}
 		} else {
 			for _, progress := range updates.Waits {
@@ -355,7 +360,7 @@ func (u *appServerUI) projectSessionEvent(method string, p appServerEvent, facts
 				entries = append(entries, activityPaneEntry{
 					Seq: s.next(), Agent: s.path(p.ThreadID), Kind: "progress",
 					Text: (activityui.Block{Value: value}).ProgressText(), Observed: now,
-					native: &liveActivityNativeItem{thread: p.ThreadID, turn: p.Turn.ID, item: progress.ID, phase: method, wait: &value, live: value.Live},
+					native: &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: progress.ID, phase: method, wait: &value, live: value.Live},
 				})
 			}
 			entries = append(entries, u.transcriptUpdates(updates.Text, true)...)
@@ -372,7 +377,7 @@ func (u *appServerUI) projectSessionEvent(method string, p appServerEvent, facts
 			run.dirty = true
 		}
 	case "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded":
-		entries = append(entries, u.transcriptUpdates(s.observeTranscript(p.text, main), true)...)
+		entries = append(entries, u.transcriptUpdates(s.observeTranscript(text, main), true)...)
 
 	case "item/started", "item/completed", "item/agentMessage/delta":
 		item := p.Item
@@ -404,7 +409,7 @@ func (u *appServerUI) projectSessionEvent(method string, p appServerEvent, facts
 				}
 			}
 		case "reasoning":
-			entries = append(entries, u.transcriptUpdates(s.observeTranscript(p.text, main), true)...)
+			entries = append(entries, u.transcriptUpdates(s.observeTranscript(text, main), true)...)
 
 		case "commandExecution", "webSearch":
 			native.commandTimeout = facts.commandTimeout
@@ -472,7 +477,7 @@ func (u *appServerUI) projectSessionEvent(method string, p appServerEvent, facts
 			if main {
 				return sessionProjection{entries: entries, publish: len(entries) != 0}
 			}
-			entries = append(entries, u.transcriptUpdates(s.observeTranscript(p.text, false), true)...)
+			entries = append(entries, u.transcriptUpdates(s.observeTranscript(text, false), true)...)
 
 		default:
 			if main {
@@ -497,7 +502,7 @@ func (r *appServerCommandRun) roll() bool {
 
 // commandDone is a completed command's entry with its output, and a failure's
 // exit with the host's combined output tail.
-func (s *appServerSession) commandDone(entry activityPaneEntry, item binding.ThreadItem, now time.Time) []activityPaneEntry {
+func (s *appServerSession) commandDone(entry activityPaneEntry, item observation.Item, now time.Time) []activityPaneEntry {
 	appServerCommandOutput(&entry, item, now)
 	done := []activityPaneEntry{entry}
 	if item.ExitCode != nil && *item.ExitCode != 0 {
@@ -556,11 +561,9 @@ func (u *appServerUI) flushStreamOutput() {
 
 // collab binds neutral delivery facts to existing caller labels and feed
 // identities. The live adapter applies accounting after this projection.
-func (s *appServerSession) collab(item binding.ThreadItem, id string, now time.Time, origin activitypresentation.CollaborationOrigin) []activityPaneEntry {
-	deliveries, confirmed := activitypresentation.ProjectCollaboration(observation.Item{
-		ID: id, Tool: item.Tool, Status: item.Status, SenderThreadID: item.SenderThreadID,
-		ReceiverThreadIDs: item.ReceiverThreadIDs, Prompt: item.Prompt, Model: item.Model, ReasoningEffort: item.ReasoningEffort,
-	}, origin)
+func (s *appServerSession) collab(item observation.Item, id string, now time.Time, origin activitypresentation.CollaborationOrigin) []activityPaneEntry {
+	item.ID = id
+	deliveries, confirmed := activitypresentation.ProjectCollaboration(item, origin)
 	from := ""
 	if confirmed {
 		// Preserve sender-first observation order, including participants whose
@@ -629,14 +632,14 @@ func (u *appServerUI) restoreUsage(info binding.ThreadInfo) {
 // appServerCommandWorkdir is the display form of the directory the host ran
 // a command in, when it is not the workspace its activity is shown against.
 // An unknown workspace or directory gets no label.
-func appServerCommandWorkdir(item binding.ThreadItem, workspace string) string {
+func appServerCommandWorkdir(item observation.Item, workspace string) string {
 	if item.Type != "commandExecution" || !filepath.IsAbs(item.Cwd) || !filepath.IsAbs(workspace) || filepath.Clean(item.Cwd) == filepath.Clean(workspace) {
 		return ""
 	}
 	return pathdisplay.ForWorkspace(workspace, filepath.Clean(item.Cwd))
 }
 
-func appServerCommandDirectory(item binding.ThreadItem, workspace string) string {
+func appServerCommandDirectory(item observation.Item, workspace string) string {
 	if filepath.IsAbs(item.Cwd) {
 		return item.Cwd
 	}
@@ -648,7 +651,7 @@ func appServerCommandDirectory(item binding.ThreadItem, workspace string) string
 // classification changes the executed command or retained host item. Paths
 // display relative to the directory the command ran in, which
 // appServerCommandWorkdir labels when it differs from the workspace.
-func appServerCommandText(item binding.ThreadItem, cwd string) string {
+func appServerCommandText(item observation.Item, cwd string) string {
 	cwd = appServerCommandDirectory(item, cwd)
 	var parts []string
 	for _, action := range item.CommandActions {
@@ -678,7 +681,7 @@ func appServerCommandText(item binding.ThreadItem, cwd string) string {
 
 // completeCommand adapts a host result into the shared invocation owner before
 // terminal or report settlement. History has no revived start/end clock.
-func (s *appServerSession) completeCommand(native *liveActivityNativeItem, item binding.ThreadItem) {
+func (s *appServerSession) completeCommand(native *liveActivityNativeItem, item observation.Item) {
 	if item.Type != "commandExecution" {
 		return
 	}
@@ -699,7 +702,7 @@ func (s *appServerSession) completeCommand(native *liveActivityNativeItem, item 
 // appServerCommandOutput keeps aggregate output even when the host reports no
 // exit. Known failures carry their tail on the separate exit entry. Only confirmed
 // success opens the settlement window or starts restored output collapsed.
-func appServerCommandOutput(entry *activityPaneEntry, item binding.ThreadItem, settled time.Time) {
+func appServerCommandOutput(entry *activityPaneEntry, item observation.Item, settled time.Time) {
 	if item.Type != "commandExecution" || item.ExitCode != nil && *item.ExitCode != 0 {
 		return
 	}
@@ -757,7 +760,7 @@ func appServerDisplayCommand(command string) string {
 
 // appServerEditText is one Activity operation per changed file, with its
 // line counts taken from the patch Codex applied.
-func appServerEditText(item binding.ThreadItem, cwd string) string {
+func appServerEditText(item observation.Item, cwd string) string {
 	var parts []string
 	for _, change := range item.Changes {
 		added, removed := appServerChangeCounts(change)
@@ -769,7 +772,7 @@ func appServerEditText(item binding.ThreadItem, cwd string) string {
 			verb = "Delete"
 		}
 		path := pathdisplay.ForWorkspace(cwd, change.Path)
-		if moved := cmp.Or(change.Kind.MovePath, change.Kind.MovePath2); moved != "" {
+		if moved := change.Kind.MovePath; moved != "" {
 			verb, path = "Move", pathdisplay.Move(cwd, change.Path, moved)
 		}
 		text := verb + " " + markdownsyntax.QuoteCode(path) + fmt.Sprintf(" · +%d −%d", added, removed)
@@ -787,7 +790,7 @@ func appServerEditText(item binding.ThreadItem, cwd string) string {
 
 // appServerEditPages retains host-supplied completed diffs for navigation only.
 // It neither captures the filesystem nor creates durable change evidence.
-func appServerEditPages(item binding.ThreadItem, cwd, phase string) []activityui.Block {
+func appServerEditPages(item observation.Item, cwd, phase string) []activityui.Block {
 	if phase != "item/completed" || item.Status != "" && item.Status != "completed" {
 		return nil
 	}
@@ -795,7 +798,7 @@ func appServerEditPages(item binding.ThreadItem, cwd, phase string) []activityui
 	for _, change := range item.Changes {
 		path, diff := pathdisplay.ForWorkspace(cwd, change.Path), change.Diff
 		syntaxPath := ""
-		if moved := cmp.Or(change.Kind.MovePath, change.Kind.MovePath2); moved != "" {
+		if moved := change.Kind.MovePath; moved != "" {
 			path = pathdisplay.Move(cwd, change.Path, moved)
 			syntaxPath = pathdisplay.ForWorkspace(cwd, moved)
 			if body, ok := strings.CutSuffix(diff, "\n\nMoved to: "+moved); ok {
@@ -815,7 +818,7 @@ func appServerEditPages(item binding.ThreadItem, cwd, phase string) []activityui
 		case "delete":
 			verb, lang = "Delete", ""
 		}
-		if cmp.Or(change.Kind.MovePath, change.Kind.MovePath2) != "" {
+		if change.Kind.MovePath != "" {
 			verb = "Move"
 		}
 		pages = append(pages, activityui.Block{Kind: "op", Verb: verb, Path: path, SyntaxPath: syntaxPath, Code: diff, Lang: lang, Fenced: true})
@@ -823,7 +826,7 @@ func appServerEditPages(item binding.ThreadItem, cwd, phase string) []activityui
 	return pages
 }
 
-func appServerChangeCounts(change binding.FileChange) (added, removed int) {
+func appServerChangeCounts(change observation.FileChange) (added, removed int) {
 	lines := strings.Split(strings.TrimSuffix(change.Diff, "\n"), "\n")
 	if change.Diff == "" {
 		return 0, 0

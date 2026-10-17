@@ -271,8 +271,9 @@ func (u *appServerUI) applyRestoredMain(placements []*restoredPlacement) {
 }
 
 func (u *appServerUI) restoreHistoryItem(turn binding.HistoryTurn, item binding.ThreadItem) {
+	facts := item.Observation()
 	text := observation.TextEvent{Kind: observation.ItemCompleted, Item: transcriptItem(item, u.Thread, turn.ID, item.ID)}
-	if u.observeMessageQuestions(text, item, true) {
+	if u.observeMessageQuestions(text, facts, true) {
 		return
 	}
 	if item.Type == "userMessage" {
@@ -305,8 +306,8 @@ func (u *appServerUI) restoreHistoryItem(turn binding.HistoryTurn, item binding.
 	if turn.Status == "inProgress" && (item.Type == "agentMessage" || item.Status == "inProgress") {
 		method = "item/started"
 	}
-	progressPhase := appServerHistoryProgressPhase(item, turn.Status)
-	if text, wait, progress := u.itemProgress(item, u.Thread, turn.ID, item.ID, progressPhase, false); progress {
+	progressPhase := appServerHistoryProgressPhase(facts, turn.Status)
+	if text, wait, progress := u.itemProgress(facts, u.Thread, turn.ID, item.ID, progressPhase, false); progress {
 		if text != "" {
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
 				Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "progress", Text: text, Observed: time.Now(),
@@ -318,20 +319,20 @@ func (u *appServerUI) restoreHistoryItem(turn binding.HistoryTurn, item binding.
 	switch item.Type {
 	case "imageView":
 		entry := activityPaneEntry{Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "tool", Text: "View " + markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(u.session.cwd, item.Path)), CallID: item.ID, Observed: time.Now(),
-			native: &liveActivityNativeItem{thread: u.Thread, turn: turn.ID, item: item.ID, phase: method, searchResults: appServerSearchResults(item)}}
+			native: &liveActivityNativeItem{thread: u.Thread, turn: turn.ID, item: item.ID, phase: method, searchResults: appServerSearchResults(facts)}}
 		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 	case "commandExecution", "fileChange", "webSearch":
-		text := appServerToolText(item, u.session.cwd)
+		text := appServerToolText(facts, u.session.cwd)
 		if item.Type == "fileChange" {
-			text = appServerEditText(item, u.session.cwd)
+			text = appServerEditText(facts, u.session.cwd)
 		}
 		entry := activityPaneEntry{Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "tool", Text: text, CallID: item.ID, Observed: time.Now(),
-			native: &liveActivityNativeItem{thread: u.Thread, turn: turn.ID, item: item.ID, phase: method, command: item.Command, commandCwd: appServerCommandDirectory(item, u.session.cwd), status: item.Status, duration: appServerDuration(item), searchResults: appServerSearchResults(item), workdir: appServerCommandWorkdir(item, u.session.cwd)}}
+			native: &liveActivityNativeItem{thread: u.Thread, turn: turn.ID, item: item.ID, phase: method, command: item.Command, commandCwd: appServerCommandDirectory(facts, u.session.cwd), status: item.Status, duration: appServerDuration(facts), searchResults: appServerSearchResults(facts), workdir: appServerCommandWorkdir(facts, u.session.cwd)}}
 		if item.Type == "fileChange" {
-			entry.native.editPages = appServerEditPages(item, u.session.cwd, method)
+			entry.native.editPages = appServerEditPages(facts, u.session.cwd, method)
 		}
-		u.session.completeCommand(entry.native, item)
-		appServerCommandOutput(&entry, item, time.Time{})
+		u.session.completeCommand(entry.native, facts)
+		appServerCommandOutput(&entry, facts, time.Time{})
 		u.restoreCommandSegments(&entry, item, u.session.cwd)
 		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 		if len(entry.native.segments) == 0 && item.ExitCode != nil && *item.ExitCode != 0 {
