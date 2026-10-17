@@ -31,7 +31,12 @@ type Version struct {
 	Revision   uint64
 }
 
+type MainInfo struct {
+	Workspace, Title, BackendVersion, ApprovalCaller string
+}
+
 type View struct {
+	Info        MainInfo
 	Menu        *MenuView
 	Resume      *ResumeView
 	Version     Version

@@ -205,7 +205,7 @@ func TestComposerEscapeContextPrecedesSteerDelivery(t *testing.T) {
 			case "picker":
 				appServerTestKeys(t, u, "/")
 			case "locked":
-				u.interruptLocked = true
+				u.mainView.InterruptLocked = true
 			}
 			composerShellEscape(t, u)
 			if wire.Len() != 0 || len(u.Steers()) != 1 {

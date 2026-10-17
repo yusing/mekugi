@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -150,5 +151,27 @@ func TestPromptFailedFrameDoesNotAcknowledgeOpening(t *testing.T) {
 	}
 	if !u.prompts.Ready() {
 		t.Fatal("successful retry did not ready prompt")
+	}
+}
+
+func TestMainFrameConsumesPublishedMetadata(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.title, u.backendVersion = "Published title", "1.2.3"
+	u.settlePresentation()
+	before := u.sessionPresentation().View()
+	u.title, u.backendVersion, u.cwd = "Unpublished title", "9.9.9", "/unpublished"
+	u.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Unpublished activity"}}})
+	rows, _ := u.mainFrame(100, 24, 0)
+	painted := strings.Join(rows, "\n")
+	if !strings.Contains(painted, "codex v1.2.3") || strings.Contains(painted, "9.9.9") || strings.Contains(painted, "Unpublished activity") || !strings.Contains(u.mainHeaderRight(100, true), "Published title") {
+		t.Fatalf("Main consulted unpublished owners: %s", painted)
+	}
+	if !reflect.DeepEqual(u.sessionPresentation().View(), before) {
+		t.Fatal("painting refreshed the session publication")
+	}
+	u.settlePresentation()
+	rows, _ = u.mainFrame(100, 24, 0)
+	if !strings.Contains(strings.Join(rows, "\n"), "Unpublished activity") || !strings.Contains(u.mainHeaderRight(100, true), "Unpublished title") || u.sessionPresentation().View().Info.Workspace != "/unpublished" {
+		t.Fatal("explicit publication did not advance Main")
 	}
 }

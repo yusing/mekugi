@@ -24,8 +24,10 @@ They retain no source reducer, storage handle or application-session pointer.
 Main-frame composition consumes detached session, draft and prompt values. Its
 terminal owner allocates the transcript window, docks and composer, paints the
 composer and captions, and returns geometry for pointer routing and delivery
-receipts. Supplying transcript rows is separate from layout; painting has no
-backend or storage capability. Live sessions and playback use the same frame.
+receipts. It renders the attached Activity view and returns identity-addressed
+output demands for application hydration before delivery. Painting has no backend
+or storage capability. Live sessions and playback use the same frame. Shortcut
+visibility and the keyboard-interruption lock stay with terminal state.
 The outer compositor receives prepared pane rows and header/status facts. It owns
 frame decoration, status-tab targets and final pane geometry. Prompt visibility
 is calculated against that geometry and active overlays; only successful terminal

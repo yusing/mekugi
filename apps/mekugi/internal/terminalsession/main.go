@@ -18,6 +18,8 @@ import (
 // Main retains renderer geometry, overlay navigation and caret navigation. It owns no editor,
 // transcript, backend handles, or prompt records.
 type Main struct {
+	session                                                sessionpresentation.View
+	Keybindings, InterruptLocked                           bool
 	Menu                                                   Menu
 	Side                                                   SideDock
 	Resume                                                 ResumePicker
@@ -28,9 +30,9 @@ type Main struct {
 	CursorColumn, PromptColumn                             *int
 }
 
-// MainInput borrows detached values and terminal layout state for one frame.
+// mainInput borrows detached values and terminal layout state for one frame.
 // Secret drafts are renderer-local and are never retained by Main.
-type MainInput struct {
+type mainInput struct {
 	Session                                                      sessionpresentation.View
 	Draft                                                        composer.Draft
 	Now                                                          time.Time
@@ -42,14 +44,14 @@ type MainInput struct {
 }
 
 type MainFrame struct {
+	Demands               []activitypresentation.OutputDemand
 	Rows                  []string
 	Feed, Dock, Questions Rect
 }
 
-// Layout paints Main around an unfilled transcript window. The caller supplies
-// already rendered transcript rows and overlays, then delivers the complete frame.
+// layout reserves the transcript window and paints Main's surrounding docks.
 // Source: apps/mekugi/internal/router/app_server_ui.go:1241:1455@[ce8700a8].
-func (m *Main) Layout(in MainInput, painter *activityui.Painter, width, height, dock int) (out MainFrame) {
+func (m *Main) layout(in mainInput, painter *activityui.Painter, width, height, dock int) (out MainFrame) {
 	presentation, readOnly := in.Session, in.ReadOnly
 	var sideRect Rect
 	defer func() { m.Side.Rect = sideRect }()

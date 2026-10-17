@@ -56,7 +56,7 @@ func (u *appServerUI) input(event terminalsession.Input) (bool, error) {
 	case terminalsession.PasteStart:
 		u.pasted = nil
 		if u.prepareComposerInput() {
-			u.keybindings, u.Run = false, composer.NoRun
+			u.mainView.Keybindings, u.Run = false, composer.NoRun
 			u.pasted = make([]byte, 0)
 		}
 	case terminalsession.PasteInput:

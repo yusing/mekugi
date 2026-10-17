@@ -52,3 +52,16 @@ func settleActivity(now time.Time, adapters ...*activityAdapter) bool {
 	}
 	return activityui.Settle(now, views...)
 }
+
+// renderActivity services explicit output demands between detached render passes.
+// The painter itself never publishes source state or opens retained output.
+func renderActivity(source *sessionpresentation.ActivitySource, view *activityui.View, width, height int, now time.Time) []string {
+	for {
+		lines := view.Render(width, height, now)
+		demands := view.OutputDemands()
+		if len(demands) == 0 {
+			return lines
+		}
+		view.Hydrate(source.ResolveOutputDemands(demands))
+	}
+}

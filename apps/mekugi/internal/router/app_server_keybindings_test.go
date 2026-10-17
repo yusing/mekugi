@@ -40,8 +40,8 @@ func TestNativeUIKeybindings(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if u.Text != tc.want || u.keybindings != tc.open {
-				t.Fatalf("draft=%q open=%v", u.Text, u.keybindings)
+			if u.Text != tc.want || u.mainView.Keybindings != tc.open {
+				t.Fatalf("draft=%q open=%v", u.Text, u.mainView.Keybindings)
 			}
 		})
 	}
@@ -85,7 +85,7 @@ func TestNativeUIKeybindingsPaintAndEscape(t *testing.T) {
 	if err := u.testPaint(screen, 100, 30); err != nil {
 		t.Fatal(err)
 	}
-	if u.keybindings || strings.Contains(screen.String(), "Keyboard shortcuts") {
+	if u.mainView.Keybindings || strings.Contains(screen.String(), "Keyboard shortcuts") {
 		t.Fatal("help not dismissed")
 	}
 	if !u.mainView.ContentPainted {
@@ -94,7 +94,7 @@ func TestNativeUIKeybindingsPaintAndEscape(t *testing.T) {
 	if err := u.shell.key('?'); err != nil {
 		t.Fatal(err)
 	}
-	if !u.keybindings || u.Text != "" {
+	if !u.mainView.Keybindings || u.Text != "" {
 		t.Fatal("cannot reopen after Escape")
 	}
 }

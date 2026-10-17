@@ -112,7 +112,7 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 			u.selection = nil
 		}
 	}
-	if button != 0 || release || u.Dragging() || u.main == nil || u.main.keybindings {
+	if button != 0 || release || u.Dragging() || u.main == nil || u.main.mainView.Keybindings {
 		return false
 	}
 	var view *activityui.View

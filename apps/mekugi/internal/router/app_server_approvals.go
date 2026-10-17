@@ -40,14 +40,6 @@ func (u *appServerUI) pendingApprovals() []*sessioncontrol.Approval {
 	return result
 }
 
-func (u *appServerUI) approvalAgent(thread string) string {
-	path := u.session.KnownCaller(thread)
-	if path == "" || path == "/root" {
-		return ""
-	}
-	return path
-}
-
 // approvalDirectory names a request's directory unless it is the workspace.
 func (u *appServerUI) approvalDirectory(cwd string) []string {
 	if cwd == "" {

@@ -1,8 +1,6 @@
 package router
 
 import (
-	"time"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/textsanitize"
@@ -51,19 +49,6 @@ func (u *appServerUI) activitySource(view *activityui.View) *sessionpresentation
 		return u.childSource
 	}
 	return nil
-}
-
-// renderActivity services explicit output demands between detached render passes.
-// The painter itself never publishes source state or opens retained output.
-func renderActivity(source *sessionpresentation.ActivitySource, view *activityui.View, width, height int, now time.Time) []string {
-	for {
-		lines := view.Render(width, height, now)
-		demands := view.OutputDemands()
-		if len(demands) == 0 {
-			return lines
-		}
-		view.Hydrate(source.ResolveOutputDemands(demands))
-	}
 }
 
 func renderActivityFeed(source *sessionpresentation.ActivitySource, view *activityui.View, width, rows int) activityui.Feed {

@@ -81,7 +81,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	if plan.Left.W >= 4 && plan.Left.H >= 1 {
 		iw, ih := plan.Layout.Main.W, plan.Layout.Main.H
 		dockRows := 0
-		if mainEdit && !u.main.keybindings && !u.main.picker.Open {
+		if mainEdit && !u.main.mainView.Keybindings && !u.main.picker.Open {
 			dockRows = ih
 		}
 		rosterHits := u.agents.Hits
@@ -89,7 +89,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		u.agents.Hits = rosterHits
 		dockAt, dockRows := content.Dock.Y, content.Dock.H
 		if dockRows > 0 && dockAt+dockRows <= len(content.Main) {
-			dock, err := u.liveDock.RenderBatch(ctx, caller, u.main.cwd, u.Theme, iw, dockRows, 15)
+			dock, err := u.liveDock.RenderBatch(ctx, caller, u.main.sessionPresentation().View().Info.Workspace, u.Theme, iw, dockRows, 15)
 			if err != nil {
 				return err
 			}
@@ -163,7 +163,7 @@ func (u *terminalUI) shellStatus() terminalsession.ShellStatus {
 		DiffUnseen: u.diffUnseen, Prefix: u.prefix, LiveCount: u.liveDock.Live(),
 	}
 	if u.main != nil {
-		in.Locked = u.main.interruptLocked
+		in.Locked = u.main.mainView.InterruptLocked
 		if u.Focus == 0 && !u.prefix {
 			in.Expansion = u.main.transcriptView().Expansion
 		}

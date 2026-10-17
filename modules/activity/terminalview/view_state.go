@@ -27,6 +27,9 @@ func NewView() *View {
 	return v
 }
 
+// Empty reports whether the current detached transcript has entries.
+func (v *View) Empty() bool { return len(v.entries) == 0 }
+
 func (v *View) Now() time.Time {
 	if v.Clock != nil {
 		return v.Clock()

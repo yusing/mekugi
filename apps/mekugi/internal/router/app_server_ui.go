@@ -131,7 +131,6 @@ type appServerUI struct {
 	ctx                    context.Context
 	quitRequested          bool
 	archived               bool
-	interruptLocked        bool
 	exitUsage              binding.TokenUsage
 	resumeArgv             []string
 	replayDebugDirectory   string
@@ -147,7 +146,6 @@ type appServerUI struct {
 	ownedImages            map[string]bool
 	pasted                 []byte // Non-nil while collecting an admitted, already-framed paste.
 	dirty                  bool
-	keybindings            bool
 	panes                  *nativePreferences
 	restoring              *appServerActivityRestore
 	presentationState      *sessionpresentation.Service
@@ -902,7 +900,7 @@ func (u *appServerUI) key(key string) (bool, error) {
 		return false, nil
 	}
 	if strings.HasPrefix(key, "\x1b") {
-		u.keybindings = false
+		u.mainView.Keybindings = false
 	}
 	if key == "\x1b\x7f" || key == "\x1b\x08" {
 		u.deleteWord(true)
@@ -929,10 +927,10 @@ func (u *appServerUI) key(key string) (bool, error) {
 		}
 	}
 	if u.currentQuestion() == nil && !u.approvals.Open && key == "?" && u.Text == "" && (u.shell == nil || u.shell.Focus == 0) {
-		u.keybindings = !u.keybindings
+		u.mainView.Keybindings = !u.mainView.Keybindings
 		return false, nil
 	}
-	u.keybindings = false
+	u.mainView.Keybindings = false
 	if strings.HasPrefix(key, "\x1b") {
 		switch key {
 		case "\x1b[1;2A", "\x1b[1;2B":
@@ -1003,7 +1001,7 @@ func (u *appServerUI) key(key string) (bool, error) {
 			if u.Turn != "" || u.Starting() || u.InputPending() {
 				u.setNotice("Draft cleared · Ctrl+Z restores · Ctrl-C again interrupts", false)
 			}
-			if u.interruptLocked {
+			if u.mainView.InterruptLocked {
 				u.setNotice("Draft cleared · Ctrl+Z restores · Locked · /unlock", false)
 			}
 			return false, nil
@@ -1014,7 +1012,7 @@ func (u *appServerUI) key(key string) (bool, error) {
 		if u.Turn != "" || u.Starting() || u.InputPending() || u.Compaction.Pending() || u.Compaction.ContinuationPending() || len(u.conversation().Unsent)+len(u.conversation().Queued) > 0 {
 			return false, u.keyboardInterrupt()
 		}
-		if u.interruptLocked {
+		if u.mainView.InterruptLocked {
 			u.lockNotice()
 			return false, nil
 		}
@@ -1125,78 +1123,17 @@ func (u *appServerUI) applyActivity(entries []sessionpresentation.ActivityEntry,
 	u.publishActivity()
 }
 
-// mainFrame is the transcript above a boxed composer. The top border carries
-// the session state; the bottom border the model. dock rows are left blank
-// between the two, in the returned rectangle, for the live edit dock.
+// mainFrame hydrates identified output between terminal-only render passes.
 func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalsession.Rect) {
 	transcript := u.transcriptView()
-	readOnly := u.agents != nil && u.sessionPresentation().DisplayingChild()
-	presentation := u.sessionPresentation().View()
-	width, height = max(1, width), max(1, height)
-	u.mainView.Menu.Rect = terminalsession.Rect{}
-	u.mainView.NoticeDetails, u.mainView.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
-	u.prompts.Rect = terminalsession.Rect{}
-	if !readOnly && presentation.Panel != nil {
-		u.mainView.ContentPainted = false
-		u.mainView.ComposerRect = terminalsession.Rect{}
-		return u.mainView.Panel.Render(&u.view.Painter.Painter, width, height), terminalsession.Rect{}
-	}
-	if !readOnly && presentation.Resume != nil {
-		u.mainView.ContentPainted = false
-		u.mainView.ComposerRect = terminalsession.Rect{}
-		return u.mainView.Resume.Render(&u.view.Painter.Painter, width, height, terminalsession.SelectionStyle(&u.view.Painter.Painter)), terminalsession.Rect{}
-	}
-	if u.pickerVisible() && u.mainView.Menu.Modal() {
-		u.mainView.ContentPainted = false
-		u.mainView.ComposerRect = terminalsession.Rect{}
-		return u.mainView.Menu.ModalFrame(transcript, u.now(), width, height), terminalsession.Rect{}
-	}
-	in := terminalsession.MainInput{
-		Session: presentation, Draft: presentation.Draft.Draft, Now: u.now(), ReadOnly: readOnly,
-		Focused: u.shell == nil || u.shell.Focus == 0, Empty: len(u.activitySource(transcript).Entries) == 0,
-		Picker: u.pickerVisible(), Welcome: u.welcome(), Selection: terminalsession.SelectionStyle(&u.view.Painter.Painter), TurnIdle: u.Turn == "",
-	}
-	if call := presentation.Questions.Call; call != nil {
-		in.Question, in.Secret, in.QuestionLayout = true, call.Questions[presentation.Questions.Index].Secret, u.prompts.QuestionLayout(presentation.Questions)
-		in.Draft = presentation.PromptDraft.Draft
-		if in.Secret {
-			in.Draft = u.prompts.Secret.Draft
+	options := terminalsession.MainOptions{Now: u.now(), Focused: u.shell == nil || u.shell.Focus == 0, Version: mekugiVersion()}
+	for {
+		frame := u.mainView.Render(transcript, &u.view.Painter, &u.prompts, options, width, height, dock)
+		if len(frame.Demands) == 0 {
+			return frame.Rows, frame.Dock
 		}
+		transcript.Hydrate(u.activitySource(transcript).ResolveOutputDemands(frame.Demands))
 	}
-	if presentation.Approvals.Count > 0 {
-		in.ApprovalLayout = u.prompts.ApprovalLayout(presentation.Approvals.Approval.ID)
-		in.ApprovalAgent = u.approvalAgent(presentation.Approvals.Approval.Thread)
-		if presentation.Approvals.Open {
-			in.Draft = presentation.PromptDraft.Draft
-		}
-	}
-
-	frame := u.mainView.Layout(in, &u.view.Painter, width, height, dock)
-	transcript.Conversation, transcript.FeedOnly, transcript.StatusLabel = true, true, textsanitize.Safe(terminalsession.StatusText(presentation.Status.State), false)
-	transcript.FeedRows = 0
-	transcript.FeedQuestions, transcript.FeedSnippets = nil, nil
-	if room := frame.Feed.H; room > 0 {
-		rows := renderActivity(u.activitySource(transcript), transcript, width, room, in.Now)
-		for row := range rows {
-			rows[row] = terminalui.AttachCopy(rows[row], transcript.CopyRows[row])
-		}
-		if !readOnly && u.keybindings && in.Focused {
-			u.mainView.ContentPainted = false
-			rows = terminalsession.Keybindings(width, room)
-		}
-		if in.Picker {
-			u.mainView.ContentPainted = false
-			popupHeight := min(room, u.mainView.Menu.Height(width))
-			popup := u.mainView.Menu.Render(&u.view.Painter.Painter, terminalsession.SelectionStyle(&u.view.Painter.Painter), width, popupHeight)
-			u.mainView.Menu.Rect = terminalsession.Rect{0, frame.Feed.Y + len(rows) - popupHeight, width, popupHeight}
-			copy(rows[len(rows)-popupHeight:], popup)
-		}
-		copy(frame.Rows[frame.Feed.Y:], rows)
-	}
-	transcript.FeedTop += frame.Feed.Y
-	u.prompts.Rect = frame.Questions
-
-	return frame.Rows, frame.Dock
 }
 
 // scrollLabel shows how much of the feed lies above the viewport and, once

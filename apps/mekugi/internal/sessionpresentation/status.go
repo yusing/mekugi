@@ -72,6 +72,7 @@ type MainStatus struct {
 // MainInputs borrows current owner state only for publication. Nothing here is
 // retained, and the resulting view contains no owner pointers or capabilities.
 type MainInputs struct {
+	Info                   MainInfo
 	Menu                   *MenuView
 	Resume                 *ResumeView
 	Control                *sessioncontrol.Live
@@ -104,6 +105,7 @@ func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) (v View) 
 		}
 		v = m.View()
 	}()
+	v.Info = in.Info
 	v.Caption = caption
 	v.Panel = in.Panel
 	v.Resume = in.Resume

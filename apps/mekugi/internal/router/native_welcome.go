@@ -3,8 +3,6 @@ package router
 import (
 	"runtime/debug"
 	"strings"
-
-	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
 // Release builds set this to their tag with -ldflags -X.
@@ -41,17 +39,4 @@ func backendVersion(agent string) string {
 		}
 	}
 	return strings.TrimPrefix(version, "v")
-}
-
-func (u *appServerUI) welcome() string {
-	version := mekugiVersion()
-	label := "Mekugi " + version
-	if strings.HasPrefix(version, "v") {
-		label = "mekugi-" + version
-	}
-	label += " • codex"
-	if u.backendVersion != "" {
-		label += " v" + u.backendVersion
-	}
-	return "\x1b[1m" + label + terminalui.Reset
 }

@@ -25,7 +25,7 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 				u.conversation().Queued = []conversationmodel.Input{{Text: "next"}}
 			}
 			appServerTestKeys(t, u, "/lock\r")
-			if !u.interruptLocked || u.Text != "" {
+			if !u.mainView.InterruptLocked || u.Text != "" {
 				t.Fatal("lock not applied locally")
 			}
 			quit, err := u.key("\x03")
@@ -46,7 +46,7 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 			}
 			appServerTestKeys(t, u, "/unlock\r")
 			quit, err = u.key("\x03")
-			if err != nil || u.interruptLocked {
+			if err != nil || u.mainView.InterruptLocked {
 				t.Fatal("unlock did not restore keyboard handling")
 			}
 			if state == "running" && !strings.Contains(wire.String(), "turn/interrupt") || state == "starting" && !u.Interruption.BeforeStart || state == "idle" && !quit || state == "queued" && (len(u.conversation().Queued) != 0 || u.Text != "next") {
@@ -59,7 +59,7 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 func TestNativeControlsLockedDraftAndContextualEscape(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.ensureShell()
-	u.Turn, u.interruptLocked = "active", true
+	u.Turn, u.mainView.InterruptLocked = "active", true
 	appServerTestKeys(t, u, "draft\x03")
 	if u.Text != "" {
 		t.Fatal("lock broke draft clearing")
@@ -82,7 +82,7 @@ func TestNativeControlsLockedDraftAndContextualEscape(t *testing.T) {
 func TestNativeControlsPanePersistence(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	u := newAppServerSessionTestUI(t, "/workspace")
-	u.interruptLocked = true
+	u.mainView.InterruptLocked = true
 	u.shell.DiffOpen = true
 	u.shell.Focus = 1
 	p := testPanePreferences()
@@ -97,7 +97,7 @@ func TestNativeControlsPanePersistence(t *testing.T) {
 	if err := p.open(resumed.shell, "/workspace", "main", true); err != nil {
 		t.Fatal(err)
 	}
-	if !resumed.interruptLocked || !resumed.shell.DiffOpen || resumed.shell.Focus != 1 {
+	if !resumed.mainView.InterruptLocked || !resumed.shell.DiffOpen || resumed.shell.Focus != 1 {
 		t.Fatal("resume lost preferences or revived live child state")
 	}
 	var frame bytes.Buffer

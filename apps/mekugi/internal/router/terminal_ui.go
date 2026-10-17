@@ -76,8 +76,8 @@ func (u *terminalUI) key(key byte) error {
 		}
 		return nil
 	case terminalsession.MouseInput:
-		if u.main != nil && u.main.keybindings {
-			u.main.keybindings = false
+		if u.main != nil && u.main.mainView.Keybindings {
+			u.main.mainView.Keybindings = false
 			return nil
 		}
 		return u.mouse(event.Text)
@@ -128,7 +128,7 @@ func (u *terminalUI) key(key byte) error {
 	}
 	if key == 2 {
 		if u.main != nil {
-			u.main.keybindings = false
+			u.main.mainView.Keybindings = false
 		}
 		u.prefix = true
 		return nil
@@ -255,8 +255,8 @@ func (u *terminalUI) send(s string) error {
 			return err
 		}
 	}
-	if s == "\x1b" && u.main != nil && u.Focus == 0 && u.main.keybindings {
-		u.main.keybindings = false
+	if s == "\x1b" && u.main != nil && u.Focus == 0 && u.main.mainView.Keybindings {
+		u.main.mainView.Keybindings = false
 		return nil
 	}
 	if s == "\x1b" && u.main != nil && u.Focus == 0 && u.main.applyMenuResult(u.main.mainView.Menu.Key(s)) {
@@ -275,7 +275,7 @@ func (u *terminalUI) send(s string) error {
 		}
 	}
 
-	if s == "\x1b" && u.main != nil && !u.main.keybindings {
+	if s == "\x1b" && u.main != nil && !u.main.mainView.Keybindings {
 		var transcript *activityui.View
 		if u.Focus == 0 {
 			transcript = u.main.transcriptView()

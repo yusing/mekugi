@@ -10,6 +10,9 @@ geometry and rendering.
 Status, captions, question and approval docks, and pending-input previews are
 published together as detached, renderer-neutral facts. Prompt identity and input
 ordering come from Conversation; pending-input reasons come from session control.
+Main's workspace, confirmed or pending title, backend version and approval caller
+are part of that publication. Frames read the published values rather than live
+application records.
 The session retains the latest complete publication after each observation or
 semantic intent, including failed operations and restoration. Reading it neither
 refreshes owner state nor advances its version. Repeated publication of unchanged

@@ -17,7 +17,7 @@ func (u *terminalUI) paneState() terminalsession.Preferences {
 		state.NavigatorColumns = navigator.NavigatorColumns()
 	}
 	if u.main != nil {
-		state.InterruptLocked = u.main.interruptLocked
+		state.InterruptLocked = u.main.mainView.InterruptLocked
 	}
 	return state
 }
@@ -65,7 +65,7 @@ func (p *nativePreferences) open(u *terminalUI, workspace, thread string, resume
 	}
 	layout := state.layout
 	u.Panes.Restore(layout)
-	u.main.interruptLocked = layout.InterruptLocked
+	u.main.mainView.InterruptLocked = layout.InterruptLocked
 	u.Shell.Clamp()
 	if navigator, ok := u.Auxiliary.(terminalui.PaneNavigator); ok {
 		navigator.SetNavigatorColumns(layout.NavigatorColumns)

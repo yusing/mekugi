@@ -103,10 +103,7 @@ func (u *appServerUI) confirmSessionTitle(thread, name string) {
 
 func (u *appServerUI) mainHeaderRight(width int, focused bool) string {
 	scroll := scrollLabel(u.view)
-	name := u.title
-	if pending := u.names.Pending(u.Thread); pending != "" {
-		name = pending
-	}
+	name := u.sessionPresentation().View().Info.Title
 	title := strings.Join(strings.Fields(textsanitize.Safe(name, false)), " ")
 	if title == "" {
 		return scroll

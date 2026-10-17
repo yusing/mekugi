@@ -156,7 +156,7 @@ func TestAppServerCompactQueuedCancelBeforeRunPreservesMain(t *testing.T) {
 	for _, locked := range []bool{false, true} {
 		t.Run(fmt.Sprint("locked=", locked), func(t *testing.T) {
 			u, w := newAppServerTestUI()
-			u.interruptLocked = locked
+			u.mainView.InterruptLocked = locked
 			appServerTestTurn(t, u, "work")
 			appServerTestKeys(t, u, "/compact\t")
 			appServerTestKeys(t, u, "after compact\r")
