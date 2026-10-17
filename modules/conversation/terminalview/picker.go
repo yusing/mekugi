@@ -11,6 +11,7 @@ import (
 )
 
 type PickerOptions struct {
+	Selected                                 int
 	SkillsMenu, Manage, Saving, QueueCompact bool
 	Selection, Band                          string
 }
@@ -39,8 +40,8 @@ func Picker(p completion.View, layout *terminalui.ChoiceListLayout, options Pick
 		layout.Top = 0
 		if height < 5 {
 			labels := []string{"1. List skills", "2. Enable/Disable Skills"}
-			put(0, options.Selection+"› "+labels[p.Selected]+reset)
-			layout.RowStart, layout.RowCount, layout.Top = 0, 1, p.Selected
+			put(0, options.Selection+"› "+labels[options.Selected]+reset)
+			layout.RowStart, layout.RowCount, layout.Top = 0, 1, options.Selected
 			if height > 1 {
 				put(height-1, "  enter select · esc back")
 			}
@@ -57,7 +58,7 @@ func Picker(p completion.View, layout *terminalui.ChoiceListLayout, options Pick
 				row = max(1, height-4) + i
 			}
 			prefix := "  "
-			if p.Selected == i {
+			if options.Selected == i {
 				prefix = "› "
 			}
 			layout.RowStart, layout.RowCount = row-i, 2
@@ -65,7 +66,7 @@ func Picker(p completion.View, layout *terminalui.ChoiceListLayout, options Pick
 			if width-28 >= 24 {
 				text += strings.Repeat(" ", 26-ansi.StringWidth(text)) + "  " + descriptions[i]
 			}
-			if p.Selected == i {
+			if options.Selected == i {
 				text = options.Selection + text + reset
 			}
 			put(row, text)
@@ -144,7 +145,7 @@ func Picker(p completion.View, layout *terminalui.ChoiceListLayout, options Pick
 	if options.Manage {
 		query = p.Query
 	}
-	layout.Draw(frame, width, first, visible, terminalui.ChoiceListView{Rows: rows, Selected: p.Selected, Query: query, Selection: options.Selection, Problem: p.Problem, Loading: p.Loading})
+	layout.Draw(frame, width, first, visible, terminalui.ChoiceListView{Rows: rows, Selected: options.Selected, Query: query, Selection: options.Selection, Problem: p.Problem, Loading: p.Loading})
 	if options.Saving {
 		put(height-2, "  "+dim+"Saving…"+reset)
 	}

@@ -12,9 +12,17 @@ type Target struct {
 }
 
 type Choice struct {
+	ID                               uint64 // Distinguishes repeated labels in one immutable choice collection.
 	Name, Path, Description, Display string
 	Enabled                          bool
 }
+
+type ChoiceID struct {
+	Name, Path string
+	ID         uint64
+}
+
+func (c Choice) Identity() ChoiceID { return ChoiceID{Name: c.Name, Path: c.Path, ID: c.ID} }
 
 func (c Choice) Label() string {
 	if c.Display != "" {
@@ -29,7 +37,6 @@ type State struct {
 	Target, Dismissed Target
 	Open              bool
 	Choices           []Choice
-	Selected          int
 	Loading           bool
 	Problem           string
 	Pending           *Target
@@ -69,7 +76,6 @@ func (p *State) Resolve(target Target, cwd, activeCwd string, choices []Choice, 
 		return false
 	}
 	p.Choices, p.Loading, p.Problem = choices, false, problem
-	p.Selected = min(p.Selected, max(0, len(choices)-1))
 	p.Resolved, p.ResolvedCwd = target, cwd
 	return true
 }
@@ -121,11 +127,10 @@ func (p *State) SkillSaved(cwd, path string, enabled bool) bool {
 type View struct {
 	Target         Target
 	Choices        []Choice
-	Selected       int
 	Loading        bool
 	Problem, Query string
 }
 
 func (p *State) View() View {
-	return View{p.Target, slices.Clone(p.Choices), p.Selected, p.Loading, p.Problem, p.Query}
+	return View{p.Target, slices.Clone(p.Choices), p.Loading, p.Problem, p.Query}
 }

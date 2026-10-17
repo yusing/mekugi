@@ -72,6 +72,9 @@ func TestAppServerTypedTokensAcrossSubmissionAndResume(t *testing.T) {
 	}
 	check := func(v *activityAdapter) {
 		t.Helper()
+		if len(v.Entries) == 0 {
+			t.Fatal("submitted input did not reach Activity")
+		}
 		entry := v.Entries[0].Source
 		if !reflect.DeepEqual(entry.Native.Spans, spans) {
 			t.Fatalf("wrong spans: %+v", entry.Native.Spans)

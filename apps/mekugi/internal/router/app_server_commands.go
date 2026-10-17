@@ -237,10 +237,6 @@ func (u *appServerUI) resetDiffScope() {
 
 func (u *appServerUI) filterCommands(query string) {
 	p := &u.picker
-	previous := ""
-	if p.Selected < len(p.Choices) {
-		previous = p.Choices[p.Selected].Name
-	}
 	p.Choices, p.Loading, p.Problem = nil, false, ""
 	for _, command := range nativeCommands {
 		if _, ok := completion.MatchScore(command.Name[1:], query); ok {
@@ -252,5 +248,4 @@ func (u *appServerUI) filterCommands(query string) {
 		bScore, _ := completion.MatchScore(b.Name[1:], query)
 		return aScore - bScore
 	})
-	p.Selected = max(0, slices.IndexFunc(p.Choices, func(c completion.Choice) bool { return c.Name == previous }))
 }

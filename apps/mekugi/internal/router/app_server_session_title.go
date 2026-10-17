@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/libraries/terminalui"
+	"github.com/yusing/mekugi/libraries/textsanitize"
 )
 
 func (u *appServerUI) titleCommand(text string) bool {
@@ -106,7 +107,7 @@ func (u *appServerUI) mainHeaderRight(width int, focused bool) string {
 	if pending := u.names.Pending(u.Thread); pending != "" {
 		name = pending
 	}
-	title := strings.Join(strings.Fields(pickerText(name)), " ")
+	title := strings.Join(strings.Fields(textsanitize.Safe(name, false)), " ")
 	if title == "" {
 		return scroll
 	}

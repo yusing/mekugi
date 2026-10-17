@@ -18,6 +18,7 @@ import (
 // Main retains renderer geometry, overlay navigation and caret navigation. It owns no editor,
 // transcript, backend handles, or prompt records.
 type Main struct {
+	Menu                                                   Menu
 	Side                                                   SideDock
 	Resume                                                 ResumePicker
 	Panel                                                  StatusPanel

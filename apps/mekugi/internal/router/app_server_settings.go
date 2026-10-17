@@ -319,7 +319,7 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 func (u *appServerUI) showSettingsPicker(command string, choices []string) {
 	u.cancelPickerScan()
 	p := &u.picker
-	p.modal, p.Open, p.Selected, p.Top = "settings", true, 0, 0
+	u.openMenu("settings")
 	p.Target, p.Problem, p.Loading = completion.Target{}, "", u.modelsLoading
 	p.Choices = nil
 	u.settingsChoices = command
@@ -343,7 +343,7 @@ func (u *appServerUI) showSettingsPicker(command string, choices []string) {
 		choice := completion.Choice{Name: value}
 		if value == current {
 			choice.Description = "Current"
-			p.Selected = len(p.Choices)
+			p.preferred = choice.Identity()
 		}
 		p.Choices = append(p.Choices, choice)
 	}
@@ -364,55 +364,32 @@ func (u *appServerUI) chooseServiceTier() {
 	u.serviceTiers.Confirm(u.model, u.Thread, u.serviceTier)
 }
 
-func (u *appServerUI) settingsPickerKey(key string) bool {
+func (u *appServerUI) chooseSetting(choice completion.Choice) {
 	p := &u.picker
-	switch key {
-	case "\x1b", "\x03":
+	if p.Loading {
+		return
+	}
+	field := "model"
+	switch u.settingsChoices {
+	case "/effort", "/reasoning":
+		field = "effort"
+	case "/tier":
+		field = "serviceTier"
+	}
+	var value any = choice.Name
+	if field == "serviceTier" && value == "default" {
+		value = nil
+	}
+	accepted, err := u.updateSettings(map[string]any{field: value})
+	if err != nil {
+		u.setNotice("Settings update failed: "+err.Error(), true)
+	}
+	if accepted {
 		p.modal, p.Open, p.Choices = "", false, nil
 		u.settingsChoices = ""
-	case "\x1b[A", "\x1bOA", "\x10", "\x1b[B", "\x1bOB", "\x0e", "\t":
-		if n := len(p.Choices); n > 0 {
-			step := 1
-			if key == "\x1b[A" || key == "\x1bOA" || key == "\x10" {
-				step = -1
-			}
-			p.Selected = (p.Selected + step + n) % n
-		}
-	case "\x1b[5~":
-		p.Selected = max(0, p.Selected-8)
-	case "\x1b[6~":
-		p.Selected = max(0, min(len(p.Choices)-1, p.Selected+8))
-	case "\x1b[H", "\x1bOH":
-		p.Selected = 0
-	case "\x1b[F", "\x1bOF":
-		p.Selected = max(0, len(p.Choices)-1)
-	case "\r":
-		if p.Loading || len(p.Choices) == 0 {
-			return true
-		}
-		field := "model"
-		switch u.settingsChoices {
-		case "/effort", "/reasoning":
-			field = "effort"
-		case "/tier":
-			field = "serviceTier"
-		}
-		var value any = p.Choices[p.Selected].Name
-		if field == "serviceTier" && value == "default" {
-			value = nil
-		}
-		accepted, err := u.updateSettings(map[string]any{field: value})
-		if err != nil {
-			u.setNotice("Settings update failed: "+err.Error(), true)
-		}
-		if accepted {
-			p.modal, p.Open, p.Choices = "", false, nil
-			u.settingsChoices = ""
-		} else {
-			p.Problem = u.feedback.Text
-		}
+	} else {
+		p.Problem = u.feedback.Text
 	}
-	return true
 }
 
 // setLivePane changes presentation without stopping preview or capture updates.

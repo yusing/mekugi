@@ -32,6 +32,7 @@ type Version struct {
 }
 
 type View struct {
+	Menu        *MenuView
 	Resume      *ResumeView
 	Version     Version
 	Main        Thread
@@ -120,6 +121,11 @@ func (m *Model) View() View {
 // cloneView keeps both retained publications and subsequent readers isolated
 // from mutable values supplied by another owner or a previous consumer.
 func cloneView(v View) View {
+	if v.Menu != nil {
+		menu := *v.Menu
+		menu.Choices = slices.Clone(menu.Choices)
+		v.Menu = &menu
+	}
 	if v.Resume != nil {
 		resume := *v.Resume
 		resume.Rows = slices.Clone(resume.Rows)

@@ -37,41 +37,13 @@ func (u *appServerUI) showCopyPicker() {
 	}
 	u.cancelPickerScan()
 	p := &u.picker
-	p.modal, p.Open, p.Selected, p.Top = "copy", true, 0, 0
+	u.openMenu("copy")
 	p.Target, p.Problem, p.Loading = completion.Target{}, "", false
 	p.Choices, p.copyTexts = nil, nil
 	for _, choice := range responseCopyChoices(response) {
 		p.Choices = append(p.Choices, choice.Choice)
 		p.copyTexts = append(p.copyTexts, choice.copyText)
 	}
-}
-
-func (u *appServerUI) copyPickerKey(key string) bool {
-	p := &u.picker
-	switch key {
-	case "\x1b", "\x03":
-		p.modal, p.Open, p.Choices, p.copyTexts = "", false, nil, nil
-	case "\x1b[A", "\x1bOA", "\x10":
-		p.Selected = (p.Selected + len(p.Choices) - 1) % len(p.Choices)
-	case "\x1b[B", "\x1bOB", "\x0e":
-		p.Selected = (p.Selected + 1) % len(p.Choices)
-	case "\x1b[5~":
-		p.Selected = max(0, p.Selected-8)
-	case "\x1b[6~":
-		p.Selected = min(len(p.Choices)-1, p.Selected+8)
-	case "\x1b[H", "\x1bOH":
-		p.Selected = 0
-	case "\x1b[F", "\x1bOF":
-		p.Selected = len(p.Choices) - 1
-	case "\r":
-		if u.shell == nil {
-			u.setNotice("Terminal clipboard unavailable", true)
-		} else {
-			u.shell.copyText(p.copyTexts[p.Selected])
-		}
-		p.modal, p.Open, p.Choices, p.copyTexts = "", false, nil, nil
-	}
-	return true
 }
 
 // Source: codex-rs/tui/src/markdown.rs:171:249@1cc7e236 extract_copy_targets.
@@ -90,7 +62,7 @@ func responseCopyChoices(source string) []copyChoice {
 				break
 			}
 		}
-		choices = append(choices, copyChoice{Choice: completion.Choice{Name: label, Description: preview}, copyText: value})
+		choices = append(choices, copyChoice{Choice: completion.Choice{ID: uint64(len(choices) + 1), Name: label, Description: preview}, copyText: value})
 	}
 	add("Whole response", source)
 	data := []byte(source)

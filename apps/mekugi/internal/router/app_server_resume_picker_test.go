@@ -4,6 +4,7 @@ import (
 	"encoding/json/jsontext"
 	"fmt"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"path/filepath"
 	"slices"
@@ -508,7 +509,7 @@ func (u *appServerUI) fillResumePicker() error {
 }
 func (u *appServerUI) resumePickerFrame(width, height int) []string {
 	u.settlePresentation()
-	return u.mainView.Resume.Render(&u.view.Painter.Painter, width, height, u.pickerSelection())
+	return u.mainView.Resume.Render(&u.view.Painter.Painter, width, height, terminalsession.SelectionStyle(&u.view.Painter.Painter))
 }
 
 func TestResumePickerRechecksIdleBeforeSwitch(t *testing.T) {

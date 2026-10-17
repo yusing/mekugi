@@ -2,6 +2,8 @@ package router
 
 import "github.com/yusing/mekugi/modules/conversation/completion"
 
+const archiveConfirmChoice uint64 = 2
+
 // Source: codex-rs/tui/src/chatwidget/slash_dispatch.rs:240:278 and
 // codex-rs/tui/src/app/event_dispatch.rs:3705:3771@ddb33e34b.
 // Codex owns stopping the turn and archiving the thread and its descendants.
@@ -13,11 +15,11 @@ func (u *appServerUI) showArchivePicker() {
 	u.deleteDraftRange(0, len(u.Text))
 	u.cancelPickerScan()
 	p := &u.picker
-	p.modal, p.Open, p.Selected, p.Top = "archive", true, 0, 0
+	u.openMenu("archive")
 	p.Target, p.Problem, p.Loading = completion.Target{}, "", false
 	p.Choices = []completion.Choice{
-		{Name: "No, don't archive", Description: "Return to the current session"},
-		{Name: "Yes, archive", Description: "Archive this session now"},
+		{ID: 1, Name: "No, don't archive", Description: "Return to the current session"},
+		{ID: archiveConfirmChoice, Name: "Yes, archive", Description: "Archive this session now"},
 	}
 }
 
@@ -28,25 +30,16 @@ func (u *appServerUI) archivePrompt() string {
 	return "Are you sure? This will archive the current session."
 }
 
-func (u *appServerUI) archivePickerKey(key string) bool {
+func (u *appServerUI) chooseArchive(confirm bool) {
 	p := &u.picker
-	switch key {
-	case "\x1b", "\x03":
-		p.modal, p.Open, p.Choices = "", false, nil
-	case "\x1b[A", "\x1bOA", "\x10", "\x1b[B", "\x1bOB", "\x0e", "\t":
-		p.Selected = 1 - p.Selected
-	case "\r":
-		confirm := p.Selected == 1
-		p.modal, p.Open, p.Choices = "", false, nil
-		if confirm {
-			u.Replacement.Archive()
-			if err := u.request("thread/archive", map[string]any{"threadId": u.Thread}); err != nil {
-				u.Replacement.Finish()
-				u.setNotice("Failed to archive current thread: "+err.Error(), true)
-			} else {
-				u.setNotice("Archiving session…", false)
-			}
+	p.modal, p.Open, p.Choices = "", false, nil
+	if confirm {
+		u.Replacement.Archive()
+		if err := u.request("thread/archive", map[string]any{"threadId": u.Thread}); err != nil {
+			u.Replacement.Finish()
+			u.setNotice("Failed to archive current thread: "+err.Error(), true)
+		} else {
+			u.setNotice("Archiving session…", false)
 		}
 	}
-	return true
 }

@@ -35,15 +35,16 @@ func (u *appServerUI) closeSkillsModal() {
 	p.Dismissed = u.completionTarget()
 }
 
-func (u *appServerUI) chooseSkillsAction() {
+func (u *appServerUI) chooseSkillsAction(choice completion.Choice) {
 	p := &u.picker
-	if p.Selected == 0 {
+	if choice.Name == "list" {
 		p.modal, p.Open = "", false
 		p.Dismissed = completion.Target{}
 		u.insertDraft("$")
 	} else {
 		p.toggleOwnsManager = false
-		p.modal, p.Selected, p.Top, p.Query, p.Problem = "manage", 0, 0, "", ""
+		u.openMenu("manage")
+		p.Query, p.Problem = "", ""
 		p.Dismissed = completion.Target{}
 		p.Resolved = completion.Target{}
 		if p.SkillsLoaded {
@@ -52,12 +53,11 @@ func (u *appServerUI) chooseSkillsAction() {
 	}
 }
 
-func (u *appServerUI) toggleSkill() {
+func (u *appServerUI) toggleSkill(choice completion.Choice) {
 	p := &u.picker
 	if p.toggleID != "" || p.Loading || len(p.Choices) == 0 {
 		return
 	}
-	choice := p.Choices[p.Selected]
 	id, err := u.requests.Send("skills/config/write", map[string]any{"path": choice.Path, "enabled": !choice.Enabled}, "main", appServerRequest{})
 	if err != nil {
 		p.Problem = "Could not save skill: " + err.Error()

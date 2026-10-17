@@ -37,10 +37,6 @@ func MatchScore(name, query string) (int, bool) {
 }
 
 func (p *State) FilterSkills(query string, managing bool) {
-	selected := ""
-	if p.Selected < len(p.Choices) {
-		selected = p.Choices[p.Selected].Path
-	}
 	p.Choices = nil
 	for _, skill := range p.Skills {
 		if managing && skill.Path == "" {
@@ -77,8 +73,4 @@ func (p *State) FilterSkills(query string, managing bool) {
 			return strings.Compare(a.Label(), b.Label())
 		})
 	}
-	if managing {
-		p.Selected = max(0, slices.IndexFunc(p.Choices, func(c Choice) bool { return c.Path == selected }))
-	}
-	p.Selected = min(p.Selected, max(0, len(p.Choices)-1))
 }

@@ -122,6 +122,13 @@ Up/Down or Ctrl-P/N wrap selection; Tab/Enter inserts without submitting; Escape
 closes without removing the token. Paths with spaces are quoted. Paste does not
 open completion. Loading, empty and failed lookups remain visible.
 
+Completion, skill management, settings, archive confirmation and response-copy
+menus consume detached choices. The terminal owns selection, scrolling, hit
+geometry and key interpretation, returning identified choice, search or dismissal
+actions. Application integration retains acquisition and host effects. A slash
+completion followed by submission settles its edit before deriving the submission
+from the new publication.
+
 An initial `/` opens the local command catalog. Typing filters; arrows select;
 Tab completes only the command token, preserving arguments and attachments;
 Enter executes; Escape closes unchanged. Arguments and paste close or bypass

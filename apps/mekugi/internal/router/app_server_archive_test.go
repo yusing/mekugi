@@ -23,7 +23,8 @@ func TestUISnapshotAppServerArchive(t *testing.T) {
 				u.Turn = "turn"
 			}
 			appServerTestKeys(t, u, "/arch\r")
-			if u.picker.modal != "archive" || u.picker.Selected != 0 || wire.Len() != 0 {
+			u.settlePresentation()
+			if u.picker.modal != "archive" || u.mainView.Menu.Selected != 0 || wire.Len() != 0 {
 				t.Fatal("archive must first ask for confirmation, defaulting to No")
 			}
 			for _, width := range []int{40, 80} {

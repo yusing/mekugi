@@ -88,6 +88,7 @@ type appServerUI struct {
 	resumePicker           *appServerResumePicker
 	resumeSequence         uint64
 	statusConfig           appServerStatusConfig
+	menuSequence           uint64
 	picker                 composerPicker
 	skillEnvironment       []string
 	commits                *activitypresentation.CommitReader // Attached Activity enrichment owner.
@@ -876,6 +877,11 @@ func (u *appServerUI) key(key string) (bool, error) {
 	if !u.prepareComposerInput() {
 		return false, nil
 	}
+	// Explicit bindings and external editor changes can retire a completion target
+	// without another typed key. Refresh before interpreting the published menu.
+	if u.picker.Open && u.picker.modal == "" && u.completionTarget() != u.picker.Target {
+		u.refreshPicker()
+	}
 	// Prompt dismissal and adapter-owned edits settle before this key derives a
 	// new intent. Detached callers keep their supplied version unchanged.
 	u.publishPresentation(u.now())
@@ -909,13 +915,13 @@ func (u *appServerUI) key(key string) (bool, error) {
 	}
 	// Unbound Meta input retains the ordinary key after dismissing help.
 	if len(key) == 2 && key[0] == 27 && key[1] != '[' && key[1] != 'O' {
-		u.pickerKey("\x1b")
+		u.applyMenuResult(u.mainView.Menu.Key("\x1b"))
 		key = key[1:]
 	}
 	// An exact /compact has a submission meaning for Tab, not just completion.
 	compactTab := key == "\t" && strings.TrimSpace(u.Text) == "/compact" && u.picker.modal == ""
 	if !compactTab {
-		handled := u.pickerKey(key)
+		handled := u.applyMenuResult(u.mainView.Menu.Key(key))
 		// Enter may complete a command and continue dispatching the same key.
 		u.publishPresentation(u.now())
 		if handled {
@@ -1062,7 +1068,8 @@ func (u *appServerUI) key(key string) (bool, error) {
 		}
 		if text == "/skills" {
 			u.deleteDraftRange(0, len(u.Text))
-			u.picker.modal, u.picker.Open, u.picker.Selected, u.picker.Top = "menu", true, 0, 0
+			u.openMenu("menu")
+			u.picker.Choices = []completion.Choice{{Name: "list"}, {Name: "manage"}}
 			return false, nil
 		}
 		if text == "/quit" {
@@ -1126,7 +1133,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalsess
 	readOnly := u.agents != nil && u.sessionPresentation().DisplayingChild()
 	presentation := u.sessionPresentation().View()
 	width, height = max(1, width), max(1, height)
-	u.picker.rect = terminalsession.Rect{}
+	u.mainView.Menu.Rect = terminalsession.Rect{}
 	u.mainView.NoticeDetails, u.mainView.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
 	u.prompts.Rect = terminalsession.Rect{}
 	if !readOnly && presentation.Panel != nil {
@@ -1137,15 +1144,17 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalsess
 	if !readOnly && presentation.Resume != nil {
 		u.mainView.ContentPainted = false
 		u.mainView.ComposerRect = terminalsession.Rect{}
-		return u.mainView.Resume.Render(&u.view.Painter.Painter, width, height, u.pickerSelection()), terminalsession.Rect{}
+		return u.mainView.Resume.Render(&u.view.Painter.Painter, width, height, terminalsession.SelectionStyle(&u.view.Painter.Painter)), terminalsession.Rect{}
 	}
-	if u.pickerVisible() && u.picker.modal != "" {
-		return u.skillsModalFrame(width, height), terminalsession.Rect{}
+	if u.pickerVisible() && u.mainView.Menu.Modal() {
+		u.mainView.ContentPainted = false
+		u.mainView.ComposerRect = terminalsession.Rect{}
+		return u.mainView.Menu.ModalFrame(transcript, u.now(), width, height), terminalsession.Rect{}
 	}
 	in := terminalsession.MainInput{
 		Session: presentation, Draft: presentation.Draft.Draft, Now: u.now(), ReadOnly: readOnly,
 		Focused: u.shell == nil || u.shell.Focus == 0, Empty: len(u.activitySource(transcript).Entries) == 0,
-		Picker: u.pickerVisible(), Welcome: u.welcome(), Selection: u.pickerSelection(), TurnIdle: u.Turn == "",
+		Picker: u.pickerVisible(), Welcome: u.welcome(), Selection: terminalsession.SelectionStyle(&u.view.Painter.Painter), TurnIdle: u.Turn == "",
 	}
 	if call := presentation.Questions.Call; call != nil {
 		in.Question, in.Secret, in.QuestionLayout = true, call.Questions[presentation.Questions.Index].Secret, u.prompts.QuestionLayout(presentation.Questions)
@@ -1177,9 +1186,9 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalsess
 		}
 		if in.Picker {
 			u.mainView.ContentPainted = false
-			popupHeight := min(room, u.pickerHeight(width))
-			popup := u.renderPicker(width, popupHeight)
-			u.picker.rect = terminalsession.Rect{0, frame.Feed.Y + len(rows) - popupHeight, width, popupHeight}
+			popupHeight := min(room, u.mainView.Menu.Height(width))
+			popup := u.mainView.Menu.Render(&u.view.Painter.Painter, terminalsession.SelectionStyle(&u.view.Painter.Painter), width, popupHeight)
+			u.mainView.Menu.Rect = terminalsession.Rect{0, frame.Feed.Y + len(rows) - popupHeight, width, popupHeight}
 			copy(rows[len(rows)-popupHeight:], popup)
 		}
 		copy(frame.Rows[frame.Feed.Y:], rows)

@@ -11,11 +11,9 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/yusing/mekugi/libraries/terminalui"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/modules/conversation/completion"
-	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -28,8 +26,9 @@ import (
 // remain Codex-owned, through app-server rather than a second filesystem index.
 
 type composerPicker struct {
+	id        uint64
+	preferred completion.ChoiceID
 	completion.State
-	terminalui.ChoiceListLayout
 	scanResults                     chan pickerScanResult
 	scanCancel                      context.CancelFunc
 	scanID                          uint64
@@ -38,7 +37,6 @@ type composerPicker struct {
 	modal                           string
 	toggleID, togglePath, toggleCwd string
 	toggleOwnsManager               bool
-	rect                            terminalsession.Rect
 	copyTexts                       []string
 }
 
@@ -98,9 +96,14 @@ func (u *appServerUI) refreshPicker() {
 	if p.modal == "manage" {
 		target = completion.Target{Kind: '$', Query: p.Query}
 	}
+	wasOpen := p.Open
 	if !p.Activate(target, bindingOnly) {
 		u.cancelPickerScan()
 		return
+	}
+	if !wasOpen && !bindingOnly {
+		u.menuSequence++
+		p.id = u.menuSequence
 	}
 	if target.Kind == '/' {
 		u.cancelPickerScan()
@@ -291,96 +294,62 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 	return true
 }
 
-func (u *appServerUI) pickerKey(key string) bool {
+func (u *appServerUI) acceptCompletion(choice completion.Choice) bool {
 	p := &u.picker
-	if p.modal == "archive" && p.Open {
-		return u.archivePickerKey(key)
-	}
-	if p.modal == "settings" && p.Open {
-		return u.settingsPickerKey(key)
-	}
-	if p.modal == "copy" && p.Open {
-		return u.copyPickerKey(key)
-	}
-	if p.modal != "" && p.Open {
-		switch conversationui.SkillsKey(&p.State, p.modal == "menu", key) {
-		case conversationui.PickerPass:
-			return false
-		case conversationui.PickerCloseSkills:
-			u.closeSkillsModal()
-		case conversationui.PickerToggleSkill:
-			u.toggleSkill()
-		case conversationui.PickerChooseSkills:
-			u.chooseSkillsAction()
-		}
-		return true
-	}
-	if !p.Open {
-		return false
-	}
-	// Drafts can also change outside key(), through editor or transcript reference.
-	if u.completionTarget() != p.Target {
+	target := p.Target
+	if u.completionTarget() != target {
+		u.setNotice(sessionpresentation.ErrStaleIntent.Error(), true)
 		u.refreshPicker()
 		return false
 	}
-	switch conversationui.PickerKey(&p.State, key) {
-	case conversationui.PickerDismiss:
-		u.cancelPickerScan()
-		return true
-	case conversationui.PickerHandled:
-		return true
-	case conversationui.PickerAccept:
-		choice, target := p.Choices[p.Selected], p.Target
-		if target.Kind == '/' {
-			u.deleteDraftRange(target.Start, target.End)
-			u.InsertText(choice.Name + " ")
-			u.Run, p.Open = composer.NoRun, false
-			// Enter continues through the existing local command dispatcher.
-			return key == "\t"
-		}
-		text := choice.Path
-		if target.Kind == '$' {
-			text = "$" + choice.Name
-		} else if strings.ContainsFunc(text, unicode.IsSpace) && !strings.Contains(text, "\"") {
-			text = "\"" + text + "\""
-		}
-		if target.Kind == '@' {
-			text = "@" + text
-		}
-		imagePath := ""
-		if target.Kind == '@' {
-			path := choice.Path
-			if !filepath.IsAbs(path) {
-				path = filepath.Join(u.cwd, path)
-			}
-			if imageFile(path) {
-				imagePath = path
-				text = fmt.Sprintf("[Image %d]", len(u.Images)+1)
-			}
-		}
-		// One undo step restores the original token, not a half-completed edit.
+	if target.Kind == '/' {
 		u.deleteDraftRange(target.Start, target.End)
-		u.InsertText(text)
-		if imagePath != "" {
-			u.Images = append(u.Images, composer.Token{Start: target.Start, End: target.Start + len(text), Path: imagePath})
-			u.RenumberImages()
-		}
-		if target.Kind == '@' && imagePath == "" {
-			u.Files = append(u.Files, composer.Token{Start: target.Start, End: target.Start + len(text), Path: choice.Path})
-			slices.SortFunc(u.Files, func(a, b composer.Token) int { return a.Start - b.Start })
-		}
-		if target.Kind == '$' {
-			u.Skills = append(u.Skills, composer.Token{Start: target.Start, End: target.Start + len(text), Name: choice.Name, Path: choice.Path})
-		}
-		if u.Cursor() == len(u.Text) || u.Text[u.Cursor()] != ' ' {
-			u.InsertText(" ")
-		} else {
-			u.CursorBack--
-		}
+		u.InsertText(choice.Name + " ")
 		u.Run, p.Open = composer.NoRun, false
+		// Enter continues through the existing local command dispatcher.
 		return true
 	}
-	return false
+	text := choice.Path
+	if target.Kind == '$' {
+		text = "$" + choice.Name
+	} else if strings.ContainsFunc(text, unicode.IsSpace) && !strings.Contains(text, "\"") {
+		text = "\"" + text + "\""
+	}
+	if target.Kind == '@' {
+		text = "@" + text
+	}
+	imagePath := ""
+	if target.Kind == '@' {
+		path := choice.Path
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(u.cwd, path)
+		}
+		if imageFile(path) {
+			imagePath = path
+			text = fmt.Sprintf("[Image %d]", len(u.Images)+1)
+		}
+	}
+	// One undo step restores the original token, not a half-completed edit.
+	u.deleteDraftRange(target.Start, target.End)
+	u.InsertText(text)
+	if imagePath != "" {
+		u.Images = append(u.Images, composer.Token{Start: target.Start, End: target.Start + len(text), Path: imagePath})
+		u.RenumberImages()
+	}
+	if target.Kind == '@' && imagePath == "" {
+		u.Files = append(u.Files, composer.Token{Start: target.Start, End: target.Start + len(text), Path: choice.Path})
+		slices.SortFunc(u.Files, func(a, b composer.Token) int { return a.Start - b.Start })
+	}
+	if target.Kind == '$' {
+		u.Skills = append(u.Skills, composer.Token{Start: target.Start, End: target.Start + len(text), Name: choice.Name, Path: choice.Path})
+	}
+	if u.Cursor() == len(u.Text) || u.Text[u.Cursor()] != ' ' {
+		u.InsertText(" ")
+	} else {
+		u.CursorBack--
+	}
+	u.Run, p.Open = composer.NoRun, false
+	return true
 }
 
 func (u *appServerUI) pickerVisible() bool {

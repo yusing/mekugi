@@ -30,15 +30,17 @@ func TestUISnapshotSkillsMenuAndActions(t *testing.T) {
 	u.closeSkillsModal()
 	appServerTestKeys(t, u, "/skills\r")
 	u.pickerKey("\x1b[B")
-	if u.picker.Selected != 1 {
-		t.Fatalf("down selected = %d", u.picker.Selected)
+	u.settlePresentation()
+	if u.mainView.Menu.Selected != 1 {
+		t.Fatalf("down selected = %d", u.mainView.Menu.Selected)
 	}
 	u.pickerKey("\x1b[A")
-	if u.picker.Selected != 0 {
-		t.Fatalf("up selected = %d", u.picker.Selected)
+	u.settlePresentation()
+	if u.mainView.Menu.Selected != 0 {
+		t.Fatalf("up selected = %d", u.mainView.Menu.Selected)
 	}
-	u.pickerKey("\r")
-	if u.picker.Open || u.Text != "$" {
+	appServerTestKeys(t, u, "\r")
+	if !u.picker.Open || u.picker.modal != "" || u.picker.Target.Kind != '$' || u.Text != "$" {
 		t.Fatalf("list action = open %v, draft %q", u.picker.Open, u.Text)
 	}
 }
@@ -66,7 +68,8 @@ func TestUISnapshotSkillsManageFilteringAndSave(t *testing.T) {
 	}
 	u.picker.Query = ""
 	u.picker.FilterSkills("", u.picker.modal == "manage")
-	u.picker.Selected = 1
+	u.settlePresentation()
+	u.mainView.Menu.Selected = 1
 	u.pickerKey(" ")
 	if !strings.Contains(w.String(), `"method":"skills/config/write"`) || !strings.Contains(w.String(), `"path":"/tmp/skills/changelog_writer.toml"`) || !strings.Contains(w.String(), `"enabled":true`) {
 		t.Fatalf("save request = %q", w.String())
@@ -94,7 +97,8 @@ func TestUISnapshotSkillsManagerViewportAndPaste(t *testing.T) {
 		u.picker.Skills = append(u.picker.Skills, completion.Choice{Name: fmt.Sprintf("skill-%02d", i), Path: fmt.Sprintf("/work/%d/SKILL.md", i), Enabled: true})
 	}
 	u.refreshPicker()
-	u.picker.Selected = 14
+	u.settlePresentation()
+	u.mainView.Menu.Selected = 14
 	rows := u.renderPicker(60, u.pickerHeight(60))
 	t.Run("viewport", func(t *testing.T) {
 		uisnapshot.Assert(t, "testdata/snapshots/skills_manager_viewport.txt", strings.Join(rows, "\n")+"\n")
@@ -125,7 +129,7 @@ func TestUISnapshotSkillsColumnsMeasureOnlyVisibleRows(t *testing.T) {
 		t.Run("modal="+modal, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.view.Painter.Theme = diffrender.DarkTheme
-			u.picker.modal, u.picker.Target.Kind = modal, '$'
+			u.picker.modal, u.picker.Target.Kind, u.picker.Open = modal, '$', true
 			for i := range 9 {
 				u.picker.Choices = append(u.picker.Choices, completion.Choice{
 					Name: fmt.Sprintf("row%d", i), Description: "description", Enabled: true,
@@ -142,9 +146,11 @@ func TestUISnapshotSkillsColumnsMeasureOnlyVisibleRows(t *testing.T) {
 			if after := strings.Join(u.renderPicker(48, height), "\n"); after != before {
 				t.Fatalf("off-screen name changed visible alignment:\nbefore:\n%s\nafter:\n%s", ansi.Strip(before), ansi.Strip(after))
 			}
-			u.picker.Selected = 8
+			u.settlePresentation()
+			u.mainView.Menu.Selected = 8
 			u.renderPicker(48, height)
-			u.picker.Selected = 0
+			u.settlePresentation()
+			u.mainView.Menu.Selected = 0
 			if after := strings.Join(u.renderPicker(48, height), "\n"); after != before {
 				t.Fatal("scrolling back retained off-screen column width")
 			}

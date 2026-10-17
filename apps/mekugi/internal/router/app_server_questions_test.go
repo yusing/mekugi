@@ -4,6 +4,7 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"fmt"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"io"
 	"reflect"
@@ -621,5 +622,5 @@ func TestUISnapshotQuestionArrowHints(t *testing.T) {
 }
 
 func testQuestionRows(u *appServerUI, width, height int) []string {
-	return conversationui.Questions(u.questions.View(u.Thread), &u.view.Painter.Painter, u.prompts.QuestionLayout(u.questions.View(u.Thread)), u.pickerSelection(), u.Turn == "" && u.Text != "", width, height)
+	return conversationui.Questions(u.questions.View(u.Thread), &u.view.Painter.Painter, u.prompts.QuestionLayout(u.questions.View(u.Thread)), terminalsession.SelectionStyle(&u.view.Painter.Painter), u.Turn == "" && u.Text != "", width, height)
 }

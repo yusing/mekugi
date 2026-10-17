@@ -75,7 +75,8 @@ func TestComposerCommandSmallFrame(t *testing.T) {
 				t.Fatalf("row exceeds width %d: %q", width, row)
 			}
 		}
-		if u.picker.Top > u.picker.Selected || u.picker.Top+u.picker.RowCount <= u.picker.Selected {
+		u.settlePresentation()
+		if u.mainView.Menu.Top > u.mainView.Menu.Selected || u.mainView.Menu.Top+u.mainView.Menu.RowCount <= u.mainView.Menu.Selected {
 			t.Fatal("selection outside visible viewport")
 		}
 	}
@@ -87,7 +88,8 @@ func TestComposerCommandMouseSelection(t *testing.T) {
 	u.shell = shell
 	appServerTestKeys(t, u, "/sk")
 	u.renderPicker(80, 4)
-	u.picker.rect = terminalsession.Rect{0, 0, 80, 4}
+	u.settlePresentation()
+	u.mainView.Menu.Rect = terminalsession.Rect{0, 0, 80, 4}
 	if err := shell.mouse("\x1b[<0;2;2M"); err != nil {
 		t.Fatal(err)
 	}

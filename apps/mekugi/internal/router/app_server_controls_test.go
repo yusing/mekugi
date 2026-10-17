@@ -70,6 +70,7 @@ func TestNativeControlsLockedDraftAndContextualEscape(t *testing.T) {
 	}
 	u.Text = "/"
 	u.refreshPicker()
+	u.settlePresentation()
 	if err := u.shell.send("\x1b"); err != nil {
 		t.Fatal(err)
 	}

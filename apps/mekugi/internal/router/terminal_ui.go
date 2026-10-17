@@ -259,7 +259,7 @@ func (u *terminalUI) send(s string) error {
 		u.main.keybindings = false
 		return nil
 	}
-	if s == "\x1b" && u.main != nil && u.Focus == 0 && u.main.pickerKey(s) {
+	if s == "\x1b" && u.main != nil && u.Focus == 0 && u.main.applyMenuResult(u.main.mainView.Menu.Key(s)) {
 		return nil
 	}
 	if u.main != nil && u.Focus == 0 {
@@ -397,24 +397,15 @@ func (u *terminalUI) mouse(s string) error {
 		}
 		return nil
 	}
-	if u.main != nil && u.main.pickerVisible() && u.main.picker.rect.Contains(x-u.Layout.Main.X, y-u.Layout.Main.Y) {
+	if u.main != nil && u.Focus == 0 && !u.main.composerReadOnly() && u.main.mainView.Menu.Open() && u.main.mainView.Menu.Rect.Contains(x-u.Layout.Main.X, y-u.Layout.Main.Y) {
 		if !release {
 			switch button &^ 28 {
-			case 0:
-				p := &u.main.picker
-				row := y - u.Layout.Main.Y - p.rect.Y - p.RowStart
-				if row >= 0 && row < p.RowCount {
-					p.Selected = p.Top + row
-					if p.Target.Kind == '/' {
-						return u.send("\r")
-					}
-					u.main.pickerKey("\r")
-					u.main.refreshPicker()
+			case 0, 64, 65:
+				result := u.main.mainView.Menu.Mouse(button&^28, y-u.Layout.Main.Y)
+				if !u.main.applyMenuResult(result) {
+					return u.send("\r")
 				}
-			case 64:
-				u.main.pickerKey("\x10")
-			case 65:
-				u.main.pickerKey("\x0e")
+
 			}
 		}
 		return nil

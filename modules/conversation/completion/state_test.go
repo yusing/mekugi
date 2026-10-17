@@ -34,12 +34,12 @@ func TestDismissalAndResultAdmission(t *testing.T) {
 	if !p.Activate(next, false) {
 		t.Fatal("changed target stayed dismissed")
 	}
-	p.Loading, p.Selected = true, 7
+	p.Loading = true
 	choices := []Choice{{Name: "src/a", Path: "src/a"}}
 	if p.Resolve(target, "/one", "/one", choices, "") || p.Resolve(next, "/one", "/two", choices, "") || !p.Loading {
 		t.Fatal("stale query or workspace changed foreground results")
 	}
-	if !p.Resolve(next, "/one", "/one", choices, "") || p.Loading || p.Selected != 0 || p.Resolved != next {
+	if !p.Resolve(next, "/one", "/one", choices, "") || p.Loading || p.Resolved != next {
 		t.Fatalf("current result not admitted: %+v", p)
 	}
 	view := p.View()

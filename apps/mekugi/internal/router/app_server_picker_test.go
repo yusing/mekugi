@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -385,4 +386,18 @@ func TestComposerPickerDoesNotMarkCoveredTranscriptPainted(t *testing.T) {
 	if !u.mainView.ContentPainted {
 		t.Fatal("dismissal did not restore transcript presentation")
 	}
+}
+
+// These fixtures publish the source transition before consuming terminal state.
+func (u *appServerUI) pickerKey(key string) bool {
+	u.settlePresentation()
+	return u.applyMenuResult(u.mainView.Menu.Key(key))
+}
+func (u *appServerUI) pickerHeight(width int) int {
+	u.settlePresentation()
+	return u.mainView.Menu.Height(width)
+}
+func (u *appServerUI) renderPicker(width, height int) []string {
+	u.settlePresentation()
+	return u.mainView.Menu.Render(&u.view.Painter.Painter, terminalsession.SelectionStyle(&u.view.Painter.Painter), width, height)
 }
