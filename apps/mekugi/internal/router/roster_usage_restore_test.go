@@ -28,7 +28,7 @@ func restoredUsageRosterFixture(t *testing.T) *appServerUI {
 
 	for _, thread := range []string{"child", "gap", "historical"} {
 		info := binding.ThreadInfo{ID: thread, AgentNickname: thread, Turns: []binding.HistoryTurn{{ID: "old", Status: "completed"}}}
-		u.registerThread(info)
+		registerThread(&u.attached.session, info)
 		u.restoreActivityThread(info, false)
 	}
 	return u
@@ -48,23 +48,23 @@ func TestNativeRosterRestoredUsageUsesProviderTotals(t *testing.T) {
 	}
 	// Host totals can describe context or replayed tokens, never consumption.
 	child.InputTokens, child.OutputTokens = 9_000_000, 8_000_000
-	u.observeCost("child", child)
+	observeCost(u.usage, "child", child)
 	if child.InputTokens != 100_000 || child.OutputTokens != 10_000 {
 		t.Fatalf("host totals overrode provider report: %+v", child)
 	}
 	u.usage.Observation("child", "child", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 10_000})
-	u.observeCost("child", child)
+	observeCost(u.usage, "child", child)
 	if child.InputTokens != 200_000 || child.OutputTokens != 20_000 || child.Roundtrips != 3 || !child.CostPartial || math.Abs(child.Cost-.6) > 1e-10 {
 		t.Fatalf("followup reset restored child totals: %+v", child)
 	}
 	unknown := sessionpresentation.ActivityAgent{InputTokens: 9_000_000, OutputTokens: 8_000_000, Cost: 99, CostKnown: true}
-	u.observeCost("unobserved", &unknown)
+	observeCost(u.usage, "unobserved", &unknown)
 	if unknown.InputTokens != 0 || unknown.OutputTokens != 0 || unknown.CostKnown || unknown.Roundtrips != 0 {
 		t.Fatalf("unobserved thread borrowed host consumption: %+v", unknown)
 	}
 	historical := u.attached.session.Agent(u.attached.session.KnownCaller("historical"))
 	u.usage.Observation("historical", "historical", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 10_000})
-	u.observeCost("historical", historical)
+	observeCost(u.usage, "historical", historical)
 	if !historical.TokensKnown || !historical.UsagePartial || !historical.CostPartial || historical.Roundtrips != 1 || historical.InputTokens != 100_000 || historical.OutputTokens != 10_000 {
 		t.Fatalf("historical followup claimed complete totals: %+v", historical)
 	}
@@ -76,7 +76,7 @@ func TestNativeRosterRestoredUsageUsesProviderTotals(t *testing.T) {
 func TestUISnapshotNativeRosterRestoredUsage(t *testing.T) {
 	u := restoredUsageRosterFixture(t)
 	u.usage.Observation("historical", "historical", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 10_000})
-	u.observeCost("historical", u.attached.session.Agent(u.attached.session.KnownCaller("historical")))
+	observeCost(u.usage, "historical", u.attached.session.Agent(u.attached.session.KnownCaller("historical")))
 	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.attached.session.Roster()})
 	u.shell.Agents.Painter.Theme = diffrender.DarkTheme
 	u.shell.Agents.Selected = u.attached.session.KnownCaller("child")

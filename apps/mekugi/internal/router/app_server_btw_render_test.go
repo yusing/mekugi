@@ -15,5 +15,5 @@ func (u *appServerUI) btwRows(width, height int) []string {
 	if !u.shell.Main.Side.Open() || height < 1 {
 		return nil
 	}
-	return u.shell.Main.Side.Render(&u.shell.Transcript.Painter, u.now(), width, height).Rows
+	return u.shell.Main.Side.Render(&u.shell.Transcript.Painter, presentationTime(u.clock), width, height).Rows
 }

@@ -12,19 +12,19 @@ func (u *appServerUI) submitBTW() error {
 	text := strings.TrimSpace(u.Text)
 	question := strings.TrimSpace(strings.TrimPrefix(text, "/btw"))
 	if question == "" {
-		u.setNotice("Use /btw QUESTION · repeat /btw for a follow-up · Esc closes", false)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Use /btw QUESTION · repeat /btw for a follow-up · Esc closes", false)
 		return nil
 	}
 	if u.Thread == "" || u.restoring != nil || u.Replacement.Pending() {
-		u.setNotice("Wait for the conversation to load before asking a side question", false)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Wait for the conversation to load before asking a side question", false)
 		return nil
 	}
 	if u.side != nil && (u.side.Busy || u.side.Starting) {
-		u.setNotice("Side answer still running · wait for it or Esc to close", false)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Side answer still running · wait for it or Esc to close", false)
 		return nil
 	}
 	if u.side != nil && u.side.Status == conversationmodel.SideCompactionRequired {
-		u.setNotice(conversationmodel.SideCompactionRequired, true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), conversationmodel.SideCompactionRequired, true)
 		return nil
 	}
 	if u.side == nil {
@@ -35,9 +35,9 @@ func (u *appServerUI) submitBTW() error {
 	// Remove the command through the composer so attachment offsets stay valid.
 	prefix := strings.Index(u.Text, "/btw") + len("/btw")
 	u.deleteDraftRange(0, prefix)
-	b.Begin(question, u.takeDraft())
+	b.Begin(question, prepareDraft(&u.picker, u.shell, u.attached.cwd, u.skillEnvironment, u.Editor.Take()))
 	b.Busy = true
-	u.setNotice("", false)
+	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "", false)
 	return u.flushBTW()
 }
 
@@ -50,13 +50,13 @@ func (u *appServerUI) flushBTW() error {
 	if u.waitForSkillBindings(parts) {
 		return nil
 	}
-	u.bindSkills(&parts[0], true)
-	u.snapshotDraftSkills(&parts[0])
+	u.picker.bindSkills(u.attached.cwd, &parts[0], true)
+	snapshotDraftSkills(u.attached.cwd, u.skillEnvironment, &parts[0])
 	b.Pending = parts[0]
 	update, err := u.Requests.StartSide(b, sessioncontrol.SideMain{
 		Thread: u.Thread, Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier,
 		Blocked: u.Starting() || u.InputPending() || u.Settings.Pending(), Replacing: u.Replacement.Pending(),
-	}, u.now())
+	}, presentationTime(u.clock))
 	if update.TurnRequested {
 		for _, image := range b.Pending.Images {
 			delete(u.ownedImages, image.Path)
@@ -69,10 +69,10 @@ func (u *appServerUI) flushBTW() error {
 func (u *appServerUI) applySideUpdate(update sessioncontrol.SideUpdate) {
 	if update.Restore.Text != "" {
 		u.restoreDrafts(update.Restore)
-		u.setNotice("Side question restored ahead of draft · edit before resending", true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Side question restored ahead of draft · edit before resending", true)
 	}
 	if update.Notice != "" {
-		u.setNotice(update.Notice, true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), update.Notice, true)
 	}
 }
 
@@ -91,7 +91,7 @@ func (u *appServerUI) closeBTW() error {
 func (u *appServerUI) applyCloseSide(in sessionpresentation.CloseSideIntent) error {
 	defer u.settlePresentation()
 	if err := u.attached.presentation.AdmitCloseSide(in); err != nil {
-		u.setNotice(err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 		return nil
 	}
 	return u.closeBTW()

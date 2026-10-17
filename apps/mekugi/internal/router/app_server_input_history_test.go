@@ -34,7 +34,7 @@ func TestAppServerInputHistoryAcknowledgedAndDraftRestored(t *testing.T) {
 
 func TestAppServerInputHistoryMultilineBoundaryAndUndo(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.rememberInput(conversationmodel.Input{Text: "old"})
+	rememberInput(u.attached.conversation, conversationmodel.Input{Text: "old"})
 	appServerTestKeys(t, u, "one\ntwo\x1b[A")
 	if u.Text != "one\ntwo" || u.Cursor() != 3 {
 		t.Fatalf("up moved into history before first row: %q at=%d", u.Text, u.Cursor())
@@ -55,7 +55,7 @@ func TestAppServerInputHistoryAttachmentsRemainUsable(t *testing.T) {
 	if err := os.WriteFile(path, []byte("fixture"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	u.rememberInput(conversationmodel.Input{Text: "old"})
+	rememberInput(u.attached.conversation, conversationmodel.Input{Text: "old"})
 	u.attachImage(path)
 	appServerTestKeys(t, u, "\x1b[A")
 	u.UndoDrafts = nil
@@ -93,8 +93,8 @@ func TestAppServerInputHistoryResumeAndRejectedInput(t *testing.T) {
 
 func TestAppServerInputHistoryUndoRestoresNavigation(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.rememberInput(conversationmodel.Input{Text: "first"})
-	u.rememberInput(conversationmodel.Input{Text: "second"})
+	rememberInput(u.attached.conversation, conversationmodel.Input{Text: "first"})
+	rememberInput(u.attached.conversation, conversationmodel.Input{Text: "second"})
 	appServerTestKeys(t, u, "draft\x1b[A\x1a\x1b[A")
 	if u.Text != "second" {
 		t.Fatalf("undo skipped newest: %q", u.Text)

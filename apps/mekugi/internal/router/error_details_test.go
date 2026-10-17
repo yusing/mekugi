@@ -40,7 +40,7 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 				thread, view, focus = "child", u.testActivity(u.shell.Agents), 0
 				u.testActivity(u.shell.Agents).setDisplayFilter(true, "/root/worker")
 				activity.Observe("child", "main", "/root/worker", true)
-				u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
+				registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 			}
 			// The decisive reason is beyond both the old first-line clip and
 			// Activity's generic 64 KiB message limit. No shell is executed.

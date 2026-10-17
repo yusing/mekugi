@@ -340,7 +340,7 @@ func TestAppServerCompletionWaitsForOutputBurst(t *testing.T) {
 		t.Fatal("terminal reveal retained completed source correlation")
 	}
 	canonical := u.attached.source.Entries[len(u.attached.source.Entries)-1].Source.Native.Invocation.Snapshot()
-	if canonical.Running || !canonical.Exited || canonical.ExitCode != 1 || canonical.Ended.IsZero() || u.runningProcessCount() != 0 {
+	if canonical.Running || !canonical.Exited || canonical.ExitCode != 1 || canonical.Ended.IsZero() || runningProcessCount(&u.attached.session) != 0 {
 		t.Fatalf("visual delay held canonical host completion: %+v", canonical)
 	}
 	completed := map[*activityAdapter]activitypresentation.Entry{}

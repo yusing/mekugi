@@ -54,7 +54,7 @@ func TestOutputThroughputRestoredThreadIsolation(t *testing.T) {
 		u, _ := newAppServerTestUI()
 		setTestAppServerIntegration(u, &observationFixture{usage: restored})
 		child := sessionpresentation.ActivityAgent{Name: "/root/child"}
-		u.observeCost("child", &child)
+		observeCost(u.usage, "child", &child)
 		if usagepresentation.OutputThroughputLabel(child.OutputThroughput) != "50.0 tok/s" {
 			t.Fatal(child)
 		}
@@ -315,7 +315,7 @@ func TestUISnapshotOutputThroughputRestoredRoster(t *testing.T) {
 
 		for _, thread := range []string{"child", "interrupted", "legacy"} {
 			info := binding.ThreadInfo{ID: thread, AgentNickname: thread, Turns: []binding.HistoryTurn{{ID: "old", Status: "completed"}}}
-			u.registerThread(info)
+			registerThread(&u.attached.session, info)
 			u.restoreActivityThread(info, false)
 		}
 		u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.attached.session.Roster()})
@@ -341,17 +341,17 @@ func TestOutputThroughputPresentationSelectionAndIsolation(t *testing.T) {
 			u.model = "main-model"
 			rate := inference.OutputThroughput{OutputTokens: 40, DurationNanos: uint64(time.Second), MeasuredRequests: 1}
 			u.attached.session.Agent("/root").OutputThroughput = rate
-			before := u.publishPresentation(u.now())
+			before := u.publishPresentation(presentationTime(u.clock))
 			frame, _ := u.testMainFrame(120, 12, 0)
 			if text := ansi.Strip(strings.Join(frame, "\n")); !strings.Contains(text, "main-model") || strings.Contains(text, "40.0 tok/s") != (mode != "without usage") {
 				t.Fatalf("Main contribution: %s", text)
 			}
-			u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "child"})
+			registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", AgentNickname: "child"})
 			child := u.attached.session.Agent("/root/child")
 			rate.OutputTokens = 80
 			child.OutputThroughput = rate
 			u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.attached.session.Roster()})
-			roster := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).NativeRoster(140, 8, u.now(), true), "\n"))
+			roster := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).NativeRoster(140, 8, presentationTime(u.clock), true), "\n"))
 			if strings.Contains(roster, "80.0 tok/s") != (mode != "without usage") {
 				t.Fatalf("roster contribution: %s", roster)
 			}

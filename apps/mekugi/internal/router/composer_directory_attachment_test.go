@@ -235,7 +235,7 @@ func TestDirectoryAttachmentSnapshotAndProviderReplay(t *testing.T) {
 	u.attached.cwd = root
 	u.Text = "Review "
 	bindComposerFile(u, "@src", "src")
-	draft := u.takeDraft()
+	draft := prepareDraft(&u.picker, u.shell, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
 	if err := os.Rename(filepath.Join(root, "src/original.go"), filepath.Join(root, "src/changed.go")); err != nil {
 		t.Fatal(err)
 	}

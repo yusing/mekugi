@@ -54,9 +54,9 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 	for {
 		result := u.Frame.SelectionMouse(u.frameInput(), u.Selection, terminalsession.Mouse{Button: button, X: x, Y: y, Release: release})
 		if len(result.Demands) > 0 {
-			source := u.main.activitySource(result.Selection.View)
+			source := activitySource(&u.main.attached, u.main.shell, result.Selection.View)
 			if source == nil {
-				u.main.setNotice(sessionpresentation.ErrStaleIntent.Error(), true)
+				setNotice(&u.main.attached.feedback, u.main.shell, presentationTime(u.main.clock), sessionpresentation.ErrStaleIntent.Error(), true)
 				return true
 			}
 			result.Selection.View.Hydrate(source.ResolveOutputDemands(result.Demands))

@@ -68,7 +68,7 @@ func TestVCSCommitEnrichmentKeepsSegmentDirectory(t *testing.T) {
 	deadline := time.NewTimer(3 * time.Second)
 	defer deadline.Stop()
 	for {
-		u.startCommitReads()
+		u.dirty = startCommitReads(&u.attached, u.commits) || u.dirty
 		if !slices.ContainsFunc(u.attached.source.Entries[index].Source.Native.Segments, func(segment sessionpresentation.ActivitySegment) bool { return segment.Commit.Hash != "" }) {
 			break
 		}

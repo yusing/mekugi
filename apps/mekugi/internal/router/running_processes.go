@@ -1,8 +1,10 @@
 package router
 
-func (u *appServerUI) runningProcessCount() int {
+import "github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
+func runningProcessCount(session *sessionpresentation.Attachment) int {
 	count := 0
-	for range u.attached.session.RunningProcesses() {
+	for range session.RunningProcesses() {
 		count++
 	}
 	return count
@@ -13,5 +15,5 @@ func (u *appServerUI) showRunningProcesses() {
 	u.deleteDraftRange(0, len(u.Text))
 
 	u.shell.Selection = nil
-	u.detailFiles.openDetailSelection(&u.attached.session, u.attached.presentation.View().Version, u.activitySource(u.shell.Agents), u.shell, u.shell.Agents, nil, true)
+	u.detailFiles.openDetailSelection(&u.attached.session, u.attached.presentation.View().Version, activitySource(&u.attached, u.shell, u.shell.Agents), u.shell, u.shell.Agents, nil, true)
 }

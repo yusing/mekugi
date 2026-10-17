@@ -104,7 +104,7 @@ func TestNativeQuestionResolvedAndInterrupt(t *testing.T) {
 	questionTestSync(t, u, "stale", false)
 	questionTestPaint(t, u, 60)
 	questionTestMessage(t, u, nil, "serverRequest/resolved", map[string]any{"threadId": "main", "requestId": "stale"})
-	if u.activeQuestionCall() != nil || u.questionCount() != 0 {
+	if u.questions.activeCall() != nil || u.questions.Count(u.Thread) != 0 {
 		t.Fatal("resolved request remains open")
 	}
 	appServerTestKeys(t, u, "1\r")
@@ -138,12 +138,12 @@ func TestNativeChildQuestionUsesBlockedFallback(t *testing.T) {
 	if blocked.Thread != "child" || blocked.Turn != "child-turn" || len(u.notifications.blocked) != 1 {
 		t.Fatalf("blocked identity = %+v", u.notifications.blocked)
 	}
-	if wire.Len() != 0 || u.questionCount() != 0 || u.activeQuestionCall() != nil || u.Thread != "main" {
+	if wire.Len() != 0 || u.questions.Count(u.Thread) != 0 || u.questions.activeCall() != nil || u.Thread != "main" {
 		t.Fatalf("child request acquired Main input or received a response: %s", wire.String())
 	}
 
 	request("main")
-	if u.questionCount() != 1 || u.activeQuestionCall() == nil || u.activeQuestionCall().Thread != "main" {
+	if u.questions.Count(u.Thread) != 1 || u.questions.activeCall() == nil || u.questions.activeCall().Thread != "main" {
 		t.Fatal("Main request with the same item/question identities was not answerable")
 	}
 	questionTestPaint(t, u, 140)
@@ -179,7 +179,7 @@ func TestNativeQuestionAsyncBatchAndExternalCommit(t *testing.T) {
 	u.startSession("main", t.TempDir())
 	u.Turn = "turn"
 	questionTestAsync(t, u, "async-item", "Who receives it?", "Who approves it?")
-	if u.activeQuestionCall() == nil || u.questionCount() != 2 {
+	if u.questions.activeCall() == nil || u.questions.Count(u.Thread) != 2 {
 		t.Fatal("async question did not open or was lost")
 	}
 	if slices.ContainsFunc(u.attached.source.Entries, func(entry sessionpresentation.ActivityRecord) bool { return entry.Source.Kind == "final" }) {
@@ -203,7 +203,7 @@ func TestNativeQuestionAsyncBatchAndExternalCommit(t *testing.T) {
 	questionTestMessage(t, v, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{
 		"id": "external-reply", "type": "userMessage", "content": []any{map[string]any{"type": "text", "text": binding.QuestionReplyStart + string(envelope) + binding.QuestionReplyEnd}},
 	}})
-	if got := v.questionCalls()[0].Questions[0].Outcome; got != "answered elsewhere" {
+	if got := v.questions.calls()[0].Questions[0].Outcome; got != "answered elsewhere" {
 		t.Fatalf("external outcome = %q", got)
 	}
 }
@@ -213,7 +213,7 @@ func TestNativeQuestionParkedEditorMidTypingAndSecret(t *testing.T) {
 	u.Turn = "turn"
 	appServerTestKeys(t, u, "draft")
 	questionTestSync(t, u, "midtyping", false)
-	if u.activeQuestionCall() != nil {
+	if u.questions.activeCall() != nil {
 		t.Fatal("sync question took focus mid-typing")
 	}
 	appServerTestKeys(t, u, "7")
@@ -269,7 +269,7 @@ func TestNativeQuestionExternalReplyParksActiveAnswerBeforeCommit(t *testing.T) 
 				}})
 			}
 			commit(1) // Another question in the active call commits first.
-			if u.activeQuestionCall() != nil || u.Text != "Main draft" || len(u.InputHistory) != 0 {
+			if u.questions.activeCall() != nil || u.Text != "Main draft" || len(u.InputHistory) != 0 {
 				t.Fatal("external reply did not restore Main before commitment")
 			}
 			u.openQuestions()
@@ -280,7 +280,7 @@ func TestNativeQuestionExternalReplyParksActiveAnswerBeforeCommit(t *testing.T) 
 			commit(0) // Duplicate delivery cannot remember or revive the draft.
 			u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 			u.openQuestions()
-			if u.activeQuestionCall() != nil || u.Text != "Main draft" || !u.questionCalls()[0].Resolved {
+			if u.questions.activeCall() != nil || u.Text != "Main draft" || !u.questions.calls()[0].Resolved {
 				t.Fatal("resolved answer was revived or replaced Main")
 			}
 			if secret {
@@ -305,7 +305,7 @@ func TestNativeQuestionsUseComposedAttachment(t *testing.T) {
 	}
 	u.startSession("main", "/workspace")
 
-	if &u.attached.conversation.Questions != questions || u.questionCount() != 1 || editor != &u.attached.conversation.Editor || u.Text != "pre-start draft" {
+	if &u.attached.conversation.Questions != questions || u.questions.Count(u.Thread) != 1 || editor != &u.attached.conversation.Editor || u.Text != "pre-start draft" {
 		t.Fatal("first host identity replaced pending question state")
 	}
 	replaceAppServerTestSession(t, u, "replacement")
@@ -313,7 +313,7 @@ func TestNativeQuestionsUseComposedAttachment(t *testing.T) {
 	if u.Editor == editor || u.Editor != &u.attached.conversation.Editor || u.Text != "pre-start draft" || editor.Text != "" {
 		t.Fatal("replacement did not transfer editable input to its new owner")
 	}
-	if u.questions.Questions == questions || u.questions.Questions != &u.attached.conversation.Questions || u.questionCount() != 0 {
+	if u.questions.Questions == questions || u.questions.Questions != &u.attached.conversation.Questions || u.questions.Count(u.Thread) != 0 {
 		t.Fatal("replacement retained the retired question owner")
 	}
 	questionTestMessage(t, u, nil, "serverRequest/resolved", map[string]any{"threadId": "main", "requestId": "pending"})
@@ -335,7 +335,7 @@ func TestNativeQuestionSupersedeBannerAndRejectedSend(t *testing.T) {
 			t.Fatalf("question was not sent: %q", input.String())
 		}
 		appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"rejected"}}`)
-		if u.questionCount() != 1 || u.questionCalls()[0].Sent {
+		if u.questions.Count(u.Thread) != 1 || u.questions.calls()[0].Sent {
 			t.Fatal("rejected question did not reopen")
 		}
 		if u.Text != "kept main draft" {
@@ -357,13 +357,13 @@ func TestNativeQuestionSupersedeBannerAndRejectedSend(t *testing.T) {
 		questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{
 			"id": "steer", "type": "userMessage", "content": []any{map[string]any{"type": "text", "text": "a same-turn steer"}},
 		}})
-		if u.questionCount() != 1 {
+		if u.questions.Count(u.Thread) != 1 {
 			t.Fatal("same-turn steer superseded question")
 		}
 		questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "next-turn", "item": map[string]any{
 			"id": "new-prompt", "type": "userMessage", "content": []any{map[string]any{"type": "text", "text": "new prompt"}},
 		}})
-		if got := u.questionCalls()[0].Questions[0].Outcome; got != "superseded" {
+		if got := u.questions.calls()[0].Questions[0].Outcome; got != "superseded" {
 			t.Fatalf("new-turn outcome = %q", got)
 		}
 	})
@@ -394,13 +394,13 @@ func TestNativeQuestionResumeOnlyUnanswered(t *testing.T) {
 		t.Fatal(err)
 	}
 	u.restoreHistory(turns)
-	if u.questionCount() != 1 || len(u.questionCalls()) != 2 {
-		t.Fatalf("resume questions: pending=%d calls=%d", u.questionCount(), len(u.questionCalls()))
+	if u.questions.Count(u.Thread) != 1 || len(u.questions.calls()) != 2 {
+		t.Fatalf("resume questions: pending=%d calls=%d", u.questions.Count(u.Thread), len(u.questions.calls()))
 	}
-	if got := u.questionCalls()[0].Questions[0].Outcome; got != "answered elsewhere" {
+	if got := u.questions.calls()[0].Questions[0].Outcome; got != "answered elsewhere" {
 		t.Fatalf("answered replay outcome = %q", got)
 	}
-	if u.activeQuestionCall() != nil {
+	if u.questions.activeCall() != nil {
 		t.Fatal("replay stole focus")
 	}
 }
@@ -441,7 +441,7 @@ func TestNativeQuestionBeforePaintAndSecretFrame(t *testing.T) {
 	u.Turn = "turn"
 	questionTestSync(t, u, "unpainted", false)
 	appServerTestKeys(t, u, "7")
-	if u.Text != "7" || u.activeQuestionCall() != nil || w.Len() != 0 {
+	if u.Text != "7" || u.questions.activeCall() != nil || w.Len() != 0 {
 		t.Fatal("buffered key reached unseen dock")
 	}
 	v, _ := newAppServerTestUI()
@@ -459,12 +459,12 @@ func TestNativeQuestionsOpenNextCallWithoutShortcut(t *testing.T) {
 	u.Turn = "turn"
 	questionTestAsync(t, u, "first", "First question?")
 	questionTestAsync(t, u, "second", "Second question?")
-	if u.activeQuestionCall() == nil || u.activeQuestionCall().Item != "first" {
+	if u.questions.activeCall() == nil || u.questions.activeCall().Item != "first" {
 		t.Fatal("first question did not open directly")
 	}
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "1\r")
-	if u.activeQuestionCall() == nil || u.activeQuestionCall().Item != "second" {
+	if u.questions.activeCall() == nil || u.questions.activeCall().Item != "second" {
 		t.Fatal("next call needs a shortcut")
 	}
 	if u.shell.Prompts.Ready() {
@@ -481,22 +481,22 @@ func TestNativeQuestionsWaitForEmptyComposerAndRespectHide(t *testing.T) {
 	appServerTestKeys(t, u, "draft")
 	questionTestAsync(t, u, "pending", "Pending question?")
 	questionTestPaint(t, u, 70)
-	if u.activeQuestionCall() != nil || u.Text != "draft" {
+	if u.questions.activeCall() != nil || u.Text != "draft" {
 		t.Fatal("arrival disrupted a nonempty composer")
 	}
 	appServerTestKeys(t, u, "\x7f\x7f\x7f\x7f\x7f")
 	questionTestPaint(t, u, 70)
-	if u.activeQuestionCall() == nil {
+	if u.questions.activeCall() == nil {
 		t.Fatal("empty composer did not show question")
 	}
 	// Escape is assembled by the input loop; exercise its completed key.
 	u.questionKey("\x1b")
 	questionTestPaint(t, u, 70)
-	if u.activeQuestionCall() != nil {
+	if u.questions.activeCall() != nil {
 		t.Fatal("paint undid explicit hide")
 	}
 	u.openQuestions()
-	if u.activeQuestionCall() == nil {
+	if u.questions.activeCall() == nil {
 		t.Fatal("manual reopening failed")
 	}
 }
@@ -549,7 +549,7 @@ func TestNativeQuestionAnswerWordNavigation(t *testing.T) {
 				if u.Text != "one XtwoY three" || u.questions.Index != 0 || w.Len() != 0 {
 					t.Fatalf("draft=%q question=%d requests=%s", u.Text, u.questions.Index, w.String())
 				}
-				if mode == "note" && !u.currentQuestion().Note {
+				if mode == "note" && !u.questions.Current().Note {
 					t.Fatal("word movement left the option note")
 				}
 				if mode == "async" {
@@ -596,7 +596,7 @@ func TestNativeQuestionAnswerBareArrowNavigation(t *testing.T) {
 			if u.Text != "one tXwYo" || u.questions.Index != 0 || wire.Len() != 0 {
 				t.Fatalf("draft=%q question=%d requests=%s", u.Text, u.questions.Index, wire.String())
 			}
-			if mode == "note" && !u.currentQuestion().Note {
+			if mode == "note" && !u.questions.Current().Note {
 				t.Fatal("caret movement left the option note")
 			}
 		})

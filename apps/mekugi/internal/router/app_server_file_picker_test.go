@@ -39,7 +39,7 @@ func TestComposerFilePickerExcludedMode(t *testing.T) {
 	}
 	select {
 	case result := <-u.picker.scanResults:
-		u.applyPickerScan(result)
+		u.dirty = u.picker.applyScan(u.attached.cwd, u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode()), result) || u.dirty
 	case <-time.After(5 * time.Second):
 		t.Fatal("excluded search did not finish")
 	}
@@ -71,7 +71,7 @@ func TestComposerFilePickerCanceledResultsCannotReopen(t *testing.T) {
 	appServerTestKeys(t, u, "@!a")
 	id, target := u.picker.scanID, u.picker.Target
 	u.pickerKey("\x1b")
-	u.applyPickerScan(pickerScanResult{id: id, target: target, cwd: u.attached.cwd, choices: []completion.Choice{{Name: "a", Path: "a"}}})
+	u.dirty = u.picker.applyScan(u.attached.cwd, u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode()), pickerScanResult{id: id, target: target, cwd: u.attached.cwd, choices: []completion.Choice{{Name: "a", Path: "a"}}}) || u.dirty
 	if u.picker.Open || len(u.picker.Choices) != 0 {
 		t.Fatal("canceled scan reopened picker")
 	}
@@ -87,13 +87,13 @@ func TestComposerFilePickerUsesWholeTokenAtCaret(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.Text = "see @src/main.go next"
 	u.CursorBack = len("main.go next")
-	target := u.completionTarget()
+	target := u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode())
 	if target.Query != "src/main.go" || target.Start != 4 || target.End != 16 {
 		t.Fatalf("caret completion = %+v", target)
 	}
 	u.Text = "email@example.com"
 	u.CursorBack = 0
-	if u.completionTarget().Kind != 0 {
+	if u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode()).Kind != 0 {
 		t.Fatal("email opened picker")
 	}
 }
@@ -126,13 +126,13 @@ func TestComposerFilePickerLateSkillSaveDoesNotReplaceResults(t *testing.T) {
 	u.picker.SkillsLoaded, u.picker.SkillsCwd = true, u.attached.cwd
 	u.picker.RememberSkills()
 	u.picker.FilterSkills("", u.picker.Kind == "manage")
-	u.toggleSkill(u.picker.Choices[0])
+	toggleSkill(&u.picker, u.Requests, u.attached.cwd, u.picker.Choices[0])
 	request := pickerRequests(t, w)[0]
 	u.closeSkillsModal()
 	appServerTestKeys(t, u, "@!target")
 	select {
 	case result := <-u.picker.scanResults:
-		u.applyPickerScan(result)
+		u.dirty = u.picker.applyScan(u.attached.cwd, u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode()), result) || u.dirty
 	case <-time.After(5 * time.Second):
 		t.Fatal("search timeout")
 	}

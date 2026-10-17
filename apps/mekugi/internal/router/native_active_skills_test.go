@@ -41,7 +41,7 @@ func TestUISnapshotLoadedSkillsRestoreClickAndReset(t *testing.T) {
 			if thread == "main" {
 				u.restoreHistory(info.Turns)
 			} else {
-				u.registerThread(info)
+				registerThread(&u.attached.session, info)
 				u.restoreActivityThread(info, false)
 				view, owner = u.testActivity(u.shell.Agents), "/root/worker"
 			}

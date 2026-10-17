@@ -203,11 +203,11 @@ func TestNativeCriticalNoticeComposerVisibility(t *testing.T) {
 			defer terminalTest(u).Diff.Close()
 			switch state {
 			case "status":
-				u.statusPanel = u.newStatusReport()
+				u.statusPanel = newStatusReport(u.attached.presentation, u.replayDebugDirectory)
 			case "replaced":
-				u.setNotice("another error", true)
+				setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "another error", true)
 			case "identical replacement":
-				u.setNotice(claimedText, true)
+				setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), claimedText, true)
 			}
 			height := 12
 			if state == "compact" {
@@ -314,8 +314,8 @@ func TestNativeNoticeReceiptKeepsPaintedIdentity(t *testing.T) {
 	queueCritical(u.issues, u.Thread)
 	delivery := u.applyCriticalNotices()
 	_, receipt := u.testDeliveredMainFrame(t, 80, 12, 0)
-	u.setNotice("later feedback", true)
-	u.statusPanel = u.newStatusReport()
+	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "later feedback", true)
+	u.statusPanel = newStatusReport(u.attached.presentation, u.replayDebugDirectory)
 	u.settlePresentation()
 	delivery.finish(receipt)
 	if len(u.issues.Notices.Pending()) != 0 {

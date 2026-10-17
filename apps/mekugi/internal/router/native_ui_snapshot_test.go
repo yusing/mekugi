@@ -211,7 +211,7 @@ func TestUISnapshotNativeWaitingInputStacks(t *testing.T) {
 				u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 				u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) }
 				appServerTestTurn(t, u, "t")
-				u.attached.presentation.Status.Started = u.now()
+				u.attached.presentation.Status.Started = presentationTime(u.clock)
 				if mode == "queued" {
 					appServerTestKeys(t, u, "Diagnose the broken pipe issue.\tAdd replay key tests.\tPreserve pending attachments.\tCover dequeue and retry.\t")
 				} else {

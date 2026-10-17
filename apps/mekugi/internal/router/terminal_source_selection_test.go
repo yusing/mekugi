@@ -60,7 +60,7 @@ func TestTerminalSourceSelectionDirectionsAndActions(t *testing.T) {
 						u.main.shell.Agents = u.Agents
 						u.main.testActivity(u.Agents).setDisplayFilter(true, "/root/worker")
 					}
-					u.main.publishPresentation(u.main.now())
+					u.main.publishPresentation(presentationTime(u.main.clock))
 					if x < 0 {
 						t.Fatal("no cell")
 					}
@@ -175,7 +175,7 @@ func TestAppServerBTWShimmerElapsed(t *testing.T) {
 	a := u.btwRows(80, 8)[0]
 	now = now.Add(100 * time.Millisecond)
 	b := u.btwRows(80, 8)[0]
-	if a == b || ansi.Strip(a) != ansi.Strip(b) || !strings.Contains(ansi.Strip(a), "Answering · 1m15s") || !u.publishPresentation(u.now()).Status.Animating {
+	if a == b || ansi.Strip(a) != ansi.Strip(b) || !strings.Contains(ansi.Strip(a), "Answering · 1m15s") || !u.publishPresentation(presentationTime(u.clock)).Status.Animating {
 		t.Fatalf("status=%q / %q", a, b)
 	}
 	u.side.Busy = false

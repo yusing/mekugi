@@ -12,18 +12,17 @@ import (
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
-func (u *appServerUI) rememberInput(draft conversationmodel.Input) {
+func rememberInput(conversation *conversationmodel.Session, draft conversationmodel.Input) {
 	if draft.Question == nil && len(binding.QuestionReplies(draft.Text)) == 0 {
-		u.attached.conversation.Editor.Remember(draft.Draft)
+		conversation.Editor.Remember(draft.Draft)
 	}
 }
-func (u *appServerUI) draftSnapshot() conversationmodel.Input {
-	return conversationmodel.Input{Draft: u.Draft.Editable()}
+func draftSnapshot(editor *composer.Editor) conversationmodel.Input {
+	return conversationmodel.Input{Draft: editor.Draft.Editable()}
 }
-func (u *appServerUI) loadDraft(d conversationmodel.Input) { u.Editor.Replace(d.Draft) }
 func (u *appServerUI) recordDraft() {
 	u.Editor.Record()
-	u.setNotice("", false)
+	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "", false)
 	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
 }
 
@@ -85,8 +84,8 @@ func pruneDraftImages(owned map[string]bool, editor *composer.Editor, conversati
 	}
 }
 
-func (u *appServerUI) discardDraftImages() {
-	for path := range u.ownedImages {
+func discardDraftImages(owned map[string]bool) {
+	for path := range owned {
 		_ = os.Remove(path)
 	}
 }

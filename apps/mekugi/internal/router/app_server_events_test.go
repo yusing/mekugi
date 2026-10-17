@@ -46,7 +46,7 @@ func newAppServerSessionTestUI(t *testing.T, workspace string) *appServerUI {
 
 func TestAppServerAgentTimerStartsAtFirstTurn(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
+	registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	u.attached.session.Caller("early")
 	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "/root/worker", Kind: "status", Text: "Assigned", Observed: time.Now()}}})
 	for _, agent := range u.attached.session.Roster() {
@@ -86,7 +86,7 @@ func TestAppServerRestoredAgentTimerUsesTurns(t *testing.T) {
 	if !agent.Started.Equal(historyTime(200)) || !agent.LastResponse.Equal(historyTime(350)) {
 		t.Fatalf("restored timer used metadata instead of turns: %+v", agent)
 	}
-	u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
+	registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	info.ID = "child"
 	u.restoreActivityThread(info, false)
 	child := u.attached.session.Agent("/root/worker")

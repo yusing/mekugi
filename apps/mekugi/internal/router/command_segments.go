@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
@@ -42,7 +44,7 @@ func (u *appServerUI) retainCommandSegments(entry sessionpresentation.ActivityEn
 		return
 	}
 	if u.commandSegmentPending == commandSegmentRetentionLimit {
-		u.commandSegmentRetentionFailed([3]string{entry.Native.Thread, entry.Native.Turn, entry.Native.Item}, fmt.Errorf("pending command segment reports reached the limit of %d", commandSegmentRetentionLimit))
+		u.dirty = commandSegmentRetentionFailed(u.issues, [3]string{entry.Native.Thread, entry.Native.Turn, entry.Native.Item}, fmt.Errorf("pending command segment reports reached the limit of %d", commandSegmentRetentionLimit)) || u.dirty
 		return
 	}
 	record := &reports.Report{Command: item.Command, Exit: *item.ExitCode, Output: sha256.Sum256([]byte(*item.AggregatedOutput))}
@@ -86,12 +88,12 @@ func (u *appServerUI) commandSegmentRetained(result commandSegmentWrite) {
 	if result.err == nil {
 		return
 	}
-	u.commandSegmentRetentionFailed(result.key, result.err)
+	u.dirty = commandSegmentRetentionFailed(u.issues, result.key, result.err) || u.dirty
 }
 
-func (u *appServerUI) commandSegmentRetentionFailed(key [3]string, err error) {
-	if u.issues == nil {
-		return
+func commandSegmentRetentionFailed(issues *requestexecution.Failures, key [3]string, err error) bool {
+	if issues == nil {
+		return false
 	}
 	message := fmt.Sprintf("Command segment history could not be retained for item %s (turn %s). Live output remains available, but this report cannot be restored after restart. Error: %v", key[2], key[1], err)
 	if diagnostic, ok := errors.AsType[*requestexecution.DiagnosticError](err); ok && !strings.Contains(message, diagnostic.Summary) {
@@ -100,8 +102,8 @@ func (u *appServerUI) commandSegmentRetentionFailed(key [3]string, err error) {
 	// Use the native notice owner for full, wrapped transcript errors and
 	// launcher recovery. Distinct items and causes must not collapse together.
 	category := fmt.Sprintf("command_segment_retention:%x", sha256.Sum256([]byte(message)))
-	u.issues.AddThreadNotice("", key[0], category, message)
-	u.dirty = true
+	issues.AddThreadNotice("", key[0], category, message)
+	return true
 }
 
 // Normal exit drains accepted reports before releasing the session's resources.
@@ -123,7 +125,7 @@ func (u *appServerUI) restoreCommandSegments(entry *sessionpresentation.Activity
 		record = u.restoredSegments[entry.Native.Item]
 	} else {
 		item.ID = entry.Native.Item
-		record = u.prepareCommandSegments(entry.Native.Thread, workspace, binding.HistoryTurn{ID: entry.Native.Turn, Items: []binding.ThreadItem{item}})[item.ID]
+		record = prepareCommandSegments(u.ctx, u.retained, u.segments, entry.Native.Thread, workspace, binding.HistoryTurn{ID: entry.Native.Turn, Items: []binding.ThreadItem{item}})[item.ID]
 	}
 	if record == nil {
 		return
@@ -156,12 +158,12 @@ func (u *appServerUI) restoreCommandSegments(entry *sessionpresentation.Activity
 }
 
 // Decode host facts before the report owner validates and adopts each batch.
-func (u *appServerUI) prepareCommandSegments(thread, workspace string, turn binding.HistoryTurn) map[string]*reports.Report {
+func prepareCommandSegments(parent context.Context, retained changes.Scope, segments *reports.Service, thread, workspace string, turn binding.HistoryTurn) map[string]*reports.Report {
 	result := make(map[string]*reports.Report)
-	if u.segments == nil || u.retained.Store == nil {
+	if segments == nil || retained.Store == nil {
 		return result
 	}
-	store := u.retained
+	store := retained
 	scope := reports.Scope{Store: store.Store, Workspace: workspace, Thread: thread, Limits: store.Limits, Writes: store.Writes}
 	for items := range slices.Chunk(turn.Items, 64) {
 		var completed []reports.Completed
@@ -183,8 +185,8 @@ func (u *appServerUI) prepareCommandSegments(thread, workspace string, turn bind
 		if len(completed) == 0 {
 			continue
 		}
-		ctx, cancel := context.WithTimeout(u.ctx, time.Second)
-		accepted, _ := u.segments.Restore(ctx, scope, completed)
+		ctx, cancel := context.WithTimeout(parent, time.Second)
+		accepted, _ := segments.Restore(ctx, scope, completed)
 		cancel()
 		for _, item := range items {
 			if record := accepted[reports.ID(turn.ID, item.ID)]; record != nil {

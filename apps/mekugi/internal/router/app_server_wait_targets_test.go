@@ -35,7 +35,7 @@ func waitTargetTestEvent(t *testing.T, u *appServerUI, method, caller, turn, id 
 
 func waitTargetTestStore(t *testing.T, u *appServerUI, store *mekugiReplayStore) {
 	t.Helper()
-	if err := u.openWaitStore(store.publication, store.writes, store.retentionLimits()); err != nil {
+	if err := openWaitStore(u.ctx, u.history, &u.retainedSession, u.Thread, store.publication, store.writes, store.retentionLimits()); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
@@ -165,7 +165,7 @@ func TestAppServerWaitTargetsDurableReplay(t *testing.T) {
 			if !strings.Contains(rendered, terminalui.DimAgentColor("/root/alpha")+"alpha") {
 				t.Fatalf("restored wait lost color: %q", rendered)
 			}
-			restored.registerThread(binding.ThreadInfo{ID: "a", AgentNickname: "alpha"})
+			registerThread(&restored.attached.session, binding.ThreadInfo{ID: "a", AgentNickname: "alpha"})
 			restored.restoreActivityThread(binding.ThreadInfo{ID: "a", Turns: history}, false)
 			if got := restored.attached.childSource.Entries[0].Source.Text; got != "Finished waiting · alpha/nested" {
 				t.Fatalf("child replay lost targets: %q", got)
@@ -208,14 +208,14 @@ func TestAppServerWaitTargetsStorageFailureKeepsLiveDisplay(t *testing.T) {
 			if mode == "malformed" {
 				waitTargetTestAgent(t, u, "a", "/root/alpha", true)
 				waitTargetTestEvent(t, u, "item/started", "main", "t", "w")
-				if err := os.WriteFile(u.waitTargetsPath([3]string{"main", "t", "w"}), []byte("not json"), 0600); err != nil {
+				if err := os.WriteFile(waitTargetsPath(u.retainedSession, u.attached.cwd, [3]string{"main", "t", "w"}), []byte("not json"), 0600); err != nil {
 					t.Fatal(err)
 				}
 				u = newAppServerSessionTestUI(t, workspace)
 				waitTargetTestStore(t, u, store)
 				waitTargetTestAgent(t, u, "a", "/root/alpha", true)
 			} else {
-				path := u.waitTargetsPath([3]string{"main", "t", "w"})
+				path := waitTargetsPath(u.retainedSession, u.attached.cwd, [3]string{"main", "t", "w"})
 				if err := os.Mkdir(path, 0700); err != nil {
 					t.Fatal(err)
 				}
@@ -242,12 +242,12 @@ func TestAppServerWaitTargetsManagedRetention(t *testing.T) {
 		u := newAppServerSessionTestUI(t, workspace)
 		u.Thread = thread
 		u.startSession(thread, workspace)
-		if err := u.openWaitStore(store.publication, store.writes, store.retentionLimits()); err != nil {
+		if err := openWaitStore(u.ctx, u.history, &u.retainedSession, u.Thread, store.publication, store.writes, store.retentionLimits()); err != nil {
 			t.Fatal(err)
 		}
 		item := binding.ThreadItem{Type: "collabAgentToolCall", Tool: "wait", ReceiverThreadIDs: []string{"target"}}
 		u.itemProgress(item.Observation(), thread, "turn", "wait", "item/started", true)
-		path := u.waitTargetsPath([3]string{thread, "turn", "wait"})
+		path := waitTargetsPath(u.retainedSession, u.attached.cwd, [3]string{thread, "turn", "wait"})
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("wait record was not retained: %v", err)
 		}

@@ -64,11 +64,11 @@ func readSkillAttachment(ctx context.Context, cwd string, environment []string, 
 	data, err := composer.ReadFile(path)
 	return data, false, err
 }
-func (u *appServerUI) snapshotDraftSkills(d *conversationmodel.Input) {
+func snapshotDraftSkills(workspace string, environment []string, d *conversationmodel.Input) {
 	d.SnapshotSkills(func(name, path string) ([]byte, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		data, _, err := readSkillAttachment(ctx, u.attached.cwd, u.skillEnvironment, name, path)
+		data, _, err := readSkillAttachment(ctx, workspace, environment, name, path)
 		return data, err
 	})
 }

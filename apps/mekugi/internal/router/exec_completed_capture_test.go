@@ -35,10 +35,10 @@ func TestNativeCompletedReceiptWithdrawal(t *testing.T) {
 	u, _ := newTrackedAppServerUI(t)
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": binding.ThreadItem{ID: "edit", Type: "commandExecution", Command: "python3 edit.py; read -r answer", Status: "inProgress"}})
 	frame := previewmodel.Preview{ID: "observed:cell", Workspace: u.attached.cwd, Thread: "main", Turn: "turn", Complete: true, HostItems: []string{"edit"}, EditReceipt: "Edit `a.go` +1 -1 · python3", Footer: "observed edit"}
-	u.preview(frame, false)
+	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), frame, false)
 	awaitMain(t, u, "Edited")
 	frame.EditReceipt = ""
-	u.preview(frame, false)
+	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), frame, false)
 	for _, view := range []*activityAdapter{u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents)} {
 		for _, entry := range view.Entries {
 			if entry.Source.Native != nil && entry.Source.Native.CapturedEdit != nil {

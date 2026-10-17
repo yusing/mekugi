@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 
@@ -27,12 +28,12 @@ func (u *appServerUI) closeSkillsModal() {
 	if p.Kind == "manage" {
 		enabled, disabled := p.SkillChanges()
 		if enabled+disabled > 0 {
-			u.setNotice(fmt.Sprintf("%d skills enabled, %d skills disabled", enabled, disabled), false)
+			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), fmt.Sprintf("%d skills enabled, %d skills disabled", enabled, disabled), false)
 		}
 		p.SkillsLoaded = false // Codex reloads the catalog after leaving management.
 	}
 	p.Kind, p.Open, p.Query, p.Initial = "", false, "", nil
-	p.Dismissed = u.completionTarget()
+	p.Dismissed = u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode())
 }
 
 func (u *appServerUI) chooseSkillsAction(choice completion.Choice) {
@@ -43,7 +44,7 @@ func (u *appServerUI) chooseSkillsAction(choice completion.Choice) {
 		u.insertDraft("$")
 	} else {
 		p.toggleOwnsManager = false
-		u.openMenu("manage")
+		u.picker.openMenu("manage")
 		p.Query, p.Problem = "", ""
 		p.Dismissed = completion.Target{}
 		p.Resolved = completion.Target{}
@@ -53,23 +54,21 @@ func (u *appServerUI) chooseSkillsAction(choice completion.Choice) {
 	}
 }
 
-func (u *appServerUI) toggleSkill(choice completion.Choice) {
-	p := &u.picker
+func toggleSkill(p *composerPicker, requests *sessioncontrol.Requests[appServerRequest], workspace string, choice completion.Choice) {
 	if p.toggleID != "" || p.Loading || len(p.Choices) == 0 {
 		return
 	}
-	id, err := u.Requests.Send("skills/config/write", map[string]any{"path": choice.Path, "enabled": !choice.Enabled}, "main", appServerRequest{})
+	id, err := requests.Send("skills/config/write", map[string]any{"path": choice.Path, "enabled": !choice.Enabled}, "main", appServerRequest{})
 	if err != nil {
 		p.Problem = "Could not save skill: " + err.Error()
 		return
 	}
-	p.toggleID, p.togglePath, p.toggleCwd = id, choice.Path, u.attached.cwd
+	p.toggleID, p.togglePath, p.toggleCwd = id, choice.Path, workspace
 	p.toggleOwnsManager, p.Problem = p.Kind == "manage", ""
 }
 
-func (u *appServerUI) skillSaveOwnsManager() bool {
-	p := &u.picker
-	return p.toggleOwnsManager && p.Kind == "manage" && p.toggleCwd == u.attached.cwd
+func (p *composerPicker) skillSaveOwnsManager(workspace string) bool {
+	return p.toggleOwnsManager && p.Kind == "manage" && p.toggleCwd == workspace
 }
 
 func (u *appServerUI) skillToggleResponse(m appserver.Message) {
@@ -78,7 +77,7 @@ func (u *appServerUI) skillToggleResponse(m appserver.Message) {
 		return
 	}
 	path, cwd := p.togglePath, p.toggleCwd
-	ownsManager := u.skillSaveOwnsManager()
+	ownsManager := u.picker.skillSaveOwnsManager(u.attached.cwd)
 	p.toggleID, p.togglePath, p.toggleCwd, p.toggleOwnsManager = "", "", "", false
 	problem, updated := "", false
 	if m.Error != nil {
@@ -98,7 +97,7 @@ func (u *appServerUI) skillToggleResponse(m appserver.Message) {
 	if ownsManager {
 		p.Problem = problem
 	} else if problem != "" {
-		u.setNotice(problem, true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), problem, true)
 	}
 	if !updated || cwd != u.attached.cwd {
 		return
@@ -114,17 +113,16 @@ func (u *appServerUI) skillToggleResponse(m appserver.Message) {
 // and mention_codec.rs:306:321@86be5320b068ef67b56348b02aa8c33706955da6.
 // The catalog, not a textual lookalike, authorizes a skill binding. Repeated
 // names with different paths are ambiguous and remain literal until selected.
-func (u *appServerUI) bindSkills(d *conversationmodel.Input, final bool) {
-	p := &u.picker
+func (p *composerPicker) bindSkills(workspace string, d *conversationmodel.Input, final bool) {
 	if strings.HasPrefix(d.Text, "!") || d.Question != nil {
 		return
 	}
-	if !p.SkillsLoaded || p.SkillsCwd != u.attached.cwd {
+	if !p.SkillsLoaded || p.SkillsCwd != workspace {
 		return
 	}
 	var catalog []composer.Token
 	for _, choice := range p.Skills {
-		if choice.Enabled && u.picker.SkillQueryCompletable(choice.Name) {
+		if choice.Enabled && p.SkillQueryCompletable(choice.Name) {
 			catalog = append(catalog, composer.Token{Name: choice.Name, Path: choice.Path})
 		}
 	}
@@ -142,7 +140,7 @@ func (u *appServerUI) bindSkills(d *conversationmodel.Input, final bool) {
 	slices.SortFunc(d.Skills, func(a, b composer.Token) int { return a.Start - b.Start })
 }
 
-func (u *appServerUI) skillBindingQuery(d conversationmodel.Input, final bool) string {
+func (p *composerPicker) skillBindingQuery(d conversationmodel.Input, final bool) string {
 	if strings.HasPrefix(d.Text, "!") || d.Question != nil {
 		return ""
 	}
@@ -152,7 +150,7 @@ func (u *appServerUI) skillBindingQuery(d conversationmodel.Input, final bool) s
 		start := at + strings.Index(d.Text[at:], word)
 		at = start + len(word)
 		name, ok := strings.CutPrefix(word, "$")
-		if !ok || name == "" || !u.picker.SkillQueryCompletable(name) || !final && at == len(d.Text) {
+		if !ok || name == "" || !p.SkillQueryCompletable(name) || !final && at == len(d.Text) {
 			continue
 		}
 		bound := false
@@ -178,7 +176,7 @@ func (u *appServerUI) waitForSkillBindings(parts []conversationmodel.Input) bool
 		return false // Catalog failure must not borrow foreground completion state.
 	}
 	for _, part := range parts {
-		if query := u.skillBindingQuery(part, true); query != "" {
+		if query := u.picker.skillBindingQuery(part, true); query != "" {
 			if p.Pending == nil && filepath.IsAbs(u.attached.cwd) {
 				u.requestPicker(completion.Target{Kind: '$', Query: query}, u.attached.cwd)
 			}

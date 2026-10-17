@@ -15,7 +15,7 @@ func (u *appServerUI) stateLabel(now time.Time) string {
 	return terminalsession.PaintMainStatus(u.publishPresentation(now).Status, now, u.shell.Transcript.Painter.Colors)
 }
 func (u *appServerUI) composerErrorText() string {
-	return terminalsession.MainStatusDetails(u.publishPresentation(u.now()).Status)
+	return terminalsession.MainStatusDetails(u.publishPresentation(presentationTime(u.clock)).Status)
 }
 
 // testMainFrame settles directly configured fixture state before rendering.
@@ -27,7 +27,7 @@ func (u *appServerUI) testMainFrame(width, height, dock int) ([]string, terminal
 // testPaint delivers an explicitly settled fixture through the real renderer.
 func (u *appServerUI) testPaint(out io.Writer, width, height int) error {
 	u.settlePresentation()
-	return u.paint(out, width, height)
+	return paintSession(&u.attached, u.shell, &u.detailFiles, u.ctx, presentationTime(u.clock), out, width, height)
 }
 
 func (u *appServerUI) deleteDraft(backward bool) {
@@ -48,7 +48,7 @@ func (u *appServerUI) undoDraft(redo bool) {
 func (u *appServerUI) recallInput(backward bool) {
 	if u.Editor.Recall(backward) {
 		u.shell.Main.CursorColumn = nil
-		u.setNotice("", false)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "", false)
 		pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
 	}
 }
@@ -64,14 +64,14 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalsess
 }
 
 func (u *appServerUI) renderMainFrame(width, height, dock int) terminalsession.MainFrame {
-	transcript := u.transcriptView()
-	options := terminalsession.MainOptions{Now: u.now(), Focused: terminalTest(u) == nil || terminalTest(u).Focus == 0, Version: mekugiVersion()}
+	transcript := transcriptView(u.attached.presentation, u.shell)
+	options := terminalsession.MainOptions{Now: presentationTime(u.clock), Focused: terminalTest(u) == nil || terminalTest(u).Focus == 0, Version: mekugiVersion()}
 	for {
 		frame := u.shell.Main.Render(transcript, &u.shell.Transcript.Painter, u.shell.Prompts, options, width, height, dock)
 		if len(frame.Demands) == 0 {
 			return frame
 		}
-		transcript.Hydrate(u.activitySource(transcript).ResolveOutputDemands(frame.Demands))
+		transcript.Hydrate(activitySource(&u.attached, u.shell, transcript).ResolveOutputDemands(frame.Demands))
 	}
 }
 
@@ -93,11 +93,11 @@ func (u *appServerUI) testDeliveredMainFrame(t *testing.T, width, height, dock i
 }
 
 func (u *appServerUI) applyComposerKey(key string) (bool, error) {
-	u.publishPresentation(u.now())
-	return u.applyComposerInput(u.shell.Main.ComposerKey(key, u.shell.Prompts, u.transcriptView()))
+	u.publishPresentation(presentationTime(u.clock))
+	return u.applyComposerInput(u.shell.Main.ComposerKey(key, u.shell.Prompts, transcriptView(u.attached.presentation, u.shell)))
 }
 func (u *appServerUI) approvalKey(key string) (bool, error) {
-	u.publishPresentation(u.now())
+	u.publishPresentation(presentationTime(u.clock))
 	input := u.shell.Main.PromptKey(key, u.shell.Prompts)
 	if input == nil {
 		return false, nil
@@ -105,7 +105,7 @@ func (u *appServerUI) approvalKey(key string) (bool, error) {
 	return u.applyApprovalInput(*input)
 }
 func (u *appServerUI) questionKey(key string) (bool, error) {
-	u.publishPresentation(u.now())
+	u.publishPresentation(presentationTime(u.clock))
 	input := u.shell.Main.PromptKey(key, u.shell.Prompts)
 	if input == nil {
 		return false, nil

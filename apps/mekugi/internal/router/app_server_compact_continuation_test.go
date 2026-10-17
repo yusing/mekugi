@@ -345,7 +345,7 @@ func TestUISnapshotNativeCompactQueuedContinuation(t *testing.T) {
 	appServerTestTurnEnd(t, u, "compact-turn", "completed")
 	appServerOneRequest(t, w, "turn/start", compactContinuationText)
 	for i := range u.attached.source.Entries {
-		u.attached.source.Entries[i].Source.Observed = u.now()
+		u.attached.source.Entries[i].Source.Observed = presentationTime(u.clock)
 	}
 	rows, _ := u.testMainFrame(80, 16, 0)
 	assertNativeUISnapshot(t, "native-compact-queued-continuation", rows)

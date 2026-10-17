@@ -84,7 +84,7 @@ func TestNativeCompletedBatchEditOpensBeforeSiblingCommandExits(t *testing.T) {
 			thread, view := "main", u.testActivity(u.shell.Transcript)
 			if child {
 				thread, view = "child", u.testActivity(u.shell.Agents)
-				u.registerThread(binding.ThreadInfo{ID: thread, AgentNickname: "worker"})
+				registerThread(&u.attached.session, binding.ThreadInfo{ID: thread, AgentNickname: "worker"})
 				_ = u.Requests.ReadThreadMetadata("main", thread, true, appServerRequest{})
 				u.testActivity(u.shell.Agents).setDisplayFilter(true, "/root/worker")
 			}

@@ -163,7 +163,7 @@ func TestAppServerNotificationHistorySilent(t *testing.T) {
 		t.Fatal(err)
 	}
 	u.restoreHistory(turns)
-	if u.questionCount() != 1 {
+	if u.questions.Count(u.Thread) != 1 {
 		t.Fatal("history did not restore pending question")
 	}
 	if out.Len() != 0 {

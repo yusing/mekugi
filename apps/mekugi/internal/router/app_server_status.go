@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -27,8 +29,8 @@ type appServerStatusReport struct {
 	metrics *sessionMetricsPanel
 }
 
-func (u *appServerUI) newStatusReport() *appServerStatusReport {
-	return &appServerStatusReport{PanelState: u.attached.presentation.OpenPanel(u.replayDebugDirectory)}
+func newStatusReport(presentation *sessionpresentation.Model, debugDirectory string) *appServerStatusReport {
+	return &appServerStatusReport{PanelState: presentation.OpenPanel(debugDirectory)}
 }
 
 func statusNotice(value string) []sessionpresentation.StatusField {
@@ -44,10 +46,6 @@ type appServerStatusConfig struct {
 	Instructions []string `json:"instructionSources"`
 }
 
-func (u *appServerUI) displayServiceTier() string {
-	return u.serviceTiers.Effective(u.model, u.serviceTier, u.Thread)
-}
-
 func (u *appServerUI) showStatus() error {
 	var rows []sessionpresentation.StatusField
 	group := "Model"
@@ -58,7 +56,7 @@ func (u *appServerUI) showStatus() error {
 	}
 	add("Model", u.model)
 	add("Reasoning", u.reasoningEffort)
-	add("Service tier", u.displayServiceTier())
+	add("Service tier", u.serviceTiers.Effective(u.model, u.serviceTier, u.Thread))
 	add("Model provider", u.statusConfig.Provider)
 	group = "Session"
 	add("Directory", u.attached.cwd)
@@ -79,7 +77,7 @@ func (u *appServerUI) showStatus() error {
 		group = "Session"
 		add("Agents.md", strings.Join(u.statusConfig.Instructions, ", "))
 	}
-	report := u.newStatusReport()
+	report := newStatusReport(u.attached.presentation, u.replayDebugDirectory)
 	for _, agent := range u.attached.session.Roster() {
 		if agent.Name != "/root" {
 			continue
@@ -94,35 +92,33 @@ func (u *appServerUI) showStatus() error {
 	}
 	report.Body = rows
 	u.statusPanel = report
-	u.renderStatus(report, statusNotice("Loading account…"))
+	report.Render(statusNotice("Loading account…"))
+	u.dirty = true
 	u.deleteDraftRange(0, len(u.Text))
-	return u.requestStatus("account/read", map[string]any{"refreshToken": false}, report)
+	return requestStatus(u.Requests, &u.dirty, "account/read", map[string]any{"refreshToken": false}, report)
 }
 
-func (u *appServerUI) requestStatus(method string, params any, report *appServerStatusReport) error {
-	_, err := u.Requests.Send(method, params, "main", appServerRequest{status: report})
+func requestStatus(requests *sessioncontrol.Requests[appServerRequest], dirty *bool, method string, params any, report *appServerStatusReport) error {
+	_, err := requests.Send(method, params, "main", appServerRequest{status: report})
 	if err != nil {
-		u.renderStatus(report, []sessionpresentation.StatusField{{Group: "Account", Value: "Status refresh failed: " + err.Error(), Alert: true}})
+		report.Render([]sessionpresentation.StatusField{{Group: "Account", Value: "Status refresh failed: " + err.Error(), Alert: true}})
+		*dirty = true
 		return err
 	}
 	return nil
 }
 
-func (u *appServerUI) renderStatus(report *appServerStatusReport, extra []sessionpresentation.StatusField) {
-	report.Render(extra)
-	u.dirty = true
-}
-
 // Source: codex-rs/app-server-protocol/src/protocol/v2/account.rs.
-func (u *appServerUI) statusMessage(method string, m appserver.Message, report *appServerStatusReport) (bool, error) {
+func statusMessage(requests *sessioncontrol.Requests[appServerRequest], dirty *bool, panel *appServerStatusReport, method string, m appserver.Message, report *appServerStatusReport) (bool, error) {
 	if report == nil {
 		return false, nil
 	}
-	if report != u.statusPanel {
+	if report != panel {
 		return true, nil
 	}
 	fail := func(message string) (bool, error) {
-		u.renderStatus(report, []sessionpresentation.StatusField{{Group: "Account", Value: message, Alert: true}})
+		report.Render([]sessionpresentation.StatusField{{Group: "Account", Value: message, Alert: true}})
+		*dirty = true
 		return true, nil
 	}
 	if m.Error != nil {
@@ -140,7 +136,8 @@ func (u *appServerUI) statusMessage(method string, m appserver.Message, report *
 			return fail("Account response could not be read")
 		}
 		if result.Account == nil {
-			u.renderStatus(report, report.Tokens)
+			report.Render(report.Tokens)
+			*dirty = true
 			return true, nil
 		}
 		account := result.Account
@@ -153,14 +150,16 @@ func (u *appServerUI) statusMessage(method string, m appserver.Message, report *
 			if account.Plan != "" && account.Plan != "unknown" {
 				report.Account = append(report.Account, sessionpresentation.StatusField{Group: "Account", Label: "Plan", Value: account.Plan})
 			}
-			u.renderStatus(report, statusNotice("Loading usage limits…"))
-			return true, u.requestStatus("account/rateLimits/read", nil, report)
+			report.Render(statusNotice("Loading usage limits…"))
+			*dirty = true
+			return true, requestStatus(requests, dirty, "account/rateLimits/read", nil, report)
 		case "apiKey":
 			report.Account = []sessionpresentation.StatusField{{Group: "Account", Label: "Sign-in", Value: "API key"}}
 		case "amazonBedrock":
 			report.Account = []sessionpresentation.StatusField{{Group: "Account", Label: "Sign-in", Value: "Amazon Bedrock"}}
 		}
-		u.renderStatus(report, report.Tokens)
+		report.Render(report.Tokens)
+		*dirty = true
 		return true, nil
 	}
 	var result struct {
@@ -181,7 +180,8 @@ func (u *appServerUI) statusMessage(method string, m appserver.Message, report *
 	}
 	rows = append(rows, result.Resets.rows()...)
 	rows = append(rows, sessionpresentation.StatusField{Group: "Account", Label: "Usage details", Value: "https://chatgpt.com/codex/settings/usage"})
-	u.renderStatus(report, rows)
+	report.Render(rows)
+	*dirty = true
 	return true, nil
 }
 
@@ -276,7 +276,7 @@ func (u *appServerUI) applyPanelAction(action sessionpresentation.PanelAction) {
 		return
 	}
 	if err := u.attached.presentation.AdmitPanel(action); err != nil {
-		u.setNotice(err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 		return
 	}
 	switch action.Kind {
@@ -284,7 +284,7 @@ func (u *appServerUI) applyPanelAction(action sessionpresentation.PanelAction) {
 		u.statusPanel = nil
 		u.attached.presentation.ClosePanel()
 	case sessionpresentation.PanelRefresh:
-		u.refreshSessionMetrics(true)
+		u.dirty = refreshSessionMetrics(u.statusPanel, u.sessionCapture, presentationTime(u.clock), true) || u.dirty
 	}
 	u.dirty = true
 }

@@ -328,7 +328,7 @@ func TestComposerFilePickerImageAndUndoCapacity(t *testing.T) {
 		u.Run = composer.NoRun
 	}
 	u.insertDraft("@s")
-	target := u.completionTarget()
+	target := u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode())
 	u.attached.conversation.Completion = completion.State{Open: true, Target: target, Choices: []completion.Choice{{Name: "shot.png", Path: "shot.png"}}}
 	before := u.Text
 	if !u.pickerKey("\t") || len(u.Images) != 1 || u.Images[0].Path != path {
@@ -353,7 +353,7 @@ func TestComposerPickerEditorRefreshBeforeSelection(t *testing.T) {
 		u.attached.cwd = "/work"
 		u.Text = "long prompt @file"
 		u.refreshPicker()
-		target := u.completionTarget()
+		target := u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode())
 		u.attached.conversation.Completion = completion.State{Open: true, Target: target, Resolved: target, ResolvedCwd: "/work", Choices: []completion.Choice{{Name: "file.go", Path: "file.go"}}}
 		if err := u.applyEditorDraft(editorTestIntent(u), "new"); err != nil {
 			t.Fatal(err)

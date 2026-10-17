@@ -4,6 +4,8 @@ import (
 	"slices"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
@@ -14,12 +16,12 @@ import (
 	"github.com/yusing/mekugi/modules/conversation/transcript"
 )
 
-func (u *appServerUI) providerStarted(thread string, at time.Time) []observation.TextUpdate {
-	s := &u.attached.session
+func providerStarted(attached *attachedPresentation, thread string, at time.Time) []observation.TextUpdate {
+	s := &attached.session
 	if thread == "" {
 		return nil
 	}
-	return u.attached.transcript.ProviderStarted(thread, at, s.Thread(thread))
+	return attached.transcript.ProviderStarted(thread, at, s.Thread(thread))
 }
 
 // Host snapshots retain their original payload for control and evidence; this
@@ -28,10 +30,10 @@ func transcriptItem(item binding.ThreadItem, thread, turn, id string) observatio
 	return (binding.TranscriptItem{ID: item.ID, Type: item.Type, Text: item.Text, Status: item.Status, Summary: item.Summary, Delivery: item.Delivery, Phase: item.Phase, Questions: item.Questions}).Observation(thread, turn, id)
 }
 
-func (u *appServerUI) transcriptUpdates(updates []observation.TextUpdate, paced bool) []sessionpresentation.ActivityEntry {
-	entries := u.attached.session.AdmitText(updates, u.Thread)
+func transcriptUpdates(attached *attachedPresentation, terminal *terminalsession.Attachment, streams *terminalsession.Streams, main string, updates []observation.TextUpdate, paced bool) []sessionpresentation.ActivityEntry {
+	entries := attached.session.AdmitText(updates, main)
 	if paced {
-		u.streams.QueueText(slices.Clone(updates), u.shell.Transcript, u.shell.Agents)
+		streams.QueueText(slices.Clone(updates), terminal.Transcript, terminal.Agents)
 	}
 	return entries
 }
@@ -42,10 +44,6 @@ func historicalTranscript(items []binding.ThreadItem, thread, turn string, main,
 		events[i] = observation.TextEvent{At: at, Kind: observation.ItemCompleted, Item: transcriptItem(item, thread, turn, item.ID)}
 	}
 	return transcript.History(events, main, promote)
-}
-
-func (u *appServerUI) flushSummaryOutput() {
-	u.dirty = u.streams.AdvanceReasoning(u.now(), u.shell.Transcript, u.shell.Agents) || u.dirty
 }
 
 // observeMessageQuestions binds live and restored message admission. Playback
@@ -71,9 +69,9 @@ func (u *appServerUI) observeMessageQuestions(text observation.TextEvent, item o
 		}
 		c := u.questions.handles[change.Call]
 		if change.Superseded {
-			u.discardQuestionEditors(c)
+			discardQuestionEditors(u.shell.Prompts, c)
 		}
-		u.renderQuestionRecord(c)
+		renderQuestionRecord(&u.attached, u.Turn, presentationTime(u.clock), c)
 	}
 	return changes.Suppress
 }

@@ -40,7 +40,7 @@ func TestComposerSelectionMentionIsOneToken(t *testing.T) {
 	if want := "see [Selected message] [Selected message 2] "; u.Text != want {
 		t.Fatalf("draft = %q, want %q", u.Text, want)
 	}
-	spans := sessionpresentation.DraftSpans(u.draftSnapshot().Draft)
+	spans := sessionpresentation.DraftSpans(draftSnapshot(u.Editor).Draft)
 	if len(spans) != 2 || spans[0].Kind != activitypresentation.SelectionToken || u.Text[spans[1].Start:spans[1].End] != "[Selected message 2]" {
 		t.Fatalf("spans = %+v", spans)
 	}
@@ -55,7 +55,7 @@ func TestComposerSelectionMentionIsOneToken(t *testing.T) {
 		t.Fatalf("undo lost token: %+v", u.Selections)
 	}
 	// Queue joining shifts later entries' tokens.
-	joined := conversationmodel.Join(conversationmodel.Input{Text: "x"}, u.draftSnapshot())
+	joined := conversationmodel.Join(conversationmodel.Input{Text: "x"}, draftSnapshot(u.Editor))
 	if got := joined.Selections[0]; joined.Text[got.Start:got.End] != "[Selected message]" {
 		t.Fatalf("joined token = %q", joined.Text[got.Start:got.End])
 	}
@@ -65,7 +65,7 @@ func TestComposerSelectionSubmitsQuotedFrames(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.insertDraft("explain ")
 	u.insertSelection("diff hunk @amber1:42-45", "+new\n-old", "a.go")
-	d := u.takeDraft()
+	d := prepareDraft(&u.picker, u.shell, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
 	input := conversationbinding.Input(d.Draft)
 	if len(input) != 2 {
 		t.Fatalf("input = %+v", input)
@@ -103,7 +103,7 @@ func TestComposerSelectionOverBudgetIsExplicit(t *testing.T) {
 	for range 3 {
 		u.insertSelection("message", strings.Repeat("b\n", attachments.Budget/5), "")
 	}
-	d := u.takeDraft()
+	d := prepareDraft(&u.picker, u.shell, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
 	frames, ok := attachments.Decode(d.Attachments[0])
 	if !ok || !strings.Contains(frames[len(frames)-1], "CONTENT NOT ATTACHED (attachment budget exceeded)") || d.AttachmentNotice == "" {
 		t.Fatalf("omission missing: ok=%v notice=%q last=%q", ok, d.AttachmentNotice, frames[len(frames)-1][:40])
@@ -234,7 +234,7 @@ func TestComposerSelectionReviewEdges(t *testing.T) {
 	t.Run("pending labels stay distinct", func(t *testing.T) {
 		u, _ := newAppServerTestUI()
 		u.insertSelection("message", "one", "")
-		u.attached.conversation.Queued = append(u.attached.conversation.Queued, u.takeDraft())
+		u.attached.conversation.Queued = append(u.attached.conversation.Queued, prepareDraft(&u.picker, u.shell, u.attached.cwd, u.skillEnvironment, u.Editor.Take()))
 		u.insertSelection("message", "two", "")
 		if u.Text != "[Selected message 2] " {
 			t.Fatalf("queued label reused: %q", u.Text)
@@ -259,7 +259,7 @@ func TestComposerSelectionReviewEdges(t *testing.T) {
 		for range 40 {
 			u.insertSelection("message", "tiny but over budget", "")
 		}
-		d := u.takeDraft()
+		d := prepareDraft(&u.picker, u.shell, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
 		frames, ok := attachments.Decode(d.Attachments[0])
 		if !ok || len(d.Attachments[0]) > attachments.Budget || !strings.Contains(frames[len(frames)-1], "remaining mentions: CONTENT NOT ATTACHED") {
 			t.Fatalf("envelope %d bytes decoded=%v", len(d.Attachments[0]), ok)
@@ -270,7 +270,7 @@ func TestComposerSelectionReviewEdges(t *testing.T) {
 		u.insertDraft("why ")
 		u.insertSelection("diff hunk @amber1:3", strings.Repeat("x\n", attachments.Chunk), "a.go")
 		u.insertSelection("message", "short", "")
-		d := u.takeDraft()
+		d := prepareDraft(&u.picker, u.shell, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
 		frames, _ := attachments.Decode(d.Attachments[0])
 		restored := composer.RestoreSelections(d.Text, frames)
 		if len(restored) != 2 || restored[0].Text != strings.Repeat("x\n", attachments.Chunk) || restored[0].Source != "a.go" || d.Text[restored[1].Start:restored[1].End] != "[Selected message]" || restored[1].Text != "short" {

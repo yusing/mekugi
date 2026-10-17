@@ -20,7 +20,7 @@ func (u *appServerUI) openSudoPassword(a *sessioncontrol.Approval) {
 func (u *appServerUI) submitSudoPassword(c *sessioncontrol.Question) error {
 	outcome, delivered, err := c.AnswerPassword(u.shell.Prompts.SecretState(c.ID).Answers)
 	if err != nil {
-		u.setNotice(err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 		return nil
 	}
 	if !delivered {
@@ -34,7 +34,7 @@ func (u *appServerUI) submitSudoPassword(c *sessioncontrol.Question) error {
 
 func (u *appServerUI) expireSudoPasswords() bool {
 	changed := false
-	for _, c := range slices.Clone(u.questionCalls()) {
+	for _, c := range slices.Clone(u.questions.calls()) {
 		if c.Sudo != nil && !c.Resolved && c.Sudo.Finished() {
 			outcome := "Auto Denied: no answer within 5 minutes"
 			if c.Sudo.Outcome == "withdrawn" {

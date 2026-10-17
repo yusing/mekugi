@@ -63,8 +63,8 @@ func TestAppServerAnchoredHistoryPages(t *testing.T) {
 		t.Fatalf("unbounded requests: %+v", requests)
 	}
 	restoreContentReply(t, u, 4, map[string]any{"data": []any{historyItem("last", "latest answer", 109000), historyItem("middle", "middle commentary", 105000)}, "nextCursor": "older"})
-	if u.restoring != nil || u.historyLoading() != nil || u.attached.childSource.Coverage != "" {
-		t.Fatalf("partial history blocked resume: restoring=%+v loading=%+v status=%q agents=%q", u.restoring, u.historyLoading(), u.attached.presentation.Status.Text, u.attached.childSource.Coverage)
+	if u.restoring != nil || historyLoading(&u.attached, &u.childHistoryState) != nil || u.attached.childSource.Coverage != "" {
+		t.Fatalf("partial history blocked resume: restoring=%+v loading=%+v status=%q agents=%q", u.restoring, historyLoading(&u.attached, &u.childHistoryState), u.attached.presentation.Status.Text, u.attached.childSource.Coverage)
 	}
 	agent := u.attached.session.Agent("/root/worker")
 	if agent.Turns != 2 || agent.Started.Unix() != 90 || agent.LastResponse.Unix() != 110 || !agent.Final || agent.Responding {
@@ -119,7 +119,7 @@ func TestAppServerAnchoredHistoryErrorsAndCancellation(t *testing.T) {
 			}
 			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "live", "status": "inProgress"}})
 			appServerTestNotify(t, u, "item/agentMessage/delta", map[string]any{"threadId": "child", "turnId": "live", "itemId": "live-answer", "delta": "not buffered"})
-			if len(u.historyLoading().pending) != 1 {
+			if len(historyLoading(&u.attached, &u.childHistoryState).pending) != 1 {
 				t.Fatal("same-child live lifecycle not buffered or deltas retained")
 			}
 			switch mode {
@@ -140,14 +140,14 @@ func TestAppServerAnchoredHistoryErrorsAndCancellation(t *testing.T) {
 				}
 				restoreContentReply(t, u, 5, map[string]any{"data": []any{historyItem("first", "late response", 101000)}})
 			}
-			if u.historyLoading() != nil || !u.attached.session.Agent("/root/worker").Responding || strings.Contains(strings.Join(entryTexts(u.testActivity(u.shell.Agents)), ","), "leak") || strings.Contains(strings.Join(entryTexts(u.testActivity(u.shell.Agents)), ","), "late response") {
+			if historyLoading(&u.attached, &u.childHistoryState) != nil || !u.attached.session.Agent("/root/worker").Responding || strings.Contains(strings.Join(entryTexts(u.testActivity(u.shell.Agents)), ","), "leak") || strings.Contains(strings.Join(entryTexts(u.testActivity(u.shell.Agents)), ","), "late response") {
 				t.Fatal("failure/cancel lost live status or admitted stale data")
 			}
 			if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
 				t.Fatal(err)
 			}
 			if len(restoreContentRequests(t, wire)) != 7 {
-				t.Fatalf("history could not be retried: requests=%+v restoring=%+v loading=%+v", restoreContentRequests(t, wire), u.restoring, u.historyLoading())
+				t.Fatalf("history could not be retried: requests=%+v restoring=%+v loading=%+v", restoreContentRequests(t, wire), u.restoring, historyLoading(&u.attached, &u.childHistoryState))
 			}
 			restoreContentReply(t, u, 6, map[string]any{"data": []any{historyItem("first", "retry recovered", 101000)}})
 			if !u.attached.session.Agent("/root/worker").Responding {
@@ -160,7 +160,7 @@ func TestAppServerAnchoredHistoryErrorsAndCancellation(t *testing.T) {
 func TestAppServerAnchoredHistoryDeferredEvidence(t *testing.T) {
 	u, _ := newPagedHistoryUI(t)
 	historyTurnsReply(t, u)
-	h := u.historyLoading()
+	h := historyLoading(&u.attached, &u.childHistoryState)
 	h.placements = []*restoredPlacement{
 		{turn: "t", anchor: "first", at: time.Unix(102, 0), entry: sessionpresentation.ActivityEntry{Agent: "/root/worker", Kind: "error", Text: "old cell failure"}},
 		{turn: "t", anchor: "middle", at: time.Unix(106, 0), entry: sessionpresentation.ActivityEntry{Agent: "/root/worker", Kind: "error", Text: "new cell failure"}},
@@ -207,7 +207,7 @@ func TestAppServerAnchoredHistoryTurnPagesAndIsolation(t *testing.T) {
 	}
 	replaceAppServerTestSession(t, u, "other")
 	restoreContentReply(t, u, 6, map[string]any{"data": []any{historyItem("first", "foreign history", 101000)}})
-	if len(u.attached.childSource.Entries) != 0 || u.historyLoading() != nil || len(slices.Collect(u.attached.session.Threads())) != 1 || u.attached.session.FindThread("other") == nil {
+	if len(u.attached.childSource.Entries) != 0 || historyLoading(&u.attached, &u.childHistoryState) != nil || len(slices.Collect(u.attached.session.Threads())) != 1 || u.attached.session.FindThread("other") == nil {
 		t.Fatal("late old session response leaked across thread switch")
 	}
 }
@@ -301,7 +301,7 @@ func TestAppServerAnchoredHistoryBufferSaturation(t *testing.T) {
 	for i := range 257 {
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "live", "item": map[string]any{"id": fmt.Sprint(i), "type": "agentMessage", "text": "live"}})
 	}
-	if u.historyLoading() != nil || len(u.attached.childSource.Entries) != 258 {
+	if historyLoading(&u.attached, &u.childHistoryState) != nil || len(u.attached.childSource.Entries) != 258 {
 		t.Fatal("buffer saturation lost live events or blocked the host")
 	}
 	restoreContentReply(t, u, 5, map[string]any{"data": []any{historyItem("first", "late ignored", 101000)}})
@@ -388,7 +388,7 @@ func TestAppServerAnchoredHistoryInitialFailureRetryKeepsEvidence(t *testing.T) 
 	u, _ := newPagedHistoryUI(t)
 	historyTurnsReply(t, u)
 	u.restoring.root.Turns = []binding.HistoryTurn{{ID: "root-turn", Status: "completed", StartedAt: 80, CompletedAt: 120}}
-	h := u.historyLoading()
+	h := historyLoading(&u.attached, &u.childHistoryState)
 	h.placements = []*restoredPlacement{{turn: "t", anchor: "last", at: time.Unix(109, 0), entry: sessionpresentation.ActivityEntry{Agent: "/root/worker", Kind: "reply", Text: "retained directed message", Message: &sessionpresentation.ActivityMessage{From: "/root/worker", To: "/root", Text: "retained directed message"}}}}
 	restoreContentError(t, u, 4)
 	count := func() int {
@@ -438,7 +438,7 @@ func TestAppServerAnchoredHistoryCancelledMetadataRetry(t *testing.T) {
 			} else if err := u.cancelOlderActivity(historyCancelIntent(u)); err != nil {
 				t.Fatal(err)
 			}
-			if historyLoadIntent(u).Thread == "" || u.historyLoading() != nil {
+			if historyLoadIntent(u).Thread == "" || historyLoading(&u.attached, &u.childHistoryState) != nil {
 				t.Fatal("metadata cancellation removed recovery eligibility")
 			}
 			if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
@@ -446,7 +446,7 @@ func TestAppServerAnchoredHistoryCancelledMetadataRetry(t *testing.T) {
 			}
 			restoreContentReply(t, u, 5, map[string]any{"data": []any{map[string]any{"id": "t", "status": "completed", "startedAt": 100, "completedAt": 110}}})
 			restoreContentReply(t, u, 6, map[string]any{"data": []any{historyItem("last", "recovered latest", 109000)}})
-			if u.historyLoading() != nil || !strings.Contains(strings.Join(entryTexts(u.testActivity(u.shell.Agents)), ","), "recovered latest") {
+			if historyLoading(&u.attached, &u.childHistoryState) != nil || !strings.Contains(strings.Join(entryTexts(u.testActivity(u.shell.Agents)), ","), "recovered latest") {
 				t.Fatal("metadata retry after cancellation did not recover")
 			}
 		})
@@ -473,11 +473,11 @@ func TestAppServerAnchoredHistoryMetadataRetryPreservesCompletedLiveTiming(t *te
 }
 
 func historyLoadIntent(u *appServerUI) sessionpresentation.HistoryIntent {
-	v := u.publishPresentation(u.now())
+	v := u.publishPresentation(presentationTime(u.clock))
 	return sessionpresentation.HistoryIntent{Version: v.Version, Thread: v.History.Target}
 }
 
 func historyCancelIntent(u *appServerUI) sessionpresentation.HistoryIntent {
-	v := u.publishPresentation(u.now())
+	v := u.publishPresentation(presentationTime(u.clock))
 	return sessionpresentation.HistoryIntent{Version: v.Version, Thread: v.Loading}
 }

@@ -66,7 +66,7 @@ func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 	if u.panes != nil {
 		state, err := u.panes.read(info.Cwd, thread)
 		if err != nil {
-			u.paneError(err)
+			u.dirty = paneError(u.attached.source, err) || u.dirty
 		} else {
 			retained = state.Snapshot
 		}
@@ -75,7 +75,7 @@ func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 	evidence = evidence.WithNewer(resumeSettingsEvidence(rollout.ResumeSettings(info.ID, info.Path, newerThan)))
 	err = u.Requests.Resume(&u.Startup, &u.Live, evidence, u.approvalMode)
 	if u.Startup.MissingSettings {
-		u.setNotice(sessionpresentation.ResumeSettingsUnavailable, true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), sessionpresentation.ResumeSettingsUnavailable, true)
 	}
 	return err
 }
@@ -86,7 +86,7 @@ func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 // thread's descendants are dropped rather than kept: their completed items
 // carry the full content, and busy children must not exhaust the bounded
 // buffer.
-func (u *appServerUI) holdResumeEvent(m appserver.Message, resuming bool) (hold, keep bool) {
+func holdResumeEvent(session *sessionpresentation.Attachment, control *sessioncontrol.Live, startup sessioncontrol.Startup, m appserver.Message, resuming bool) (hold, keep bool) {
 	var p struct {
 		ThreadID string `json:"threadId"`
 		Thread   struct {
@@ -96,10 +96,10 @@ func (u *appServerUI) holdResumeEvent(m appserver.Message, resuming bool) (hold,
 	}
 	_ = json.Unmarshal(m.Params, &p)
 	thread := cmp.Or(p.ThreadID, p.Thread.ID)
-	if !resuming && (thread == "" || u.attached.session.KnownCaller(thread) != "" || u.attached.session.KnownCaller(p.Thread.ParentThreadID) != "") {
+	if !resuming && (thread == "" || session.KnownCaller(thread) != "" || session.KnownCaller(p.Thread.ParentThreadID) != "") {
 		return false, false
 	}
-	root := cmp.Or(u.Replacement.Target, u.Startup.Thread)
+	root := cmp.Or(control.Replacement.Target, startup.Thread)
 	delta := strings.HasSuffix(m.Method, "/delta") || strings.HasSuffix(m.Method, "Delta")
 	return true, !delta || thread == "" || thread == root
 }
@@ -175,16 +175,16 @@ func (u *appServerUI) restoreMainHistory(turns []binding.HistoryTurn, placements
 		if index >= 0 {
 			byTurn[index] = append(byTurn[index], p)
 		} else if p.entry.Kind == "hook" {
-			u.applyRestoredMain([]*restoredPlacement{p})
+			applyRestoredMain(u.attached.source, []*restoredPlacement{p})
 		}
 	}
 	for index, turn := range turns {
-		u.restoredSegments = u.prepareCommandSegments(u.Thread, u.attached.cwd, turn)
+		u.restoredSegments = prepareCommandSegments(u.ctx, u.retained, u.segments, u.Thread, u.attached.cwd, turn)
 		placements := byTurn[index]
 		slots := positions[index].Slots(restoredPositions(placements))
 		place := func(indices []int) {
 			for _, index := range indices {
-				u.applyRestoredMain(placements[index : index+1])
+				applyRestoredMain(u.attached.source, placements[index:index+1])
 			}
 		}
 		place(slots[0])
@@ -210,7 +210,7 @@ func (u *appServerUI) restoreMainHistory(turns []binding.HistoryTurn, placements
 		}
 		if turn.Status == "inProgress" {
 			u.Turn = turn.ID
-			u.attached.presentation.Status.Started = u.now()
+			u.attached.presentation.Status.Started = presentationTime(u.clock)
 			u.attached.presentation.Status.SetText("Working")
 		}
 	}
@@ -220,7 +220,7 @@ func (u *appServerUI) restoreMainHistory(turns []binding.HistoryTurn, placements
 	u.applyActivity(nil, u.attached.session.Roster())
 }
 
-func (u *appServerUI) applyRestoredMain(placements []*restoredPlacement) {
+func applyRestoredMain(source *sessionpresentation.ActivitySource, placements []*restoredPlacement) {
 	for _, p := range placements {
 		entry := p.entry
 		if p.link != nil && sessionpresentation.MainActivityLinked(entry) {
@@ -229,7 +229,7 @@ func (u *appServerUI) applyRestoredMain(placements []*restoredPlacement) {
 		if entry.Observed.IsZero() {
 			entry.Observed = p.at
 		}
-		u.attached.source.ApplyMain(entry)
+		source.ApplyMain(entry)
 	}
 }
 
@@ -262,7 +262,7 @@ func (u *appServerUI) restoreHistoryItem(turn binding.HistoryTurn, item binding.
 			draft := conversationmodel.Input{Text: text.String()}
 			draft.Selections = composer.RestoreSelections(draft.Text, attached)
 			draft.Skills = conversationbinding.SkillBindings(draft.Text, conversationbinding.ContentSkills(content), spans)
-			u.rememberInput(draft)
+			rememberInput(u.attached.conversation, draft)
 		}
 	}
 	method := "item/completed"
@@ -304,7 +304,7 @@ func (u *appServerUI) restoreHistoryItem(turn binding.HistoryTurn, item binding.
 			u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{exit}})
 		}
 	default:
-		if update, ok := historicalTranscript([]binding.ThreadItem{item}, u.Thread, turn.ID, true, false, u.now())[item.ID]; ok {
+		if update, ok := historicalTranscript([]binding.ThreadItem{item}, u.Thread, turn.ID, true, false, presentationTime(u.clock))[item.ID]; ok {
 			update.Phase = method
 			u.attached.source.ApplyTranscript(update, item.Content, u.attached.cwd, u.Thread, item.Type == "userMessage")
 		}

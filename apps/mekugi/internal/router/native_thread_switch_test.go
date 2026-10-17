@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/binding"
 )
 
@@ -122,12 +123,12 @@ func TestNativeChildReferenceReturnsToMain(t *testing.T) {
 	u.main.shell.Agents = u.Agents
 	u.main.Text = "draft "
 	u.main.testActivity(u.main.shell.Agents).setDisplayFilter(true, "/root/reader")
-	u.main.publishPresentation(u.main.now())
+	u.main.publishPresentation(presentationTime(u.main.clock))
 	u.main.shell.Agents.FeedLeft, u.main.shell.Agents.FeedTop = 1, 1
 	u.main.shell.Agents.FeedRight, u.main.shell.Agents.FeedRows = 40, 1
 	selectionTestDrag(t, u, 0, 0, 4, 0)
 	u.selectionAction('r')
-	if u.main.composerReadOnly() || !strings.HasPrefix(u.main.Text, "draft ") || len(u.main.Selections) != 1 || u.Focus != 0 {
+	if (u.main.attached.presentation.View().ReadOnly != sessionpresentation.Editable) || !strings.HasPrefix(u.main.Text, "draft ") || len(u.main.Selections) != 1 || u.Focus != 0 {
 		t.Fatal("child reference did not return to the preserved Main draft")
 	}
 }
@@ -160,14 +161,14 @@ func TestNativeChildComposerSettingsEvidence(t *testing.T) {
 		t.Fatalf("child tier ignored model routing: %s", got)
 	}
 	u.serviceTiers.Confirm("live-model", info.ID, "flex")
-	publication := u.publishPresentation(u.now())
+	publication := u.publishPresentation(presentationTime(u.clock))
 	if publication.Caption.Model != "live-model" || publication.Caption.Tier != "flex" || publication.Status.Composer.Text != "Read-only" {
 		t.Fatalf("detached child caption lost confirmed thread settings: %+v", publication)
 	}
 	if got := caption(); !strings.Contains(got, "live-model (low) · flex") {
 		t.Fatalf("child caption ignored its confirmed thread tier: %s", got)
 	}
-	u.attached.session.Collaboration((binding.ThreadItem{Tool: "spawnAgent", SenderThreadID: "main", ReceiverThreadIDs: []string{"spawned"}, Model: "spawn-model", ReasoningEffort: "high"}).Observation(), "spawn", u.now(), activitypresentation.ObservedCollaboration)
+	u.attached.session.Collaboration((binding.ThreadItem{Tool: "spawnAgent", SenderThreadID: "main", ReceiverThreadIDs: []string{"spawned"}, Model: "spawn-model", ReasoningEffort: "high"}).Observation(), "spawn", presentationTime(u.clock), activitypresentation.ObservedCollaboration)
 	u.testActivity(u.shell.Agents).displayThread(u.attached.session.KnownCaller("spawned"))
 	if got := caption(); !strings.Contains(got, "spawn-model (high)") || strings.Contains(got, "priority") {
 		t.Fatalf("spawn metadata was not scoped to the selected child: %s", got)

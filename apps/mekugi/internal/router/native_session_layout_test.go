@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
-
-	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
@@ -39,7 +39,7 @@ func TestNativeUISessionLiveToggle(t *testing.T) {
 		}
 	}
 	for _, command := range []string{"/live invalid", "/live on extra"} {
-		u.loadDraft(conversationmodel.Input{})
+		u.Editor.Replace(composer.Draft{})
 		appServerTestKeys(t, u, command+"\r")
 		if terminalTest(u).LiveHidden || u.Text != command || !u.attached.feedback.Alert {
 			t.Fatal("invalid value changed preference or lost draft")
@@ -86,7 +86,7 @@ func TestUISnapshotNativeLiveToggle(t *testing.T) {
 	defer screen.Close()
 	preview := previewmodel.Preview{ID: "edit", Workspace: t.TempDir(), Caller: "/root", Status: previewmodel.PreviewEdit, Input: "*** Begin Patch\n*** Add File: live.txt\n+Live edit still in progress\n*** End Patch"}
 	u.attached.cwd = preview.Workspace
-	u.preview(projectStockPatchPreview(t.Context(), preview.Workspace, preview), false)
+	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), projectStockPatchPreview(t.Context(), preview.Workspace, preview), false)
 	revealNativeDock(terminalTest(u))
 	for _, value := range []string{"off", "on"} {
 		appServerTestKeys(t, u, "/live\r")
@@ -115,7 +115,7 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			}
 			workspace := t.TempDir()
 			preview := previewmodel.Preview{ID: "edit", Workspace: workspace, Caller: caller, Status: previewmodel.PreviewEdit, Input: "*** Begin Patch\n*** Add File: a.txt\n+VISIBLE_EDIT\n*** End Patch"}
-			u.preview(projectStockPatchPreview(t.Context(), workspace, preview), false)
+			applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), projectStockPatchPreview(t.Context(), workspace, preview), false)
 			revealNativeDock(terminalTest(u))
 			if caller != "/root" {
 				u.testActivity(u.shell.Agents).setDisplayFilter(true, caller)
@@ -143,7 +143,7 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			}
 			appServerTestKeys(t, u, "/live\r")
 			preview.Complete = true
-			u.preview(projectStockPatchPreview(t.Context(), workspace, preview), false)
+			applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), projectStockPatchPreview(t.Context(), workspace, preview), false)
 			revealNativeDock(terminalTest(u))
 			terminalTest(u).Live.Tick(time.Now().Add(time.Hour))
 			appServerTestKeys(t, u, "/live\r")

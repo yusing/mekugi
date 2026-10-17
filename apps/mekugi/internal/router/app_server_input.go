@@ -22,13 +22,13 @@ func (u *appServerUI) drainKeys(keys <-chan byte) error {
 			}
 			u.dirty = true
 			if event := u.shell.Decoder.Feed(key, time.Now()); event.Kind != terminalsession.NoInput {
-				if err := u.applyInput(u.shell, u.shell.FrameInput(u.now(), mekugiVersion()).Dispatch(&u.shell.Interaction, event)); err != nil || u.quitRequested {
+				if err := u.applyInput(u.shell, u.shell.FrameInput(presentationTime(u.clock), mekugiVersion()).Dispatch(&u.shell.Interaction, event)); err != nil || u.quitRequested {
 					return err
 				}
 			}
 		default:
 			if u.shell.Decoder.Escape(time.Now()) {
-				return u.applyInput(u.shell, u.shell.FrameInput(u.now(), mekugiVersion()).Send(&u.shell.Interaction, "\x1b"))
+				return u.applyInput(u.shell, u.shell.FrameInput(presentationTime(u.clock), mekugiVersion()).Send(&u.shell.Interaction, "\x1b"))
 			}
 			return nil
 		}
@@ -39,24 +39,24 @@ func (u *appServerUI) drainKeys(keys <-chan byte) error {
 // prepareComposerInput admits terminal-selected prompt suspension before editing.
 func (u *appServerUI) prepareComposerInput() bool {
 	ready := u.shell.Prompts.Ready()
-	u.publishPresentation(u.now())
+	u.publishPresentation(presentationTime(u.clock))
 	preparation := u.shell.Main.PrepareInput(ready)
 	if !preparation.Editable {
 		return false
 	}
 	if intent := preparation.Question; intent != nil {
 		if err := u.attached.presentation.QuestionInput(*intent, u.questions.Questions); err != nil {
-			u.setNotice(err.Error(), true)
+			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 			return false
 		}
 		u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 	}
 	if intent := preparation.Approval; intent != nil {
 		if err := u.attached.presentation.ApprovalInput(*intent, u.approvals.Approvals); err != nil {
-			u.setNotice(err.Error(), true)
+			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 			return false
 		}
-		u.hideApprovals()
+		hideApprovals(&u.approvals, u.shell, &u.attached.conversation.PromptEditor, u.Editor)
 	}
 	return true
 }
@@ -79,11 +79,11 @@ func (u *appServerUI) input(event terminalsession.Input) (bool, error) {
 			u.Run = composer.NoRun
 		}
 		if event.Kind != terminalsession.PasteInput {
-			u.publishPresentation(u.now())
+			u.publishPresentation(presentationTime(u.clock))
 		}
 		pasted, err := u.shell.Main.PasteInput(event, u.shell.Prompts)
 		if err != nil {
-			u.setNotice(err.Error(), true)
+			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 		} else if pasted != nil {
 			u.applyPaste(*pasted)
 		}

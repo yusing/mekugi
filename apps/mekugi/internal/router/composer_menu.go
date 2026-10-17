@@ -4,31 +4,31 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/modules/conversation/completion"
 )
 
-func (u *appServerUI) openMenu(kind string) {
-	p := &u.picker
+func (p *composerPicker) openMenu(kind string) {
 	p.MenuState.Begin(sessionpresentation.MenuKind(kind))
 	p.Open = true
 }
-func (u *appServerUI) menuView() *sessionpresentation.MenuView {
-	p := &u.picker
+func (p *composerPicker) menuView(workspace, text string, control *sessioncontrol.Live) *sessionpresentation.MenuView {
 	if !p.Open {
 		return nil
 	}
 	view := &sessionpresentation.MenuView{ID: p.ID, Kind: p.Kind, View: p.View(), Preferred: p.Preferred}
 	switch view.Kind {
 	case sessionpresentation.MenuManageSkills:
-		view.Saving = u.skillSaveOwnsManager()
+		view.Saving = p.skillSaveOwnsManager(workspace)
 	case sessionpresentation.MenuCompletion:
-		view.QueueCompact = strings.TrimSpace(u.Text) == "/compact"
+		view.QueueCompact = strings.TrimSpace(text) == "/compact"
 	case sessionpresentation.MenuSettings:
-		view.Setting = u.picker.Setting
+		view.Setting = p.Setting
 	case sessionpresentation.MenuArchive:
-		view.Explanation = u.archivePrompt()
+		view.Explanation = archivePrompt(control)
 	}
 	return view
 }
@@ -45,12 +45,12 @@ func (u *appServerUI) applyMenuResult(result terminalsession.MenuResult) bool {
 }
 func (u *appServerUI) applyMenuAction(action sessionpresentation.MenuAction) bool {
 	if err := u.attached.presentation.AdmitMenu(action); err != nil {
-		u.setNotice(err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 		return false
 	}
 	p := &u.picker
 	if !p.Open || p.ID != action.Menu {
-		u.setNotice(sessionpresentation.ErrStaleIntent.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), sessionpresentation.ErrStaleIntent.Error(), true)
 		return false
 	}
 	switch action.Kind {
@@ -71,7 +71,7 @@ func (u *appServerUI) applyMenuAction(action sessionpresentation.MenuAction) boo
 	case sessionpresentation.MenuAccept:
 		index := slices.IndexFunc(p.Choices, func(c completion.Choice) bool { return c.Identity() == action.Choice })
 		if index < 0 {
-			u.setNotice(sessionpresentation.ErrStaleIntent.Error(), true)
+			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), sessionpresentation.ErrStaleIntent.Error(), true)
 			return false
 		}
 		choice := p.Choices[index]
@@ -79,14 +79,14 @@ func (u *appServerUI) applyMenuAction(action sessionpresentation.MenuAction) boo
 		case "menu":
 			u.chooseSkillsAction(choice)
 		case "manage":
-			u.toggleSkill(choice)
+			toggleSkill(&u.picker, u.Requests, u.attached.cwd, choice)
 		case "archive":
 			u.chooseArchive(choice.ID == archiveConfirmChoice)
 		case "settings":
 			u.chooseSetting(choice)
 		case "copy":
 			if u.shell == nil {
-				u.setNotice("Terminal clipboard unavailable", true)
+				setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Terminal clipboard unavailable", true)
 			} else {
 				u.copyText(u.shell, p.CopyTexts[index])
 			}

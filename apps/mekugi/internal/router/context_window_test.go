@@ -121,7 +121,7 @@ func TestAppServerStartupRestoresContext(t *testing.T) {
 	}
 	// Metadata must never replace a newer live update with a stale disk snapshot.
 	appServerTestNotify(t, u, "thread/tokenUsage/updated", map[string]any{"threadId": "child", "tokenUsage": map[string]any{"last": map[string]any{"totalTokens": 40000}, "modelContextWindow": 400000}})
-	u.registerThread(binding.ThreadInfo{ID: "child", Path: path})
+	registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", Path: path})
 	if got := activityui.ContextWindowLabel(testActivityAgent(*child)); got != "40K/400K • 10%" {
 		t.Fatal(got)
 	}

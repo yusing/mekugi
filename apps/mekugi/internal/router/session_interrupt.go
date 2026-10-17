@@ -10,7 +10,7 @@ func (u *appServerUI) interruptSession(intent sessionpresentation.InterruptInten
 	unsent := u.attached.conversation.Unsent
 	decision, err := u.attached.presentation.Interrupt(intent, &u.Live, len(unsent) > 0 && unsent[0].Text != "/compact")
 	if err != nil {
-		u.setNotice(err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 		return nil
 	}
 	err = u.applyInterruption(decision)

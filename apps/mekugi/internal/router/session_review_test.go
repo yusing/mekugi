@@ -33,8 +33,8 @@ func TestReviewReceiptsWithoutTerminal(t *testing.T) {
 			const text = "Edit `source.go` +1 -1"
 			if retained {
 				r.Projection.Data = reviewReceiptSnapshot(t, []*changepresentation.Receipt{{Thread: "main", Calls: []string{"edit"}, Text: text}})
-				u.publishReview()
-				u.applyCapturedEdits()
+				publishReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane)
+				applyCapturedEdits(&u.attached, u.review, &u.pendingEditReceipts)
 			} else {
 				p := preview.Preview{ID: "observed", Workspace: "/workspace", Thread: "main", HostItems: []string{"edit"}, Complete: true, EditReceipt: text}
 				u.admitReviewEvents(t.Context(), sub, sessionreview.Event{Kind: "preview", Preview: &p})

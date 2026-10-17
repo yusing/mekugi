@@ -139,7 +139,7 @@ func TestUISnapshotNativePromptsTinyFrame(t *testing.T) {
 			if u.shell.Main.ComposerRect.H < 1 || u.shell.Main.ComposerRect.Y+u.shell.Main.ComposerRect.H > terminalTest(u).Layout.Main.H {
 				t.Fatalf("prompts displaced the composer: composer=%+v Main=%+v", u.shell.Main.ComposerRect, terminalTest(u).Layout.Main)
 			}
-			if len(u.pendingApprovals()) != 1 || u.questionCount() != 1 {
+			if len(u.approvals.calls()) != 1 || u.questions.Count(u.Thread) != 1 {
 				t.Fatal("a short terminal discarded pending prompts")
 			}
 			assertNativeUISnapshot(t, fmt.Sprintf("native-prompts-height-%d", height), strings.Split(screen.String(), "\n"))

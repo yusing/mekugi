@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/activity"
 	activityview "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -22,7 +23,7 @@ func TestNativeAuxiliaryAbsencePreservesMainAndReviewSource(t *testing.T) {
 
 	terminalTest(u).Shell.RestorePreferences(terminalsession.Preferences{Focus: 1, DiffOpen: true}, u.shell.Main)
 	u.review.Projection.Workspace, u.review.Projection.Coverage = "/workspace", "READY"
-	u.publishReview()
+	publishReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane)
 	if err := u.testPaint(io.Discard, 160, 32); err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +109,7 @@ func TestUISnapshotNativeWithoutActivityRoster(t *testing.T) {
 	}
 	u.testActivity(u.shell.Agents).displayThread("/root/reader")
 	paint("native-no-roster-child", "child Conversation result")
-	if !u.composerReadOnly() || u.Thread != "main" || u.Text != "retained draft" {
+	if !(u.attached.presentation.View().ReadOnly != sessionpresentation.Editable) || u.Thread != "main" || u.Text != "retained draft" {
 		t.Fatal("child display changed Main input ownership")
 	}
 	terminalTest(u).selectNativePane(0)

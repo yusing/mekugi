@@ -46,11 +46,11 @@ func approvalTestCommand(t *testing.T, u *appServerUI, id any, params map[string
 }
 
 func approvalTestChoices(u *appServerUI) []string {
-	if len(u.pendingApprovals()) == 0 {
+	if len(u.approvals.calls()) == 0 {
 		return nil
 	}
 	var labels []string
-	for _, choice := range u.pendingApprovals()[0].Choices {
+	for _, choice := range u.approvals.calls()[0].Choices {
 		labels = append(labels, choice.Label)
 	}
 	return labels
@@ -96,7 +96,7 @@ func TestNativeApprovalCommandReturnsTheOfferedDecision(t *testing.T) {
 	if got := input.String(); !strings.Contains(got, `"id":7`) || !strings.Contains(got, `"decision":{"acceptWithExecpolicyAmendment":{"execpolicy_amendment":["git","push"]}}`) {
 		t.Fatalf("response = %s", got)
 	}
-	if len(u.pendingApprovals()) != 0 || u.approvals.Open {
+	if len(u.approvals.calls()) != 0 || u.approvals.Open {
 		t.Fatal("answered approval remains")
 	}
 	if got := approvalTestTranscript(t, u); !strings.Contains(got, "git push origin main · Approved") || len(u.attached.source.Entries) != 1 {
@@ -109,9 +109,9 @@ func TestNonTerminalApprovalDecisionsPreserveIdentityAndReason(t *testing.T) {
 	u.Turn = "turn"
 	approvalTestCommand(t, u, "first", map[string]any{"availableDecisions": []string{"accept", "decline"}})
 	approvalTestCommand(t, u, "second", map[string]any{"availableDecisions": []string{"accept"}})
-	v := u.publishPresentation(u.now())
+	v := u.publishPresentation(presentationTime(u.clock))
 	intent := sessionpresentation.ApprovalIntent{Version: v.Version, Request: v.Approvals.Approval.ID, Choice: 99, Reason: "explicit reason"}
-	if err := u.decideApproval(intent); err != nil || wire.Len() != 0 || len(u.pendingApprovals()) != 2 {
+	if err := u.decideApproval(intent); err != nil || wire.Len() != 0 || len(u.approvals.calls()) != 2 {
 		t.Fatal("unoffered choice answered a request")
 	}
 	// This editor is deliberately unrelated to the submitted semantic reason.
@@ -129,10 +129,10 @@ func TestNonTerminalApprovalDecisionsPreserveIdentityAndReason(t *testing.T) {
 		t.Fatalf("reason was reconstructed from terminal state: %s", feedback)
 	}
 	wire.Reset()
-	if err := u.decideApproval(intent); err != nil || wire.Len() != 0 || len(u.pendingApprovals()) != 1 {
+	if err := u.decideApproval(intent); err != nil || wire.Len() != 0 || len(u.approvals.calls()) != 1 {
 		t.Fatal("resolved identity answered the next request")
 	}
-	v = u.publishPresentation(u.now())
+	v = u.publishPresentation(presentationTime(u.clock))
 	intent = sessionpresentation.ApprovalIntent{Version: v.Version, Request: v.Approvals.Approval.ID, Choice: v.Approvals.Approval.Choices[0].ID}
 	u.Thread = "replacement"
 	u.attachPresentation()
@@ -140,7 +140,7 @@ func TestNonTerminalApprovalDecisionsPreserveIdentityAndReason(t *testing.T) {
 		t.Fatal("retired attachment answered a retained approval")
 	}
 	u.attached.presentation.Attach(sessionpresentation.Thread{ID: u.Thread, Caller: "/root"}, true)
-	intent.Version = u.publishPresentation(u.now()).Version
+	intent.Version = u.publishPresentation(presentationTime(u.clock)).Version
 	if err := u.decideApproval(intent); err != nil || wire.Len() != 0 || u.attached.feedback.Text != sessionpresentation.ErrReplayIntent.Error() {
 		t.Fatal("replay answered an approval")
 	}
@@ -150,7 +150,7 @@ func TestNonTerminalGuardDecisionUsesPublishedChoice(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/work")
 	request := &sessioncontrol.ShellApprovalRequest{Thread: "main", Cwd: "/work", Argv: []string{"git", "push"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})}
 	u.addGuardApproval(request)
-	v := u.publishPresentation(u.now())
+	v := u.publishPresentation(presentationTime(u.clock))
 	a := v.Approvals.Approval
 	if a.Choices[0].ID == a.Choices[1].ID || a.Choices[1].ID == a.Choices[2].ID {
 		t.Fatal("guard choices have ambiguous identities")
@@ -163,7 +163,7 @@ func TestNonTerminalGuardDecisionUsesPublishedChoice(t *testing.T) {
 	}
 	request = &sessioncontrol.ShellApprovalRequest{Thread: "main", Cwd: "/work", Argv: []string{"git", "push"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})}
 	u.addGuardApproval(request)
-	if next := u.publishPresentation(u.now()).Approvals.Approval.ID; next == "" || next == a.ID {
+	if next := u.publishPresentation(presentationTime(u.clock)).Approvals.Approval.ID; next == "" || next == a.ID {
 		t.Fatal("retired local request identity was reused")
 	}
 }
@@ -188,7 +188,7 @@ func TestNativeApprovalTerminalInput(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.Turn = "turn"
 	approvalTestCommand(t, u, 12, map[string]any{"kind": "writeStdin", "command": "write_stdin --session-id 7 'y\n'"})
-	if a := u.pendingApprovals()[0]; a.Title != "Send input to terminal 7?" || a.Subject != `Input: "y\n"` {
+	if a := u.approvals.calls()[0]; a.Title != "Send input to terminal 7?" || a.Subject != `Input: "y\n"` {
 		t.Fatalf("stdin approval = %q %q", a.Title, a.Subject)
 	}
 }
@@ -201,7 +201,7 @@ func TestNativeApprovalFileChangeAndPermissions(t *testing.T) {
 		"id": "patch", "type": "fileChange", "changes": []any{map[string]any{"path": "/work/a.go", "kind": map[string]any{"type": "update"}, "diff": ""}},
 	}})
 	questionTestMessage(t, u, 8, "item/fileChange/requestApproval", map[string]any{"threadId": "main", "turnId": "turn", "itemId": "patch"})
-	if a := u.pendingApprovals()[0]; a.Title != "Make these edits?" || a.Subject != "a.go" {
+	if a := u.approvals.calls()[0]; a.Title != "Make these edits?" || a.Subject != "a.go" {
 		t.Fatalf("edit approval = %q %q", a.Title, a.Subject)
 	}
 	questionTestPaint(t, u, 80)
@@ -212,7 +212,7 @@ func TestNativeApprovalFileChangeAndPermissions(t *testing.T) {
 	input.Reset()
 	permissions := map[string]any{"network": map[string]any{"enabled": true}, "fileSystem": map[string]any{"write": []string{"/tmp/out"}}}
 	questionTestMessage(t, u, 9, "item/permissions/requestApproval", map[string]any{"threadId": "main", "turnId": "turn", "itemId": "perm", "cwd": "/work", "permissions": permissions})
-	if a := u.pendingApprovals()[0]; a.Subject != "network; write /tmp/out" {
+	if a := u.approvals.calls()[0]; a.Subject != "network; write /tmp/out" {
 		t.Fatalf("permission subject = %q", a.Subject)
 	}
 	questionTestPaint(t, u, 80)
@@ -239,7 +239,7 @@ func TestNativeApprovalEndsWhenResolvedElsewhere(t *testing.T) {
 	}
 	questionTestMessage(t, u, nil, "serverRequest/resolved", map[string]any{"threadId": "main", "requestId": "stale"})
 	questionTestMessage(t, u, nil, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "turn", "status": "interrupted"}})
-	if len(u.pendingApprovals()) != 0 || u.approvals.Open {
+	if len(u.approvals.calls()) != 0 || u.approvals.Open {
 		t.Fatal("ended approvals remain")
 	}
 	if strings.Contains(input.String(), `"decision"`) {
@@ -267,14 +267,14 @@ func TestNativeApprovalWaitsForAnEmptyComposer(t *testing.T) {
 	if u.Text != "draft1" || strings.Contains(input.String(), `"decision"`) {
 		t.Fatalf("draft=%q response=%s", u.Text, input.String())
 	}
-	if !u.openApprovals() {
+	if !openApprovals(&u.approvals, &u.questions, u.attached.conversation, u.shell, &u.picker, &u.Editor, u.Thread) {
 		t.Fatal("approval did not reopen")
 	}
 	questionTestPaint(t, u, 80)
 	if handled, err := u.approvalKey("\x1b"); !handled || err != nil || u.approvals.Open {
 		t.Fatalf("esc: handled=%v err=%v open=%v", handled, err, u.approvals.Open)
 	}
-	u.openApprovals()
+	openApprovals(&u.approvals, &u.questions, u.attached.conversation, u.shell, &u.picker, &u.Editor, u.Thread)
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "x\x7f\x17\t\x1b[200~pasted\x1b[201~2\r")
 	if u.Text != "draft1" || !strings.Contains(input.String(), `"decision":"decline"`) {
@@ -314,7 +314,7 @@ func TestNativeApprovalGuardedWrite(t *testing.T) {
 	close(expired.Done)
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "\r") // The command has its answer; nothing is sent.
-	if len(expired.Reply) != 0 || len(u.pendingApprovals()) != 0 {
+	if len(expired.Reply) != 0 || len(u.approvals.calls()) != 0 {
 		t.Fatal("expired write was answered")
 	}
 	for i, want := range []string{"Approved", "Denied", "Auto Denied: no answer within 5 minutes"} {
@@ -362,7 +362,7 @@ func TestNativeApprovalGuardSessionMatchesExactCommandAndWorkdir(t *testing.T) {
 				if r != first && r != queued {
 					u.addGuardApproval(r)
 				}
-				if len(r.Reply) != 1 || !(<-r.Reply).OK || len(u.pendingApprovals()) != 0 {
+				if len(r.Reply) != 1 || !(<-r.Reply).OK || len(u.approvals.calls()) != 0 {
 					t.Fatal("exact session approval was not reused")
 				}
 			}
@@ -370,7 +370,7 @@ func TestNativeApprovalGuardSessionMatchesExactCommandAndWorkdir(t *testing.T) {
 				password := request("/work", tool, "push", "origin", "main")
 				password.Kind = "sudo-password"
 				u.addGuardApproval(password)
-				if len(password.Reply) != 0 || len(u.pendingApprovals()) != 0 || len(u.questionCalls()) != 1 {
+				if len(password.Reply) != 0 || len(u.approvals.calls()) != 0 || len(u.questions.calls()) != 1 {
 					t.Fatal("command session grant answered a password request")
 				}
 				questionTestPaint(t, u, 80)
@@ -389,7 +389,7 @@ func TestNativeApprovalGuardSessionMatchesExactCommandAndWorkdir(t *testing.T) {
 			}
 			fresh, _ := newAppServerTestUI()
 			fresh.addGuardApproval(request("/work", tool, "push", "origin", "main"))
-			if len(fresh.pendingApprovals()) != 1 {
+			if len(fresh.approvals.calls()) != 1 {
 				t.Fatal("approval survived a new UI session")
 			}
 		})
@@ -412,20 +412,20 @@ func TestNativeApprovalTypedDenialReachesCommand(t *testing.T) {
 				t.Fatalf("resolved executable = %q", request.Executable)
 			}
 			u.addGuardApproval(request)
-			u.openApprovals()
+			openApprovals(&u.approvals, &u.questions, u.attached.conversation, u.shell, &u.picker, &u.Editor, u.Thread)
 			questionTestPaint(t, u, 80)
 			appServerTestKeys(t, u, keys)
-			if u.pendingApprovals()[0].Selected != 2 || u.attached.conversation.ShellMode() || u.picker.Open {
+			if u.approvals.calls()[0].Selected != 2 || u.attached.conversation.ShellMode() || u.picker.Open {
 				t.Fatal("typing did not select plain-text denial")
 			}
-			u.hideApprovals()
+			hideApprovals(&u.approvals, u.shell, &u.attached.conversation.PromptEditor, u.Editor)
 			if u.Text != kept {
 				t.Fatal("approval changed parked draft")
 			}
 			if _, err := os.Stat(image); err != nil {
 				t.Fatal("approval reclaimed parked image", err)
 			}
-			u.openApprovals()
+			openApprovals(&u.approvals, &u.questions, u.attached.conversation, u.shell, &u.picker, &u.Editor, u.Thread)
 			questionTestPaint(t, u, 80)
 			appServerTestKeys(t, u, "\r")
 			run := <-result
@@ -486,7 +486,7 @@ func TestNativeApprovalQuestionEditorOwnership(t *testing.T) {
 	if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%dM", u.shell.Prompts.Rect.X+1, u.shell.Prompts.Rect.Y+1)); err != nil {
 		t.Fatal(err)
 	}
-	if u.approvals.Open || u.currentQuestion() == nil || u.Text != "" {
+	if u.approvals.Open || u.questions.Current() == nil || u.Text != "" {
 		t.Fatal("question and approval share the composer")
 	}
 	questionTestPaint(t, u, 80)
@@ -494,7 +494,7 @@ func TestNativeApprovalQuestionEditorOwnership(t *testing.T) {
 	if !strings.Contains(wire.String(), "answer to question") || strings.Contains(wire.String(), `"id":7`) {
 		t.Fatalf("question answer sent to approval: %s", wire.String())
 	}
-	u.openApprovals()
+	openApprovals(&u.approvals, &u.questions, u.attached.conversation, u.shell, &u.picker, &u.Editor, u.Thread)
 	if u.Text != "wait for review" {
 		t.Fatalf("approval reason lost: %q", u.Text)
 	}
@@ -510,22 +510,22 @@ func TestNativeApprovalSurvivesMainReplacement(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.insertDraft("main draft")
 	approvalTestCommand(t, u, 7, nil)
-	u.openApprovals()
+	openApprovals(&u.approvals, &u.questions, u.attached.conversation, u.shell, &u.picker, &u.Editor, u.Thread)
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "wait for review")
 	previous := u.approvals.Approvals
-	approval := u.pendingApprovals()[0].Approval
+	approval := u.approvals.calls()[0].Approval
 	if previous != &u.attached.conversation.Approvals || u.Editor != &u.attached.conversation.Editor {
 		t.Fatal("approval editor bypassed the composed owner")
 	}
 	replaceAppServerTestSession(t, u, "replacement")
 	u.Thread = "replacement"
-	if u.approvals.Approvals == previous || u.approvals.Approvals != &u.attached.conversation.Approvals || !u.approvals.Open || u.pendingApprovals()[0].Approval != approval || u.Text != "wait for review" {
+	if u.approvals.Approvals == previous || u.approvals.Approvals != &u.attached.conversation.Approvals || !u.approvals.Open || u.approvals.calls()[0].Approval != approval || u.Text != "wait for review" {
 		t.Fatal("replacement lost a pending approval or its editor")
 	}
 	questionTestPaint(t, u, 80) // The replacement must deliver its own prompt frame.
 	appServerTestKeys(t, u, "\r")
-	if !strings.Contains(wire.String(), `"id":7`) || u.Text != "main draft" || len(u.pendingApprovals()) != 0 {
+	if !strings.Contains(wire.String(), `"id":7`) || u.Text != "main draft" || len(u.approvals.calls()) != 0 {
 		t.Fatal("retained approval did not settle its original request and restore Main")
 	}
 }
@@ -539,7 +539,7 @@ func TestNativeApprovalWithoutProxyKeepsHostDecisions(t *testing.T) {
 		t.Fatal("proxy-free UI offers unavailable feedback")
 	}
 	appServerTestKeys(t, u, "ignored reason2\r")
-	if !strings.Contains(wire.String(), `"decision":"cancel"`) || len(u.pendingApprovals()) != 0 || u.Text != "" {
+	if !strings.Contains(wire.String(), `"decision":"cancel"`) || len(u.approvals.calls()) != 0 || u.Text != "" {
 		t.Fatalf("proxy-free native denial did not complete: %s", wire.String())
 	}
 }
@@ -670,7 +670,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 			u.Turn = "turn"
 			thread, view := "main", u.testActivity(u.shell.Transcript)
 			if tc.child {
-				u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
+				registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 				thread, view = "child", u.testActivity(u.shell.Agents)
 			}
 			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "git push origin main", Status: "inProgress"}
@@ -688,7 +688,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 			} else {
 				approvalTestCommand(t, u, 7, map[string]any{"threadId": thread, "availableDecisions": []string{"accept", "decline"}})
 			}
-			a := u.pendingApprovals()[0]
+			a := u.approvals.calls()[0]
 			if tc.guard && tc.early && !tc.child {
 				notify("item/started")
 				native := *view.Entries[0].Source.Native
@@ -702,7 +702,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 			if tc.name == "guard-approved" {
 				uisnapshot.AssertTerminal(t, "testdata/snapshots/approval-pending-"+tc.name+".txt", append(view.RenderFeed(48, 30).Lines, "plain after approval"), 48)
 			}
-			if err := u.decideApproval(sessionpresentation.ApprovalIntent{Version: u.publishPresentation(u.now()).Version, Request: a.ID, Choice: a.Choices[tc.choice].ID}); err != nil {
+			if err := u.decideApproval(sessionpresentation.ApprovalIntent{Version: u.publishPresentation(presentationTime(u.clock)).Version, Request: a.ID, Choice: a.Choices[tc.choice].ID}); err != nil {
 				t.Fatal(err)
 			}
 			if !tc.guard && !tc.early {
@@ -767,7 +767,7 @@ func TestUISnapshotNativeAutoApprovalStates(t *testing.T) {
 			u := newAppServerSessionTestUI(t, "/workspace")
 			u.clock = func() time.Time { return time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC) }
 			u.shell.Transcript.Clock, u.shell.Agents.Clock = u.clock, u.clock
-			u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
+			registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "git push", Status: "inProgress"}
 			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "turn", "item": item})
 			review := func(method, state, target string) {
@@ -800,7 +800,7 @@ func TestNativeApprovalWithoutOfferedChoicesStaysBlocked(t *testing.T) {
 	u.addApproval(&sessioncontrol.Approval{Approval: &prompt.Approval{ID: "unknown", Title: "Unsupported host decision"}})
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "\x1b[A\x1b[B\r")
-	if len(u.pendingApprovals()) != 1 || wire.Len() != 0 {
+	if len(u.approvals.calls()) != 1 || wire.Len() != 0 {
 		t.Fatal("blocked approval changed or issued a response")
 	}
 }

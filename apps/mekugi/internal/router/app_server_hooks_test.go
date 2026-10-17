@@ -62,7 +62,7 @@ func TestAppServerHookLifecycleUsesRunPresentation(t *testing.T) {
 		t.Fatalf("Main did not render hook source and output: %s", rows)
 	}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "later", "item": binding.ThreadItem{ID: "next", Type: "commandExecution", Command: "true", ExitCode: new(0)}})
-	settleActivity(u.now().Add(activityui.OutputDebounce), u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents))
+	settleActivity(presentationTime(u.clock).Add(activityui.OutputDebounce), u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents))
 	if !u.testActivity(u.shell.Transcript).blocks(0)[0].Collapsed {
 		t.Fatal("successful hook output did not use Run collapse")
 	}
@@ -73,7 +73,7 @@ func TestAppServerHookOutcomesInChildFeed(t *testing.T) {
 		t.Run(status, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			waitTargetTestStore(t, u, waitTargetTestOpenStore(t))
-			u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
+			registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 			_ = u.Requests.ReadThreadMetadata("main", "child", true, appServerRequest{})
 			run := hookTestRun(u.attached.cwd, status)
 			run["entries"] = []map[string]any{{"kind": "error", "text": "cannot execute\npermission denied\x1b]0;unsafe\a"}}
@@ -142,7 +142,7 @@ func TestAppServerHookOpenDialogTracksCompletion(t *testing.T) {
 
 func TestAppServerHookPagedChildWithoutTurns(t *testing.T) {
 	u, _ := newPagedHistoryUI(t)
-	h := u.historyLoading()
+	h := historyLoading(&u.attached, &u.childHistoryState)
 	observation := history.HookObservation{Run: history.HookRun{ID: "session-start-hook", EventName: "sessionStart", Status: "completed"},
 		At: time.Unix(100, 0), Completed: true, Output: "feedback: session ready"}
 	entry := hookEntry(&u.attached.session, u.activity, u.attached.cwd, "child", observation, false)

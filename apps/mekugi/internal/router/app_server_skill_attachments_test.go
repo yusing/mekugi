@@ -49,14 +49,14 @@ func TestSkillAttachmentTypedWhitespaceAndLiteralExceptions(t *testing.T) {
 	}
 	for _, draft := range []string{"$disabled ", "$duplicate ", "$missing ", "$HOME "} {
 		d := conversationmodel.Input{Text: draft}
-		u.bindSkills(&d, true)
+		u.picker.bindSkills(u.attached.cwd, &d, true)
 		if len(d.Skills) != 0 {
 			t.Errorf("literal %q acquired binding: %+v", draft, d.Skills)
 		}
 	}
 	for _, draft := range []string{"! echo $review ", "!$review "} {
 		d := conversationmodel.Input{Text: draft}
-		u.bindSkills(&d, true)
+		u.picker.bindSkills(u.attached.cwd, &d, true)
 		if len(d.Skills) != 0 {
 			t.Errorf("shell input %q acquired binding: %+v", draft, d.Skills)
 		}

@@ -83,7 +83,7 @@ func TestAppServerProgressWaitAndReplay(t *testing.T) {
 	if len(v.attached.source.Entries) != 2 || v.Turn != "" {
 		t.Fatalf("restored events revived work or went missing: %+v", v.attached.source.Entries)
 	}
-	v.registerThread(binding.ThreadInfo{ID: "child"})
+	registerThread(&v.attached.session, binding.ThreadInfo{ID: "child"})
 	v.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: history}, false)
 	if len(v.attached.childSource.Entries) != 2 || v.attached.childSource.Entries[1].Source.Text != "Context compacted" {
 		t.Fatalf("child replay missing progress: %+v", v.attached.childSource.Entries)
@@ -93,7 +93,7 @@ func TestAppServerProgressWaitAndReplay(t *testing.T) {
 func TestAppServerProgressUnfinishedChildWait(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	wait := binding.ThreadItem{ID: "w", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress"}
-	u.registerThread(binding.ThreadInfo{ID: "child"})
+	registerThread(&u.attached.session, binding.ThreadInfo{ID: "child"})
 	u.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: []binding.HistoryTurn{{ID: "t", Status: "inProgress", Items: []binding.ThreadItem{wait}}}}, false)
 	if !strings.Contains(u.attached.childSource.Entries[0].Source.Text, "Waiting for agent") || u.attached.session.Agent(u.attached.session.KnownCaller("child")).Responding {
 		t.Fatal("unfinished historical wait claimed completion or revived work")
@@ -117,7 +117,7 @@ func TestAppServerWaitRosterOnly(t *testing.T) {
 	for _, caller := range []string{"main", "child"} {
 		t.Run(caller, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			u.registerThread(binding.ThreadInfo{ID: "child"})
+			registerThread(&u.attached.session, binding.ThreadInfo{ID: "child"})
 			feed := u.testActivity(u.shell.Transcript)
 			name := "/root"
 			if caller == "child" {
@@ -206,7 +206,7 @@ func TestAppServerProgressTerminalPolling(t *testing.T) {
 	poll("main", "t", "proc", "")
 	label("Compacting context")
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t", "status": "interrupted"}})
-	if got := u.publishPresentation(u.now()).Status.Session; got.Text != "Interrupted" || got.Running {
+	if got := u.publishPresentation(presentationTime(u.clock)).Status.Session; got.Text != "Interrupted" || got.Running {
 		t.Fatal("interrupt retained progress")
 	}
 }

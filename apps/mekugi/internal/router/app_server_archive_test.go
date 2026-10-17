@@ -48,7 +48,7 @@ func TestUISnapshotAppServerArchive(t *testing.T) {
 				t.Fatal("successful archive did not exit with waiting input retained")
 			}
 			var out bytes.Buffer
-			if err := u.writeExitSummary(&out, false); err != nil {
+			if err := writeExitSummary(u.exitUsage, u.archived, u.Thread, u.resumeArgv, u.replayDebugDirectory, &out, false); err != nil {
 				t.Fatal(err)
 			}
 			uisnapshot.Assert(t, "testdata/snapshots/native-exit-archived.txt", out.String())

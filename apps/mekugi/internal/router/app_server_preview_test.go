@@ -101,7 +101,7 @@ func TestNativeUIPreview(t *testing.T) {
 				p.ui.dirty = false
 				p.ui.flushStreamOutput() // Rolls output bursts, as each real frame does.
 				settled = p.ui.dirty || settled
-				noticeExpired := p.ui.expireNotice(now)
+				noticeExpired := expireNotice(&p.ui.attached.feedback, p.ui.shell, now)
 				if p.pump(0) {
 					lastStep = now // The script resumes a pace after the command ends.
 					if err := paint(); err != nil {
@@ -120,13 +120,13 @@ func TestNativeUIPreview(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || p.ui.publishPresentation(p.ui.now()).Status.Animating || p.ui.shell.Agents.HasLiveStatus() || flashExpired || settled || noticeExpired || terminalTest(p.ui).Live.Tick(now) {
+				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || p.ui.publishPresentation(presentationTime(p.ui.clock)).Status.Animating || p.ui.shell.Agents.HasLiveStatus() || flashExpired || settled || noticeExpired || terminalTest(p.ui).Live.Tick(now) {
 					if err := paint(); err != nil {
 						return err
 					}
 				}
 			case result := <-p.ui.picker.scanResults:
-				p.ui.applyPickerScan(result)
+				p.ui.dirty = p.ui.picker.applyScan(p.ui.attached.cwd, p.ui.picker.completionTarget(p.ui.Draft, p.ui.attached.conversation.ShellMode()), result) || p.ui.dirty
 				if err := paint(); err != nil {
 					return err
 				}
@@ -356,7 +356,7 @@ func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 		}
 	}
 	keys("hello\r")
-	if !strings.Contains(p.ui.sessionLabel(p.ui.now()), "Completed in ") || !slices.ContainsFunc(p.ui.attached.source.Entries, func(e sessionpresentation.ActivityRecord) bool {
+	if !strings.Contains(p.ui.sessionLabel(presentationTime(p.ui.clock)), "Completed in ") || !slices.ContainsFunc(p.ui.attached.source.Entries, func(e sessionpresentation.ActivityRecord) bool {
 		return strings.Contains(e.Source.Text, "I heard: hello")
 	}) {
 		t.Fatalf("new turn not answered: %q", p.ui.attached.presentation.Status.Text)
@@ -1495,7 +1495,7 @@ func TestNativeUIPreviewQuestions(t *testing.T) {
 	questionTestPaint(t, p.ui, 72)
 	appServerTestKeys(t, p.ui, "2\r")
 	p.serve()
-	if p.ui.questionCount() != 0 || p.ui.Text != "Keep my draft" {
+	if p.ui.questions.Count(p.ui.Thread) != 0 || p.ui.Text != "Keep my draft" {
 		t.Fatal("preview did not resolve both questions and restore its draft")
 	}
 	for _, width := range []int{24, 40, 72} {

@@ -3,6 +3,8 @@ package router
 import (
 	"strings"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
@@ -15,18 +17,18 @@ import (
 func (u *appServerUI) submitShell() error {
 	command := strings.TrimSpace(strings.TrimPrefix(u.Text, "!"))
 	if command == "" {
-		u.setNotice("Type a shell command after !", false)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Type a shell command after !", false)
 		return nil
 	}
 	if u.Thread == "" || u.restoring != nil {
 		return nil
 	}
 	if !u.AcceptsShell() {
-		u.setNotice("Waiting for the pending request · press Enter again when ready", false)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Waiting for the pending request · press Enter again when ready", false)
 		return nil
 	}
 	if len(u.Images) != 0 || len(u.Skills) != 0 || len(u.Files) != 0 || len(u.Selections) != 0 {
-		u.setNotice("Shell commands use plain text · remove attachments and picker tokens first", true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Shell commands use plain text · remove attachments and picker tokens first", true)
 		return nil
 	}
 	u.shellEdits.pending.Discard()
@@ -37,9 +39,9 @@ func (u *appServerUI) submitShell() error {
 		return err // Keep the draft when transport submission fails.
 	}
 	u.shellEdits.pending = edit
-	u.attached.conversation.Shell = u.takeDraft()
+	u.attached.conversation.Shell = prepareDraft(&u.picker, u.shell, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
 	u.Shell.Begin(u.Turn)
-	u.setNotice("Shell command submitted", false)
+	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Shell command submitted", false)
 	u.shell.Transcript.Follow()
 	return nil
 }
@@ -53,22 +55,22 @@ func (u *appServerUI) shellResponse(failure *appserver.Error) {
 		u.shellEdits.pending = nil
 		hint := ""
 		if u.Text == "" {
-			u.loadDraft(draft)
+			u.Editor.Replace(draft.Draft)
 		} else {
 			// Never join a later prose draft onto an executable shell script.
-			u.rememberInput(draft)
+			rememberInput(u.attached.conversation, draft)
 			hint = " · command saved in input history (↑)"
 		}
-		u.setNotice("Shell command rejected: "+failure.Message+hint, true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Shell command rejected: "+failure.Message+hint, true)
 		return
 	}
-	u.rememberInput(draft)
+	rememberInput(u.attached.conversation, draft)
 }
 
-func (u *appServerUI) observeShellItem(thread string, item binding.ThreadItem) {
+func observeShellItem(shell *sessioncontrol.Shell, main string, thread string, item binding.ThreadItem) {
 	// Called only for starts: an older auxiliary command can complete while a
 	// newer shell request is still awaiting its execution identity.
-	if thread == u.Thread && item.Type == "commandExecution" && item.Source == "userShell" {
-		u.Shell.Identified()
+	if thread == main && item.Type == "commandExecution" && item.Source == "userShell" {
+		shell.Identified()
 	}
 }

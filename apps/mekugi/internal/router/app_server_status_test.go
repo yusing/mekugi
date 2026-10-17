@@ -203,7 +203,8 @@ func TestAppServerStatusPanelCloseScrollAndLateResponse(t *testing.T) {
 			for range 40 {
 				u.statusPanel.Body = append(u.statusPanel.Body, sessionpresentation.StatusField{Group: "Session", Value: "long status row"})
 			}
-			u.renderStatus(u.statusPanel, statusNotice("Loading account…"))
+			u.statusPanel.Render(statusNotice("Loading account…"))
+			u.dirty = true
 			for _, width := range []int{1, 12, 60} {
 				frame, _ := u.testMainFrame(width, 8, 0)
 				for _, row := range frame {
@@ -371,7 +372,7 @@ func TestAppServerStatusPanelVisual(t *testing.T) {
 	if strings.Contains(screen.String(), "Session status") || strings.Contains(screen.String(), "78% left") {
 		t.Fatal("closed panel left painted residue")
 	}
-	u.statusPanel = u.newStatusReport()
+	u.statusPanel = newStatusReport(u.attached.presentation, u.replayDebugDirectory)
 	u.statusPanel.Fields = saved.Fields
 	// A long off-screen label cannot change the visible value alignment.
 	u.shell.Main.Panel.Top = 0

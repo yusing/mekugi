@@ -38,7 +38,7 @@ func (v *activityAdapter) displayTarget(caller string) sessionpresentation.Threa
 }
 
 func (u *appServerUI) testActivity(view *activityui.View) *activityAdapter {
-	fixture := &activityAdapter{ActivitySource: u.activitySource(view), View: view, display: u.attached.presentation}
+	fixture := &activityAdapter{ActivitySource: activitySource(&u.attached, u.shell, view), View: view, display: u.attached.presentation}
 	if view == u.shell.Agents {
 		fixture.mainView = &activityAdapter{ActivitySource: u.attached.source, View: u.shell.Transcript, display: fixture.display}
 	}
@@ -49,7 +49,7 @@ func (u *appServerUI) testActivity(view *activityui.View) *activityAdapter {
 func (v *activityAdapter) bind(terminal *terminalUI) *activityui.View {
 	if terminal.main == nil {
 		terminal.main = appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: v.View}, attached: attachedPresentation{source: v.ActivitySource}})
-	} else if terminal.main.activitySource(v.View) == nil {
+	} else if activitySource(&terminal.main.attached, terminal.main.shell, v.View) == nil {
 		terminal.main.shell.Transcript, terminal.main.attached.source = v.View, v.ActivitySource
 	}
 	return v.View
@@ -58,5 +58,5 @@ func (v *activityAdapter) bind(terminal *terminalUI) *activityui.View {
 func (v *activityAdapter) insertHistory(before uint64, belongs func(sessionpresentation.ActivityEntry) bool) {
 	terminal := &terminalUI{Attachment: &terminalsession.Attachment{}}
 	v.bind(terminal)
-	terminal.main.insertActivityHistory(v.ActivitySource, v.View, before, belongs)
+	insertActivityHistory(&terminal.main.attached, terminal.main.shell, v.ActivitySource, v.View, before, belongs)
 }

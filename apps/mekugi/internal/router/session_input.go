@@ -13,11 +13,11 @@ import (
 func (u *appServerUI) editInput(intent sessionpresentation.DraftEditIntent) bool {
 	defer u.settlePresentation()
 	if err := u.attached.presentation.EditDraft(intent, u.attached.conversation); err != nil {
-		u.setNotice(err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 		return false
 	}
 	u.shell.Main.CursorColumn = nil
-	u.setNotice("", false)
+	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "", false)
 	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
 	return true
 }
@@ -26,13 +26,13 @@ func (u *appServerUI) submitInput(intent sessionpresentation.SubmitIntent) error
 	defer u.settlePresentation()
 	draft, plan, err := u.attached.presentation.TakeInput(intent, &u.Live, u.attached.conversation, u.restoring != nil)
 	if err != nil {
-		u.setNotice(err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 		return nil
 	}
-	input := u.prepareDraft(draft)
+	input := prepareDraft(&u.picker, u.shell, u.attached.cwd, u.skillEnvironment, draft)
 	u.attached.conversation.QueueInput(input, plan.Queued)
 	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
-	u.setNotice("", false)
+	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "", false)
 	if !plan.Flush {
 		return nil
 	}
@@ -44,7 +44,7 @@ func (u *appServerUI) submitInput(intent sessionpresentation.SubmitIntent) error
 // semantic action retains the publication and editor target it came from.
 func (u *appServerUI) applyComposerInput(input terminalsession.ComposerInput) (bool, error) {
 	if input.Err != nil {
-		u.setNotice(input.Err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), input.Err.Error(), true)
 		return false, nil
 	}
 	if input.Command.Operation != sessionpresentation.NoComposerOperation {
@@ -55,7 +55,7 @@ func (u *appServerUI) applyComposerInput(input terminalsession.ComposerInput) (b
 		var err error
 		changed, err = u.attached.presentation.ApplyEditor(input.Editor, u.attached.conversation)
 		if err != nil {
-			u.setNotice(err.Error(), true)
+			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 			return false, nil
 		}
 		kind = input.Editor.Action.Kind
@@ -73,7 +73,7 @@ func (u *appServerUI) applyComposerInput(input terminalsession.ComposerInput) (b
 			return false, nil
 		}
 	}
-	u.setNotice("", false)
+	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "", false)
 	if kind != composer.UndoAction && kind != composer.RedoAction {
 		pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
 	}
@@ -82,7 +82,7 @@ func (u *appServerUI) applyComposerInput(input terminalsession.ComposerInput) (b
 
 func (u *appServerUI) applyComposerCommand(intent sessionpresentation.ComposerIntent) (bool, error) {
 	if err := u.attached.presentation.AdmitComposer(intent, u.attached.conversation); err != nil {
-		u.setNotice(err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 		return false, nil
 	}
 	switch intent.Operation {
@@ -91,8 +91,8 @@ func (u *appServerUI) applyComposerCommand(intent sessionpresentation.ComposerIn
 	case sessionpresentation.RestoreWaiting:
 		u.editQueued()
 	case sessionpresentation.EditExternally:
-		if q := u.currentQuestion(); q != nil && q.IsSecret {
-			u.setNotice("External editor is unavailable for secret answers", false)
+		if q := u.questions.Current(); q != nil && q.IsSecret {
+			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "External editor is unavailable for secret answers", false)
 			return false, nil
 		}
 		return false, &composerEditorRequest{intent: intent}
@@ -100,19 +100,19 @@ func (u *appServerUI) applyComposerCommand(intent sessionpresentation.ComposerIn
 		u.pasteImage(intent)
 	case sessionpresentation.CancelComposer:
 		if u.Replacement.Archiving() {
-			u.setNotice("Archiving session…", false)
+			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Archiving session…", false)
 			return false, nil
 		}
 		// As in Codex, Ctrl-C first clears the draft (undoable with Ctrl+Z),
 		// then cancels queued compaction, interrupts the active turn, or quits.
 		if u.Text != "" {
 			u.deleteDraftRange(0, len(u.Text))
-			u.setNotice("Draft cleared · Ctrl+Z restores · Ctrl-C again quits", false)
+			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Draft cleared · Ctrl+Z restores · Ctrl-C again quits", false)
 			if u.Turn != "" || u.Starting() || u.InputPending() {
-				u.setNotice("Draft cleared · Ctrl+Z restores · Ctrl-C again interrupts", false)
+				setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Draft cleared · Ctrl+Z restores · Ctrl-C again interrupts", false)
 			}
 			if u.shell.Main.InterruptLocked {
-				u.setNotice("Draft cleared · Ctrl+Z restores · Locked · /unlock", false)
+				setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Draft cleared · Ctrl+Z restores · Locked · /unlock", false)
 			}
 			return false, nil
 		}
@@ -129,7 +129,7 @@ func (u *appServerUI) applyComposerCommand(intent sessionpresentation.ComposerIn
 		return true, nil
 	case sessionpresentation.SubmitComposer:
 		if u.Replacement.Archiving() {
-			u.setNotice("Archiving session…", false)
+			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Archiving session…", false)
 			return false, nil
 		}
 		text := strings.TrimSpace(u.Text)
@@ -172,7 +172,7 @@ func (u *appServerUI) applyComposerCommand(intent sessionpresentation.ComposerIn
 		}
 		if text == "/skills" {
 			u.deleteDraftRange(0, len(u.Text))
-			u.openMenu("menu")
+			u.picker.openMenu("menu")
 			u.picker.Choices = []completion.Choice{{Name: "list"}, {Name: "manage"}}
 			return false, nil
 		}
@@ -182,14 +182,14 @@ func (u *appServerUI) applyComposerCommand(intent sessionpresentation.ComposerIn
 				u.Editor.Changed()
 				return true, nil
 			}
-			u.setNotice("Interrupt the active turn before quitting", false)
+			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Interrupt the active turn before quitting", false)
 			return false, nil
 		}
 		if handled, err := u.settingsCommand(text); handled {
 			return false, err
 		}
 		if strings.HasPrefix(text, "/") {
-			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /title, /compact, /clear, /resume, /archive, /btw, /status, /session, /ps, /copy, /skills, /model, /effort, /reasoning, /tier, /live, /quit", true)
+			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Unknown command "+strings.Fields(text)[0]+" · /title, /compact, /clear, /resume, /archive, /btw, /status, /session, /ps, /copy, /skills, /model, /effort, /reasoning, /tier, /live, /quit", true)
 			return false, nil
 		}
 		if text == "" || u.Thread == "" || u.restoring != nil {

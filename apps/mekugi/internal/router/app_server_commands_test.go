@@ -111,7 +111,7 @@ func TestUISnapshotComposerCommandWithPastedImage(t *testing.T) {
 				assertNativeUISnapshot(t, "composer-command-image", rows)
 			}
 			appServerTestKeys(t, u, key)
-			draft := u.draftSnapshot()
+			draft := draftSnapshot(u.Editor)
 			if key == "\r" {
 				btwTestRequest(t, wire, "thread/fork", "main")
 				draft = u.side.Pending

@@ -672,7 +672,7 @@ func awaitMain(t *testing.T, u *appServerUI, want string) string {
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		u.flushStreamOutput()
-		u.startCommitReads()
+		u.dirty = startCommitReads(&u.attached, u.commits) || u.dirty
 
 		u.testActivity(u.shell.Transcript).testPace(time.Now())
 		main := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 60).Lines, "\n"))
@@ -762,7 +762,7 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 		t.Fatalf("restored paths or source changed: %+v", segments)
 	}
 	// Publish the child's inherited evidence in its own retained workspace.
-	retained := restored.prepareCommandSegments("main", u.attached.cwd, binding.HistoryTurn{ID: "t", Items: []binding.ThreadItem{item}})[item.ID]
+	retained := prepareCommandSegments(restored.ctx, restored.retained, restored.segments, "main", u.attached.cwd, binding.HistoryTurn{ID: "t", Items: []binding.ThreadItem{item}})[item.ID]
 	if retained == nil {
 		t.Fatal("fixture command segments were not retained")
 	}

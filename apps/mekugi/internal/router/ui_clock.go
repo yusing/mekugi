@@ -2,9 +2,9 @@ package router
 
 import "time"
 
-func (u *appServerUI) now() time.Time {
-	if u != nil && u.clock != nil {
-		return u.clock()
+func presentationTime(clock func() time.Time) time.Time {
+	if clock != nil {
+		return clock()
 	}
 	return time.Now()
 }

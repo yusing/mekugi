@@ -1,24 +1,26 @@
 package router
 
 import (
+	"time"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
-func (u *appServerUI) holdCommand(entry sessionpresentation.ActivityEntry, frame activityui.CommandFrame) {
-	for i, source := range []*sessionpresentation.ActivitySource{u.attached.source, u.attached.childSource} {
-		view := []*activityui.View{u.shell.Transcript, u.shell.Agents}[i]
+func holdCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, entry sessionpresentation.ActivityEntry, frame activityui.CommandFrame) {
+	for i, source := range []*sessionpresentation.ActivitySource{attached.source, attached.childSource} {
+		view := []*activityui.View{terminal.Transcript, terminal.Agents}[i]
 		if seq := source.EntrySeq(entry); view != nil && seq != 0 {
 			view.HoldCommand(seq, frame)
 		}
 	}
 }
 
-func (u *appServerUI) releaseCommand(entry sessionpresentation.ActivityEntry) {
-	at := u.now()
-	for i, source := range []*sessionpresentation.ActivitySource{u.attached.source, u.attached.childSource} {
-		view := []*activityui.View{u.shell.Transcript, u.shell.Agents}[i]
+func releaseCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, at time.Time, entry sessionpresentation.ActivityEntry) {
+	for i, source := range []*sessionpresentation.ActivitySource{attached.source, attached.childSource} {
+		view := []*activityui.View{terminal.Transcript, terminal.Agents}[i]
 		if seq := source.EntrySeq(entry); view != nil && seq != 0 {
 			view.ReleaseCommand(seq, at)
 		}

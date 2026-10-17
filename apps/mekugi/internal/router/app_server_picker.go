@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/modules/conversation/completion"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -37,24 +38,24 @@ type composerPicker struct {
 	toggleOwnsManager               bool
 }
 
-func (u *appServerUI) completionTarget() completion.Target {
-	if u.attached.conversation.ShellMode() {
+func (p *composerPicker) completionTarget(draft composer.Draft, shellMode bool) completion.Target {
+	if shellMode {
 		return completion.Target{}
 	}
-	return u.picker.FindTarget(u.Draft)
+	return p.FindTarget(draft)
 }
 
 func (u *appServerUI) refreshPicker() {
 	for _, stack := range [][]conversationmodel.Input{u.attached.conversation.Unsent, u.attached.conversation.Queued} {
 		for i := range stack {
 			before := len(stack[i].Skills)
-			u.bindSkills(&stack[i], true)
+			u.picker.bindSkills(u.attached.cwd, &stack[i], true)
 			if len(stack[i].Skills) > before {
-				u.snapshotDraftSkills(&stack[i])
+				snapshotDraftSkills(u.attached.cwd, u.skillEnvironment, &stack[i])
 			}
 		}
 	}
-	if u.currentQuestion() != nil || u.approvals.Open {
+	if u.questions.Current() != nil || u.approvals.Open {
 		u.picker.Open = false
 		return
 	}
@@ -62,19 +63,19 @@ func (u *appServerUI) refreshPicker() {
 		return
 	}
 	p := &u.picker
-	draft := u.draftSnapshot()
-	u.bindSkills(&draft, false)
+	draft := draftSnapshot(u.Editor)
+	u.picker.bindSkills(u.attached.cwd, &draft, false)
 	if !slices.Equal(u.Skills, draft.Skills) {
 		u.Skills = draft.Skills
 		u.Editor.Changed()
 	}
-	target := u.completionTarget()
+	target := u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode())
 	bindingOnly := false
 	if target.Kind == 0 && p.Kind == "" && (!p.SkillsLoaded || p.SkillsCwd != u.attached.cwd) {
-		query := u.skillBindingQuery(draft, false)
+		query := u.picker.skillBindingQuery(draft, false)
 		for _, part := range slices.Concat(u.attached.conversation.Unsent, u.attached.conversation.Queued) {
 			if query == "" {
-				query = u.skillBindingQuery(part, true)
+				query = u.picker.skillBindingQuery(part, true)
 			}
 		}
 		if query != "" {
@@ -103,7 +104,7 @@ func (u *appServerUI) refreshPicker() {
 	}
 	if target.Kind == '/' {
 		u.picker.cancelScan()
-		u.filterCommands(target.Query)
+		u.picker.filterCommands(target.Query)
 		return
 	}
 	cwd := u.attached.cwd
@@ -129,7 +130,7 @@ func (u *appServerUI) refreshPicker() {
 	}
 	p.Loading, p.Choices, p.Problem = true, nil, ""
 	if target.Kind == '@' && strings.HasPrefix(target.Query, "!") {
-		u.searchExcludedFiles(target, cwd)
+		u.picker.searchExcludedFiles(u.ctx, target, cwd)
 		return
 	}
 	if p.Pending != nil {
@@ -152,7 +153,7 @@ func (u *appServerUI) requestPicker(target completion.Target, cwd string) {
 		p.Problem = "Search failed: " + err.Error()
 		if target.Kind == '$' {
 			p.SkillsCwd, p.SkillsProblem = cwd, p.Problem
-			u.setNotice("Skill attachment unavailable: "+p.Problem+". References remain text.", true)
+			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Skill attachment unavailable: "+p.Problem+". References remain text.", true)
 		}
 	}
 }
@@ -282,7 +283,7 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 			if !available {
 				label = "Skill attachment unavailable: "
 			}
-			u.setNotice(label+problem+". Unavailable references remain text.", true)
+			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), label+problem+". Unavailable references remain text.", true)
 		}
 	}
 	p.Resolve(target, cwd, u.attached.cwd, choices, problem)
@@ -293,8 +294,8 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 func (u *appServerUI) acceptCompletion(choice completion.Choice) bool {
 	p := &u.picker
 	target := p.Target
-	if u.completionTarget() != target {
-		u.setNotice(sessionpresentation.ErrStaleIntent.Error(), true)
+	if u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode()) != target {
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), sessionpresentation.ErrStaleIntent.Error(), true)
 		u.refreshPicker()
 		return false
 	}
@@ -348,6 +349,6 @@ func (u *appServerUI) acceptCompletion(choice completion.Choice) bool {
 	return true
 }
 
-func (u *appServerUI) pickerVisible() bool {
-	return !u.composerReadOnly() && u.picker.Open && (u.shell == nil || u.shell.Focus == 0)
+func pickerVisible(picker *composerPicker, presentation *sessionpresentation.Model, terminal *terminalsession.Attachment) bool {
+	return presentation.View().ReadOnly == sessionpresentation.Editable && picker.Open && (terminal == nil || terminal.Focus == 0)
 }

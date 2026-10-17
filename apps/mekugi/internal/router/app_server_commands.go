@@ -41,17 +41,17 @@ var nativeCommands = []completion.Choice{
 // turn/steer text payload. Tab can explicitly queue it instead.
 func (u *appServerUI) sessionCommand(command string) error {
 	if u.Thread == "" || u.restoring != nil || u.Replacement.Pending() {
-		u.setNotice("Wait for the session to be ready", false)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Wait for the session to be ready", false)
 		return nil
 	}
 	if command == "/compact" {
 		return u.submitCompact(false)
 	}
-	if u.sessionBusy() {
-		u.setNotice("/clear is disabled while a task is in progress", true)
+	if sessionBusy(&u.Live, u.attached.conversation) {
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "/clear is disabled while a task is in progress", true)
 		return nil
 	}
-	u.takeDraft()
+	prepareDraft(&u.picker, u.shell, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
 	u.Replacement.Clear()
 	u.attached.presentation.Status.SetText("Starting new session…")
 	params := sessioncontrol.ThreadPermissions(map[string]any{"sessionStartSource": "clear"}, u.approvalMode)
@@ -79,10 +79,10 @@ func (u *appServerUI) sessionCommand(command string) error {
 
 func (u *appServerUI) submitCompact(queue bool) error {
 	if u.Thread == "" || u.restoring != nil || u.Replacement.Pending() {
-		u.setNotice("Wait for the session to be ready", false)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Wait for the session to be ready", false)
 		return nil
 	}
-	draft := u.takeDraft()
+	draft := prepareDraft(&u.picker, u.shell, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
 	draft.Text = "/compact"
 	draft.Compact = conversationmodel.CompactIntent{WaitForIdle: queue, Continue: u.Turn != "" || u.Starting()}
 	u.attached.conversation.Unsent = append(u.attached.conversation.Unsent, draft)
@@ -90,8 +90,8 @@ func (u *appServerUI) submitCompact(queue bool) error {
 }
 
 // sessionBusy reports work that leaving the current thread would strand.
-func (u *appServerUI) sessionBusy() bool {
-	return u.Busy(len(u.attached.conversation.Unsent)+len(u.attached.conversation.Queued) > 0)
+func sessionBusy(control *sessioncontrol.Live, conversation *conversationmodel.Session) bool {
+	return control.Busy(len(conversation.Unsent)+len(conversation.Queued) > 0)
 }
 
 // A queued compact is a local action, not Main's running turn. Return waiting
@@ -106,9 +106,9 @@ func (u *appServerUI) cancelQueuedCompact() bool {
 	u.restoreDrafts(slices.Concat(u.attached.conversation.Unsent, u.attached.conversation.Queued)...)
 	u.attached.conversation.Unsent, u.attached.conversation.Queued = nil, nil
 	if interruptionIssued {
-		u.setNotice("Compaction cancelled · input restored · interruption already requested", false)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Compaction cancelled · input restored · interruption already requested", false)
 	} else {
-		u.setNotice("Queued compaction cancelled · input restored · Main continues", false)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Queued compaction cancelled · input restored · Main continues", false)
 	}
 	return true
 }
@@ -126,11 +126,10 @@ func (u *appServerUI) resetDiffScope() {
 		}
 		u.shell.Live, u.shell.DiffUnseen = previewview.PreviewPane{}, false
 	}
-	u.publishReview()
+	publishReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane)
 }
 
-func (u *appServerUI) filterCommands(query string) {
-	p := &u.picker
+func (p *composerPicker) filterCommands(query string) {
 	p.Choices, p.Loading, p.Problem = nil, false, ""
 	for _, command := range nativeCommands {
 		if _, ok := completion.MatchScore(command.Name[1:], query); ok {

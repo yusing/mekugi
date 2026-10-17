@@ -7,14 +7,15 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/libraries/textsanitize"
 )
 
 // Source: codex-rs/tui/src/token_usage.rs:20:88@1cc7e236 TokenUsage
 // Source: codex-rs/tui/src/app/exit_summary.rs:132:142@1cc7e236 format_exit_messages
-func (u *appServerUI) writeExitSummary(w io.Writer, color bool) error {
+func writeExitSummary(usage binding.TokenUsage, archived bool, thread string, resumeArgv []string, debugDirectory string, w io.Writer, color bool) error {
 	var text strings.Builder
-	usage := u.exitUsage
 	if usage.TotalTokens != 0 {
 		input := usage.InputTokens - min(usage.InputTokens, usage.CachedInputTokens)
 		fmt.Fprintf(&text, "Token usage: total=%s input=%s", exitTokenCount(input+usage.OutputTokens), exitTokenCount(input))
@@ -34,18 +35,18 @@ func (u *appServerUI) writeExitSummary(w io.Writer, color bool) error {
 		}
 		return command
 	}
-	if u.archived {
-		fmt.Fprintf(&text, "Session archived: %s\n", textsanitize.Safe(u.Thread, false))
-	} else if u.Thread != "" {
-		argv := slices.Clone(u.resumeArgv)
+	if archived {
+		fmt.Fprintf(&text, "Session archived: %s\n", textsanitize.Safe(thread, false))
+	} else if thread != "" {
+		argv := slices.Clone(resumeArgv)
 		if len(argv) == 0 {
 			argv = []string{"mekugi", "codex", "--yolo"}
 		}
-		command := commandLine(append(argv, "resume", u.Thread))
+		command := commandLine(append(argv, "resume", thread))
 		fmt.Fprintf(&text, "To continue this session, run:\n  %s\n", command)
-		replay := []string{argv[0], "replay-session", "--session", u.Thread}
-		if u.replayDebugDirectory != "" {
-			replay = append(replay, "--debug-dir", u.replayDebugDirectory)
+		replay := []string{argv[0], "replay-session", "--session", thread}
+		if debugDirectory != "" {
+			replay = append(replay, "--debug-dir", debugDirectory)
 		}
 		fmt.Fprintf(&text, "To replay this session offline, run:\n  %s\n", commandLine(replay))
 	}

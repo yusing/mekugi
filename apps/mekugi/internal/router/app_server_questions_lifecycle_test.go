@@ -23,13 +23,13 @@ func TestQuestionQueuedSteerIsNotStillActionable(t *testing.T) {
 	appServerTestKeys(t, u, "3Customers only\r")
 	request := appServerOneRequest(t, wire, "turn/steer", u.attached.conversation.Submitted[u.Submission().ID].Text)
 	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
-	if u.questionCount() != 1 || u.questionCalls()[0].Resolved || !u.questionCalls()[0].Sent {
-		t.Fatalf("sent answer and separate unanswered question confused: count=%d call=%+v", u.questionCount(), u.questionCalls()[0])
+	if u.questions.Count(u.Thread) != 1 || u.questions.calls()[0].Resolved || !u.questions.calls()[0].Sent {
+		t.Fatalf("sent answer and separate unanswered question confused: count=%d call=%+v", u.questions.Count(u.Thread), u.questions.calls()[0])
 	}
 	if rows := strings.Join(testQuestionRows(u, 80, 10), "\n"); !strings.Contains(rows, "main asks 1 questions") || strings.Contains(rows, "main asks 2 questions") {
 		t.Fatalf("question dock counted the sent answer: %q", rows)
 	}
-	preview := strings.Join(conversationui.Pending(u.publishPresentation(u.now()).Pending, 80), "\n")
+	preview := strings.Join(conversationui.Pending(u.publishPresentation(presentationTime(u.clock)).Pending, 80), "\n")
 	if !strings.Contains(preview, "Steering after the next tool call") || !strings.Contains(preview, "Answering 1 question(s)") || strings.Contains(preview, binding.QuestionReplyStart) {
 		t.Fatalf("queued answer was not shown truthfully: %q", preview)
 	}
@@ -37,17 +37,17 @@ func TestQuestionQueuedSteerIsNotStillActionable(t *testing.T) {
 	questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{
 		"id": "other-answer", "type": "userMessage", "content": []any{map[string]any{"type": "text", "text": lifecycleReply(t, "second", 0, "Who approves it?", "Internal")}},
 	}})
-	if u.questionCount() != 0 || len(testQuestionRows(u, 80, 10)) != 0 || u.questionCalls()[0].Resolved {
+	if u.questions.Count(u.Thread) != 0 || len(testQuestionRows(u, 80, 10)) != 0 || u.questions.calls()[0].Resolved {
 		t.Fatal("sent answer remained actionable after the other question was answered")
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"turn"}}`, request.ID))
-	if u.questionCalls()[0].Resolved || !strings.Contains(strings.Join(conversationui.Pending(u.publishPresentation(u.now()).Pending, 80), "\n"), "Answering 1 question(s)") {
+	if u.questions.calls()[0].Resolved || !strings.Contains(strings.Join(conversationui.Pending(u.publishPresentation(presentationTime(u.clock)).Pending, 80), "\n"), "Answering 1 question(s)") {
 		t.Fatal("steer acknowledgment incorrectly completed or hid the uncommitted answer")
 	}
 	questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{
 		"id": "answer", "clientId": request.Params.ClientUserMessageID, "type": "userMessage", "content": []any{map[string]any{"type": "text", "text": request.text()}},
 	}})
-	if !u.questionCalls()[0].Resolved || strings.Contains(strings.Join(conversationui.Pending(u.publishPresentation(u.now()).Pending, 80), "\n"), "Answering 1 question(s)") {
+	if !u.questions.calls()[0].Resolved || strings.Contains(strings.Join(conversationui.Pending(u.publishPresentation(presentationTime(u.clock)).Pending, 80), "\n"), "Answering 1 question(s)") {
 		t.Fatal("committed answer was not settled")
 	}
 }
@@ -60,11 +60,11 @@ func TestQuestionRejectedQueuedSteerReopensDockWithDraft(t *testing.T) {
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "3Customers only\r")
 	request := appServerOneRequest(t, wire, "turn/steer", u.attached.conversation.Submitted[u.Submission().ID].Text)
-	if u.questionCount() != 0 || len(testQuestionRows(u, 80, 10)) != 0 {
+	if u.questions.Count(u.Thread) != 0 || len(testQuestionRows(u, 80, 10)) != 0 {
 		t.Fatal("queued answer still required action")
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, request.ID))
-	if u.questionCount() != 1 || u.questionCalls()[0].Sent || u.questionCalls()[0].Resolved {
+	if u.questions.Count(u.Thread) != 1 || u.questions.calls()[0].Sent || u.questions.calls()[0].Resolved {
 		t.Fatal("rejected answer did not become actionable again")
 	}
 	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
@@ -122,7 +122,7 @@ func TestQuestionAsyncRemainingSurvivesReplyTurnSteerAndReplay(t *testing.T) {
 	reply := lifecycleReply(t, "two", 0, "Who receives it?", "Customers")
 	lifecycleUserMessage(t, u, "answer-turn", "reply", reply)
 	lifecycleUserMessage(t, u, "answer-turn", "steer", "ordinary same-turn steer")
-	if u.questionCount() != 1 || u.questionCalls()[0].Questions[1].Outcome != "" {
+	if u.questions.Count(u.Thread) != 1 || u.questions.calls()[0].Questions[1].Outcome != "" {
 		t.Fatal("steer in reply turn superseded remaining question")
 	}
 	// Replay is history-only. It must recover the remaining open question without resending.
@@ -142,8 +142,8 @@ func TestQuestionAsyncRemainingSurvivesReplyTurnSteerAndReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	v.restoreHistory([]binding.HistoryTurn{{ID: "ask-turn", Status: "completed", Items: []binding.ThreadItem{questionItem}}, {ID: "answer-turn", Status: "completed", Items: []binding.ThreadItem{replyItem}}})
-	if v.questionCount() != 1 || input.Len() != 0 {
-		t.Fatalf("replay pending=%d outgoing=%q", v.questionCount(), input.String())
+	if v.questions.Count(v.Thread) != 1 || input.Len() != 0 {
+		t.Fatalf("replay pending=%d outgoing=%q", v.questions.Count(v.Thread), input.String())
 	}
 }
 
@@ -162,7 +162,7 @@ func TestQuestionQueuedBatchDropsExternallyResolvedReplies(t *testing.T) {
 			if strings.Contains(input.String(), "turn/steer") {
 				t.Fatal("question batch escaped while sync request blocked turn")
 			}
-			preview := strings.Join(conversationui.Pending(u.publishPresentation(u.now()).Pending, 80), "\n")
+			preview := strings.Join(conversationui.Pending(u.publishPresentation(presentationTime(u.clock)).Pending, 80), "\n")
 			if strings.Contains(preview, binding.QuestionReplyStart) || !strings.Contains(preview, "Answering 2 question(s)") {
 				t.Fatalf("pending preview exposed reply framing or omitted batch: %q", preview)
 			}
@@ -227,7 +227,7 @@ func TestQuestionNewPromptSupersedesUnsentAnswer(t *testing.T) {
 	if err := u.flushInput(); err != nil {
 		t.Fatal(err)
 	}
-	if w.Len() != 0 || u.questionCalls()[0].Questions[0].Outcome != "superseded" {
+	if w.Len() != 0 || u.questions.calls()[0].Questions[0].Outcome != "superseded" {
 		t.Fatal("superseded local answer was sent or claimed answered")
 	}
 }

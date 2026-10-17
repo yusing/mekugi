@@ -3,6 +3,8 @@ package router
 import (
 	"fmt"
 
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
@@ -12,11 +14,11 @@ import (
 
 // openActivityEdit resolves an exact admitted invocation without consulting the
 // Diff painter, retained storage, or current workspace contents.
-func (main *appServerUI) openActivityEdit(u *terminalsession.Attachment, view *activityui.View, seq uint64, path string) bool {
-	pages, selected := main.activityEditPages(view, seq, path)
+func openActivityEdit(attached *attachedPresentation, terminal *terminalsession.Attachment, files *detailFiles, activity *activitymodel.Service, u *terminalsession.Attachment, view *activityui.View, seq uint64, path string) bool {
+	pages, selected := activityEditPages(attached, terminal, activity, view, seq, path)
 	for i, page := range pages {
 		if page.ID == selected {
-			main.openDetails(u, view, pages)
+			openDetails(attached, terminal, files, u, view, pages)
 			u.Dialog.ShowPage(i)
 			return true
 		}
@@ -24,8 +26,8 @@ func (main *appServerUI) openActivityEdit(u *terminalsession.Attachment, view *a
 	return false
 }
 
-func (main *appServerUI) activityEditPages(view *activityui.View, seq uint64, path string) ([]activitypresentation.DetailPage, string) {
-	for _, entry := range main.activitySource(view).Entries {
+func activityEditPages(attached *attachedPresentation, terminal *terminalsession.Attachment, activity *activitymodel.Service, view *activityui.View, seq uint64, path string) ([]activitypresentation.DetailPage, string) {
+	for _, entry := range activitySource(attached, terminal, view).Entries {
 		native := entry.Source.Native
 		if entry.Source.Seq != seq || native == nil {
 			continue
@@ -36,8 +38,8 @@ func (main *appServerUI) activityEditPages(view *activityui.View, seq uint64, pa
 				request.Directory = request.Directory || original.DirectoryDeletion() && original.EditPath() == path
 			}
 		}
-		if main != nil {
-			result := main.activity.ActivityDetail(main.attached.session.Scope(), request)
+		if activity != nil {
+			result := activity.ActivityDetail(attached.session.Scope(), request)
 			if len(result.Pages) > 0 {
 				return activitypresentation.ContributedDetails(result.Pages), result.Selected
 			}

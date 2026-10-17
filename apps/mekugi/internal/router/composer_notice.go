@@ -3,6 +3,8 @@ package router
 import (
 	"time"
 
+	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -10,16 +12,16 @@ import (
 )
 
 // Successful feedback is transient; actionable errors remain until editing.
-func (u *appServerUI) setNotice(text string, alert bool) {
-	u.attached.feedback.Set(text, alert, u.now())
-	u.shell.Main.NoticeDetails, u.shell.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
+func setNotice(feedback *noticepresentation.Model, terminal *terminalsession.Attachment, at time.Time, text string, alert bool) {
+	feedback.Set(text, alert, at)
+	terminal.Main.NoticeDetails, terminal.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
 }
 
-func (u *appServerUI) expireNotice(now time.Time) bool {
-	if !u.attached.feedback.Expire(now) {
+func expireNotice(feedback *noticepresentation.Model, terminal *terminalsession.Attachment, now time.Time) bool {
+	if !feedback.Expire(now) {
 		return false
 	}
-	u.shell.Main.NoticeDetails, u.shell.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
+	terminal.Main.NoticeDetails, terminal.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
 	return true
 }
 
@@ -40,7 +42,7 @@ func (d *nativeCriticalNoticeDelivery) finish(receipt terminalsession.NoticeRece
 
 func (u *appServerUI) applyCriticalNotices() (delivery *nativeCriticalNoticeDelivery) {
 	defer func() {
-		view := u.publishPresentation(u.now())
+		view := u.publishPresentation(presentationTime(u.clock))
 		if delivery != nil {
 			delivery.attachment, delivery.feedback = view.Version.Attachment, u.attached.feedback.Revision
 		}
@@ -50,8 +52,8 @@ func (u *appServerUI) applyCriticalNotices() (delivery *nativeCriticalNoticeDeli
 		return nil
 	}
 	delivery = &nativeCriticalNoticeDelivery{errors: claim.Errors, progress: claim.Progress}
-	for _, message := range u.attached.feedback.Receive(claim, u.now()) {
-		u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.source.LastSeq + 1, Agent: "Main", Kind: "progress", Text: message.Text, Observed: u.now()}}})
+	for _, message := range u.attached.feedback.Receive(claim, presentationTime(u.clock)) {
+		u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.source.LastSeq + 1, Agent: "Main", Kind: "progress", Text: message.Text, Observed: presentationTime(u.clock)}}})
 	}
 	if len(claim.Errors.Messages) > 0 {
 		u.shell.Main.NoticeDetails, u.shell.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}

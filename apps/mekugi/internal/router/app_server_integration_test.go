@@ -24,5 +24,5 @@ func setTestAppServerIntegration(u *appServerUI, p *observationFixture) {
 	u.recovered = integration.recovered
 	u.publishChanges = integration.publishChanges
 	u.captureNotice = integration.captureNotice
-	u.attachReview()
+	u.review = attachReview(u.ctx, u.review, u.retained, u.changeSource)
 }

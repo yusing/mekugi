@@ -176,7 +176,7 @@ func TestAppServerBTWUnsolicitedSideEventsDoNotReachMain(t *testing.T) {
 	out := notificationTestOutput(t, u)
 	btwTestStart(t, u, w)
 	questionTestAsync(t, u, "main-question", "Keep Main's question?")
-	beforeQuestions, beforeEntries := u.questionCount(), len(u.attached.source.Entries)
+	beforeQuestions, beforeEntries := u.questions.Count(u.Thread), len(u.attached.source.Entries)
 	if beforeQuestions == 0 {
 		t.Fatal("Main's baseline question was not recorded")
 	}
@@ -189,7 +189,7 @@ func TestAppServerBTWUnsolicitedSideEventsDoNotReachMain(t *testing.T) {
 	} {
 		appServerTestMessage(t, u, message)
 	}
-	if out.Len() != 0 || u.questionCount() != beforeQuestions || len(u.attached.source.Entries) != beforeEntries || u.Turn != "main-turn" || u.attached.presentation.Status.Text != "Working" || u.exitUsage.InputTokens != 0 {
+	if out.Len() != 0 || u.questions.Count(u.Thread) != beforeQuestions || len(u.attached.source.Entries) != beforeEntries || u.Turn != "main-turn" || u.attached.presentation.Status.Text != "Working" || u.exitUsage.InputTokens != 0 {
 		t.Fatal("side event leaked into Main notification, question, usage, or lifecycle")
 	}
 }

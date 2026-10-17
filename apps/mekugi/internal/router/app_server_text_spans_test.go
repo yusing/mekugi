@@ -41,7 +41,7 @@ func TestAppServerTypedTokensAcrossSubmissionAndResume(t *testing.T) {
 	start := len(u.Text)
 	appServerTestKeys(t, u, "$review")
 	u.Skills = append(u.Skills, composer.Token{Start: start, End: len(u.Text), Name: "review", Path: skillPath})
-	draft := u.draftSnapshot()
+	draft := draftSnapshot(u.Editor)
 	draft.SnapshotSkills(func(name, path string) ([]byte, error) {
 		data, _, err := readSkillAttachment(context.Background(), u.attached.cwd, nil, name, path)
 		return data, err

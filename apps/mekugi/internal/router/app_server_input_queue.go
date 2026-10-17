@@ -4,6 +4,8 @@ import (
 	"crypto/rand"
 	"strings"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/appserver"
@@ -25,29 +27,13 @@ import (
 // Source: codex-rs/tui/src/chatwidget/{input_queue,input_flow,input_restore}.rs
 // @86be5320b068ef67b56348b02aa8c33706955da6.
 
-func (u *appServerUI) bindConversation() {
-	m := u.attached.conversation
-	if u.Editor != &u.shell.Prompts.Secret {
-		u.Editor = &m.Editor
-	}
-	u.picker.State, u.picker.MenuState = &m.Completion, u.attached.presentation.Menu()
-	u.promptEditor = &m.PromptEditor
-	u.questions.Questions, u.approvals.Approvals = &m.Questions, &m.Approvals
-}
-
-// takeDraft empties the composer. The caller stacks the draft, which keeps its
-// image files until sent.
-func (u *appServerUI) takeDraft() conversationmodel.Input {
-	return u.prepareDraft(u.Editor.Take())
-}
-
-func (u *appServerUI) prepareDraft(draft composer.Draft) conversationmodel.Input {
+func prepareDraft(picker *composerPicker, terminal *terminalsession.Attachment, workspace string, environment []string, draft composer.Draft) conversationmodel.Input {
 	d := conversationmodel.Input{Draft: draft}
 	d.ReplyCount = len(binding.QuestionReplies(d.Text))
-	u.bindSkills(&d, true)
-	d.SnapshotFiles(u.attached.cwd)
-	u.snapshotDraftSkills(&d)
-	u.shell.Main.CursorColumn = nil
+	picker.bindSkills(workspace, &d, true)
+	d.SnapshotFiles(workspace)
+	snapshotDraftSkills(workspace, environment, &d)
+	terminal.Main.CursorColumn = nil
 	return d
 }
 
@@ -58,9 +44,9 @@ func (u *appServerUI) restoreDrafts(parts ...conversationmodel.Input) {
 
 func (u *appServerUI) applyInputRestoration(restored conversationmodel.InputRestoration) {
 	for _, id := range restored.Rejected {
-		for _, call := range u.questionCalls() {
+		for _, call := range u.questions.calls() {
 			if call.ID == id {
-				u.renderQuestionRecord(call)
+				renderQuestionRecord(&u.attached, u.Turn, presentationTime(u.clock), call)
 				break
 			}
 		}
@@ -71,7 +57,7 @@ func (u *appServerUI) applyInputRestoration(restored conversationmodel.InputRest
 		}
 		if u.approvals.Open {
 			u.shell.Prompts.Reopen()
-			u.focusPrompt()
+			focusPrompt(&u.picker, u.shell)
 		}
 	} else if restored.Changed {
 		u.shell.Main.CursorColumn = nil
@@ -95,7 +81,7 @@ func (u *appServerUI) flushInput() error {
 		return nil
 	}
 	if len(u.attached.conversation.Unsent)+len(u.attached.conversation.Queued) > 0 {
-		if ready, err := u.checkGuardHook(); !ready || err != nil {
+		if ready, err := u.guardHookCheck.check(&u.Client, &u.attached); !ready || err != nil {
 			return err
 		}
 	}
@@ -123,8 +109,8 @@ func (u *appServerUI) send(parts []conversationmodel.Input, steer bool) error {
 		return u.Request("thread/compact/start", map[string]any{"threadId": u.Thread})
 	}
 	for i := range parts {
-		u.bindSkills(&parts[i], true)
-		u.snapshotDraftSkills(&parts[i])
+		u.picker.bindSkills(u.attached.cwd, &parts[i], true)
+		snapshotDraftSkills(u.attached.cwd, u.skillEnvironment, &parts[i])
 		parts[i].ReplyCount = len(binding.QuestionReplies(parts[i].Text))
 	}
 	s := conversationmodel.Submission{Draft: composer.Join(conversationmodel.Drafts(parts)...), Parts: parts}
@@ -137,17 +123,17 @@ func (u *appServerUI) send(parts []conversationmodel.Input, steer bool) error {
 	}
 	if (len(s.Attachments) > 0 || len(s.Skills) > 0) && textBytes > codexresponses.UserTextLimit {
 		u.restoreDrafts(parts...)
-		u.setNotice("Input with attachments exceeds the safe 1 MiB text limit. Reduce the draft or attachments and retry.", true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Input with attachments exceeds the safe 1 MiB text limit. Reduce the draft or attachments and retry.", true)
 		return nil
 	}
 	request := sessioncontrol.InputRequest{Thread: u.Thread, ID: id, Input: input}
 	if steer {
 		request.Turn = u.Turn
 	} else {
-		request.Tier = u.selectedServiceTier()
+		request.Tier = selectedServiceTier(u.serviceTiers, u.model, u.Thread)
 		if len(binding.QuestionReplies(s.Text)) == 0 {
 			echo := u.attached.source.LastSeq + 1
-			u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: echo, Agent: "You", Kind: "text", Text: s.Text, Observed: u.now(),
+			u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: echo, Agent: "You", Kind: "text", Text: s.Text, Observed: presentationTime(u.clock),
 				Native: &sessionpresentation.NativeItem{Thread: u.Thread, Item: "input/" + id, Phase: "input/pending", Spans: sessionpresentation.DraftSpans(s.Draft)}}}})
 		}
 	}
@@ -166,7 +152,7 @@ func (u *appServerUI) send(parts []conversationmodel.Input, steer bool) error {
 		if strings.HasPrefix(u.attached.feedback.Text, "Skill attachment unavailable:") || strings.HasPrefix(u.attached.feedback.Text, "Skill catalog incomplete:") {
 			notice = u.attached.feedback.Text + " " + notice
 		}
-		u.setNotice(notice, true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), notice, true)
 	}
 	if _, err := u.Requests.SendInput(request, appServerRequest{}); err != nil {
 		u.applyInputEffects(u.attached.presentation.ApplyInputResult(&u.Live, u.attached.conversation, u.SubmissionFailed()))
@@ -195,13 +181,13 @@ func (u *appServerUI) applyInputEffects(effects sessionpresentation.InputEffects
 	}
 	u.applyInputRestoration(effects.Restored)
 	if effects.Notice != "" {
-		u.setNotice(effects.Notice, effects.NoticeError)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), effects.Notice, effects.NoticeError)
 	}
 }
 
-func (u *appServerUI) commitSteer(item binding.ThreadItem) {
+func commitSteer(attached *attachedPresentation, control *sessioncontrol.Live, item binding.ThreadItem) {
 	text, _, _ := sessionpresentation.UserText(item.Content)
-	u.attached.presentation.CommitInput(&u.Live, u.attached.conversation, item.ClientID, text)
+	attached.presentation.CommitInput(control, attached.conversation, item.ClientID, text)
 }
 
 func (u *appServerUI) settleInput(turn string, interrupted bool) {

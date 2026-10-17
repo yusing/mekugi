@@ -111,7 +111,7 @@ func TestAppServerPastedImagePathAttaches(t *testing.T) {
 		}
 		u.UndoDrafts, u.RedoDrafts = nil, nil
 		pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
-		u.discardDraftImages()
+		discardDraftImages(u.ownedImages)
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("pasted user file removed: %v", err)
 		}

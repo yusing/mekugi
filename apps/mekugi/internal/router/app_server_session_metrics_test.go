@@ -194,10 +194,10 @@ func TestAppServerSessionMetricsRefreshAndBounds(t *testing.T) {
 	}))
 	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"test","input":[]}`)))
 	now = now.Add(500 * time.Millisecond)
-	u.refreshSessionMetrics(false)
+	u.dirty = refreshSessionMetrics(u.statusPanel, u.sessionCapture, presentationTime(u.clock), false) || u.dirty
 	sessionMetricField(t, u, "Requests", "Logical", "0")
 	now = now.Add(500 * time.Millisecond)
-	u.refreshSessionMetrics(false)
+	u.dirty = refreshSessionMetrics(u.statusPanel, u.sessionCapture, presentationTime(u.clock), false) || u.dirty
 	sessionMetricField(t, u, "Requests", "Logical", "1")
 	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		u.shell.Transcript.Painter.Theme = theme
@@ -214,7 +214,7 @@ func TestAppServerSessionMetricsRefreshAndBounds(t *testing.T) {
 		}
 	}
 	u.statusPanelKey("\x1b")
-	u.refreshSessionMetrics(true)
+	u.dirty = refreshSessionMetrics(u.statusPanel, u.sessionCapture, presentationTime(u.clock), true) || u.dirty
 	if u.statusPanel != nil {
 		t.Fatal("late refresh revived a closed dialog")
 	}

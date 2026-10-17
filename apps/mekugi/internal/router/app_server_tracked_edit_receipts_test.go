@@ -31,7 +31,7 @@ func TestObservedEditReceiptBeforeHostItemSurvivesSegmentRefresh(t *testing.T) {
 	file := diffmodel.RenderReviewFile("a.go", "a.go", "before\n", "after\n")
 	// The tracker sees host starts on the transport reader. Its completion
 	// can reach the preview mailbox before the UI consumes that same item.
-	u.preview(previewmodel.Preview{ID: "early", Workspace: u.attached.cwd, Thread: "main", Complete: true,
+	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: "early", Workspace: u.attached.cwd, Thread: "main", Complete: true,
 		HostItems: []string{"cmd"}, Files: []diffmodel.ReviewFile{file}, EditReceipt: "Edit `a.go` +1 -1 · python3"}, false)
 	command := "python3 - <<'PY'\np='a.go';s=open(p).read().replace('before','after');open(p,'w').write(s)\nPY\ngo test ./..."
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: command, Status: "inProgress"}})
@@ -266,7 +266,7 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 				t.Fatalf("tracked history missing: %+v", view.Entries)
 			}
 			for range 2 {
-				restored.applyCapturedEdits()
+				applyCapturedEdits(&restored.attached, restored.review, &restored.pendingEditReceipts)
 				assertTrackedReceiptStats(t, view, 0)
 				last := view.blocks(0)[len(view.blocks(0))-1]
 				if last.Verb != "Run" || last.ExitCode != 2 || last.Output == 0 || strings.Join(view.RetainedOutput(last.Source, last.Output).View().Lines, "\n") != "test failed" {
@@ -332,7 +332,7 @@ func TestObservedEditReceiptsBeforeHostRows(t *testing.T) {
 				if tc.lines == 4000 && (len(preview.Files) != 0 || !preview.Truncated) {
 					t.Fatal("fixture did not cross live-card clipping")
 				}
-				u.preview(preview, false)
+				applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), preview, false)
 			}
 			for i := range tc.calls {
 				path, call := fmt.Sprintf("a%d.go", i), fmt.Sprintf("cmd%d", i)
@@ -378,7 +378,7 @@ func TestPendingObservedEditReceiptsStayBounded(t *testing.T) {
 	receipt := presentation.ReceiptText(u.attached.cwd, receiptEvidence(legacycall.History{ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{file}), ExecOutcome: (*legacycall.Outcome)(&changecapture.Outcome{Labels: []string{"cat"}})}))
 	for i := range 256 {
 		call := fmt.Sprintf("cmd%d", i)
-		u.preview(previewmodel.Preview{ID: call, Workspace: u.attached.cwd, Thread: "main", Complete: true, HostItems: []string{call}, EditReceipt: receipt}, false)
+		applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: call, Workspace: u.attached.cwd, Thread: "main", Complete: true, HostItems: []string{call}, EditReceipt: receipt}, false)
 	}
 	pending := u.pendingEditReceipts
 	if len(pending) == 0 || len(pending) >= 256 || pending[len(pending)-1].Calls[0] != "cmd255" {

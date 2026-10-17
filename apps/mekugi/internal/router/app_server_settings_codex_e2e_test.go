@@ -165,7 +165,7 @@ func TestAppServerSettingsCatalogNativeCodex(t *testing.T) {
 			t.Fatal(ctx.Err())
 		}
 	}
-	if len(u.effortChoices()) == 0 {
+	if len(effortChoices(u.models, u.model)) == 0 {
 		t.Fatalf("model=%q catalog=%+v notice=%q", u.model, u.models, u.attached.feedback.Text)
 	}
 }

@@ -250,7 +250,7 @@ func TestUISnapshotNativeExpeditedSteer(t *testing.T) {
 	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) }
 	appServerTestTurn(t, u, "t")
-	u.attached.presentation.Status.Started = u.now()
+	u.attached.presentation.Status.Started = presentationTime(u.clock)
 	appServerTestKeys(t, u, "Apply this instruction now.\r")
 	steer := appServerOneRequest(t, wire, "turn/steer", "Apply this instruction now.")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"t"}}`, steer.ID))

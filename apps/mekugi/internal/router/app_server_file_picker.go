@@ -26,16 +26,14 @@ type pickerScanResult struct {
 // opts into this read-only native-client search instead; it never invokes a
 // model tool or changes ignore configuration. Only the thread's absolute cwd
 // supplies filesystem scope, never the router process directory.
-func (u *appServerUI) searchExcludedFiles(target completion.Target, cwd string) {
-	p := &u.picker
+func (p *composerPicker) searchExcludedFiles(parent context.Context, target completion.Target, cwd string) {
 	if p.scanCancel != nil && p.scanTarget == target && p.scanCwd == cwd {
 		return
 	}
-	u.picker.cancelScan()
+	p.cancelScan()
 	if p.scanResults == nil {
 		p.scanResults = make(chan pickerScanResult, 1)
 	}
-	parent := u.ctx
 	if parent == nil {
 		parent = context.Background()
 	}
@@ -142,15 +140,14 @@ func scanPickerFiles(ctx context.Context, cwd, query string) ([]completion.Choic
 	return choices, problem
 }
 
-func (u *appServerUI) applyPickerScan(result pickerScanResult) {
-	p := &u.picker
-	if result.id != p.scanID || result.cwd != u.attached.cwd || result.target != u.completionTarget() || !p.Open {
-		return
+func (p *composerPicker) applyScan(workspace string, target completion.Target, result pickerScanResult) bool {
+	if result.id != p.scanID || result.cwd != workspace || result.target != target || !p.Open {
+		return false
 	}
 	if p.scanCancel != nil {
 		p.scanCancel()
 		p.scanCancel = nil
 	}
-	p.Resolve(result.target, result.cwd, u.attached.cwd, result.choices, result.problem)
-	u.dirty = true
+	p.Resolve(result.target, result.cwd, workspace, result.choices, result.problem)
+	return true
 }

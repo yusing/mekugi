@@ -17,13 +17,13 @@ import (
 
 // Existing layout fixtures exercise an established stream, after admission.
 func revealNativeDock(u *terminalUI) {
-	u.Live.Tick(u.main.now().Add(previewview.RevealDelay))
+	u.Live.Tick(presentationTime(u.main.clock).Add(previewview.RevealDelay))
 }
 
 func TestUISnapshotNativeDockReveal(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		u := nativeBatchFixture(t)
-		now := u.now()
+		now := presentationTime(u.clock)
 		u.clock = func() time.Time { return now }
 		screen := vt.NewEmulator(100, 28)
 		defer screen.Close()
@@ -35,24 +35,24 @@ func TestUISnapshotNativeDockReveal(t *testing.T) {
 			assertNativeUISnapshot(t, name, strings.Split(screen.String(), "\n"))
 		}
 		p := nativeBatchPreview("small", "/root", "small")
-		u.preview(p, false)
+		applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), p, false)
 		now = now.Add(previewview.RevealDelay - time.Millisecond)
 		terminalTest(u).Live.Tick(now)
 		paint("native-dock-before-reveal")
 		p.Complete = true
-		u.preview(p, false)
+		applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), p, false)
 		now = now.Add(previewview.RevealDelay)
 		if terminalTest(u).Live.Tick(now) || len(terminalTest(u).Live.Order) != 0 {
 			t.Fatal("short edit opened a dock after completion")
 		}
 		paint("native-dock-short-completed")
 		p.ID, p.Complete = "stream", false
-		u.preview(p, false)
+		applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), p, false)
 		now = now.Add(previewview.RevealDelay)
 		terminalTest(u).Live.Tick(now)
 		paint("native-dock-stream-revealed")
 		p.Complete = true
-		u.preview(p, false)
+		applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), p, false)
 		now = now.Add(previewview.CompletionHold)
 		terminalTest(u).Live.Tick(now)
 		paint("native-dock-stream-settled")
@@ -65,17 +65,17 @@ func TestNativeDockPendingLifecycle(t *testing.T) {
 			u := nativeBatchFixture(t)
 			p := nativeBatchPreview("main", "/root", "main")
 			p.Thread, p.Turn = "main", "turn"
-			u.preview(p, false)
+			applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), p, false)
 			child := nativeBatchPreview("child", "/root/editor", "child")
 			child.Thread, child.Turn = "child", "turn"
-			u.preview(child, false)
+			applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), child, false)
 			switch finish {
 			case "completed":
-				u.preview(previewmodel.Preview{ID: p.ID}, false)
+				applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: p.ID}, false)
 			case "withdrawn":
-				u.preview(previewmodel.Preview{ID: p.ID, Workspace: p.Workspace}, false)
+				applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: p.ID, Workspace: p.Workspace}, false)
 			case "turn ended":
-				u.endTurnPreviews("main", "turn")
+				endTurnPreviews(u.execWindows, u.review, u.attached.cwd, u.shell, presentationTime(u.clock), "main", "turn")
 			case "reconnect":
 				u.applyReview(t.Context(), sessionreview.Event{Kind: "coverage", Status: "RECONNECTING: test"})
 			}

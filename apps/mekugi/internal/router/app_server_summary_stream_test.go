@@ -142,7 +142,7 @@ func TestReasoningSourceCompletesBeforeTerminalReveal(t *testing.T) {
 			}
 			revision, sequence := source.Revision, source.LastSeq
 			for range 20 {
-				u.flushSummaryOutput()
+				u.dirty = u.streams.AdvanceReasoning(presentationTime(u.clock), u.shell.Transcript, u.shell.Agents) || u.dirty
 				publishActivity(&u.attached, u.shell)
 			}
 			if source.Revision != revision || source.LastSeq != sequence {

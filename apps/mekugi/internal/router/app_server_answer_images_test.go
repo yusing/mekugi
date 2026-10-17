@@ -43,7 +43,7 @@ func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 	questionTestPaint(t, u, 70)
 	first, second := answerImageFixture(t), answerImageFixture(t)
 	appServerTestKeys(t, u, "\x1b[200~"+first+"\x1b[201~")
-	if u.Text != "[Image 1] " || len(u.Images) != 1 || len(sessionpresentation.DraftSpans(u.draftSnapshot().Draft)) != 1 {
+	if u.Text != "[Image 1] " || len(u.Images) != 1 || len(sessionpresentation.DraftSpans(draftSnapshot(u.Editor).Draft)) != 1 {
 		t.Fatalf("answer did not reuse composer: %q %+v", u.Text, u.Images)
 	}
 	u.insertSelection("message", "first quote", "")
@@ -92,7 +92,7 @@ func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 		t.Fatalf("reply images created a user band: %q %+v", text, spans)
 	}
 	questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{"id": "reply", "type": "userMessage", "clientUserMessageId": u.Submission().ID, "content": conversationbinding.Input(u.attached.conversation.Submitted[u.Submission().ID].Draft)}})
-	for _, q := range u.questionCalls()[0].Questions {
+	for _, q := range u.questions.calls()[0].Questions {
 		if q.Outcome != "answered" {
 			t.Fatalf("image answer not committed: %+v", q)
 		}
@@ -177,7 +177,7 @@ func TestQuestionSecretDraftKeepsImageWithoutExposingModelState(t *testing.T) {
 	if _, err := os.Stat(path); err != nil {
 		t.Fatal("parked secret image reclaimed", err)
 	}
-	call := u.questionCalls()[0]
+	call := u.questions.calls()[0]
 	if call.Questions[0].Editor.Snapshot.Text != "" || len(call.Questions[0].Answer) != 0 || len(call.View().Questions[0].Answer) != 0 {
 		t.Fatal("secret draft exposed through model")
 	}

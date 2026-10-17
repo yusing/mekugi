@@ -90,7 +90,7 @@ func TestAppServerGuardCommandDisplay(t *testing.T) {
 					restored.restoreHistory(turns)
 				} else {
 					info := binding.ThreadInfo{ID: thread, AgentNickname: "worker", Turns: turns}
-					restored.registerThread(info)
+					registerThread(&restored.attached.session, info)
 					restored.restoreActivityThread(info, false)
 				}
 				check(restored)

@@ -5,6 +5,13 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/contracts/scope"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 
@@ -19,18 +26,19 @@ import (
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
 
-func (u *appServerUI) attachReview() {
-	if u.review == nil {
-		u.review = sessionreview.New(u.ctx, nil, nil)
+func attachReview(ctx context.Context, review *sessionreview.Review, retained changes.Scope, source changes.Service) *sessionreview.Review {
+	if review == nil {
+		review = sessionreview.New(ctx, nil, nil)
 	}
-	if u.retained.Store != nil {
-		u.review.Projection.Changes, u.review.Projection.Retained = u.changeSource, u.retained
+	if retained.Store != nil {
+		review.Projection.Changes, review.Projection.Retained = source, retained
 	}
+	return review
 }
 
 // Source: apps/mekugi/internal/router/native_shell.go:61:243@51f24bbd.
 // preview joins completed receipts independently of terminal card lifetime.
-func (u *appServerUI) preview(preview previewmodel.Preview, restored bool) {
+func applyPreview(attached *attachedPresentation, terminal *terminalsession.Attachment, review *sessionreview.Review, pending *[]*changepresentation.Receipt, at time.Time, preview previewmodel.Preview, restored bool) {
 	if preview.Complete && len(preview.HostItems) > 0 {
 		receipt := &changepresentation.Receipt{Thread: preview.Thread, Calls: preview.HostItems, Text: preview.EditReceipt}
 		for _, file := range preview.Files {
@@ -52,30 +60,30 @@ func (u *appServerUI) preview(preview previewmodel.Preview, restored bool) {
 				}
 			}
 		}
-		u.pendingEditReceipts = append(u.pendingEditReceipts, receipt)
-		u.applyCapturedEdits()
+		*pending = append(*pending, receipt)
+		applyCapturedEdits(attached, review, pending)
 		// Host rows can lag several preview mailbox drains. Bound unmatched
 		// projections by memory, not one mailbox's count. Charge metadata too,
 		// so tiny receipts cannot grow without a bound. These are not durable
 		// changes or evidence of the whole command's success.
 		budget := 32 * (48 << 10)
-		for i := len(u.pendingEditReceipts) - 1; i >= 0; i-- {
-			pending := u.pendingEditReceipts[i]
-			budget -= 1024 + len(pending.Thread) + len(pending.Text)
-			for _, call := range pending.Calls {
+		for i := len(*pending) - 1; i >= 0; i-- {
+			entry := (*pending)[i]
+			budget -= 1024 + len(entry.Thread) + len(entry.Text)
+			for _, call := range entry.Calls {
 				budget -= 32 + len(call)
 			}
-			for _, page := range pending.Pages {
+			for _, page := range entry.Pages {
 				budget -= 1024 + len(page.Path) + len(page.Code)
 			}
 			if budget < 0 {
-				u.pendingEditReceipts = slices.Delete(u.pendingEditReceipts, 0, i+1)
+				*pending = slices.Delete(*pending, 0, i+1)
 				break
 			}
 		}
 	}
-	if u.shell != nil {
-		u.shell.Live.Observe(preview, restored, u.now())
+	if terminal != nil {
+		terminal.Live.Observe(preview, restored, at)
 	}
 }
 
@@ -96,7 +104,7 @@ func (u *appServerUI) applyReview(ctx context.Context, event sessionreview.Event
 		return
 	}
 	if event.Kind == "preview" {
-		u.preview(*event.Preview, event.Resync)
+		applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), *event.Preview, event.Resync)
 		return
 	}
 	if u.shell != nil {
@@ -114,30 +122,30 @@ func (u *appServerUI) applyReview(ctx context.Context, event sessionreview.Event
 		}
 	}
 	if published {
-		u.publishReview()
+		publishReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane)
 	}
 	if u.review.Loader == nil && (event.Kind == "scope" || event.Kind == "change") {
-		u.applyCapturedEdits()
+		applyCapturedEdits(&u.attached, u.review, &u.pendingEditReceipts)
 	}
 }
 
 func (u *appServerUI) loadedReview(result sessionreview.Result) {
 	if u.review.Loaded(result) {
-		u.publishReview()
+		publishReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane)
 		if u.review.Failure == "" {
-			u.applyCapturedEdits()
+			applyCapturedEdits(&u.attached, u.review, &u.pendingEditReceipts)
 		}
 	}
 }
 
-func (u *appServerUI) publishReview() {
-	projection := &u.review.Projection
+func publishReview(attached *attachedPresentation, terminal *terminalsession.Attachment, review *sessionreview.Review, source *changecapture.Service, prepare func(*scope.Store)) {
+	projection := &review.Projection
 	snapshot := projection.Data
-	u.reviewSource.PublishReview(u.attached.session.Scope(), snapshot, projection.Workspace, projection.Coverage, u.review.Failure)
-	if u.shell != nil && u.preparePane != nil {
-		u.preparePane(u.attached.session.Scope())
+	source.PublishReview(attached.session.Scope(), snapshot, projection.Workspace, projection.Coverage, review.Failure)
+	if terminal != nil && prepare != nil {
+		prepare(attached.session.Scope())
 	}
-	if u.attached.childSource != nil {
-		u.attached.childSource.Model.LineCounts, u.attached.childSource.Model.NetCounts = snapshot.Publication.Counts.Callers, snapshot.Publication.Counts.Net
+	if attached.childSource != nil {
+		attached.childSource.Model.LineCounts, attached.childSource.Model.NetCounts = snapshot.Publication.Counts.Callers, snapshot.Publication.Counts.Net
 	}
 }

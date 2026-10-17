@@ -83,7 +83,7 @@ func TestTrackedCompletionPrecedesReportSettlement(t *testing.T) {
 					t.Fatalf("neutral consumer lost completed aggregate: %+v", entry.Values)
 				}
 			}
-			if u.runningProcessCount() != 0 || u.attached.source.RetainedOutput(target.Source, target.Output) != retained {
+			if runningProcessCount(&u.attached.session) != 0 || u.attached.source.RetainedOutput(target.Source, target.Output) != retained {
 				t.Fatal("report wait revived execution or retired the displayed segment target")
 			}
 			u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd"}}}})

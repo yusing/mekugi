@@ -125,7 +125,7 @@ func TestAppServerSessionTitleSkippedNamingPreservesHostMetadata(t *testing.T) {
 	u.titleGenerator.register(binding.ThreadInfo{ID: "main"})
 	u.titleUpdates = u.titleGenerator.updates
 	u.attached.presentation.Status.Text, u.Turn, u.Text = "Working", "active-turn", "unsent input"
-	u.setNotice("Existing host notice", false)
+	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Existing host notice", false)
 	u.dirty = false
 	u.titleGenerator.ObserveInput("main", responses.MustMarshalJSON("First user message"))
 	u.titleGenerator.Completed("main", nil)
@@ -373,7 +373,7 @@ func TestUISnapshotNativeSessionTitle(t *testing.T) {
 			if tc.scroll {
 				var entries []sessionpresentation.ActivityEntry
 				for i := range 30 {
-					entries = append(entries, sessionpresentation.ActivityEntry{Seq: uint64(i + 1), Agent: "Main", Kind: "text", Text: fmt.Sprintf("Earlier message %02d", i+1), Observed: u.now()})
+					entries = append(entries, sessionpresentation.ActivityEntry{Seq: uint64(i + 1), Agent: "Main", Kind: "text", Text: fmt.Sprintf("Earlier message %02d", i+1), Observed: presentationTime(u.clock)})
 				}
 				u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: entries})
 				u.shell.Transcript.Following, u.shell.Transcript.Offset, u.shell.Transcript.Unseen = false, 0, 2

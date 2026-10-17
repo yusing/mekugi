@@ -1,6 +1,9 @@
 package router
 
-import "github.com/yusing/mekugi/modules/conversation/completion"
+import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/modules/conversation/completion"
+)
 
 const archiveConfirmChoice uint64 = 2
 
@@ -9,13 +12,13 @@ const archiveConfirmChoice uint64 = 2
 // Codex owns stopping the turn and archiving the thread and its descendants.
 func (u *appServerUI) showArchivePicker() {
 	if u.Thread == "" || u.restoring != nil || u.Replacement.Pending() {
-		u.setNotice("Wait for the session to be ready", false)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Wait for the session to be ready", false)
 		return
 	}
 	u.deleteDraftRange(0, len(u.Text))
 	u.picker.cancelScan()
 	p := &u.picker
-	u.openMenu("archive")
+	u.picker.openMenu("archive")
 	p.Target, p.Problem, p.Loading = completion.Target{}, "", false
 	p.Choices = []completion.Choice{
 		{ID: 1, Name: "No, don't archive", Description: "Return to the current session"},
@@ -23,8 +26,8 @@ func (u *appServerUI) showArchivePicker() {
 	}
 }
 
-func (u *appServerUI) archivePrompt() string {
-	if u.Turn != "" || u.Starting() || u.InputPending() {
+func archivePrompt(control *sessioncontrol.Live) string {
+	if control.Turn != "" || control.Starting() || control.InputPending() {
 		return "This will stop the current turn and archive the session."
 	}
 	return "Are you sure? This will archive the current session."
@@ -37,9 +40,9 @@ func (u *appServerUI) chooseArchive(confirm bool) {
 		u.Replacement.Archive()
 		if err := u.Request("thread/archive", map[string]any{"threadId": u.Thread}); err != nil {
 			u.Replacement.Finish()
-			u.setNotice("Failed to archive current thread: "+err.Error(), true)
+			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Failed to archive current thread: "+err.Error(), true)
 		} else {
-			u.setNotice("Archiving session…", false)
+			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Archiving session…", false)
 		}
 	}
 }

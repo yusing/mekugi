@@ -32,12 +32,12 @@ func (u *appServerUI) showCopyPicker() {
 		}
 	}
 	if strings.TrimSpace(response) == "" {
-		u.setNotice("No agent response to copy", true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "No agent response to copy", true)
 		return
 	}
 	u.picker.cancelScan()
 	p := &u.picker
-	u.openMenu("copy")
+	u.picker.openMenu("copy")
 	p.Target, p.Problem, p.Loading = completion.Target{}, "", false
 	p.Choices, p.CopyTexts = nil, nil
 	for _, choice := range responseCopyChoices(response) {

@@ -18,11 +18,11 @@ func TestPasteAdmissionPreservesOriginalDestination(t *testing.T) {
 			appServerTestKeys(t, u, "\x1b[200~payload")
 			switch change {
 			case "status":
-				u.setNotice("new status", false)
+				setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "new status", false)
 			case "draft":
 				u.Editor.Replace(composer.Draft{Text: "replacement"})
 			case "menu":
-				u.openMenu("manage")
+				u.picker.openMenu("manage")
 			case "prompt":
 				questionTestSync(t, u, "replacement", false)
 				u.openQuestions()
@@ -70,7 +70,7 @@ func TestPromptInputRejectsRetiredDock(t *testing.T) {
 		t.Fatal("question did not produce targeted input")
 	}
 	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
-	u.publishPresentation(u.now())
+	u.publishPresentation(presentationTime(u.clock))
 	if handled, err := u.applyPromptInput(*input); !handled || err != nil || !u.attached.feedback.Alert || u.Text != "" || wire.Len() != 0 {
 		t.Fatalf("retired prompt input escaped admission: handled=%v err=%v draft=%q", handled, err, u.Text)
 	}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
@@ -26,15 +27,15 @@ type nativeQuestionDock struct {
 	handles map[*prompt.Call]*sessioncontrol.Question
 }
 
-func (u *appServerUI) questionCalls() []*sessioncontrol.Question {
-	calls := make([]*sessioncontrol.Question, 0, len(u.questions.Calls))
-	for _, c := range u.questions.Calls {
-		calls = append(calls, u.questions.handles[c])
+func (q *nativeQuestionDock) calls() []*sessioncontrol.Question {
+	calls := make([]*sessioncontrol.Question, 0, len(q.Calls))
+	for _, c := range q.Calls {
+		calls = append(calls, q.handles[c])
 	}
 	return calls
 }
-func (u *appServerUI) activeQuestionCall() *sessioncontrol.Question {
-	return u.questions.handles[u.questions.Active]
+func (q *nativeQuestionDock) activeCall() *sessioncontrol.Question {
+	return q.handles[q.Active]
 }
 func parkQuestion(questions *nativeQuestionDock, terminal *terminalsession.Attachment, editor *composer.Editor, main string, q *prompt.Question) {
 	state := editor.Park()
@@ -45,70 +46,70 @@ func parkQuestion(questions *nativeQuestionDock, terminal *terminalsession.Attac
 		q.Editor = state
 	}
 }
-func (u *appServerUI) resumeQuestion(q *prompt.Question) {
-	u.Editor = &u.attached.conversation.Editor
-	u.shell.Prompts.Secret = composer.Editor{}
+func resumeQuestion(questions *nativeQuestionDock, conversation *conversationmodel.Session, terminal *terminalsession.Attachment, main string, q *prompt.Question) *composer.Editor {
+	editor := &conversation.Editor
+	terminal.Prompts.Secret = composer.Editor{}
 	state := q.Editor
 	if q.IsSecret {
-		u.Editor = &u.shell.Prompts.Secret
-		state = u.shell.Prompts.SecretState(u.questions.Active.ID).Editors[u.questions.Index]
+		editor = &terminal.Prompts.Secret
+		state = terminal.Prompts.SecretState(questions.Active.ID).Editors[questions.Index]
 	}
-	u.Editor.Resume(state)
-	u.shell.Main.CursorColumn = u.shell.Prompts.QuestionLayout(u.questions.View(u.Thread)).Column
+	editor.Resume(state)
+	terminal.Main.CursorColumn = terminal.Prompts.QuestionLayout(questions.View(main)).Column
+	return editor
 }
-func (u *appServerUI) discardQuestionEditors(c *sessioncontrol.Question) {
-	u.shell.Prompts.ForgetCall(c.ID)
+func discardQuestionEditors(prompts *terminalsession.Prompts, c *sessioncontrol.Question) {
+	prompts.ForgetCall(c.ID)
 	for i := range c.Questions {
 		c.Questions[i].Editor = composer.State{}
 	}
 }
-func (u *appServerUI) currentQuestion() *prompt.Question { return u.questions.Current() }
-func (u *appServerUI) questionCount() int                { return u.questions.Count(u.Thread) }
+
 func (u *appServerUI) openQuestions() {
 	if c := u.questions.Next(); c != nil {
-		u.openQuestionCall(u.questions.handles[c])
+		openQuestionCall(&u.questions, &u.approvals, u.attached.conversation, u.shell, &u.picker, &u.Editor, u.Thread, u.questions.handles[c])
 	}
 }
 
 // Only an empty, idle composer yields to pending live questions. Explicitly
 // hiding the dock and history restoration leave manual reopening available.
 func (u *appServerUI) autoOpenQuestions() {
-	if u.questions.ShouldOpen(u.composerVacant()) {
+	if u.questions.ShouldOpen(composerVacant(u.Editor, u.shell, &u.picker, u.attached.presentation, u.statusPanel != nil || u.resumePicker != nil || u.approvals.Open)) {
 		u.openQuestions()
 	}
 }
 
 // composerVacant reports an empty, idle composer with no overlay, which a
 // pending dock may take over without capturing keys meant for a draft.
-func (u *appServerUI) composerVacant() bool {
-	if u.composerReadOnly() {
+func composerVacant(editor *composer.Editor, terminal *terminalsession.Attachment, picker *composerPicker, presentation *sessionpresentation.Model, overlay bool) bool {
+	if presentation.View().ReadOnly != sessionpresentation.Editable {
 		return false
 	}
-	if u.Text != "" || len(u.Images) > 0 || len(u.Files) > 0 || len(u.Skills) > 0 || len(u.Selections) > 0 || u.shell.Main.Pasting() || u.pickerVisible() || u.shell.Main.Keybindings || u.statusPanel != nil || u.resumePicker != nil || u.approvals.Open {
+	if editor.Text != "" || len(editor.Images) > 0 || len(editor.Files) > 0 || len(editor.Skills) > 0 || len(editor.Selections) > 0 || terminal.Main.Pasting() || pickerVisible(picker, presentation, terminal) || terminal.Main.Keybindings || overlay {
 		return false
 	}
-	return u.shell == nil || u.shell.Focus == 0 && !u.shell.Decoder.Pasting() && !u.shell.Decoder.Pending()
+	return terminal == nil || terminal.Focus == 0 && !terminal.Decoder.Pasting() && !terminal.Decoder.Pending()
 }
-func (u *appServerUI) openQuestionCall(c *sessioncontrol.Question) {
-	if u.questions.Active != nil {
+func openQuestionCall(questions *nativeQuestionDock, approvals *nativeApprovalDock, conversation *conversationmodel.Session, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, main string, c *sessioncontrol.Question) {
+	if questions.Active != nil {
 		return
 	}
-	u.hideApprovals()
-	u.shell.Prompts.Reopen()
-	u.shell.Main.PromptColumn = u.shell.Main.CursorColumn
-	u.promptEditor.Open(u.Editor, composer.State{})
-	if !u.questions.Open(c.Call) {
+	hideApprovals(approvals, terminal, &conversation.PromptEditor, *editor)
+	terminal.Prompts.Reopen()
+	terminal.Main.PromptColumn = terminal.Main.CursorColumn
+	conversation.PromptEditor.Open(*editor, composer.State{})
+	if !questions.Open(c.Call) {
 		return
 	}
-	u.resumeQuestion(u.currentQuestion())
-	u.focusPrompt()
+	*editor = resumeQuestion(questions, conversation, terminal, main, questions.Current())
+	focusPrompt(picker, terminal)
 }
-func (u *appServerUI) focusPrompt() {
-	u.picker.Open, u.shell.Main.Keybindings = false, false
-	u.picker.cancelScan()
-	if u.shell != nil {
-		u.shell.Focus = 0
-		u.shell.Selection = nil
+func focusPrompt(picker *composerPicker, terminal *terminalsession.Attachment) {
+	picker.Open, terminal.Main.Keybindings = false, false
+	picker.cancelScan()
+	if terminal != nil {
+		terminal.Focus = 0
+		terminal.Selection = nil
 	}
 }
 func hideQuestionEditor(questions *nativeQuestionDock, conversation *conversationmodel.Session, terminal *terminalsession.Attachment, editor *composer.Editor, main string) *composer.Editor {
@@ -137,10 +138,10 @@ func (q *nativeQuestionDock) carryLocal(conversation *conversationmodel.Session,
 	}
 }
 
-func (u *appServerUI) moveQuestion(step int) {
-	parkQuestion(&u.questions, u.shell, u.Editor, u.Thread, u.currentQuestion())
-	u.questions.Move(step)
-	u.resumeQuestion(u.currentQuestion())
+func moveQuestion(questions *nativeQuestionDock, conversation *conversationmodel.Session, terminal *terminalsession.Attachment, editor **composer.Editor, main string, step int) {
+	parkQuestion(questions, terminal, *editor, main, questions.Current())
+	questions.Move(step)
+	*editor = resumeQuestion(questions, conversation, terminal, main, questions.Current())
 }
 func (u *appServerUI) addQuestions(c *sessioncontrol.Question, replay bool) {
 	if c.Thread != u.Thread && !c.Local || !u.questions.Add(c.Call, replay) {
@@ -162,7 +163,7 @@ func (u *appServerUI) bindQuestion(c *sessioncontrol.Question, replay bool) {
 			u.notify("async-question", "Question pending")
 		}
 	}
-	u.renderQuestionRecord(c)
+	renderQuestionRecord(&u.attached, u.Turn, presentationTime(u.clock), c)
 	if !replay {
 		u.autoOpenQuestions()
 	}
@@ -186,7 +187,7 @@ func (u *appServerUI) questionMessage(m appserver.Message) (bool, error) {
 		if err != nil {
 			return true, err
 		}
-		for _, c := range u.questionCalls() {
+		for _, c := range u.questions.calls() {
 			if c.Thread == p.ThreadID && string(c.RequestID) == string(p.RequestID) {
 				u.resolveQuestionCall(c, "answered elsewhere")
 			}
@@ -198,21 +199,21 @@ func (u *appServerUI) questionMessage(m appserver.Message) (bool, error) {
 
 func (u *appServerUI) saveUnsentAnswer(d composer.Draft) {
 	if d.Text != "" {
-		u.rememberInput(conversationmodel.Input{Draft: d})
-		u.setNotice("unsent answer saved to input history", false)
+		rememberInput(u.attached.conversation, conversationmodel.Input{Draft: d})
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "unsent answer saved to input history", false)
 	}
 }
 func (u *appServerUI) resolveQuestionCall(c *sessioncontrol.Question, outcome string) {
 	if c.Resolved {
 		return
 	}
-	if u.activeQuestionCall() == c {
+	if u.questions.activeCall() == c {
 		u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 	}
 	for _, d := range c.Resolve(outcome) {
 		u.saveUnsentAnswer(d)
 	}
-	u.discardQuestionEditors(c)
+	discardQuestionEditors(u.shell.Prompts, c)
 	if c.Sudo != nil {
 		if c.CancelPassword() {
 			u.recordApproval(&sessioncontrol.Approval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.Sudo.Item}}, "Denied: sudo authentication canceled")
@@ -221,15 +222,15 @@ func (u *appServerUI) resolveQuestionCall(c *sessioncontrol.Question, outcome st
 		delete(u.questions.handles, c.Call)
 		return
 	}
-	u.renderQuestionRecord(c)
+	renderQuestionRecord(&u.attached, u.Turn, presentationTime(u.clock), c)
 	if c.Sync && c.Sent {
-		u.recordSyncQuestionAnswer(c)
+		recordSyncQuestionAnswer(&u.attached, presentationTime(u.clock), c)
 	}
 }
 
 // Synchronous answers have no user-message envelope. Retain their committed
 // response as the same hidden chronological anchor used by async answers.
-func (u *appServerUI) recordSyncQuestionAnswer(c *sessioncontrol.Question) {
+func recordSyncQuestionAnswer(attached *attachedPresentation, at time.Time, c *sessioncontrol.Question) {
 	var answers []string
 	for _, q := range c.Questions {
 		if q.Outcome != "answered" {
@@ -244,7 +245,7 @@ func (u *appServerUI) recordSyncQuestionAnswer(c *sessioncontrol.Question) {
 	if len(answers) == 0 {
 		return
 	}
-	for _, v := range []*sessionpresentation.ActivitySource{u.attached.source, u.attached.childSource} {
+	for _, v := range []*sessionpresentation.ActivitySource{attached.source, attached.childSource} {
 		if v == nil {
 			continue
 		}
@@ -260,11 +261,11 @@ func (u *appServerUI) recordSyncQuestionAnswer(c *sessioncontrol.Question) {
 				native.ReplySource = previous.Source.Text
 			}
 		}
-		v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: v.LastSeq + 1, Agent: "Main", Kind: "question_reply", Text: strings.Join(answers, "\n"), Observed: u.now(), Native: native}}})
+		v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: v.LastSeq + 1, Agent: "Main", Kind: "question_reply", Text: strings.Join(answers, "\n"), Observed: at, Native: native}}})
 	}
 }
 func (u *appServerUI) endSyncQuestions(turn string) {
-	for _, c := range slices.Clone(u.questionCalls()) {
+	for _, c := range slices.Clone(u.questions.calls()) {
 		if c.Turn == turn && (len(c.RequestID) > 0 || c.Sudo != nil) {
 			u.resolveQuestionCall(c, "interrupted")
 		}
@@ -274,10 +275,10 @@ func (u *appServerUI) endSyncQuestions(turn string) {
 func (u *appServerUI) applyQuestionInput(input terminalsession.PromptInput) (bool, error) {
 	keyInput := input.PromptKey
 	if err := u.attached.presentation.QuestionInput(sessionpresentation.QuestionInputIntent{Version: input.Version, QuestionInput: keyInput.Question}, u.questions.Questions); err != nil {
-		u.setNotice(err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 		return true, nil
 	}
-	q, c := u.currentQuestion(), u.activeQuestionCall()
+	q, c := u.questions.Current(), u.questions.activeCall()
 	action := keyInput.Action
 	switch action {
 	case conversationui.PromptPass:
@@ -288,11 +289,11 @@ func (u *appServerUI) applyQuestionInput(input terminalsession.PromptInput) (boo
 	case conversationui.PromptCursor:
 		return false, nil
 	case conversationui.PromptPrevious:
-		u.moveQuestion(-1)
+		moveQuestion(&u.questions, u.attached.conversation, u.shell, &u.Editor, u.Thread, -1)
 	case conversationui.PromptNext:
-		u.moveQuestion(1)
+		moveQuestion(&u.questions, u.attached.conversation, u.shell, &u.Editor, u.Thread, 1)
 	case conversationui.PromptAttach:
-		view := u.publishPresentation(u.now())
+		view := u.publishPresentation(presentationTime(u.clock))
 		_, err := u.applyComposerCommand(sessionpresentation.ComposerIntent{Version: view.Version, Target: view.EditorTarget(), Operation: sessionpresentation.AttachClipboard})
 		return true, err
 	case conversationui.PromptSubmit:
@@ -316,7 +317,7 @@ func (u *appServerUI) applyQuestionInput(input terminalsession.PromptInput) (boo
 			}
 		}
 		if step, submit := u.questions.Advance(); step != 0 {
-			u.moveQuestion(step)
+			moveQuestion(&u.questions, u.attached.conversation, u.shell, &u.Editor, u.Thread, step)
 		} else if submit {
 			return true, u.submitQuestions(sessionpresentation.QuestionSubmitIntent{Version: u.attached.presentation.View().Version, Call: c.ID})
 		}
@@ -327,11 +328,11 @@ func (u *appServerUI) answerQuestion(intent sessionpresentation.AnswerIntent) bo
 	defer u.settlePresentation()
 	q, err := u.attached.presentation.AnswerQuestion(intent, u.questions.Questions)
 	if err != nil {
-		u.setNotice(err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 		return false
 	}
-	if q == u.currentQuestion() {
-		u.resumeQuestion(q)
+	if q == u.questions.Current() {
+		u.Editor = resumeQuestion(&u.questions, u.attached.conversation, u.shell, u.Thread, q)
 	}
 	return true
 }
@@ -340,7 +341,7 @@ func (u *appServerUI) submitQuestions(intent sessionpresentation.QuestionSubmitI
 	defer u.settlePresentation()
 	record, err := u.attached.presentation.SubmitQuestions(intent, u.questions.Questions)
 	if err != nil {
-		u.setNotice(err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 		return nil
 	}
 	c := u.questions.handles[record]
@@ -363,7 +364,7 @@ func (u *appServerUI) submitQuestions(intent sessionpresentation.QuestionSubmitI
 		c.Submitted()
 		clear(u.shell.Prompts.SecretState(c.ID).Editors)
 		clear(u.shell.Prompts.SecretState(c.ID).Answers)
-		u.renderQuestionRecord(c)
+		renderQuestionRecord(&u.attached, u.Turn, presentationTime(u.clock), c)
 		if len(attached.AnswerImages) > 0 || len(attached.Attachments) > 0 {
 			d := conversationmodel.Input{Draft: attached}
 			d.Text, d.Question, d.InHistory = "Attachments accompanying answers to "+c.Item+":\n", c.Call, true
@@ -386,12 +387,12 @@ func (u *appServerUI) submitQuestions(intent sessionpresentation.QuestionSubmitI
 	c.Submitted()
 	if reply == "" {
 		c.Resolved = true
-		u.renderQuestionRecord(c)
+		renderQuestionRecord(&u.attached, u.Turn, presentationTime(u.clock), c)
 		return nil
 	}
 	attached.Text, attached.InHistory = reply, true
 	u.attached.conversation.Unsent = append(u.attached.conversation.Unsent, conversationmodel.Input{Draft: attached, Question: c.Call, ReplyCount: len(binding.QuestionReplies(reply))})
-	u.renderQuestionRecord(c)
+	renderQuestionRecord(&u.attached, u.Turn, presentationTime(u.clock), c)
 	return u.flushInput()
 }
 
@@ -467,8 +468,8 @@ func pendingQuestionReplies(parts []conversationmodel.Input) []conversationmodel
 	}
 	return pending
 }
-func (u *appServerUI) renderQuestionRecord(c *sessioncontrol.Question) {
+func renderQuestionRecord(attached *attachedPresentation, turn string, at time.Time, c *sessioncontrol.Question) {
 	if c.Sudo == nil {
-		sessionpresentation.RecordQuestion(c.Call, string(c.RequestID), u.Turn, u.now(), u.attached.source, u.attached.childSource)
+		sessionpresentation.RecordQuestion(c.Call, string(c.RequestID), turn, at, attached.source, attached.childSource)
 	}
 }

@@ -39,7 +39,7 @@ func processDialog(u *appServerUI, width, height int) []string {
 
 func TestRunningProcessesLifecycle(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
-	u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
+	registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	appServerTestKeys(t, u, "/ps\r")
 	if got := drawOutputDialog(terminalTest(u)); !strings.Contains(got, "No running processes") {
 		t.Fatalf("missing empty state: %s", got)
@@ -54,7 +54,7 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 	processNotify(t, u, "main", "cmd", command, "inProgress")
 	processNotify(t, u, "child", "cmd", "make test", "inProgress")
 	processNotify(t, u, "child", "cmd", "make test", "inProgress") // Repeated starts keep host identity.
-	if u.runningProcessCount() != 2 {
+	if runningProcessCount(&u.attached.session) != 2 {
 		t.Fatal("Main and child commands were not counted once each")
 	}
 	if got := drawOutputDialog(terminalTest(u)); !strings.Contains(got, "1 main git fetch && go test") || !strings.Contains(got, "2 worker make test") ||
@@ -64,7 +64,7 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 	// A yielded command can outlive the turn that started it. Only its host
 	// completion removes it, including when the UI still has output to roll.
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t", "status": "completed"}})
-	if u.runningProcessCount() != 2 || !u.publishPresentation(u.now()).Status.Animating {
+	if runningProcessCount(&u.attached.session) != 2 || !u.publishPresentation(presentationTime(u.clock)).Status.Animating {
 		t.Fatal("yielded command stopped counting or animating")
 	}
 	if u.attached.session.Transcript("main", "t").Turn != nil || !u.attached.session.Commands()[[3]string{"main", "t", "cmd"}].Entry.Native.Invocation.Snapshot().Running {
@@ -86,7 +86,7 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 	}
 	// The open page keeps its final output; the next /ps omits it.
 	processNotify(t, u, "child", "cmd", "make test", "completed")
-	if got := drawOutputDialog(terminalTest(u)); u.runningProcessCount() != 1 || strings.Contains(got, "● live") || !strings.Contains(got, "output 29") || !strings.Contains(got, "exit 0") {
+	if got := drawOutputDialog(terminalTest(u)); runningProcessCount(&u.attached.session) != 1 || strings.Contains(got, "● live") || !strings.Contains(got, "output 29") || !strings.Contains(got, "exit 0") {
 		t.Fatalf("completed command lost its open page: %s", got)
 	}
 	entries := make([]sessionpresentation.ActivityEntry, liveActivityFeedLimit)
@@ -102,12 +102,12 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 		appServerTestKeys(t, u, "/ps\r")
 	}
 	reopen()
-	if got := drawOutputDialog(terminalTest(u)); u.runningProcessCount() != 1 || !strings.Contains(got, "git fetch && go test") || strings.Contains(got, "make test") {
+	if got := drawOutputDialog(terminalTest(u)); runningProcessCount(&u.attached.session) != 1 || !strings.Contains(got, "git fetch && go test") || strings.Contains(got, "make test") {
 		t.Fatalf("reopened list kept a completed command or lost a running one: %s", got)
 	}
 	processNotify(t, u, "main", "cmd", command, "failed")
 	reopen()
-	if got := drawOutputDialog(terminalTest(u)); u.runningProcessCount() != 0 || !strings.Contains(got, "No running processes") || strings.Contains(u.stateLabel(u.now()), "running processes") {
+	if got := drawOutputDialog(terminalTest(u)); runningProcessCount(&u.attached.session) != 0 || !strings.Contains(got, "No running processes") || strings.Contains(u.stateLabel(presentationTime(u.clock)), "running processes") {
 		t.Fatalf("last completion did not clear the count and dialog: %s", got)
 	}
 }
@@ -123,11 +123,11 @@ func TestRunningProcessesTrackedCompletion(t *testing.T) {
 		segmenttransport.Message{Type: segmenttransport.Begin, Index: 1},
 	)
 	awaitMain(t, u, "Running sleep 1")
-	if u.runningProcessCount() != 1 {
+	if runningProcessCount(&u.attached.session) != 1 {
 		t.Fatal("segments changed the host process count")
 	}
 	processNotify(t, u, "main", "cmd", "/usr/bin/bash -lc "+quoteShellWord(script), "completed")
-	if u.runningProcessCount() != 0 {
+	if runningProcessCount(&u.attached.session) != 0 {
 		t.Fatal("completed command remained listed while its segment report drained")
 	}
 }
@@ -135,7 +135,7 @@ func TestRunningProcessesTrackedCompletion(t *testing.T) {
 func TestRunningProcessesRestoredAndSwitched(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
 	u.restoreHistory([]binding.HistoryTurn{{ID: "old", Status: "completed", Items: []binding.ThreadItem{{ID: "old", Type: "commandExecution", Command: "sleep 100", Status: "inProgress"}}}})
-	if u.runningProcessCount() != 0 {
+	if runningProcessCount(&u.attached.session) != 0 {
 		t.Fatal("restored history created a process")
 	}
 	processNotify(t, u, "main", "cmd", "sleep 100", "inProgress")
@@ -146,7 +146,7 @@ func TestRunningProcessesRestoredAndSwitched(t *testing.T) {
 	appServerTestKeys(t, u, "/ps\r")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"fresh","cwd":"/workspace"}}}`, r.ID))
 	processNotify(t, u, "main", "late", "sleep 200", "inProgress")
-	if u.Thread != "fresh" || u.runningProcessCount() != 0 || terminalTest(u).Dialog != nil {
+	if u.Thread != "fresh" || runningProcessCount(&u.attached.session) != 0 || terminalTest(u).Dialog != nil {
 		t.Fatal("switch retained old commands, their dialog, or admitted late old events")
 	}
 }
@@ -177,7 +177,7 @@ func TestRunningProcessesInteraction(t *testing.T) {
 		if err := terminalTest(u).send(closeKey); err != nil {
 			t.Fatal(err)
 		}
-		if terminalTest(u).Dialog != nil || u.Turn != "active" || u.runningProcessCount() != 20 || wire.Len() != 0 || u.Text != "" {
+		if terminalTest(u).Dialog != nil || u.Turn != "active" || runningProcessCount(&u.attached.session) != 20 || wire.Len() != 0 || u.Text != "" {
 			t.Fatalf("dialog changed work or sent a model request: %s", wire.String())
 		}
 	}
@@ -191,7 +191,7 @@ func TestUISnapshotRunningProcesses(t *testing.T) {
 		view.Clock, view.Painter.Theme = u.clock, diffrender.DarkTheme
 		view.FeedOnly, view.Bare = true, true
 	}
-	u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
+	registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	for _, thread := range []string{"main", "child"} {
 		processNotify(t, u, thread, "cmd", "go test ./...", "inProgress")
 		for i := range 3 {

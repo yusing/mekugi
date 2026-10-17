@@ -48,11 +48,11 @@ func (u *appServerUI) hookEvent(method string, event binding.Notification) error
 	}
 	s := &u.attached.session
 	if event.ThreadID != u.Thread {
-		if err := u.requestThreadMetadata(event.ThreadID); err != nil {
+		if err := requestThreadMetadata(u.Requests, &u.attached.session, event.ThreadID); err != nil {
 			return err
 		}
 	}
-	if h := u.childHistory(event.ThreadID); h != nil {
+	if h := childHistory(&u.attached.session, &u.childHistoryState, event.ThreadID); h != nil {
 		h.state.ObserveLive()
 	}
 	run := *event.Run
@@ -73,10 +73,10 @@ func (u *appServerUI) hookEvent(method string, event binding.Notification) error
 		}
 	}
 	output, hasError := hookOutput(run)
-	observation := history.HookObservation{Turn: event.TurnID, Run: history.HookRun(run), At: u.now(), Output: output, HasError: hasError, Completed: completed}
+	observation := history.HookObservation{Turn: event.TurnID, Run: history.HookRun(run), At: presentationTime(u.clock), Output: output, HasError: hasError, Completed: completed}
 	observation.Run.Entries = nil
-	if err := u.retainHook(event.ThreadID, observation); err != nil {
-		u.setNotice("Hook observation could not be retained: "+err.Error(), true)
+	if err := retainHook(u.retainedSession, u.attached.cwd, event.ThreadID, observation); err != nil {
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Hook observation could not be retained: "+err.Error(), true)
 	}
 	entry := hookEntry(&u.attached.session, u.activity, u.attached.cwd, event.ThreadID, observation, true)
 	if previousOutput != nil {

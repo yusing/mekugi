@@ -13,24 +13,23 @@ type sessionMetricsPanel struct {
 }
 
 func (u *appServerUI) showSessionMetrics() {
-	u.statusPanel = u.newStatusReport()
+	u.statusPanel = newStatusReport(u.attached.presentation, u.replayDebugDirectory)
 	u.statusPanel.metrics = new(sessionMetricsPanel)
 	u.statusPanel.Metrics = new(transportcapture.MetricsSnapshot)
 	u.deleteDraftRange(0, len(u.Text))
-	u.refreshSessionMetrics(true)
+	u.dirty = refreshSessionMetrics(u.statusPanel, u.sessionCapture, presentationTime(u.clock), true) || u.dirty
 }
-func (u *appServerUI) refreshSessionMetrics(force bool) {
-	p := u.statusPanel
+func refreshSessionMetrics(p *appServerStatusReport, capture *transportcapture.Recorder, at time.Time, force bool) bool {
 	if p == nil || p.metrics == nil {
-		return
+		return false
 	}
 	m := p.metrics
-	if !force && u.now().Sub(m.refreshed) < time.Second {
-		return
+	if !force && at.Sub(m.refreshed) < time.Second {
+		return false
 	}
-	m.refreshed = u.now()
-	if u.sessionCapture != nil {
-		*p.Metrics = u.sessionCapture.Snapshot()
+	m.refreshed = at
+	if capture != nil {
+		*p.Metrics = capture.Snapshot()
 	}
-	u.dirty = true
+	return true
 }

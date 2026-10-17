@@ -2,13 +2,14 @@ package router
 
 import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // openOutput opens the operation a snippet names in the dialog, reporting
 // whether it names one.
-func (main *appServerUI) openOutput(u *terminalsession.Attachment, view *activityui.View, snippet activityui.Snippet) bool {
+func openOutput(attached *attachedPresentation, terminal *terminalsession.Attachment, files *detailFiles, activity *activitymodel.Service, u *terminalsession.Attachment, view *activityui.View, snippet activityui.Snippet) bool {
 	block, ok := view.SnippetBlock(snippet)
 	if !ok || block.EditSource != "" || len(block.Questions) > 0 {
 		return false
@@ -23,7 +24,7 @@ func (main *appServerUI) openOutput(u *terminalsession.Attachment, view *activit
 				if seen[member.Source] {
 					continue
 				}
-				if edits, _ := main.activityEditPages(view, member.Source, ""); len(edits) > 0 {
+				if edits, _ := activityEditPages(attached, terminal, activity, view, member.Source, ""); len(edits) > 0 {
 					pages = append(pages, edits...)
 					seen[member.Source] = true
 					continue
@@ -32,7 +33,7 @@ func (main *appServerUI) openOutput(u *terminalsession.Attachment, view *activit
 			pages = append(pages, activitypresentation.DetailPages([]activitypresentation.Value{member.Value})...)
 		}
 	}
-	main.openDetails(u, view, pages)
+	openDetails(attached, terminal, files, u, view, pages)
 	page := 0
 	if block.Output != 0 && (len(block.Members) == 0 || block.Kind == "op") {
 		for i, command := range u.Dialog.Pages {
@@ -47,30 +48,30 @@ func (main *appServerUI) openOutput(u *terminalsession.Attachment, view *activit
 }
 
 // openBlocks is the shared modal entry point. It never changes pane navigation.
-func (main *appServerUI) openBlocks(u *terminalsession.Attachment, view *activityui.View, pages []activityui.Block) {
-	main.openDetails(u, view, activitypresentation.DetailPages(activityui.Values(pages)))
+func openBlocks(attached *attachedPresentation, terminal *terminalsession.Attachment, files *detailFiles, u *terminalsession.Attachment, view *activityui.View, pages []activityui.Block) {
+	openDetails(attached, terminal, files, u, view, activitypresentation.DetailPages(activityui.Values(pages)))
 }
 
-func (main *appServerUI) openDetails(u *terminalsession.Attachment, view *activityui.View, pages []activitypresentation.DetailPage) {
+func openDetails(attached *attachedPresentation, terminal *terminalsession.Attachment, files *detailFiles, u *terminalsession.Attachment, view *activityui.View, pages []activitypresentation.DetailPage) {
 	if len(pages) == 0 {
 		return
 	}
-	main.detailFiles.openDetailSelection(&main.attached.session, main.attached.presentation.View().Version, main.activitySource(view), u, view, pages, false)
+	files.openDetailSelection(&attached.session, attached.presentation.View().Version, activitySource(attached, terminal, view), u, view, pages, false)
 }
 
-func (main *appServerUI) openEntry(u *terminalsession.Attachment, view *activityui.View, seq uint64) bool {
-	for index, entry := range main.activitySource(view).Entries {
+func openEntry(attached *attachedPresentation, terminal *terminalsession.Attachment, files *detailFiles, u *terminalsession.Attachment, view *activityui.View, seq uint64) bool {
+	for index, entry := range activitySource(attached, terminal, view).Entries {
 		if entry.Source.Seq != seq {
 			continue
 		}
-		blocks := main.activitySource(view).SourceValues(index)
+		blocks := activitySource(attached, terminal, view).SourceValues(index)
 		for i := range blocks {
 			blocks[i].Source = entry.Source.Seq
 			if blocks[i].Verb == "" {
 				blocks[i].Verb = entry.Source.Agent
 			}
 		}
-		main.openDetails(u, view, activitypresentation.DetailPages(blocks))
+		openDetails(attached, terminal, files, u, view, activitypresentation.DetailPages(blocks))
 		return len(blocks) > 0
 	}
 	return false
@@ -89,6 +90,6 @@ func (main *appServerUI) outputIntent(u *terminalsession.Attachment, intent term
 		u.Focus = 0
 		main.detailFiles.closeOutput(&main.attached.session, u)
 	case terminalsession.DialogOpenLink:
-		main.detailFiles.openMarkdownFile(&main.attached.session, main.attached.presentation, main.attached.cwd, main.activitySource(u.Dialog.View), u, u.Dialog.View, intent.Text)
+		main.detailFiles.openMarkdownFile(&main.attached.session, main.attached.presentation, main.attached.cwd, activitySource(&main.attached, main.shell, u.Dialog.View), u, u.Dialog.View, intent.Text)
 	}
 }

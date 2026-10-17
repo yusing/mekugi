@@ -36,7 +36,7 @@ func (u *appServerUI) attachImage(path string) {
 func (u *appServerUI) insertImage(path string) {
 	u.Editor.InsertImage(path)
 	u.shell.Main.CursorColumn = nil
-	u.setNotice("", false)
+	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "", false)
 	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
 }
 
@@ -44,7 +44,7 @@ func (u *appServerUI) insertImage(path string) {
 // file, as terminals paste for copied or dropped files, attaches that file
 // instead, followed by a space as in Codex. The user's file is never removed.
 func (u *appServerUI) finishPaste(text string) {
-	if q := u.currentQuestion(); q != nil {
+	if q := u.questions.Current(); q != nil {
 		q.Edit(!q.Note)
 	}
 	path, ok := pastedImagePath(text)
@@ -143,12 +143,12 @@ func (u *appServerUI) pasteImage(intent sessionpresentation.ComposerIntent) {
 	defer cancel()
 	path, err := clipboardImage(ctx)
 	if err != nil {
-		u.setNotice("Paste image: "+err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Paste image: "+err.Error(), true)
 		return
 	}
 	if err := u.attached.presentation.AdmitAcquiredInput(intent, u.attached.conversation); err != nil {
 		_ = os.Remove(path)
-		u.setNotice(err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 		return
 	}
 	// The highlighted placeholder is the feedback; it also clears any earlier notice.
@@ -201,7 +201,7 @@ func clipboardImage(ctx context.Context) (string, error) {
 
 func (u *appServerUI) applyPaste(paste terminalsession.PasteResult) {
 	if err := u.attached.presentation.AdmitPaste(paste.Intent, u.attached.conversation); err != nil {
-		u.setNotice(err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 		return
 	}
 	text := paste.Text
@@ -211,7 +211,7 @@ func (u *appServerUI) applyPaste(paste terminalsession.PasteResult) {
 	}
 	switch {
 	case u.approvals.Open:
-		if a := u.pendingApprovals()[0]; a.DenialChoice() >= 0 && text != "" {
+		if a := u.approvals.calls()[0]; a.DenialChoice() >= 0 && text != "" {
 			a.Selected = a.DenialChoice()
 			u.insertDraft(text)
 			u.Run = composer.NoRun
@@ -222,6 +222,6 @@ func (u *appServerUI) applyPaste(paste terminalsession.PasteResult) {
 	default:
 		u.finishPaste(text)
 	}
-	u.picker.Dismissed, u.picker.Open = u.completionTarget(), false
+	u.picker.Dismissed, u.picker.Open = u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode()), false
 	u.refreshPicker()
 }

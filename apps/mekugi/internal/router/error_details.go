@@ -13,7 +13,7 @@ func (main *appServerUI) openErrorDetails(u *terminalsession.Attachment, view *a
 		return
 	}
 	var pages []activityui.Block
-	for _, entry := range main.activitySource(view).Entries {
+	for _, entry := range activitySource(&main.attached, main.shell, view).Entries {
 		if entry.Source.Kind != "error" || !view.Visible(entry.Publish()) {
 			continue
 		}
@@ -23,7 +23,7 @@ func (main *appServerUI) openErrorDetails(u *terminalsession.Attachment, view *a
 		}
 	}
 	if len(pages) > 0 {
-		main.openBlocks(u, view, pages)
+		openBlocks(&main.attached, main.shell, &main.detailFiles, u, view, pages)
 		u.Dialog.ShowPage(len(u.Dialog.Pages) - 1)
 	}
 }

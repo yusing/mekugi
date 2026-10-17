@@ -4,6 +4,9 @@ import (
 	"slices"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	commandsegments "github.com/yusing/mekugi/modules/commandsegments/segments"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
@@ -31,13 +34,13 @@ type execTrackView struct {
 
 // commandReportView drains the observer once before Activity reduction and
 // terminal reveal. Attribution loss returns to the transport owner explicitly.
-func (u *appServerUI) commandReportView(key [3]string, run *sessionpresentation.CommandOperation, final bool, directory string) (execTrackView, bool) {
-	track, ok := u.execTrack.Read(key)
+func commandReportView(observer *commandsegments.Observer, streams *terminalsession.Streams, key [3]string, run *sessionpresentation.CommandOperation, final bool, directory string) (execTrackView, bool) {
+	track, ok := observer.Read(key)
 	if !ok {
 		return execTrackView{}, false
 	}
 	report := sessionpresentation.CommandReport(run.Entry.Native.Invocation, track, directory)
-	stream := u.streams.Command(key, run.Entry.Text)
+	stream := streams.Command(key, run.Entry.Text)
 	state := sessionpresentation.ObserveCommandReport(run.Entry.Native.Invocation, report, final)
 	snapshot := state.Snapshot
 	frames, changed := stream.RevealSegments(report, snapshot, track.Version, final)
@@ -51,7 +54,7 @@ func (u *appServerUI) commandReportView(key [3]string, run *sessionpresentation.
 		view.frames = append(view.frames, shown)
 	}
 	if view.release {
-		u.execTrack.ReleaseOutput(key)
+		observer.ReleaseOutput(key)
 	}
 	return view, changed || state.Changed
 }
@@ -62,22 +65,22 @@ func (u *appServerUI) commandReportView(key [3]string, run *sessionpresentation.
 func (u *appServerUI) flushTrackedCommand(key [3]string, run *sessionpresentation.CommandOperation) ([]sessionpresentation.ActivityEntry, bool) {
 	s := &u.attached.session
 	if run.Completion != nil {
-		view, _ := u.commandReportView(key, run, false, run.Entry.Native.CommandCwd)
-		if !view.ended && u.now().Sub(run.CompletedAt) < execTrackCompletionWait {
+		view, _ := commandReportView(u.execTrack, &u.streams, key, run, false, run.Entry.Native.CommandCwd)
+		if !view.ended && presentationTime(u.clock).Sub(run.CompletedAt) < execTrackCompletionWait {
 			return nil, true
 		}
 		enriched, valid := u.reconcileTrackedCommand(key, *run.Completion, run.Completed)
 		for _, adapter := range []*sessionpresentation.ActivitySource{u.attached.source, u.attached.childSource} {
 			adapter.SettleCommandReport(enriched, valid)
 		}
-		u.releaseCommand(run.Entry)
+		releaseCommand(&u.attached, u.shell, presentationTime(u.clock), run.Entry)
 		delete(u.attached.session.Commands(), key)
 		delete(u.streams.Commands, key)
 		u.execTrack.Forget(key)
 		u.dirty = true
 		return nil, true
 	}
-	view, changed := u.commandReportView(key, run, false, run.Entry.Native.CommandCwd)
+	view, changed := commandReportView(u.execTrack, &u.streams, key, run, false, run.Entry.Native.CommandCwd)
 	if !u.execTrack.Tracking(key) {
 		return nil, false
 	}
@@ -107,7 +110,7 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *sessionpresentatio
 		return nil, true
 	}
 	native.Segments = view.segments
-	u.holdCommand(entry, activityui.CommandFrame{Output: frame, Segments: view.frames})
+	holdCommand(&u.attached, u.shell, entry, activityui.CommandFrame{Output: frame, Segments: view.frames})
 	u.dirty = true
 	if !view.semantic {
 		return nil, true
@@ -124,7 +127,7 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *sessionpresentatio
 // already-published host aggregate remains authoritative.
 func (u *appServerUI) reconcileTrackedCommand(key [3]string, entry sessionpresentation.ActivityEntry, item observation.Item) (sessionpresentation.ActivityEntry, bool) {
 	run := u.attached.session.Commands()[key]
-	view, _ := u.commandReportView(key, run, true, sessionpresentation.CommandDirectory(item, u.attached.cwd))
+	view, _ := commandReportView(u.execTrack, &u.streams, key, run, true, sessionpresentation.CommandDirectory(item, u.attached.cwd))
 	if !run.Entry.Native.Invocation.ReportMatchesHost() || len(view.segments) == 0 {
 		return entry, false
 	}

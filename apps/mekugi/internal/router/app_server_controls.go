@@ -13,7 +13,7 @@ func (u *appServerUI) controlsCommand(text string) (bool, error) {
 		if u.shell.Main.InterruptLocked {
 			u.lockNotice()
 		} else {
-			u.setNotice("Unlocked · Esc and Ctrl-C can interrupt", false)
+			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Unlocked · Esc and Ctrl-C can interrupt", false)
 		}
 		return true, nil
 	}
@@ -21,7 +21,7 @@ func (u *appServerUI) controlsCommand(text string) (bool, error) {
 }
 
 func (u *appServerUI) lockNotice() {
-	u.setNotice("Locked · /unlock restores Esc and Ctrl-C · /quit exits when idle", false)
+	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Locked · /unlock restores Esc and Ctrl-C · /quit exits when idle", false)
 }
 
 // Only keyboard cancellation is guarded. Host lifecycle and already-admitted
@@ -31,6 +31,6 @@ func (u *appServerUI) keyboardInterrupt() error {
 		u.lockNotice()
 		return nil
 	}
-	view := u.publishPresentation(u.now())
+	view := u.publishPresentation(presentationTime(u.clock))
 	return u.interruptSession(sessionpresentation.InterruptIntent{Version: view.Version, Target: view.Interrupt, Mode: sessioncontrol.RestoreWaiting})
 }

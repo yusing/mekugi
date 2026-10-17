@@ -23,19 +23,19 @@ func terminalTest(main *appServerUI) *terminalUI {
 }
 
 func (u *terminalUI) openOutput(view *activityui.View, snippet activityui.Snippet) bool {
-	return u.main.openOutput(u.Attachment, view, snippet)
+	return openOutput(&u.main.attached, u.main.shell, &u.main.detailFiles, u.main.activity, u.Attachment, view, snippet)
 }
 func (u *terminalUI) openBlocks(view *activityui.View, pages []activityui.Block) {
-	u.main.openBlocks(u.Attachment, view, pages)
+	openBlocks(&u.main.attached, u.main.shell, &u.main.detailFiles, u.Attachment, view, pages)
 }
 func (u *terminalUI) openEntry(view *activityui.View, seq uint64) bool {
-	return u.main.openEntry(u.Attachment, view, seq)
+	return openEntry(&u.main.attached, u.main.shell, &u.main.detailFiles, u.Attachment, view, seq)
 }
 func (u *terminalUI) outputIntent(intent terminalsession.DialogIntent) {
 	u.main.outputIntent(u.Attachment, intent)
 }
 func (u *terminalUI) openActivityEdit(view *activityui.View, seq uint64, path string) bool {
-	return u.main.openActivityEdit(u.Attachment, view, seq, path)
+	return openActivityEdit(&u.main.attached, u.main.shell, &u.main.detailFiles, u.main.activity, u.Attachment, view, seq, path)
 }
 func (u *terminalUI) copyText(text string) {
 	u.main.copyText(u.Attachment, text)
@@ -52,16 +52,16 @@ func (u *terminalUI) openActivityReply(seq uint64) bool {
 func (u *terminalUI) frameInput() terminalsession.FrameInput {
 	var now time.Time
 	if u.main != nil {
-		now = u.main.now()
+		now = presentationTime(u.main.clock)
 	}
 	return u.Attachment.FrameInput(now, mekugiVersion())
 }
 func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
-	view := u.main.transcriptView()
-	return paintNative(u.Attachment, u.frameInput(), view, u.main.activitySource(view), ctx, out)
+	view := transcriptView(u.main.attached.presentation, u.main.shell)
+	return paintNative(u.Attachment, u.frameInput(), view, activitySource(&u.main.attached, u.main.shell, view), ctx, out)
 }
 func (u *terminalUI) openErrors() {
 	if u.Focus == 0 && u.main != nil {
-		u.main.openErrorDetails(u.Attachment, u.main.transcriptView())
+		u.main.openErrorDetails(u.Attachment, transcriptView(u.main.attached.presentation, u.main.shell))
 	}
 }

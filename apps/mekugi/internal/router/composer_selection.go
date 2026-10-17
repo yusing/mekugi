@@ -11,7 +11,7 @@ import (
 func (u *appServerUI) referenceInput(intent sessionpresentation.ReferenceIntent) bool {
 	defer u.settlePresentation()
 	if err := u.attached.presentation.Reference(intent, u.attached.conversation); err != nil {
-		u.setNotice(err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 		return false
 	}
 	u.insertSelection(intent.Description, intent.Text, intent.Source)
@@ -32,7 +32,7 @@ func (u *appServerUI) insertSelection(description, text, source string) {
 		return
 	}
 	pending := slices.Concat(u.attached.conversation.Submitted[u.Submission().ID].Parts, u.attached.conversation.Unsent, u.attached.conversation.Queued, u.attached.conversation.Parts(u.Steers()))
-	for _, call := range u.questionCalls() {
+	for _, call := range u.questions.calls() {
 		for i, question := range call.Questions {
 			draft := question.Editor.Snapshot.Draft
 			if question.IsSecret {
@@ -41,17 +41,17 @@ func (u *appServerUI) insertSelection(description, text, source string) {
 			pending = append(pending, conversationmodel.Input{Draft: draft})
 		}
 	}
-	if u.currentQuestion() != nil {
-		pending = append(pending, conversationmodel.Input{Draft: u.promptEditor.Parked.Snapshot.Draft})
+	if u.questions.Current() != nil {
+		pending = append(pending, conversationmodel.Input{Draft: u.attached.conversation.PromptEditor.Parked.Snapshot.Draft})
 	}
 	if err := u.Editor.InsertSelection(description, text, source, conversationmodel.Drafts(pending)); err != nil {
-		u.setNotice(err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 		return
 	}
-	u.setNotice("", false)
+	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "", false)
 	u.shell.Main.CursorColumn = nil
 	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
-	if q := u.currentQuestion(); q != nil {
+	if q := u.questions.Current(); q != nil {
 		q.Edit(!q.Note)
 	}
 }

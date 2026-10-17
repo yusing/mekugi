@@ -45,7 +45,7 @@ func TestAppServerTerminalTitleLifecycle(t *testing.T) {
 	if out.Len() != 0 || u.notifications.lastTitle != "Mekugi [ ! ] Action Required project" {
 		t.Fatal("completion cleared a pending async question")
 	}
-	u.resolveQuestionCall(u.questionCalls()[len(u.questionCalls())-1], "answered")
+	u.resolveQuestionCall(u.questions.calls()[len(u.questions.calls())-1], "answered")
 	title("Mekugi project")
 	out.Reset()
 	u.clearTerminalTitle()
@@ -108,13 +108,13 @@ func TestAppServerTerminalTitleQueuedQuestionAnswerIsNotActionRequired(t *testin
 	u.openQuestions()
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "1\r")
-	if u.questionCount() != 0 || u.questionCalls()[0].Resolved || !u.questionCalls()[0].Sent {
+	if u.questions.Count(u.Thread) != 0 || u.questions.calls()[0].Resolved || !u.questions.calls()[0].Sent {
 		t.Fatal("queued answer was marked resolved or still actionable")
 	}
 	if rows := testQuestionRows(u, 80, 10); len(rows) != 0 {
 		t.Fatalf("answered question still has a dock: %q", rows)
 	}
-	if preview := strings.Join(conversationui.Pending(u.publishPresentation(u.now()).Pending, 80), "\n"); !strings.Contains(preview, "Answering 1 question(s)") {
+	if preview := strings.Join(conversationui.Pending(u.publishPresentation(presentationTime(u.clock)).Pending, 80), "\n"); !strings.Contains(preview, "Answering 1 question(s)") {
 		t.Fatalf("uncommitted answer has no pending preview: %q", preview)
 	}
 	out.Reset()

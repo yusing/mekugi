@@ -197,7 +197,7 @@ func TestVCSCommitReadDoesNotBlockTheUI(t *testing.T) {
 	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "git commit -m 'feat: slow'", "cwd": g.dir,
 		"status": "completed", "exitCode": 0, "aggregatedOutput": output}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	u.startCommitReads()
+	u.dirty = startCommitReads(&u.attached, u.commits) || u.dirty
 	if got := mainFeed(u, 90); !strings.Contains(got, "A  b.go\n") || strings.Contains(got, "a.go") {
 		t.Fatalf("pending commit =\n%s", got)
 	}

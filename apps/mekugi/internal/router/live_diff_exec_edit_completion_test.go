@@ -44,7 +44,7 @@ func TestUISnapshotNativeMoveKeepsTranscript(t *testing.T) {
 	u := nativeBatchFixture(t)
 	for _, event := range testReview(auto).TakePreviews(sub) {
 		if event.Preview != nil {
-			u.preview(*event.Preview, false)
+			applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), *event.Preview, false)
 		}
 	}
 	revealNativeDock(terminalTest(u))
@@ -67,10 +67,10 @@ func TestNativeUIExecEditCompletionRetainsWorkingStatusAndClearsDock(t *testing.
 	u.attached.presentation.Status.Text = "Working"
 	workspace := t.TempDir()
 	preview := previewmodel.Preview{ID: "running:edit-then-test", Workspace: workspace, Thread: "thread", Caller: "/root", Tool: nativeExecCommandToolName, Status: previewmodel.PreviewRunning, Input: "observed edit"}
-	u.preview(preview, false)
+	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), preview, false)
 	revealNativeDock(terminalTest(u))
 	preview.Complete = true
-	u.preview(preview, false)
+	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), preview, false)
 	revealNativeDock(terminalTest(u))
 	if terminalTest(u).Live.Live() != 0 || u.attached.presentation.Status.Text != "Working" {
 		t.Fatal("edit completion changed process status or retained an active dock")
@@ -88,7 +88,7 @@ func TestNativeUIExecEditCompletionRetainsWorkingStatusAndClearsDock(t *testing.
 		t.Fatal("completed dock did not clear independently of process Working status")
 	}
 	// A final host observation must not create a second, late completion card.
-	u.preview(previewmodel.Preview{ID: "late:edit-then-test", Workspace: workspace, Tool: nativeExecCommandToolName, Complete: true, Status: previewmodel.PreviewRunning}, false)
+	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: "late:edit-then-test", Workspace: workspace, Tool: nativeExecCommandToolName, Complete: true, Status: previewmodel.PreviewRunning}, false)
 	revealNativeDock(terminalTest(u))
 	if len(terminalTest(u).Live.Order) != 0 {
 		t.Fatal("late shell completion resurrected the dock")

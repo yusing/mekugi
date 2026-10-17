@@ -3,6 +3,8 @@ package router
 import (
 	"fmt"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+
 	"github.com/yusing/mekugi/backends/codex/shellhook"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
@@ -16,18 +18,17 @@ type approvalHookCheck struct {
 	pendingThread, readyThread string
 }
 
-func (u *appServerUI) checkGuardHook() (bool, error) {
-	check := &u.guardHookCheck
-	if check.hash == "" || u.Turn != "" {
+func (check *approvalHookCheck) check(control *sessioncontrol.Client[appServerRequest], attached *attachedPresentation) (bool, error) {
+	if check.hash == "" || control.Turn != "" {
 		return true, nil
 	}
-	if check.readyThread == u.Thread {
+	if check.readyThread == control.Thread {
 		return true, nil
 	}
 	if check.pendingThread == "" {
-		check.pendingThread = u.Thread
-		u.attached.presentation.Status.SetText("Checking approval guard…")
-		if _, err := u.Requests.Send("hooks/list", map[string]any{"cwds": []string{u.attached.cwd}}, "main", appServerRequest{label: "approval/hooks"}); err != nil {
+		check.pendingThread = control.Thread
+		attached.presentation.Status.SetText("Checking approval guard…")
+		if _, err := control.Requests.Send("hooks/list", map[string]any{"cwds": []string{attached.cwd}}, "main", appServerRequest{label: "approval/hooks"}); err != nil {
 			check.pendingThread = ""
 			return false, err
 		}
@@ -51,7 +52,7 @@ func (u *appServerUI) guardHookResponse(message appserver.Message) error {
 		u.restoreDrafts(append(u.attached.conversation.Unsent, u.attached.conversation.Queued...)...)
 		u.attached.conversation.Unsent, u.attached.conversation.Queued = nil, nil
 		u.attached.presentation.Status.SetText("Ready")
-		u.setNotice("Shell guard: "+err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Shell guard: "+err.Error(), true)
 		return nil
 	}
 	u.guardHookCheck.readyThread = thread

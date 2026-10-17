@@ -97,7 +97,7 @@ func TestQuestionSecretAndOrdinarySelectionsKeepDistinctLabels(t *testing.T) {
 			t.Fatalf("question %s answer = %q, want distinct label %s", id, answers, label)
 		}
 	}
-	call := u.questionCalls()[0]
+	call := u.questions.calls()[0]
 	if call.Questions[0].Editor.Snapshot.Text != "" || len(call.Questions[0].Answer) != 0 || len(call.View().Questions[0].Answer) != 0 {
 		t.Fatal("secret draft entered neutral model")
 	}

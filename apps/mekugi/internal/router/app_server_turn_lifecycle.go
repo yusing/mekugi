@@ -1,14 +1,22 @@
 package router
 
+import (
+	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+)
+
 // Native turn completion retires display state even when interrupted tools
 // never return. It neither finalizes capture nor stops a host-owned process.
-func (u *appServerUI) endTurnPreviews(thread, turn string) {
-	u.execWindows.StopTurnPreviews(thread, turn)
-	if live := u.review.Preview(); live != nil {
+func endTurnPreviews(windows *executionobservation.Windows, review *sessionreview.Review, workspace string, terminal *terminalsession.Attachment, at time.Time, thread, turn string) {
+	windows.StopTurnPreviews(thread, turn)
+	if live := review.Preview(); live != nil {
 		live.SetTurn(thread, turn, false)
-		live.FinishTurn(u.attached.cwd, thread, turn)
+		live.FinishTurn(workspace, thread, turn)
 	}
-	if u.shell != nil {
-		u.shell.Live.EndTurn(thread, turn, u.now())
+	if terminal != nil {
+		terminal.Live.EndTurn(thread, turn, at)
 	}
 }

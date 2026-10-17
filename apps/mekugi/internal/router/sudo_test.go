@@ -133,7 +133,7 @@ func TestSudoUnlockDialog(t *testing.T) {
 			case <-time.After(10 * time.Second):
 				t.Fatal("sudo did not complete")
 			}
-			if input.Len() != 0 || len(u.attached.conversation.Unsent) != 0 || len(u.InputHistory) != 0 || u.activeQuestionCall() != nil {
+			if input.Len() != 0 || len(u.attached.conversation.Unsent) != 0 || len(u.InputHistory) != 0 || u.questions.activeCall() != nil {
 				t.Fatal("local sudo answer escaped into host input or history")
 			}
 			if strings.Contains(approvalTestTranscript(t, u), "1234-secret") {
@@ -169,7 +169,7 @@ func TestSudoPasswordWithdrawal(t *testing.T) {
 	appServerTestKeys(t, u, "private-draft")
 	request.Outcome = "withdrawn"
 	close(request.Done)
-	if !u.expireApprovals() || u.activeQuestionCall() != nil || len(u.InputHistory) != 0 || len(u.questionCalls()) != 0 {
+	if !u.expireApprovals() || u.questions.activeCall() != nil || len(u.InputHistory) != 0 || len(u.questions.calls()) != 0 {
 		t.Fatal("withdrawal retained a secret draft")
 	}
 	if len(request.Reply) != 0 {
@@ -188,7 +188,7 @@ func TestSudoSecretEditorAndSessionSwitch(t *testing.T) {
 		t.Fatal("secret editor escaped into Conversation state", err)
 	}
 	questions := u.questions.Questions
-	call := u.activeQuestionCall().Call
+	call := u.questions.activeCall().Call
 	if questions != &u.attached.conversation.Questions || call.Questions[0].Editor.Snapshot.Text != "" || len(call.Questions[0].Answer) != 0 {
 		t.Fatal("secret entered neutral question state")
 	}

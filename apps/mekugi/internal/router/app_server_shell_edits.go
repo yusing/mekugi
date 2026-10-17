@@ -81,6 +81,6 @@ func (u *appServerUI) observeShellEdit(thread, method string, item binding.Threa
 	}
 	host := binding.ToolResult{CallID: item.ID, Tool: item.Source, Status: item.Status, ExitCode: item.ExitCode}
 	if err := edit.Complete(host, output); err != nil {
-		u.setNotice("Shell change capture failed: "+err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Shell change capture failed: "+err.Error(), true)
 	}
 }

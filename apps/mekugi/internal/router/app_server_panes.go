@@ -79,29 +79,26 @@ func (p *nativePreferences) save(layout terminalsession.Preferences, now time.Ti
 }
 
 // Only authoritative start/resume results and settings notifications reach here.
-func (u *appServerUI) retainAppliedSettings() {
-	if u.panes == nil || u.panes.attachment == nil || u.model == "" || u.Settings.RestoreEffort {
-		return
+func (p *nativePreferences) retainAppliedSettings(terminal *terminalsession.Attachment, scope preferences.Scope, restoreEffort bool, applied preferences.Applied) error {
+	if p == nil || p.attachment == nil || applied.Model == "" || restoreEffort {
+		return nil
 	}
-	scope := preferences.Scope{Workspace: u.attached.cwd, Thread: u.Thread}
-	if u.panes.attachment.Scope() != scope {
-		if err := u.panes.open(&u.shell.Shell, u.shell.Main, u.attached.cwd, u.Thread, false); err != nil {
-			u.paneError(err)
-			return
+	if p.attachment.Scope() != scope {
+		if err := p.open(&terminal.Shell, terminal.Main, scope.Workspace, scope.Thread, false); err != nil {
+			return err
 		}
 	}
-	if err := u.panes.stage(u.shell.Shell.Preferences(u.shell.Main)); err != nil {
-		u.paneError(err)
-		return
+	if err := p.stage(terminal.Shell.Preferences(terminal.Main)); err != nil {
+		return err
 	}
-	u.panes.attachment.Apply(preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier, Observed: u.now()})
-	u.paneError(u.panes.attachment.Save(u.now(), true))
+	p.attachment.Apply(applied)
+	return p.attachment.Save(applied.Observed, true)
 }
 
-func (u *appServerUI) paneError(err error) {
+func paneError(source *sessionpresentation.ActivitySource, err error) bool {
 	if err == nil {
-		return
+		return false
 	}
-	u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: "Pane layout or settings could not be restored or saved: " + err.Error(), Observed: time.Now()}}})
-	u.dirty = true
+	source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: source.LastSeq + 1, Agent: "Session", Kind: "text", Text: "Pane layout or settings could not be restored or saved: " + err.Error(), Observed: time.Now()}}})
+	return true
 }

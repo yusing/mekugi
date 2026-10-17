@@ -14,7 +14,7 @@ func TestNonTerminalQuestionSubmissionKeepsOtherEditor(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.Turn = "turn"
 	questionTestSync(t, u, "first", false)
-	v := u.publishPresentation(u.now())
+	v := u.publishPresentation(presentationTime(u.clock))
 	call := v.Questions.Call
 	answer := sessionpresentation.AnswerIntent{Version: v.Version, AnswerInput: prompt.AnswerInput{
 		Call: call.ID, Question: call.Questions[0].ID, Choice: 0, Draft: composer.Draft{Text: "explicit note"},
@@ -25,16 +25,16 @@ func TestNonTerminalQuestionSubmissionKeepsOtherEditor(t *testing.T) {
 	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 	questionTestSync(t, u, "second", false)
 	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
-	u.openQuestionCall(u.questionCalls()[1])
+	openQuestionCall(&u.questions, &u.approvals, u.attached.conversation, u.shell, &u.picker, &u.Editor, u.Thread, u.questions.calls()[1])
 	u.Text = "another answer draft"
-	submit := sessionpresentation.QuestionSubmitIntent{Version: u.publishPresentation(u.now()).Version, Call: call.ID}
+	submit := sessionpresentation.QuestionSubmitIntent{Version: u.publishPresentation(presentationTime(u.clock)).Version, Call: call.ID}
 	if err := u.submitQuestions(submit); err != nil {
 		t.Fatal(err)
 	}
 	if got := wire.String(); !strings.Contains(got, `"id":"first"`) || !strings.Contains(got, `"answers":["Narrow","user_note: explicit note"]`) {
 		t.Fatalf("wrong response identity or explicit input: %s", got)
 	}
-	if u.activeQuestionCall() == nil || u.activeQuestionCall().ID == call.ID || u.Text != "another answer draft" {
+	if u.questions.activeCall() == nil || u.questions.activeCall().ID == call.ID || u.Text != "another answer draft" {
 		t.Fatal("submission replaced another prompt's editor")
 	}
 	wire.Reset()
@@ -44,7 +44,7 @@ func TestNonTerminalQuestionSubmissionKeepsOtherEditor(t *testing.T) {
 	if err := u.submitQuestions(submit); err != nil || wire.Len() != 0 {
 		t.Fatal("answered call responded again")
 	}
-	v = u.publishPresentation(u.now())
+	v = u.publishPresentation(presentationTime(u.clock))
 	submit = sessionpresentation.QuestionSubmitIntent{Version: v.Version, Call: v.Questions.Call.ID}
 	if err := u.submitQuestions(submit); err != nil || wire.Len() != 0 || u.attached.feedback.Text != prompt.ErrIncompleteAnswers.Error() {
 		t.Fatal("incomplete submission skipped confirmation")
@@ -61,7 +61,7 @@ func TestNonTerminalQuestionBatchUsesOrdinarySubmission(t *testing.T) {
 	u.startSession("main", t.TempDir())
 	u.Turn = "turn"
 	questionTestAsync(t, u, "batch", "Who receives it?", "Who approves it?")
-	v := u.publishPresentation(u.now())
+	v := u.publishPresentation(presentationTime(u.clock))
 	call := v.Questions.Call
 	for i, q := range call.Questions {
 		v = u.attached.presentation.View()
@@ -87,16 +87,16 @@ func TestNonTerminalQuestionRejectsSecretReplayAndRetiredView(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.Turn = "turn"
 	questionTestSync(t, u, "secret", true)
-	v := u.publishPresentation(u.now())
+	v := u.publishPresentation(presentationTime(u.clock))
 	answer := sessionpresentation.AnswerIntent{Version: v.Version, AnswerInput: prompt.AnswerInput{
 		Call: v.Questions.Call.ID, Question: v.Questions.Call.Questions[0].ID,
 		Choice: 0, Draft: composer.Draft{Text: "ordinary input"},
 	}}
-	if u.answerQuestion(answer) || u.attached.feedback.Text != prompt.ErrSecretAnswer.Error() || u.currentQuestion().Done || u.currentQuestion().Editor.Snapshot.Text != "" {
+	if u.answerQuestion(answer) || u.attached.feedback.Text != prompt.ErrSecretAnswer.Error() || u.questions.Current().Done || u.questions.Current().Editor.Snapshot.Text != "" {
 		t.Fatal("ordinary intent entered secret state")
 	}
 	u.attached.presentation.Attach(sessionpresentation.Thread{ID: u.Thread, Caller: "/root"}, true)
-	answer.Version = u.publishPresentation(u.now()).Version
+	answer.Version = u.publishPresentation(presentationTime(u.clock)).Version
 	if u.answerQuestion(answer) || u.attached.feedback.Text != sessionpresentation.ErrReplayIntent.Error() {
 		t.Fatal("replay accepted an answer")
 	}

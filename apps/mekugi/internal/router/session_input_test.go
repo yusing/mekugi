@@ -59,14 +59,14 @@ func TestNonTerminalCurrentPublicationWithoutPaint(t *testing.T) {
 
 func editOrdinaryInput(t *testing.T, u *appServerUI, text string) {
 	t.Helper()
-	v := u.publishPresentation(u.now())
+	v := u.publishPresentation(presentationTime(u.clock))
 	if !v.Draft.Available || !u.editInput(sessionpresentation.DraftEditIntent{Version: v.Version, Revision: v.Draft.Revision, End: len(v.Draft.Draft.Text), Text: text}) {
 		t.Fatalf("ordinary edit rejected: %s", u.attached.feedback.Text)
 	}
 }
 
 func ordinarySubmitIntent(u *appServerUI, mode sessioncontrol.InputMode) sessionpresentation.SubmitIntent {
-	v := u.publishPresentation(u.now())
+	v := u.publishPresentation(presentationTime(u.clock))
 	return sessionpresentation.SubmitIntent{Version: v.Version, Revision: v.Draft.Revision, Mode: mode}
 }
 
@@ -102,7 +102,7 @@ func TestNonTerminalInputDispositionAndHostRequests(t *testing.T) {
 					t.Fatalf("wrong submission target: %+v", r)
 				}
 			}
-			v := u.publishPresentation(u.now())
+			v := u.publishPresentation(presentationTime(u.clock))
 			if wire.Len() != 0 || v.Draft.Draft.Text != "" || len(u.attached.conversation.Queued) != tc.queued || len(u.attached.conversation.Unsent) != tc.unsent {
 				t.Fatalf("wrong disposition: draft=%q queued=%d unsent=%d wire=%s", v.Draft.Draft.Text, len(u.attached.conversation.Queued), len(u.attached.conversation.Unsent), wire.String())
 			}
@@ -119,7 +119,7 @@ func TestNonTerminalInputRevisionAndRejection(t *testing.T) {
 	stale := ordinarySubmitIntent(u, sessioncontrol.SendInput)
 	editOrdinaryInput(t, u, "new draft")
 	editOrdinaryInput(t, u, "same text")
-	if err := u.submitInput(stale); err != nil || wire.Len() != 0 || u.publishPresentation(u.now()).Draft.Draft.Text != "same text" {
+	if err := u.submitInput(stale); err != nil || wire.Len() != 0 || u.publishPresentation(presentationTime(u.clock)).Draft.Draft.Text != "same text" {
 		t.Fatal("identical replacement revived a retired draft target")
 	}
 	if err := u.submitInput(ordinarySubmitIntent(u, sessioncontrol.SendInput)); err != nil {
@@ -128,7 +128,7 @@ func TestNonTerminalInputRevisionAndRejection(t *testing.T) {
 	r := appServerOneRequest(t, wire, "turn/start", "same text")
 	editOrdinaryInput(t, u, "newer typing")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, r.ID))
-	if got := u.publishPresentation(u.now()).Draft.Draft.Text; got != "same text\nnewer typing" {
+	if got := u.publishPresentation(presentationTime(u.clock)).Draft.Draft.Text; got != "same text\nnewer typing" {
 		t.Fatalf("rejection lost ordering: %q", got)
 	}
 }
@@ -139,18 +139,18 @@ func TestNonTerminalOrdinaryInputRejectsPromptAndReadOnlyViews(t *testing.T) {
 	intent := ordinarySubmitIntent(u, sessioncontrol.SendInput)
 	questionTestSync(t, u, "secret", true)
 	u.openQuestions()
-	if v := u.publishPresentation(u.now()); v.Draft.Available || v.Draft.Draft.Text != "" {
+	if v := u.publishPresentation(presentationTime(u.clock)); v.Draft.Available || v.Draft.Draft.Text != "" {
 		t.Fatal("prompt editor leaked into ordinary publication")
 	}
-	if err := u.submitInput(intent); err != nil || wire.Len() != 0 || u.currentQuestion() == nil {
+	if err := u.submitInput(intent); err != nil || wire.Len() != 0 || u.questions.Current() == nil {
 		t.Fatal("ordinary submit took a prompt editor")
 	}
 	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
-	v := u.publishPresentation(u.now())
+	v := u.publishPresentation(presentationTime(u.clock))
 	if err := u.attached.presentation.Display(sessionpresentation.DisplayIntent{Version: v.Version, Thread: sessionpresentation.Thread{ID: "child", Caller: "/root/child"}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := u.submitInput(ordinarySubmitIntent(u, sessioncontrol.SendInput)); err != nil || wire.Len() != 0 || u.publishPresentation(u.now()).Draft.Draft.Text != "keep draft" {
+	if err := u.submitInput(ordinarySubmitIntent(u, sessioncontrol.SendInput)); err != nil || wire.Len() != 0 || u.publishPresentation(presentationTime(u.clock)).Draft.Draft.Text != "keep draft" {
 		t.Fatal("child display submitted Main input")
 	}
 	u.attached.presentation.Attach(sessionpresentation.Thread{ID: u.Thread, Caller: "/root"}, true)

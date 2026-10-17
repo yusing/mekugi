@@ -27,22 +27,22 @@ func (u *appServerUI) openComposerEditor(intent sessionpresentation.ComposerInte
 		u.shell.Frame.Rows = nil
 	}
 	if err := u.attached.presentation.AdmitAcquiredInput(intent, u.attached.conversation); err != nil {
-		u.setNotice(err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 		return
 	}
 	file, err := os.CreateTemp("", "mekugi-draft-*.txt")
 	if err != nil {
-		u.setNotice("Open editor: "+err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Open editor: "+err.Error(), true)
 		return
 	}
 	path := file.Name()
 	_, writeErr := file.WriteString(u.Text)
 	if err = errors.Join(writeErr, file.Close()); err != nil {
 		_ = os.Remove(path)
-		u.setNotice("Open editor: "+err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Open editor: "+err.Error(), true)
 		return
 	}
-	err = u.runEditor(path, stdin, stdout)
+	err = runEditor(u.ctx, path, stdin, stdout)
 	if err == nil {
 		var data []byte
 		data, err = os.ReadFile(path)
@@ -51,14 +51,14 @@ func (u *appServerUI) openComposerEditor(intent sessionpresentation.ComposerInte
 		}
 	}
 	if err != nil {
-		u.setNotice(fmt.Sprintf("Editor: %v · draft preserved at %s", err, path), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), fmt.Sprintf("Editor: %v · draft preserved at %s", err, path), true)
 		return
 	}
 	_ = os.Remove(path)
-	u.setNotice("Draft updated from editor", false)
+	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Draft updated from editor", false)
 }
 
-func (u *appServerUI) runEditor(path string, stdin, stdout *os.File) error {
+func runEditor(ctx context.Context, path string, stdin, stdout *os.File) error {
 	editor := strings.TrimSpace(os.Getenv("EDITOR"))
 	if editor == "" {
 		editor = strings.TrimSpace(os.Getenv("VISUAL"))
@@ -66,7 +66,6 @@ func (u *appServerUI) runEditor(path string, stdin, stdout *os.File) error {
 	if editor == "" {
 		editor = "vi"
 	}
-	ctx := u.ctx
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -83,7 +82,7 @@ func (u *appServerUI) applyEditorDraft(intent sessionpresentation.ComposerIntent
 	}
 	defer u.refreshPicker()
 	u.Run = composer.NoRun
-	if q := u.currentQuestion(); q != nil && !q.Note {
+	if q := u.questions.Current(); q != nil && !q.Note {
 		q.Selected = len(q.Choices)
 	}
 	if text == u.Text {
@@ -93,7 +92,7 @@ func (u *appServerUI) applyEditorDraft(intent sessionpresentation.ComposerIntent
 		return err
 	}
 	u.shell.Main.CursorColumn = nil
-	u.setNotice("", false)
+	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "", false)
 	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
 	return nil
 }

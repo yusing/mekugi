@@ -24,7 +24,7 @@ func TestNativeRosterCostMatchesCanonicalUsage(t *testing.T) {
 		t.Fatal("canonical child usage missing")
 	}
 	agent := sessionpresentation.ActivityAgent{Name: "/root/child", Turns: 1, InputTokens: counts.InputTokens, OutputTokens: counts.OutputTokens}
-	u.observeCost("child", &agent)
+	observeCost(u.usage, "child", &agent)
 	if !agent.CostKnown || agent.CostPartial || math.Abs(agent.Cost-.3) > 1e-10 ||
 		agent.Cost != report.Cost.CachedInput+report.Cost.UncachedInput+report.Cost.Output ||
 		agent.InputTokens != counts.InputTokens || agent.OutputTokens != counts.OutputTokens {
@@ -34,7 +34,7 @@ func TestNativeRosterCostMatchesCanonicalUsage(t *testing.T) {
 		t.Fatalf("cost = %q", got)
 	}
 	root := sessionpresentation.ActivityAgent{Name: "/root"}
-	u.observeCost("root", &root)
+	observeCost(u.usage, "root", &root)
 	if root.CostKnown || root.Cost != 0 {
 		t.Fatalf("child cost leaked into Main: %+v", root)
 	}
@@ -54,7 +54,7 @@ func TestNativeRosterUsageGapShowsLowerBoundCost(t *testing.T) {
 		}
 	}
 	agent := sessionpresentation.ActivityAgent{Name: "/root/child", Turns: 3, InputTokens: 200_000}
-	u.observeCost("child", &agent)
+	observeCost(u.usage, "child", &agent)
 	if !agent.CostPartial || !agent.CostKnown || math.Abs(agent.Cost-.6) > 1e-10 || agent.InputTokens != 200_000 {
 		t.Fatalf("missing usage hid or reset lower bound: %+v", agent)
 	}
@@ -75,7 +75,7 @@ func TestNativeRosterUnknownAndMissingUsageDoNotClaimCost(t *testing.T) {
 	proxy.usage.Observation("child", "", "unpriced-model", "").Observe(inference.Usage{InputTokens: 10, UncachedInputTokens: 10, OutputTokens: 1, TotalsKnown: true})
 	for _, thread := range []string{"child", "root"} {
 		agent := sessionpresentation.ActivityAgent{}
-		u.observeCost(thread, &agent)
+		observeCost(u.usage, thread, &agent)
 		if agent.CostKnown || activityui.Cost(testActivityAgent(agent)) != "" {
 			t.Fatalf("%s claimed unknown cost: %+v", thread, agent)
 		}

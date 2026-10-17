@@ -21,24 +21,20 @@ func (main *appServerUI) openActivityReply(u *terminalsession.Attachment, seq ui
 			if target.Source.Seq != entry.Source.ActivitySeq {
 				continue
 			}
-			return main.openEntry(u, u.Agents, target.Source.Seq)
+			return openEntry(&main.attached, main.shell, &main.detailFiles, u, u.Agents, target.Source.Seq)
 		}
 	}
 	return false
 }
 
-func (u *appServerUI) composerReadOnly() bool {
-	return u.attached.presentation.View().ReadOnly != sessionpresentation.Editable
-}
-
 // transcriptView selects display state without changing the input or execution owner.
-func (u *appServerUI) transcriptView() *activityui.View {
-	view := u.attached.presentation.View()
-	if u.shell.Agents != nil && view.Displayed.ID != view.Main.ID {
-		u.shell.Agents.Conversation = true
-		return u.shell.Agents
+func transcriptView(presentation *sessionpresentation.Model, terminal *terminalsession.Attachment) *activityui.View {
+	view := presentation.View()
+	if terminal.Agents != nil && view.Displayed.ID != view.Main.ID {
+		terminal.Agents.Conversation = true
+		return terminal.Agents
 	}
-	return u.shell.Transcript
+	return terminal.Transcript
 }
 
 func paintNative(u *terminalsession.Attachment, in terminalsession.FrameInput, transcript *activityui.View, source *sessionpresentation.ActivitySource, ctx context.Context, out io.Writer) error {

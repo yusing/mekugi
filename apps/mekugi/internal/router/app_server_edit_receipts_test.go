@@ -93,7 +93,7 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 	assertCapturedCommand(t, u.testActivity(u.shell.Transcript), "main", "cat-call", "Edit", 2)
 	u.review.Projection.Data = snapshot
 	publishFixtureReview(t, u)
-	u.applyCapturedEdits()
+	applyCapturedEdits(&u.attached, u.review, &u.pendingEditReceipts)
 	assertCapturedCommand(t, u.testActivity(u.shell.Transcript), "main", "cat-call", "Edit", 2)
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "c", "item": map[string]any{
 		"id": "cat-call", "type": "commandExecution", "command": "cat unrelated.go", "exitCode": 0}})
@@ -188,9 +188,9 @@ func TestAppServerCapturedEditsReuseReceipt(t *testing.T) {
 	receipt := &presentation.Receipt{Thread: "main", Calls: []string{"cmd"}, Text: "Edit `a.go` +1 -1"}
 	data = []*presentation.Receipt{receipt}
 	u.review.Projection.Data = reviewReceiptSnapshot(t, data)
-	u.applyCapturedEdits()
+	applyCapturedEdits(&u.attached, u.review, &u.pendingEditReceipts)
 	assertCapturedCommand(t, u.testActivity(u.shell.Transcript), "main", "cmd", "Edit", 0)
-	if allocations := testing.AllocsPerRun(5, u.applyCapturedEdits); allocations > 1 {
+	if allocations := testing.AllocsPerRun(5, func() { applyCapturedEdits(&u.attached, u.review, &u.pendingEditReceipts) }); allocations > 1 {
 		t.Fatalf("unchanged receipt allocated %.0f times; want at most 1", allocations)
 	}
 	// A terminal host refresh must still reapply counts and keep its failure.
@@ -205,7 +205,7 @@ func TestAppServerCapturedEditsReuseReceipt(t *testing.T) {
 	updated.Text = "Edit `a.go` +2 -1"
 	data[0] = &updated
 	u.review.Projection.Data = reviewReceiptSnapshot(t, data)
-	u.applyCapturedEdits()
+	applyCapturedEdits(&u.attached, u.review, &u.pendingEditReceipts)
 	assertCapturedCommand(t, u.testActivity(u.shell.Transcript), "main", "cmd", "Edit", 2)
 	if !strings.Contains(u.attached.source.Entries[0].Source.Text, "+2 -1") {
 		t.Fatal("new receipt did not replace captured counts")
@@ -343,7 +343,7 @@ func TestCodeModeCellEditReceipt(t *testing.T) {
 	live.review.Projection.Data = snapshot
 	publishFixtureReview(t, live)
 	appServerTestNotify(t, live, "item/completed", map[string]any{"threadId": "thread-1", "turnId": "turn", "item": item})
-	live.applyCapturedEdits()
+	applyCapturedEdits(&live.attached, live.review, &live.pendingEditReceipts)
 	assertCapturedCommand(t, live.testActivity(live.shell.Transcript), "thread-1", "edit-exec", "Edit", 0)
 	restored := newAppServerSessionTestUI(t, workspace)
 	restored.Thread = "thread-1"
@@ -412,7 +412,7 @@ func TestAppServerCapturedEditKeepsCommandPaths(t *testing.T) {
 		}
 	}
 	u.review.Projection.Data = reviewReceiptSnapshot(t, data)
-	u.applyCapturedEdits()
+	applyCapturedEdits(&u.attached, u.review, &u.pendingEditReceipts)
 	check(u.testActivity(u.shell.Transcript))
 	restored := newAppServerSessionTestUI(t, u.attached.cwd)
 	restored.review.Projection.Data = reviewReceiptSnapshot(t, data)

@@ -204,7 +204,7 @@ func TestServiceTierPickerSelectionUpdatesEffectiveTier(t *testing.T) {
 			if want == "" {
 				want = "default"
 			}
-			if u.displayServiceTier() != want || u.serviceTiers.Effective(u.model, "default", "unrelated") != "priority" {
+			if u.serviceTiers.Effective(u.model, u.serviceTier, u.Thread) != want || u.serviceTiers.Effective(u.model, "default", "unrelated") != "priority" {
 				t.Fatal("selection did not replace effective tier or changed configuration")
 			}
 			request := serverRequest(t, func(fields map[string]any) { fields["model"], fields["service_tier"] = u.model, u.serviceTier })

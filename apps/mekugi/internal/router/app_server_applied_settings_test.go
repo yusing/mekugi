@@ -382,7 +382,7 @@ func TestUISnapshotNativeSettingsPersistenceFailure(t *testing.T) {
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
 	u.clock = func() time.Time { return now }
 	u.attached.presentation.Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
-	u.paneError(errors.New("session preferences storage unavailable"))
+	u.dirty = paneError(u.attached.source, errors.New("session preferences storage unavailable")) || u.dirty
 	u.attached.source.Entries[len(u.attached.source.Entries)-1].Source.Observed = now
 	rows, _ := u.testMainFrame(100, 14, 0)
 	assertNativeUISnapshot(t, "native-settings-persistence-failure", rows)

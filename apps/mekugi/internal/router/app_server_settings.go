@@ -30,18 +30,18 @@ type appServerModel struct {
 	} `json:"serviceTiers"`
 }
 
-func (u *appServerUI) currentModel() *appServerModel {
-	for i := range u.models {
-		if u.models[i].Model == u.model {
-			return &u.models[i]
+func currentModel(models []appServerModel, model string) *appServerModel {
+	for i := range models {
+		if models[i].Model == model {
+			return &models[i]
 		}
 	}
 	return nil
 }
 
-func (u *appServerUI) effortChoices() []string {
+func effortChoices(models []appServerModel, selected string) []string {
 	var choices []string
-	if model := u.currentModel(); model != nil {
+	if model := currentModel(models, selected); model != nil {
 		for _, effort := range model.Efforts {
 			choices = append(choices, effort.Effort)
 		}
@@ -56,10 +56,10 @@ func (u *appServerUI) updateSettings(change map[string]any) (bool, error) {
 	decision := u.PrepareSettings(preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, change, u.restoring != nil)
 	switch decision.Action {
 	case sessioncontrol.SettingsUnavailable:
-		u.setNotice("Wait for the thread or turn to finish starting", true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Wait for the thread or turn to finish starting", true)
 		return false, nil
 	case sessioncontrol.SettingsAlreadyPending:
-		u.setNotice("Settings update pending", false)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Settings update pending", false)
 		return false, nil
 	}
 	if err := u.Requests.ApplySettings(&u.Live, decision); err != nil {
@@ -67,21 +67,21 @@ func (u *appServerUI) updateSettings(change map[string]any) (bool, error) {
 	}
 
 	if decision.RestoreDefault {
-		u.retainAppliedSettings()
+		u.dirty = paneError(u.attached.source, u.panes.retainAppliedSettings(u.shell, preferences.Scope{Workspace: u.attached.cwd, Thread: u.Thread}, u.Settings.RestoreEffort, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier, Observed: presentationTime(u.clock)})) || u.dirty
 	}
 	if decision.ChooseTier {
-		u.chooseServiceTier()
+		u.serviceTiers = chooseServiceTier(u.serviceTiers, u.model, u.Thread, u.serviceTier)
 	}
 	switch decision.Action {
 	case sessioncontrol.SettingsUnchanged:
-		u.setNotice("Settings unchanged", false)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Settings unchanged", false)
 		if decision.ChooseTier {
-			u.setNotice("Service tier updated", false)
+			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Service tier updated", false)
 		}
 	case sessioncontrol.SettingsTurn:
-		u.setNotice("Updating active turn…", false)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Updating active turn…", false)
 	case sessioncontrol.SettingsThread:
-		u.setNotice("Updating settings…", false)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Updating settings…", false)
 	}
 	return true, nil
 }
@@ -89,17 +89,17 @@ func (u *appServerUI) updateSettings(change map[string]any) (bool, error) {
 func (u *appServerUI) stepReasoning(up bool) error {
 	if u.modelsLoading {
 		u.reasoningKey = new(up)
-		u.setNotice("Loading model choices…", false)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Loading model choices…", false)
 		return nil
 	}
-	choices := u.effortChoices()
+	choices := effortChoices(u.models, u.model)
 	if len(choices) == 0 {
-		u.setNotice("Reasoning choices unavailable · use /reasoning VALUE", true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Reasoning choices unavailable · use /reasoning VALUE", true)
 		return nil
 	}
 	index := slices.Index(choices, u.reasoningEffort)
 	if index < 0 {
-		index = slices.Index(choices, u.currentModel().DefaultEffort)
+		index = slices.Index(choices, currentModel(u.models, u.model).DefaultEffort)
 	}
 	if index < 0 {
 		index = 0
@@ -126,7 +126,7 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 		return false, nil
 	}
 	if u.Replacement.Pending() {
-		u.setNotice("Wait for the new session · draft kept", false)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Wait for the new session · draft kept", false)
 		return true, nil
 	}
 	if command == "/live" {
@@ -138,7 +138,7 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 			value = fields[1]
 		}
 		if len(fields) > 2 || value != "on" && value != "off" {
-			u.setNotice("Use /live, /live on, or /live off", true)
+			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Use /live, /live on, or /live off", true)
 			return true, nil
 		}
 		u.recordDraft()
@@ -148,6 +148,7 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 		return true, nil
 	}
 	var choices []string
+	current := u.model
 	switch command {
 	case "/model":
 		for _, model := range u.models {
@@ -156,10 +157,12 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 			}
 		}
 	case "/reasoning", "/effort":
-		choices = u.effortChoices()
+		current = u.reasoningEffort
+		choices = effortChoices(u.models, u.model)
 	case "/tier":
+		current = u.serviceTiers.Effective(u.model, u.serviceTier, u.Thread)
 		choices = []string{"default"}
-		if model := u.currentModel(); model != nil {
+		if model := currentModel(u.models, u.model); model != nil {
 			for _, tier := range model.Tiers {
 				choices = append(choices, tier.ID)
 			}
@@ -167,15 +170,15 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 	}
 	if len(fields) == 1 {
 		u.deleteDraftRange(0, len(u.Text))
-		u.showSettingsPicker(command, choices)
+		u.picker.showSettingsPicker(u.modelsLoading, command, choices, current)
 		return true, nil
 	}
 	if len(fields) != 2 {
-		u.setNotice("Use "+command+" or "+command+" VALUE", true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Use "+command+" or "+command+" VALUE", true)
 		return true, nil
 	}
 	if u.Settings.Pending() {
-		u.setNotice("Settings update pending", false)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Settings update pending", false)
 		return true, nil
 	}
 	change := make(map[string]any)
@@ -197,7 +200,7 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 		u.recordDraft()
 		u.Text, u.CursorBack, u.Images = "", 0, nil
 		u.Editor.Changed()
-		u.setNotice(notice, alert)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), notice, alert)
 	}
 	return true, err
 }
@@ -210,7 +213,7 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 				u.picker.Loading = false
 				u.picker.Problem = "Model choices unavailable · Esc to close; use an explicit VALUE"
 			}
-			u.setNotice("Model choices unavailable: "+m.Error.Message, true)
+			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Model choices unavailable: "+m.Error.Message, true)
 			return true, nil
 		}
 		var result struct {
@@ -293,9 +296,9 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 	u.model, u.reasoningEffort, u.serviceTier = event.Settings.Model, event.Settings.Effort, event.Settings.ServiceTier
 	confirmation := u.Settings.Confirmed(u.Turn, u.reasoningEffort)
 	if confirmation.ChooseTier {
-		u.chooseServiceTier()
+		u.serviceTiers = chooseServiceTier(u.serviceTiers, u.model, u.Thread, u.serviceTier)
 	}
-	u.retainAppliedSettings()
+	u.dirty = paneError(u.attached.source, u.panes.retainAppliedSettings(u.shell, preferences.Scope{Workspace: u.attached.cwd, Thread: u.Thread}, u.Settings.RestoreEffort, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier, Observed: presentationTime(u.clock)})) || u.dirty
 	if !confirmation.Requested {
 		return true, nil
 	}
@@ -304,30 +307,24 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 		if err := u.Requests.ApplySettings(&u.Live, decision); err != nil {
 			return true, err
 		}
-		u.setNotice("Settings saved · updating active turn…", false)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Settings saved · updating active turn…", false)
 	} else {
-		u.setNotice("Settings saved for next turn", false)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Settings saved for next turn", false)
 		if u.Settings.RestoreEffort {
-			u.setNotice("Default reasoning still needs restoration · choose /effort VALUE or restart resume", true)
+			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Default reasoning still needs restoration · choose /effort VALUE or restart resume", true)
 		}
 	}
 	return true, nil
 }
 
 // Settings share the composer's bounded viewport, never the transcript.
-func (u *appServerUI) showSettingsPicker(command string, choices []string) {
-	u.picker.cancelScan()
-	p := &u.picker
-	u.openMenu("settings")
-	p.Target, p.Problem, p.Loading = completion.Target{}, "", u.modelsLoading
+func (p *composerPicker) showSettingsPicker(loading bool, command string, choices []string, current string) {
+	p.cancelScan()
+	p.openMenu("settings")
+	p.Target, p.Problem, p.Loading = completion.Target{}, "", loading
 	p.Choices = nil
-	u.picker.Setting = command
-	current := u.model
-	switch command {
-	case "/reasoning", "/effort":
-		current = u.reasoningEffort
-	case "/tier":
-		current = u.displayServiceTier()
+	p.Setting = command
+	if command == "/tier" {
 		if current == "" {
 			current = "default"
 		}
@@ -351,16 +348,17 @@ func (u *appServerUI) showSettingsPicker(command string, choices []string) {
 	}
 }
 
-func (u *appServerUI) selectedServiceTier() string {
-	tier, _ := u.serviceTiers.Choice(u.model, u.Thread)
+func selectedServiceTier(tiers *inferencegateway.Tiers, model, thread string) string {
+	tier, _ := tiers.Choice(model, thread)
 	return tier
 }
 
-func (u *appServerUI) chooseServiceTier() {
-	if u.serviceTiers == nil {
-		u.serviceTiers = inferencegateway.NewTiers(nil)
+func chooseServiceTier(tiers *inferencegateway.Tiers, model, thread, tier string) *inferencegateway.Tiers {
+	if tiers == nil {
+		tiers = inferencegateway.NewTiers(nil)
 	}
-	u.serviceTiers.Confirm(u.model, u.Thread, u.serviceTier)
+	tiers.Confirm(model, thread, tier)
+	return tiers
 }
 
 func (u *appServerUI) chooseSetting(choice completion.Choice) {
@@ -381,7 +379,7 @@ func (u *appServerUI) chooseSetting(choice completion.Choice) {
 	}
 	accepted, err := u.updateSettings(map[string]any{field: value})
 	if err != nil {
-		u.setNotice("Settings update failed: "+err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Settings update failed: "+err.Error(), true)
 	}
 	if accepted {
 		p.Kind, p.Open, p.Choices = "", false, nil
@@ -395,5 +393,5 @@ func (u *appServerUI) chooseSetting(choice completion.Choice) {
 func (u *appServerUI) setLivePane(value string) {
 	u.shell.LiveHidden = value == "off"
 	u.dirty = true
-	u.setNotice("Live pane "+value+" for this session", false)
+	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Live pane "+value+" for this session", false)
 }

@@ -15,15 +15,15 @@ func (u *appServerUI) titleCommand(text string) bool {
 	}
 	name := strings.TrimSpace(strings.TrimPrefix(text, "/title"))
 	if name == "" {
-		u.setNotice("Usage: /title <title>", false)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Usage: /title <title>", false)
 		return true
 	}
 	if u.Replacement.Pending() {
-		u.setNotice("Wait for the session to be ready", false)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Wait for the session to be ready", false)
 		return true
 	}
 	u.deleteDraftRange(0, len(u.Text))
-	u.setNotice("", false)
+	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "", false)
 	u.renameSessionTitle(name)
 	return true
 }
@@ -54,7 +54,7 @@ func (u *appServerUI) requestSessionTitle(save *sessioncontrol.NameSave) {
 	_, err := u.Requests.Send("thread/name/set", map[string]any{"threadId": save.Thread, "name": save.Name}, "", appServerRequest{title: save})
 	if err != nil {
 		u.Names.Complete(*save)
-		u.setNotice("Session title could not be saved", false)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Session title could not be saved", false)
 		u.dirty = true
 	}
 }
@@ -64,11 +64,11 @@ func (u *appServerUI) sessionTitleMessage(m appserver.Message, update *sessionco
 		latest := u.Names.Complete(*update)
 		if m.Error != nil {
 			if update.Thread == u.Thread && latest {
-				u.setNotice("Session title could not be saved: "+m.Error.Message, false)
+				setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Session title could not be saved: "+m.Error.Message, false)
 				u.dirty = true
 			}
 		} else {
-			u.confirmSessionTitle(update.Thread, update.Name)
+			u.dirty = confirmSessionTitle(u.titleGenerator, u.Thread, &u.title, update.Thread, update.Name) || u.dirty
 		}
 		u.requestSessionTitle(u.Names.Next(update.Thread))
 		return true
@@ -81,19 +81,21 @@ func (u *appServerUI) sessionTitleMessage(m appserver.Message, update *sessionco
 		ThreadName string `json:"threadName"`
 	}
 	if json.Unmarshal(m.Params, &params) == nil {
-		u.confirmSessionTitle(params.ThreadID, params.ThreadName)
+		u.dirty = confirmSessionTitle(u.titleGenerator, u.Thread, &u.title, params.ThreadID, params.ThreadName) || u.dirty
 	}
 	return true
 }
 
-func (u *appServerUI) confirmSessionTitle(thread, name string) {
+func confirmSessionTitle(generator *sessionNaming, main string, title *string, thread, name string) bool {
 	if thread == "" {
-		return
+		return false
 	}
-	if u.titleGenerator != nil {
-		u.titleGenerator.nameChanged(thread, name)
+	if generator != nil {
+		generator.nameChanged(thread, name)
 	}
-	if thread == u.Thread {
-		u.title, u.dirty = name, true
+	if thread == main {
+		*title = name
+		return true
 	}
+	return false
 }

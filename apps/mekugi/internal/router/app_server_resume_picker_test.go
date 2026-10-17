@@ -404,7 +404,7 @@ func TestLiveDiffResetScopeResynchronizes(t *testing.T) {
 
 func TestAppServerResumeSwitchKeepsCurrentSessionLive(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
-	u.registerThread(binding.ThreadInfo{ID: "child", ParentThreadID: "main", AgentNickname: "worker", AgentRole: "worker",
+	registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", ParentThreadID: "main", AgentNickname: "worker", AgentRole: "worker",
 		Source: jsontext.Value(`{"subAgent":{"thread_spawn":{"agent_path":"/root/worker","agent_role":"worker"}}}`)})
 	appServerTestKeys(t, u, "/resume saved\r")
 	resume := resumeTestPrepared(t, u, w)

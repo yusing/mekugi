@@ -35,7 +35,7 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 	u.Text = "Review "
 	bindComposerFile(u, `@"file name.go"`, "file name.go")
 	u.Text += " please"
-	draft := u.takeDraft()
+	draft := prepareDraft(&u.picker, u.shell, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
 	if err := os.WriteFile(path, []byte("changed after queueing"), 0600); err != nil {
 		t.Fatal(err)
 	}

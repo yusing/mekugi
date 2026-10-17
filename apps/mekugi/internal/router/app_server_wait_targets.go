@@ -14,9 +14,8 @@ import (
 	"github.com/yusing/mekugi/modules/activity/waittargets"
 )
 
-func (u *appServerUI) openWaitStore(store *history.Store, writes *persistence.Counter, limits history.Limits) error {
-	u.retainedSession.Close()
-	ctx := u.ctx
+func openWaitStore(ctx context.Context, service *history.Service, retained *history.Session, thread string, store *history.Store, writes *persistence.Counter, limits history.Limits) error {
+	retained.Close()
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -25,36 +24,36 @@ func (u *appServerUI) openWaitStore(store *history.Store, writes *persistence.Co
 		if err != nil {
 			return err
 		}
-		store, err = u.history.Open(ctx, directory)
+		store, err = service.Open(ctx, directory)
 		limits = history.Limits{Total: history.DefaultStorageBytes, Kinds: map[string]int64{"commentary": 16 << 20}}
 		if err != nil {
 			return err
 		}
 	}
-	selected, err := store.SelectSession(ctx, writes, limits, u.Thread)
+	selected, err := store.SelectSession(ctx, writes, limits, thread)
 	if publication, ok := errors.AsType[*history.PublicationError](err); ok {
 		err = requestexecution.StoragePublicationError(publication.Err)
 	}
 	if err != nil {
 		return err
 	}
-	u.retainedSession = selected
+	*retained = selected
 	return nil
 }
 
-func (u *appServerUI) waitTargetsPath(key [3]string) string {
-	return filepath.Join(u.retainedSession.Store.Directory(), waittargets.Name(u.attached.cwd, key[0], key[1], key[2]))
+func waitTargetsPath(retained history.Session, workspace string, key [3]string) string {
+	return filepath.Join(retained.Store.Directory(), waittargets.Name(workspace, key[0], key[1], key[2]))
 }
 
-func (u *appServerUI) readWaitTargets(key [3]string) (targets []waittargets.Target, found bool, err error) {
-	err = u.retainedSession.Store.Transaction(u.retainedSession.Context, u.retainedSession.Writes, func(tx *history.Transaction) error {
-		path := u.waitTargetsPath(key)
+func readWaitTargets(retained history.Session, workspace string, key [3]string) (targets []waittargets.Target, found bool, err error) {
+	err = retained.Store.Transaction(retained.Context, retained.Writes, func(tx *history.Transaction) error {
+		path := waitTargetsPath(retained, workspace, key)
 		var err error
 		targets, found, err = waittargets.Read(path)
 		if err != nil || !found {
 			return err
 		}
-		if err := requestexecution.StoragePublicationError(tx.Retain(u.retainedSession.Thread, u.retainedSession.Limits, filepath.Base(path))); err != nil {
+		if err := requestexecution.StoragePublicationError(tx.Retain(retained.Thread, retained.Limits, filepath.Base(path))); err != nil {
 			return err
 		}
 		return nil
@@ -65,15 +64,15 @@ func (u *appServerUI) readWaitTargets(key [3]string) (targets []waittargets.Targ
 	return targets, found, nil
 }
 
-func (u *appServerUI) writeWaitTargets(key [3]string, targets []waittargets.Target) error {
-	if u.retainedSession.Store == nil {
+func writeWaitTargets(retained history.Session, workspace string, key [3]string, targets []waittargets.Target) error {
+	if retained.Store == nil {
 		return nil
 	}
 	data, err := waittargets.Encode(targets)
 	if err != nil {
 		return err
 	}
-	return u.retainedSession.Store.Transaction(u.retainedSession.Context, u.retainedSession.Writes, func(tx *history.Transaction) error {
-		return writeRetainedRecord(tx, u.retainedSession.Thread, u.retainedSession.Limits, filepath.Base(u.waitTargetsPath(key)), "wait-pending-", data)
+	return retained.Store.Transaction(retained.Context, retained.Writes, func(tx *history.Transaction) error {
+		return writeRetainedRecord(tx, retained.Thread, retained.Limits, filepath.Base(waitTargetsPath(retained, workspace, key)), "wait-pending-", data)
 	})
 }

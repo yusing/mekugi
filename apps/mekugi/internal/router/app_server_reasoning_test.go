@@ -150,7 +150,7 @@ func TestAppServerClosedCompletionKeepsCurrentTurnSelection(t *testing.T) {
 	activity.Attach("main")
 	activity.Observe("child", "main", "/root/worker", true)
 	setTestAppServerIntegration(u, &observationFixture{activity: activity})
-	activity.BeginResponse("child", true, u.now())
+	activity.BeginResponse("child", true, presentationTime(u.clock))
 	u.applyObservedActivity()
 	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "current"}})
 	reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "current", "item": map[string]any{"id": "answer", "type": "agentMessage", "text": "Current answer"}})
@@ -182,7 +182,7 @@ func TestAppServerRestorePublicSummaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	u.restoreHistory(turns)
-	u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
+	registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	u.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: turns}, false)
 	u.testActivity(u.shell.Agents).setDisplayFilter(false, "/root/worker")
 	for _, view := range []*activityAdapter{u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents)} {
@@ -267,7 +267,7 @@ func TestAppServerWorkingSurvivesDockComposition(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.Text = "one\ntwo\nthree\nfour"
 	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
-	u.preview(previewmodel.Preview{ID: "p", Caller: "/root", Status: previewmodel.PreviewEdit, Input: "package a\n"}, false)
+	applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), previewmodel.Preview{ID: "p", Caller: "/root", Status: previewmodel.PreviewEdit, Input: "package a\n"}, false)
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "r", "delta": "**Active summary**"})
 	var out bytes.Buffer
 	if err := u.testPaint(&out, 80, 14); err != nil {
@@ -311,18 +311,18 @@ func TestAppServerPendingStatusPulses(t *testing.T) {
 			u.attached.presentation.Status.Set(status, false)
 			start := time.Unix(0, 0)
 			dim, bright, dimAgain := u.sessionLabel(start), u.sessionLabel(start.Add(time.Second)), u.sessionLabel(start.Add(2*time.Second))
-			if !u.publishPresentation(u.now()).Status.Animating || dim == bright || dim != dimAgain || ansi.Strip(dim) != ansi.Strip(bright) {
+			if !u.publishPresentation(presentationTime(u.clock)).Status.Animating || dim == bright || dim != dimAgain || ansi.Strip(dim) != ansi.Strip(bright) {
 				t.Fatalf("pending status does not pulse: %q %q %q", dim, bright, dimAgain)
 			}
 			u.attached.presentation.Status.Alert = true
-			if u.publishPresentation(u.now()).Status.Animating || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
+			if u.publishPresentation(presentationTime(u.clock)).Status.Animating || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
 				t.Fatal("alert animates")
 			}
 			u.restoring = nil
 			u.LeaveThread()
 			u.Thread = "main"
 			u.attached.presentation.Status.Set("Ready", false)
-			if u.publishPresentation(u.now()).Status.Animating || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
+			if u.publishPresentation(presentationTime(u.clock)).Status.Animating || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
 				t.Fatal("idle animates")
 			}
 		})

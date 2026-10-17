@@ -120,7 +120,7 @@ func TestSkillsShellVariablesStayLiteral(t *testing.T) {
 	for _, query := range []string{"HOME", "PATH", "1", "?", "-", "_", "{HOME}"} {
 		u, _ := newAppServerTestUI()
 		u.Text = "$" + query
-		if u.completionTarget().Kind != 0 {
+		if u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode()).Kind != 0 {
 			t.Fatalf("shell token $%s opened picker", query)
 		}
 	}

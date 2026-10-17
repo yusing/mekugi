@@ -88,7 +88,7 @@ func TestCommandSegmentsBatchMixedCandidates(t *testing.T) {
 		t.Fatal(err)
 	}
 	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), segments: testReports(), ctx: t.Context(), Thread: "unrelated-current-thread", retained: store.changeScope(), changeSource: store.changes, snapshots: store.snapshots, recovered: store.recovery, publishChanges: store.liveDiff})
-	got := u.prepareCommandSegments("fork", workspace, turn)
+	got := prepareCommandSegments(u.ctx, u.retained, u.segments, "fork", workspace, turn)
 	catalog, err := store.publication.ReadCatalog(history.SessionName("fork"))
 	if err != nil {
 		t.Fatal(err)
@@ -105,11 +105,11 @@ func TestCommandSegmentsBatchMixedCandidates(t *testing.T) {
 	if _, err := store.publication.ReadCatalog(history.SessionName(u.Thread)); !os.IsNotExist(err) {
 		t.Fatalf("adopted records under the current UI thread instead of the supplied stable thread: %v", err)
 	}
-	if got := u.prepareCommandSegments("other", filepath.Join(workspace, "other"), turn); len(got) != 0 {
+	if got := prepareCommandSegments(u.ctx, u.retained, u.segments, "other", filepath.Join(workspace, "other"), turn); len(got) != 0 {
 		t.Fatal("batch borrowed another workspace's reports")
 	}
 	turn.ID = "other-turn"
-	if got := u.prepareCommandSegments("other", workspace, turn); len(got) != 0 {
+	if got := prepareCommandSegments(u.ctx, u.retained, u.segments, "other", workspace, turn); len(got) != 0 {
 		t.Fatal("batch borrowed another turn's reports")
 	}
 }
@@ -130,7 +130,7 @@ func TestCommandSegmentsBatchRejectsUnretainedRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), segments: testReports(), ctx: t.Context(), retained: store.changeScope(), changeSource: store.changes, snapshots: store.snapshots, recovered: store.recovery, publishChanges: store.liveDiff})
-	if got := u.prepareCommandSegments("fork", workspace, turn); got[item.ID] != nil {
+	if got := prepareCommandSegments(u.ctx, u.retained, u.segments, "fork", workspace, turn); got[item.ID] != nil {
 		t.Fatal("published a record without durable target ownership")
 	}
 }
@@ -196,7 +196,7 @@ func TestCommandSegmentsBatchForkOwnershipSurvivesParentExpiry(t *testing.T) {
 				t.Fatalf("parent did not expire: %v", err)
 			}
 			setTestUIStore(u, store)
-			if got := u.prepareCommandSegments("fork", workspace, turn); got[item.ID] == nil {
+			if got := prepareCommandSegments(u.ctx, u.retained, u.segments, "fork", workspace, turn); got[item.ID] == nil {
 				t.Fatal("fork lost its inherited report after reopen and parent expiry")
 			}
 		})
@@ -226,7 +226,7 @@ func BenchmarkCommandSegmentsBatchLargeHistory(b *testing.B) {
 			iteration := 0
 			for b.Loop() {
 				// A new owner each time measures adoption, not only warm catalog reads.
-				got := u.prepareCommandSegments(fmt.Sprintf("fork-%d", iteration), workspace, turn)
+				got := prepareCommandSegments(u.ctx, u.retained, u.segments, fmt.Sprintf("fork-%d", iteration), workspace, turn)
 				iteration++
 				if len(got) != count {
 					b.Fatalf("restored %d/%d records", len(got), count)

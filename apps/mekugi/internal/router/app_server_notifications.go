@@ -54,8 +54,8 @@ func (u *appServerUI) blockNotification(m appserver.Message) {
 	u.notify("approval-requested", "Approval requested")
 }
 
-func (u *appServerUI) resolveNotification(m appserver.Message) {
-	if u.notifications == nil || m.Method != "serverRequest/resolved" {
+func (n *nativeNotifications) resolve(m appserver.Message) {
+	if n == nil || m.Method != "serverRequest/resolved" {
 		return
 	}
 	var p struct {
@@ -65,8 +65,8 @@ func (u *appServerUI) resolveNotification(m appserver.Message) {
 	if json.Unmarshal(m.Params, &p) != nil {
 		return
 	}
-	if request, ok := u.notifications.blocked[string(p.RequestID)]; ok && (request.Thread == "" || request.Thread == p.ThreadID) {
-		delete(u.notifications.blocked, string(p.RequestID))
+	if request, ok := n.blocked[string(p.RequestID)]; ok && (request.Thread == "" || request.Thread == p.ThreadID) {
+		delete(n.blocked, string(p.RequestID))
 	}
 }
 
@@ -79,7 +79,7 @@ func (u *appServerUI) writeTerminalTitle(now time.Time) {
 		return
 	}
 	parts := []string{"Mekugi"}
-	if u.questionCount() > 0 || len(n.blocked) > 0 || len(u.pendingApprovals()) > 0 {
+	if u.questions.Count(u.Thread) > 0 || len(n.blocked) > 0 || len(u.approvals.calls()) > 0 {
 		parts = append(parts, "[ ! ] Action Required")
 	} else if u.Turn != "" || u.Starting() {
 		frames := []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
@@ -117,16 +117,16 @@ func (u *appServerUI) notificationConfig(m appserver.Message) {
 		} `json:"config"`
 	}
 	if m.Error != nil {
-		u.setNotice("Terminal notification settings could not be read", true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Terminal notification settings could not be read", true)
 		return
 	}
 	if err := json.Unmarshal(m.Result, &result); err != nil {
-		u.setNotice("Terminal notification settings could not be read", true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Terminal notification settings could not be read", true)
 		return
 	}
 	if len(result.Config.TUI) > 0 {
 		if err := json.Unmarshal(result.Config.TUI, &u.notifications.settings); err != nil {
-			u.setNotice("Terminal notification settings could not be read", true)
+			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Terminal notification settings could not be read", true)
 			return
 		}
 	}
@@ -184,6 +184,6 @@ func (u *appServerUI) writeTerminalSignal(sequence string) {
 	if _, err := io.WriteString(n.out, sequence); err != nil {
 		// Auxiliary notification failure never interrupts host execution.
 		n.out = nil
-		u.setNotice("Terminal notifications disabled after an output error", true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Terminal notifications disabled after an output error", true)
 	}
 }

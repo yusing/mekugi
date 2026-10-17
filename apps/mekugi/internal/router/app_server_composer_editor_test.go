@@ -25,7 +25,7 @@ import (
 )
 
 func editorTestIntent(u *appServerUI) sessionpresentation.ComposerIntent {
-	v := u.publishPresentation(u.now())
+	v := u.publishPresentation(presentationTime(u.clock))
 	return sessionpresentation.ComposerIntent{Version: v.Version, Target: v.EditorTarget(), Operation: sessionpresentation.EditExternally}
 }
 
@@ -33,8 +33,8 @@ func TestComposerEditorResultKeepsOriginalTarget(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.Editor.Replace(composer.Draft{Text: "original"})
 	intent := editorTestIntent(u)
-	u.setNotice("unrelated progress", false)
-	u.publishPresentation(u.now())
+	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "unrelated progress", false)
+	u.publishPresentation(presentationTime(u.clock))
 	if err := u.applyEditorDraft(intent, "edited"); err != nil || u.Text != "edited" {
 		t.Fatalf("unrelated publication discarded an editor result: %q, %v", u.Text, err)
 	}

@@ -15,7 +15,7 @@ func TestAppServerInterruptedWaitEndsBeforeContinue(t *testing.T) {
 	for _, thread := range []string{"main", "child"} {
 		t.Run(thread, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			u.registerThread(binding.ThreadInfo{ID: "child"})
+			registerThread(&u.attached.session, binding.ThreadInfo{ID: "child"})
 			wait := binding.ThreadItem{ID: "wait", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress", ReceiverThreadIDs: []string{"target"}}
 			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "turn"}})
 			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "turn", "item": wait})
@@ -45,7 +45,7 @@ func TestAppServerRestoredStoppedWait(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			history := []binding.HistoryTurn{{ID: "old", Status: status, Items: []binding.ThreadItem{{ID: "wait", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress"}}}}
 			u.restoreHistory(history)
-			u.registerThread(binding.ThreadInfo{ID: "child"})
+			registerThread(&u.attached.session, binding.ThreadInfo{ID: "child"})
 			u.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: history}, false)
 			for _, view := range []*activityAdapter{u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents)} {
 				if view.Entries[0].Source.Text != "Wait ended" || view.Entries[0].Source.Native.Phase != "turn/completed" {
@@ -73,7 +73,7 @@ func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 	child.ID, child.Thread, child.Caller = "child-edit", "child", "/root/child"
 	for _, preview := range []previewmodel.Preview{main, child} {
 		auto.Update(preview, false)
-		u.preview(preview, false)
+		applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), preview, false)
 		revealNativeDock(terminalTest(u))
 	}
 	queued := main

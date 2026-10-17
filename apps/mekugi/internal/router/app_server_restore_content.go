@@ -4,6 +4,10 @@ import (
 	"cmp"
 	"iter"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -43,7 +47,7 @@ func (u *appServerUI) restorePaneContent(root binding.ThreadInfo) error {
 	u.restoring = &appServerActivityRestore{root: root, threads: make(map[string]binding.ThreadInfo), state: sessionpresentation.NewRestoration(root.ID)}
 	u.restoreDiffThread(root, true)
 	u.attached.presentation.Status.SetText("Restoring roster and Activity…")
-	return u.restoreList()
+	return restoreList(&u.Client, u.restoring)
 }
 
 func (u *appServerUI) restoreDiffThread(info binding.ThreadInfo, root bool) {
@@ -53,38 +57,34 @@ func (u *appServerUI) restoreDiffThread(info binding.ThreadInfo, root bool) {
 	u.review.IncludeThread(info.Cwd, info.ID, root)
 	if root {
 		u.review.Projection.Workspace = info.Cwd
-		u.publishReview()
+		publishReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane)
 	}
 }
 
-func (u *appServerUI) restoreList() error {
-	view := u.restoring.state.View()
+func restoreList(control *sessioncontrol.Client[appServerRequest], restoring *appServerActivityRestore) error {
+	view := restoring.state.View()
 	params := map[string]any{
-		"ancestorThreadId": u.Thread, "modelProviders": []string{},
+		"ancestorThreadId": control.Thread, "modelProviders": []string{},
 		"sourceKinds": []string{"subAgentThreadSpawn"}, "limit": 100,
 		"archived": view.Archived,
 	}
 	if view.Cursor != "" {
 		params["cursor"] = view.Cursor
 	}
-	return u.Request("thread/list", params)
+	return control.Request("thread/list", params)
 }
 
-func (u *appServerUI) restoreContentNotice(message string) {
-	u.restoreHistoryNotice(message, true)
-}
-
-func (u *appServerUI) restoreHistoryNotice(message string, incomplete bool) {
+func restoreHistoryNotice(attached *attachedPresentation, restoring *appServerActivityRestore, message string, incomplete bool) {
 	if incomplete {
-		u.attached.childSource.Coverage = "History incomplete"
+		attached.childSource.Coverage = "History incomplete"
 	}
-	if r := u.restoring; r != nil && !r.state.View().Rendered {
+	if r := restoring; r != nil && !r.state.View().Rendered {
 		r.notices = append(r.notices, restoredHistoryNotice{message, incomplete}) // Shown after Main's history.
 		return
 	}
-	u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: message, Observed: time.Now()}}})
+	attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: attached.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: message, Observed: time.Now()}}})
 	// Notices advance Main independently of the Activity sequence.
-	u.attached.session.Activity().AdvanceSequence(u.attached.source.LastSeq)
+	attached.session.Activity().AdvanceSequence(attached.source.LastSeq)
 }
 
 func (u *appServerUI) restoreActivityResponse(method string, m appserver.Message) error {
@@ -93,7 +93,7 @@ func (u *appServerUI) restoreActivityResponse(method string, m appserver.Message
 		return nil
 	}
 	if m.Error != nil {
-		u.restoreContentNotice("Could not restore " + method + " history: " + m.Error.Message)
+		restoreHistoryNotice(&u.attached, u.restoring, "Could not restore "+method+" history: "+m.Error.Message, true)
 		if method == "thread/list" {
 			return u.readRestoredChildren()
 		}
@@ -103,7 +103,7 @@ func (u *appServerUI) restoreActivityResponse(method string, m appserver.Message
 	if method == "thread/list" {
 		var result binding.ThreadPage
 		if err := json.Unmarshal(m.Result, &result); err != nil {
-			u.restoreContentNotice("Invalid roster history: " + err.Error())
+			restoreHistoryNotice(&u.attached, u.restoring, "Invalid roster history: "+err.Error(), true)
 			return u.readRestoredChildren()
 		}
 		ids := make([]string, len(result.Data))
@@ -116,17 +116,17 @@ func (u *appServerUI) restoreActivityResponse(method string, m appserver.Message
 			r.threads[info.ID] = info
 		}
 		if notice != "" {
-			u.restoreContentNotice(notice)
+			restoreHistoryNotice(&u.attached, u.restoring, notice, true)
 		}
 		if r.state.View().Listed {
 			return u.readRestoredChildren()
 		}
-		return u.restoreList()
+		return restoreList(&u.Client, u.restoring)
 	}
 	view := r.state.View()
 	info, err := binding.DecodeHistoryThread(m.Result, view.Threads[view.Next])
 	if err != nil {
-		u.restoreContentNotice("Invalid Activity history: " + err.Error())
+		restoreHistoryNotice(&u.attached, u.restoring, "Invalid Activity history: "+err.Error(), true)
 	} else if info.HistoryMode == "paginated" {
 		return u.startChildHistory(info)
 	} else {
@@ -142,7 +142,7 @@ func (u *appServerUI) readRestoredChildren() error {
 	// Register names before rendering cross-agent assignments and messages.
 	for _, id := range r.state.View().Threads {
 		info := r.threads[id]
-		u.registerThread(info)
+		registerThread(&u.attached.session, info)
 		u.restoreDiffThread(info, false)
 		u.attached.session.Lifecycle(id).RestoreTiming(restoredAgentIntervals(info.Turns))
 	}
@@ -152,7 +152,7 @@ func (u *appServerUI) readRestoredChildren() error {
 			if item.Type == "collabAgentToolCall" {
 				item.SenderThreadID = u.Thread
 				entries := u.attached.session.Collaboration(item.Observation(), item.ID, historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt, r.root.UpdatedAt)), activitypresentation.HistoricalCollaboration)
-				u.applyRestoredActivity(entries)
+				applyRestoredActivity(&u.attached, u.review, &u.pendingEditReceipts, entries)
 				for _, entry := range entries {
 					if main, ok := sessionpresentation.MainActivityEntry(entry); ok {
 						seq := u.attached.childSource.EntrySeq(entry)
@@ -224,7 +224,7 @@ func (u *appServerUI) readNextRestoredChild() error {
 		r.root.Turns, r.main = nil, nil
 		r.state.ContentRendered()
 		for _, notice := range r.notices {
-			u.restoreHistoryNotice(notice.message, notice.incomplete)
+			restoreHistoryNotice(&u.attached, u.restoring, notice.message, notice.incomplete)
 		}
 		r.notices = nil
 	}
@@ -259,12 +259,12 @@ func historyTime(seconds int64) time.Time {
 	return time.Unix(seconds, 0)
 }
 
-func (u *appServerUI) applyRestoredActivity(entries []sessionpresentation.ActivityEntry) {
+func applyRestoredActivity(attached *attachedPresentation, review *sessionreview.Review, pending *[]*changepresentation.Receipt, entries []sessionpresentation.ActivityEntry) {
 	for i := range entries {
 		entries[i].Agent = sessionpresentation.ActivityOwner(entries[i])
 	}
-	u.attached.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: entries, Agents: u.attached.session.Roster()})
-	u.applyCapturedEdits()
+	attached.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: entries, Agents: attached.session.Roster()})
+	applyCapturedEdits(attached, review, pending)
 }
 
 func restoredAgentIntervals(turns []binding.HistoryTurn) iter.Seq2[time.Time, time.Time] {
@@ -286,12 +286,12 @@ func (u *appServerUI) restoreActivityThread(info binding.ThreadInfo, olderPage b
 	name := s.KnownCaller(info.ID)
 	agent := s.Agent(name)
 	restoreContextUsage(agent, info)
-	u.restoreUsage(info)
+	restoreUsage(u.usage, info)
 	page := u.restoring != nil && u.restoring.paging
 	if !page {
 		s.Lifecycle(info.ID).Restore(restoredAgentIntervals(info.Turns), uint64(len(info.Turns)), false)
 	}
-	u.observeCost(info.ID, agent)
+	observeCost(u.usage, info.ID, agent)
 	u.attached.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: s.Roster()})
 	var r *appServerActivityRestore
 	var itemAt map[string]time.Time
@@ -308,14 +308,14 @@ func (u *appServerUI) restoreActivityThread(info binding.ThreadInfo, olderPage b
 			} else if p.entry.Kind == "hook" {
 				entry := p.entry
 				entry.Seq = s.Activity().NextSequence()
-				u.applyRestoredActivity([]sessionpresentation.ActivityEntry{entry})
+				applyRestoredActivity(&u.attached, u.review, &u.pendingEditReceipts, []sessionpresentation.ActivityEntry{entry})
 			}
 		}
 		delete(r.pane, name)
 	}
 	positions := historyPositions(info.Turns, itemAt)
 	for index, turn := range info.Turns {
-		u.restoredSegments = u.prepareCommandSegments(info.ID, info.Cwd, turn)
+		u.restoredSegments = prepareCommandSegments(u.ctx, u.retained, u.segments, info.ID, info.Cwd, turn)
 		observed := historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt, info.UpdatedAt))
 		var entries []sessionpresentation.ActivityEntry
 		var times []time.Time // When each entry happened, to place Main's copy.
@@ -354,7 +354,7 @@ func (u *appServerUI) restoreActivityThread(info binding.ThreadInfo, olderPage b
 			entries = append(entries, sessionpresentation.ActivityEntry{Seq: s.Activity().NextSequence(), Agent: name, Kind: "error", Text: text, Observed: observed})
 			times = append(times, observed)
 		}
-		u.applyRestoredActivity(entries)
+		applyRestoredActivity(&u.attached, u.review, &u.pendingEditReceipts, entries)
 		if r == nil {
 			continue
 		}

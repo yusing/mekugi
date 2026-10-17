@@ -13,13 +13,13 @@ func (main *appServerUI) openSelectionTarget(u *terminalsession.Attachment, targ
 		return
 	}
 	view := main.attached.presentation.View()
-	if target.Version != view.Version || target.Thread != view.Displayed.ID || target.Workspace != view.Info.Workspace || target.Workspace != main.attached.cwd || main.activitySource(target.View) == nil {
-		main.setNotice(sessionpresentation.ErrStaleIntent.Error(), true)
+	if target.Version != view.Version || target.Thread != view.Displayed.ID || target.Workspace != view.Info.Workspace || target.Workspace != main.attached.cwd || activitySource(&main.attached, main.shell, target.View) == nil {
+		setNotice(&main.attached.feedback, main.shell, presentationTime(main.clock), sessionpresentation.ErrStaleIntent.Error(), true)
 		return
 	}
 	switch {
 	case target.Link != "":
-		if !main.detailFiles.openMarkdownFile(&main.attached.session, main.attached.presentation, main.attached.cwd, main.activitySource(target.View), u, target.View, target.Link) {
+		if !main.detailFiles.openMarkdownFile(&main.attached.session, main.attached.presentation, main.attached.cwd, activitySource(&main.attached, main.shell, target.View), u, target.View, target.Link) {
 			link := target.Link
 			if parsed, err := url.Parse(link); err == nil && parsed.Scheme == "file" {
 				link = parsed.Path
@@ -30,13 +30,13 @@ func (main *appServerUI) openSelectionTarget(u *terminalsession.Attachment, targ
 		if target.View == main.shell.Transcript && main.openActivityReply(u, target.Entry) {
 			return
 		}
-		main.openEntry(u, target.View, target.Entry)
+		openEntry(&main.attached, main.shell, &main.detailFiles, u, target.View, target.Entry)
 	default:
 		snippet := target.Snippet
 		if snippet.Block == activityui.EditNavigationSnippet {
-			main.openActivityEdit(u, target.View, snippet.Run, snippet.Path)
-		} else if !main.openOutput(u, target.View, snippet) {
-			main.openEntry(u, target.View, snippet.Run)
+			openActivityEdit(&main.attached, main.shell, &main.detailFiles, main.activity, u, target.View, snippet.Run, snippet.Path)
+		} else if !openOutput(&main.attached, main.shell, &main.detailFiles, main.activity, u, target.View, snippet) {
+			openEntry(&main.attached, main.shell, &main.detailFiles, u, target.View, snippet.Run)
 		}
 	}
 }

@@ -12,7 +12,7 @@ import (
 // resumes interpretation; no application key or pointer switch remains here.
 func (main *appServerUI) applyInput(u *terminalsession.Attachment, effects iter.Seq[terminalsession.InputEffect]) error {
 	if main != nil {
-		main.publishPresentation(main.now())
+		main.publishPresentation(presentationTime(main.clock))
 		publishActivity(&main.attached, main.shell)
 		defer main.settlePresentation()
 	}
@@ -22,7 +22,7 @@ func (main *appServerUI) applyInput(u *terminalsession.Attachment, effects iter.
 			return err
 		}
 		if main != nil {
-			main.publishPresentation(main.now())
+			main.publishPresentation(presentationTime(main.clock))
 		}
 	}
 	return nil
@@ -47,10 +47,10 @@ func (main *appServerUI) applyEffect(u *terminalsession.Attachment, effect termi
 		return !handled, err
 	case effect.PendingPrompt != nil:
 		if effect.PendingPrompt.Version != m.attached.presentation.View().Version {
-			m.setNotice(sessionpresentation.ErrStaleIntent.Error(), true)
+			setNotice(&m.attached.feedback, m.shell, presentationTime(m.clock), sessionpresentation.ErrStaleIntent.Error(), true)
 			return false, nil
 		}
-		if !effect.PendingPrompt.ApprovalsFirst || !m.openApprovals() {
+		if !effect.PendingPrompt.ApprovalsFirst || !openApprovals(&m.approvals, &m.questions, m.attached.conversation, m.shell, &m.picker, &m.Editor, m.Thread) {
 			m.openQuestions()
 		}
 	case effect.Panel != nil:
@@ -69,9 +69,9 @@ func (main *appServerUI) applyEffect(u *terminalsession.Attachment, effect termi
 	case effect.Selection != nil:
 		result := effect.Selection
 		if len(result.Demands) > 0 {
-			source := m.activitySource(result.Selection.View)
+			source := activitySource(&m.attached, m.shell, result.Selection.View)
 			if source == nil {
-				m.setNotice(sessionpresentation.ErrStaleIntent.Error(), true)
+				setNotice(&m.attached.feedback, m.shell, presentationTime(m.clock), sessionpresentation.ErrStaleIntent.Error(), true)
 				return false, nil
 			}
 			result.Selection.View.Hydrate(source.ResolveOutputDemands(result.Demands))
@@ -93,8 +93,8 @@ func (main *appServerUI) applyEffect(u *terminalsession.Attachment, effect termi
 		}
 	case effect.Details != nil:
 		intent := effect.Details
-		if intent.Version != m.attached.presentation.View().Version || m.activitySource(intent.View) == nil {
-			m.setNotice(sessionpresentation.ErrStaleIntent.Error(), true)
+		if intent.Version != m.attached.presentation.View().Version || activitySource(&m.attached, m.shell, intent.View) == nil {
+			setNotice(&m.attached.feedback, m.shell, presentationTime(m.clock), sessionpresentation.ErrStaleIntent.Error(), true)
 			return false, nil
 		}
 		switch intent.Kind {
@@ -107,20 +107,20 @@ func (main *appServerUI) applyEffect(u *terminalsession.Attachment, effect termi
 		intent := effect.Notice
 		view := m.attached.presentation.View()
 		if intent.Version != view.Version || intent.Feedback != view.Status.FeedbackRevision {
-			m.setNotice(sessionpresentation.ErrStaleIntent.Error(), true)
+			setNotice(&m.attached.feedback, m.shell, presentationTime(m.clock), sessionpresentation.ErrStaleIntent.Error(), true)
 			return false, nil
 		}
 		if intent.Dismiss {
-			m.setNotice("", false)
+			setNotice(&m.attached.feedback, m.shell, presentationTime(m.clock), "", false)
 			if m.attached.presentation.Status.Alert {
 				m.attached.presentation.Status.Set("", false)
 			}
 		} else {
-			main.openBlocks(u, m.shell.Transcript, []activityui.Block{{Kind: "error", Body: intent.Text}})
+			openBlocks(&main.attached, main.shell, &main.detailFiles, u, m.shell.Transcript, []activityui.Block{{Kind: "error", Body: intent.Text}})
 		}
 		m.dirty = true
 	case effect.Clipboard != nil:
-		m.setNotice(effect.Clipboard.Text, effect.Clipboard.Alert)
+		setNotice(&m.attached.feedback, m.shell, presentationTime(m.clock), effect.Clipboard.Text, effect.Clipboard.Alert)
 	case effect.Interrupt != nil:
 		return false, m.interruptSession(*effect.Interrupt)
 	case effect.Locked:

@@ -12,13 +12,13 @@ import (
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
-func (u *appServerUI) retainHook(thread string, observation history.HookObservation) error {
-	store := u.retainedSession.Store // Existing native-session managed store and lease.
+func retainHook(retained history.Session, workspace string, thread string, observation history.HookObservation) error {
+	store := retained.Store // Existing native-session managed store and lease.
 	if store == nil {
 		return errors.New("native session store is unavailable")
 	}
-	return store.Transaction(u.retainedSession.Context, u.retainedSession.Writes, func(tx *history.Transaction) error {
-		r, err := store.ReadHookObservations(u.attached.cwd, thread)
+	return store.Transaction(retained.Context, retained.Writes, func(tx *history.Transaction) error {
+		r, err := store.ReadHookObservations(workspace, thread)
 		if err != nil {
 			return err
 		}
@@ -37,7 +37,7 @@ func (u *appServerUI) retainHook(thread string, observation history.HookObservat
 				return err
 			}
 			if len(data) <= history.MaxRecordBytes {
-				return writeRetainedRecord(tx, u.retainedSession.Thread, u.retainedSession.Limits, history.HookObservationsName(u.attached.cwd, thread), "hooks-pending-", data)
+				return writeRetainedRecord(tx, retained.Thread, retained.Limits, history.HookObservationsName(workspace, thread), "hooks-pending-", data)
 			}
 			if len(r.Runs) < 2 {
 				return errors.New("hook observation exceeds size limit")
@@ -53,17 +53,17 @@ func (u *appServerUI) restoredHookEvents(info binding.ThreadInfo) []restoredRoll
 	store := u.retainedSession.Store
 	r, err := store.ReadHookObservations(u.attached.cwd, info.ID)
 	if err != nil {
-		u.restoreContentNotice("Hook observations for " + info.ID + " unavailable: " + err.Error())
+		restoreHistoryNotice(&u.attached, u.restoring, "Hook observations for "+info.ID+" unavailable: "+err.Error(), true)
 		return nil
 	}
 	if r.Dropped > 0 {
-		u.restoreContentNotice(fmt.Sprintf("%s: %d earlier hook observations were not retained", info.ID, r.Dropped))
+		restoreHistoryNotice(&u.attached, u.restoring, fmt.Sprintf("%s: %d earlier hook observations were not retained", info.ID, r.Dropped), true)
 	}
 	if store != nil && len(r.Runs) > 0 {
 		if err := store.Transaction(u.retainedSession.Context, u.retainedSession.Writes, func(tx *history.Transaction) error {
 			return requestexecution.StoragePublicationError(tx.Retain(u.retainedSession.Thread, u.retainedSession.Limits, history.HookObservationsName(u.attached.cwd, info.ID)))
 		}); err != nil {
-			u.restoreContentNotice("Hook observations for " + info.ID + " could not be retained: " + err.Error())
+			restoreHistoryNotice(&u.attached, u.restoring, "Hook observations for "+info.ID+" could not be retained: "+err.Error(), true)
 		}
 	}
 	var events []restoredRolloutEvent

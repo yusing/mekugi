@@ -18,7 +18,7 @@ func (*openFileEditor) Error() string { return "open file editor" }
 func (u *appServerUI) openSelectedFileEditor(path string, stdin, stdout *os.File) {
 	u.shell.Frame.Rows = nil
 	if !filepath.IsAbs(path) {
-		u.setNotice("Open editor: file has no absolute workspace path", true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Open editor: file has no absolute workspace path", true)
 		return
 	}
 	info, err := os.Stat(path)
@@ -26,15 +26,15 @@ func (u *appServerUI) openSelectedFileEditor(path string, stdin, stdout *os.File
 		err = fmt.Errorf("not a regular file: %s", path)
 	}
 	if err == nil {
-		err = u.runEditor(path, stdin, stdout)
+		err = runEditor(u.ctx, path, stdin, stdout)
 	}
 	if err != nil {
-		u.setNotice("Open editor: "+err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Open editor: "+err.Error(), true)
 		return
 	}
 	workspace := u.attached.cwd
 	if editor, ok := u.shell.Auxiliary.(terminalui.PaneEditor); ok {
 		workspace = editor.Workspace()
 	}
-	u.setNotice("Editor closed: "+pathdisplay.ForWorkspace(workspace, path), false)
+	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Editor closed: "+pathdisplay.ForWorkspace(workspace, path), false)
 }

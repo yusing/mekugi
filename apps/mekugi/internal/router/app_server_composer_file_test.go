@@ -33,7 +33,7 @@ func TestComposerFileTokenHistoryAndRejectedSubmission(t *testing.T) {
 	if u.Text != `@"file name.go" ` || len(u.Files) != 1 || u.Files[0].Path != "file name.go" {
 		t.Fatalf("rejection lost file token: %q %+v", u.Text, u.Files)
 	}
-	u.rememberInput(u.draftSnapshot())
+	rememberInput(u.attached.conversation, draftSnapshot(u.Editor))
 	u.Text, u.Files = "temporary", nil
 	u.recallInput(true)
 	if u.Text != `@"file name.go" ` || len(u.Files) != 1 {

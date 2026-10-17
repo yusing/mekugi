@@ -25,17 +25,17 @@ func (u *appServerUI) readWaitEvidence(item observation.Item, key [3]string) ses
 		return evidence
 	}
 	var err error
-	evidence.Targets, evidence.Found, err = u.readWaitTargets(key)
+	evidence.Targets, evidence.Found, err = readWaitTargets(u.retainedSession, u.attached.cwd, key)
 	if err != nil {
-		u.setNotice("Wait targets could not be restored: "+err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Wait targets could not be restored: "+err.Error(), true)
 	}
 	return evidence
 }
 
 func (u *appServerUI) retainWaitProgress(key [3]string, progress *activitypresentation.WaitProgress) {
 	if progress != nil && progress.Retain {
-		if err := u.writeWaitTargets(key, progress.Snapshot); err != nil {
-			u.setNotice("Wait targets could not be retained: "+err.Error(), true)
+		if err := writeWaitTargets(u.retainedSession, u.attached.cwd, key, progress.Snapshot); err != nil {
+			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Wait targets could not be retained: "+err.Error(), true)
 		}
 	}
 }

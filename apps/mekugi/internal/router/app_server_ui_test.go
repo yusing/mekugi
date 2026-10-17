@@ -191,7 +191,7 @@ func appServerTestKeys(t *testing.T, u *appServerUI, keys string) {
 		keyDecoder() *terminalsession.Decoder
 	}).keyDecoder()
 	for _, key := range []byte(keys) {
-		if quit, err := u.input(decoder.Feed(key, u.now())); quit || err != nil {
+		if quit, err := u.input(decoder.Feed(key, presentationTime(u.clock))); quit || err != nil {
 			t.Fatalf("key %q: quit=%v err=%v", key, quit, err)
 		}
 	}
@@ -356,7 +356,7 @@ func TestAppServerUINotificationBeforeResponseAndItems(t *testing.T) {
 		t.Fatalf("unexpected visible content: %q", frame.String())
 	}
 	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"t","status":"completed"}}}`)
-	if u.Turn != "" || !strings.Contains(u.sessionLabel(u.now()), "Completed in ") {
+	if u.Turn != "" || !strings.Contains(u.sessionLabel(presentationTime(u.clock)), "Completed in ") {
 		t.Fatal("main completion not applied")
 	}
 }
@@ -390,18 +390,18 @@ func TestAppServerNoticeExpiry(t *testing.T) {
 	u.attached.presentation.Status.Text = "Working"
 	terminalTest(u).copyText("copied")
 	deadline := u.attached.feedback.Until
-	if deadline.IsZero() || u.expireNotice(deadline.Add(-time.Millisecond)) {
+	if deadline.IsZero() || expireNotice(&u.attached.feedback, u.shell, deadline.Add(-time.Millisecond)) {
 		t.Fatal("notice expired early")
 	}
 	terminalTest(u).copyText("copied again")
 	if u.attached.feedback.Until.Before(deadline) {
 		t.Fatal("repeat notice did not refresh deadline")
 	}
-	if !u.expireNotice(u.attached.feedback.Until) || u.attached.feedback.Text != "" || u.attached.presentation.Status.Text != "Working" {
+	if !expireNotice(&u.attached.feedback, u.shell, u.attached.feedback.Until) || u.attached.feedback.Text != "" || u.attached.presentation.Status.Text != "Working" {
 		t.Fatal("notice did not expire independently of status")
 	}
-	u.setNotice("failure", true)
-	if u.expireNotice(time.Now().Add(time.Hour)) || u.attached.feedback.Text != "failure" {
+	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "failure", true)
+	if expireNotice(&u.attached.feedback, u.shell, time.Now().Add(time.Hour)) || u.attached.feedback.Text != "failure" {
 		t.Fatal("error expired")
 	}
 	u.insertDraft("x")

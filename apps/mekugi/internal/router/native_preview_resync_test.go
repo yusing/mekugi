@@ -82,7 +82,7 @@ func TestNativePreviewMailboxKeepsNewestFile(t *testing.T) {
 	resyncLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{}})
 	sub = testReview(broker).Subscribe()
 	drain(restored)
-	if len(terminalTest(restored).Live.Order) != 0 || terminalTest(restored).Live.Tick(restored.now().Add(previewview.RevealDelay)) {
+	if len(terminalTest(restored).Live.Order) != 0 || terminalTest(restored).Live.Tick(presentationTime(restored.clock).Add(previewview.RevealDelay)) {
 		t.Fatal("resynchronization retained previews outside its scope")
 	}
 }

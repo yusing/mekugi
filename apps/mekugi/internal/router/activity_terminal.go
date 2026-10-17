@@ -41,12 +41,12 @@ func publishActivity(attached *attachedPresentation, terminal *terminalsession.A
 }
 
 // activitySource resolves only a renderer already bound to this attachment.
-func (u *appServerUI) activitySource(view *activityui.View) *sessionpresentation.ActivitySource {
-	if view == u.shell.Transcript {
-		return u.attached.source
+func activitySource(attached *attachedPresentation, terminal *terminalsession.Attachment, view *activityui.View) *sessionpresentation.ActivitySource {
+	if view == terminal.Transcript {
+		return attached.source
 	}
-	if view == u.shell.Agents {
-		return u.attached.childSource
+	if view == terminal.Agents {
+		return attached.childSource
 	}
 	return nil
 }

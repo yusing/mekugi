@@ -19,7 +19,7 @@ func (u *appServerUI) publishPresentation(now time.Time) sessionpresentation.Vie
 	view := m.View()
 	var caption sessionpresentation.Caption
 	if view.Displayed.ID == view.Main.ID {
-		caption.Model, caption.Effort, caption.Tier = u.model, u.reasoningEffort, u.displayServiceTier()
+		caption.Model, caption.Effort, caption.Tier = u.model, u.reasoningEffort, u.serviceTiers.Effective(u.model, u.serviceTier, u.Thread)
 	}
 	caption = sessionCaption(&u.attached.session, m, caption, u.serviceTiers)
 	info := sessionpresentation.MainInfo{Workspace: u.attached.cwd, Title: cmp.Or(u.Names.Pending(u.Thread), u.title), BackendVersion: u.backendVersion, Skills: u.attached.source.ActiveSkills()["Main"]}
@@ -30,8 +30,8 @@ func (u *appServerUI) publishPresentation(now time.Time) sessionpresentation.Vie
 	}
 	view = m.Publish(sessionpresentation.MainInputs{
 		Info: info,
-		Menu: u.menuView(), Control: &u.Live, Feedback: &u.attached.feedback, Conversation: u.attached.conversation, Restoring: u.restoring != nil,
-		SideRunning: u.side != nil && (u.side.Busy || u.side.Starting), Processes: u.runningProcessCount(), History: u.historyViews(),
+		Menu: u.picker.menuView(u.attached.cwd, u.Text, &u.Live), Control: &u.Live, Feedback: &u.attached.feedback, Conversation: u.attached.conversation, Restoring: u.restoring != nil,
+		SideRunning: u.side != nil && (u.side.Busy || u.side.Starting), Processes: runningProcessCount(&u.attached.session), History: historyViews(&u.attached, &u.childHistoryState),
 	}, caption, now)
 	u.shell.Prompts.Update(view)
 	u.shell.Main.Update(view)
@@ -44,10 +44,15 @@ func (u *appServerUI) publishPresentation(now time.Time) sessionpresentation.Vie
 }
 
 func (u *appServerUI) attachPresentation() {
-	u.attachReview()
+	u.review = attachReview(u.ctx, u.review, u.retained, u.changeSource)
 	u.attached.bindSources()
 	u.commits = attachCommitReader(&u.attached.session, u.commits, u.ctx, u.activity != nil)
-	u.bindConversation()
+	conversation := u.attached.conversation
+	if u.Editor != &u.shell.Prompts.Secret {
+		u.Editor = &conversation.Editor
+	}
+	u.picker.State, u.picker.MenuState = &conversation.Completion, u.attached.presentation.Menu()
+	u.questions.Questions, u.approvals.Approvals = &conversation.Questions, &conversation.Approvals
 	m := u.attached.presentation
 	m.Attach(sessionpresentation.Thread{ID: cmp.Or(u.Thread, "/root"), Caller: "/root"}, false)
 }
@@ -57,7 +62,7 @@ func (u *appServerUI) attachPresentation() {
 func (u *appServerUI) settlePresentation() {
 	u.autoOpenApprovals()
 	u.autoOpenQuestions()
-	u.publishPresentation(u.now())
+	u.publishPresentation(presentationTime(u.clock))
 	publishActivity(&u.attached, u.shell)
 }
 
@@ -66,11 +71,11 @@ func (u *appServerUI) displaySession(intent sessionpresentation.DisplayIntent) b
 	defer u.settlePresentation()
 	m := u.attached.presentation
 	if intent.Thread != m.View().Main && u.attached.session.KnownCaller(intent.Thread.ID) != intent.Thread.Caller {
-		u.setNotice(sessionpresentation.ErrStaleIntent.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), sessionpresentation.ErrStaleIntent.Error(), true)
 		return false
 	}
 	if err := m.Display(intent); err != nil {
-		u.setNotice(err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 		return false
 	}
 	return true

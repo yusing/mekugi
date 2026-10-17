@@ -58,7 +58,7 @@ func TestUISnapshotDirectoryDeletion(t *testing.T) {
 				"id": "delete-call", "type": "commandExecution", "command": "rm -rf removed removed2", "exitCode": 0}})
 			u.review.Projection.Data = data
 			publishFixtureReview(t, u)
-			u.applyCapturedEdits()
+			applyCapturedEdits(&u.attached, u.review, &u.pendingEditReceipts)
 			u.testActivity(u.shell.Transcript).testPace(u.shell.Transcript.Now().Add(time.Second))
 			var seq uint64
 			for _, entry := range u.attached.source.Entries {

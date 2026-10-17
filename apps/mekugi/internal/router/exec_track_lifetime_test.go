@@ -11,7 +11,7 @@ import (
 
 func TestExecTrackSessionReplacementDropsRetainedChildOutput(t *testing.T) {
 	u, hub := newTrackedAppServerUI(t)
-	u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
+	registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	key := [3]string{"child", "turn", "command"}
 	script := "echo first; echo second"
 	item := map[string]any{"id": key[2], "type": "commandExecution", "command": "bash -lc " + quoteShellWord(script), "status": "inProgress"}
@@ -35,7 +35,7 @@ func TestExecTrackSessionReplacementDropsRetainedChildOutput(t *testing.T) {
 	// A subsequent attachment may see the same still-running command. Losing
 	// its earlier bytes must not turn the remaining bytes into complete output.
 	replaceAppServerTestSession(t, u, "main")
-	u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
+	registerThread(&u.attached.session, binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	report.send(segmenttransport.Message{Type: segmenttransport.Output, Index: 0, Data: "later\n"})
 	report.send(segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)})
 	report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 1})

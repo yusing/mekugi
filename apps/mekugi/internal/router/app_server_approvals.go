@@ -3,6 +3,10 @@ package router
 import (
 	"encoding/json/jsontext"
 
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
@@ -33,20 +37,20 @@ type nativeApprovalDock struct {
 	grants  sessioncontrol.ApprovalGrants
 }
 
-func (u *appServerUI) pendingApprovals() []*sessioncontrol.Approval {
-	result := make([]*sessioncontrol.Approval, 0, len(u.approvals.Pending))
-	for _, a := range u.approvals.Pending {
-		result = append(result, u.approvals.handles[a])
+func (d *nativeApprovalDock) calls() []*sessioncontrol.Approval {
+	result := make([]*sessioncontrol.Approval, 0, len(d.Pending))
+	for _, a := range d.Pending {
+		result = append(result, d.handles[a])
 	}
 	return result
 }
 
 // approvalDirectory names a request's directory unless it is the workspace.
-func (u *appServerUI) approvalDirectory(cwd string) []string {
+func approvalDirectory(workspace string, cwd string) []string {
 	if cwd == "" {
 		return nil
 	}
-	if path := pathdisplay.ForWorkspace(u.attached.cwd, cwd); path != "." {
+	if path := pathdisplay.ForWorkspace(workspace, cwd); path != "." {
 		return []string{"in " + path}
 	}
 	return nil
@@ -74,7 +78,7 @@ func (u *appServerUI) addGuardApproval(request *sessioncontrol.ShellApprovalRequ
 		request.Reply <- shellapproval.Reply{Reason: "approval module is not active"}
 		return
 	}
-	details := u.approvalDirectory(request.Cwd)
+	details := approvalDirectory(u.attached.cwd, request.Cwd)
 	details = append(details, "Denying fails only this command with exit status 1.")
 	a := &sessioncontrol.Approval{Approval: &prompt.Approval{Thread: request.Thread, Item: request.Item, Title: "Allow this remote write?", Subject: shellCommandString(request.Argv[0], request.Argv[1:]), Details: details, Choices: []prompt.Choice{
 		{ID: 0, Label: "Yes, run it", Approve: true, Outcome: "Approved"},
@@ -88,7 +92,7 @@ func (u *appServerUI) addGuardApproval(request *sessioncontrol.ShellApprovalRequ
 	// Match only the hook's exact host item. An environment-clearing wrapper
 	// can omit the thread; an ambiguous item is never attributed by recency.
 	if request.Item != "" {
-		if owner := u.approvalItem(request.Thread, "", request.Item); owner != nil {
+		if owner := approvalItem(&u.attached, request.Thread, "", request.Item); owner != nil {
 			a.Thread, a.Turn, a.Item = owner.Thread, owner.Turn, owner.Item
 		}
 	}
@@ -125,7 +129,7 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 			RequestID jsontext.Value `json:"requestId"`
 		}
 		if json.Unmarshal(m.Params, &p) == nil {
-			for _, a := range slices.Clone(u.pendingApprovals()) {
+			for _, a := range slices.Clone(u.approvals.calls()) {
 				if a.RequestID != nil && string(a.RequestID) == string(p.RequestID) && (p.ThreadID == "" || a.Thread == p.ThreadID) {
 					u.endApproval(a, "Resolved elsewhere")
 				}
@@ -138,7 +142,7 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 			Turn     binding.Turn `json:"turn"`
 		}
 		if json.Unmarshal(m.Params, &p) == nil {
-			for _, a := range slices.Clone(u.pendingApprovals()) {
+			for _, a := range slices.Clone(u.approvals.calls()) {
 				if a.RequestID != nil && a.Thread == p.ThreadID && a.Turn == p.Turn.ID {
 					u.endApproval(a, "Turn ended before an answer")
 				}
@@ -197,7 +201,7 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 // expireApprovals withdraws guarded writes whose command stopped waiting.
 func (u *appServerUI) expireApprovals() bool {
 	changed := u.expireSudoPasswords()
-	for _, a := range slices.Clone(u.pendingApprovals()) {
+	for _, a := range slices.Clone(u.approvals.calls()) {
 		if a.Guard != nil && a.Guard.Finished() {
 			outcome := "Auto Denied: no answer within 5 minutes"
 			if a.Guard.Outcome == "withdrawn" {
@@ -212,19 +216,19 @@ func (u *appServerUI) expireApprovals() bool {
 
 // endApproval removes a pending approval and records how it ended.
 func (u *appServerUI) endApproval(a *sessioncontrol.Approval, outcome string) {
-	index := slices.Index(u.pendingApprovals(), a)
+	index := slices.Index(u.approvals.calls(), a)
 	if index < 0 {
 		return
 	}
 	wasOpen := u.approvals.Open && index == 0
 	if wasOpen {
-		u.hideApprovals()
+		hideApprovals(&u.approvals, u.shell, &u.attached.conversation.PromptEditor, u.Editor)
 	}
 	u.approvals.Remove(a.Approval)
 	delete(u.approvals.handles, a.Approval)
 	u.shell.Prompts.ForgetApproval(a.ID)
 	if wasOpen {
-		u.openApprovals()
+		openApprovals(&u.approvals, &u.questions, u.attached.conversation, u.shell, &u.picker, &u.Editor, u.Thread)
 	}
 	if a.RequestID != nil && u.notifications != nil {
 		delete(u.notifications.blocked, string(a.RequestID))
@@ -233,9 +237,9 @@ func (u *appServerUI) endApproval(a *sessioncontrol.Approval, outcome string) {
 }
 
 // approvalItem finds one exact host identity across the two presentation views.
-func (u *appServerUI) approvalItem(thread, turn, item string) *sessionpresentation.NativeItem {
+func approvalItem(attached *attachedPresentation, thread, turn, item string) *sessionpresentation.NativeItem {
 	var owner *sessionpresentation.NativeItem
-	for _, view := range []*sessionpresentation.ActivitySource{u.attached.source, u.attached.childSource} {
+	for _, view := range []*sessionpresentation.ActivitySource{attached.source, attached.childSource} {
 		if view == nil {
 			continue
 		}
@@ -258,7 +262,7 @@ func (u *appServerUI) recordApproval(a *sessioncontrol.Approval, outcome string)
 	if a.Item == "" {
 		return
 	}
-	if (a.Subject == "" || a.Guard != nil) && u.approvalItem(a.Thread, a.Turn, a.Item) == nil {
+	if (a.Subject == "" || a.Guard != nil) && approvalItem(&u.attached, a.Thread, a.Turn, a.Item) == nil {
 		if a.Guard != nil {
 			a.Outcome = outcome
 			if !slices.Contains(u.approvals.unbound, a) {
@@ -268,11 +272,11 @@ func (u *appServerUI) recordApproval(a *sessioncontrol.Approval, outcome string)
 		return
 	}
 	if a.Guard != nil {
-		owner := u.approvalItem(a.Thread, a.Turn, a.Item)
+		owner := approvalItem(&u.attached, a.Thread, a.Turn, a.Item)
 		a.Thread, a.Turn = owner.Thread, owner.Turn
 		outcome += "\nCommand: " + a.Subject
 	}
-	entry := sessionpresentation.ActivityEntry{Seq: u.attached.session.Activity().NextSequence(), Kind: "tool", Text: activitypresentation.ShellSource(frontends.ShellDisplaySource(a.Subject), ""), Observed: u.now(),
+	entry := sessionpresentation.ActivityEntry{Seq: u.attached.session.Activity().NextSequence(), Kind: "tool", Text: activitypresentation.ShellSource(frontends.ShellDisplaySource(a.Subject), ""), Observed: presentationTime(u.clock),
 		Native: &sessionpresentation.NativeItem{Thread: a.Thread, Turn: a.Turn, Item: a.Item, Phase: "approval/updated", Approval: outcome}}
 	if u.attached.session.KnownCaller(u.Thread) != "" {
 		entry.Agent = u.attached.session.Caller(a.Thread)
@@ -287,7 +291,7 @@ func (u *appServerUI) recordApproval(a *sessioncontrol.Approval, outcome string)
 func (u *appServerUI) flushApprovalUpdates() {
 	for i := 0; i < len(u.approvals.unbound); {
 		a := u.approvals.unbound[i]
-		if u.approvalItem(a.Thread, a.Turn, a.Item) == nil {
+		if approvalItem(&u.attached, a.Thread, a.Turn, a.Item) == nil {
 			i++
 			continue
 		}
@@ -300,7 +304,7 @@ func (u *appServerUI) decideApproval(intent sessionpresentation.ApprovalIntent) 
 	defer u.settlePresentation()
 	record, choice, err := u.attached.presentation.Approval(intent, u.approvals.Approvals)
 	if err != nil {
-		u.setNotice(err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 		return nil
 	}
 	return u.applyApproval(u.approvals.handles[record], choice, intent.Reason)
@@ -319,7 +323,7 @@ func (u *appServerUI) applyApproval(a *sessioncontrol.Approval, choice prompt.Ch
 	}
 	u.endApproval(a, outcome)
 	if a.Guard != nil && choice.Approve && choice.Session {
-		for _, pending := range slices.Clone(u.pendingApprovals()) {
+		for _, pending := range slices.Clone(u.approvals.calls()) {
 			if a.SameCommand(pending) {
 				if err := u.applyApproval(pending, prompt.Choice{Approve: true, Outcome: "Approved for this session"}, ""); err != nil {
 					return err
@@ -333,45 +337,45 @@ func (u *appServerUI) applyApproval(a *sessioncontrol.Approval, choice prompt.Ch
 // autoOpenApprovals takes over an empty, idle composer. Explicitly hiding the
 // dock leaves it closed until reopened or another approval arrives.
 func (u *appServerUI) autoOpenApprovals() {
-	if u.approvals.ShouldOpen(u.composerVacant(), u.questions.Active != nil) {
-		u.openApprovals()
+	if u.approvals.ShouldOpen(composerVacant(u.Editor, u.shell, &u.picker, u.attached.presentation, u.statusPanel != nil || u.resumePicker != nil || u.approvals.Open), u.questions.Active != nil) {
+		openApprovals(&u.approvals, &u.questions, u.attached.conversation, u.shell, &u.picker, &u.Editor, u.Thread)
 	}
 }
 
-func (u *appServerUI) openApprovals() bool {
-	if len(u.pendingApprovals()) == 0 {
+func openApprovals(approvals *nativeApprovalDock, questions *nativeQuestionDock, conversation *conversationmodel.Session, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, main string) bool {
+	if len(approvals.calls()) == 0 {
 		return false
 	}
-	if u.approvals.Open {
+	if approvals.Open {
 		return true
 	}
-	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
-	if a := u.pendingApprovals()[0]; a.DenialChoice() >= 0 {
-		u.shell.Main.PromptColumn = u.shell.Main.CursorColumn
-		u.promptEditor.Open(u.Editor, a.Editor)
-		u.shell.Main.CursorColumn = u.shell.Prompts.ApprovalLayout(a.ID).Column
+	*editor = hideQuestionEditor(questions, conversation, terminal, *editor, main)
+	if a := approvals.calls()[0]; a.DenialChoice() >= 0 {
+		terminal.Main.PromptColumn = terminal.Main.CursorColumn
+		conversation.PromptEditor.Open(*editor, a.Editor)
+		terminal.Main.CursorColumn = terminal.Prompts.ApprovalLayout(a.ID).Column
 	}
-	u.approvals.Show()
-	u.shell.Prompts.Reopen()
-	u.focusPrompt()
+	approvals.Show()
+	terminal.Prompts.Reopen()
+	focusPrompt(picker, terminal)
 	return true
 }
 
-func (u *appServerUI) hideApprovals() {
-	if u.approvals.Open && len(u.pendingApprovals()) > 0 {
-		if a := u.pendingApprovals()[0]; a.DenialChoice() >= 0 {
-			u.shell.Prompts.ApprovalLayout(a.ID).Column = u.shell.Main.CursorColumn
-			a.Editor = u.promptEditor.Close(u.Editor)
-			u.shell.Main.CursorColumn = u.shell.Main.PromptColumn
+func hideApprovals(approvals *nativeApprovalDock, terminal *terminalsession.Attachment, parked *prompt.Editor, editor *composer.Editor) {
+	if approvals.Open && len(approvals.calls()) > 0 {
+		if a := approvals.calls()[0]; a.DenialChoice() >= 0 {
+			terminal.Prompts.ApprovalLayout(a.ID).Column = terminal.Main.CursorColumn
+			a.Editor = parked.Close(editor)
+			terminal.Main.CursorColumn = terminal.Main.PromptColumn
 		}
 	}
-	u.approvals.Hide()
+	approvals.Hide()
 }
 
 func (u *appServerUI) applyApprovalInput(input terminalsession.PromptInput) (bool, error) {
 	keyInput := input.PromptKey
 	if err := u.attached.presentation.ApprovalInput(sessionpresentation.ApprovalInputIntent{Version: input.Version, ApprovalInput: keyInput.Approval}, u.approvals.Approvals); err != nil {
-		u.setNotice(err.Error(), true)
+		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 		return true, nil
 	}
 	a := u.approvals.handles[u.approvals.Pending[0]]
@@ -379,7 +383,7 @@ func (u *appServerUI) applyApprovalInput(input terminalsession.PromptInput) (boo
 	case conversationui.PromptPass:
 		return false, nil
 	case conversationui.PromptHide:
-		u.hideApprovals()
+		hideApprovals(&u.approvals, u.shell, &u.attached.conversation.PromptEditor, u.Editor)
 		u.approvals.AutoOpen = false
 	case conversationui.PromptSubmit:
 		view := u.attached.presentation.View()

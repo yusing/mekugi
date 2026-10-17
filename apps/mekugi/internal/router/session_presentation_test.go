@@ -51,7 +51,7 @@ func TestSessionPaintDoesNotRefreshPublication(t *testing.T) {
 	}
 	now = now.Add(time.Second)
 	for range 2 {
-		if err := u.paint(io.Discard, 100, 24); err != nil {
+		if err := paintSession(&u.attached, u.shell, &u.detailFiles, u.ctx, presentationTime(u.clock), io.Discard, 100, 24); err != nil {
 			t.Fatal(err)
 		}
 		if !reflect.DeepEqual(u.attached.presentation.View(), before) {
@@ -85,14 +85,14 @@ func TestNativeDisplayedThreadIndependentOfRosterFocus(t *testing.T) {
 	u.shell.Agents.Selected = "/root/second"
 	u.testActivity(u.shell.Agents).testKeepSelection()
 	view := u.attached.presentation.View()
-	if view.Displayed.ID != "first" || view.Input.ID != "main" || !u.composerReadOnly() || view.Displayed.Caller != "/root/first" {
+	if view.Displayed.ID != "first" || view.Input.ID != "main" || !(u.attached.presentation.View().ReadOnly != sessionpresentation.Editable) || view.Displayed.Caller != "/root/first" {
 		t.Fatalf("roster focus changed display or admission: %+v", view)
 	}
 	if !u.testActivity(u.shell.Agents).testVisible(sessionpresentation.ActivityEntry{Agent: "/root/first", Kind: "text"}) || u.testActivity(u.shell.Agents).testVisible(sessionpresentation.ActivityEntry{Agent: "/root/second", Kind: "text"}) {
 		t.Fatal("transcript followed the focused roster row")
 	}
 	terminalTest(u).selectNativePane(0)
-	if u.composerReadOnly() || u.transcriptView() != u.shell.Transcript || u.shell.Agents.Selected != "/root/second" {
+	if (u.attached.presentation.View().ReadOnly != sessionpresentation.Editable) || transcriptView(u.attached.presentation, u.shell) != u.shell.Transcript || u.shell.Agents.Selected != "/root/second" {
 		t.Fatal("Main selection changed roster focus or retained child admission")
 	}
 	if first == nil || u.attached.session.Transcript("first", "work").Turn != first || !u.attached.session.Agent("/root/first").Responding {
@@ -108,13 +108,13 @@ func TestNativeDisplaySwitchKeepsHistoryObservation(t *testing.T) {
 	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
 	}
-	id := u.historyLoading().state.RequestID()
+	id := historyLoading(&u.attached, &u.childHistoryState).state.RequestID()
 	terminalTest(u).selectNativePane(0)
-	if u.historyLoading() == nil || u.historyLoading().state.RequestID() != id || len(restoreContentRequests(t, wire)) != 6 {
+	if historyLoading(&u.attached, &u.childHistoryState) == nil || historyLoading(&u.attached, &u.childHistoryState).state.RequestID() != id || len(restoreContentRequests(t, wire)) != 6 {
 		t.Fatal("display switching retired the observation or dispatched host work")
 	}
 	restoreContentReply(t, u, 5, map[string]any{"data": []any{historyItem("first", "older", 101000)}})
-	if u.historyLoading() != nil || u.attached.presentation.View().ReadOnly != sessionpresentation.Editable {
+	if historyLoading(&u.attached, &u.childHistoryState) != nil || u.attached.presentation.View().ReadOnly != sessionpresentation.Editable {
 		t.Fatal("background history settlement changed Main admission")
 	}
 }
@@ -140,13 +140,13 @@ func TestPromptFailedFrameDoesNotAcknowledgeOpening(t *testing.T) {
 	appServerTestTurn(t, u, "turn")
 	questionTestSync(t, u, "request", false)
 	failure := errors.New("terminal write failed")
-	if err := u.paint(serverErrorWriter{err: failure}, 100, 24); !errors.Is(err, failure) {
+	if err := paintSession(&u.attached, u.shell, &u.detailFiles, u.ctx, presentationTime(u.clock), serverErrorWriter{err: failure}, 100, 24); !errors.Is(err, failure) {
 		t.Fatalf("write failure: %v", err)
 	}
 	if u.shell.Prompts.Ready() {
 		t.Fatal("failed frame readied prompt")
 	}
-	if err := u.paint(io.Discard, 100, 24); err != nil {
+	if err := paintSession(&u.attached, u.shell, &u.detailFiles, u.ctx, presentationTime(u.clock), io.Discard, 100, 24); err != nil {
 		t.Fatal(err)
 	}
 	if !u.shell.Prompts.Ready() {
@@ -166,7 +166,7 @@ func TestMainFrameConsumesPublishedMetadata(t *testing.T) {
 	if !strings.Contains(painted, "codex v1.2.3") || strings.Contains(painted, "9.9.9") || strings.Contains(painted, "Unpublished activity") || !strings.Contains(u.mainHeaderRight(100, true), "Published title") {
 		t.Fatalf("Main consulted unpublished owners: %s", painted)
 	}
-	if err := u.paint(io.Discard, 100, 24); err != nil {
+	if err := paintSession(&u.attached, u.shell, &u.detailFiles, u.ctx, presentationTime(u.clock), io.Discard, 100, 24); err != nil {
 		t.Fatal(err)
 	}
 	outer := strings.Join(terminalTest(u).Frame.Rows, "\n")
