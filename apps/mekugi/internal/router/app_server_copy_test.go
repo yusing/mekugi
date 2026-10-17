@@ -99,7 +99,7 @@ func TestAppServerCopyEmptyCancelAndRestore(t *testing.T) {
 		t.Fatal("resume lost copy source")
 	}
 	u.pickerKey("\x1b")
-	u.refreshPicker()
+	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 	if u.picker.Open || terminalTest(u).Frame.Clipboard != "" || u.Text != "" {
 		t.Fatal("cancel copied or reopened")
 	}

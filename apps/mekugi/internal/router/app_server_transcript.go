@@ -85,7 +85,7 @@ func (u *appServerUI) messageTranscript(text observation.TextEvent, item observa
 	})
 	u.streams.Deliver(deliveries, u.shell.Transcript, u.shell.Agents)
 	if !main || len(deliveries) > 0 {
-		u.applyActivity(nil, nil)
+		applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, nil, nil)
 	}
 	return false
 }

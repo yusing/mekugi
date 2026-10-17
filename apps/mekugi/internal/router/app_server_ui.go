@@ -229,7 +229,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 		var err error
 		for {
 			err = terminalui.WithRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1003;1004;1006;2004h\x1b]10;?\x1b\\\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1003;1004;1006;2004l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
-				defer u.clearTerminalTitle()
+				defer func() { u.notifications.clearTerminalTitle(&u.attached.feedback, u.shell, u.clock) }()
 				review := u.review
 				review.Preview().Enable()
 				defer func() { review.Preview().Disable() }()
@@ -265,13 +265,13 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 						if sub.Invalidated() {
 							resubscribe()
 						}
-						u.loadedReview(result)
+						loadedReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, result)
 						if err := u.finishRestoredContent(); err != nil {
 							return err
 						}
 						u.dirty = true
 					case <-diffReady:
-						if !u.admitReviewEvents(ctx, sub, review.TakePreviews(sub)...) {
+						if !admitReviewEvents(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, ctx, sub, review.TakePreviews(sub)...) {
 							resubscribe()
 						}
 						if err := u.finishRestoredContent(); err != nil {
@@ -279,7 +279,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 						}
 						u.dirty = true
 					case event := <-diffEvents:
-						if !u.admitReviewEvents(ctx, sub, event) {
+						if !admitReviewEvents(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, ctx, sub, event) {
 							resubscribe()
 						}
 						if err := u.finishRestoredContent(); err != nil {
@@ -293,9 +293,9 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 					case <-u.commits.Updates():
 						u.dirty = startCommitReads(&u.attached, u.commits) || u.dirty
 					case err := <-u.commandSegmentWrites:
-						u.commandSegmentRetained(err)
+						commandSegmentRetained(&u.commandSegmentPending, u.issues, &u.dirty, err)
 					case update := <-u.titleUpdates:
-						u.persistSessionTitle(update)
+						persistSessionTitle(&u.Client, u.titleGenerator, &u.attached.feedback, u.shell, u.clock, &u.dirty, update)
 					case request := <-u.guard.Requests():
 						u.addGuardApproval(request)
 						u.dirty = true
@@ -380,11 +380,11 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 							notices.finish(u.shell.Frame.Notices)
 							u.dirty = false
 						}
-						u.writeTerminalTitle(presentationTime(u.clock))
+						u.notifications.writeTerminalTitle(&u.attached.feedback, u.shell, u.clock, u.attached.cwd, u.Thread, u.questions.Questions, u.approvals.Approvals, u.Turn != "" || u.Starting(), presentationTime(u.clock))
 						continue
 					}
 					u.settlePresentation()
-					u.writeTerminalTitle(presentationTime(u.clock))
+					u.notifications.writeTerminalTitle(&u.attached.feedback, u.shell, u.clock, u.attached.cwd, u.Thread, u.questions.Questions, u.approvals.Approvals, u.Turn != "" || u.Starting(), presentationTime(u.clock))
 				}
 			})
 			var fileEditor *openFileEditor
@@ -409,7 +409,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 				<-c.Done
 			}
 		}
-		u.finishCommandSegments()
+		finishCommandSegments(&u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
 		for key, run := range u.attached.session.Commands() {
 			if run.Entry.Native.Invocation.ReleaseSegmentOutputs() {
 				u.execTrack.ReleaseOutput(key)
@@ -457,16 +457,18 @@ type appServerRequest struct {
 func (u *appServerUI) message(m appserver.Message) (err error) {
 	defer u.settlePresentation()
 	u.issues.ObserveTurnCompletion(m.Method, m.Params)
-	u.observeShellMessage(m)
+	observeShellMessage(&u.shellEdits, &u.attached, u.shell, u.clock, m)
 	var response sessioncontrol.Request[appServerRequest]
 	var correlated bool
 	if m.Method == "" {
 		response, correlated = u.Requests.Take(string(m.ID))
 	}
-	if u.sessionTitleMessage(m, response.Owner.title) {
+	if sessionTitleMessage(&u.Client, u.titleGenerator, &u.attached.feedback, u.shell, u.clock, &u.dirty, &u.title, m, response.Owner.title) {
 		return nil
 	}
-	defer u.refreshPicker()
+	defer func() {
+		u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
+	}()
 	// Side-thread traffic never reaches Main's lifecycle, questions or roster.
 	if update, err := u.Requests.ObserveSide(m, response, u.Thread, u.controlObservations); update.Handled {
 		u.dirty = true
@@ -544,7 +546,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			return u.resumeSettingsResponse(m)
 		}
 		if method == "config/read" {
-			u.notificationConfig(m)
+			u.notifications.notificationConfig(&u.attached.feedback, u.shell, u.clock, m)
 			return nil
 		}
 		if method == resumePickerList {
@@ -553,7 +555,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		if handled, err := statusMessage(u.Requests, &u.dirty, u.statusPanel, method, m, response.Owner.status); handled {
 			return err
 		}
-		if u.pickerMessage(method, m) {
+		if u.picker.pickerMessage(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment, method, m) {
 			return nil
 		}
 		if method == "thread/list" && u.Startup.Thread == "--last" {
@@ -703,10 +705,10 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				if method == "thread/resume" {
 					// Restoration below replays events buffered during the switch.
 					u.Startup.Thread = result.Thread.ID
-					u.resetDiffScope()
+					resetDiffScope(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, u.ctx)
 				} else {
 					// Seed the Diff's lineage; after a switch, requests alone cannot.
-					u.restoreDiffThread(result.Thread, true)
+					restoreDiffThread(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, result.Thread, true)
 				}
 			}
 			u.statusConfig = appServerStatusConfig{}
@@ -720,7 +722,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			u.titleGenerator.register(result.Thread)
 			if name := u.Names.Attach(u.Thread); name != "" {
 				u.titleGenerator.nameChanged(u.Thread, name)
-				u.requestSessionTitle(u.Names.Next(u.Thread))
+				requestSessionTitle(&u.Client, &u.attached.feedback, u.shell, u.clock, &u.dirty, u.Names.Next(u.Thread))
 			}
 			u.model, u.reasoningEffort, u.serviceTier = result.Model, result.ReasoningEffort, result.ServiceTier
 			if method == "thread/resume" {
@@ -817,7 +819,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		// Never auto-approve an unexpected server request. Leave it pending,
 		// visibly blocked, until interrupted.
 		u.attached.presentation.Status.Set("Blocked on unsupported request "+m.Method+" · Ctrl-C interrupts", true)
-		u.blockNotification(m)
+		u.notifications.blockNotification(&u.attached.feedback, u.shell, u.clock, m)
 		u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.attached.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: u.attached.presentation.Status.Text, Observed: presentationTime(u.clock)}}})
 		return nil
 	}
@@ -874,7 +876,7 @@ func (u *appServerUI) observedEvent(method string, p binding.Notification) error
 			u.attached.presentation.Status.Complete(p.Turn.Status, failure, presentationTime(u.clock))
 			u.settleInput(p.Turn.ID, p.Turn.Status == "interrupted")
 			if p.Turn.Status == "completed" && u.questions.Count(u.Thread) == 0 {
-				u.notify("agent-turn-complete", "Agent turn complete")
+				u.notifications.notify(&u.attached.feedback, u.shell, u.clock, "agent-turn-complete", "Agent turn complete")
 			}
 			for _, c := range u.questions.calls() {
 				if !c.Resolved {
@@ -906,13 +908,13 @@ func (u *appServerUI) applyMainKey(next terminalsession.KeyContinuation) (bool, 
 	}
 	// Acquisition stays application-owned; interpretation consumes its publication.
 	if u.picker.Open && u.picker.Kind == "" && u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode()) != u.picker.Target {
-		u.refreshPicker()
+		u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 	}
 	u.publishPresentation(presentationTime(u.clock))
 	refresh := false
 	defer func() {
 		if refresh {
-			u.refreshPicker()
+			u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 		}
 	}()
 	focused := u.shell == nil || u.shell.Focus == 0
@@ -945,11 +947,30 @@ func (u *appServerUI) applyMainKey(next terminalsession.KeyContinuation) (bool, 
 	}
 }
 
-func (u *appServerUI) applyActivity(entries []sessionpresentation.ActivityEntry, agents []sessionpresentation.ActivityAgent) {
-	sessionpresentation.ApplyActivity(u.attached.source, u.attached.childSource, entries, agents)
-	applyCapturedEdits(&u.attached, u.review, &u.pendingEditReceipts)
-	u.flushApprovalUpdates()
-	publishActivity(&u.attached, u.shell)
+func applyActivity(attached *attachedPresentation, approvals *nativeApprovalDock, terminal *terminalsession.Attachment, review *sessionreview.Review, pending *[]*changepresentation.Receipt, main string, clock func() time.Time, entries []sessionpresentation.ActivityEntry, agents []sessionpresentation.ActivityAgent) {
+	sessionpresentation.ApplyActivity(attached.source, attached.childSource, entries, agents)
+	applyCapturedEdits(attached, review, pending)
+	// Reconcile the independent guard and host channels without re-entering
+	// Activity publication. Remove each ready request before applying its update.
+	for i := 0; i < len(approvals.unbound); {
+		a := approvals.unbound[i]
+		if approvalItem(attached, a.Thread, a.Turn, a.Item) == nil {
+			i++
+			continue
+		}
+		approvals.unbound = slices.Delete(approvals.unbound, i, i+1)
+		entry, ok := approvalRecord(attached, approvals, main, presentationTime(clock), a, a.Outcome)
+		if !ok {
+			continue
+		}
+		if attached.session.KnownCaller(main) == "" {
+			attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
+		} else {
+			sessionpresentation.ApplyActivity(attached.source, attached.childSource, []sessionpresentation.ActivityEntry{entry}, nil)
+			applyCapturedEdits(attached, review, pending)
+		}
+	}
+	publishActivity(attached, terminal)
 }
 
 func paintSession(attached *attachedPresentation, terminal *terminalsession.Attachment, files *detailFiles, ctx context.Context, at time.Time, out io.Writer, width, height int) error {
@@ -994,7 +1015,7 @@ func (u *appServerUI) applyObservedActivity() {
 		entries[i].Seq = u.attached.session.Activity().NextSequence()
 	}
 	if len(entries) != 0 {
-		u.applyActivity(entries, nil)
+		applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, entries, nil)
 		u.dirty = true
 	}
 	for _, ref := range u.audience.TakeUnreturned(u.Thread) {

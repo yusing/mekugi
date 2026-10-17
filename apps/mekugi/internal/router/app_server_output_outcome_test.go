@@ -22,7 +22,7 @@ func TestAppServerUnknownExitKeepsOutput(t *testing.T) {
 			if restored {
 				var entries []sessionpresentation.ActivityEntry
 				u.restoreActivityItem(binding.ThreadInfo{ID: "main", Cwd: u.attached.cwd}, binding.HistoryTurn{ID: "turn"}, item, "/root", presentationTime(u.clock), &entries, nil)
-				u.applyActivity(entries, nil)
+				applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, entries, nil)
 			} else {
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 			}

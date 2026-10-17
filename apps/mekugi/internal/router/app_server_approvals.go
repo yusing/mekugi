@@ -2,6 +2,10 @@ package router
 
 import (
 	"encoding/json/jsontext"
+	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
@@ -62,10 +66,10 @@ func (u *appServerUI) addApproval(a *sessioncontrol.Approval) {
 		u.approvals.handles = make(map[*prompt.Approval]*sessioncontrol.Approval)
 	}
 	u.approvals.handles[a.Approval] = a
-	u.recordApproval(a, "Pending Approval")
+	recordApproval(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, a, "Pending Approval")
 	u.approvals.AutoOpen = true
 	if a.RequestID == nil {
-		u.notify("approval-requested", "Approval requested")
+		u.notifications.notify(&u.attached.feedback, u.shell, u.clock, "approval-requested", "Approval requested")
 	}
 	u.autoOpenApprovals()
 }
@@ -102,7 +106,7 @@ func (u *appServerUI) addGuardApproval(request *sessioncontrol.ShellApprovalRequ
 		return
 	}
 	if u.approvals.grants.Allows(request) {
-		u.recordApproval(a, "Approved for this session")
+		recordApproval(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, a, "Approved for this session")
 		request.Reply <- shellapproval.Reply{OK: true}
 		return
 	}
@@ -120,7 +124,7 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 		}
 		record := conversationbinding.ApprovalReview(review)
 		if record.Item != "" && record.Outcome != "" {
-			u.recordApproval(&sessioncontrol.Approval{Approval: &record}, record.Outcome)
+			recordApproval(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, &sessioncontrol.Approval{Approval: &record}, record.Outcome)
 		}
 		return true, nil
 	case "serverRequest/resolved":
@@ -193,7 +197,7 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 	if decoded.DisplayCommand {
 		a.Subject = sessionpresentation.DisplayCommand(a.Subject)
 	}
-	u.blockNotification(m)
+	u.notifications.blockNotification(&u.attached.feedback, u.shell, u.clock, m)
 	u.addApproval(a)
 	return true, nil
 }
@@ -233,7 +237,7 @@ func (u *appServerUI) endApproval(a *sessioncontrol.Approval, outcome string) {
 	if a.RequestID != nil && u.notifications != nil {
 		delete(u.notifications.blocked, string(a.RequestID))
 	}
-	u.recordApproval(a, outcome)
+	recordApproval(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, a, outcome)
 }
 
 // approvalItem finds one exact host identity across the two presentation views.
@@ -258,46 +262,46 @@ func approvalItem(attached *attachedPresentation, thread, turn, item string) *se
 }
 
 // recordApproval updates the host item, never a separate approval event.
-func (u *appServerUI) recordApproval(a *sessioncontrol.Approval, outcome string) {
-	if a.Item == "" {
+func recordApproval(attached *attachedPresentation, approvals *nativeApprovalDock, terminal *terminalsession.Attachment, review *sessionreview.Review, pending *[]*changepresentation.Receipt, main string, clock func() time.Time, a *sessioncontrol.Approval, outcome string) {
+	entry, ok := approvalRecord(attached, approvals, main, presentationTime(clock), a, outcome)
+	if !ok {
 		return
 	}
-	if (a.Subject == "" || a.Guard != nil) && approvalItem(&u.attached, a.Thread, a.Turn, a.Item) == nil {
-		if a.Guard != nil {
-			a.Outcome = outcome
-			if !slices.Contains(u.approvals.unbound, a) {
-				u.approvals.unbound = append(u.approvals.unbound, a)
-			}
-		}
-		return
-	}
-	if a.Guard != nil {
-		owner := approvalItem(&u.attached, a.Thread, a.Turn, a.Item)
-		a.Thread, a.Turn = owner.Thread, owner.Turn
-		outcome += "\nCommand: " + a.Subject
-	}
-	entry := sessionpresentation.ActivityEntry{Seq: u.attached.session.Activity().NextSequence(), Kind: "tool", Text: activitypresentation.ShellSource(frontends.ShellDisplaySource(a.Subject), ""), Observed: presentationTime(u.clock),
-		Native: &sessionpresentation.NativeItem{Thread: a.Thread, Turn: a.Turn, Item: a.Item, Phase: "approval/updated", Approval: outcome}}
-	if u.attached.session.KnownCaller(u.Thread) != "" {
-		entry.Agent = u.attached.session.Caller(a.Thread)
-		u.applyActivity([]sessionpresentation.ActivityEntry{entry}, nil)
+	if attached.session.KnownCaller(main) != "" {
+		applyActivity(attached, approvals, terminal, review, pending, main, clock, []sessionpresentation.ActivityEntry{entry}, nil)
 	} else {
-		entry.Seq, entry.Agent = u.attached.source.LastSeq+1, "Main"
-		u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
+		attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
 	}
 }
 
-// flushApprovalUpdates reconciles the independent guard and host channels.
-func (u *appServerUI) flushApprovalUpdates() {
-	for i := 0; i < len(u.approvals.unbound); {
-		a := u.approvals.unbound[i]
-		if approvalItem(&u.attached, a.Thread, a.Turn, a.Item) == nil {
-			i++
-			continue
-		}
-		u.approvals.unbound = slices.Delete(u.approvals.unbound, i, i+1)
-		u.recordApproval(a, a.Outcome)
+// approvalRecord binds only an exact host identity. Early guard outcomes stay
+// with the existing approval dock until that item arrives.
+func approvalRecord(attached *attachedPresentation, approvals *nativeApprovalDock, main string, at time.Time, a *sessioncontrol.Approval, outcome string) (sessionpresentation.ActivityEntry, bool) {
+	if a.Item == "" {
+		return sessionpresentation.ActivityEntry{}, false
 	}
+	owner := approvalItem(attached, a.Thread, a.Turn, a.Item)
+	if (a.Subject == "" || a.Guard != nil) && owner == nil {
+		if a.Guard != nil {
+			a.Outcome = outcome
+			if !slices.Contains(approvals.unbound, a) {
+				approvals.unbound = append(approvals.unbound, a)
+			}
+		}
+		return sessionpresentation.ActivityEntry{}, false
+	}
+	if a.Guard != nil {
+		a.Thread, a.Turn = owner.Thread, owner.Turn
+		outcome += "\nCommand: " + a.Subject
+	}
+	entry := sessionpresentation.ActivityEntry{Seq: attached.session.Activity().NextSequence(), Kind: "tool", Text: activitypresentation.ShellSource(frontends.ShellDisplaySource(a.Subject), ""), Observed: at,
+		Native: &sessionpresentation.NativeItem{Thread: a.Thread, Turn: a.Turn, Item: a.Item, Phase: "approval/updated", Approval: outcome}}
+	if attached.session.KnownCaller(main) != "" {
+		entry.Agent = attached.session.Caller(a.Thread)
+	} else {
+		entry.Seq, entry.Agent = attached.source.LastSeq+1, "Main"
+	}
+	return entry, true
 }
 
 func (u *appServerUI) decideApproval(intent sessionpresentation.ApprovalIntent) error {

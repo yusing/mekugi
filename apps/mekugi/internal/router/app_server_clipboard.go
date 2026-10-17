@@ -50,14 +50,14 @@ func (u *appServerUI) finishPaste(text string) {
 	path, ok := pastedImagePath(text)
 	if !ok {
 		if text != "" {
-			u.insertDraft(text)
+			insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, text)
 			u.Run = composer.NoRun
 		}
 		return
 	}
 	u.insertImage(path)
 	u.Run = composer.InsertRun // The separating space belongs to the attachment's edit.
-	u.insertDraft(" ")
+	insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, " ")
 	u.Run = composer.NoRun
 }
 
@@ -213,7 +213,7 @@ func (u *appServerUI) applyPaste(paste terminalsession.PasteResult) {
 	case u.approvals.Open:
 		if a := u.approvals.calls()[0]; a.DenialChoice() >= 0 && text != "" {
 			a.Selected = a.DenialChoice()
-			u.insertDraft(text)
+			insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, text)
 			u.Run = composer.NoRun
 		}
 	case menu == sessionpresentation.MenuManageSkills:
@@ -223,5 +223,5 @@ func (u *appServerUI) applyPaste(paste terminalsession.PasteResult) {
 		u.finishPaste(text)
 	}
 	u.picker.Dismissed, u.picker.Open = u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode()), false
-	u.refreshPicker()
+	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 }

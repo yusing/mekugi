@@ -66,7 +66,7 @@ func TestAppServerArchiveCancelAndUnavailable(t *testing.T) {
 			}
 		}
 		u.pickerKey(cancel)
-		u.refreshPicker()
+		u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 		if wire.Len() != 0 || u.picker.Open || u.Replacement.Pending() || u.quitRequested || u.Text != "" {
 			t.Fatalf("cancel %q archived, left confirmation open or accepted hidden paste: %q", cancel, u.Text)
 		}

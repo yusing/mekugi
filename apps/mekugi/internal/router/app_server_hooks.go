@@ -83,7 +83,7 @@ func (u *appServerUI) hookEvent(method string, event binding.Notification) error
 		previousOutput.Release()
 	}
 	entry.Seq = s.Activity().NextSequence()
-	u.applyActivity([]sessionpresentation.ActivityEntry{entry}, s.Roster())
+	applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, []sessionpresentation.ActivityEntry{entry}, s.Roster())
 	return nil
 }
 

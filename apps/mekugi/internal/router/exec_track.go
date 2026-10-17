@@ -133,7 +133,7 @@ func (u *appServerUI) reconcileTrackedCommand(key [3]string, entry sessionpresen
 	}
 	native := *entry.Native
 	native.Segments, native.SegmentsPending = view.segments, false
-	u.retainCommandSegments(entry, item, view)
+	retainCommandSegments(u.ctx, u.retained, u.segments, &u.attached, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty, entry, item, view)
 	for i := range native.Segments {
 		// A commit reads its object from the directory the host ran it in.
 		if segment := &native.Segments[i]; segment.Raw != "" && segment.Changes == nil {

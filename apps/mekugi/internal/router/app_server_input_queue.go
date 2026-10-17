@@ -93,9 +93,9 @@ func (u *appServerUI) flushInput() error {
 	if len(next.Batch.Parts) == 0 {
 		return nil
 	}
-	if u.waitForSkillBindings(next.Batch.Parts) {
+	if u.picker.waitForSkillBindings(&u.attached, u.shell, u.clock, u.Requests, next.Batch.Parts) {
 		u.attached.conversation.ReturnBatch(next.Batch)
-		u.refreshPicker()
+		u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 		return nil
 	}
 	return u.send(next.Batch.Parts, next.Steer)

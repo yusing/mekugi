@@ -517,13 +517,13 @@ func newNativePreview(t *testing.T) *nativePreview {
 		for _, update := range updates {
 			delivered = append(delivered, sessionreview.FromUpdate(update))
 		}
-		u.applyReview(t.Context(), sessionreview.Event{Kind: "change", Changes: delivered})
+		applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "change", Changes: delivered})
 	}
 	scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {}}}
 	for _, thread := range []string{"main", "t-reviewer", "t-explorer", "t-tester"} {
 		scope.Workspaces[workspace][thread] = true
 	}
-	u.applyReview(t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope})
+	applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope})
 	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.attached.session.Roster()})
 	u.attached.presentation.Status.Text = "Ready"
 	p.populate()
@@ -617,7 +617,7 @@ func (p *nativePreview) stream(name string, edits ...nativePreviewEdit) {
 			input := strings.Join(patchLines[:min(lines+2, len(patchLines))], "")
 			p.add("stream "+name, func() {
 				preview := projectStockPatchPreview(p.ui.ctx, p.workspace, previewmodel.Preview{ID: edit.item, Workspace: p.workspace, Thread: edit.thread, Caller: p.ui.attached.session.Caller(edit.thread), Tool: applyPatchToolName, Status: previewmodel.PreviewEdit, Input: input})
-				p.ui.applyReview(p.ui.ctx, sessionreview.Event{Kind: "preview", Preview: &preview})
+				applyReview(&p.ui.attached, p.ui.shell, p.ui.review, p.ui.reviewSource, p.ui.preparePane, &p.ui.pendingEditReceipts, p.ui.clock, p.ui.ctx, sessionreview.Event{Kind: "preview", Preview: &preview})
 				revealNativeDock(terminalTest(p.ui))
 			})
 		}
@@ -631,7 +631,7 @@ func (p *nativePreview) stream(name string, edits ...nativePreviewEdit) {
 // the router's capturer does, so the saved diff gains the change.
 func (p *nativePreview) apply(edit nativePreviewEdit) {
 	preview := projectStockPatchPreview(p.ui.ctx, p.workspace, previewmodel.Preview{ID: edit.item, Workspace: p.workspace, Thread: edit.thread, Caller: p.ui.attached.session.Caller(edit.thread), Tool: applyPatchToolName, Status: previewmodel.PreviewEdit, Input: edit.patch, Complete: true})
-	p.ui.applyReview(p.ui.ctx, sessionreview.Event{Kind: "preview", Preview: &preview})
+	applyReview(&p.ui.attached, p.ui.shell, p.ui.review, p.ui.reviewSource, p.ui.preparePane, &p.ui.pendingEditReceipts, p.ui.clock, p.ui.ctx, sessionreview.Event{Kind: "preview", Preview: &preview})
 	revealNativeDock(terminalTest(p.ui))
 	change := edit.change(-1)
 	item := map[string]any{"id": edit.item, "type": "fileChange", "status": "inProgress", "changes": []any{change}}

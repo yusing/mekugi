@@ -404,7 +404,7 @@ func TestAppServerNoticeExpiry(t *testing.T) {
 	if expireNotice(&u.attached.feedback, u.shell, time.Now().Add(time.Hour)) || u.attached.feedback.Text != "failure" {
 		t.Fatal("error expired")
 	}
-	u.insertDraft("x")
+	insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "x")
 	if u.attached.feedback.Text != "" || !u.attached.feedback.Until.IsZero() {
 		t.Fatal("editing did not clear notice")
 	}

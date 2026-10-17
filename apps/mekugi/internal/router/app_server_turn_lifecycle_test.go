@@ -91,7 +91,7 @@ func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 		auto.Update(main, false)
 		for _, event := range testReview(auto).TakePreviews(sub) {
 			if event.Kind == "preview" {
-				u.applyReview(t.Context(), event)
+				applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), event)
 			}
 		}
 		if terminalTest(u).Live.Views[main.ID] != nil || terminalTest(u).Live.Views[queued.ID] != nil {

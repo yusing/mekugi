@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -34,8 +36,8 @@ type commandSegmentWrite struct {
 	err error
 }
 
-func (u *appServerUI) retainCommandSegments(entry sessionpresentation.ActivityEntry, item observation.Item, view execTrackView) {
-	if u.segments == nil || u.retained.Store == nil || item.AggregatedOutput == nil || item.ExitCode == nil {
+func retainCommandSegments(parent context.Context, retained changes.Scope, segments *reports.Service, attached *attachedPresentation, writes *chan commandSegmentWrite, count *int, issues *requestexecution.Failures, dirty *bool, entry sessionpresentation.ActivityEntry, item observation.Item, view execTrackView) {
+	if segments == nil || retained.Store == nil || item.AggregatedOutput == nil || item.ExitCode == nil {
 		return
 	}
 	script, ok := shellinstrumentation.CommandScript(item.Command)
@@ -43,8 +45,8 @@ func (u *appServerUI) retainCommandSegments(entry sessionpresentation.ActivityEn
 	if !ok || !split || len(parts) != len(view.segments) || !view.complete || view.code != *item.ExitCode {
 		return
 	}
-	if u.commandSegmentPending == commandSegmentRetentionLimit {
-		u.dirty = commandSegmentRetentionFailed(u.issues, [3]string{entry.Native.Thread, entry.Native.Turn, entry.Native.Item}, fmt.Errorf("pending command segment reports reached the limit of %d", commandSegmentRetentionLimit)) || u.dirty
+	if (*count) == commandSegmentRetentionLimit {
+		(*dirty) = commandSegmentRetentionFailed(issues, [3]string{entry.Native.Thread, entry.Native.Turn, entry.Native.Item}, fmt.Errorf("pending command segment reports reached the limit of %d", commandSegmentRetentionLimit)) || (*dirty)
 		return
 	}
 	record := &reports.Report{Command: item.Command, Exit: *item.ExitCode, Output: sha256.Sum256([]byte(*item.AggregatedOutput))}
@@ -66,29 +68,29 @@ func (u *appServerUI) retainCommandSegments(entry sessionpresentation.ActivityEn
 	// Snapshot every UI-owned value before leaving the event loop. The shared
 	// store can be busy with capture or another session; that must neither
 	// freeze presentation nor discard a report after a one-second lock wait.
-	ctx, cancel := context.WithTimeout(u.ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	id := reports.ID(entry.Native.Turn, entry.Native.Item)
 	key := [3]string{entry.Native.Thread, entry.Native.Turn, entry.Native.Item}
-	store := u.retained
-	scope := reports.Scope{Store: store.Store, Workspace: u.attached.cwd, Thread: entry.Native.Thread, Limits: store.Limits, Writes: store.Writes}
-	if u.commandSegmentWrites == nil {
-		u.commandSegmentWrites = make(chan commandSegmentWrite, commandSegmentRetentionLimit)
+	store := retained
+	scope := reports.Scope{Store: store.Store, Workspace: attached.cwd, Thread: entry.Native.Thread, Limits: store.Limits, Writes: store.Writes}
+	if (*writes) == nil {
+		(*writes) = make(chan commandSegmentWrite, commandSegmentRetentionLimit)
 	}
-	writes := u.commandSegmentWrites
-	u.commandSegmentPending++
+	delivery := *writes
+	(*count)++
 	go func() {
 		defer cancel()
-		writes <- commandSegmentWrite{key: key, err: requestexecution.StoragePublicationError(u.segments.Publish(ctx, scope, id, *record))}
+		delivery <- commandSegmentWrite{key: key, err: requestexecution.StoragePublicationError(segments.Publish(ctx, scope, id, *record))}
 	}()
 }
 
 // Only the UI event loop consumes results or changes presentation state.
-func (u *appServerUI) commandSegmentRetained(result commandSegmentWrite) {
-	u.commandSegmentPending--
+func commandSegmentRetained(count *int, issues *requestexecution.Failures, dirty *bool, result commandSegmentWrite) {
+	(*count)--
 	if result.err == nil {
 		return
 	}
-	u.dirty = commandSegmentRetentionFailed(u.issues, result.key, result.err) || u.dirty
+	(*dirty) = commandSegmentRetentionFailed(issues, result.key, result.err) || (*dirty)
 }
 
 func commandSegmentRetentionFailed(issues *requestexecution.Failures, key [3]string, err error) bool {
@@ -107,25 +109,25 @@ func commandSegmentRetentionFailed(issues *requestexecution.Failures, key [3]str
 }
 
 // Normal exit drains accepted reports before releasing the session's resources.
-// Cancellation still reaches each bounded store operation through u.ctx.
-func (u *appServerUI) finishCommandSegments() {
-	for u.commandSegmentPending > 0 {
-		u.commandSegmentRetained(<-u.commandSegmentWrites)
+// Cancellation still reaches each bounded store operation through its parent context.
+func finishCommandSegments(writes *chan commandSegmentWrite, count *int, issues *requestexecution.Failures, dirty *bool) {
+	for (*count) > 0 {
+		commandSegmentRetained(count, issues, dirty, <-(*writes))
 	}
 }
 
 // Restore only real, terminal observations that agree with visible host
 // history. Missing, corrupt or mismatched records leave the aggregate intact.
-func (u *appServerUI) restoreCommandSegments(entry *sessionpresentation.ActivityEntry, item binding.ThreadItem, workspace string) {
-	if item.Type != "commandExecution" || item.ExitCode == nil || item.AggregatedOutput == nil || u.retained.Store == nil {
+func restoreCommandSegments(parent context.Context, retained changes.Scope, segments *reports.Service, attached *attachedPresentation, activity *activitymodel.Service, restored map[string]*reports.Report, entry *sessionpresentation.ActivityEntry, item binding.ThreadItem, workspace string) {
+	if item.Type != "commandExecution" || item.ExitCode == nil || item.AggregatedOutput == nil || retained.Store == nil {
 		return
 	}
 	var record *reports.Report
-	if u.restoredSegments != nil {
-		record = u.restoredSegments[entry.Native.Item]
+	if restored != nil {
+		record = restored[entry.Native.Item]
 	} else {
 		item.ID = entry.Native.Item
-		record = prepareCommandSegments(u.ctx, u.retained, u.segments, entry.Native.Thread, workspace, binding.HistoryTurn{ID: entry.Native.Turn, Items: []binding.ThreadItem{item}})[item.ID]
+		record = prepareCommandSegments(parent, retained, segments, entry.Native.Thread, workspace, binding.HistoryTurn{ID: entry.Native.Turn, Items: []binding.ThreadItem{item}})[item.ID]
 	}
 	if record == nil {
 		return
@@ -138,7 +140,7 @@ func (u *appServerUI) restoreCommandSegments(entry *sessionpresentation.Activity
 	for _, part := range record.Parts {
 		segment := sessionpresentation.ActivitySegment{Timing: segmenttransport.Timing(part.Timing), Source: part.Source, Text: (activitypresentation.CommandSource{Script: part.Source, Display: frontends.ShellDisplaySource(part.Source), Directory: cwd}).SegmentText(), Skipped: part.Skipped, Exit: part.Exit}
 		if separate && !part.Skipped {
-			if outputs := u.activity.Outputs(u.attached.session.Scope()); outputs != nil {
+			if outputs := activity.Outputs(attached.session.Scope()); outputs != nil {
 				segment.Output = outputs.New()
 				segment.Output.Finish(part.Output, &part.Exit)
 			}

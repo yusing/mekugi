@@ -106,7 +106,7 @@ func (u *appServerUI) skillHistoryResponse(thread string, m appserver.Message) e
 			record.Source.Kind, native.Item = "attachments", item.ID+"/attachments"
 			native.Attachments = sessionpresentation.AttachmentValues(u.attached.cwd, item.Content)
 		case "commandExecution":
-			u.restoreCommandSegments(&record.Source, item, u.attached.cwd)
+			restoreCommandSegments(u.ctx, u.retained, u.segments, &u.attached, u.activity, u.restoredSegments, &record.Source, item, u.attached.cwd)
 			if item.ExitCode != nil && *item.ExitCode != 0 && len(native.Segments) == 0 {
 				continue
 			}

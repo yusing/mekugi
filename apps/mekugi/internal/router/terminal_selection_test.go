@@ -475,7 +475,7 @@ func TestTerminalUISelectionComposer(t *testing.T) {
 	for _, size := range [][2]int{{120, 30}, {40, 12}, {10, 4}} {
 		u := newAppServerSessionTestUI(t, "/workspace")
 
-		u.insertDraft("你好abc\nsecond")
+		insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "你好abc\nsecond")
 		screen := vt.NewEmulator(size[0], size[1])
 		defer screen.Close()
 		if err := u.testPaint(screen, size[0], size[1]); err != nil {
@@ -515,7 +515,7 @@ func TestTerminalUISelectionComposerReplacesTranscript(t *testing.T) {
 	paint()
 	u.shell.Transcript.FeedQuestions = []uint64{1, 1, 1, 1}
 	u.shell.Transcript.QuestionRows = map[uint64]int{1: 99}
-	u.insertDraft("first\nsecond\nthird\nfourth\nfifth")
+	insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "first\nsecond\nthird\nfourth\nfifth")
 	paint()
 	r := u.shell.Main.ComposerRect
 	r.X += terminalTest(u).Layout.Main.X

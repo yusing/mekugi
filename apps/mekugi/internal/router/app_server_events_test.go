@@ -170,14 +170,14 @@ func TestAppServerSessionDocksSharedPreviewsByCaller(t *testing.T) {
 	if len(terminalTest(u).Live.Order) != 0 {
 		t.Fatal("app-server reconstructed a duplicate projection")
 	}
-	u.applyReview(t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
+	applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
 	revealNativeDock(terminalTest(u))
 	card := terminalTest(u).Live.Views["patch"].Current
 	if len(card.Files) != 1 || !strings.Contains(card.Files[0].Diff, "+package b") || strings.Contains(card.Status, "cannot be projected") {
 		t.Fatalf("shared preview lost: %+v", card)
 	}
 	preview.Complete = true
-	u.applyReview(t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
+	applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
 	revealNativeDock(terminalTest(u))
 	if !terminalTest(u).Live.Views["patch"].Complete {
 		t.Fatal("shared completion lost")
@@ -190,18 +190,18 @@ func TestAppServerSessionDocksSharedPreviewsByCaller(t *testing.T) {
 		}
 	}
 	preview.ID, preview.Thread, preview.Caller, preview.Tool = "exec", "child", "/root/worker", nativeExecCommandToolName
-	u.applyReview(t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
+	applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
 	revealNativeDock(terminalTest(u))
 	if terminalTest(u).Live.Views["exec"] != nil {
 		t.Fatal("completion-only shell preview flashed a dock")
 	}
 	preview.Complete = false
-	u.applyReview(t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
+	applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
 	revealNativeDock(terminalTest(u))
 	if terminalTest(u).Live.Views["exec"] == nil {
 		t.Fatal("child preview missing from shared dock")
 	}
-	u.applyReview(t.Context(), sessionreview.Event{Kind: "turn", TurnRevision: 1, Status: "completed"})
+	applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "turn", TurnRevision: 1, Status: "completed"})
 	if terminalTest(u).DiffOpen {
 		t.Fatal("completed turn opened saved diff")
 	}

@@ -403,7 +403,7 @@ func TestNativeApprovalTypedDenialReachesCommand(t *testing.T) {
 			result := make(chan execTrackRun, 1)
 			go func() { result <- runExecTrackShell(t, shell.env, "git push origin main") }()
 			u, _ := newAppServerTestUI()
-			u.insertDraft("kept draft")
+			insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "kept draft")
 			image := answerImageFixture(t)
 			u.attachImage(image)
 			kept := u.Text
@@ -508,7 +508,7 @@ func TestNativeApprovalQuestionEditorOwnership(t *testing.T) {
 
 func TestNativeApprovalSurvivesMainReplacement(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.insertDraft("main draft")
+	insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "main draft")
 	approvalTestCommand(t, u, 7, nil)
 	openApprovals(&u.approvals, &u.questions, u.attached.conversation, u.shell, &u.picker, &u.Editor, u.Thread)
 	questionTestPaint(t, u, 80)
@@ -694,7 +694,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 				native := *view.Entries[0].Source.Native
 				native.Phase = "item/commandExecution/outputDelta"
 				native.Segments = []sessionpresentation.ActivitySegment{{Source: item.Command, Text: toolActivityShell(item.Command), Running: true}}
-				u.applyActivity([]sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Agent: u.attached.session.Caller(thread), Kind: "tool", Text: toolActivityShell(item.Command), Native: &native}}, nil)
+				applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, []sessionpresentation.ActivityEntry{{Seq: u.attached.session.Activity().NextSequence(), Agent: u.attached.session.Caller(thread), Kind: "tool", Text: toolActivityShell(item.Command), Native: &native}}, nil)
 				if len(view.Entries) != 1 || len(view.blocks(0)) != 1 || !strings.HasPrefix(view.Entries[0].Source.Native.Approval, "Pending Approval") {
 					t.Fatal("early guard pending state was not reconciled")
 				}
@@ -802,5 +802,39 @@ func TestNativeApprovalWithoutOfferedChoicesStaysBlocked(t *testing.T) {
 	appServerTestKeys(t, u, "\x1b[A\x1b[B\r")
 	if len(u.approvals.calls()) != 1 || wire.Len() != 0 {
 		t.Fatal("blocked approval changed or issued a response")
+	}
+}
+
+func TestGuardApprovalDrainKeepsUnmatchedRequests(t *testing.T) {
+	u := newAppServerSessionTestUI(t, "/workspace")
+	for _, item := range []string{"later", "first", "second"} {
+		u.addGuardApproval(&sessioncontrol.ShellApprovalRequest{Thread: "main", Item: item,
+			Argv: []string{"git", "push"}, Reply: make(chan shellapproval.Reply, 1), Done: make(chan struct{})})
+	}
+	if len(u.approvals.unbound) != 3 {
+		t.Fatal("guard requests were not retained before host items")
+	}
+	publish := func(items ...string) {
+		var entries []sessionpresentation.ActivityEntry
+		for _, item := range items {
+			entries = append(entries, sessionpresentation.ActivityEntry{Seq: u.attached.session.Activity().NextSequence(),
+				Agent: u.attached.session.Caller("main"), Kind: "tool", Text: "git push",
+				Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "turn", Item: item, Phase: "item/started"}})
+		}
+		applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, entries, nil)
+	}
+	publish("second", "first")
+	if len(u.approvals.unbound) != 1 || u.approvals.unbound[0].Item != "later" {
+		t.Fatalf("unmatched requests = %+v", u.approvals.unbound)
+	}
+	publish("later")
+	if len(u.approvals.unbound) != 0 || len(u.attached.source.Entries) != 3 {
+		t.Fatalf("pending = %d, rows = %d", len(u.approvals.unbound), len(u.attached.source.Entries))
+	}
+	for _, row := range u.attached.source.Entries {
+		n := row.Source.Native
+		if n.Turn != "turn" || n.Approval != "Pending Approval\nCommand: git push" {
+			t.Fatalf("host item did not receive its guard outcome: %+v", n)
+		}
 	}
 }

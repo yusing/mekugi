@@ -2,6 +2,7 @@ package router
 
 import (
 	"os"
+	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -20,10 +21,10 @@ func rememberInput(conversation *conversationmodel.Session, draft conversationmo
 func draftSnapshot(editor *composer.Editor) conversationmodel.Input {
 	return conversationmodel.Input{Draft: editor.Draft.Editable()}
 }
-func (u *appServerUI) recordDraft() {
-	u.Editor.Record()
-	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "", false)
-	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
+func recordDraft(attached *attachedPresentation, editor *composer.Editor, terminal *terminalsession.Attachment, clock func() time.Time, owned map[string]bool, questions *nativeQuestionDock, approvals *nativeApprovalDock, side *sessioncontrol.Side) {
+	editor.Record()
+	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
+	pruneDraftImages(owned, editor, attached.conversation, questions, approvals, terminal.Prompts, side)
 }
 
 // Images referenced by undo/redo remain usable. Submission transfers file

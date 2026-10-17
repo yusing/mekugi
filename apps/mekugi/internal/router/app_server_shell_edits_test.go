@@ -183,7 +183,7 @@ func TestAppServerShellObservationKeepsOriginalOwnersAfterSwitch(t *testing.T) {
 	t.Cleanup(u.retainedSession.Close)
 	writeTestFile(t, path, "after\n")
 	exit := 0
-	u.observeShellEdit(thread, "item/completed", binding.ThreadItem{ID: "shell-original", Type: "commandExecution", Source: "userShell", Status: "completed", ExitCode: &exit})
+	observeShellEdit(&u.shellEdits, &u.attached, u.shell, u.clock, thread, "item/completed", binding.ThreadItem{ID: "shell-original", Type: "commandExecution", Source: "userShell", Status: "completed", ExitCode: &exit})
 	if u.attached.feedback.Alert {
 		t.Fatal(u.attached.feedback.Text)
 	}

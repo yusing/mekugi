@@ -39,7 +39,7 @@ func (u *appServerUI) applyMenuResult(result terminalsession.MenuResult) bool {
 		return result.Handled
 	}
 	accepted := u.applyMenuAction(result.Action)
-	u.refreshPicker()
+	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 	u.settlePresentation()
 	return result.Handled && !(accepted && result.Submit)
 }
@@ -60,7 +60,7 @@ func (u *appServerUI) applyMenuAction(action sessionpresentation.MenuAction) boo
 	case sessionpresentation.MenuDismiss:
 		switch p.Kind {
 		case "menu", "manage":
-			u.closeSkillsModal()
+			u.picker.closeSkillsModal(&u.attached, u.shell, u.clock, u.Editor)
 		default:
 			p.Dismissed, p.Open = p.Target, false
 			p.Kind, p.Choices, p.CopyTexts = "", nil, nil
@@ -77,7 +77,7 @@ func (u *appServerUI) applyMenuAction(action sessionpresentation.MenuAction) boo
 		choice := p.Choices[index]
 		switch p.Kind {
 		case "menu":
-			u.chooseSkillsAction(choice)
+			u.picker.chooseSkillsAction(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, choice)
 		case "manage":
 			toggleSkill(&u.picker, u.Requests, u.attached.cwd, choice)
 		case "archive":

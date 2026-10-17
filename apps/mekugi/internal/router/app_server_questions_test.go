@@ -254,14 +254,14 @@ func TestNativeQuestionExternalReplyParksActiveAnswerBeforeCommit(t *testing.T) 
 			u, _ := newAppServerTestUI()
 			u.startSession("main", t.TempDir())
 			u.Turn = "turn"
-			u.insertDraft("Main draft")
+			insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "Main draft")
 			questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{
 				"id": "call", "type": "agentMessage", "delivery": "async", "questions": []any{
 					map[string]any{"question": "First?", "isSecret": secret}, map[string]any{"question": "Second?"},
 				},
 			}})
 			u.openQuestions()
-			u.insertDraft("active answer")
+			insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "active answer")
 			commit := func(index int) {
 				text := binding.EncodeQuestionReplies([]binding.QuestionReply{{Answer: "external", QuestionItemID: binding.AsyncQuestionIdentity("call", index)}})
 				questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{
@@ -296,7 +296,7 @@ func TestNativeQuestionExternalReplyParksActiveAnswerBeforeCommit(t *testing.T) 
 
 func TestNativeQuestionsUseComposedAttachment(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.insertDraft("pre-start draft")
+	insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "pre-start draft")
 	editor := u.Editor
 	questions := &u.attached.conversation.Questions
 	questionTestSync(t, u, "pending", false)

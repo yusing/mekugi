@@ -1,7 +1,13 @@
 package router
 
 import (
+	"context"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/contracts/scope"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/conversation/completion"
 
 	"slices"
@@ -115,18 +121,18 @@ func (u *appServerUI) cancelQueuedCompact() bool {
 
 // resetDiffScope starts the saved Diff over for a resumed root thread; its
 // restoration then includes only that thread and its descendants.
-func (u *appServerUI) resetDiffScope() {
-	if u.review == nil {
+func resetDiffScope(attached *attachedPresentation, terminal *terminalsession.Attachment, review *sessionreview.Review, source *changecapture.Service, prepare func(*scope.Store), parent context.Context) {
+	if review == nil {
 		return
 	}
-	u.review.Replace(u.ctx)
-	if u.shell != nil {
-		if u.shell.Auxiliary != nil {
-			u.shell.Auxiliary.Reset()
+	review.Replace(parent)
+	if terminal != nil {
+		if terminal.Auxiliary != nil {
+			terminal.Auxiliary.Reset()
 		}
-		u.shell.Live, u.shell.DiffUnseen = previewview.PreviewPane{}, false
+		terminal.Live, terminal.DiffUnseen = previewview.PreviewPane{}, false
 	}
-	publishReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane)
+	publishReview(attached, terminal, review, source, prepare)
 }
 
 func (p *composerPicker) filterCommands(query string) {

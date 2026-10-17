@@ -77,7 +77,7 @@ func TestSavedReviewLoadingSeparatesPreviewAuthorityFromRestoredInput(t *testing
 			restoreContentReply(t, u, 0, map[string]any{"data": []any{}})
 			restoreContentReply(t, u, 1, map[string]any{"data": []any{}})
 			for _, event := range u.review.TakePreviews(sub) {
-				u.applyReview(t.Context(), event)
+				applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), event)
 			}
 		waiting:
 			for {
@@ -85,13 +85,13 @@ func TestSavedReviewLoadingSeparatesPreviewAuthorityFromRestoredInput(t *testing
 				case <-blocked.entered:
 					break waiting
 				case result := <-loader.Updates():
-					u.loadedReview(result)
+					loadedReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, result)
 				case <-time.After(5 * time.Second):
 					t.Fatal("restored Diff did not reach blocked retained read")
 				}
 			}
 			preview := previewmodel.Preview{ID: "stream", Workspace: workspace, Thread: "blocked-child", Caller: "/root/worker", Input: "live edit", Status: "active"}
-			u.applyReview(t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
+			applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
 			revealNativeDock(terminalTest(u))
 			if terminalTest(u).Live.Views[preview.ID] == nil || u.review.Projection.Scope.Workspaces[workspace][preview.Thread] {
 				t.Fatal("preview waited for retained scope hydration")
@@ -107,7 +107,7 @@ func TestSavedReviewLoadingSeparatesPreviewAuthorityFromRestoredInput(t *testing
 			}
 			release()
 			for loader.Pending() && u.review.Failure == "" {
-				u.loadedReview(savedReviewLoaderResult(t, loader))
+				loadedReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, savedReviewLoaderResult(t, loader))
 				if err := u.finishRestoredContent(); err != nil {
 					t.Fatal(err)
 				}
@@ -125,11 +125,11 @@ func TestSavedReviewLoadingSeparatesPreviewAuthorityFromRestoredInput(t *testing
 				u.review.Unsubscribe(sub)
 				loader.AwaitResync()
 				sub = u.review.Subscribe()
-				if !u.admitReviewEvents(t.Context(), sub, <-sub.Events()) {
+				if !admitReviewEvents(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sub, <-sub.Events()) {
 					t.Fatal("failed Diff requested another subscription after editor reattachment")
 				}
 				preview.ID = "after-editor"
-				if !u.admitReviewEvents(t.Context(), sub, sessionreview.Event{Kind: "preview", Preview: &preview}) {
+				if !admitReviewEvents(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sub, sessionreview.Event{Kind: "preview", Preview: &preview}) {
 					t.Fatal("failed Diff forced resubscription during preview delivery")
 				}
 				revealNativeDock(terminalTest(u))
@@ -155,9 +155,9 @@ func TestSavedReviewReplacementRejectsQueuedOldResync(t *testing.T) {
 	u.review.IncludeThread(workspace, "old", true)
 	old := u.review.Subscribe()
 	defer u.review.Unsubscribe(old)
-	u.resetDiffScope()
+	resetDiffScope(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, u.ctx)
 	u.review.IncludeThread(workspace, "replacement", true)
-	if u.admitReviewEvents(t.Context(), old, <-old.Events()) {
+	if admitReviewEvents(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), old, <-old.Events()) {
 		t.Fatal("queued old resync entered the replacement attachment")
 	}
 	if loader.Pending() || len(u.review.PreviewScope.Workspaces) != 0 {
@@ -165,10 +165,10 @@ func TestSavedReviewReplacementRejectsQueuedOldResync(t *testing.T) {
 	}
 	sub := u.review.Subscribe()
 	defer u.review.Unsubscribe(sub)
-	if !u.admitReviewEvents(t.Context(), sub, <-sub.Events()) {
+	if !admitReviewEvents(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sub, <-sub.Events()) {
 		t.Fatal("current replacement scope was rejected")
 	}
-	u.loadedReview(savedReviewLoaderResult(t, loader))
+	loadedReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, savedReviewLoaderResult(t, loader))
 	files := u.review.Projection.Data.Publication.Files
 	if u.review.Failure != "" || len(files) != 1 || filepath.Base(files[0].Path) != "new.go" {
 		t.Fatalf("old subscription poisoned replacement Diff: failure=%q files=%+v", u.review.Failure, files)

@@ -443,7 +443,7 @@ func TestAppServerResumeSwitchWaitsForDiffResync(t *testing.T) {
 	u.startSession("main", workspace)
 	testReview(auto).IncludeThread(workspace, "main", true)
 	sub := testReview(auto).Subscribe()
-	u.applyReview(t.Context(), <-sub.Events())
+	applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), <-sub.Events())
 	appServerTestKeys(t, u, "/resume saved\r")
 	resume := resumeTestPrepared(t, u, w)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"saved","cwd":%q,"turns":[]}}}`, resume.ID, workspace))
@@ -458,7 +458,7 @@ func TestAppServerResumeSwitchWaitsForDiffResync(t *testing.T) {
 	}
 	sub = testReview(auto).Subscribe()
 	for _, event := range testReview(auto).TakePreviews(sub) {
-		u.applyReview(t.Context(), event)
+		applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), event)
 	}
 	if err := u.finishRestoredContent(); err != nil {
 		t.Fatal(err)
@@ -521,5 +521,18 @@ func TestResumePickerRechecksIdleBeforeSwitch(t *testing.T) {
 	resumeTestKeys(t, u, "\r")
 	if u.resumePicker == nil || len(resumeTestRequests(t, w)) != 0 || !strings.Contains(u.attached.feedback.Text, "task is in progress") {
 		t.Fatal("chooser stranded newly started work")
+	}
+}
+
+func TestAcceptedReplacementRefreshesCurrentComposer(t *testing.T) {
+	u := newAppServerSessionTestUI(t, "/workspace")
+	appServerTestKeys(t, u, "/sta")
+	previous := u.Editor
+	replaceAppServerTestSession(t, u, "next")
+	if u.Editor == previous || u.Text != "/sta" {
+		t.Fatal("accepted replacement did not carry the draft into its new editor")
+	}
+	if !u.picker.Open || u.picker.Target.Kind != '/' || u.picker.Target.Query != "sta" {
+		t.Fatalf("replacement completion used the retired editor: open=%v target=%+v", u.picker.Open, u.picker.Target)
 	}
 }

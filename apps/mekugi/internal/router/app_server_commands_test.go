@@ -38,7 +38,7 @@ func TestComposerCommandEnterAndDismiss(t *testing.T) {
 	u, _ = newAppServerTestUI()
 	appServerTestKeys(t, u, "/")
 	u.pickerKey("\x1b")
-	u.refreshPicker()
+	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 	if u.picker.Open || u.Text != "/" {
 		t.Fatal("Escape must dismiss without changing the draft")
 	}

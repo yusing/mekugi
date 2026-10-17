@@ -203,11 +203,11 @@ func TestSavedReviewLoaderOfflineHasNoWorker(t *testing.T) {
 	loader.Close()
 	u, _ := newAppServerTestUI()
 
-	u.applyReview(t.Context(), savedReviewLoaderScope("/workspace", true, "main"))
+	applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), savedReviewLoaderScope("/workspace", true, "main"))
 	if u.review.Failure != "" || !u.review.Projection.Scope.Workspaces["/workspace"]["main"] || u.review.Projection.Data.Publication.Counts.Net != nil {
 		t.Fatal("attachment without retained storage rejected scope or claimed known counts")
 	}
-	u.applyReview(t.Context(), sessionreview.Event{Kind: "change", Changes: []sessionreview.Change{{Workspace: "/workspace", Thread: "main", ID: "amber1", Calls: []string{"call"}}}})
+	applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "change", Changes: []sessionreview.Change{{Workspace: "/workspace", Thread: "main", ID: "amber1", Calls: []string{"call"}}}})
 	if u.review.Failure == "" {
 		t.Fatal("referencing change without storage did not report unavailable evidence")
 	}

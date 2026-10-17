@@ -23,7 +23,7 @@ func TestNativeUIRunningChildRemovalReleasesDock(t *testing.T) {
 	deliver := func() {
 		for _, event := range testReview(broker).TakePreviews(sub) {
 			if event.Kind == "preview" {
-				u.applyReview(t.Context(), event)
+				applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), event)
 				revealNativeDock(terminalTest(u))
 			}
 		}

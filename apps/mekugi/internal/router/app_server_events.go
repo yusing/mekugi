@@ -119,7 +119,7 @@ func (u *appServerUI) sessionEvent(method string, p binding.Notification) (bool,
 	}
 	if result.Publish {
 		u.streams.Deliver(result.Deliveries, u.shell.Transcript, u.shell.Agents)
-		u.applyActivity(nil, nil)
+		applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, nil, nil)
 	}
 	return result.Handled, nil
 }
@@ -146,7 +146,7 @@ func (u *appServerUI) flushStreamOutput() {
 	for i := range entries {
 		entries[i].Seq = s.Activity().NextSequence()
 	}
-	u.applyActivity(entries, nil)
+	applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, entries, nil)
 	u.dirty = true
 }
 

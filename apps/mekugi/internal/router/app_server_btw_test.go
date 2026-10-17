@@ -311,7 +311,7 @@ func TestAppServerBTWRejectedAttachmentsReturnWithNewDraft(t *testing.T) {
 			u.Text = "/btw Explain "
 			u.insertImage(path)
 			u.ownedImages = map[string]bool{path: true}
-			u.insertDraft(" ")
+			insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, " ")
 			bindComposerFile(u, "@missing.txt", "missing.txt")
 			appServerTestKeys(t, u, "\r")
 			r := btwTestRequest(t, w, "thread/fork", "main")

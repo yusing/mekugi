@@ -246,9 +246,9 @@ func TestActivityBatchRestoresVCSRows(t *testing.T) {
 	first, second := u.activity.Outputs(u.attached.session.Scope()).New(), u.activity.Outputs(u.attached.session.Scope()).New()
 	first.Finish(new("before\n"), new(0))
 	second.Finish(&output, new(0))
-	u.retainCommandSegments(entry, item.Observation(), execTrackView{complete: true, output: true, segments: []sessionpresentation.ActivitySegment{{Output: first}, {Output: second, Raw: output}}})
+	retainCommandSegments(u.ctx, u.retained, u.segments, &u.attached, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty, entry, item.Observation(), execTrackView{complete: true, output: true, segments: []sessionpresentation.ActivitySegment{{Output: first}, {Output: second, Raw: output}}})
 	awaitCommandSegments(t, u)
-	u.restoreCommandSegments(&entry, item, u.attached.cwd)
+	restoreCommandSegments(u.ctx, u.retained, u.segments, &u.attached, u.activity, u.restoredSegments, &entry, item, u.attached.cwd)
 	if len(entry.Native.Segments) != 2 {
 		t.Fatalf("missing segments: %+v", entry.Native.Segments)
 	}

@@ -80,7 +80,9 @@ func (u *appServerUI) applyEditorDraft(intent sessionpresentation.ComposerIntent
 	if err := u.attached.presentation.AdmitAcquiredInput(intent, u.attached.conversation); err != nil {
 		return err
 	}
-	defer u.refreshPicker()
+	defer func() {
+		u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
+	}()
 	u.Run = composer.NoRun
 	if q := u.questions.Current(); q != nil && !q.Note {
 		q.Selected = len(q.Choices)

@@ -3,6 +3,10 @@ package router
 import (
 	json "encoding/json/v2"
 	"strings"
+	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
@@ -24,53 +28,53 @@ func (u *appServerUI) titleCommand(text string) bool {
 	}
 	u.deleteDraftRange(0, len(u.Text))
 	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "", false)
-	u.renameSessionTitle(name)
+	renameSessionTitle(&u.Client, u.titleGenerator, &u.attached.feedback, u.shell, u.clock, &u.dirty, name)
 	return true
 }
 
-func (u *appServerUI) renameSessionTitle(name string) {
-	u.dirty = true
-	u.Names.Manual(u.Thread, name)
-	if u.Thread == "" {
+func renameSessionTitle(control *sessioncontrol.Client[appServerRequest], generator *sessionNaming, feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, dirty *bool, name string) {
+	(*dirty) = true
+	control.Names.Manual(control.Thread, name)
+	if control.Thread == "" {
 		return
 	}
 	// Suppress generation before persistence, even if transport rejects the save.
-	u.titleGenerator.nameChanged(u.Thread, name)
-	u.requestSessionTitle(u.Names.Next(u.Thread))
+	generator.nameChanged(control.Thread, name)
+	requestSessionTitle(control, feedback, terminal, clock, dirty, control.Names.Next(control.Thread))
 }
 
 // Automatic candidates become visible only after host confirmation.
-func (u *appServerUI) persistSessionTitle(update sessionTitleUpdate) {
-	if !u.Names.AllowsGenerated(update.thread) || !u.titleGenerator.acceptCandidate(update.thread) {
+func persistSessionTitle(control *sessioncontrol.Client[appServerRequest], generator *sessionNaming, feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, dirty *bool, update sessionTitleUpdate) {
+	if !control.Names.AllowsGenerated(update.thread) || !generator.acceptCandidate(update.thread) {
 		return
 	}
-	u.requestSessionTitle(u.Names.Generated(update.thread, update.name))
+	requestSessionTitle(control, feedback, terminal, clock, dirty, control.Names.Generated(update.thread, update.name))
 }
 
-func (u *appServerUI) requestSessionTitle(save *sessioncontrol.NameSave) {
+func requestSessionTitle(control *sessioncontrol.Client[appServerRequest], feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, dirty *bool, save *sessioncontrol.NameSave) {
 	if save == nil {
 		return
 	}
-	_, err := u.Requests.Send("thread/name/set", map[string]any{"threadId": save.Thread, "name": save.Name}, "", appServerRequest{title: save})
+	_, err := control.Requests.Send("thread/name/set", map[string]any{"threadId": save.Thread, "name": save.Name}, "", appServerRequest{title: save})
 	if err != nil {
-		u.Names.Complete(*save)
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Session title could not be saved", false)
-		u.dirty = true
+		control.Names.Complete(*save)
+		setNotice(feedback, terminal, presentationTime(clock), "Session title could not be saved", false)
+		(*dirty) = true
 	}
 }
 
-func (u *appServerUI) sessionTitleMessage(m appserver.Message, update *sessioncontrol.NameSave) bool {
+func sessionTitleMessage(control *sessioncontrol.Client[appServerRequest], generator *sessionNaming, feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, dirty *bool, title *string, m appserver.Message, update *sessioncontrol.NameSave) bool {
 	if update != nil {
-		latest := u.Names.Complete(*update)
+		latest := control.Names.Complete(*update)
 		if m.Error != nil {
-			if update.Thread == u.Thread && latest {
-				setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Session title could not be saved: "+m.Error.Message, false)
-				u.dirty = true
+			if update.Thread == control.Thread && latest {
+				setNotice(feedback, terminal, presentationTime(clock), "Session title could not be saved: "+m.Error.Message, false)
+				(*dirty) = true
 			}
 		} else {
-			u.dirty = confirmSessionTitle(u.titleGenerator, u.Thread, &u.title, update.Thread, update.Name) || u.dirty
+			(*dirty) = confirmSessionTitle(generator, control.Thread, title, update.Thread, update.Name) || (*dirty)
 		}
-		u.requestSessionTitle(u.Names.Next(update.Thread))
+		requestSessionTitle(control, feedback, terminal, clock, dirty, control.Names.Next(update.Thread))
 		return true
 	}
 	if m.Method != "thread/name/updated" {
@@ -81,7 +85,7 @@ func (u *appServerUI) sessionTitleMessage(m appserver.Message, update *sessionco
 		ThreadName string `json:"threadName"`
 	}
 	if json.Unmarshal(m.Params, &params) == nil {
-		u.dirty = confirmSessionTitle(u.titleGenerator, u.Thread, &u.title, params.ThreadID, params.ThreadName) || u.dirty
+		(*dirty) = confirmSessionTitle(generator, control.Thread, title, params.ThreadID, params.ThreadName) || (*dirty)
 	}
 	return true
 }

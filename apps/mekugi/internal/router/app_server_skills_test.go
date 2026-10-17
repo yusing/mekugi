@@ -29,7 +29,7 @@ func TestUISnapshotSkillsMenuAndActions(t *testing.T) {
 	if !u.pickerKey("2") || u.picker.Kind != "manage" {
 		t.Fatalf("numeric manage action = %+v", u.picker)
 	}
-	u.closeSkillsModal()
+	u.picker.closeSkillsModal(&u.attached, u.shell, u.clock, u.Editor)
 	appServerTestKeys(t, u, "/skills\r")
 	u.pickerKey("\x1b[B")
 	u.settlePresentation()
@@ -98,7 +98,7 @@ func TestUISnapshotSkillsManagerViewportAndPaste(t *testing.T) {
 	for i := range 15 {
 		u.picker.Skills = append(u.picker.Skills, completion.Choice{Name: fmt.Sprintf("skill-%02d", i), Path: fmt.Sprintf("/work/%d/SKILL.md", i), Enabled: true})
 	}
-	u.refreshPicker()
+	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 	u.settlePresentation()
 	u.shell.Main.Menu.Selected = 14
 	rows := u.renderPicker(60, u.pickerHeight(60))

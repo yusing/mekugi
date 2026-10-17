@@ -4,6 +4,10 @@ import (
 	"cmp"
 	"iter"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/contracts/scope"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
@@ -45,19 +49,19 @@ type appServerActivityRestore struct {
 
 func (u *appServerUI) restorePaneContent(root binding.ThreadInfo) error {
 	u.restoring = &appServerActivityRestore{root: root, threads: make(map[string]binding.ThreadInfo), state: sessionpresentation.NewRestoration(root.ID)}
-	u.restoreDiffThread(root, true)
+	restoreDiffThread(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, root, true)
 	u.attached.presentation.Status.SetText("Restoring roster and Activity…")
 	return restoreList(&u.Client, u.restoring)
 }
 
-func (u *appServerUI) restoreDiffThread(info binding.ThreadInfo, root bool) {
-	if u.review == nil {
+func restoreDiffThread(attached *attachedPresentation, terminal *terminalsession.Attachment, review *sessionreview.Review, source *changecapture.Service, prepare func(*scope.Store), info binding.ThreadInfo, root bool) {
+	if review == nil {
 		return
 	}
-	u.review.IncludeThread(info.Cwd, info.ID, root)
+	review.IncludeThread(info.Cwd, info.ID, root)
 	if root {
-		u.review.Projection.Workspace = info.Cwd
-		publishReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane)
+		review.Projection.Workspace = info.Cwd
+		publishReview(attached, terminal, review, source, prepare)
 	}
 }
 
@@ -143,7 +147,7 @@ func (u *appServerUI) readRestoredChildren() error {
 	for _, id := range r.state.View().Threads {
 		info := r.threads[id]
 		registerThread(&u.attached.session, info)
-		u.restoreDiffThread(info, false)
+		restoreDiffThread(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, info, false)
 		u.attached.session.Lifecycle(id).RestoreTiming(restoredAgentIntervals(info.Turns))
 	}
 	u.readRestoredRollouts()
@@ -410,7 +414,7 @@ func (u *appServerUI) restoreActivityItem(info binding.ThreadInfo, turn binding.
 		}
 		u.attached.session.CompleteCommand(entry.Native, facts, u.activity.Outputs(u.attached.session.Scope()))
 		sessionpresentation.CommandOutput(&entry, facts, time.Time{})
-		u.restoreCommandSegments(&entry, item, info.Cwd)
+		restoreCommandSegments(u.ctx, u.retained, u.segments, &u.attached, u.activity, u.restoredSegments, &entry, item, info.Cwd)
 		*entries = append(*entries, entry)
 		if len(entry.Native.Segments) == 0 && item.ExitCode != nil && *item.ExitCode != 0 {
 			exit := sessionpresentation.ActivityEntry{Seq: s.Activity().NextSequence(), Agent: name, Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID, Observed: observed}

@@ -35,7 +35,7 @@ func awaitCommandSegments(t *testing.T, u *appServerUI) {
 	for u.commandSegmentPending > 0 {
 		select {
 		case err := <-u.commandSegmentWrites:
-			u.commandSegmentRetained(err)
+			commandSegmentRetained(&u.commandSegmentPending, u.issues, &u.dirty, err)
 		case <-timeout.C:
 			t.Fatal("command segment retention did not finish")
 		}
@@ -73,7 +73,7 @@ func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing
 			t.Fatalf("shared-store contention did not produce the diagnosed deadline error: %v", err)
 		}
 		started := time.Now()
-		u.retainCommandSegments(entry, item.Observation(), view)
+		retainCommandSegments(u.ctx, u.retained, u.segments, &u.attached, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty, entry, item.Observation(), view)
 		if elapsed := time.Since(started); elapsed > 250*time.Millisecond {
 			t.Fatalf("storage contention blocked command presentation for %s", elapsed)
 		}
@@ -85,14 +85,14 @@ func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing
 		time.Sleep(1100 * time.Millisecond)
 		select {
 		case result := <-u.commandSegmentWrites:
-			u.commandSegmentRetained(result)
+			commandSegmentRetained(&u.commandSegmentPending, u.issues, &u.dirty, result)
 			t.Fatalf("report abandoned a temporary storage lock: %v", result.err)
 		default:
 		}
 		if err := lock.Unlock(); err != nil {
 			t.Fatal(err)
 		}
-		u.finishCommandSegments()
+		finishCommandSegments(&u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
 		if notices := u.issues.Notices.Pending(); len(notices) != 0 {
 			t.Fatal(notices)
 		}
@@ -103,7 +103,7 @@ func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing
 		restored := newAppServerSessionTestUI(t, workspace)
 		setTestAppServerIntegration(restored, testProxyWithStore(reopened))
 		entry.Native = &sessionpresentation.NativeItem{Thread: "fork", Turn: key[1], Item: key[2]}
-		restored.restoreCommandSegments(&entry, item, workspace)
+		restoreCommandSegments(restored.ctx, restored.retained, restored.segments, &restored.attached, restored.activity, restored.restoredSegments, &entry, item, workspace)
 		if len(entry.Native.Segments) != 2 {
 			t.Fatalf("report not available after restart: %+v", entry.Native)
 		}
@@ -141,7 +141,7 @@ func TestCommandSegmentsPendingRetentionIsBoundedAndCanceled(t *testing.T) {
 	for i := range commandSegmentRetentionLimit + 1 {
 		item := binding.ThreadItem{ID: fmt.Sprint(i), Type: "commandExecution", Command: "bash -lc 'true; true'", ExitCode: new(0), AggregatedOutput: new("")}
 		entry := sessionpresentation.ActivityEntry{Native: &sessionpresentation.NativeItem{Thread: "main", Turn: "turn", Item: item.ID}}
-		u.retainCommandSegments(entry, item.Observation(), execTrackView{complete: true, segments: []sessionpresentation.ActivitySegment{{}, {}}})
+		retainCommandSegments(u.ctx, u.retained, u.segments, &u.attached, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty, entry, item.Observation(), execTrackView{complete: true, segments: []sessionpresentation.ActivitySegment{{}, {}}})
 	}
 	if notices := u.issues.Notices.Pending(); u.commandSegmentPending != commandSegmentRetentionLimit || len(notices) != 1 || !strings.Contains(notices[0], "reached the limit of 32") {
 		t.Fatalf("retention grew beyond its bound: %d, %v", u.commandSegmentPending, notices)
@@ -167,7 +167,7 @@ func TestCommandSegmentsRetentionErrorsStayWithOriginalThreadAndCause(t *testing
 	second := errors.New("sync replay directory: no space left on device; different underlying cause")
 	for _, cause := range []error{first, second} {
 		u.commandSegmentPending++
-		u.commandSegmentRetained(commandSegmentWrite{key: [3]string{"main", "turn", "item"}, err: requestexecution.StorageIOError(cause)})
+		commandSegmentRetained(&u.commandSegmentPending, u.issues, &u.dirty, commandSegmentWrite{key: [3]string{"main", "turn", "item"}, err: requestexecution.StorageIOError(cause)})
 	}
 	if delivery := u.applyCriticalNotices(); delivery != nil || len(u.attached.source.Entries) != 0 {
 		t.Fatal("switched thread borrowed another thread's retention errors")
@@ -323,7 +323,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 			case "exit":
 				copy.ExitCode = new(0)
 			}
-			restored.restoreCommandSegments(&entry, copy, scope)
+			restoreCommandSegments(restored.ctx, restored.retained, restored.segments, &restored.attached, restored.activity, restored.restoredSegments, &entry, copy, scope)
 			if len(entry.Native.Segments) != 0 {
 				t.Fatal("borrowed a mismatched invocation's report")
 			}
@@ -369,7 +369,7 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 				view.code = 0
 			}
 			if mode != "missing" {
-				u.retainCommandSegments(entry, item.Observation(), view)
+				retainCommandSegments(u.ctx, u.retained, u.segments, &u.attached, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty, entry, item.Observation(), view)
 				awaitCommandSegments(t, u)
 			}
 			if mode == "storage-failure" {
@@ -385,7 +385,7 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 				}
 			}
 			u.attached.session.CompleteCommand(entry.Native, item.Observation(), u.activity.Outputs(u.attached.session.Scope()))
-			u.restoreCommandSegments(&entry, item, workspace)
+			restoreCommandSegments(u.ctx, u.retained, u.segments, &u.attached, u.activity, u.restoredSegments, &entry, item, workspace)
 			u.attached.source.Entries = []sessionpresentation.ActivityRecord{{Source: entry}}
 			pages := activityui.Disclosure(nil).Blocks(sessionpresentation.CommandPresentation(entry).DetailValues())
 			if len(pages) != 1 || pages[0].Label != "combined output" || u.attached.source.RetainedOutput(pages[0].Source, pages[0].Output).View().Exit != 1 || strings.Join(u.attached.source.RetainedOutput(pages[0].Source, pages[0].Output).View().Lines, "\n") != "one" {
@@ -437,7 +437,7 @@ func TestCommandSegmentsRestoreRichChangeRows(t *testing.T) {
 	first, second := u.activity.Outputs(u.attached.session.Scope()).New(), u.activity.Outputs(u.attached.session.Scope()).New()
 	first.Finish(new("before"), new(0))
 	second.Finish(&listing, new(0))
-	u.retainCommandSegments(entry, item.Observation(), execTrackView{complete: true, output: true, segments: []sessionpresentation.ActivitySegment{{Output: first}, {Output: second}}})
+	retainCommandSegments(u.ctx, u.retained, u.segments, &u.attached, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty, entry, item.Observation(), execTrackView{complete: true, output: true, segments: []sessionpresentation.ActivitySegment{{Output: first}, {Output: second}}})
 	awaitCommandSegments(t, u)
 	u.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 	// History starts collapsed; inspect the expanded retained command.

@@ -35,7 +35,7 @@ func TestNativePreviewMailboxKeepsNewestFile(t *testing.T) {
 	broker.Update(older, false)
 	drain := func(u *appServerUI) {
 		for _, event := range testReview(broker).TakePreviews(sub) {
-			u.applyReview(t.Context(), event)
+			applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), event)
 		}
 		if u.review.Failure != "" {
 			t.Fatal(u.review.Failure)

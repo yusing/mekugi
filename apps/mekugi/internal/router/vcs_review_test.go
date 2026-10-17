@@ -101,7 +101,7 @@ func TestVCSCommitEnrichmentRequiresProvenSegmentDirectory(t *testing.T) {
 			awaitCommandSegments(t, u)
 			restored := entry
 			restored.Native = &sessionpresentation.NativeItem{Thread: key[0], Turn: key[1], Item: key[2]}
-			u.restoreCommandSegments(&restored, item, g.dir)
+			restoreCommandSegments(u.ctx, u.retained, u.segments, &u.attached, u.activity, u.restoredSegments, &restored, item, g.dir)
 			for _, candidate := range []sessionpresentation.ActivityEntry{live, restored} {
 				if len(candidate.Native.Segments) != 2 {
 					t.Fatalf("segments missing: %+v", candidate.Native.Segments)

@@ -476,7 +476,7 @@ func TestSessionTitleFailedManualRenameSurvivesResume(t *testing.T) {
 	appServerTestMessage(t, u, `{"id":101,"result":{"thread":{"id":"main","turns":[{"id":"first","status":"completed","items":[]}]}}}`)
 	_ = resumeTestRequests(t, wire)
 	close(release)
-	u.persistSessionTitle(awaitSessionTitle(t, g))
+	persistSessionTitle(&u.Client, u.titleGenerator, &u.attached.feedback, u.shell, u.clock, &u.dirty, awaitSessionTitle(t, g))
 	if wire.Len() != 0 {
 		t.Fatalf("failed manual suppression lost on resume: %s", wire.String())
 	}

@@ -683,7 +683,7 @@ func TestOutputCollapseSharesFrameAcrossPanes(t *testing.T) {
 		if i == 1 {
 			at = late
 		}
-		u.applyActivity([]sessionpresentation.ActivityEntry{
+		applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, []sessionpresentation.ActivityEntry{
 			{Seq: uint64(i*2 + 1), Agent: agent, Kind: "tool", Text: "Run `echo result`", Observed: at, Completed: at, OutputTail: []string{"first output line", "last output line"}, Native: &sessionpresentation.NativeItem{Thread: agent, Item: "cmd"}},
 			{Seq: uint64(i*2 + 2), Agent: agent, Kind: "reasoning", Text: "**Next step**", Observed: at, Native: &sessionpresentation.NativeItem{Thread: agent, Item: "next"}},
 		}, nil)

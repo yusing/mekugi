@@ -54,7 +54,7 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 	scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}}
 	refresh := func() {
 		t.Helper()
-		u.applyReview(t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope, Resync: true})
+		applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope, Resync: true})
 		if u.review.Failure != "" {
 			t.Fatal(u.review.Failure)
 		}

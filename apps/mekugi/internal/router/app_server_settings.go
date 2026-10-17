@@ -2,9 +2,13 @@ package router
 
 import (
 	"encoding/json/jsontext"
+	"time"
+
+	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	"github.com/yusing/mekugi/modules/conversation/completion"
 
@@ -141,10 +145,10 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Use /live, /live on, or /live off", true)
 			return true, nil
 		}
-		u.recordDraft()
+		recordDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side)
 		u.Text, u.CursorBack, u.Images = "", 0, nil
 		u.Editor.Changed()
-		u.setLivePane(value)
+		setLivePane(&u.attached.feedback, u.shell, u.clock, &u.dirty, value)
 		return true, nil
 	}
 	var choices []string
@@ -197,7 +201,7 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 	accepted, err := u.updateSettings(change)
 	if accepted {
 		notice, alert := u.attached.feedback.Text, u.attached.feedback.Alert
-		u.recordDraft()
+		recordDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side)
 		u.Text, u.CursorBack, u.Images = "", 0, nil
 		u.Editor.Changed()
 		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), notice, alert)
@@ -390,8 +394,8 @@ func (u *appServerUI) chooseSetting(choice completion.Choice) {
 }
 
 // setLivePane changes presentation without stopping preview or capture updates.
-func (u *appServerUI) setLivePane(value string) {
-	u.shell.LiveHidden = value == "off"
-	u.dirty = true
-	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Live pane "+value+" for this session", false)
+func setLivePane(feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, dirty *bool, value string) {
+	terminal.LiveHidden = value == "off"
+	(*dirty) = true
+	setNotice(feedback, terminal, presentationTime(clock), "Live pane "+value+" for this session", false)
 }

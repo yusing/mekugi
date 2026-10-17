@@ -128,7 +128,7 @@ func TestComposerFilePickerLateSkillSaveDoesNotReplaceResults(t *testing.T) {
 	u.picker.FilterSkills("", u.picker.Kind == "manage")
 	toggleSkill(&u.picker, u.Requests, u.attached.cwd, u.picker.Choices[0])
 	request := pickerRequests(t, w)[0]
-	u.closeSkillsModal()
+	u.picker.closeSkillsModal(&u.attached, u.shell, u.clock, u.Editor)
 	appServerTestKeys(t, u, "@!target")
 	select {
 	case result := <-u.picker.scanResults:

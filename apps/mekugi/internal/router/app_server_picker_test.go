@@ -74,7 +74,7 @@ func TestComposerFilePickerScopesAndCoalescesRequests(t *testing.T) {
 		t.Fatalf("unscoped search results: %+v", u.picker.Choices)
 	}
 	u.attached.cwd = "/work/two"
-	u.refreshPicker()
+	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 	requests = pickerRequests(t, w)
 	if len(requests) != 3 || len(requests[2].Params.Roots) != 1 || requests[2].Params.Roots[0] != "/work/two" {
 		t.Fatalf("workspace change did not request fresh search: %+v", requests)
@@ -182,7 +182,7 @@ func TestComposerPickerEscapeViaShellAndFrameBounds(t *testing.T) {
 	if u.picker.Open || u.Text != "@file" {
 		t.Fatalf("escape altered draft or left picker open: %q %+v", u.Text, u.picker)
 	}
-	u.refreshPicker()
+	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 	if u.picker.Open {
 		t.Fatal("dismissed picker reopened without an edit")
 	}
@@ -324,10 +324,10 @@ func TestComposerFilePickerImageAndUndoCapacity(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 110 {
-		u.insertDraft("word ")
+		insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "word ")
 		u.Run = composer.NoRun
 	}
-	u.insertDraft("@s")
+	insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "@s")
 	target := u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode())
 	u.attached.conversation.Completion = completion.State{Open: true, Target: target, Choices: []completion.Choice{{Name: "shot.png", Path: "shot.png"}}}
 	before := u.Text
@@ -352,7 +352,7 @@ func TestComposerPickerEditorRefreshBeforeSelection(t *testing.T) {
 		u, _ := newAppServerTestUI()
 		u.attached.cwd = "/work"
 		u.Text = "long prompt @file"
-		u.refreshPicker()
+		u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 		target := u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode())
 		u.attached.conversation.Completion = completion.State{Open: true, Target: target, Resolved: target, ResolvedCwd: "/work", Choices: []completion.Choice{{Name: "file.go", Path: "file.go"}}}
 		if err := u.applyEditorDraft(editorTestIntent(u), "new"); err != nil {

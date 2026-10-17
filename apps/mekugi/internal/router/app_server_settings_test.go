@@ -302,7 +302,7 @@ func TestAppServerSettingsPickerEmptyFailureAndPaste(t *testing.T) {
 		t.Fatal("paste escaped modal")
 	}
 	u.pickerKey("\x1b")
-	u.refreshPicker()
+	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 	if u.picker.Open || u.picker.Setting != "" {
 		t.Fatal("Escape did not cancel")
 	}

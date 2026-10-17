@@ -28,7 +28,7 @@ func (u *appServerUI) submitSudoPassword(c *sessioncontrol.Question) error {
 		return nil
 	}
 	u.resolveQuestionCall(c, "answered")
-	u.recordApproval(&sessioncontrol.Approval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.Sudo.Item}}, outcome)
+	recordApproval(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, &sessioncontrol.Approval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.Sudo.Item}}, outcome)
 	return u.flushInput()
 }
 
@@ -41,7 +41,7 @@ func (u *appServerUI) expireSudoPasswords() bool {
 				outcome = "Withdrawn: the command stopped"
 			}
 			u.resolveQuestionCall(c, "interrupted")
-			u.recordApproval(&sessioncontrol.Approval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.Sudo.Item}}, outcome)
+			recordApproval(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, &sessioncontrol.Approval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.Sudo.Item}}, outcome)
 			changed = true
 		}
 	}

@@ -88,52 +88,52 @@ func applyPreview(attached *attachedPresentation, terminal *terminalsession.Atta
 }
 
 // Reject a retired subscription before its queued scope can authorize any read.
-func (u *appServerUI) admitReviewEvents(ctx context.Context, sub *sessionreview.Subscription, events ...sessionreview.Event) bool {
+func admitReviewEvents(attached *attachedPresentation, terminal *terminalsession.Attachment, review *sessionreview.Review, source *changecapture.Service, prepare func(*scope.Store), pending *[]*changepresentation.Receipt, clock func() time.Time, ctx context.Context, sub *sessionreview.Subscription, events ...sessionreview.Event) bool {
 	if sub.Invalidated() {
 		return false
 	}
 	for _, event := range events {
-		u.applyReview(ctx, event)
+		applyReview(attached, terminal, review, source, prepare, pending, clock, ctx, event)
 	}
-	return u.review.Ready()
+	return review.Ready()
 }
 
-func (u *appServerUI) applyReview(ctx context.Context, event sessionreview.Event) {
-	admitted, published := u.review.Apply(ctx, event)
+func applyReview(attached *attachedPresentation, terminal *terminalsession.Attachment, review *sessionreview.Review, source *changecapture.Service, prepare func(*scope.Store), pending *[]*changepresentation.Receipt, clock func() time.Time, ctx context.Context, event sessionreview.Event) {
+	admitted, published := review.Apply(ctx, event)
 	if !admitted {
 		return
 	}
 	if event.Kind == "preview" {
-		applyPreview(&u.attached, u.shell, u.review, &u.pendingEditReceipts, presentationTime(u.clock), *event.Preview, event.Resync)
+		applyPreview(attached, terminal, review, pending, presentationTime(clock), *event.Preview, event.Resync)
 		return
 	}
-	if u.shell != nil {
+	if terminal != nil {
 		switch event.Kind {
 		case "scope":
 			if event.Resync && event.Scope != nil {
-				u.shell.Live.Resync(*event.Scope, event.PreviewIDs)
+				terminal.Live.Resync(*event.Scope, event.PreviewIDs)
 			}
 		case "coverage":
 			if strings.HasPrefix(event.Status, "RECONNECTING:") {
-				u.shell.Live = previewview.PreviewPane{}
+				terminal.Live = previewview.PreviewPane{}
 			}
 		case "change":
-			u.shell.DiffUnseen = u.shell.DiffUnseen || !u.shell.DiffOpen
+			terminal.DiffUnseen = terminal.DiffUnseen || !terminal.DiffOpen
 		}
 	}
 	if published {
-		publishReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane)
+		publishReview(attached, terminal, review, source, prepare)
 	}
-	if u.review.Loader == nil && (event.Kind == "scope" || event.Kind == "change") {
-		applyCapturedEdits(&u.attached, u.review, &u.pendingEditReceipts)
+	if review.Loader == nil && (event.Kind == "scope" || event.Kind == "change") {
+		applyCapturedEdits(attached, review, pending)
 	}
 }
 
-func (u *appServerUI) loadedReview(result sessionreview.Result) {
-	if u.review.Loaded(result) {
-		publishReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane)
-		if u.review.Failure == "" {
-			applyCapturedEdits(&u.attached, u.review, &u.pendingEditReceipts)
+func loadedReview(attached *attachedPresentation, terminal *terminalsession.Attachment, review *sessionreview.Review, source *changecapture.Service, prepare func(*scope.Store), pending *[]*changepresentation.Receipt, result sessionreview.Result) {
+	if review.Loaded(result) {
+		publishReview(attached, terminal, review, source, prepare)
+		if review.Failure == "" {
+			applyCapturedEdits(attached, review, pending)
 		}
 	}
 }

@@ -10,6 +10,10 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/yusing/mekugi/modules/conversation/prompt"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+
 	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
@@ -37,8 +41,7 @@ type nativeBlockedRequest struct {
 	Turn   string `json:"turnId"`
 }
 
-func (u *appServerUI) blockNotification(m appserver.Message) {
-	n := u.notifications
+func (n *nativeNotifications) blockNotification(feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, m appserver.Message) {
 	if n == nil {
 		return
 	}
@@ -51,7 +54,7 @@ func (u *appServerUI) blockNotification(m appserver.Message) {
 		n.blocked = make(map[string]nativeBlockedRequest)
 	}
 	n.blocked[string(m.ID)] = request
-	u.notify("approval-requested", "Approval requested")
+	n.notify(feedback, terminal, clock, "approval-requested", "Approval requested")
 }
 
 func (n *nativeNotifications) resolve(m appserver.Message) {
@@ -73,20 +76,19 @@ func (n *nativeNotifications) resolve(m appserver.Message) {
 // Herdr's Codex detector consumes the same OSC 0 activity markers as Codex.
 // Source: codex-rs/tui/src/chatwidget/status_surfaces.rs:28:43@1cc7e236
 // TERMINAL_TITLE_SPINNER_FRAMES and TERMINAL_TITLE_ACTION_REQUIRED_TEXT.
-func (u *appServerUI) writeTerminalTitle(now time.Time) {
-	n := u.notifications
+func (n *nativeNotifications) writeTerminalTitle(feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, workspace, main string, questions *prompt.Questions, approvals *prompt.Approvals, busy bool, now time.Time) {
 	if n == nil || n.out == nil {
 		return
 	}
 	parts := []string{"Mekugi"}
-	if u.questions.Count(u.Thread) > 0 || len(n.blocked) > 0 || len(u.approvals.calls()) > 0 {
+	if questions.Count(main) > 0 || len(n.blocked) > 0 || len(approvals.Pending) > 0 {
 		parts = append(parts, "[ ! ] Action Required")
-	} else if u.Turn != "" || u.Starting() {
+	} else if busy {
 		frames := []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
 		parts = append(parts, string(frames[(now.UnixMilli()/100)%int64(len(frames))]))
 	}
-	if u.attached.cwd != "" {
-		parts = append(parts, filepath.Base(u.attached.cwd))
+	if workspace != "" {
+		parts = append(parts, filepath.Base(workspace))
 	}
 	title := strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) {
@@ -95,20 +97,20 @@ func (u *appServerUI) writeTerminalTitle(now time.Time) {
 		return r
 	}, strings.Join(parts, " "))
 	if title != n.lastTitle {
-		u.writeTerminalSignal("\x1b]0;" + title + "\a")
+		n.writeTerminalSignal(feedback, terminal, clock, "\x1b]0;"+title+"\a")
 		n.lastTitle, n.titleWritten = title, true
 	}
 }
 
-func (u *appServerUI) clearTerminalTitle() {
-	if n := u.notifications; n != nil && n.titleWritten {
-		u.writeTerminalSignal("\x1b]0;\a")
+func (n *nativeNotifications) clearTerminalTitle(feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time) {
+	if n != nil && n.titleWritten {
+		n.writeTerminalSignal(feedback, terminal, clock, "\x1b]0;\a")
 		n.lastTitle, n.titleWritten = "", false
 	}
 }
 
-func (u *appServerUI) notificationConfig(m appserver.Message) {
-	if u.notifications == nil {
+func (n *nativeNotifications) notificationConfig(feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, m appserver.Message) {
+	if n == nil {
 		return
 	}
 	var result struct {
@@ -117,20 +119,20 @@ func (u *appServerUI) notificationConfig(m appserver.Message) {
 		} `json:"config"`
 	}
 	if m.Error != nil {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Terminal notification settings could not be read", true)
+		setNotice(feedback, terminal, presentationTime(clock), "Terminal notification settings could not be read", true)
 		return
 	}
 	if err := json.Unmarshal(m.Result, &result); err != nil {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Terminal notification settings could not be read", true)
+		setNotice(feedback, terminal, presentationTime(clock), "Terminal notification settings could not be read", true)
 		return
 	}
 	if len(result.Config.TUI) > 0 {
-		if err := json.Unmarshal(result.Config.TUI, &u.notifications.settings); err != nil {
-			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Terminal notification settings could not be read", true)
+		if err := json.Unmarshal(result.Config.TUI, &n.settings); err != nil {
+			setNotice(feedback, terminal, presentationTime(clock), "Terminal notification settings could not be read", true)
 			return
 		}
 	}
-	u.notifications.ready = true
+	n.ready = true
 }
 
 func (n *nativeNotifications) allows(event string) bool {
@@ -150,8 +152,7 @@ func (n *nativeNotifications) allows(event string) bool {
 	return policy.Allows(event, n.focused)
 }
 
-func (u *appServerUI) notify(event, message string) {
-	n := u.notifications
+func (n *nativeNotifications) notify(feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, event, message string) {
 	if !n.allows(event) {
 		return
 	}
@@ -173,17 +174,16 @@ func (u *appServerUI) notify(event, message string) {
 			sequence = "\x1bPtmux;" + strings.ReplaceAll(sequence, "\x1b", "\x1b\x1b") + "\x1b\\"
 		}
 	}
-	u.writeTerminalSignal(sequence)
+	n.writeTerminalSignal(feedback, terminal, clock, sequence)
 }
 
-func (u *appServerUI) writeTerminalSignal(sequence string) {
-	n := u.notifications
+func (n *nativeNotifications) writeTerminalSignal(feedback *noticepresentation.Model, terminal *terminalsession.Attachment, clock func() time.Time, sequence string) {
 	if n == nil || n.out == nil {
 		return
 	}
 	if _, err := io.WriteString(n.out, sequence); err != nil {
 		// Auxiliary notification failure never interrupts host execution.
 		n.out = nil
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Terminal notifications disabled after an output error", true)
+		setNotice(feedback, terminal, presentationTime(clock), "Terminal notifications disabled after an output error", true)
 	}
 }

@@ -221,7 +221,7 @@ func TestAppServerCommunicationBothAudiences(t *testing.T) {
 	u, _ := newAppServerTestUI()
 
 	assignment := "Check the original question link."
-	u.applyActivity([]sessionpresentation.ActivityEntry{
+	applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root/reviewer", Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root", To: "/root/reviewer", Text: assignment}},
 		{Seq: 2, Agent: "/root/reviewer", Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root/reviewer", To: "/root", Text: "I checked the link."}},
 		{Seq: 3, Agent: "/root/reviewer", Kind: "final", Text: "The question link is correct."},
@@ -245,7 +245,7 @@ func TestAppServerOutgoingMessageHeader(t *testing.T) {
 
 	u.shell.Transcript.Conversation = true
 	u.testActivity(u.shell.Transcript).testAudience()
-	u.applyActivity([]sessionpresentation.ActivityEntry{{Seq: 1, Agent: "/root/reviewer", Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root", To: "/root/reviewer", Text: "Check the answer link."}}}, nil)
+	applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "/root/reviewer", Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root", To: "/root/reviewer", Text: "Check the answer link."}}}, nil)
 	feed := u.testActivity(u.shell.Transcript).RenderFeed(90, 20)
 	if len(feed.Lines) != 2 || !strings.HasPrefix(ansi.Strip(feed.Lines[0]), "→ reviewer") || ansi.Strip(feed.Lines[1]) != "│ Check the answer link." {
 		t.Fatalf("outgoing recipient must head Main's message, above its body: %q", feed.Lines)
@@ -264,7 +264,7 @@ func TestAppServerActivityGroupsAgentRun(t *testing.T) {
 	u, _ := newAppServerTestUI()
 
 	start := time.Date(2026, 9, 26, 12, 30, 10, 0, time.Local)
-	u.applyActivity([]sessionpresentation.ActivityEntry{
+	applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root/reviewer", Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root", To: "/root/reviewer", Text: "Check the link."}, Observed: start},
 		{Seq: 2, Agent: "/root/reviewer", Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root/reviewer", To: "/root", Text: "Link checked."}, Observed: start.Add(10 * time.Second)},
 		{Seq: 3, Agent: "/root/reviewer", Kind: "text", Text: "Checking the next item.", Observed: start.Add(20 * time.Second)},
@@ -315,7 +315,7 @@ func TestAppServerNativeAssignmentQuestionLink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	u.applyActivity([]sessionpresentation.ActivityEntry{
+	applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root/reviewer", Kind: "start", Start: testActivityStart(t, &request),
 			Assignment: &sessionpresentation.ActivityAssignment{ID: "task-1", From: "/root", To: "/root/reviewer", Text: assignment}},
 		{Seq: 2, Agent: "/root/reviewer", Kind: "final", Text: "The question link is correct."},

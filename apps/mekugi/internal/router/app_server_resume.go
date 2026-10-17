@@ -217,7 +217,7 @@ func (u *appServerUI) restoreMainHistory(turns []binding.HistoryTurn, placements
 	u.attached.session.Lifecycle(u.Thread).Restore(restoredAgentIntervals(turns), uint64(len(turns)), u.Turn != "")
 	// Keep future activity sequence numbers ahead of the hydrated transcript.
 	u.attached.session.Activity().AdvanceSequence(u.attached.source.LastSeq)
-	u.applyActivity(nil, u.attached.session.Roster())
+	applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, nil, u.attached.session.Roster())
 }
 
 func applyRestoredMain(source *sessionpresentation.ActivitySource, placements []*restoredPlacement) {
@@ -296,7 +296,7 @@ func (u *appServerUI) restoreHistoryItem(turn binding.HistoryTurn, item binding.
 		}
 		u.attached.session.CompleteCommand(entry.Native, facts, u.activity.Outputs(u.attached.session.Scope()))
 		sessionpresentation.CommandOutput(&entry, facts, time.Time{})
-		u.restoreCommandSegments(&entry, item, u.attached.cwd)
+		restoreCommandSegments(u.ctx, u.retained, u.segments, &u.attached, u.activity, u.restoredSegments, &entry, item, u.attached.cwd)
 		u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
 		if len(entry.Native.Segments) == 0 && item.ExitCode != nil && *item.ExitCode != 0 {
 			exit := sessionpresentation.ActivityEntry{Seq: u.attached.source.LastSeq + 1, Agent: "Main", Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID}

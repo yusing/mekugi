@@ -15,7 +15,7 @@ func (u *appServerUI) referenceInput(intent sessionpresentation.ReferenceIntent)
 		return false
 	}
 	u.insertSelection(intent.Description, intent.Text, intent.Source)
-	u.refreshPicker()
+	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 	u.Run = composer.NoRun
 	return true
 }

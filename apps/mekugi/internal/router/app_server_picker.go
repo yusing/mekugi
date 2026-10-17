@@ -11,6 +11,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/modules/conversation/completion"
@@ -45,37 +47,36 @@ func (p *composerPicker) completionTarget(draft composer.Draft, shellMode bool) 
 	return p.FindTarget(draft)
 }
 
-func (u *appServerUI) refreshPicker() {
-	for _, stack := range [][]conversationmodel.Input{u.attached.conversation.Unsent, u.attached.conversation.Queued} {
+func (p *composerPicker) refreshPicker(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, requests *sessioncontrol.Requests[appServerRequest], editor *composer.Editor, parent context.Context, environment []string) {
+	for _, stack := range [][]conversationmodel.Input{attached.conversation.Unsent, attached.conversation.Queued} {
 		for i := range stack {
 			before := len(stack[i].Skills)
-			u.picker.bindSkills(u.attached.cwd, &stack[i], true)
+			p.bindSkills(attached.cwd, &stack[i], true)
 			if len(stack[i].Skills) > before {
-				snapshotDraftSkills(u.attached.cwd, u.skillEnvironment, &stack[i])
+				snapshotDraftSkills(attached.cwd, environment, &stack[i])
 			}
 		}
 	}
-	if u.questions.Current() != nil || u.approvals.Open {
-		u.picker.Open = false
+	if attached.conversation.Questions.Current() != nil || attached.conversation.Approvals.Open {
+		p.Open = false
 		return
 	}
-	if u.shell.Main.Pasting() || u.shell != nil && u.shell.Decoder.Pending() || !utf8.ValidString(u.Text) {
+	if terminal.Main.Pasting() || terminal != nil && terminal.Decoder.Pending() || !utf8.ValidString(editor.Text) {
 		return
 	}
-	p := &u.picker
-	draft := draftSnapshot(u.Editor)
-	u.picker.bindSkills(u.attached.cwd, &draft, false)
-	if !slices.Equal(u.Skills, draft.Skills) {
-		u.Skills = draft.Skills
-		u.Editor.Changed()
+	draft := draftSnapshot(editor)
+	p.bindSkills(attached.cwd, &draft, false)
+	if !slices.Equal(editor.Skills, draft.Skills) {
+		editor.Skills = draft.Skills
+		editor.Changed()
 	}
-	target := u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode())
+	target := p.completionTarget(editor.Draft, attached.conversation.ShellMode())
 	bindingOnly := false
-	if target.Kind == 0 && p.Kind == "" && (!p.SkillsLoaded || p.SkillsCwd != u.attached.cwd) {
-		query := u.picker.skillBindingQuery(draft, false)
-		for _, part := range slices.Concat(u.attached.conversation.Unsent, u.attached.conversation.Queued) {
+	if target.Kind == 0 && p.Kind == "" && (!p.SkillsLoaded || p.SkillsCwd != attached.cwd) {
+		query := p.skillBindingQuery(draft, false)
+		for _, part := range slices.Concat(attached.conversation.Unsent, attached.conversation.Queued) {
 			if query == "" {
-				query = u.picker.skillBindingQuery(part, true)
+				query = p.skillBindingQuery(part, true)
 			}
 		}
 		if query != "" {
@@ -96,28 +97,28 @@ func (u *appServerUI) refreshPicker() {
 	}
 	wasOpen := p.Open
 	if !p.Activate(target, bindingOnly) {
-		u.picker.cancelScan()
+		p.cancelScan()
 		return
 	}
 	if !wasOpen && !bindingOnly {
 		p.ID++
 	}
 	if target.Kind == '/' {
-		u.picker.cancelScan()
-		u.picker.filterCommands(target.Query)
+		p.cancelScan()
+		p.filterCommands(target.Query)
 		return
 	}
-	cwd := u.attached.cwd
+	cwd := attached.cwd
 	if !filepath.IsAbs(cwd) {
 		p.Loading, p.Problem = false, "Waiting for the thread workspace…"
 		return
 	}
 	if target.Kind != '@' || !strings.HasPrefix(target.Query, "!") {
-		u.picker.cancelScan()
+		p.cancelScan()
 	}
 	if target.Kind == '$' && (p.SkillsLoaded || p.SkillsProblem != "") && p.SkillsCwd == cwd {
 		p.Loading = false
-		u.picker.FilterSkills(target.Query, u.picker.Kind == "manage")
+		p.FilterSkills(target.Query, p.Kind == "manage")
 
 		return
 	}
@@ -130,43 +131,41 @@ func (u *appServerUI) refreshPicker() {
 	}
 	p.Loading, p.Choices, p.Problem = true, nil, ""
 	if target.Kind == '@' && strings.HasPrefix(target.Query, "!") {
-		u.picker.searchExcludedFiles(u.ctx, target, cwd)
+		p.searchExcludedFiles(parent, target, cwd)
 		return
 	}
 	if p.Pending != nil {
 		return
 	}
-	u.requestPicker(target, cwd)
+	p.requestPicker(attached, terminal, clock, requests, target, cwd)
 }
 
-func (u *appServerUI) requestPicker(target completion.Target, cwd string) {
-	p := &u.picker
+func (p *composerPicker) requestPicker(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, requests *sessioncontrol.Requests[appServerRequest], target completion.Target, cwd string) {
 	method := "fuzzyFileSearch"
 	params := map[string]any{"query": target.Query, "roots": []string{cwd}}
 	if target.Kind == '$' {
 		method, params = "skills/list", map[string]any{"cwds": []string{cwd}, "forceReload": true}
 	}
 	p.Pending, p.PendingCwd = new(target), cwd
-	if err := u.Request(method, params); err != nil {
+	if _, err := requests.Send(method, params, "main", appServerRequest{}); err != nil {
 		p.Pending, p.Loading = nil, false
 		p.Resolved, p.ResolvedCwd = target, cwd
 		p.Problem = "Search failed: " + err.Error()
 		if target.Kind == '$' {
 			p.SkillsCwd, p.SkillsProblem = cwd, p.Problem
-			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Skill attachment unavailable: "+p.Problem+". References remain text.", true)
+			setNotice(&attached.feedback, terminal, presentationTime(clock), "Skill attachment unavailable: "+p.Problem+". References remain text.", true)
 		}
 	}
 }
 
-func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
+func (p *composerPicker) pickerMessage(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, requests *sessioncontrol.Requests[appServerRequest], editor *composer.Editor, parent context.Context, environment []string, method string, m appserver.Message) bool {
 	if method == "skills/config/write" {
-		u.skillToggleResponse(m)
+		p.skillToggleResponse(attached, terminal, clock, m)
 		return true
 	}
 	if method != "skills/list" && method != "fuzzyFileSearch" {
 		return false
 	}
-	p := &u.picker
 	if p.Pending == nil {
 		return true
 	}
@@ -250,13 +249,13 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 	}
 	if method == "skills/list" {
 		available := m.Error == nil && err == nil
-		if u.skillEnvironment != nil && p.Kind != "manage" && cwd == u.attached.cwd {
-			parent := u.ctx
-			if parent == nil {
-				parent = context.Background()
+		if environment != nil && p.Kind != "manage" && cwd == attached.cwd {
+			requestContext := parent
+			if requestContext == nil {
+				requestContext = context.Background()
 			}
-			ctx, cancel := context.WithTimeout(parent, 15*time.Second)
-			managed, loadErr := readManagedSkills(ctx, cwd, u.skillEnvironment)
+			ctx, cancel := context.WithTimeout(requestContext, 15*time.Second)
+			managed, loadErr := readManagedSkills(ctx, cwd, environment)
 			cancel()
 			if loadErr == nil {
 				names := make(map[string]bool)
@@ -276,18 +275,18 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 		p.toggleOwnsManager = false
 		p.Catalog(choices, cwd, available, problem)
 		if p.Kind == "manage" && p.Initial == nil {
-			u.picker.RememberSkills()
+			p.RememberSkills()
 		}
-		if problem != "" && cwd == u.attached.cwd {
+		if problem != "" && cwd == attached.cwd {
 			label := "Skill catalog incomplete: "
 			if !available {
 				label = "Skill attachment unavailable: "
 			}
-			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), label+problem+". Unavailable references remain text.", true)
+			setNotice(&attached.feedback, terminal, presentationTime(clock), label+problem+". Unavailable references remain text.", true)
 		}
 	}
-	p.Resolve(target, cwd, u.attached.cwd, choices, problem)
-	u.refreshPicker()
+	p.Resolve(target, cwd, attached.cwd, choices, problem)
+	p.refreshPicker(attached, terminal, clock, requests, editor, parent, environment)
 	return true
 }
 
@@ -296,7 +295,7 @@ func (u *appServerUI) acceptCompletion(choice completion.Choice) bool {
 	target := p.Target
 	if u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode()) != target {
 		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), sessionpresentation.ErrStaleIntent.Error(), true)
-		u.refreshPicker()
+		u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 		return false
 	}
 	if target.Kind == '/' {

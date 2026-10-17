@@ -77,7 +77,7 @@ func TestNativeDockPendingLifecycle(t *testing.T) {
 			case "turn ended":
 				endTurnPreviews(u.execWindows, u.review, u.attached.cwd, u.shell, presentationTime(u.clock), "main", "turn")
 			case "reconnect":
-				u.applyReview(t.Context(), sessionreview.Event{Kind: "coverage", Status: "RECONNECTING: test"})
+				applyReview(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, &u.pendingEditReceipts, u.clock, t.Context(), sessionreview.Event{Kind: "coverage", Status: "RECONNECTING: test"})
 			}
 			revealNativeDock(terminalTest(u))
 			if terminalTest(u).Live.Views[p.ID] != nil {

@@ -31,7 +31,7 @@ func (u *appServerUI) applyThreadMetadata(m appserver.Message, thread string) bo
 	old := u.attached.session.Caller(thread)
 	registerThread(&u.attached.session, info)
 	renameThreadActivity(&u.attached, u.shell, old, u.attached.session.KnownCaller(thread))
-	u.applyActivity(nil, u.attached.session.Roster())
+	applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, nil, u.attached.session.Roster())
 	return true
 }
 

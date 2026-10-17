@@ -34,7 +34,7 @@ import (
 
 func TestComposerSelectionMentionIsOneToken(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.insertDraft("see ")
+	insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "see ")
 	u.insertSelection("message", "first\nquote", "")
 	u.insertSelection("message", "second", "")
 	if want := "see [Selected message] [Selected message 2] "; u.Text != want {
@@ -63,7 +63,7 @@ func TestComposerSelectionMentionIsOneToken(t *testing.T) {
 
 func TestComposerSelectionSubmitsQuotedFrames(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.insertDraft("explain ")
+	insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "explain ")
 	u.insertSelection("diff hunk @amber1:42-45", "+new\n-old", "a.go")
 	d := prepareDraft(&u.picker, u.shell, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
 	input := conversationbinding.Input(d.Draft)
@@ -267,7 +267,7 @@ func TestComposerSelectionReviewEdges(t *testing.T) {
 	})
 	t.Run("resume recalls quotes", func(t *testing.T) {
 		u, _ := newAppServerTestUI()
-		u.insertDraft("why ")
+		insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "why ")
 		u.insertSelection("diff hunk @amber1:3", strings.Repeat("x\n", attachments.Chunk), "a.go")
 		u.insertSelection("message", "short", "")
 		d := prepareDraft(&u.picker, u.shell, u.attached.cwd, u.skillEnvironment, u.Editor.Take())

@@ -1,8 +1,11 @@
 package router
 
 import (
+	"time"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 
 	json "encoding/json/v2"
@@ -22,34 +25,32 @@ import (
 
 // Source: codex-rs/tui/src/chatwidget/skills.rs:29:136 and
 // bottom_pane/skills_toggle_view.rs:98:299@86be5320b068ef67b56348b02aa8c33706955da6.
-func (u *appServerUI) closeSkillsModal() {
-	p := &u.picker
+func (p *composerPicker) closeSkillsModal(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, editor *composer.Editor) {
 	p.toggleOwnsManager = false
 	if p.Kind == "manage" {
 		enabled, disabled := p.SkillChanges()
 		if enabled+disabled > 0 {
-			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), fmt.Sprintf("%d skills enabled, %d skills disabled", enabled, disabled), false)
+			setNotice(&attached.feedback, terminal, presentationTime(clock), fmt.Sprintf("%d skills enabled, %d skills disabled", enabled, disabled), false)
 		}
 		p.SkillsLoaded = false // Codex reloads the catalog after leaving management.
 	}
 	p.Kind, p.Open, p.Query, p.Initial = "", false, "", nil
-	p.Dismissed = u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode())
+	p.Dismissed = p.completionTarget(editor.Draft, attached.conversation.ShellMode())
 }
 
-func (u *appServerUI) chooseSkillsAction(choice completion.Choice) {
-	p := &u.picker
+func (p *composerPicker) chooseSkillsAction(attached *attachedPresentation, editor *composer.Editor, terminal *terminalsession.Attachment, clock func() time.Time, owned map[string]bool, questions *nativeQuestionDock, approvals *nativeApprovalDock, side *sessioncontrol.Side, choice completion.Choice) {
 	if choice.Name == "list" {
 		p.Kind, p.Open = "", false
 		p.Dismissed = completion.Target{}
-		u.insertDraft("$")
+		insertDraft(attached, editor, terminal, clock, owned, questions, approvals, side, "$")
 	} else {
 		p.toggleOwnsManager = false
-		u.picker.openMenu("manage")
+		p.openMenu("manage")
 		p.Query, p.Problem = "", ""
 		p.Dismissed = completion.Target{}
 		p.Resolved = completion.Target{}
 		if p.SkillsLoaded {
-			u.picker.RememberSkills()
+			p.RememberSkills()
 		}
 	}
 }
@@ -71,13 +72,12 @@ func (p *composerPicker) skillSaveOwnsManager(workspace string) bool {
 	return p.toggleOwnsManager && p.Kind == "manage" && p.toggleCwd == workspace
 }
 
-func (u *appServerUI) skillToggleResponse(m appserver.Message) {
-	p := &u.picker
+func (p *composerPicker) skillToggleResponse(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, m appserver.Message) {
 	if string(m.ID) != p.toggleID {
 		return
 	}
 	path, cwd := p.togglePath, p.toggleCwd
-	ownsManager := u.picker.skillSaveOwnsManager(u.attached.cwd)
+	ownsManager := p.skillSaveOwnsManager(attached.cwd)
 	p.toggleID, p.togglePath, p.toggleCwd, p.toggleOwnsManager = "", "", "", false
 	problem, updated := "", false
 	if m.Error != nil {
@@ -97,9 +97,9 @@ func (u *appServerUI) skillToggleResponse(m appserver.Message) {
 	if ownsManager {
 		p.Problem = problem
 	} else if problem != "" {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), problem, true)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), problem, true)
 	}
-	if !updated || cwd != u.attached.cwd {
+	if !updated || cwd != attached.cwd {
 		return
 	}
 	if p.Kind == "manage" {
@@ -167,20 +167,19 @@ func (p *composerPicker) skillBindingQuery(d conversationmodel.Input, final bool
 	return ""
 }
 
-func (u *appServerUI) waitForSkillBindings(parts []conversationmodel.Input) bool {
-	p := &u.picker
-	if p.SkillsLoaded && p.SkillsCwd == u.attached.cwd {
+func (p *composerPicker) waitForSkillBindings(attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, requests *sessioncontrol.Requests[appServerRequest], parts []conversationmodel.Input) bool {
+	if p.SkillsLoaded && p.SkillsCwd == attached.cwd {
 		return false
 	}
-	if p.SkillsProblem != "" && p.SkillsCwd == u.attached.cwd {
+	if p.SkillsProblem != "" && p.SkillsCwd == attached.cwd {
 		return false // Catalog failure must not borrow foreground completion state.
 	}
 	for _, part := range parts {
-		if query := u.picker.skillBindingQuery(part, true); query != "" {
-			if p.Pending == nil && filepath.IsAbs(u.attached.cwd) {
-				u.requestPicker(completion.Target{Kind: '$', Query: query}, u.attached.cwd)
+		if query := p.skillBindingQuery(part, true); query != "" {
+			if p.Pending == nil && filepath.IsAbs(attached.cwd) {
+				p.requestPicker(attached, terminal, clock, requests, completion.Target{Kind: '$', Query: query}, attached.cwd)
 			}
-			return p.SkillsProblem == "" || p.SkillsCwd != u.attached.cwd
+			return p.SkillsProblem == "" || p.SkillsCwd != attached.cwd
 		}
 	}
 	return false

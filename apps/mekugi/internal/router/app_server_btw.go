@@ -47,7 +47,7 @@ func (u *appServerUI) flushBTW() error {
 		return nil
 	}
 	parts := []conversationmodel.Input{b.Pending}
-	if u.waitForSkillBindings(parts) {
+	if u.picker.waitForSkillBindings(&u.attached, u.shell, u.clock, u.Requests, parts) {
 		return nil
 	}
 	u.picker.bindSkills(u.attached.cwd, &parts[0], true)

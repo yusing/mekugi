@@ -158,9 +158,9 @@ func (u *appServerUI) bindQuestion(c *sessioncontrol.Question, replay bool) {
 	u.questions.handles[c.Call] = c
 	if !replay && !c.Local {
 		if c.Sync {
-			u.notify("plan-mode-prompt", "Input requested")
+			u.notifications.notify(&u.attached.feedback, u.shell, u.clock, "plan-mode-prompt", "Input requested")
 		} else {
-			u.notify("async-question", "Question pending")
+			u.notifications.notify(&u.attached.feedback, u.shell, u.clock, "async-question", "Question pending")
 		}
 	}
 	renderQuestionRecord(&u.attached, u.Turn, presentationTime(u.clock), c)
@@ -216,7 +216,7 @@ func (u *appServerUI) resolveQuestionCall(c *sessioncontrol.Question, outcome st
 	discardQuestionEditors(u.shell.Prompts, c)
 	if c.Sudo != nil {
 		if c.CancelPassword() {
-			u.recordApproval(&sessioncontrol.Approval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.Sudo.Item}}, "Denied: sudo authentication canceled")
+			recordApproval(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, &sessioncontrol.Approval{Approval: &prompt.Approval{Thread: c.Thread, Turn: c.Turn, Item: c.Sudo.Item}}, "Denied: sudo authentication canceled")
 		}
 		u.questions.Remove(c.Call)
 		delete(u.questions.handles, c.Call)

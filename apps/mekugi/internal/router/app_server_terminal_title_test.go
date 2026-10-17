@@ -18,12 +18,12 @@ func TestAppServerTerminalTitleLifecycle(t *testing.T) {
 	title := func(want string) {
 		t.Helper()
 		out.Reset()
-		u.writeTerminalTitle(now)
+		u.notifications.writeTerminalTitle(&u.attached.feedback, u.shell, u.clock, u.attached.cwd, u.Thread, u.questions.Questions, u.approvals.Approvals, u.Turn != "" || u.Starting(), now)
 		if got := out.String(); got != "\x1b]0;"+want+"\a" {
 			t.Fatalf("title = %q, want %q", got, want)
 		}
 		out.Reset()
-		u.writeTerminalTitle(now)
+		u.notifications.writeTerminalTitle(&u.attached.feedback, u.shell, u.clock, u.attached.cwd, u.Thread, u.questions.Questions, u.approvals.Approvals, u.Turn != "" || u.Starting(), now)
 		if out.Len() != 0 {
 			t.Fatal("unchanged title was repeated")
 		}
@@ -41,19 +41,19 @@ func TestAppServerTerminalTitleLifecycle(t *testing.T) {
 	title("Mekugi [ ! ] Action Required project")
 	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"turn","status":"completed"}}}`)
 	out.Reset()
-	u.writeTerminalTitle(now)
+	u.notifications.writeTerminalTitle(&u.attached.feedback, u.shell, u.clock, u.attached.cwd, u.Thread, u.questions.Questions, u.approvals.Approvals, u.Turn != "" || u.Starting(), now)
 	if out.Len() != 0 || u.notifications.lastTitle != "Mekugi [ ! ] Action Required project" {
 		t.Fatal("completion cleared a pending async question")
 	}
 	u.resolveQuestionCall(u.questions.calls()[len(u.questions.calls())-1], "answered")
 	title("Mekugi project")
 	out.Reset()
-	u.clearTerminalTitle()
+	u.notifications.clearTerminalTitle(&u.attached.feedback, u.shell, u.clock)
 	if out.String() != "\x1b]0;\a" {
 		t.Fatalf("cleanup = %q", out.String())
 	}
 	out.Reset()
-	u.clearTerminalTitle()
+	u.notifications.clearTerminalTitle(&u.attached.feedback, u.shell, u.clock)
 	if out.Len() != 0 {
 		t.Fatal("cleanup repeated")
 	}
@@ -71,7 +71,7 @@ func TestAppServerTerminalTitleUnsupportedRequests(t *testing.T) {
 	if out.String() != "\x1b]9;Approval requested\a" {
 		t.Fatalf("duplicate approval notifications: %q", out.String())
 	}
-	u.writeTerminalTitle(time.Unix(0, 0))
+	u.notifications.writeTerminalTitle(&u.attached.feedback, u.shell, u.clock, u.attached.cwd, u.Thread, u.questions.Questions, u.approvals.Approvals, u.Turn != "" || u.Starting(), time.Unix(0, 0))
 	if !strings.Contains(out.String(), "Action Required") {
 		t.Fatal("approval did not mark blocked")
 	}
@@ -81,14 +81,14 @@ func TestAppServerTerminalTitleUnsupportedRequests(t *testing.T) {
 	}
 	appServerTestMessage(t, u, `{"method":"serverRequest/resolved","params":{"threadId":"main","requestId":42}}`)
 	out.Reset()
-	u.writeTerminalTitle(time.Unix(0, 0))
+	u.notifications.writeTerminalTitle(&u.attached.feedback, u.shell, u.clock, u.attached.cwd, u.Thread, u.questions.Questions, u.approvals.Approvals, u.Turn != "" || u.Starting(), time.Unix(0, 0))
 	if out.String() != "\x1b]0;Mekugi ⠋ project\a" {
 		t.Fatalf("resolved request title = %q", out.String())
 	}
 	appServerTestMessage(t, u, `{"id":43,"method":"item/fileChange/requestApproval","params":{"threadId":"main","turnId":"turn"}}`)
 	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"turn","status":"interrupted"}}}`)
 	out.Reset()
-	u.writeTerminalTitle(time.Unix(0, 0))
+	u.notifications.writeTerminalTitle(&u.attached.feedback, u.shell, u.clock, u.attached.cwd, u.Thread, u.questions.Questions, u.approvals.Approvals, u.Turn != "" || u.Starting(), time.Unix(0, 0))
 	if out.String() != "\x1b]0;Mekugi project\a" || len(u.notifications.blocked) != 0 {
 		t.Fatalf("interrupted request title = %q", out.String())
 	}
@@ -101,7 +101,7 @@ func TestAppServerTerminalTitleQueuedQuestionAnswerIsNotActionRequired(t *testin
 	now := time.Unix(0, 0)
 	questionTestAsync(t, u, "async", "Which option?")
 	out.Reset()
-	u.writeTerminalTitle(now)
+	u.notifications.writeTerminalTitle(&u.attached.feedback, u.shell, u.clock, u.attached.cwd, u.Thread, u.questions.Questions, u.approvals.Approvals, u.Turn != "" || u.Starting(), now)
 	if got := out.String(); got != "\x1b]0;Mekugi [ ! ] Action Required project\a" {
 		t.Fatalf("unanswered title = %q", got)
 	}
@@ -118,7 +118,7 @@ func TestAppServerTerminalTitleQueuedQuestionAnswerIsNotActionRequired(t *testin
 		t.Fatalf("uncommitted answer has no pending preview: %q", preview)
 	}
 	out.Reset()
-	u.writeTerminalTitle(now)
+	u.notifications.writeTerminalTitle(&u.attached.feedback, u.shell, u.clock, u.attached.cwd, u.Thread, u.questions.Questions, u.approvals.Approvals, u.Turn != "" || u.Starting(), now)
 	if got := out.String(); got != "\x1b]0;Mekugi ⠋ project\a" {
 		t.Fatalf("queued answer title = %q", got)
 	}
@@ -128,7 +128,7 @@ func TestAppServerTerminalTitleIsolationAndSanitizing(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/work/project\a\x1b[31m\n")
 	out := notificationTestOutput(t, u)
 	appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"child","turn":{"id":"child-turn"}}}`)
-	u.writeTerminalTitle(time.Unix(0, 0))
+	u.notifications.writeTerminalTitle(&u.attached.feedback, u.shell, u.clock, u.attached.cwd, u.Thread, u.questions.Questions, u.approvals.Approvals, u.Turn != "" || u.Starting(), time.Unix(0, 0))
 	if out.String() != "\x1b]0;Mekugi project[31m\a" {
 		t.Fatalf("unsafe title or child changed Main state: %q", out.String())
 	}
@@ -136,5 +136,11 @@ func TestAppServerTerminalTitleIsolationAndSanitizing(t *testing.T) {
 	other.notifications = &nativeNotifications{out: new(bytes.Buffer)}
 	if other.notifications.lastTitle != "" || other.notifications.focused {
 		t.Fatal("terminal state shared between clients")
+	}
+}
+
+func TestTerminalTitleUnavailableOutputDoesNotReadPrompts(t *testing.T) {
+	for _, notifications := range []*nativeNotifications{nil, {}} {
+		notifications.writeTerminalTitle(nil, nil, nil, "", "", nil, nil, false, time.Time{})
 	}
 }

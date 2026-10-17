@@ -1,7 +1,10 @@
 package router
 
 import (
+	"time"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	json "encoding/json/v2"
@@ -32,55 +35,55 @@ func (u *appServerUI) captureShellEdit(command string) *executionobservation.She
 	if edit == nil {
 		return nil
 	}
-	u.restoreDiffThread(binding.ThreadInfo{ID: u.Thread, Cwd: u.attached.cwd}, true)
+	restoreDiffThread(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, binding.ThreadInfo{ID: u.Thread, Cwd: u.attached.cwd}, true)
 	edit.Begin(u.review)
 	return edit
 }
 
 // Capture completion before presentation can discard an event from a thread
 // the user has left. The observation retains its original workspace and scope.
-func (u *appServerUI) observeShellMessage(message appserver.Message) {
-	if message.Method != "item/started" && message.Method != "item/completed" || u.shellEdits.pending == nil && len(u.shellEdits.running) == 0 {
+func observeShellMessage(edits *appServerShellEdits, attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, message appserver.Message) {
+	if message.Method != "item/started" && message.Method != "item/completed" || edits.pending == nil && len(edits.running) == 0 {
 		return
 	}
 	var event binding.Notification
 	if json.Unmarshal(message.Params, &event) == nil {
-		u.observeShellEdit(event.ThreadID, message.Method, event.Item)
+		observeShellEdit(edits, attached, terminal, clock, event.ThreadID, message.Method, event.Item)
 	}
 }
 
-func (u *appServerUI) observeShellEdit(thread, method string, item binding.ThreadItem) {
+func observeShellEdit(edits *appServerShellEdits, attached *attachedPresentation, terminal *terminalsession.Attachment, clock func() time.Time, thread, method string, item binding.ThreadItem) {
 	if item.Type != "commandExecution" || item.Source != "userShell" || item.ID == "" {
 		return
 	}
 	key := [2]string{thread, item.ID}
 	if method == "item/started" {
-		edit := u.shellEdits.pending
+		edit := edits.pending
 		if edit == nil || edit.Thread() != thread {
 			return
 		}
-		u.shellEdits.pending = nil
-		if u.shellEdits.running == nil {
-			u.shellEdits.running = make(map[[2]string]*executionobservation.ShellOperation)
+		edits.pending = nil
+		if edits.running == nil {
+			edits.running = make(map[[2]string]*executionobservation.ShellOperation)
 		}
 		edit.BindItem(item.ID)
-		u.shellEdits.running[key] = edit
+		edits.running[key] = edit
 		return
 	}
 	if method != "item/completed" {
 		return
 	}
-	edit := u.shellEdits.running[key]
+	edit := edits.running[key]
 	if edit == nil {
 		return
 	}
-	delete(u.shellEdits.running, key)
+	delete(edits.running, key)
 	output := ""
 	if item.AggregatedOutput != nil {
 		output = *item.AggregatedOutput
 	}
 	host := binding.ToolResult{CallID: item.ID, Tool: item.Source, Status: item.Status, ExitCode: item.ExitCode}
 	if err := edit.Complete(host, output); err != nil {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Shell change capture failed: "+err.Error(), true)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Shell change capture failed: "+err.Error(), true)
 	}
 }

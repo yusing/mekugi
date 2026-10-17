@@ -69,7 +69,7 @@ func TestNativeControlsLockedDraftAndContextualEscape(t *testing.T) {
 		t.Fatal("lock broke draft restoration")
 	}
 	u.Text = "/"
-	u.refreshPicker()
+	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 	u.settlePresentation()
 	if err := terminalTest(u).send("\x1b"); err != nil {
 		t.Fatal(err)
