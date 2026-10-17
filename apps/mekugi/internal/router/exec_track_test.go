@@ -924,13 +924,23 @@ func (h *execTrackFixture) view(key [3]string, final bool, text func(string) str
 	}
 	stream := h.streams[key]
 	if h.ui != nil {
-		stream = h.ui.streams.Command(key, run.Entry.Text)
+		stream = h.ui.streams.Command(key, run.Entry.Text).CommandStream
 	}
 	if stream == nil {
 		stream = activityui.NewCommandStream(run.Entry.Text)
 		h.streams[key] = stream
 	}
-	view, changed := commandReportFrame(run.Entry.Native.Invocation, stream, report, track.Version, final)
+	state := sessionpresentation.ObserveCommandReport(run.Entry.Native.Invocation, report, final)
+	snapshot := state.Snapshot
+	frames, changed := stream.RevealSegments(report, snapshot, track.Version, final)
+	view := execTrackView{output: snapshot.SeparateOutput, ended: snapshot.Ended, complete: snapshot.Complete, code: snapshot.ExitCode, semantic: state.Changed, release: state.Release, segments: state.Segments}
+	// This fixture exposes the rendered tail for existing live-report assertions.
+	for index := range view.segments {
+		if view.output {
+			view.segments[index].Tail, view.segments[index].Omit = frames[index].Tail, frames[index].Omitted
+		}
+	}
+	changed = changed || state.Changed
 	if view.release {
 		h.ReleaseOutput(key)
 	}

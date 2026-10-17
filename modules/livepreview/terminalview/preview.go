@@ -490,7 +490,7 @@ func (p *PreviewView) Title(workspace string, theme diffrender.Theme, width int)
 		}
 	}
 	label = glyph + " " + label
-	caller := terminalui.AgentDisplayName(p.Current.Caller)
+	caller := pathdisplay.AgentDisplayName(p.Current.Caller)
 	if caller == "" {
 		caller = p.Current.Thread
 	}

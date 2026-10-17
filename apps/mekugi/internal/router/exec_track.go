@@ -2,7 +2,6 @@ package router
 
 import (
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -14,8 +13,6 @@ import (
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
-
-	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
 
 const execTrackCompletionWait = 300 * time.Millisecond
@@ -24,42 +21,12 @@ const execTrackCompletionWait = 300 * time.Millisecond
 type execTrackView struct {
 	release  bool // Return attribution loss to the observation owner.
 	segments []sessionpresentation.ActivitySegment
+	frames   []activitypresentation.CommandSegment
 	semantic bool // Observed segment or attribution facts changed, rather than only reveal.
 	output   bool // Segments carry their own output; otherwise the host's combined output applies.
 	ended    bool // The report connection closed.
 	complete bool // The report ended with the shell's own exit status.
 	code     int
-}
-
-// view reports the command's segments, and whether they changed since the
-// last view. While live, a segment appears once it starts. Final views mark
-// segments the list never reached as skipped; a segment still open when the
-// shell finished is the one the shell exited in. The invocation owns facts and
-// retained output; this adapter owns text projection and terminal reveal.
-func commandReportFrame(invocation *activitypresentation.Invocation, stream *activityui.CommandStream, report activitypresentation.SegmentReport, version uint64, final bool) (execTrackView, bool) {
-	semantic, release := invocation.ObserveSegments(report)
-	snapshot := invocation.ReportSnapshot(final)
-	frames, changed := stream.RevealSegments(report, snapshot, version, final)
-	view := execTrackView{output: snapshot.SeparateOutput, ended: snapshot.Ended, complete: snapshot.Complete, code: snapshot.ExitCode, semantic: semantic, release: release}
-	for index, segment := range snapshot.Segments {
-		frame := frames[index]
-		shown := sessionpresentation.ActivitySegment{Timing: segmenttransport.Timing{Started: segment.Started, Ended: segment.Ended, ElapsedNS: int64(segment.Duration)},
-			Text: segment.Text, Source: segment.Source, Running: segment.Running, Skipped: segment.Skipped, Exit: segment.ExitCode, Raw: segment.Raw,
-			Output: invocation.SegmentOutput(index),
-		}
-		if view.output {
-			shown.Tail, shown.Omit = frame.Tail, frame.Omitted
-			if final && !shown.Skipped && shown.Exit == 0 {
-				output := strings.Join(shown.Tail, "\n")
-				shown.Changes = mchangesOutputRows(observation.Item{Command: shown.Source, AggregatedOutput: &output})
-				if len(shown.Changes) > 0 && shown.Omit > 0 {
-					shown.Changes = append([]activitypresentation.ChangeRow{{Note: activityui.Elision{Hidden: shown.Omit}.Text()}}, shown.Changes...)
-				}
-			}
-		}
-		view.segments = append(view.segments, shown)
-	}
-	return view, changed || semantic
 }
 
 // commandReportView drains the observer once before Activity reduction and
@@ -71,11 +38,22 @@ func (u *appServerUI) commandReportView(key [3]string, run *sessionpresentation.
 	}
 	report := sessionpresentation.CommandReport(run.Entry.Native.Invocation, track, directory)
 	stream := u.streams.Command(key, run.Entry.Text)
-	view, changed := commandReportFrame(run.Entry.Native.Invocation, stream, report, track.Version, final)
+	state := sessionpresentation.ObserveCommandReport(run.Entry.Native.Invocation, report, final)
+	snapshot := state.Snapshot
+	frames, changed := stream.RevealSegments(report, snapshot, track.Version, final)
+	view := execTrackView{output: snapshot.SeparateOutput, ended: snapshot.Ended, complete: snapshot.Complete, code: snapshot.ExitCode, semantic: state.Changed, release: state.Release, segments: state.Segments}
+	for index, segment := range snapshot.Segments {
+		shown := segment.CommandSegment
+		if view.output {
+			shown.Tail, shown.TailOmitted = frames[index].Tail, frames[index].Omitted
+		}
+		shown.Changes = state.Segments[index].Changes
+		view.frames = append(view.frames, shown)
+	}
 	if view.release {
 		u.execTrack.ReleaseOutput(key)
 	}
-	return view, changed
+	return view, changed || state.Changed
 }
 
 // flushTrackedCommand re-sends a tracked command whose segments changed, and
@@ -129,7 +107,7 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *sessionpresentatio
 		return nil, true
 	}
 	native.Segments = view.segments
-	u.holdCommand(entry, activityui.CommandFrame{Output: frame, Segments: sessionpresentation.CommandPresentation(entry).Segments})
+	u.holdCommand(entry, activityui.CommandFrame{Output: frame, Segments: view.frames})
 	u.dirty = true
 	if !view.semantic {
 		return nil, true
@@ -146,7 +124,7 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *sessionpresentatio
 // already-published host aggregate remains authoritative.
 func (u *appServerUI) reconcileTrackedCommand(key [3]string, entry sessionpresentation.ActivityEntry, item observation.Item) (sessionpresentation.ActivityEntry, bool) {
 	run := u.session.Commands()[key]
-	view, _ := u.commandReportView(key, run, true, appServerCommandDirectory(item, u.cwd))
+	view, _ := u.commandReportView(key, run, true, sessionpresentation.CommandDirectory(item, u.cwd))
 	if !run.Entry.Native.Invocation.ReportMatchesHost() || len(view.segments) == 0 {
 		return entry, false
 	}
@@ -163,8 +141,8 @@ func (u *appServerUI) reconcileTrackedCommand(key [3]string, entry sessionpresen
 	entry.Completed = entry.Native.CommandEnded
 	entry.Native = &native
 	if !view.output {
-		entry.OutputTail, entry.OutputOmit = appServerOutputTail(item.AggregatedOutput)
-		native.Changes, native.Commit = commandOutputRows(item)
+		entry.OutputTail, entry.OutputOmit = sessionpresentation.OutputTail(item.AggregatedOutput)
+		native.Changes, native.Commit = sessionpresentation.CommandOutputRows(item)
 	}
 	return entry, true
 }

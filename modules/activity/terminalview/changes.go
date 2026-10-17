@@ -52,6 +52,9 @@ func changeRows(rows []ChangeRow, padding string, width int) []string {
 	column := min(labels, max(16, room))
 	var lines []string
 	for _, row := range shown {
+		if row.OmittedLines > 0 {
+			row.Note = Elision{Hidden: row.OmittedLines}.Text()
+		}
 		line := ""
 		if verbs > 0 {
 			color := terminalui.Green

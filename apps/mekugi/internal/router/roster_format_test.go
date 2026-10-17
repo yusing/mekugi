@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 
-	"github.com/yusing/mekugi/libraries/terminalui"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
 
@@ -35,7 +35,7 @@ func TestRosterSummaryFormatting(t *testing.T) {
 			rows := strings.Join(p.Block(blocks[0], 80), "\n")
 			summary := p.Summary(blocks, 80)
 			for _, text := range []string{ansi.Strip(rows), ansi.Strip(summary)} {
-				if strings.Contains(text, "/root") || strings.Contains(text, "replier") || !strings.Contains(text, "→ "+terminalui.AgentDisplayName(recipient)) {
+				if strings.Contains(text, "/root") || strings.Contains(text, "replier") || !strings.Contains(text, "→ "+pathdisplay.AgentDisplayName(recipient)) {
 					t.Fatalf("reply = %q", text)
 				}
 			}

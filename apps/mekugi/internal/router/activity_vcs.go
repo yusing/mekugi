@@ -5,19 +5,8 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 
-	"github.com/yusing/mekugi/contracts/observation"
-
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
-
-// commandOutputRows adapts observed change-history or VCS output, retaining the
-// immutable commit key whose files can complete the output-observed rows.
-func commandOutputRows(item observation.Item) ([]activitypresentation.ChangeRow, activitypresentation.CommitKey) {
-	if rows := mchangesOutputRows(item); rows != nil || item.AggregatedOutput == nil {
-		return rows, activitypresentation.CommitKey{}
-	}
-	return activitypresentation.VCSOutputRows(frontends.ShellDisplaySource(sessionpresentation.DisplayCommand(item.Command)), item.Cwd, *item.AggregatedOutput)
-}
 
 // A prior unclassified command may change the shell cwd. Do not enrich a later
 // commit against the invocation's initial cwd in that case.

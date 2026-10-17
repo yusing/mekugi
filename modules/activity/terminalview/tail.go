@@ -17,8 +17,8 @@ import (
 // what they leave out. Live thinking tails its painted rows; command output
 // tails its lines as they stream, in memory bounded by the tail.
 const (
-	OutputTailLines = 5
-	OutputTailBytes = 512 // Per line, before sanitizing.
+	OutputTailLines = activitymodel.SummaryLines
+	OutputTailBytes = activitymodel.SummaryLineBytes // Per line, before sanitizing.
 	// A burst rolls through at most this many of its latest lines.
 	OutputPendingLines = 64
 )
@@ -122,14 +122,6 @@ type OutputTail struct {
 type outputLine struct {
 	index int
 	text  string
-}
-
-// TailOutput is the display tail of complete output.
-func TailOutput(output string) ([]string, int) {
-	var tail OutputTail
-	tail.Write(output)
-	tail.Flush()
-	return tail.Lines()
 }
 
 func (t *OutputTail) Write(output string) {

@@ -131,7 +131,7 @@ func (u *appServerUI) restoreCommandSegments(entry *sessionpresentation.Activity
 	for _, part := range record.Parts {
 		separate = separate && (part.Skipped || part.Output != nil)
 	}
-	cwd := cmp.Or(entry.Native.CommandCwd, appServerCommandDirectory(item.Observation(), workspace))
+	cwd := cmp.Or(entry.Native.CommandCwd, sessionpresentation.CommandDirectory(item.Observation(), workspace))
 	for _, part := range record.Parts {
 		segment := sessionpresentation.ActivitySegment{Timing: segmenttransport.Timing(part.Timing), Source: part.Source, Text: (activitypresentation.CommandSource{Script: part.Source, Display: frontends.ShellDisplaySource(part.Source), Directory: cwd}).SegmentText(), Skipped: part.Skipped, Exit: part.Exit}
 		if separate && !part.Skipped {
@@ -139,9 +139,9 @@ func (u *appServerUI) restoreCommandSegments(entry *sessionpresentation.Activity
 				segment.Output = outputs.New()
 				segment.Output.Finish(part.Output, &part.Exit)
 			}
-			segment.Tail, segment.Omit = appServerOutputTail(part.Output)
+			segment.Tail, segment.Omit = sessionpresentation.OutputTail(part.Output)
 			if part.Exit == 0 {
-				segment.Changes, segment.Commit = commandOutputRows(observation.Item{Command: part.Source, Cwd: vcsSegmentCwd(item.Cwd, entry.Native.Segments), AggregatedOutput: part.Output})
+				segment.Changes, segment.Commit = sessionpresentation.CommandOutputRows(observation.Item{Command: part.Source, Cwd: vcsSegmentCwd(item.Cwd, entry.Native.Segments), AggregatedOutput: part.Output})
 			}
 		}
 		entry.Native.Segments = append(entry.Native.Segments, segment)
@@ -150,7 +150,7 @@ func (u *appServerUI) restoreCommandSegments(entry *sessionpresentation.Activity
 	entry.Native.Running = false
 	entry.OutputTail, entry.OutputOmit = nil, 0
 	if !separate {
-		entry.OutputTail, entry.OutputOmit = appServerOutputTail(item.AggregatedOutput)
+		entry.OutputTail, entry.OutputOmit = sessionpresentation.OutputTail(item.AggregatedOutput)
 	}
 }
 

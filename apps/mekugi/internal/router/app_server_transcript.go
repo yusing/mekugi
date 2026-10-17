@@ -15,15 +15,6 @@ import (
 	"github.com/yusing/mekugi/modules/conversation/transcript"
 )
 
-func (u *appServerUI) observeTranscript(e observation.TextEvent, main bool) []observation.TextUpdate {
-	s := &u.session
-	ref := e.Item.Ref
-	if ref.ThreadID == "" || ref.TurnID == "" || ref.ItemID == "" {
-		return nil
-	}
-	return u.transcript.Observe(e, main, s.Transcript(ref.ThreadID, ref.TurnID))
-}
-
 func (u *appServerUI) providerStarted(thread string, at time.Time) []observation.TextUpdate {
 	s := &u.session
 	if thread == "" {
@@ -39,24 +30,11 @@ func transcriptItem(item binding.ThreadItem, thread, turn, id string) observatio
 }
 
 func (u *appServerUI) transcriptUpdates(updates []observation.TextUpdate, paced bool) []sessionpresentation.ActivityEntry {
-	for i := range updates {
-		updates[i].Sequence = u.session.Activity().NextSequence()
-		if updates[i].Kind == "reasoning" && updates[i].Phase == "item/completed" {
-			updates[i].Completed = updates[i].Observed
-		}
-	}
+	entries := u.session.AdmitText(updates, u.Thread)
 	if paced {
 		for _, update := range u.streams.Reasoning.Queue(slices.Clone(updates)) {
 			u.holdReasoning(update)
 		}
-	}
-	entries := make([]sessionpresentation.ActivityEntry, 0, len(updates))
-	for _, update := range updates {
-		agent := "/root"
-		if update.Ref.ThreadID != u.Thread {
-			agent = u.session.Caller(update.Ref.ThreadID)
-		}
-		entries = append(entries, sessionpresentation.TranscriptEntry(update, agent))
 	}
 	return entries
 }
@@ -121,7 +99,7 @@ func (u *appServerUI) messageTranscript(text observation.TextEvent, item observa
 	if u.observeMessageQuestions(text, item, false) {
 		return true
 	}
-	updates := u.observeTranscript(text, main)
+	updates := u.session.ObserveText(u.transcript, text, main)
 	if !main {
 		u.applyActivity(u.transcriptUpdates(updates, true), nil)
 		return false

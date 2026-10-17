@@ -7,11 +7,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/pathdisplay"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/diffrender"
-	"github.com/yusing/mekugi/libraries/terminalui"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
 	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
@@ -71,7 +72,7 @@ func TestExecObservationSourceLabel(t *testing.T) {
 
 func TestAgentDisplayName(t *testing.T) {
 	for name, want := range map[string]string{"/root": "main", "/root/worker": "worker", "/root/a/x": "a/x", "": ""} {
-		if got := terminalui.AgentDisplayName(name); got != want {
+		if got := pathdisplay.AgentDisplayName(name); got != want {
 			t.Errorf("agentDisplayName(%q) = %q, want %q", name, got, want)
 		}
 	}

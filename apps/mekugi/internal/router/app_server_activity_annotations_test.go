@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -39,7 +41,7 @@ func TestAppServerSearchResultCounts(t *testing.T) {
 	} {
 		t.Run(tc.command+"/"+tc.output, func(t *testing.T) {
 			item := binding.ThreadItem{Type: "commandExecution", ID: "s", Command: tc.command, Status: "completed", ExitCode: new(tc.exit), AggregatedOutput: new(tc.output)}
-			count := appServerSearchResults(item.Observation())
+			count := sessionpresentation.SearchResults(item.Observation())
 			if tc.want < 0 {
 				if count != nil {
 					t.Fatalf("invented count %d", *count)
@@ -66,15 +68,15 @@ func TestAppServerSearchResultCounts(t *testing.T) {
 		})
 	}
 	item := binding.ThreadItem{Type: "commandExecution", Command: "rg needle", Status: "completed", ExitCode: new(0)}
-	if appServerSearchResults(item.Observation()) != nil {
+	if sessionpresentation.SearchResults(item.Observation()) != nil {
 		t.Fatal("missing output is not zero")
 	}
 	item.AggregatedOutput = new(strings.Repeat("x", 1<<20))
-	if appServerSearchResults(item.Observation()) != nil {
+	if sessionpresentation.SearchResults(item.Observation()) != nil {
 		t.Fatal("silent cap counted as complete output")
 	}
 	item.AggregatedOutput, item.ExitCode = nil, new(1)
-	if count := appServerSearchResults(item.Observation()); count == nil || *count != 0 {
+	if count := sessionpresentation.SearchResults(item.Observation()); count == nil || *count != 0 {
 		t.Fatal("host empty-output omission lost no-match result")
 	}
 }

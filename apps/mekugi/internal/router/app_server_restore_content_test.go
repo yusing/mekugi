@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -241,7 +242,7 @@ func TestAppServerRestoreDiffScopeBeforeNewTurn(t *testing.T) {
 func TestAppServerRestoreCollaborationRequiresCompletedStatus(t *testing.T) {
 	for _, status := range []string{"inProgress", "failed", "interrupted", ""} {
 		u := newAppServerSessionTestUI(t, t.TempDir())
-		entries := u.collab((binding.ThreadItem{ID: "send", Type: "collabAgentToolCall", Tool: "sendMessage", Status: status, SenderThreadID: "main", ReceiverThreadIDs: []string{"child"}, Prompt: "undelivered message"}).Observation(), "send", time.Now(), activitypresentation.HistoricalCollaboration)
+		entries := u.session.Collaboration((binding.ThreadItem{ID: "send", Type: "collabAgentToolCall", Tool: "sendMessage", Status: status, SenderThreadID: "main", ReceiverThreadIDs: []string{"child"}, Prompt: "undelivered message"}).Observation(), "send", time.Now(), activitypresentation.HistoricalCollaboration)
 		if len(entries) != 1 || entries[0].Kind != "error" || !strings.Contains(entries[0].Text, "delivery not confirmed") || strings.Contains(entries[0].Text, "Message sent") {
 			t.Fatalf("unfinished delivery presented as successful: %+v", entries)
 		}

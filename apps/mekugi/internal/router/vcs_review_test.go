@@ -38,7 +38,7 @@ func TestVCSUnsupportedFormatsKeepLiteralOutput(t *testing.T) {
 		if !strings.HasPrefix(text, "Run") {
 			t.Fatalf("unsupported format classified: %s: %s", command, text)
 		}
-		rows, _ := commandOutputRows((binding.ThreadItem{Command: command, Cwd: g.dir, AggregatedOutput: &output}).Observation())
+		rows, _ := sessionpresentation.CommandOutputRows((binding.ThreadItem{Command: command, Cwd: g.dir, AggregatedOutput: &output}).Observation())
 		if len(rows) != 0 {
 			t.Fatalf("metadata became file rows for %s: %+v", command, rows)
 		}

@@ -69,6 +69,7 @@ type HookDetails struct {
 	HasError                           bool
 }
 type ChangeRow struct {
+	OmittedLines            int // Source rows omitted before the retained change summary.
 	Verb, Code, From, Label string
 	Added, Removed          int
 	Note                    string

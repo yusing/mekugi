@@ -39,6 +39,7 @@ type ReportSnapshot struct {
 type invocationSegment struct {
 	facts      SegmentObservation
 	output     *feed.Output
+	summary    feed.SummaryTail
 	raw        []byte
 	unretained int
 	vcs        bool
@@ -77,6 +78,7 @@ func (i *Invocation) ObserveSegments(report SegmentReport) (changed, loss bool) 
 		if lossy {
 			continue
 		}
+		segment.summary.Write(observed.Output)
 		if segment.vcs {
 			segment.raw = append(segment.raw, observed.Output...)
 		}
@@ -139,6 +141,9 @@ func (i *Invocation) ReportSnapshot(final bool) ReportSnapshot {
 			shown.Skipped = true
 		case !fact.Began:
 			continue
+		}
+		if r.separate {
+			shown.Tail, shown.TailOmitted = segment.summary.Lines()
 		}
 		if segment.output != nil {
 			if !shown.Running {

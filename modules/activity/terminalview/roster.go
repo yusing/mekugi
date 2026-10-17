@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/pathdisplay"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/terminalui"
@@ -152,7 +154,7 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 		if item.finished != nil {
 			var names []string
 			for _, row := range item.finished {
-				names = append(names, terminalui.AgentColor(row.Agent.Name)+terminalui.AgentDisplayName(row.Agent.Name)+terminalui.Reset)
+				names = append(names, terminalui.AgentColor(row.Agent.Name)+pathdisplay.AgentDisplayName(row.Agent.Name)+terminalui.Reset)
 			}
 			line := " " + terminalui.Green + "✓" + terminalui.Reset + " " + terminalui.Dim + fmt.Sprintf("%d finished · ", len(item.finished)) + terminalui.Undim + strings.Join(names, terminalui.Dim+", "+terminalui.Undim)
 			laid = append(laid, agentLine{finishedLine: ansi.Truncate(line, width, "…")})

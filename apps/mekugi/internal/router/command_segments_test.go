@@ -382,7 +382,7 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			u.completeCommand(entry.Native, item.Observation())
+			u.session.CompleteCommand(entry.Native, item.Observation(), u.activity.Outputs(u.session.Scope()))
 			u.restoreCommandSegments(&entry, item, workspace)
 			u.source.Entries = []sessionpresentation.ActivityRecord{{Source: entry}}
 			pages := activityui.Disclosure(nil).Blocks(sessionpresentation.CommandPresentation(entry).DetailValues())

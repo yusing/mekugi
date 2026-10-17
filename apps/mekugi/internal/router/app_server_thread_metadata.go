@@ -34,42 +34,22 @@ func (u *appServerUI) applyThreadMetadata(m appserver.Message, thread string) bo
 	return true
 }
 
-// Late metadata changes the display name, not the identity of retained items.
+// Late metadata updates canonical labels before detached terminal delivery.
 func (u *appServerUI) renameThreadActivity(old, name string) {
 	u.sessionPresentation().RenameCaller(old, name)
+	for _, source := range []*sessionpresentation.ActivitySource{u.source, u.childSource} {
+		source.RenameCaller(old, name)
+	}
+	u.renameActivitySelection(old, name)
+}
+
+func (u *appServerUI) renameActivitySelection(old, name string) {
 	if old == name {
 		return
 	}
-	for i, source := range []*sessionpresentation.ActivitySource{u.source, u.childSource} {
-		view := []*activityui.View{u.view, u.agents}[i]
-		for i := range source.Entries {
-			source.Model.Mutate(i, func(entry *sessionpresentation.ActivityRecord) {
-				if entry.Source.Agent == old {
-					entry.Source.Agent = name
-				}
-				if entry.Source.Assignment != nil {
-					if entry.Source.Assignment.From == old {
-						entry.Source.Assignment.From = name
-					}
-					if entry.Source.Assignment.To == old {
-						entry.Source.Assignment.To = name
-					}
-				}
-				// Preserve merged exits, filters and answer links while renaming
-				// only the display identities in already-parsed blocks.
-				for j := range entry.Values {
-					block := &entry.Values[j]
-					if block.From == old {
-						block.From = name
-					}
-					if block.To == old {
-						block.To = name
-					}
-					if block.Owner == old {
-						block.Owner = name
-					}
-				}
-			})
+	for _, view := range []*activityui.View{u.view, u.agents} {
+		if view == nil {
+			continue
 		}
 		if view.Selected == old {
 			view.Selected = name
@@ -78,6 +58,5 @@ func (u *appServerUI) renameThreadActivity(old, name string) {
 			view.RosterSelected = name
 		}
 		view.Runs = nil
-		source.RenameRetiredSkills(old, name)
 	}
 }

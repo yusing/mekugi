@@ -151,7 +151,7 @@ func (u *appServerUI) readRestoredChildren() error {
 		for _, item := range turn.Items {
 			if item.Type == "collabAgentToolCall" {
 				item.SenderThreadID = u.Thread
-				entries := u.collab(item.Observation(), item.ID, historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt, r.root.UpdatedAt)), activitypresentation.HistoricalCollaboration)
+				entries := u.session.Collaboration(item.Observation(), item.ID, historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt, r.root.UpdatedAt)), activitypresentation.HistoricalCollaboration)
 				u.applyRestoredActivity(entries)
 				for _, entry := range entries {
 					if main, ok := sessionpresentation.MainActivityEntry(entry); ok {
@@ -379,7 +379,7 @@ func (u *appServerUI) restoreActivityItem(info binding.ThreadInfo, turn binding.
 		return
 	}
 	entry := sessionpresentation.ActivityEntry{Seq: s.Activity().NextSequence(), Agent: name, Observed: observed, CallID: item.ID,
-		Native: &sessionpresentation.NativeItem{Thread: info.ID, Turn: turn.ID, Item: item.ID, Phase: "item/completed", Status: item.Status, SearchResults: appServerSearchResults(facts)}}
+		Native: &sessionpresentation.NativeItem{Thread: info.ID, Turn: turn.ID, Item: item.ID, Phase: "item/completed", Status: item.Status, SearchResults: sessionpresentation.SearchResults(facts)}}
 	progressPhase := appServerHistoryProgressPhase(facts, turn.Status)
 	if text, wait, handled := u.itemProgress(facts, info.ID, turn.ID, item.ID, progressPhase, false); handled {
 		if text != "" {
@@ -401,24 +401,24 @@ func (u *appServerUI) restoreActivityItem(info binding.ThreadInfo, turn binding.
 		entry.Kind, entry.Text = "tool", "View "+markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(info.Cwd, item.Path))
 		*entries = append(*entries, entry)
 	case "commandExecution", "fileChange", "webSearch":
-		entry.Kind, entry.Text = "tool", appServerToolText(facts, info.Cwd)
-		entry.Native.Command, entry.Native.Duration = item.Command, appServerDuration(facts)
-		entry.Native.CommandCwd = appServerCommandDirectory(facts, info.Cwd)
-		entry.Native.Workdir = appServerCommandWorkdir(facts, info.Cwd)
+		entry.Kind, entry.Text = "tool", sessionpresentation.ToolText(facts, info.Cwd)
+		entry.Native.Command, entry.Native.Duration = item.Command, sessionpresentation.ItemDuration(facts)
+		entry.Native.CommandCwd = sessionpresentation.CommandDirectory(facts, info.Cwd)
+		entry.Native.Workdir = sessionpresentation.CommandWorkdir(facts, info.Cwd)
 		if item.Type == "fileChange" {
 			entry.Text = activitypresentation.HostEditText(facts, info.Cwd)
 			entry.Native.EditPages = activitypresentation.HostEditPages(facts, info.Cwd, entry.Native.Phase)
 		}
-		u.completeCommand(entry.Native, facts)
-		appServerCommandOutput(&entry, facts, time.Time{})
+		u.session.CompleteCommand(entry.Native, facts, u.activity.Outputs(u.session.Scope()))
+		sessionpresentation.CommandOutput(&entry, facts, time.Time{})
 		u.restoreCommandSegments(&entry, item, info.Cwd)
 		*entries = append(*entries, entry)
 		if len(entry.Native.Segments) == 0 && item.ExitCode != nil && *item.ExitCode != 0 {
 			exit := sessionpresentation.ActivityEntry{Seq: s.Activity().NextSequence(), Agent: name, Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID, Observed: observed}
-			exit.OutputTail, exit.OutputOmit = appServerOutputTail(item.AggregatedOutput)
+			exit.OutputTail, exit.OutputOmit = sessionpresentation.OutputTail(item.AggregatedOutput)
 			*entries = append(*entries, exit)
 		}
 	case "collabAgentToolCall":
-		*entries = append(*entries, u.collab(facts, item.ID, observed, activitypresentation.HistoricalCollaboration)...)
+		*entries = append(*entries, u.session.Collaboration(facts, item.ID, observed, activitypresentation.HistoricalCollaboration)...)
 	}
 }

@@ -75,8 +75,11 @@ Closing a turn retires its text/wait correlation without ending yielded commands
 Live observation adapters perform metadata requests, command tracking, preview
 control and usage enrichment separately from presentation dispatch. Offline
 playback admits recorded metadata directly and constructs no backend client or
-request tracker. Both sources use the same item, turn and transcript projection;
-the terminal attachment retains its own pacing and navigation.
+request tracker. Both sources use the same observation reduction through their attached Activity,
+Conversation and session models. Reduction admits canonical source facts before
+returning ordered, detached text, command and caller-name deliveries. Live effects
+and terminal delivery remain separate; no renderer or backend handle enters the
+reducer. The terminal attachment retains its own pacing and navigation.
 
 The application's source binding borrows the existing attached Activity feed pair
 for source records, semantic revisions and enrichment. Activity owns the single

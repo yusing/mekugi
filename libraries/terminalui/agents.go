@@ -31,14 +31,3 @@ func DimAgentColor(name string) string {
 	}
 	return strings.Replace(AgentColor(name), "1;", "2;", 1)
 }
-
-// AgentDisplayName is the one user-facing form of a canonical agent path:
-// main for the root, the path below it otherwise (worker, or a/worker when
-// nested). Model-visible text keeps canonical paths, since agents address
-// each other by them.
-func AgentDisplayName(name string) string {
-	if name == "/root" {
-		return "main"
-	}
-	return strings.TrimPrefix(name, "/root/")
-}

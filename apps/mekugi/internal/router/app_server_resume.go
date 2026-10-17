@@ -282,25 +282,25 @@ func (u *appServerUI) restoreHistoryItem(turn binding.HistoryTurn, item binding.
 	switch item.Type {
 	case "imageView":
 		entry := sessionpresentation.ActivityEntry{Seq: u.source.LastSeq + 1, Agent: "Main", Kind: "tool", Text: "View " + markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(u.cwd, item.Path)), CallID: item.ID, Observed: time.Now(),
-			Native: &sessionpresentation.NativeItem{Thread: u.Thread, Turn: turn.ID, Item: item.ID, Phase: method, SearchResults: appServerSearchResults(facts)}}
+			Native: &sessionpresentation.NativeItem{Thread: u.Thread, Turn: turn.ID, Item: item.ID, Phase: method, SearchResults: sessionpresentation.SearchResults(facts)}}
 		u.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
 	case "commandExecution", "fileChange", "webSearch":
-		text := appServerToolText(facts, u.cwd)
+		text := sessionpresentation.ToolText(facts, u.cwd)
 		if item.Type == "fileChange" {
 			text = activitypresentation.HostEditText(facts, u.cwd)
 		}
 		entry := sessionpresentation.ActivityEntry{Seq: u.source.LastSeq + 1, Agent: "Main", Kind: "tool", Text: text, CallID: item.ID, Observed: time.Now(),
-			Native: &sessionpresentation.NativeItem{Thread: u.Thread, Turn: turn.ID, Item: item.ID, Phase: method, Command: item.Command, CommandCwd: appServerCommandDirectory(facts, u.cwd), Status: item.Status, Duration: appServerDuration(facts), SearchResults: appServerSearchResults(facts), Workdir: appServerCommandWorkdir(facts, u.cwd)}}
+			Native: &sessionpresentation.NativeItem{Thread: u.Thread, Turn: turn.ID, Item: item.ID, Phase: method, Command: item.Command, CommandCwd: sessionpresentation.CommandDirectory(facts, u.cwd), Status: item.Status, Duration: sessionpresentation.ItemDuration(facts), SearchResults: sessionpresentation.SearchResults(facts), Workdir: sessionpresentation.CommandWorkdir(facts, u.cwd)}}
 		if item.Type == "fileChange" {
 			entry.Native.EditPages = activitypresentation.HostEditPages(facts, u.cwd, method)
 		}
-		u.completeCommand(entry.Native, facts)
-		appServerCommandOutput(&entry, facts, time.Time{})
+		u.session.CompleteCommand(entry.Native, facts, u.activity.Outputs(u.session.Scope()))
+		sessionpresentation.CommandOutput(&entry, facts, time.Time{})
 		u.restoreCommandSegments(&entry, item, u.cwd)
 		u.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
 		if len(entry.Native.Segments) == 0 && item.ExitCode != nil && *item.ExitCode != 0 {
 			exit := sessionpresentation.ActivityEntry{Seq: u.source.LastSeq + 1, Agent: "Main", Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID}
-			exit.OutputTail, exit.OutputOmit = appServerOutputTail(item.AggregatedOutput)
+			exit.OutputTail, exit.OutputOmit = sessionpresentation.OutputTail(item.AggregatedOutput)
 			u.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{exit}})
 		}
 	default:

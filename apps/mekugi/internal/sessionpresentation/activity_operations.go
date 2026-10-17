@@ -1,7 +1,10 @@
 package sessionpresentation
 
 import (
+	"strings"
 	"time"
+
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 	"github.com/yusing/mekugi/contracts/observation"
@@ -48,4 +51,37 @@ func CommandReport(invocation *activitypresentation.Invocation, track segments.R
 		})
 	}
 	return report
+}
+
+// CommandReportState holds the canonical reduction and a detached reveal input.
+// Private retained outputs occur only in Segments, never Snapshot.
+type CommandReportState struct {
+	Snapshot         activitypresentation.ReportSnapshot
+	Segments         []ActivitySegment
+	Changed, Release bool
+}
+
+// ObserveCommandReport admits drained evidence independently of terminal pacing.
+// Source: apps/mekugi/internal/router/exec_track.go:39:63@7166de95.
+func ObserveCommandReport(invocation *activitypresentation.Invocation, report activitypresentation.SegmentReport, final bool) CommandReportState {
+	changed, release := invocation.ObserveSegments(report)
+	snapshot := invocation.ReportSnapshot(final)
+	state := CommandReportState{Snapshot: snapshot, Changed: changed, Release: release}
+	for index, segment := range snapshot.Segments {
+		shown := ActivitySegment{Timing: segmenttransport.Timing{Started: segment.Started, Ended: segment.Ended, ElapsedNS: int64(segment.Duration)},
+			Text: segment.Text, Source: segment.Source, Running: segment.Running, Skipped: segment.Skipped, Exit: segment.ExitCode, Raw: segment.Raw,
+			Output: invocation.SegmentOutput(index)}
+		if snapshot.SeparateOutput {
+			shown.Tail, shown.Omit = segment.Tail, segment.TailOmitted
+			if final && !shown.Skipped && shown.Exit == 0 {
+				output := strings.Join(shown.Tail, "\n")
+				shown.Changes = activitypresentation.MChangesOutputRows(DisplayCommand(shown.Source), &output)
+				if len(shown.Changes) > 0 && shown.Omit > 0 {
+					shown.Changes = append([]activitypresentation.ChangeRow{{OmittedLines: shown.Omit}}, shown.Changes...)
+				}
+			}
+		}
+		state.Segments = append(state.Segments, shown)
+	}
+	return state
 }

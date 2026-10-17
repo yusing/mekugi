@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/pathdisplay"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -38,7 +40,7 @@ func (l *Changes) Rebuild(view *presentation.View, workspace string) {
 	if l.Cursor < len(l.Rows) {
 		cursor = l.rowTarget(l.Rows[l.Cursor])
 	}
-	l.Changes.Rebuild(view, workspace, terminalui.AgentDisplayName)
+	l.Changes.Rebuild(view, workspace, pathdisplay.AgentDisplayName)
 	l.Rows, l.lanes = nil, []string{"/root"}
 	for n, node := range l.Nodes {
 		lane := slices.Index(l.lanes, node.Caller)
@@ -106,9 +108,9 @@ func CallerStyle(theme diffrender.Theme) func(string) (string, string) {
 			return "unknown", diffrender.Subtle
 		}
 		if color := terminalui.AgentColor(caller); color != "" {
-			return terminalui.AgentDisplayName(caller), color
+			return pathdisplay.AgentDisplayName(caller), color
 		}
-		return terminalui.AgentDisplayName(caller), theme.Accent()
+		return pathdisplay.AgentDisplayName(caller), theme.Accent()
 	}
 }
 

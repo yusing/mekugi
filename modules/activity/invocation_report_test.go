@@ -29,6 +29,9 @@ func TestInvocationSegmentDetailLifecycle(t *testing.T) {
 		t.Fatalf("initial observation: changed=%v loss=%v", changed, loss)
 	}
 	before := invocation.ReportSnapshot(false)
+	if !slices.Equal(before.Segments[0].Tail, []string{"first"}) {
+		t.Fatalf("source summary waited for terminal reveal: %+v", before)
+	}
 	output := invocation.SegmentOutput(0)
 	firstOutput := output.View()
 	report.Segments[0].Output = "second\n"
@@ -52,6 +55,9 @@ func TestInvocationSegmentDetailLifecycle(t *testing.T) {
 	}
 	invocation.Complete(presentation.CommandCompletion{Source: source, At: start.Add(2 * time.Second), Aggregate: new("host aggregate"), Exit: new(7)})
 	final := invocation.ReportSnapshot(true)
+	if !slices.Equal(final.Segments[0].Tail, []string{"first", "second"}) || !slices.Equal(before.Segments[0].Tail, []string{"first"}) {
+		t.Fatal("source summary lost drained bytes or mutated an earlier publication")
+	}
 	if !invocation.ReportMatchesHost() || !final.SeparateOutput || len(final.Segments) != 3 {
 		t.Fatalf("completed attribution: %+v", final)
 	}

@@ -29,16 +29,16 @@ func TestAppServerOutputTailKeepsFinalLines(t *testing.T) {
 		lines = append(lines, fmt.Sprintf("line %d", i))
 	}
 	output := strings.Join(lines[:6], "\n") + "\n\n\x1b[2K\n" + strings.Join(lines[6:], "\n") + "\x1b]0;title\x07\n\n"
-	tail, omitted := appServerOutputTail(&output)
+	tail, omitted := sessionpresentation.OutputTail(&output)
 	if want := []string{"line 3", "line 4", "line 5", "line 6", "line 7"}; !reflect.DeepEqual(tail, want) || omitted != 3 {
 		t.Fatalf("tail = %q omitted %d", tail, omitted)
 	}
 	long := strings.Repeat("é", activityui.OutputTailBytes)
-	if tail, _ := appServerOutputTail(&long); len(tail) != 1 || len(tail[0]) > activityui.OutputTailBytes+len("…") || !strings.HasSuffix(tail[0], "…") {
+	if tail, _ := sessionpresentation.OutputTail(&long); len(tail) != 1 || len(tail[0]) > activityui.OutputTailBytes+len("…") || !strings.HasSuffix(tail[0], "…") {
 		t.Fatalf("long line tail = %q", tail)
 	}
 	for _, output := range []*string{nil, new(""), new(" \n\n")} {
-		if tail, omitted := appServerOutputTail(output); tail != nil || omitted != 0 {
+		if tail, omitted := sessionpresentation.OutputTail(output); tail != nil || omitted != 0 {
 			t.Fatalf("empty output tail = %q, %d", tail, omitted)
 		}
 	}
@@ -332,8 +332,10 @@ func TestAppServerCompletionWaitsForOutputBurst(t *testing.T) {
 	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "cmd", "delta": output.String()})
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 1, output.String()
 	notify("item/completed", map[string]any{"item": item})
-	run := u.session.Commands()[[3]string{"main", "t", "cmd"}]
-	canonical := run.Entry.Native.Invocation.Snapshot()
+	if u.session.Commands()[[3]string{"main", "t", "cmd"}] != nil {
+		t.Fatal("terminal reveal retained completed source correlation")
+	}
+	canonical := u.source.Entries[len(u.source.Entries)-1].Source.Native.Invocation.Snapshot()
 	if canonical.Running || !canonical.Exited || canonical.ExitCode != 1 || canonical.Ended.IsZero() || u.runningProcessCount() != 0 {
 		t.Fatalf("visual delay held canonical host completion: %+v", canonical)
 	}

@@ -1,6 +1,7 @@
 package terminalview
 
 import (
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 	markdownsyntax "github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	"github.com/yusing/mekugi/modules/activity/presentation"
@@ -67,11 +68,11 @@ func (p *Painter) Agent(name string) string {
 	if color == "" {
 		color = "\x1b[1m" + p.Theme.Accent()
 	}
-	return color + terminalui.AgentDisplayName(name) + terminalui.Reset
+	return color + pathdisplay.AgentDisplayName(name) + terminalui.Reset
 }
 
 func (p *Painter) recipient(name string) string {
-	return Gutter(name, p.Theme) + terminalui.AgentDisplayName(name) + terminalui.Reset
+	return Gutter(name, p.Theme) + pathdisplay.AgentDisplayName(name) + terminalui.Reset
 }
 
 // code styles a code span according to the operation that carries it.

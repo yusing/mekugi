@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/pathdisplay"
+
 	"github.com/yusing/mekugi/contracts/observation"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
@@ -851,7 +853,7 @@ func RosterTree(rows []activitypresentation.AgentRow, index, start int) (name, i
 	}
 	parent := parentAt(index)
 	if rows[index].Depth == 0 || parent < 0 {
-		return terminalui.AgentDisplayName(rows[index].Agent.Name), ""
+		return pathdisplay.AgentDisplayName(rows[index].Agent.Name), ""
 	}
 	var guides []string
 	for i := parent; i >= 0; i = parentAt(i) {
@@ -1088,7 +1090,7 @@ func (v *View) RenderStrip(rows []activitypresentation.AgentRow, width int) stri
 	var parts []string
 	column := 1
 	for _, row := range rows {
-		name := terminalui.AgentDisplayName(row.Agent.Name)
+		name := pathdisplay.AgentDisplayName(row.Agent.Name)
 		if row.Agent.Name == v.Selected || row.Agent.Name == v.Hovered {
 			name = Underline(name)
 		}

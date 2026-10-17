@@ -212,7 +212,9 @@ neutral feed admits the completed aggregate at the same boundary. Valid segment
 reports enrich that existing identity; terminal frames can retain provisional
 segment targets until attribution settles without delaying the neutral outcome.
 The application's existing live-operation index supplies identity and lifetime;
-yielded invocations survive the originating turn. Completed feed and dialog
+yielded invocations survive the originating turn. Completed operations remain in
+that index only while admitted report evidence is unsettled, never for animation.
+Completed feed and dialog
 references retain the same invocation after it leaves that index.
 
 The invocation also owns admitted segment facts, retained segment output and

@@ -3,6 +3,8 @@ package terminalview
 import (
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/pathdisplay"
+
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	"github.com/yusing/mekugi/modules/activity/presentation"
@@ -10,9 +12,6 @@ import (
 
 // WaitTarget retains canonical identity for both live and restored wait notices.
 type WaitTarget = presentation.WaitTarget
-
-// ProgressText is the plain-text form used by activity summaries.
-func (b Block) ProgressText() string { return b.progressText("") }
 
 func (b Block) progressText(style string) string {
 	var text strings.Builder
@@ -27,7 +26,7 @@ func (b Block) progressText(style string) string {
 		} else {
 			text.WriteString(", ")
 		}
-		name := textsanitize.Safe(terminalui.AgentDisplayName(target.Name), false)
+		name := textsanitize.Safe(pathdisplay.AgentDisplayName(target.Name), false)
 		if style != "" {
 			name = terminalui.DimAgentColor(target.Name) + name + terminalui.Reset + style
 		}

@@ -4,7 +4,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/diffrender"
-	"github.com/yusing/mekugi/libraries/terminalui"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -188,7 +188,7 @@ func (d *outputDialog) refreshPages(requested []activitypresentation.DetailPage)
 			tab.Path = detail.Reads[0].Path
 		}
 		if d.processes {
-			tab.Name = terminalui.AgentDisplayName(detail.Owner)
+			tab.Name = pathdisplay.AgentDisplayName(detail.Owner)
 		}
 		if d.file != nil {
 			tab.Name, tab.Exact = "Markdown", true

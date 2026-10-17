@@ -107,16 +107,17 @@ func (p *uiReplayPlayback) apply(e playback.Event) error {
 		if p.ui.replayTranscript(e.Event) {
 			return nil
 		}
-		result := p.ui.projectSessionEvent(e.Event, sessionEventFacts{})
-		if result.publish {
-			p.ui.applyActivity(result.entries, p.ui.session.Roster())
+		result := sessionpresentation.ReduceObservation(&p.ui.session, p.ui.sessionPresentation(), p.ui.source, p.ui.childSource, p.ui.transcript, &p.ui.waits, p.ui.activity.Outputs(p.ui.session.Scope()), sessionpresentation.ObservationInput{Event: e.Event, Text: binding.RetainedTranscript(e.Event), Main: p.ui.Thread, Selected: p.ui.Turn, Workspace: p.ui.cwd})
+		if result.Publish {
+			p.ui.deliverObservation(result.Deliveries)
+			p.ui.applyActivity(nil, nil)
 		}
 		// Playback selects recorded turns without creating or settling live
 		// control operations. Status uses the same admitted observation clock.
 		if e.ThreadID == p.Source.Thread {
 			switch e.Kind {
 			case observation.TurnStarted:
-				if result.started {
+				if result.Started {
 					p.ui.Turn = e.TurnID
 					p.ui.sessionPresentation().Status.Started = e.At
 					p.ui.sessionPresentation().Status.Set("Working", false)

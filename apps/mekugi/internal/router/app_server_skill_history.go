@@ -109,7 +109,7 @@ func (u *appServerUI) skillHistoryResponse(thread string, m appserver.Message) e
 			if item.ExitCode != nil && *item.ExitCode != 0 && len(native.Segments) == 0 {
 				continue
 			}
-			record.Source.Text = appServerToolText(item.Observation(), u.cwd)
+			record.Source.Text = sessionpresentation.ToolText(item.Observation(), u.cwd)
 		default:
 			continue
 		}
