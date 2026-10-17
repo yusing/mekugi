@@ -228,7 +228,7 @@ func (u *appServerUI) restoreMainHistory(turns []binding.HistoryTurn, placements
 			at := cmp.Or(itemAt[item.ID], historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt)))
 			if !at.IsZero() {
 				for j := len(u.view.Entries) - 1; j >= 0 && u.view.Entries[j].Source.Seq > before; j-- {
-					u.view.mutateEntry(j, func(record *liveActivityRecord) { record.Source.Observed = at })
+					u.view.Model.Mutate(j, func(record *liveActivityRecord) { record.Source.Observed = at })
 				}
 			}
 			place(slots[i+1])

@@ -27,6 +27,9 @@ Initial disclosure comes from published content and observed item completion.
 Terminal settlement remains separate from that completion fact. The renderer
 retains later disclosure choices and applies them after source replacement;
 source reconciliation does not read terminal annotations.
+Publication reconciles entry identities and revisions before terminal consumers
+read them. Replacement invalidates affected render caches; retirement releases
+disclosure and pacing state. Unchanged publications retain cached runs and disclosure.
 
 ## Operation rows
 

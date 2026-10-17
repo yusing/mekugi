@@ -760,7 +760,7 @@ func TestOutputDialogFlatPagesSurviveFeedAgingAndRelease(t *testing.T) {
 	view.appendEntry(entry, parseLiveActivity(entry))
 	ui := &terminalUI{}
 	ui.openBlocks(view, view.blocks(0))
-	view.removeEntries(0, len(view.Entries))
+	view.Model.Remove(0, len(view.Entries))
 	ui.output.layout(60)
 	if ui.output.Document.Text != "first\nlast" || strings.Contains(ansi.Strip(ui.output.Document.Detail), "exit") {
 		t.Fatalf("aged output = %+v", ui.output.Document)
@@ -840,7 +840,7 @@ func TestOutputDialogFoldedStageKeepsSegmentPages(t *testing.T) {
 	if ui.output.Document.Text != "committed" {
 		t.Fatalf("commit row selected page %d: %q", ui.output.Page, ui.output.Document.Text)
 	}
-	view.removeEntries(0, 1)
+	view.Model.Remove(0, 1)
 	for i, want := range []string{"staged", "committed"} {
 		ui.output.ShowPage(i)
 		ui.output.layout(60)

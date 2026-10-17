@@ -39,10 +39,6 @@ func (v *activityAdapter) apply(event activityPaneEvent) bool {
 		return false
 	}
 	if event.Agents != nil || event.Kind == "snapshot" {
-		if !slices.EqualFunc(v.Agents, event.Agents, func(a, b activityPaneAgent) bool { return a.Name == b.Name }) {
-			v.Hovered = ""
-		}
-
 		v.Agents = event.Agents
 	}
 	for _, entry := range event.Entries {
@@ -54,7 +50,7 @@ func (v *activityAdapter) apply(event activityPaneEvent) bool {
 				if previous.Source.native == nil || previous.Source.native.item != entry.CallID || entry.native == nil || previous.Source.native.thread != entry.native.thread {
 					continue
 				}
-				v.mutateEntry(i, func(record *liveActivityRecord) {
+				v.Model.Mutate(i, func(record *liveActivityRecord) {
 					if len(record.Values) > 0 {
 						record.Values[len(record.Values)-1].Repeated = entry.Text
 					}
@@ -160,17 +156,7 @@ func (v *activityAdapter) apply(event activityPaneEvent) bool {
 		}
 		v.appendEntry(entry, blocks)
 	}
-	if retired := v.Model.Trim(liveActivityFeedLimit); len(retired) > 0 {
-		for _, seq := range retired {
-			v.View.Forget(seq)
-		}
-		v.Runs = nil
-		for seq := range v.Passed {
-			if v.HistoryOrder && !slices.ContainsFunc(v.Entries, func(entry liveActivityRecord) bool { return entry.Source.Seq == seq }) || !v.HistoryOrder && seq < v.Entries[0].Source.Seq {
-				delete(v.Passed, seq)
-			}
-		}
-	}
+	v.Model.Trim(liveActivityFeedLimit)
 	v.publishActivity()
 	return false
 }
@@ -197,7 +183,7 @@ func (v *activityAdapter) markUnreturned(thread, call string) bool {
 func (v *activityAdapter) removeThinking(native *liveActivityNativeItem) {
 	for i, entry := range v.Entries {
 		if entry.Source.Kind == "reasoning" && native.sameItem(entry.Source.native) {
-			v.removeEntries(i, i+1)
+			v.Model.Remove(i, i+1)
 			return
 		}
 	}

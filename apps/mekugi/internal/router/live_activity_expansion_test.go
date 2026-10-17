@@ -28,6 +28,7 @@ func expansionFixture(main bool) *activityAdapter {
 	v.appendEntry(activityPaneEntry{Seq: 2, Agent: agent, Kind: "reasoning", Observed: now}, []activityui.Block{{Kind: "summary", Label: "Inspecting", Body: "**Inspecting**\n\n" + strings.Repeat("Public reasoning detail.\n\n", 6), Live: true}})
 	v.appendEntry(activityPaneEntry{Seq: 3, Agent: agent, Kind: "tool", Text: "Run printf", Observed: now}, []activityui.Block{{Kind: "op", Verb: "Run", Label: "printf", Code: strings.Repeat("echo retained-source\n", 8), Lang: "bash", Fenced: true, Tail: []string{"first output", "last output"}}})
 	v.LastSeq = 3
+	v.publishActivity()
 	// Disclosure fixtures belong to the renderer, independently of source facts.
 	v.Disclosure.Collapse(2, 0)
 	v.Disclosure.Collapse(3, 0)

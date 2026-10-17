@@ -57,7 +57,7 @@ func (u *appServerUI) renameThreadActivity(old, name string) {
 	}
 	for _, view := range []*activityAdapter{u.view, u.agents} {
 		for i := range view.Entries {
-			view.mutateEntry(i, func(entry *liveActivityRecord) {
+			view.Model.Mutate(i, func(entry *liveActivityRecord) {
 				if entry.Source.Agent == old {
 					entry.Source.Agent = name
 				}

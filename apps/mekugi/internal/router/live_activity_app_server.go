@@ -195,7 +195,7 @@ func (v *activityAdapter) mergeNative(entry activityPaneEntry) bool {
 func (v *activityAdapter) removePendingInput(seq uint64) {
 	for i, entry := range v.Entries {
 		if entry.Source.Seq == seq && entry.Source.native != nil && entry.Source.native.phase == "input/pending" {
-			v.removeEntries(i, i+1)
+			v.Model.Remove(i, i+1)
 			return
 		}
 	}

@@ -60,7 +60,7 @@ func TestLiveActivityRecordMutationOwnsInvalidation(t *testing.T) {
 	stableKey, stable := liveActivityCacheRun(t, v, 1)
 	changedKey, _ := liveActivityCacheRun(t, v, 3)
 	revision := v.Entries[2].Revision
-	v.mutateEntry(2, func(record *liveActivityRecord) {
+	v.Model.Mutate(2, func(record *liveActivityRecord) {
 		record.Source.Observed = now.Add(time.Hour)
 		record.Source.Text = "Updated result"
 		record.Values = activityui.Values(parseLiveActivity(record.Source))
@@ -68,6 +68,8 @@ func TestLiveActivityRecordMutationOwnsInvalidation(t *testing.T) {
 	if v.Entries[2].Revision <= revision {
 		t.Fatal("source and annotation mutation did not advance its revision")
 	}
+	v.publishActivity()
+	v.publishActivity() // Repeated delivery cannot invalidate an unchanged run.
 	if _, present := v.Runs[changedKey]; present {
 		t.Fatal("source and annotation mutation retained its cached run")
 	}
@@ -79,5 +81,6 @@ func TestLiveActivityRecordMutationOwnsInvalidation(t *testing.T) {
 }
 
 func (v *activityAdapter) blocks(index int) []activityui.Block {
+	v.publishActivity()
 	return v.Disclosure.Blocks(v.Entries[index].Values)
 }

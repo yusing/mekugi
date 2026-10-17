@@ -45,6 +45,24 @@ func (v *View) requestDisplay(caller string) {
 // Update replaces detached input, retaining only renderer-owned state between frames.
 func (v *View) Update(publication presentation.Publication, display Display) {
 	v.LineCounts, v.NetCounts = publication.LineCounts, publication.NetCounts
+	previous := make(map[uint64]uint64, len(v.entries))
+	for _, entry := range v.entries {
+		previous[entry.Seq] = entry.Revision
+	}
+	v.Display = display
+	for _, entry := range publication.Entries {
+		revision, exists := previous[entry.Seq]
+		if !exists || revision != entry.Revision {
+			v.observe(entry, !exists)
+		}
+		delete(previous, entry.Seq)
+	}
+	for seq := range previous {
+		v.forget(seq)
+	}
+	if len(previous) > 0 {
+		v.Runs = nil
+	}
 	versions := make(map[outputIdentity]int)
 	for _, entry := range publication.Entries {
 		for output, version := range entry.Outputs {
@@ -88,8 +106,8 @@ func (v *View) blocks(index int) []Block {
 	return blocks
 }
 
-// Observe updates terminal deadlines without mutating the source record.
-func (v *View) Observe(entry presentation.Entry, appended bool) {
+// observe updates terminal deadlines without mutating the source record.
+func (v *View) observe(entry presentation.Entry, appended bool) {
 	blocks := Disclosure(nil).Blocks(entry.Values)
 	for i, block := range blocks {
 		blocks[i].Collapsed = entry.Kind == "reasoning" && block.Collapsible() && !(entry.Live && entry.ItemComplete) ||
@@ -129,7 +147,7 @@ func (v *View) Observe(entry presentation.Entry, appended bool) {
 	v.InvalidateRuns(entry.Seq)
 }
 
-func (v *View) Forget(seq uint64) {
+func (v *View) forget(seq uint64) {
 	delete(v.completed, seq)
 	delete(v.collapsed, seq)
 	delete(v.Passed, seq)

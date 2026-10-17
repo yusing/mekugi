@@ -173,6 +173,7 @@ func TestLiveActivityCacheMainInvalidatesLaterQuotes(t *testing.T) {
 	entry := v.Entries[1].Source
 	entry.Text = "Updated prompt"
 	v.replaceEntry(1, entry, parseLiveActivity(entry))
+	v.publishActivity()
 	if _, present := v.Runs[laterKey]; present {
 		t.Fatal("prompt update kept a later dependent quote")
 	}

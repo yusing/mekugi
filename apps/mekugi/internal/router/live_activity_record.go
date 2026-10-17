@@ -14,22 +14,9 @@ type liveActivityRecord = activitypresentation.Record[activityPaneEntry]
 
 func (v *activityAdapter) appendEntry(entry activityPaneEntry, blocks []activityui.Block) {
 	v.Model.Append(entry, activityui.Values(blocks))
-	v.View.Observe(v.Entries[len(v.Entries)-1].Publish(), true)
 }
 func (v *activityAdapter) replaceEntry(index int, entry activityPaneEntry, blocks []activityui.Block) {
 	v.Model.Replace(index, entry, activityui.Values(blocks))
-	v.View.Observe(v.Entries[index].Publish(), false)
-}
-func (v *activityAdapter) mutateEntry(index int, mutate func(*liveActivityRecord)) {
-	v.Model.Mutate(index, mutate)
-	v.View.InvalidateRuns(v.Entries[index].Source.Seq)
-}
-func (v *activityAdapter) removeEntries(from, to int) {
-	for _, record := range v.Entries[from:to] {
-		v.View.Forget(record.Source.Seq)
-	}
-	v.Model.Remove(from, to)
-	v.Runs = nil
 }
 func (v *activityAdapter) sourceBlocks(index int) []activityui.Block {
 	return activityui.Disclosure(nil).Blocks(v.Entries[index].Values)

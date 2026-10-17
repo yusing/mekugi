@@ -536,6 +536,9 @@ func TestOutputCollapseSharesFrameAcrossLateCompletions(t *testing.T) {
 					settled = late
 				}
 				v.appendEntry(activityPaneEntry{Seq: uint64(i + 1), Agent: agent, completed: settled, native: &liveActivityNativeItem{}}, []activityui.Block{{Kind: "op", Verb: "Run", Tail: []string{"one", "two"}}})
+			}
+			v.publishActivity()
+			for _, agent := range agents {
 				v.Events[agent] = activityui.Event{Seq: 3, At: start}
 			}
 			if settleActivity(start.Add(activityui.OutputDebounce), v) {

@@ -366,6 +366,7 @@ func TestActivityFeedOutputContextIsBounded(t *testing.T) {
 				block := &blocks[0]
 				block.Output, block.Tail, block.TailOmitted, block.Collapsed = 1, []string{"var answer = 42"}, 20000, collapsed
 				view.replaceEntry(1, entry.Source, blocks)
+				view.publishActivity()
 				view.Disclosure.Keep(entry.Source.Seq, blocks)
 				// A cold off-screen layout and a later visible paint must leave full
 				// snapshot creation to a consumer that actually requests the stream.

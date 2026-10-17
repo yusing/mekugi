@@ -61,7 +61,7 @@ func (u *appServerUI) startCommitReads() {
 				if !ready {
 					continue
 				}
-				view.mutateEntry(i, func(record *liveActivityRecord) {
+				view.Model.Mutate(i, func(record *liveActivityRecord) {
 					// Source records and published rows can outlive this revision.
 					updated := *record.Source.native
 					if updated.commit == key {
