@@ -14,7 +14,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/libraries/commandargs"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	"github.com/creack/pty"
 	terminalui "github.com/yusing/mekugi/libraries/terminalui"
@@ -22,12 +24,38 @@ import (
 	"golang.org/x/term"
 )
 
+func editorTestIntent(u *appServerUI) sessionpresentation.ComposerIntent {
+	v := u.publishPresentation(u.now())
+	return sessionpresentation.ComposerIntent{Version: v.Version, Target: v.EditorTarget(), Operation: sessionpresentation.EditExternally}
+}
+
+func TestComposerEditorResultKeepsOriginalTarget(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.Editor.Replace(composer.Draft{Text: "original"})
+	intent := editorTestIntent(u)
+	u.setNotice("unrelated progress", false)
+	u.publishPresentation(u.now())
+	if err := u.applyEditorDraft(intent, "edited"); err != nil || u.Text != "edited" {
+		t.Fatalf("unrelated publication discarded an editor result: %q, %v", u.Text, err)
+	}
+	intent = editorTestIntent(u)
+	u.Editor.Replace(composer.Draft{Text: "new draft"})
+	if err := u.applyEditorDraft(intent, "old editor result"); err == nil || u.Text != "new draft" {
+		t.Fatalf("returned editor retargeted: %q, %v", u.Text, err)
+	}
+	questionTestSync(t, u, "replacement-editor", false)
+	u.openQuestions()
+	if err := u.applyEditorDraft(intent, "old editor result"); err == nil || u.Text != "" {
+		t.Fatalf("returned editor reached a prompt: %q, %v", u.Text, err)
+	}
+}
+
 func TestAppServerComposerEditorDraft(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.attachImage(filepath.Join(t.TempDir(), "one.png"))
 	appServerTestKeys(t, u, "a")
 	u.attachImage(filepath.Join(t.TempDir(), "two.png"))
-	if err := u.applyEditorDraft("[Image 2]b[Image 1]"); err != nil {
+	if err := u.applyEditorDraft(editorTestIntent(u), "[Image 2]b[Image 1]"); err != nil {
 		t.Fatal(err)
 	}
 	if u.Text != "[Image 1]b[Image 2]" || !strings.HasSuffix(u.Images[0].Path, "two.png") {
@@ -37,10 +65,10 @@ func TestAppServerComposerEditorDraft(t *testing.T) {
 	if u.Text != "[Image 1]a[Image 2]" || !strings.HasSuffix(u.Images[0].Path, "one.png") {
 		t.Fatalf("editor undo: %q %v", u.Text, u.Images)
 	}
-	if err := u.applyEditorDraft("[Image 1][Image 1]"); err == nil {
+	if err := u.applyEditorDraft(editorTestIntent(u), "[Image 1][Image 1]"); err == nil {
 		t.Fatal("duplicate attachment accepted")
 	}
-	if err := u.applyEditorDraft("cleared"); err != nil {
+	if err := u.applyEditorDraft(editorTestIntent(u), "cleared"); err != nil {
 		t.Fatal(err)
 	}
 	if len(u.Images) != 0 {
@@ -112,7 +140,8 @@ func testAppServerEditorTerminalHandoff(t *testing.T, selectedFile bool) {
 			}
 		})
 		var fileEditor *openFileEditor
-		if selectedFile && !errors.As(err, &fileEditor) || !selectedFile && !errors.Is(err, errOpenComposerEditor) {
+		var composerEditor *composerEditorRequest
+		if selectedFile && !errors.As(err, &fileEditor) || !selectedFile && !errors.As(err, &composerEditor) {
 			done <- fmt.Errorf("editor shortcut: %v", err)
 			return
 		}
@@ -124,7 +153,7 @@ func testAppServerEditorTerminalHandoff(t *testing.T, selectedFile bool) {
 		if selectedFile {
 			u.openSelectedFileEditor(fileEditor.path, slave, slave)
 		} else {
-			u.openComposerEditor(slave, slave)
+			u.openComposerEditor(composerEditor.intent, slave, slave)
 		}
 		if u.feedback.Alert {
 			done <- errors.New(u.feedback.Text)
@@ -232,7 +261,7 @@ func TestAppServerComposerEditorFailurePreservesRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer u.shell.diffScreen.Close()
-	u.openComposerEditor(output, output)
+	u.openComposerEditor(editorTestIntent(u), output, output)
 	if u.Text != "original" || !u.feedback.Alert {
 		t.Fatalf("editor failure: draft=%q notice=%q", u.Text, u.feedback.Text)
 	}

@@ -96,9 +96,9 @@ func (u *appServerUI) applyComposerCommand(intent sessionpresentation.ComposerIn
 			u.setNotice("External editor is unavailable for secret answers", false)
 			return false, nil
 		}
-		return false, errOpenComposerEditor
+		return false, &composerEditorRequest{intent: intent}
 	case sessionpresentation.AttachClipboard:
-		u.pasteImage()
+		u.pasteImage(intent)
 	case sessionpresentation.CancelComposer:
 		if u.Replacement.Archiving() {
 			u.setNotice("Archiving session…", false)

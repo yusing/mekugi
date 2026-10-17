@@ -115,6 +115,27 @@ func (m *Model) AdmitPaste(in PasteIntent, conversation *conversationmodel.Sessi
 	return nil
 }
 
+type ReferenceIntent struct {
+	Version                   Version
+	Target                    conversationmodel.EditorTarget
+	Description, Text, Source string
+}
+
+// Reference admits the input destination and its return to Main together. The
+// application then passes the source to Conversation's attachment pipeline.
+func (m *Model) Reference(in ReferenceIntent, conversation *conversationmodel.Session) error {
+	if in.Version != m.view.Version {
+		return ErrStaleIntent
+	}
+	if m.replay {
+		return ErrReplayIntent
+	}
+	if in.Target != conversation.EditorTarget() {
+		return conversationmodel.ErrDraftChanged
+	}
+	return m.Display(DisplayIntent{Version: in.Version, Thread: m.view.Main})
+}
+
 func (m *Model) ApplyEditor(intent EditorIntent, conversation *conversationmodel.Session) (bool, error) {
 	if intent.Version != m.view.Version {
 		return false, ErrStaleIntent
@@ -156,4 +177,17 @@ func (m *Model) AdmitComposer(intent ComposerIntent, conversation *conversationm
 		return conversationmodel.ErrDraftChanged
 	}
 	return nil
+}
+
+// AdmitAcquiredInput preserves an already-admitted destination across terminal
+// handoff or acquisition. Clock/status publications do not replace that editor.
+func (m *Model) AdmitAcquiredInput(intent ComposerIntent, conversation *conversationmodel.Session) error {
+	if intent.Operation != AttachClipboard && intent.Operation != EditExternally {
+		return ErrInputUnavailable
+	}
+	if intent.Version.Attachment != m.view.Version.Attachment {
+		return ErrStaleIntent
+	}
+	intent.Version = m.view.Version
+	return m.AdmitComposer(intent, conversation)
 }

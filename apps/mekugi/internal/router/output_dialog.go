@@ -4,7 +4,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
-	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
 // openOutput opens the operation a snippet names in the dialog, reporting
@@ -101,12 +100,9 @@ func (u *terminalUI) outputIntent(intent terminalsession.DialogIntent) {
 	case terminalsession.DialogCopy:
 		u.copyText(intent.Text)
 	case terminalsession.DialogReference:
-		if u.main.composerReadOnly() {
-			u.selectNativePane(0)
+		if !u.main.referenceInput(u.main.mainView.Reference("dialog", intent.Text, "")) {
+			return
 		}
-		u.main.insertSelection("dialog", intent.Text, "")
-		u.main.refreshPicker()
-		u.main.Run = composer.NoRun
 		u.Focus = 0
 		u.closeOutput()
 	case terminalsession.DialogOpenLink:

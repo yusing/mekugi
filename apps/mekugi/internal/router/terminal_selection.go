@@ -12,7 +12,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
-	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
 // terminalSelection binds the terminal's frozen source selection to feature
@@ -51,12 +50,9 @@ func (u *terminalUI) selectionAction(action terminalsession.SelectionIntent) {
 	switch action {
 	case 'r':
 		description, source := s.mentionDescription()
-		if u.main.composerReadOnly() {
-			u.selectNativePane(0)
+		if !u.main.referenceInput(u.main.mainView.Reference(description, s.Text(), source)) {
+			return
 		}
-		u.main.insertSelection(description, s.Text(), source)
-		u.main.refreshPicker()
-		u.main.Run = composer.NoRun
 		u.Focus = 0
 		u.closeOutput()
 	case 'c':

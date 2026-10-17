@@ -130,7 +130,7 @@ func (u *appServerUI) clearSessionPresentation() error {
 		return err
 	}
 	if u.panes != nil {
-		u.paneError(u.panes.save(u.shell, time.Now(), true))
+		u.paneError(u.panes.save(u.shell.Shell.Preferences(&u.mainView), time.Now(), true))
 	}
 	u.cancelPickerScan()
 	if u.retiredThreads == nil {

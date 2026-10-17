@@ -84,3 +84,32 @@ func TestEditorActionsTargetPromptAndExcludeSecrets(t *testing.T) {
 		t.Fatalf("neutral editor accepted a secret: %v", err)
 	}
 }
+
+func TestReferenceAdmitsReturnToMainAndOriginalEditorTogether(t *testing.T) {
+	c := newStatusConsumer()
+	v := c.publish(sessionpresentation.Caption{})
+	child := sessionpresentation.Thread{ID: "child", Caller: "/root/child"}
+	if err := c.model().Display(sessionpresentation.DisplayIntent{Version: v.Version, Thread: child}); err != nil {
+		t.Fatal(err)
+	}
+	v = c.publish(sessionpresentation.Caption{})
+	in := sessionpresentation.ReferenceIntent{Version: v.Version, Target: v.EditorTarget(), Text: "selected source"}
+	c.conversation.Editor.Replace(composer.Draft{Text: "replacement"})
+	if err := c.model().Reference(in, &c.conversation); !errors.Is(err, conversationmodel.ErrDraftChanged) || c.model().View().Displayed != child {
+		t.Fatalf("stale editor changed display: %v", err)
+	}
+	v = c.publish(sessionpresentation.Caption{})
+	in.Version, in.Target = v.Version, v.EditorTarget()
+	if err := c.model().Reference(in, &c.conversation); err != nil || c.model().View().Displayed != v.Main || c.conversation.Editor.Text != "replacement" {
+		t.Fatalf("reference admission: %v", err)
+	}
+	if err := c.model().Reference(in, &c.conversation); !errors.Is(err, sessionpresentation.ErrStaleIntent) {
+		t.Fatalf("old reference was readmitted: %v", err)
+	}
+	c.model().Attach(v.Main, true)
+	v = c.publish(sessionpresentation.Caption{})
+	in.Version, in.Target = v.Version, v.EditorTarget()
+	if err := c.model().Reference(in, &c.conversation); !errors.Is(err, sessionpresentation.ErrReplayIntent) {
+		t.Fatalf("replay admitted reference: %v", err)
+	}
+}

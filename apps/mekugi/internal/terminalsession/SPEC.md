@@ -129,7 +129,10 @@ or a local file URL, attaches that user-owned file and a trailing space. Other
 pastes are text. External editing uses `$EDITOR`, then `$VISUAL`, then `vi`, with
 arguments supported. Terminal/input ownership is released during the editor and
 restored afterward. Failure preserves the original draft and names its recovery
-file. Conversation owns binding reconciliation; adapter cleanup follows its
+file. The handoff retains its admitted editor identity; a replaced editor cannot
+receive the returned file. Clipboard-image acquisition likewise applies only to
+its admitted destination and releases an acquired file that cannot be attached.
+Conversation owns binding reconciliation; adapter cleanup follows its
 attachment-lifetime contract.
 
 `?` in an empty focused composer opens shortcuts above the composer. `?` or Escape
@@ -361,6 +364,8 @@ by the current terminal layout. Roster height remains automatically fitted. Scro
 positions, filters, selections, drafts and transient live docks are not persisted.
 The terminal adapter owns these fields; the preference module owns identity,
 publication, debounce, flush and failure behavior.
+The terminal snapshots and restores the complete layout, including absent-pane
+clamping. Application persistence passes detached preference values.
 
 `--ansi-faint=auto|on|off` selects terminal-local dimming. Auto disables ANSI faint
 when `mosh-server` is in process ancestry; detached multiplexers may require an

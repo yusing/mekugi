@@ -134,7 +134,7 @@ func shellWord(text string) (string, bool) {
 	return word.String(), quote == 0 && word.Len() > 0
 }
 
-func (u *appServerUI) pasteImage() {
+func (u *appServerUI) pasteImage(intent sessionpresentation.ComposerIntent) {
 	ctx := u.ctx
 	if ctx == nil {
 		ctx = context.Background()
@@ -144,6 +144,11 @@ func (u *appServerUI) pasteImage() {
 	path, err := clipboardImage(ctx)
 	if err != nil {
 		u.setNotice("Paste image: "+err.Error(), true)
+		return
+	}
+	if err := u.sessionPresentation().AdmitAcquiredInput(intent, u.conversation()); err != nil {
+		_ = os.Remove(path)
+		u.setNotice(err.Error(), true)
 		return
 	}
 	// The highlighted placeholder is the feedback; it also clears any earlier notice.

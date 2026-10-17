@@ -228,11 +228,16 @@ Editor actions name the ordinary draft or active prompt identity and revision.
 Admission precedes text, caret or history mutation; the same source-coordinate
 actions are usable without terminal keys. Composer operation intents use the same
 version and editor target before submission, cancellation, waiting-input restore,
-clipboard acquisition, external editing or effort changes. Secret editor actions remain local to
+clipboard acquisition, external editing or effort changes. Acquisition results
+retain their original attachment and editor target across unrelated publication
+updates. Secret editor actions remain local to
 the terminal after prompt admission.
 Completed paste admission checks the originating editor and menu before text or
 attachment acquisition. A changed destination cannot redirect a paste that began
 in another draft, prompt, menu or attachment.
+Referencing selected source admits its version and editor target as one operation,
+including return from a displayed child to Main. Replay rejects it. Rejected
+admission preserves both the displayed thread and input.
 Admission precedes taking the draft or reading attachment sources, so a stale
 intent cannot clear, capture or submit newer input. Main owns the input destination;
 a displayed child, replay or a prompt-owned editor cannot admit ordinary input.

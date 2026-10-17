@@ -281,7 +281,9 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 	case conversationui.PromptNext:
 		u.moveQuestion(1)
 	case conversationui.PromptAttach:
-		u.pasteImage()
+		view := u.publishPresentation(u.now())
+		_, err := u.applyComposerCommand(sessionpresentation.ComposerIntent{Version: view.Version, Target: view.EditorTarget(), Operation: sessionpresentation.AttachClipboard})
+		return true, err
 	case conversationui.PromptSubmit:
 		return true, u.submitQuestions(sessionpresentation.QuestionSubmitIntent{Version: u.sessionPresentation().View().Version, Call: c.ID, Incomplete: true})
 	case conversationui.PromptAnswer, conversationui.PromptSkip:

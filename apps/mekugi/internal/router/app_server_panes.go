@@ -6,21 +6,8 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
-
-func (u *terminalUI) paneState() terminalsession.Preferences {
-	u.Shell.Clamp()
-	state := terminalsession.Preferences{Focus: u.Focus, Split: u.Split, DiffOpen: u.DiffOpen}
-	if navigator, ok := u.Auxiliary.(terminalui.PaneNavigator); ok {
-		state.NavigatorColumns = navigator.NavigatorColumns()
-	}
-	if u.main != nil {
-		state.InterruptLocked = u.main.mainView.InterruptLocked
-	}
-	return state
-}
 
 type nativePreferences struct {
 	service    *preferences.Service
@@ -49,9 +36,9 @@ func (p *nativePreferences) read(workspace, thread string) (nativePreferenceSnap
 	return result, nil
 }
 
-func (p *nativePreferences) open(u *terminalUI, workspace, thread string, resume bool) error {
+func (p *nativePreferences) open(shell *terminalsession.Shell, main *terminalsession.Main, workspace, thread string, resume bool) error {
 	p.attachment = nil
-	initial, err := p.encoding.Encode(u.paneState())
+	initial, err := p.encoding.Encode(shell.Preferences(main))
 	if err != nil {
 		return err
 	}
@@ -63,14 +50,8 @@ func (p *nativePreferences) open(u *terminalUI, workspace, thread string, resume
 	if err != nil || state.Presentation == nil {
 		return err
 	}
-	layout := state.layout
-	u.Panes.Restore(layout)
-	u.main.mainView.InterruptLocked = layout.InterruptLocked
-	u.Shell.Clamp()
-	if navigator, ok := u.Auxiliary.(terminalui.PaneNavigator); ok {
-		navigator.SetNavigatorColumns(layout.NavigatorColumns)
-	}
-	state.Presentation, err = p.encoding.Encode(u.paneState())
+	shell.RestorePreferences(state.layout, main)
+	state.Presentation, err = p.encoding.Encode(shell.Preferences(main))
 	if err != nil {
 		return err
 	}
@@ -87,11 +68,11 @@ func (p *nativePreferences) stage(layout terminalsession.Preferences) error {
 	return nil
 }
 
-func (p *nativePreferences) save(u *terminalUI, now time.Time, flush bool) error {
+func (p *nativePreferences) save(layout terminalsession.Preferences, now time.Time, flush bool) error {
 	if p == nil || p.attachment == nil {
 		return nil
 	}
-	if err := p.stage(u.paneState()); err != nil {
+	if err := p.stage(layout); err != nil {
 		return err
 	}
 	return p.attachment.Save(now, flush)
@@ -104,12 +85,12 @@ func (u *appServerUI) retainAppliedSettings() {
 	}
 	scope := preferences.Scope{Workspace: u.cwd, Thread: u.Thread}
 	if u.panes.attachment.Scope() != scope {
-		if err := u.panes.open(u.shell, u.cwd, u.Thread, false); err != nil {
+		if err := u.panes.open(&u.shell.Shell, &u.mainView, u.cwd, u.Thread, false); err != nil {
 			u.paneError(err)
 			return
 		}
 	}
-	if err := u.panes.stage(u.shell.paneState()); err != nil {
+	if err := u.panes.stage(u.shell.Shell.Preferences(&u.mainView)); err != nil {
 		u.paneError(err)
 		return
 	}

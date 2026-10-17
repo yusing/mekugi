@@ -223,6 +223,7 @@ func TestTerminalUISelectionActions(t *testing.T) {
 				if key == "question" {
 					u.main.questions.Active = &prompt.Call{ID: "selection-question", Thread: u.main.Thread, Questions: []prompt.Question{{}}}
 				}
+				u.main.publishPresentation(u.main.now())
 				selected := selectionTestSnapshot(u)
 				action := key
 				if strings.Contains(key, "click") || key == "separator" {

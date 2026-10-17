@@ -21,7 +21,7 @@ func TestNativeAuxiliaryAbsencePreservesMainAndReviewSource(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.terminalViews = terminalsession.Views{}
 	u.ensureShell()
-	u.shell.Panes.Restore(terminalsession.Preferences{Focus: 1, DiffOpen: true})
+	u.shell.Shell.RestorePreferences(terminalsession.Preferences{Focus: 1, DiffOpen: true}, &u.mainView)
 	u.review.Projection.Workspace, u.review.Projection.Coverage = "/workspace", "READY"
 	u.publishReview()
 	if err := u.testPaint(io.Discard, 160, 32); err != nil {
@@ -45,7 +45,7 @@ func TestNativeAuxiliaryAbsencePreservesMainAndReviewSource(t *testing.T) {
 	if view := u.reviewSource.ReviewView(u.session.Scope()); view.Workspace != "/workspace" || view.Coverage != "READY" {
 		t.Fatal("removing a view removed its independent source publication")
 	}
-	if state := shell.paneState(); state.Focus != 0 || state.DiffOpen || state.NavigatorColumns != 0 {
+	if state := shell.Shell.Preferences(&shell.main.mainView); state.Focus != 0 || state.DiffOpen || state.NavigatorColumns != 0 {
 		t.Fatalf("absent preference: %+v", state)
 	}
 }

@@ -3,8 +3,22 @@ package router
 import (
 	"slices"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
+
+func (u *appServerUI) referenceInput(intent sessionpresentation.ReferenceIntent) bool {
+	defer u.settlePresentation()
+	if err := u.sessionPresentation().Reference(intent, u.conversation()); err != nil {
+		u.setNotice(err.Error(), true)
+		return false
+	}
+	u.insertSelection(intent.Description, intent.Text, intent.Source)
+	u.refreshPicker()
+	u.Run = composer.NoRun
+	return true
+}
 
 // composer.Token is a screen selection mentioned as one composer token.
 // The draft shows only its concise label; the quoted text travels in the

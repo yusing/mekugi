@@ -61,6 +61,7 @@ func TestTerminalSourceSelectionDirectionsAndActions(t *testing.T) {
 						u.main.sessionPresentation()
 						u.main.testActivity(u.agents).setDisplayFilter(true, "/root/worker")
 					}
+					u.main.publishPresentation(u.main.now())
 					if x < 0 {
 						t.Fatal("no cell")
 					}

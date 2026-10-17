@@ -46,7 +46,7 @@ func TestComposerFileTokenEditorRelocationAndIdentity(t *testing.T) {
 	bindComposerFile(u, `@"file name.go"`, "file name.go")
 	u.Text += " "
 	bindComposerFile(u, `@"file name.go"`, "other/file name.go")
-	if err := u.applyEditorDraft(`before @"file name.go" and @"file name.go" after`); err != nil {
+	if err := u.applyEditorDraft(editorTestIntent(u), `before @"file name.go" and @"file name.go" after`); err != nil {
 		t.Fatal(err)
 	}
 	if len(u.Files) != 2 || u.Files[0].Start != len("before ") || u.Files[1].Start <= u.Files[0].End || u.Files[0].Path != "file name.go" || u.Files[1].Path != "other/file name.go" {
@@ -56,7 +56,7 @@ func TestComposerFileTokenEditorRelocationAndIdentity(t *testing.T) {
 	if len(u.Files) != 2 || u.Files[0].Start != 0 {
 		t.Fatalf("editor undo lost original bindings: %q %+v", u.Text, u.Files)
 	}
-	if err := u.applyEditorDraft(`@"file name.go".bak`); err != nil {
+	if err := u.applyEditorDraft(editorTestIntent(u), `@"file name.go".bak`); err != nil {
 		t.Fatal(err)
 	}
 	if len(u.Files) != 0 {
@@ -86,7 +86,7 @@ func TestComposerFileTokenEditorPreservesExistingAdjacency(t *testing.T) {
 	u.Text = "("
 	bindComposerFile(u, "@file.go", "file.go")
 	u.insertDraft("), before")
-	if err := u.applyEditorDraft("(@file.go), after"); err != nil {
+	if err := u.applyEditorDraft(editorTestIntent(u), "(@file.go), after"); err != nil {
 		t.Fatal(err)
 	}
 	if len(u.Files) != 1 || u.Files[0].Start != 1 || u.Text[u.Files[0].Start:u.Files[0].End] != "@file.go" {

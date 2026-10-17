@@ -250,13 +250,13 @@ func TestComposerSkillPickerResumeAndEditorBindings(t *testing.T) {
 	if len(u.Skills) != 1 || u.Skills[0].Start != 4 {
 		t.Fatalf("restored skills = %+v", u.Skills)
 	}
-	if err := u.applyEditorDraft("now use $review please"); err != nil {
+	if err := u.applyEditorDraft(editorTestIntent(u), "now use $review please"); err != nil {
 		t.Fatal(err)
 	}
 	if len(u.Skills) != 1 || u.Skills[0].Start != 8 {
 		t.Fatalf("editor skills = %+v", u.Skills)
 	}
-	if err := u.applyEditorDraft("$review-other"); err != nil {
+	if err := u.applyEditorDraft(editorTestIntent(u), "$review-other"); err != nil {
 		t.Fatal(err)
 	}
 	if len(u.Skills) != 0 {
@@ -355,7 +355,7 @@ func TestComposerPickerEditorRefreshBeforeSelection(t *testing.T) {
 		u.refreshPicker()
 		target := u.completionTarget()
 		u.picker = composerPicker{State: completion.State{Open: true, Target: target, Resolved: target, ResolvedCwd: "/work", Choices: []completion.Choice{{Name: "file.go", Path: "file.go"}}}}
-		if err := u.applyEditorDraft("new"); err != nil {
+		if err := u.applyEditorDraft(editorTestIntent(u), "new"); err != nil {
 			t.Fatal(err)
 		}
 		if u.picker.Open {

@@ -4,6 +4,8 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
+
+	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
 // Preferences is the terminal's renderer-keyed schema. Session preferences owns
@@ -31,10 +33,32 @@ func ReadPreferences(data jsontext.Value) (Preferences, error) {
 	return state, nil
 }
 
-func (p *Panes) Restore(state Preferences) {
-	p.Focus, p.Split, p.DiffOpen = state.Focus, state.Split, state.DiffOpen
-	if p.Focus == 2 || p.Focus == 1 && !p.DiffOpen {
-		p.Focus = 0
+// Preferences captures only terminal state, independently of its application binding.
+// Source: apps/mekugi/internal/router/app_server_panes.go:13:24@b74f44de.
+func (s *Shell) Preferences(main *Main) Preferences {
+	s.Clamp()
+	state := Preferences{Focus: s.Focus, Split: s.Split, DiffOpen: s.DiffOpen}
+	if navigator, ok := s.Auxiliary.(terminalui.PaneNavigator); ok {
+		state.NavigatorColumns = navigator.NavigatorColumns()
+	}
+	if main != nil {
+		state.InterruptLocked = main.InterruptLocked
+	}
+	return state
+}
+
+// Source: apps/mekugi/internal/router/app_server_panes.go:66:72@b74f44de.
+func (s *Shell) RestorePreferences(state Preferences, main *Main) {
+	s.Focus, s.Split, s.DiffOpen = state.Focus, state.Split, state.DiffOpen
+	if s.Focus == 2 || s.Focus == 1 && !s.DiffOpen {
+		s.Focus = 0
+	}
+	if main != nil {
+		main.InterruptLocked = state.InterruptLocked
+	}
+	s.Clamp()
+	if navigator, ok := s.Auxiliary.(terminalui.PaneNavigator); ok {
+		navigator.SetNavigatorColumns(state.NavigatorColumns)
 	}
 }
 

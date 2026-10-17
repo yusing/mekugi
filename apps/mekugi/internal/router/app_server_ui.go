@@ -351,7 +351,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 						}
 						u.flushStreamOutput()
 						u.startCommitReads()
-						u.paneError(u.panes.save(u.shell, u.now(), false))
+						u.paneError(u.panes.save(u.shell.Shell.Preferences(&u.mainView), u.now(), false))
 						if u.expireNotice(u.now()) || u.expireApprovals() {
 							u.dirty = true
 						}
@@ -406,8 +406,9 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 				}
 			})
 			var fileEditor *openFileEditor
-			if errors.Is(err, errOpenComposerEditor) {
-				u.openComposerEditor(stdin, stdout)
+			var composerEditor *composerEditorRequest
+			if errors.As(err, &composerEditor) {
+				u.openComposerEditor(composerEditor.intent, stdin, stdout)
 			} else if errors.As(err, &fileEditor) {
 				u.openSelectedFileEditor(fileEditor.path, stdin, stdout)
 			} else {
@@ -415,7 +416,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 			}
 			u.dirty = true
 		}
-		if saveErr := u.panes.save(u.shell, u.now(), true); saveErr != nil {
+		if saveErr := u.panes.save(u.shell.Shell.Preferences(&u.mainView), u.now(), true); saveErr != nil {
 			fmt.Fprintln(stdout, "Pane layout or settings could not be saved:", textsanitize.Safe(saveErr.Error(), false))
 		}
 		if !exited {
@@ -743,7 +744,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			if u.panes != nil {
 				u.ensureShell()
-				u.paneError(u.panes.open(u.shell, result.Thread.Cwd, u.Thread, method == "thread/resume"))
+				u.paneError(u.panes.open(&u.shell.Shell, &u.mainView, result.Thread.Cwd, u.Thread, method == "thread/resume"))
 			}
 			if method == "thread/resume" {
 				repair, err := result.RepairDefaultEffort(&u.Live)
@@ -754,7 +755,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				if repair != nil {
 					// Preserve saved null intent before a corrective dispatch can fail.
 					if u.panes != nil && u.panes.attachment != nil && u.startup.Evidence.Model != "" {
-						if err := u.panes.stage(u.shell.paneState()); err != nil {
+						if err := u.panes.stage(u.shell.Shell.Preferences(&u.mainView)); err != nil {
 							u.paneError(err)
 						} else {
 							u.panes.attachment.Recover(u.startup.Evidence, u.now())

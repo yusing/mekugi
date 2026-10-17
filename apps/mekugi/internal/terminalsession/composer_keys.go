@@ -70,6 +70,10 @@ type ComposerInput struct {
 	Err       error
 }
 
+func (m *Main) Reference(description, text, source string) sessionpresentation.ReferenceIntent {
+	return sessionpresentation.ReferenceIntent{Version: m.session.Version, Target: m.session.EditorTarget(), Description: description, Text: text, Source: source}
+}
+
 // ComposerKey interprets ordinary input after prompt and menu interception.
 // Source: apps/mekugi/internal/router/app_server_ui.go:934:1091@b1ffee83.
 func (m *Main) ComposerKey(key string, prompts *Prompts, transcript *activityui.View) ComposerInput {

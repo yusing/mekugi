@@ -8,18 +8,27 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
-var errOpenComposerEditor = errors.New("open composer editor")
+type composerEditorRequest struct {
+	intent sessionpresentation.ComposerIntent
+}
+
+func (*composerEditorRequest) Error() string { return "open composer editor" }
 
 // Called only after withRawPane has joined its input reader and restored the
 // terminal. The next pane invocation re-enters raw mode and repaints the UI.
-func (u *appServerUI) openComposerEditor(stdin, stdout *os.File) {
+func (u *appServerUI) openComposerEditor(intent sessionpresentation.ComposerIntent, stdin, stdout *os.File) {
 	// Leaving the alternate screen discards its contents. The next paint must
 	// restore every row, including unchanged panes and failed editor launches.
 	if u.shell != nil {
 		u.shell.frame.Rows = nil
+	}
+	if err := u.sessionPresentation().AdmitAcquiredInput(intent, u.conversation()); err != nil {
+		u.setNotice(err.Error(), true)
+		return
 	}
 	file, err := os.CreateTemp("", "mekugi-draft-*.txt")
 	if err != nil {
@@ -38,7 +47,7 @@ func (u *appServerUI) openComposerEditor(stdin, stdout *os.File) {
 		var data []byte
 		data, err = os.ReadFile(path)
 		if err == nil {
-			err = u.applyEditorDraft(string(data))
+			err = u.applyEditorDraft(intent, string(data))
 		}
 	}
 	if err != nil {
@@ -68,7 +77,10 @@ func (u *appServerUI) runEditor(path string, stdin, stdout *os.File) error {
 	return cmd.Run()
 }
 
-func (u *appServerUI) applyEditorDraft(text string) error {
+func (u *appServerUI) applyEditorDraft(intent sessionpresentation.ComposerIntent, text string) error {
+	if err := u.sessionPresentation().AdmitAcquiredInput(intent, u.conversation()); err != nil {
+		return err
+	}
 	defer u.refreshPicker()
 	u.Run = composer.NoRun
 	if q := u.currentQuestion(); q != nil && !q.Note {

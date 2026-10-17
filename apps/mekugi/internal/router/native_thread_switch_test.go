@@ -123,6 +123,7 @@ func TestNativeChildReferenceReturnsToMain(t *testing.T) {
 	u.main.sessionPresentation()
 	u.main.Text = "draft "
 	u.main.testActivity(u.main.agents).setDisplayFilter(true, "/root/reader")
+	u.main.publishPresentation(u.main.now())
 	u.main.agents.FeedLeft, u.main.agents.FeedTop = 1, 1
 	u.main.agents.FeedRight, u.main.agents.FeedRows = 40, 1
 	selectionTestDrag(t, u, 0, 0, 4, 0)

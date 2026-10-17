@@ -86,15 +86,15 @@ func TestNativeControlsPanePersistence(t *testing.T) {
 	u.shell.DiffOpen = true
 	u.shell.Focus = 1
 	p := testPanePreferences()
-	if err := p.open(u.shell, "/workspace", "main", false); err != nil {
+	if err := p.open(&u.shell.Shell, &u.mainView, "/workspace", "main", false); err != nil {
 		t.Fatal(err)
 	}
 	u.shell.Split = 60
-	if err := p.save(u.shell, time.Now(), true); err != nil {
+	if err := p.save(u.shell.Shell.Preferences(&u.mainView), time.Now(), true); err != nil {
 		t.Fatal(err)
 	}
 	resumed := newAppServerSessionTestUI(t, "/workspace")
-	if err := p.open(resumed.shell, "/workspace", "main", true); err != nil {
+	if err := p.open(&resumed.shell.Shell, &resumed.mainView, "/workspace", "main", true); err != nil {
 		t.Fatal(err)
 	}
 	if !resumed.mainView.InterruptLocked || !resumed.shell.DiffOpen || resumed.shell.Focus != 1 {
