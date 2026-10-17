@@ -34,9 +34,11 @@ without publishing provisional values as retained changes.
 Workspace checkpoints are private comparison state. Overlapping application
 windows exchange owner-issued claims so a later comparison does not record an
 already claimed effect. Capture merges sibling observations without mutating their
-inputs or losing command order and repeated-write uncertainty. The application
-selects the earliest witnessed checkpoint and coordinates window completion with
-host and command-segment facts; replay cannot reopen those windows. Patch batches share
+inputs or losing command order and repeated-write uncertainty. It selects the
+earliest witnessed checkpoint from supplied request sequences and reduces admitted
+host outcomes without treating an outer cell's success as nested-command success.
+The application coordinates window completion with host and command-segment facts;
+replay cannot reopen those windows. Patch batches share
 one aggregate capture bound and one endpoint window. The
 [change-evidence contract](../../docs/contracts/change-evidence.md) owns scope,
 coverage, attribution, fallback limits, and acceptance cases.

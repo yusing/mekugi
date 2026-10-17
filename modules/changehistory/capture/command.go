@@ -133,13 +133,27 @@ func (o *Observation) AddCreatedPath(path string, tree bool) {
 	}
 }
 
+// Member carries the original admission sequence independently of display order.
+type Member struct {
+	Observation
+	Sequence uint64
+}
+
 // Merge combines a nonempty set of sibling captures without mutating their storage.
-// For multiple captures, the caller selects Tree from its original call order;
-// capture clocks cannot establish which checkpoint bounds all sibling effects.
-func Merge(observations []Observation) Observation {
-	merged := observations[0]
-	if len(observations) == 1 {
+// Original admission sequence selects the checkpoint bounding sibling effects;
+// capture clocks and supplied member order cannot establish that boundary.
+// Source: apps/mekugi/internal/router/exec_observation.go:163:177@1bcbdd5a.
+func Merge(members []Member) Observation {
+	merged := members[0].Observation
+	if len(members) == 1 {
 		return merged
+	}
+	var tree string
+	var earliest uint64
+	for _, member := range members {
+		if member.Tree != "" && (tree == "" || member.Sequence < earliest) {
+			tree, earliest = member.Tree, member.Sequence
+		}
 	}
 	merged.Commands = slices.Clone(merged.Commands)
 	merged.CommandClasses = merged.CommandClassesForCalls()
@@ -150,7 +164,8 @@ func Merge(observations []Observation) Observation {
 	merged.Omitted = slices.Clone(merged.Omitted)
 	merged.Listings = slices.Clone(merged.Listings)
 	merged.Excluded = slices.Clone(merged.Excluded)
-	for _, other := range observations[1:] {
+	for _, member := range members[1:] {
+		other := member.Observation
 		merged.CodeMode = merged.CodeMode || other.CodeMode
 		merged.RepeatedPaths = merged.RepeatedPaths || other.RepeatedPaths
 		merged.Commands = append(merged.Commands, other.Commands...)
@@ -179,7 +194,7 @@ func Merge(observations []Observation) Observation {
 			merged.WindowStart = other.WindowStart
 		}
 	}
-	merged.Tree = ""
+	merged.Tree = tree
 	return merged
 }
 

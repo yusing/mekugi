@@ -161,20 +161,12 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 	derivedCallID := legacycall.ExecCallID(first.callID, first.history.ExecObservation.CodeMode)
 	correlation := first.callID + "\x00exec"
 	refs := make([]string, 0, len(members))
-	observations := make([]changecapture.Observation, 0, len(members))
-	var tree string
-	var earliest uint64
+	observations := make([]changecapture.Member, 0, len(members))
 	for _, member := range members {
 		refs = append(refs, member.callID)
-		observations = append(observations, *member.history.ExecObservation)
-		// Request sequence selects the checkpoint that bounds every sibling;
-		// command and report order remains the original member order.
-		if checkpoint := member.history.ExecObservation.Tree; checkpoint != "" && (tree == "" || member.history.sequence < earliest) {
-			tree, earliest = checkpoint, member.history.sequence
-		}
+		observations = append(observations, changecapture.Member{Observation: *member.history.ExecObservation, Sequence: member.history.sequence})
 	}
 	observation := changecapture.Merge(observations)
-	observation.Tree = tree
 	script := execObservationScript(observation)
 	if observation.Tree != "" && p.replayStore != nil {
 		// Closing, comparing, and claiming are one step per workspace, so
@@ -197,43 +189,29 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 	outcome.Overlaps, outcome.Background = view.overlaps, background
 	var reports, failureReports []string
 	var hostResults []binding.ToolResult
+	completions := make([]changecapture.Completion, 0, len(members))
 	for index, member := range members {
-		exit, completed, resultText := member.result.ExitCode, member.result.Succeeded, member.result.Text
-		status := changecapture.StatusCompleted
-		switch {
-		case member.history.ExecObservation.CodeMode && completed:
-			// Outer script completion does not prove each nested command
-			// succeeded; nested exit codes are not visible to the router.
-			status = ""
-		case !completed:
-			status = changecapture.StatusFailed
-		}
+		completion := changecapture.Completion{CodeMode: member.history.ExecObservation.CodeMode, Succeeded: member.result.Succeeded, Exit: member.result.ExitCode}
 		if results, confirmed := member.history.nativeCell.Commands(member.history.ExecObservation.Commands, workspace); confirmed {
-			status = changecapture.StatusCompleted
+			completion.Confirmed = true
 			hostResults = append(hostResults, results...)
 			for _, result := range results {
-				if result.Status != "completed" || result.ExitCode == nil || *result.ExitCode != 0 {
-					status = changecapture.StatusFailed
-				}
-			}
-			if len(results) == 1 {
-				exit = results[0].ExitCode
+				completion.Commands = append(completion.Commands, changecapture.CommandOutcome{Completed: result.Status == "completed", Exit: result.ExitCode})
 			}
 		}
+		completions = append(completions, completion)
 		if member.host != nil {
 			hostResults = append(hostResults, *member.host)
 		}
 		if len(members) == 1 {
-			outcome.Exit = exit
-			reports = append(reports, execTruncateReport(resultText, maxExecReportBytes))
+			reports = append(reports, execTruncateReport(member.result.Text, maxExecReportBytes))
 		} else {
-			reports = append(reports, fmt.Sprintf("# call %d\n%s", index+1, execTruncateReport(resultText, maxExecReportBytes/len(members))))
+			reports = append(reports, fmt.Sprintf("# call %d\n%s", index+1, execTruncateReport(member.result.Text, maxExecReportBytes/len(members))))
 		}
-		if index == 0 || status == changecapture.StatusFailed || status == "" && outcome.Status != changecapture.StatusFailed {
-			outcome.Status = status
-		}
-		if status == changecapture.StatusFailed {
-			failureReports = append(failureReports, execTruncateReport(resultText, maxExecReportBytes))
+	}
+	for index, failed := range outcome.ApplyCompletions(completions) {
+		if failed {
+			failureReports = append(failureReports, execTruncateReport(members[index].result.Text, maxExecReportBytes))
 		}
 	}
 	arguments := first.history.CarrierPayload

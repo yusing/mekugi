@@ -4,12 +4,39 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 )
+
+func TestMergedSiblingCheckpointUsesAdmissionOrder(t *testing.T) {
+	isolateSnapshotGit(t)
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "source.txt")
+	writeTestFile(t, path, "before\n")
+	snapshots := newWorkspaces(t.Context(), t.TempDir())
+	t.Cleanup(snapshots.Close)
+	first := snapshots.Checkpoint(t.Context(), workspace)
+	writeTestFile(t, path, "intermediate\n")
+	second := snapshots.Checkpoint(t.Context(), workspace)
+	if first == "" || second == "" || first == second {
+		t.Fatal("fixture requires distinct witnessed checkpoints")
+	}
+	writeTestFile(t, path, "after\n")
+	merged := Merge([]Member{
+		{Observation: Observation{Commands: []commandanalysis.Command{{Command: "second"}}, Tree: second}, Sequence: 20},
+		{Observation: Observation{Commands: []commandanalysis.Command{{Command: "first"}}, Tree: first}, Sequence: 10},
+		{Observation: Observation{Commands: []commandanalysis.Command{{Command: "unwitnessed"}}}, Sequence: 1},
+	})
+	result := Reconcile(t.Context(), merged, Comparison{Workspace: workspace, Workspaces: snapshots})
+	if merged.Tree != first || !slices.Equal(merged.Commands, []commandanalysis.Command{{Command: "second"}, {Command: "first"}, {Command: "unwitnessed"}}) || result.SnapshotError != nil || len(result.Files) != 1 || !strings.Contains(result.Files[0].Diff, "-before") || !strings.Contains(result.Files[0].Diff, "+after") {
+		t.Fatalf("batch lost admission boundary or member order: observation=%+v result=%+v", merged, result)
+	}
+}
 
 func TestMergeObservationsDoesNotMutateFirstMember(t *testing.T) {
 	commands := []commandanalysis.Command{{Command: "first"}, {Command: "command spare"}}
@@ -47,7 +74,7 @@ func TestMergeObservationsDoesNotMutateFirstMember(t *testing.T) {
 	firstBefore.Listings = append([]Listing(nil), first.Listings...)
 	firstBefore.Excluded = append([]string(nil), first.Excluded...)
 
-	merged := Merge([]Observation{*first, *second, *third})
+	merged := Merge([]Member{{Observation: *first}, {Observation: *second}, {Observation: *third}})
 	if !reflect.DeepEqual(*first, firstBefore) {
 		t.Fatalf("merge mutated first member: got %+v, want %+v", *first, firstBefore)
 	}
@@ -97,7 +124,7 @@ func TestMergedExecObservationReconcilesDuplicatePathsAndExcludesSameCellPatch(t
 	if err := os.WriteFile(path, []byte("after\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	members := []Observation{{Files: []File{before}}, {Files: []File{before}}}
+	members := []Member{{Observation: Observation{Files: []File{before}}}, {Observation: Observation{Files: []File{before}}}}
 	merged := Merge(members)
 	result := Reconcile(t.Context(), merged, Comparison{})
 	reviews, complete, coverage := result.Files, result.Complete, result.Coverage
@@ -105,7 +132,7 @@ func TestMergedExecObservationReconcilesDuplicatePathsAndExcludesSameCellPatch(t
 		t.Fatalf("duplicate-path reconciliation = %+v complete=%v coverage=%q", reviews, complete, coverage)
 	}
 
-	excludedMembers := []Observation{{Files: []File{before}}, {Excluded: []string{path}}}
+	excludedMembers := []Member{{Observation: Observation{Files: []File{before}}}, {Observation: Observation{Excluded: []string{path}}}}
 	excluded := Merge(excludedMembers)
 	result = Reconcile(t.Context(), excluded, Comparison{})
 	reviews, complete, coverage = result.Files, result.Complete, result.Coverage
