@@ -310,6 +310,8 @@ func startAppServerUI(conversation *conversationmodel.Service, activity *activit
 							return err
 						}
 						u.dirty = true
+					case result := <-u.shell.markdownFileUpdates():
+						u.dirty = u.shell.loadedMarkdownFile(result) || u.dirty
 					case result := <-u.picker.scanResults:
 						u.applyPickerScan(result)
 					case <-u.commits.Updates():
@@ -1510,7 +1512,7 @@ func (u *appServerUI) ensureShell() {
 	u.sessionPresentation()
 	u.attachActivity()
 	u.view.Conversation = true
-	u.view.Painter.FileLink = u.markdownFileExists
+	u.view.Painter.FileLink = u.markdownFileAllowed
 	if u.shell != nil {
 		return
 	}
@@ -1519,7 +1521,7 @@ func (u *appServerUI) ensureShell() {
 		u.sessionPresentation()
 		u.attachActivity()
 	}
-	u.agents.Painter.FileLink = u.markdownFileExists
+	u.agents.Painter.FileLink = u.markdownFileAllowed
 	u.agents.ChildrenOnly = true
 	u.agents.StatusLabel = "" // Fed by app-server directly, never by a collector connection.
 	u.agents.mainView = u.view

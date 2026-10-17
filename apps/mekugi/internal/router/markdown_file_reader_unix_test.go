@@ -19,7 +19,7 @@ func TestReadMarkdownFileRejectsReplacedDevice(t *testing.T) {
 	if err := os.WriteFile(path, []byte("original\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	selected, _, _, _, ok := markdownFileTarget(workspace, "source.txt")
+	selected, ok := markdownFileTarget(workspace, "source.txt")
 	if !ok {
 		t.Fatal("regular source was not admitted")
 	}

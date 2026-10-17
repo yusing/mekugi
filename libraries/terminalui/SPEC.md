@@ -45,9 +45,9 @@ Inline code uses content-detected syntax colors, with the existing accent for
 plain or unrecognized spans; fenced code uses its language. Styling never changes
 source, wrapping or copying. Recognized local links show their label as a terminal
 hyperlink; wrapping preserves the destination without underlining padding/gutters.
-Raw file-shaped text, including inline code, links only when the caller verifies a
-regular target, using session workspace metadata for relative paths. Missing paths
-and ordinary prose remain unlinked. Spaces may be enclosed in code or an explicit
+Raw file-shaped text and inline code use caller-admitted destinations without
+filesystem probes. The [terminal consumer](../../apps/mekugi/internal/terminalsession/SPEC.md#content-dialogs)
+owns local-file admission and opening. Spaces may be enclosed in code or an explicit
 link. Fenced code stays literal.
 
 ATX headings require one to six markers and a space or line end; closing markers

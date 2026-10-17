@@ -208,15 +208,18 @@ output is absent. [Selection controls](#selection-and-source-copy) govern frozen
 content and Reference/Copy/Clear. Ctrl-B ! opens the newest displayed error;
 arrows page its retained errors.
 
-Recognized regular local links open current UTF-8 contents, up to 8 MiB. Relative
+Recognized local paths are clickable without checking existence during painting.
+Lexical detection can also link slash-shaped prose; opening validates the target.
+Opening reads current regular-file UTF-8 contents, up to 8 MiB. Relative
 paths require session workspace metadata; absolute paths and local file URLs are
 accepted. Workspace paths display relatively, external paths absolutely. A
 selectable path precedes syntax-colored content. Line/range suffixes remain in
 titles, reveal the first line and highlight its number and left padding, not the
 gutter. Markdown opens rendered content with a separate File tab; other files and
 errors have one File view. Tabs keep independent navigation and copy original
-bytes. Binary, oversized or unreadable content shows copyable errors. Reopening
-rereads without monitoring. Missing links retain labels without click targets.
+bytes. Missing, binary, oversized or unreadable content shows copyable errors.
+The dialog shows loading until the read settles; closing or replacing it retires
+that result. Reopening rereads without monitoring.
 HTTP(S) links copy destinations in transcripts and do nothing on dialog click.
 The application resolves and reads files; rendering receives their content or error.
 

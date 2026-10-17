@@ -77,6 +77,7 @@ func (p *uiReplayPlayback) reset() {
 	}
 	u.ensureShell()
 	if previous != nil {
+		u.shell.fileReadSlot = previous.fileReadSlot
 		u.shell.Focus = previous.Focus
 		u.shell.DiffOpen = previous.DiffOpen
 	}
@@ -300,6 +301,13 @@ func (p *uiReplayPlayback) run(keys <-chan byte, paint func() error, headless bo
 		select {
 		case <-p.ctx.Done():
 			return p.ctx.Err()
+		case result := <-p.ui.shell.markdownFileUpdates():
+			if p.ui.shell.loadedMarkdownFile(result) {
+				if err := paint(); err != nil {
+					return err
+				}
+			}
+			continue
 		case <-input.EscapeReady():
 			// A slow paint may leave both the deadline and continuation ready.
 			// Give one queued byte precedence, then return to lifecycle dispatch.

@@ -18,6 +18,7 @@ type outputDialog struct {
 	pages     []outputPage
 	processes bool
 	file      *activitypresentation.DetailFile
+	fileRead  <-chan markdownFileResult
 	laidKey   outputDialogKey
 }
 
@@ -216,6 +217,9 @@ func (d *outputDialog) layout(width int) {
 	if key == d.laidKey {
 		d.Document.Title = d.view.Painter.DialogPageTitle(activityui.Block{Value: page.Value, OutputSnapshot: output}, d.view.Now(), width)
 		return
+	}
+	if d.file != nil && d.file != d.laidKey.file {
+		d.RevealLine(d.file.First)
 	}
 	d.SetDocument(d.view.Painter.DetailDocument(page.DetailPage, output, d.file, width), width)
 	d.laidKey = key

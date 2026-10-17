@@ -21,6 +21,7 @@ type terminalUI struct {
 	input         terminalsession.Decoder
 	diffFailure   string
 	output        *outputDialog // Open over both panes, taking every key.
+	fileReadSlot  chan struct{} // Physical read capacity survives dialog and attachment replacement.
 	diffScreen    *terminalsession.DiffScreen
 	diff          *changeview.Pane
 	saved         savedDiff

@@ -91,7 +91,7 @@ func newAppServerTestUI() (*appServerUI, *appServerTestInput) {
 	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, issues: testCriticalErrors(), history: testHistory(), client: client, view: newActivityAdapter(), requests: sessioncontrol.NewRequests[appServerRequest](appServerTestTransport{client, w}), Thread: "main"}
 	u.session.transcript = u.session.activity.Transcript(u.session.Scope())
 	u.approvals.initGuards(testGuards())
-	u.view.Painter.FileLink = u.markdownFileExists
+	u.view.Painter.FileLink = u.markdownFileAllowed
 	return u, w
 }
 

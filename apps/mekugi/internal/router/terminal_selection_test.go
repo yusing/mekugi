@@ -284,27 +284,21 @@ func TestTerminalUISelectionActions(t *testing.T) {
 	}
 }
 
-func TestTerminalUISelectionLinkClickVersusDrag(t *testing.T) {
-	for _, tt := range []struct{ link, want string }{
-		{"https://example.com/docs?q=hello#section", "https://example.com/docs?q=hello#section"},
-		{"file:///tmp/my%20project/main.go", "/tmp/my project/main.go"},
-	} {
-		t.Run(tt.link, func(t *testing.T) {
-			row := "\x1b]8;;" + tt.link + "\x1b\\docs\x1b]8;;\x1b\\"
-			u := selectionTestUI(row)
-			if !u.selectionMouse(0, 1, 0, false) || !u.selectionMouse(0, 1, 0, true) {
-				t.Fatal("link click unhandled")
-			}
-			want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(tt.want)) + "\x07"
-			if u.selection != nil || u.frame.Clipboard != want {
-				t.Fatalf("click: selection=%v clipboard=%q", u.selection, u.frame.Clipboard)
-			}
-			u = selectionTestUI(row)
-			selectionTestDrag(t, u, 0, 0, 3, 0)
-			if u.frame.Clipboard != "" || u.selection.Text() != "docs" {
-				t.Fatalf("drag copied link or lost text: clipboard=%q text=%q", u.frame.Clipboard, u.selection.Text())
-			}
-		})
+func TestTerminalUISelectionWebLinkClickVersusDrag(t *testing.T) {
+	const link = "https://example.com/docs?q=hello#section"
+	row := "\x1b]8;;" + link + "\x1b\\docs\x1b]8;;\x1b\\"
+	u := selectionTestUI(row)
+	if !u.selectionMouse(0, 1, 0, false) || !u.selectionMouse(0, 1, 0, true) {
+		t.Fatal("link click unhandled")
+	}
+	want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(link)) + "\x07"
+	if u.selection != nil || u.frame.Clipboard != want {
+		t.Fatalf("click: selection=%v clipboard=%q", u.selection, u.frame.Clipboard)
+	}
+	u = selectionTestUI(row)
+	selectionTestDrag(t, u, 0, 0, 3, 0)
+	if u.frame.Clipboard != "" || u.selection.Text() != "docs" {
+		t.Fatalf("drag copied link or lost text: clipboard=%q text=%q", u.frame.Clipboard, u.selection.Text())
 	}
 }
 
