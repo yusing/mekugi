@@ -12,7 +12,6 @@ import (
 
 	json "encoding/json/v2"
 	"fmt"
-	"maps"
 	"slices"
 	"strings"
 
@@ -62,18 +61,11 @@ func (u *appServerUI) updateSettings(change map[string]any) (bool, error) {
 	case sessioncontrol.SettingsAlreadyPending:
 		u.setNotice("Settings update pending", false)
 		return false, nil
-	case sessioncontrol.SettingsThread, sessioncontrol.SettingsTurn:
-		params := map[string]any{"threadId": u.Thread}
-		maps.Copy(params, decision.Change)
-		method := "thread/settings/update"
-		if decision.Action == sessioncontrol.SettingsTurn {
-			method, params["turnId"] = "turn/settings/update", decision.Turn
-		}
-		if err := u.request(method, params); err != nil {
-			return false, err
-		}
 	}
-	u.Settings.Admit(decision)
+	if err := u.requests.ApplySettings(&u.Live, decision); err != nil {
+		return false, err
+	}
+
 	if decision.RestoreDefault {
 		u.retainAppliedSettings()
 	}
@@ -248,35 +240,15 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 		return true, nil
 	}
 	if method == "thread/settings/update" || method == "turn/settings/update" {
+		ack, err := u.Settings.Acknowledge(method, m.Result, m.Error != nil)
+		if err != nil {
+			return true, err
+		}
+		failure := ""
 		if m.Error != nil {
-			u.Settings.Finish()
-			if u.Settings.RestoreEffort {
-				u.restoreDrafts(slices.Concat(u.conversation().Unsent, u.conversation().Queued)...)
-				u.conversation().Unsent, u.conversation().Queued = nil, nil
-				u.setNotice("Could not restore default reasoning: "+m.Error.Message+" · choose /effort VALUE or restart resume", true)
-			} else {
-				u.setNotice(method+": "+m.Error.Message, true)
-			}
-			return true, nil
+			failure = m.Error.Message
 		}
-		// Thread RPC acknowledges enqueueing only; the notification is authoritative.
-		if method == "turn/settings/update" {
-			var result struct {
-				Status string `json:"status"`
-			}
-			if err := json.Unmarshal(m.Result, &result); err != nil {
-				return true, err
-			}
-			u.Settings.Finish()
-			switch result.Status {
-			case "applied":
-				u.setNotice("Settings saved · live update published for subsequent steps", false)
-			case "targetUnavailable":
-				u.setNotice("Settings saved for next turn · live target finished", false)
-			default:
-				u.setNotice("Settings saved · unknown live update status: "+result.Status, true)
-			}
-		}
+		u.applyInputEffects(u.sessionPresentation().SettingsAcknowledged(u.conversation(), method, failure, ack))
 		return true, nil
 	}
 	if m.Method != "thread/settings/updated" {
@@ -330,12 +302,9 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 	}
 	decision := confirmation.Update
 	if decision.Action == sessioncontrol.SettingsTurn {
-		change := maps.Clone(decision.Change)
-		change["threadId"], change["turnId"] = u.Thread, decision.Turn
-		if err := u.request("turn/settings/update", change); err != nil {
+		if err := u.requests.ApplySettings(&u.Live, decision); err != nil {
 			return true, err
 		}
-		u.Settings.Admit(decision)
 		u.setNotice("Settings saved · updating active turn…", false)
 	} else {
 		u.setNotice("Settings saved for next turn", false)

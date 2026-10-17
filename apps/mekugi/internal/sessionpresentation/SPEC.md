@@ -195,6 +195,14 @@ Effects returned to the renderer identify pending input and changed prompt recor
 without embedding cursor positions, painted sequences or host response handles.
 Acquisition and transport remain outside the serialized presentation transition.
 
+Compaction, interruption and settings acknowledgements apply their control
+dispositions to the same Conversation queues without a renderer. Rejected compact
+starts restore the command before waiting input; rejected prerequisite interrupts
+restore waiting input and retain the active turn's status. Rejected expedited
+steers restore waiting input only after the interrupted turn has ended. A failed
+default-effort repair restores waiting input while keeping the repair gate visible.
+The terminal receives only editor-restoration effects and user feedback.
+
 ## Session title and progress
 
 `/title NAME` immediately names Main without interrupting work or submitting model

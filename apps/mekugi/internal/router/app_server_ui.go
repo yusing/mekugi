@@ -607,39 +607,15 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			return nil
 		}
-		if method == "thread/compact/start" {
-			u.CompactResponse(m.Error != nil)
+		if method == "thread/compact/start" || method == "compact/interrupt" || method == "steer/interrupt" || method == "turn/interrupt" {
+			failure := ""
 			if m.Error != nil {
-				u.restoreDrafts(append([]conversationmodel.Input{{Text: "/compact"}}, slices.Concat(u.conversation().Unsent, u.conversation().Queued)...)...)
-				u.conversation().Unsent, u.conversation().Queued = nil, nil
-				u.setNotice("Compaction failed: "+m.Error.Message, true)
-				u.sessionPresentation().Status.SetText("Ready")
+				failure = m.Error.Message
 			}
-			return nil
-		}
-		if method == "compact/interrupt" {
-			u.InterruptResponse(method, m.Error != nil)
-			if m.Error != nil {
-				u.restoreDrafts(slices.Concat(u.conversation().Unsent, u.conversation().Queued)...)
-				u.conversation().Unsent, u.conversation().Queued = nil, nil
-				u.setNotice("Could not interrupt for compaction: "+m.Error.Message, true)
-				u.sessionPresentation().Status.SetText("Ready")
-				if u.Turn != "" {
-					u.sessionPresentation().Status.SetText("Working")
-				}
-			}
-			return nil
-		}
-		if method == "steer/interrupt" {
-			restore := u.InterruptResponse(method, m.Error != nil)
-			if m.Error != nil {
-				// The completion can precede this rejection. Do not deliver
-				// steers that were moved to the local stack in that interval.
-				if restore {
-					u.restoreDrafts(slices.Concat(u.conversation().Unsent, u.conversation().Queued)...)
-					u.conversation().Unsent, u.conversation().Queued = nil, nil
-				}
-				u.setNotice("Could not interrupt to send steer: "+m.Error.Message, true)
+			if method == "thread/compact/start" {
+				u.applyInputEffects(u.sessionPresentation().AcknowledgeCompaction(&u.Live, u.conversation(), failure, m.Error != nil))
+			} else {
+				u.applyInputEffects(u.sessionPresentation().AcknowledgeInterrupt(&u.Live, u.conversation(), method, failure, m.Error != nil))
 			}
 			return nil
 		}
@@ -661,9 +637,6 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			u.sessionPresentation().Status.Set(method+": "+m.Error.Message, true)
 			if method == "initialize" || method == "thread/start" || method == "thread/resume" {
 				return errors.New(u.sessionPresentation().Status.Text)
-			}
-			if method == "turn/interrupt" {
-				u.InterruptResponse(method, true)
 			}
 			return nil
 		}

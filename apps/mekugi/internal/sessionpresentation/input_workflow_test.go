@@ -20,6 +20,7 @@ type inputTransport struct {
 	method   string
 	params   map[string]any
 	sequence int
+	err      error
 }
 
 func (t *inputTransport) Initialize() (string, error)       { return "initialize", nil }
@@ -27,7 +28,7 @@ func (t *inputTransport) Respond(jsontext.Value, any) error { return nil }
 func (t *inputTransport) Send(method string, params any, _ bool) (string, error) {
 	t.sequence++
 	t.method, t.params = method, params.(map[string]any)
-	return strconv.Itoa(t.sequence), nil
+	return strconv.Itoa(t.sequence), t.err
 }
 
 func TestInputWorkflowWithoutRenderer(t *testing.T) {

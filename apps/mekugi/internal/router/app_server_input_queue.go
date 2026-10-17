@@ -199,7 +199,7 @@ func (u *appServerUI) applyInputEffects(effects sessionpresentation.InputEffects
 	}
 	u.applyInputRestoration(effects.Restored)
 	if effects.Notice != "" {
-		u.setNotice(effects.Notice, false)
+		u.setNotice(effects.Notice, effects.NoticeError)
 	}
 }
 

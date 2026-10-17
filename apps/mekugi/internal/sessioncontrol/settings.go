@@ -1,6 +1,8 @@
 package sessioncontrol
 
 import (
+	"encoding/json/jsontext"
+	json "encoding/json/v2"
 	"maps"
 
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
@@ -102,6 +104,57 @@ func (o *Settings) RestoredEffort() { o.RestoreEffort = false }
 type SettingsConfirmation struct {
 	Requested, ChooseTier bool
 	Update                SettingsPlan
+}
+
+// ApplySettings admits an already prepared plan only after successful dispatch.
+// It shares Main's request scope, including its retirement on replacement.
+// Source: apps/mekugi/internal/router/app_server_settings.go:56:95,331:340@a4869fd4.
+func (r *Requests[T]) ApplySettings(control *Live, plan SettingsPlan) error {
+	switch plan.Action {
+	case SettingsThread, SettingsTurn:
+		params := make(map[string]any, len(plan.Change)+2)
+		maps.Copy(params, plan.Change)
+		params["threadId"] = control.Thread
+		method := "thread/settings/update"
+		if plan.Action == SettingsTurn {
+			method, params["turnId"] = "turn/settings/update", plan.Turn
+		}
+		var owner T
+		if _, err := r.Send(method, params, "main", owner); err != nil {
+			return err
+		}
+	case SettingsUnchanged:
+	default:
+		return nil
+	}
+	control.Settings.Admit(plan)
+	return nil
+}
+
+type SettingsAcknowledgement struct {
+	Failed, RestoreWaiting bool
+	Status                 string
+}
+
+// Acknowledge settles only the correlated RPC. A successful thread update waits
+// for the authoritative settings notification before releasing dependent input.
+// Source: apps/mekugi/internal/router/app_server_settings.go:250:284@a4869fd4.
+func (o *Settings) Acknowledge(method string, result jsontext.Value, failed bool) (SettingsAcknowledgement, error) {
+	ack := SettingsAcknowledgement{Failed: failed}
+	if failed {
+		o.Finish()
+		ack.RestoreWaiting = o.RestoreEffort
+	} else if method == "turn/settings/update" {
+		var response struct {
+			Status string `json:"status"`
+		}
+		if err := json.Unmarshal(result, &response); err != nil {
+			return ack, err
+		}
+		o.Finish()
+		ack.Status = response.Status
+	}
+	return ack, nil
 }
 
 // Confirmed consumes authoritative settings. A live update can target only the

@@ -63,6 +63,7 @@ type InputEffects struct {
 	Restored         conversationmodel.InputRestoration
 	Withdrawn        string
 	Notice           string
+	NoticeError      bool
 	InterruptedStart bool
 }
 
