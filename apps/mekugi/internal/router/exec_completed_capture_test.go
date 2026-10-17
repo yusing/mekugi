@@ -39,7 +39,7 @@ func TestNativeCompletedReceiptWithdrawal(t *testing.T) {
 	awaitMain(t, u, "Edited")
 	frame.EditReceipt = ""
 	u.preview(frame, false)
-	for _, view := range []*activityAdapter{u.view, u.agents} {
+	for _, view := range []*activityAdapter{u.testActivity(u.view), u.testActivity(u.agents)} {
 		for _, entry := range view.Entries {
 			if entry.Source.Native != nil && entry.Source.Native.CapturedEdit != nil {
 				t.Fatal("UI retained a withdrawn receipt")

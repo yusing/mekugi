@@ -35,7 +35,7 @@ func TestObservedEditReceiptBeforeHostItemSurvivesSegmentRefresh(t *testing.T) {
 		HostItems: []string{"cmd"}, Files: []diffmodel.ReviewFile{file}, EditReceipt: "Edit `a.go` +1 -1 · python3"}, false)
 	command := "python3 - <<'PY'\np='a.go';s=open(p).read().replace('before','after');open(p,'w').write(s)\nPY\ngo test ./..."
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: command, Status: "inProgress"}})
-	for _, view := range []*activityAdapter{u.view, u.agents} {
+	for _, view := range []*activityAdapter{u.testActivity(u.view), u.testActivity(u.agents)} {
 		for _, entry := range view.Entries {
 			if entry.Source.Native == nil || entry.Source.Native.Item != "cmd" {
 				continue
@@ -45,7 +45,7 @@ func TestObservedEditReceiptBeforeHostItemSurvivesSegmentRefresh(t *testing.T) {
 			native.CapturedEdit = nil // Host refresh carries no router receipt.
 			native.Segments = []sessionpresentation.ActivitySegment{{Source: "python3", Text: "Edit `a.go` · python3 (requested)"}, {Source: "go test ./...", Text: "Run `go test ./...`", Running: true}}
 			view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 99, Agent: entry.Source.Agent, Kind: "tool", CallID: entry.Source.CallID, Text: entry.Source.Text, Native: &native}}})
-			if !u.shell.openActivityEdit(view, entry.Source.Seq, "a.go") || !strings.Contains(u.shell.output.pages[0].Code, "+after") {
+			if !u.shell.openActivityEdit(view.bind(u.shell), entry.Source.Seq, "a.go") || !strings.Contains(u.shell.output.pages[0].Code, "+after") {
 				t.Fatal("early observed source was lost")
 			}
 			u.shell.outputKey("\x1b")
@@ -99,9 +99,9 @@ func TestAppServerTrackedEditReceiptPreservesSegments(t *testing.T) {
 	for _, thread := range []string{"main", "child"} {
 		t.Run(thread, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			view := u.view
+			view := u.testActivity(u.view)
 			if thread == "child" {
-				view = u.agents
+				view = u.testActivity(u.agents)
 			}
 			sources := []string{"cat > a.go", "mv b.go.new b.go", "go test ./...", "mv failed.go.new failed.go", "mv skipped.go.new skipped.go"}
 			var segments []sessionpresentation.ActivitySegment
@@ -163,13 +163,13 @@ func TestUISnapshotTrackedEditReceiptOutputSourceOnlyInDialog(t *testing.T) {
 			Timing: segmenttransport.Timing{Started: started, Ended: started.Add(elapsed), ElapsedNS: int64(elapsed)}})
 	}
 	command := "cat > a.go; go vet ./...; cat > b.go"
-	u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
+	u.testActivity(u.agents).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
 		Seq: 1, Agent: "/root/child", Kind: "tool", CallID: "cmd", Text: toolActivityShell(command),
 		Native: &sessionpresentation.NativeItem{Thread: "child", Item: "cmd", Command: command, Segments: segments},
 	}}})
-	u.agents.ApplyCapturedEdits(trackedEditReceiptData("child", "cmd"))
+	u.childSource.ApplyCapturedEdits(trackedEditReceiptData("child", "cmd"))
 	var outputs []string
-	for _, block := range u.agents.blocks(0) {
+	for _, block := range u.testActivity(u.agents).blocks(0) {
 		if block.Output == 0 {
 			continue
 		}
@@ -181,11 +181,11 @@ func TestUISnapshotTrackedEditReceiptOutputSourceOnlyInDialog(t *testing.T) {
 	if want := []string{"Edited `a.go` 1s", "Run  2s", "Edited `b.go` 3s"}; !slices.Equal(outputs, want) {
 		t.Fatalf("output placement = %q, want %q", outputs, want)
 	}
-	pages := activityui.Disclosure(nil).Blocks(sessionpresentation.CommandPresentation(u.agents.Entries[0].Source).DetailValues())
+	pages := activityui.Disclosure(nil).Blocks(sessionpresentation.CommandPresentation(u.childSource.Entries[0].Source).DetailValues())
 	if len(pages) != 3 || pages[0].Code != "cat > a.go" || pages[2].Code != "cat > b.go" {
 		t.Fatalf("edit output dialog: %+v", pages)
 	}
-	feed := u.agents.RenderFeed(100, 20)
+	feed := u.testActivity(u.agents).RenderFeed(100, 20)
 	assertNativeUISnapshot(t, "captured-edit-output", feed.Lines)
 	row := slices.IndexFunc(feed.Lines, func(line string) bool { return strings.Contains(ansi.Strip(line), "a.go diagnostic") })
 	if row < 0 || feed.Snippets[row].Block == activityui.EditNavigationSnippet || !u.shell.openOutput(u.agents, feed.Snippets[row]) {
@@ -253,13 +253,13 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 			setTestAppServerIntegration(restored, testProxyWithStore(testReplayStore(mekugiReplayStore{directory: store.directory})))
 			restored.review.Projection.Data = reviewReceiptSnapshot(t, trackedEditReceiptData(thread, item.ID))
 			turns := []binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}}
-			view := restored.view
+			view := restored.testActivity(restored.view)
 			if thread == "main" {
 				restored.restoreHistory(turns)
 			} else {
 				restored.session.path(thread)
 				restored.restoreActivityThread(binding.ThreadInfo{ID: thread, Cwd: workspace, Turns: turns}, false)
-				view = restored.agents
+				view = restored.testActivity(restored.agents)
 			}
 			if len(view.Entries) != 1 || view.Entries[0].Source.Native == nil || len(view.Entries[0].Source.Native.Segments) != 3 {
 				t.Fatalf("tracked history missing: %+v", view.Entries)
@@ -282,7 +282,7 @@ func TestAppServerTrackedEditReceiptKeepsSiblingCombinedOutput(t *testing.T) {
 		output := u.session.activity.Outputs(u.session.Scope()).New()
 		output.Finish(new("host diagnostic"), new(0))
 		command := "cat > a.go; cat > b.go"
-		u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
+		u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
 			Seq: 1, Agent: "Main", Kind: "tool", CallID: "sibling", Text: toolActivityShell(command), OutputTail: tail,
 			Native: &sessionpresentation.NativeItem{Thread: "main", Item: "sibling", Command: command, Output: output, Segments: []sessionpresentation.ActivitySegment{
 				{Source: "cat > a.go", Text: execSegmentText("cat > a.go")},
@@ -291,12 +291,12 @@ func TestAppServerTrackedEditReceiptKeepsSiblingCombinedOutput(t *testing.T) {
 		}}})
 		data := trackedEditReceiptData("main", "anchor", "sibling")
 		for range 2 {
-			u.view.ApplyCapturedEdits(data)
-			blocks := u.view.blocks(0)
-			if len(blocks) != 1 || blocks[0].Verb != "Edited" || blocks[0].Code != "" || u.view.RetainedOutput(blocks[0].Source, blocks[0].Output) != output || !reflect.DeepEqual(blocks[0].Tail, tail) {
+			u.source.ApplyCapturedEdits(data)
+			blocks := u.testActivity(u.view).blocks(0)
+			if len(blocks) != 1 || blocks[0].Verb != "Edited" || blocks[0].Code != "" || u.source.RetainedOutput(blocks[0].Source, blocks[0].Output) != output || !reflect.DeepEqual(blocks[0].Tail, tail) {
 				t.Fatalf("grouped sibling lost combined host output: %+v", blocks)
 			}
-			if page := u.view.Painter.DialogPage(snapshotOutput(blocks[0], u.view.RetainedOutput(blocks[0].Source, blocks[0].Output)), 100); page.Text != "host diagnostic" {
+			if page := u.view.Painter.DialogPage(snapshotOutput(blocks[0], u.source.RetainedOutput(blocks[0].Source, blocks[0].Output)), 100); page.Text != "host diagnostic" {
 				t.Fatalf("combined output dialog lost content: %q", page.Text)
 			}
 		}
@@ -337,14 +337,14 @@ func TestObservedEditReceiptsBeforeHostRows(t *testing.T) {
 				path, call := fmt.Sprintf("a%d.go", i), fmt.Sprintf("cmd%d", i)
 				appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": binding.ThreadItem{
 					ID: call, Type: "commandExecution", Command: "cat > " + path + " <<'EOF'\nafter\nEOF\ngo test ./...", Status: "inProgress"}})
-				for _, view := range []*activityAdapter{u.view, u.agents} {
+				for _, view := range []*activityAdapter{u.testActivity(u.view), u.testActivity(u.agents)} {
 					found := false
 					for _, entry := range view.Entries {
 						if entry.Source.Native == nil || entry.Source.Native.Item != call {
 							continue
 						}
 						found = true
-						if !u.shell.openActivityEdit(view, entry.Source.Seq, path) {
+						if !u.shell.openActivityEdit(view.bind(u.shell), entry.Source.Seq, path) {
 							t.Fatalf("%s: observed Edited link cannot open before durable capture", call)
 						}
 						code := u.shell.output.pages[0].Code

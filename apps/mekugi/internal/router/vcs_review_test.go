@@ -204,11 +204,11 @@ func TestSessionUIReplayVCSKeepsRetainedEvidenceAcrossReset(t *testing.T) {
 		if p.ui.commits != nil {
 			t.Fatal("replay acquired a Git reader")
 		}
-		previous := p.ui.view.Model
+		previous := p.ui.source.Model
 		if err := p.seek(0); err != nil {
 			t.Fatal(err)
 		}
-		if p.ui.view.Model == previous || strings.Contains(mainFeed(p.ui, 90), "b.go") {
+		if p.ui.source.Model == previous || strings.Contains(mainFeed(p.ui, 90), "b.go") {
 			t.Fatal("backward reset retained future VCS rows")
 		}
 	}

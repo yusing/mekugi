@@ -76,7 +76,7 @@ func (u *terminalUI) markdownFileUpdates() <-chan markdownFileResult {
 
 // openMarkdownFile publishes loading before starting one bounded physical read.
 // Retiring a dialog cannot release the slot of a still-blocked filesystem call.
-func (u *terminalUI) openMarkdownFile(view *activityAdapter, target string) bool {
+func (u *terminalUI) openMarkdownFile(view *activityui.View, target string) bool {
 	workspace := ""
 	if u.main != nil {
 		workspace = u.main.session.cwd

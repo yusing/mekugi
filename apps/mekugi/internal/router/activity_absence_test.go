@@ -12,7 +12,7 @@ func TestActivityAbsenceKeepsHostOutput(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.session.activity = nil
 	u.view.Conversation = true
-	u.view.testAudience()
+	u.testActivity(u.view).testAudience()
 	item := binding.ThreadItem{ID: "command", Type: "commandExecution", Command: "printf 'host output'", Status: "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	appServerTestNotify(t, u, "item/commandExecution/outputDelta", map[string]any{"threadId": "main", "turnId": "turn", "itemId": item.ID, "delta": "host output\n"})
@@ -22,7 +22,7 @@ func TestActivityAbsenceKeepsHostOutput(t *testing.T) {
 	awaitMain(t, u, "exit 3")
 	appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.session.cwd, "failed")})
 	hookShown := false
-	for _, entry := range u.view.Entries {
+	for _, entry := range u.source.Entries {
 		for _, block := range u.view.Disclosure.Blocks(entry.Values) {
 			if block.Output != 0 {
 				t.Fatal("absent activity retained output")
@@ -50,7 +50,7 @@ func TestActivityAbsenceKeepsOfflineReplay(t *testing.T) {
 	if frame := replayPlaybackTestPaint(t, p, 120, 28); !strings.Contains(frame, "Repaint diagnosis complete") {
 		t.Fatalf("absent activity blocked replay: %s", frame)
 	}
-	for _, entry := range p.ui.view.Entries {
+	for _, entry := range p.ui.source.Entries {
 		if entry.Source.Native != nil && entry.Source.Native.Output != nil {
 			t.Fatal("offline replay retained output without activity")
 		}
@@ -71,7 +71,7 @@ func TestActivityAbsenceUnknownExit(t *testing.T) {
 			item := binding.ThreadItem{ID: "command", Type: "commandExecution", Command: "go test ./...", Status: "failed", AggregatedOutput: new("interrupted\n")}
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 			found := false
-			for _, entry := range u.view.Entries {
+			for _, entry := range u.source.Entries {
 				for _, block := range u.view.Disclosure.Blocks(entry.Values) {
 					if block.Verb != "Run" {
 						continue
@@ -102,7 +102,7 @@ func TestActivityAbsenceDialogRefresh(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.view.Conversation = true
-			u.view.testAudience()
+			u.testActivity(u.view).testAudience()
 			if absent {
 				u.session.activity = nil
 			}
@@ -116,7 +116,7 @@ func TestActivityAbsenceDialogRefresh(t *testing.T) {
 			notify("item/commandExecution/outputDelta", map[string]any{"itemId": item.ID, "delta": "first\n"})
 			awaitMain(t, u, "first")
 			var seq uint64
-			for _, entry := range u.view.Entries {
+			for _, entry := range u.source.Entries {
 				if entry.Source.Native != nil && entry.Source.Native.Item == item.ID {
 					seq = entry.Source.Seq
 					break

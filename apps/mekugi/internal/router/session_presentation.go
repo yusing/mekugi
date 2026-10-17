@@ -41,12 +41,10 @@ func (u *appServerUI) sessionPresentation() *sessionpresentation.Model {
 
 func (u *appServerUI) attachPresentation() {
 	u.attachReview()
+	u.attachActivity()
 	u.bindConversation()
 	m := u.sessionPresentation()
 	m.Attach(sessionpresentation.Thread{ID: cmp.Or(u.Thread, "/root"), Caller: "/root"}, u.replay != nil)
-	if u.agents != nil {
-		u.agents.display = m
-	}
 }
 
 // settlePresentation runs before another intent can observe this session.
@@ -55,20 +53,8 @@ func (u *appServerUI) settlePresentation() {
 	u.autoOpenApprovals()
 	u.autoOpenQuestions()
 	u.publishPresentation(u.now())
-	if u.view != nil {
-		u.view.publishActivity()
-	}
-	if u.agents != nil {
-		u.agents.publishActivity()
-	}
+	u.publishActivity()
 }
-
-func (v *activityAdapter) displayingChild() bool {
-	view := v.display.View()
-	return view.Displayed.ID != view.Main.ID
-}
-
-func (v *activityAdapter) displayedCaller() string { return v.display.View().Displayed.Caller }
 
 // displaySession accepts detached targets without consulting terminal state.
 func (u *appServerUI) displaySession(intent sessionpresentation.DisplayIntent) bool {
@@ -83,21 +69,4 @@ func (u *appServerUI) displaySession(intent sessionpresentation.DisplayIntent) b
 		return false
 	}
 	return true
-}
-
-// Roster keys and hit targets resolve to stable thread identities before
-// admission. The highlighted row remains renderer-local.
-func (v *activityAdapter) displayTarget(caller string) sessionpresentation.Thread {
-	view := v.display.View()
-	target := view.Main
-	if caller != "/root" && caller != "" {
-		target = sessionpresentation.Thread{ID: caller, Caller: caller}
-		for _, row := range v.Model.Roster() {
-			if row.Agent.Name == caller {
-				target.ID = cmp.Or(row.Agent.Thread, caller)
-				break
-			}
-		}
-	}
-	return target
 }

@@ -54,12 +54,12 @@ func TestTerminalSourceSelectionDirectionsAndActions(t *testing.T) {
 					u := selectionTestUI(rows...)
 					u.frame.Copy = append(meta, nil)
 					if activity {
-						u.agents = newActivityAdapter()
+						u.agents = activityui.NewView()
 						u.agents.FeedLeft, u.agents.FeedTop = 1, 1
 						u.agents.FeedRight, u.agents.FeedRows = 40, len(rows)
 						u.main.agents = u.agents
 						u.main.sessionPresentation()
-						u.agents.setDisplayFilter(true, "/root/worker")
+						u.main.testActivity(u.agents).setDisplayFilter(true, "/root/worker")
 					}
 					if x < 0 {
 						t.Fatal("no cell")
@@ -200,7 +200,7 @@ func TestTerminalSourceScrolledMainReply(t *testing.T) {
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	// Scroll back to the original reply above a long trailing tool run.
 	u.Turn = "running"
-	u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "**original reply**", Observed: time.Now()}, {Seq: 2, Agent: "Main", Kind: "tool", Text: "Run: go test\n" + strings.Repeat("output\n", 100), Observed: time.Now()}}})
+	u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "**original reply**", Observed: time.Now()}, {Seq: 2, Agent: "Main", Kind: "tool", Text: "Run: go test\n" + strings.Repeat("output\n", 100), Observed: time.Now()}}})
 	u.view.Following, u.view.Offset = false, 0
 	screen := vt.NewEmulator(80, 30)
 	defer screen.Close()
@@ -240,16 +240,16 @@ func TestTerminalSourceRenderedTables(t *testing.T) {
 				u, _ := newAppServerTestUI()
 				u.ensureShell()
 				t.Cleanup(func() { u.shell.diffScreen.Close() })
-				view := u.view
+				view := u.testActivity(u.view)
 				if activity {
-					view = u.agents
-					u.agents.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
+					view = u.testActivity(u.agents)
+					u.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
 					u.shell.DiffOpen = false
 				}
 				applyTranscriptFixture(view, true, "", "main", "main", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: source})
 				var wire bytes.Buffer
-				if view == u.agents {
-					u.agents.setDisplayFilter(true, "Main")
+				if view.View == u.agents {
+					u.testActivity(u.agents).setDisplayFilter(true, "Main")
 				}
 				if err := u.testPaint(&wire, width, 50); err != nil {
 					t.Fatal(err)
@@ -287,11 +287,11 @@ func TestTerminalSourceActivityCodeTabs(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
-	u.agents.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
+	u.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
 	u.shell.DiffOpen = false
-	applyTranscriptFixture(u.agents, true, "", "main", "main", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "```\n\tx := 1  \n```"})
+	applyTranscriptFixture(u.testActivity(u.agents), true, "", "main", "main", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "```\n\tx := 1  \n```"})
 	var wire bytes.Buffer
-	u.agents.setDisplayFilter(true, "Main")
+	u.testActivity(u.agents).setDisplayFilter(true, "Main")
 	if err := u.testPaint(&wire, 120, 40); err != nil {
 		t.Fatal(err)
 	}

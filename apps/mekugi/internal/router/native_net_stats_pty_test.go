@@ -48,7 +48,7 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 	publish("unrelated", "/root/other", "unrelated", "", filepath.Join(workspace, "unrelated.txt"), "", "unrelated\n")
 
 	u := newAppServerSessionTestUI(t, workspace)
-	u.agents.Agents = []sessionpresentation.ActivityAgent{{Name: "/root"}, {Name: "/root/worker"}}
+	u.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root"}, {Name: "/root/worker"}}
 	u.shell.Focus = 3
 	setSavedReviewStore(u.shell, store)
 	scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}}

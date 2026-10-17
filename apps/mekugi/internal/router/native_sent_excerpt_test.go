@@ -35,14 +35,14 @@ func TestNativeSentMessagesBecomeExcerptsOutOfView(t *testing.T) {
 		if err := u.testPaint(&bytes.Buffer{}, 120, 28); err != nil {
 			t.Fatal(err)
 		}
-		return ansi.Strip(strings.Join(u.view.RenderFeed(110, 50).Lines, "\n"))
+		return ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(110, 50).Lines, "\n"))
 	}
 	// The thread has moved past the spawn, which shrinks in place as before.
 	if main := paint(); !strings.Contains(main, "Spawn first line.") || !strings.Contains(main, "Follow last line.") || strings.Contains(main, "Open assignment") {
 		t.Fatalf("messages in view were shortened:\n%s", main)
 	}
 	for i := range 30 {
-		applyTranscriptFixture(u.view, true, "", "main", "main", u.Turn, fmt.Sprint("note-", i), "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: fmt.Sprint("Main note ", i, ".")})
+		applyTranscriptFixture(u.testActivity(u.view), true, "", "main", "main", u.Turn, fmt.Sprint("note-", i), "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: fmt.Sprint("Main note ", i, ".")})
 	}
 	paint() // Scrolls both messages above the viewport.
 	main := paint()
@@ -53,7 +53,7 @@ func TestNativeSentMessagesBecomeExcerptsOutOfView(t *testing.T) {
 		t.Fatal(err)
 	}
 	var seq, activity uint64
-	for _, entry := range u.view.Entries {
+	for _, entry := range u.source.Entries {
 		if entry.Source.Kind == "assignment" {
 			seq, activity = entry.Source.Seq, entry.Source.ActivitySeq
 		}
@@ -141,7 +141,7 @@ func TestMainBatchCollapsesOutOfView(t *testing.T) {
 	}
 	row := slices.IndexFunc(feed.Lines, func(line string) bool { return strings.Contains(line, "Searched") })
 	u := &terminalUI{}
-	if !u.openOutput(v, feed.Snippets[row]) || len(u.output.pages) != 3 {
+	if !u.openOutput(v.bind(u), feed.Snippets[row]) || len(u.output.pages) != 3 {
 		t.Fatalf("collapsed batch did not open its operations in the dialog: %+v", u.output)
 	}
 }
@@ -150,7 +150,7 @@ func TestMainBatchKeepsUnconfirmedHostItemsOutOfView(t *testing.T) {
 	for _, status := range []string{"completed", "declined", "failed"} {
 		u := newAppServerSessionTestUI(t, t.TempDir())
 		u.view.Conversation = true
-		u.view.testAudience()
+		u.testActivity(u.view).testAudience()
 		search := map[string]any{"id": "search", "type": "commandExecution", "command": "rg zzz", "status": status,
 			"commandActions": []map[string]any{{"type": "search", "command": "rg zzz", "query": "zzz"}}}
 		if status == "completed" {
@@ -165,7 +165,7 @@ func TestMainBatchKeepsUnconfirmedHostItemsOutOfView(t *testing.T) {
 				"id": fmt.Sprint("note-", i), "type": "agentMessage", "text": fmt.Sprint("Note ", i, ".")}})
 		}
 		const width, rows = 60, 6
-		v := u.view
+		v := u.testActivity(u.view)
 		feed := v.RenderFeed(width, rows)
 		v.Following, v.Offset = false, len(feed.Lines)-rows
 		v.Viewport(feed, rows)
@@ -199,8 +199,8 @@ func TestUISnapshotMainBatchWithFailedCommand(t *testing.T) {
 					appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": binding.ThreadItem{ID: fmt.Sprint("note-", i), Type: "agentMessage", Text: fmt.Sprint("Note ", i, ".")}})
 				}
 			}
-			finishPacing(u.view, u.agents)
-			v := u.view
+			finishPacing(u.testActivity(u.view), u.testActivity(u.agents))
+			v := u.testActivity(u.view)
 			feed := v.RenderFeed(100, 6)
 			v.Viewport(feed, 6)
 			feed = v.RenderFeed(100, 6)

@@ -76,15 +76,15 @@ func (u *appServerUI) restoreContentNotice(message string) {
 
 func (u *appServerUI) restoreHistoryNotice(message string, incomplete bool) {
 	if incomplete {
-		u.agents.Coverage = "History incomplete"
+		u.childSource.Coverage = "History incomplete"
 	}
 	if r := u.restoring; r != nil && !r.state.View().Rendered {
 		r.notices = append(r.notices, restoredHistoryNotice{message, incomplete}) // Shown after Main's history.
 		return
 	}
-	u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.view.LastSeq + 1, Agent: "Session", Kind: "text", Text: message, Observed: time.Now()}}})
+	u.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: message, Observed: time.Now()}}})
 	// Notices advance Main independently of the Activity sequence.
-	u.session.seq = max(u.session.seq, u.view.LastSeq)
+	u.session.seq = max(u.session.seq, u.source.LastSeq)
 }
 
 func (u *appServerUI) restoreActivityResponse(method string, m appserver.Message) error {
@@ -155,14 +155,14 @@ func (u *appServerUI) readRestoredChildren() error {
 				u.applyRestoredActivity(entries)
 				for _, entry := range entries {
 					if main, ok := sessionpresentation.MainActivityEntry(entry); ok {
-						seq := u.agents.EntrySeq(entry)
+						seq := u.childSource.EntrySeq(entry)
 						r.main = append(r.main, &restoredPlacement{entry: main, turn: turn.ID, anchor: item.ID, at: entry.Observed, link: &seq})
 					}
 				}
 			}
 		}
 	}
-	u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.roster()})
+	u.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.roster()})
 	return u.readNextRestoredChild()
 }
 
@@ -264,7 +264,7 @@ func (u *appServerUI) applyRestoredActivity(entries []sessionpresentation.Activi
 	for i := range entries {
 		entries[i].Agent = sessionpresentation.ActivityOwner(entries[i])
 	}
-	u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: entries, Agents: u.session.roster()})
+	u.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: entries, Agents: u.session.roster()})
 	u.applyCapturedEdits()
 }
 
@@ -293,7 +293,7 @@ func (u *appServerUI) restoreActivityThread(info binding.ThreadInfo, olderPage b
 		s.lifecycle(info.ID).Restore(restoredAgentIntervals(info.Turns), uint64(len(info.Turns)), false)
 	}
 	u.observeCost(info.ID, agent)
-	u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: s.roster()})
+	u.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: s.roster()})
 	var r *appServerActivityRestore
 	var itemAt map[string]time.Time
 	byTurn := make(map[int][]*restoredPlacement)
@@ -361,7 +361,7 @@ func (u *appServerUI) restoreActivityThread(info binding.ThreadInfo, olderPage b
 		}
 		for i, entry := range entries {
 			if main, ok := sessionpresentation.MainActivityEntry(entry); ok {
-				seq := u.agents.EntrySeq(entry)
+				seq := u.childSource.EntrySeq(entry)
 				r.main = append(r.main, &restoredPlacement{entry: main, at: times[i], link: &seq})
 			}
 		}

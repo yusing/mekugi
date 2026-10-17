@@ -79,14 +79,14 @@ func TestNativeDisplayedThreadIndependentOfRosterFocus(t *testing.T) {
 		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "work"}})
 	}
 	first := u.session.Transcript("first", "work").Turn
-	u.agents.displayThread("/root/first")
+	u.testActivity(u.agents).displayThread("/root/first")
 	u.agents.Selected = "/root/second"
-	u.agents.testKeepSelection()
+	u.testActivity(u.agents).testKeepSelection()
 	view := u.sessionPresentation().View()
 	if view.Displayed.ID != "first" || view.Input.ID != "main" || !u.composerReadOnly() || u.transcriptCaller() != "/root/first" {
 		t.Fatalf("roster focus changed display or admission: %+v", view)
 	}
-	if !u.agents.testVisible(sessionpresentation.ActivityEntry{Agent: "/root/first", Kind: "text"}) || u.agents.testVisible(sessionpresentation.ActivityEntry{Agent: "/root/second", Kind: "text"}) {
+	if !u.testActivity(u.agents).testVisible(sessionpresentation.ActivityEntry{Agent: "/root/first", Kind: "text"}) || u.testActivity(u.agents).testVisible(sessionpresentation.ActivityEntry{Agent: "/root/second", Kind: "text"}) {
 		t.Fatal("transcript followed the focused roster row")
 	}
 	u.shell.selectNativePane(0)
@@ -102,7 +102,7 @@ func TestNativeDisplaySwitchKeepsHistoryObservation(t *testing.T) {
 	u, wire := newPagedHistoryUI(t)
 	historyTurnsReply(t, u)
 	restoreContentReply(t, u, 4, map[string]any{"data": []any{historyItem("last", "saved", 109000)}, "nextCursor": "older"})
-	u.agents.displayThread("/root/worker")
+	u.testActivity(u.agents).displayThread("/root/worker")
 	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
 	}

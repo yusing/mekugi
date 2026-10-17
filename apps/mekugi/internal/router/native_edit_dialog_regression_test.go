@@ -52,12 +52,12 @@ func openRegressionEditDialog(t *testing.T, tc editDialogRegressionCase, capture
 		u.review.Projection.Data = reviewFixtureSnapshot(t, presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: "/w", Call: "patch"}, Correlation: "patch\x000"}, Operation: activitydetail.Operation{Thread: "main", Item: "patch"}, Chunks: []presentation.Chunk{chunk}})
 		publishFixtureReview(t, u)
 		want = chunk.Review.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(c.Workspace(), chunk.Review.BeforePath), pathdisplay.ForWorkspace(c.Workspace(), chunk.Review.AfterPath))
-		u.view.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch"}}}}
+		u.source.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch"}}}}
 	} else {
 		change := binding.FileChange{Path: path, Diff: tc.host}
 		change.Kind.Type = tc.kind
 		item := binding.ThreadItem{Type: "fileChange", Status: "completed", Changes: []binding.FileChange{change}}
-		u.view.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch", EditPages: activitypresentation.HostEditPages(item.Observation(), u.session.cwd, "item/completed")}}}}
+		u.source.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch", EditPages: activitypresentation.HostEditPages(item.Observation(), u.session.cwd, "item/completed")}}}}
 	}
 	if !u.shell.openActivityEdit(u.view, 1, path) {
 		t.Fatal("edit dialog did not open")

@@ -56,20 +56,20 @@ func TestVCSCommitEnrichmentKeepsSegmentDirectory(t *testing.T) {
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, strings.Join(outputs, "")
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	awaitMain(t, u, "Committed second")
-	index := slices.IndexFunc(u.view.Entries, func(record sessionpresentation.ActivityRecord) bool {
+	index := slices.IndexFunc(u.source.Entries, func(record sessionpresentation.ActivityRecord) bool {
 		return record.Source.Native != nil && record.Source.Native.Item == "cmd"
 	})
-	if index < 0 || len(u.view.Entries[index].Source.Native.Segments) != 4 {
+	if index < 0 || len(u.source.Entries[index].Source.Native.Segments) != 4 {
 		if index < 0 {
 			t.Fatal("tracked invocation lost its source record")
 		}
-		t.Fatalf("tracked invocation has %d segments, want four", len(u.view.Entries[index].Source.Native.Segments))
+		t.Fatalf("tracked invocation has %d segments, want four", len(u.source.Entries[index].Source.Native.Segments))
 	}
 	deadline := time.NewTimer(3 * time.Second)
 	defer deadline.Stop()
 	for {
 		u.startCommitReads()
-		if !slices.ContainsFunc(u.view.Entries[index].Source.Native.Segments, func(segment sessionpresentation.ActivitySegment) bool { return segment.Commit.Hash != "" }) {
+		if !slices.ContainsFunc(u.source.Entries[index].Source.Native.Segments, func(segment sessionpresentation.ActivitySegment) bool { return segment.Commit.Hash != "" }) {
 			break
 		}
 		select {
@@ -84,7 +84,7 @@ func TestVCSCommitEnrichmentKeepsSegmentDirectory(t *testing.T) {
 			t.Fatalf("%s crossed segment directory or changed its footer: %+v", scope, rows)
 		}
 	}
-	record := u.view.Entries[index]
+	record := u.source.Entries[index]
 	for i, name := range []string{"first", "second"} {
 		operation := (i + 1) * 2
 		checkRows("native "+name, name, i+1, record.Source.Native.Segments[operation-1].Changes)

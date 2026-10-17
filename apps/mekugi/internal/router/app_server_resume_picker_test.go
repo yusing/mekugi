@@ -4,6 +4,7 @@ import (
 	"encoding/json/jsontext"
 	"fmt"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -105,7 +106,7 @@ func newResumeSessionTestUI(t *testing.T) (*appServerUI, *appServerTestInput) {
 func TestAppServerResumePickerStartup(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.Thread, u.startup.Thread, u.startup.Workspace = "", sessioncontrol.ResumePicker, "/work"
-	u.agents = newActivityAdapter()
+	u.agents = activityui.NewView()
 	appServerTestRequest(t, u, "0", "initialize")
 	appServerTestMessage(t, u, `{"id":0,"result":{}}`)
 	requests := resumeTestRequests(t, w)
@@ -147,8 +148,8 @@ func TestAppServerResumePickerStartup(t *testing.T) {
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"named","turnId":"old","item":{"type":"agentMessage","id":"answer","text":"Saved answer"}}}`)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"model":"model","thread":{"id":"named","cwd":"/work","turns":[{"id":"old","status":"completed","items":[{"type":"userMessage","id":"question","content":[{"type":"text","text":"Saved question"}]},{"type":"agentMessage","id":"answer","text":"Saved answer"}]}]}}}`, resume.ID))
 	resumeTestSettle(t, u, w)
-	if u.Thread != "named" || u.sessionPresentation().Status.Text != "Ready" || len(u.view.Entries) != 2 || u.view.Entries[1].Source.Text != "Saved answer" {
-		t.Fatalf("resumed state: thread=%q status=%q entries=%+v", u.Thread, u.sessionPresentation().Status.Text, u.view.Entries)
+	if u.Thread != "named" || u.sessionPresentation().Status.Text != "Ready" || len(u.source.Entries) != 2 || u.source.Entries[1].Source.Text != "Saved answer" {
+		t.Fatalf("resumed state: thread=%q status=%q entries=%+v", u.Thread, u.sessionPresentation().Status.Text, u.source.Entries)
 	}
 }
 
@@ -232,7 +233,7 @@ func TestAppServerResumeSwitchesSession(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
 	outputs := u.session.activity.Outputs(u.session.Scope())
 	u.ensureShell()
-	feed := u.view.Model
+	feed := u.source.Model
 	appServerTestUserMessage(t, u, "old-user", "", "old transcript")
 	appServerTestKeys(t, u, "/resume\r")
 	list := resumeTestOne(t, w, "thread/list")
@@ -252,25 +253,25 @@ func TestAppServerResumeSwitchesSession(t *testing.T) {
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"data":[{"id":"main","preview":"old transcript"},{"id":"saved","preview":"Saved question"}],"nextCursor":null}}`, list.ID))
 	resumeTestKeys(t, u, "\x1b[B", "\r")
 	resume := resumeTestPrepared(t, u, w)
-	if resume.Params.ThreadID != "saved" || !u.Replacement.Pending() || u.Thread != "main" || len(u.view.Entries) != 1 {
-		t.Fatalf("switch request/state: %+v thread=%q entries=%+v", resume.Params, u.Thread, u.view.Entries)
+	if resume.Params.ThreadID != "saved" || !u.Replacement.Pending() || u.Thread != "main" || len(u.source.Entries) != 1 {
+		t.Fatalf("switch request/state: %+v thread=%q entries=%+v", resume.Params, u.Thread, u.source.Entries)
 	}
 	// The current session stays live until Codex confirms the switch.
 	appServerTestUserMessage(t, u, "late-old", "", "late old transcript")
-	if len(resumeTestRequests(t, w)) != 0 || len(u.view.Entries) != 2 || len(u.resumePending) != 0 {
-		t.Fatalf("current session not live while switching: entries=%+v pending=%d", u.view.Entries, len(u.resumePending))
+	if len(resumeTestRequests(t, w)) != 0 || len(u.source.Entries) != 2 || len(u.resumePending) != 0 {
+		t.Fatalf("current session not live while switching: entries=%+v pending=%d", u.source.Entries, len(u.resumePending))
 	}
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"saved","turnId":"old","item":{"type":"agentMessage","id":"answer","text":"Saved answer"}}}`)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"model":"model","thread":{"id":"saved","cwd":"/work","turns":[{"id":"old","status":"completed","items":[{"type":"userMessage","id":"question","content":[{"type":"text","text":"Saved question"}]},{"type":"agentMessage","id":"answer","text":"Saved answer"}]}]}}}`, resume.ID))
 	methods := resumeTestSettle(t, u, w)
-	if u.session.activity.Outputs(u.session.Scope()) == outputs || u.view.Model == feed {
+	if u.session.activity.Outputs(u.session.Scope()) == outputs || u.source.Model == feed {
 		t.Fatal("confirmed replacement retained the old activity scope")
 	}
 	if len(methods) == 0 || methods[0] != "thread/unsubscribe" || !slices.Contains(methods, "model/list") {
 		t.Fatalf("switch follow-up requests: %v", methods)
 	}
-	if u.Thread != "saved" || u.Replacement.Pending() || u.Replacement.Target != "" || u.sessionPresentation().Status.Text != "Ready" || len(u.view.Entries) != 2 || u.view.Entries[0].Source.Text != "Saved question" {
-		t.Fatalf("switched state: thread=%q status=%q entries=%+v", u.Thread, u.sessionPresentation().Status.Text, u.view.Entries)
+	if u.Thread != "saved" || u.Replacement.Pending() || u.Replacement.Target != "" || u.sessionPresentation().Status.Text != "Ready" || len(u.source.Entries) != 2 || u.source.Entries[0].Source.Text != "Saved question" {
+		t.Fatalf("switched state: thread=%q status=%q entries=%+v", u.Thread, u.sessionPresentation().Status.Text, u.source.Entries)
 	}
 	if frame := resumeTestFrame(t, u, 120, 20); strings.Contains(frame, "old transcript") || strings.Contains(frame, "late old") {
 		t.Fatalf("old transcript remains rendered:\n%s", frame)
@@ -303,7 +304,7 @@ func TestAppServerResumeSwitchFailureKeepsSession(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
 	outputs := u.session.activity.Outputs(u.session.Scope())
 	u.ensureShell()
-	feed := u.view.Model
+	feed := u.source.Model
 	appServerTestUserMessage(t, u, "old-user", "", "keep this")
 	appServerTestKeys(t, u, "/resume missing\r")
 	resume := resumeTestPrepared(t, u, w)
@@ -313,14 +314,14 @@ func TestAppServerResumeSwitchFailureKeepsSession(t *testing.T) {
 		t.Fatal("input escaped to the old thread while switching")
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"no rollout"}}`, resume.ID))
-	if u.Thread != "main" || u.Replacement.Pending() || u.Replacement.Target != "" || !strings.Contains(u.feedback.Text, "no rollout") || u.Text != "held" || len(u.view.Entries) != 2 || u.view.Entries[1].Source.Text != "arrived while switching" {
-		t.Fatalf("failed switch lost state: thread=%q notice=%q entries=%+v", u.Thread, u.feedback.Text, u.view.Entries)
+	if u.Thread != "main" || u.Replacement.Pending() || u.Replacement.Target != "" || !strings.Contains(u.feedback.Text, "no rollout") || u.Text != "held" || len(u.source.Entries) != 2 || u.source.Entries[1].Source.Text != "arrived while switching" {
+		t.Fatalf("failed switch lost state: thread=%q notice=%q entries=%+v", u.Thread, u.feedback.Text, u.source.Entries)
 	}
 	appServerTestKeys(t, u, "\r")
 	if start := resumeTestOne(t, w, "turn/start"); start.Params.ThreadID != "main" {
 		t.Fatalf("input after failed switch targeted %q", start.Params.ThreadID)
 	}
-	if u.session.activity.Outputs(u.session.Scope()) != outputs || u.view.Model != feed {
+	if u.session.activity.Outputs(u.session.Scope()) != outputs || u.source.Model != feed {
 		t.Fatal("failed replacement discarded activity state")
 	}
 }
@@ -430,7 +431,7 @@ func TestAppServerResumeSwitchWaitsForDiffResync(t *testing.T) {
 	liveDiffScopeCapture(t, store, workspace, "saved", "saved-call", filepath.Join(workspace, "saved.go"), "a", "b")
 	u, w := newAppServerTestUI()
 	u.ctx = t.Context()
-	u.agents = newActivityAdapter()
+	u.agents = activityui.NewView()
 	auto := newLivePreview(t.Context())
 	defer auto.Close()
 	auto.Enable()

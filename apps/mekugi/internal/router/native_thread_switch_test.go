@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"strings"
 	"testing"
 	"time"
@@ -79,7 +80,7 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	}
 	keys("\x022")
 	paint("native-thread-child-split")
-	if u.shell.Layout.Diff.W == 0 || !u.agents.displayingChild() {
+	if u.shell.Layout.Diff.W == 0 || !u.testActivity(u.agents).displayingChild() {
 		t.Fatal("opening Diff lost the displayed child")
 	}
 	keys("\x022")
@@ -104,7 +105,7 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	}
 	click("/root")
 	frame = paint("native-thread-return-main")
-	if u.agents.displayingChild() || !strings.Contains(frame, "main result") || strings.Contains(frame, "Input: Main") || u.Text != "retained draft" {
+	if u.testActivity(u.agents).displayingChild() || !strings.Contains(frame, "main result") || strings.Contains(frame, "Input: Main") || u.Text != "retained draft" {
 		t.Fatal("returning to Main lost its transcript or draft")
 	}
 	keys("\x021\r")
@@ -116,11 +117,11 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 
 func TestNativeChildReferenceReturnsToMain(t *testing.T) {
 	u := selectionTestUI("child answer")
-	u.agents = newActivityAdapter()
+	u.agents = activityui.NewView()
 	u.main.agents = u.agents
 	u.main.sessionPresentation()
 	u.main.Text = "draft "
-	u.main.agents.setDisplayFilter(true, "/root/reader")
+	u.main.testActivity(u.main.agents).setDisplayFilter(true, "/root/reader")
 	u.main.agents.FeedLeft, u.main.agents.FeedTop = 1, 1
 	u.main.agents.FeedRight, u.main.agents.FeedRows = 40, 1
 	selectionTestDrag(t, u, 0, 0, 4, 0)
@@ -134,7 +135,7 @@ func TestNativeChildComposerSettingsEvidence(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
 	u.model, u.reasoningEffort, u.serviceTier = "parent-model", "high", "priority"
 	u.ensureShell()
-	u.agents.setDisplayFilter(true, "/root/reader")
+	u.testActivity(u.agents).setDisplayFilter(true, "/root/reader")
 	caption := func() string {
 		rows, _ := u.testMainFrame(120, 20, 0)
 		return ansi.Strip(rows[len(rows)-1])
@@ -166,7 +167,7 @@ func TestNativeChildComposerSettingsEvidence(t *testing.T) {
 		t.Fatalf("child caption ignored its confirmed thread tier: %s", got)
 	}
 	u.session.collab((binding.ThreadItem{Tool: "spawnAgent", SenderThreadID: "main", ReceiverThreadIDs: []string{"spawned"}, Model: "spawn-model", ReasoningEffort: "high"}).Observation(), "spawn", u.now(), activitypresentation.ObservedCollaboration)
-	u.agents.displayThread(u.session.paths["spawned"])
+	u.testActivity(u.agents).displayThread(u.session.paths["spawned"])
 	if got := caption(); !strings.Contains(got, "spawn-model (high)") || strings.Contains(got, "priority") {
 		t.Fatalf("spawn metadata was not scoped to the selected child: %s", got)
 	}

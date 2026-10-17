@@ -5,6 +5,7 @@ package router
 import (
 	"context"
 	"encoding/json/jsontext"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 
@@ -134,7 +135,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 		t.Fatalf("measurement fixture not materialized: turns=%d items=%d mode=%s", len(read.Thread.Turns), len(read.Thread.Turns[0].Items), read.Thread.HistoryMode)
 	}
 	baseline, _ := newAppServerTestUI()
-	baseline.agents = newActivityAdapter()
+	baseline.agents = activityui.NewView()
 	baseline.ctx = t.Context()
 	baseline.ensureShell()
 	t.Cleanup(func() { baseline.shell.diffScreen.Close() })
@@ -148,7 +149,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	u.client = client
 	u.requests = sessioncontrol.NewRequests[appServerRequest](client)
 	u.ctx = t.Context()
-	u.agents = newActivityAdapter()
+	u.agents = activityui.NewView()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diffScreen.Close() })
 	u.session.start("main", workspace)
@@ -161,10 +162,10 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	}
 	pageBytes := drainHistoryLoader(t, u)
 	pageDuration := time.Since(started)
-	if u.restoring != nil || len(u.agents.Entries) != 100 || pageBytes*10 >= len(full.Result) {
-		t.Fatalf("unbounded consumer hydration: entries=%d page=%d full=%d", len(u.agents.Entries), pageBytes, len(full.Result))
+	if u.restoring != nil || len(u.childSource.Entries) != 100 || pageBytes*10 >= len(full.Result) {
+		t.Fatalf("unbounded consumer hydration: entries=%d page=%d full=%d", len(u.childSource.Entries), pageBytes, len(full.Result))
 	}
-	if !strings.HasPrefix(u.agents.Entries[0].Source.Text, "item 1900 ") || !strings.HasPrefix(u.agents.Entries[99].Source.Text, "item 1999 ") {
+	if !strings.HasPrefix(u.childSource.Entries[0].Source.Text, "item 1900 ") || !strings.HasPrefix(u.childSource.Entries[99].Source.Text, "item 1999 ") {
 		t.Fatal("host descending pages not rendered chronologically")
 	}
 	if u.session.agent("/root/worker").Started.Unix() != 100 || u.session.agent("/root/worker").LastResponse.Unix() != 110 {
@@ -174,7 +175,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	drainHistoryLoader(t, u)
-	if len(u.agents.Entries) != 200 || !strings.HasPrefix(u.agents.Entries[0].Source.Text, "item 1800 ") {
+	if len(u.childSource.Entries) != 200 || !strings.HasPrefix(u.childSource.Entries[0].Source.Text, "item 1800 ") {
 		t.Fatal("installed anchor page boundary lost or duplicated")
 	}
 	// Fork history is host-visible lineage, never an unscoped parent read.
@@ -212,7 +213,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	client = start()
 	t.Cleanup(client.Close)
 	fresh, _ := newAppServerTestUI()
-	fresh.client, fresh.ctx, fresh.agents = client, t.Context(), newActivityAdapter()
+	fresh.client, fresh.ctx, fresh.agents = client, t.Context(), activityui.NewView()
 	fresh.requests = sessioncontrol.NewRequests[appServerRequest](client)
 	fresh.session.start("main", workspace)
 	fresh.session.registerThread(binding.ThreadInfo{ID: forked.Thread.ID, AgentNickname: "worker", AgentRole: "worker"})
@@ -228,8 +229,8 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if set := fresh.agents.ActiveSkills()["/root/worker"]; len(set) != 1 || set[0] != "commit" || len(fresh.agents.Entries) != 100 {
-		t.Fatalf("fresh inherited skills = %v; Activity entries=%d", set, len(fresh.agents.Entries))
+	if set := fresh.childSource.ActiveSkills()["/root/worker"]; len(set) != 1 || set[0] != "commit" || len(fresh.childSource.Entries) != 100 {
+		t.Fatalf("fresh inherited skills = %v; Activity entries=%d", set, len(fresh.childSource.Entries))
 	}
 	t.Logf("synthetic 2000-message restoration: full result + projection %d bytes / %s; metadata + recent100 %d bytes / %s (latency diagnostic, no timing threshold)", len(full.Result), fullDuration, pageBytes, pageDuration)
 }

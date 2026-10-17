@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/contracts/activitydetail"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -9,7 +10,7 @@ import (
 
 // openActivityEdit resolves an exact admitted invocation without consulting the
 // Diff painter, retained storage, or current workspace contents.
-func (u *terminalUI) openActivityEdit(view *activityAdapter, seq uint64, path string) bool {
+func (u *terminalUI) openActivityEdit(view *activityui.View, seq uint64, path string) bool {
 	pages, selected := u.activityEditPages(view, seq, path)
 	for i, page := range pages {
 		if page.ID == selected {
@@ -21,8 +22,8 @@ func (u *terminalUI) openActivityEdit(view *activityAdapter, seq uint64, path st
 	return false
 }
 
-func (u *terminalUI) activityEditPages(view *activityAdapter, seq uint64, path string) ([]activitypresentation.DetailPage, string) {
-	for _, entry := range view.Entries {
+func (u *terminalUI) activityEditPages(view *activityui.View, seq uint64, path string) ([]activitypresentation.DetailPage, string) {
+	for _, entry := range u.main.activitySource(view).Entries {
 		native := entry.Source.Native
 		if entry.Source.Seq != seq || native == nil {
 			continue

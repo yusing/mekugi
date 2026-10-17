@@ -85,15 +85,15 @@ func TestAppServerTypedTokensAcrossSubmissionAndResume(t *testing.T) {
 		}
 	}
 	appServerTestKeys(t, u, "\r")
-	check(u.view)
+	check(u.testActivity(u.view))
 	item := binding.ThreadItem{ID: "user", Type: "userMessage", Content: content}
 	for _, method := range []string{"item/started", "item/completed"} {
 		appServerTestNotify(t, u, method, map[string]any{"threadId": "main", "turnId": "t", "item": item})
-		check(u.view)
+		check(u.testActivity(u.view))
 	}
 	restored := newAppServerSessionTestUI(t, t.TempDir())
 	restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
-	check(restored.view)
+	check(restored.testActivity(restored.view))
 }
 
 func TestComposerElementSpansRejectInvalidRanges(t *testing.T) {

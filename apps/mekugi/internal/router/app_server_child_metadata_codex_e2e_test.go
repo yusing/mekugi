@@ -4,6 +4,7 @@ package router
 
 import (
 	"context"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 
@@ -53,7 +54,7 @@ func TestAppServerChildMetadataNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, history: testHistory(), client: client, view: newActivityAdapter(), agents: newActivityAdapter(), requests: sessioncontrol.NewRequests[appServerRequest](client), ctx: ctx})
+	u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, history: testHistory(), client: client, view: activityui.NewView(), agents: activityui.NewView(), requests: sessioncontrol.NewRequests[appServerRequest](client), ctx: ctx})
 	u.ensureShell()
 
 	defer u.shell.diffScreen.Close()
@@ -86,9 +87,9 @@ func TestAppServerChildMetadataNativeCodexE2E(t *testing.T) {
 				if agent == nil || agent.Role != "explorer" {
 					continue
 				}
-				for _, entry := range u.agents.Entries {
+				for _, entry := range u.childSource.Entries {
 					if entry.Source.Agent == path && entry.Source.Kind == "tool" && strings.Contains(entry.Source.Text, "printf CHILD_METADATA_TOOL") {
-						for _, view := range []*activityAdapter{u.view, u.agents} {
+						for _, view := range []*activityAdapter{u.testActivity(u.view), u.testActivity(u.agents)} {
 							found := false
 							for _, summary := range view.Entries {
 								found = found || summary.Source.Kind == "reasoning" && summary.Source.Text == "Checking the native fixture."
@@ -104,7 +105,7 @@ func TestAppServerChildMetadataNativeCodexE2E(t *testing.T) {
 		case err := <-client.Done:
 			t.Fatalf("app-server exited before child metadata and tool activity: %v", err)
 		case <-ctx.Done():
-			t.Fatalf("child identity, role, or tool activity missing: %v; paths=%v agents=%+v entries=%+v", ctx.Err(), u.session.paths, u.session.agents, u.agents.Entries)
+			t.Fatalf("child identity, role, or tool activity missing: %v; paths=%v agents=%+v entries=%+v", ctx.Err(), u.session.paths, u.session.agents, u.childSource.Entries)
 		}
 	}
 }

@@ -112,7 +112,7 @@ func (u *appServerUI) messageTranscript(text observation.TextEvent, item observa
 			u.applyActivity(u.transcriptUpdates([]observation.TextUpdate{update}, true), nil)
 			continue
 		}
-		u.view.ApplyTranscript(update, item.Content, u.session.cwd, u.Thread, item.Type == "userMessage")
+		u.source.ApplyTranscript(update, item.Content, u.session.cwd, u.Thread, item.Type == "userMessage")
 	}
 	return false
 }

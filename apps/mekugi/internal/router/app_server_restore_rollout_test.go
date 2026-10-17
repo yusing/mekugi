@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
@@ -119,7 +120,7 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 	if err := u.restorePaneContent(root); err != nil {
 		t.Fatal(err)
 	}
-	if len(u.view.Entries) != 0 {
+	if len(u.source.Entries) != 0 {
 		t.Fatal("Main history rendered before its children were read")
 	}
 	child := map[string]any{"id": "child", "cwd": workspace, "parentThreadId": "main", "path": writeTestRollout(t, "child", childRecords...),
@@ -148,7 +149,7 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 		return entry.Kind + "|" + strings.SplitN(entry.Text, "\n", 2)[0]
 	}
 	var main []string
-	for _, entry := range u.view.Entries {
+	for _, entry := range u.source.Entries {
 		main = append(main, entry.Source.Agent+"|"+summary(entry.Source))
 	}
 	want := []string{
@@ -166,14 +167,14 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 	if !slices.Equal(main, want) {
 		t.Fatalf("Main history:\n%s\nwant:\n%s", strings.Join(main, "\n"), strings.Join(want, "\n"))
 	}
-	for _, entry := range u.view.Entries {
+	for _, entry := range u.source.Entries {
 		if (entry.Source.Kind == "start" || entry.Source.Kind == "reply" || entry.Source.Kind == "final") && entry.Source.ActivitySeq == 0 {
 			t.Fatalf("Main copy does not excerpt its Activity entry: %+v", entry)
 		}
 	}
 
 	var pane []string
-	for _, entry := range u.agents.Entries {
+	for _, entry := range u.childSource.Entries {
 		if entry.Source.Agent == "/root/reviewer" {
 			pane = append(pane, summary(entry.Source))
 		}
@@ -190,7 +191,7 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 	if !slices.Equal(pane, wantPane) {
 		t.Fatalf("Activity history:\n%s\nwant:\n%s", strings.Join(pane, "\n"), strings.Join(wantPane, "\n"))
 	}
-	feed := ansi.Strip(strings.Join(u.agents.RenderFeed(100, 80).Lines, "\n"))
+	feed := ansi.Strip(strings.Join(u.testActivity(u.agents).RenderFeed(100, 80).Lines, "\n"))
 	for _, text := range []string{"Inspect the change.", "Keep going.", "I found a failure.", "ReferenceError"} {
 		if !strings.Contains(feed, text) {
 			t.Fatalf("Activity missing %q: %s", text, feed)
@@ -236,11 +237,11 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 func TestAppServerResumeDefersHistoryButKeepsActiveTurn(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.Thread, u.startup.Thread = "", "saved"
-	u.agents = newActivityAdapter()
+	u.agents = activityui.NewView()
 	appServerTestRequest(t, u, "1", "thread/resume")
 	appServerTestMessage(t, u, `{"id":1,"result":{"thread":{"id":"saved","turns":[{"id":"active","status":"inProgress","items":[{"type":"userMessage","id":"q","content":[{"type":"text","text":"Still running"}]}]}]}}}`)
-	if u.Turn != "active" || !u.session.agent("/root").Responding || len(u.view.Entries) != 0 {
-		t.Fatalf("resume lost the active turn or rendered early: turn=%q entries=%+v", u.Turn, u.view.Entries)
+	if u.Turn != "active" || !u.session.agent("/root").Responding || len(u.source.Entries) != 0 {
+		t.Fatalf("resume lost the active turn or rendered early: turn=%q entries=%+v", u.Turn, u.source.Entries)
 	}
 	// Attach only the activity collector.
 	activity := sessioncontrol.NewAudience(nil)
@@ -248,13 +249,13 @@ func TestAppServerResumeDefersHistoryButKeepsActiveTurn(t *testing.T) {
 	activity.Attach("saved")
 	activity.Collect(activitypresentation.Supplement{Thread: "saved", Source: "late", Kind: "error", Text: "exec script failed: late"})
 	appServerTestMessage(t, u, `{"id":2,"result":{"data":[],"nextCursor":null}}`)
-	if len(u.view.Entries) != 0 {
-		t.Fatalf("observed activity preceded resumed history: %+v", u.view.Entries)
+	if len(u.source.Entries) != 0 {
+		t.Fatalf("observed activity preceded resumed history: %+v", u.source.Entries)
 	}
 	appServerTestMessage(t, u, `{"id":3,"result":{"data":[],"nextCursor":null}}`)
 	appServerTestMessage(t, u, `{"id":4,"result":{"data":[],"nextCursor":null}}`)
 	var texts []string
-	for _, entry := range u.view.Entries {
+	for _, entry := range u.source.Entries {
 		texts = append(texts, entry.Source.Text)
 	}
 	if !slices.Equal(texts, []string{"Still running", "exec script failed: late"}) {

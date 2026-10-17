@@ -30,14 +30,14 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	u.issues = issues
 	setTestAppServerIntegration(u, &observationFixture{activity: activity})
 	u.view.Conversation = true
-	u.view.testAudience()
+	u.testActivity(u.view).testAudience()
 
 	first := u.applyCriticalNotices()
 	if first == nil || len(first.errors.Messages) != 3 {
 		t.Fatalf("native delivery = %v, want root, child, and router-wide", first)
 	}
 
-	if len(u.view.Entries) != 0 || !u.feedback.Alert {
+	if len(u.source.Entries) != 0 || !u.feedback.Alert {
 		t.Fatal("router errors entered the transcript or missed the composer")
 	}
 	u.ensureShell()
@@ -71,8 +71,8 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	u.shell.outputKey("q")
 	first.finish(false) // Simulate an unpainted terminal frame.
 	retry := u.applyCriticalNotices()
-	if retry == nil || len(retry.errors.Messages) != 3 || len(u.view.Entries) != 0 || u.feedback.Text != before {
-		t.Fatalf("retry duplicated or lost entries: delivery=%v entries=%d", retry, len(u.view.Entries))
+	if retry == nil || len(retry.errors.Messages) != 3 || len(u.source.Entries) != 0 || u.feedback.Text != before {
+		t.Fatalf("retry duplicated or lost entries: delivery=%v entries=%d", retry, len(u.source.Entries))
 	}
 	if err := u.testPaint(io.Discard, 100, 16); err != nil {
 		t.Fatal(err)
@@ -161,7 +161,7 @@ func TestFailureStorageNoticeReachesOwningNativeRootBeforeShutdown(t *testing.T)
 	other, _ := newAppServerTestUI()
 	other.Thread = "unrelated-root"
 	other.issues = issues
-	if delivery := other.applyCriticalNotices(); delivery != nil || len(other.view.Entries) != 0 {
+	if delivery := other.applyCriticalNotices(); delivery != nil || len(other.source.Entries) != 0 {
 		t.Fatal("another root claimed the storage notice")
 	}
 
@@ -169,10 +169,10 @@ func TestFailureStorageNoticeReachesOwningNativeRootBeforeShutdown(t *testing.T)
 	owner.Thread = failure.Thread
 	owner.issues = issues
 	owner.view.Conversation = true
-	owner.view.testAudience()
+	owner.testActivity(owner.view).testAudience()
 	delivery := owner.applyCriticalNotices()
-	if delivery == nil || len(delivery.errors.Messages) != 1 || len(owner.view.Entries) != 0 || !owner.feedback.Alert {
-		t.Fatalf("owning root did not receive the storage notice: delivery=%v entries=%d", delivery, len(owner.view.Entries))
+	if delivery == nil || len(delivery.errors.Messages) != 1 || len(owner.source.Entries) != 0 || !owner.feedback.Alert {
+		t.Fatalf("owning root did not receive the storage notice: delivery=%v entries=%d", delivery, len(owner.source.Entries))
 	}
 	rows, _ := owner.testMainFrame(100, 12, 0)
 	feed := ansi.Strip(strings.Join(rows, "\n"))
@@ -253,7 +253,7 @@ func TestNativeCleanupNoticeTranscriptReplacement(t *testing.T) {
 			u.Thread = "replacement"
 			retry := u.applyCriticalNotices()
 			if delivered {
-				if retry != nil || len(u.view.Entries) != 0 {
+				if retry != nil || len(u.source.Entries) != 0 {
 					t.Fatal("delivered progress returned in replacement transcript")
 				}
 				return
@@ -266,8 +266,8 @@ func TestNativeCleanupNoticeTranscriptReplacement(t *testing.T) {
 				t.Fatal("replacement transcript did not paint pending progress")
 			}
 			retry.finish(true)
-			if len(u.view.Entries) != 1 || len(u.issues.Notices.Pending()) != 0 {
-				t.Fatalf("retry: entries=%d pending=%v", len(u.view.Entries), u.issues.Notices.Pending())
+			if len(u.source.Entries) != 1 || len(u.issues.Notices.Pending()) != 0 {
+				t.Fatalf("retry: entries=%d pending=%v", len(u.source.Entries), u.issues.Notices.Pending())
 			}
 		})
 	}
@@ -288,7 +288,7 @@ func TestNativeCriticalNoticeMixedBatchDismissal(t *testing.T) {
 	}
 	u.composerNoticeMouse(0, u.mainView.NoticeDismiss.X, u.mainView.NoticeDismiss.Y, false)
 	retry := u.applyCriticalNotices()
-	if u.feedback.Text != "" || len(u.view.Entries) != 1 {
+	if u.feedback.Text != "" || len(u.source.Entries) != 1 {
 		t.Fatal("dismissed error returned or progress duplicated")
 	}
 	u.testMainFrame(80, 12, 0)

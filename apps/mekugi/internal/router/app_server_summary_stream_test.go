@@ -19,10 +19,10 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 			u.view.Clock, u.agents.Clock = u.clock, u.clock
 			u.view.Painter.Theme, u.agents.Painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
 			appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-			u.agents.setDisplayFilter(false, "/root/worker")
-			view := u.view
+			u.testActivity(u.agents).setDisplayFilter(false, "/root/worker")
+			view := u.testActivity(u.view)
 			if thread == "child" {
-				view = u.agents
+				view = u.testActivity(u.agents)
 			}
 			notify := func(method string, params map[string]any) {
 				t.Helper()
@@ -72,7 +72,7 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 					if !ok || block.Source != view.Entries[0].Source.Seq || len(block.Members) != 2 {
 						continue
 					}
-					if !u.shell.openOutput(view, snippet) {
+					if !u.shell.openOutput(view.bind(u.shell), snippet) {
 						t.Fatal("section has no dialog target")
 					}
 					page := view.Painter.DetailDocument(u.shell.output.pages[i].DetailPage, nil, nil, 80)
@@ -103,19 +103,19 @@ func TestAppServerEmptyReasoningStartsDoNotCreateRows(t *testing.T) {
 			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": id, "type": "reasoning"}})
 		}
 		u.flushStreamOutput()
-		if len(u.view.Entries) != 0 || len(u.agents.Entries) != 0 {
+		if len(u.source.Entries) != 0 || len(u.childSource.Entries) != 0 {
 			t.Fatal("empty reasoning starts created visible placeholders")
 		}
 		appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t", "status": "interrupted"}})
 		u.flushStreamOutput()
-		if len(u.view.Entries) != 0 || len(u.agents.Entries) != 0 {
+		if len(u.source.Entries) != 0 || len(u.childSource.Entries) != 0 {
 			t.Fatal("empty reasoning left live state behind")
 		}
 		for _, id := range []string{"raw-one", "raw-two"} {
 			appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": id, "delta": "Late public summary."})
 		}
 		u.flushStreamOutput()
-		if len(u.view.Entries) != 0 || len(u.agents.Entries) != 0 {
+		if len(u.source.Entries) != 0 || len(u.childSource.Entries) != 0 {
 			t.Fatal("late delta reopened interrupted empty reasoning")
 		}
 	}

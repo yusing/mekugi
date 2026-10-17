@@ -32,7 +32,7 @@ func TestLiveActivityElapsedFormatting(t *testing.T) {
 		t.Run(tc.want+"/"+tc.age.String(), func(t *testing.T) {
 			now := start.Add(tc.age)
 			for _, status := range []string{"Waiting", "Working"} {
-				u := *appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: newActivityAdapter(), Turn: "active"})
+				u := *appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: activityui.NewView(), Turn: "active"})
 				u.sessionPresentation().Status.Set(status, false)
 				u.sessionPresentation().Status.Started = start
 				if got := ansi.Strip(u.sessionLabel(now)); !strings.HasSuffix(got, " "+tc.want) {

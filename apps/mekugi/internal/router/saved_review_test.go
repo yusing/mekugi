@@ -77,9 +77,9 @@ func TestSavedReviewWithoutLivePreview(t *testing.T) {
 	if got := paths(); !slices.Equal(got, []string{"child.go", "formatted.go", "root.go"}) {
 		t.Fatalf("published saved Diff: %v", got)
 	}
-	assertCapturedCommand(t, u.view, "main", "format", "Edit", 2)
+	assertCapturedCommand(t, u.testActivity(u.view), "main", "format", "Edit", 2)
 	foundReceipt := false
-	for _, record := range u.view.Entries {
+	for _, record := range u.source.Entries {
 		entry := record.Source
 		if entry.Native != nil && entry.Native.Item == "format" {
 			foundReceipt = entry.Native.CapturedEdit != nil

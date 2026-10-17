@@ -65,22 +65,22 @@ func TestAppServerFrontendCommandClassification(t *testing.T) {
 				for _, method := range []string{"item/started", "item/completed"} {
 					appServerTestNotify(t, u, method, map[string]any{"threadId": "main", "turnId": "t", "item": item})
 				}
-				if len(u.view.Entries) != 1 || u.view.Entries[0].Source.Text != tc.want || u.view.Entries[0].Source.Native.Command != command {
-					t.Fatalf("classified live entries: %+v; want %q", u.view.Entries, tc.want)
+				if len(u.source.Entries) != 1 || u.source.Entries[0].Source.Text != tc.want || u.source.Entries[0].Source.Native.Command != command {
+					t.Fatalf("classified live entries: %+v; want %q", u.source.Entries, tc.want)
 				}
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "t", "item": item})
-				if len(u.agents.Entries) != 2 || u.agents.Entries[1].Source.Text != tc.want || u.agents.Entries[1].Source.Native.Command != command {
-					t.Fatalf("classified child text: %q; want %q", u.agents.Entries[len(u.agents.Entries)-1].Source.Text, tc.want)
+				if len(u.childSource.Entries) != 2 || u.childSource.Entries[1].Source.Text != tc.want || u.childSource.Entries[1].Source.Native.Command != command {
+					t.Fatalf("classified child text: %q; want %q", u.childSource.Entries[len(u.childSource.Entries)-1].Source.Text, tc.want)
 				}
 				restored := newAppServerSessionTestUI(t, t.TempDir())
 				restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
-				if len(restored.view.Entries) != 1 || restored.view.Entries[0].Source.Text != tc.want {
-					t.Fatalf("classified restored entries: %+v", restored.view.Entries)
+				if len(restored.source.Entries) != 1 || restored.source.Entries[0].Source.Text != tc.want {
+					t.Fatalf("classified restored entries: %+v", restored.source.Entries)
 				}
 				restored.session.path("child")
 				restored.restoreActivityThread(binding.ThreadInfo{ID: "child", Cwd: restored.session.cwd, Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
-				if len(restored.agents.Entries) != 1 || restored.agents.Entries[0].Source.Text != tc.want {
-					t.Fatalf("classified restored child text: %q; want %q", restored.agents.Entries[len(restored.agents.Entries)-1].Source.Text, tc.want)
+				if len(restored.childSource.Entries) != 1 || restored.childSource.Entries[0].Source.Text != tc.want {
+					t.Fatalf("classified restored child text: %q; want %q", restored.childSource.Entries[len(restored.childSource.Entries)-1].Source.Text, tc.want)
 				}
 			})
 		}
@@ -106,9 +106,9 @@ func TestUISnapshotWrappedCommands(t *testing.T) {
 	for _, thread := range []string{"main", "child"} {
 		u := newAppServerSessionTestUI(t, "/workspace")
 		u.clock = func() time.Time { return time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC) }
-		view := u.view
+		view := u.testActivity(u.view)
 		if thread == "child" {
-			view = u.agents
+			view = u.testActivity(u.agents)
 		}
 		view.Clock, view.Painter.Theme = u.clock, diffrender.DarkTheme
 		for i, command := range []string{
@@ -192,10 +192,10 @@ func TestAppServerImageViewLiveAndRestored(t *testing.T) {
 	for _, child := range []bool{false, true} {
 		u := newAppServerSessionTestUI(t, workspace)
 		thread := "main"
-		view := u.view
+		view := u.testActivity(u.view)
 		if child {
 			thread = "child"
-			view = u.agents
+			view = u.testActivity(u.agents)
 		}
 		for _, method := range []string{"item/started", "item/completed"} {
 			appServerTestNotify(t, u, method, map[string]any{"threadId": thread, "turnId": "t", "item": item})
@@ -216,10 +216,10 @@ func TestAppServerImageViewLiveAndRestored(t *testing.T) {
 		if child {
 			restored.session.path(thread)
 			restored.restoreActivityThread(binding.ThreadInfo{ID: thread, Cwd: workspace, Turns: turns}, false)
-			check(restored.agents)
+			check(restored.testActivity(restored.agents))
 		} else {
 			restored.restoreHistory(turns)
-			check(restored.view)
+			check(restored.testActivity(restored.view))
 		}
 	}
 }
@@ -247,9 +247,9 @@ func TestAppServerCommandTimeoutInput(t *testing.T) {
 			item := binding.ThreadItem{ID: tc.id, Type: "commandExecution", Command: "sleep 1", DurationMS: new(int64(500))}
 			for _, method := range []string{"item/started", "item/completed"} {
 				appServerTestNotify(t, u, method, map[string]any{"threadId": thread, "turnId": "t", "item": item})
-				view := u.view
+				view := u.testActivity(u.view)
 				if thread != "main" {
-					view = u.agents
+					view = u.testActivity(u.agents)
 				}
 				entry := view.Entries[len(view.Entries)-1]
 				if entry.Source.Native.Command != item.Command || entry.Source.Native.CommandTimeout != tc.want {
@@ -270,7 +270,7 @@ func TestAppServerCommandTimeoutInput(t *testing.T) {
 	}
 	restored := newAppServerSessionTestUI(t, t.TempDir())
 	restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{{ID: "timed", Type: "commandExecution", Command: "skills-mgr get skill"}}}})
-	if len(restored.view.blocks(0)[0].Timeouts) != 0 {
+	if len(restored.testActivity(restored.view).blocks(0)[0].Timeouts) != 0 {
 		t.Fatal("restored a timeout without original invocation input")
 	}
 }
@@ -299,8 +299,8 @@ func TestUISnapshotShellSetupEvent(t *testing.T) {
 		"source \"$probe_root/policy.sh\"\nif check_apt_policy; then exit 1; fi"
 	item := binding.ThreadItem{ID: "setup", Type: "commandExecution", Command: command, Cwd: "/workspace", Status: "completed", ExitCode: new(0)}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	finishPacing(u.view)
-	assertNativeUISnapshot(t, "shell-setup-event", u.view.RenderFeed(100, 24).Lines)
+	finishPacing(u.testActivity(u.view))
+	assertNativeUISnapshot(t, "shell-setup-event", u.testActivity(u.view).RenderFeed(100, 24).Lines)
 }
 
 func TestUISnapshotClassifiedCommandPaths(t *testing.T) {
@@ -314,8 +314,8 @@ func TestUISnapshotClassifiedCommandPaths(t *testing.T) {
 		item := binding.ThreadItem{ID: fmt.Sprint(i), Type: "commandExecution", Command: command, Cwd: "/workspace", Status: "completed", ExitCode: new(0), DurationMS: new(int64(20))}
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	}
-	finishPacing(u.view)
-	assertNativeUISnapshot(t, "classified-command-paths", u.view.RenderFeed(100, 30).Lines)
+	finishPacing(u.testActivity(u.view))
+	assertNativeUISnapshot(t, "classified-command-paths", u.testActivity(u.view).RenderFeed(100, 30).Lines)
 }
 
 func TestLiveActivitySkillRendering(t *testing.T) {
@@ -364,13 +364,13 @@ func TestAppServerCommandWorkdirDisplay(t *testing.T) {
 			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: tc.command, Cwd: tc.cwd, CommandActions: tc.actions}
 			check := func(u *appServerUI) {
 				t.Helper()
-				if len(u.view.Entries) != 1 || u.view.Entries[0].Source.Text != tc.text || u.view.Entries[0].Source.Native.Workdir != tc.workdir {
-					t.Fatalf("entries = %+v; want text %q in %q", u.view.Entries, tc.text, tc.workdir)
+				if len(u.source.Entries) != 1 || u.source.Entries[0].Source.Text != tc.text || u.source.Entries[0].Source.Native.Workdir != tc.workdir {
+					t.Fatalf("entries = %+v; want text %q in %q", u.source.Entries, tc.text, tc.workdir)
 				}
-				if u.view.Entries[0].Source.Native.Command != tc.command {
+				if u.source.Entries[0].Source.Native.Command != tc.command {
 					t.Fatal("retained command source changed")
 				}
-				blocks := parseLiveActivity(u.view.Entries[0].Source)
+				blocks := parseLiveActivity(u.source.Entries[0].Source)
 				if len(blocks) == 0 || blocks[0].Workdir != tc.workdir {
 					t.Fatalf("blocks = %+v; want workdir %q", blocks, tc.workdir)
 				}
@@ -417,10 +417,10 @@ func TestUISnapshotMCatSourceWithoutFilesystemDisambiguation(t *testing.T) {
 			restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 			t.Chdir(packageDirectory)
 			for name, ui := range map[string]*appServerUI{"live": live, "restored": restored} {
-				if len(ui.view.Entries) != 1 {
-					t.Fatalf("%s entries = %+v", name, ui.view.Entries)
+				if len(ui.source.Entries) != 1 {
+					t.Fatalf("%s entries = %+v", name, ui.source.Entries)
 				}
-				entry := ui.view.Entries[0].Source
+				entry := ui.source.Entries[0].Source
 				if entry.Text != tc.text || entry.Native.Command != tc.command {
 					t.Fatalf("%s source = %q, command = %q; want %q, %q", name, entry.Text, entry.Native.Command, tc.text, tc.command)
 				}
@@ -441,7 +441,7 @@ func TestActivityReadsKeepInvocationWorkdirsApart(t *testing.T) {
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	}
 	var blocks []activityui.Block
-	for _, entry := range u.view.Entries {
+	for _, entry := range u.source.Entries {
 		blocks = append(blocks, parseLiveActivity(entry.Source)...)
 	}
 	if len(blocks) != 3 || !blocks[0].ShowWorkdir || blocks[1].ShowWorkdir || blocks[1].Workdir != other {
@@ -470,7 +470,7 @@ func TestAppServerWholeScriptTimeoutSuffix(t *testing.T) {
 			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: command, DurationMS: new(int64(500))}
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-			entry := u.view.Entries[0]
+			entry := u.source.Entries[0]
 			blocks := parseLiveActivity(entry.Source)
 			var p activityui.Painter
 			var rows []string
@@ -492,9 +492,9 @@ func TestUISnapshotShellSetupTimeoutEvent(t *testing.T) {
 		u := newAppServerSessionTestUI(t, "/workspace")
 		now := time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)
 		u.clock = func() time.Time { return now }
-		view := u.view
+		view := u.testActivity(u.view)
 		if thread == "child" {
-			view = u.agents
+			view = u.testActivity(u.agents)
 		}
 		view.Clock, view.Painter.Theme = u.clock, diffrender.DarkTheme
 		item := binding.ThreadItem{ID: "setup", Type: "commandExecution", Command: "set -e\ntimeout 10 sleep 1", Cwd: "/workspace", Status: "inProgress"}

@@ -93,7 +93,7 @@ func TestUISnapshotMarkdownFileLinks(t *testing.T) {
 		"Missing: missing.go, `missing.go`, [missing](missing.go).\n" +
 		"Existing: sample.go:1, `sample.go`, [source](sample.go:1-2).\n" +
 		"Web: [remote](https://example.com)."
-	for _, view := range []*activityAdapter{u.view, u.agents} {
+	for _, view := range []*activityAdapter{u.testActivity(u.view), u.testActivity(u.agents)} {
 		view.Painter.Theme = diffrender.TerminalTheme
 		rows := view.Painter.Markdown(text, 72, false)
 		uisnapshot.AssertTerminal(t, "testdata/snapshots/markdown-file-links.txt", append(rows, "plain after links"), 72)

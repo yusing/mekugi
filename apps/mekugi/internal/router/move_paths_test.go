@@ -27,7 +27,7 @@ func TestUISnapshotMoveActivityAndDialog(t *testing.T) {
 	text := presentation.ReceiptText(workspace, receiptEvidence(legacycall.History{ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{file})}))
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Painter.Theme = diffrender.DarkTheme
-	u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: text, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "move"}}}})
+	u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: text, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "move"}}}})
 	var rows []string
 	for _, block := range activityui.Disclosure(nil).Blocks(activitypresentation.Operations(text)) {
 		rows = append(rows, u.view.Painter.Block(block, 100)...)
@@ -98,7 +98,7 @@ func TestUISnapshotHostMoveDialogSyntax(t *testing.T) {
 	pages := activitypresentation.HostEditPages(item.Observation(), "/w", "item/completed")
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Painter.Theme = diffrender.DarkTheme
-	u.view.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "move", EditPages: pages}}}}
+	u.source.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "move", EditPages: pages}}}}
 	if !u.shell.openActivityEdit(u.view, 1, "internal/{old.go=>new.go}") {
 		t.Fatal("compressed host move did not open its exact page")
 	}

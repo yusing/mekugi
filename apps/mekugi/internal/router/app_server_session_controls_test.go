@@ -16,8 +16,8 @@ func TestAppServerCompactIdleAndLifecycle(t *testing.T) {
 			u, w := newAppServerTestUI()
 			appServerTestKeys(t, u, "/compact\r")
 			r := appServerOneRequest(t, w, "thread/compact/start", "")
-			if !u.Compaction.AcknowledgementPending() || !u.Starting() || u.conversation().Submitted[u.Submission().ID].Text != "" || len(u.view.Entries) != 0 {
-				t.Fatalf("compact treated as conversation input: pending=%v starting=%v entries=%+v", u.Compaction.AcknowledgementPending(), u.Starting(), u.view.Entries)
+			if !u.Compaction.AcknowledgementPending() || !u.Starting() || u.conversation().Submitted[u.Submission().ID].Text != "" || len(u.source.Entries) != 0 {
+				t.Fatalf("compact treated as conversation input: pending=%v starting=%v entries=%+v", u.Compaction.AcknowledgementPending(), u.Starting(), u.source.Entries)
 			}
 			if beforeAck {
 				appServerTestTurn(t, u, "compact-turn")
@@ -62,8 +62,8 @@ func TestAppServerCompactFailureRestoresCommand(t *testing.T) {
 	appServerTestKeys(t, u, "/compact\r")
 	r := appServerOneRequest(t, w, "thread/compact/start", "")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, r.ID))
-	if u.Text != "/compact" || u.Compaction.AcknowledgementPending() || u.Starting() || !strings.Contains(u.feedback.Text, "rejected") || len(u.view.Entries) != 0 {
-		t.Fatalf("failed compact not restored: draft=%q notice=%q entries=%+v", u.Text, u.feedback.Text, u.view.Entries)
+	if u.Text != "/compact" || u.Compaction.AcknowledgementPending() || u.Starting() || !strings.Contains(u.feedback.Text, "rejected") || len(u.source.Entries) != 0 {
+		t.Fatalf("failed compact not restored: draft=%q notice=%q entries=%+v", u.Text, u.feedback.Text, u.source.Entries)
 	}
 }
 
@@ -116,21 +116,21 @@ func TestAppServerClearStartsFreshThreadAndRetiresOldEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	w.Reset()
-	if req.Method != "thread/start" || req.Params.SessionStartSource != "clear" || req.Params.Model != "chosen" || req.Params.ServiceTier != "priority" || req.Params.Config.Effort != "high" || !u.Replacement.Pending() || len(u.view.Entries) == 0 {
-		t.Fatalf("clear request/state: %+v clearing=%v entries=%+v", req, u.Replacement.Pending(), u.view.Entries)
+	if req.Method != "thread/start" || req.Params.SessionStartSource != "clear" || req.Params.Model != "chosen" || req.Params.ServiceTier != "priority" || req.Params.Config.Effort != "high" || !u.Replacement.Pending() || len(u.source.Entries) == 0 {
+		t.Fatalf("clear request/state: %+v clearing=%v entries=%+v", req, u.Replacement.Pending(), u.source.Entries)
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"fresh","cwd":"/tmp"},"model":"chosen","reasoningEffort":"high","serviceTier":"priority"}}`, req.ID))
 	requests := appServerTurnRequests(t, w)
 	if len(requests) != 2 || requests[0].Method != "thread/unsubscribe" || requests[1].Method != "model/list" {
 		t.Fatalf("clear follow-up requests: %+v", requests)
 	}
-	if u.Thread != "fresh" || u.Replacement.Pending() || len(u.view.Entries) != 0 {
-		t.Fatalf("old presentation retained: thread=%q entries=%+v", u.Thread, u.view.Entries)
+	if u.Thread != "fresh" || u.Replacement.Pending() || len(u.source.Entries) != 0 {
+		t.Fatalf("old presentation retained: thread=%q entries=%+v", u.Thread, u.source.Entries)
 	}
 	appServerTestUserMessage(t, u, "late-old", "", "late old transcript")
 	appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"late-turn"}}}`)
-	if len(u.view.Entries) != 0 || u.Turn != "" {
-		t.Fatalf("retired events repopulated session: %+v turn=%q", u.view.Entries, u.Turn)
+	if len(u.source.Entries) != 0 || u.Turn != "" {
+		t.Fatalf("retired events repopulated session: %+v turn=%q", u.source.Entries, u.Turn)
 	}
 	var frame bytes.Buffer
 	if err := u.testPaint(&frame, 80, 20); err != nil {
@@ -149,8 +149,8 @@ func TestAppServerClearFailureKeepsTranscript(t *testing.T) {
 	appServerTestKeys(t, u, "/clear\r")
 	r := appServerOneRequest(t, w, "thread/start", "")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"unavailable"}}`, r.ID))
-	if u.Thread != "main" || u.Replacement.Pending() || len(u.view.Entries) != 1 || u.view.Entries[0].Source.Text != "keep this" || !strings.Contains(u.feedback.Text, "unavailable") {
-		t.Fatalf("failed clear discarded state: thread=%q entries=%+v notice=%q", u.Thread, u.view.Entries, u.feedback.Text)
+	if u.Thread != "main" || u.Replacement.Pending() || len(u.source.Entries) != 1 || u.source.Entries[0].Source.Text != "keep this" || !strings.Contains(u.feedback.Text, "unavailable") {
+		t.Fatalf("failed clear discarded state: thread=%q entries=%+v notice=%q", u.Thread, u.source.Entries, u.feedback.Text)
 	}
 }
 

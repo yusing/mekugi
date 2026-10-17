@@ -23,7 +23,7 @@ import (
 func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.Turn = "main-turn"
-	applyTranscriptFixture(u.view, true, "", "main", "main", u.Turn, "progress", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "Checking the requested reply."})
+	applyTranscriptFixture(u.testActivity(u.view), true, "", "main", "main", u.Turn, "progress", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "Checking the requested reply."})
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 	message := "The requested reply.\n\n" + strings.Repeat("More detail about this reply.\n", 16) + "End of requested reply."
 	send := func(id, body string) {
@@ -39,7 +39,7 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 	if err := u.testPaint(&bytes.Buffer{}, 120, 28); err != nil {
 		t.Fatal(err)
 	}
-	main := ansi.Strip(strings.Join(u.view.RenderFeed(110, 50).Lines, "\n"))
+	main := ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(110, 50).Lines, "\n"))
 	if strings.Contains(main, "End of requested reply") || !strings.Contains(main, "↩ Open reply") {
 		t.Fatalf("Main did not collapse the actual message: %s", main)
 	}
@@ -48,7 +48,7 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 	var seq, activity uint64
-	for _, entry := range u.view.Entries {
+	for _, entry := range u.source.Entries {
 		if entry.Source.Native != nil && entry.Source.Native.Item == "target\x00main" {
 			seq, activity = entry.Source.Seq, entry.Source.ActivitySeq
 		}

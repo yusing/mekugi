@@ -62,17 +62,17 @@ func TestAppServerWaitTargetsSnapshotAndRender(t *testing.T) {
 	waitTargetTestAgent(t, u, "b", "/root/beta", false)
 	waitTargetTestAgent(t, u, "nested", "/root/alpha/nested", true)
 	waitTargetTestEvent(t, u, "item/started", "main", "t", "w")
-	if u.view.Entries[0].Source.Native.Wait == nil {
+	if u.source.Entries[0].Source.Native.Wait == nil {
 		t.Fatal("live wait lacks structured roster status")
 	}
 	want := "Waiting for agent · alpha, alpha/nested"
-	if got := u.view.Entries[0].Source.Text; got != want {
+	if got := u.source.Entries[0].Source.Text; got != want {
 		t.Fatalf("start = %q, want %q", got, want)
 	}
-	if rendered := u.view.RenderFeed(120, 30).Lines; len(rendered) != 0 {
+	if rendered := u.testActivity(u.view).RenderFeed(120, 30).Lines; len(rendered) != 0 {
 		t.Fatalf("wait leaked into transcript: %q", rendered)
 	}
-	rendered, _ := u.agents.testCurrent(sessionpresentation.ActivityAgent{Name: "/root"}, time.Now())
+	rendered, _ := u.testActivity(u.agents).testCurrent(sessionpresentation.ActivityAgent{Name: "/root"}, time.Now())
 	if !strings.Contains(rendered, terminalui.DimAgentColor("/root/alpha")+"alpha") || !strings.Contains(rendered, terminalui.DimAgentColor("/root/alpha/nested")+"alpha/nested") {
 		t.Fatalf("missing muted targets: %q", rendered)
 	}
@@ -83,8 +83,8 @@ func TestAppServerWaitTargetsSnapshotAndRender(t *testing.T) {
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "a", "turn": map[string]any{"id": "work", "status": "completed"}})
 	waitTargetTestAgent(t, u, "new", "/root/new", true)
 	waitTargetTestEvent(t, u, "item/completed", "main", "t", "w")
-	if len(u.view.Entries) != 1 || u.view.Entries[0].Source.Text != "Finished waiting · alpha, alpha/nested" {
-		t.Fatalf("completion changed start targets: %+v", u.view.Entries)
+	if len(u.source.Entries) != 1 || u.source.Entries[0].Source.Text != "Finished waiting · alpha, alpha/nested" {
+		t.Fatalf("completion changed start targets: %+v", u.source.Entries)
 	}
 }
 
@@ -155,22 +155,22 @@ func TestAppServerWaitTargetsDurableReplay(t *testing.T) {
 			}
 			waitTargetTestStore(t, restored, store)
 			restored.restoreHistory(history)
-			if restored.view.Entries[0].Source.Native.Wait == nil {
+			if restored.source.Entries[0].Source.Native.Wait == nil {
 				t.Fatal("restored wait lacks structured roster status")
 			}
-			if got := restored.view.Entries[0].Source.Text; got != "Finished waiting · alpha, alpha/nested" {
+			if got := restored.source.Entries[0].Source.Text; got != "Finished waiting · alpha, alpha/nested" {
 				t.Fatalf("main replay lost targets: %q", got)
 			}
-			if rendered := restored.view.RenderFeed(120, 30).Lines; len(rendered) != 0 {
+			if rendered := restored.testActivity(restored.view).RenderFeed(120, 30).Lines; len(rendered) != 0 {
 				t.Fatalf("restored wait leaked into transcript: %q", rendered)
 			}
-			rendered, _ := restored.agents.testCurrent(sessionpresentation.ActivityAgent{Name: "/root"}, time.Now())
+			rendered, _ := restored.testActivity(restored.agents).testCurrent(sessionpresentation.ActivityAgent{Name: "/root"}, time.Now())
 			if !strings.Contains(rendered, terminalui.DimAgentColor("/root/alpha")+"alpha") {
 				t.Fatalf("restored wait lost color: %q", rendered)
 			}
 			restored.session.registerThread(binding.ThreadInfo{ID: "a", AgentNickname: "alpha"})
 			restored.restoreActivityThread(binding.ThreadInfo{ID: "a", Turns: history}, false)
-			if got := restored.agents.Entries[0].Source.Text; got != "Finished waiting · alpha/nested" {
+			if got := restored.childSource.Entries[0].Source.Text; got != "Finished waiting · alpha/nested" {
 				t.Fatalf("child replay lost targets: %q", got)
 			}
 			if restored.Turn != "" {
@@ -193,7 +193,7 @@ func TestAppServerWaitTargetsDurableReplay(t *testing.T) {
 				waitTargetTestStore(t, fresh, freshStore)
 				waitTargetTestAgent(t, fresh, "today", "/root/today", true)
 				fresh.restoreHistory(history)
-				if got := fresh.view.Entries[0].Source.Text; got != "Finished waiting" {
+				if got := fresh.source.Entries[0].Source.Text; got != "Finished waiting" {
 					t.Fatalf("missing scoped evidence inferred targets: %q", got)
 				}
 			}
@@ -225,14 +225,14 @@ func TestAppServerWaitTargetsStorageFailureKeepsLiveDisplay(t *testing.T) {
 				waitTargetTestAgent(t, u, "a", "/root/alpha", true)
 			}
 			waitTargetTestEvent(t, u, "item/started", "main", "t", "w")
-			if got := u.view.Entries[0].Source.Text; got != "Waiting for agent · alpha" {
+			if got := u.source.Entries[0].Source.Text; got != "Waiting for agent · alpha" {
 				t.Fatalf("storage blocked live start: %q", got)
 			}
 			if !strings.Contains(u.feedback.Text, "Wait targets could not") {
 				t.Fatalf("storage failure missing notice: %q", u.feedback.Text)
 			}
 			waitTargetTestEvent(t, u, "item/completed", "main", "t", "w")
-			if got := u.view.Entries[0].Source.Text; got != "Finished waiting · alpha" {
+			if got := u.source.Entries[0].Source.Text; got != "Finished waiting · alpha" {
 				t.Fatalf("storage blocked live completion: %q", got)
 			}
 		})

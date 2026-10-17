@@ -5,7 +5,7 @@ import activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 // openErrors exposes the focused transcript's errors through the shared content
 // dialog, newest first on opening. Left/Right reaches earlier retained errors.
 func (u *terminalUI) openErrors() {
-	var view *activityAdapter
+	var view *activityui.View
 	switch u.Focus {
 	case 0:
 		if u.main != nil {
@@ -16,7 +16,7 @@ func (u *terminalUI) openErrors() {
 		return
 	}
 	var pages []activityui.Block
-	for _, entry := range view.Entries {
+	for _, entry := range u.main.activitySource(view).Entries {
 		if entry.Source.Kind != "error" || !view.Visible(entry.Publish()) {
 			continue
 		}

@@ -35,12 +35,12 @@ type nativePendingPreview struct {
 
 // A Main excerpt carries an Activity identity, not a nearby question or run.
 func (u *terminalUI) openActivityReply(seq uint64) bool {
-	v := u.main.view
+	v := u.main.source
 	for _, entry := range v.Entries {
 		if entry.Source.Seq != seq || entry.Source.ActivitySeq == 0 {
 			continue
 		}
-		for _, target := range u.agents.Entries {
+		for _, target := range u.main.childSource.Entries {
 			if target.Source.Seq != entry.Source.ActivitySeq {
 				continue
 			}
@@ -141,7 +141,7 @@ func (u *appServerUI) composerReadOnly() bool {
 }
 
 // transcriptView selects display state without changing the input or execution owner.
-func (u *appServerUI) transcriptView() *activityAdapter {
+func (u *appServerUI) transcriptView() *activityui.View {
 	view := u.sessionPresentation().View()
 	if u.agents != nil && view.Displayed.ID != view.Main.ID {
 		u.agents.Conversation = true
@@ -199,15 +199,15 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		}
 		if plan.Framed {
 			content.MainDetail = u.main.mainTitleDetail()
-			if set := u.main.view.ActiveSkills()["Main"]; set != nil {
+			if set := u.main.source.ActiveSkills()["Main"]; set != nil {
 				content.MainSkills = activityui.SkillLabel(set)
 				if u.main.view.SkillsHover == "Main" {
 					content.MainDetail = strings.TrimSuffix(content.MainDetail, content.MainSkills) + activityui.Underline(content.MainSkills)
 				}
 			}
 			content.MainRight = u.main.mainHeaderRight(plan.Left.W, u.Focus == 0)
-			if u.agents.displayingChild() {
-				content.MainName, content.MainDetail = "Thread", u.agents.Painter.Agent(u.agents.displayedCaller())
+			if u.main.sessionPresentation().DisplayingChild() {
+				content.MainName, content.MainDetail = "Thread", u.agents.Painter.Agent(u.main.sessionPresentation().View().Displayed.Caller)
 				content.MainSkills = ""
 				u.main.updateHistoryHint()
 				content.MainRight = strings.TrimSpace(scrollLabel(u.agents) + " " + u.agents.HistoryHint)
@@ -258,9 +258,9 @@ func (u *terminalUI) shellStatus() terminalsession.ShellStatus {
 	if u.main != nil && u.main.replay != nil {
 		return terminalsession.ShellStatus{Playback: true, PlaybackBar: u.main.replay.bar(u.width)}
 	}
-	responding, _ := u.agents.StatusCounts(u.agents.View.Roster())
+	responding, _ := u.agents.StatusCounts(u.agents.Roster())
 	in := terminalsession.ShellStatus{
-		Child: u.agents.displayingChild(), Responding: responding,
+		Child: u.main.sessionPresentation().DisplayingChild(), Responding: responding,
 		DiffUnseen: u.diffUnseen, Prefix: u.prefix, LiveCount: u.liveDock.Live(),
 	}
 	if u.main != nil {
@@ -284,10 +284,10 @@ func (u *terminalUI) selectNativePane(pane int) {
 
 // showRosterPick switches presentation only; Main retains its composer and host identity.
 func (u *terminalUI) showRosterPick(only bool, selected string) {
-	if intent := u.agents.takeDisplayIntent(); intent != nil && u.main.displaySession(*intent) && intent.Thread.Caller != "/root" {
+	if intent := u.main.takeDisplayIntent(); intent != nil && u.main.displaySession(*intent) && intent.Thread.Caller != "/root" {
 		u.agents.Selected = intent.Thread.Caller
 	}
-	if u.main != nil && (u.agents.displayingChild() != only || u.agents.Selected != selected) {
+	if u.main != nil && (u.main.sessionPresentation().DisplayingChild() != only || u.agents.Selected != selected) {
 		u.selection = nil
 		u.agents.Runs = nil
 	}

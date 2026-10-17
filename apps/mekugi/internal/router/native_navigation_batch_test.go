@@ -95,7 +95,7 @@ func TestNativeNavigationBatchDiffBadgeCells(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.sessionPresentation().Status.Text = "Ready"
 	u.shell.diffUnseen = true
-	u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/worker", Responding: true}}})
+	u.testActivity(u.agents).Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/worker", Responding: true}}})
 	screen := navigationBatchPaint(t, u, 120, 24)
 	footer := strings.Split(screen.String(), "\n")[23]
 	start := strings.Index(footer, "2 Diff ●")
@@ -177,8 +177,8 @@ func TestNativeNavigationBatchFilterBinding(t *testing.T) {
 				if err := u.shell.key('a'); err != nil {
 					t.Fatal(err)
 				}
-				if u.agents.displayingChild() != wantOnly {
-					t.Fatalf("a: only=%v, want %v", u.agents.displayingChild(), wantOnly)
+				if u.testActivity(u.agents).displayingChild() != wantOnly {
+					t.Fatalf("a: only=%v, want %v", u.testActivity(u.agents).displayingChild(), wantOnly)
 				}
 				wantHint := "a child"
 				if wantOnly {
@@ -191,7 +191,7 @@ func TestNativeNavigationBatchFilterBinding(t *testing.T) {
 				if err := u.shell.key('o'); err != nil {
 					t.Fatal(err)
 				}
-				if u.agents.displayingChild() != wantOnly {
+				if u.testActivity(u.agents).displayingChild() != wantOnly {
 					t.Fatal("retired o binding still toggles filtering")
 				}
 			}
@@ -221,7 +221,7 @@ func navigationBatchDialog() *terminalUI {
 		pages = append(pages, block)
 	}
 	u := &terminalUI{}
-	u.openBlocks(v, pages)
+	u.openBlocks(v.bind(u), pages)
 	u.output.ShowPage(2)
 	return u
 }
@@ -287,7 +287,7 @@ func TestUISnapshotNativeNavigationBatchStatus(t *testing.T) {
 				u.sessionPresentation().Status.Text = "Ready"
 				u.shell.diffUnseen = true
 				u.shell.Focus = 3
-				u.agents.setDisplayFilter(only, u.agents.Selected)
+				u.testActivity(u.agents).setDisplayFilter(only, u.agents.Selected)
 				screen := navigationBatchPaint(t, u, width, 24)
 				footer := strings.Split(screen.String(), "\n")[23]
 				uisnapshot.Assert(t, fmt.Sprintf("testdata/snapshots/native-navigation-status-%d-only%v.txt", width, only), footer+"\n")

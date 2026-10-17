@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 
@@ -101,8 +102,8 @@ func TestComposerSkillPickerFiltersAndSubmitsAttachedContents(t *testing.T) {
 		t.Fatalf("skill filtering = %+v", u.picker.Choices)
 	}
 	appServerTestKeys(t, u, "\t")
-	if u.Text != "$quiet " || len(u.Skills) != 1 || u.Skills[0].Path != path || len(u.view.Entries) != 0 {
-		t.Fatalf("skill insertion submitted or lost binding: draft=%q skills=%+v entries=%d", u.Text, u.Skills, len(u.view.Entries))
+	if u.Text != "$quiet " || len(u.Skills) != 1 || u.Skills[0].Path != path || len(u.source.Entries) != 0 {
+		t.Fatalf("skill insertion submitted or lost binding: draft=%q skills=%+v entries=%d", u.Text, u.Skills, len(u.source.Entries))
 	}
 	w.Reset()
 	appServerTestKeys(t, u, "\r")
@@ -139,7 +140,7 @@ func TestComposerFilePickerInsertionUndoRedoAndPasteOpacity(t *testing.T) {
 	requests = pickerRequests(t, w)
 	pickerReply(t, u, requests[1].ID, `{"files":[{"root":"/work","path":"file name.go"}]}`)
 	appServerTestKeys(t, u, "\t")
-	if u.Text != `see @"file name.go" ` || len(u.view.Entries) != 0 {
+	if u.Text != `see @"file name.go" ` || len(u.source.Entries) != 0 {
 		t.Fatalf("file insertion submitted or did not quote whitespace: %q", u.Text)
 	}
 	appServerTestKeys(t, u, "\x1a")
@@ -195,7 +196,7 @@ func TestComposerPickerEscapeViaShellAndFrameBounds(t *testing.T) {
 			}
 		}
 	}
-	if len(u.view.Entries) != 0 || strings.Contains(w.String(), "turn/start") {
+	if len(u.source.Entries) != 0 || strings.Contains(w.String(), "turn/start") {
 		t.Fatal("picker activity polluted transcript or submitted a turn")
 	}
 }
@@ -238,7 +239,7 @@ func TestComposerSkillPickerUndoHistoryAndAtomicEditing(t *testing.T) {
 func TestComposerSkillPickerResumeAndEditorBindings(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.session.start("main", "/work")
-	u.agents = newActivityAdapter()
+	u.agents = activityui.NewView()
 	var turns []binding.HistoryTurn
 	if err := json.Unmarshal([]byte(`[{"id":"turn","status":"completed","items":[{"type":"userMessage","id":"message","content":[{"type":"text","text":"use $review please"},{"type":"skill","name":"review","path":"/work/review/SKILL.md"}]}]}]`), &turns); err != nil {
 		t.Fatal(err)

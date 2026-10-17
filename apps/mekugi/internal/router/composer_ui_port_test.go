@@ -62,10 +62,10 @@ func TestSubmittedAttachmentHostSchema(t *testing.T) {
 		if restore {
 			u.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 		} else {
-			applyTranscriptFixture(u.view, true, u.session.cwd, "main", "main", "t", "input", "item/completed", "", item)
+			applyTranscriptFixture(u.testActivity(u.view), true, u.session.cwd, "main", "main", "t", "input", "item/completed", "", item)
 		}
-		if !reflect.DeepEqual(u.view.Entries[0].Source.Native.Spans, want) {
-			t.Fatalf("restore=%v spans=%+v", restore, u.view.Entries[0].Source.Native.Spans)
+		if !reflect.DeepEqual(u.source.Entries[0].Source.Native.Spans, want) {
+			t.Fatalf("restore=%v spans=%+v", restore, u.source.Entries[0].Source.Native.Spans)
 		}
 	}
 }
@@ -76,7 +76,7 @@ func TestUISnapshotSubmittedAttachmentTokens(t *testing.T) {
 	raw := jsontext.Value(`[{"type":"text","text":"$batch-agent-sessions @FIXME.md non-deferred items","text_elements":[{"byteRange":{"start":0,"end":21},"placeholder":"$batch-agent-sessions"},{"byteRange":{"start":22,"end":31},"placeholder":"@FIXME.md"}]}]`)
 	text, spans, _ := sessionpresentation.UserText(raw)
 	entry := sessionpresentation.ActivityEntry{Agent: "You", Text: text, Observed: time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local), Native: &sessionpresentation.NativeItem{Spans: spans}}
-	out := u.view.testUserItem(entry, 80)
+	out := u.testActivity(u.view).testUserItem(entry, 80)
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/submitted-attachment-tokens.txt", append(out.Lines, "plain after attachments"), 80)
 }
 

@@ -50,9 +50,9 @@ func TestResponseCopyChoices(t *testing.T) {
 func TestAppServerCopyPicker(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.ensureShell()
-	applyTranscriptFixture(u.view, true, "", "main", "main", "old", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "Answer.\n\n```sh\nprintf '界'  \n```\n"})
-	applyTranscriptFixture(u.view, true, "", "main", "child", "t", "child", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "Not this"})
-	applyTranscriptFixture(u.view, true, "", "main", "main", "new", "stream", "item/agentMessage/delta", "Partial", binding.ThreadItem{})
+	applyTranscriptFixture(u.testActivity(u.view), true, "", "main", "main", "old", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "Answer.\n\n```sh\nprintf '界'  \n```\n"})
+	applyTranscriptFixture(u.testActivity(u.view), true, "", "main", "child", "t", "child", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "Not this"})
+	applyTranscriptFixture(u.testActivity(u.view), true, "", "main", "main", "new", "stream", "item/agentMessage/delta", "Partial", binding.ThreadItem{})
 	u.Turn = "new"
 	appServerTestKeys(t, u, "/cop\r")
 	if u.picker.modal != "copy" || u.Text != "" || len(u.picker.Choices) != 2 {
@@ -120,7 +120,7 @@ func TestTerminalClipboardSharedSelection(t *testing.T) {
 		}
 		selected := u.shell.frame.Clipboard
 		u.shell.frame.Clipboard = ""
-		applyTranscriptFixture(u.view, true, "", "main", "main", "t", "a", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "same text"})
+		applyTranscriptFixture(u.testActivity(u.view), true, "", "main", "main", "t", "a", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "same text"})
 		appServerTestKeys(t, u, "/copy\r\r")
 		if selected == "" || u.shell.frame.Clipboard != selected || u.Turn != "active" || wire.Len() != 0 {
 			t.Fatalf("key=%d selected=%q copy=%q wire=%s", key, selected, u.shell.frame.Clipboard, wire.Bytes())

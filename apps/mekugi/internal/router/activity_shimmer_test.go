@@ -23,7 +23,7 @@ func TestNativeUITerminalColorReports(t *testing.T) {
 		}
 	}
 	want := terminalui.Colors{Foreground: diffrender.RGB{R: 220, G: 214, B: 200}, Background: diffrender.RGB{R: 24, G: 22, B: 30}, HasForeground: true, HasBackground: true}
-	for _, view := range []*activityAdapter{u.view, u.agents} {
+	for _, view := range []*activityAdapter{u.testActivity(u.view), u.testActivity(u.agents)} {
 		if view.Painter.Colors != want || view.Painter.Theme != diffrender.DarkTheme {
 			t.Fatalf("pane palette = %+v theme %v", view.Painter.Colors, view.Painter.Theme)
 		}
@@ -39,7 +39,7 @@ func TestNativeUITerminalColorReports(t *testing.T) {
 func TestAppServerReasoningAnimationLifecycle(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
-	v := u.agents
+	v := u.testActivity(u.agents)
 	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/reviewer", Responding: true}}, Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "/root/reviewer", Kind: "reasoning", CallID: "r", Native: &sessionpresentation.NativeItem{Phase: "summary", Live: true}, Text: "Checking the answer target", Observed: time.Unix(0, 0)}}})
 	first, _ := v.testCurrent(v.Agents[0], v.Entries[0].Source.Observed)
 	second, _ := v.testCurrent(v.Agents[0], v.Entries[0].Source.Observed.Add(500*time.Millisecond))
@@ -80,7 +80,7 @@ func TestUISnapshotNativeStatusBreathing(t *testing.T) {
 		rows = append(rows, state)
 		for _, phase := range []time.Duration{0, time.Second} {
 			now = time.Unix(0, 0).Add(phase)
-			rows = append(rows, u.agents.NativeRoster(120, 6, now, true)...)
+			rows = append(rows, u.testActivity(u.agents).NativeRoster(120, 6, now, true)...)
 			rows = append(rows, "plain after roster")
 		}
 	}

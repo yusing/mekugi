@@ -33,9 +33,9 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 				lines = append(lines, fmt.Sprintf("row %02d", i))
 			}
 			text := "```\n" + strings.Join(lines, "\n") + "\n```"
-			view := u.view
+			view := u.testActivity(u.view)
 			if surface == "Activity" {
-				view = u.agents
+				view = u.testActivity(u.agents)
 				view.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
 			}
 			if surface == "btw" {
@@ -58,7 +58,7 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 				}
 			}
 			if surface == "Activity" {
-				u.agents.setDisplayFilter(true, "Main")
+				u.testActivity(u.agents).setDisplayFilter(true, "Main")
 			}
 			paint()
 			x, y := -1, -1

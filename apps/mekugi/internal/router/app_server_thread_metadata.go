@@ -3,6 +3,7 @@ package router
 import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
@@ -54,9 +55,10 @@ func (u *appServerUI) renameThreadActivity(old, name string) {
 	if old == name {
 		return
 	}
-	for _, view := range []*activityAdapter{u.view, u.agents} {
-		for i := range view.Entries {
-			view.Model.Mutate(i, func(entry *sessionpresentation.ActivityRecord) {
+	for i, source := range []*sessionpresentation.ActivitySource{u.source, u.childSource} {
+		view := []*activityui.View{u.view, u.agents}[i]
+		for i := range source.Entries {
+			source.Model.Mutate(i, func(entry *sessionpresentation.ActivityRecord) {
 				if entry.Source.Agent == old {
 					entry.Source.Agent = name
 				}
@@ -91,6 +93,6 @@ func (u *appServerUI) renameThreadActivity(old, name string) {
 			view.RosterSelected = name
 		}
 		view.Runs = nil
-		view.RenameRetiredSkills(old, name)
+		source.RenameRetiredSkills(old, name)
 	}
 }

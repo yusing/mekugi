@@ -11,6 +11,9 @@ selected targets and intents to their owners.
 [Session presentation](../sessionpresentation/SPEC.md) owns displayed identity and
 Main admission; [session control](../sessioncontrol/SPEC.md) issues host operations.
 Feature views own disclosure, navigation and animation.
+Activity source feeds and terminal views are separately bound by the application;
+terminal views consume detached publications and return output demands or intents.
+They retain no source reducer, storage handle or application-session pointer.
 Main-frame composition consumes detached session, draft and prompt values. Its
 terminal owner allocates the transcript window, docks and composer, paints the
 composer and captions, and returns geometry for pointer routing and delivery

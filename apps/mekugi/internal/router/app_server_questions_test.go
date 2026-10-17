@@ -4,6 +4,7 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"fmt"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"io"
 	"reflect"
 	"slices"
@@ -180,7 +181,7 @@ func TestNativeQuestionAsyncBatchAndExternalCommit(t *testing.T) {
 	if u.activeQuestionCall() == nil || u.questionCount() != 2 {
 		t.Fatal("async question did not open or was lost")
 	}
-	if slices.ContainsFunc(u.view.Entries, func(entry sessionpresentation.ActivityRecord) bool { return entry.Source.Kind == "final" }) {
+	if slices.ContainsFunc(u.source.Entries, func(entry sessionpresentation.ActivityRecord) bool { return entry.Source.Kind == "final" }) {
 		t.Fatal("async question entered final-answer bookkeeping")
 	}
 	u.openQuestions()
@@ -371,7 +372,7 @@ func TestNativeQuestionSupersedeBannerAndRejectedSend(t *testing.T) {
 
 func TestNativeQuestionResumeOnlyUnanswered(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.agents = newActivityAdapter()
+	u.agents = activityui.NewView()
 	u.session.start("main", t.TempDir())
 	id, err := json.Marshal([]any{"request_user_input_async", "answered-item", 0})
 	if err != nil {

@@ -76,7 +76,7 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 			}
 			u.shell.outputKey("q")
 			click(u.mainView.NoticeDismiss)
-			if u.composerErrorText() != "" || u.Text != draft || u.Turn != turn || wire.String() != sent || len(u.view.Entries) != 0 {
+			if u.composerErrorText() != "" || u.Text != draft || u.Turn != turn || wire.String() != sent || len(u.source.Entries) != 0 {
 				t.Fatal("dismissal changed draft, host state, wire, or transcript")
 			}
 		})

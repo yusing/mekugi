@@ -119,7 +119,7 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 					u.shell.DiffOpen = saved
 
 					if child {
-						u.agents.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
+						u.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
 					}
 					screen := vt.NewEmulator(120, 40)
 					defer screen.Close()
@@ -175,10 +175,10 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.ensureShell()
 			defer u.shell.diffScreen.Close()
-			u.agents.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Responding: true}}
-			view, caller := u.view, "/root"
+			u.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Responding: true}}
+			view, caller := u.testActivity(u.view), "/root"
 			if activity {
-				view, caller = u.agents, "/root/worker"
+				view, caller = u.testActivity(u.agents), "/root/worker"
 				view.setDisplayFilter(true, caller)
 				u.shell.Focus = 0
 			}
@@ -217,7 +217,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 				}
 			}
 			assertLiveFollow(paint(120, 40))
-			u.agents.Agents[0].Responding = false
+			u.childSource.Agents[0].Responding = false
 			assertLiveFollow(paint(120, 40))
 			u.shell.DiffOpen = true
 			paint(120, 40)
@@ -270,7 +270,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 				view.ScrollKey(terminalui.PaneWheelDown)
 			}
 			assertFollow(paint(140, 32))
-			u.shell.openEntry(view, 1)
+			u.shell.openEntry(view.View, 1)
 			if !view.Following {
 				t.Fatal("opening a snippet paused follow")
 			}

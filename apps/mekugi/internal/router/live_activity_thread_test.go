@@ -66,7 +66,7 @@ func TestConversationThreadsReplyUnderAssignment(t *testing.T) {
 
 	shell := &terminalUI{}
 	v.Opening = snippet
-	shell.openRequested(v)
+	shell.openRequested(v.bind(shell))
 	if shell.output == nil || !strings.Contains(shell.output.pages[0].Body, "Review the follow-scroll") {
 		t.Fatal("collapsed assignment did not open full dialog")
 	}
@@ -220,7 +220,7 @@ func TestConversationConsecutiveReasoning(t *testing.T) {
 			if snippet == (activityui.Snippet{}) {
 				continue
 			}
-			if !shell.openOutput(v, snippet) {
+			if !shell.openOutput(v.bind(shell), snippet) {
 				t.Fatal("reasoning did not request dialog")
 			}
 			page := v.Painter.DetailDocument(shell.output.pages[0].DetailPage, nil, nil, 80)

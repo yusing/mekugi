@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
@@ -129,21 +130,21 @@ func TestSkillAttachmentTranscriptAndHistoryMetadata(t *testing.T) {
 			}
 			u, _ := newAppServerTestUI()
 			u.session.start("main", "/work")
-			u.agents = newActivityAdapter()
+			u.agents = activityui.NewView()
 			var turns []binding.HistoryTurn
 			payload := `[{"id":"turn","status":"completed","items":[{"type":"userMessage","id":"message","content":` + tc.content + `}]}]`
 			if err := json.Unmarshal([]byte(payload), &turns); err != nil {
 				t.Fatal(err)
 			}
 			u.restoreHistory(turns)
-			if len(u.view.Entries) == 0 || u.view.Entries[0].Source.Native == nil || len(u.view.Entries[0].Source.Native.Spans) != 1 || u.view.Entries[0].Source.Native.Spans[0].Start != tc.wantStart {
-				t.Fatalf("restored transcript did not preserve selected skill: %+v", u.view.Entries)
+			if len(u.source.Entries) == 0 || u.source.Entries[0].Source.Native == nil || len(u.source.Entries[0].Source.Native.Spans) != 1 || u.source.Entries[0].Source.Native.Spans[0].Start != tc.wantStart {
+				t.Fatalf("restored transcript did not preserve selected skill: %+v", u.source.Entries)
 			}
 			if len(u.InputHistory) != 1 || len(u.InputHistory[0].Skills) != 1 || u.InputHistory[0].Skills[0].Start != tc.wantStart {
 				t.Fatalf("history binding disagrees with transcript: %+v", u.InputHistory)
 			}
-			if !strings.Contains(u.view.Entries[0].Source.Text, "$review") {
-				t.Fatalf("restored transcript lost skill text: %+v", u.view.Entries[0])
+			if !strings.Contains(u.source.Entries[0].Source.Text, "$review") {
+				t.Fatalf("restored transcript lost skill text: %+v", u.source.Entries[0])
 			}
 		})
 	}

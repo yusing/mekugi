@@ -5,6 +5,7 @@ package router
 import (
 	"context"
 	json "encoding/json/v2"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
@@ -151,7 +152,7 @@ func TestAppServerSettingsCatalogNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, history: testHistory(), client: client, requests: sessioncontrol.NewRequests[appServerRequest](client), view: newActivityAdapter(), agents: newActivityAdapter()})
+	u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, history: testHistory(), client: client, requests: sessioncontrol.NewRequests[appServerRequest](client), view: activityui.NewView(), agents: activityui.NewView()})
 	if err := u.request("initialize", nil); err != nil {
 		t.Fatal(err)
 	}

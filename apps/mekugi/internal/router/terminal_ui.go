@@ -1,6 +1,7 @@
 package router
 
 import (
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"strings"
 	"time"
 
@@ -23,7 +24,7 @@ type terminalUI struct {
 	fileReadSlot  chan struct{} // Physical read capacity survives dialog and attachment replacement.
 	diffScreen    *terminalsession.DiffScreen
 	preparePane   func(*scope.Store)
-	agents        *activityAdapter
+	agents        *activityui.View
 	main          *appServerUI
 	width, height int
 	terminalsession.Shell
@@ -172,7 +173,7 @@ func (u *terminalUI) resize(key string) {
 // terminalColor applies OSC 10/11 default-color reports to every pane, as the
 // standalone Activity and diff views did for their own queries.
 func (u *terminalUI) terminalColor(reply string) {
-	views := []*activityAdapter{u.agents}
+	views := []*activityui.View{u.agents}
 	if u.main != nil {
 		views = append(views, u.main.view)
 	}
@@ -268,7 +269,7 @@ func (u *terminalUI) send(s string) error {
 	}
 
 	if s == "\x1b" && u.main != nil && !u.main.keybindings {
-		var transcript *activityAdapter
+		var transcript *activityui.View
 		if u.Focus == 0 {
 			transcript = u.main.transcriptView()
 		}
@@ -314,8 +315,8 @@ func (u *terminalUI) send(s string) error {
 		}
 		return nil
 	}
-	only, selected := u.agents.displayingChild(), u.agents.Selected
-	u.agents.publishActivity()
+	only, selected := u.main.sessionPresentation().DisplayingChild(), u.agents.Selected
+	u.main.publishActivity()
 	quit := u.agents.HandleRosterKey(s)
 	u.showRosterPick(only, selected)
 	if quit {
@@ -521,7 +522,7 @@ func (u *terminalUI) mouse(s string) error {
 		} else if action == 'k' {
 			u.agents.ScrollRoster(-1)
 		} else {
-			only, selected := u.agents.displayingChild(), u.agents.Selected
+			only, selected := u.main.sessionPresentation().DisplayingChild(), u.agents.Selected
 			u.agents.PointAgent(action, y-r.Y+1, x-r.X+1)
 			if agent := u.agents.SkillsRequest; agent != "" {
 				u.agents.SkillsRequest = ""

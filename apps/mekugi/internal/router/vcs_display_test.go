@@ -72,7 +72,7 @@ func vcsCommandUI(t *testing.T, workspace string) *appServerUI {
 	t.Helper()
 	u := newAppServerSessionTestUI(t, workspace)
 	u.view.Conversation = true
-	u.view.testAudience()
+	u.testActivity(u.view).testAudience()
 	return u
 }
 
@@ -92,7 +92,7 @@ func TestVCSCommitShowsTheRecordedCommit(t *testing.T) {
 	u.view.Clock = u.clock
 	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "/usr/bin/bash -lc " + quoteShellWord(script), "cwd": g.dir, "status": "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	u.view.testPace(now.Add(time.Second))
+	u.testActivity(u.view).testPace(now.Add(time.Second))
 	// Staging folds into the commit; the extra batch row owns invocation timing.
 	// The request is not yet a recorded commit.
 	if got, want := mainFeed(u, 90), "├ Check   working tree · git diff --check\n├ Commit  amend! feat(router): pin latest reply · git\n└ Running shell batch"; got != want {
@@ -118,7 +118,7 @@ func TestVCSCommitShowsTheRecordedCommit(t *testing.T) {
 	}
 	// The rows are the commit's result; they stay after the agent moves on.
 	nextEvent(t, u, "main")
-	settleActivity(time.Now().Add(activityui.OutputDebounce), u.view)
+	settleActivity(time.Now().Add(activityui.OutputDebounce), u.testActivity(u.view))
 	if got := mainFeed(u, 90); !strings.Contains(got, "A  b.go") {
 		t.Fatalf("commit rows collapsed:\n%s", got)
 	}

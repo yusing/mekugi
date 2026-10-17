@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"testing"
 	"time"
 
@@ -333,7 +334,7 @@ func TestUISnapshotNativeCompactQueuedContinuation(t *testing.T) {
 	u, w := newAppServerTestUI()
 	setTestAppServerIntegration(u, &observationFixture{})
 	u.session.start(u.Thread, "")
-	u.agents = newActivityAdapter()
+	u.agents = activityui.NewView()
 	u.view.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	u.view.Clock = u.clock
@@ -344,8 +345,8 @@ func TestUISnapshotNativeCompactQueuedContinuation(t *testing.T) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "compact-turn", "item": binding.ThreadItem{ID: "compaction", Type: "contextCompaction"}})
 	appServerTestTurnEnd(t, u, "compact-turn", "completed")
 	appServerOneRequest(t, w, "turn/start", compactContinuationText)
-	for i := range u.view.Entries {
-		u.view.Entries[i].Source.Observed = u.now()
+	for i := range u.source.Entries {
+		u.source.Entries[i].Source.Observed = u.now()
 	}
 	rows, _ := u.testMainFrame(80, 16, 0)
 	assertNativeUISnapshot(t, "native-compact-queued-continuation", rows)

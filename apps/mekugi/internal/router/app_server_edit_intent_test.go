@@ -195,10 +195,10 @@ func TestAppServerSedStartsAsEditBeforeReceipt(t *testing.T) {
 	for _, thread := range []string{"main", "child"} {
 		t.Run(thread, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			view := u.view
+			view := u.testActivity(u.view)
 			if thread == "child" {
 				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": thread, "agentNickname": "worker"}})
-				view = u.agents
+				view = u.testActivity(u.agents)
 			}
 			item := binding.ThreadItem{ID: "sed-call", Type: "commandExecution", Command: command,
 				CommandActions: []binding.CommandAction{{Type: "unknown", Command: command}}}
@@ -229,9 +229,9 @@ func TestAppServerEditIntentLiveAndRestored(t *testing.T) {
 			if thread == "child" {
 				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 			}
-			view := u.view
+			view := u.testActivity(u.view)
 			if thread == "child" {
-				view = u.agents
+				view = u.testActivity(u.agents)
 			}
 			for _, method := range []string{"item/started", "item/completed"} {
 				current := item
@@ -241,8 +241,8 @@ func TestAppServerEditIntentLiveAndRestored(t *testing.T) {
 				appServerTestNotify(t, u, method, map[string]any{"threadId": thread, "turnId": "t", "item": current})
 				assertCapturedCommand(t, view, thread, "cmd", "Move", 0)
 				if method == "item/completed" {
-					finishPacing(u.view, u.agents)
-					if got := mainFeed(appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: view}), 100); !strings.Contains(got, "shell batch · exit 2") {
+					finishPacing(u.testActivity(u.view), u.testActivity(u.agents))
+					if got := mainFeed(appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: view.View, source: view.ActivitySource}), 100); !strings.Contains(got, "shell batch · exit 2") {
 						t.Fatalf("batch failure missing: %s", got)
 					}
 				}
@@ -261,7 +261,7 @@ func TestAppServerEditIntentLiveAndRestored(t *testing.T) {
 			if thread == "main" {
 				restored := newAppServerSessionTestUI(t, t.TempDir())
 				restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
-				assertCapturedCommand(t, restored.view, "main", "cmd", "Move", 0)
+				assertCapturedCommand(t, restored.testActivity(restored.view), "main", "cmd", "Move", 0)
 			}
 		})
 	}

@@ -216,7 +216,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			awaitMain(t, u, "Running")
 			if strings.HasPrefix(edit, "python3") {
 				var rows []string
-				for _, block := range u.view.blocks(0) {
+				for _, block := range u.testActivity(u.view).blocks(0) {
 					if _, _, _, _, ok := activityui.EditStat(block.Label); ok {
 						rows = append(rows, u.view.Painter.Block(block, 120)...)
 					}
@@ -255,7 +255,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 					}
 				}
 			}()
-			finishPacing(u.view, u.agents)
+			finishPacing(u.testActivity(u.view), u.testActivity(u.agents))
 			if err := u.testPaint(slave, 140, 40); err != nil {
 				t.Fatal(err)
 			}
@@ -296,7 +296,7 @@ func TestAppServerTrackedEditCommandOutcomeBeforeHostExit(t *testing.T) {
 	}
 	// A zero exit also describes a no-op. Without file evidence, show the
 	// command outcome but do not invent a confirmed edit or applied counts.
-	for _, block := range u.view.blocks(0) {
+	for _, block := range u.testActivity(u.view).blocks(0) {
 		if block.Verb == "Edit" {
 			if _, _, _, _, counts := activityui.EditStat(block.Label); counts || block.GroupHeader == "Edited" || block.EditOutcome != "ran" {
 				t.Fatalf("command completion confirmed a file change: %+v", block)
@@ -502,10 +502,10 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 							if len(u.shell.liveDock.Order) != 0 || strings.Contains(screen.String(), "LIVE ·") {
 								t.Fatal("completed native command retained the live dock")
 							}
-							for _, view := range []*activityAdapter{u.view, u.agents} {
+							for _, view := range []*activityAdapter{u.testActivity(u.view), u.testActivity(u.agents)} {
 								for _, entry := range view.Entries {
 									if entry.Source.Native != nil && entry.Source.Native.Item == "edit" {
-										if !u.shell.openActivityEdit(view, entry.Source.Seq, "source.go") || !strings.Contains(u.shell.output.pages[0].Code, "+package p; var B=2") {
+										if !u.shell.openActivityEdit(view.bind(u.shell), entry.Source.Seq, "source.go") || !strings.Contains(u.shell.output.pages[0].Code, "+package p; var B=2") {
 											t.Fatal("completed shell edit waited for the next cell or sibling exit to become clickable")
 										}
 										u.shell.outputKey("\x1b")

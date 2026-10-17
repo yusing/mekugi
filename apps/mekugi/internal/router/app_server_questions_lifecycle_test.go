@@ -3,6 +3,7 @@ package router
 import (
 	json "encoding/json/v2"
 	"fmt"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"strings"
 	"testing"
 
@@ -127,7 +128,7 @@ func TestQuestionAsyncRemainingSurvivesReplyTurnSteerAndReplay(t *testing.T) {
 	}
 	// Replay is history-only. It must recover the remaining open question without resending.
 	v, input := newAppServerTestUI()
-	v.agents = newActivityAdapter()
+	v.agents = activityui.NewView()
 	v.session.start("main", t.TempDir())
 	first, _ := json.Marshal(map[string]any{"id": "two", "type": "agentMessage", "delivery": "async", "phase": "finalAnswer", "text": "Who receives it?", "questions": []any{
 		map[string]any{"title": "Who receives it?", "options": []string{"Customers", "Internal"}}, map[string]any{"title": "Who approves it?", "options": []string{"Customers", "Internal"}},
@@ -193,7 +194,7 @@ func TestQuestionAnswerOnlyAppearsUnderAsked(t *testing.T) {
 			if len(binding.QuestionReplies(reply)) != 1 {
 				t.Fatal("reply not submitted")
 			}
-			for _, entry := range u.view.Entries {
+			for _, entry := range u.source.Entries {
 				if entry.Source.Agent == "You" {
 					t.Fatal("pending reply created duplicate user band")
 				}
@@ -205,7 +206,7 @@ func TestQuestionAnswerOnlyAppearsUnderAsked(t *testing.T) {
 			if strings.Count(frame, "Who receives it?") != 1 || strings.Count(frame, "Internal") != 1 || !strings.Contains(frame, "answered") {
 				t.Fatalf("duplicate or missing answer:\n%s", frame)
 			}
-			for _, entry := range u.view.Entries {
+			for _, entry := range u.source.Entries {
 				if entry.Source.Agent == "You" {
 					t.Fatal("committed reply created duplicate user band")
 				}
@@ -253,13 +254,13 @@ func TestQuestionRecordPreservesLiteralNotePrefix(t *testing.T) {
 			appServerTestKeys(t, u, "3"+literal+"\r")
 			lifecycleUserMessage(t, u, "turn", "reply", u.conversation().Submitted[u.Submission().ID].Text)
 		}
-		entry := u.view.Entries[0].Source
+		entry := u.source.Entries[0].Source
 		if got := entry.Native.Questions[0].Answer; got != literal {
 			t.Fatalf("sync=%v: displayed %q, want literal %q", sync, got, literal)
 		}
 		questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": binding.ThreadItem{ID: "ack", Type: "agentMessage", Text: "I will use that answer."}})
 		u.view.Conversation = true
-		u.view.testAudience()
+		u.testActivity(u.view).testAudience()
 		if frame := mainFeed(u, 100); !strings.Contains(frame, "re: your answer") || strings.Count(frame, literal) != 2 {
 			t.Fatalf("sync=%v: reply changed the literal answer:\n%s", sync, frame)
 		}
@@ -271,7 +272,7 @@ func TestQuestionReplyBecomesMainReplyAnchor(t *testing.T) {
 		t.Run(map[bool]string{false: "live", true: "resume"}[replay], func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.view.Conversation = true
-			u.view.testAudience()
+			u.testActivity(u.view).testAudience()
 			u.Turn = "turn"
 			content := func(text string) []byte {
 				data, err := json.Marshal([]map[string]string{{"type": "text", "text": text}})
@@ -294,7 +295,7 @@ func TestQuestionReplyBecomesMainReplyAnchor(t *testing.T) {
 				}
 			}
 			var reply, ack sessionpresentation.ActivityEntry
-			for _, entry := range u.view.Entries {
+			for _, entry := range u.source.Entries {
 				if entry.Source.Kind == "question_reply" {
 					reply = entry.Source
 				}
@@ -319,8 +320,8 @@ func TestQuestionReplyBecomesMainReplyAnchor(t *testing.T) {
 func TestQuestionReplyLinkSkipsContinuationHeading(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
-	u.view.testAudience()
-	u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
+	u.testActivity(u.view).testAudience()
+	u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "Main", Kind: "reasoning", Text: "Check the audience"},
 		{Seq: 2, Agent: "Main", Kind: "tool", Text: "Read `config.go`"},
 		{Seq: 3, Agent: "/root/worker", Kind: "final", Text: "Checked"},
@@ -328,12 +329,12 @@ func TestQuestionReplyLinkSkipsContinuationHeading(t *testing.T) {
 	questionTestAsync(t, u, "ask", "Which audience?")
 	lifecycleUserMessage(t, u, "turn", "reply", lifecycleReply(t, "ask", 0, "Which audience?", "Customers"))
 	var reply uint64
-	for _, entry := range u.view.Entries {
+	for _, entry := range u.source.Entries {
 		if entry.Source.Kind == "question_reply" {
 			reply = entry.Source.Seq
 		}
 	}
-	feed := u.view.RenderFeed(100, 60)
+	feed := u.testActivity(u.view).RenderFeed(100, 60)
 	row, ok := u.view.QuestionRows[reply]
 	if !ok || row >= len(feed.Lines) || !strings.Contains(feed.Lines[row], "Asked") {
 		t.Fatalf("answer target is not Asked: row=%d frame=%s", row, strings.Join(feed.Lines, "\n"))
@@ -343,7 +344,7 @@ func TestQuestionReplyLinkSkipsContinuationHeading(t *testing.T) {
 func TestSyncQuestionReplyBecomesMainAnchor(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
-	u.view.testAudience()
+	u.testActivity(u.view).testAudience()
 	u.Turn = "turn"
 	lifecycleUserMessage(t, u, "turn", "prompt", "Original task")
 	questionTestSync(t, u, "sync", false)

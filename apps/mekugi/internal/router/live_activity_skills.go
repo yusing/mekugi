@@ -11,8 +11,8 @@ import (
 
 type activeSkillSet = activitypresentation.SkillSet
 
-func (u *terminalUI) openSkills(view *activityAdapter, agent string) {
-	names := slices.Clone(view.ActiveSkills()[agent])
+func (u *terminalUI) openSkills(view *activityui.View, agent string) {
+	names := slices.Clone(u.main.activitySource(view).ActiveSkills()[agent])
 	if len(names) == 0 {
 		return
 	}

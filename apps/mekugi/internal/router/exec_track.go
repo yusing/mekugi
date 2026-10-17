@@ -126,8 +126,8 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 			return nil, true
 		}
 		enriched, valid := u.reconcileTrackedCommand(key, *run.completion, run.completed)
-		for _, adapter := range []*activityAdapter{u.view, u.agents} {
-			adapter.settleCommandReport(enriched, valid)
+		for _, adapter := range []*sessionpresentation.ActivitySource{u.source, u.childSource} {
+			adapter.SettleCommandReport(enriched, valid)
 		}
 		u.releaseCommand(run.entry)
 		delete(s.commands, key)
@@ -203,27 +203,4 @@ func (u *appServerUI) reconcileTrackedCommand(key [3]string, entry sessionpresen
 		native.Changes, native.Commit = commandOutputRows(item)
 	}
 	return entry, true
-}
-
-// settleCommandReport updates attribution on the existing completed record. This is
-// separate from native merging, which must continue rejecting late host deltas.
-func (v *activityAdapter) settleCommandReport(enriched sessionpresentation.ActivityEntry, valid bool) {
-	for i, record := range v.Entries {
-		if !enriched.Native.SameItem(record.Source.Native) {
-			continue
-		}
-		entry := record.Source
-		native := *entry.Native
-		native.Segments, native.SegmentsPending = nil, false
-		entry.Native = &native
-		values := record.Values
-		if valid {
-			native.Segments, native.Changes, native.Commit = enriched.Native.Segments, enriched.Native.Changes, enriched.Native.Commit
-			entry.Completed = enriched.Completed
-			entry.OutputTail, entry.OutputOmit = enriched.OutputTail, enriched.OutputOmit
-			values = activitypresentation.RetainAnnotations(sessionpresentation.ActivityContent(entry).Values(), values)
-		}
-		v.Model.Replace(i, entry, values)
-		return
-	}
 }

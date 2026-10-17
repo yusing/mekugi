@@ -18,7 +18,7 @@ func TestAppServerBatchFailureDoesNotFailEachOperation(t *testing.T) {
 	for _, mode := range []string{"live", "resume", "child history"} {
 		t.Run(mode, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			view := u.view
+			view := u.testActivity(u.view)
 			switch mode {
 			case "live":
 				started := item
@@ -30,13 +30,13 @@ func TestAppServerBatchFailureDoesNotFailEachOperation(t *testing.T) {
 			case "child history":
 				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 				u.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
-				view = u.agents
+				view = u.testActivity(u.agents)
 			}
-			finishPacing(u.view, u.agents)
-			got := mainFeed(appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: view}), 140)
+			finishPacing(u.testActivity(u.view), u.testActivity(u.agents))
+			got := mainFeed(appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: view.View, source: view.ActivitySource}), 140)
 			if mode == "resume" {
 				feed := view.RenderFeed(140, 10)
-				if !strings.Contains(got, "1 failed command") || !u.shell.openOutput(view, feed.Snippets[0]) || len(u.shell.output.pages) != 1 {
+				if !strings.Contains(got, "1 failed command") || !u.shell.openOutput(view.bind(u.shell), feed.Snippets[0]) || len(u.shell.output.pages) != 1 {
 					t.Fatalf("resumed batch lost its summary or aggregate output: %s", got)
 				}
 				if output := u.shell.output.pages[0].output; output == nil || !output.View().Exited || output.View().Exit != 1 || !strings.Contains(strings.Join(output.View().Lines, "\n"), "conflict") {

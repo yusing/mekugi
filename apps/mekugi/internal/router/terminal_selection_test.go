@@ -344,10 +344,10 @@ func TestTerminalUISelectionReplacementKeepsCleanLinks(t *testing.T) {
 func TestTerminalUISelectionKeepsPressedHitTarget(t *testing.T) {
 	for _, question := range []bool{false, true} {
 		u := selectionTestUI("click target")
-		u.agents = newActivityAdapter()
+		u.agents = activityui.NewView()
 		u.Auxiliary = changeview.NewPane("", diffrender.TerminalTheme)
 		for _, entry := range []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "First target"}, {Seq: 2, Agent: "Main", Kind: "text", Text: "Advanced target"}} {
-			u.main.view.appendEntry(entry, parseLiveActivity(entry))
+			u.main.testActivity(u.main.view).appendEntry(entry, parseLiveActivity(entry))
 		}
 		old, next := activityui.Snippet{Run: 1}, activityui.Snippet{Run: 2}
 		if question {
@@ -380,16 +380,16 @@ func TestTerminalUISelectionRenderedClipboard(t *testing.T) {
 	for _, activity := range []bool{false, true} {
 		u, _ := newAppServerTestUI()
 		u.ensureShell()
-		view := u.view
+		view := u.testActivity(u.view)
 		if activity {
-			view = u.agents
-			u.agents.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
+			view = u.testActivity(u.agents)
+			u.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
 			u.shell.DiffOpen = false
 
 		}
 		applyTranscriptFixture(view, true, "", "main", "main", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "hello [report](https://example.com/report)"})
 		if activity {
-			u.agents.setDisplayFilter(true, "Main")
+			u.testActivity(u.agents).setDisplayFilter(true, "Main")
 		}
 		screen := vt.NewEmulator(120, 30)
 		defer screen.Close()

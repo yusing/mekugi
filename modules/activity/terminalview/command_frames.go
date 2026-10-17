@@ -56,29 +56,49 @@ func (v *View) HoldCurrentCommand(seq uint64, fallback CommandFrame) {
 	v.HoldCommand(seq, fallback)
 }
 
-// CommandFrame requests reprojection when either source annotations or revealed
-// output changed. The application supplies a detached projection of current source.
-func (v *View) CommandFrame(seq, sourceRevision uint64) (CommandFrame, bool) {
+// NeedsCommandContent requests detached source only for a held reveal frame
+// whose source annotations or revealed output changed.
+func (v *View) NeedsCommandContent(seq, revision uint64) bool {
 	frame := v.commandFrames[seq]
-	if frame == nil || !frame.released.IsZero() || !frame.project && frame.sourceRevision == sourceRevision {
-		return CommandFrame{}, false
-	}
-	return frame.snapshot, true
+	return frame != nil && frame.released.IsZero() && (frame.project || frame.sourceRevision != revision)
 }
 
-func (v *View) UpdateCommandFrame(entry presentation.Entry) {
-	frame := v.commandFrames[entry.Seq]
-	if frame == nil {
-		return
+// Source: apps/mekugi/internal/router/activity_command_frame.go:14:26@e596fd5f.
+// Project reuses admitted command content while delaying only terminal outcome
+// and output reveal. It never resolves the original source or retained output.
+func (frame CommandFrame) Project(entry presentation.Entry) presentation.Entry {
+	if entry.Command == nil {
+		return entry
 	}
-	frame.entry, frame.sourceRevision = entry, entry.Revision
-	frame.project, frame.dirty = false, true
+	content := *entry.Command
+	content.Command.Running, content.Command.Exited, content.Command.ExitCode = true, false, 0
+	content.Command.Ended, content.Command.Duration = time.Time{}, 0
+	content.Command.Tail, content.Command.TailOmitted = frame.Output.Tail, frame.Output.Omitted
+	content.Command.Segments = frame.Segments
+	if content.Details != nil {
+		content.Details = new(*content.Details)
+		content.Details.Status = "inProgress"
+	}
+	entry.Values = presentation.RetainAnnotations(content.Values(), entry.Values)
+	entry.Running, entry.ItemComplete, entry.Unconfirmed, entry.OutputComplete = true, false, false, false
+	entry.Completed = time.Time{}
+	return entry
 }
 
 func (v *View) ReleaseCommand(seq uint64, at time.Time) {
 	if frame := v.commandFrames[seq]; frame != nil {
 		frame.released = at
 	}
+}
+
+func (v *View) updateCommandFrame(entry presentation.Entry) {
+	if !v.NeedsCommandContent(entry.Seq, entry.Revision) || entry.Command == nil {
+		return
+	}
+	frame := v.commandFrames[entry.Seq]
+	frame.entry = frame.snapshot.Project(entry)
+	frame.sourceRevision = entry.Revision
+	frame.project, frame.dirty = false, true
 }
 
 func (v *View) commandEntry(entry presentation.Entry) presentation.Entry {

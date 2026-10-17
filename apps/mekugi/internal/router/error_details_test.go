@@ -30,15 +30,15 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 		t.Run(map[bool]string{false: "main", true: "child"}[child], func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.view.Conversation = true
-			u.view.testAudience()
+			u.testActivity(u.view).testAudience()
 			activity := sessioncontrol.NewAudience(nil)
 			activity.Attach("main")
 			proxy := &observationFixture{activity: activity}
 			setTestAppServerIntegration(u, proxy)
-			thread, view, focus := "main", u.view, 0
+			thread, view, focus := "main", u.testActivity(u.view), 0
 			if child {
-				thread, view, focus = "child", u.agents, 0
-				u.agents.setDisplayFilter(true, "/root/worker")
+				thread, view, focus = "child", u.testActivity(u.agents), 0
+				u.testActivity(u.agents).setDisplayFilter(true, "/root/worker")
 				activity.Observe("child", "main", "/root/worker", true)
 				u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 			}
@@ -71,7 +71,7 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 			}
 			feed := view.RenderFeed(80, 40)
 			row := slices.IndexFunc(feed.Snippets, func(s activityui.Snippet) bool { return s != activityui.Snippet{} })
-			if row < 0 || !u.shell.openOutput(view, feed.Snippets[row]) {
+			if row < 0 || !u.shell.openOutput(view.View, feed.Snippets[row]) {
 				t.Fatal("error click target cannot open shared dialog")
 			}
 			assertErrorDialog(t, u.shell, textsanitize.Safe(full, false))
@@ -132,10 +132,10 @@ func TestErrorDetailsRestoredRollout(t *testing.T) {
 			}
 			restoreContentReply(t, u, 0, map[string]any{"data": data, "nextCursor": nil})
 			restoreContentReply(t, u, 1, map[string]any{"data": []any{}, "nextCursor": nil})
-			view := u.view
+			view := u.testActivity(u.view)
 			if child {
 				restoreContentReply(t, u, 2, map[string]any{"thread": map[string]any{"id": "child", "turns": []any{map[string]any{"id": "t", "status": "failed", "items": []any{}}}}})
-				view = u.agents
+				view = u.testActivity(u.agents)
 			}
 			full := "exec script failed: " + detail
 			index := slices.IndexFunc(view.Entries, func(e sessionpresentation.ActivityRecord) bool {
@@ -144,7 +144,7 @@ func TestErrorDetailsRestoredRollout(t *testing.T) {
 			if index < 0 || view.Entries[index].Source.ErrorDetail != full || view.Entries[index].Source.Text != activityui.ErrorPreview(full) {
 				t.Fatal("restoration clipped the full host error")
 			}
-			if !u.shell.openEntry(view, view.Entries[index].Source.Seq) {
+			if !u.shell.openEntry(view.bind(u.shell), view.Entries[index].Source.Seq) {
 				t.Fatal("restored error has no dialog")
 			}
 			assertErrorDialog(t, u.shell, full)
@@ -154,13 +154,13 @@ func TestErrorDetailsRestoredRollout(t *testing.T) {
 
 func TestErrorDetailsKeyboardPaginationAndFiltering(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.agents.setDisplayFilter(true, "/root/worker")
-	u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
+	u.testActivity(u.agents).setDisplayFilter(true, "/root/worker")
+	u.testActivity(u.agents).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root/a", Kind: "error", Text: "old error"},
 		{Seq: 2, Agent: "/root/b", Kind: "error", Text: "other agent"},
 		{Seq: 3, Agent: "/root/a", Kind: "error", Text: "new error"},
 	}})
-	u.agents.setDisplayFilter(true, "/root/a")
+	u.testActivity(u.agents).setDisplayFilter(true, "/root/a")
 	u.shell.openErrors()
 	if u.shell.output == nil || len(u.shell.output.pages) != 2 || u.shell.output.Page != 1 {
 		t.Fatal("keyboard error details lost selection or filter")
@@ -180,7 +180,7 @@ func TestErrorDetailsSearchAcrossVisualWraps(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	query := strings.Repeat("q", 80) + " forced cleanup"
 	full := strings.Repeat("prefix ", 160) + query + strings.Repeat(" tail", 80) + "\n" + query
-	u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "error", Text: full}}})
+	u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "error", Text: full}}})
 	if !u.shell.openEntry(u.view, 1) {
 		t.Fatal("could not open error")
 	}
@@ -207,16 +207,16 @@ func TestErrorDetailsTerminalClick(t *testing.T) {
 	for _, child := range []bool{false, true} {
 		t.Run(map[bool]string{false: "main", true: "child"}[child], func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			view, agent := u.view, "Main"
+			view, agent := u.testActivity(u.view), "Main"
 			if child {
-				view, agent = u.agents, "/root/worker"
-				u.agents.setDisplayFilter(true, "/root/worker")
+				view, agent = u.testActivity(u.agents), "/root/worker"
+				u.testActivity(u.agents).setDisplayFilter(true, "/root/worker")
 			}
 			full := "Failed: " + strings.Repeat("diagnostic ", 40) + "\nrejected: forced cleanup is not permitted"
 			view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: agent, Kind: "error", Text: full}}})
 			u.Text = "preserve draft"
 			if child {
-				u.agents.setDisplayFilter(true, agent)
+				u.testActivity(u.agents).setDisplayFilter(true, agent)
 			}
 			screen := vt.NewEmulator(120, 40)
 			defer screen.Close()

@@ -40,7 +40,7 @@ func TestNativeActivityFollowupAssignments(t *testing.T) {
 	collab("task-1", "spawnAgent", "Check the original answer.")
 	collab("task-2", "followupTask", "Check the edited answer.")
 	var next []sessionpresentation.ActivityEntry
-	for _, entry := range u.view.Entries {
+	for _, entry := range u.source.Entries {
 		if entry.Source.Kind == "assignment" {
 			next = append(next, entry.Source)
 		}
@@ -50,13 +50,13 @@ func TestNativeActivityFollowupAssignments(t *testing.T) {
 	}
 	u.applyActivity([]sessionpresentation.ActivityEntry{{Seq: u.session.next(), Agent: "/root/reviewer", Kind: "final", Text: "The edited answer is correct."}}, nil)
 	u.view.Conversation = true
-	u.view.testAudience()
-	feed := u.view.RenderFeed(100, 40)
+	u.testActivity(u.view).testAudience()
+	feed := u.testActivity(u.view).RenderFeed(100, 40)
 	main := ansi.Strip(strings.Join(feed.Lines, "\n"))
 	if !strings.Contains(main, "▶ reviewer started") || !strings.Contains(main, "├─→ follow-up") || !strings.Contains(main, "├─✓ finished") || strings.Contains(main, "↩ re:") {
 		t.Fatalf("follow-up answer was not threaded under its assignment:\n%s", main)
 	}
-	for _, entry := range u.view.Entries {
+	for _, entry := range u.source.Entries {
 		if entry.Source.Kind == "start" && entry.Source.Agent != "Main" {
 			t.Fatal("root spawn rendered as child speech")
 		}
@@ -89,7 +89,7 @@ func TestNativeActivityAssignmentsPreserveOriginalTime(t *testing.T) {
 		u, _ := newAppServerTestUI()
 		u.ensureShell()
 		u.view.Conversation = true
-		u.view.testAudience()
+		u.testActivity(u.view).testAudience()
 		for i := range entries {
 			want := time.Unix(1700000000+int64(i*60), 125000000)
 			if !entries[i].Observed.Equal(want) {
@@ -98,7 +98,7 @@ func TestNativeActivityAssignmentsPreserveOriginalTime(t *testing.T) {
 			entries[i].Seq = uint64(i + 1)
 		}
 		u.applyActivity(entries, nil)
-		rendered := ansi.Strip(strings.Join(u.view.RenderFeed(100, 60).Lines, "\n"))
+		rendered := ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(100, 60).Lines, "\n"))
 		for _, entry := range entries {
 			if !strings.Contains(rendered, entry.Observed.Local().Format("15:04:05")) {
 				t.Fatalf("original timestamp missing from feed: %s", rendered)
@@ -132,8 +132,8 @@ func TestNativeActivityChildResultsStaySeparateAndLinked(t *testing.T) {
 	result("/root/other", "OTHER ANSWER")
 	result("/root/reviewer", "SECOND ANSWER")
 	u.view.Conversation = true
-	u.view.testAudience()
-	main := ansi.Strip(strings.Join(u.view.RenderFeed(100, 80).Lines, "\n"))
+	u.testActivity(u.view).testAudience()
+	main := ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(100, 80).Lines, "\n"))
 	first, second := strings.Index(main, "FIRST ANSWER"), strings.Index(main, "SECOND ANSWER")
 	if first < 0 || second < first || strings.Count(main, "SECOND ANSWER") != 1 {
 		t.Fatalf("consecutive child results merged:\n%s", main)

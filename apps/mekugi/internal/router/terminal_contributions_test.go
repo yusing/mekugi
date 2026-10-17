@@ -108,7 +108,7 @@ func TestUISnapshotNativeWithoutActivityRoster(t *testing.T) {
 	if u.Text != "retained draft" || wire.Len() != 0 {
 		t.Fatal("unavailable selector consumed ordinary input")
 	}
-	u.agents.displayThread("/root/reader")
+	u.testActivity(u.agents).displayThread("/root/reader")
 	paint("native-no-roster-child", "child Conversation result")
 	if !u.composerReadOnly() || u.Thread != "main" || u.Text != "retained draft" {
 		t.Fatal("child display changed Main input ownership")
@@ -144,13 +144,13 @@ func TestNativeRosterConstructorReplacementAndReplay(t *testing.T) {
 	u.terminalViews = runtime.Terminal
 	u.ensureShell()
 	defer u.shell.diffScreen.Close()
-	if len(created) != 1 || u.agents.View != created[0] {
+	if len(created) != 1 || u.agents != created[0] {
 		t.Fatal("native attachment bypassed descriptor")
 	}
 	appServerTestKeys(t, u, "/clear\r")
 	req := appServerOneRequest(t, wire, "thread/start", "")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"fresh","cwd":"/workspace"}}}`, req.ID))
-	if len(created) != 2 || u.agents.View != created[1] || u.shell.agents.View != created[1] {
+	if len(created) != 2 || u.agents != created[1] || u.shell.agents != created[1] {
 		t.Fatal("replacement bypassed descriptor")
 	}
 	if err := u.testPaint(io.Discard, 100, 24); err != nil {
@@ -162,7 +162,7 @@ func TestNativeRosterConstructorReplacementAndReplay(t *testing.T) {
 	p := newUIReplayPlayback(runtime.Terminal, u.reviewSource, u.presentationState, u.conversationState, u.session.observations, u.session.activity, t.Context(), replayPlaybackTestSource(), 1)
 	defer p.close()
 	p.reset()
-	if len(created) != 4 || p.ui.agents.View != created[3] {
+	if len(created) != 4 || p.ui.agents != created[3] {
 		t.Fatal("replay reset bypassed descriptor")
 	}
 }

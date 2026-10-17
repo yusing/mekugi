@@ -2,6 +2,7 @@ package router
 
 import (
 	"cmp"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 
@@ -50,7 +51,7 @@ func (u *appServerUI) startChildHistory(info binding.ThreadInfo) error {
 	h.info.Turns = nil
 	*u.childHistoryState.Value(store) = h
 	request := u.sessionPresentation().StartHistory(h.state, info.ID)
-	u.agents.MarkSkillHistoryUnknown(u.session.path(info.ID))
+	u.childSource.MarkSkillHistoryUnknown(u.session.path(info.ID))
 	return u.requestChildHistory(request)
 }
 
@@ -322,7 +323,7 @@ func (u *appServerUI) renderChildHistoryPage(h *appServerChildHistory, turn bind
 	r.paging = true
 	defer func() { r.paging = wasPaging }()
 	r.pane[name], r.itemAt[h.info.ID] = selected, h.itemAt
-	before := u.agents.LastSeq
+	before := u.childSource.LastSeq
 	info := h.info
 	info.Turns = []binding.HistoryTurn{turn}
 	// Historical pages may not reset a newer live lifecycle or cumulative
@@ -330,37 +331,37 @@ func (u *appServerUI) renderChildHistoryPage(h *appServerChildHistory, turn bind
 	agent := *u.session.agent(name)
 	u.restoreActivityThread(info, page.Older)
 	*u.session.agent(name) = agent
-	u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.roster()})
+	u.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.roster()})
 	first := uint64(0)
-	for _, entry := range u.agents.Entries {
+	for _, entry := range u.childSource.Entries {
 		if entry.Source.Seq > before {
 			first = entry.Source.Seq
 			break
 		}
 	}
 	if !h.state.View(h.info.ID).Initial {
-		retained := slices.ContainsFunc(u.agents.Entries, func(entry sessionpresentation.ActivityRecord) bool { return entry.Source.Seq == h.firstSeq })
-		u.agents.insertHistory(before, func(entry sessionpresentation.ActivityEntry) bool {
+		retained := slices.ContainsFunc(u.childSource.Entries, func(entry sessionpresentation.ActivityRecord) bool { return entry.Source.Seq == h.firstSeq })
+		u.insertActivityHistory(u.childSource, u.agents, before, func(entry sessionpresentation.ActivityEntry) bool {
 			return retained && entry.Seq == h.firstSeq || !retained && entry.Native != nil && entry.Native.Thread == h.info.ID
 		})
 		for _, p := range r.main {
 			// A failed initial read may already have placed this retained
 			// assignment/message in Main without its Activity link. The same
 			// source observation keeps its identity through the pending slots.
-			existing := slices.IndexFunc(u.view.Entries, func(entry sessionpresentation.ActivityRecord) bool {
+			existing := slices.IndexFunc(u.source.Entries, func(entry sessionpresentation.ActivityRecord) bool {
 				return p.entry.Assignment != nil && entry.Source.Assignment == p.entry.Assignment || p.entry.Message != nil && entry.Source.Message == p.entry.Message
 			})
 			if existing >= 0 {
 				if p.link != nil && sessionpresentation.MainActivityLinked(p.entry) {
-					entry := u.view.Entries[existing].Source
+					entry := u.source.Entries[existing].Source
 					entry.ActivitySeq = *p.link
-					u.view.Model.Replace(existing, entry, sessionpresentation.ActivityContent(entry).Values())
+					u.source.Model.Replace(existing, entry, sessionpresentation.ActivityContent(entry).Values())
 				}
 				continue
 			}
-			before := u.view.LastSeq
+			before := u.source.LastSeq
 			u.applyRestoredMain([]*restoredPlacement{p})
-			u.view.insertHistory(before, func(entry sessionpresentation.ActivityEntry) bool { return entry.Observed.After(p.at) })
+			u.insertActivityHistory(u.source, u.view, before, func(entry sessionpresentation.ActivityEntry) bool { return entry.Observed.After(p.at) })
 		}
 	}
 	if first != 0 {
@@ -380,37 +381,30 @@ func (u *appServerUI) hydrateChildHistoryMetadata(h *appServerChildHistory) {
 	u.restoreContextUsage(agent, h.info)
 	u.restoreUsage(h.info)
 	u.observeCost(h.info.ID, agent)
-	u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.roster()})
+	u.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.roster()})
 }
 
 // Insert the admitted source page through the shared model and terminal owners.
-// Domain membership stays with this adapter; output demands use normal hydration.
-func (v *activityAdapter) insertHistory(before uint64, belongs func(sessionpresentation.ActivityEntry) bool) {
-	v.publishActivity()
-	anchor := v.View.AnchorHistory(before)
+// Domain membership stays with the source owner; output demands use normal hydration.
+func (u *appServerUI) insertActivityHistory(source *sessionpresentation.ActivitySource, view *activityui.View, before uint64, belongs func(sessionpresentation.ActivityEntry) bool) {
+	u.publishActivity()
+	anchor := view.AnchorHistory(before)
 	for {
-		demands := v.View.OutputDemands()
+		demands := view.OutputDemands()
 		if len(demands) == 0 {
 			break
 		}
-		v.View.Hydrate(v.ResolveOutputDemands(demands))
-		anchor = v.View.AnchorHistory(before)
+		view.Hydrate(source.ResolveOutputDemands(demands))
+		anchor = view.AnchorHistory(before)
 	}
-	var at uint64
-	for _, record := range v.Entries {
-		if record.Source.Seq <= before && belongs(record.Source) {
-			at = record.Source.Seq
-			break
-		}
-	}
-	v.Model.InsertHistory(before, at)
-	v.publishActivity()
+	source.InsertHistoryPage(before, belongs)
+	u.publishActivity()
 	for {
-		v.View.HistoryInserted(anchor)
-		demands := v.View.OutputDemands()
+		view.HistoryInserted(anchor)
+		demands := view.OutputDemands()
 		if len(demands) == 0 {
 			break
 		}
-		v.View.Hydrate(v.ResolveOutputDemands(demands))
+		view.Hydrate(source.ResolveOutputDemands(demands))
 	}
 }

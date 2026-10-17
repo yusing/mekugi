@@ -4,6 +4,7 @@ package router
 
 import (
 	"context"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 
@@ -64,7 +65,7 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, history: testHistory(), client: client, view: newActivityAdapter(), agents: newActivityAdapter(), requests: sessioncontrol.NewRequests[appServerRequest](client), ctx: ctx})
+	u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, history: testHistory(), client: client, view: activityui.NewView(), agents: activityui.NewView(), requests: sessioncontrol.NewRequests[appServerRequest](client), ctx: ctx})
 	setTestAppServerIntegration(u, proxy)
 	u.ensureShell()
 
@@ -104,7 +105,7 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 		if started && provider.completed() {
 			var assignmentCount, messageCount, excerptCount int
 			var activitySeq, excerptSeq uint64
-			for _, entry := range u.agents.Entries {
+			for _, entry := range u.childSource.Entries {
 				if entry.Source.Assignment != nil && entry.Source.Assignment.Text == assignment {
 					assignmentCount++
 				}
@@ -113,7 +114,7 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 					activitySeq = entry.Source.Seq
 				}
 			}
-			for _, entry := range u.view.Entries {
+			for _, entry := range u.source.Entries {
 				if entry.Source.Kind == "reply" && entry.Source.ActivitySeq == activitySeq && activitySeq != 0 {
 					excerptCount++
 					excerptSeq = entry.Source.Seq
@@ -126,8 +127,8 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 				continue // The authenticated observer may arrive after app-server completion.
 			}
 			u.view.Conversation = true
-			u.view.testAudience()
-			feed := u.view.RenderFeed(100, 60)
+			u.testActivity(u.view).testAudience()
+			feed := u.testActivity(u.view).RenderFeed(100, 60)
 			main := ansi.Strip(strings.Join(feed.Lines, "\n"))
 			if strings.Contains(main, "Message received:") {
 				t.Fatalf("legacy received envelope leaked into Main:\n%s", main)

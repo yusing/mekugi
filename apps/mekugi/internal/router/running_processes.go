@@ -45,7 +45,7 @@ func (u *appServerUI) showRunningProcesses() {
 	u.deleteDraftRange(0, len(u.Text))
 	u.ensureShell()
 	u.shell.selection = nil
-	u.shell.output = &outputDialog{view: u.agents, processes: true}
+	u.shell.output = &outputDialog{view: u.agents, source: u.childSource, processes: true}
 	u.shell.output.refreshPages(activitypresentation.DetailPages(activityui.Values(u.processPages(nil))))
 }
 
@@ -62,13 +62,13 @@ func (u *appServerUI) processPages(pages []outputPage) []activityui.Block {
 		}
 	}
 	for entry := range u.session.runningProcesses() {
-		if seq := u.agents.EntrySeq(entry); seq != 0 {
+		if seq := u.childSource.EntrySeq(entry); seq != 0 {
 			if _, known := bySource[seq]; !known {
 				bySource[seq] = activityui.Block{Source: seq, Owner: entry.Agent}
 			}
 		}
 	}
-	for _, record := range u.agents.Entries {
+	for _, record := range u.childSource.Entries {
 		page, ok := bySource[record.Source.Seq]
 		if n := record.Source.Native; ok && n != nil {
 			bySource[record.Source.Seq] = activityui.Block{

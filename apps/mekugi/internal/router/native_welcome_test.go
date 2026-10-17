@@ -23,7 +23,7 @@ func TestNativeWelcome(t *testing.T) {
 	}
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.testMainFrame(80, 24, 0)
-	if len(u.view.Entries) != 0 {
+	if len(u.source.Entries) != 0 {
 		t.Fatal("welcome entered history")
 	}
 }
@@ -86,7 +86,7 @@ func TestNativeWelcomeDoesNotReplaceHistoryOrLiveDock(t *testing.T) {
 		t.Run(fmt.Sprint(dock), func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			if dock == 0 {
-				u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "You", Kind: "text", Text: "Submitted prompt"}}})
+				u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "You", Kind: "text", Text: "Submitted prompt"}}})
 			}
 			rows, _ := u.testMainFrame(80, 24, dock)
 			if strings.Contains(strings.Join(rows, "\n"), "Mekugi "+mekugiVersion()) {

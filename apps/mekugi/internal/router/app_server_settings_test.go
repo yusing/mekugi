@@ -210,7 +210,7 @@ func TestAppServerSettingsChoicesRenderedInPicker(t *testing.T) {
 	if !strings.Contains(rendered, "first-choice") || !strings.Contains(rendered, "last-choice-that-would-not-fit") {
 		t.Fatalf("missing choices: %s", rendered)
 	}
-	if len(u.view.Entries) != 0 || len(u.InputHistory) != 0 || u.conversation().Submitted[u.Submission().ID].Text != "" {
+	if len(u.source.Entries) != 0 || len(u.InputHistory) != 0 || u.conversation().Submitted[u.Submission().ID].Text != "" {
 		t.Fatal("local choices submitted to host")
 	}
 }
@@ -255,7 +255,7 @@ func TestAppServerSettingsPickerSelection(t *testing.T) {
 					field, value = "serviceTier", nil
 				}
 				assertAppServerSettingsRequest(t, w, "thread/settings/update", map[string]any{"threadId": "main", field: value})
-				if u.picker.Open || u.model != "one" || u.reasoningEffort != "low" || u.serviceTier != "priority" || len(u.view.Entries) != 0 || len(u.InputHistory) != 0 || u.conversation().Submitted[u.Submission().ID].Text != "" {
+				if u.picker.Open || u.model != "one" || u.reasoningEffort != "low" || u.serviceTier != "priority" || len(u.source.Entries) != 0 || len(u.InputHistory) != 0 || u.conversation().Submitted[u.Submission().ID].Text != "" {
 					t.Fatal("selection polluted transcript or changed confirmed settings")
 				}
 			})
@@ -285,7 +285,7 @@ func TestAppServerSettingsPickerLoadingAndCancellation(t *testing.T) {
 		} else if u.picker.Loading || len(u.picker.Choices) != 1 {
 			t.Fatal("catalog did not populate picker")
 		}
-		if w.Len() != 0 || len(u.view.Entries) != 0 {
+		if w.Len() != 0 || len(u.source.Entries) != 0 {
 			t.Fatal("loading or cancellation submitted input")
 		}
 	}
@@ -310,7 +310,7 @@ func TestAppServerSettingsPickerEmptyFailureAndPaste(t *testing.T) {
 	appServerTestRequest(t, u, "99", "model/list")
 	appServerTestKeys(t, u, "/model\r")
 	appServerTestMessage(t, u, `{"id":99,"error":{"code":-1,"message":"unavailable"}}`)
-	if u.picker.Loading || u.picker.Problem == "" || len(u.view.Entries) != 0 {
+	if u.picker.Loading || u.picker.Problem == "" || len(u.source.Entries) != 0 {
 		t.Fatal("failed catalog lacks local feedback")
 	}
 }

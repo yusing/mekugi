@@ -220,7 +220,7 @@ func TestActivitySingleCommandObservedTimestamps(t *testing.T) {
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	item["status"], item["durationMs"], item["exitCode"] = "completed", 123, 0
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	for _, entry := range u.view.Entries {
+	for _, entry := range u.source.Entries {
 		if entry.Source.CallID != "timestamps" || entry.Source.Native == nil {
 			continue
 		}

@@ -18,6 +18,7 @@ func TestUISnapshotAppServerArchive(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
+			u.source.Audience = 0 // The modal fixture retains the unconnected feed header.
 			if running {
 				u.Turn = "turn"
 			}

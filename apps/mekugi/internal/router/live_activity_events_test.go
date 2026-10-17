@@ -103,7 +103,7 @@ func TestLiveActivityDetailsOnlyForHiddenContent(t *testing.T) {
 				}
 				if tc.details {
 					u := &terminalUI{}
-					if !u.openOutput(v, target) {
+					if !u.openOutput(v.bind(u), target) {
 						t.Fatal("hidden content not reachable")
 					}
 					page := v.Painter.DetailDocument(u.output.pages[0].DetailPage, nil, nil, 36)
@@ -129,7 +129,7 @@ func TestLiveActivityClippedNarrativeRetainsDialog(t *testing.T) {
 		t.Fatalf("unbounded or inaccessible Activity excerpt: %+v", feed)
 	}
 	u := &terminalUI{}
-	if !u.openOutput(v, feed.Snippets[5]) {
+	if !u.openOutput(v.bind(u), feed.Snippets[5]) {
 		t.Fatal("excerpt did not open")
 	}
 	if got := v.Painter.DetailDocument(u.output.pages[0].DetailPage, nil, nil, 40).Text; strings.TrimSpace(got) != strings.TrimSpace(body) {
@@ -160,7 +160,7 @@ func TestLiveActivitySharedNarrativeDialogRefresh(t *testing.T) {
 	v.appendEntry(entry, parseLiveActivity(entry))
 	feed := v.RenderFeed(40, 20)
 	u := &terminalUI{}
-	if !u.openOutput(v, feed.Snippets[5]) {
+	if !u.openOutput(v.bind(u), feed.Snippets[5]) {
 		t.Fatal("clipped message cannot open")
 	}
 	entry.Text += "Newly streamed detail."
@@ -203,7 +203,7 @@ func TestLiveActivityTruncatedReasoningHeading(t *testing.T) {
 					}
 					if target.Run != 0 {
 						u := &terminalUI{}
-						if !u.openOutput(v, target) || v.Painter.DetailDocument(u.output.pages[0].DetailPage, nil, nil, width).Text != body {
+						if !u.openOutput(v.bind(u), target) || v.Painter.DetailDocument(u.output.pages[0].DetailPage, nil, nil, width).Text != body {
 							t.Fatal("elided heading cannot open full original content")
 						}
 						v.Snippet = target

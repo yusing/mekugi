@@ -65,7 +65,7 @@ func TestUISnapshotUnresolvedEditCommand(t *testing.T) {
 			t.Run(fmt.Sprintf("partial=%v/tracked=%v", partial, tracked), func(t *testing.T) {
 				u := newAppServerSessionTestUI(t, t.TempDir())
 				u.view.Conversation = true
-				u.view.testAudience()
+				u.testActivity(u.view).testAudience()
 				u.view.Painter.Theme = diffrender.DarkTheme
 				now := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
 				u.view.Clock = func() time.Time { return now }
@@ -73,10 +73,10 @@ func TestUISnapshotUnresolvedEditCommand(t *testing.T) {
 				if tracked {
 					native.Segments = []sessionpresentation.ActivitySegment{{Source: command, Text: execSegmentText(command)}}
 				}
-				u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
+				u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
 					Seq: 1, Agent: "Main", Kind: "tool", CallID: "cmd", Text: toolActivityShell(command), Observed: now, Native: native,
 				}}})
-				feed := u.view.RenderFeed(100, 40)
+				feed := u.testActivity(u.view).RenderFeed(100, 40)
 				var opened bool
 				for _, snippet := range feed.Snippets {
 					if u.shell.openOutput(u.view, snippet) {
@@ -114,14 +114,14 @@ func TestUISnapshotMoveIntent(t *testing.T) {
 	command := move + "; gofmt -w internal/router/native_shell.go"
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Painter.Theme = diffrender.DarkTheme
-	u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
+	u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
 		Seq: 1, Agent: "Main", Kind: "tool", CallID: "cmd", Text: toolActivityShell(command),
 		Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd", Command: command, Status: "completed", Segments: []sessionpresentation.ActivitySegment{
 			{Source: move, Text: execSegmentText(move)},
 			{Source: "gofmt -w internal/router/native_shell.go", Text: execSegmentText("gofmt -w internal/router/native_shell.go")},
 		}},
 	}}})
-	assertNativeUISnapshot(t, "move-intent-ran", u.view.testRenderConversation(100).Lines)
+	assertNativeUISnapshot(t, "move-intent-ran", u.testActivity(u.view).testRenderConversation(100).Lines)
 }
 
 func TestRequestedReasoningHeadsOperationTree(t *testing.T) {

@@ -4,79 +4,87 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/libraries/textsanitize"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
-func (v *activityAdapter) publishActivity() {
-	var main *sessionpresentation.ActivitySource
-	if v.mainView != nil {
-		main = v.mainView.ActivitySource
+// deliverActivity transfers detached facts at an admitted transition. Neither
+// terminal input nor painting has access to the reducer or retained outputs.
+func deliverActivity(view *activityui.View, source *sessionpresentation.ActivitySource, session *sessionpresentation.Model, mainSource *sessionpresentation.ActivitySource, mainView *activityui.View) {
+	if view == nil || source == nil {
+		return
 	}
-	publication := v.ActivitySource.Publication(v.display, main)
-
+	publication := source.Publication(session, mainSource)
 	for i, entry := range publication.Entries {
-		if frame, needed := v.View.CommandFrame(entry.Seq, entry.Revision); needed {
-			v.View.UpdateCommandFrame(commandFrame(v.Entries[i], frame))
+		if view.NeedsCommandContent(entry.Seq, entry.Revision) {
+			publication.Entries[i].Command = new(sessionpresentation.ActivityContent(source.Entries[i].Source))
 		}
 	}
-	if v.Audience != sessionpresentation.MainAudience {
-		v.View.StatusLabel = v.Coverage
+	if source.Audience != sessionpresentation.MainAudience {
+		view.StatusLabel = source.Coverage
 	}
-	if v.mainView != nil {
-		v.View.MainSummary = v.mainView.View.SummaryBlocks(publication.MainSummary)
-		v.View.MainStatus = v.mainView.View.StatusLabel
+	if mainView != nil {
+		view.MainSummary = mainView.SummaryBlocks(publication.MainSummary)
+		view.MainStatus = mainView.StatusLabel
 	}
-	display := v.display.View()
-	v.View.Update(publication, activityui.Display{Caller: display.Displayed.Caller, Attachment: display.Version.Attachment, Revision: display.Version.Revision})
+	display := session.View()
+	view.Update(publication, activityui.Display{Caller: display.Displayed.Caller, Attachment: display.Version.Attachment, Revision: display.Version.Revision})
 }
 
-func (v *activityAdapter) Render(width, height int, now time.Time) []string {
-	v.publishActivity()
+func (u *appServerUI) publishActivity() {
+	u.refreshRosterRoles()
+	session := u.sessionPresentation()
+	if u.view != nil {
+		u.view.StatusLabel = textsanitize.Safe(terminalsession.StatusText(session.View().Status.State), false)
+	}
+	deliverActivity(u.view, u.source, session, nil, nil)
+	deliverActivity(u.agents, u.childSource, session, u.source, u.view)
+}
+
+// activitySource resolves only a renderer already bound to this attachment.
+func (u *appServerUI) activitySource(view *activityui.View) *sessionpresentation.ActivitySource {
+	if view == u.view {
+		return u.source
+	}
+	if view == u.agents {
+		return u.childSource
+	}
+	return nil
+}
+
+// renderActivity services explicit output demands between detached render passes.
+// The painter itself never publishes source state or opens retained output.
+func renderActivity(source *sessionpresentation.ActivitySource, view *activityui.View, width, height int, now time.Time) []string {
 	for {
-		lines := v.View.Render(width, height, now)
-		demands := v.View.OutputDemands()
+		lines := view.Render(width, height, now)
+		demands := view.OutputDemands()
 		if len(demands) == 0 {
 			return lines
 		}
-		v.View.Hydrate(v.ResolveOutputDemands(demands))
+		view.Hydrate(source.ResolveOutputDemands(demands))
 	}
 }
 
-func (v *activityAdapter) RenderFeed(width, rows int) activityui.Feed {
-	v.publishActivity()
+func renderActivityFeed(source *sessionpresentation.ActivitySource, view *activityui.View, width, rows int) activityui.Feed {
 	for {
-		feed := v.View.RenderFeed(width, rows)
-		demands := v.View.OutputDemands()
+		feed := view.RenderFeed(width, rows)
+		demands := view.OutputDemands()
 		if len(demands) == 0 {
 			return feed
 		}
-		v.View.Hydrate(v.ResolveOutputDemands(demands))
+		view.Hydrate(source.ResolveOutputDemands(demands))
 	}
 }
 
-func (v *activityAdapter) NativeRoster(width, limit int, now time.Time, focused bool) []string {
-	v.publishActivity()
-	return v.View.NativeRoster(width, limit, now, focused)
-}
-
-func (v *activityAdapter) takeDisplayIntent() *sessionpresentation.DisplayIntent {
-	intent := v.View.DisplayRequest
+func (u *appServerUI) takeDisplayIntent() *sessionpresentation.DisplayIntent {
+	intent := u.agents.DisplayRequest
 	if intent == nil {
 		return nil
 	}
-	v.View.DisplayRequest = nil
+	u.agents.DisplayRequest = nil
 	return &sessionpresentation.DisplayIntent{
 		Version: sessionpresentation.Version{Attachment: intent.Attachment, Revision: intent.Revision},
-		Thread:  v.displayTarget(intent.Caller),
+		Thread:  u.sessionPresentation().ActivityTarget(intent.Caller, u.childSource),
 	}
-}
-
-func settleActivity(now time.Time, adapters ...*activityAdapter) bool {
-	views := make([]*activityui.View, len(adapters))
-	for i, adapter := range adapters {
-		adapter.publishActivity()
-		views[i] = adapter.View
-	}
-	return activityui.Settle(now, views...)
 }

@@ -17,9 +17,9 @@ func TestReviewReceiptsWithoutTerminal(t *testing.T) {
 			r := sessionreview.New(t.Context(), nil, nil)
 			defer r.Close()
 			u := &appServerUI{review: r, reviewSource: new(changecapture.Service)}
-			for _, target := range []**activityAdapter{&u.view, &u.agents} {
-				*target = &activityAdapter{ActivitySource: &sessionpresentation.ActivitySource{Model: new(activity.Model[sessionpresentation.ActivityEntry, sessionpresentation.ActivityAgent])}}
-				(*target).ActivitySource.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
+			for _, target := range []**sessionpresentation.ActivitySource{&u.source, &u.childSource} {
+				*target = &sessionpresentation.ActivitySource{Model: new(activity.Model[sessionpresentation.ActivityEntry, sessionpresentation.ActivityAgent])}
+				(*target).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
 					Seq: 1, Agent: "Main", Kind: "tool", Text: "Run `write source.go`", CallID: "edit",
 					Native: &sessionpresentation.NativeItem{Thread: "main", Item: "edit", Phase: "item/completed"},
 				}}})
@@ -39,13 +39,13 @@ func TestReviewReceiptsWithoutTerminal(t *testing.T) {
 				p := preview.Preview{ID: "observed", Workspace: "/workspace", Thread: "main", HostItems: []string{"edit"}, Complete: true, EditReceipt: text}
 				u.admitReviewEvents(t.Context(), sub, sessionreview.Event{Kind: "preview", Preview: &p})
 			}
-			for _, source := range []*activityAdapter{u.view, u.agents} {
+			for _, source := range []*sessionpresentation.ActivitySource{u.source, u.childSource} {
 				record := source.Entries[0]
-				if source.View != nil || record.Source.Native.CapturedEdit == nil || record.Source.Text != text || record.Values[0].Verb != "Edit" {
+				if record.Source.Native.CapturedEdit == nil || record.Source.Text != text || record.Values[0].Verb != "Edit" {
 					t.Fatalf("receipt depended on a renderer: %+v", record)
 				}
 			}
-			if u.shell != nil || len(u.pendingEditReceipts) != 0 {
+			if u.shell != nil || u.view != nil || u.agents != nil || len(u.pendingEditReceipts) != 0 {
 				t.Fatal("receipt reconciliation constructed a terminal or retained a matched preview")
 			}
 		})

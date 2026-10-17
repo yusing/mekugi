@@ -375,7 +375,7 @@ func TestUISnapshotNativeSessionTitle(t *testing.T) {
 				for i := range 30 {
 					entries = append(entries, sessionpresentation.ActivityEntry{Seq: uint64(i + 1), Agent: "Main", Kind: "text", Text: fmt.Sprintf("Earlier message %02d", i+1), Observed: u.now()})
 				}
-				u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: entries})
+				u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: entries})
 				u.view.Following, u.view.Offset, u.view.Unseen = false, 0, 2
 			}
 			screen := vt.NewEmulator(tc.width, 16)

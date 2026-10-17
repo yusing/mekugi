@@ -63,7 +63,7 @@ func TestExecTrackSessionReplacementDropsRetainedChildOutput(t *testing.T) {
 	if hub.Tracking(key) || u.session.commands[key] != nil {
 		t.Fatal("host completion retained the old command observation")
 	}
-	for _, entry := range u.agents.Entries {
+	for _, entry := range u.childSource.Entries {
 		native := entry.Source.Native
 		if native == nil || native.Thread != key[0] || native.Item != key[2] {
 			continue

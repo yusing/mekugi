@@ -58,9 +58,9 @@ func (u *appServerUI) hookEvent(method string, event binding.Notification) error
 	run := *event.Run
 	completed := method == "hook/completed"
 	var previousOutput *activitymodel.Output
-	view := u.agents
+	view := u.childSource
 	if event.ThreadID == u.Thread {
-		view = u.view
+		view = u.source
 	}
 	// Use the existing item reconciliation to ignore duplicate starts and late
 	// starts after completion. Hook identity is thread + run, independently of turn.

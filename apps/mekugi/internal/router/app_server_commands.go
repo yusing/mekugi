@@ -171,17 +171,18 @@ func (u *appServerUI) clearSessionPresentation() error {
 		}
 	}
 	painter := u.view.Painter
-	*u.view = *newTranscriptAdapter(activityui.NewView(), sessionpresentation.MainAudience)
+	u.view = activityui.NewView()
 	u.view.Painter, u.view.Conversation = painter, true
 	if u.agents != nil {
 		painter = u.agents.Painter
-		*u.agents = *newTranscriptAdapter(u.terminalViews.NewThreadView(), sessionpresentation.ChildAudience)
-		u.agents.Painter, u.agents.mainView = painter, u.view
+		u.agents = u.terminalViews.NewThreadView()
+		u.agents.Painter = painter
 		u.agents.ChildrenOnly, u.agents.Bare = true, true
 	}
+	u.source, u.childSource = nil, nil
 	u.attachPresentation()
-	u.attachActivity()
 	if u.shell != nil {
+		u.shell.agents = u.agents
 		u.shell.selection, u.shell.output = nil, nil
 		u.shell.Focus = 0
 		u.shell.StopDrag()

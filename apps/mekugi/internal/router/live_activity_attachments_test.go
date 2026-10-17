@@ -42,13 +42,13 @@ func TestLiveActivityAttachmentOutcomes(t *testing.T) {
 	item := binding.ThreadItem{Type: "userMessage", Content: content, ID: "input"}
 	u, _ := newAppServerTestUI()
 	for _, method := range []string{"item/started", "item/completed", "item/completed"} {
-		applyTranscriptFixture(u.view, true, cwd, u.Thread, u.Thread, "turn", item.ID, method, "", item)
+		applyTranscriptFixture(u.testActivity(u.view), true, cwd, u.Thread, u.Thread, "turn", item.ID, method, "", item)
 	}
-	applyTranscriptFixture(u.view, true, cwd, u.Thread, u.Thread, "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "Agent response"})
-	if len(u.view.Entries) != 3 || u.view.Entries[1].Source.Kind != "attachments" {
-		t.Fatalf("missing, duplicated, or reordered receipts: %+v", u.view.Entries)
+	applyTranscriptFixture(u.testActivity(u.view), true, cwd, u.Thread, u.Thread, "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "Agent response"})
+	if len(u.source.Entries) != 3 || u.source.Entries[1].Source.Kind != "attachments" {
+		t.Fatalf("missing, duplicated, or reordered receipts: %+v", u.source.Entries)
 	}
-	blocks := u.view.blocks(1)
+	blocks := u.testActivity(u.view).blocks(1)
 	if blocks[0].Path != "attached.txt" {
 		t.Fatalf("attachment path is not workspace-relative: %+v", blocks[0])
 	}
@@ -71,10 +71,10 @@ func TestLiveActivityAttachmentOutcomes(t *testing.T) {
 		t.Fatal(err)
 	}
 	resumed, _ := newAppServerTestUI()
-	resumed.agents = newActivityAdapter()
+	resumed.agents = activityui.NewView()
 	resumed.session.start(resumed.Thread, cwd)
 	resumed.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}})
-	if len(resumed.view.Entries) != 2 || resumed.view.blocks(1)[0].Verb != "Attached" || resumed.view.blocks(1)[1].Verb != "Attach failed" || resumed.view.blocks(1)[0].Path != "attached.txt" || resumed.view.blocks(1)[1].Path != "missing.txt" {
+	if len(resumed.source.Entries) != 2 || resumed.testActivity(resumed.view).blocks(1)[0].Verb != "Attached" || resumed.testActivity(resumed.view).blocks(1)[1].Verb != "Attach failed" || resumed.testActivity(resumed.view).blocks(1)[0].Path != "attached.txt" || resumed.testActivity(resumed.view).blocks(1)[1].Path != "missing.txt" {
 		t.Fatal("resume did not preserve submitted outcomes")
 	}
 }
@@ -184,7 +184,7 @@ func TestLiveActivityAttachmentDialogs(t *testing.T) {
 					}
 					v.PointSnippet('\r', v.FeedTop+row, v.FeedLeft)
 					u := &terminalUI{}
-					if !u.openOutput(v, v.Opening) {
+					if !u.openOutput(v.bind(u), v.Opening) {
 						t.Fatal("attachment click did not open shared dialog")
 					}
 					page := v.Painter.DetailDocument(u.output.pages[0].DetailPage, nil, nil, 80)
@@ -210,10 +210,10 @@ func TestLiveActivityAttachmentDialogs(t *testing.T) {
 					t.Fatal("successful receipt has no click target")
 				}
 				resumed, _ := newAppServerTestUI()
-				resumed.agents = newActivityAdapter()
+				resumed.agents = activityui.NewView()
 				resumed.session.start(resumed.Thread, "/workspace")
 				resumed.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}})
-				page := resumed.view.Painter.DialogPage(resumed.view.blocks(1)[0], 80)
+				page := resumed.view.Painter.DialogPage(resumed.testActivity(resumed.view).blocks(1)[0], 80)
 				if page.Text != textsanitize.Safe(body, false) {
 					t.Fatal("replay lost submitted content")
 				}

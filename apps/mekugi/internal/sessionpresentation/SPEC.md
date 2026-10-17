@@ -87,6 +87,12 @@ handles stay in the binding; terminal consumers receive detached publications,
 identity-addressed details and output windows. Command reveal frames and animation
 cursors never become semantic source state.
 
+The application binds source feeds and terminal views separately. Semantic
+transitions publish detached values before subsequent input or animation; painting
+does not republish source state. Output demands are resolved by application
+integration, outside the painter. Older-page insertion preserves the terminal's
+anchor around the source transition without transferring navigation to the feed.
+
 ## History
 
 Child history opens at the newest turn's recent items. Older pages continue from

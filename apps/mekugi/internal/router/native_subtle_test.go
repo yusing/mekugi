@@ -23,7 +23,7 @@ import (
 
 func TestUISnapshotNativeFaintLabelForeground(t *testing.T) {
 	const width = 40
-	u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, model: "model", view: newActivityAdapter()})
+	u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, model: "model", view: activityui.NewView()})
 	frame, _ := u.testMainFrame(width, 3, 0)
 	rows := []string{
 		terminalui.PaneRule("┌", "┐", "─", terminalui.PaneTitle(2, "Diff", "", false), terminalui.Dim+"metadata"+terminalui.Undim, width, terminalui.PaneBorder(false)),
@@ -44,7 +44,7 @@ func TestUISnapshotNativeFaintLabelForeground(t *testing.T) {
 
 func TestNativeUISubtleForeground(t *testing.T) {
 	p := activityui.Painter{}
-	u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, model: "x", view: newActivityAdapter()})
+	u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, model: "x", view: activityui.NewView()})
 	frame, _ := u.testMainFrame(40, 3, 0)
 	v := newActivityAdapter()
 	metrics := activityui.RosterColumns([][activityui.MetricParts]string{activityui.RosterMetricParts(v.View, testActivityAgent(sessionpresentation.ActivityAgent{Name: "/root/a", ContextKnown: true, ContextTokens: 1000, ContextWindow: 4000, InputTokens: 2000, OutputTokens: 1000}), time.Now())}, 200)[0]

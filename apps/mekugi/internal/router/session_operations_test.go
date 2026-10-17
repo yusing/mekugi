@@ -17,7 +17,7 @@ func TestNonTerminalHistoryIntentsReachHostAndRetire(t *testing.T) {
 		t.Fatalf("history publication: %+v", v.History)
 	}
 	load := sessionpresentation.HistoryIntent{Version: v.Version, Thread: v.History.Target}
-	u.agents.displayThread("/root/worker")
+	u.testActivity(u.agents).displayThread("/root/worker")
 	if err := u.loadOlderActivity(load); err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestNonTerminalHistoryIntentsReachHostAndRetire(t *testing.T) {
 		t.Fatalf("semantic history request: %+v", r)
 	}
 	cancel := historyCancelIntent(u)
-	u.agents.displayThread("/root")
+	u.testActivity(u.agents).displayThread("/root")
 	if err := u.cancelOlderActivity(cancel); err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestNonTerminalHistoryIntentsReachHostAndRetire(t *testing.T) {
 		t.Fatal(err)
 	}
 	restoreContentReply(t, u, 5, map[string]any{"data": []any{historyItem("late", "retired", 101000)}})
-	if u.historyLoading() != nil || len(entryTexts(u.agents)) != 1 || len(restoreContentRequests(t, wire)) != 6 {
+	if u.historyLoading() != nil || len(entryTexts(u.testActivity(u.agents))) != 1 || len(restoreContentRequests(t, wire)) != 6 {
 		t.Fatal("cancelled response revived history or issued host work")
 	}
 	u.replay = &uiReplayPlayback{}

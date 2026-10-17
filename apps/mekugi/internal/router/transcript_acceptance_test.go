@@ -76,7 +76,7 @@ func TestSessionUIReplayTranscriptAttachmentQuestionSeek(t *testing.T) {
 	if p.ui == oldUI || p.ui.questionCount() != 0 || !p.ui.now().Equal(source.Start.Add(time.Second)) {
 		t.Fatal("seek retained future transcript/question state or lost recorded clock")
 	}
-	for _, entry := range p.ui.view.Entries {
+	for _, entry := range p.ui.source.Entries {
 		if entry.Source.Kind == "reasoning" || entry.Source.Kind == "question" || entry.Source.Kind == "question_reply" || entry.Source.Text == "Review delivered" {
 			t.Fatalf("future transcript survived seek: %+v", entry.Source)
 		}
@@ -84,12 +84,12 @@ func TestSessionUIReplayTranscriptAttachmentQuestionSeek(t *testing.T) {
 	if err := p.seek(p.Until); err != nil {
 		t.Fatal(err)
 	}
-	frame = ansi.Strip(strings.Join(p.ui.view.RenderFeed(120, 80).Lines, "\n"))
+	frame = ansi.Strip(strings.Join(p.ui.testActivity(p.ui.view).RenderFeed(120, 80).Lines, "\n"))
 	if p.ui.questionCount() != 0 || !strings.Contains(frame, "Customers") || !strings.Contains(frame, "Review delivered") || strings.Contains(frame, "private attachment body") {
 		t.Fatalf("replayed reply/final or attachment privacy lost:\n%s", frame)
 	}
 	receipts, replies := 0, 0
-	for _, entry := range p.ui.view.Entries {
+	for _, entry := range p.ui.source.Entries {
 		switch entry.Source.Kind {
 		case "attachments":
 			receipts++
@@ -113,11 +113,11 @@ func TestAppServerTranscriptOlderHistoryPreservesLiveReasoning(t *testing.T) {
 	at := time.Unix(200, 0)
 	u.clock = func() time.Time { return at }
 	u.view.Clock, u.agents.Clock = u.clock, u.clock
-	u.agents.setDisplayFilter(false, "/root/worker")
+	u.testActivity(u.agents).setDisplayFilter(false, "/root/worker")
 	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "live", "status": "inProgress"}})
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "live", "itemId": "shared", "delta": "Live prefix "})
 	var liveSeq uint64
-	for _, entry := range u.agents.Entries {
+	for _, entry := range u.childSource.Entries {
 		if n := entry.Source.Native; n != nil && n.Thread == "child" && n.Turn == "live" && n.Item == "shared" {
 			liveSeq = entry.Source.Seq
 		}
@@ -138,7 +138,7 @@ func TestAppServerTranscriptOlderHistoryPreservesLiveReasoning(t *testing.T) {
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "live", "itemId": "shared", "delta": "continues after paging"})
 	reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "live", "item": map[string]any{"id": "shared", "type": "reasoning", "summary": []string{}}})
 	older, latest, live := -1, -1, -1
-	for i, entry := range u.agents.Entries {
+	for i, entry := range u.childSource.Entries {
 		n := entry.Source.Native
 		if n == nil || n.Thread != "child" {
 			continue
@@ -161,7 +161,7 @@ func TestAppServerTranscriptOlderHistoryPreservesLiveReasoning(t *testing.T) {
 	if older < 0 || latest <= older || live <= latest {
 		t.Fatalf("history/live placement changed: older=%d latest=%d live=%d", older, latest, live)
 	}
-	frame := ansi.Strip(strings.Join(u.agents.RenderFeed(100, 60).Lines, "\n"))
+	frame := ansi.Strip(strings.Join(u.testActivity(u.agents).RenderFeed(100, 60).Lines, "\n"))
 	if !strings.Contains(frame, "Older public summary") || !strings.Contains(frame, "Live prefix continues after paging") || strings.Contains(frame, "PRIVATE") {
 		t.Fatalf("rendered transcript lost history/live separation:\n%s", frame)
 	}

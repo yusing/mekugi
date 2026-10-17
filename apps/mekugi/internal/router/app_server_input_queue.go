@@ -149,8 +149,8 @@ func (u *appServerUI) send(parts []conversationmodel.Input, steer bool) error {
 	} else {
 		request.Tier = u.selectedServiceTier()
 		if len(binding.QuestionReplies(s.Text)) == 0 {
-			echo := u.view.LastSeq + 1
-			u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: echo, Agent: "You", Kind: "text", Text: s.Text, Observed: u.now(),
+			echo := u.source.LastSeq + 1
+			u.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: echo, Agent: "You", Kind: "text", Text: s.Text, Observed: u.now(),
 				Native: &sessionpresentation.NativeItem{Thread: u.Thread, Item: "input/" + id, Phase: "input/pending", Spans: sessionpresentation.DraftSpans(s.Draft)}}}})
 		}
 	}
@@ -193,8 +193,8 @@ func (u *appServerUI) submissionResponse(method string, failure *appserver.Error
 
 func (u *appServerUI) applyInputEffects(effects sessionpresentation.InputEffects) {
 	if effects.Withdrawn != "" {
-		u.view.RemovePendingInput(effects.Withdrawn)
-		u.sessionPresentation().SettleWithdrawnInput(effects, len(u.view.Model.Entries) > 0)
+		u.source.RemovePendingInput(effects.Withdrawn)
+		u.sessionPresentation().SettleWithdrawnInput(effects, len(u.source.Model.Entries) > 0)
 	}
 	u.applyInputRestoration(effects.Restored)
 	if effects.Notice != "" {

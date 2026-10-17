@@ -2,6 +2,7 @@ package router
 
 import (
 	"github.com/yusing/mekugi/backends/codex/binding"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	json "encoding/json/v2"
 	"fmt"
@@ -137,7 +138,7 @@ func TestAppServerResumeClearsSavedReasoningDefault(t *testing.T) {
 		t.Run("launch="+effort, func(t *testing.T) {
 			u, w := newAppServerTestUI()
 			u.Thread, u.startup.Thread, u.ResumeEffort = "", "saved", true
-			u.agents = newActivityAdapter()
+			u.agents = activityui.NewView()
 			appServerTestRequest(t, u, "1", "thread/resume")
 			savedEffort := "null"
 			if effort != "" {

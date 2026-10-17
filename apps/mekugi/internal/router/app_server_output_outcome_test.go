@@ -17,7 +17,7 @@ func TestAppServerUnknownExitKeepsOutput(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.view.Conversation = true
-			u.view.testAudience()
+			u.testActivity(u.view).testAudience()
 			item := binding.ThreadItem{ID: "command", Type: "commandExecution", Command: "go test ./...", Status: "failed", AggregatedOutput: new("interrupted output\n")}
 			if restored {
 				var entries []sessionpresentation.ActivityEntry

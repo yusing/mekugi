@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json/jsontext"
 	"fmt"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"os"
 	"strings"
 	"testing"
@@ -46,7 +47,7 @@ func TestUISnapshotAppServerStatusResetCredits(t *testing.T) {
 				response = `{"id":2,"result":{"rateLimits":{"primary":{"usedPercent":20}},"rateLimitResetCredits":` + tc.summary + `}}`
 			}
 			appServerTestMessage(t, u, response)
-			if u.requests.Pending() || len(u.view.Entries) != 0 || strings.Count(sent.String(), `"method"`) != 2 || !strings.Contains(sent.String(), `"method":"account/rateLimits/read"`) {
+			if u.requests.Pending() || len(u.source.Entries) != 0 || strings.Count(sent.String(), `"method"`) != 2 || !strings.Contains(sent.String(), `"method":"account/rateLimits/read"`) {
 				t.Fatalf("status changed read-only request flow: %s", sent.String())
 			}
 			assertNativeUISnapshot(t, "native-status-resets-"+tc.name, u.statusPanelFrame(80, 40))
@@ -93,7 +94,7 @@ func TestUISnapshotAppServerStatusSystemTimezone(t *testing.T) {
 func TestAppServerStatusLocalAndAccountRefresh(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.session.start("main", "/workspace")
-	u.agents = newActivityAdapter()
+	u.agents = activityui.NewView()
 	u.model, u.reasoningEffort, u.serviceTier = "gpt-6-sol", "high", "priority"
 	u.Turn, u.sessionPresentation().Status.Text = "active", "Working"
 	u.statusConfig.Provider = "openai"
@@ -102,8 +103,8 @@ func TestAppServerStatusLocalAndAccountRefresh(t *testing.T) {
 	u.statusConfig.Instructions = []string{"/workspace/AGENTS.md"}
 	appServerTestNotify(t, u, "thread/tokenUsage/updated", map[string]any{"threadId": "main", "tokenUsage": map[string]any{"total": map[string]any{"inputTokens": 1200, "outputTokens": 30}, "last": map[string]any{"totalTokens": 1000}, "modelContextWindow": 4000}})
 	appServerTestKeys(t, u, "/status\r")
-	if len(u.view.Entries) != 0 || u.Text != "" || u.Turn != "active" || u.sessionPresentation().Status.Text != "Working" {
-		t.Fatalf("status altered session: draft=%q turn=%q status=%q entries=%d", u.Text, u.Turn, u.sessionPresentation().Status.Text, len(u.view.Entries))
+	if len(u.source.Entries) != 0 || u.Text != "" || u.Turn != "active" || u.sessionPresentation().Status.Text != "Working" {
+		t.Fatalf("status altered session: draft=%q turn=%q status=%q entries=%d", u.Text, u.Turn, u.sessionPresentation().Status.Text, len(u.source.Entries))
 	}
 	for _, want := range []string{"Model: gpt-6-sol", "Reasoning: high", "Service tier: priority", "Directory: /workspace", "Approvals: never", "Sandbox: danger-full-access", "Agents.md: /workspace/AGENTS.md", "75% left", "Loading account"} {
 		if !strings.Contains(statusReportText(u.statusPanel), want) {
@@ -126,7 +127,7 @@ func TestAppServerStatusLocalAndAccountRefresh(t *testing.T) {
 			t.Fatalf("missing %q in rendered card: %s", want, body)
 		}
 	}
-	if strings.Contains(body, "Token usage:") || strings.Contains(body, "Loading") || len(u.view.Entries) != 0 || u.requests.Pending() {
+	if strings.Contains(body, "Token usage:") || strings.Contains(body, "Loading") || len(u.source.Entries) != 0 || u.requests.Pending() {
 		t.Fatalf("stale/duplicated card: %s", body)
 	}
 }
@@ -141,8 +142,8 @@ func TestAppServerStatusIndependentSnapshotsAndFailure(t *testing.T) {
 	appServerTestKeys(t, u, "/status\r")
 	appServerTestMessage(t, u, `{"id":2,"result":{"account":{"type":"apiKey"}}}`)
 	appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"offline"}}`)
-	if len(u.view.Entries) != 0 {
-		t.Fatalf("cards=%d", len(u.view.Entries))
+	if len(u.source.Entries) != 0 {
+		t.Fatalf("cards=%d", len(u.source.Entries))
 	}
 	first, second := statusReportText(firstPanel), statusReportText(u.statusPanel)
 	if !strings.Contains(first, "Model: first") || strings.Contains(first, "offline") || strings.Contains(first, "API key") || !strings.Contains(second, "Model: second") || !strings.Contains(second, "API key") {
@@ -195,7 +196,7 @@ func TestAppServerStatusPanelCloseScrollAndLateResponse(t *testing.T) {
 		t.Run(closeKey, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.Turn, u.sessionPresentation().Status.Text = "active", "Working"
-			u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Existing transcript"}}})
+			u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Existing transcript"}}})
 			shell := &terminalUI{main: u, Shell: terminalsession.Shell{Layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 60, 12}}}}
 			appServerTestKeys(t, u, "/status\r")
 			u.statusPanel.body = nil
@@ -230,7 +231,7 @@ func TestAppServerStatusPanelCloseScrollAndLateResponse(t *testing.T) {
 			if err := shell.send(closeKey); err != nil {
 				t.Fatal(err)
 			}
-			if u.statusPanel != nil || u.Turn != "active" || u.sessionPresentation().Status.Text != "Working" || len(u.view.Entries) != 1 || u.view.Entries[0].Source.Text != "Existing transcript" {
+			if u.statusPanel != nil || u.Turn != "active" || u.sessionPresentation().Status.Text != "Working" || len(u.source.Entries) != 1 || u.source.Entries[0].Source.Text != "Existing transcript" {
 				t.Fatal("closing changed turn or transcript")
 			}
 			// A response to a closed panel must not fetch limits or resurrect UI.
@@ -247,7 +248,7 @@ func TestAppServerStatusRefreshFailureStaysInPanel(t *testing.T) {
 	u.sessionPresentation().Status.Text = "Working"
 	appServerTestKeys(t, u, "/status\r")
 	appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"offline"}}`)
-	if !strings.Contains(statusReportText(u.statusPanel), "offline") || u.sessionPresentation().Status.Alert || u.sessionPresentation().Status.Text != "Working" || len(u.view.Entries) != 0 {
+	if !strings.Contains(statusReportText(u.statusPanel), "offline") || u.sessionPresentation().Status.Alert || u.sessionPresentation().Status.Text != "Working" || len(u.source.Entries) != 0 {
 		t.Fatal("optional failure altered session")
 	}
 }
@@ -266,7 +267,7 @@ func TestAppServerStatusTerminalPasteCanClose(t *testing.T) {
 	if err := shell.key('q'); err != nil {
 		t.Fatal(err)
 	}
-	if u.statusPanel != nil || u.quitRequested || len(u.view.Entries) != 0 {
+	if u.statusPanel != nil || u.quitRequested || len(u.source.Entries) != 0 {
 		t.Fatal("panel trapped input after paste")
 	}
 }
@@ -389,7 +390,7 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.model = "gpt-6-sol"
 			u.Turn = "active"
-			u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Hidden transcript must not be selected"}}})
+			u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Hidden transcript must not be selected"}}})
 			appServerTestKeys(t, u, "/status\r")
 			screen := vt.NewEmulator(160, 48)
 			defer screen.Close()
@@ -455,7 +456,7 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 			if err := u.testPaint(screen, 160, 48); err != nil {
 				t.Fatal(err)
 			}
-			if strings.Contains(screen.String(), "Session status") || len(u.view.Entries) != 1 {
+			if strings.Contains(screen.String(), "Session status") || len(u.source.Entries) != 1 {
 				t.Fatal("selection resurrected panel or changed transcript")
 			}
 		})

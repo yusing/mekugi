@@ -673,8 +673,8 @@ func awaitMain(t *testing.T, u *appServerUI, want string) string {
 		u.flushStreamOutput()
 		u.startCommitReads()
 
-		u.view.testPace(time.Now())
-		main := ansi.Strip(strings.Join(u.view.RenderFeed(90, 60).Lines, "\n"))
+		u.testActivity(u.view).testPace(time.Now())
+		main := ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(90, 60).Lines, "\n"))
 		if strings.Contains(main, want) {
 			return main
 		}
@@ -756,7 +756,7 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 	restored := newAppServerSessionTestUI(t, u.session.cwd)
 	setTestAppServerIntegration(restored, testProxyWithStore(store))
 	restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
-	segments := restored.view.Entries[0].Source.Native.Segments
+	segments := restored.source.Entries[0].Source.Native.Segments
 	if len(segments) != 2 || segments[0].Text != "Read `a.go`" || segments[1].Text != "Search `needle` in `src`" || segments[0].Source != "mcat "+quoteShellWord(cwd+"/a.go") {
 		t.Fatalf("restored paths or source changed: %+v", segments)
 	}
@@ -774,7 +774,7 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 	setTestAppServerIntegration(child, testProxyWithStore(store))
 	child.session.path("child")
 	child.restoreActivityThread(binding.ThreadInfo{ID: "child", Cwd: cwd, Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
-	parts := child.agents.Entries[0].Source.Native.Segments
+	parts := child.childSource.Entries[0].Source.Native.Segments
 	if len(parts) != 2 || parts[0].Text != "Read `a.go`" || parts[1].Text != "Search `needle` in `src`" {
 		t.Fatalf("restored child paths used main workspace: %+v", parts)
 	}
@@ -960,7 +960,7 @@ func newTrackedAppServerUI(t *testing.T) (*appServerUI, *execTrackFixture) {
 	t.Helper()
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
-	u.view.testAudience()
+	u.testActivity(u.view).testAudience()
 	hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
 	u.execTrack = hub.Observer
 	hub.ui = u

@@ -15,6 +15,7 @@ type Entry struct {
 	Facts
 	Revision uint64
 	Values   []Value
+	Command  *ItemContent // Detached command input for terminal-only reveal reprojection.
 }
 
 func (e Entry) Hidden() bool {

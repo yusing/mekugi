@@ -92,8 +92,10 @@ type appServerUI struct {
 	commandSegmentPending  int
 	restoredSegments       map[string]*reports.Report // Turn-local, validated and adopted history.
 	client                 *appserver.Client
-	view                   *activityAdapter
-	agents                 *activityAdapter
+	view                   *activityui.View
+	source                 *sessionpresentation.ActivitySource
+	agents                 *activityui.View
+	childSource            *sessionpresentation.ActivitySource
 	controlObservations    *sessioncontrol.Observations
 	usage                  *accounting.Service
 	audience               *sessioncontrol.Audience
@@ -186,10 +188,9 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 	if err != nil {
 		return nil, err
 	}
-	u := &appServerUI{terminalViews: terminalViews, reviewSource: reviewSource, presentationState: views, conversationState: conversation, session: appServerSession{activity: activity, observations: observations}, history: service, segments: segments, client: c, view: newTranscriptAdapter(activityui.NewView(), sessionpresentation.MainAudience), agents: newTranscriptAdapter(terminalViews.NewThreadView(), sessionpresentation.ChildAudience), controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, changeSource: integration.changeSource, snapshots: integration.snapshots, recovered: integration.recovered, publishChanges: integration.publishChanges, captureNotice: integration.captureNotice, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), dirty: true, ctx: ctx, startup: sessioncontrol.Startup{Thread: resumeThread}, serviceTiers: serviceTiers, approvalMode: approvals}
+	u := &appServerUI{terminalViews: terminalViews, reviewSource: reviewSource, presentationState: views, conversationState: conversation, session: appServerSession{activity: activity, observations: observations}, history: service, segments: segments, client: c, view: activityui.NewView(), agents: terminalViews.NewThreadView(), controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, changeSource: integration.changeSource, snapshots: integration.snapshots, recovered: integration.recovered, publishChanges: integration.publishChanges, captureNotice: integration.captureNotice, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), dirty: true, ctx: ctx, startup: sessioncontrol.Startup{Thread: resumeThread}, serviceTiers: serviceTiers, approvalMode: approvals}
 	u.attachPresentation()
 	u.sessionPresentation().Status.Set("Connecting…", false)
-	u.attachActivity()
 	u.guardHookCheck.hash = guardHash
 	if generator != nil {
 		u.titleGenerator = generator
@@ -348,10 +349,11 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 							u.dirty = true
 						}
 						now := u.now()
-						if settleActivity(now, u.view, u.agents) {
+						u.publishActivity()
+						if activityui.Settle(now, u.view, u.agents) {
 							u.dirty = true
 						}
-						for _, view := range []*activityAdapter{u.view, u.agents} {
+						for _, view := range []*activityui.View{u.view, u.agents} {
 							if view.ExpireFlash(now) {
 								u.dirty = true
 							}
@@ -713,8 +715,8 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			u.restoreContextUsage(u.session.agent("/root"), result.Thread)
 			u.restoreUsage(result.Thread)
 			u.observeCost(u.Thread, u.session.agent("/root"))
-			if u.agents != nil {
-				u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.roster()})
+			if u.childSource != nil {
+				u.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.roster()})
 			}
 			if u.audience != nil {
 				u.audience.Attach(u.Thread)
@@ -779,7 +781,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		// visibly blocked, until interrupted.
 		u.sessionPresentation().Status.Set("Blocked on unsupported request "+m.Method+" · Ctrl-C interrupts", true)
 		u.blockNotification(m)
-		u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.view.LastSeq + 1, Agent: "Session", Kind: "text", Text: u.sessionPresentation().Status.Text, Observed: u.now()}}})
+		u.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: u.sessionPresentation().Status.Text, Observed: u.now()}}})
 		return nil
 	}
 	if handled, err := u.settingsMessage("", m); handled || err != nil {
@@ -1095,11 +1097,10 @@ func (u *appServerUI) historyPending() bool {
 }
 
 func (u *appServerUI) applyActivity(entries []sessionpresentation.ActivityEntry, agents []sessionpresentation.ActivityAgent) {
-	sessionpresentation.ApplyActivity(u.view.ActivitySource, u.agents.ActivitySource, entries, agents)
+	sessionpresentation.ApplyActivity(u.source, u.childSource, entries, agents)
 	u.applyCapturedEdits()
 	u.flushApprovalUpdates()
-	u.view.publishActivity()
-	u.agents.publishActivity()
+	u.publishActivity()
 }
 
 // mainFrame is the transcript above a boxed composer. The top border carries
@@ -1107,7 +1108,7 @@ func (u *appServerUI) applyActivity(entries []sessionpresentation.ActivityEntry,
 // between the two, in the returned rectangle, for the live edit dock.
 func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalsession.Rect) {
 	transcript := u.transcriptView()
-	readOnly := u.agents != nil && u.agents.displayingChild()
+	readOnly := u.agents != nil && u.sessionPresentation().DisplayingChild()
 	presentation := u.sessionPresentation().View()
 	width, height = max(1, width), max(1, height)
 	u.picker.rect = terminalsession.Rect{}
@@ -1124,7 +1125,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalsess
 	}
 	in := terminalsession.MainInput{
 		Session: presentation, Draft: u.Draft, Now: u.now(), ReadOnly: readOnly,
-		Focused: u.shell == nil || u.shell.Focus == 0, Empty: len(transcript.Entries) == 0,
+		Focused: u.shell == nil || u.shell.Focus == 0, Empty: len(u.activitySource(transcript).Entries) == 0,
 		Picker: u.pickerVisible(), Welcome: u.welcome(), Selection: u.pickerSelection(), TurnIdle: u.Turn == "",
 	}
 	if q := u.currentQuestion(); q != nil {
@@ -1142,7 +1143,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalsess
 	transcript.FeedRows = 0
 	transcript.FeedQuestions, transcript.FeedSnippets = nil, nil
 	if room := frame.Feed.H; room > 0 {
-		rows := transcript.Render(width, room, in.Now)
+		rows := renderActivity(u.activitySource(transcript), transcript, width, room, in.Now)
 		for row := range rows {
 			rows[row] = terminalui.AttachCopy(rows[row], transcript.CopyRows[row])
 		}
@@ -1172,7 +1173,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalsess
 
 // scrollLabel shows how much of the feed lies above the viewport and, once
 // the reader scrolls back, how much lies below and what arrived since.
-func scrollLabel(v *activityAdapter) string {
+func scrollLabel(v *activityui.View) string {
 	below := v.FeedLines - v.Offset - v.FeedRows
 	switch {
 	case !v.Following && below > 0:
@@ -1188,23 +1189,16 @@ func scrollLabel(v *activityAdapter) string {
 }
 
 func (u *appServerUI) ensureShell() {
-	u.attachActivity()
-	u.view.Audience = sessionpresentation.MainAudience
 	u.view.Conversation = true
 	u.view.Painter.FileLink = u.markdownFileAllowed
 	if u.shell != nil {
 		return
 	}
 	if u.agents == nil {
-		u.agents = newTranscriptAdapter(u.terminalViews.NewThreadView(), sessionpresentation.ChildAudience)
-		u.attachActivity()
+		u.agents = u.terminalViews.NewThreadView()
 	}
-	u.agents.display = u.sessionPresentation()
 	u.agents.Painter.FileLink = u.markdownFileAllowed
-	u.agents.Audience = sessionpresentation.ChildAudience
 	u.agents.ChildrenOnly = true
-	u.agents.Coverage = "" // Fed by app-server directly, never by a collector connection.
-	u.agents.mainView = u.view
 	u.agents.Bare = true
 	shell := &terminalUI{main: u, agents: u.agents, diffScreen: new(terminalsession.DiffScreen)}
 	shell.RosterLabel = u.terminalViews.RosterLabel()
@@ -1217,9 +1211,6 @@ func (u *appServerUI) ensureShell() {
 
 func (u *appServerUI) paint(out io.Writer, width, height int) error {
 	u.ensureShell()
-	u.refreshRosterRoles()
-	u.agents.mainView = u.view
-	u.view.StatusLabel = textsanitize.Safe(terminalsession.StatusText(u.sessionPresentation().View().Status.State), false)
 	u.shell.width, u.shell.height = max(1, width), max(1, height)
 	u.mainView.ContentPainted = false
 	ctx := u.ctx
@@ -1246,7 +1237,7 @@ func (u *appServerUI) applyObservedActivity() {
 		}
 	}
 	if usageChanged {
-		u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.roster()})
+		u.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.roster()})
 		u.dirty = true
 	}
 	if u.audience == nil {
@@ -1264,7 +1255,7 @@ func (u *appServerUI) applyObservedActivity() {
 		u.dirty = true
 	}
 	for _, ref := range u.audience.TakeUnreturned(u.Thread) {
-		if main, activity := u.view.MarkUnreturned(ref.Thread, ref.Call), u.agents.MarkUnreturned(ref.Thread, ref.Call); main || activity {
+		if main, activity := u.source.MarkUnreturned(ref.Thread, ref.Call), u.childSource.MarkUnreturned(ref.Thread, ref.Call); main || activity {
 			u.dirty = true
 		}
 	}

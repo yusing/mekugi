@@ -219,6 +219,9 @@ The invocation also owns admitted segment facts, retained segment output and
 attribution reduction. Application integration supplies ordered report facts and
 drained bytes once; transport correlation and durable report publication remain
 outside Activity. Terminal reveal cursors consume detached segment snapshots.
+Held command frames reproject detached command content, including its admitted
+annotations. Rendering never reopens the original host record or delays semantic
+completion while output is being revealed.
 
 Read-only snapshots keep their content and outcome after later append, replacement
 or release. Consumers can use the output version to avoid rebuilding unchanged

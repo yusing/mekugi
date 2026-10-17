@@ -89,23 +89,23 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 	// receives the retained change first, then its native command item.
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "m", "item": map[string]any{
 		"id": "cat-call", "type": "commandExecution", "command": "cat > direct.go <<'EOF'\nnew\nEOF", "exitCode": 2}})
-	assertCapturedCommand(t, u.view, "main", "cat-call", "Edit", 2)
+	assertCapturedCommand(t, u.testActivity(u.view), "main", "cat-call", "Edit", 2)
 	u.review.Projection.Data = snapshot
 	publishFixtureReview(t, u)
 	u.applyCapturedEdits()
-	assertCapturedCommand(t, u.view, "main", "cat-call", "Edit", 2)
+	assertCapturedCommand(t, u.testActivity(u.view), "main", "cat-call", "Edit", 2)
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "c", "item": map[string]any{
 		"id": "cat-call", "type": "commandExecution", "command": "cat unrelated.go", "exitCode": 0}})
-	assertCapturedCommand(t, u.agents, "child", "cat-call", "Read", 0)
+	assertCapturedCommand(t, u.testActivity(u.agents), "child", "cat-call", "Read", 0)
 	sibling := binding.ThreadItem{ID: "sibling-call", Type: "commandExecution", Command: "/bin/bash -lc " + commandargs.QuoteArgument("rg needle src; python3 - <<'PY'\nopen('nested.go', 'w').write('PRIVATE_EDIT_SOURCE')\nPY"), ExitCode: new(0), DurationMS: new(int64(64))}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "c", "item": sibling})
-	assertCapturedCommand(t, u.agents, "child", "sibling-call", "Search", 0)
+	assertCapturedCommand(t, u.testActivity(u.agents), "child", "sibling-call", "Search", 0)
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "c", "item": map[string]any{
 		"id": "python-call", "type": "commandExecution", "command": "python3 - <<'PY'\nopen('nested.go','w').write('new')\nPY", "exitCode": 0}})
-	assertCapturedCommand(t, u.agents, "child", "python-call", "Edit", 0)
-	assertCapturedCommand(t, u.agents, "child", "sibling-call", "Search", 0)
-	assertCapturedCommand(t, u.view, "main", "cat-call", "Edit", 2)
-	feed := ansi.Strip(strings.Join(u.agents.RenderFeed(120, 80).Lines, "\n"))
+	assertCapturedCommand(t, u.testActivity(u.agents), "child", "python-call", "Edit", 0)
+	assertCapturedCommand(t, u.testActivity(u.agents), "child", "sibling-call", "Search", 0)
+	assertCapturedCommand(t, u.testActivity(u.view), "main", "cat-call", "Edit", 2)
+	feed := ansi.Strip(strings.Join(u.testActivity(u.agents).RenderFeed(120, 80).Lines, "\n"))
 	if strings.Contains(feed, "PRIVATE_EDIT_SOURCE") || strings.Contains(feed, "included in grouped edit capture") || !strings.Contains(feed, "Search") {
 		t.Fatalf("grouped capture leaked sibling source or lost its status row: %q", feed)
 	}
@@ -113,8 +113,8 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 		view                        *activityAdapter
 		thread, item, path, program string
 	}{
-		{u.view, "main", "cat-call", "direct.go", "cat"},
-		{u.agents, "child", "python-call", "nested.go", "python3"},
+		{u.testActivity(u.view), "main", "cat-call", "direct.go", "cat"},
+		{u.testActivity(u.agents), "child", "python-call", "nested.go", "python3"},
 	} {
 		for i, entry := range tc.view.Entries {
 			if entry.Source.Native == nil || entry.Source.Native.Thread != tc.thread || entry.Source.Native.Item != tc.item {
@@ -144,11 +144,11 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 	restored.restoreHistory([]binding.HistoryTurn{{ID: "prior", Status: "completed", Items: []binding.ThreadItem{{
 		ID: "cat-call", Type: "commandExecution", Command: "cat > direct.go", ExitCode: new(2),
 	}}}})
-	assertCapturedCommand(t, restored.view, "main", "cat-call", "Edit", 2)
+	assertCapturedCommand(t, restored.testActivity(restored.view), "main", "cat-call", "Edit", 2)
 	restored.session.path("child")
 	restored.restoreActivityThread(binding.ThreadInfo{ID: "child", Cwd: workspace, Turns: []binding.HistoryTurn{{ID: "c", Status: "completed", Items: []binding.ThreadItem{sibling}}}}, false)
-	assertCapturedCommand(t, restored.agents, "child", sibling.ID, "Search", 0)
-	for _, view := range []*activityAdapter{u.agents, restored.agents} {
+	assertCapturedCommand(t, restored.testActivity(restored.agents), "child", sibling.ID, "Search", 0)
+	for _, view := range []*activityAdapter{u.testActivity(u.agents), restored.testActivity(restored.agents)} {
 		for _, entry := range view.Entries {
 			if entry.Source.Native == nil || entry.Source.Native.Item != sibling.ID {
 				continue
@@ -188,15 +188,15 @@ func TestAppServerCapturedEditsReuseReceipt(t *testing.T) {
 	data = []*presentation.Receipt{receipt}
 	u.review.Projection.Data = reviewReceiptSnapshot(t, data)
 	u.applyCapturedEdits()
-	assertCapturedCommand(t, u.view, "main", "cmd", "Edit", 0)
+	assertCapturedCommand(t, u.testActivity(u.view), "main", "cmd", "Edit", 0)
 	if allocations := testing.AllocsPerRun(5, u.applyCapturedEdits); allocations > 1 {
 		t.Fatalf("unchanged receipt allocated %.0f times; want at most 1", allocations)
 	}
 	// A terminal host refresh must still reapply counts and keep its failure.
 	item.ExitCode = new(2)
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	assertCapturedCommand(t, u.view, "main", "cmd", "Edit", 2)
-	if !strings.Contains(u.view.Entries[0].Source.Text, "+1 -1") {
+	assertCapturedCommand(t, u.testActivity(u.view), "main", "cmd", "Edit", 2)
+	if !strings.Contains(u.source.Entries[0].Source.Text, "+1 -1") {
 		t.Fatal("host refresh lost captured counts")
 	}
 	// A new receipt must replace the cached projection.
@@ -205,8 +205,8 @@ func TestAppServerCapturedEditsReuseReceipt(t *testing.T) {
 	data[0] = &updated
 	u.review.Projection.Data = reviewReceiptSnapshot(t, data)
 	u.applyCapturedEdits()
-	assertCapturedCommand(t, u.view, "main", "cmd", "Edit", 2)
-	if !strings.Contains(u.view.Entries[0].Source.Text, "+2 -1") {
+	assertCapturedCommand(t, u.testActivity(u.view), "main", "cmd", "Edit", 2)
+	if !strings.Contains(u.source.Entries[0].Source.Text, "+2 -1") {
 		t.Fatal("new receipt did not replace captured counts")
 	}
 }
@@ -231,7 +231,7 @@ func TestAppServerCapturedEditsPreserveTrackedExits(t *testing.T) {
 			t.Fatalf("receipt overwrote per-command statuses: %+v", blocks)
 		}
 	}
-	got := mainFeed(appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: v}), 100)
+	got := mainFeed(appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: v.View, source: v.ActivitySource}), 100)
 	if strings.Count(got, "exit 1") != 1 || !strings.Contains(got, "git cherry-pick · exit 1") {
 		t.Fatalf("receipt changed rendered failure ownership:\n%s", got)
 	}
@@ -343,14 +343,14 @@ func TestCodeModeCellEditReceipt(t *testing.T) {
 	publishFixtureReview(t, live)
 	appServerTestNotify(t, live, "item/completed", map[string]any{"threadId": "thread-1", "turnId": "turn", "item": item})
 	live.applyCapturedEdits()
-	assertCapturedCommand(t, live.view, "thread-1", "edit-exec", "Edit", 0)
+	assertCapturedCommand(t, live.testActivity(live.view), "thread-1", "edit-exec", "Edit", 0)
 	restored := newAppServerSessionTestUI(t, workspace)
 	restored.Thread = "thread-1"
 	restored.session.start(restored.Thread, workspace)
 	restored.review.Projection.Data = snapshot
 	publishFixtureReview(t, restored)
 	restored.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}})
-	assertCapturedCommand(t, restored.view, "thread-1", "edit-exec", "Edit", 0)
+	assertCapturedCommand(t, restored.testActivity(restored.view), "thread-1", "edit-exec", "Edit", 0)
 }
 
 func TestAppServerCapturedRemovalKeepsRunNeighbors(t *testing.T) {
@@ -361,9 +361,9 @@ func TestAppServerCapturedRemovalKeepsRunNeighbors(t *testing.T) {
 				if thread == "child" {
 					appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": thread, "agentNickname": "worker"}})
 				}
-				view := u.view
+				view := u.testActivity(u.view)
 				if thread == "child" {
-					view = u.agents
+					view = u.testActivity(u.agents)
 				}
 				item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "/bin/bash -lc " + commandargs.QuoteArgument(source), ExitCode: new(0), AggregatedOutput: new(" M tracked.go\n")}
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": item})
@@ -391,7 +391,7 @@ func TestAppServerCapturedRemovalKeepsRunNeighbors(t *testing.T) {
 				if thread == "main" {
 					restored := newAppServerSessionTestUI(t, t.TempDir())
 					restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
-					check(restored.view)
+					check(restored.testActivity(restored.view))
 				}
 			})
 		}
@@ -412,11 +412,11 @@ func TestAppServerCapturedEditKeepsCommandPaths(t *testing.T) {
 	}
 	u.review.Projection.Data = reviewReceiptSnapshot(t, data)
 	u.applyCapturedEdits()
-	check(u.view)
+	check(u.testActivity(u.view))
 	restored := newAppServerSessionTestUI(t, u.session.cwd)
 	restored.review.Projection.Data = reviewReceiptSnapshot(t, data)
 	restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
-	check(restored.view)
+	check(restored.testActivity(restored.view))
 }
 
 // Assemble captured-effect values for renderer-only fixtures.

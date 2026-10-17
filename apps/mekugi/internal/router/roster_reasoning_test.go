@@ -19,15 +19,15 @@ func TestAppServerRosterReasoningTitlePreservesTranscript(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 			reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
-			view, agent := u.view, sessionpresentation.ActivityAgent{Name: "/root", Responding: true}
+			view, agent := u.testActivity(u.view), sessionpresentation.ActivityAgent{Name: "/root", Responding: true}
 			if thread == "child" {
-				view, agent.Name = u.agents, "/root/worker"
+				view, agent.Name = u.testActivity(u.agents), "/root/worker"
 			}
 			var full strings.Builder
 			for _, delta := range []string{"**Checking routing**", "\n\n" + strings.Repeat("Public detail. ", 30), "\n\nFinal public observation."} {
 				full.WriteString(delta)
 				reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": "r", "delta": delta})
-				if got, _ := u.agents.testCurrent(agent, time.Now()); ansi.Strip(got) != "Checking routing" {
+				if got, _ := u.testActivity(u.agents).testCurrent(agent, time.Now()); ansi.Strip(got) != "Checking routing" {
 					t.Fatalf("streaming body flooded roster status: %q", ansi.Strip(got))
 				}
 				if len(view.Entries) != 1 || view.Entries[0].Source.Text != full.String() {
@@ -35,14 +35,14 @@ func TestAppServerRosterReasoningTitlePreservesTranscript(t *testing.T) {
 				}
 			}
 			reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning"}})
-			if got, _ := u.agents.testCurrent(agent, time.Now()); ansi.Strip(got) != "Checking routing" {
+			if got, _ := u.testActivity(u.agents).testCurrent(agent, time.Now()); ansi.Strip(got) != "Checking routing" {
 				t.Fatalf("completion lost reasoning title: %q", ansi.Strip(got))
 			}
 			if page := view.Painter.DialogPage(view.blocks(0)[0], 80); page.Text != full.String() {
 				t.Fatalf("completed dialog lost full reasoning: %q", page.Text)
 			}
 			reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "mcat next.go"}})
-			if got, _ := u.agents.testCurrent(agent, time.Now()); ansi.Strip(got) != "Read next.go" {
+			if got, _ := u.testActivity(u.agents).testCurrent(agent, time.Now()); ansi.Strip(got) != "Read next.go" {
 				t.Fatalf("reasoning title obscured newer operation: %q", ansi.Strip(got))
 			}
 			if view.Entries[0].Source.Text != full.String() {
@@ -66,15 +66,15 @@ func TestUISnapshotNativeRosterReasoningTitles(t *testing.T) {
 				body := "**Checking " + thread + "**\n\n" + strings.Repeat("Long reasoning body should stay in transcript. ", 20)
 				reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": "r", "delta": body})
 			}
-			assertNativeUISnapshot(t, fmt.Sprintf("native-roster-reasoning-%d", width), u.agents.NativeRoster(width, 6, at, true))
+			assertNativeUISnapshot(t, fmt.Sprintf("native-roster-reasoning-%d", width), u.testActivity(u.agents).NativeRoster(width, 6, at, true))
 			for _, thread := range []string{"main", "child"} {
 				reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": "plain", "delta": strings.Repeat("Checking the implementation. ", 100)})
 			}
-			assertNativeUISnapshot(t, fmt.Sprintf("native-roster-reasoning-paragraph-live-%d", width), u.agents.NativeRoster(width, 6, at, true))
+			assertNativeUISnapshot(t, fmt.Sprintf("native-roster-reasoning-paragraph-live-%d", width), u.testActivity(u.agents).NativeRoster(width, 6, at, true))
 			for _, thread := range []string{"main", "child"} {
 				reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "plain", "type": "reasoning"}})
 			}
-			assertNativeUISnapshot(t, fmt.Sprintf("native-roster-reasoning-paragraph-done-%d", width), u.agents.NativeRoster(width, 6, at, true))
+			assertNativeUISnapshot(t, fmt.Sprintf("native-roster-reasoning-paragraph-done-%d", width), u.testActivity(u.agents).NativeRoster(width, 6, at, true))
 		})
 	}
 }

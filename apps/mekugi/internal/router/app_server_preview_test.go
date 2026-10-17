@@ -92,9 +92,9 @@ func TestNativeUIPreview(t *testing.T) {
 				}
 				p.serve()
 				flashExpired := p.ui.view.ExpireFlash(now)
-				settled := settleActivity(now, p.ui.view, p.ui.agents)
-				settled = p.ui.view.testPace(now) || settled
-				settled = p.ui.agents.testPace(now) || settled
+				settled := settleActivity(now, p.ui.testActivity(p.ui.view), p.ui.testActivity(p.ui.agents))
+				settled = p.ui.testActivity(p.ui.view).testPace(now) || settled
+				settled = p.ui.testActivity(p.ui.agents).testPace(now) || settled
 				settled = p.ui.dirty || settled // Includes keys drained by this tick.
 				p.ui.dirty = false
 				p.ui.flushStreamOutput() // Rolls output bursts, as each real frame does.
@@ -164,7 +164,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		defer screen.Close()
 		p.ui.shell.frame.Rows = nil // A new screen needs every row.
 		rollCommandOutput(p.ui)
-		finishPacing(p.ui.view, p.ui.agents)
+		finishPacing(p.ui.testActivity(p.ui.view), p.ui.testActivity(p.ui.agents))
 		if err := p.ui.testPaint(screen, 160, 48); err != nil {
 			t.Fatal(err)
 		}
@@ -185,12 +185,12 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	for range 12 {
 		p.advance()
 	}
-	p.ui.agents.setDisplayFilter(true, "/root/explorer")
+	p.ui.testActivity(p.ui.agents).setDisplayFilter(true, "/root/explorer")
 	render("grok thinking", "• Thinking…")
 	p.until("explorer thought")
 	render("grok thought readable", "• Thought")
 	retained := false
-	for _, record := range p.ui.agents.Entries {
+	for _, record := range p.ui.childSource.Entries {
 		blocks := p.ui.agents.Disclosure.Blocks(record.Values)
 		for _, block := range blocks {
 			if block.Kind == "summary" && block.Body == nativePreviewGrokReasoning {
@@ -202,7 +202,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		t.Fatal("collapsed reasoning lost its complete dialog body")
 	}
 	p.until("three agents edit at once")
-	p.ui.agents.setDisplayFilter(false, p.ui.agents.Selected)
+	p.ui.testActivity(p.ui.agents).setDisplayFilter(false, p.ui.agents.Selected)
 	p.ui.shell.liveHidden = false
 	frame := render("caller-local live previews", "LIVE ·", "3 Agents", "2 Diff ●")
 	if strings.Contains(frame, "3 Activity ─") && strings.Contains(frame, "no captured edits yet") {
@@ -210,8 +210,8 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	}
 	agents := func() string {
 		rollCommandOutput(p.ui)
-		finishPacing(p.ui.agents)
-		return ansi.Strip(strings.Join(p.ui.agents.RenderFeed(120, 80).Lines, "\n"))
+		finishPacing(p.ui.testActivity(p.ui.agents))
+		return ansi.Strip(strings.Join(p.ui.testActivity(p.ui.agents).RenderFeed(120, 80).Lines, "\n"))
 	}
 	p.ui.shell.liveHidden = true
 	p.ui.agents.LivePreviews = nil
@@ -246,8 +246,8 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	if got := agents(); strings.Contains(got, "Running") || !strings.Contains(got, "┆ ok      example.com") || !regexp.MustCompile(`Ran +│ for test in`).MatchString(got) {
 		t.Fatalf("passed test run lacks its settled state:\n%s", got)
 	}
-	nextEvent(t, p.ui, p.ui.agents.Entries[len(p.ui.agents.Entries)-1].Source.Native.Thread)
-	settleActivity(time.Now().Add(activityui.OutputDebounce), p.ui.agents)
+	nextEvent(t, p.ui, p.ui.childSource.Entries[len(p.ui.childSource.Entries)-1].Source.Native.Thread)
+	settleActivity(time.Now().Add(activityui.OutputDebounce), p.ui.testActivity(p.ui.agents))
 	if got := agents(); strings.Contains(got, "┆ ok ") || !strings.Contains(got, "┆ … +6 lines") {
 		t.Fatalf("passed test run output did not collapse:\n%s", got)
 	}
@@ -306,7 +306,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		}
 	}
 	render("roster pick", "1 Thread", "tester")
-	if !shell.DiffOpen || !shell.agents.displayingChild() || shell.agents.Selected != "/root/tester" {
+	if !shell.DiffOpen || !shell.main.sessionPresentation().DisplayingChild() || shell.agents.Selected != "/root/tester" {
 		t.Fatal("clicking a roster agent did not show its Activity")
 	}
 }
@@ -327,7 +327,7 @@ func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 	}
 	p.until("main streams its patch")
 	keys("also check Unsubscribe\r")
-	if p.ui.conversation().Submitted[p.ui.Submission().ID].Text != "" || p.ui.Turn == "" || !slices.ContainsFunc(p.ui.view.Entries, func(e sessionpresentation.ActivityRecord) bool {
+	if p.ui.conversation().Submitted[p.ui.Submission().ID].Text != "" || p.ui.Turn == "" || !slices.ContainsFunc(p.ui.source.Entries, func(e sessionpresentation.ActivityRecord) bool {
 		return e.Source.Agent == "You" && e.Source.Text == "also check Unsubscribe"
 	}) {
 		t.Fatalf("steer not accepted: submitted=%q turn=%q", p.ui.conversation().Submitted[p.ui.Submission().ID].Text, p.ui.Turn)
@@ -348,13 +348,13 @@ func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 		t.Fatalf("interrupt did not return queued input: %q", p.ui.Text)
 	}
 	keys("\x03")
-	for _, agent := range p.ui.agents.Agents {
+	for _, agent := range p.ui.childSource.Agents {
 		if agent.Responding {
 			t.Fatalf("%s still responding after interrupt", agent.Name)
 		}
 	}
 	keys("hello\r")
-	if !strings.Contains(p.ui.sessionLabel(p.ui.now()), "Completed in ") || !slices.ContainsFunc(p.ui.view.Entries, func(e sessionpresentation.ActivityRecord) bool {
+	if !strings.Contains(p.ui.sessionLabel(p.ui.now()), "Completed in ") || !slices.ContainsFunc(p.ui.source.Entries, func(e sessionpresentation.ActivityRecord) bool {
 		return strings.Contains(e.Source.Text, "I heard: hello")
 	}) {
 		t.Fatalf("new turn not answered: %q", p.ui.sessionPresentation().Status.Text)
@@ -382,7 +382,7 @@ func TestNativeUIPreviewSessionControlsRendered(t *testing.T) {
 		screen := vt.NewEmulator(100, 28)
 		defer screen.Close()
 		p.ui.shell.frame.Rows = nil
-		finishPacing(p.ui.view, p.ui.agents)
+		finishPacing(p.ui.testActivity(p.ui.view), p.ui.testActivity(p.ui.agents))
 		if err := p.ui.testPaint(screen, 100, 28); err != nil {
 			t.Fatal(err)
 		}
@@ -403,8 +403,8 @@ func TestNativeUIPreviewSessionControlsRendered(t *testing.T) {
 		t.Fatal("queued compaction did not complete visibly")
 	}
 	keys("/clear\r")
-	if p.ui.Thread != "preview-clear-1" || len(p.ui.view.Entries) != 0 {
-		t.Fatalf("clear did not open empty thread: thread=%q entries=%+v", p.ui.Thread, p.ui.view.Entries)
+	if p.ui.Thread != "preview-clear-1" || len(p.ui.source.Entries) != 0 {
+		t.Fatalf("clear did not open empty thread: thread=%q entries=%+v", p.ui.Thread, p.ui.source.Entries)
 	}
 	if frame := render(); strings.Contains(frame, "Context compacted") || strings.Contains(frame, "old transcript") {
 		t.Fatalf("clear retained previous presentation:\n%s", frame)
@@ -523,7 +523,7 @@ func newNativePreview(t *testing.T) *nativePreview {
 		scope.Workspaces[workspace][thread] = true
 	}
 	u.applyReview(t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope})
-	u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.agents})
+	u.testActivity(u.agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.agents})
 	u.sessionPresentation().Status.Text = "Ready"
 	p.populate()
 	return p
@@ -1208,7 +1208,7 @@ func (p *nativePreview) reply(id jsontext.Value, result any) {
 
 func (p *nativePreview) userMessage(turn, clientID string, content any) {
 	p.notify("item/completed", map[string]any{"threadId": p.ui.Thread, "turnId": turn, "item": map[string]any{
-		"id": fmt.Sprintf("preview-user-%d-%d", p.message, len(p.ui.view.Entries)), "type": "userMessage", "clientId": clientID, "content": content,
+		"id": fmt.Sprintf("preview-user-%d-%d", p.message, len(p.ui.source.Entries)), "type": "userMessage", "clientId": clientID, "content": content,
 	}})
 }
 
@@ -1360,7 +1360,7 @@ func TestNativeUIPreviewSessionReplyIdentity(t *testing.T) {
 	defer p.close()
 	for p.advance() {
 	}
-	main := p.ui.view
+	main := p.ui.testActivity(p.ui.view)
 	main.Conversation = true
 	main.testAudience()
 	feed := main.RenderFeed(100, 100)
@@ -1403,9 +1403,9 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 			if len(u.shell.liveDock.Order) != 0 {
 				t.Fatal("completed live batch did not restore the transcript")
 			}
-			view, item := u.view, "patch-main"
+			view, item := u.testActivity(u.view), "patch-main"
 			if activity {
-				view, item = u.agents, "patch-tester"
+				view, item = u.testActivity(u.agents), "patch-tester"
 				view.setDisplayFilter(true, "/root/tester")
 			}
 			u.shell.DiffOpen = activity

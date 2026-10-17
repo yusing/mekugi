@@ -48,12 +48,12 @@ func TestAppServerAgentTimerStartsAtFirstTurn(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	u.session.path("early")
-	u.agents.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "/root/worker", Kind: "status", Text: "Assigned", Observed: time.Now()}}})
+	u.testActivity(u.agents).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "/root/worker", Kind: "status", Text: "Assigned", Observed: time.Now()}}})
 	for _, agent := range u.session.agents {
 		if !agent.Started.IsZero() {
 			t.Fatalf("thread registration started timer: %+v", agent)
 		}
-		if _, timer := u.agents.testCurrent(agent, time.Now().Add(time.Hour)); timer != "" {
+		if _, timer := u.testActivity(u.agents).testCurrent(agent, time.Now().Add(time.Hour)); timer != "" {
 			t.Fatalf("unstarted thread shows timer %q", timer)
 		}
 	}
@@ -119,20 +119,20 @@ func TestAppServerSessionProjectsChildThreads(t *testing.T) {
 	if agent.Responding || !agent.Final {
 		t.Fatal("finished child still responding")
 	}
-	_, done := u.agents.testCurrent(*agent, agent.LastResponse)
-	_, later := u.agents.testCurrent(*agent, agent.LastResponse.Add(time.Hour))
+	_, done := u.testActivity(u.agents).testCurrent(*agent, agent.LastResponse)
+	_, later := u.testActivity(u.agents).testCurrent(*agent, agent.LastResponse.Add(time.Hour))
 	if elapsed, _, _ := strings.Cut(done, " · "); !strings.HasPrefix(later, elapsed+" · ") {
 		t.Fatalf("elapsed time kept counting after the child finished: %q, then %q", done, later)
 	}
-	activity := ansi.Strip(strings.Join(u.agents.RenderFeed(90, 60).Lines, "\n"))
+	activity := ansi.Strip(strings.Join(u.testActivity(u.agents).RenderFeed(90, 60).Lines, "\n"))
 	for _, want := range []string{"worker · explore", "▶ worker started · gpt-6-luna", "Inspect the pane.", "├ Ran  go test ./... · exit 2", "└ Read a.go", "✓ answer", "The pane waits on its first frame."} {
 		if !strings.Contains(activity, want) {
 			t.Fatalf("Activity lacks %q:\n%s", want, activity)
 		}
 	}
 	u.view.Conversation = true
-	u.view.testAudience()
-	main := ansi.Strip(strings.Join(u.view.RenderFeed(90, 60).Lines, "\n"))
+	u.testActivity(u.view).testAudience()
+	main := ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(90, 60).Lines, "\n"))
 	for _, want := range []string{"▶ worker started", "├─✓ finished", "The pane waits on its first frame.", "╰─↩ Open reply"} {
 		if !strings.Contains(main, want) {
 			t.Fatalf("Main lacks %q:\n%s", want, main)

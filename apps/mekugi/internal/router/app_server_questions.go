@@ -270,7 +270,7 @@ func (u *appServerUI) recordSyncQuestionAnswer(c *nativeQuestionCall) {
 	if len(answers) == 0 {
 		return
 	}
-	for _, v := range []*activityAdapter{u.view, u.agents} {
+	for _, v := range []*sessionpresentation.ActivitySource{u.source, u.childSource} {
 		if v == nil {
 			continue
 		}
@@ -533,7 +533,7 @@ func (u *appServerUI) renderQuestionRecord(c *nativeQuestionCall) {
 	if len(c.RequestID) > 0 {
 		id = "question/" + string(c.RequestID)
 	}
-	for _, v := range []*activityAdapter{u.view, u.agents} {
+	for _, v := range []*sessionpresentation.ActivitySource{u.source, u.childSource} {
 		if v == nil {
 			continue
 		}
@@ -546,7 +546,7 @@ func (u *appServerUI) renderQuestionRecord(c *nativeQuestionCall) {
 // skills loaded into Main's current context.
 func (u *appServerUI) mainTitleDetail() string {
 	details := []string{u.questionBadge()}
-	if set := u.view.ActiveSkills()["Main"]; set != nil {
+	if set := u.source.ActiveSkills()["Main"]; set != nil {
 		details = append(details, activityui.SkillLabel(set))
 	}
 	return strings.Join(slices.DeleteFunc(details, func(detail string) bool { return detail == "" }), terminalui.Dim+" · "+terminalui.Undim)

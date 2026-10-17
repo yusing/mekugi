@@ -192,3 +192,21 @@ func (v *ActivitySource) RemoveThinking(native *NativeItem) {
 		}
 	}
 }
+
+// NewActivitySource starts an unattached feed; attachment binding transfers this
+// model once and preserves its identity for all subsequent source transitions.
+func NewActivitySource(audience ActivityAudience) *ActivitySource {
+	return &ActivitySource{Audience: audience, Coverage: "CONNECTING", Model: new(activitypresentation.Model[ActivityEntry, ActivityAgent])}
+}
+
+// InsertHistoryPage preserves admitted identities while ordering an older page.
+func (v *ActivitySource) InsertHistoryPage(before uint64, belongs func(ActivityEntry) bool) {
+	var at uint64
+	for _, record := range v.Entries {
+		if record.Source.Seq <= before && belongs(record.Source) {
+			at = record.Source.Seq
+			break
+		}
+	}
+	v.Model.InsertHistory(before, at)
+}

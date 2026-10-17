@@ -124,7 +124,7 @@ func (u *appServerUI) publishReview() {
 	if u.shell != nil && u.shell.preparePane != nil {
 		u.shell.preparePane(u.session.Scope())
 	}
-	if u.agents != nil {
-		u.agents.Model.LineCounts, u.agents.Model.NetCounts = snapshot.Publication.Counts.Callers, snapshot.Publication.Counts.Net
+	if u.childSource != nil {
+		u.childSource.Model.LineCounts, u.childSource.Model.NetCounts = snapshot.Publication.Counts.Callers, snapshot.Publication.Counts.Net
 	}
 }

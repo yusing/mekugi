@@ -88,7 +88,7 @@ func TestMarkdownFileLateCompletion(t *testing.T) {
 			case "replace":
 				u.openBlocks(main.view, []activityui.Block{{Body: "replacement dialog"}})
 			case "thread":
-				main.agents.displayThread("/root/child")
+				main.testActivity(main.agents).displayThread("/root/child")
 			case "retirement":
 				main.session.Retire()
 			case "attachment":

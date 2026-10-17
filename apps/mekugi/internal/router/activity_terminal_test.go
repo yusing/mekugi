@@ -1,6 +1,8 @@
 package router
 
 import (
+	"strings"
+	"testing"
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -8,6 +10,23 @@ import (
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
+
+func TestActivityRendererConsumesOnlyDeliveredFacts(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.applyActivity([]sessionpresentation.ActivityEntry{{Seq: 1, Agent: "/root", Kind: "error", Text: "delivered"}}, nil)
+	render := func() string { return strings.Join(u.view.RenderFeed(80, 20).Lines, "\n") }
+	if !strings.Contains(render(), "delivered") {
+		t.Fatal("application did not deliver its admitted source")
+	}
+	u.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 2, Agent: "Main", Kind: "text", Text: "next observation"}}})
+	if strings.Contains(render(), "next observation") {
+		t.Fatal("painting reached back into source state")
+	}
+	u.publishActivity()
+	if !strings.Contains(render(), "next observation") {
+		t.Fatal("explicit delivery did not advance the renderer")
+	}
+}
 
 func testActivityAgent(agent sessionpresentation.ActivityAgent) activitypresentation.Agent {
 	return activitypresentation.Agent{AgentFacts: agent.ActivityAgent()}

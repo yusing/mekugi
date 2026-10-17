@@ -54,7 +54,7 @@ func TestSessionUIReplayRetainedCollaborationDelivery(t *testing.T) {
 			t.Fatal(err)
 		}
 		got := make(map[string]string)
-		for _, entry := range p.ui.agents.Entries {
+		for _, entry := range p.ui.childSource.Entries {
 			e := entry.Source
 			if e.Assignment == nil && e.Message == nil {
 				continue
@@ -75,7 +75,7 @@ func TestSessionUIReplayRetainedCollaborationDelivery(t *testing.T) {
 		if child == nil || child.Settings.Model != "child-model" || child.Settings.Effort != "high" {
 			t.Fatalf("spawn settings lost: %+v", child)
 		}
-		p.ui.agents.displayThread(child.Name)
+		p.ui.testActivity(p.ui.agents).displayThread(child.Name)
 		frame := replayPlaybackTestPaint(t, p, 140, 45)
 		for _, text := range want {
 			if !strings.Contains(frame, text) {
@@ -124,10 +124,10 @@ func TestSessionUIReplayMailboxWaitUsesRecordedRoster(t *testing.T) {
 			if at == 4*time.Second {
 				want = "Finished waiting · alpha"
 			}
-			if len(p.ui.view.Entries) != 1 || p.ui.view.Entries[0].Source.Text != want {
-				t.Fatalf("pass %d at %s changed recorded targets: %+v", pass, at, p.ui.view.Entries)
+			if len(p.ui.source.Entries) != 1 || p.ui.source.Entries[0].Source.Text != want {
+				t.Fatalf("pass %d at %s changed recorded targets: %+v", pass, at, p.ui.source.Entries)
 			}
-			if rows := p.ui.view.RenderFeed(120, 30).Lines; len(rows) != 0 {
+			if rows := p.ui.testActivity(p.ui.view).RenderFeed(120, 30).Lines; len(rows) != 0 {
 				t.Fatalf("wait entered ordinary transcript: %q", rows)
 			}
 			frame := replayPlaybackTestPaint(t, p, 140, 40)
@@ -248,7 +248,7 @@ func TestSessionUIReplayRustAgentStatusShapesReachFinalWaitDisplay(t *testing.T)
 	}
 	replayPlaybackTestPaint(t, p, 120, 28)
 	var finalWait string
-	for _, entry := range p.ui.view.Entries {
+	for _, entry := range p.ui.source.Entries {
 		if entry.Source.Native != nil && entry.Source.Native.Item == "wait" && entry.Source.Native.Wait != nil {
 			finalWait = entry.Source.Text
 		}
@@ -376,7 +376,7 @@ func TestSessionUIReplayEndPaintSettlesQueuedCommandOutput(t *testing.T) {
 		t.Fatal("session-end frame leaves recorded completed command running")
 	}
 	var tail []string
-	for _, entry := range p.ui.view.Entries {
+	for _, entry := range p.ui.source.Entries {
 		if entry.Source.Native != nil && entry.Source.Native.Item == command.ID {
 			tail = entry.Source.OutputTail
 			if entry.Source.Native.Phase != "item/completed" || !entry.Source.Native.CommandEnded.Equal(end) {

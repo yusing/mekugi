@@ -160,20 +160,20 @@ func TestCommandSegmentsRetentionErrorsStayWithOriginalThreadAndCause(t *testing
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.Thread = "other"
 	u.view.Conversation = true
-	u.view.testAudience()
+	u.testActivity(u.view).testAudience()
 	first := errors.New("open replay record: permission denied; complete underlying cause")
 	second := errors.New("sync replay directory: no space left on device; different underlying cause")
 	for _, cause := range []error{first, second} {
 		u.commandSegmentPending++
 		u.commandSegmentRetained(commandSegmentWrite{key: [3]string{"main", "turn", "item"}, err: requestexecution.StorageIOError(cause)})
 	}
-	if delivery := u.applyCriticalNotices(); delivery != nil || len(u.view.Entries) != 0 {
+	if delivery := u.applyCriticalNotices(); delivery != nil || len(u.source.Entries) != 0 {
 		t.Fatal("switched thread borrowed another thread's retention errors")
 	}
 	u.Thread = "main"
 	delivery := u.applyCriticalNotices()
 
-	if delivery == nil || len(u.view.Entries) != 0 || !u.feedback.Alert {
+	if delivery == nil || len(u.source.Entries) != 0 || !u.feedback.Alert {
 		t.Fatal("retention errors missed the composer")
 	}
 	for _, cause := range []error{first, second} {
@@ -183,7 +183,7 @@ func TestCommandSegmentsRetentionErrorsStayWithOriginalThreadAndCause(t *testing
 	}
 	before := u.feedback.Text
 	delivery.finish(false)
-	if retry := u.applyCriticalNotices(); retry == nil || u.feedback.Text != before || len(u.view.Entries) != 0 {
+	if retry := u.applyCriticalNotices(); retry == nil || u.feedback.Text != before || len(u.source.Entries) != 0 {
 		t.Fatal("unpainted error was lost or duplicated")
 	} else {
 		u.testMainFrame(100, 12, 0)
@@ -223,7 +223,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": key[0], "turnId": key[1], "item": item})
 	awaitMain(t, u, "skipped")
 	awaitCommandSegments(t, u)
-	if names := u.view.ActiveSkills()["Main"]; len(names) != 1 || names[0] != filepath.Base(filepath.Dir(path)) {
+	if names := u.source.ActiveSkills()["Main"]; len(names) != 1 || names[0] != filepath.Base(filepath.Dir(path)) {
 		t.Fatalf("successful skill segment lost after a failed command: %v", names)
 	}
 	// Reopen the durable owner and destroy the live report before restoring.
@@ -239,7 +239,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 			restored := newAppServerSessionTestUI(t, workspace)
 			setTestAppServerIntegration(restored, testProxyWithStore(store))
 			turns := []binding.HistoryTurn{{ID: key[1], Status: "completed", Items: []binding.ThreadItem{item}}}
-			view := restored.view
+			view := restored.testActivity(restored.view)
 			if strings.HasPrefix(target, "child") {
 				childWorkspace := workspace
 				if target == "child-other-workspace" {
@@ -249,7 +249,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 				}
 				restored.session.path(target)
 				restored.restoreActivityThread(binding.ThreadInfo{ID: target, Cwd: childWorkspace, Turns: turns}, false)
-				view = restored.agents
+				view = restored.testActivity(restored.agents)
 			} else {
 				restored.Thread = target
 				restored.restoreHistory(turns)
@@ -384,9 +384,9 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 			}
 			u.session.completeCommand(entry.Native, item.Observation())
 			u.restoreCommandSegments(&entry, item, workspace)
-			u.view.Entries = []sessionpresentation.ActivityRecord{{Source: entry}}
+			u.source.Entries = []sessionpresentation.ActivityRecord{{Source: entry}}
 			pages := activityui.Disclosure(nil).Blocks(sessionpresentation.CommandPresentation(entry).DetailValues())
-			if len(pages) != 1 || pages[0].Label != "combined output" || u.view.RetainedOutput(pages[0].Source, pages[0].Output).View().Exit != 1 || strings.Join(u.view.RetainedOutput(pages[0].Source, pages[0].Output).View().Lines, "\n") != "one" {
+			if len(pages) != 1 || pages[0].Label != "combined output" || u.source.RetainedOutput(pages[0].Source, pages[0].Output).View().Exit != 1 || strings.Join(u.source.RetainedOutput(pages[0].Source, pages[0].Output).View().Lines, "\n") != "one" {
 				t.Fatalf("missing evidence fabricated output: %+v", pages)
 			}
 			wantStates := mode == "lossy" || mode == "released" || mode == "truncated" || mode == "long-line"
@@ -413,7 +413,7 @@ func TestCombinedOutputDialogUnwrapsOnlyLiteralShell(t *testing.T) {
 			t.Fatalf("combined display changed execution or leaked wrapper: %+v", pages)
 		}
 		ui := &terminalUI{}
-		ui.openBlocks(view, pages)
+		ui.openBlocks(view.bind(ui), pages)
 		frame := drawOutputDialog(ui)
 		if strings.Contains(frame, "/usr/bin/bash") != strings.Contains(command, "> output") || !strings.Contains(frame, "combined output") {
 			t.Fatalf("wrong rendered shell display: %s", frame)
@@ -440,7 +440,7 @@ func TestCommandSegmentsRestoreRichChangeRows(t *testing.T) {
 	u.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 	// History starts collapsed; inspect the expanded retained command.
 	var rows []string
-	for _, restored := range u.view.Entries {
+	for _, restored := range u.source.Entries {
 		for _, block := range commandSegmentBlocks(sessionpresentation.CommandPresentation(restored.Source)) {
 			block.Collapsed = false
 			rows = append(rows, u.view.Painter.Block(block, 90)...)

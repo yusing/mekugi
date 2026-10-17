@@ -22,9 +22,9 @@ func TestAppServerInterruptedWaitEndsBeforeContinue(t *testing.T) {
 			appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "turn", "status": "interrupted"}})
 			appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "target", "turn": map[string]any{"id": "child-turn", "status": "completed"}})
 			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "continue"}})
-			view := u.view
+			view := u.testActivity(u.view)
 			if thread != "main" {
-				view = u.agents
+				view = u.testActivity(u.agents)
 			}
 			if len(view.Entries) != 1 || view.Entries[0].Source.Text != "Wait ended · target" || view.Entries[0].Source.Native.Phase != "turn/completed" {
 				t.Fatalf("interrupted wait survived continue: %+v", view.Entries)
@@ -47,7 +47,7 @@ func TestAppServerRestoredStoppedWait(t *testing.T) {
 			u.restoreHistory(history)
 			u.session.registerThread(binding.ThreadInfo{ID: "child"})
 			u.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: history}, false)
-			for _, view := range []*activityAdapter{u.view, u.agents} {
+			for _, view := range []*activityAdapter{u.testActivity(u.view), u.testActivity(u.agents)} {
 				if view.Entries[0].Source.Text != "Wait ended" || view.Entries[0].Source.Native.Phase != "turn/completed" {
 					t.Fatalf("stopped history revived waiting: %+v", view.Entries[0])
 				}

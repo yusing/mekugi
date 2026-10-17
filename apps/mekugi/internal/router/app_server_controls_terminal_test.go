@@ -41,7 +41,7 @@ func TestNativeControlsTerminalFrames(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	paint := func() string {
 		t.Helper()
-		finishPacing(u.view, u.agents)
+		finishPacing(u.testActivity(u.view), u.testActivity(u.agents))
 		if err := u.testPaint(slave, width, height); err != nil {
 			t.Fatal(err)
 		}

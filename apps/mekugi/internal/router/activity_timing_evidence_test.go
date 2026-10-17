@@ -135,7 +135,7 @@ func TestActivityTimingRealShellBoundariesAndRestart(t *testing.T) {
 	restored := newAppServerSessionTestUI(t, workspace)
 	setTestAppServerIntegration(restored, testProxyWithStore(store))
 	restored.restoreHistory([]binding.HistoryTurn{{ID: key[1], Status: "completed", Items: []binding.ThreadItem{item}}})
-	for _, entry := range restored.view.Entries {
+	for _, entry := range restored.source.Entries {
 		if entry.Source.CallID != item.ID || entry.Source.Native == nil {
 			continue
 		}

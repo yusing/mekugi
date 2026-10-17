@@ -73,7 +73,7 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	command := "cat >> a.go <<'EOF'\nPRIVATE_CAT_BODY\nEOF\npython3 - <<'PY'\np='b.go';open(p,'w').write('PRIVATE_PY_BODY')\nPY\ngo test ./internal/router"
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
 		"id": "cmd", "type": "commandExecution", "command": command, "status": "inProgress"}})
-	finishPacing(u.view, u.agents)
+	finishPacing(u.testActivity(u.view), u.testActivity(u.agents))
 	if err := u.testPaint(slave, width, height); err != nil {
 		t.Fatal(err)
 	}
@@ -104,8 +104,8 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	u.review.Projection.Data = reviewReceiptSnapshot(t, data)
 	// Completed tracked edit segments must receive the same captured counts
 	// as untracked commands while the neighboring test keeps its own state.
-	for i := range u.view.Entries {
-		if native := u.view.Entries[i].Source.Native; native != nil && native.Item == "cmd" {
+	for i := range u.source.Entries {
+		if native := u.source.Entries[i].Source.Native; native != nil && native.Item == "cmd" {
 			native.Segments = []sessionpresentation.ActivitySegment{
 				{Source: "cat >> a.go", Text: "Edit `a.go` · cat (requested)"},
 				{Source: "python3", Text: "Edit `b.go` · python3 (requested)"},

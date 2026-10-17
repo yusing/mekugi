@@ -67,7 +67,7 @@ func (p *uiReplayPlayback) reset() {
 	p.paintedAt = time.Time{}
 	// The read-only terminal attachment uses shared projection without a backend
 	// client, request tracker, writable store, observers or notification sink.
-	u := &appServerUI{terminalViews: p.terminalViews, reviewSource: p.reviewSource, presentationState: p.views, conversationState: p.conversation, session: appServerSession{activity: p.activity, observations: p.observations}, ctx: p.ctx, view: newTranscriptAdapter(activityui.NewView(), sessionpresentation.MainAudience), agents: newTranscriptAdapter(p.terminalViews.NewThreadView(), sessionpresentation.ChildAudience), Thread: p.Source.Thread, clock: func() time.Time { return p.At }, replay: p}
+	u := &appServerUI{terminalViews: p.terminalViews, reviewSource: p.reviewSource, presentationState: p.views, conversationState: p.conversation, session: appServerSession{activity: p.activity, observations: p.observations}, ctx: p.ctx, view: activityui.NewView(), agents: p.terminalViews.NewThreadView(), Thread: p.Source.Thread, clock: func() time.Time { return p.At }, replay: p}
 	u.attachPresentation()
 	u.sessionPresentation().Status.Set("Replay", false)
 	u.view.Clock, u.agents.Clock = u.clock, u.clock
@@ -186,13 +186,15 @@ func (p *uiReplayPlayback) paint(out io.Writer, width, height int) error {
 	u := p.ui
 	if !p.At.Equal(p.paintedAt) {
 		u.flushStreamOutput()
-		settleActivity(p.At, u.view, u.agents)
+		u.publishActivity()
+		activityui.Settle(p.At, u.view, u.agents)
 		u.view.Pace(p.At)
 		u.agents.Pace(p.At)
 		p.paintedAt = p.At
 	}
 	u.view.ExpireFlash(p.At)
 	u.agents.ExpireFlash(p.At)
+	u.publishActivity()
 	w := &replayTimedWriter{Writer: out}
 	err := u.paint(w, width, height)
 	p.writeTime += w.elapsed

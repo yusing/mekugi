@@ -322,7 +322,7 @@ func TestAppServerAppliedSettingsStorageFailurePreservesHostResult(t *testing.T)
 		t.Fatal(err)
 	}
 	appliedSettingsTestNotify(t, u, "applied", "high", "priority")
-	if u.model != "applied" || u.reasoningEffort != "high" || u.serviceTier != "priority" || len(u.view.Entries) == 0 {
+	if u.model != "applied" || u.reasoningEffort != "high" || u.serviceTier != "priority" || len(u.source.Entries) == 0 {
 		t.Fatal("storage failure hid the applied host settings or its warning")
 	}
 }
@@ -366,7 +366,7 @@ func TestAppServerAppliedSettingsMalformedAndLayoutOnly(t *testing.T) {
 				t.Fatalf("invalid or absent settings applied: %#v", params)
 			}
 			if body == "{" {
-				if len(fresh.view.Entries) == 0 {
+				if len(fresh.source.Entries) == 0 {
 					t.Fatal("corrupt retention failed invisibly")
 				}
 			} else {
@@ -385,7 +385,7 @@ func TestUISnapshotNativeSettingsPersistenceFailure(t *testing.T) {
 	u.clock = func() time.Time { return now }
 	u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 	u.paneError(errors.New("session preferences storage unavailable"))
-	u.view.Entries[len(u.view.Entries)-1].Source.Observed = now
+	u.source.Entries[len(u.source.Entries)-1].Source.Observed = now
 	rows, _ := u.testMainFrame(100, 14, 0)
 	assertNativeUISnapshot(t, "native-settings-persistence-failure", rows)
 }

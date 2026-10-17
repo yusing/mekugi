@@ -19,7 +19,7 @@ import (
 func (u *appServerUI) showCopyPicker() {
 	u.deleteDraftRange(0, len(u.Text))
 	var response string
-	for _, entry := range slices.Backward(u.view.Entries) {
+	for _, entry := range slices.Backward(u.source.Entries) {
 		n := entry.Source.Native
 		if n == nil || n.Thread != u.Thread || entry.Source.Agent != "Main" {
 			continue

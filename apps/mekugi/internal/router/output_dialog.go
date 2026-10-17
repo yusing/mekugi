@@ -15,7 +15,8 @@ import (
 // Direct output handles stay here so feed aging does not retire an open document.
 type outputDialog struct {
 	terminalsession.Dialog
-	view      *activityAdapter
+	view      *activityui.View
+	source    *sessionpresentation.ActivitySource
 	pages     []outputPage
 	processes bool
 	file      *activitypresentation.DetailFile
@@ -40,7 +41,7 @@ type outputDialogKey struct {
 
 // openOutput opens the operation a snippet names in the dialog, reporting
 // whether it names one.
-func (u *terminalUI) openOutput(view *activityAdapter, snippet activityui.Snippet) bool {
+func (u *terminalUI) openOutput(view *activityui.View, snippet activityui.Snippet) bool {
 	block, ok := view.SnippetBlock(snippet)
 	if !ok || block.EditSource != "" || len(block.Questions) > 0 {
 		return false
@@ -79,25 +80,25 @@ func (u *terminalUI) openOutput(view *activityAdapter, snippet activityui.Snippe
 }
 
 // openBlocks is the shared modal entry point. It never changes pane navigation.
-func (u *terminalUI) openBlocks(view *activityAdapter, pages []activityui.Block) {
+func (u *terminalUI) openBlocks(view *activityui.View, pages []activityui.Block) {
 	u.openDetails(view, activitypresentation.DetailPages(activityui.Values(pages)))
 }
 
-func (u *terminalUI) openDetails(view *activityAdapter, pages []activitypresentation.DetailPage) {
+func (u *terminalUI) openDetails(view *activityui.View, pages []activitypresentation.DetailPage) {
 	if len(pages) == 0 {
 		return
 	}
 	u.selection = nil
-	u.output = &outputDialog{view: view}
+	u.output = &outputDialog{view: view, source: u.main.activitySource(view)}
 	u.output.refreshPages(pages)
 }
 
-func (u *terminalUI) openEntry(view *activityAdapter, seq uint64) bool {
-	for index, entry := range view.Entries {
+func (u *terminalUI) openEntry(view *activityui.View, seq uint64) bool {
+	for index, entry := range u.main.activitySource(view).Entries {
 		if entry.Source.Seq != seq {
 			continue
 		}
-		blocks := view.SourceValues(index)
+		blocks := u.main.activitySource(view).SourceValues(index)
 		for i := range blocks {
 			blocks[i].Source = entry.Source.Seq
 			if blocks[i].Verb == "" {
@@ -111,7 +112,7 @@ func (u *terminalUI) openEntry(view *activityAdapter, seq uint64) bool {
 }
 
 // openRequested opens an operation the view's pointer handling clicked.
-func (u *terminalUI) openRequested(view *activityAdapter) {
+func (u *terminalUI) openRequested(view *activityui.View) {
 	if snippet := view.Opening; snippet != (activityui.Snippet{}) {
 		view.Opening = activityui.Snippet{}
 		if snippet.Block == activityui.EditNavigationSnippet {
@@ -139,7 +140,7 @@ func (d *outputDialog) refreshPages(requested []activitypresentation.DetailPage)
 	}
 	sources := make(map[uint64]activitypresentation.DetailSource)
 	outputs := make(map[uint64]map[int]*activitymodel.Output)
-	for _, entry := range d.view.Entries {
+	for _, entry := range d.source.Entries {
 		if !selected[entry.Source.Seq] {
 			continue
 		}
@@ -148,7 +149,8 @@ func (d *outputDialog) refreshPages(requested []activitypresentation.DetailPage)
 			command := sessionpresentation.CommandPresentation(entry.Source)
 			if n.Output == nil && n.Running {
 				if frame, _, ok := d.view.CurrentCommandFrame(entry.Source.Seq); ok {
-					source.Entry = commandFrame(entry, frame)
+					source.Entry.Command = new(sessionpresentation.ActivityContent(entry.Source))
+					source.Entry = frame.Project(source.Entry)
 					command.Tail, command.TailOmitted, command.Segments = frame.Output.Tail, frame.Output.Omitted, frame.Segments
 				}
 			}

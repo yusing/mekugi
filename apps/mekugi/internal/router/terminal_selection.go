@@ -22,7 +22,7 @@ import (
 type terminalSelection struct {
 	*terminalsession.Selection
 	link      string
-	view      *activityAdapter
+	view      *activityui.View
 	pane      terminalsession.Rect
 	questions []uint64
 	snippets  []activityui.Snippet
@@ -115,7 +115,7 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 	if button != 0 || release || u.Dragging() || u.main == nil || u.main.keybindings {
 		return false
 	}
-	var view *activityAdapter
+	var view *activityui.View
 	var pane terminalsession.Rect
 	mention := "message"
 	switch {
@@ -193,7 +193,7 @@ func (u *terminalUI) selectionDocument(s *terminalSelection) {
 	switch s.mention {
 	case "message", "activity":
 		if s.view.FeedLines > s.Rect.H {
-			feed := s.view.RenderFeed(s.Rect.W, s.view.FeedLines)
+			feed := renderActivityFeed(u.main.activitySource(s.view), s.view, s.Rect.W, s.view.FeedLines)
 			top, fixed := s.view.Offset, 0
 			if !s.view.Conversation && top+1 < len(feed.Heads) && feed.Heads[top] != top && feed.Heads[top+1] == feed.Heads[top] {
 				feed.Lines = append([]string{feed.Lines[feed.Heads[top]]}, feed.Lines...)

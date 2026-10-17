@@ -45,7 +45,7 @@ func TestNativeUISessionLiveToggle(t *testing.T) {
 			t.Fatal("invalid value changed preference or lost draft")
 		}
 	}
-	if len(u.view.Entries) != 0 {
+	if len(u.source.Entries) != 0 {
 		t.Fatal("local toggle entered the transcript")
 	}
 	other, _ := newAppServerTestUI()
@@ -103,7 +103,7 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.ensureShell()
 			defer u.shell.diffScreen.Close()
-			u.agents.Agents = []sessionpresentation.ActivityAgent{{Name: "/root", Responding: true}, {Name: "/root/worker", Responding: true}}
+			u.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root", Responding: true}, {Name: "/root/worker", Responding: true}}
 			screen := vt.NewEmulator(width, 40)
 			defer screen.Close()
 			paint := func() string {
@@ -118,14 +118,14 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			u.preview(projectStockPatchPreview(t.Context(), workspace, preview), false)
 			revealNativeDock(u.shell)
 			if caller != "/root" {
-				u.agents.setDisplayFilter(true, caller)
+				u.testActivity(u.agents).setDisplayFilter(true, caller)
 			}
 			if !strings.Contains(paint(), "VISIBLE_EDIT") {
 				t.Fatal("default dock missing")
 			}
-			u.agents.setDisplayFilter(false, u.agents.Selected)
+			u.testActivity(u.agents).setDisplayFilter(false, u.agents.Selected)
 			appServerTestKeys(t, u, "/live\r")
-			u.agents.setDisplayFilter(caller != "/root", u.agents.Selected)
+			u.testActivity(u.agents).setDisplayFilter(caller != "/root", u.agents.Selected)
 			frame := paint()
 			if strings.Contains(frame, "VISIBLE_EDIT") || u.shell.Layout.Live.H != 0 || len(u.shell.liveDock.Order) != 1 {
 				t.Fatal("hidden dock lost state or reserved space")
@@ -135,9 +135,9 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			if r.H == 0 || !strings.Contains(lines[r.Y-1], "┘") || strings.TrimSpace(lines[r.Y+r.H]) != "" {
 				t.Fatalf("roster must immediately follow the pane border with padding only below:\n%s", frame)
 			}
-			u.agents.setDisplayFilter(false, u.agents.Selected)
+			u.testActivity(u.agents).setDisplayFilter(false, u.agents.Selected)
 			appServerTestKeys(t, u, "/live\r")
-			u.agents.setDisplayFilter(caller != "/root", u.agents.Selected)
+			u.testActivity(u.agents).setDisplayFilter(caller != "/root", u.agents.Selected)
 			if !strings.Contains(paint(), "VISIBLE_EDIT") {
 				t.Fatal("current edit not restored")
 			}

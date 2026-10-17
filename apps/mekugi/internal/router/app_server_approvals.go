@@ -254,7 +254,7 @@ func (u *appServerUI) endApproval(a *sessioncontrol.Approval, outcome string) {
 // approvalItem finds one exact host identity across the two presentation views.
 func (u *appServerUI) approvalItem(thread, turn, item string) *sessionpresentation.NativeItem {
 	var owner *sessionpresentation.NativeItem
-	for _, view := range []*activityAdapter{u.view, u.agents} {
+	for _, view := range []*sessionpresentation.ActivitySource{u.source, u.childSource} {
 		if view == nil {
 			continue
 		}
@@ -293,12 +293,12 @@ func (u *appServerUI) recordApproval(a *sessioncontrol.Approval, outcome string)
 	}
 	entry := sessionpresentation.ActivityEntry{Seq: u.session.next(), Kind: "tool", Text: activitypresentation.ShellSource(frontends.ShellDisplaySource(a.Subject), ""), Observed: u.now(),
 		Native: &sessionpresentation.NativeItem{Thread: a.Thread, Turn: a.Turn, Item: a.Item, Phase: "approval/updated", Approval: outcome}}
-	if u.agents != nil {
+	if u.session.paths != nil {
 		entry.Agent = u.session.path(a.Thread)
 		u.applyActivity([]sessionpresentation.ActivityEntry{entry}, nil)
 	} else {
-		entry.Seq, entry.Agent = u.view.LastSeq+1, "Main"
-		u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
+		entry.Seq, entry.Agent = u.source.LastSeq+1, "Main"
+		u.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{entry}})
 	}
 }
 

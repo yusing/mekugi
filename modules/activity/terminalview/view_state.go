@@ -55,6 +55,7 @@ func (v *View) Update(publication presentation.Publication, display Display) {
 	}
 	for i, entry := range publication.Entries {
 		frame := v.commandFrames[entry.Seq]
+		v.updateCommandFrame(entry)
 		entry = v.commandEntry(entry)
 		publication.Entries[i] = entry
 		revision, exists := previous[entry.Seq]

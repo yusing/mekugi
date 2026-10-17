@@ -43,7 +43,7 @@ func (u *appServerUI) startSkillHistory() {
 			continue
 		}
 		h.skills = &appServerSkillHistory{cursors: make(map[string]bool)}
-		if !u.agents.NeedsSkillHistory(u.session.path(h.info.ID)) {
+		if !u.childSource.NeedsSkillHistory(u.session.path(h.info.ID)) {
 			continue // A live boundary already established the current context.
 		}
 		if err := u.requestSkillHistory(h, ""); err != nil {
@@ -126,7 +126,7 @@ func (u *appServerUI) skillHistoryResponse(thread string, m appserver.Message) e
 		}
 		return nil
 	}
-	v, name := u.agents, u.session.path(h.info.ID)
+	v, name := u.childSource, u.session.path(h.info.ID)
 	// Observe a live reset before adopting the historical snapshot. Its newer
 	// context wins, even if the reset's entry has already left the feed.
 	v.RestoreSkills(name, h.skills.names)

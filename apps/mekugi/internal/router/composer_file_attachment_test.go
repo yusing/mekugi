@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
@@ -59,7 +60,7 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 		t.Fatalf("transport envelope leaked into transcript: %q", text)
 	}
 	resumed, _ := newAppServerTestUI()
-	resumed.agents = newActivityAdapter()
+	resumed.agents = activityui.NewView()
 	resumed.session.start(resumed.Thread, cwd)
 	resumed.restoreHistory([]binding.HistoryTurn{{ID: "saved", Status: "completed", Items: []binding.ThreadItem{{Type: "userMessage", ID: "saved-input", Content: content}}}})
 	if len(resumed.InputHistory) != 1 || resumed.InputHistory[0].Text != draft.Text {

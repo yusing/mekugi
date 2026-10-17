@@ -25,7 +25,7 @@ func TestUISnapshotNativeMainRepliesStayInTranscript(t *testing.T) {
 			for i := range 20 {
 				entries = append(entries, sessionpresentation.ActivityEntry{Seq: uint64(i + 2), Agent: "Main", Kind: "tool", Text: fmt.Sprintf("Ran `echo activity-%02d`", i+1), Observed: now})
 			}
-			u.view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: entries})
+			u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: entries})
 			rows, _ := u.testMainFrame(width, 16, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("native-main-transcript-following-%d", width), rows)
 			u.view.Following, u.view.Offset = false, 0

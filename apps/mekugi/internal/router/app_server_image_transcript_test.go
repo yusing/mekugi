@@ -52,16 +52,16 @@ func TestAppServerImageTranscriptHighlight(t *testing.T) {
 					t.Fatalf("attachment emphasis leaked or missing: %q", bold.String())
 				}
 			}
-			check(u.view)
+			check(u.testActivity(u.view))
 			item := binding.ThreadItem{ID: "user", Type: "userMessage", Content: []byte(`[{"type":"text","text":"literal [Image 1] 世界 "},{"type":"localImage","path":"/tmp/one.png"},{"type":"text","text":" after "},{"type":"image","url":"https://example.com/two.png"}]`)}
 			for _, method := range []string{"item/started", "item/completed"} {
 				appServerTestNotify(t, u, method, map[string]any{"threadId": "main", "turnId": "t", "item": item})
-				check(u.view)
+				check(u.testActivity(u.view))
 			}
 			restored := newAppServerSessionTestUI(t, t.TempDir())
 			restored.view.Painter.Theme = theme
 			restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
-			check(restored.view)
+			check(restored.testActivity(restored.view))
 		}
 	}
 }

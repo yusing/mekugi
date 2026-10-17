@@ -56,10 +56,10 @@ func TestNativeUIExpansionFocus(t *testing.T) {
 	u.Text = "Keep this draft"
 	for _, focus := range []int{0, 2} {
 		u.shell.Focus = 0
-		u.agents.setDisplayFilter(focus == 2, "/root/worker")
-		view := u.view
+		u.testActivity(u.agents).setDisplayFilter(focus == 2, "/root/worker")
+		view := u.testActivity(u.view)
 		if focus != 0 {
-			view = u.agents
+			view = u.testActivity(u.agents)
 		}
 		before := view.Expansion
 		if err := u.shell.key(5); err != nil {
@@ -75,10 +75,10 @@ func TestNativeUIExpansionFocus(t *testing.T) {
 	playback := uiReplayPlayback{ui: u}
 	for _, focus := range []int{0, 2} {
 		u.shell.Focus = 0
-		u.agents.setDisplayFilter(focus == 2, "/root/worker")
-		view := u.view
+		u.testActivity(u.agents).setDisplayFilter(focus == 2, "/root/worker")
+		view := u.testActivity(u.view)
 		if focus != 0 {
-			view = u.agents
+			view = u.testActivity(u.agents)
 		}
 		before := view.Expansion
 		if _, err := playback.key(5); err != nil {
@@ -159,7 +159,7 @@ func TestAppServerExpansionRetainedReads(t *testing.T) {
 	for _, main := range []bool{false, true} {
 		u := newAppServerSessionTestUI(t, t.TempDir())
 		u.view.Conversation = main
-		u.view.testAudience()
+		u.testActivity(u.view).testAudience()
 		read := func(id string) {
 			appServerTestNotify(t, u, "item/completed", map[string]any{
 				"threadId": "main", "turnId": "t", "item": map[string]any{
@@ -170,7 +170,7 @@ func TestAppServerExpansionRetainedReads(t *testing.T) {
 		}
 		read("first")
 		read("second")
-		render := func() string { return ansi.Strip(strings.Join(u.view.RenderFeed(90, 100).Lines, "\n")) }
+		render := func() string { return ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(90, 100).Lines, "\n")) }
 		if strings.Contains(render(), "first-start") {
 			t.Fatal("read output must start compact")
 		}
@@ -193,8 +193,8 @@ func TestAppServerExpansionRetainedReads(t *testing.T) {
 		if !strings.Contains(render(), "third-start") {
 			t.Fatal("arriving reads ignored pane expansion")
 		}
-		u.view.Entries[0].Source.Native.Output.Release()
-		u.view.invalidateEntry(u.view.Entries[0].Source.Seq)
+		u.source.Entries[0].Source.Native.Output.Release()
+		u.testActivity(u.view).invalidateEntry(u.source.Entries[0].Source.Seq)
 		if !strings.Contains(render(), "first-end") {
 			t.Fatal("released output erased the retained inline tail")
 		}
