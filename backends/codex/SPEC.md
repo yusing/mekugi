@@ -76,6 +76,10 @@ Live notifications, retained items and simulated playback share these values.
 The consuming owner decides historical admission and presentation; projection does
 not settle input, notify the desktop or issue host requests.
 
+Native notification envelopes and command normalization belong to the binding.
+The caller supplies observation time and retains the original RPC message for
+control correlation and prompt handling. Decoding performs no effects or dispatch.
+
 Item projection also retains observed command classifications, optional outcomes,
 web-search facts, file changes and collaboration identities. Native field aliases
 normalize at this boundary. Presentation consumes these decoded facts directly;

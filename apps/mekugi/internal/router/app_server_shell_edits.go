@@ -67,7 +67,7 @@ func (u *appServerUI) observeShellMessage(message appserver.Message) {
 	if message.Method != "item/started" && message.Method != "item/completed" || u.shellEdits.pending == nil && len(u.shellEdits.running) == 0 {
 		return
 	}
-	var event appServerEvent
+	var event binding.Notification
 	if json.Unmarshal(message.Params, &event) == nil {
 		u.observeShellEdit(event.ThreadID, message.Method, event.Item)
 	}

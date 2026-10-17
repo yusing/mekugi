@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
@@ -39,7 +41,7 @@ func hookOutput(run appserver.HookRun) (string, bool) {
 	return text, hasError
 }
 
-func (u *appServerUI) hookEvent(method string, event appServerEvent) error {
+func (u *appServerUI) hookEvent(method string, event binding.Notification) error {
 	if event.ThreadID == "" || event.Run == nil || event.Run.ID == "" {
 		return fmt.Errorf("%s: missing hook thread or run identity", method)
 	}

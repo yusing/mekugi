@@ -40,7 +40,7 @@ func TestAppServerHookLifecycleUsesRunPresentation(t *testing.T) {
 	if len(u.view.Entries) != 1 || !u.view.blocks(0)[0].Running {
 		t.Fatal("hook start did not create a running Run block")
 	}
-	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": appServerTurn{ID: "t", Status: "completed"}})
+	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": binding.Turn{ID: "t", Status: "completed"}})
 	if !u.view.blocks(0)[0].Running {
 		t.Fatal("turn completion ended an async hook")
 	}

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
@@ -36,12 +38,12 @@ func TestUISnapshotAppServerExitSummaryUsage(t *testing.T) {
 func TestUISnapshotAppServerExitSummaryOptionalCounts(t *testing.T) {
 	for _, tc := range []struct {
 		name, thread string
-		usage        appServerTokenUsage
+		usage        binding.TokenUsage
 	}{
 		{name: "startup failure"},
 		{name: "no usage", thread: "saved"},
-		{name: "no optional counts", usage: appServerTokenUsage{TotalTokens: 1200, InputTokens: 1100, OutputTokens: 100}},
-		{name: "cached exceeds input", usage: appServerTokenUsage{TotalTokens: 15, InputTokens: 10, CachedInputTokens: 20, OutputTokens: 5}},
+		{name: "no optional counts", usage: binding.TokenUsage{TotalTokens: 1200, InputTokens: 1100, OutputTokens: 100}},
+		{name: "cached exceeds input", usage: binding.TokenUsage{TotalTokens: 15, InputTokens: 10, CachedInputTokens: 20, OutputTokens: 5}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u := appServerTestFeatures(&appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, Thread: tc.thread, exitUsage: tc.usage})

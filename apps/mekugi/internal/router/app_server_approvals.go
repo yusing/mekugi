@@ -178,8 +178,8 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 		return false, nil
 	case "turn/completed":
 		var p struct {
-			ThreadID string        `json:"threadId"`
-			Turn     appServerTurn `json:"turn"`
+			ThreadID string       `json:"threadId"`
+			Turn     binding.Turn `json:"turn"`
 		}
 		if json.Unmarshal(m.Params, &p) == nil {
 			for _, a := range slices.Clone(u.pendingApprovals()) {

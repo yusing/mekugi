@@ -17,7 +17,6 @@ import (
 	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
-	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/rollout"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
@@ -62,63 +61,6 @@ type appServerCommandRun struct {
 	completion  *activityPaneEntry
 	completed   observation.Item
 	completedAt time.Time
-}
-
-type appServerTokenUsage struct {
-	TotalTokens           uint64 `json:"totalTokens"`
-	InputTokens           uint64 `json:"inputTokens"`
-	OutputTokens          uint64 `json:"outputTokens"`
-	CachedInputTokens     uint64 `json:"cachedInputTokens"`
-	ReasoningOutputTokens uint64 `json:"reasoningOutputTokens"`
-}
-
-type appServerTurn struct {
-	ID     string `json:"id"`
-	Status string `json:"status"`
-	Error  *struct {
-		Message string `json:"message"`
-	} `json:"error"`
-}
-
-type appServerEvent struct {
-	command *binding.CommandObservation `json:"-"`
-	text    observation.TextEvent       `json:"-"`
-	Status  struct {
-		Type string `json:"type"`
-	} `json:"status"`
-	ThreadID   string             `json:"threadId"`
-	TurnID     string             `json:"turnId"`
-	ItemID     string             `json:"itemId"`
-	Delta      string             `json:"delta"`
-	ProcessID  string             `json:"processId"`
-	Stdin      string             `json:"stdin"`
-	Item       binding.ThreadItem `json:"item"`
-	Run        *appserver.HookRun `json:"run,omitempty"`
-	Thread     binding.ThreadInfo `json:"thread"`
-	TokenUsage struct {
-		Total              appServerTokenUsage  `json:"total"`
-		Last               *appServerTokenUsage `json:"last"`
-		ModelContextWindow uint64               `json:"modelContextWindow"`
-	} `json:"tokenUsage"`
-	Turn appServerTurn `json:"turn"`
-}
-
-func (p appServerEvent) observation(method string, at time.Time) observation.Event {
-	e := observation.Event{At: at, Kind: observation.Kind(method), ThreadID: p.ThreadID, TurnID: p.TurnID,
-		ItemID: cmp.Or(p.ItemID, p.Item.ID), Delta: p.Delta, Item: p.Item.Observation(),
-		ThreadStatus: p.Status.Type, ProcessID: p.ProcessID, Stdin: p.Stdin,
-		TurnStatus: p.Turn.Status, Context: observation.Context{Window: p.TokenUsage.ModelContextWindow},
-	}
-	if p.Thread.ID != "" {
-		e.Thread = p.Thread.Observation()
-	}
-	if p.TokenUsage.Last != nil {
-		e.Context.Tokens, e.Context.Known = p.TokenUsage.Last.TotalTokens, true
-	}
-	if method == "turn/started" || method == "turn/completed" {
-		e.TurnID = p.Turn.ID
-	}
-	return e
 }
 
 func (s *appServerSession) start(thread, cwd string) {
@@ -207,7 +149,7 @@ func (s *appServerSession) next() uint64 {
 }
 
 // sessionEvent owns live enrichment and effects around shared presentation.
-func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error) {
+func (u *appServerUI) sessionEvent(method string, p binding.Notification) (bool, error) {
 	s := &u.session
 	if s.paths == nil {
 		return false, nil
@@ -218,7 +160,7 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 	if method == "item/started" {
 		u.observeShellItem(p.ThreadID, p.Item)
 	}
-	if command := p.command; command != nil {
+	if command := p.Command; command != nil {
 		key := command.Key
 		if method == "item/completed" {
 			u.execTrack.Completed(key)
@@ -243,7 +185,7 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 	}
 
 	key := [3]string{p.ThreadID, p.TurnID, cmp.Or(p.ItemID, p.Item.ID)}
-	event := p.observation(method, u.now())
+	event := p.Observation(method, u.now())
 	facts := sessionEventFacts{tracked: u.execTrack.Tracking(key), wait: u.readWaitEvidence(event.Item, key)}
 	if p.Item.Type == "commandExecution" && u.proxy != nil {
 		if ms, known := u.proxy.nativeTrace.CommandTimeout(p.ThreadID, key[2]); known {

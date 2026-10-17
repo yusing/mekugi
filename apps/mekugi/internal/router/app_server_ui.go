@@ -37,7 +37,6 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
@@ -116,7 +115,7 @@ type appServerUI struct {
 	quitRequested           bool
 	archived                bool
 	interruptLocked         bool
-	exitUsage               appServerTokenUsage
+	exitUsage               binding.TokenUsage
 	resumeArgv              []string
 	replayDebugDirectory    string
 	model, reasoningEffort  string
@@ -853,24 +852,17 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	default:
 		return nil
 	}
-	var p appServerEvent
-	if err := json.Unmarshal(m.Params, &p); err != nil {
+	p, err := binding.DecodeNotification(m.Method, m.Params)
+	if err != nil {
 		return fmt.Errorf("%s: %w", m.Method, err)
 	}
-	if command, ok := binding.DecodeCommandObservation(m.Method, m.Params); ok {
-		p.command = &command
-		p.Delta = command.Delta
-		if p.Item.Type == "commandExecution" {
-			p.Item.Command, p.Item.AggregatedOutput, p.Item.ExitCode = command.Command, command.Output, command.Exit
-		}
-	}
-	p.text = observation.TextEvent{At: u.now(), Kind: observation.Kind(m.Method), Delta: p.Delta, Item: transcriptItem(p.Item, p.ThreadID, p.TurnID, p.ItemID)}
 	return u.observedEvent(m.Method, p)
 }
 
 // observedEvent retains application lifecycle and control handling for decoded
 // host facts. Offline transcript observations bypass it through their reducer.
-func (u *appServerUI) observedEvent(method string, p appServerEvent) error {
+func (u *appServerUI) observedEvent(method string, p binding.Notification) error {
+	text := binding.RetainedTranscript(p.Observation(method, u.now()))
 	if handled, err := u.sessionEvent(method, p); handled || err != nil {
 		return err
 	}
@@ -922,7 +914,7 @@ func (u *appServerUI) observedEvent(method string, p appServerEvent) error {
 		if p.ThreadID == u.Thread && p.Item.Type == "userMessage" && method == "item/completed" {
 			u.commitSteer(p.Item)
 		}
-		u.messageTranscript(p.text, p.Item.Observation(), true)
+		u.messageTranscript(text, p.Item.Observation(), true)
 	}
 	return nil
 }

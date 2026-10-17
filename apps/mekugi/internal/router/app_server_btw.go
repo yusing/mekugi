@@ -3,6 +3,7 @@ package router
 import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/backends/codex/binding"
 
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -248,7 +249,7 @@ func (u *appServerUI) btwMessage(m appserver.Message, method string, b *appServe
 		return false, nil
 	}
 	var p struct {
-		appServerEvent
+		binding.Notification
 		Error *struct {
 			Message string `json:"message"`
 		} `json:"error"`

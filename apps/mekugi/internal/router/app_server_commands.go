@@ -150,7 +150,7 @@ func (u *appServerUI) clearSessionPresentation() error {
 		return err
 	}
 	u.picker = composerPicker{}
-	u.exitUsage = appServerTokenUsage{}
+	u.exitUsage = binding.TokenUsage{}
 	u.feedback = noticepresentation.Model{}
 	u.mainView.NoticeDetails, u.mainView.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
 	for key, run := range u.session.commands {

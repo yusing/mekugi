@@ -14,6 +14,8 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 
 	"github.com/yusing/mekugi/modules/notifications/notice"
@@ -238,7 +240,7 @@ func (c *CriticalErrors) observeTurnCompletion(method string, params []byte) {
 	if c == nil || method != "turn/completed" {
 		return
 	}
-	var event appServerEvent
+	var event binding.Notification
 	if json.Unmarshal(params, &event) != nil {
 		return
 	}
