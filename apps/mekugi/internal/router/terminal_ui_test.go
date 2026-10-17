@@ -130,12 +130,12 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 					assertCollapsed := func() {
 						t.Helper()
 						paint()
-						content := u.shell.layout.Main
+						content := u.shell.Layout.Main
 						if saved {
-							content = u.shell.layout.Diff
+							content = u.shell.Layout.Diff
 						}
-						if u.shell.layout.Live.H != 0 || content.Y != 1 || content.H != u.shell.layout.Main.H || strings.Contains(screen.String(), "LIVE") || strings.Contains(screen.String(), "3 Live") {
-							t.Fatalf("empty Live area did not collapse: %+v\n%s", u.shell.layout, screen.String())
+						if u.shell.Layout.Live.H != 0 || content.Y != 1 || content.H != u.shell.Layout.Main.H || strings.Contains(screen.String(), "LIVE") || strings.Contains(screen.String(), "3 Live") {
+							t.Fatalf("empty Live area did not collapse: %+v\n%s", u.shell.Layout, screen.String())
 						}
 					}
 					assertCollapsed()
@@ -209,7 +209,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			revealNativeDock(u.shell)
 			assertLiveFollow := func(frame string) {
 				t.Helper()
-				body := strings.Join(strings.Split(frame, "\n")[:u.shell.layout.Roster.Y], "\n")
+				body := strings.Join(strings.Split(frame, "\n")[:u.shell.Layout.Roster.Y], "\n")
 				if !view.Following || strings.Contains(body, "LATEST_TRANSCRIPT") {
 					t.Fatalf("live replacement lost follow or retained transcript:\n%s", frame)
 				}
@@ -274,4 +274,8 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			}
 		})
 	}
+}
+
+func (u *terminalUI) nativeStatus() string {
+	return u.Shell.Status(u.shellStatus(), u.width, u.height)
 }

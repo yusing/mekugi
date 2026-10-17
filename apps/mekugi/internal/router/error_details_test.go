@@ -221,9 +221,9 @@ func TestErrorDetailsTerminalClick(t *testing.T) {
 			if row < 0 {
 				t.Fatal("painted error lacks pointer target")
 			}
-			pane := u.shell.layout.Main
+			pane := u.shell.Layout.Main
 			if child {
-				pane = u.shell.layout.Main
+				pane = u.shell.Layout.Main
 			}
 			x, y := pane.X+view.FeedLeft, pane.Y+view.FeedTop+row
 			offset, following := view.Offset, view.Following

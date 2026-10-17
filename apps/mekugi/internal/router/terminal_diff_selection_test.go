@@ -69,7 +69,7 @@ func TestTerminalUIDiffSelectionUsesLastPaintedEvidence(t *testing.T) {
 			if beforePaint == "retained update" {
 				publish("a")
 				refresh()
-				r := u.shell.layout.Diff
+				r := u.shell.Layout.Diff
 				keys(fmt.Sprintf("\x1b[<0;%d;%dM", r.X+r.W-2, r.Y+2))
 				if s := u.shell.selection; s == nil {
 					t.Fatal("visible empty Diff did not accept the pointer press")
@@ -87,7 +87,7 @@ func TestTerminalUIDiffSelectionUsesLastPaintedEvidence(t *testing.T) {
 			}
 			keys("g" + strings.Repeat("j", 8))
 			paint()
-			r := u.shell.layout.Diff
+			r := u.shell.Layout.Diff
 			x, y, text := -1, -1, ""
 			for row := r.Y; row < r.Y+r.H; row++ {
 				line := ansi.Strip(u.shell.frame.Rows[row])

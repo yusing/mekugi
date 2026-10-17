@@ -31,15 +31,13 @@ type terminalUI struct {
 	main          *appServerUI
 	review        *savedReview
 	width, height int
-	terminalsession.Panes
+	terminalsession.Shell
 	diffUnseen  bool // Saved changes arrived while Diff was closed.
 	liveDock    previewview.PreviewPane
 	livePending map[string]nativePendingPreview
 	liveHidden  bool // Presentation only, local to this frontend session.
 	prefix      bool
-	layout      terminalsession.Layout
-	paneTabs    [4]terminalsession.Rect // Visible status-bar selectors, indexed by pane.
-	faint       bool                    // Output capability is local to this terminal, not request or global state.
+	faint       bool // Output capability is local to this terminal, not request or global state.
 }
 
 // Decode once before routing. In particular, mouse reports and bracketed paste
@@ -141,7 +139,7 @@ func (u *terminalUI) key(key byte) error {
 
 func (u *terminalUI) resize(key string) {
 	if key == "\x1b[5~" || key == "\x1b[6~" {
-		if u.layout.Live.H > 0 {
+		if u.Layout.Live.H > 0 {
 			caller := u.main.transcriptCaller()
 			action := byte('b')
 			if key == "\x1b[6~" {
@@ -161,7 +159,7 @@ func (u *terminalUI) resize(key string) {
 	if key == "[" || key == "]" {
 		columns := u.diff.NavigatorColumns()
 		if columns == 0 {
-			columns = max(25, u.layout.Diff.W/4)
+			columns = max(25, u.Layout.Diff.W/4)
 		}
 		if key == "[" {
 			columns -= 2
@@ -331,11 +329,11 @@ func (u *terminalUI) mouse(s string) error {
 	button, x, y, release := pointer.Button, pointer.X, pointer.Y, pointer.Release
 	if u.main != nil {
 		u.main.view.SkillsHover = ""
-		if button == 35 && !release && u.output == nil && u.layout.MainSkills.Contains(x, y) {
+		if button == 35 && !release && u.output == nil && u.Layout.MainSkills.Contains(x, y) {
 			u.main.view.SkillsHover = "Main"
 		}
 	}
-	if u.agents != nil && (u.output != nil || !u.layout.Roster.Contains(x, y)) {
+	if u.agents != nil && (u.output != nil || !u.Layout.Roster.Contains(x, y)) {
 		u.agents.SkillsHover = ""
 	}
 	if u.output != nil {
@@ -343,7 +341,7 @@ func (u *terminalUI) mouse(s string) error {
 		return nil
 	}
 	if u.selection == nil && !u.Dragging() {
-		for pane, rect := range u.paneTabs {
+		for pane, rect := range u.Tabs {
 			if rect.Contains(x, y) {
 				if button == 0 && !release {
 					u.prefix = false
@@ -353,7 +351,7 @@ func (u *terminalUI) mouse(s string) error {
 			}
 		}
 	}
-	if u.main != nil && !u.main.composerReadOnly() && u.main.statusPanel != nil && u.layout.Main.Contains(x, y) {
+	if u.main != nil && !u.main.composerReadOnly() && u.main.statusPanel != nil && u.Layout.Main.Contains(x, y) {
 		if u.selectionMouse(button, x, y, release) {
 			return nil
 		}
@@ -369,27 +367,27 @@ func (u *terminalUI) mouse(s string) error {
 		}
 		return nil
 	}
-	if u.main != nil && !u.main.composerReadOnly() && u.main.resumePicker != nil && u.layout.Main.Contains(x, y) {
+	if u.main != nil && !u.main.composerReadOnly() && u.main.resumePicker != nil && u.Layout.Main.Contains(x, y) {
 		if release {
 			return nil
 		}
 		if button&^28 == 0 {
 			u.Focus = 0
 		}
-		return u.main.resumePickerMouse(button&^28, y-u.layout.Main.Y)
+		return u.main.resumePickerMouse(button&^28, y-u.Layout.Main.Y)
 	}
-	if u.main != nil && u.main.questions.rect.Contains(x-u.layout.Main.X, y-u.layout.Main.Y) {
+	if u.main != nil && u.main.questions.rect.Contains(x-u.Layout.Main.X, y-u.Layout.Main.Y) {
 		if !release && button&^28 == 0 {
 			u.main.openQuestions()
 		}
 		return nil
 	}
-	if u.main != nil && u.main.pickerVisible() && u.main.picker.rect.Contains(x-u.layout.Main.X, y-u.layout.Main.Y) {
+	if u.main != nil && u.main.pickerVisible() && u.main.picker.rect.Contains(x-u.Layout.Main.X, y-u.Layout.Main.Y) {
 		if !release {
 			switch button &^ 28 {
 			case 0:
 				p := &u.main.picker
-				row := y - u.layout.Main.Y - p.rect.Y - p.RowStart
+				row := y - u.Layout.Main.Y - p.rect.Y - p.RowStart
 				if row >= 0 && row < p.RowCount {
 					p.Selected = p.Top + row
 					if p.Target.Kind == '/' {
@@ -409,13 +407,13 @@ func (u *terminalUI) mouse(s string) error {
 	if u.selectionMouse(button, x, y, release) {
 		return nil
 	}
-	if u.selection == nil && !u.Dragging() && u.main != nil && u.main.composerNoticeMouse(button, x-u.layout.Main.X, y-u.layout.Main.Y, release) {
+	if u.selection == nil && !u.Dragging() && u.main != nil && u.main.composerNoticeMouse(button, x-u.Layout.Main.X, y-u.Layout.Main.Y, release) {
 		return nil
 	}
 	if u.main != nil && u.main.btw != nil && !release && button&64 != 0 {
 		r := u.main.btw.rect
-		r.X += u.layout.Main.X
-		r.Y += u.layout.Main.Y
+		r.X += u.Layout.Main.X
+		r.Y += u.Layout.Main.Y
 		if r.Contains(x, y) {
 			delta := 3
 			if button&1 != 0 {
@@ -427,15 +425,15 @@ func (u *terminalUI) mouse(s string) error {
 	}
 	navigatorWidth := 0
 	if u.diff != nil {
-		navigatorWidth = u.diff.NavigatorWidth(u.layout.Diff.W)
+		navigatorWidth = u.diff.NavigatorWidth(u.Layout.Diff.W)
 	}
-	if handled, columns := u.Panes.Drag(pointer, u.layout, navigatorWidth); handled {
+	if handled, columns := u.Panes.Drag(pointer, u.Layout, navigatorWidth); handled {
 		if columns != 0 {
 			u.diff.SetNavigatorColumns(columns)
 		}
 		return nil
 	}
-	if u.layout.Live.Contains(x, y) {
+	if u.Layout.Live.Contains(x, y) {
 		if !release {
 			switch button &^ 28 {
 			case 0:
@@ -448,7 +446,7 @@ func (u *terminalUI) mouse(s string) error {
 		}
 		return nil
 	}
-	if button&^28 == 0 && !release && u.main != nil && u.layout.MainSkills.Contains(x, y) {
+	if button&^28 == 0 && !release && u.main != nil && u.Layout.MainSkills.Contains(x, y) {
 		u.Focus = 0
 		u.openSkills(u.main.view, "Main")
 		return nil
@@ -456,15 +454,15 @@ func (u *terminalUI) mouse(s string) error {
 	pane := -1
 	var r terminalsession.Rect
 	switch {
-	case u.layout.Main.Contains(x, y):
+	case u.Layout.Main.Contains(x, y):
 		pane = 0
-		r = u.layout.Main
-	case u.layout.Diff.Contains(x, y):
+		r = u.Layout.Main
+	case u.Layout.Diff.Contains(x, y):
 		pane = 1
-		r = u.layout.Diff
-	case u.layout.Roster.Contains(x, y):
+		r = u.Layout.Diff
+	case u.Layout.Roster.Contains(x, y):
 		pane = 3
-		r = u.layout.Roster
+		r = u.Layout.Roster
 	}
 	if pane < 0 {
 		return nil

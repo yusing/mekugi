@@ -269,7 +269,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		t.Fatal(err)
 	}
 	render("saved diff changes", "Unsubscribe", "Changes", "files focus", "─────")
-	if source := p.ui.shell.diff.Selection(p.ui.shell.layout.Diff.W-1, p.ui.shell.layout.Diff.H-1); source.Y == 0 || len(source.Painted) == 0 {
+	if source := p.ui.shell.diff.Selection(p.ui.shell.Layout.Diff.W-1, p.ui.shell.Layout.Diff.H-1); source.Y == 0 || len(source.Painted) == 0 {
 		t.Fatal("Tab replaced the stacked list with a full-pane picker")
 	}
 	for _, key := range []byte{'\t', 's'} {
@@ -278,7 +278,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		}
 	}
 	render("saved diff hidden list", "Unsubscribe")
-	if source := p.ui.shell.diff.Selection(p.ui.shell.layout.Diff.W-1, p.ui.shell.layout.Diff.H-1); source.Y != 0 || len(source.Painted) == 0 {
+	if source := p.ui.shell.diff.Selection(p.ui.shell.Layout.Diff.W-1, p.ui.shell.Layout.Diff.H-1); source.Y != 0 || len(source.Painted) == 0 {
 		t.Fatal("s did not hide the focused stacked list")
 	}
 	// Picking an agent in the roster shows its Activity instead of the diff.
@@ -296,7 +296,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	if index < 0 {
 		t.Fatal("the focused roster has no tester row")
 	}
-	hit, roster := shell.agents.Hits[index], shell.layout.Roster
+	hit, roster := shell.agents.Hits[index], shell.Layout.Roster
 	for _, key := range []byte(fmt.Sprintf("\x1b[<0;%d;%dM", roster.X+hit.First, roster.Y+hit.Row)) {
 		if err := shell.key(key); err != nil {
 			t.Fatal(err)
@@ -1236,7 +1236,7 @@ func TestNativeDiffNavigatorPointerMovesAndBack(t *testing.T) {
 	}
 	selectedPath := func() string {
 		t.Helper()
-		source := d.Selection(shell.layout.Diff.W-1, shell.layout.Diff.H-1)
+		source := d.Selection(shell.Layout.Diff.W-1, shell.Layout.Diff.H-1)
 		for _, row := range source.Painted {
 			if row.Path != "" {
 				return row.Path
@@ -1260,8 +1260,8 @@ func TestNativeDiffNavigatorPointerMovesAndBack(t *testing.T) {
 	// Find a visible navigator row through the composed terminal frame.
 	navigatorRow := func(frame, label string) int {
 		t.Helper()
-		r := shell.layout.Diff
-		source := d.Selection(shell.layout.Diff.W-1, shell.layout.Diff.H-1)
+		r := shell.Layout.Diff
+		source := d.Selection(shell.Layout.Diff.W-1, shell.Layout.Diff.H-1)
 		for row, text := range strings.Split(frame, "\n") {
 			if row < r.Y || row >= r.Y+source.Y {
 				continue
@@ -1299,7 +1299,7 @@ func TestNativeDiffNavigatorPointerMovesAndBack(t *testing.T) {
 	// Pointer activation uses the displayed change row and preserves its source.
 	frame = render()
 	row := navigatorRow(frame, "broker_race_test.go")
-	r := shell.layout.Diff
+	r := shell.Layout.Diff
 	keys(fmt.Sprintf("\x1b[<35;%d;%dM", r.X+4, row+1))
 	keys(fmt.Sprintf("\x1b[<0;%d;%dM", r.X+4, row+1))
 	render()
@@ -1413,9 +1413,9 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 			if row < 0 {
 				t.Fatalf("preview edit has no click target: %v", view.FeedSnippets)
 			}
-			rect := u.shell.layout.Main
+			rect := u.shell.Layout.Main
 			if activity {
-				rect = u.shell.layout.Main
+				rect = u.shell.Layout.Main
 			}
 			x, y := rect.X+view.FeedLeft+1, rect.Y+view.FeedTop+row
 			if err := u.shell.mouse(fmt.Sprintf("\x1b[<35;%d;%dM", x, y)); err != nil {

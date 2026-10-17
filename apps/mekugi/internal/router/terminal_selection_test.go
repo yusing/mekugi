@@ -32,7 +32,7 @@ func selectionTestUI(rows ...string) *terminalUI {
 	main.view.FeedRight, main.view.FeedRows = 40, len(rows)
 	painted := append([]string(nil), rows...)
 	painted = append(painted, "")
-	return &terminalUI{main: main, width: 40, height: len(painted), frame: terminalsession.Frame{Width: 40, Rows: painted}, layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 40, len(rows)}}}
+	return &terminalUI{main: main, width: 40, height: len(painted), frame: terminalsession.Frame{Width: 40, Rows: painted}, Shell: terminalsession.Shell{Layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 40, len(rows)}}}}
 }
 
 func selectionTestSnapshot(u *terminalUI) *terminalsession.Selection {
@@ -122,7 +122,7 @@ func TestTerminalSelectionComposerCaretStyles(t *testing.T) {
 		main, _ := newAppServerTestUI()
 		main.Text, main.CursorBack = "abcdef", back
 		frame, _ := main.mainFrame(40, 12, 0)
-		u := &terminalUI{main: main, width: 40, height: len(frame), frame: terminalsession.Frame{Width: 40, Rows: frame}, layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 40, len(frame)}}}
+		u := &terminalUI{main: main, width: 40, height: len(frame), frame: terminalsession.Frame{Width: 40, Rows: frame}, Shell: terminalsession.Shell{Layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 40, len(frame)}}}}
 		x, y := main.mainView.ComposerRect.X, main.mainView.ComposerRect.Y
 		selectionTestDrag(t, u, x, y, x+5, y)
 		u.paintSelection(frame)
@@ -463,8 +463,8 @@ func TestTerminalUISelectionComposer(t *testing.T) {
 			t.Fatal(err)
 		}
 		r := u.mainView.ComposerRect
-		r.X += u.shell.layout.Main.X
-		r.Y += u.shell.layout.Main.Y
+		r.X += u.shell.Layout.Main.X
+		r.Y += u.shell.Layout.Main.Y
 		selectionTestDrag(t, u.shell, r.X, r.Y, r.X+3, r.Y)
 		if got := u.shell.selection.Text(); got != "你好" {
 			t.Fatalf("size %v: selected %q", size, got)
@@ -499,8 +499,8 @@ func TestTerminalUISelectionComposerReplacesTranscript(t *testing.T) {
 	u.insertDraft("first\nsecond\nthird\nfourth\nfifth")
 	paint()
 	r := u.mainView.ComposerRect
-	r.X += u.shell.layout.Main.X
-	r.Y += u.shell.layout.Main.Y
+	r.X += u.shell.Layout.Main.X
+	r.Y += u.shell.Layout.Main.Y
 	selectionTestDrag(t, u.shell, r.X, r.Y, r.X+5, r.Y+1)
 	if got := u.shell.selection.Text(); got != "first\nsecond" {
 		t.Fatalf("selected %q", got)

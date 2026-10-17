@@ -108,7 +108,7 @@ func TestComposerSelectionOverBudgetIsExplicit(t *testing.T) {
 func TestTerminalUIDiffSelectionMentionsChangeLines(t *testing.T) {
 	rows := []string{"  a.go +2 -1", "  42│+new", "  43│-old", "  44│ ctx", "  9│+other"}
 	u := selectionTestUI(rows...)
-	u.layout = terminalsession.Layout{Diff: terminalsession.Rect{0, 0, 40, len(rows)}}
+	u.Layout = terminalsession.Layout{Diff: terminalsession.Rect{0, 0, 40, len(rows)}}
 	sources := []diffrender.LineSource{
 		{Path: "/w/a.go", Content: 2},
 		{Change: "amber1", Path: "/w/a.go", Line: 42, Content: 5},
@@ -130,7 +130,7 @@ func TestTerminalUIDiffSelectionMentionsChangeLines(t *testing.T) {
 		for i, source := range sources {
 			left[i] = source.Content
 		}
-		u.selection = &terminalSelection{Selection: terminalsession.NewSelection(terminalsession.Surface{Rect: u.layout.Diff, Rows: rows, ContentLeft: left}, 0, tt.y1), pane: u.layout.Diff, diff: sources, workspace: "/w"}
+		u.selection = &terminalSelection{Selection: terminalsession.NewSelection(terminalsession.Surface{Rect: u.Layout.Diff, Rows: rows, ContentLeft: left}, 0, tt.y1), pane: u.Layout.Diff, diff: sources, workspace: "/w"}
 		u.selection.Move(39, tt.y2, true)
 
 		if got := u.selection.Text(); got != tt.text {
@@ -177,7 +177,7 @@ func TestTerminalUIDiffSelectionUsesRenderedPane(t *testing.T) {
 		}
 		u := selectionTestUI(rows...)
 		u.width, u.frame.Width = width, width
-		u.layout = terminalsession.Layout{Diff: terminalsession.Rect{0, 0, width, 16}}
+		u.Layout = terminalsession.Layout{Diff: terminalsession.Rect{0, 0, width, 16}}
 		u.diff = c
 		if sourceView.Y > 0 && u.diffSelection(sourceView.X, 0) != nil {
 			t.Fatal("stacked navigator was selectable")
@@ -279,7 +279,7 @@ func TestComposerSelectionReviewEdges(t *testing.T) {
 
 func TestTerminalUIDiffSelectionEdges(t *testing.T) {
 	u := selectionTestUI("  1│-a", "  2│-b", "  7│+c", "  8│ d")
-	u.layout = terminalsession.Layout{Diff: terminalsession.Rect{0, 0, 40, 4}}
+	u.Layout = terminalsession.Layout{Diff: terminalsession.Rect{0, 0, 40, 4}}
 	sources := []diffrender.LineSource{
 		{}, {Change: "amber1", Line: 2, Deleted: true, Content: 4},
 		{Change: "amber1", Line: 7, Content: 4}, {Change: "amber1", Line: 8, Content: 4},
@@ -289,7 +289,7 @@ func TestTerminalUIDiffSelectionEdges(t *testing.T) {
 		y1, y2 int
 		want   string
 	}{{1, 3, "diff hunk @amber1:7-8"}, {1, 1, "diff hunk @amber1:2"}} {
-		u.selection = &terminalSelection{Selection: terminalsession.NewSelection(terminalsession.Surface{Rect: u.layout.Diff, Rows: u.frame.Rows, ContentLeft: []int{0, 4, 4, 4}}, 0, tt.y1), diff: sources}
+		u.selection = &terminalSelection{Selection: terminalsession.NewSelection(terminalsession.Surface{Rect: u.Layout.Diff, Rows: u.frame.Rows, ContentLeft: []int{0, 4, 4, 4}}, 0, tt.y1), diff: sources}
 		u.selection.Move(39, tt.y2, true)
 
 		if got, _ := u.selection.mentionDescription(); got != tt.want {

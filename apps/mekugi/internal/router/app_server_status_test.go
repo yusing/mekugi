@@ -194,7 +194,7 @@ func TestAppServerStatusPanelCloseScrollAndLateResponse(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.Turn, u.sessionPresentation().Status.Text = "active", "Working"
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Existing transcript"}}})
-			shell := &terminalUI{main: u, layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 60, 12}}}
+			shell := &terminalUI{main: u, Shell: terminalsession.Shell{Layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 60, 12}}}}
 			appServerTestKeys(t, u, "/status\r")
 			u.statusPanel.body = nil
 			for range 40 {
@@ -352,7 +352,7 @@ func TestAppServerStatusPanelVisual(t *testing.T) {
 			t.Fatalf("compositor lost %q:\n%s", want, rendered)
 		}
 	}
-	r := u.shell.layout.Main
+	r := u.shell.Layout.Main
 	var panel []string
 	for _, row := range strings.Split(rendered, "\n")[r.Y : r.Y+r.H] {
 		panel = append(panel, ansi.Cut(row, r.X, r.X+r.W))

@@ -183,7 +183,7 @@ func TestDiffSelectionScrollFromEOFAndRestart(t *testing.T) {
 	source := c.Selection(width-2, height-1)
 	u := selectionTestUI(strings.Split(screen.Render(), "\n")...)
 	u.width, u.frame.Width = width, width
-	u.layout = terminalsession.Layout{Diff: terminalsession.Rect{0, 0, width, height}}
+	u.Layout = terminalsession.Layout{Diff: terminalsession.Rect{0, 0, width, height}}
 	u.diff = c
 	u.selectionMouse(0, width-2, source.Y+1, false)
 	s := u.selection
@@ -245,7 +245,7 @@ func TestSelectionScrolledClickUsesDocumentTarget(t *testing.T) {
 	if err := u.paint(&strings.Builder{}, 120, 30); err != nil {
 		t.Fatal(err)
 	}
-	r := u.shell.layout.Main
+	r := u.shell.Layout.Main
 	x, y := r.X+u.agents.FeedLeft, r.Y+u.agents.FeedTop
 	selectionTestDrag(t, u.shell, x, y, x+1, y)
 	s := u.shell.selection

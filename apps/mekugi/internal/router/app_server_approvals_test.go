@@ -414,7 +414,7 @@ func TestNativeApprovalQuestionEditorOwnership(t *testing.T) {
 	questionTestPaint(t, u, 80)
 	u.ensureShell()
 	defer u.shell.diffScreen.Close()
-	u.shell.layout.Main = terminalsession.Rect{0, 0, 80, 28}
+	u.shell.Layout.Main = terminalsession.Rect{0, 0, 80, 28}
 	if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", u.questions.rect.X+1, u.questions.rect.Y+1)); err != nil {
 		t.Fatal(err)
 	}

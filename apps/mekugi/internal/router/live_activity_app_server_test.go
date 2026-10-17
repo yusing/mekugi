@@ -98,8 +98,8 @@ func TestLiveActivityMainQuestionBranchLink(t *testing.T) {
 	clicked := false
 	for row, target := range v.FeedQuestions {
 		if target == 1 {
-			x := u.shell.layout.Main.X + v.FeedLeft + 2
-			y := u.shell.layout.Main.Y + v.FeedTop + row
+			x := u.shell.Layout.Main.X + v.FeedLeft + 2
+			y := u.shell.Layout.Main.Y + v.FeedTop + row
 			if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", x, y)); err != nil {
 				t.Fatal(err)
 			}

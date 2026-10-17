@@ -33,7 +33,7 @@ func TestNativeReplyDialogPreservesScrolledDiff(t *testing.T) {
 	if seq == 0 || !u.shell.openActivityReply(seq) || u.shell.output == nil {
 		t.Fatal("reply did not open dialog")
 	}
-	if !u.shell.DiffOpen || u.shell.Focus != 1 || c.Selection(u.shell.layout.Diff.W-1, u.shell.layout.Diff.H-1).Offset != offset {
+	if !u.shell.DiffOpen || u.shell.Focus != 1 || c.Selection(u.shell.Layout.Diff.W-1, u.shell.Layout.Diff.H-1).Offset != offset {
 		t.Fatal("opening reply changed underlying diff navigation")
 	}
 	if err := u.paint(&bytes.Buffer{}, 120, 28); err != nil {
@@ -43,7 +43,7 @@ func TestNativeReplyDialogPreservesScrolledDiff(t *testing.T) {
 		t.Fatal("dialog lost selected reply")
 	}
 	u.shell.outputKey("\x1b")
-	if u.shell.output != nil || !u.shell.DiffOpen || u.shell.Focus != 1 || c.Selection(u.shell.layout.Diff.W-1, u.shell.layout.Diff.H-1).Offset != offset {
+	if u.shell.output != nil || !u.shell.DiffOpen || u.shell.Focus != 1 || c.Selection(u.shell.Layout.Diff.W-1, u.shell.Layout.Diff.H-1).Offset != offset {
 		t.Fatal("dismissing reply changed underlying diff")
 	}
 }

@@ -59,8 +59,8 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 		if target != seq {
 			continue
 		}
-		x := u.shell.layout.Main.X + u.view.FeedLeft + 1
-		y := u.shell.layout.Main.Y + u.view.FeedTop + row
+		x := u.shell.Layout.Main.X + u.view.FeedLeft + 1
+		y := u.shell.Layout.Main.Y + u.view.FeedTop + row
 		if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", x, y)); err != nil {
 			t.Fatal(err)
 		}

@@ -118,11 +118,11 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 	var pane terminalsession.Rect
 	mention := "message"
 	switch {
-	case u.layout.Main.Contains(x, y):
-		view, pane = u.main.transcriptView(), u.layout.Main
-	case u.layout.Diff.Contains(x, y):
+	case u.Layout.Main.Contains(x, y):
+		view, pane = u.main.transcriptView(), u.Layout.Main
+	case u.Layout.Diff.Contains(x, y):
 		// The press still reaches the diff pane, so clicks keep their meaning.
-		if previous != nil && previous.diff != nil && previous.ScreenRows() != 0 && previous.pane == u.layout.Diff && previous.Rect.Contains(x, y) {
+		if previous != nil && previous.diff != nil && previous.ScreenRows() != 0 && previous.pane == u.Layout.Diff && previous.Rect.Contains(x, y) {
 			u.selection = &terminalSelection{Selection: previous.Restart(x, y), pane: previous.pane, diff: previous.diff, workspace: previous.workspace}
 		} else {
 			u.selection = u.diffSelection(x, y)
@@ -229,7 +229,7 @@ func (u *terminalUI) selectionDocument(s *terminalSelection) {
 // diffSelection starts a selection right of the file navigator and its
 // divider; each row's text starts after its gutter and line number.
 func (u *terminalUI) diffSelection(x, y int) *terminalSelection {
-	c, pane := u.diff, u.layout.Diff
+	c, pane := u.diff, u.Layout.Diff
 	if c == nil || u.diffFailure != "" || len(u.frame.Rows) != u.height || !pane.Contains(x, y) {
 		return nil
 	}
@@ -318,7 +318,7 @@ func (u *terminalUI) paintSelection(rows []string) {
 	if s == nil || u.output != nil {
 		return
 	}
-	if cmp.Or(s.ScreenRows(), len(s.Rows)) != len(rows) || u.frame.Width != u.width || s.pane != u.layout.Main && s.pane != u.layout.Diff {
+	if cmp.Or(s.ScreenRows(), len(s.Rows)) != len(rows) || u.frame.Width != u.width || s.pane != u.Layout.Main && s.pane != u.Layout.Diff {
 		u.selection = nil
 		return
 	}

@@ -2,7 +2,6 @@ package router
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"maps"
 	"slices"
@@ -16,7 +15,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
-	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
@@ -289,104 +287,66 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	u.agents.LivePreviews = nil
 
 	roster := u.agents.NativeRoster(width, u.Panes.RosterLimit(height), now, u.Focus == 3)
-	l, left, right, framed, rosterRows := u.Panes.Geometry(width, height, len(roster))
-	roster = roster[:rosterRows]
-	rows := make([]string, height)
-	draw := func(r terminalsession.Rect, lines []string) {
-		for i, line := range lines {
-			if y := r.Y + i; y >= 0 && y < len(rows) && i < r.H {
-				rows[y] += fmt.Sprintf("\x1b[%dG\x1b[0m%s\x1b[0m", r.X+1, line)
-			}
-		}
-	}
-	if left.W >= 4 && left.H >= 1 {
-		iw, ih := l.Main.W, l.Main.H
+	plan := u.Shell.Plan(width, height, len(roster))
+	content := terminalsession.ShellContent{Roster: roster, MainName: "Main"}
+	if plan.Left.W >= 4 && plan.Left.H >= 1 {
+		iw, ih := plan.Layout.Main.W, plan.Layout.Main.H
 		dockRows := 0
 		if mainEdit && !u.main.keybindings && !u.main.picker.Open {
 			dockRows = ih
 		}
 		rosterHits := u.agents.Hits
-		body, dockRect := u.main.mainFrame(iw, ih, dockRows)
+		content.Main, content.Dock = u.main.mainFrame(iw, ih, dockRows)
 		u.agents.Hits = rosterHits
-		dockAt, dockRows := dockRect.Y, dockRect.H
-		rules := map[int]string{}
-		if dockRows > 0 && dockAt+dockRows <= len(body) {
+		dockAt, dockRows := content.Dock.Y, content.Dock.H
+		if dockRows > 0 && dockAt+dockRows <= len(content.Main) {
 			dock, err := u.liveDock.RenderBatch(ctx, caller, u.main.session.cwd, u.diff.Theme(), iw, dockRows, 15)
 			if err != nil {
 				return err
 			}
 			for i := 0; i < dockRows; i++ {
-				body[dockAt+i] = ""
+				content.Main[dockAt+i] = ""
 				if i < len(dock) {
-					body[dockAt+i] = dock[i]
+					content.Main[dockAt+i] = dock[i]
 				}
 			}
 		}
-		if dockRows > 0 {
-			l.Live = terminalsession.Rect{left.X + 1, left.Y + 1 + dockAt, iw, dockRows}
-			if !framed {
-				l.Live = terminalsession.Rect{left.X, left.Y + dockAt, iw, dockRows}
+		if plan.Framed {
+			content.MainDetail = u.main.mainTitleDetail()
+			if set := u.main.view.ActiveSkills()["Main"]; set != nil {
+				content.MainSkills = activityui.SkillLabel(set)
+				if u.main.view.SkillsHover == "Main" {
+					content.MainDetail = strings.TrimSuffix(content.MainDetail, content.MainSkills) + activityui.Underline(content.MainSkills)
+				}
 			}
-		}
-		if !framed {
-			draw(left, body)
-		} else {
-			detail := u.main.mainTitleDetail()
-			if set := u.main.view.ActiveSkills()["Main"]; set != nil && u.main.view.SkillsHover == "Main" {
-				detail = strings.TrimSuffix(detail, activityui.SkillLabel(set)) + activityui.Underline(activityui.SkillLabel(set))
-			}
-			name := "Main"
+			content.MainRight = u.main.mainHeaderRight(plan.Left.W, u.Focus == 0)
 			if u.agents.displayingChild() {
-				name, detail = "Thread", u.agents.Painter.Agent(u.agents.displayedCaller())
-			}
-			title := terminalui.PaneTitle(1, name, detail, u.Focus == 0)
-			// The skill count ends the title, after the frame corner and a space.
-			// A truncated title has no reliable target.
-			if set := u.main.view.ActiveSkills()["Main"]; !u.agents.displayingChild() && set != nil && strings.HasSuffix(ansi.Strip(detail), activityui.SkillLabel(set)) && ansi.StringWidth(title)+5 <= left.W {
-				end := left.X + 2 + ansi.StringWidth(title)
-				l.MainSkills = terminalsession.Rect{end - ansi.StringWidth(activityui.SkillLabel(set)), left.Y, ansi.StringWidth(activityui.SkillLabel(set)), 1}
-			}
-			headerRight := u.main.mainHeaderRight(left.W, u.Focus == 0)
-			if u.agents.displayingChild() {
+				content.MainName, content.MainDetail = "Thread", u.agents.Painter.Agent(u.agents.displayedCaller())
+				content.MainSkills = ""
 				u.main.updateHistoryHint()
-				headerRight = strings.TrimSpace(scrollLabel(u.agents) + " " + u.agents.HistoryHint)
+				content.MainRight = strings.TrimSpace(scrollLabel(u.agents) + " " + u.agents.HistoryHint)
 			}
-			draw(left, terminalui.PaneBox(left.W, left.H, title, headerRight, u.Focus == 0, body, rules))
 		}
 	}
-	if right.W >= 4 && right.H >= 1 {
-		iw, content := l.Diff.W, l.Diff.H
-		focused := u.Focus == 1
-		var body []string
-		var title, label string
+	if plan.Right.W >= 4 && plan.Right.H >= 1 {
 		if u.diffFailure == "" {
 			var err error
-			body, err = u.diffScreen.Paint(ctx, u.diff, iw, content)
+			content.Diff, err = u.diffScreen.Paint(ctx, u.diff, plan.Layout.Diff.W, plan.Layout.Diff.H)
 			if err != nil {
 				u.diffFailure = err.Error()
 			}
 		}
 		if u.diffFailure != "" {
-			body = []string{"Diff unavailable", textsanitize.Safe(u.diffFailure, false), "Use mchanges to review captured edits."}
+			content.Diff = []string{"Diff unavailable", textsanitize.Safe(u.diffFailure, false), "Use mchanges to review captured edits."}
 		}
-		summary, state := u.diff.Title()
-		title, label = terminalui.PaneTitle(2, "Diff", "saved · "+summary, u.Focus == 1), state
+		content.DiffSummary, content.DiffState = u.diff.Title()
 		u.diffUnseen = false
-		body = append(body[:min(len(body), content)], make([]string, max(0, content-len(body)))...)
-		if framed {
-			draw(right, terminalui.PaneBox(right.W, right.H, title, label, focused, body, nil))
-		} else {
-			draw(right, body)
-		}
 	}
-	if len(roster) > 0 {
-		draw(l.Roster, roster)
-	}
+	content.Status = u.shellStatus()
+	rows := u.Shell.Compose(plan, content)
 	if u.output != nil {
 		u.paintOutput(rows[:height-1], width, height-1)
 	}
-	rows[height-1] += "\x1b[1G\x1b[0m" + ansi.Truncate(u.nativeStatus(), width, "")
-	u.layout = l
 	copyRows := make([][]terminalui.CopySpan, len(rows))
 	for y := range rows {
 		rows[y], copyRows[y] = terminalui.ExtractCopy(rows[y])
@@ -396,13 +356,11 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	// Composing Main does not show a prompt covered by a dialog or frozen selection.
-	prompt := u.main.mainView.PromptRect
-	prompt.H = min(prompt.H, max(0, l.Main.H-prompt.Y))
-	prompt.X, prompt.Y = prompt.X+l.Main.X, prompt.Y+l.Main.Y
-	visible := prompt.W > 0 && prompt.H > 0 && u.output == nil
-	if s := u.selection; s != nil {
-		visible = visible && (prompt.X+prompt.W <= s.Rect.X || s.Rect.X+s.Rect.W <= prompt.X || prompt.Y+prompt.H <= s.Rect.Y || s.Rect.Y+s.Rect.H <= prompt.Y)
+	var selected terminalsession.Rect
+	if u.selection != nil {
+		selected = u.selection.Rect
 	}
+	visible := u.Shell.PromptVisible(u.main.mainView.PromptRect, u.output != nil, selected)
 	if visible {
 		if u.main.activeQuestionCall() != nil {
 			u.main.questions.painted = true
@@ -414,72 +372,26 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	return nil
 }
 
-// nativeStatus shows view selectors and only the focused view's keys.
-func (u *terminalUI) nativeStatus() string {
-	u.paneTabs = [4]terminalsession.Rect{}
+// shellStatus binds owner facts to the terminal's status view.
+func (u *terminalUI) shellStatus() terminalsession.ShellStatus {
 	if u.main != nil && u.main.replay != nil {
-		return u.main.replay.bar(u.width)
-	}
-	var tabs strings.Builder
-	tab := func(digit int, name, badge string, shown bool) {
-		text := fmt.Sprintf(" %d %s", digit, name)
-		switch {
-		case (u.Focus == digit-1 && digit != 3 || digit == 3 && u.Focus == 3) && (digit != 1 || !u.agents.displayingChild()):
-			text = "\x1b[7;1m" + text + badge + " \x1b[27;22m"
-		case shown:
-			text += badge + " "
-		default:
-			text = terminalui.Dim + text + terminalui.Undim + badge + " "
-		}
-		left := ansi.StringWidth(tabs.String())
-		pane := digit - 1
-		if digit == 3 {
-			pane = 3
-		}
-		u.paneTabs[pane] = terminalsession.Rect{left, u.height - 1, max(0, min(ansi.StringWidth(text), u.width-left)), 1}
-		tabs.WriteString(text)
-	}
-	diffBadge := ""
-	if u.diffUnseen {
-		diffBadge = terminalui.Amber + " ●" + "\x1b[39m"
+		return terminalsession.ShellStatus{Playback: true, PlaybackBar: u.main.replay.bar(u.width)}
 	}
 	responding, _ := u.agents.StatusCounts(u.agents.View.Roster())
-	agentsBadge := ""
-	if responding > 0 {
-		agentsBadge = terminalui.Amber + superscript(responding) + "\x1b[39m"
+	in := terminalsession.ShellStatus{
+		Child: u.agents.displayingChild(), Responding: responding,
+		DiffUnseen: u.diffUnseen, Prefix: u.prefix, LiveCount: u.liveDock.Live(),
 	}
-	tab(1, "Main", "", !u.agents.displayingChild())
-	tab(2, "Diff", diffBadge, u.DiffOpen)
-	tab(3, "Agents", agentsBadge, true)
-	if u.main != nil && u.main.interruptLocked {
-		tabs.WriteString("  " + terminalui.Amber + "Locked · /unlock" + terminalui.Reset)
-	}
-	filter := "child"
-	if u.agents.displayingChild() {
-		filter = "Main"
-	}
-	var hints terminalui.Hints
-	switch {
-	case u.prefix:
-		hints = terminalui.Hints{{"ctrl+b 1-3", "select", 0}, {"2", "toggle diff", 0}, {"o", "older child history", 0}, {"e", "next live", 0}, {"←→", "resize", 0}, {"PgUp/PgDn", "history", 0}}
-		return tabs.String() + "  " + hints.Render()
-	case u.Focus == 1:
-		hints = terminalui.Hints{{"s", "files", 0}, {"tab", "changes", 0}, {"[ ]", "hunks", 0}, {"a", "caller", 0}, {"?", "help", 0}}
-		if u.diff.Back() {
-			hints = append(terminalui.Hints{{"esc", "back", 0}}, hints...)
+	if u.main != nil {
+		in.Locked = u.main.interruptLocked
+		if u.Focus == 0 && !u.prefix {
+			in.Expansion = u.main.transcriptView().Expansion
 		}
-	case u.Focus == 3:
-		hints = terminalui.Hints{{"j/k", "agent", 0}, {"a", filter, 0}, {"esc", "back", 0}}
 	}
-	if u.liveDock.Live() > 1 {
-		hints = append(hints, terminalui.Hint{"^B e", "next live", 0})
+	if u.Focus == 1 && !u.prefix {
+		in.DiffBack = u.diff.Back()
 	}
-	hints = append(hints, terminalui.Hint{"^B 1-3", "views", 0})
-	if u.Focus == 0 {
-		expansion := u.main.transcriptView().Expansion
-		hints = append(hints, terminalui.Hint{"^E", [3]string{"expand events", "expand all", "default"}[expansion], 0})
-	}
-	return tabs.String() + "  " + hints.Render()
+	return in
 }
 
 // selectNativePane gives status-bar clicks and Ctrl-B digits the same action.
@@ -489,15 +401,6 @@ func (u *terminalUI) selectNativePane(pane int) {
 	}
 	u.Panes.Select(pane)
 	u.selection = nil
-}
-
-func superscript(n int) string {
-	digits := []rune("⁰¹²³⁴⁵⁶⁷⁸⁹")
-	var b strings.Builder
-	for _, r := range fmt.Sprint(n) {
-		b.WriteRune(digits[r-'0'])
-	}
-	return b.String()
 }
 
 // showRosterPick switches presentation only; Main retains its composer and host identity.

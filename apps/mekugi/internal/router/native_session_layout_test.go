@@ -125,11 +125,11 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			appServerTestKeys(t, u, "/live\r")
 			u.agents.setDisplayFilter(caller != "/root", u.agents.Selected)
 			frame := paint()
-			if strings.Contains(frame, "VISIBLE_EDIT") || u.shell.layout.Live.H != 0 || len(u.shell.liveDock.Order) != 1 {
+			if strings.Contains(frame, "VISIBLE_EDIT") || u.shell.Layout.Live.H != 0 || len(u.shell.liveDock.Order) != 1 {
 				t.Fatal("hidden dock lost state or reserved space")
 			}
 			lines := strings.Split(frame, "\n")
-			r := u.shell.layout.Roster
+			r := u.shell.Layout.Roster
 			if r.H == 0 || !strings.Contains(lines[r.Y-1], "┘") || strings.TrimSpace(lines[r.Y+r.H]) != "" {
 				t.Fatalf("roster must immediately follow the pane border with padding only below:\n%s", frame)
 			}

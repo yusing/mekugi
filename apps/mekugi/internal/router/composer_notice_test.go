@@ -61,7 +61,7 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 				if rect.W == 0 {
 					t.Fatal("missing error control")
 				}
-				x, y := rect.X+u.shell.layout.Main.X+1, rect.Y+u.shell.layout.Main.Y+1
+				x, y := rect.X+u.shell.Layout.Main.X+1, rect.Y+u.shell.Layout.Main.Y+1
 				if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", x, y)); err != nil {
 					t.Fatal(err)
 				}

@@ -116,8 +116,8 @@ func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 		t.Fatal("private source transport escaped")
 	}
 	rect := u.btw.rect
-	rect.X += u.shell.layout.Main.X
-	rect.Y += u.shell.layout.Main.Y
+	rect.X += u.shell.Layout.Main.X
+	rect.Y += u.shell.Layout.Main.Y
 	y := -1
 	x := -1
 	for row := rect.Y; row < rect.Y+rect.H; row++ {
@@ -218,7 +218,7 @@ func TestTerminalSourceScrolledMainReply(t *testing.T) {
 	if y < 0 {
 		t.Fatalf("no original reply source: %s", screen.String())
 	}
-	selectionTestDrag(t, u.shell, u.shell.layout.Main.X, y-1, x+13, y)
+	selectionTestDrag(t, u.shell, u.shell.Layout.Main.X, y-1, x+13, y)
 	if got := u.shell.selection.Text(); got != "**original reply**" {
 		t.Fatalf("original reply copy=%q", got)
 	}

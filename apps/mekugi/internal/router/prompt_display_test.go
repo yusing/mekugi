@@ -92,7 +92,7 @@ func TestNativePromptSelectionVisibility(t *testing.T) {
 				if covering {
 					x, y = u.view.FeedLeft+1, u.view.FeedTop
 				}
-				x, y = x+u.shell.layout.Main.X+1, y+u.shell.layout.Main.Y+1
+				x, y = x+u.shell.Layout.Main.X+1, y+u.shell.Layout.Main.Y+1
 				for _, key := range []byte(fmt.Sprintf("\x1b[<0;%d;%dM\x1b[<32;%d;%dM\x1b[<0;%d;%dm", x, y, x+3, y, x+3, y)) {
 					if err := u.shell.key(key); err != nil {
 						t.Fatal(err)
@@ -136,8 +136,8 @@ func TestUISnapshotNativePromptsTinyFrame(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { u.shell.diffScreen.Close() })
-			if u.mainView.ComposerRect.H < 1 || u.mainView.ComposerRect.Y+u.mainView.ComposerRect.H > u.shell.layout.Main.H {
-				t.Fatalf("prompts displaced the composer: composer=%+v Main=%+v", u.mainView.ComposerRect, u.shell.layout.Main)
+			if u.mainView.ComposerRect.H < 1 || u.mainView.ComposerRect.Y+u.mainView.ComposerRect.H > u.shell.Layout.Main.H {
+				t.Fatalf("prompts displaced the composer: composer=%+v Main=%+v", u.mainView.ComposerRect, u.shell.Layout.Main)
 			}
 			if len(u.pendingApprovals()) != 1 || u.questionCount() != 1 {
 				t.Fatal("a short terminal discarded pending prompts")

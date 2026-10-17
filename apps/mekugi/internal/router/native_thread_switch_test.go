@@ -51,14 +51,14 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 		}
 	}
 	paint("native-thread-main-full")
-	if u.shell.layout.Main.W != 138 || u.shell.layout.Vertical != -1 {
-		t.Fatalf("initial geometry: %+v", u.shell.layout)
+	if u.shell.Layout.Main.W != 138 || u.shell.Layout.Vertical != -1 {
+		t.Fatalf("initial geometry: %+v", u.shell.Layout)
 	}
 	click := func(agent string) {
 		t.Helper()
 		for _, hit := range u.agents.Hits {
 			if hit.Agent == agent && !hit.Skills {
-				r := u.shell.layout.Roster
+				r := u.shell.Layout.Roster
 				for _, suffix := range []string{"M", "m"} {
 					if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", r.X+hit.First, r.Y+hit.Row, suffix)); err != nil {
 						t.Fatal(err)
@@ -79,12 +79,12 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	}
 	keys("\x022")
 	paint("native-thread-child-split")
-	if u.shell.layout.Diff.W == 0 || !u.agents.displayingChild() {
+	if u.shell.Layout.Diff.W == 0 || !u.agents.displayingChild() {
 		t.Fatal("opening Diff lost the displayed child")
 	}
 	keys("\x022")
 	paint("native-thread-child-unsplit")
-	if u.shell.layout.Main.W != 138 || u.shell.layout.Diff.W != 0 || u.shell.Focus != 0 {
+	if u.shell.Layout.Main.W != 138 || u.shell.Layout.Diff.W != 0 || u.shell.Focus != 0 {
 		t.Fatal("closing Diff did not reclaim its width")
 	}
 	// Metadata discovery is independent of the composer destination.
@@ -186,7 +186,7 @@ func TestUISnapshotNativeTinyDiffToggle(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertNativeUISnapshot(t, "native-thread-tiny-diff", strings.Split(screen.String(), "\n"))
-	if u.shell.layout.Diff.H == 0 || !strings.Contains(screen.String(), "CONNECTING") {
+	if u.shell.Layout.Diff.H == 0 || !strings.Contains(screen.String(), "CONNECTING") {
 		t.Fatal("opening Diff left a short terminal blank")
 	}
 	for _, key := range []byte("\x022") {
@@ -197,7 +197,7 @@ func TestUISnapshotNativeTinyDiffToggle(t *testing.T) {
 	if err := u.paint(screen, 80, 6); err != nil {
 		t.Fatal(err)
 	}
-	if u.shell.layout.Main.W != 80 || u.shell.layout.Diff.H != 0 {
+	if u.shell.Layout.Main.W != 80 || u.shell.Layout.Diff.H != 0 {
 		t.Fatal("closing Diff did not restore the short transcript")
 	}
 }

@@ -16,6 +16,10 @@ terminal owner allocates the transcript window, docks and composer, paints the
 composer and captions, and returns geometry for pointer routing and delivery
 receipts. Supplying transcript rows is separate from layout; painting has no
 backend or storage capability. Live sessions and playback use the same frame.
+The outer compositor receives prepared pane rows and header/status facts. It owns
+frame decoration, status-tab targets and final pane geometry. Prompt visibility
+is calculated against that geometry and active overlays; only successful terminal
+delivery makes a visible prompt ready for input.
 The [attachment owner](../sessionpresentation/SPEC.md#attachment-lifetime) retires
 module state. Backward replay retains terminal focus and Diff visibility.
 The [saved-Diff view](../../../../modules/changehistory/SPEC.md#saved-review-presentation)

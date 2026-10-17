@@ -145,7 +145,7 @@ func TestNativeNavigationBatchSelectorReleaseEndsDividerDrag(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.shell.DiffOpen = true
 	navigationBatchPaint(t, u, 120, 24)
-	divider := u.shell.layout.Vertical
+	divider := u.shell.Layout.Vertical
 	if divider <= 0 {
 		t.Fatal("fixture needs a vertical divider")
 	}

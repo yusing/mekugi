@@ -67,8 +67,8 @@ func TestNativePaneStateResumeAndIsolation(t *testing.T) {
 			if err := restored.paint(&frame, 120, 35); err != nil {
 				t.Fatal(err)
 			}
-			if restored.shell.layout.Vertical != 67 || restored.shell.layout.Diff.W == 0 {
-				t.Fatalf("restored layout not rendered: %+v", restored.shell.layout)
+			if restored.shell.Layout.Vertical != 67 || restored.shell.Layout.Diff.W == 0 {
+				t.Fatalf("restored layout not rendered: %+v", restored.shell.Layout)
 			}
 			if !strings.Contains(ansi.Strip(restored.shell.nativeStatus()), "s files") {
 				t.Fatal("restored focus does not route Diff keys")
@@ -76,13 +76,13 @@ func TestNativePaneStateResumeAndIsolation(t *testing.T) {
 			if err := restored.paint(&frame, 45, 14); err != nil {
 				t.Fatal(err)
 			}
-			if restored.shell.layout.Diff.W == 0 || restored.shell.layout.Main.W != 0 {
+			if restored.shell.Layout.Diff.W == 0 || restored.shell.Layout.Main.W != 0 {
 				t.Fatal("narrow screen did not retain focused pane")
 			}
 			if err := restored.paint(&frame, 100, 35); err != nil {
 				t.Fatal(err)
 			}
-			if restored.shell.layout.Vertical != 60 {
+			if restored.shell.Layout.Vertical != 60 {
 				t.Fatal("restored split not clamped to current terminal")
 			}
 		} else if restored.shell.Focus != 0 || restored.shell.DiffOpen || restored.shell.Split != 0 {

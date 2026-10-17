@@ -50,7 +50,7 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	if rect.W == 0 {
 		t.Fatal("router batch has no details target")
 	}
-	if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", rect.X+u.shell.layout.Main.X+1, rect.Y+u.shell.layout.Main.Y+1)); err != nil {
+	if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", rect.X+u.shell.Layout.Main.X+1, rect.Y+u.shell.Layout.Main.Y+1)); err != nil {
 		t.Fatal(err)
 	}
 	if u.shell.output == nil {
