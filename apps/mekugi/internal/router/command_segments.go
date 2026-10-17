@@ -10,6 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/observation"
@@ -70,7 +73,7 @@ func (u *appServerUI) retainCommandSegments(entry activityPaneEntry, item observ
 	u.commandSegmentPending++
 	go func() {
 		defer cancel()
-		writes <- commandSegmentWrite{key: key, err: storagePublicationError(u.segments.Publish(ctx, scope, id, *record))}
+		writes <- commandSegmentWrite{key: key, err: requestexecution.StoragePublicationError(u.segments.Publish(ctx, scope, id, *record))}
 	}()
 }
 
@@ -128,7 +131,7 @@ func (u *appServerUI) restoreCommandSegments(entry *activityPaneEntry, item bind
 	}
 	cwd := cmp.Or(entry.native.commandCwd, appServerCommandDirectory(item.Observation(), workspace))
 	for _, part := range record.Parts {
-		segment := commandSegment{timing: segmenttransport.Timing(part.Timing), source: part.Source, text: execSegmentTextInDirectory(part.Source, cwd), skipped: part.Skipped, exit: part.Exit}
+		segment := commandSegment{timing: segmenttransport.Timing(part.Timing), source: part.Source, text: (activitypresentation.CommandSource{Script: part.Source, Display: frontends.ShellDisplaySource(part.Source), Directory: cwd}).SegmentText(), skipped: part.Skipped, exit: part.Exit}
 		if separate && !part.Skipped {
 			if outputs := u.session.activity.Outputs(u.session.Scope()); outputs != nil {
 				segment.output = outputs.New()

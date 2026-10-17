@@ -11,6 +11,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
@@ -160,7 +162,7 @@ func TestCommandSegmentsRetentionErrorsStayWithOriginalThreadAndCause(t *testing
 	second := errors.New("sync replay directory: no space left on device; different underlying cause")
 	for _, cause := range []error{first, second} {
 		u.commandSegmentPending++
-		u.commandSegmentRetained(commandSegmentWrite{key: [3]string{"main", "turn", "item"}, err: storageIOError(cause)})
+		u.commandSegmentRetained(commandSegmentWrite{key: [3]string{"main", "turn", "item"}, err: requestexecution.StorageIOError(cause)})
 	}
 	if delivery := u.applyCriticalNotices(); delivery != nil || len(u.view.Entries) != 0 {
 		t.Fatal("switched thread borrowed another thread's retention errors")

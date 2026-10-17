@@ -1,12 +1,11 @@
 package router
 
 import (
-	"crypto/sha256"
 	"encoding/json"
-	"fmt"
 	"strings"
 
-	sessioncontrol "github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/backends/codex/binding"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -17,15 +16,10 @@ import (
 
 const maxActivityEventsPerThread = 64
 
-func subagentCommentaryMessageID(seed string) string {
-	digest := sha256.Sum256([]byte(seed))
-	return fmt.Sprintf("msg_mekugi_subagent_commentary_%x", digest[:12])
-}
-
 // Start metadata and any readable assignment come from the child's actual
 // request. Native roles can override the parent's model and reasoning settings,
 // while opaque native collaboration arguments must remain opaque.
-func nativeSubagentStart(request *codexresponses.Request) *activityStart {
+func nativeSubagentStart(request *codexresponses.Request) *binding.SubagentSettings {
 	model := request.Model()
 	var reasoning struct {
 		Effort string `json:"effort"`
@@ -33,20 +27,7 @@ func nativeSubagentStart(request *codexresponses.Request) *activityStart {
 	if raw, ok := request.Fields["reasoning"]; ok && json.Unmarshal(raw, &reasoning) != nil {
 		return nil
 	}
-	return subagentStart(model, reasoning.Effort, responses.StringField(request.Fields, "service_tier"))
-}
-
-// subagentStart validates the model settings a child actually ran with; a
-// start without its model is unknown.
-func subagentStart(model, effort, tier string) *activityStart {
-	if tier == "priority" {
-		tier = "fast"
-	}
-	effort = strings.TrimSpace(effort)
-	if model == "" || len(model)+len(effort)+len(tier) > sessioncontrol.MaxActivityMetadataBytes || strings.ContainsAny(model+effort+tier, "\r\n\x00") {
-		return nil
-	}
-	return &activityStart{model: model, effort: effort, tier: tier}
+	return binding.SubagentStart(model, reasoning.Effort, responses.StringField(request.Fields, "service_tier"))
 }
 
 type subagentInputEnvelopes struct {
@@ -55,7 +36,7 @@ type subagentInputEnvelopes struct {
 
 type subagentReply struct {
 	source  string
-	message activityMessage
+	message activitypresentation.SupplementMessage
 }
 
 func prepareSubagentInputEnvelopes(fields map[string]json.RawMessage, recipient string) (envelopes subagentInputEnvelopes) {
@@ -84,54 +65,19 @@ func prepareSubagentInputEnvelopes(fields map[string]json.RawMessage, recipient 
 	}
 
 	for _, item := range items[currentInput:] {
-		text, sender, final, ok := subagentResponse(item)
+		text, sender, final, ok := binding.SubagentResponse(item)
 		if !ok || responses.StringField(item, "recipient") != recipient {
 			continue
 		}
 		if final {
 			continue
 		}
-		id := subagentCommentaryMessageID("response\x00" + responses.StringField(item, "id") + "\x00" + sender + "\x00" + text)
+		id := binding.SubagentMessageID("response\x00" + responses.StringField(item, "id") + "\x00" + sender + "\x00" + text)
 		if len(envelopes.replies) < maxActivityEventsPerThread {
-			envelopes.replies = append(envelopes.replies, subagentReply{source: id, message: activityMessage{from: sender, to: recipient, text: text}})
+			envelopes.replies = append(envelopes.replies, subagentReply{source: id, message: activitypresentation.SupplementMessage{From: sender, To: recipient, Text: text}})
 		}
 	}
 	return envelopes
-}
-
-func subagentResponse(item map[string]json.RawMessage) (text, sender string, final, ok bool) {
-	if responses.StringField(item, "type") != "agent_message" {
-		return "", "", false, false
-	}
-	sender = responses.StringField(item, "author")
-	if sender != "/root" && !strings.HasPrefix(sender, "/root/") || strings.ContainsAny(sender, "\r\n\x00") {
-		return "", "", false, false
-	}
-	var content []map[string]json.RawMessage
-	if json.Unmarshal(item["content"], &content) != nil {
-		return "", "", false, false
-	}
-	// Native Codex pairs the plaintext routing header with opaque ciphertext.
-	// Report receipt only; neither part is a plaintext reply payload.
-	if len(content) == 2 && responses.StringField(content[0], "type") == "input_text" &&
-		responses.StringField(content[1], "type") == "encrypted_content" {
-		return "", sender, false, true
-	}
-	if len(content) != 1 {
-		return "", "", false, false
-	}
-	if responses.StringField(content[0], "type") == "encrypted_content" {
-		return "", sender, false, true
-	}
-	if responses.StringField(content[0], "type") != "input_text" {
-		return "", "", false, false
-	}
-	body := responses.StringField(content[0], "text")
-	header, payload, found := strings.Cut(body, "\nPayload:\n")
-	if !found || (!strings.HasPrefix(header, "Message Type: MESSAGE\n") && !strings.HasPrefix(header, "Message Type: FINAL_ANSWER\n")) {
-		return "", "", false, false
-	}
-	return payload, sender, strings.HasPrefix(header, "Message Type: FINAL_ANSWER\n"), true
 }
 
 func isFinalAnswerMessage(item map[string]json.RawMessage) bool {

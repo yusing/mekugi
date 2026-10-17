@@ -3,6 +3,8 @@ package router
 import (
 	"errors"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 )
 
@@ -22,7 +24,7 @@ func changePublications(histories map[string]mekugiHistory) map[string]changes.P
 }
 func changeError(err error) error {
 	if publication, ok := errors.AsType[*changes.PublicationError](err); ok {
-		return storagePublicationError(publication.Err)
+		return requestexecution.StoragePublicationError(publication.Err)
 	}
 	return err
 }

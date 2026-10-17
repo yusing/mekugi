@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -66,7 +68,7 @@ func (v *activityAdapter) applyCapturedEdits(receipts []*changepresentation.Rece
 					native := *entry.native
 					native.capturedEdit = nil
 					entry.native = &native
-					entry.Text = activitypresentation.ShellSource(toolActivityShellSource(appServerDisplayCommand(native.command)), native.commandCwd)
+					entry.Text = activitypresentation.ShellSource(frontends.ShellDisplaySource(appServerDisplayCommand(native.command)), native.commandCwd)
 					v.Model.Replace(i, entry, activitypresentation.RetainAnnotations(activityContent(entry).Values(), v.Entries[i].Values))
 				}
 				continue
@@ -87,7 +89,7 @@ func (v *activityAdapter) applyCapturedEdits(receipts []*changepresentation.Rece
 			if index == 0 && entry.native.command != "" {
 				// Rebuild from the host command so repeated reconciliation never
 				// duplicates receipts or drops neighboring operations.
-				original := activitypresentation.ShellSource(toolActivityShellSource(appServerDisplayCommand(entry.native.command)), entry.native.commandCwd)
+				original := activitypresentation.ShellSource(frontends.ShellDisplaySource(appServerDisplayCommand(entry.native.command)), entry.native.commandCwd)
 				paragraphs := activitymodel.Paragraphs(original)
 				if len(paragraphs) > 1 {
 					var parts []string

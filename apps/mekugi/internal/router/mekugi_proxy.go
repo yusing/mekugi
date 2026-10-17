@@ -243,7 +243,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 	}
 	if err != nil {
 		retained.Finish(false)
-		return nil, storageIOError(err)
+		return nil, requestexecution.StorageIOError(err)
 	}
 	ctx, err = p.replayStore.prepareHandleScope(ctx, metadata)
 	if err != nil {
@@ -272,11 +272,11 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 		thread := activityThreadID
 		if recipient == "/root" {
 			// Display directed replies under the proven sender when available.
-			if child := p.activity.ChildThread(activityThreadID, reply.message.from); child != "" {
+			if child := p.activity.ChildThread(activityThreadID, reply.message.From); child != "" {
 				thread = child
 			}
 		}
-		p.activity.Collect(activitypresentation.Supplement{Thread: thread, Source: reply.source, Kind: "reply", Text: reply.message.text, Message: supplementMessage(&reply.message)})
+		p.activity.Collect(activitypresentation.Supplement{Thread: thread, Source: reply.source, Kind: "reply", Text: reply.message.Text, Message: &reply.message})
 	}
 	if metadata.SubagentKind == "thread_spawn" {
 		// The collector deduplicates this source by stable child thread, including

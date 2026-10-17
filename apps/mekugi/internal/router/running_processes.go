@@ -6,6 +6,8 @@ import (
 	"maps"
 	"slices"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -69,7 +71,7 @@ func (u *appServerUI) processPages(pages []outputPage) []activityui.Block {
 		if n := record.Source.native; ok && n != nil {
 			bySource[record.Source.Seq] = activityui.Block{
 				Source: record.Source.Seq, Owner: page.Owner, Kind: "op", Verb: "Run", Lang: "bash",
-				Code:   toolActivityShellSource(appServerDisplayCommand(n.command)),
+				Code:   frontends.ShellDisplaySource(appServerDisplayCommand(n.command)),
 				Output: retainedOutputID(n.output, 1), Tail: record.Source.outputTail, TailOmitted: record.Source.outputOmit,
 				Running: n.running, Approval: n.approval,
 				Started: n.commandStarted, Ended: n.commandEnded, Duration: n.duration, NotificationTiming: true,

@@ -50,7 +50,7 @@ func beginRetainedSession(ctx context.Context, store *history.Store, writes *per
 	}
 	namespace, release, err := store.BeginSession(ctx, writes, limits, thread)
 	if publication, ok := errors.AsType[*history.PublicationError](err); ok {
-		err = storagePublicationError(publication.Err)
+		err = requestexecution.StoragePublicationError(publication.Err)
 	}
 	if err != nil {
 		return ctx, nil, err
@@ -63,19 +63,6 @@ func beginRetainedSession(ctx context.Context, store *history.Store, writes *per
 // Reading inherited history adds another owner instead of transferring ownership.
 func (s *mekugiReplayStore) retentionLimits() history.Limits {
 	return history.Limits{Total: s.maxBytes, Kinds: map[string]int64{"commentary": s.maxCommentaryBytes}}
-}
-
-func storagePublicationError(err error) error {
-	if conflict, ok := errors.AsType[*history.HostConflict](err); ok {
-		if conflict.Field == "" {
-			return requestexecution.Classify(err, "replay_translation_conflict", "a completed tool call conflicted with its retained replay translation", true)
-		}
-		return requestexecution.Classify(err, "replay_item_conflict", "a completed tool call changed a retained replay item field", true)
-	}
-	if capacity, ok := errors.AsType[*history.CapacityError](err); ok {
-		return requestexecution.Classify(err, "storage_capacity", capacity.Error(), false)
-	}
-	return storageIOError(err)
 }
 
 var retainedReadReference = regexp.MustCompile(`(?:\b|\\[nr])mread(?:[ \t]|\\t)+([a-z]+[0-9]*\b(?:(?:[ \t]|\\t)+[a-z]+[0-9]*\b)*)`)
@@ -114,7 +101,7 @@ func (s *mekugiReplayStore) retainInput(ctx context.Context, workspace string, r
 	}
 	err := recordtransactions.RetainInput(ctx, s.changeScope(), s.changes, s.recovery, input)
 	if retention, ok := errors.AsType[*recordtransactions.RetentionError](err); ok {
-		return storagePublicationError(retention.Err)
+		return requestexecution.StoragePublicationError(retention.Err)
 	}
 	return changeError(err)
 }
@@ -185,23 +172,16 @@ func (s *mekugiReplayStore) waitForStorageMaintenance(ctx context.Context) error
 	}
 }
 
-func storageIOError(err error) error {
-	if err == nil {
-		return nil
-	}
-	return requestexecution.Classify(err, "storage_io", "Mekugi could not persist session data; check available disk space and storage permissions before retrying", false)
-}
-
 // Retain and admit prepared native metadata before publishing its bytes.
 // Source: apps/mekugi/internal/router/storage_retention.go:217:226@[55257c48] writeManagedFile.
 func writeRetainedRecord(tx *history.Transaction, thread string, limits history.Limits, name, pattern string, data []byte) error {
-	if err := storagePublicationError(tx.Retain(thread, limits, name)); err != nil {
-		return storageIOError(err)
+	if err := requestexecution.StoragePublicationError(tx.Retain(thread, limits, name)); err != nil {
+		return requestexecution.StorageIOError(err)
 	}
-	if err := storagePublicationError(tx.Admit(limits, name, int64(len(data)))); err != nil {
+	if err := requestexecution.StoragePublicationError(tx.Admit(limits, name, int64(len(data)))); err != nil {
 		return err
 	}
-	return storageIOError(tx.Write(name, pattern, data))
+	return requestexecution.StorageIOError(tx.Write(name, pattern, data))
 }
 
 // Readers acquire this lease before store.lock; cleanup only tries it without

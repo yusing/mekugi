@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -101,7 +103,7 @@ func TestSudoGuardDisplayWithoutVCS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := toolActivityShellSource(guarded); got != source || guarded == source {
+	if got := frontends.ShellDisplaySource(guarded); got != source || guarded == source {
 		t.Fatalf("sudo-only display = %q; guarded = %q", got, guarded)
 	}
 }

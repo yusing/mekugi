@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"context"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
@@ -1187,4 +1189,8 @@ func TestExecTrackCancellationDuringStartupPreservesCommand(t *testing.T) {
 			}
 		})
 	}
+}
+
+func execSegmentText(source string) string {
+	return (activitypresentation.CommandSource{Script: source, Display: frontends.ShellDisplaySource(source), Directory: ""}).SegmentText()
 }

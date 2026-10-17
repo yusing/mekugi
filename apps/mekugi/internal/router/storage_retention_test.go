@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
@@ -842,10 +844,10 @@ func (s *mekugiReplayStore) beginSession(ctx context.Context, thread, routing st
 }
 
 func (s *mekugiReplayStore) retainFiles(names ...string) error {
-	return storagePublicationError(s.transaction.Retain(s.session.Thread, s.retentionLimits(), names...))
+	return requestexecution.StoragePublicationError(s.transaction.Retain(s.session.Thread, s.retentionLimits(), names...))
 }
 func (s *mekugiReplayStore) maintainStorage(replacement string, size int64) error {
-	return storagePublicationError(s.transaction.Admit(s.retentionLimits(), replacement, size))
+	return requestexecution.StoragePublicationError(s.transaction.Admit(s.retentionLimits(), replacement, size))
 }
 
 // Called under store.lock. Retain and admit the record before publication.

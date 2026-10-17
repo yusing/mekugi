@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/recordtransactions"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/persistence"
@@ -135,7 +137,7 @@ func (s *mekugiReplayStore) write(r replayRecord) error {
 	var conflict *history.HostConflict
 	var capacity *history.CapacityError
 	if errors.As(err, &publication) || errors.As(err, &conflict) || errors.As(err, &capacity) {
-		return storagePublicationError(err)
+		return requestexecution.StoragePublicationError(err)
 	}
 	return err
 }

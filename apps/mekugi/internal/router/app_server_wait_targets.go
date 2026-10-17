@@ -4,6 +4,8 @@ import (
 	"context"
 	"path/filepath"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+
 	"github.com/yusing/mekugi/libraries/persistence"
 
 	history "github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -53,7 +55,7 @@ func (s *appServerSession) readWaitTargets(key [3]string) (targets []waittargets
 		if err != nil || !found {
 			return err
 		}
-		if err := storagePublicationError(tx.Retain(s.waitThread, s.waitLimits, filepath.Base(path))); err != nil {
+		if err := requestexecution.StoragePublicationError(tx.Retain(s.waitThread, s.waitLimits, filepath.Base(path))); err != nil {
 			return err
 		}
 		return nil

@@ -25,6 +25,10 @@ Codex's login-shell setting. Global commands and persistent user configuration
 remain untouched. Cleanup removes only invocation-created frontends, snapshot
 files, and leased worker resources, preserving concurrent invocations.
 
+Display-source normalization uses the same authenticated invocation registry.
+Only recognized instrumentation is removed; Activity and execution observation
+consume that source without acquiring registry or execution authority.
+
 Configured JavaScript plugin declarations are not loaded or executed. Existing
 files in the user configuration's `mekugi/plugins` directory remain untouched.
 Frontends require neither Node.js nor Bun; semantic resolvers retain their own

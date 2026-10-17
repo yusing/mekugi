@@ -1,10 +1,11 @@
 package router
 
 import (
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 
 	"github.com/yusing/mekugi/contracts/observation"
 
@@ -12,9 +13,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
-	"mvdan.cc/sh/v3/syntax"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/commandsegments/segments"
@@ -58,48 +57,6 @@ func newExecPreviewTrack(observer *segments.Observer, thread, turn string, comma
 		p.writers[p.Source(command.Command, "")] = plan.Class != execscope.Neutral && (len(plan.Programs) == 0 || slices.ContainsFunc(plan.Programs, func(program execscope.Program) bool { return program.Direct }))
 	}
 	return p
-}
-
-func execSegmentEdits(source string) bool {
-	// Activity retains write classification for formatters and file copies.
-	// Live previews use the narrower admitted source-segment scope.
-	program, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(source), "")
-	writes := false
-	if err == nil {
-		syntax.Walk(program, func(node syntax.Node) bool {
-			if _, declaration := node.(*syntax.FuncDecl); declaration {
-				return false
-			}
-			if call, ok := node.(*syntax.CallExpr); ok {
-				args := call.Args
-				for len(args) > 0 {
-					name, literal := shellsyntax.Literal(args[0])
-					if !literal || filepath.Base(name) != "env" {
-						break
-					}
-					var reason string
-					args, reason = shellsyntax.EnvArgs(args[1:])
-					if reason != "" {
-						break
-					}
-				}
-				if words, literal := shellsyntax.Args(args); literal && len(words) > 0 {
-					name := filepath.Base(words[0])
-					writes = writes || name == "cp" || name == "install" || execscope.GoFormatterWrites(name, words[1:])
-				}
-			}
-			return !writes
-		})
-	}
-	if writes {
-		return true
-	}
-	for _, block := range activitypresentation.Operations(execSegmentText(source)) {
-		if slices.Contains([]string{"Edit", "Create", "Delete", "Move"}, block.Verb) {
-			return true
-		}
-	}
-	return false
 }
 
 type execPreviewState struct {
@@ -149,7 +106,7 @@ func (p *execPreviewTrack) state() (state execPreviewState) {
 			if p.streamable != nil {
 				writer = p.streamable[p.Source(segment.Source, "")]
 			} else {
-				writer = execSegmentEdits(segment.Source)
+				writer = (activitypresentation.CommandSource{Script: segment.Source, Display: frontends.ShellDisplaySource(segment.Source), Directory: ""}).WritesFiles()
 			}
 			if streamable && writer && !segment.Ended && !match.Done && (segment.Began || i > last) {
 				state.settled = false
@@ -221,7 +178,7 @@ func (p *execTrackPresentation) view(invocation *activitypresentation.Invocation
 			cursor.output.Write(observed.Output)
 		}
 		report.Segments = append(report.Segments, activitypresentation.SegmentObservation{
-			Source: observed.Source, Text: cursor.text, Analysis: toolActivityShellSource(observed.Source),
+			Source: observed.Source, Text: cursor.text, Analysis: frontends.ShellDisplaySource(observed.Source),
 			Started: observed.Timing.Started, Ended: observed.Timing.Ended, Duration: time.Duration(observed.Timing.ElapsedNS),
 			Began: observed.Began, Finished: observed.Ended, ExitCode: observed.Code, Output: observed.Output,
 		})
@@ -263,28 +220,12 @@ func (u *appServerUI) commandReportView(key [3]string, run *appServerCommandRun,
 		return execTrackView{}, false
 	}
 	view, changed := run.segments.view(run.entry.native.invocation, track, final, func(source string) string {
-		return execSegmentTextInDirectory(source, directory)
+		return (activitypresentation.CommandSource{Script: source, Display: frontends.ShellDisplaySource(source), Directory: directory}).SegmentText()
 	})
 	if view.release {
 		u.execTrack.ReleaseOutput(key)
 	}
 	return view, changed
-}
-
-// execSegmentText is a segment's display operations, using the same shell
-// classifier as an untracked command.
-func execSegmentText(source string) string {
-	return execSegmentTextInDirectory(source, "")
-}
-
-func execSegmentTextInDirectory(source, cwd string) string {
-	if text := activitypresentation.ShellSource(toolActivityShellSource(source), cwd); strings.TrimSpace(text) != "" {
-		return text
-	}
-	if strings.ContainsAny(source, "\r\n") {
-		source = toolActivityShellSource(source)
-	}
-	return activitypresentation.RunSource(source)
 }
 
 // flushTrackedCommand re-sends a tracked command whose segments changed, and
@@ -364,7 +305,7 @@ func (u *appServerUI) reconcileTrackedCommand(key [3]string, entry activityPaneE
 	for i := range native.segments {
 		// A commit reads its object from the directory the host ran it in.
 		if segment := &native.segments[i]; segment.raw != "" && segment.changes == nil {
-			segment.changes, segment.commit = activitypresentation.VCSOutputRows(toolActivityShellSource(appServerDisplayCommand(segment.source)), vcsSegmentCwd(item.Cwd, native.segments[:i]), segment.raw)
+			segment.changes, segment.commit = activitypresentation.VCSOutputRows(frontends.ShellDisplaySource(appServerDisplayCommand(segment.source)), vcsSegmentCwd(item.Cwd, native.segments[:i]), segment.raw)
 		}
 	}
 	// Successful segments' output stays open until the agent's next event.

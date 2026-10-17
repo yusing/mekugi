@@ -221,7 +221,7 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 	fields := map[string]jsonv1.RawMessage{"model": []byte(`"gpt-6-luna"`), "input": input}
 	collectSubagentStart(activity, "child", &codexresponses.Request{Fields: fields}, "/root/reviewer")
 	for _, reply := range prepareSubagentInputEnvelopes(fields, "/root/reviewer").replies {
-		activity.Collect(activitypresentation.Supplement{Thread: "child", Source: reply.source, Kind: "reply", Text: reply.message.text, Message: supplementMessage(&reply.message)})
+		activity.Collect(activitypresentation.Supplement{Thread: "child", Source: reply.source, Kind: "reply", Text: reply.message.Text, Message: &reply.message})
 	}
 	var live []string
 	for _, entry := range takeNativeActivity(activity, "main") {

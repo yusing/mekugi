@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
 
 func TestReceivedRepliesRemainNativeAndKeepFullBodies(t *testing.T) {
@@ -21,8 +23,8 @@ func TestReceivedRepliesRemainNativeAndKeepFullBodies(t *testing.T) {
 	if !bytes.Equal(fields["input"], input) {
 		t.Fatal("native envelopes changed")
 	}
-	if len(got.replies) != 2 || got.replies[0].message != (activityMessage{from: "/root/a", to: "/root/b", text: body}) ||
-		got.replies[0].source == "" || got.replies[1].message.text != "Next reply." {
+	if len(got.replies) != 2 || got.replies[0].message != (activitypresentation.SupplementMessage{From: "/root/a", To: "/root/b", Text: body}) ||
+		got.replies[0].source == "" || got.replies[1].message.Text != "Next reply." {
 		t.Fatalf("native replies and finals = %+v", got)
 	}
 }
@@ -42,7 +44,7 @@ func TestReceivedReplyCurrentInputBoundary(t *testing.T) {
 			input := mustTestJSON(t, []any{envelope("old"), boundary, envelope("fresh")})
 			fields := map[string]json.RawMessage{"input": input}
 			got := prepareSubagentInputEnvelopes(fields, "/root")
-			if len(got.replies) != 1 || got.replies[0].message != (activityMessage{from: "/root/worker", to: "/root", text: "fresh"}) || !bytes.Equal(fields["input"], input) {
+			if len(got.replies) != 1 || got.replies[0].message != (activitypresentation.SupplementMessage{From: "/root/worker", To: "/root", Text: "fresh"}) || !bytes.Equal(fields["input"], input) {
 				t.Fatalf("current native reply = %+v; input = %s", got.replies, fields["input"])
 			}
 		})
@@ -61,7 +63,7 @@ func TestReceivedEncryptedReplyDoesNotExposeCiphertext(t *testing.T) {
 			fields := map[string]json.RawMessage{"input": input}
 			got := prepareSubagentInputEnvelopes(fields, "/root")
 			want := name == "native" || name == "single encrypted"
-			if (len(got.replies) == 1) != want || want && got.replies[0].message != (activityMessage{from: "/root/worker", to: "/root"}) || !bytes.Equal(fields["input"], input) {
+			if (len(got.replies) == 1) != want || want && got.replies[0].message != (activitypresentation.SupplementMessage{From: "/root/worker", To: "/root"}) || !bytes.Equal(fields["input"], input) {
 				t.Fatalf("encrypted reply = %+v; input = %s", got.replies, fields["input"])
 			}
 		})

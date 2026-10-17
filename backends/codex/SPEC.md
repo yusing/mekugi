@@ -80,6 +80,9 @@ The consuming owner decides historical admission and presentation; projection do
 not settle input, notify the desktop or issue host requests.
 
 Native notification envelopes and command normalization belong to the binding.
+The binding also decodes native inter-agent replies and observed child settings
+for both live requests and rollout restoration. Opaque content remains opaque;
+stable supplement identities preserve deduplication across those consumers.
 The caller supplies observation time and retains the original RPC message for
 control correlation and prompt handling. Decoding performs no effects or dispatch.
 

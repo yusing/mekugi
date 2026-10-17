@@ -120,7 +120,10 @@ func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout 
 				anchor = p.Item.ID
 			}
 		case "turn_context/":
-			settings = subagentStart(p.Model, deref(p.Effort), deref(p.ServiceTier))
+			settings = nil
+			if observed := binding.SubagentStart(p.Model, deref(p.Effort), deref(p.ServiceTier)); observed != nil {
+				settings = &activityStart{model: observed.Model, effort: observed.Effort, tier: observed.Tier}
+			}
 		case "response_item/custom_tool_call":
 			if p.Name == "exec" && (p.Namespace == "" || p.Namespace == "functions") {
 				cells[p.CallID] = true
@@ -143,7 +146,7 @@ func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout 
 				if strings.TrimSpace(text) == "" {
 					continue // Opaque tasks never become an inferred plaintext assignment.
 				}
-				assignment := &activityAssignment{id: subagentCommentaryMessageID("assignment\x00" + responses.StringField(p, "id") + "\x00" + sender + "\x00" + agent + "\x00" + text),
+				assignment := &activityAssignment{id: binding.SubagentMessageID("assignment\x00" + responses.StringField(p, "id") + "\x00" + sender + "\x00" + agent + "\x00" + text),
 					from: sender, to: agent, text: text, created: record.Timestamp}
 				event.entry = activityPaneEntry{Agent: agent, Kind: "assignment", Text: text, assignment: assignment}
 				event.repeated = true
@@ -154,7 +157,7 @@ func readRestoredRollout(info binding.ThreadInfo, agent string) restoredRollout 
 				}
 				started = true
 				r.events = append(r.events, event)
-			} else if text, sender, final, ok := subagentResponse(p); ok && !final {
+			} else if text, sender, final, ok := binding.SubagentResponse(p); ok && !final {
 				event.entry = activityPaneEntry{Agent: agent, Kind: "reply", Text: text, message: &activityMessage{from: sender, to: agent, text: text}}
 				r.events = append(r.events, event)
 			}

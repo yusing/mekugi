@@ -3,6 +3,8 @@ package router
 import (
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -53,7 +55,7 @@ func commandPresentation(entry activityPaneEntry) activitypresentation.Command {
 			Tail: segment.tail, TailOmitted: segment.omit, Changes: segment.changes,
 		}
 		if !segment.running && !segment.skipped && segment.exit == 0 {
-			value.Writer = execSegmentEdits(segment.source)
+			value.Writer = (activitypresentation.CommandSource{Script: segment.source, Display: frontends.ShellDisplaySource(segment.source), Directory: ""}).WritesFiles()
 		}
 		if segment.output != nil {
 			snapshot, _ := segment.output.Context(0)
@@ -70,5 +72,5 @@ func appServerCommandSource(command, directory string) activitypresentation.Comm
 	if !ok {
 		script = shellinstrumentation.ShOriginal(command)
 	}
-	return activitypresentation.CommandSource{Script: script, Display: toolActivityShellSource(appServerDisplayCommand(command)), Directory: directory}
+	return activitypresentation.CommandSource{Script: script, Display: frontends.ShellDisplaySource(appServerDisplayCommand(command)), Directory: directory}
 }

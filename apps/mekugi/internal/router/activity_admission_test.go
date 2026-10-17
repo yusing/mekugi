@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
@@ -20,7 +22,7 @@ func activityAdmissionRequest(t *testing.T, input []any) codexresponses.Request 
 }
 
 func TestUnnamedRecipientPreservesUnretainedPrefixMessage(t *testing.T) {
-	generated := assistantCommentaryMessage(subagentCommentaryMessageID("old"), "Old notice.")
+	generated := assistantCommentaryMessage(binding.SubagentMessageID("old"), "Old notice.")
 	envelope := map[string]any{"type": "agent_message", "author": "/root/sender", "content": []any{map[string]any{"type": "encrypted_content"}}}
 	fields := map[string]json.RawMessage{"input": mustTestJSON(t, []any{generated, envelope})}
 	if got := prepareSubagentInputEnvelopes(fields, "").replies; len(got) != 0 {

@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 )
 
@@ -16,7 +18,7 @@ func TestUISnapshotCommandSegmentRetentionNotice(t *testing.T) {
 		err  error
 	}{
 		{"command-segments-storage-busy", context.DeadlineExceeded},
-		{"command-segments-storage-failure", storageIOError(errors.New("open /workspace/replay/call-record.json: permission denied\n" + strings.Repeat("diagnostic detail ", 12) + "final-cause-marker"))},
+		{"command-segments-storage-failure", requestexecution.StorageIOError(errors.New("open /workspace/replay/call-record.json: permission denied\n" + strings.Repeat("diagnostic detail ", 12) + "final-cause-marker"))},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()

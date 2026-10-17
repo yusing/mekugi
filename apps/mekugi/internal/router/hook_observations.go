@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	json "encoding/json/v2"
@@ -60,7 +61,7 @@ func (u *appServerUI) restoredHookEvents(info binding.ThreadInfo) []restoredRoll
 	}
 	if store != nil && len(r.Runs) > 0 {
 		if err := store.Transaction(u.session.waitContext, u.session.waitWrites, func(tx *history.Transaction) error {
-			return storagePublicationError(tx.Retain(u.session.waitThread, u.session.waitLimits, history.HookObservationsName(u.session.cwd, info.ID)))
+			return requestexecution.StoragePublicationError(tx.Retain(u.session.waitThread, u.session.waitLimits, history.HookObservationsName(u.session.cwd, info.ID)))
 		}); err != nil {
 			u.restoreContentNotice("Hook observations for " + info.ID + " could not be retained: " + err.Error())
 		}

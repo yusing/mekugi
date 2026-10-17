@@ -3,6 +3,8 @@ package router
 import (
 	"slices"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+
 	"github.com/yusing/mekugi/contracts/observation"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -14,7 +16,7 @@ func commandOutputRows(item observation.Item) ([]activitypresentation.ChangeRow,
 	if rows := mchangesOutputRows(item); rows != nil || item.AggregatedOutput == nil {
 		return rows, activitypresentation.CommitKey{}
 	}
-	return activitypresentation.VCSOutputRows(toolActivityShellSource(appServerDisplayCommand(item.Command)), item.Cwd, *item.AggregatedOutput)
+	return activitypresentation.VCSOutputRows(frontends.ShellDisplaySource(appServerDisplayCommand(item.Command)), item.Cwd, *item.AggregatedOutput)
 }
 
 // A prior unclassified command may change the shell cwd. Do not enrich a later
@@ -25,7 +27,7 @@ func vcsSegmentCwd(cwd string, prior []commandSegment) string {
 		if segment.skipped {
 			continue
 		}
-		if !activitypresentation.VCSPreservesDirectory(toolActivityShellSource(segment.source)) {
+		if !activitypresentation.VCSPreservesDirectory(frontends.ShellDisplaySource(segment.source)) {
 			return ""
 		}
 	}

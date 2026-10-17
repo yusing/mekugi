@@ -8,6 +8,8 @@ import (
 	"errors"
 	"slices"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -206,7 +208,7 @@ type managedFile struct {
 // missing dependencies are published before the record referencing them.
 func (s *mekugiReplayStore) writeLegacySnapshotFiles(record managedFile, dependencies []string, missing []managedFile) error {
 	if err := s.retainFiles(append([]string{record.name}, dependencies...)...); err != nil {
-		return storageIOError(err)
+		return requestexecution.StorageIOError(err)
 	}
 	size := int64(len(record.data))
 	for _, file := range missing {
@@ -217,8 +219,8 @@ func (s *mekugiReplayStore) writeLegacySnapshotFiles(record managedFile, depende
 	}
 	for _, file := range missing {
 		if err := s.transaction.Write(file.name, file.pattern, file.data); err != nil {
-			return storageIOError(err)
+			return requestexecution.StorageIOError(err)
 		}
 	}
-	return storageIOError(s.transaction.Write(record.name, record.pattern, record.data))
+	return requestexecution.StorageIOError(s.transaction.Write(record.name, record.pattern, record.data))
 }

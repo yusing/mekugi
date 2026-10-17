@@ -73,7 +73,12 @@ detached from active state, including their target names and statuses.
 
 Activity interprets command source using shared shell facts and command argument
 grammar. Application adapters remove authenticated wrappers and supply the selected
-command directory. Classification describes the visible operation, not its effects:
+command directory.
+
+Tracked segments use this same source interpretation and writer classification.
+Their original script remains available for literal formatter and copy recognition;
+authenticated display source supplies operation text and fallback labels.
+Classification describes the visible operation, not its effects:
 
 | Label | Recognized source |
 | --- | --- |

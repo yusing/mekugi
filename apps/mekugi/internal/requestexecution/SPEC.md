@@ -26,6 +26,10 @@ failed transformation cannot become successful execution evidence. Cancellation,
 response-start timeout, stream inactivity and downstream disconnection retain
 their distinct diagnostics; missing terminal state remains a failure.
 
+Retained-publication diagnostics share one classification across request and native
+session consumers. Conflicting host facts, storage capacity and storage I/O remain
+distinct; classification never retries publication or execution.
+
 Private failure records, optional notices and debug bundles remain independent
 consumers. Sanitized stream metrics contain classification, not prompt or error
 content. Debug instructions distinguish local projection from the actual wire

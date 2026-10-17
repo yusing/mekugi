@@ -176,7 +176,7 @@ func TestLiveActivityRendersSpawnAssignment(t *testing.T) {
 	now := time.Now()
 	view := newActivityAdapter()
 	view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/explorer"}}, Entries: []activityPaneEntry{{
-		Seq: 1, Agent: "/root/explorer", Kind: "start", start: nativeSubagentStart(&request), Observed: now,
+		Seq: 1, Agent: "/root/explorer", Kind: "start", start: testActivityStart(&request), Observed: now,
 		assignment: &activityAssignment{id: "task-1", from: "/root", to: "/root/explorer", text: "Inspect parser.\n\n- Preserve behavior."},
 	}}})
 	view.setDisplayFilter(true, "/root/explorer")

@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
@@ -331,7 +333,7 @@ func TestServiceTierOverrideUsesEffectiveModel(t *testing.T) {
 				t.Fatalf("tier=%s want=%s", got, wantTier)
 			}
 			start := nativeSubagentStart(&forwarded)
-			if start == nil || start.model != wantModel || start.tier != strings.ReplaceAll(wantTier, "priority", "fast") {
+			if start == nil || start.Model != wantModel || start.Tier != strings.ReplaceAll(wantTier, "priority", "fast") {
 				t.Fatalf("start=%+v", start)
 			}
 		})
@@ -349,7 +351,7 @@ func TestSubagentStartServiceTier(t *testing.T) {
 			}
 		})
 		got := nativeSubagentStart(&request)
-		if got == nil || *got != (activityStart{model: "gpt-6-astra", effort: "high", tier: tc.want}) {
+		if got == nil || *got != (binding.SubagentSettings{Model: "gpt-6-astra", Effort: "high", Tier: tc.want}) {
 			t.Fatalf("tier=%s start=%+v", tc.tier, got)
 		}
 	}

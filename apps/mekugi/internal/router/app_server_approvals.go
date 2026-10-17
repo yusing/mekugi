@@ -3,6 +3,8 @@ package router
 import (
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	json "encoding/json/v2"
@@ -310,7 +312,7 @@ func (u *appServerUI) recordApproval(a *nativeApproval, outcome string) {
 		a.Thread, a.Turn = owner.thread, owner.turn
 		outcome += "\nCommand: " + a.Subject
 	}
-	entry := activityPaneEntry{Seq: u.session.next(), Kind: "tool", Text: activitypresentation.ShellSource(toolActivityShellSource(a.Subject), ""), Observed: u.now(),
+	entry := activityPaneEntry{Seq: u.session.next(), Kind: "tool", Text: activitypresentation.ShellSource(frontends.ShellDisplaySource(a.Subject), ""), Observed: u.now(),
 		native: &liveActivityNativeItem{thread: a.Thread, turn: a.Turn, item: a.Item, phase: "approval/updated", approval: outcome}}
 	if u.agents != nil {
 		entry.Agent = u.session.path(a.Thread)

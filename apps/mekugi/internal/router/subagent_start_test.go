@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
@@ -16,7 +18,15 @@ func TestSubagentStartHasOnlyObservedModelHeader(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := nativeSubagentStart(&request)
-	if got == nil || *got != (activityStart{model: "gpt-effective", effort: "high", tier: "fast"}) || strings.Contains(got.label(), "Private assignment body") {
+	if got == nil || *got != (binding.SubagentSettings{Model: "gpt-effective", Effort: "high", Tier: "fast"}) || strings.Contains(testActivityStart(&request).label(), "Private assignment body") {
 		t.Fatalf("native start = %+v", got)
 	}
+}
+
+func testActivityStart(request *codexresponses.Request) *activityStart {
+	observed := nativeSubagentStart(request)
+	if observed == nil {
+		return nil
+	}
+	return &activityStart{model: observed.Model, effort: observed.Effort, tier: observed.Tier}
 }

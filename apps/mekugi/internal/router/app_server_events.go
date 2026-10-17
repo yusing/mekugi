@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"context"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
+
 	"github.com/yusing/mekugi/libraries/persistence"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
@@ -621,7 +623,7 @@ func appServerCommandText(item observation.Item, cwd string) string {
 		}
 	}
 	if len(parts) == 0 {
-		return activitypresentation.ShellSource(toolActivityShellSource(appServerDisplayCommand(item.Command)), cwd)
+		return activitypresentation.ShellSource(frontends.ShellDisplaySource(appServerDisplayCommand(item.Command)), cwd)
 	}
 	return strings.Join(parts, "\n\n")
 }
