@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"iter"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/observation"
@@ -150,7 +152,7 @@ func (u *appServerUI) readRestoredChildren() error {
 		for _, item := range turn.Items {
 			if item.Type == "collabAgentToolCall" {
 				item.SenderThreadID = u.Thread
-				entries := u.restoredCollab(item, historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt, r.root.UpdatedAt)))
+				entries := u.collab(item, item.ID, historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt, r.root.UpdatedAt)), activitypresentation.HistoricalCollaboration)
 				u.applyRestoredActivity(entries)
 				for _, entry := range entries {
 					if main, ok := mainActivityEntry(entry); ok {
@@ -264,19 +266,6 @@ func (u *appServerUI) finishRestoredContent() error {
 		u.sessionPresentation().Status.SetText("Working")
 	}
 	return u.replayResumePending()
-}
-
-func (u *appServerUI) restoredCollab(item binding.ThreadItem, observed time.Time) []activityPaneEntry {
-	if item.Status == "completed" {
-		return u.session.collab(item, item.ID, observed)
-	}
-	var entries []activityPaneEntry
-	for _, receiver := range item.ReceiverThreadIDs {
-		entries = append(entries, activityPaneEntry{Seq: u.session.next(), Agent: u.session.path(receiver), Kind: "error", Observed: observed,
-			Text:   "Historical " + item.Tool + ": " + cmp.Or(item.Status, "unknown status") + "; delivery not confirmed",
-			native: &liveActivityNativeItem{thread: item.SenderThreadID, turn: "collaboration", item: item.ID + "\x00" + receiver, phase: "item/completed"}})
-	}
-	return entries
 }
 
 func historyTime(seconds int64) time.Time {
@@ -442,6 +431,6 @@ func (u *appServerUI) restoreActivityItem(info binding.ThreadInfo, turn binding.
 			*entries = append(*entries, exit)
 		}
 	case "collabAgentToolCall":
-		*entries = append(*entries, u.restoredCollab(item, observed)...)
+		*entries = append(*entries, u.collab(item, item.ID, observed, activitypresentation.HistoricalCollaboration)...)
 	}
 }

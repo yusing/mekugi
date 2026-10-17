@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -95,6 +96,21 @@ func TestNativeFailedCollaborationDoesNotClaimDelivery(t *testing.T) {
 		if entry.Source.Kind == "reply" || strings.Contains(entry.Source.Text, "Message sent") {
 			t.Fatalf("failed send claimed successful delivery: %+v", entry)
 		}
+	}
+}
+
+func TestNativeEmptyCollaborationRetainsParticipantOrder(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
+		"id": "send", "type": "collabAgentToolCall", "status": "completed", "tool": "sendMessage",
+		"senderThreadId": "sender", "receiverThreadIds": []string{"second", "first"}, "prompt": " \n",
+	}})
+	var threads []string
+	for _, agent := range u.session.agents {
+		threads = append(threads, agent.thread)
+	}
+	if !slices.Equal(threads, []string{"main", "sender", "second", "first"}) {
+		t.Fatalf("participant admission order changed: %v", threads)
 	}
 }
 

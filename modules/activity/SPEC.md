@@ -28,6 +28,13 @@ or substantive child output. Authenticated recipient-input observations suppleme
 assignment and directed-message bodies as display data, without waiting for a root
 provider response. Source identity deduplicates live and restored observations.
 
+Activity projects admitted collaboration completions into ordered spawn,
+assignment and directed-message facts. Live and replay completions with a completed
+or unspecified outcome retain delivery; restored history requires an explicit
+completed outcome and otherwise shows unconfirmed delivery. Blank assignments produce no message;
+a successful spawn still records its supplied settings. Adapters resolve caller
+labels, allocate feed sequence numbers and retain host-side effects.
+
 An `exec` cell has no host activity item of its own. A newly observed host
 `Script failed` result supplies one error row, including failures before any nested
 tool runs. Its first-line preview is bounded; the full error remains available to

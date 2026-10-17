@@ -407,13 +407,8 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: appServerEditText(item, s.cwd), CallID: id, Observed: now, native: native})
 			}
 		case "collabAgentToolCall":
-			if method == "item/completed" && (item.Status == "" || item.Status == "completed") {
-				if item.Tool == "spawnAgent" && u.proxy != nil {
-					for _, child := range item.ReceiverThreadIDs {
-						u.proxy.usage.MarkNew(child)
-					}
-				}
-				entries = append(entries, s.collab(item, id, now)...)
+			if method == "item/completed" {
+				entries = append(entries, u.collab(item, id, now, activitypresentation.ObservedCollaboration)...)
 			}
 		case "agentMessage":
 			if main {
@@ -501,42 +496,54 @@ func (u *appServerUI) flushStreamOutput() {
 	u.dirty = true
 }
 
-// collab turns one completed collaboration call into the assignment, message
-// or spawn it performed. Waits, listings and lifecycle calls add nothing.
-func (s *appServerSession) collab(item binding.ThreadItem, id string, now time.Time) []activityPaneEntry {
-	from := s.path(item.SenderThreadID)
+// collab binds neutral delivery facts to existing caller labels, feed identities
+// and accounting. History never marks a new live usage owner.
+func (u *appServerUI) collab(item binding.ThreadItem, id string, now time.Time, origin activitypresentation.CollaborationOrigin) []activityPaneEntry {
+	s := &u.session
+	deliveries, confirmed := activitypresentation.ProjectCollaboration(observation.Item{
+		ID: id, Tool: item.Tool, Status: item.Status, SenderThreadID: item.SenderThreadID,
+		ReceiverThreadIDs: item.ReceiverThreadIDs, Prompt: item.Prompt, Model: item.Model, ReasoningEffort: item.ReasoningEffort,
+	}, origin)
+	from := ""
+	if confirmed {
+		// Preserve sender-first observation order, including participants whose
+		// blank input or lifecycle call has no delivered message to display.
+		from = s.path(item.SenderThreadID)
+		for _, receiver := range item.ReceiverThreadIDs {
+			s.path(receiver)
+		}
+	}
 	var entries []activityPaneEntry
-	for _, receiver := range item.ReceiverThreadIDs {
-		first := len(entries)
-		to := s.path(receiver)
-		switch item.Tool {
-		case "spawnAgent":
-			if agent := s.agent(to); agent.settings.Model == "" {
-				agent.settings.Model, agent.settings.Effort = item.Model, item.ReasoningEffort
+	for _, d := range deliveries {
+		to := s.path(d.To)
+		entry := activityPaneEntry{Seq: s.next(), Agent: to, Kind: d.Kind, Observed: now}
+		if d.Kind == "error" {
+			entry.Text = d.Text
+		} else {
+			if d.AssignmentID != "" {
+				entry.assignment = &activityAssignment{id: d.AssignmentID, from: from, to: to, text: d.Text}
 			}
-			start := &activityStart{model: item.Model}
-			if item.Model != "" {
-				start.effort = item.ReasoningEffort
-			}
-			entry := activityPaneEntry{Seq: s.next(), Agent: to, Kind: "start", Observed: now, start: start}
-			if strings.TrimSpace(item.Prompt) != "" {
-				entry.assignment = &activityAssignment{id: id, from: from, to: to, text: item.Prompt}
-			}
-			entries = append(entries, entry)
-		case "sendInput", "followupTask":
-			if strings.TrimSpace(item.Prompt) != "" {
-				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: to, Kind: "assignment", Text: item.Prompt, Observed: now,
-					assignment: &activityAssignment{id: id + "\x00" + receiver, from: from, to: to, text: item.Prompt}})
-			}
-		case "sendMessage":
-			if strings.TrimSpace(item.Prompt) != "" {
-				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: from, Kind: "reply", Text: item.Prompt, Observed: now,
-					message: &activityMessage{from: from, to: to, text: item.Prompt}})
+			switch d.Kind {
+			case "start":
+				if origin == activitypresentation.ObservedCollaboration && u.proxy != nil {
+					u.proxy.usage.MarkNew(d.To)
+				}
+				if agent := s.agent(to); agent.settings.Model == "" {
+					agent.settings.Model, agent.settings.Effort = d.Model, d.Effort
+				}
+				entry.start = &activityStart{model: d.Model}
+				if d.Model != "" {
+					entry.start.effort = d.Effort
+				}
+			case "assignment":
+				entry.Text = d.Text
+			case "reply":
+				entry.Agent, entry.Text = from, d.Text
+				entry.message = &activityMessage{from: from, to: to, text: d.Text}
 			}
 		}
-		for i := first; i < len(entries); i++ {
-			entries[i].native = &liveActivityNativeItem{thread: item.SenderThreadID, turn: "collaboration", item: id + "\x00" + receiver, phase: "item/completed"}
-		}
+		entry.native = &liveActivityNativeItem{thread: d.From, turn: "collaboration", item: d.ID, phase: "item/completed"}
+		entries = append(entries, entry)
 	}
 	return entries
 }
