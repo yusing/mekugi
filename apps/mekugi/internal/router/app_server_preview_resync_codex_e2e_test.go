@@ -61,26 +61,7 @@ func TestAppServerPreviewResyncNativeCodex(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		// The application lock prevents preview drains while distinct removals
-		// fill the real module mailbox. Recovery still uses the native UI loop.
-		overflow := func() {
-			t.Helper()
-			review := testReview(auto)
-			review.mu.Lock()
-			defer review.mu.Unlock()
-			sub := review.subscriber
-			if sub == nil {
-				t.Fatal("native UI preview subscriber missing")
-			}
-			for n := range 33 {
-				auto.Update(previewmodel.Preview{ID: fmt.Sprintf("withdrawn-%d", n)}, true)
-			}
-			select {
-			case <-sub.PreviewGap():
-			default:
-				t.Fatal("preview mailbox overflow did not signal a gap")
-			}
-		}
+		overflow := func() { testReview(auto).TestPreviewOverflow(t) }
 		old, newest := preview("older", 80), preview("newest", 80)
 
 		auto.Update(old, false)

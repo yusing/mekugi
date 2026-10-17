@@ -7,6 +7,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	jsonv2 "encoding/json/v2"
 	"strings"
@@ -50,7 +51,7 @@ func (p *mekugiProxy) observeCodeModeFailures(thread, codeModeToolName string, r
 			continue
 		}
 		if text, failed := codeModeFailureText(binding.ExecutionOutputTexts(item["output"])); failed {
-			p.activity.collectEvent(activityEvent{thread: thread, source: "code-mode-failure\x00" + callID, kind: "error", callID: callID, text: text})
+			p.activity.Collect(activitypresentation.Supplement{Thread: thread, Source: "code-mode-failure\x00" + callID, Kind: "error", CallID: callID, Text: text})
 		}
 		if codeModeReturnedNothing(item["output"]) {
 			source := responses.StringField(call, "input")
@@ -58,7 +59,7 @@ func (p *mekugiProxy) observeCodeModeFailures(thread, codeModeToolName string, r
 				// The host ran the translated carrier, not the model's script.
 				source = cmp.Or(history.CarrierPayload, history.Script)
 			}
-			p.activity.noteUnreturned(thread, p.nativeTrace.ReadCell(thread, callID, source).ExecCommands())
+			p.activity.NoteUnreturned(thread, p.nativeTrace.ReadCell(thread, callID, source).ExecCommands())
 		}
 	}
 }

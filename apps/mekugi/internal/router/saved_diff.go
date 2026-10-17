@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
@@ -26,7 +28,7 @@ func (c *savedDiff) reset() {
 	c.awaitingResync = true
 }
 
-func (c *savedDiff) applyEvent(ctx context.Context, events ...reviewEvent) (bool, error) {
+func (c *savedDiff) applyEvent(ctx context.Context, events ...sessionreview.Event) (bool, error) {
 	next := *c
 	builder := presentation.NewBuilder(c.data)
 	changed, content := false, false

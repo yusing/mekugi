@@ -161,9 +161,9 @@ func TestDuplicateOutputEvidenceConsumersReadOriginal(t *testing.T) {
 	if !strings.Contains(string(items[3]["output"]), "same as") {
 		t.Fatal("failure body was not projected")
 	}
-	proxy.activity.attachNativePane("thread")
+	proxy.activity.Attach("thread")
 	found := false
-	for _, event := range proxy.activity.takeNativeActivity("thread") {
+	for _, event := range takeNativeActivity(proxy.activity, "thread") {
 		if event.CallID == "failed" && event.Kind == "error" {
 			found = true
 			if event.ErrorDetail != "exec script failed: "+strings.TrimPrefix(failure, "Script error:\n") {
@@ -506,9 +506,9 @@ func TestDuplicateOutputSummary(t *testing.T) {
 	trace.result("thread", "nested", "completed", map[string]any{"exit_code": 0})
 	trace.end("thread", "runtime")
 	duplicateTestPrepare(t, proxy, input, codexresponses.TurnMetadata{})
-	proxy.activity.attachNativePane("thread")
+	proxy.activity.Attach("thread")
 	found := false
-	for _, event := range proxy.activity.takeNativeActivity("thread") {
+	for _, event := range takeNativeActivity(proxy.activity, "thread") {
 		if event.Kind == "output_dedupe" && event.CallID == "nested" && event.Text == "repeated" {
 			found = true
 		}

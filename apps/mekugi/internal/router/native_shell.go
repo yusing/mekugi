@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+
 	"github.com/yusing/mekugi/contracts/activitydetail"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
@@ -135,7 +137,7 @@ func (u *terminalUI) preview(preview previewmodel.Preview, restored bool) {
 // before they can authorize previews or hydrate the replacement attachment.
 // Failed retained loading leaves preview delivery active without requesting
 // another durable barrier after every event.
-func (u *terminalUI) admitReviewEvents(ctx context.Context, sub *reviewSubscription, events ...reviewEvent) bool {
+func (u *terminalUI) admitReviewEvents(ctx context.Context, sub *sessionreview.Subscription, events ...sessionreview.Event) bool {
 	if sub.Invalidated() {
 		return false
 	}
@@ -147,7 +149,7 @@ func (u *terminalUI) admitReviewEvents(ctx context.Context, sub *reviewSubscript
 
 // applyDiff sends saved changes to the diff pane and live edit cards to
 // the shared dock. All edits use the router preview and capture owners.
-func (u *terminalUI) applyDiff(ctx context.Context, event reviewEvent) {
+func (u *terminalUI) applyDiff(ctx context.Context, event sessionreview.Event) {
 	switch event.Kind {
 	case "preview":
 		preview := event.Preview

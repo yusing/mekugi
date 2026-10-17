@@ -10,6 +10,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/legacycall"
@@ -79,7 +80,7 @@ func execDerivedUpstreamItem(derivedCallID, arguments string) map[string]json.Ra
 // first; the others keep a record naming it. An empty effect is retained
 // without a change ID, so replay neither reads the workspace again nor
 // allocates an ID for read-only work.
-func finalizeExecObservations(store *mekugiReplayStore, windows *execWindowRegistry, activity *subagentActivity, notice func(string, string, string, string), ctx context.Context, workspace string, members []execCompletion) error {
+func finalizeExecObservations(store *mekugiReplayStore, windows *execWindowRegistry, activity *sessioncontrol.Audience, notice func(string, string, string, string), ctx context.Context, workspace string, members []execCompletion) error {
 	var pending []execCompletion
 	for _, member := range members {
 		if member.history.ExecObservation == nil || !member.result.Terminal {

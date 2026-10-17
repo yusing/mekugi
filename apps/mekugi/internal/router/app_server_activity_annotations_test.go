@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/nativetrace"
 
@@ -97,14 +98,14 @@ func TestAppServerFailedCodeModeCellShowsItsError(t *testing.T) {
 		t.Run(map[bool]string{false: "main", true: "child"}[child], func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.view.Conversation = true
-			activity := newSubagentActivity()
-			activity.attachNativePane("main")
+			activity := sessioncontrol.NewAudience(nil)
+			activity.Attach("main")
 			proxy := &mekugiProxy{activity: activity}
 			setTestAppServerIntegration(u, proxy)
 			thread, view := "main", u.view
 			if child {
 				thread, view = "child", u.agents
-				activity.observe("child", "main", "/root/worker", true)
+				activity.Observe("child", "main", "/root/worker", true)
 				u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 			}
 			failed := `[{"type":"input_text","text":"Script failed\nWall time 0.0 seconds\nOutput:\n"},{"type":"input_text","text":"Script error:\nSyntaxError: Unexpected token '<<'\n    at cell:1"}]`
@@ -138,8 +139,8 @@ func TestAppServerFailedCodeModeCellShowsItsError(t *testing.T) {
 func TestAppServerUnreturnedCodeModeOutputIsNoted(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
-	activity := newSubagentActivity()
-	activity.attachNativePane("main")
+	activity := sessioncontrol.NewAudience(nil)
+	activity.Attach("main")
 	trace := newNativeTraceFixture(t)
 	proxy := &mekugiProxy{activity: activity, nativeTrace: nativetrace.New(trace.root)}
 	setTestAppServerIntegration(u, proxy)

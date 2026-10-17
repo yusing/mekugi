@@ -3,7 +3,9 @@ package router
 import (
 	"bytes"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
@@ -67,7 +69,7 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 	workspace := t.TempDir()
 	u := newAppServerSessionTestUI(t, workspace)
 	u.agents = u.shell.agents
-	activity := newSubagentActivity()
+	activity := sessioncontrol.NewAudience(nil)
 	setTestAppServerIntegration(u, &mekugiProxy{activity: activity})
 	u.resumeThread = "main"
 
@@ -199,8 +201,8 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 	// The child's next full-history request carries the restored tasks and
 	// its undelivered message again; live Activity must not show them twice,
 	// yet a new message repeating an older one's text is still new.
-	activity.observe("child", "main", "/root/reviewer", true)
-	activity.attachNativePane("main")
+	activity.Observe("child", "main", "/root/reviewer", true)
+	activity.Attach("main")
 	message := func(kind, text string) map[string]any {
 		return map[string]any{"type": "agent_message", "author": "/root", "recipient": "/root/reviewer", "content": []any{map[string]any{"type": "input_text",
 			"text": "Message Type: " + kind + "\nTask name: /root/reviewer\nSender: /root\nPayload:\n" + text}}}
@@ -217,12 +219,12 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 		t.Fatal(err)
 	}
 	fields := map[string]jsonv1.RawMessage{"model": []byte(`"gpt-6-luna"`), "input": input}
-	activity.collectSubagentStart("child", &codexresponses.Request{Fields: fields}, "/root/reviewer")
+	collectSubagentStart(activity, "child", &codexresponses.Request{Fields: fields}, "/root/reviewer")
 	for _, reply := range prepareSubagentInputEnvelopes(fields, "/root/reviewer").replies {
-		activity.collectEvent(activityEvent{thread: "child", source: reply.source, kind: "reply", text: reply.message.text, message: &reply.message})
+		activity.Collect(activitypresentation.Supplement{Thread: "child", Source: reply.source, Kind: "reply", Text: reply.message.text, Message: supplementMessage(&reply.message)})
 	}
 	var live []string
-	for _, entry := range activity.takeNativeActivity("main") {
+	for _, entry := range takeNativeActivity(activity, "main") {
 		live = append(live, summary(entry))
 	}
 	if want := []string{"assignment|Now check the docs.", "reply|/root->/root/reviewer|Keep going."}; !slices.Equal(live, want) {
@@ -242,10 +244,10 @@ func TestAppServerResumeDefersHistoryButKeepsActiveTurn(t *testing.T) {
 		t.Fatalf("resume lost the active turn or rendered early: turn=%q entries=%+v", u.Turn, u.view.Entries)
 	}
 	// Attach only the activity collector.
-	activity := newSubagentActivity()
+	activity := sessioncontrol.NewAudience(nil)
 	setTestAppServerIntegration(u, &mekugiProxy{activity: activity})
-	activity.attachNativePane("saved")
-	activity.collect("saved", "late", "error", "exec script failed: late")
+	activity.Attach("saved")
+	activity.Collect(activitypresentation.Supplement{Thread: "saved", Source: "late", Kind: "error", Text: "exec script failed: late"})
 	appServerTestMessage(t, u, `{"id":2,"result":{"data":[],"nextCursor":null}}`)
 	if len(u.view.Entries) != 0 {
 		t.Fatalf("observed activity preceded resumed history: %+v", u.view.Entries)

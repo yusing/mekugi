@@ -120,6 +120,10 @@ its notifications never become Main observations. Closing the dock drops its
 visible exchange, not pending host correlation.
 
 Invocation-local observations bridge provider generation and interactive control.
+Session control owns authenticated ancestry and the attached audience used for
+auxiliary notices and Activity supplements. Conflicting identity remains invalid
+for the invocation. Activity owns supplement retention and deduplication; terminal
+consumers receive detached facts rather than access to the ancestry registry.
 Question answers wait for matching tool-input generation to finish; ordinary
 steers remain available. Generation completion is independent of host execution,
 preview availability and command completion. Request cleanup removes only its own

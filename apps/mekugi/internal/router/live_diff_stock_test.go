@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+
 	previewbinding "github.com/yusing/mekugi/modules/livepreview/codexbinding"
 
 	"github.com/yusing/mekugi/modules/livepreview/projection"
@@ -430,7 +432,7 @@ func TestStockPatchFinalPreviewSurvivesTransportCancellation(t *testing.T) {
 	}
 }
 
-func waitLiveDiffWorkerPreview(t *testing.T, broker *previewmodel.Session, sub *reviewSubscription, match func(previewmodel.Preview) bool) previewmodel.Preview {
+func waitLiveDiffWorkerPreview(t *testing.T, broker *previewmodel.Session, sub *sessionreview.Subscription, match func(previewmodel.Preview) bool) previewmodel.Preview {
 	t.Helper()
 	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
@@ -528,7 +530,7 @@ func TestLiveDiffCodeModeEscapedPatchMarkerDoesNotLeakScript(t *testing.T) {
 	}
 }
 
-func newLiveDiffWorkerTest(t *testing.T, workspace string) (*previewmodel.Session, *reviewSubscription, *previewbinding.Stream) {
+func newLiveDiffWorkerTest(t *testing.T, workspace string) (*previewmodel.Session, *sessionreview.Subscription, *previewbinding.Stream) {
 	t.Helper()
 	broker := newLivePreview(t.Context())
 	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})

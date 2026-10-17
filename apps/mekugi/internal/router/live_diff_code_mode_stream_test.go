@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+
 	previewbinding "github.com/yusing/mekugi/modules/livepreview/codexbinding"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
@@ -208,7 +210,7 @@ func TestLiveDiffPartialShellUsesStreamedWorkdir(t *testing.T) {
 	}
 }
 
-func newLiveDiffCodeModeWorkerTest(t *testing.T, workspace string) (*previewmodel.Session, *reviewSubscription, *previewbinding.Stream) {
+func newLiveDiffCodeModeWorkerTest(t *testing.T, workspace string) (*previewmodel.Session, *sessionreview.Subscription, *previewbinding.Stream) {
 	t.Helper()
 	broker := newLivePreview(t.Context())
 	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})

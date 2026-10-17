@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"context"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 	previewbinding "github.com/yusing/mekugi/modules/livepreview/codexbinding"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
@@ -42,8 +45,8 @@ type mekugiProxy struct {
 	registry         *frontends.Registry
 	inputProjections []binding.InputProjection
 	usage            *accounting.Service
-	review           *savedReview
-	activity         *subagentActivity
+	review           *sessionreview.Review
+	activity         *sessioncontrol.Audience
 	guard            *shellApprovalServer
 	execTrack        *segments.Observer // Set for the UI when command shells are tracked.
 	skillsManager    bool
@@ -59,17 +62,15 @@ func newMekugiProxy(registry *frontends.Registry, projections []binding.InputPro
 	if registry == nil {
 		return nil
 	}
-	activity := newSubagentActivity()
 	proxy := &mekugiProxy{
 		registry:         registry,
 		calls:            service.Calls(),
-		review:           newSavedReview(context.Background(), nil),
+		review:           sessionreview.New(context.Background(), nil, nil),
 		inputProjections: slices.Clone(projections),
 		usage:            usage,
-		activity:         activity,
 		execWindows:      &execWindowRegistry{},
 	}
-	activity.notice = func(category, message string) { proxy.notice("", "", category, message) }
+	proxy.activity = sessioncontrol.NewAudience(func(category, message string) { proxy.notice("", "", category, message) })
 	return proxy
 }
 
@@ -89,7 +90,7 @@ func (p *mekugiProxy) Close() error {
 	}
 	p.guard.close()
 	p.calls.Close()
-	p.activity.close()
+	p.activity.Close()
 	return nil
 }
 
@@ -272,13 +273,13 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 	// Only accepted requests may change retained ancestry or collect activity.
 	activityThreadID := ""
 	if metadata.ActivityIdentityInvalid || metadata.ThreadID != "" && metadata.ThreadID != threadID {
-		p.activity.invalidate(threadID)
+		p.activity.Invalidate(threadID)
 	} else {
 		name := metadata.AgentName
 		if name == "" && metadata.SubagentKind == "" {
 			name = "/root"
 		}
-		if p.activity.observe(threadID, metadata.ParentThreadID, name, metadata.SubagentKind != "") {
+		if p.activity.Observe(threadID, metadata.ParentThreadID, name, metadata.SubagentKind != "") {
 			activityThreadID = threadID
 		}
 	}
@@ -286,20 +287,20 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 		thread := activityThreadID
 		if recipient == "/root" {
 			// Display directed replies under the proven sender when available.
-			if child := p.activity.childThread(activityThreadID, reply.message.from); child != "" {
+			if child := p.activity.ChildThread(activityThreadID, reply.message.from); child != "" {
 				thread = child
 			}
 		}
-		p.activity.collectEvent(activityEvent{thread: thread, source: reply.source, kind: "reply", text: reply.message.text, message: &reply.message})
+		p.activity.Collect(activitypresentation.Supplement{Thread: thread, Source: reply.source, Kind: "reply", Text: reply.message.text, Message: supplementMessage(&reply.message)})
 	}
 	if metadata.SubagentKind == "thread_spawn" {
 		// The collector deduplicates this source by stable child thread, including
 		// across routing-session changes, and forwards it only to the observed root.
-		p.activity.collectSubagentStart(activityThreadID, request, metadata.AgentName)
+		collectSubagentStart(p.activity, activityThreadID, request, metadata.AgentName)
 	}
 	if activityThreadID != "" {
 		model := request.Model()
-		p.activity.beginResponse(activityThreadID, grok.IsModel(model) || opencode.IsModel(model), time.Now())
+		p.activity.BeginResponse(activityThreadID, grok.IsModel(model) || opencode.IsModel(model), time.Now())
 	}
 	transform := &mekugiResponseTransform{
 		ctx:              ctx,
@@ -371,7 +372,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 			if commands := p.nativeTrace.ReadCell(activityThreadID, call, source).ExecCommands(); len(commands) > 0 {
 				target = commands[len(commands)-1]
 			}
-			p.activity.collectEvent(activityEvent{thread: activityThreadID, source: "output-dedupe\x00" + call, kind: "output_dedupe", callID: target, text: label})
+			p.activity.Collect(activitypresentation.Supplement{Thread: activityThreadID, Source: "output-dedupe\x00" + call, Kind: "output_dedupe", CallID: target, Text: label})
 		}
 	}
 	return transform, nil

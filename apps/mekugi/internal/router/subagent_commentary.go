@@ -6,12 +6,16 @@ import (
 	"fmt"
 	"strings"
 
+	sessioncontrol "github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 // Source: openai/codex codex-rs/protocol/src/protocol.rs.
 // Inter-agent message shapes visible at the Responses boundary.
+
+const maxActivityEventsPerThread = 64
 
 func subagentCommentaryMessageID(seed string) string {
 	digest := sha256.Sum256([]byte(seed))
@@ -39,7 +43,7 @@ func subagentStart(model, effort, tier string) *activityStart {
 		tier = "fast"
 	}
 	effort = strings.TrimSpace(effort)
-	if model == "" || len(model)+len(effort)+len(tier) > maxActivityMetadataBytes || strings.ContainsAny(model+effort+tier, "\r\n\x00") {
+	if model == "" || len(model)+len(effort)+len(tier) > sessioncontrol.MaxActivityMetadataBytes || strings.ContainsAny(model+effort+tier, "\r\n\x00") {
 		return nil
 	}
 	return &activityStart{model: model, effort: effort, tier: tier}

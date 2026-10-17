@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
@@ -30,15 +32,15 @@ func savedReviewLoaderFixture(t *testing.T) (*savedReviewLoader, *mekugiReplaySt
 	return loader, store, t.TempDir()
 }
 
-func savedReviewLoaderScope(workspace string, resync bool, threads ...string) reviewEvent {
+func savedReviewLoaderScope(workspace string, resync bool, threads ...string) sessionreview.Event {
 	members := make(map[string]bool)
 	for _, thread := range threads {
 		members[thread] = true
 	}
-	return reviewEvent{Kind: "scope", Resync: resync, Scope: &previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: members}}}
+	return sessionreview.Event{Kind: "scope", Resync: resync, Scope: &previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: members}}}
 }
 
-func savedReviewLoaderEnqueue(t *testing.T, loader *savedReviewLoader, event reviewEvent) {
+func savedReviewLoaderEnqueue(t *testing.T, loader *savedReviewLoader, event sessionreview.Event) {
 	t.Helper()
 	if err := loader.enqueue(event); err != nil {
 		t.Fatal(err)
@@ -129,7 +131,7 @@ func TestSavedReviewLoaderPublishesImmutableAtomicReceiptData(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("read retained fixture: found=%v error=%v", found, err)
 	}
-	savedReviewLoaderEnqueue(t, loader, reviewEvent{Kind: "change", Changes: []reviewChange{{Workspace: workspace, Thread: "main", ID: record.History.ChangeID, Correlation: "late", Calls: []string{"late", "missing"}}}})
+	savedReviewLoaderEnqueue(t, loader, sessionreview.Event{Kind: "change", Changes: []sessionreview.Change{{Workspace: workspace, Thread: "main", ID: record.History.ChangeID, Correlation: "late", Calls: []string{"late", "missing"}}}})
 	result := savedReviewLoaderResult(t, loader)
 	if accepted, err := loader.accept(result); accepted || err == nil {
 		t.Fatalf("partial read accepted=%v error=%v", accepted, err)
@@ -219,7 +221,7 @@ func TestSavedReviewLoaderBacklogOverflowResyncsRetainedEvidence(t *testing.T) {
 	for i := range 34 {
 		call := fmt.Sprintf("edit-%02d", i)
 		liveDiffScopeCapture(t, store, workspace, "blocked-child", call, filepath.Join(workspace, call+".go"), "before", "after")
-		savedReviewLoaderEnqueue(t, loader, reviewEvent{Kind: "change", Changes: []reviewChange{{Workspace: workspace, Thread: "blocked-child", Calls: []string{call}}}})
+		savedReviewLoaderEnqueue(t, loader, sessionreview.Event{Kind: "change", Changes: []sessionreview.Change{{Workspace: workspace, Thread: "blocked-child", Calls: []string{call}}}})
 	}
 	if !loader.resync || len(loader.pending) != 0 {
 		t.Fatal("durable backlog overflow failed to request a bounded resync")
@@ -247,7 +249,7 @@ func TestSavedReviewLoaderOfflineHasNoWorker(t *testing.T) {
 	if u.shell.diffFailure != "" || !u.shell.saved.scope.Workspaces["/workspace"]["main"] || u.shell.saved.data.Publication.Counts.Net != nil {
 		t.Fatal("attachment without retained storage rejected scope or claimed known counts")
 	}
-	u.shell.applyDiff(t.Context(), reviewEvent{Kind: "change", Changes: []reviewChange{{Workspace: "/workspace", Thread: "main", ID: "amber1", Calls: []string{"call"}}}})
+	u.shell.applyDiff(t.Context(), sessionreview.Event{Kind: "change", Changes: []sessionreview.Change{{Workspace: "/workspace", Thread: "main", ID: "amber1", Calls: []string{"call"}}}})
 	if u.shell.diffFailure == "" {
 		t.Fatal("referencing change without storage did not report unavailable evidence")
 	}

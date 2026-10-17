@@ -4,6 +4,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/contracts/scope"
@@ -30,7 +32,7 @@ type terminalUI struct {
 	reviewScope   previewmodel.Scope // Admitted preview authority, independent of retained loading.
 	agents        *activityAdapter
 	main          *appServerUI
-	review        *savedReview
+	review        *sessionreview.Review
 	width, height int
 	terminalsession.Shell
 	diffUnseen  bool // Saved changes arrived while Diff was closed.

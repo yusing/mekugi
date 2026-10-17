@@ -26,8 +26,8 @@ func TestRecordTransactionsEvidenceFailureKeepsMembershipUnpublished(t *testing.
 		t.Fatal(err)
 	}
 	retentionTestPut(t, store, ctx, "/w", "conflict")
-	var delivered []reviewChange
-	store.liveDiff = func(updates []reviewChange) { delivered = append(delivered, updates...) }
+	var delivered []changes.Update
+	store.liveDiff = func(updates []changes.Update) { delivered = append(delivered, updates...) }
 	evidence := snapshotTestHistory()
 	evidence.ChangeID, evidence.CorrelationID, evidence.sequence = id, "capture", 1
 	batch := map[string]mekugiHistory{

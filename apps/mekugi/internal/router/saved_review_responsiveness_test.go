@@ -5,6 +5,8 @@ package router
 import (
 	"context"
 	"encoding/json/jsontext"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
@@ -88,7 +90,7 @@ func TestSavedReviewLoadingSeparatesPreviewAuthorityFromRestoredInput(t *testing
 				}
 			}
 			preview := previewmodel.Preview{ID: "stream", Workspace: workspace, Thread: "blocked-child", Caller: "/root/worker", Input: "live edit", Status: "active"}
-			u.shell.applyDiff(t.Context(), reviewEvent{Kind: "preview", Preview: &preview})
+			u.shell.applyDiff(t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
 			revealNativeDock(u.shell)
 			if u.shell.liveDock.Views[preview.ID] == nil || u.shell.saved.scope.Workspaces[workspace][preview.Thread] {
 				t.Fatal("preview waited for retained scope hydration")
@@ -126,7 +128,7 @@ func TestSavedReviewLoadingSeparatesPreviewAuthorityFromRestoredInput(t *testing
 					t.Fatal("failed Diff requested another subscription after editor reattachment")
 				}
 				preview.ID = "after-editor"
-				if !u.shell.admitReviewEvents(t.Context(), sub, reviewEvent{Kind: "preview", Preview: &preview}) {
+				if !u.shell.admitReviewEvents(t.Context(), sub, sessionreview.Event{Kind: "preview", Preview: &preview}) {
 					t.Fatal("failed Diff forced resubscription during preview delivery")
 				}
 				revealNativeDock(u.shell)

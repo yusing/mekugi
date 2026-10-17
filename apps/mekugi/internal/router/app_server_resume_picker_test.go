@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -356,7 +358,7 @@ func TestLiveDiffResetScopeResynchronizes(t *testing.T) {
 	testReview(auto).IncludeThread(workspace, "old", true)
 	c := savedDiff{store: store, data: new(presentation.Snapshot), coverage: "CONNECTING"}
 	sub := testReview(auto).Subscribe()
-	apply := func(event reviewEvent) {
+	apply := func(event sessionreview.Event) {
 		t.Helper()
 		if _, err := c.applyEvent(t.Context(), event); err != nil {
 			t.Fatal(err)

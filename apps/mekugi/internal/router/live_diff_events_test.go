@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
@@ -34,7 +36,7 @@ func liveDiffTestBroker(t *testing.T, store *mekugiReplayStore, scope previewmod
 	return broker, cancel
 }
 
-func waitLiveDiffChange(t *testing.T, sub *reviewSubscription) reviewChange {
+func waitLiveDiffChange(t *testing.T, sub *sessionreview.Subscription) sessionreview.Change {
 	t.Helper()
 	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
@@ -80,7 +82,7 @@ func TestLiveDiffDirectPublicationAndDurableReload(t *testing.T) {
 	}
 }
 
-func waitLiveDiffEvent(t *testing.T, sub *reviewSubscription, match func(reviewEvent) bool) reviewEvent {
+func waitLiveDiffEvent(t *testing.T, sub *sessionreview.Subscription, match func(sessionreview.Event) bool) sessionreview.Event {
 	t.Helper()
 	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
@@ -160,7 +162,7 @@ func TestLiveDiffJSONBatchKeepsFollowAndRecency(t *testing.T) {
 	if err := store.put(t.Context(), workspace, histories); err != nil {
 		t.Fatal(err)
 	}
-	event := waitLiveDiffEvent(t, sub, func(e reviewEvent) bool { return e.Kind == "change" })
+	event := waitLiveDiffEvent(t, sub, func(e sessionreview.Event) bool { return e.Kind == "change" })
 	if len(event.Changes) != 2 || len(sub.Events()) != 0 {
 		t.Fatalf("one durable batch was split into display updates: %+v", event)
 	}
@@ -251,14 +253,14 @@ func TestLiveDiffPreviewScriptPayloadBound(t *testing.T) {
 
 func TestLiveDiffTurnEventValidation(t *testing.T) {
 	for _, status := range []string{"active", "completed"} {
-		if err := validateLiveDiffEvent(reviewEvent{Kind: "turn", Status: status, TurnRevision: 1}); err != nil {
+		if err := validateLiveDiffEvent(sessionreview.Event{Kind: "turn", Status: status, TurnRevision: 1}); err != nil {
 			t.Fatalf("%s: %v", status, err)
 		}
 	}
-	if err := validateLiveDiffEvent(reviewEvent{Kind: "turn", Status: "unknown", TurnRevision: 1}); err == nil {
+	if err := validateLiveDiffEvent(sessionreview.Event{Kind: "turn", Status: "unknown", TurnRevision: 1}); err == nil {
 		t.Fatal("accepted unknown turn status")
 	}
-	if err := validateLiveDiffEvent(reviewEvent{Kind: "turn", Status: "active"}); err == nil {
+	if err := validateLiveDiffEvent(sessionreview.Event{Kind: "turn", Status: "active"}); err == nil {
 		t.Fatal("accepted turn event without revision")
 	}
 }

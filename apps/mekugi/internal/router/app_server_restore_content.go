@@ -184,7 +184,7 @@ func (u *appServerUI) readRestoredRollouts() {
 		r.itemAt[info.ID] = rollout.itemAt
 		for _, event := range rollout.events {
 			if event.repeated {
-				activity.markRestored(info.ID, event.entry)
+				activity.Restore(activitypresentation.Supplement{Thread: info.ID, Kind: event.entry.Kind, Assignment: supplementAssignment(event.entry.assignment), Message: supplementMessage(event.entry.message)})
 			}
 			p := &restoredPlacement{entry: event.entry, turn: event.turn, anchor: event.anchor, at: event.at}
 			p.entry.Observed, p.entry.Text = event.at, activitypresentation.ClipSupplementMessage(event.entry.Text)

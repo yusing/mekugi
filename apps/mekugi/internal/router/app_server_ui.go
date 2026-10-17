@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"context"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -103,8 +105,8 @@ type appServerUI struct {
 	agents                  *activityAdapter
 	controlObservations     *sessioncontrol.Observations
 	usage                   *accounting.Service
-	audience                *subagentActivity
-	review                  *savedReview
+	audience                *sessioncontrol.Audience
+	review                  *sessionreview.Review
 	execWindows             *execWindowRegistry
 	nativeTrace             *nativetrace.Reader
 	retained                *mekugiReplayStore
@@ -236,7 +238,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 		defer u.shell.diffScreen.Close()
 		defer func() { u.commits.Close() }()
 		if u.audience != nil {
-			defer u.audience.releasePane()
+			defer u.audience.Detach()
 		}
 		defer c.Input.Close()
 		defer u.discardDraftImages()
@@ -771,7 +773,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				u.agents.apply(activityPaneEvent{Kind: "agents", Agents: u.session.roster()})
 			}
 			if u.audience != nil {
-				u.audience.attachNativePane(u.Thread)
+				u.audience.Attach(u.Thread)
 			}
 			// Resumed history is applied once the roster is read, so Main can
 			// follow child activity in order. An active snapshot keeps its
@@ -1328,7 +1330,7 @@ func (u *appServerUI) ensureShell() {
 	u.agents.mainView = u.view
 	store, review := u.retained, u.review
 	if review == nil {
-		review = newSavedReview(u.ctx, nil)
+		review = sessionreview.New(u.ctx, nil, nil)
 	}
 	u.agents.Bare = true
 	shell := &terminalUI{main: u, agents: u.agents, review: review, diffScreen: new(terminalsession.DiffScreen)}
@@ -1377,9 +1379,9 @@ func (u *appServerUI) applyObservedActivity() {
 	if u.audience == nil {
 		return
 	}
-	entries := u.audience.takeNativeActivity(u.Thread)
-	for _, start := range u.audience.takeRequestStarts(u.Thread) {
-		entries = append(entries, u.transcriptUpdates(u.session.providerStarted(start.thread, start.at), false)...)
+	entries := takeNativeActivity(u.audience, u.Thread)
+	for _, start := range u.audience.TakeStarts(u.Thread) {
+		entries = append(entries, u.transcriptUpdates(u.session.providerStarted(start.Thread, start.At), false)...)
 	}
 	for i := range entries {
 		entries[i].Seq = u.session.next()
@@ -1388,8 +1390,8 @@ func (u *appServerUI) applyObservedActivity() {
 		u.applyActivity(entries, nil)
 		u.dirty = true
 	}
-	for _, ref := range u.audience.takeUnreturned(u.Thread) {
-		if main, activity := u.view.markUnreturned(ref.thread, ref.call), u.agents.markUnreturned(ref.thread, ref.call); main || activity {
+	for _, ref := range u.audience.TakeUnreturned(u.Thread) {
+		if main, activity := u.view.markUnreturned(ref.Thread, ref.Call), u.agents.markUnreturned(ref.Thread, ref.Call); main || activity {
 			u.dirty = true
 		}
 	}

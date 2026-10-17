@@ -3,6 +3,8 @@ package router
 import (
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	json "encoding/json/v2"
@@ -165,14 +167,14 @@ func TestAppServerSessionDocksSharedPreviewsByCaller(t *testing.T) {
 	if len(u.shell.liveDock.Order) != 0 {
 		t.Fatal("app-server reconstructed a duplicate projection")
 	}
-	u.shell.applyDiff(t.Context(), reviewEvent{Kind: "preview", Preview: &preview})
+	u.shell.applyDiff(t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
 	revealNativeDock(u.shell)
 	card := u.shell.liveDock.Views["patch"].Current
 	if len(card.Files) != 1 || !strings.Contains(card.Files[0].Diff, "+package b") || strings.Contains(card.Status, "cannot be projected") {
 		t.Fatalf("shared preview lost: %+v", card)
 	}
 	preview.Complete = true
-	u.shell.applyDiff(t.Context(), reviewEvent{Kind: "preview", Preview: &preview})
+	u.shell.applyDiff(t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
 	revealNativeDock(u.shell)
 	if !u.shell.liveDock.Views["patch"].Complete {
 		t.Fatal("shared completion lost")
@@ -185,18 +187,18 @@ func TestAppServerSessionDocksSharedPreviewsByCaller(t *testing.T) {
 		}
 	}
 	preview.ID, preview.Thread, preview.Caller, preview.Tool = "exec", "child", "/root/worker", nativeExecCommandToolName
-	u.shell.applyDiff(t.Context(), reviewEvent{Kind: "preview", Preview: &preview})
+	u.shell.applyDiff(t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
 	revealNativeDock(u.shell)
 	if u.shell.liveDock.Views["exec"] != nil {
 		t.Fatal("completion-only shell preview flashed a dock")
 	}
 	preview.Complete = false
-	u.shell.applyDiff(t.Context(), reviewEvent{Kind: "preview", Preview: &preview})
+	u.shell.applyDiff(t.Context(), sessionreview.Event{Kind: "preview", Preview: &preview})
 	revealNativeDock(u.shell)
 	if u.shell.liveDock.Views["exec"] == nil {
 		t.Fatal("child preview missing from shared dock")
 	}
-	u.shell.applyDiff(t.Context(), reviewEvent{Kind: "turn", TurnRevision: 1, Status: "completed"})
+	u.shell.applyDiff(t.Context(), sessionreview.Event{Kind: "turn", TurnRevision: 1, Status: "completed"})
 	if u.shell.DiffOpen {
 		t.Fatal("completed turn opened saved diff")
 	}

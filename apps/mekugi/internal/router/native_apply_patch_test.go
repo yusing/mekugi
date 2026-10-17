@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/backends/codex/nativetrace"
@@ -218,9 +219,9 @@ func TestCodeModePatchNeedsTerminalResultAndNeverClaimsNestedSuccess(t *testing.
 					t.Fatal(err)
 				}
 			}
-			proxy.activity = newSubagentActivity()
-			proxy.activity.observe("root", "", "/root", false)
-			proxy.activity.observe("thread-1", "root", "/root/editor", true)
+			proxy.activity = sessioncontrol.NewAudience(nil)
+			proxy.activity.Observe("root", "", "/root", false)
+			proxy.activity.Observe("thread-1", "root", "/root/editor", true)
 			reconcile(items)
 			history, found, err := proxy.replayStore.lookup(transform.ctx, workspace, legacycall.PatchCallID("code-call", 0))
 			if err != nil || !found {

@@ -9,8 +9,8 @@ import (
 func TestMainResponseUsageIsolationAtRequestBoundary(t *testing.T) {
 	p := newManagedMekugiProxy(t)
 	root, _ := prepareActivityTest(t, p, "session", "thread", "", "/root", nil)
-	p.activity.observe("child", "thread", "/root/child", true)
-	p.activity.observe("other", "", "/root", false)
+	p.activity.Observe("child", "thread", "/root/child", true)
+	p.activity.Observe("other", "", "/root", false)
 	counts := inference.Usage{InputTokens: 100, UncachedInputTokens: 100, OutputTokens: 20}
 	root.ObserveUsage(counts)
 	root.Close()

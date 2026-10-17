@@ -3,6 +3,7 @@ package router
 import (
 	"bytes"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	json "encoding/json/v2"
@@ -65,14 +66,14 @@ func TestAppServerPublicSummaryNotifications(t *testing.T) {
 
 func TestAppServerOldTurnCompletionPreservesCurrentTranscript(t *testing.T) {
 	u, at := newActiveWorkTestUI(t)
-	activity := newSubagentActivity()
-	activity.attachNativePane("main")
-	activity.observe("child", "main", "/root/worker", true)
+	activity := sessioncontrol.NewAudience(nil)
+	activity.Attach("main")
+	activity.Observe("child", "main", "/root/worker", true)
 	setTestAppServerIntegration(u, &mekugiProxy{activity: activity})
 	u.agents.setDisplayFilter(false, "/root/worker")
 	wait := binding.ThreadItem{ID: "old-wait", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress"}
 	reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "old", "item": wait})
-	activity.beginResponse("child", true, at.Add(-3*time.Second))
+	activity.BeginResponse("child", true, at.Add(-3*time.Second))
 	u.applyObservedActivity()
 	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "current"}})
 	oldEnd := map[string]any{"threadId": "child", "turn": map[string]any{"id": "old", "status": "completed"}}
@@ -101,7 +102,7 @@ func TestAppServerOldTurnCompletionPreservesCurrentTranscript(t *testing.T) {
 		t.Fatalf("matching turn did not settle its summary and final: summary=%v final=%v entries=%+v", summary, final, u.agents.Entries)
 	}
 	assertAgentWork(t, u, "child", *at, 2*time.Second, false)
-	activity.beginResponse("child", true, time.Now())
+	activity.BeginResponse("child", true, time.Now())
 	u.applyObservedActivity()
 	reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "without-start", "status": "interrupted"}})
 	if got := ansi.Strip(strings.Join(u.agents.RenderFeed(90, 40).Lines, "\n")); strings.Contains(got, "Thinking") {
@@ -143,11 +144,11 @@ func TestAppServerClosedCompletionKeepsCurrentTurnSelection(t *testing.T) {
 	u, _ := newActiveWorkTestUI(t)
 	u.agents.setDisplayFilter(false, "/root/worker")
 	reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "old", "status": "completed"}})
-	activity := newSubagentActivity()
-	activity.attachNativePane("main")
-	activity.observe("child", "main", "/root/worker", true)
+	activity := sessioncontrol.NewAudience(nil)
+	activity.Attach("main")
+	activity.Observe("child", "main", "/root/worker", true)
 	setTestAppServerIntegration(u, &mekugiProxy{activity: activity})
-	activity.beginResponse("child", true, u.now())
+	activity.BeginResponse("child", true, u.now())
 	u.applyObservedActivity()
 	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "current"}})
 	reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "current", "item": map[string]any{"id": "answer", "type": "agentMessage", "text": "Current answer"}})
@@ -414,9 +415,9 @@ func TestThinkingElapsedNamesWholeSecondsOnly(t *testing.T) {
 func TestAppServerThinkingFromRequestStart(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
-	activity := newSubagentActivity()
-	activity.attachNativePane("main")
-	activity.observe("child", "main", "/root/worker", true)
+	activity := sessioncontrol.NewAudience(nil)
+	activity.Attach("main")
+	activity.Observe("child", "main", "/root/worker", true)
 	setTestAppServerIntegration(u, &mekugiProxy{activity: activity})
 	reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 	u.agents.setDisplayFilter(false, "/root/worker")
@@ -425,7 +426,7 @@ func TestAppServerThinkingFromRequestStart(t *testing.T) {
 	}
 	start := func(thread string, ago time.Duration) {
 		t.Helper()
-		activity.beginResponse(thread, true, time.Now().Add(-ago))
+		activity.BeginResponse(thread, true, time.Now().Add(-ago))
 		u.applyObservedActivity()
 	}
 	thinkingRows := func(view *activityAdapter) int {
@@ -485,13 +486,13 @@ func TestAppServerThinkingFromRequestStart(t *testing.T) {
 	}
 
 	// Only providers streaming untitled reasoning start a block.
-	activity.beginResponse("main", false, time.Now())
-	if starts := activity.takeRequestStarts("main"); len(starts) != 0 {
+	activity.BeginResponse("main", false, time.Now())
+	if starts := activity.TakeStarts("main"); len(starts) != 0 {
 		t.Fatalf("Codex-summarized request started a thinking block: %+v", starts)
 	}
-	activity.observe("other", "", "/root", false)
-	activity.beginResponse("other", true, time.Now())
-	if starts := activity.takeRequestStarts("main"); len(starts) != 0 || len(activity.takeRequestStarts("main")) != 0 {
+	activity.Observe("other", "", "/root", false)
+	activity.BeginResponse("other", true, time.Now())
+	if starts := activity.TakeStarts("main"); len(starts) != 0 || len(activity.TakeStarts("main")) != 0 {
 		t.Fatalf("request start crossed roots: %+v", starts)
 	}
 }
@@ -502,9 +503,9 @@ func TestAppServerDuplicateSummaryCompletionKeepsNextThinking(t *testing.T) {
 			t.Run(state+"/"+completion.name, func(t *testing.T) {
 				thread, reveal, _ := strings.Cut(state, "/")
 				u, at := newActiveWorkTestUI(t)
-				activity := newSubagentActivity()
-				activity.attachNativePane("main")
-				activity.observe("child", "main", "/root/worker", true)
+				activity := sessioncontrol.NewAudience(nil)
+				activity.Attach("main")
+				activity.Observe("child", "main", "/root/worker", true)
 				setTestAppServerIntegration(u, &mekugiProxy{activity: activity})
 				u.agents.setDisplayFilter(false, "/root/worker")
 				view := u.view
@@ -512,7 +513,7 @@ func TestAppServerDuplicateSummaryCompletionKeepsNextThinking(t *testing.T) {
 					view = u.agents
 				}
 				start := func() {
-					activity.beginResponse(thread, true, *at)
+					activity.BeginResponse(thread, true, *at)
 					u.applyObservedActivity()
 				}
 				complete := func(id, text string) {

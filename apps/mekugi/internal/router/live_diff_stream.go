@@ -3,9 +3,11 @@ package router
 import (
 	"errors"
 	"fmt"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 )
 
-func validateLiveDiffEvent(event reviewEvent) error {
+func validateLiveDiffEvent(event sessionreview.Event) error {
 	switch event.Kind {
 	case "scope":
 		if event.Scope == nil || event.Scope.Workspaces == nil {

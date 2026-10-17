@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -33,15 +34,15 @@ func TestUISnapshotNativeMainQuotedReplyBoundary(t *testing.T) {
 }
 
 func TestNativeActivityKeepsAttachedRootFamilyIsolated(t *testing.T) {
-	a := newSubagentActivity()
-	a.attachNativePane("main")
-	a.observe("child", "main", "/root/worker", true)
-	a.observe("grandchild", "child", "/root/worker/helper", true)
-	a.observe("other", "", "/root", false)
+	a := sessioncontrol.NewAudience(nil)
+	a.Attach("main")
+	a.Observe("child", "main", "/root/worker", true)
+	a.Observe("grandchild", "child", "/root/worker/helper", true)
+	a.Observe("other", "", "/root", false)
 	for _, thread := range []string{"main", "child", "grandchild", "other"} {
-		a.collect(thread, "reply-"+thread, "reply", "Native reply from "+thread)
+		a.Collect(activitypresentation.Supplement{Thread: thread, Source: "reply-" + thread, Kind: "reply", Text: "Native reply from " + thread})
 	}
-	entries := a.takeNativeActivity("main")
+	entries := takeNativeActivity(a, "main")
 	if len(entries) != 3 {
 		t.Fatalf("attached root family = %+v", entries)
 	}
@@ -50,9 +51,9 @@ func TestNativeActivityKeepsAttachedRootFamilyIsolated(t *testing.T) {
 			t.Fatalf("borrowed unrelated root: %+v", entries)
 		}
 	}
-	a.releasePane()
-	a.attachNativePane("other")
-	entries = a.takeNativeActivity("other")
+	a.Detach()
+	a.Attach("other")
+	entries = takeNativeActivity(a, "other")
 	if len(entries) != 1 || entries[0].Text != "Native reply from other" {
 		t.Fatalf("other root lost its activity: %+v", entries)
 	}
@@ -166,7 +167,7 @@ func TestNativeMainAnswerBindsOwnTurnPromptAcrossUpdates(t *testing.T) {
 func TestNativeDirectedMessagesDoNotInjectLegacyEnvelopes(t *testing.T) {
 	p := newManagedMekugiProxy(t)
 	prepareActivityTest(t, p, "root", "r", "", "/root", nil)
-	p.activity.attachNativePane("r")
+	p.activity.Attach("r")
 	envelope := map[string]any{"type": "agent_message", "id": "parent-message", "author": "/root", "recipient": "/root/reviewer", "content": []any{map[string]any{"type": "input_text", "text": "Message Type: MESSAGE\nTask name: /root/reviewer\nSender: /root\nPayload:\nPlease finish."}}}
 	child, request := prepareActivityTest(t, p, "child", "reviewer", "r", "/root/reviewer", []any{envelope})
 	if !strings.Contains(string(request.Fields["input"]), "Please finish.") {
@@ -183,7 +184,7 @@ func TestNativeDirectedMessageDisplayBudget(t *testing.T) {
 		t.Run(fmt.Sprint(size), func(t *testing.T) {
 			p := newManagedMekugiProxy(t)
 			prepareActivityTest(t, p, "root", "r", "", "/root", nil)
-			p.activity.attachNativePane("r")
+			p.activity.Attach("r")
 			prepareActivityTest(t, p, "child", "child", "r", "/root/worker", nil)
 			text := strings.Repeat("界", size/3)
 			envelope := map[string]any{"type": "agent_message", "id": "large-message", "author": "/root/worker", "recipient": "/root", "content": []any{map[string]any{"type": "input_text", "text": "Message Type: MESSAGE\nTask name: /root\nSender: /root/worker\nPayload:\n" + text}}}
@@ -193,7 +194,7 @@ func TestNativeDirectedMessageDisplayBudget(t *testing.T) {
 				t.Fatal("display limit altered model input")
 			}
 			var reply activityPaneEntry
-			for _, entry := range p.activity.takeNativeActivity("r") {
+			for _, entry := range takeNativeActivity(p.activity, "r") {
 				if entry.Kind == "reply" {
 					reply = entry
 				}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"slices"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 )
@@ -27,7 +29,7 @@ func executionCaptureEnvironment(ctx context.Context, directory string, store *m
 	return env
 }
 
-func admitExecutionWindow(windows *execWindowRegistry, review *savedReview, window *execWindow, observation *changecapture.Observation, patches []changecapture.PatchObservation, options changecapture.Options, displayThread, caller string) {
+func admitExecutionWindow(windows *execWindowRegistry, review *sessionreview.Review, window *execWindow, observation *changecapture.Observation, patches []changecapture.PatchObservation, options changecapture.Options, displayThread, caller string) {
 	window.paths = options.Excluded
 	var commands []commandanalysis.Command
 	if observation != nil {

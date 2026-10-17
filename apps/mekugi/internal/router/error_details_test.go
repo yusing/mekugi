@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
@@ -27,15 +28,15 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 		t.Run(map[bool]string{false: "main", true: "child"}[child], func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.view.Conversation = true
-			activity := newSubagentActivity()
-			activity.attachNativePane("main")
+			activity := sessioncontrol.NewAudience(nil)
+			activity.Attach("main")
 			proxy := &mekugiProxy{activity: activity}
 			setTestAppServerIntegration(u, proxy)
 			thread, view, focus := "main", u.view, 0
 			if child {
 				thread, view, focus = "child", u.agents, 0
 				u.agents.setDisplayFilter(true, "/root/worker")
-				activity.observe("child", "main", "/root/worker", true)
+				activity.Observe("child", "main", "/root/worker", true)
 				u.session.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 			}
 			// The decisive reason is beyond both the old first-line clip and

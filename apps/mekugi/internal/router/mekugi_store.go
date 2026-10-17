@@ -31,7 +31,7 @@ type mekugiReplayStore struct {
 	maxBytes           int64
 	session            storageSessionIdentity
 	storageNotice      func(session, thread, phase, message string)
-	liveDiff           func([]reviewChange)
+	liveDiff           func([]changes.Update)
 	maxCommentaryBytes int64
 	snapshots          *changecapture.Workspaces
 	publication        *history.Store

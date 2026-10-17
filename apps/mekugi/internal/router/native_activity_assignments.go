@@ -1,10 +1,12 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	jsonv1 "encoding/json"
 
@@ -38,18 +40,11 @@ func (s *activityStart) label() string {
 
 // The native pane keeps every observed NEW_TASK, including follow-ups, keyed by
 // the host item and payload. Full-history requests cannot replay its display.
-func (a *subagentActivity) collectSubagentStart(thread string, request *codexresponses.Request, recipient string) {
+func collectSubagentStart(a *sessioncontrol.Audience, thread string, request *codexresponses.Request, recipient string) {
 	if a == nil {
 		return
 	}
-	a.mu.Lock()
-	from := ""
-	if node := a.threads[thread]; node != nil {
-		if parent := a.threads[node.parent]; parent != nil {
-			from = parent.name
-		}
-	}
-	a.mu.Unlock()
+	from := a.ParentName(thread)
 	start := nativeSubagentStart(request)
 	var items []map[string]jsonv1.RawMessage
 	if json.Unmarshal(request.Fields["input"], &items) != nil {
@@ -77,16 +72,29 @@ func (a *subagentActivity) collectSubagentStart(thread string, request *codexres
 	}
 	// Publish spawn and its first prompt atomically as one navigable event.
 	// The collector marks that assignment seen along with the lifecycle start.
-	a.mu.Lock()
-	defer a.mu.Unlock()
+	var events []activitypresentation.Supplement
 	spawn := &activityAssignment{from: from, to: recipient}
 	if len(assignments) > 0 {
 		spawn = assignments[0]
 	}
 	if start != nil {
-		a.collectEventLocked(activityEvent{thread: thread, source: "subagent-start\x00" + thread, kind: "start", observed: spawn.created, assignment: spawn, start: start})
+		events = append(events, activitypresentation.Supplement{Thread: thread, Source: "subagent-start\x00" + thread, Kind: "start", Observed: spawn.created, Assignment: supplementAssignment(spawn), Start: &activitypresentation.SupplementStart{Model: start.model, Effort: start.effort, Tier: start.tier}})
 	}
 	for _, assignment := range assignments {
-		a.collectEventLocked(activityEvent{thread: thread, source: assignment.id, kind: "assignment", text: assignment.text, observed: assignment.created, assignment: assignment})
+		events = append(events, activitypresentation.Supplement{Thread: thread, Source: assignment.id, Kind: "assignment", Text: assignment.text, Observed: assignment.created, Assignment: supplementAssignment(assignment)})
 	}
+	a.Collect(events...)
+}
+
+func supplementAssignment(a *activityAssignment) *activitypresentation.SupplementAssignment {
+	if a == nil {
+		return nil
+	}
+	return &activitypresentation.SupplementAssignment{ID: a.id, From: a.from, To: a.to, Text: a.text, Created: a.created}
+}
+func supplementMessage(m *activityMessage) *activitypresentation.SupplementMessage {
+	if m == nil {
+		return nil
+	}
+	return &activitypresentation.SupplementMessage{From: m.from, To: m.to, Text: m.text}
 }

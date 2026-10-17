@@ -6,23 +6,24 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
 func TestNativeActivityFollowupAssignments(t *testing.T) {
 	// The native claim keeps child activity out of Main's provider responses
 	// while retaining prompt bodies missing from V2 app-server notifications.
-	a := newSubagentActivity()
-	a.attachNativePane("main")
-	a.observe("child", "main", "/root/reviewer", true)
+	a := sessioncontrol.NewAudience(nil)
+	a.Attach("main")
+	a.Observe("child", "main", "/root/reviewer", true)
 	first := nativeAssignmentTestMessage("/root/reviewer", "NEW_TASK", "Check the original answer.")
 	first["id"] = "task-1"
 	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"model": "gpt-6-astra", "input": []any{first}}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	a.collectSubagentStart("child", &request, "/root/reviewer")
-	observed := a.takeNativeActivity("main")
+	collectSubagentStart(a, "child", &request, "/root/reviewer")
+	observed := takeNativeActivity(a, "main")
 	if len(observed) != 1 || observed[0].assignment == nil || observed[0].assignment.text != "Check the original answer." {
 		t.Fatal("native assignment body was lost")
 	}
@@ -74,11 +75,11 @@ func TestNativeActivityAssignmentsPreserveOriginalTime(t *testing.T) {
 	// Both initial observation and a fresh router's full-history replay must
 	// display original timestamps, even when they are older than queue retention.
 	for range 2 {
-		a := newSubagentActivity()
-		a.attachNativePane("main")
-		a.observe("child", "main", "/root/reviewer", true)
-		a.collectSubagentStart("child", &request, "/root/reviewer")
-		entries := a.takeNativeActivity("main")
+		a := sessioncontrol.NewAudience(nil)
+		a.Attach("main")
+		a.Observe("child", "main", "/root/reviewer", true)
+		collectSubagentStart(a, "child", &request, "/root/reviewer")
+		entries := takeNativeActivity(a, "main")
 		if len(entries) != 4 {
 			t.Fatalf("lost historical assignments: %+v", entries)
 		}
@@ -99,8 +100,8 @@ func TestNativeActivityAssignmentsPreserveOriginalTime(t *testing.T) {
 				t.Fatalf("original timestamp missing from feed: %s", rendered)
 			}
 		}
-		a.collectSubagentStart("child", &request, "/root/reviewer")
-		if got := a.takeNativeActivity("main"); len(got) != 0 {
+		collectSubagentStart(a, "child", &request, "/root/reviewer")
+		if got := takeNativeActivity(a, "main"); len(got) != 0 {
 			t.Fatalf("repeated history duplicated assignments: %+v", got)
 		}
 	}

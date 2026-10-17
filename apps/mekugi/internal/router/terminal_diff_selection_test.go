@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/libraries/diffmodel"
@@ -27,7 +29,7 @@ func TestTerminalUIDiffSelectionUsesLastPaintedEvidence(t *testing.T) {
 			scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}}
 			refresh := func() {
 				t.Helper()
-				u.shell.applyDiff(t.Context(), reviewEvent{Kind: "scope", Scope: &scope, Resync: true})
+				u.shell.applyDiff(t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope, Resync: true})
 				if u.shell.diffFailure != "" {
 					t.Fatal(u.shell.diffFailure)
 				}

@@ -103,7 +103,7 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 		}
 		if started && provider.completed() {
 			var assignmentCount, messageCount, excerptCount int
-			var activitySeq uint64
+			var activitySeq, excerptSeq uint64
 			for _, entry := range u.agents.Entries {
 				if entry.Source.assignment != nil && entry.Source.assignment.text == assignment {
 					assignmentCount++
@@ -116,6 +116,7 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 			for _, entry := range u.view.Entries {
 				if entry.Source.Kind == "reply" && entry.Source.activitySeq == activitySeq && activitySeq != 0 {
 					excerptCount++
+					excerptSeq = entry.Source.Seq
 				}
 			}
 			if assignmentCount > 1 || messageCount > 1 || excerptCount > 1 {
@@ -125,11 +126,18 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 				continue // The authenticated observer may arrive after app-server completion.
 			}
 			u.view.Conversation = true
-			main := ansi.Strip(strings.Join(u.view.RenderFeed(100, 60).Lines, "\n"))
+			feed := u.view.RenderFeed(100, 60)
+			main := ansi.Strip(strings.Join(feed.Lines, "\n"))
 			if strings.Contains(main, "Message received:") {
 				t.Fatalf("legacy received envelope leaked into Main:\n%s", main)
 			}
-			if strings.Count(main, "the native message must remain complete") > 3 || !strings.Contains(main, "↩ Open reply in Activity") {
+			linked := false
+			for row, line := range feed.Lines {
+				if strings.Contains(ansi.Strip(line), "↩ Open reply") && feed.Questions[row] == excerptSeq {
+					linked = true
+				}
+			}
+			if strings.Count(main, "the native message must remain complete") > 3 || !linked {
 				t.Fatalf("Main did not collapse/link the message: %s", main)
 			}
 			provider.mu.Lock()

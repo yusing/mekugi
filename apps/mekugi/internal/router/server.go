@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -270,9 +272,8 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 		replayStore.storageNotice = func(session, thread, phase, message string) {
 			issues.CleanupNotice(session, thread, phase, message)
 		}
-		mekugiCalls.review = newSavedReview(ctx, live)
+		mekugiCalls.review = sessionreview.New(ctx, live, func(category, message string) { issues.AddNotice("", category, message) })
 		defer mekugiCalls.review.Close()
-		mekugiCalls.review.notice = func(category, message string) { issues.AddNotice("", category, message) }
 		replayStore.liveDiff = mekugiCalls.review.Publish
 		mekugiCalls.replayStore = replayStore
 		mekugiCalls.usage.Configure(replayStore.directory, replayStore.writes, replayStore.retentionLimits(), func(thread string, err error) {

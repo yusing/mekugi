@@ -11,13 +11,14 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 )
 
 func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) {
-	activity := newSubagentActivity()
-	if !activity.observe("main", "", "/root", false) ||
-		!activity.observe("child", "main", "/root/worker", true) ||
-		!activity.observe("other", "", "/root", false) {
+	activity := sessioncontrol.NewAudience(nil)
+	if !activity.Observe("main", "", "/root", false) ||
+		!activity.Observe("child", "main", "/root/worker", true) ||
+		!activity.Observe("other", "", "/root", false) {
 		t.Fatal("failed to establish thread ownership")
 	}
 	issues := testCriticalErrors()
@@ -117,9 +118,9 @@ func TestNativeRequestNoticesWaitForHostTurnOutcome(t *testing.T) {
 func TestNativeRequestNoticeChildOutcomeKeepsOtherTurnsPending(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.issues = testCriticalErrors()
-	activity := newSubagentActivity()
-	activity.observe("main", "", "/root", false)
-	activity.observe("child", "main", "/root/worker", true)
+	activity := sessioncontrol.NewAudience(nil)
+	activity.Observe("main", "", "/root", false)
+	activity.Observe("child", "main", "/root/worker", true)
 	setTestAppServerIntegration(u, &mekugiProxy{activity: activity})
 	for _, thread := range []string{"main", "child", "other"} {
 		u.issues.Report(requestexecution.Failure{Session: "session", Thread: thread, Turn: "turn",

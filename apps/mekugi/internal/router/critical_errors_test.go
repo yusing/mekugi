@@ -17,6 +17,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/modules/notifications/notice"
 
 	"github.com/coder/websocket"
@@ -65,8 +66,8 @@ func TestCriticalErrorsNativeOwnershipAndRouterWideNotice(t *testing.T) {
 	queueCritical(c, "two")
 	queueCritical(c, "child")
 	c.AddNotice("", "router-capacity", "router-wide capacity warning")
-	activity := newSubagentActivity()
-	if !activity.observe("one", "", "/root", false) || !activity.observe("child", "one", "/root/child", true) {
+	activity := sessioncontrol.NewAudience(nil)
+	if !activity.Observe("one", "", "/root", false) || !activity.Observe("child", "one", "/root/child", true) {
 		t.Fatal("failed to establish ancestry")
 	}
 	child := claimNativeNotices(c, "child", activity)

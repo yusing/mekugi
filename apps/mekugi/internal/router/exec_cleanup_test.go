@@ -9,6 +9,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
@@ -204,7 +206,7 @@ func advanceExecCleanupPreviewTicker(t *testing.T) {
 	synctest.Wait()
 }
 
-func assertExecCleanupPreview(t *testing.T, events []reviewEvent, id, status string) previewmodel.Preview {
+func assertExecCleanupPreview(t *testing.T, events []sessionreview.Event, id, status string) previewmodel.Preview {
 	t.Helper()
 	var previews []previewmodel.Preview
 	for _, event := range events {
@@ -222,7 +224,7 @@ func assertExecCleanupPreview(t *testing.T, events []reviewEvent, id, status str
 	return preview
 }
 
-func assertNoExecCleanupPreview(t *testing.T, events []reviewEvent, message string) {
+func assertNoExecCleanupPreview(t *testing.T, events []sessionreview.Event, message string) {
 	t.Helper()
 	for _, event := range events {
 		if event.Preview != nil {

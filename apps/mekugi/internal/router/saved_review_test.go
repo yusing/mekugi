@@ -1,12 +1,12 @@
 package router
 
 import (
-	"encoding/json"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -16,111 +16,6 @@ import (
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
-
-func TestLiveDiffScopeEventsRetainMembership(t *testing.T) {
-	broker := newLivePreview(t.Context())
-	scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{"/work": {"root": true}}}
-	setLiveScope(broker, scope)
-	sub := testReview(broker).Subscribe()
-	initial := <-sub.Events()
-	scope.Workspaces["/work"]["child"] = true
-	setLiveScope(broker, scope)
-	updated := <-sub.Events()
-	if initial.Scope.Workspaces["/work"]["child"] || !updated.Scope.Workspaces["/work"]["child"] {
-		t.Fatal("scope publication changed an already queued membership snapshot")
-	}
-}
-
-func TestLiveDiffSubscriberOverflowAndIsolation(t *testing.T) {
-	broker := newLivePreview(t.Context())
-	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{"/work": {"root": true}}})
-	sub := testReview(broker).Subscribe()
-	<-sub.Events()
-	testReview(broker).Publish([]reviewChange{{Workspace: "/work", Thread: "other"}})
-	if len(sub.Events()) != 0 {
-		t.Fatal("another session leaked into the stream")
-	}
-	for range 100 {
-		testReview(broker).Publish([]reviewChange{{Workspace: "/work", Thread: "root"}})
-	}
-	select {
-	case <-sub.Gap():
-	default:
-		t.Fatal("slow subscriber silently lost events")
-	}
-	next := testReview(broker).Subscribe()
-	if event := <-next.Events(); event.Kind != "scope" {
-		t.Fatal("reconnection did not establish a snapshot barrier")
-	}
-}
-
-func TestLiveDiffPreviewMailboxCoalescesWithoutDelayingReceipts(t *testing.T) {
-	broker := newLivePreview(t.Context())
-	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{"/workspace": {"thread": true}}})
-	sub := testReview(broker).Subscribe()
-	<-sub.Events()
-	for i := 1; i <= 200; i++ {
-		broker.Update(previewViewFixture("one", i), false)
-	}
-	testReview(broker).Publish([]reviewChange{{Workspace: "/workspace", Thread: "thread", ID: "amber1"}})
-	if event := <-sub.Events(); event.Kind != "change" {
-		t.Fatal("preview burst delayed durable publication")
-	}
-	select {
-	case <-sub.Gap():
-		t.Fatal("replaceable preview frames overflowed the durable queue")
-	default:
-	}
-	updates := testReview(broker).TakePreviews(sub)
-	if len(updates) != 1 || updates[0].Preview == nil || !strings.Contains(updates[0].Preview.Input, "stream_0200") {
-		t.Fatalf("mailbox did not retain only latest snapshot: %+v", updates)
-	}
-	broker.Update(previewViewFixture("one", 201), false)
-	broker.Update(previewmodel.Preview{ID: "one"}, true)
-	updates = testReview(broker).TakePreviews(sub)
-	if len(updates) != 1 || updates[0].Preview == nil || updates[0].Preview.Workspace != "" {
-		t.Fatal("completion did not supersede pending frames")
-	}
-}
-
-func TestLiveDiffPreviewMailboxPreservesExpandedScopeBarrier(t *testing.T) {
-	broker := newLivePreview(t.Context())
-	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{"/workspace": {"old": true}}})
-	sub := testReview(broker).Subscribe()
-	<-sub.Events() // The subscriber consumed the initial scope and is paused.
-	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{"/workspace": {"old": true, "thread": true}}})
-	broker.Update(previewViewFixture("new-thread", 20), false)
-	// Force the preview-ready branch rather than relying on select scheduling.
-	<-sub.Ready()
-	batch := testReview(broker).TakePreviews(sub)
-	if len(batch) != 2 || batch[0].Kind != "scope" || batch[1].Preview == nil {
-		t.Fatalf("preview overtook its authorizing scope: %+v", batch)
-	}
-	if !batch[0].Scope.Workspaces[batch[1].Preview.Workspace][batch[1].Preview.Thread] {
-		t.Fatal("preview is outside the preceding scope")
-	}
-}
-
-func TestScopeCapacity(t *testing.T) {
-	b := newSavedReview(t.Context(), nil)
-	for _, workspace := range []string{"/tmp/a", "/tmp/with\"quote"} {
-		for _, thread := range []string{"root", "child\nwith\\escape"} {
-			b.Observe(workspace, thread, "", true)
-			data, err := json.Marshal(b.scope)
-			if err != nil || len(data) != b.scopeBytes {
-				t.Fatalf("scope accounting: %d != %d (%v)", len(data), b.scopeBytes, err)
-			}
-		}
-	}
-	b.Observe("/tmp/oversized", strings.Repeat("x", maxReviewScopeBytes), "", true)
-	if !b.exhausted || b.scope.Workspaces != nil {
-		t.Fatal("scope exhaustion retained auxiliary collection")
-	}
-	b.Observe("/tmp/after", "new", "", true)
-	if b.scope.Workspaces != nil {
-		t.Fatal("disabled collection resumed")
-	}
-}
 
 // Saved review and captured Activity receipts use the same application join
 // whether or not livepreview is composed into the attached session.
@@ -222,7 +117,7 @@ func TestSavedReviewWithoutLivePreview(t *testing.T) {
 }
 
 func TestSavedReviewSwitchRetiresOnlyPreviewAttachment(t *testing.T) {
-	review := newSavedReview(t.Context(), previewmodel.New(changecapture.ReadFile))
+	review := sessionreview.New(t.Context(), previewmodel.New(changecapture.ReadFile), nil)
 	defer review.Close()
 	review.IncludeThread("/workspace", "main", true)
 	old := review.Preview()

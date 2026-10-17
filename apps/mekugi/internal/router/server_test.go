@@ -225,7 +225,7 @@ func TestExecuteRequestForwardsCompactionWithoutRouterRewrite(t *testing.T) {
 	response.Header.Set("Content-Type", "text/event-stream")
 	provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
 	proxy := newManagedMekugiProxy(t)
-	proxy.activity.observe("root", "", "/root", false)
+	proxy.activity.Observe("root", "", "/root", false)
 	headers := serverCompactionMetadataHeaders(t)
 	var compactMetadata map[string]any
 	for name, values := range headers {

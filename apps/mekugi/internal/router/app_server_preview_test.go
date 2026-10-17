@@ -4,6 +4,9 @@ import (
 	"cmp"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -488,8 +491,8 @@ func newNativePreview(t *testing.T) *nativePreview {
 	setTestAppServerIntegration(u, proxy)
 	proxy.usage = usage
 	u.usage = usage
-	u.audience.observe("main", "", "/root", false)
-	u.audience.attachNativePane("main")
+	u.audience.Observe("main", "", "/root", false)
+	u.audience.Attach("main")
 	u.model, u.reasoningEffort = "gpt-6-luna", "medium"
 	if err := json.Unmarshal([]byte(`[{"model":"gpt-6-luna","defaultReasoningEffort":"medium","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"medium"},{"reasoningEffort":"high"}],"serviceTiers":[{"id":"priority"}]}]`), &u.models); err != nil {
 		t.Fatal(err)
@@ -503,14 +506,18 @@ func newNativePreview(t *testing.T) *nativePreview {
 	u.shell.saved = savedDiff{workspace: workspace, store: store, data: new(presentation.Snapshot), coverage: "CONNECTING"}
 	u.session.start("main", workspace)
 	p := &nativePreview{t: t, ui: u, proxy: proxy, input: input, store: store, usage: usage, workspace: workspace, delay: "0", active: make(map[string]string), assignments: make(map[string]string), models: map[string]string{"t-explorer": nativePreviewGrokModel}}
-	store.liveDiff = func(changes []reviewChange) {
-		u.shell.applyDiff(t.Context(), reviewEvent{Kind: "change", Changes: changes})
+	store.liveDiff = func(updates []changes.Update) {
+		var delivered []sessionreview.Change
+		for _, update := range updates {
+			delivered = append(delivered, sessionreview.FromUpdate(update))
+		}
+		u.shell.applyDiff(t.Context(), sessionreview.Event{Kind: "change", Changes: delivered})
 	}
 	scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {}}}
 	for _, thread := range []string{"main", "t-reviewer", "t-explorer", "t-tester"} {
 		scope.Workspaces[workspace][thread] = true
 	}
-	u.shell.applyDiff(t.Context(), reviewEvent{Kind: "scope", Scope: &scope})
+	u.shell.applyDiff(t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope})
 	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: u.session.agents})
 	u.sessionPresentation().Status.Text = "Ready"
 	p.populate()
@@ -604,7 +611,7 @@ func (p *nativePreview) stream(name string, edits ...nativePreviewEdit) {
 			input := strings.Join(patchLines[:min(lines+2, len(patchLines))], "")
 			p.add("stream "+name, func() {
 				preview := projectStockPatchPreview(p.ui.ctx, p.workspace, previewmodel.Preview{ID: edit.item, Workspace: p.workspace, Thread: edit.thread, Caller: p.ui.session.path(edit.thread), Tool: applyPatchToolName, Status: previewmodel.PreviewEdit, Input: input})
-				p.ui.shell.applyDiff(p.ui.ctx, reviewEvent{Kind: "preview", Preview: &preview})
+				p.ui.shell.applyDiff(p.ui.ctx, sessionreview.Event{Kind: "preview", Preview: &preview})
 				revealNativeDock(p.ui.shell)
 			})
 		}
@@ -618,7 +625,7 @@ func (p *nativePreview) stream(name string, edits ...nativePreviewEdit) {
 // the router's capturer does, so the saved diff gains the change.
 func (p *nativePreview) apply(edit nativePreviewEdit) {
 	preview := projectStockPatchPreview(p.ui.ctx, p.workspace, previewmodel.Preview{ID: edit.item, Workspace: p.workspace, Thread: edit.thread, Caller: p.ui.session.path(edit.thread), Tool: applyPatchToolName, Status: previewmodel.PreviewEdit, Input: edit.patch, Complete: true})
-	p.ui.shell.applyDiff(p.ui.ctx, reviewEvent{Kind: "preview", Preview: &preview})
+	p.ui.shell.applyDiff(p.ui.ctx, sessionreview.Event{Kind: "preview", Preview: &preview})
 	revealNativeDock(p.ui.shell)
 	change := edit.change(-1)
 	item := map[string]any{"id": edit.item, "type": "fileChange", "status": "inProgress", "changes": []any{change}}

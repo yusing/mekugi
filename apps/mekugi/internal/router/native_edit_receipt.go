@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
@@ -25,7 +26,7 @@ const (
 // publishEditReceipt reads committed filesystem changes. It never accepts a
 // caller-supplied diff or participates in edit execution. Command exit status
 // does not change the filesystem effects that this receipt describes.
-func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, thread, callID string, activity *subagentActivity, displayID string) error {
+func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, thread, callID string, activity *sessioncontrol.Audience, displayID string) error {
 	s = s.scoped(ctx)
 	return s.locked(ctx, func(s *mekugiReplayStore) error {
 		if scope, found, err := s.publication.ReadScope(thread); err != nil {
@@ -59,7 +60,7 @@ func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, t
 					if identity == "" {
 						identity = callID
 					}
-					activity.collectEvent(activityEvent{thread: thread, source: "edit-receipt\x00" + workspace + "\x00" + callID, kind: "tool", text: receipt, callID: identity})
+					activity.Collect(activitypresentation.Supplement{Thread: thread, Source: "edit-receipt\x00" + workspace + "\x00" + callID, Kind: "tool", Text: receipt, CallID: identity})
 				}
 			}
 			return nil

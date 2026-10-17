@@ -358,7 +358,7 @@ func TestSubagentStartServiceTier(t *testing.T) {
 func TestServiceTierChildRequestAndRootNotice(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	root, _ := prepareActivityTest(t, proxy, "root-session", "root", "", "/root", nil)
-	proxy.activity.attachNativePane("root")
+	proxy.activity.Attach("root")
 	defer root.Close()
 	headers := serverMetadataHeaders(t, "turn", nil)
 	headers.Set(codexresponses.SubagentHeader, threadSpawnSubagent)
@@ -386,7 +386,7 @@ func TestServiceTierChildRequestAndRootNotice(t *testing.T) {
 	if got := responses.StringField(forwarded.Fields, "service_tier"); got != "priority" {
 		t.Fatalf("provider tier=%s want=priority", got)
 	}
-	entries := proxy.activity.takeNativeActivity("root")
+	entries := takeNativeActivity(proxy.activity, "root")
 	if len(entries) != 1 || entries[0].Kind != "start" || entries[0].start == nil || entries[0].start.tier != "fast" {
 		t.Fatalf("native start did not retain effective tier: %+v", entries)
 	}

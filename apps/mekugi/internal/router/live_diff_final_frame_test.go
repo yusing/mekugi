@@ -10,12 +10,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+
 	previewbinding "github.com/yusing/mekugi/modules/livepreview/codexbinding"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
-func newLiveDiffFinalFrameTransform(t *testing.T) (*mekugiResponseTransform, *previewmodel.Session, *reviewSubscription) {
+func newLiveDiffFinalFrameTransform(t *testing.T) (*mekugiResponseTransform, *previewmodel.Session, *sessionreview.Subscription) {
 	t.Helper()
 	proxy := newManagedMekugiProxy(t)
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)

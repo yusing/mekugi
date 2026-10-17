@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
@@ -17,7 +19,7 @@ import (
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
-func newLiveDiffTurnTest(t *testing.T, workspace, thread string) (*previewmodel.Session, *reviewSubscription) {
+func newLiveDiffTurnTest(t *testing.T, workspace, thread string) (*previewmodel.Session, *sessionreview.Subscription) {
 	t.Helper()
 	broker := newLivePreview(t.Context())
 	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {thread: true}}})
@@ -28,13 +30,12 @@ func newLiveDiffTurnTest(t *testing.T, workspace, thread string) (*previewmodel.
 	return auto, sub
 }
 
-func requireLiveDiffTurnEvent(t *testing.T, sub *reviewSubscription, status string) {
+func requireLiveDiffTurnEvent(t *testing.T, review *sessionreview.Review, sub *sessionreview.Subscription, status string) {
 	t.Helper()
 	timer := time.NewTimer(time.Second)
 	defer timer.Stop()
 	for {
-		select {
-		case event := <-sub.preview.Events():
+		for _, event := range review.TakePreviews(sub) {
 			if event.Kind != "turn" {
 				continue
 			}
@@ -42,18 +43,19 @@ func requireLiveDiffTurnEvent(t *testing.T, sub *reviewSubscription, status stri
 				t.Fatalf("turn event = %+v, want %s", event, status)
 			}
 			return
+		}
+		select {
+		case <-sub.Ready():
 		case <-timer.C:
 			t.Fatalf("missing %s turn event", status)
 		}
 	}
 }
 
-func requireNoLiveDiffTurnEvent(t *testing.T, sub *reviewSubscription) {
+func requireNoLiveDiffTurnEvent(t *testing.T, review *sessionreview.Review, sub *sessionreview.Subscription) {
 	t.Helper()
-	select {
-	case event := <-sub.preview.Events():
-		t.Fatalf("unexpected event: %+v", event)
-	default: // Publication is synchronous; any unexpected event is already queued.
+	if events := review.TakePreviews(sub); len(events) != 0 {
+		t.Fatalf("unexpected events: %+v", events)
 	}
 }
 
@@ -63,26 +65,26 @@ func TestAutoLiveDiffTurnTransitionsAreIdentityBound(t *testing.T) {
 	valid := codexresponses.TurnMetadata{RequestKind: "turn", ThreadID: thread, TurnID: "one"}
 
 	beginLiveDiffTurn(auto, workspace, thread, valid)
-	requireLiveDiffTurnEvent(t, sub, "active")
+	requireLiveDiffTurnEvent(t, testReview(auto), sub, "active")
 
 	beginLiveDiffTurn(auto, workspace, thread, valid)
 	auto.FinishTurn(workspace, thread, "stale")
-	requireNoLiveDiffTurnEvent(t, sub)
+	requireNoLiveDiffTurnEvent(t, testReview(auto), sub)
 
 	next := valid
 	next.TurnID = "two"
 	beginLiveDiffTurn(auto, workspace, thread, next)
-	requireLiveDiffTurnEvent(t, sub, "active")
+	requireLiveDiffTurnEvent(t, testReview(auto), sub, "active")
 	auto.FinishTurn(workspace, thread, "one")
-	requireNoLiveDiffTurnEvent(t, sub)
+	requireNoLiveDiffTurnEvent(t, testReview(auto), sub)
 	auto.FinishTurn(workspace, thread, "two")
-	requireLiveDiffTurnEvent(t, sub, "completed")
+	requireLiveDiffTurnEvent(t, testReview(auto), sub, "completed")
 	auto.FinishTurn(workspace, thread, "two")
-	requireNoLiveDiffTurnEvent(t, sub)
+	requireNoLiveDiffTurnEvent(t, testReview(auto), sub)
 
 	next.TurnID = "three"
 	beginLiveDiffTurn(auto, workspace, thread, next)
-	requireLiveDiffTurnEvent(t, sub, "active")
+	requireLiveDiffTurnEvent(t, testReview(auto), sub, "active")
 }
 
 func TestAutoLiveDiffTurnRejectsInvalidRequests(t *testing.T) {
@@ -98,7 +100,7 @@ func TestAutoLiveDiffTurnRejectsInvalidRequests(t *testing.T) {
 		beginLiveDiffTurn(auto, workspace, thread, metadata)
 	}
 	beginLiveDiffTurn(auto, "/unobserved", thread, codexresponses.TurnMetadata{RequestKind: "turn", ThreadID: thread, TurnID: "unobserved"})
-	requireNoLiveDiffTurnEvent(t, sub)
+	requireNoLiveDiffTurnEvent(t, testReview(auto), sub)
 }
 
 func TestRequestPreparationBeginsOnlyNewRootTurn(t *testing.T) {
@@ -131,12 +133,12 @@ func TestRequestPreparationBeginsOnlyNewRootTurn(t *testing.T) {
 	}
 
 	prepare(t.Context(), "one")
-	requireLiveDiffTurnEvent(t, sub, "active")
+	requireLiveDiffTurnEvent(t, testReview(auto), sub, "active")
 	prepare(t.Context(), "one")
-	requireNoLiveDiffTurnEvent(t, sub)
+	requireNoLiveDiffTurnEvent(t, testReview(auto), sub)
 
 	prepare(t.Context(), "two")
-	requireLiveDiffTurnEvent(t, sub, "active")
+	requireLiveDiffTurnEvent(t, testReview(auto), sub, "active")
 }
 
 func TestLiveDiffTerminalCompletesAfterTransformedDelivery(t *testing.T) {
@@ -153,7 +155,7 @@ func TestLiveDiffTerminalCompletesAfterTransformedDelivery(t *testing.T) {
 				beginLiveDiffTurn(auto, workspace, transform.threadID, codexresponses.TurnMetadata{
 					RequestKind: "turn", ThreadID: transform.threadID, TurnID: transform.shellTurnID,
 				})
-				requireLiveDiffTurnEvent(t, sub, "active")
+				requireLiveDiffTurnEvent(t, testReview(auto), sub, "active")
 
 				response := map[string]any{"id": "terminal", "status": "completed", "output": []any{map[string]any{
 					"type": "message", "id": "answer", "role": "assistant", "phase": "final_answer", "status": "completed",
@@ -178,18 +180,18 @@ func TestLiveDiffTerminalCompletesAfterTransformedDelivery(t *testing.T) {
 				if len(bytes.Join(delivered, nil)) == 0 {
 					t.Fatal("terminal transform emitted no payload")
 				}
-				requireNoLiveDiffTurnEvent(t, sub)
+				requireNoLiveDiffTurnEvent(t, testReview(auto), sub)
 				for _, payload := range delivered {
 					transform.Delivered(payload)
 				}
 				if child {
-					requireNoLiveDiffTurnEvent(t, sub)
+					requireNoLiveDiffTurnEvent(t, testReview(auto), sub)
 				} else {
-					requireLiveDiffTurnEvent(t, sub, "completed")
+					requireLiveDiffTurnEvent(t, testReview(auto), sub, "completed")
 					for _, payload := range delivered {
 						transform.Delivered(payload)
 					}
-					requireNoLiveDiffTurnEvent(t, sub)
+					requireNoLiveDiffTurnEvent(t, testReview(auto), sub)
 				}
 			})
 		}
@@ -210,7 +212,7 @@ func TestLiveDiffCompletionOnlyForSuccessfulFinal(t *testing.T) {
 				beginLiveDiffTurn(auto, workspace, transform.shellThreadID, codexresponses.TurnMetadata{
 					RequestKind: "turn", ThreadID: transform.shellThreadID, TurnID: turnID,
 				})
-				requireLiveDiffTurnEvent(t, sub, "active")
+				requireLiveDiffTurnEvent(t, testReview(auto), sub, "active")
 
 				ordinaryAnswer := map[string]any{
 					"type": "message", "id": "final-answer", "role": "assistant", "phase": "final_answer", "status": "completed",
@@ -242,7 +244,7 @@ func TestLiveDiffCompletionOnlyForSuccessfulFinal(t *testing.T) {
 					if bytes.Contains(transformed, []byte("Router session usage")) {
 						t.Fatalf("off mode emitted a usage report: %s", transformed)
 					}
-					requireNoLiveDiffTurnEvent(t, sub) // Transformation is not downstream delivery.
+					requireNoLiveDiffTurnEvent(t, testReview(auto), sub) // Transformation is not downstream delivery.
 					transform.Delivered(transformed)
 				} else {
 					var events [][]byte
@@ -269,7 +271,7 @@ func TestLiveDiffCompletionOnlyForSuccessfulFinal(t *testing.T) {
 						if err != nil {
 							t.Fatalf("transform event %d: %v", i, err)
 						}
-						requireNoLiveDiffTurnEvent(t, sub)
+						requireNoLiveDiffTurnEvent(t, testReview(auto), sub)
 						if i == len(events)-1 {
 							terminal = visible
 							continue
@@ -277,7 +279,7 @@ func TestLiveDiffCompletionOnlyForSuccessfulFinal(t *testing.T) {
 						for _, payload := range visible {
 							transform.Delivered(payload)
 						}
-						requireNoLiveDiffTurnEvent(t, sub)
+						requireNoLiveDiffTurnEvent(t, testReview(auto), sub)
 					}
 					if len(terminal) == 0 {
 						t.Fatal("terminal event was not transformed")
@@ -291,7 +293,7 @@ func TestLiveDiffCompletionOnlyForSuccessfulFinal(t *testing.T) {
 							t.Fatal(err)
 						}
 						if envelope.Type != "response.completed" && envelope.Type != "response.failed" {
-							requireNoLiveDiffTurnEvent(t, sub)
+							requireNoLiveDiffTurnEvent(t, testReview(auto), sub)
 						}
 						if i < len(terminal)-1 && envelope.Type == "response.completed" {
 							t.Fatal("terminal event unexpectedly preceded trailing transformed output")
@@ -300,9 +302,9 @@ func TestLiveDiffCompletionOnlyForSuccessfulFinal(t *testing.T) {
 				}
 
 				if scenario == "final" {
-					requireLiveDiffTurnEvent(t, sub, "completed")
+					requireLiveDiffTurnEvent(t, testReview(auto), sub, "completed")
 				} else {
-					requireNoLiveDiffTurnEvent(t, sub)
+					requireNoLiveDiffTurnEvent(t, testReview(auto), sub)
 				}
 			})
 		}

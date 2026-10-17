@@ -6,6 +6,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	"github.com/charmbracelet/x/vt"
@@ -71,7 +73,7 @@ func TestNativeDockPendingLifecycle(t *testing.T) {
 			case "turn ended":
 				u.endTurnPreviews("main", "turn")
 			case "reconnect":
-				u.shell.applyDiff(t.Context(), reviewEvent{Kind: "coverage", Status: "RECONNECTING: test"})
+				u.shell.applyDiff(t.Context(), sessionreview.Event{Kind: "coverage", Status: "RECONNECTING: test"})
 			}
 			revealNativeDock(u.shell)
 			if u.shell.liveDock.Views[p.ID] != nil || len(u.shell.livePending) != 0 {

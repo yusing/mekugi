@@ -3,6 +3,7 @@ package router
 import (
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -62,105 +63,10 @@ type activityPaneEvent struct {
 	Entries []activityPaneEntry `json:",omitempty"`
 }
 
-func (a *subagentActivity) releasePane() {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.supplements.Detach()
-}
-
-// Main already knows its app-server thread before the first provider request.
-// The native frontend binds supplemental observations to its active root.
-// App-server notifications supply the live tool and lifecycle display.
-func (a *subagentActivity) attachNativePane(root string) {
-	a.observe(root, "", "/root", false)
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.supplements.Attach(root)
-}
-
-// A thinking response starts Conversation's pre-delta block. Host observations,
-// not provider rounds, own the roster lifecycle.
-func (a *subagentActivity) beginResponse(thread string, thinking bool, at time.Time) {
-	if a == nil || !thinking {
-		return
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if node := a.threads[thread]; node != nil && !node.conflicted && !a.closed {
-		a.supplements.StartRequest(thread, at)
-	}
-}
-
-func (a *subagentActivity) takeRequestStarts(root string) []activityRequestStart {
-	if a == nil {
-		return nil
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.closed {
-		return nil
-	}
-	audience, _ := a.audienceLocked(root)
-	var starts []activityRequestStart
-	for _, start := range a.supplements.TakeStarts(audience) {
-		starts = append(starts, activityRequestStart{thread: start.Thread, at: start.At})
-	}
-	return starts
-}
-
-func (a *subagentActivity) noteUnreturned(thread string, calls []string) {
-	if a == nil {
-		return
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if !a.closed {
-		a.supplements.NoteUnreturned(thread, calls)
-	}
-}
-
-func (a *subagentActivity) takeUnreturned(root string) []activityToolRef {
-	if a == nil {
-		return nil
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.closed {
-		return nil
-	}
-	audience, _ := a.audienceLocked(root)
-	var refs []activityToolRef
-	for _, ref := range a.supplements.TakeUnreturned(audience) {
-		refs = append(refs, activityToolRef{thread: ref.Thread, call: ref.Call})
-	}
-	return refs
-}
-
-func (a *subagentActivity) childThread(root, name string) string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	for thread, node := range a.threads {
-		if node.child && !node.conflicted && node.name == name && a.rootLocked(thread) == root {
-			return thread
-		}
-	}
-	return ""
-}
-
-// Native observations supply the lifecycle; this adapter delivers supplemental
-// facts admitted by the same current application authority.
-func (a *subagentActivity) takeNativeActivity(root string) []activityPaneEntry {
-	if a == nil {
-		return nil
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.closed {
-		return nil
-	}
-	audience, _ := a.audienceLocked(root)
+func takeNativeActivity(a *sessioncontrol.Audience, root string) []activityPaneEntry {
+	audience, events := a.Take(root)
 	var entries []activityPaneEntry
-	for _, event := range a.supplements.Take(audience, time.Now()) {
+	for _, event := range events {
 		entry := activityPaneEntry{Agent: audience.Threads[event.Thread], Kind: event.Kind, Text: event.Text, CallID: event.CallID, Observed: event.Observed}
 		if event.Kind == "error" {
 			entry.ErrorDetail, entry.Text = event.Text, activityui.ErrorPreview(event.Text)

@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+
 	"github.com/yusing/mekugi/contracts/activitydetail"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
@@ -19,7 +21,7 @@ import (
 
 // hydrateReview admits retained host evidence into one unpublished module job.
 // Backend/history interpretation and filesystem reads remain in this adapter.
-func hydrateReview(ctx context.Context, store *mekugiReplayStore, builder *presentation.Builder, event reviewChange) error {
+func hydrateReview(ctx context.Context, store *mekugiReplayStore, builder *presentation.Builder, event sessionreview.Change) error {
 	for _, call := range event.Calls {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -92,7 +94,7 @@ func reconcileReview(ctx context.Context, store *mekugiReplayStore, builder *pre
 					for _, call := range change.Calls {
 						present[presentation.AttemptKey{Workspace: index.Workspace, Call: call.ID}] = true
 					}
-					if err := hydrateReview(ctx, store, builder, retainedReviewChange(changes.Update{
+					if err := hydrateReview(ctx, store, builder, sessionreview.FromUpdate(changes.Update{
 						Workspace: index.Workspace, Namespace: index.Namespace, Thread: info.Thread, Stream: stream, ID: id, Change: change,
 					})); err != nil {
 						return err

@@ -3,6 +3,8 @@ package router
 import (
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
@@ -25,7 +27,7 @@ func TestSavedReviewScopeEligibility(t *testing.T) {
 		{name: "empty thread", workspace: t.TempDir(), metadata: codexresponses.TurnMetadata{RequestKind: "turn"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			a := newSavedReview(t.Context(), nil)
+			a := sessionreview.New(t.Context(), nil, nil)
 			observeReview(a, test.workspace, test.thread, test.metadata)
 			scoped := a.Scope().Workspaces[test.workspace][test.thread]
 			if scoped != test.wantScoped {

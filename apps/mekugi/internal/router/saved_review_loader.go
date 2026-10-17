@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"slices"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 )
 
 type savedReviewResult struct {
@@ -21,7 +23,7 @@ type savedReviewLoader struct {
 	cancel                 context.CancelFunc
 	attachment, generation uint64
 	state                  savedDiff
-	pending                []reviewEvent
+	pending                []sessionreview.Event
 	active, resync         bool
 	slots                  chan struct{}
 	results                chan savedReviewResult
@@ -67,7 +69,7 @@ func (l *savedReviewLoader) awaitResync() {
 	}
 }
 
-func (l *savedReviewLoader) enqueue(event reviewEvent) error {
+func (l *savedReviewLoader) enqueue(event sessionreview.Event) error {
 	if err := validateLiveDiffEvent(event); err != nil {
 		return err
 	}
@@ -87,7 +89,7 @@ func (l *savedReviewLoader) enqueue(event reviewEvent) error {
 		return nil
 	}
 	if event.Scope != nil {
-		scope := cloneReviewScope(*event.Scope)
+		scope := sessionreview.CloneScope(*event.Scope)
 		event.Scope = &scope
 	}
 	event.Changes = slices.Clone(event.Changes)

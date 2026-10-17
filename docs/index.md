@@ -26,6 +26,7 @@ contracts stay with their owning modules.
 - [Request execution](../apps/mekugi/internal/requestexecution/SPEC.md)
 - [Session control](../apps/mekugi/internal/sessioncontrol/SPEC.md)
 - [Session presentation](../apps/mekugi/internal/sessionpresentation/SPEC.md)
+- [Session review](../apps/mekugi/internal/sessionreview/SPEC.md)
 - [Terminal session](../apps/mekugi/internal/terminalsession/SPEC.md)
 
 ## Backend and providers
