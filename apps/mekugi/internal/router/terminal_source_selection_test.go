@@ -57,7 +57,7 @@ func TestTerminalSourceSelectionDirectionsAndActions(t *testing.T) {
 						u.Agents = activityui.NewView()
 						u.Agents.FeedLeft, u.Agents.FeedTop = 1, 1
 						u.Agents.FeedRight, u.Agents.FeedRows = 40, len(rows)
-						u.main.agents = u.Agents
+						u.main.shell.Agents = u.Agents
 						u.main.sessionPresentation()
 						u.main.testActivity(u.Agents).setDisplayFilter(true, "/root/worker")
 					}
@@ -110,7 +110,7 @@ func TestTerminalSourceSelectionCodeLiteralDecoration(t *testing.T) {
 
 func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.ensureShell()
+
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	setSideTest(u, &sessioncontrol.Side{SideAnswer: &conversationmodel.SideAnswer{Question: "side question", Status: "completed", Answer: []conversationmodel.Answer{{Text: "**side answer**"}}}})
 	var wire bytes.Buffer
@@ -120,7 +120,7 @@ func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 	if strings.Contains(wire.String(), "mekugi-copy") {
 		t.Fatal("private source transport escaped")
 	}
-	rect := u.mainView.Side.Rect
+	rect := u.shell.Main.Side.Rect
 	rect.X += terminalTest(u).Layout.Main.X
 	rect.Y += terminalTest(u).Layout.Main.Y
 	y := -1
@@ -190,19 +190,19 @@ func TestUISnapshotBTWCopyDock(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	start := time.Date(2026, 9, 30, 0, 0, 0, 0, time.UTC)
 	u.clock = func() time.Time { return start.Add(75 * time.Second) }
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	setSideTest(u, &sessioncontrol.Side{Busy: true, SideAnswer: &conversationmodel.SideAnswer{Status: "Answering", Started: start, Question: "Which option?", Answer: []conversationmodel.Answer{{Text: "Name | Value\n--- | ---\n**alpha** | `x`"}}}})
 	uisnapshot.Assert(t, "testdata/snapshots/btw-copy-dock.txt", strings.Join(u.btwRows(60, 12), "\n")+"\n")
 }
 
 func TestTerminalSourceScrolledMainReply(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.ensureShell()
+
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	// Scroll back to the original reply above a long trailing tool run.
 	u.Turn = "running"
-	u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "**original reply**", Observed: time.Now()}, {Seq: 2, Agent: "Main", Kind: "tool", Text: "Run: go test\n" + strings.Repeat("output\n", 100), Observed: time.Now()}}})
-	u.view.Following, u.view.Offset = false, 0
+	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "**original reply**", Observed: time.Now()}, {Seq: 2, Agent: "Main", Kind: "tool", Text: "Run: go test\n" + strings.Repeat("output\n", 100), Observed: time.Now()}}})
+	u.shell.Transcript.Following, u.shell.Transcript.Offset = false, 0
 	screen := vt.NewEmulator(80, 30)
 	defer screen.Close()
 	if err := u.testPaint(screen, 80, 30); err != nil {
@@ -239,18 +239,18 @@ func TestTerminalSourceRenderedTables(t *testing.T) {
 			}
 			for _, reverse := range []bool{false, true} {
 				u, _ := newAppServerTestUI()
-				u.ensureShell()
+
 				t.Cleanup(func() { terminalTest(u).Diff.Close() })
-				view := u.testActivity(u.view)
+				view := u.testActivity(u.shell.Transcript)
 				if activity {
-					view = u.testActivity(u.agents)
+					view = u.testActivity(u.shell.Agents)
 					u.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
 					terminalTest(u).DiffOpen = false
 				}
 				applyTranscriptFixture(view, true, "", "main", "main", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: source})
 				var wire bytes.Buffer
-				if view.View == u.agents {
-					u.testActivity(u.agents).setDisplayFilter(true, "Main")
+				if view.View == u.shell.Agents {
+					u.testActivity(u.shell.Agents).setDisplayFilter(true, "Main")
 				}
 				if err := u.testPaint(&wire, width, 50); err != nil {
 					t.Fatal(err)
@@ -286,13 +286,13 @@ func TestTerminalSourceRenderedTables(t *testing.T) {
 
 func TestTerminalSourceActivityCodeTabs(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.ensureShell()
+
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
 	terminalTest(u).DiffOpen = false
-	applyTranscriptFixture(u.testActivity(u.agents), true, "", "main", "main", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "```\n\tx := 1  \n```"})
+	applyTranscriptFixture(u.testActivity(u.shell.Agents), true, "", "main", "main", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "```\n\tx := 1  \n```"})
 	var wire bytes.Buffer
-	u.testActivity(u.agents).setDisplayFilter(true, "Main")
+	u.testActivity(u.shell.Agents).setDisplayFilter(true, "Main")
 	if err := u.testPaint(&wire, 120, 40); err != nil {
 		t.Fatal(err)
 	}

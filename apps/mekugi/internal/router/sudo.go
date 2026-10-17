@@ -18,7 +18,7 @@ func (u *appServerUI) openSudoPassword(a *sessioncontrol.Approval) {
 }
 
 func (u *appServerUI) submitSudoPassword(c *sessioncontrol.Question) error {
-	outcome, delivered, err := c.AnswerPassword(u.prompts.SecretState(c.ID).Answers)
+	outcome, delivered, err := c.AnswerPassword(u.shell.Prompts.SecretState(c.ID).Answers)
 	if err != nil {
 		u.setNotice(err.Error(), true)
 		return nil

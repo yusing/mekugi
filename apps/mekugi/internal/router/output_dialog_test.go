@@ -118,13 +118,13 @@ func TestOutputDialogWheelAndOutsideClickIsolation(t *testing.T) {
 	}
 	u := dialogForOutput(output)
 	drawOutputDialog(u)
-	feedOffset := u.main.view.Offset
+	feedOffset := u.main.shell.Transcript.Offset
 	u.outputMouse(64, 0, 0, false)
-	if strings.Contains(drawOutputDialog(u), "line 29") || u.main.view.Offset != feedOffset {
+	if strings.Contains(drawOutputDialog(u), "line 29") || u.main.shell.Transcript.Offset != feedOffset {
 		t.Fatal("wheel did not pause dialog independently of feed")
 	}
 	u.outputMouse(65, 0, 0, false)
-	if u.main.view.Offset != feedOffset {
+	if u.main.shell.Transcript.Offset != feedOffset {
 		t.Fatal("wheel moved feed behind dialog")
 	}
 	u.outputMouse(0, 0, 0, false)
@@ -209,13 +209,13 @@ func TestOutputDialogSearchRevealsWrappedNumberedMatch(t *testing.T) {
 
 func TestOutputDialogRestoredCommandUsesRetainedAggregate(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.Conversation = true
-	u.testActivity(u.view).testAudience()
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
 	output := "first\nsecond\nthird\n"
 	u.restoreHistory([]binding.HistoryTurn{{ID: "past", Status: "completed", Items: []binding.ThreadItem{{
 		ID: "cmd", Type: "commandExecution", Command: "go test ./...", AggregatedOutput: &output, ExitCode: new(1),
 	}}}})
-	feed := u.testActivity(u.view).RenderFeed(90, 60)
+	feed := u.testActivity(u.shell.Transcript).RenderFeed(90, 60)
 	index := -1
 	for i, line := range feed.Lines {
 		if strings.Contains(ansi.Strip(line), "Ran go test ./...") {
@@ -223,8 +223,8 @@ func TestOutputDialogRestoredCommandUsesRetainedAggregate(t *testing.T) {
 			break
 		}
 	}
-	terminal := &terminalUI{main: u, Attachment: &terminalsession.Attachment{}}
-	if index < 0 || !terminal.openOutput(u.view, feed.Snippets[index]) {
+	terminal := terminalTest(u)
+	if index < 0 || !terminal.openOutput(u.shell.Transcript, feed.Snippets[index]) {
 		t.Fatal("restored command has no output dialog target")
 	}
 	terminal.layoutOutput(76)
@@ -242,22 +242,22 @@ func TestOutputDialogNativeMergeKeepsRetainedOutputIdentity(t *testing.T) {
 		appServerTestNotify(t, u, method, params)
 	}
 	notify("item/started", map[string]any{"item": item})
-	if len(u.source.Entries) != 1 || len(u.testActivity(u.view).blocks(0)) == 0 {
+	if len(u.source.Entries) != 1 || len(u.testActivity(u.shell.Transcript).blocks(0)) == 0 {
 		t.Fatal("start did not create command block")
 	}
-	retained := u.source.RetainedOutput(u.testActivity(u.view).blocks(0)[len(u.testActivity(u.view).blocks(0))-1].Source, u.testActivity(u.view).blocks(0)[len(u.testActivity(u.view).blocks(0))-1].Output)
+	retained := u.source.RetainedOutput(u.testActivity(u.shell.Transcript).blocks(0)[len(u.testActivity(u.shell.Transcript).blocks(0))-1].Source, u.testActivity(u.shell.Transcript).blocks(0)[len(u.testActivity(u.shell.Transcript).blocks(0))-1].Output)
 	if retained == nil {
 		t.Fatal("started command has no retained output")
 	}
 	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "cmd", "delta": "streamed\n"})
 	u.flushStreamOutput()
-	if got := u.source.RetainedOutput(u.testActivity(u.view).blocks(0)[len(u.testActivity(u.view).blocks(0))-1].Source, u.testActivity(u.view).blocks(0)[len(u.testActivity(u.view).blocks(0))-1].Output); got != retained {
+	if got := u.source.RetainedOutput(u.testActivity(u.shell.Transcript).blocks(0)[len(u.testActivity(u.shell.Transcript).blocks(0))-1].Source, u.testActivity(u.shell.Transcript).blocks(0)[len(u.testActivity(u.shell.Transcript).blocks(0))-1].Output); got != retained {
 		t.Fatal("delta changed retained output identity")
 	}
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, "aggregate\nfinal\n"
 	notify("item/completed", map[string]any{"item": item})
 	rollCommandOutput(u)
-	feed := u.testActivity(u.view).RenderFeed(90, 60)
+	feed := u.testActivity(u.shell.Transcript).RenderFeed(90, 60)
 	index := -1
 	for i, line := range feed.Lines {
 		if strings.Contains(ansi.Strip(line), "Ran go test ./...") {
@@ -265,8 +265,8 @@ func TestOutputDialogNativeMergeKeepsRetainedOutputIdentity(t *testing.T) {
 			break
 		}
 	}
-	terminal := &terminalUI{main: u, Attachment: &terminalsession.Attachment{}}
-	if index < 0 || !terminal.openOutput(u.view, feed.Snippets[index]) {
+	terminal := terminalTest(u)
+	if index < 0 || !terminal.openOutput(u.shell.Transcript, feed.Snippets[index]) {
 		t.Fatal("merged command has no output dialog target")
 	}
 	if !terminal.Dialog.Pages[0].Retained {
@@ -338,18 +338,18 @@ func TestUISnapshotOutputDialogVTOverlayWideAndNarrow(t *testing.T) {
 
 func TestOutputDialogRestoredMultiReadKeepsCombinedOutput(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.Conversation = true
-	u.testActivity(u.view).testAudience()
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
 	combined := "content of a\ncontent of b\n"
 	u.restoreHistory([]binding.HistoryTurn{{ID: "past", Status: "completed", Items: []binding.ThreadItem{{
 		ID: "read", Type: "commandExecution", Command: "cat a; cat b", AggregatedOutput: &combined, ExitCode: new(0),
 		CommandActions: []binding.CommandAction{{Type: "read", Path: "a", Command: "cat a"}, {Type: "read", Path: "b", Command: "cat b"}},
 	}}}})
-	feed := u.testActivity(u.view).RenderFeed(90, 60)
-	terminal := &terminalUI{main: u, Attachment: &terminalsession.Attachment{}}
+	feed := u.testActivity(u.shell.Transcript).RenderFeed(90, 60)
+	terminal := terminalTest(u)
 	opened := false
 	for _, snippet := range feed.Snippets {
-		if terminal.openOutput(u.view, snippet) {
+		if terminal.openOutput(u.shell.Transcript, snippet) {
 			opened = true
 			break
 		}
@@ -442,7 +442,7 @@ func TestOutputDialogTerminalKeyDecoderOwnsPrefixAndPaging(t *testing.T) {
 			}
 		}
 	}
-	if u.main.view.Offset != 0 || u.Dialog == nil {
+	if u.main.shell.Transcript.Offset != 0 || u.Dialog == nil {
 		t.Fatal("modal paging reached background feed or closed dialog")
 	}
 }
@@ -631,15 +631,15 @@ func TestRunDurationLiveAndCompletedRendering(t *testing.T) {
 		t.Fatal("missing running command")
 	}
 	u.source.Entries[index].Source.Native.CommandStarted = time.Now().Add(-2 * time.Second)
-	u.testActivity(u.view).replaceEntry(index, u.source.Entries[index].Source, parseLiveActivity(u.source.Entries[index].Source))
-	u.view.Runs = nil
-	feed := u.testActivity(u.view).RenderFeed(100, 30)
+	u.testActivity(u.shell.Transcript).replaceEntry(index, u.source.Entries[index].Source, parseLiveActivity(u.source.Entries[index].Source))
+	u.shell.Transcript.Runs = nil
+	feed := u.testActivity(u.shell.Transcript).RenderFeed(100, 30)
 	if !strings.Contains(ansi.Strip(strings.Join(feed.Lines, "\n")), "2s") {
 		t.Fatal("live command omitted elapsed")
 	}
 	opened := false
 	for _, snippet := range feed.Snippets {
-		if terminalTest(u).openOutput(u.view, snippet) {
+		if terminalTest(u).openOutput(u.shell.Transcript, snippet) {
 			opened = true
 			break
 		}
@@ -716,10 +716,10 @@ func TestNarrativeDialogRefreshesWhileStreaming(t *testing.T) {
 		rollCommandOutput(u)
 	}
 	delta(body)
-	feed := u.testActivity(u.agents).RenderFeed(90, 30)
+	feed := u.testActivity(u.shell.Agents).RenderFeed(90, 30)
 	opened := false
 	for _, snippet := range feed.Snippets {
-		if terminalTest(u).openOutput(u.agents, snippet) {
+		if terminalTest(u).openOutput(u.shell.Agents, snippet) {
 			opened = true
 			break
 		}

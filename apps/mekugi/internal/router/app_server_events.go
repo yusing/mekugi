@@ -131,7 +131,7 @@ func (u *appServerUI) sessionEvent(method string, p binding.Notification) (bool,
 		}
 	}
 	if result.Publish {
-		u.streams.Deliver(result.Deliveries, u.view, u.agents)
+		u.streams.Deliver(result.Deliveries, u.shell.Transcript, u.shell.Agents)
 		u.applyActivity(nil, nil)
 	}
 	return result.Handled, nil
@@ -150,7 +150,7 @@ func (u *appServerUI) flushStreamOutput() {
 		entries = append(entries, tracked...)
 		handled[key] = trackedCommand
 	}
-	u.dirty = u.streams.AdvanceCommands(u.now(), handled, u.view, u.agents) || u.dirty
+	u.dirty = u.streams.AdvanceCommands(u.now(), handled, u.shell.Transcript, u.shell.Agents) || u.dirty
 
 	if len(entries) == 0 {
 		return

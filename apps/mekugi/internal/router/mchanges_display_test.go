@@ -24,22 +24,22 @@ import (
 func mchangesDisplay(t *testing.T, command, output string) *appServerUI {
 	t.Helper()
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.Conversation = true
-	u.testActivity(u.view).testAudience()
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
 		"id": "cmd", "type": "commandExecution", "command": command, "status": "completed", "exitCode": 0, "aggregatedOutput": output}})
 	return u
 }
 
 func mainFeed(u *appServerUI, width int) string {
-	return ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(width, 60).Lines, "\n"))
+	return ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(width, 60).Lines, "\n"))
 }
 
 func TestUISnapshotMChangesCaptureCompleteness(t *testing.T) {
 	t.Parallel()
 	output := "amber1 incomplete captured scope; use --history for diagnostics\nA\t2\t0\ttestdata/snapshots/new.txt\n?\t-\t-\toutside.txt\t\"resolved path is outside the pre-cell baseline\"\n"
 	u := mchangesDisplay(t, "mchanges amber1 --summary", output)
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	uisnapshot.Assert(t, "testdata/snapshots/mchanges-capture-completeness.txt", mainFeed(u, 100)+"\n")
 }
 
@@ -66,7 +66,7 @@ func TestMChangesSummaryShowsEditRows(t *testing.T) {
 	// The rows are the diff's result, not output: they stay after the
 	// agent's next event.
 	nextEvent(t, u, "main")
-	settleActivity(time.Now().Add(activityui.OutputDebounce), u.testActivity(u.view))
+	settleActivity(time.Now().Add(activityui.OutputDebounce), u.testActivity(u.shell.Transcript))
 	if got := mainFeed(u, 100); !strings.Contains(got, want) || strings.Contains(got, "┆ … +8 lines") {
 		t.Fatalf("summary rows collapsed:\n%s", got)
 	}

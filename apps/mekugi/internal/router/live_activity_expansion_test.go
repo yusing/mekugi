@@ -52,14 +52,14 @@ func TestUISnapshotLiveActivityExpansion(t *testing.T) {
 
 func TestNativeUIExpansionFocus(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.ensureShell()
+
 	u.Text = "Keep this draft"
 	for _, focus := range []int{0, 2} {
 		terminalTest(u).Focus = 0
-		u.testActivity(u.agents).setDisplayFilter(focus == 2, "/root/worker")
-		view := u.testActivity(u.view)
+		u.testActivity(u.shell.Agents).setDisplayFilter(focus == 2, "/root/worker")
+		view := u.testActivity(u.shell.Transcript)
 		if focus != 0 {
-			view = u.testActivity(u.agents)
+			view = u.testActivity(u.shell.Agents)
 		}
 		before := view.Expansion
 		if err := terminalTest(u).key(5); err != nil {
@@ -158,8 +158,8 @@ func TestLiveActivityExpansionViewportCache(t *testing.T) {
 func TestAppServerExpansionRetainedReads(t *testing.T) {
 	for _, main := range []bool{false, true} {
 		u := newAppServerSessionTestUI(t, t.TempDir())
-		u.view.Conversation = main
-		u.testActivity(u.view).testAudience()
+		u.shell.Transcript.Conversation = main
+		u.testActivity(u.shell.Transcript).testAudience()
 		read := func(id string) {
 			appServerTestNotify(t, u, "item/completed", map[string]any{
 				"threadId": "main", "turnId": "t", "item": map[string]any{
@@ -171,7 +171,7 @@ func TestAppServerExpansionRetainedReads(t *testing.T) {
 		read("first")
 		read("second")
 		render := func() string {
-			return ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(90, 100).Lines, "\n"))
+			return ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 100).Lines, "\n"))
 		}
 		if strings.Contains(render(), "first-start") {
 			t.Fatal("read output must start compact")
@@ -196,7 +196,7 @@ func TestAppServerExpansionRetainedReads(t *testing.T) {
 			t.Fatal("arriving reads ignored pane expansion")
 		}
 		u.source.Entries[0].Source.Native.Output.Release()
-		u.testActivity(u.view).invalidateEntry(u.source.Entries[0].Source.Seq)
+		u.testActivity(u.shell.Transcript).invalidateEntry(u.source.Entries[0].Source.Seq)
 		if !strings.Contains(render(), "first-end") {
 			t.Fatal("released output erased the retained inline tail")
 		}

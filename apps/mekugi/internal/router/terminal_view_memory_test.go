@@ -12,7 +12,7 @@ import (
 func TestTerminalViewMemory(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ctx = t.Context()
-	u.ensureShell()
+
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	if err := u.testPaint(io.Discard, 120, 32); err != nil {
 		t.Fatal(err)

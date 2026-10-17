@@ -33,16 +33,16 @@ func hookTestRun(workspace, status string) map[string]any {
 func TestAppServerHookLifecycleUsesRunPresentation(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	waitTargetTestStore(t, u, waitTargetTestOpenStore(t))
-	u.view.Conversation = true
-	u.testActivity(u.view).testAudience()
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
 	start := hookTestRun(u.cwd, "running")
 	start["completedAt"], start["durationMs"], start["entries"] = nil, nil, nil
 	appServerTestNotify(t, u, "hook/started", map[string]any{"threadId": "main", "run": start})
-	if len(u.source.Entries) != 1 || !u.testActivity(u.view).blocks(0)[0].Running {
+	if len(u.source.Entries) != 1 || !u.testActivity(u.shell.Transcript).blocks(0)[0].Running {
 		t.Fatal("hook start did not create a running Run block")
 	}
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": binding.Turn{ID: "t", Status: "completed"}})
-	if !u.testActivity(u.view).blocks(0)[0].Running {
+	if !u.testActivity(u.shell.Transcript).blocks(0)[0].Running {
 		t.Fatal("turn completion ended an async hook")
 	}
 	appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "turnId": "later", "run": hookTestRun(u.cwd, "completed")})
@@ -52,18 +52,18 @@ func TestAppServerHookLifecycleUsesRunPresentation(t *testing.T) {
 	if len(u.source.Entries) != 1 {
 		t.Fatalf("hook notifications duplicated rows: %d", len(u.source.Entries))
 	}
-	b := u.testActivity(u.view).blocks(0)[0]
+	b := u.testActivity(u.shell.Transcript).blocks(0)[0]
 	if b.Running || u.source.RetainedOutput(b.Source, b.Output).View().Exited || b.Duration != 120*time.Millisecond || !b.Started.Equal(time.Unix(1000, 0)) {
 		t.Fatalf("hook completion borrowed a shell exit or lost host timing: %+v", b)
 	}
-	u.view.Expansion = 1 // Default presentation omits hook runs.
-	rows := ansi.Strip(strings.Join(u.testActivity(u.view).testRenderConversation(80).Lines, "\n"))
+	u.shell.Transcript.Expansion = 1 // Default presentation omits hook runs.
+	rows := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).testRenderConversation(80).Lines, "\n"))
 	if !strings.Contains(rows, "Hook Ran") || !strings.Contains(rows, "hooks.toml") || !strings.Contains(rows, "feedback: policy checked") {
 		t.Fatalf("Main did not render hook source and output: %s", rows)
 	}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "later", "item": binding.ThreadItem{ID: "next", Type: "commandExecution", Command: "true", ExitCode: new(0)}})
-	settleActivity(u.now().Add(activityui.OutputDebounce), u.testActivity(u.view), u.testActivity(u.agents))
-	if !u.testActivity(u.view).blocks(0)[0].Collapsed {
+	settleActivity(u.now().Add(activityui.OutputDebounce), u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents))
+	if !u.testActivity(u.shell.Transcript).blocks(0)[0].Collapsed {
 		t.Fatal("successful hook output did not use Run collapse")
 	}
 }
@@ -80,11 +80,11 @@ func TestAppServerHookOutcomesInChildFeed(t *testing.T) {
 			// Completion alone must be visible, independently of Main's same run ID.
 			appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.cwd, "completed")})
 			appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "child", "run": run})
-			b := u.testActivity(u.agents).blocks(len(u.childSource.Entries) - 1)[0]
+			b := u.testActivity(u.shell.Agents).blocks(len(u.childSource.Entries) - 1)[0]
 			if b.Running || b.Collapsible() || b.ExitCode != 0 || u.childSource.RetainedOutput(b.Source, b.Output).View().Exited || !b.Hook.HasError {
 				t.Fatalf("hook outcome was flattened to a command exit: %+v", b)
 			}
-			page := u.agents.Painter.DialogPage(snapshotOutput(b, u.childSource.RetainedOutput(b.Source, b.Output)), 60)
+			page := u.shell.Agents.Painter.DialogPage(snapshotOutput(b, u.childSource.RetainedOutput(b.Source, b.Output)), 60)
 			if !strings.Contains(page.Text, "error: cannot execute") || strings.Contains(page.Text, "unsafe") || strings.Contains(ansi.Strip(page.Detail), "exit") {
 				t.Fatalf("hook detail lost errors or fabricated an exit: %+v", page)
 			}
@@ -116,7 +116,7 @@ func TestAppServerHookOpenDialogTracksCompletion(t *testing.T) {
 			start := hookTestRun(u.cwd, "running")
 			start["completedAt"], start["durationMs"], start["entries"] = nil, nil, nil
 			appServerTestNotify(t, u, "hook/started", map[string]any{"threadId": "main", "run": start})
-			if !terminalTest(u).openEntry(u.view, u.source.Entries[0].Source.Seq) {
+			if !terminalTest(u).openEntry(u.shell.Transcript, u.source.Entries[0].Source.Seq) {
 				t.Fatal("hook dialog did not open")
 			}
 			d := terminalTest(u).Dialog
@@ -187,12 +187,12 @@ func TestHookObservationRestartResumeAndReplay(t *testing.T) {
 		t.Fatalf("resume lost hooks outside turns: %d", len(fresh.source.Entries))
 	}
 	for _, entry := range fresh.source.Entries {
-		b := fresh.view.Disclosure.Blocks(entry.Values)[0]
+		b := fresh.shell.Transcript.Disclosure.Blocks(entry.Values)[0]
 		if b.Running || !fresh.source.RetainedOutput(b.Source, b.Output).View().Done {
 			t.Fatal("resume revived a hook")
 		}
 	}
-	if activityui.RowVerb(fresh.testActivity(fresh.view).blocks(1)[0]) != "Hook Run" || !strings.Contains(fresh.source.Entries[1].Source.Text, "outcome unknown") {
+	if activityui.RowVerb(fresh.testActivity(fresh.shell.Transcript).blocks(1)[0]) != "Hook Run" || !strings.Contains(fresh.source.Entries[1].Source.Text, "outcome unknown") {
 		t.Fatal("unfinished restored hook claims completion")
 	}
 	foreign, err := reopened.publication.ReadHookObservations("/other", "main")
@@ -216,7 +216,7 @@ func TestHookObservationRestartResumeAndReplay(t *testing.T) {
 	end := hookTestRun(u.cwd, "completed")
 	end["id"] = "unfinished"
 	appServerTestNotify(t, fresh, "hook/completed", map[string]any{"threadId": "main", "run": end})
-	if len(fresh.source.Entries) != 2 || activityui.RowVerb(fresh.testActivity(fresh.view).blocks(1)[0]) != "Hook Ran" {
+	if len(fresh.source.Entries) != 2 || activityui.RowVerb(fresh.testActivity(fresh.shell.Transcript).blocks(1)[0]) != "Hook Ran" {
 		t.Fatal("a fresh host completion could not settle a restored unknown hook")
 	}
 	// Corrupt optional hook history is disclosed without losing the host replay.
@@ -235,8 +235,8 @@ func TestHookObservationRestartResumeAndReplay(t *testing.T) {
 func TestUISnapshotNativeHookVisibility(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	waitTargetTestStore(t, u, waitTargetTestOpenStore(t))
-	u.view.Conversation = true
-	u.testActivity(u.view).testAudience()
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
 	global := filepath.Join(u.cwd, "hooks.json")
 	run := func(id, event, source, status, message string, entries ...map[string]any) {
 		appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": map[string]any{
@@ -246,11 +246,11 @@ func TestUISnapshotNativeHookVisibility(t *testing.T) {
 	run("guard", "preToolUse", builtinHookSource, "completed", "Applying shell guard")
 	run("context", "sessionStart", global, "completed", "", map[string]any{"kind": "context", "text": "<skills>"})
 	run("rejected", "preToolUse", global, "blocked", "Checking generated files", map[string]any{"kind": "feedback", "text": "generated file"})
-	rows := ansi.Strip(strings.Join(u.testActivity(u.view).testRenderConversation(80).Lines, "\n"))
+	rows := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).testRenderConversation(80).Lines, "\n"))
 	frames := []string{"default", rows}
 	for expansion := uint8(1); expansion <= 2; expansion++ {
-		u.view.Expansion = expansion
-		rows = ansi.Strip(strings.Join(u.testActivity(u.view).testRenderConversation(80).Lines, "\n"))
+		u.shell.Transcript.Expansion = expansion
+		rows = ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).testRenderConversation(80).Lines, "\n"))
 		frames = append(frames, fmt.Sprintf("expansion %d", expansion), rows)
 	}
 	uisnapshot.Assert(t, "testdata/snapshots/native-hook-visibility.txt", strings.Join(frames, "\n")+"\n")
@@ -260,8 +260,8 @@ func TestUISnapshotNativeHookVisibility(t *testing.T) {
 		"sourcePath": builtinHookSource, "status": "blocked", "statusMessage": "Applying shell guard",
 		"startedAt": 1000, "completedAt": 1001, "durationMs": 5,
 		"entries": []map[string]any{{"kind": "feedback", "text": "mekugi: VCS guard instrumentation failed: VCS guard: cannot parse command: 1:10: reached EOF without closing quote `'`"}}}})
-	uisnapshot.Assert(t, "testdata/snapshots/native-hook-guard-rejection.txt", strings.Join(u.testActivity(u.view).testRenderConversation(80).Lines, "\n")+"\n")
-	if !terminalTest(u).openEntry(u.view, u.source.Entries[len(u.source.Entries)-1].Source.Seq) {
+	uisnapshot.Assert(t, "testdata/snapshots/native-hook-guard-rejection.txt", strings.Join(u.testActivity(u.shell.Transcript).testRenderConversation(80).Lines, "\n")+"\n")
+	if !terminalTest(u).openEntry(u.shell.Transcript, u.source.Entries[len(u.source.Entries)-1].Source.Seq) {
 		t.Fatal("guard rejection dialog did not open")
 	}
 	uisnapshot.Assert(t, "testdata/snapshots/native-hook-guard-rejection-dialog.txt", drawOutputDialog(terminalTest(u))+"\n")

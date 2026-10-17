@@ -5,8 +5,6 @@ package router
 import (
 	"context"
 
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
@@ -66,9 +64,8 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), history: testHistory(), Host: client, view: activityui.NewView(), agents: activityui.NewView(), Requests: sessioncontrol.NewRequests[appServerRequest](client), ctx: ctx})
+	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), history: testHistory(), Host: client, Requests: sessioncontrol.NewRequests[appServerRequest](client), ctx: ctx})
 	setTestAppServerIntegration(u, proxy)
-	u.ensureShell()
 
 	defer terminalTest(u).Diff.Close()
 	if err := u.Request("initialize", nil); err != nil {
@@ -127,9 +124,9 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 			if assignmentCount != 1 || messageCount != 1 || excerptCount != 1 {
 				continue // The authenticated observer may arrive after app-server completion.
 			}
-			u.view.Conversation = true
-			u.testActivity(u.view).testAudience()
-			feed := u.testActivity(u.view).RenderFeed(100, 60)
+			u.shell.Transcript.Conversation = true
+			u.testActivity(u.shell.Transcript).testAudience()
+			feed := u.testActivity(u.shell.Transcript).RenderFeed(100, 60)
 			main := ansi.Strip(strings.Join(feed.Lines, "\n"))
 			if strings.Contains(main, "Message received:") {
 				t.Fatalf("legacy received envelope leaked into Main:\n%s", main)

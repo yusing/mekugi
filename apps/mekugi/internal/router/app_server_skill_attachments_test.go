@@ -2,7 +2,6 @@ package router
 
 import (
 	"bytes"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
@@ -130,7 +129,7 @@ func TestSkillAttachmentTranscriptAndHistoryMetadata(t *testing.T) {
 			}
 			u, _ := newAppServerTestUI()
 			u.startSession("main", "/work")
-			u.agents = activityui.NewView()
+
 			var turns []binding.HistoryTurn
 			payload := `[{"id":"turn","status":"completed","items":[{"type":"userMessage","id":"message","content":` + tc.content + `}]}]`
 			if err := json.Unmarshal([]byte(payload), &turns); err != nil {

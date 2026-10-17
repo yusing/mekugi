@@ -20,15 +20,15 @@ func TestUISnapshotNativeMainRepliesStayInTranscript(t *testing.T) {
 			now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
 			u.clock = func() time.Time { return now }
 			u.Turn, u.sessionPresentation().Status.Text, u.model = "active", "Working", "snapshot-model"
-			u.view.Painter.Theme = diffrender.DarkTheme
+			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			entries := []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Main reply stays in the transcript.", Observed: now}}
 			for i := range 20 {
 				entries = append(entries, sessionpresentation.ActivityEntry{Seq: uint64(i + 2), Agent: "Main", Kind: "tool", Text: fmt.Sprintf("Ran `echo activity-%02d`", i+1), Observed: now})
 			}
-			u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: entries})
+			u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: entries})
 			rows, _ := u.testMainFrame(width, 16, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("native-main-transcript-following-%d", width), rows)
-			u.view.Following, u.view.Offset = false, 0
+			u.shell.Transcript.Following, u.shell.Transcript.Offset = false, 0
 			rows, _ = u.testMainFrame(width, 16, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("native-main-transcript-scrolled-%d", width), rows)
 		})
@@ -45,24 +45,24 @@ func TestNativeMainTranscriptScrollingAndTurnEnd(t *testing.T) {
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": fmt.Sprint(i), "type": "commandExecution", "command": fmt.Sprint("echo activity-", i)}})
 			}
 			u.testMainFrame(80, 24, 0)
-			if u.view.FeedTop != 1 {
+			if u.shell.Transcript.FeedTop != 1 {
 				t.Fatal("transcript lost rows to a reply copy")
 			}
-			u.view.Following, u.view.Offset = false, 0
+			u.shell.Transcript.Following, u.shell.Transcript.Offset = false, 0
 			frame, _ := u.testMainFrame(80, 24, 0)
 			if strings.Count(ansi.Strip(strings.Join(frame, "\n")), "Original Main reply") != 1 {
 				t.Fatal("original reply is not accessible exactly once when scrolling up")
 			}
-			for i := 0; !u.view.Following && i < u.view.FeedLines; i++ {
-				u.view.ScrollKey('j')
+			for i := 0; !u.shell.Transcript.Following && i < u.shell.Transcript.FeedLines; i++ {
+				u.shell.Transcript.ScrollKey('j')
 				u.testMainFrame(80, 24, 0)
 			}
-			if !u.view.Following {
+			if !u.shell.Transcript.Following {
 				t.Fatal("incremental scrolling did not reach the bottom")
 			}
 			appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t", "status": status}})
 			u.testMainFrame(80, 24, 0)
-			if u.view.FeedTop != 1 || u.Turn != "" {
+			if u.shell.Transcript.FeedTop != 1 || u.Turn != "" {
 				t.Fatal("turn end changed transcript geometry or retained an active turn")
 			}
 		})

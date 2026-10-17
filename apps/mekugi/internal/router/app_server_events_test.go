@@ -38,7 +38,7 @@ func newAppServerSessionTestUI(t *testing.T, workspace string) *appServerUI {
 	u.ctx = t.Context()
 	u.segments = testReports()
 	t.Cleanup(func() { awaitCommandSegments(t, u) })
-	u.ensureShell()
+
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.startSession("main", workspace)
 	return u
@@ -48,12 +48,12 @@ func TestAppServerAgentTimerStartsAtFirstTurn(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	u.session.Caller("early")
-	u.testActivity(u.agents).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "/root/worker", Kind: "status", Text: "Assigned", Observed: time.Now()}}})
+	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "/root/worker", Kind: "status", Text: "Assigned", Observed: time.Now()}}})
 	for _, agent := range u.session.Roster() {
 		if !agent.Started.IsZero() {
 			t.Fatalf("thread registration started timer: %+v", agent)
 		}
-		if _, timer := u.testActivity(u.agents).testCurrent(agent, time.Now().Add(time.Hour)); timer != "" {
+		if _, timer := u.testActivity(u.shell.Agents).testCurrent(agent, time.Now().Add(time.Hour)); timer != "" {
 			t.Fatalf("unstarted thread shows timer %q", timer)
 		}
 	}
@@ -119,20 +119,20 @@ func TestAppServerSessionProjectsChildThreads(t *testing.T) {
 	if agent.Responding || !agent.Final {
 		t.Fatal("finished child still responding")
 	}
-	_, done := u.testActivity(u.agents).testCurrent(*agent, agent.LastResponse)
-	_, later := u.testActivity(u.agents).testCurrent(*agent, agent.LastResponse.Add(time.Hour))
+	_, done := u.testActivity(u.shell.Agents).testCurrent(*agent, agent.LastResponse)
+	_, later := u.testActivity(u.shell.Agents).testCurrent(*agent, agent.LastResponse.Add(time.Hour))
 	if elapsed, _, _ := strings.Cut(done, " · "); !strings.HasPrefix(later, elapsed+" · ") {
 		t.Fatalf("elapsed time kept counting after the child finished: %q, then %q", done, later)
 	}
-	activity := ansi.Strip(strings.Join(u.testActivity(u.agents).RenderFeed(90, 60).Lines, "\n"))
+	activity := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(90, 60).Lines, "\n"))
 	for _, want := range []string{"worker · explore", "▶ worker started · gpt-6-luna", "Inspect the pane.", "├ Ran  go test ./... · exit 2", "└ Read a.go", "✓ answer", "The pane waits on its first frame."} {
 		if !strings.Contains(activity, want) {
 			t.Fatalf("Activity lacks %q:\n%s", want, activity)
 		}
 	}
-	u.view.Conversation = true
-	u.testActivity(u.view).testAudience()
-	main := ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(90, 60).Lines, "\n"))
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
+	main := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 60).Lines, "\n"))
 	for _, want := range []string{"▶ worker started", "├─✓ finished", "The pane waits on its first frame.", "╰─↩ Open reply"} {
 		if !strings.Contains(main, want) {
 			t.Fatalf("Main lacks %q:\n%s", want, main)

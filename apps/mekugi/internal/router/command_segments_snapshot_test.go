@@ -22,11 +22,11 @@ func TestUISnapshotCommandSegmentRetentionNotice(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.view.Painter.Theme = diffrender.DarkTheme
+			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 			u.Thread = "main"
-			u.view.Conversation = true
-			u.testActivity(u.view).testAudience()
+			u.shell.Transcript.Conversation = true
+			u.testActivity(u.shell.Transcript).testAudience()
 			u.commandSegmentPending = 1
 			u.commandSegmentRetained(commandSegmentWrite{key: [3]string{"main", "turn", "command"}, err: tc.err})
 			delivery := u.applyCriticalNotices()

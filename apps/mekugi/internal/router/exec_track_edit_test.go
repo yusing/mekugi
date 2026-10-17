@@ -104,7 +104,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			u := newAppServerSessionTestUI(t, workspace)
 			u.execTrack = shell.hub.Observer
 			shell.hub.ui = u
-			u.ensureShell()
+
 			defer terminalTest(u).Diff.Close()
 			u.sessionPresentation().Status.Text = "Working"
 			item := map[string]any{"id": "edit", "type": "commandExecution", "command": "/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
@@ -218,9 +218,9 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			awaitMain(t, u, "Running")
 			if strings.HasPrefix(edit, "python3") {
 				var rows []string
-				for _, block := range u.testActivity(u.view).blocks(0) {
+				for _, block := range u.testActivity(u.shell.Transcript).blocks(0) {
 					if _, _, _, _, ok := activityui.EditStat(block.Label); ok {
-						rows = append(rows, u.view.Painter.Block(block, 120)...)
+						rows = append(rows, u.shell.Transcript.Painter.Block(block, 120)...)
 					}
 				}
 				name := "tracked-python-edited-before-test"
@@ -257,7 +257,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 					}
 				}
 			}()
-			finishPacing(u.testActivity(u.view), u.testActivity(u.agents))
+			finishPacing(u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents))
 			if err := u.testPaint(slave, 140, 40); err != nil {
 				t.Fatal(err)
 			}
@@ -298,7 +298,7 @@ func TestAppServerTrackedEditCommandOutcomeBeforeHostExit(t *testing.T) {
 	}
 	// A zero exit also describes a no-op. Without file evidence, show the
 	// command outcome but do not invent a confirmed edit or applied counts.
-	for _, block := range u.testActivity(u.view).blocks(0) {
+	for _, block := range u.testActivity(u.shell.Transcript).blocks(0) {
 		if block.Verb == "Edit" {
 			if _, _, _, _, counts := activityui.EditStat(block.Label); counts || block.GroupHeader == "Edited" || block.EditOutcome != "ran" {
 				t.Fatalf("command completion confirmed a file change: %+v", block)
@@ -504,7 +504,7 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 							if len(terminalTest(u).Live.Order) != 0 || strings.Contains(screen.String(), "LIVE ·") {
 								t.Fatal("completed native command retained the live dock")
 							}
-							for _, view := range []*activityAdapter{u.testActivity(u.view), u.testActivity(u.agents)} {
+							for _, view := range []*activityAdapter{u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents)} {
 								for _, entry := range view.Entries {
 									if entry.Source.Native != nil && entry.Source.Native.Item == "edit" {
 										if !terminalTest(u).openActivityEdit(view.bind(terminalTest(u)), entry.Source.Seq, "source.go") || !strings.Contains(terminalTest(u).Dialog.Pages[0].Code, "+package p; var B=2") {

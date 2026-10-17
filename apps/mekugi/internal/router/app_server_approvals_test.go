@@ -63,8 +63,8 @@ func approvalTestTranscript(t *testing.T, u *appServerUI) string {
 		if entry.Source.Agent == "Session" {
 			t.Fatal("approval added a Session entry")
 		}
-		for _, block := range u.view.Disclosure.Blocks(entry.Values) {
-			rows = append(rows, u.view.Painter.Block(block, 100)...)
+		for _, block := range u.shell.Transcript.Disclosure.Blocks(entry.Values) {
+			rows = append(rows, u.shell.Transcript.Painter.Block(block, 100)...)
 		}
 	}
 	return ansi.Strip(strings.Join(rows, "\n"))
@@ -318,7 +318,7 @@ func TestNativeApprovalGuardedWrite(t *testing.T) {
 		t.Fatal("expired write was answered")
 	}
 	for i, want := range []string{"Approved", "Denied", "Auto Denied: no answer within 5 minutes"} {
-		if len(u.source.Entries) != 3 || u.testActivity(u.view).blocks(i)[0].Approval != want+"\nCommand: git push origin main" {
+		if len(u.source.Entries) != 3 || u.testActivity(u.shell.Transcript).blocks(i)[0].Approval != want+"\nCommand: git push origin main" {
 			t.Fatalf("approval %d = %+v", i, u.source.Entries)
 		}
 	}
@@ -480,10 +480,10 @@ func TestNativeApprovalQuestionEditorOwnership(t *testing.T) {
 	appServerTestKeys(t, u, "wait for review")
 	questionTestSync(t, u, "question", false)
 	questionTestPaint(t, u, 80)
-	u.ensureShell()
+
 	defer terminalTest(u).Diff.Close()
 	terminalTest(u).Layout.Main = terminalsession.Rect{0, 0, 80, 28}
-	if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%dM", u.prompts.Rect.X+1, u.prompts.Rect.Y+1)); err != nil {
+	if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%dM", u.shell.Prompts.Rect.X+1, u.shell.Prompts.Rect.Y+1)); err != nil {
 		t.Fatal(err)
 	}
 	if u.approvals.Open || u.currentQuestion() == nil || u.Text != "" {
@@ -638,7 +638,7 @@ func TestUISnapshotNativeApprovalDock(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.view.Painter.Theme = diffrender.DarkTheme
+			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 			u.startSession("main", "/workspace")
 			u.Turn = "turn"
@@ -666,13 +666,13 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, "/workspace")
 			u.clock = func() time.Time { return time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC) }
-			u.view.Clock, u.agents.Clock = u.clock, u.clock
-			u.view.Painter.Theme, u.agents.Painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
+			u.shell.Transcript.Clock, u.shell.Agents.Clock = u.clock, u.clock
+			u.shell.Transcript.Painter.Theme, u.shell.Agents.Painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
 			u.Turn = "turn"
-			thread, view := "main", u.testActivity(u.view)
+			thread, view := "main", u.testActivity(u.shell.Transcript)
 			if tc.child {
 				u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
-				thread, view = "child", u.testActivity(u.agents)
+				thread, view = "child", u.testActivity(u.shell.Agents)
 			}
 			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "git push origin main", Status: "inProgress"}
 			notify := func(method string) {
@@ -767,7 +767,7 @@ func TestUISnapshotNativeAutoApprovalStates(t *testing.T) {
 		t.Run(status, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, "/workspace")
 			u.clock = func() time.Time { return time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC) }
-			u.view.Clock, u.agents.Clock = u.clock, u.clock
+			u.shell.Transcript.Clock, u.shell.Agents.Clock = u.clock, u.clock
 			u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 			item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: "git push", Status: "inProgress"}
 			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "turn", "item": item})
@@ -775,7 +775,7 @@ func TestUISnapshotNativeAutoApprovalStates(t *testing.T) {
 				appServerTestNotify(t, u, method, map[string]any{"threadId": "child", "turnId": "turn", "reviewId": "review", "targetItemId": target, "review": map[string]any{"status": state}, "decisionSource": "agent"})
 			}
 			review("item/autoApprovalReview/started", "inProgress", "cmd")
-			if got := u.testActivity(u.agents).blocks(0)[0].Approval; got != "Pending Approval" {
+			if got := u.testActivity(u.shell.Agents).blocks(0)[0].Approval; got != "Pending Approval" {
 				t.Fatalf("pending state = %q", got)
 			}
 			review("item/autoApprovalReview/completed", status, "cmd")
@@ -785,11 +785,11 @@ func TestUISnapshotNativeAutoApprovalStates(t *testing.T) {
 			// Untargeted network reviews and missing items cannot add a row.
 			review("item/autoApprovalReview/completed", "approved", "")
 			review("item/autoApprovalReview/completed", "approved", "missing")
-			if len(u.childSource.Entries) != 1 || len(u.source.Entries) != 0 || u.testActivity(u.agents).blocks(0)[0].Approval != want {
+			if len(u.childSource.Entries) != 1 || len(u.source.Entries) != 0 || u.testActivity(u.shell.Agents).blocks(0)[0].Approval != want {
 				t.Fatalf("review changed another record: %+v", u.childSource.Entries)
 			}
 			if status == "approved" || status == "denied" {
-				uisnapshot.AssertTerminal(t, "testdata/snapshots/approval-auto-"+status+".txt", append(u.testActivity(u.agents).RenderFeed(48, 30).Lines, "plain after approval"), 48)
+				uisnapshot.AssertTerminal(t, "testdata/snapshots/approval-auto-"+status+".txt", append(u.testActivity(u.shell.Agents).RenderFeed(48, 30).Lines, "plain after approval"), 48)
 			}
 		})
 	}

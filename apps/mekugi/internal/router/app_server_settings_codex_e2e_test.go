@@ -13,8 +13,6 @@ import (
 	"testing"
 	"time"
 
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
@@ -153,7 +151,7 @@ func TestAppServerSettingsCatalogNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), history: testHistory(), Host: client, Requests: sessioncontrol.NewRequests[appServerRequest](client), view: activityui.NewView(), agents: activityui.NewView()})
+	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), history: testHistory(), Host: client, Requests: sessioncontrol.NewRequests[appServerRequest](client)})
 	if err := u.Request("initialize", nil); err != nil {
 		t.Fatal(err)
 	}

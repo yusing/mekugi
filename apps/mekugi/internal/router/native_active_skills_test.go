@@ -32,7 +32,7 @@ func TestUISnapshotLoadedSkillsRestoreClickAndReset(t *testing.T) {
 				{ID: "failed", Type: "commandExecution", Command: "skills-mgr get failed", Status: "failed"},
 				{ID: "declined", Type: "commandExecution", Command: "skills-mgr get declined", Status: "declined"},
 			}}}}
-			view, owner := u.testActivity(u.view), "Main"
+			view, owner := u.testActivity(u.shell.Transcript), "Main"
 			label, body := "2 loaded skills", "- commit\n- council"
 			if thread == "child" {
 				info.Turns[0].Items = slices.DeleteFunc(info.Turns[0].Items, func(item binding.ThreadItem) bool { return item.ID == "attached" })
@@ -43,7 +43,7 @@ func TestUISnapshotLoadedSkillsRestoreClickAndReset(t *testing.T) {
 			} else {
 				u.registerThread(info)
 				u.restoreActivityThread(info, false)
-				view, owner = u.testActivity(u.agents), "/root/worker"
+				view, owner = u.testActivity(u.shell.Agents), "/root/worker"
 			}
 			for range liveActivityFeedLimit {
 				view.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.session.Activity().NextSequence(), Agent: owner, Kind: "text", Text: "note"}}})

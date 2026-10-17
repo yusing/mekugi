@@ -674,8 +674,8 @@ func awaitMain(t *testing.T, u *appServerUI, want string) string {
 		u.flushStreamOutput()
 		u.startCommitReads()
 
-		u.testActivity(u.view).testPace(time.Now())
-		main := ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(90, 60).Lines, "\n"))
+		u.testActivity(u.shell.Transcript).testPace(time.Now())
+		main := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 60).Lines, "\n"))
 		if strings.Contains(main, want) {
 			return main
 		}
@@ -986,8 +986,8 @@ func newExecTrackFixture(t *testing.T, ctx context.Context, scope segments.Instr
 func newTrackedAppServerUI(t *testing.T) (*appServerUI, *execTrackFixture) {
 	t.Helper()
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.Conversation = true
-	u.testActivity(u.view).testAudience()
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
 	hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
 	u.execTrack = hub.Observer
 	hub.ui = u

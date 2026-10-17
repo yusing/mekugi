@@ -2,7 +2,6 @@ package router
 
 import (
 	"fmt"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"testing"
 	"time"
 
@@ -156,7 +155,7 @@ func TestAppServerCompactQueuedCancelBeforeRunPreservesMain(t *testing.T) {
 	for _, locked := range []bool{false, true} {
 		t.Run(fmt.Sprint("locked=", locked), func(t *testing.T) {
 			u, w := newAppServerTestUI()
-			u.mainView.InterruptLocked = locked
+			u.shell.Main.InterruptLocked = locked
 			appServerTestTurn(t, u, "work")
 			appServerTestKeys(t, u, "/compact\t")
 			appServerTestKeys(t, u, "after compact\r")
@@ -242,9 +241,9 @@ func TestAppServerCompactCancelCompletionBeforeAckDoesNotQuitOrContinue(t *testi
 
 func TestUISnapshotNativeCompactQueuedCancel(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
-	u.view.Clock = u.clock
+	u.shell.Transcript.Clock = u.clock
 	u.model, u.reasoningEffort = "snapshot-model", "high"
 	appServerTestTurn(t, u, "work")
 	appServerTestKeys(t, u, "/compact\t")
@@ -334,10 +333,10 @@ func TestUISnapshotNativeCompactQueuedContinuation(t *testing.T) {
 	u, w := newAppServerTestUI()
 	setTestAppServerIntegration(u, &observationFixture{})
 	u.startSession(u.Thread, "")
-	u.agents = activityui.NewView()
-	u.view.Painter.Theme = diffrender.DarkTheme
+
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
-	u.view.Clock = u.clock
+	u.shell.Transcript.Clock = u.clock
 	u.model, u.reasoningEffort = "snapshot-model", "high"
 	r := queueBusyCompact(t, u, w)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID))
@@ -483,9 +482,9 @@ func TestAppServerCompactSteerCancelDuringInterrupt(t *testing.T) {
 func TestUISnapshotNativeCompactSteerInterrupt(t *testing.T) {
 	u, w := newAppServerTestUI()
 	setTestAppServerIntegration(u, &observationFixture{})
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
-	u.view.Clock = u.clock
+	u.shell.Transcript.Clock = u.clock
 	u.model, u.reasoningEffort = "snapshot-model", "high"
 	appServerTestTurn(t, u, "work")
 	appServerTestKeys(t, u, "/compact\r")

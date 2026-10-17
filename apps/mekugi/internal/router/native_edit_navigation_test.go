@@ -43,7 +43,7 @@ func TestNativeEditClickOpensExactCapturedDiffDialog(t *testing.T) {
 				if repeated {
 					path = "file20.go"
 				}
-				u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "Edit `" + path + "` +1 -1 · apply_patch", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "earlier"}}, {Seq: 2, Agent: "Main", Kind: "tool", Text: "Edit `file20.go` +1 -1 · apply_patch", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "call"}}}})
+				u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "Edit `" + path + "` +1 -1 · apply_patch", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "earlier"}}, {Seq: 2, Agent: "Main", Kind: "tool", Text: "Edit `file20.go` +1 -1 · apply_patch", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "call"}}}})
 				terminalTest(u).DiffOpen, terminalTest(u).Focus = true, 1
 				for _, key := range []byte("a\t/amber1\r") {
 					if err := terminalTest(u).key(key); err != nil {
@@ -55,7 +55,7 @@ func TestNativeEditClickOpensExactCapturedDiffDialog(t *testing.T) {
 				if err := u.testPaint(&bytes.Buffer{}, 120, 28); err != nil {
 					t.Fatal(err)
 				}
-				if !terminalTest(u).openActivityEdit(u.view, 2, "file20.go") || terminalTest(u).Dialog == nil {
+				if !terminalTest(u).openActivityEdit(u.shell.Transcript, 2, "file20.go") || terminalTest(u).Dialog == nil {
 					t.Fatal("edit did not open dialog")
 				}
 				if !terminalTest(u).DiffOpen || terminalTest(u).Focus != 1 || strings.Join(paintSavedDiff(t, c, 120, 28), "\n") != before {
@@ -81,18 +81,18 @@ func TestNativeCompletedBatchEditOpensBeforeSiblingCommandExits(t *testing.T) {
 	for _, child := range []bool{false, true} {
 		t.Run(fmt.Sprint(child), func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			thread, view := "main", u.testActivity(u.view)
+			thread, view := "main", u.testActivity(u.shell.Transcript)
 			if child {
-				thread, view = "child", u.testActivity(u.agents)
+				thread, view = "child", u.testActivity(u.shell.Agents)
 				u.registerThread(binding.ThreadInfo{ID: thread, AgentNickname: "worker"})
 				_ = u.Requests.ReadThreadMetadata("main", thread, true, appServerRequest{})
-				u.testActivity(u.agents).setDisplayFilter(true, "/root/worker")
+				u.testActivity(u.shell.Agents).setDisplayFilter(true, "/root/worker")
 			}
 			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "batch", "status": "inProgress"}})
 			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "batch", "item": map[string]any{"id": "slow-sibling", "type": "commandExecution", "command": "sleep 30", "status": "inProgress"}})
 			change := map[string]any{"path": "batch.go", "kind": map[string]any{"type": "update"}, "diff": "@@ -1 +1 @@\n-before_batch\n+after_batch\n"}
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "batch", "item": map[string]any{"id": "patch", "type": "fileChange", "status": "completed", "changes": []any{change}}})
-			finishPacing(u.testActivity(u.view), u.testActivity(u.agents))
+			finishPacing(u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents))
 			screen := vt.NewEmulator(160, 40)
 			defer screen.Close()
 			if err := u.testPaint(screen, 160, 40); err != nil {
@@ -148,13 +148,13 @@ func TestNativeHostEditNavigationRequiresCompletedSuccessfulItem(t *testing.T) {
 	for _, tc := range []struct{ phase, status string }{{"item/started", ""}, {"item/completed", "failed"}, {"item/completed", "declined"}, {"item/completed", "inProgress"}} {
 		item := binding.ThreadItem{Type: "fileChange", Status: tc.status, Changes: []binding.FileChange{{Path: "a.go", Diff: "+not_confirmed\n"}}}
 		u.source.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch", EditPages: activitypresentation.HostEditPages(item.Observation(), u.cwd, tc.phase)}}}}
-		if terminalTest(u).openActivityEdit(u.view, 1, "a.go") || terminalTest(u).Dialog != nil {
+		if terminalTest(u).openActivityEdit(u.shell.Transcript, 1, "a.go") || terminalTest(u).Dialog != nil {
 			t.Fatalf("%s/%s opened a completed edit", tc.phase, tc.status)
 		}
 	}
 	item := binding.ThreadItem{Changes: []binding.FileChange{{Path: "first.go", Diff: "+first\n"}, {Path: "second.go", Diff: "+second\n"}}}
 	u.source.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 2, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch", EditPages: activitypresentation.HostEditPages(item.Observation(), u.cwd, "item/completed")}}}}
-	if terminalTest(u).openActivityEdit(u.view, 2, "missing.go") || !terminalTest(u).openActivityEdit(u.view, 2, "second.go") || terminalTest(u).Dialog.Page != 1 {
+	if terminalTest(u).openActivityEdit(u.shell.Transcript, 2, "missing.go") || !terminalTest(u).openActivityEdit(u.shell.Transcript, 2, "second.go") || terminalTest(u).Dialog.Page != 1 {
 		t.Fatal("host diff did not resolve the exact clicked path")
 	}
 }
@@ -163,10 +163,10 @@ func TestUISnapshotNativeCompletedHostEditDialog(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	item := binding.ThreadItem{Changes: []binding.FileChange{{Path: "internal/router/batch.go", Diff: "@@ -1 +1 @@\n-before_batch\n+after_batch\n"}}}
 	u.source.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch", EditPages: activitypresentation.HostEditPages(item.Observation(), u.cwd, "item/completed")}}}}
-	if !terminalTest(u).openActivityEdit(u.view, 1, "internal/router/batch.go") {
+	if !terminalTest(u).openActivityEdit(u.shell.Transcript, 1, "internal/router/batch.go") {
 		t.Fatal("host edit did not open")
 	}
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	uisnapshot.Assert(t, "testdata/snapshots/native-completed-host-edit-dialog.txt", drawOutputDialog(terminalTest(u))+"\n")
 }
 
@@ -184,11 +184,11 @@ func TestNativeEditDialogShowsHistoricalHunkNotLaterCapture(t *testing.T) {
 	u.review.Projection.Data = reviewFixtureSnapshot(t, presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: "/w", Call: "clicked"}, Correlation: "call\x000", Change: "amber1"}, Operation: activitydetail.Operation{Thread: "main", Item: "call"}, Chunks: captures[:1]})
 	publishFixtureReview(t, u)
 
-	u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "Edit `target.go` +1 -1 · apply_patch", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "call"}}}})
+	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "Edit `target.go` +1 -1 · apply_patch", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "call"}}}})
 	if err := os.WriteFile(filepath.Join(u.cwd, "target.go"), []byte("unrelated_workspace_content\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if !terminalTest(u).openActivityEdit(u.view, 1, "target.go") {
+	if !terminalTest(u).openActivityEdit(u.shell.Transcript, 1, "target.go") {
 		t.Fatal("edit dialog failed")
 	}
 	if err := u.testPaint(&bytes.Buffer{}, 120, 24); err != nil {
@@ -217,13 +217,13 @@ func TestNativeCapturedDetailIsAttachmentScoped(t *testing.T) {
 	// consume the accepted snapshot without reopening evidence.
 	u.review.Projection.Changes = nil
 	u.review.Projection.Retained.Store = testHistory().Attach(filepath.Join(t.TempDir(), "unavailable"))
-	if !terminalTest(u).openActivityEdit(u.view, 1, "scope.go") || !strings.Contains(terminalTest(u).Dialog.Pages[0].Code, "+after") {
+	if !terminalTest(u).openActivityEdit(u.shell.Transcript, 1, "scope.go") || !strings.Contains(terminalTest(u).Dialog.Pages[0].Code, "+after") {
 		t.Fatal("accepted capture did not resolve without retained storage")
 	}
 	terminalTest(u).outputKey("\x1b")
 	u.session.Retire()
 	u.session = sessionpresentation.Attachment{}
-	if terminalTest(u).openActivityEdit(u.view, 1, "scope.go") || terminalTest(u).Dialog != nil {
+	if terminalTest(u).openActivityEdit(u.shell.Transcript, 1, "scope.go") || terminalTest(u).Dialog != nil {
 		t.Fatal("new attachment inherited the prior captured-detail publication")
 	}
 }

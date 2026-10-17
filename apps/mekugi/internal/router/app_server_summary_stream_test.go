@@ -16,13 +16,13 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			at := time.Date(2026, 9, 30, 8, 0, 0, 0, time.Local)
 			u.clock = func() time.Time { return at }
-			u.view.Clock, u.agents.Clock = u.clock, u.clock
-			u.view.Painter.Theme, u.agents.Painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
+			u.shell.Transcript.Clock, u.shell.Agents.Clock = u.clock, u.clock
+			u.shell.Transcript.Painter.Theme, u.shell.Agents.Painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
 			appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-			u.testActivity(u.agents).setDisplayFilter(false, "/root/worker")
-			view := u.testActivity(u.view)
+			u.testActivity(u.shell.Agents).setDisplayFilter(false, "/root/worker")
+			view := u.testActivity(u.shell.Transcript)
 			if thread == "child" {
-				view = u.testActivity(u.agents)
+				view = u.testActivity(u.shell.Agents)
 			}
 			notify := func(method string, params map[string]any) {
 				t.Helper()
@@ -130,9 +130,9 @@ func TestReasoningSourceCompletesBeforeTerminalReveal(t *testing.T) {
 			body := "Inspecting retained facts\n\n" + strings.Repeat("Public checkpoint.\n", 24)
 			appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": "r", "delta": body})
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{body}}})
-			source, view := u.source, u.view
+			source, view := u.source, u.shell.Transcript
 			if thread == "child" {
-				source, view = u.childSource, u.agents
+				source, view = u.childSource, u.shell.Agents
 			}
 			if len(source.Entries) != 1 || source.Entries[0].Source.Text != body || source.Entries[0].Source.Native.Phase != "item/completed" {
 				t.Fatalf("source completion waited for terminal reveal: %+v", source.Entries)

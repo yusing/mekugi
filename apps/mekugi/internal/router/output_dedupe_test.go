@@ -524,13 +524,13 @@ func TestDuplicateOutputSummary(t *testing.T) {
 func TestUISnapshotOutputDeduplicationTranscript(t *testing.T) {
 	for _, label := range []string{"repeated", "20 lines repeated"} {
 		u := newAppServerSessionTestUI(t, t.TempDir())
-		u.view.Conversation = true
-		u.testActivity(u.view).testAudience()
+		u.shell.Transcript.Conversation = true
+		u.testActivity(u.shell.Transcript).testAudience()
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
 			"id": "command", "type": "commandExecution", "command": "cat file.txt", "status": "completed", "exitCode": 0, "aggregatedOutput": "original output\n"}})
 		rollCommandOutput(u)
 		u.applyActivity([]sessionpresentation.ActivityEntry{{Seq: u.session.Activity().NextSequence(), Agent: "/root", Kind: "output_dedupe", CallID: "command", Text: label, Native: &sessionpresentation.NativeItem{Thread: "main"}}}, nil)
-		got := strings.Join(u.testActivity(u.view).RenderFeed(60, 20).Lines, "\n")
+		got := strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(60, 20).Lines, "\n")
 		if !strings.Contains(got, label) {
 			t.Fatalf("missing suffix: %s", got)
 		}

@@ -62,7 +62,7 @@ func TestSubmittedAttachmentHostSchema(t *testing.T) {
 		if restore {
 			u.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
 		} else {
-			applyTranscriptFixture(u.testActivity(u.view), true, u.cwd, "main", "main", "t", "input", "item/completed", "", item)
+			applyTranscriptFixture(u.testActivity(u.shell.Transcript), true, u.cwd, "main", "main", "t", "input", "item/completed", "", item)
 		}
 		if !reflect.DeepEqual(u.source.Entries[0].Source.Native.Spans, want) {
 			t.Fatalf("restore=%v spans=%+v", restore, u.source.Entries[0].Source.Native.Spans)
@@ -72,11 +72,11 @@ func TestSubmittedAttachmentHostSchema(t *testing.T) {
 
 func TestUISnapshotSubmittedAttachmentTokens(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	raw := jsontext.Value(`[{"type":"text","text":"$batch-agent-sessions @FIXME.md non-deferred items","text_elements":[{"byteRange":{"start":0,"end":21},"placeholder":"$batch-agent-sessions"},{"byteRange":{"start":22,"end":31},"placeholder":"@FIXME.md"}]}]`)
 	text, spans, _ := sessionpresentation.UserText(raw)
 	entry := sessionpresentation.ActivityEntry{Agent: "You", Text: text, Observed: time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local), Native: &sessionpresentation.NativeItem{Spans: spans}}
-	out := u.testActivity(u.view).testUserItem(entry, 80)
+	out := u.testActivity(u.shell.Transcript).testUserItem(entry, 80)
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/submitted-attachment-tokens.txt", append(out.Lines, "plain after attachments"), 80)
 }
 
@@ -97,7 +97,7 @@ func TestComposerPasteBoundariesAndImages(t *testing.T) {
 	image := pasteTestImage(t)
 	for _, payload := range []string{"plain\x1b", "plain\x1b[", "plain\x1b]8;;link", "plain\x1b[20", "plain\x02\x03\x16"} {
 		u, _ := newAppServerTestUI()
-		u.ensureShell()
+
 		t.Cleanup(func() { terminalTest(u).Diff.Close() })
 		feed := func(text string) {
 			t.Helper()
@@ -136,12 +136,12 @@ func TestComposerImagePastePTYLifecycle(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	u, _ := newAppServerTestUI()
-	u.ensureShell()
+
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	ready := make(chan struct{})
 	done := make(chan error, 1)
 	// Scrollback must not consume the ESC byte of either paste terminator.
-	u.view.Following = false
+	u.shell.Transcript.Following = false
 	go func() {
 		done <- terminalui.WithRawPane(ctx, slave, slave, "", "", func(keys <-chan byte) error {
 			close(ready)

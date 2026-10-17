@@ -30,9 +30,9 @@ func TestAppServerRestoredChildExplicitFinalSurvivesCommentary(t *testing.T) {
 		final,
 	}})
 	assertRestoredChildMainAnswer(t, u, "answer", "Explicit final answer")
-	main := ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(100, 60).Lines, "\n"))
-	u.testActivity(u.agents).setDisplayFilter(false, "/root/worker")
-	child := ansi.Strip(strings.Join(u.testActivity(u.agents).RenderFeed(100, 60).Lines, "\n"))
+	main := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(100, 60).Lines, "\n"))
+	u.testActivity(u.shell.Agents).setDisplayFilter(false, "/root/worker")
+	child := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(100, 60).Lines, "\n"))
 	if strings.Contains(main, "Later commentary") || !strings.Contains(child, "Later commentary") {
 		t.Fatalf("commentary was promoted to Main or lost from child history: main=%q child=%q", main, child)
 	}
@@ -40,7 +40,7 @@ func TestAppServerRestoredChildExplicitFinalSurvivesCommentary(t *testing.T) {
 
 func assertRestoredChildMainAnswer(t *testing.T, u *appServerUI, item, text string) {
 	t.Helper()
-	for _, view := range []*activityAdapter{u.testActivity(u.agents), u.testActivity(u.view)} {
+	for _, view := range []*activityAdapter{u.testActivity(u.shell.Agents), u.testActivity(u.shell.Transcript)} {
 		finals := 0
 		for _, entry := range view.Entries {
 			if entry.Source.Kind != "final" {
@@ -56,7 +56,7 @@ func assertRestoredChildMainAnswer(t *testing.T, u *appServerUI, item, text stri
 			t.Fatalf("restored child answer produced %d finals, want one", finals)
 		}
 	}
-	main := ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(100, 60).Lines, "\n"))
+	main := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(100, 60).Lines, "\n"))
 	if strings.Count(main, text) != 1 {
 		t.Fatalf("Main did not render the child answer exactly once:\n%s", main)
 	}

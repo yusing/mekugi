@@ -12,8 +12,8 @@ func setSideTest(u *appServerUI, side *sessioncontrol.Side) {
 
 func (u *appServerUI) btwRows(width, height int) []string {
 	u.settlePresentation()
-	if !u.mainView.Side.Open() || height < 1 {
+	if !u.shell.Main.Side.Open() || height < 1 {
 		return nil
 	}
-	return u.mainView.Side.Render(&u.view.Painter, u.now(), width, height).Rows
+	return u.shell.Main.Side.Render(&u.shell.Transcript.Painter, u.now(), width, height).Rows
 }

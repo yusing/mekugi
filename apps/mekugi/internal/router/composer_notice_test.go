@@ -32,7 +32,7 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%s/%d", tc.kind, tc.width), func(t *testing.T) {
 			u, wire := newAppServerTestUI()
-			u.ensureShell()
+
 			defer terminalTest(u).Diff.Close()
 			u.Turn, u.sessionPresentation().Status.Text, u.Text = "active", "Working", "keep draft"
 			switch tc.kind {
@@ -66,7 +66,7 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			click(u.mainView.NoticeDetails)
+			click(u.shell.Main.NoticeDetails)
 			if terminalTest(u).Dialog == nil {
 				t.Fatal("truncated error did not open")
 			}
@@ -75,7 +75,7 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 				t.Fatal("details lost full error")
 			}
 			terminalTest(u).outputKey("q")
-			click(u.mainView.NoticeDismiss)
+			click(u.shell.Main.NoticeDismiss)
 			if u.composerErrorText() != "" || u.Text != draft || u.Turn != turn || wire.String() != sent || len(u.source.Entries) != 0 {
 				t.Fatal("dismissal changed draft, host state, wire, or transcript")
 			}
@@ -87,13 +87,13 @@ func TestUISnapshotComposerError(t *testing.T) {
 	for _, width := range []int{12, 20, 36, 80} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.view.Painter.Theme = diffrender.DarkTheme
+			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			u.clock = func() time.Time { return time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC) }
 			u.sessionPresentation().Status.Text = "Ready"
 			u.setNotice("File contents omitted: setup.sh (attachment budget exceeded).\nThe attachment result names the missing content.", true)
 			rows, _ := u.testMainFrame(width, 8, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("composer-error-%d", width), rows)
-			if !strings.Contains(rows[u.mainView.NoticeDismiss.Y], terminalui.Green) || !strings.Contains(ansi.Strip(rows[u.mainView.NoticeDismiss.Y]), "[✓]") {
+			if !strings.Contains(rows[u.shell.Main.NoticeDismiss.Y], terminalui.Green) || !strings.Contains(ansi.Strip(rows[u.shell.Main.NoticeDismiss.Y]), "[✓]") {
 				t.Fatal("dismiss check is missing its shared success color")
 			}
 		})
@@ -103,7 +103,7 @@ func TestUISnapshotComposerError(t *testing.T) {
 	u.testMainFrame(80, 8, 0)
 	u.setNotice("done", false)
 	u.testMainFrame(80, 8, 0)
-	if u.mainView.NoticeDetails.W != 0 || u.mainView.NoticeDismiss.W != 0 {
+	if u.shell.Main.NoticeDetails.W != 0 || u.shell.Main.NoticeDismiss.W != 0 {
 		t.Fatal("stale error controls survived feedback")
 	}
 }

@@ -92,7 +92,7 @@ func (u *appServerUI) applyEditorDraft(intent sessionpresentation.ComposerIntent
 	if err := u.Editor.ApplyExternal(text); err != nil {
 		return err
 	}
-	u.mainView.CursorColumn = nil
+	u.shell.Main.CursorColumn = nil
 	u.setNotice("", false)
 	u.pruneDraftImages()
 	return nil

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
@@ -32,7 +33,7 @@ func TestLiveActivityElapsedFormatting(t *testing.T) {
 		t.Run(tc.want+"/"+tc.age.String(), func(t *testing.T) {
 			now := start.Add(tc.age)
 			for _, status := range []string{"Waiting", "Working"} {
-				u := *appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), view: activityui.NewView(), Turn: "active"})
+				u := *appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: activityui.NewView()}, Turn: "active"})
 				u.sessionPresentation().Status.Set(status, false)
 				u.sessionPresentation().Status.Started = start
 				if got := ansi.Strip(u.sessionLabel(now)); !strings.HasSuffix(got, " "+tc.want) {

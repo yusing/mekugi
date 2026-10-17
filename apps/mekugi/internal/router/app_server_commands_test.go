@@ -76,7 +76,7 @@ func TestComposerCommandSmallFrame(t *testing.T) {
 			}
 		}
 		u.settlePresentation()
-		if u.mainView.Menu.Top > u.mainView.Menu.Selected || u.mainView.Menu.Top+u.mainView.Menu.RowCount <= u.mainView.Menu.Selected {
+		if u.shell.Main.Menu.Top > u.shell.Main.Menu.Selected || u.shell.Main.Menu.Top+u.shell.Main.Menu.RowCount <= u.shell.Main.Menu.Selected {
 			t.Fatal("selection outside visible viewport")
 		}
 	}
@@ -84,12 +84,11 @@ func TestComposerCommandSmallFrame(t *testing.T) {
 
 func TestComposerCommandMouseSelection(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	shell := &terminalUI{main: u, Attachment: &terminalsession.Attachment{}}
-	u.shell = shell.Attachment
+	shell := terminalTest(u)
 	appServerTestKeys(t, u, "/sk")
 	u.renderPicker(80, 4)
 	u.settlePresentation()
-	u.mainView.Menu.Rect = terminalsession.Rect{0, 0, 80, 4}
+	u.shell.Main.Menu.Rect = terminalsession.Rect{0, 0, 80, 4}
 	if err := shell.mouse("\x1b[<0;2;2M"); err != nil {
 		t.Fatal(err)
 	}

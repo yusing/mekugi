@@ -145,7 +145,7 @@ func TestSudoUnlockDialog(t *testing.T) {
 
 func TestUISnapshotSudoDialogs(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 	u.startSession("main", "/workspace")
 	u.Turn = "turn"
@@ -196,7 +196,7 @@ func TestSudoSecretEditorAndSessionSwitch(t *testing.T) {
 		t.Fatalf("secret editor dispatch: %v", err)
 	}
 	u.hideQuestions()
-	if u.prompts.Secret.Text != "" || u.Editor != &u.conversation().Editor {
+	if u.shell.Prompts.Secret.Text != "" || u.Editor != &u.conversation().Editor {
 		t.Fatal("hiding authentication did not return to the ordinary editor")
 	}
 	if err := u.clearSessionPresentation(); err != nil {

@@ -4,7 +4,6 @@ import (
 	"bytes"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 
@@ -164,7 +163,7 @@ func TestComposerFilePickerInsertionUndoRedoAndPasteOpacity(t *testing.T) {
 func TestComposerPickerEscapeViaShellAndFrameBounds(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.cwd = "/work"
-	u.ensureShell()
+
 	for _, key := range []byte("@file") {
 		if err := terminalTest(u).key(key); err != nil {
 			t.Fatal(err)
@@ -241,7 +240,7 @@ func TestComposerSkillPickerUndoHistoryAndAtomicEditing(t *testing.T) {
 func TestComposerSkillPickerResumeAndEditorBindings(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.startSession("main", "/work")
-	u.agents = activityui.NewView()
+
 	var turns []binding.HistoryTurn
 	if err := json.Unmarshal([]byte(`[{"id":"turn","status":"completed","items":[{"type":"userMessage","id":"message","content":[{"type":"text","text":"use $review please"},{"type":"skill","name":"review","path":"/work/review/SKILL.md"}]}]}]`), &turns); err != nil {
 		t.Fatal(err)
@@ -378,13 +377,13 @@ func TestComposerPickerDoesNotMarkCoveredTranscriptPainted(t *testing.T) {
 	appServerTestKeys(t, u, "@f")
 	for _, height := range []int{6, 24} {
 		frame, _ := u.testMainFrame(80, height, 0)
-		if !strings.Contains(strings.Join(frame, "\n"), "loading...") || u.mainView.ContentPainted {
+		if !strings.Contains(strings.Join(frame, "\n"), "loading...") || u.shell.Main.ContentPainted {
 			t.Fatalf("height %d: covered transcript acknowledged", height)
 		}
 	}
 	u.pickerKey("\x1b")
 	u.testMainFrame(80, 24, 0)
-	if !u.mainView.ContentPainted {
+	if !u.shell.Main.ContentPainted {
 		t.Fatal("dismissal did not restore transcript presentation")
 	}
 }
@@ -392,15 +391,15 @@ func TestComposerPickerDoesNotMarkCoveredTranscriptPainted(t *testing.T) {
 // These fixtures publish the source transition before consuming terminal state.
 func (u *appServerUI) pickerKey(key string) bool {
 	u.settlePresentation()
-	return u.applyMenuResult(u.mainView.Menu.Key(key))
+	return u.applyMenuResult(u.shell.Main.Menu.Key(key))
 }
 func (u *appServerUI) pickerHeight(width int) int {
 	u.settlePresentation()
-	return u.mainView.Menu.Height(width)
+	return u.shell.Main.Menu.Height(width)
 }
 func (u *appServerUI) renderPicker(width, height int) []string {
 	u.settlePresentation()
-	return u.mainView.Menu.Render(&u.view.Painter.Painter, terminalsession.SelectionStyle(&u.view.Painter.Painter), width, height)
+	return u.shell.Main.Menu.Render(&u.shell.Transcript.Painter.Painter, terminalsession.SelectionStyle(&u.shell.Transcript.Painter.Painter), width, height)
 }
 
 func TestComposerCompletionAttachmentLifetime(t *testing.T) {

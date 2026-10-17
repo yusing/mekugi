@@ -27,7 +27,7 @@ func (main *appServerUI) openSelectionTarget(u *terminalsession.Attachment, targ
 			main.copyText(u, link)
 		}
 	case target.Entry != 0:
-		if target.View == main.view && main.openActivityReply(u, target.Entry) {
+		if target.View == main.shell.Transcript && main.openActivityReply(u, target.Entry) {
 			return
 		}
 		main.openEntry(u, target.View, target.Entry)

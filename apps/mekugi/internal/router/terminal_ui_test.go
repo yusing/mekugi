@@ -20,7 +20,7 @@ import (
 
 func TestTerminalUIBatchKeepsSettlingTime(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.ensureShell()
+
 	defer terminalTest(u).Diff.Close()
 	p := previewmodel.Preview{ID: "edit", Caller: "/root", Workspace: t.TempDir(), Status: previewmodel.PreviewEdit, Input: "source"}
 	u.preview(p, false)
@@ -72,7 +72,7 @@ func TestTerminalUIIncrementalPaint(t *testing.T) {
 		t.Fatal(err)
 	}
 	fresh, _ := newAppServerTestUI()
-	fresh.ensureShell()
+
 	fresh.Text = "new"
 	want := vt.NewEmulator(80, 20)
 	defer want.Close()
@@ -116,7 +116,7 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 			for _, caller := range []string{"/root", "/root/worker"} {
 				t.Run(fmt.Sprintf("child=%t/diff=%t/caller=%s", child, saved, caller), func(t *testing.T) {
 					u, _ := newAppServerTestUI()
-					u.ensureShell()
+
 					defer terminalTest(u).Diff.Close()
 					terminalTest(u).DiffOpen = saved
 
@@ -175,12 +175,12 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 	for _, activity := range []bool{false, true} {
 		t.Run(map[bool]string{false: "main", true: "activity"}[activity], func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.ensureShell()
+
 			defer terminalTest(u).Diff.Close()
 			u.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Responding: true}}
-			view, caller := u.testActivity(u.view), "/root"
+			view, caller := u.testActivity(u.shell.Transcript), "/root"
 			if activity {
-				view, caller = u.testActivity(u.agents), "/root/worker"
+				view, caller = u.testActivity(u.shell.Agents), "/root/worker"
 				view.setDisplayFilter(true, caller)
 				terminalTest(u).Focus = 0
 			}

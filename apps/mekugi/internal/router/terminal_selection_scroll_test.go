@@ -25,7 +25,7 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 	for _, surface := range []string{"Main", "Activity", "btw"} {
 		t.Run(surface, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.ensureShell()
+
 			t.Cleanup(func() { terminalTest(u).Diff.Close() })
 			terminalTest(u).DiffOpen = false
 			var lines []string
@@ -33,9 +33,9 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 				lines = append(lines, fmt.Sprintf("row %02d", i))
 			}
 			text := "```\n" + strings.Join(lines, "\n") + "\n```"
-			view := u.testActivity(u.view)
+			view := u.testActivity(u.shell.Transcript)
 			if surface == "Activity" {
-				view = u.testActivity(u.agents)
+				view = u.testActivity(u.shell.Agents)
 				view.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
 			}
 			if surface == "btw" {
@@ -58,7 +58,7 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 				}
 			}
 			if surface == "Activity" {
-				u.testActivity(u.agents).setDisplayFilter(true, "Main")
+				u.testActivity(u.shell.Agents).setDisplayFilter(true, "Main")
 			}
 			paint()
 			x, y := -1, -1
@@ -228,7 +228,7 @@ func TestDiffSelectionScrollFromEOFAndRestart(t *testing.T) {
 
 func TestSelectionScrolledClickUsesDocumentTarget(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
-	u.ensureShell()
+
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "reader"}})
 	for i := range 40 {
@@ -250,7 +250,7 @@ func TestSelectionScrolledClickUsesDocumentTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := terminalTest(u).Layout.Main
-	x, y := r.X+u.agents.FeedLeft, r.Y+u.agents.FeedTop
+	x, y := r.X+u.shell.Agents.FeedLeft, r.Y+u.shell.Agents.FeedTop
 	selectionTestDrag(t, terminalTest(u), x, y, x+1, y)
 	s := terminalTest(u).Selection
 	if !s.ScrollKey("\x1b[H") {

@@ -33,9 +33,9 @@ func (u *appServerUI) publishPresentation(now time.Time) sessionpresentation.Vie
 		Menu: u.menuView(), Control: &u.Live, Feedback: &u.feedback, Conversation: u.conversation(), Restoring: u.restoring != nil,
 		SideRunning: u.side != nil && (u.side.Busy || u.side.Starting), Processes: u.runningProcessCount(), History: u.historyViews(),
 	}, caption, now)
-	u.prompts.Update(view)
-	u.mainView.Update(view)
-	for _, terminal := range []*activityui.View{u.view, u.agents} {
+	u.shell.Prompts.Update(view)
+	u.shell.Main.Update(view)
+	for _, terminal := range []*activityui.View{u.shell.Transcript, u.shell.Agents} {
 		if terminal != nil {
 			terminal.Painter.FileLink = markdownFileLinks(view.Info.Workspace)
 		}

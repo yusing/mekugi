@@ -23,7 +23,7 @@ import (
 func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.Turn = "main-turn"
-	applyTranscriptFixture(u.testActivity(u.view), true, "", "main", "main", u.Turn, "progress", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "Checking the requested reply."})
+	applyTranscriptFixture(u.testActivity(u.shell.Transcript), true, "", "main", "main", u.Turn, "progress", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "Checking the requested reply."})
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 	message := "The requested reply.\n\n" + strings.Repeat("More detail about this reply.\n", 16) + "End of requested reply."
 	send := func(id, body string) {
@@ -39,7 +39,7 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 	if err := u.testPaint(&bytes.Buffer{}, 120, 28); err != nil {
 		t.Fatal(err)
 	}
-	main := ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(110, 50).Lines, "\n"))
+	main := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(110, 50).Lines, "\n"))
 	if strings.Contains(main, "End of requested reply") || !strings.Contains(main, "↩ Open reply") {
 		t.Fatalf("Main did not collapse the actual message: %s", main)
 	}
@@ -57,12 +57,12 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 		t.Fatal("reply has no cross-pane identity")
 	}
 	clicked := false
-	for row, target := range u.view.FeedQuestions {
+	for row, target := range u.shell.Transcript.FeedQuestions {
 		if target != seq {
 			continue
 		}
-		x := terminalTest(u).Layout.Main.X + u.view.FeedLeft + 1
-		y := terminalTest(u).Layout.Main.Y + u.view.FeedTop + row
+		x := terminalTest(u).Layout.Main.X + u.shell.Transcript.FeedLeft + 1
+		y := terminalTest(u).Layout.Main.Y + u.shell.Transcript.FeedTop + row
 		if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%dM", x, y)); err != nil {
 			t.Fatal(err)
 		}
@@ -73,7 +73,7 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 		break
 	}
 	if !clicked || terminalTest(u).Dialog == nil || terminalTest(u).DiffOpen {
-		t.Fatalf("reply link did not open modal: clicked=%v seq=%d links=%v diff=%v", clicked, seq, u.view.FeedQuestions, terminalTest(u).DiffOpen)
+		t.Fatalf("reply link did not open modal: clicked=%v seq=%d links=%v diff=%v", clicked, seq, u.shell.Transcript.FeedQuestions, terminalTest(u).DiffOpen)
 	}
 	screen := vt.NewEmulator(120, 28)
 	defer screen.Close()

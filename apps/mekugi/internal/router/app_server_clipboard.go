@@ -35,7 +35,7 @@ func (u *appServerUI) attachImage(path string) {
 // insertImage is its own undoable edit.
 func (u *appServerUI) insertImage(path string) {
 	u.Editor.InsertImage(path)
-	u.mainView.CursorColumn = nil
+	u.shell.Main.CursorColumn = nil
 	u.setNotice("", false)
 	u.pruneDraftImages()
 }

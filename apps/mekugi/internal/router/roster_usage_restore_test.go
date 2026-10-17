@@ -77,9 +77,9 @@ func TestUISnapshotNativeRosterRestoredUsage(t *testing.T) {
 	u := restoredUsageRosterFixture(t)
 	u.usage.Observation("historical", "historical", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 10_000})
 	u.observeCost("historical", u.session.Agent(u.session.KnownCaller("historical")))
-	u.testActivity(u.agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.Roster()})
-	u.agents.Painter.Theme = diffrender.DarkTheme
-	u.agents.Selected = u.session.KnownCaller("child")
+	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.Roster()})
+	u.shell.Agents.Painter.Theme = diffrender.DarkTheme
+	u.shell.Agents.Selected = u.session.KnownCaller("child")
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
-	assertNativeUISnapshot(t, "native-roster-restored-usage", u.testActivity(u.agents).NativeRoster(140, 8, now, true))
+	assertNativeUISnapshot(t, "native-roster-restored-usage", u.testActivity(u.shell.Agents).NativeRoster(140, 8, now, true))
 }

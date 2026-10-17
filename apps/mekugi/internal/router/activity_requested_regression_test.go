@@ -64,22 +64,22 @@ func TestUISnapshotUnresolvedEditCommand(t *testing.T) {
 		for _, tracked := range []bool{false, true} {
 			t.Run(fmt.Sprintf("partial=%v/tracked=%v", partial, tracked), func(t *testing.T) {
 				u := newAppServerSessionTestUI(t, t.TempDir())
-				u.view.Conversation = true
-				u.testActivity(u.view).testAudience()
-				u.view.Painter.Theme = diffrender.DarkTheme
+				u.shell.Transcript.Conversation = true
+				u.testActivity(u.shell.Transcript).testAudience()
+				u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 				now := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
-				u.view.Clock = func() time.Time { return now }
+				u.shell.Transcript.Clock = func() time.Time { return now }
 				native := &sessionpresentation.NativeItem{Thread: "main", Item: "cmd", Command: command, Status: "completed"}
 				if tracked {
 					native.Segments = []sessionpresentation.ActivitySegment{{Source: command, Text: execSegmentText(command)}}
 				}
-				u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
+				u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
 					Seq: 1, Agent: "Main", Kind: "tool", CallID: "cmd", Text: toolActivityShell(command), Observed: now, Native: native,
 				}}})
-				feed := u.testActivity(u.view).RenderFeed(100, 40)
+				feed := u.testActivity(u.shell.Transcript).RenderFeed(100, 40)
 				var opened bool
 				for _, snippet := range feed.Snippets {
-					if terminalTest(u).openOutput(u.view, snippet) {
+					if terminalTest(u).openOutput(u.shell.Transcript, snippet) {
 						opened = true
 						break
 					}
@@ -88,7 +88,7 @@ func TestUISnapshotUnresolvedEditCommand(t *testing.T) {
 					t.Fatal("unresolved edit has no ordinary command dialog")
 				}
 				// The interpreter projection is the original source, not a made-up edit.
-				page := u.view.Painter.DetailDocument(terminalTest(u).Dialog.Pages[0].DetailPage, nil, nil, 100)
+				page := u.shell.Transcript.Painter.DetailDocument(terminalTest(u).Dialog.Pages[0].DetailPage, nil, nil, 100)
 				var source string
 				for _, line := range page.Lines {
 					source += ansi.Strip(line.Text) + "\n"
@@ -113,15 +113,15 @@ func TestUISnapshotMoveIntent(t *testing.T) {
 	const move = "mv testdata/output.txt.new testdata/output.txt"
 	command := move + "; gofmt -w internal/router/native_shell.go"
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.Painter.Theme = diffrender.DarkTheme
-	u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
+	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
 		Seq: 1, Agent: "Main", Kind: "tool", CallID: "cmd", Text: toolActivityShell(command),
 		Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd", Command: command, Status: "completed", Segments: []sessionpresentation.ActivitySegment{
 			{Source: move, Text: execSegmentText(move)},
 			{Source: "gofmt -w internal/router/native_shell.go", Text: execSegmentText("gofmt -w internal/router/native_shell.go")},
 		}},
 	}}})
-	assertNativeUISnapshot(t, "move-intent-ran", u.testActivity(u.view).testRenderConversation(100).Lines)
+	assertNativeUISnapshot(t, "move-intent-ran", u.testActivity(u.shell.Transcript).testRenderConversation(100).Lines)
 }
 
 func TestRequestedReasoningHeadsOperationTree(t *testing.T) {

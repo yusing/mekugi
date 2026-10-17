@@ -18,10 +18,9 @@ import (
 )
 
 func TestNativeAuxiliaryAbsencePreservesMainAndReviewSource(t *testing.T) {
-	u, wire := newAppServerTestUI()
-	u.terminalViews = terminalsession.Views{}
-	u.ensureShell()
-	terminalTest(u).Shell.RestorePreferences(terminalsession.Preferences{Focus: 1, DiffOpen: true}, &u.mainView)
+	u, wire := newAppServerTestUI(terminalsession.Views{})
+
+	terminalTest(u).Shell.RestorePreferences(terminalsession.Preferences{Focus: 1, DiffOpen: true}, u.shell.Main)
 	u.review.Projection.Workspace, u.review.Projection.Coverage = "/workspace", "READY"
 	u.publishReview()
 	if err := u.testPaint(io.Discard, 160, 32); err != nil {
@@ -45,7 +44,7 @@ func TestNativeAuxiliaryAbsencePreservesMainAndReviewSource(t *testing.T) {
 	if view := u.reviewSource.ReviewView(u.session.Scope()); view.Workspace != "/workspace" || view.Coverage != "READY" {
 		t.Fatal("removing a view removed its independent source publication")
 	}
-	if state := shell.Shell.Preferences(&shell.main.mainView); state.Focus != 0 || state.DiffOpen || state.NavigatorColumns != 0 {
+	if state := shell.Shell.Preferences(shell.main.shell.Main); state.Focus != 0 || state.DiffOpen || state.NavigatorColumns != 0 {
 		t.Fatalf("absent preference: %+v", state)
 	}
 }
@@ -66,13 +65,12 @@ func TestReplayAuxiliaryAbsenceSurvivesReset(t *testing.T) {
 }
 
 func TestUISnapshotNativeWithoutActivityRoster(t *testing.T) {
-	u, wire := newAppServerTestUI()
-	u.terminalViews = terminalsession.Views{}
+	u, wire := newAppServerTestUI(terminalsession.Views{})
 	u.activity = nil
 	u.clock = func() time.Time { return time.Date(2026, 10, 1, 12, 0, 0, 0, time.Local) }
-	u.ensureShell()
+
 	defer terminalTest(u).Diff.Close()
-	u.view.Clock, u.agents.Clock = u.clock, u.clock
+	u.shell.Transcript.Clock, u.shell.Agents.Clock = u.clock, u.clock
 	u.startSession("main", "/workspace")
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "reader"}})
 	for _, thread := range []string{"main", "child"} {
@@ -91,7 +89,7 @@ func TestUISnapshotNativeWithoutActivityRoster(t *testing.T) {
 		if !strings.Contains(frame, text) {
 			t.Fatalf("Conversation missing: %s", frame)
 		}
-		if terminalTest(u).Layout.Roster.H != 0 || terminalTest(u).Tabs[3].W != 0 || len(u.agents.Hits) != 0 || strings.Contains(terminalTest(u).nativeStatus(), "Agents") {
+		if terminalTest(u).Layout.Roster.H != 0 || terminalTest(u).Tabs[3].W != 0 || len(u.shell.Agents.Hits) != 0 || strings.Contains(terminalTest(u).nativeStatus(), "Agents") {
 			t.Fatal("absent roster retained rows or input targets")
 		}
 		assertNativeUISnapshot(t, name, strings.Split(frame, "\n"))
@@ -108,7 +106,7 @@ func TestUISnapshotNativeWithoutActivityRoster(t *testing.T) {
 	if u.Text != "retained draft" || wire.Len() != 0 {
 		t.Fatal("unavailable selector consumed ordinary input")
 	}
-	u.testActivity(u.agents).displayThread("/root/reader")
+	u.testActivity(u.shell.Agents).displayThread("/root/reader")
 	paint("native-no-roster-child", "child Conversation result")
 	if !u.composerReadOnly() || u.Thread != "main" || u.Text != "retained draft" {
 		t.Fatal("child display changed Main input ownership")
@@ -140,17 +138,16 @@ func TestNativeRosterConstructorReplacementAndReplay(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	u, wire := newAppServerTestUI()
-	u.terminalViews = runtime.Terminal
-	u.ensureShell()
+	u, wire := newAppServerTestUI(runtime.Terminal)
+
 	defer terminalTest(u).Diff.Close()
-	if len(created) != 1 || u.agents != created[0] {
+	if len(created) != 1 || u.shell.Agents != created[0] {
 		t.Fatal("native attachment bypassed descriptor")
 	}
 	appServerTestKeys(t, u, "/clear\r")
 	req := appServerOneRequest(t, wire, "thread/start", "")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"fresh","cwd":"/workspace"}}}`, req.ID))
-	if len(created) != 2 || u.agents != created[1] || terminalTest(u).Agents != created[1] {
+	if len(created) != 2 || u.shell.Agents != created[1] || terminalTest(u).Agents != created[1] {
 		t.Fatal("replacement bypassed descriptor")
 	}
 	if err := u.testPaint(io.Discard, 100, 24); err != nil {

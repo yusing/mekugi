@@ -355,7 +355,7 @@ func TestUISnapshotNativeSessionTitle(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.view.Painter.Theme = diffrender.DarkTheme
+			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 			u.sessionPresentation().Status.Text, u.model, u.title = "Ready", "snapshot-model", tc.title
 			if tc.name == "idle-save-failure" {
@@ -369,14 +369,14 @@ func TestUISnapshotNativeSessionTitle(t *testing.T) {
 				}
 				appServerTestKeys(t, u, "/title My manual session name\r")
 			}
-			u.ensureShell()
+
 			if tc.scroll {
 				var entries []sessionpresentation.ActivityEntry
 				for i := range 30 {
 					entries = append(entries, sessionpresentation.ActivityEntry{Seq: uint64(i + 1), Agent: "Main", Kind: "text", Text: fmt.Sprintf("Earlier message %02d", i+1), Observed: u.now()})
 				}
-				u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: entries})
-				u.view.Following, u.view.Offset, u.view.Unseen = false, 0, 2
+				u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: entries})
+				u.shell.Transcript.Following, u.shell.Transcript.Offset, u.shell.Transcript.Unseen = false, 0, 2
 			}
 			screen := vt.NewEmulator(tc.width, 16)
 			defer screen.Close()

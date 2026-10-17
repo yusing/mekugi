@@ -112,8 +112,8 @@ func TestAppServerTranscriptOlderHistoryPreservesLiveReasoning(t *testing.T) {
 	restoreContentReply(t, u, 4, map[string]any{"data": []any{historyItem("latest", "Latest historical answer", 109000)}, "nextCursor": "older"})
 	at := time.Unix(200, 0)
 	u.clock = func() time.Time { return at }
-	u.view.Clock, u.agents.Clock = u.clock, u.clock
-	u.testActivity(u.agents).setDisplayFilter(false, "/root/worker")
+	u.shell.Transcript.Clock, u.shell.Agents.Clock = u.clock, u.clock
+	u.testActivity(u.shell.Agents).setDisplayFilter(false, "/root/worker")
 	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "live", "status": "inProgress"}})
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "live", "itemId": "shared", "delta": "Live prefix "})
 	var liveSeq uint64
@@ -161,7 +161,7 @@ func TestAppServerTranscriptOlderHistoryPreservesLiveReasoning(t *testing.T) {
 	if older < 0 || latest <= older || live <= latest {
 		t.Fatalf("history/live placement changed: older=%d latest=%d live=%d", older, latest, live)
 	}
-	frame := ansi.Strip(strings.Join(u.testActivity(u.agents).RenderFeed(100, 60).Lines, "\n"))
+	frame := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(100, 60).Lines, "\n"))
 	if !strings.Contains(frame, "Older public summary") || !strings.Contains(frame, "Live prefix continues after paging") || strings.Contains(frame, "PRIVATE") {
 		t.Fatalf("rendered transcript lost history/live separation:\n%s", frame)
 	}

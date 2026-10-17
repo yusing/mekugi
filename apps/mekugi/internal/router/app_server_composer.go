@@ -6,7 +6,7 @@ import (
 )
 
 func (u *appServerUI) insertDraft(text string) {
-	u.mainView.CursorColumn = nil
+	u.shell.Main.CursorColumn = nil
 	u.setNotice("", false)
 	u.Editor.Insert(text)
 	u.pruneDraftImages()
@@ -31,6 +31,6 @@ func (u *appServerUI) removeDraft(start, end int, run composer.Run) {
 		return
 	}
 	u.setNotice("", false)
-	u.mainView.CursorColumn = nil
+	u.shell.Main.CursorColumn = nil
 	u.pruneDraftImages()
 }

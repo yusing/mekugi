@@ -3,13 +3,14 @@
 package router
 
 import (
-"github.com/yusing/mekugi/libraries/legacycall"
 	"context"
 	"fmt"
 	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/libraries/legacycall"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 
@@ -201,7 +202,7 @@ func TestSavedReviewLoaderOfflineHasNoWorker(t *testing.T) {
 	}
 	loader.Close()
 	u, _ := newAppServerTestUI()
-	u.ensureShell()
+
 	u.applyReview(t.Context(), savedReviewLoaderScope("/workspace", true, "main"))
 	if u.review.Failure != "" || !u.review.Projection.Scope.Workspaces["/workspace"]["main"] || u.review.Projection.Data.Publication.Counts.Net != nil {
 		t.Fatal("attachment without retained storage rejected scope or claimed known counts")

@@ -130,7 +130,6 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 		return true, nil
 	}
 	if command == "/live" {
-		u.ensureShell()
 		value := "off"
 		if u.shell.LiveHidden {
 			value = "on"
@@ -394,7 +393,6 @@ func (u *appServerUI) chooseSetting(choice completion.Choice) {
 
 // setLivePane changes presentation without stopping preview or capture updates.
 func (u *appServerUI) setLivePane(value string) {
-	u.ensureShell()
 	u.shell.LiveHidden = value == "off"
 	u.dirty = true
 	u.setNotice("Live pane "+value+" for this session", false)

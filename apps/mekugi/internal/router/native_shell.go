@@ -3,7 +3,6 @@ package router
 import (
 	"context"
 	"io"
-	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -35,23 +34,11 @@ func (u *appServerUI) composerReadOnly() bool {
 // transcriptView selects display state without changing the input or execution owner.
 func (u *appServerUI) transcriptView() *activityui.View {
 	view := u.sessionPresentation().View()
-	if u.agents != nil && view.Displayed.ID != view.Main.ID {
-		u.agents.Conversation = true
-		return u.agents
+	if u.shell.Agents != nil && view.Displayed.ID != view.Main.ID {
+		u.shell.Agents.Conversation = true
+		return u.shell.Agents
 	}
-	return u.view
-}
-
-// frameInput binds actual terminal state and the playback caption without
-// exposing application records or callbacks to the compositor.
-func (main *appServerUI) frameInput(u *terminalsession.Attachment) terminalsession.FrameInput {
-	var now time.Time
-	if main != nil {
-		u.Main, u.Prompts, u.Transcript = &main.mainView, &main.prompts, main.view
-		now = main.now()
-	}
-	in := u.FrameInput(now, mekugiVersion())
-	return in
+	return u.shell.Transcript
 }
 
 func paintNative(u *terminalsession.Attachment, in terminalsession.FrameInput, transcript *activityui.View, source *sessionpresentation.ActivitySource, ctx context.Context, out io.Writer) error {

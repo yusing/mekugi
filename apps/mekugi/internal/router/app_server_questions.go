@@ -38,26 +38,26 @@ func (u *appServerUI) activeQuestionCall() *sessioncontrol.Question {
 }
 func (u *appServerUI) parkQuestion(q *prompt.Question) {
 	state := u.Editor.Park()
-	u.prompts.QuestionLayout(u.questions.View(u.Thread)).Column = u.mainView.CursorColumn
+	u.shell.Prompts.QuestionLayout(u.questions.View(u.Thread)).Column = u.shell.Main.CursorColumn
 	if q.IsSecret {
-		u.prompts.Secrets(u.questions.Active.ID).Editors[u.questions.Index] = state
+		u.shell.Prompts.Secrets(u.questions.Active.ID).Editors[u.questions.Index] = state
 	} else {
 		q.Editor = state
 	}
 }
 func (u *appServerUI) resumeQuestion(q *prompt.Question) {
 	u.Editor = &u.conversation().Editor
-	u.prompts.Secret = composer.Editor{}
+	u.shell.Prompts.Secret = composer.Editor{}
 	state := q.Editor
 	if q.IsSecret {
-		u.Editor = &u.prompts.Secret
-		state = u.prompts.SecretState(u.questions.Active.ID).Editors[u.questions.Index]
+		u.Editor = &u.shell.Prompts.Secret
+		state = u.shell.Prompts.SecretState(u.questions.Active.ID).Editors[u.questions.Index]
 	}
 	u.Editor.Resume(state)
-	u.mainView.CursorColumn = u.prompts.QuestionLayout(u.questions.View(u.Thread)).Column
+	u.shell.Main.CursorColumn = u.shell.Prompts.QuestionLayout(u.questions.View(u.Thread)).Column
 }
 func (u *appServerUI) discardQuestionEditors(c *sessioncontrol.Question) {
-	u.prompts.ForgetCall(c.ID)
+	u.shell.Prompts.ForgetCall(c.ID)
 	for i := range c.Questions {
 		c.Questions[i].Editor = composer.State{}
 	}
@@ -84,7 +84,7 @@ func (u *appServerUI) composerVacant() bool {
 	if u.composerReadOnly() {
 		return false
 	}
-	if u.Text != "" || len(u.Images) > 0 || len(u.Files) > 0 || len(u.Skills) > 0 || len(u.Selections) > 0 || u.mainView.Pasting() || u.pickerVisible() || u.mainView.Keybindings || u.statusPanel != nil || u.resumePicker != nil || u.approvals.Open {
+	if u.Text != "" || len(u.Images) > 0 || len(u.Files) > 0 || len(u.Skills) > 0 || len(u.Selections) > 0 || u.shell.Main.Pasting() || u.pickerVisible() || u.shell.Main.Keybindings || u.statusPanel != nil || u.resumePicker != nil || u.approvals.Open {
 		return false
 	}
 	return u.shell == nil || u.shell.Focus == 0 && !u.shell.Decoder.Pasting() && !u.shell.Decoder.Pending()
@@ -94,8 +94,8 @@ func (u *appServerUI) openQuestionCall(c *sessioncontrol.Question) {
 		return
 	}
 	u.hideApprovals()
-	u.prompts.Reopen()
-	u.mainView.PromptColumn = u.mainView.CursorColumn
+	u.shell.Prompts.Reopen()
+	u.shell.Main.PromptColumn = u.shell.Main.CursorColumn
 	u.promptEditor.Open(u.Editor, composer.State{})
 	if !u.questions.Open(c.Call) {
 		return
@@ -104,7 +104,7 @@ func (u *appServerUI) openQuestionCall(c *sessioncontrol.Question) {
 	u.focusPrompt()
 }
 func (u *appServerUI) focusPrompt() {
-	u.picker.Open, u.mainView.Keybindings = false, false
+	u.picker.Open, u.shell.Main.Keybindings = false, false
 	u.cancelPickerScan()
 	if u.shell != nil {
 		u.shell.Focus = 0
@@ -115,9 +115,9 @@ func (u *appServerUI) hideQuestions() {
 	if q := u.currentQuestion(); q != nil {
 		u.parkQuestion(q)
 		u.Editor = &u.conversation().Editor
-		u.prompts.Secret = composer.Editor{}
+		u.shell.Prompts.Secret = composer.Editor{}
 		u.promptEditor.Close(u.Editor)
-		u.mainView.CursorColumn = u.mainView.PromptColumn
+		u.shell.Main.CursorColumn = u.shell.Main.PromptColumn
 		u.questions.Hide()
 	}
 }
@@ -289,7 +289,7 @@ func (u *appServerUI) applyQuestionInput(input terminalsession.PromptInput) (boo
 				return true, nil
 			}
 			q.Done, q.Skipped = answer.Done, answer.Skipped
-			u.prompts.Secrets(c.ID).Answers[u.questions.Index] = answer.Answer
+			u.shell.Prompts.Secrets(c.ID).Answers[u.questions.Index] = answer.Answer
 		} else {
 			view := u.sessionPresentation().View()
 			if !u.answerQuestion(sessionpresentation.AnswerIntent{Version: view.Version, AnswerInput: prompt.AnswerInput{
@@ -336,17 +336,17 @@ func (u *appServerUI) submitQuestions(intent sessionpresentation.QuestionSubmitI
 	if c.Sudo != nil {
 		return u.submitSudoPassword(c)
 	}
-	attached := questionAnswerAttachments(c.Call, u.prompts.SecretState(c.ID).Editors, u.prompts.SecretState(c.ID).Answers)
+	attached := questionAnswerAttachments(c.Call, u.shell.Prompts.SecretState(c.ID).Editors, u.shell.Prompts.SecretState(c.ID).Answers)
 	if len(c.RequestID) > 0 {
-		if err := c.Answer(u.Requests, u.prompts.SecretState(c.ID).Answers); err != nil {
+		if err := c.Answer(u.Requests, u.shell.Prompts.SecretState(c.ID).Answers); err != nil {
 			return err
 		}
 		if u.questions.Active == c.Call {
 			u.hideQuestions()
 		}
 		c.Submitted()
-		clear(u.prompts.SecretState(c.ID).Editors)
-		clear(u.prompts.SecretState(c.ID).Answers)
+		clear(u.shell.Prompts.SecretState(c.ID).Editors)
+		clear(u.shell.Prompts.SecretState(c.ID).Answers)
 		u.renderQuestionRecord(c)
 		if len(attached.AnswerImages) > 0 || len(attached.Attachments) > 0 {
 			d := conversationmodel.Input{Draft: attached}

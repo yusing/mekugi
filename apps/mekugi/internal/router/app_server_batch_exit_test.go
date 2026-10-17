@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
@@ -18,7 +19,7 @@ func TestAppServerBatchFailureDoesNotFailEachOperation(t *testing.T) {
 	for _, mode := range []string{"live", "resume", "child history"} {
 		t.Run(mode, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			view := u.testActivity(u.view)
+			view := u.testActivity(u.shell.Transcript)
 			switch mode {
 			case "live":
 				started := item
@@ -30,10 +31,10 @@ func TestAppServerBatchFailureDoesNotFailEachOperation(t *testing.T) {
 			case "child history":
 				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 				u.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: []binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
-				view = u.testActivity(u.agents)
+				view = u.testActivity(u.shell.Agents)
 			}
-			finishPacing(u.testActivity(u.view), u.testActivity(u.agents))
-			got := mainFeed(appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), view: view.View, source: view.ActivitySource}), 140)
+			finishPacing(u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents))
+			got := mainFeed(appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: view.View}, source: view.ActivitySource}), 140)
 			if mode == "resume" {
 				feed := view.RenderFeed(140, 10)
 				if !strings.Contains(got, "1 failed command") || !terminalTest(u).openOutput(view.bind(terminalTest(u)), feed.Snippets[0]) || len(terminalTest(u).Dialog.Pages) != 1 {

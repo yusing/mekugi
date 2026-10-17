@@ -16,17 +16,17 @@ func TestUISnapshotAppServerReasoningBeforeLaterActivity(t *testing.T) {
 		for _, later := range []string{"answer", "command"} {
 			t.Run(thread+"_"+later, func(t *testing.T) {
 				u := newAppServerSessionTestUI(t, t.TempDir())
-				u.view.Conversation = true
-				u.testActivity(u.view).testAudience()
+				u.shell.Transcript.Conversation = true
+				u.testActivity(u.shell.Transcript).testAudience()
 				at := time.Date(2026, 9, 30, 8, 0, 0, 0, time.Local)
 				u.clock = func() time.Time { return at }
-				u.view.Clock, u.agents.Clock = u.clock, u.clock
-				u.view.Painter.Theme, u.agents.Painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
+				u.shell.Transcript.Clock, u.shell.Agents.Clock = u.clock, u.clock
+				u.shell.Transcript.Painter.Theme, u.shell.Agents.Painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
 				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-				u.testActivity(u.agents).setDisplayFilter(false, "/root/worker")
-				view := u.testActivity(u.view)
+				u.testActivity(u.shell.Agents).setDisplayFilter(false, "/root/worker")
+				view := u.testActivity(u.shell.Transcript)
 				if thread == "child" {
-					view = u.testActivity(u.agents)
+					view = u.testActivity(u.shell.Agents)
 				}
 				notify := func(method string, params map[string]any) {
 					t.Helper()

@@ -38,10 +38,10 @@ func TestUISnapshotBackgroundStorageCleanup(t *testing.T) {
 	}
 	u, _ := newAppServerTestUI()
 	u.issues = testCriticalErrors()
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
-	u.Thread, u.view.Conversation = "main", true
-	u.testActivity(u.view).testAudience()
+	u.Thread, u.shell.Transcript.Conversation = "main", true
+	u.testActivity(u.shell.Transcript).testAudience()
 	store.storageNotice = func(_, _ string, phase, message string) {
 		u.issues.CleanupNotice("", "", phase, message)
 		delivery := u.applyCriticalNotices()
@@ -52,7 +52,7 @@ func TestUISnapshotBackgroundStorageCleanup(t *testing.T) {
 		if strings.Contains(message, "inspected") {
 			name = "storage-cleanup-planning"
 		}
-		assertNativeUISnapshot(t, name, u.testActivity(u.view).RenderFeed(80, 24).Lines)
+		assertNativeUISnapshot(t, name, u.testActivity(u.shell.Transcript).RenderFeed(80, 24).Lines)
 		if err := u.testPaint(io.Discard, 100, 30); err != nil {
 			t.Fatal(err)
 		}

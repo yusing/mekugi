@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"iter"
+	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -49,11 +50,15 @@ func (u *terminalUI) openActivityReply(seq uint64) bool {
 	return u.main.openActivityReply(u.Attachment, seq)
 }
 func (u *terminalUI) frameInput() terminalsession.FrameInput {
-	return u.main.frameInput(u.Attachment)
+	var now time.Time
+	if u.main != nil {
+		now = u.main.now()
+	}
+	return u.Attachment.FrameInput(now, mekugiVersion())
 }
 func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	view := u.main.transcriptView()
-	return paintNative(u.Attachment, u.main.frameInput(u.Attachment), view, u.main.activitySource(view), ctx, out)
+	return paintNative(u.Attachment, u.frameInput(), view, u.main.activitySource(view), ctx, out)
 }
 func (u *terminalUI) openErrors() {
 	if u.Focus == 0 && u.main != nil {

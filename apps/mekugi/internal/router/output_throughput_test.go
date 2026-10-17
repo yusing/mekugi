@@ -172,7 +172,7 @@ func TestOutputThroughputUIRefreshRetainsPreviousRound(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		u, _ := newAppServerTestUI()
 		u.startSession(u.Thread, "")
-		u.ensureShell()
+
 		usage := newTestUsage(t)
 
 		setTestAppServerIntegration(u, &observationFixture{usage: usage})
@@ -202,7 +202,7 @@ func TestUISnapshotOutputThroughputStreamingRetainsMeasuredRate(t *testing.T) {
 				u.Thread = "thread-1"
 				setTestAppServerIntegration(u, proxy)
 				u.startSession(u.Thread, "")
-				u.ensureShell()
+
 				var previous inference.OutputThroughput
 				if prior {
 					observation := proxy.usage.Observation(u.Thread, "", "gpt-6.1-sol", "")
@@ -247,11 +247,11 @@ func TestUISnapshotOutputThroughputStreamingRetainsMeasuredRate(t *testing.T) {
 					time.Sleep(250 * time.Millisecond)
 				}
 				root := u.session.Agent("/root")
-				u.testActivity(u.agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: []sessionpresentation.ActivityAgent{*root}})
+				u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: []sessionpresentation.ActivityAgent{*root}})
 				rows, _ := u.testMainFrame(80, 10, 0)
 				if prior {
 					assertNativeUISnapshot(t, "output-throughput-live-composer", rows)
-					assertNativeUISnapshot(t, "output-throughput-live-roster", u.testActivity(u.agents).NativeRoster(80, 4, time.Now(), true))
+					assertNativeUISnapshot(t, "output-throughput-live-roster", u.testActivity(u.shell.Agents).NativeRoster(80, 4, time.Now(), true))
 				} else if strings.Contains(strings.Join(rows, "\n"), "tok/s") {
 					t.Fatal("first response displayed TPS before provider usage")
 				}
@@ -280,8 +280,8 @@ func TestUISnapshotOutputThroughputComposerAndRoster(t *testing.T) {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.startSession(u.Thread, "")
-			u.ensureShell()
-			u.view.Painter.Theme = diffrender.DarkTheme
+
+			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			root := u.session.Agent("/root")
 			root.ContextKnown, root.ContextTokens, root.ContextWindow = true, 24000, 200000
 			root.OutputThroughput = inference.OutputThroughput{OutputTokens: 83, DurationNanos: uint64(2 * time.Second), MeasuredRequests: 1}
@@ -289,12 +289,12 @@ func TestUISnapshotOutputThroughputComposerAndRoster(t *testing.T) {
 			u.sessionPresentation().Status.Text, u.model = "Ready", "gpt-6-sol"
 			rows, _ := u.testMainFrame(width, 10, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("output-throughput-composer-%d", width), rows)
-			u.testActivity(u.agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: []sessionpresentation.ActivityAgent{*root,
+			u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: []sessionpresentation.ActivityAgent{*root,
 				{Name: "/root/fast", OutputThroughput: inference.OutputThroughput{OutputTokens: 120, DurationNanos: uint64(time.Second), MeasuredRequests: 1}, ContextKnown: true, ContextTokens: 1000, ContextWindow: 200000},
 				{Name: "/root/zero", OutputThroughput: inference.OutputThroughput{DurationNanos: uint64(time.Second), MeasuredRequests: 1}},
 				{Name: "/root/absent"},
 			}})
-			assertNativeUISnapshot(t, fmt.Sprintf("output-throughput-roster-%d", width), u.testActivity(u.agents).NativeRoster(width, 6, now, true))
+			assertNativeUISnapshot(t, fmt.Sprintf("output-throughput-roster-%d", width), u.testActivity(u.shell.Agents).NativeRoster(width, 6, now, true))
 		})
 	}
 }
@@ -318,10 +318,10 @@ func TestUISnapshotOutputThroughputRestoredRoster(t *testing.T) {
 			u.registerThread(info)
 			u.restoreActivityThread(info, false)
 		}
-		u.testActivity(u.agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.Roster()})
-		u.agents.Painter.Theme = diffrender.DarkTheme
-		u.agents.Selected = u.session.KnownCaller("child")
-		assertNativeUISnapshot(t, "output-throughput-restored-roster", u.testActivity(u.agents).NativeRoster(120, 8, time.Now(), true))
+		u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.Roster()})
+		u.shell.Agents.Painter.Theme = diffrender.DarkTheme
+		u.shell.Agents.Selected = u.session.KnownCaller("child")
+		assertNativeUISnapshot(t, "output-throughput-restored-roster", u.testActivity(u.shell.Agents).NativeRoster(120, 8, time.Now(), true))
 	})
 }
 
@@ -336,7 +336,7 @@ func TestOutputThroughputPresentationSelectionAndIsolation(t *testing.T) {
 			if mode == "without activity" {
 				u.activity = nil
 			}
-			u.ensureShell()
+
 			u.model = "main-model"
 			rate := inference.OutputThroughput{OutputTokens: 40, DurationNanos: uint64(time.Second), MeasuredRequests: 1}
 			u.session.Agent("/root").OutputThroughput = rate
@@ -349,12 +349,12 @@ func TestOutputThroughputPresentationSelectionAndIsolation(t *testing.T) {
 			child := u.session.Agent("/root/child")
 			rate.OutputTokens = 80
 			child.OutputThroughput = rate
-			u.testActivity(u.agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.Roster()})
-			roster := ansi.Strip(strings.Join(u.testActivity(u.agents).NativeRoster(140, 8, u.now(), true), "\n"))
+			u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.Roster()})
+			roster := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).NativeRoster(140, 8, u.now(), true), "\n"))
 			if strings.Contains(roster, "80.0 tok/s") != (mode != "without usage") {
 				t.Fatalf("roster contribution: %s", roster)
 			}
-			u.testActivity(u.agents).displayThread("/root/child")
+			u.testActivity(u.shell.Agents).displayThread("/root/child")
 			frame, _ = u.testMainFrame(120, 12, 0)
 			if text := ansi.Strip(strings.Join(frame, "\n")); strings.Contains(text, "40.0 tok/s") || strings.Contains(text, "80.0 tok/s") != (mode != "without usage") {
 				t.Fatalf("child contribution: %s", text)

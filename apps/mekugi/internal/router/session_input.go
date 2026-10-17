@@ -16,7 +16,7 @@ func (u *appServerUI) editInput(intent sessionpresentation.DraftEditIntent) bool
 		u.setNotice(err.Error(), true)
 		return false
 	}
-	u.mainView.CursorColumn = nil
+	u.shell.Main.CursorColumn = nil
 	u.setNotice("", false)
 	u.pruneDraftImages()
 	return true
@@ -36,7 +36,7 @@ func (u *appServerUI) submitInput(intent sessionpresentation.SubmitIntent) error
 	if !plan.Flush {
 		return nil
 	}
-	u.view.Follow()
+	u.shell.Transcript.Follow()
 	return u.flushInput()
 }
 
@@ -67,7 +67,7 @@ func (u *appServerUI) applyComposerInput(input terminalsession.ComposerInput) (b
 		if !changed {
 			return false, nil
 		}
-		u.mainView.CursorColumn = nil
+		u.shell.Main.CursorColumn = nil
 	case composer.DeleteAction:
 		if !changed {
 			return false, nil
@@ -111,7 +111,7 @@ func (u *appServerUI) applyComposerCommand(intent sessionpresentation.ComposerIn
 			if u.Turn != "" || u.Starting() || u.InputPending() {
 				u.setNotice("Draft cleared · Ctrl+Z restores · Ctrl-C again interrupts", false)
 			}
-			if u.mainView.InterruptLocked {
+			if u.shell.Main.InterruptLocked {
 				u.setNotice("Draft cleared · Ctrl+Z restores · Locked · /unlock", false)
 			}
 			return false, nil
@@ -122,7 +122,7 @@ func (u *appServerUI) applyComposerCommand(intent sessionpresentation.ComposerIn
 		if u.Turn != "" || u.Starting() || u.InputPending() || u.Compaction.Pending() || u.Compaction.ContinuationPending() || len(u.conversation().Unsent)+len(u.conversation().Queued) > 0 {
 			return false, u.keyboardInterrupt()
 		}
-		if u.mainView.InterruptLocked {
+		if u.shell.Main.InterruptLocked {
 			u.lockNotice()
 			return false, nil
 		}

@@ -68,7 +68,7 @@ func TestUISnapshotNativeWelcome(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			setMekugiBuildVersion(t, tc.version)
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			u.view.Painter.Theme = diffrender.DarkTheme
+			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			u.backendVersion, u.sessionPresentation().Status.Text, u.model, u.Text = "0.158.0", "Ready", "snapshot-model", tc.draft
 			rows, _ := u.testMainFrame(tc.width, tc.height, 0)
 			// Build identity is not fixed across test executables.
@@ -86,7 +86,7 @@ func TestNativeWelcomeDoesNotReplaceHistoryOrLiveDock(t *testing.T) {
 		t.Run(fmt.Sprint(dock), func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			if dock == 0 {
-				u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "You", Kind: "text", Text: "Submitted prompt"}}})
+				u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "You", Kind: "text", Text: "Submitted prompt"}}})
 			}
 			rows, _ := u.testMainFrame(80, 24, dock)
 			if strings.Contains(strings.Join(rows, "\n"), "Mekugi "+mekugiVersion()) {

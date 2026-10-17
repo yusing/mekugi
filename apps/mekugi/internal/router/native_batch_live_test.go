@@ -23,15 +23,15 @@ func nativeBatchFixture(t *testing.T) *appServerUI {
 	t.Helper()
 	u, _ := newAppServerTestUI()
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 	u.cwd = "/workspace"
-	u.ensureShell()
-	u.view.Clock, u.agents.Clock = u.clock, u.clock
+
+	u.shell.Transcript.Clock, u.shell.Agents.Clock = u.clock, u.clock
 
 	t.Cleanup(func() { _ = terminalTest(u).Diff.Close() })
-	u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "MAIN_TRANSCRIPT", Observed: u.clock()}}})
-	u.testActivity(u.agents).Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/editor"}, {Name: "/root/reviewer"}}, Entries: []sessionpresentation.ActivityEntry{
+	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "MAIN_TRANSCRIPT", Observed: u.clock()}}})
+	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/editor"}, {Name: "/root/reviewer"}}, Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root/editor", Kind: "commentary", Text: "EDITOR_TRANSCRIPT", Observed: u.clock()},
 		{Seq: 2, Agent: "/root/reviewer", Kind: "commentary", Text: "OTHER_ACTIVITY remains readable", Observed: u.clock()},
 	}})
@@ -64,9 +64,9 @@ func TestUISnapshotNativeBatchPlacement(t *testing.T) {
 	}
 	u.preview(nativeBatchPreview("child", "/root/editor", "child"), false)
 	revealNativeDock(terminalTest(u))
-	u.testActivity(u.agents).setDisplayFilter(true, "/root/editor")
+	u.testActivity(u.shell.Agents).setDisplayFilter(true, "/root/editor")
 	paint("native-batch-child-replaces-transcript", 140, 48)
-	u.testActivity(u.agents).setDisplayFilter(false, u.agents.Selected)
+	u.testActivity(u.shell.Agents).setDisplayFilter(false, u.shell.Agents.Selected)
 	u.preview(nativeBatchPreview("main", "/root", "one", "two", "three"), false)
 	revealNativeDock(terminalTest(u))
 	paint("native-batch-main-overflow", 140, 48)
@@ -77,7 +77,7 @@ func TestUISnapshotNativeBatchPlacement(t *testing.T) {
 	}
 	paint("native-batch-main-pinned", 140, 48)
 	paint("native-batch-short-summary", 80, 18)
-	u.testActivity(u.agents).setDisplayFilter(true, "/root/editor")
+	u.testActivity(u.shell.Agents).setDisplayFilter(true, "/root/editor")
 	paint("native-batch-narrow-activity", 80, 28)
 	u.preview(previewmodel.Preview{ID: "child", Workspace: "/workspace"}, false)
 	revealNativeDock(terminalTest(u))
@@ -224,7 +224,7 @@ func TestNativeBatchLivePTY(t *testing.T) {
 	if !strings.Contains(frame, "MAIN_TRANSCRIPT") || strings.Contains(frame, "child_line_40") {
 		t.Fatal("batch close affected another caller or failed to restore transcript")
 	}
-	u.testActivity(u.agents).setDisplayFilter(true, "/root/editor")
+	u.testActivity(u.shell.Agents).setDisplayFilter(true, "/root/editor")
 	if frame = paint(140, 48); !strings.Contains(frame, "child_line_40") {
 		t.Fatal("child preview was lost while viewing Main")
 	}

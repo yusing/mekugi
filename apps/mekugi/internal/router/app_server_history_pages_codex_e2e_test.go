@@ -136,9 +136,9 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 		t.Fatalf("measurement fixture not materialized: turns=%d items=%d mode=%s", len(read.Thread.Turns), len(read.Thread.Turns[0].Items), read.Thread.HistoryMode)
 	}
 	baseline, _ := newAppServerTestUI()
-	baseline.agents = activityui.NewView()
+
 	baseline.ctx = t.Context()
-	baseline.ensureShell()
+
 	t.Cleanup(func() { terminalTest(baseline).Diff.Close() })
 	baseline.startSession("main", workspace)
 	baseline.registerThread(binding.ThreadInfo{ID: thread, AgentNickname: "worker", AgentRole: "worker"})
@@ -150,8 +150,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	u.Host = client
 	u.Requests = sessioncontrol.NewRequests[appServerRequest](client)
 	u.ctx = t.Context()
-	u.agents = activityui.NewView()
-	u.ensureShell()
+
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.startSession("main", workspace)
 	u.Startup.Thread = "main"
@@ -214,7 +213,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	client = start()
 	t.Cleanup(client.Close)
 	fresh, _ := newAppServerTestUI()
-	fresh.Host, fresh.ctx, fresh.agents = client, t.Context(), activityui.NewView()
+	fresh.Host, fresh.ctx, fresh.shell.Agents = client, t.Context(), activityui.NewView()
 	fresh.Requests = sessioncontrol.NewRequests[appServerRequest](client)
 	fresh.startSession("main", workspace)
 	fresh.registerThread(binding.ThreadInfo{ID: forked.Thread.ID, AgentNickname: "worker", AgentRole: "worker"})

@@ -16,7 +16,7 @@ func TestAppServerImageTranscriptHighlight(t *testing.T) {
 	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		for _, width := range []int{16, 80} {
 			u, _ := newAppServerTestUI()
-			u.view.Painter.Theme = theme
+			u.shell.Transcript.Painter.Theme = theme
 			appServerTestKeys(t, u, "literal [Image 1] 世界 ")
 			u.insertImage("/tmp/one.png")
 			appServerTestKeys(t, u, " after ")
@@ -52,16 +52,16 @@ func TestAppServerImageTranscriptHighlight(t *testing.T) {
 					t.Fatalf("attachment emphasis leaked or missing: %q", bold.String())
 				}
 			}
-			check(u.testActivity(u.view))
+			check(u.testActivity(u.shell.Transcript))
 			item := binding.ThreadItem{ID: "user", Type: "userMessage", Content: []byte(`[{"type":"text","text":"literal [Image 1] 世界 "},{"type":"localImage","path":"/tmp/one.png"},{"type":"text","text":" after "},{"type":"image","url":"https://example.com/two.png"}]`)}
 			for _, method := range []string{"item/started", "item/completed"} {
 				appServerTestNotify(t, u, method, map[string]any{"threadId": "main", "turnId": "t", "item": item})
-				check(u.testActivity(u.view))
+				check(u.testActivity(u.shell.Transcript))
 			}
 			restored := newAppServerSessionTestUI(t, t.TempDir())
-			restored.view.Painter.Theme = theme
+			restored.shell.Transcript.Painter.Theme = theme
 			restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
-			check(restored.testActivity(restored.view))
+			check(restored.testActivity(restored.shell.Transcript))
 		}
 	}
 }

@@ -33,15 +33,15 @@ func TestNativeUIKeybindings(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.ensureShell()
+
 			u.Text, terminalTest(u).Focus = tc.draft, tc.focus
 			for _, key := range []byte(tc.input) {
 				if err := terminalTest(u).key(key); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if u.Text != tc.want || u.mainView.Keybindings != tc.open {
-				t.Fatalf("draft=%q open=%v", u.Text, u.mainView.Keybindings)
+			if u.Text != tc.want || u.shell.Main.Keybindings != tc.open {
+				t.Fatalf("draft=%q open=%v", u.Text, u.shell.Main.Keybindings)
 			}
 		})
 	}
@@ -49,7 +49,7 @@ func TestNativeUIKeybindings(t *testing.T) {
 
 func TestNativeUIKeybindingsPaintAndEscape(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.ensureShell()
+
 	screen := vt.NewEmulator(100, 30)
 	defer screen.Close()
 	if err := terminalTest(u).key('?'); err != nil {
@@ -61,7 +61,7 @@ func TestNativeUIKeybindingsPaintAndEscape(t *testing.T) {
 	if !strings.Contains(screen.String(), "Keyboard shortcuts") || !strings.Contains(screen.String(), "External editor") {
 		t.Fatal(screen.String())
 	}
-	if u.mainView.ContentPainted {
+	if u.shell.Main.ContentPainted {
 		t.Fatal("hidden transcript must not be marked painted")
 	}
 	for _, size := range [][2]int{{1, 1}, {12, 5}, {40, 24}} {
@@ -85,16 +85,16 @@ func TestNativeUIKeybindingsPaintAndEscape(t *testing.T) {
 	if err := u.testPaint(screen, 100, 30); err != nil {
 		t.Fatal(err)
 	}
-	if u.mainView.Keybindings || strings.Contains(screen.String(), "Keyboard shortcuts") {
+	if u.shell.Main.Keybindings || strings.Contains(screen.String(), "Keyboard shortcuts") {
 		t.Fatal("help not dismissed")
 	}
-	if !u.mainView.ContentPainted {
+	if !u.shell.Main.ContentPainted {
 		t.Fatal("visible transcript must be marked painted")
 	}
 	if err := terminalTest(u).key('?'); err != nil {
 		t.Fatal(err)
 	}
-	if !u.mainView.Keybindings || u.Text != "" {
+	if !u.shell.Main.Keybindings || u.Text != "" {
 		t.Fatal("cannot reopen after Escape")
 	}
 }

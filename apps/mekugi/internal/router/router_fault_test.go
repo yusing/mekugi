@@ -150,7 +150,7 @@ func TestRouterTransformFaultAfterCreatedEmitsActionableTerminalFailure(t *testi
 	if delivery == nil || !strings.Contains(ui.feedback.Text, message) {
 		t.Fatal("host-confirmed failure lost native notice delivery")
 	}
-	ui.ensureShell()
+
 	defer terminalTest(ui).Diff.Close()
 	if err := ui.testPaint(io.Discard, 100, 16); err != nil {
 		t.Fatal(err)

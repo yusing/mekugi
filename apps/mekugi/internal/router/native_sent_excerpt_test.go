@@ -37,14 +37,14 @@ func TestNativeSentMessagesBecomeExcerptsOutOfView(t *testing.T) {
 		if err := u.testPaint(&bytes.Buffer{}, 120, 28); err != nil {
 			t.Fatal(err)
 		}
-		return ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(110, 50).Lines, "\n"))
+		return ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(110, 50).Lines, "\n"))
 	}
 	// The thread has moved past the spawn, which shrinks in place as before.
 	if main := paint(); !strings.Contains(main, "Spawn first line.") || !strings.Contains(main, "Follow last line.") || strings.Contains(main, "Open assignment") {
 		t.Fatalf("messages in view were shortened:\n%s", main)
 	}
 	for i := range 30 {
-		applyTranscriptFixture(u.testActivity(u.view), true, "", "main", "main", u.Turn, fmt.Sprint("note-", i), "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: fmt.Sprint("Main note ", i, ".")})
+		applyTranscriptFixture(u.testActivity(u.shell.Transcript), true, "", "main", "main", u.Turn, fmt.Sprint("note-", i), "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: fmt.Sprint("Main note ", i, ".")})
 	}
 	paint() // Scrolls both messages above the viewport.
 	main := paint()
@@ -151,8 +151,8 @@ func TestMainBatchCollapsesOutOfView(t *testing.T) {
 func TestMainBatchKeepsUnconfirmedHostItemsOutOfView(t *testing.T) {
 	for _, status := range []string{"completed", "declined", "failed"} {
 		u := newAppServerSessionTestUI(t, t.TempDir())
-		u.view.Conversation = true
-		u.testActivity(u.view).testAudience()
+		u.shell.Transcript.Conversation = true
+		u.testActivity(u.shell.Transcript).testAudience()
 		search := map[string]any{"id": "search", "type": "commandExecution", "command": "rg zzz", "status": status,
 			"commandActions": []map[string]any{{"type": "search", "command": "rg zzz", "query": "zzz"}}}
 		if status == "completed" {
@@ -167,7 +167,7 @@ func TestMainBatchKeepsUnconfirmedHostItemsOutOfView(t *testing.T) {
 				"id": fmt.Sprint("note-", i), "type": "agentMessage", "text": fmt.Sprint("Note ", i, ".")}})
 		}
 		const width, rows = 60, 6
-		v := u.testActivity(u.view)
+		v := u.testActivity(u.shell.Transcript)
 		feed := v.RenderFeed(width, rows)
 		v.Following, v.Offset = false, len(feed.Lines)-rows
 		v.Viewport(feed, rows)
@@ -201,8 +201,8 @@ func TestUISnapshotMainBatchWithFailedCommand(t *testing.T) {
 					appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": binding.ThreadItem{ID: fmt.Sprint("note-", i), Type: "agentMessage", Text: fmt.Sprint("Note ", i, ".")}})
 				}
 			}
-			finishPacing(u.testActivity(u.view), u.testActivity(u.agents))
-			v := u.testActivity(u.view)
+			finishPacing(u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents))
+			v := u.testActivity(u.shell.Transcript)
 			feed := v.RenderFeed(100, 6)
 			v.Viewport(feed, 6)
 			feed = v.RenderFeed(100, 6)

@@ -9,8 +9,6 @@ import (
 	"testing"
 	"time"
 
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/charmbracelet/x/ansi"
@@ -40,7 +38,7 @@ func TestUISnapshotAppServerStatusResetCredits(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u, sent := newAppServerTestUI()
-			u.view.Painter.Theme = diffrender.DarkTheme
+			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			appServerTestKeys(t, u, "/status\r")
 			appServerTestMessage(t, u, `{"id":1,"result":{"account":{"type":"chatgpt","planType":"pro"}}}`)
 			response := string(wire)
@@ -79,7 +77,7 @@ func TestUISnapshotAppServerStatusSystemTimezone(t *testing.T) {
 				t.Fatal(err)
 			}
 			u, _ := newAppServerTestUI()
-			u.view.Painter.Theme = diffrender.DarkTheme
+			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			appServerTestKeys(t, u, "/status\r")
 			appServerTestMessage(t, u, `{"id":1,"result":{"account":{"type":"chatgpt","planType":"pro"}}}`)
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":2,"result":{"rateLimits":{"primary":{"usedPercent":20,"windowDurationMins":300,"resetsAt":%d}}}}`, tc.reset.Unix()))
@@ -95,7 +93,7 @@ func TestUISnapshotAppServerStatusSystemTimezone(t *testing.T) {
 func TestAppServerStatusLocalAndAccountRefresh(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.startSession("main", "/workspace")
-	u.agents = activityui.NewView()
+
 	u.model, u.reasoningEffort, u.serviceTier = "gpt-6-sol", "high", "priority"
 	u.Turn, u.sessionPresentation().Status.Text = "active", "Working"
 	u.statusConfig.Provider = "openai"
@@ -197,8 +195,9 @@ func TestAppServerStatusPanelCloseScrollAndLateResponse(t *testing.T) {
 		t.Run(closeKey, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.Turn, u.sessionPresentation().Status.Text = "active", "Working"
-			u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Existing transcript"}}})
-			shell := &terminalUI{main: u, Attachment: &terminalsession.Attachment{Shell: terminalsession.Shell{Layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 60, 12}}}}}
+			u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Existing transcript"}}})
+			shell := terminalTest(u)
+			shell.Layout.Main = terminalsession.Rect{0, 0, 60, 12}
 			appServerTestKeys(t, u, "/status\r")
 			u.statusPanel.Body = nil
 			for range 40 {
@@ -212,21 +211,21 @@ func TestAppServerStatusPanelCloseScrollAndLateResponse(t *testing.T) {
 						t.Fatalf("overflow at %d: %q", width, row)
 					}
 				}
-				if u.mainView.ContentPainted {
+				if u.shell.Main.ContentPainted {
 					t.Fatal("covered transcript acknowledged")
 				}
 			}
 			if err := shell.send("\x1b[6~"); err != nil {
 				t.Fatal(err)
 			}
-			if u.mainView.Panel.Top == 0 {
+			if u.shell.Main.Panel.Top == 0 {
 				t.Fatal("panel did not scroll")
 			}
-			before := u.mainView.Panel.Top
+			before := u.shell.Main.Panel.Top
 			if err := shell.mouse("\x1b[<65;2;3M"); err != nil {
 				t.Fatal(err)
 			}
-			if u.mainView.Panel.Top != before+1 {
+			if u.shell.Main.Panel.Top != before+1 {
 				t.Fatal("wheel did not scroll panel")
 			}
 			if err := shell.send(closeKey); err != nil {
@@ -256,7 +255,7 @@ func TestAppServerStatusRefreshFailureStaysInPanel(t *testing.T) {
 
 func TestAppServerStatusTerminalPasteCanClose(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	shell := &terminalUI{main: u, Attachment: &terminalsession.Attachment{}}
+	shell := terminalTest(u)
 	for _, key := range []byte("/status\r\x1b[200~q\r\x03\x1b[B\x1b[201~") {
 		if err := shell.key(key); err != nil {
 			t.Fatal(err)
@@ -299,7 +298,7 @@ func TestAppServerStatusPanelVisual(t *testing.T) {
 	appServerTestMessage(t, u, `{"id":1,"result":{"account":{"type":"chatgpt","email":"yusing@example.com","planType":"pro"}}}`)
 	appServerTestMessage(t, u, `{"id":2,"result":{"rateLimits":{"primary":{"usedPercent":22,"windowDurationMins":300},"secondary":{"usedPercent":83,"windowDurationMins":10080},"credits":{"unlimited":false,"balance":"12.50"}}}}`)
 	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
-		u.view.Painter.Theme = theme
+		u.shell.Transcript.Painter.Theme = theme
 		for _, size := range [][2]int{{88, 42}, {44, 20}, {12, 8}, {1, 1}} {
 			frame := u.statusPanelFrame(size[0], size[1])
 			for _, row := range frame {
@@ -341,8 +340,8 @@ func TestAppServerStatusPanelVisual(t *testing.T) {
 
 	// Render through the real pane compositor and terminal emulator, then verify
 	// closing clears the already-painted panel, not only its backing state.
-	u.view.Painter.Theme = diffrender.DarkTheme
-	u.mainView.Panel.Top = 0
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
+	u.shell.Main.Panel.Top = 0
 	screen := vt.NewEmulator(160, 48)
 	defer screen.Close()
 	if err := u.testPaint(screen, 160, 48); err != nil {
@@ -375,7 +374,7 @@ func TestAppServerStatusPanelVisual(t *testing.T) {
 	u.statusPanel = u.newStatusReport()
 	u.statusPanel.Fields = saved.Fields
 	// A long off-screen label cannot change the visible value alignment.
-	u.mainView.Panel.Top = 0
+	u.shell.Main.Panel.Top = 0
 	before := strings.Join(u.statusPanelFrame(72, 12), "\n")
 	u.statusPanel.Fields = append(u.statusPanel.Fields, sessionpresentation.StatusField{Group: "Permissions", Label: "Offscreen", Value: "not visible"})
 	after := strings.Join(u.statusPanelFrame(72, 12), "\n")
@@ -392,7 +391,7 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.model = "gpt-6-sol"
 			u.Turn = "active"
-			u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Hidden transcript must not be selected"}}})
+			u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Hidden transcript must not be selected"}}})
 			appServerTestKeys(t, u, "/status\r")
 			screen := vt.NewEmulator(160, 48)
 			defer screen.Close()
@@ -468,14 +467,14 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 // Fixtures publish source transitions before driving the actual terminal owner.
 func (u *appServerUI) statusPanelFrame(width, height int) []string {
 	u.settlePresentation()
-	return u.mainView.Panel.Render(&u.view.Painter.Painter, width, height)
+	return u.shell.Main.Panel.Render(&u.shell.Transcript.Painter.Painter, width, height)
 }
 func (u *appServerUI) statusPanelKey(key string) bool {
 	u.settlePresentation()
-	if !u.mainView.Panel.Open() {
+	if !u.shell.Main.Panel.Open() {
 		return false
 	}
-	action, clear := u.mainView.Panel.Key(key)
+	action, clear := u.shell.Main.Panel.Key(key)
 	if clear && terminalTest(u) != nil {
 		terminalTest(u).Selection = nil
 	}

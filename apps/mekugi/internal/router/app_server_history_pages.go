@@ -2,6 +2,7 @@ package router
 
 import (
 	"cmp"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -320,7 +321,7 @@ func (u *appServerUI) renderChildHistoryPage(h *appServerChildHistory, turn bind
 	}
 	if !h.state.View(h.info.ID).Initial {
 		retained := slices.ContainsFunc(u.childSource.Entries, func(entry sessionpresentation.ActivityRecord) bool { return entry.Source.Seq == h.firstSeq })
-		u.insertActivityHistory(u.childSource, u.agents, before, func(entry sessionpresentation.ActivityEntry) bool {
+		u.insertActivityHistory(u.childSource, u.shell.Agents, before, func(entry sessionpresentation.ActivityEntry) bool {
 			return retained && entry.Seq == h.firstSeq || !retained && entry.Native != nil && entry.Native.Thread == h.info.ID
 		})
 		for _, p := range r.main {
@@ -340,7 +341,7 @@ func (u *appServerUI) renderChildHistoryPage(h *appServerChildHistory, turn bind
 			}
 			before := u.source.LastSeq
 			u.applyRestoredMain([]*restoredPlacement{p})
-			u.insertActivityHistory(u.source, u.view, before, func(entry sessionpresentation.ActivityEntry) bool { return entry.Observed.After(p.at) })
+			u.insertActivityHistory(u.source, u.shell.Transcript, before, func(entry sessionpresentation.ActivityEntry) bool { return entry.Observed.After(p.at) })
 		}
 	}
 	if first != 0 {

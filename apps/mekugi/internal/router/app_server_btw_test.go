@@ -10,8 +10,6 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -234,8 +232,7 @@ func TestAppServerBTWCloseInFlightDoesNotAffectReplacement(t *testing.T) {
 	for _, stage := range []string{"fork", "start", "active"} {
 		t.Run(stage, func(t *testing.T) {
 			u, w := newAppServerTestUI()
-			shell := &terminalUI{main: u, Attachment: &terminalsession.Attachment{}}
-			u.shell = shell.Attachment
+			shell := terminalTest(u)
 			u.Turn = "main-turn"
 			appServerTestKeys(t, u, "/btw old\r")
 			pending := btwTestRequest(t, w, "thread/fork", "main")
@@ -347,7 +344,7 @@ func TestAppServerBTWRejectedAttachmentsReturnWithNewDraft(t *testing.T) {
 func TestAppServerBTWRenderAndScroll(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	setSideTest(u, &sessioncontrol.Side{SideAnswer: &conversationmodel.SideAnswer{Question: "SIDE_QUESTION", Status: "Answering", Answer: []conversationmodel.Answer{{ID: "a", Text: "**FIRST_ANSWER**\n\n" + strings.Repeat("middle line\n\n", 30) + "LAST_ANSWER"}}}})
-	u.ensureShell()
+
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	shell := terminalTest(u)
 	rows := u.btwRows(60, 10)
@@ -357,14 +354,14 @@ func TestAppServerBTWRenderAndScroll(t *testing.T) {
 	if err := shell.send("\x1b[5~"); err != nil {
 		t.Fatal(err)
 	}
-	if u.mainView.Side.Scroll == 0 {
+	if u.shell.Main.Side.Scroll == 0 {
 		t.Fatal("PgUp did not scroll dock")
 	}
-	before := u.mainView.Side.Scroll
+	before := u.shell.Main.Side.Scroll
 	if err := shell.send("\x1b[6~"); err != nil {
 		t.Fatal(err)
 	}
-	if u.mainView.Side.Scroll >= before {
+	if u.shell.Main.Side.Scroll >= before {
 		t.Fatal("PgDn did not return toward tail")
 	}
 	for _, width := range []int{1, 2, 12, 60} {

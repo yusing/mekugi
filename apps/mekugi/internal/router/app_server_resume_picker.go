@@ -121,7 +121,7 @@ func (u *appServerUI) resumePickerResponse(m appserver.Message) error {
 	}
 	p.Append(rows, result.NextCursor)
 	u.publishPresentation(u.now())
-	return u.applyResumeAction(u.mainView.Resume.PageDemand())
+	return u.applyResumeAction(u.shell.Main.Resume.PageDemand())
 }
 
 // A failed page stops automatic paging, so the failure stays visible rather
@@ -182,7 +182,7 @@ func (u *appServerUI) applyResumeAction(action sessionpresentation.ResumeAction)
 	case sessionpresentation.ResumeSearch:
 		p.Query = action.Query
 		u.publishPresentation(u.now())
-		return u.applyResumeAction(u.mainView.Resume.PageDemand())
+		return u.applyResumeAction(u.shell.Main.Resume.PageDemand())
 	case sessionpresentation.ResumeToggleWorkspace:
 		if p.Workspace != "" {
 			p.All = !p.All

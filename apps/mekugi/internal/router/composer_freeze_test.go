@@ -20,13 +20,13 @@ func composerShellKeys(t *testing.T, u *appServerUI, text string) {
 func TestComposerPastePausedTranscriptThenReference(t *testing.T) {
 	image := pasteTestImage(t)
 	u, wire := newAppServerTestUI()
-	u.ensureShell()
+
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.Turn = "active"
-	u.view.Following = false
+	u.shell.Transcript.Following = false
 	composerShellKeys(t, u, "\x1b[200~'"+image+"'\x1b[201~")
-	if terminalTest(u).Decoder.Pasting() || len(u.Images) != 1 || u.Text != "[Image 1] " || u.view.Following {
-		t.Fatalf("paste on scrollback: draft=%q image=%v paste=%v following=%v", u.Text, u.Images, terminalTest(u).Decoder.Pasting(), u.view.Following)
+	if terminalTest(u).Decoder.Pasting() || len(u.Images) != 1 || u.Text != "[Image 1] " || u.shell.Transcript.Following {
+		t.Fatalf("paste on scrollback: draft=%q image=%v paste=%v following=%v", u.Text, u.Images, terminalTest(u).Decoder.Pasting(), u.shell.Transcript.Following)
 	}
 	terminalTest(u).Selection = &terminalsession.SourceSelection{Selection: selectedTerminalText("quote"), Mention: "message"}
 	composerShellKeys(t, u, "rtyped")
@@ -54,7 +54,7 @@ func TestComposerPastePausedTranscriptThenReference(t *testing.T) {
 
 func TestComposerPasteTerminatorBypassesSelection(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.ensureShell()
+
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	composerShellKeys(t, u, "\x1b[200~payload")
 	// A selection must not consume any byte of the opaque end marker.
@@ -67,9 +67,9 @@ func TestComposerPasteTerminatorBypassesSelection(t *testing.T) {
 
 func TestUISnapshotComposerPasteAndReferenceOnScrollback(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.ensureShell()
+
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
-	u.view.Following = false
+	u.shell.Transcript.Following = false
 	composerShellKeys(t, u, "\x1b[200~'"+pasteTestImage(t)+"'\x1b[201~")
 	terminalTest(u).Selection = &terminalsession.SourceSelection{Selection: selectedTerminalText("quote"), Mention: "message"}
 	composerShellKeys(t, u, "rtyped")

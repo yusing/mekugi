@@ -15,9 +15,9 @@ func TestNativePromptCoveredFrameDoesNotAdmitAnswer(t *testing.T) {
 			u, input := newAppServerTestUI()
 			u.Turn = "turn"
 			u.startSession("main", "")
-			u.ensureShell()
+
 			content := []activityui.Block{{Kind: "op", Verb: "Read", Code: "retained output", Body: strings.Repeat("Content dialog\n", 30)}}
-			terminalTest(u).openBlocks(u.view, content)
+			terminalTest(u).openBlocks(u.shell.Transcript, content)
 			send := func(keys string) {
 				t.Helper()
 				for _, key := range []byte(keys) {
@@ -58,7 +58,7 @@ func TestNativePromptCoveredFrameDoesNotAdmitAnswer(t *testing.T) {
 				t.Fatalf("reopened prompt is not visible:\n%s", frame)
 			}
 			// A later overlay does not revoke readiness from an already seen prompt.
-			terminalTest(u).openBlocks(u.view, content)
+			terminalTest(u).openBlocks(u.shell.Transcript, content)
 			if err := u.testPaint(screen, 80, 20); err != nil {
 				t.Fatal(err)
 			}
@@ -88,9 +88,9 @@ func TestNativePromptSelectionVisibility(t *testing.T) {
 				} else {
 					approvalTestCommand(t, u, "selected-prompt", nil)
 				}
-				x, y := u.mainView.ComposerRect.X+2, u.mainView.ComposerRect.Y
+				x, y := u.shell.Main.ComposerRect.X+2, u.shell.Main.ComposerRect.Y
 				if covering {
-					x, y = u.view.FeedLeft+1, u.view.FeedTop
+					x, y = u.shell.Transcript.FeedLeft+1, u.shell.Transcript.FeedTop
 				}
 				x, y = x+terminalTest(u).Layout.Main.X+1, y+terminalTest(u).Layout.Main.Y+1
 				for _, key := range []byte(fmt.Sprintf("\x1b[<0;%d;%dM\x1b[<32;%d;%dM\x1b[<0;%d;%dm", x, y, x+3, y, x+3, y)) {
@@ -136,8 +136,8 @@ func TestUISnapshotNativePromptsTinyFrame(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { terminalTest(u).Diff.Close() })
-			if u.mainView.ComposerRect.H < 1 || u.mainView.ComposerRect.Y+u.mainView.ComposerRect.H > terminalTest(u).Layout.Main.H {
-				t.Fatalf("prompts displaced the composer: composer=%+v Main=%+v", u.mainView.ComposerRect, terminalTest(u).Layout.Main)
+			if u.shell.Main.ComposerRect.H < 1 || u.shell.Main.ComposerRect.Y+u.shell.Main.ComposerRect.H > terminalTest(u).Layout.Main.H {
+				t.Fatalf("prompts displaced the composer: composer=%+v Main=%+v", u.shell.Main.ComposerRect, terminalTest(u).Layout.Main)
 			}
 			if len(u.pendingApprovals()) != 1 || u.questionCount() != 1 {
 				t.Fatal("a short terminal discarded pending prompts")

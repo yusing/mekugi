@@ -34,7 +34,7 @@ func TestPasteAdmissionPreservesOriginalDestination(t *testing.T) {
 			} else if change == "draft" {
 				want = "replacement"
 			}
-			if u.Text != want || u.picker.Query != "" || wire.Len() != 0 || u.mainView.Pasting() {
+			if u.Text != want || u.picker.Query != "" || wire.Len() != 0 || u.shell.Main.Pasting() {
 				t.Fatalf("paste retargeted: draft=%q, query=%q, wire=%q", u.Text, u.picker.Query, wire.String())
 			}
 			if change != "status" && !u.feedback.Alert {
@@ -50,13 +50,13 @@ func TestSecretPasteRejectsReopenedEditor(t *testing.T) {
 	questionTestSync(t, u, "secret-paste", true)
 	questionTestPaint(t, u, 60)
 	appServerTestKeys(t, u, "\x1b[200~private\x1b[201~")
-	if u.prompts.Secret.Text != "private" || u.sessionPresentation().View().PromptDraft.Draft.Text != "" {
+	if u.shell.Prompts.Secret.Text != "private" || u.sessionPresentation().View().PromptDraft.Draft.Text != "" {
 		t.Fatal("secret paste was lost or published")
 	}
 	appServerTestKeys(t, u, "\x1b[200~stale")
-	u.prompts.Reopen()
+	u.shell.Prompts.Reopen()
 	appServerTestKeys(t, u, "\x1b[201~")
-	if u.prompts.Secret.Text != "private" || !u.feedback.Alert {
+	if u.shell.Prompts.Secret.Text != "private" || !u.feedback.Alert {
 		t.Fatal("reopened secret editor accepted an old paste")
 	}
 }
@@ -65,7 +65,7 @@ func TestPromptInputRejectsRetiredDock(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	questionTestSync(t, u, "retired-dock", false)
 	questionTestPaint(t, u, 60)
-	input := u.mainView.PromptKey("x", &u.prompts)
+	input := u.shell.Main.PromptKey("x", u.shell.Prompts)
 	if input == nil {
 		t.Fatal("question did not produce targeted input")
 	}
@@ -85,7 +85,7 @@ func TestNativeUIQueuedEscapeContinuation(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
-			u.ensureShell()
+
 			u.Turn = "active"
 			if err := terminalTest(u).key(27); err != nil {
 				t.Fatal(err)
@@ -108,7 +108,7 @@ func TestNativeUIQueuedEscapeContinuation(t *testing.T) {
 
 func TestNativeUIInputDrainPreservesStandaloneEscape(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.ensureShell()
+
 	u.Turn = "active"
 	u.Text = "keep me"
 	if err := terminalTest(u).key(27); err != nil {
@@ -127,7 +127,6 @@ func TestNativeUIInputDrainPreservesStandaloneEscape(t *testing.T) {
 func TestNativeUIDiffStandaloneEscapeBeforeNextKey(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		u, wire := newAppServerTestUI()
-		u.ensureShell()
 
 		terminalTest(u).Focus = 1
 		for _, key := range []byte("?\x1b") {
@@ -153,7 +152,7 @@ func TestNativeUIDiffStandaloneEscapeBeforeNextKey(t *testing.T) {
 
 func TestNativeUIInputDrainBoundedAndClosed(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.ensureShell()
+
 	keys := make(chan byte, 258)
 	for range 255 {
 		keys <- 'a'

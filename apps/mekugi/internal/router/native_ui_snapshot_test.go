@@ -27,11 +27,11 @@ func TestUISnapshotNativeMainComposer(t *testing.T) {
 	for _, width := range []int{36, 80} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.view.Painter.Theme = diffrender.DarkTheme
+			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			// An idle session avoids wall-clock durations and status animation.
 			u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 			now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
-			u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
+			u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
 				{Seq: 1, Agent: "You", Kind: "text", Text: "Explain the snapshot workflow.", Observed: now},
 				{Seq: 2, Agent: "Main", Kind: "final", Text: "Review the **rendered frame**, accept its baseline, then rerun the offline check.", Observed: now},
 			}})
@@ -55,7 +55,7 @@ func TestUISnapshotShellComposer(t *testing.T) {
 		for _, width := range []int{18, 60} {
 			t.Run(fmt.Sprintf("%d/%d", theme, width), func(t *testing.T) {
 				u, _ := newAppServerTestUI()
-				u.view.Painter.Theme = theme
+				u.shell.Transcript.Painter.Theme = theme
 				u.sessionPresentation().Status.Text = "Ready"
 				appServerTestKeys(t, u, "\x1b[200~!printf '%s\\n' \"你好\n$HOME\" | cat\n# comment\n\x1b[201~")
 				u.CursorBack = len(u.Text) - strings.Index(u.Text, "$HOME")
@@ -85,7 +85,7 @@ func TestUISnapshotNativeResumePicker(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.view.Painter.Theme = diffrender.DarkTheme
+			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			chooser := u.sessionPresentation().OpenResume(false, "/workspace")
 			chooser.All, chooser.Loading, chooser.Query, chooser.LoadedAt = tc.all, tc.loading, tc.query, now
 			chooser.Rows = []sessionpresentation.ResumeRow{
@@ -95,7 +95,7 @@ func TestUISnapshotNativeResumePicker(t *testing.T) {
 			}
 			u.resumePicker = &appServerResumePicker{ResumeChooser: chooser}
 			u.settlePresentation()
-			u.mainView.Resume.Selected = 1
+			u.shell.Main.Resume.Selected = 1
 			assertNativeUISnapshot(t, tc.name, u.resumePickerFrame(tc.width, 11))
 		})
 	}
@@ -169,7 +169,7 @@ func TestUISnapshotNativeRosterContext(t *testing.T) {
 func TestUISnapshotNativeLockedComposer(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.sessionPresentation().Status.Text = "Ready"
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	appServerTestKeys(t, u, "/lock\r")
 	rows, _ := u.testMainFrame(100, 10, 0)
 	assertNativeUISnapshot(t, "native-main-locked", rows)
@@ -189,7 +189,7 @@ func TestUISnapshotNativeFilePicker(t *testing.T) {
 	for _, width := range []int{30, 80} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.view.Painter.Theme = diffrender.DarkTheme
+			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			u.cwd = "/workspace"
 			u.conversation().Completion = completion.State{Open: true, Target: completion.Target{Kind: '@', Query: "snapshot"}, Choices: []completion.Choice{
 				{Name: "internal/uisnapshot/snapshot.go", Path: "internal/uisnapshot/snapshot.go"},
@@ -197,7 +197,7 @@ func TestUISnapshotNativeFilePicker(t *testing.T) {
 				{Name: "internal/ui/diffview/snapshot_test.go", Path: "internal/ui/diffview/snapshot_test.go"},
 			}}
 			u.settlePresentation()
-			u.mainView.Menu.Selected = 1
+			u.shell.Main.Menu.Selected = 1
 			assertNativeUISnapshot(t, fmt.Sprintf("native-file-picker-%d", width), u.renderPicker(width, 7))
 		})
 	}
@@ -208,7 +208,7 @@ func TestUISnapshotNativeWaitingInputStacks(t *testing.T) {
 		for _, width := range []int{36, 80} {
 			t.Run(fmt.Sprintf("%s/%d", mode, width), func(t *testing.T) {
 				u, w := newAppServerTestUI()
-				u.view.Painter.Theme = diffrender.DarkTheme
+				u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 				u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) }
 				appServerTestTurn(t, u, "t")
 				u.sessionPresentation().Status.Started = u.now()

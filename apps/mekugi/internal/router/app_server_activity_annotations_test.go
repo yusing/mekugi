@@ -53,16 +53,16 @@ func TestAppServerSearchResultCounts(t *testing.T) {
 			}
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-			if len(u.source.Entries) != 1 || len(u.testActivity(u.view).blocks(0)) != 1 || u.testActivity(u.view).blocks(0)[0].Results == nil || *u.testActivity(u.view).blocks(0)[0].Results != tc.want {
+			if len(u.source.Entries) != 1 || len(u.testActivity(u.shell.Transcript).blocks(0)) != 1 || u.testActivity(u.shell.Transcript).blocks(0)[0].Results == nil || *u.testActivity(u.shell.Transcript).blocks(0)[0].Results != tc.want {
 				t.Fatalf("lost count: %+v", u.source.Entries)
 			}
-			painted := strings.Join(u.view.Painter.Block(u.testActivity(u.view).blocks(0)[0], 120), "\n")
+			painted := strings.Join(u.shell.Transcript.Painter.Block(u.testActivity(u.shell.Transcript).blocks(0)[0], 120), "\n")
 			if !strings.Contains(painted, activityui.ResultCount(count)) {
 				t.Fatalf("not muted: %q", painted)
 			}
 			restored := newAppServerSessionTestUI(t, t.TempDir())
 			restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
-			if *restored.testActivity(restored.view).blocks(0)[0].Results != tc.want {
+			if *restored.testActivity(restored.shell.Transcript).blocks(0)[0].Results != tc.want {
 				t.Fatal("restored count lost")
 			}
 		})
@@ -85,12 +85,12 @@ func TestAppServerWebSearchResults(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	item := map[string]any{"id": "web", "type": "webSearch", "query": "golang"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	if len(u.source.Entries) != 1 || u.testActivity(u.view).blocks(0)[0].Results != nil {
+	if len(u.source.Entries) != 1 || u.testActivity(u.shell.Transcript).blocks(0)[0].Results != nil {
 		t.Fatal("started search count")
 	}
 	item["results"] = []any{map[string]any{"title": "one"}, map[string]any{"title": "two"}}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	if len(u.source.Entries) != 1 || u.testActivity(u.view).blocks(0)[0].Results == nil || *u.testActivity(u.view).blocks(0)[0].Results != 2 {
+	if len(u.source.Entries) != 1 || u.testActivity(u.shell.Transcript).blocks(0)[0].Results == nil || *u.testActivity(u.shell.Transcript).blocks(0)[0].Results != 2 {
 		t.Fatalf("completed search: %+v", u.source.Entries)
 	}
 }
@@ -99,15 +99,15 @@ func TestAppServerFailedCodeModeCellShowsItsError(t *testing.T) {
 	for _, child := range []bool{false, true} {
 		t.Run(map[bool]string{false: "main", true: "child"}[child], func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			u.view.Conversation = true
-			u.testActivity(u.view).testAudience()
+			u.shell.Transcript.Conversation = true
+			u.testActivity(u.shell.Transcript).testAudience()
 			activity := sessioncontrol.NewAudience(nil)
 			activity.Attach("main")
 			proxy := &observationFixture{activity: activity}
 			setTestAppServerIntegration(u, proxy)
-			thread, view := "main", u.testActivity(u.view)
+			thread, view := "main", u.testActivity(u.shell.Transcript)
 			if child {
-				thread, view = "child", u.testActivity(u.agents)
+				thread, view = "child", u.testActivity(u.shell.Agents)
 				activity.Observe("child", "main", "/root/worker", true)
 				u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 			}
@@ -141,8 +141,8 @@ func TestAppServerFailedCodeModeCellShowsItsError(t *testing.T) {
 // say so rather than implying the model saw it.
 func TestAppServerUnreturnedCodeModeOutputIsNoted(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.Conversation = true
-	u.testActivity(u.view).testAudience()
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
 	activity := sessioncontrol.NewAudience(nil)
 	activity.Attach("main")
 	trace := newNativeTraceFixture(t)
@@ -182,7 +182,7 @@ func TestAppServerUnreturnedCodeModeOutputIsNoted(t *testing.T) {
 		observeActivityRequest(t, proxy, "main", "/root", request)
 		u.applyObservedActivity()
 	}
-	got := ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(90, 60).Lines, "\n"))
+	got := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 60).Lines, "\n"))
 	under := "Ran git log\n│     ┆ commit abc\n│     " + "output not returned to the model" + "\n"
 	if strings.Count(got, "output not returned to the model") != 1 || !strings.Contains(got, under) {
 		t.Fatalf("want one note, under git log's output:\n%s", got)

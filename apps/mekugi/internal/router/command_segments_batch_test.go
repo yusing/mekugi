@@ -162,14 +162,14 @@ func TestCommandSegmentsBatchForkOwnershipSurvivesParentExpiry(t *testing.T) {
 			}
 			release()
 			u.ctx = t.Context()
-			view := u.testActivity(u.view)
+			view := u.testActivity(u.shell.Transcript)
 			if consumer == "main" {
 				u.Thread = "fork"
 				u.restoreHistory([]binding.HistoryTurn{turn})
 			} else {
 				u.session.Caller("fork")
 				u.restoreActivityThread(binding.ThreadInfo{ID: "fork", Cwd: workspace, Turns: []binding.HistoryTurn{turn}}, false)
-				view = u.testActivity(u.agents)
+				view = u.testActivity(u.shell.Agents)
 			}
 			var restored *sessionpresentation.NativeItem
 			for _, entry := range view.Entries {

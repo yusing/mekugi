@@ -161,8 +161,8 @@ func TestCommandSegmentsRetentionErrorsStayWithOriginalThreadAndCause(t *testing
 	t.Parallel()
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.Thread = "other"
-	u.view.Conversation = true
-	u.testActivity(u.view).testAudience()
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
 	first := errors.New("open replay record: permission denied; complete underlying cause")
 	second := errors.New("sync replay directory: no space left on device; different underlying cause")
 	for _, cause := range []error{first, second} {
@@ -241,7 +241,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 			restored := newAppServerSessionTestUI(t, workspace)
 			setTestAppServerIntegration(restored, testProxyWithStore(store))
 			turns := []binding.HistoryTurn{{ID: key[1], Status: "completed", Items: []binding.ThreadItem{item}}}
-			view := restored.testActivity(restored.view)
+			view := restored.testActivity(restored.shell.Transcript)
 			if strings.HasPrefix(target, "child") {
 				childWorkspace := workspace
 				if target == "child-other-workspace" {
@@ -251,7 +251,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 				}
 				restored.session.Caller(target)
 				restored.restoreActivityThread(binding.ThreadInfo{ID: target, Cwd: childWorkspace, Turns: turns}, false)
-				view = restored.testActivity(restored.agents)
+				view = restored.testActivity(restored.shell.Agents)
 			} else {
 				restored.Thread = target
 				restored.restoreHistory(turns)
@@ -445,7 +445,7 @@ func TestCommandSegmentsRestoreRichChangeRows(t *testing.T) {
 	for _, restored := range u.source.Entries {
 		for _, block := range commandSegmentBlocks(sessionpresentation.CommandPresentation(restored.Source)) {
 			block.Collapsed = false
-			rows = append(rows, u.view.Painter.Block(block, 90)...)
+			rows = append(rows, u.shell.Transcript.Painter.Block(block, 90)...)
 		}
 	}
 	frame := ansi.Strip(strings.Join(rows, "\n"))

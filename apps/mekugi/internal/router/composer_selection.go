@@ -36,7 +36,7 @@ func (u *appServerUI) insertSelection(description, text, source string) {
 		for i, question := range call.Questions {
 			draft := question.Editor.Snapshot.Draft
 			if question.IsSecret {
-				draft = u.prompts.SecretState(call.ID).Editors[i].Snapshot.Draft
+				draft = u.shell.Prompts.SecretState(call.ID).Editors[i].Snapshot.Draft
 			}
 			pending = append(pending, conversationmodel.Input{Draft: draft})
 		}
@@ -49,7 +49,7 @@ func (u *appServerUI) insertSelection(description, text, source string) {
 		return
 	}
 	u.setNotice("", false)
-	u.mainView.CursorColumn = nil
+	u.shell.Main.CursorColumn = nil
 	u.pruneDraftImages()
 	if q := u.currentQuestion(); q != nil {
 		q.Edit(!q.Note)

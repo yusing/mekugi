@@ -28,7 +28,7 @@ func TestTrackedRevealDoesNotReviseCommandFacts(t *testing.T) {
 	awaitMain(t, u, "line 4")
 	before := u.source.Model.Publish().Entries[0]
 	rollCommandOutput(u)
-	frame := ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(100, 30).Lines, "\n"))
+	frame := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(100, 30).Lines, "\n"))
 	if !strings.Contains(frame, "line 19") {
 		t.Fatalf("tracked output did not advance:\n%s", frame)
 	}
@@ -74,7 +74,7 @@ func TestTrackedCompletionPrecedesReportSettlement(t *testing.T) {
 			}
 			item["status"], item["exitCode"], item["aggregatedOutput"] = "failed", 2, "first\nlast\n"
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-			for _, view := range []*activityAdapter{u.testActivity(u.view), u.testActivity(u.agents)} {
+			for _, view := range []*activityAdapter{u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents)} {
 				entry := view.Model.Publish().Entries[0]
 				if entry.Seq != seq || !entry.ItemComplete || entry.Running || !entry.OutputFailed {
 					t.Fatalf("neutral completion waited for its report: %+v", entry)
@@ -86,10 +86,10 @@ func TestTrackedCompletionPrecedesReportSettlement(t *testing.T) {
 			if u.runningProcessCount() != 0 || u.source.RetainedOutput(target.Source, target.Output) != retained {
 				t.Fatal("report wait revived execution or retired the displayed segment target")
 			}
-			u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.session.Activity().NextSequence(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd"}}}})
+			u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.session.Activity().NextSequence(), Kind: "output_dedupe", CallID: "cmd", Text: "Repeated fixture output", Native: &sessionpresentation.NativeItem{Thread: "main", Item: "cmd"}}}})
 			now = now.Add(execTrackCompletionWait - time.Nanosecond)
 			u.flushStreamOutput()
-			frame := ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(100, 30).Lines, "\n"))
+			frame := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(100, 30).Lines, "\n"))
 			if u.session.Commands()[key] == nil || !strings.Contains(frame, "Running") || strings.Contains(frame, "exit 2") || strings.Count(frame, "Repeated fixture output") != 1 {
 				t.Fatalf("report wait lost its held frame or annotation:\n%s", frame)
 			}
@@ -105,7 +105,7 @@ func TestTrackedCompletionPrecedesReportSettlement(t *testing.T) {
 			} else {
 				now = now.Add(time.Nanosecond)
 				u.flushStreamOutput()
-				frame = ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(100, 30).Lines, "\n"))
+				frame = ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(100, 30).Lines, "\n"))
 			}
 			entry := u.source.Entries[0]
 			if entry.Source.Seq != seq || entry.Source.Native.SegmentsPending || (len(entry.Source.Native.Segments) == 2) != closeReport || u.session.Commands()[key] != nil || hub.Tracking(key) {

@@ -116,7 +116,7 @@ func (main *appServerUI) applyEffect(u *terminalsession.Attachment, effect termi
 				m.sessionPresentation().Status.Set("", false)
 			}
 		} else {
-			main.openBlocks(u, m.view, []activityui.Block{{Kind: "error", Body: intent.Text}})
+			main.openBlocks(u, m.shell.Transcript, []activityui.Block{{Kind: "error", Body: intent.Text}})
 		}
 		m.dirty = true
 	case effect.Clipboard != nil:

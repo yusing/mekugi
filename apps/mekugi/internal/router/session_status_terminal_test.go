@@ -9,10 +9,10 @@ import (
 )
 
 func (u *appServerUI) sessionLabel(now time.Time) string {
-	return terminalsession.PaintSessionStatus(u.publishPresentation(now).Status.Session, now, u.view.Painter.Colors)
+	return terminalsession.PaintSessionStatus(u.publishPresentation(now).Status.Session, now, u.shell.Transcript.Painter.Colors)
 }
 func (u *appServerUI) stateLabel(now time.Time) string {
-	return terminalsession.PaintMainStatus(u.publishPresentation(now).Status, now, u.view.Painter.Colors)
+	return terminalsession.PaintMainStatus(u.publishPresentation(now).Status, now, u.shell.Transcript.Painter.Colors)
 }
 func (u *appServerUI) composerErrorText() string {
 	return terminalsession.MainStatusDetails(u.publishPresentation(u.now()).Status)
@@ -47,14 +47,14 @@ func (u *appServerUI) undoDraft(redo bool) {
 
 func (u *appServerUI) recallInput(backward bool) {
 	if u.Editor.Recall(backward) {
-		u.mainView.CursorColumn = nil
+		u.shell.Main.CursorColumn = nil
 		u.setNotice("", false)
 		u.pruneDraftImages()
 	}
 }
 
 func (u *appServerUI) mainHeaderRight(width int, focused bool) string {
-	return u.mainView.HeaderRight(u.view, width, focused)
+	return u.shell.Main.HeaderRight(u.shell.Transcript, width, focused)
 }
 
 // mainFrame hydrates identified output between terminal-only render passes.
@@ -67,7 +67,7 @@ func (u *appServerUI) renderMainFrame(width, height, dock int) terminalsession.M
 	transcript := u.transcriptView()
 	options := terminalsession.MainOptions{Now: u.now(), Focused: terminalTest(u) == nil || terminalTest(u).Focus == 0, Version: mekugiVersion()}
 	for {
-		frame := u.mainView.Render(transcript, &u.view.Painter, &u.prompts, options, width, height, dock)
+		frame := u.shell.Main.Render(transcript, &u.shell.Transcript.Painter, u.shell.Prompts, options, width, height, dock)
 		if len(frame.Demands) == 0 {
 			return frame
 		}
@@ -94,11 +94,11 @@ func (u *appServerUI) testDeliveredMainFrame(t *testing.T, width, height, dock i
 
 func (u *appServerUI) applyComposerKey(key string) (bool, error) {
 	u.publishPresentation(u.now())
-	return u.applyComposerInput(u.mainView.ComposerKey(key, &u.prompts, u.transcriptView()))
+	return u.applyComposerInput(u.shell.Main.ComposerKey(key, u.shell.Prompts, u.transcriptView()))
 }
 func (u *appServerUI) approvalKey(key string) (bool, error) {
 	u.publishPresentation(u.now())
-	input := u.mainView.PromptKey(key, &u.prompts)
+	input := u.shell.Main.PromptKey(key, u.shell.Prompts)
 	if input == nil {
 		return false, nil
 	}
@@ -106,7 +106,7 @@ func (u *appServerUI) approvalKey(key string) (bool, error) {
 }
 func (u *appServerUI) questionKey(key string) (bool, error) {
 	u.publishPresentation(u.now())
-	input := u.mainView.PromptKey(key, &u.prompts)
+	input := u.shell.Main.PromptKey(key, u.shell.Prompts)
 	if input == nil {
 		return false, nil
 	}

@@ -35,11 +35,19 @@ func selectionTestSource(main *appServerUI) terminalsession.SourceContext {
 
 func selectionTestUI(rows ...string) *terminalUI {
 	main, _ := newAppServerTestUI()
-	main.view.FeedLeft, main.view.FeedTop = 1, 1
-	main.view.FeedRight, main.view.FeedRows = 40, len(rows)
+	return selectionTestForMain(main, rows...)
+}
+
+func selectionTestForMain(main *appServerUI, rows ...string) *terminalUI {
+	main.shell.Transcript.FeedLeft, main.shell.Transcript.FeedTop = 1, 1
+	main.shell.Transcript.FeedRight, main.shell.Transcript.FeedRows = 40, len(rows)
 	painted := append([]string(nil), rows...)
 	painted = append(painted, "")
-	return &terminalUI{main: main, Attachment: &terminalsession.Attachment{Width: 40, Height: len(painted), Interaction: terminalsession.Interaction{Frame: terminalsession.Frame{Width: 40, Rows: painted, Source: selectionTestSource(main)}}, Shell: terminalsession.Shell{Layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 40, len(rows)}}}}}
+	u := terminalTest(main)
+	u.Width, u.Height = 40, len(painted)
+	u.Frame = terminalsession.Frame{Width: 40, Rows: painted, Source: selectionTestSource(main)}
+	u.Layout.Main = terminalsession.Rect{0, 0, 40, len(rows)}
+	return u
 }
 
 func selectionTestSnapshot(u *terminalUI) *terminalsession.Selection {
@@ -69,11 +77,11 @@ func TestTerminalSelectionSyntaxColors(t *testing.T) {
 				const source = `var text = "green"`
 				p := &activityui.Painter{Theme: theme}
 				u := selectionTestUI(p.Inline("`" + source + "` outside"))
-				u.main.view.Painter.Theme = theme
+				u.main.shell.Transcript.Painter.Theme = theme
 				x, y := 0, 0
 				if dialog {
 					u.Width, u.Height = 80, 18
-					u.openBlocks(u.main.view, []activityui.Block{{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "sample.go"}}, Tail: []string{source + " // outside"}}})
+					u.openBlocks(u.main.shell.Transcript, []activityui.Block{{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "sample.go"}}, Tail: []string{source + " // outside"}}})
 					drawOutputDialog(u)
 					x, y = outputSelectionPoint(t, u, source)
 				}
@@ -130,8 +138,11 @@ func TestTerminalSelectionComposerCaretStyles(t *testing.T) {
 		main, _ := newAppServerTestUI()
 		main.Text, main.CursorBack = "abcdef", back
 		frame, _ := main.testMainFrame(40, 12, 0)
-		u := &terminalUI{main: main, Attachment: &terminalsession.Attachment{Width: 40, Height: len(frame), Interaction: terminalsession.Interaction{Frame: terminalsession.Frame{Width: 40, Rows: frame}}, Shell: terminalsession.Shell{Layout: terminalsession.Layout{Main: terminalsession.Rect{0, 0, 40, len(frame)}}}}}
-		x, y := main.mainView.ComposerRect.X, main.mainView.ComposerRect.Y
+		u := terminalTest(main)
+		u.Width, u.Height = 40, len(frame)
+		u.Frame = terminalsession.Frame{Width: 40, Rows: frame}
+		u.Layout.Main = terminalsession.Rect{0, 0, 40, len(frame)}
+		x, y := main.shell.Main.ComposerRect.X, main.shell.Main.ComposerRect.Y
 		selectionTestDrag(t, u, x, y, x+5, y)
 		u.paintSelection(frame)
 		screen := vt.NewEmulator(40, len(frame))
@@ -353,19 +364,19 @@ func TestTerminalUISelectionKeepsPressedHitTarget(t *testing.T) {
 		u.Agents = activityui.NewView()
 		u.Auxiliary = changeview.NewPane("", diffrender.TerminalTheme)
 		for _, entry := range []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "First target"}, {Seq: 2, Agent: "Main", Kind: "text", Text: "Advanced target"}} {
-			u.main.testActivity(u.main.view).appendEntry(entry, parseLiveActivity(entry))
+			u.main.testActivity(u.main.shell.Transcript).appendEntry(entry, parseLiveActivity(entry))
 		}
 		old, next := activityui.Snippet{Run: 1}, activityui.Snippet{Run: 2}
 		if question {
-			u.main.view.FeedQuestions = []uint64{1}
-			u.main.view.QuestionRows = map[uint64]int{1: 3, 2: 9}
+			u.main.shell.Transcript.FeedQuestions = []uint64{1}
+			u.main.shell.Transcript.QuestionRows = map[uint64]int{1: 3, 2: 9}
 		} else {
-			u.main.view.FeedSnippets = []activityui.Snippet{old}
+			u.main.shell.Transcript.FeedSnippets = []activityui.Snippet{old}
 		}
 		u.selectionMouse(0, 0, 0, false)
 		// A streaming repaint replaces viewport hit maps before button release.
-		u.main.view.FeedQuestions = []uint64{2}
-		u.main.view.FeedSnippets = []activityui.Snippet{next}
+		u.main.shell.Transcript.FeedQuestions = []uint64{2}
+		u.main.shell.Transcript.FeedSnippets = []activityui.Snippet{next}
 		u.paintSelection(u.Frame.Rows)
 		u.selectionMouse(0, 0, 0, true)
 		if question {
@@ -373,7 +384,7 @@ func TestTerminalUISelectionKeepsPressedHitTarget(t *testing.T) {
 				t.Fatal("clicked an advancing question target")
 			}
 			u.outputKey("\x1b")
-			if u.Dialog != nil || u.main.view.Offset != 0 {
+			if u.Dialog != nil || u.main.shell.Transcript.Offset != 0 {
 				t.Fatal("dismissing question changed transcript")
 			}
 		} else if u.Dialog == nil || !strings.Contains(fmt.Sprint(u.Dialog.Pages), "First target") || strings.Contains(fmt.Sprint(u.Dialog.Pages), "Advanced target") {
@@ -385,17 +396,17 @@ func TestTerminalUISelectionKeepsPressedHitTarget(t *testing.T) {
 func TestTerminalUISelectionRenderedClipboard(t *testing.T) {
 	for _, activity := range []bool{false, true} {
 		u, _ := newAppServerTestUI()
-		u.ensureShell()
-		view := u.testActivity(u.view)
+
+		view := u.testActivity(u.shell.Transcript)
 		if activity {
-			view = u.testActivity(u.agents)
+			view = u.testActivity(u.shell.Agents)
 			u.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/worker", Final: true}}
 			terminalTest(u).DiffOpen = false
 
 		}
 		applyTranscriptFixture(view, true, "", "main", "main", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "hello [report](https://example.com/report)"})
 		if activity {
-			u.testActivity(u.agents).setDisplayFilter(true, "Main")
+			u.testActivity(u.shell.Agents).setDisplayFilter(true, "Main")
 		}
 		screen := vt.NewEmulator(120, 30)
 		defer screen.Close()
@@ -463,14 +474,14 @@ func TestTerminalUISelectionRenderedClipboard(t *testing.T) {
 func TestTerminalUISelectionComposer(t *testing.T) {
 	for _, size := range [][2]int{{120, 30}, {40, 12}, {10, 4}} {
 		u := newAppServerSessionTestUI(t, "/workspace")
-		u.ensureShell()
+
 		u.insertDraft("你好abc\nsecond")
 		screen := vt.NewEmulator(size[0], size[1])
 		defer screen.Close()
 		if err := u.testPaint(screen, size[0], size[1]); err != nil {
 			t.Fatal(err)
 		}
-		r := u.mainView.ComposerRect
+		r := u.shell.Main.ComposerRect
 		r.X += terminalTest(u).Layout.Main.X
 		r.Y += terminalTest(u).Layout.Main.Y
 		selectionTestDrag(t, terminalTest(u), r.X, r.Y, r.X+3, r.Y)
@@ -492,7 +503,7 @@ func TestTerminalUISelectionComposer(t *testing.T) {
 
 func TestTerminalUISelectionComposerReplacesTranscript(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.ensureShell()
+
 	screen := vt.NewEmulator(40, 8)
 	defer screen.Close()
 	paint := func() {
@@ -502,11 +513,11 @@ func TestTerminalUISelectionComposerReplacesTranscript(t *testing.T) {
 		}
 	}
 	paint()
-	u.view.FeedQuestions = []uint64{1, 1, 1, 1}
-	u.view.QuestionRows = map[uint64]int{1: 99}
+	u.shell.Transcript.FeedQuestions = []uint64{1, 1, 1, 1}
+	u.shell.Transcript.QuestionRows = map[uint64]int{1: 99}
 	u.insertDraft("first\nsecond\nthird\nfourth\nfifth")
 	paint()
-	r := u.mainView.ComposerRect
+	r := u.shell.Main.ComposerRect
 	r.X += terminalTest(u).Layout.Main.X
 	r.Y += terminalTest(u).Layout.Main.Y
 	selectionTestDrag(t, terminalTest(u), r.X, r.Y, r.X+5, r.Y+1)
@@ -515,7 +526,7 @@ func TestTerminalUISelectionComposerReplacesTranscript(t *testing.T) {
 	}
 	terminalTest(u).selectionMouse(0, r.X, r.Y, false)
 	terminalTest(u).selectionMouse(0, r.X, r.Y, true)
-	if u.view.FlashQuestion != 0 {
+	if u.shell.Transcript.FlashQuestion != 0 {
 		t.Fatal("composer click activated stale transcript question")
 	}
 }

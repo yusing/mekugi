@@ -22,7 +22,7 @@ func appliedSettingsTestUI(t *testing.T, workspace, thread string) (*appServerUI
 	u.Thread = thread
 	u.startSession(thread, workspace)
 	u.panes = testPanePreferences()
-	if err := u.panes.open(&terminalTest(u).Shell, &u.mainView, workspace, thread, false); err != nil {
+	if err := u.panes.open(&terminalTest(u).Shell, u.shell.Main, workspace, thread, false); err != nil {
 		t.Fatal(err)
 	}
 	return u, u.Host.Input.(*appServerTestInput)
@@ -370,7 +370,7 @@ func TestAppServerAppliedSettingsMalformedAndLayoutOnly(t *testing.T) {
 					t.Fatal("corrupt retention failed invisibly")
 				}
 			} else {
-				if err := fresh.panes.open(&terminalTest(fresh).Shell, &fresh.mainView, "/workspace", "saved", true); err != nil || terminalTest(fresh).Split != 63 || savedPane(terminalTest(fresh)).NavigatorColumns() != 20 {
+				if err := fresh.panes.open(&terminalTest(fresh).Shell, fresh.shell.Main, "/workspace", "saved", true); err != nil || terminalTest(fresh).Split != 63 || savedPane(terminalTest(fresh)).NavigatorColumns() != 20 {
 					t.Fatalf("layout-only record not backward compatible: %v", err)
 				}
 			}
@@ -380,7 +380,7 @@ func TestAppServerAppliedSettingsMalformedAndLayoutOnly(t *testing.T) {
 
 func TestUISnapshotNativeSettingsPersistenceFailure(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
 	u.clock = func() time.Time { return now }
 	u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
@@ -392,7 +392,7 @@ func TestUISnapshotNativeSettingsPersistenceFailure(t *testing.T) {
 
 func TestUISnapshotNativeResumeReasoningRejected(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "saved-model", "high"
 	u.Settings.RestoreEffort = true

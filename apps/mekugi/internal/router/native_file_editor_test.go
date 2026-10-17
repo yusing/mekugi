@@ -12,7 +12,7 @@ import (
 
 func TestNativeFileEditorSelectionAndFilter(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.ensureShell()
+
 	defer terminalTest(u).Diff.Close()
 	c := savedPane(terminalTest(u))
 	c.SetWorkspace("/w")
@@ -53,7 +53,7 @@ func TestNativeFileEditorSelectionAndFilter(t *testing.T) {
 
 func TestNativeFileEditorPathsAndFailure(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.ensureShell()
+
 	defer terminalTest(u).Diff.Close()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "selected.txt")

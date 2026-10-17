@@ -111,7 +111,7 @@ func testAppServerEditorTerminalHandoff(t *testing.T, selectedFile bool) {
 	u, _ := newAppServerTestUI()
 	u.ctx = ctx
 	u.Text = "original"
-	u.ensureShell()
+
 	defer terminalTest(u).Diff.Close()
 	path := filepath.Join(dir, "selected ' $(touch injected).txt")
 	if selectedFile {

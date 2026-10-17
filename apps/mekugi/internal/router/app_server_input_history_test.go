@@ -1,7 +1,6 @@
 package router
 
 import (
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"os"
 	"path/filepath"
 	"testing"
@@ -78,7 +77,7 @@ func TestAppServerInputHistoryAttachmentsRemainUsable(t *testing.T) {
 
 func TestAppServerInputHistoryResumeAndRejectedInput(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.agents = activityui.NewView()
+
 	u.startSession(u.Thread, "/workspace")
 	u.restoreHistory([]binding.HistoryTurn{{ID: "old", Status: "completed", Items: []binding.ThreadItem{{Type: "userMessage", ID: "input", Content: []byte(`[{"type":"text","text":"saved"}]`)}}}})
 	appServerTestKeys(t, u, "\x1b[A")

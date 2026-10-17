@@ -40,7 +40,7 @@ func (u *appServerUI) submitShell() error {
 	u.conversation().Shell = u.takeDraft()
 	u.Shell.Begin(u.Turn)
 	u.setNotice("Shell command submitted", false)
-	u.view.Follow()
+	u.shell.Transcript.Follow()
 	return nil
 }
 

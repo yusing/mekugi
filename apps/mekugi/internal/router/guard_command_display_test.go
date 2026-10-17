@@ -5,8 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
@@ -73,9 +71,9 @@ func TestAppServerGuardCommandDisplay(t *testing.T) {
 				item := binding.ThreadItem{ID: "cmd", Type: "commandExecution", Command: command, Status: "completed", ExitCode: new(0)}
 				check := func(u *appServerUI) {
 					t.Helper()
-					view := u.testActivity(u.view)
+					view := u.testActivity(u.shell.Transcript)
 					if thread == "child" {
-						view = u.testActivity(u.agents)
+						view = u.testActivity(u.shell.Agents)
 					}
 					if len(view.Entries) != 1 || view.Entries[0].Source.Text != want || view.Entries[0].Source.Native.Command != command {
 						t.Fatalf("command entries = %+v; want display %q with unchanged host command", view.Entries, want)
@@ -160,7 +158,7 @@ func TestUISnapshotGuardedHeredocCommit(t *testing.T) {
 	command := shellCommandString("/bin/bash", []string{"-lc", guarded})
 	output := "[main e9085377] docs(ui): describe content-detected inline highlighting\n 2 files changed, 6 insertions(+), 4 deletions(-)\n"
 	u := vcsCommandUI(t, "")
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.restoreHistory([]binding.HistoryTurn{{ID: "past", Status: "completed", Items: []binding.ThreadItem{{
 		ID: "cmd", Type: "commandExecution", Command: command, AggregatedOutput: &output, ExitCode: new(0), DurationMS: new(int64(500)),
 	}}}})
@@ -172,7 +170,7 @@ func TestUISnapshotGuardedHeredocCommit(t *testing.T) {
 
 func TestUISnapshotGuardCommandDisplay(t *testing.T) {
 	u, hub := newTrackedAppServerUI(t)
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	now := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
 	u.clock = func() time.Time { return now }
 	source := "git log -1 --format='%H%n%s'; git status --porcelain; git cat-file commit HEAD | awk '/^gpgsig / {print \"signature_present\"; exit}'"
@@ -199,12 +197,12 @@ func TestUISnapshotGuardCommandDisplay(t *testing.T) {
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, strings.Join(outputs, "")
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	awaitMain(t, u, "signature_present")
-	assertNativeUISnapshot(t, "guard-command-display", u.testActivity(u.view).RenderFeed(90, 12).Lines)
+	assertNativeUISnapshot(t, "guard-command-display", u.testActivity(u.shell.Transcript).RenderFeed(90, 12).Lines)
 }
 
 func TestUISnapshotGuardCommandOutputDialog(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	source := "git status --porcelain; sudo journalctl -k --no-pager"
 	guarded, err := shellinstrumentation.RewriteCommands(source, displayGuardHelper, displayGuardDirectory, displaySudoDirectory, "cmd")
 	if err != nil {
@@ -220,7 +218,7 @@ func TestUISnapshotGuardCommandOutputDialog(t *testing.T) {
 	if len(pages) != 1 || pages[0].Code != source || entry.Source.Native.Command != command || u.source.RetainedOutput(pages[0].Source, pages[0].Output) != entry.Source.Native.Output {
 		t.Fatalf("combined output pages = %+v; want original command display and unchanged host output", pages)
 	}
-	terminal := &terminalUI{main: u, Attachment: &terminalsession.Attachment{}}
-	terminal.openBlocks(u.view, pages)
+	terminal := terminalTest(u)
+	terminal.openBlocks(u.shell.Transcript, pages)
 	assertNativeUISnapshot(t, "guard-command-output-dialog", strings.Split(drawOutputDialog(terminal), "\n"))
 }

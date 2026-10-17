@@ -91,7 +91,7 @@ func sessionMetricsFixture(t *testing.T) transportcapture.MetricsSnapshot {
 func sessionMetricField(t *testing.T, u *appServerUI, group, label, want string) {
 	t.Helper()
 	u.settlePresentation()
-	for _, field := range u.mainView.Panel.Fields {
+	for _, field := range u.shell.Main.Panel.Fields {
 		if field.Group == group && field.Label == label {
 			if field.Value != want {
 				t.Fatalf("%s/%s = %q, want %q", group, label, field.Value, want)
@@ -117,11 +117,11 @@ func TestAppServerSessionMetricsLocalNavigation(t *testing.T) {
 	sessionMetricField(t, u, "Cache", "Provider rate", "0.0%")
 	u.statusPanelFrame(80, 12)
 	u.statusPanelKey("\x1b[B")
-	if u.mainView.Panel.Top == 0 {
+	if u.shell.Main.Panel.Top == 0 {
 		t.Fatal("scroll did not move")
 	}
 	u.statusPanelKey("\t")
-	if u.mainView.Panel.Tab != 1 || u.mainView.Panel.Top != 0 {
+	if u.shell.Main.Panel.Tab != 1 || u.shell.Main.Panel.Top != 0 {
 		t.Fatal("tab switch did not reset scroll")
 	}
 	sessionMetricField(t, u, "Transport", "Provider requests", "250 bytes")
@@ -145,11 +145,11 @@ func TestAppServerSessionMetricsLocalNavigation(t *testing.T) {
 	u.statusPanelKey("[") // Clamp at oldest.
 	sessionMetricField(t, u, "Exchange", "Sequence", "8")
 	u.statusPanelKey("]")
-	if u.mainView.Panel.Sequence != 0 {
+	if u.shell.Main.Panel.Sequence != 0 {
 		t.Fatal("newest exchange must follow subsequent completions")
 	}
 	u.statusPanelKey("\x1b[Z")
-	if u.mainView.Panel.Tab != 1 {
+	if u.shell.Main.Panel.Tab != 1 {
 		t.Fatal("reverse tab did not select transport")
 	}
 	u.statusPanelKey("r")
@@ -170,7 +170,7 @@ func TestAppServerSessionMetricsSelectionSurvivesRetention(t *testing.T) {
 	m := u.statusPanel.Metrics
 	m.Exchanges = m.Exchanges[1:]
 	sessionMetricField(t, u, "Exchange", "Sequence", "9")
-	if u.mainView.Panel.Sequence != 0 {
+	if u.shell.Main.Panel.Sequence != 0 {
 		t.Fatal("reclaimed selection must follow newest")
 	}
 	m.Exchanges = nil
@@ -200,9 +200,9 @@ func TestAppServerSessionMetricsRefreshAndBounds(t *testing.T) {
 	u.refreshSessionMetrics(false)
 	sessionMetricField(t, u, "Requests", "Logical", "1")
 	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
-		u.view.Painter.Theme = theme
+		u.shell.Transcript.Painter.Theme = theme
 		for tab := range 3 {
-			u.mainView.Panel.Tab = tab
+			u.shell.Main.Panel.Tab = tab
 			u.settlePresentation()
 			for _, size := range [][2]int{{90, 25}, {30, 15}, {12, 8}, {1, 1}, {0, 0}} {
 				for _, row := range u.statusPanelFrame(size[0], size[1]) {
@@ -250,13 +250,13 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.view.Painter.Theme = diffrender.DarkTheme
+			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			u.cwd = "/workspace"
 			u.replayDebugDirectory = tc.debug
 			u.showSessionMetrics()
 			u.settlePresentation()
 			m := u.statusPanel.Metrics
-			u.mainView.Panel.Tab = tc.tab
+			u.shell.Main.Panel.Tab = tc.tab
 			if !tc.missing {
 				*m = sessionMetricsFixture(t)
 			}
@@ -276,7 +276,7 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 				m.Exchanges = nil
 			}
 			u.settlePresentation()
-			u.mainView.Panel.Top = tc.top
+			u.shell.Main.Panel.Top = tc.top
 			assertNativeUISnapshot(t, "native-session-"+tc.name, u.statusPanelFrame(tc.width, tc.height))
 		})
 	}

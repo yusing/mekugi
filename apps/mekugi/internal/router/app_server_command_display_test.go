@@ -106,9 +106,9 @@ func TestUISnapshotWrappedCommands(t *testing.T) {
 	for _, thread := range []string{"main", "child"} {
 		u := newAppServerSessionTestUI(t, "/workspace")
 		u.clock = func() time.Time { return time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC) }
-		view := u.testActivity(u.view)
+		view := u.testActivity(u.shell.Transcript)
 		if thread == "child" {
-			view = u.testActivity(u.agents)
+			view = u.testActivity(u.shell.Agents)
 		}
 		view.Clock, view.Painter.Theme = u.clock, diffrender.DarkTheme
 		for i, command := range []string{
@@ -192,10 +192,10 @@ func TestAppServerImageViewLiveAndRestored(t *testing.T) {
 	for _, child := range []bool{false, true} {
 		u := newAppServerSessionTestUI(t, workspace)
 		thread := "main"
-		view := u.testActivity(u.view)
+		view := u.testActivity(u.shell.Transcript)
 		if child {
 			thread = "child"
-			view = u.testActivity(u.agents)
+			view = u.testActivity(u.shell.Agents)
 		}
 		for _, method := range []string{"item/started", "item/completed"} {
 			appServerTestNotify(t, u, method, map[string]any{"threadId": thread, "turnId": "t", "item": item})
@@ -216,10 +216,10 @@ func TestAppServerImageViewLiveAndRestored(t *testing.T) {
 		if child {
 			restored.session.Caller(thread)
 			restored.restoreActivityThread(binding.ThreadInfo{ID: thread, Cwd: workspace, Turns: turns}, false)
-			check(restored.testActivity(restored.agents))
+			check(restored.testActivity(restored.shell.Agents))
 		} else {
 			restored.restoreHistory(turns)
-			check(restored.testActivity(restored.view))
+			check(restored.testActivity(restored.shell.Transcript))
 		}
 	}
 }
@@ -247,9 +247,9 @@ func TestAppServerCommandTimeoutInput(t *testing.T) {
 			item := binding.ThreadItem{ID: tc.id, Type: "commandExecution", Command: "sleep 1", DurationMS: new(int64(500))}
 			for _, method := range []string{"item/started", "item/completed"} {
 				appServerTestNotify(t, u, method, map[string]any{"threadId": thread, "turnId": "t", "item": item})
-				view := u.testActivity(u.view)
+				view := u.testActivity(u.shell.Transcript)
 				if thread != "main" {
-					view = u.testActivity(u.agents)
+					view = u.testActivity(u.shell.Agents)
 				}
 				entry := view.Entries[len(view.Entries)-1]
 				if entry.Source.Native.Command != item.Command || entry.Source.Native.CommandTimeout != tc.want {
@@ -270,7 +270,7 @@ func TestAppServerCommandTimeoutInput(t *testing.T) {
 	}
 	restored := newAppServerSessionTestUI(t, t.TempDir())
 	restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{{ID: "timed", Type: "commandExecution", Command: "skills-mgr get skill"}}}})
-	if len(restored.testActivity(restored.view).blocks(0)[0].Timeouts) != 0 {
+	if len(restored.testActivity(restored.shell.Transcript).blocks(0)[0].Timeouts) != 0 {
 		t.Fatal("restored a timeout without original invocation input")
 	}
 }
@@ -291,7 +291,7 @@ func TestUISnapshotTimeoutRun(t *testing.T) {
 
 func TestUISnapshotShellSetupEvent(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	command := "probe_root=$(mktemp -d /tmp/setup-apt-baseline.XXXXXX)\n" +
 		"trap 'rm -rf \"$probe_root\"' EXIT\nexport SETUP_CONFIG=/workspace/setup.json\n" +
 		"smoke_root=\"$probe_root\"\ngit show 99076ca:setup.sh > \"$probe_root/baseline.sh\"\n" +
@@ -299,13 +299,13 @@ func TestUISnapshotShellSetupEvent(t *testing.T) {
 		"source \"$probe_root/policy.sh\"\nif check_apt_policy; then exit 1; fi"
 	item := binding.ThreadItem{ID: "setup", Type: "commandExecution", Command: command, Cwd: "/workspace", Status: "completed", ExitCode: new(0)}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	finishPacing(u.testActivity(u.view))
-	assertNativeUISnapshot(t, "shell-setup-event", u.testActivity(u.view).RenderFeed(100, 24).Lines)
+	finishPacing(u.testActivity(u.shell.Transcript))
+	assertNativeUISnapshot(t, "shell-setup-event", u.testActivity(u.shell.Transcript).RenderFeed(100, 24).Lines)
 }
 
 func TestUISnapshotClassifiedCommandPaths(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	for i, command := range []string{
 		"mcat /workspace/internal/router/app.go 1:3",
 		"inspect_file /workspace/app.go /external/other.go",
@@ -314,8 +314,8 @@ func TestUISnapshotClassifiedCommandPaths(t *testing.T) {
 		item := binding.ThreadItem{ID: fmt.Sprint(i), Type: "commandExecution", Command: command, Cwd: "/workspace", Status: "completed", ExitCode: new(0), DurationMS: new(int64(20))}
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	}
-	finishPacing(u.testActivity(u.view))
-	assertNativeUISnapshot(t, "classified-command-paths", u.testActivity(u.view).RenderFeed(100, 30).Lines)
+	finishPacing(u.testActivity(u.shell.Transcript))
+	assertNativeUISnapshot(t, "classified-command-paths", u.testActivity(u.shell.Transcript).RenderFeed(100, 30).Lines)
 }
 
 func TestLiveActivitySkillRendering(t *testing.T) {
@@ -492,9 +492,9 @@ func TestUISnapshotShellSetupTimeoutEvent(t *testing.T) {
 		u := newAppServerSessionTestUI(t, "/workspace")
 		now := time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)
 		u.clock = func() time.Time { return now }
-		view := u.testActivity(u.view)
+		view := u.testActivity(u.shell.Transcript)
 		if thread == "child" {
-			view = u.testActivity(u.agents)
+			view = u.testActivity(u.shell.Agents)
 		}
 		view.Clock, view.Painter.Theme = u.clock, diffrender.DarkTheme
 		item := binding.ThreadItem{ID: "setup", Type: "commandExecution", Command: "set -e\ntimeout 10 sleep 1", Cwd: "/workspace", Status: "inProgress"}

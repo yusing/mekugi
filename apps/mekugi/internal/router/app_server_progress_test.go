@@ -22,7 +22,7 @@ func TestAppServerProgressCompactionLifecycle(t *testing.T) {
 	label := func(want string) {
 		t.Helper()
 		frame, _ := u.testMainFrame(80, 18, 0)
-		if got := ansi.Strip(frame[u.mainView.ComposerRect.Y-1]); !strings.Contains(got, want) {
+		if got := ansi.Strip(frame[u.shell.Main.ComposerRect.Y-1]); !strings.Contains(got, want) {
 			t.Fatalf("composer = %q, want %q", got, want)
 		}
 	}
@@ -101,8 +101,8 @@ func TestAppServerProgressUnfinishedChildWait(t *testing.T) {
 	// A later turn must not restart animation for the restored wait.
 	agent := *u.session.Agent(u.session.KnownCaller("child"))
 	agent.Responding = true
-	first, _ := u.testActivity(u.agents).testCurrent(agent, time.Unix(0, 0))
-	second, _ := u.testActivity(u.agents).testCurrent(agent, time.Unix(1, 0))
+	first, _ := u.testActivity(u.shell.Agents).testCurrent(agent, time.Unix(0, 0))
+	second, _ := u.testActivity(u.shell.Agents).testCurrent(agent, time.Unix(1, 0))
 	if first != second {
 		t.Fatal("restored wait animated in a later turn")
 	}
@@ -118,17 +118,17 @@ func TestAppServerWaitRosterOnly(t *testing.T) {
 		t.Run(caller, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.registerThread(binding.ThreadInfo{ID: "child"})
-			feed := u.testActivity(u.view)
+			feed := u.testActivity(u.shell.Transcript)
 			name := "/root"
 			if caller == "child" {
-				feed, name = u.testActivity(u.agents), u.session.Caller(caller)
+				feed, name = u.testActivity(u.shell.Agents), u.session.Caller(caller)
 			}
 			check := func(want string) {
 				t.Helper()
 				if rows := feed.RenderFeed(100, 30).Lines; len(rows) != 0 {
 					t.Fatalf("wait leaked into transcript: %q", rows)
 				}
-				if got, _ := u.testActivity(u.agents).testCurrent(sessionpresentation.ActivityAgent{Name: name}, time.Now()); !strings.Contains(ansi.Strip(got), want) {
+				if got, _ := u.testActivity(u.shell.Agents).testCurrent(sessionpresentation.ActivityAgent{Name: name}, time.Now()); !strings.Contains(ansi.Strip(got), want) {
 					t.Fatalf("roster = %q, want %q", got, want)
 				}
 			}
@@ -177,7 +177,7 @@ func TestAppServerProgressTerminalPolling(t *testing.T) {
 	label := func(want string) {
 		t.Helper()
 		frame, _ := u.testMainFrame(60, 12, 0)
-		if got := ansi.Strip(frame[u.mainView.ComposerRect.Y-1]); !strings.Contains(got, want) {
+		if got := ansi.Strip(frame[u.shell.Main.ComposerRect.Y-1]); !strings.Contains(got, want) {
 			t.Fatalf("composer = %q, want %q", got, want)
 		}
 	}

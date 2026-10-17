@@ -31,7 +31,7 @@ func (u *appServerUI) conversation() *conversationmodel.Session {
 
 func (u *appServerUI) bindConversation() {
 	m := u.conversation()
-	if u.Editor != &u.prompts.Secret {
+	if u.Editor != &u.shell.Prompts.Secret {
 		u.Editor = &m.Editor
 	}
 	u.picker.State, u.picker.MenuState = &m.Completion, u.sessionPresentation().Menu()
@@ -51,7 +51,7 @@ func (u *appServerUI) prepareDraft(draft composer.Draft) conversationmodel.Input
 	u.bindSkills(&d, true)
 	d.SnapshotFiles(u.cwd)
 	u.snapshotDraftSkills(&d)
-	u.mainView.CursorColumn = nil
+	u.shell.Main.CursorColumn = nil
 	return d
 }
 
@@ -71,14 +71,14 @@ func (u *appServerUI) applyInputRestoration(restored conversationmodel.InputRest
 	}
 	if restored.Parked {
 		if restored.Changed {
-			u.mainView.PromptColumn = nil
+			u.shell.Main.PromptColumn = nil
 		}
 		if u.approvals.Open {
-			u.prompts.Reopen()
+			u.shell.Prompts.Reopen()
 			u.focusPrompt()
 		}
 	} else if restored.Changed {
-		u.mainView.CursorColumn = nil
+		u.shell.Main.CursorColumn = nil
 	}
 }
 

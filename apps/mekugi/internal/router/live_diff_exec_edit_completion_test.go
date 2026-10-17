@@ -62,7 +62,7 @@ func TestUISnapshotNativeMoveKeepsTranscript(t *testing.T) {
 func TestNativeUIExecEditCompletionRetainsWorkingStatusAndClearsDock(t *testing.T) {
 	t.Parallel()
 	u, _ := newAppServerTestUI()
-	u.ensureShell()
+
 	defer terminalTest(u).Diff.Close()
 	u.sessionPresentation().Status.Text = "Working"
 	workspace := t.TempDir()

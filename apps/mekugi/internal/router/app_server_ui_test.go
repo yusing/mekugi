@@ -3,6 +3,7 @@ package router
 import (
 	"bytes"
 	"encoding/json/jsontext"
+	"os"
 
 	"github.com/yusing/mekugi/modules/activity"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -72,12 +73,12 @@ func appServerTestRequest(t *testing.T, u *appServerUI, id, method string) {
 }
 func (*appServerTestInput) Close() error { return nil }
 
-func newAppServerTestUI() (*appServerUI, *appServerTestInput) {
+func newAppServerTestUI(views ...terminalsession.Views) (*appServerUI, *appServerTestInput) {
 	w := new(appServerTestInput)
 	client := &appserver.Client{Input: w}
-	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), issues: testCriticalErrors(), history: testHistory(), Host: client, view: activityui.NewView(), Requests: sessioncontrol.NewRequests[appServerRequest](appServerTestTransport{client, w}), Thread: "main"})
+	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), issues: testCriticalErrors(), history: testHistory(), Host: client, Requests: sessioncontrol.NewRequests[appServerRequest](appServerTestTransport{client, w}), Thread: "main"}, views...)
 	u.approvals.grants = sessioncontrol.NewApprovalGrants(testGuards())
-	u.view.Painter.FileLink = markdownFileLinks(u.cwd)
+	u.shell.Transcript.Painter.FileLink = markdownFileLinks(u.cwd)
 	return u, w
 }
 
@@ -226,7 +227,7 @@ func TestAppServerUIInput(t *testing.T) {
 
 func TestAppServerUIShellUnicodeInput(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	shell := &terminalUI{main: u, Attachment: &terminalsession.Attachment{}}
+	shell := terminalTest(u)
 	for _, key := range []byte("你好🙂\x7f") {
 		if err := shell.key(key); err != nil {
 			t.Fatal(err)
@@ -240,13 +241,13 @@ func TestAppServerUIShellUnicodeInput(t *testing.T) {
 func TestAppServerUIImmediateInputEcho(t *testing.T) {
 	for _, rejected := range []bool{false, true} {
 		u, _ := newAppServerTestUI()
-		u.view.Following = false
+		u.shell.Transcript.Following = false
 		appServerTestKeys(t, u, "你好 first message\r")
 		var frame bytes.Buffer
 		if err := u.testPaint(&frame, 100, 24); err != nil {
 			t.Fatal(err)
 		}
-		if !u.view.Following || !strings.Contains(frame.String(), "你好 first message") {
+		if !u.shell.Transcript.Following || !strings.Contains(frame.String(), "你好 first message") {
 			t.Fatal("submitted input disappeared while waiting for app-server")
 		}
 		if rejected {
@@ -343,7 +344,7 @@ func TestAppServerUINotificationBeforeResponseAndItems(t *testing.T) {
 	if u.Turn != "t" {
 		t.Fatal("child completion cleared main turn")
 	}
-	u.agents = activityui.NewView() // Public-reasoning projection has both feed consumers.
+
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"main","turnId":"t","item":{"id":"r","type":"reasoning","text":"PRIVATE_REASONING"}}}`)
 	appServerTestMessage(t, u, `{"method":"item/reasoning/textDelta","params":{"threadId":"main","turnId":"t","itemId":"r","delta":"PRIVATE_REASONING"}}`)
 	var frame bytes.Buffer
@@ -384,7 +385,7 @@ func TestAppServerSteerStatusAcknowledgement(t *testing.T) {
 
 func TestAppServerNoticeExpiry(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.ensureShell()
+
 	u.sessionPresentation().Status.Text = "Working"
 	terminalTest(u).copyText("copied")
 	deadline := u.feedback.Until
@@ -411,7 +412,7 @@ func TestAppServerNoticeExpiry(t *testing.T) {
 func TestNativeUIEscapeInterruptPreservesDraft(t *testing.T) {
 	for _, active := range []bool{false, true} {
 		u, w := newAppServerTestUI()
-		u.ensureShell()
+
 		u.Text = "unfinished draft"
 		if active {
 			u.Turn = "turn"
@@ -444,9 +445,17 @@ func TestNativeUIEscapeInterruptPreservesDraft(t *testing.T) {
 }
 
 // appServerTestFeatures supplies the same core owner to the composer and transcript.
-func appServerTestFeatures(u *appServerUI) *appServerUI {
+func appServerTestFeatures(u *appServerUI, views ...terminalsession.Views) *appServerUI {
 	u.reviewSource = new(changecapture.Service)
 	u.terminalViews = testTerminalViews(u.reviewSource)
+	if len(views) != 0 {
+		u.terminalViews = views[0]
+	}
+	terminal, prepare := u.terminalViews.NewAttachment(diffrender.EnvironmentTheme(os.Getenv("COLORFGBG")))
+	if u.shell != nil && u.shell.Transcript != nil {
+		terminal.Transcript = u.shell.Transcript
+	}
+	u.shell, u.preparePane = terminal, prepare
 	u.presentationState = testPresentation()
 	u.conversationState = new(conversationmodel.Service)
 	observations := conversationbinding.Codex.Observation(u.conversationState)

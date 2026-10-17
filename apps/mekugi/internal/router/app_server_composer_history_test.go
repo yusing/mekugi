@@ -110,8 +110,8 @@ func TestAppServerComposerTokenIsOneNavigationUnit(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			appServerTestKeys(t, u, "prefix ")
 			token.attach(t, u)
-			u.mainView.ComposerWidth = 16
-			rows, _ := terminalsession.DraftLayout(u.Draft, u.mainView.ComposerWidth)
+			u.shell.Main.ComposerWidth = 16
+			rows, _ := terminalsession.DraftLayout(u.Draft, u.shell.Main.ComposerWidth)
 			if !strings.Contains(ansi.Strip(strings.Join(rows, "\n")), token.label) {
 				t.Fatalf("split atomic token: %q", rows)
 			}
@@ -141,7 +141,6 @@ func TestAppServerComposerTokenIsOneNavigationUnit(t *testing.T) {
 
 func TestAppServerComposerImageTokenStyledAndCaretVisible(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.shell = &terminalsession.Attachment{}
 	appServerTestKeys(t, u, "a")
 	u.attachImage(filepath.Join(t.TempDir(), "image.png"))
 	appServerTestKeys(t, u, "b\x1b[D")

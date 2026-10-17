@@ -46,7 +46,7 @@ func TestSessionPaintDoesNotRefreshPublication(t *testing.T) {
 	appServerTestTurn(t, u, "turn")
 	questionTestSync(t, u, "request", false)
 	before := u.sessionPresentation().View()
-	if before.Questions.Call == nil || u.prompts.Ready() {
+	if before.Questions.Call == nil || u.shell.Prompts.Ready() {
 		t.Fatal("prompt publication did not precede its display receipt")
 	}
 	now = now.Add(time.Second)
@@ -58,7 +58,7 @@ func TestSessionPaintDoesNotRefreshPublication(t *testing.T) {
 			t.Fatal("paint refreshed the publication or changed its version")
 		}
 	}
-	if !u.prompts.Ready() {
+	if !u.shell.Prompts.Ready() {
 		t.Fatal("successful visible delivery did not acknowledge the prompt")
 	}
 }
@@ -81,18 +81,18 @@ func TestNativeDisplayedThreadIndependentOfRosterFocus(t *testing.T) {
 		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "work"}})
 	}
 	first := u.session.Transcript("first", "work").Turn
-	u.testActivity(u.agents).displayThread("/root/first")
-	u.agents.Selected = "/root/second"
-	u.testActivity(u.agents).testKeepSelection()
+	u.testActivity(u.shell.Agents).displayThread("/root/first")
+	u.shell.Agents.Selected = "/root/second"
+	u.testActivity(u.shell.Agents).testKeepSelection()
 	view := u.sessionPresentation().View()
 	if view.Displayed.ID != "first" || view.Input.ID != "main" || !u.composerReadOnly() || view.Displayed.Caller != "/root/first" {
 		t.Fatalf("roster focus changed display or admission: %+v", view)
 	}
-	if !u.testActivity(u.agents).testVisible(sessionpresentation.ActivityEntry{Agent: "/root/first", Kind: "text"}) || u.testActivity(u.agents).testVisible(sessionpresentation.ActivityEntry{Agent: "/root/second", Kind: "text"}) {
+	if !u.testActivity(u.shell.Agents).testVisible(sessionpresentation.ActivityEntry{Agent: "/root/first", Kind: "text"}) || u.testActivity(u.shell.Agents).testVisible(sessionpresentation.ActivityEntry{Agent: "/root/second", Kind: "text"}) {
 		t.Fatal("transcript followed the focused roster row")
 	}
 	terminalTest(u).selectNativePane(0)
-	if u.composerReadOnly() || u.transcriptView() != u.view || u.agents.Selected != "/root/second" {
+	if u.composerReadOnly() || u.transcriptView() != u.shell.Transcript || u.shell.Agents.Selected != "/root/second" {
 		t.Fatal("Main selection changed roster focus or retained child admission")
 	}
 	if first == nil || u.session.Transcript("first", "work").Turn != first || !u.session.Agent("/root/first").Responding {
@@ -104,7 +104,7 @@ func TestNativeDisplaySwitchKeepsHistoryObservation(t *testing.T) {
 	u, wire := newPagedHistoryUI(t)
 	historyTurnsReply(t, u)
 	restoreContentReply(t, u, 4, map[string]any{"data": []any{historyItem("last", "saved", 109000)}, "nextCursor": "older"})
-	u.testActivity(u.agents).displayThread("/root/worker")
+	u.testActivity(u.shell.Agents).displayThread("/root/worker")
 	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
 	}
@@ -143,13 +143,13 @@ func TestPromptFailedFrameDoesNotAcknowledgeOpening(t *testing.T) {
 	if err := u.paint(serverErrorWriter{err: failure}, 100, 24); !errors.Is(err, failure) {
 		t.Fatalf("write failure: %v", err)
 	}
-	if u.prompts.Ready() {
+	if u.shell.Prompts.Ready() {
 		t.Fatal("failed frame readied prompt")
 	}
 	if err := u.paint(io.Discard, 100, 24); err != nil {
 		t.Fatal(err)
 	}
-	if !u.prompts.Ready() {
+	if !u.shell.Prompts.Ready() {
 		t.Fatal("successful retry did not ready prompt")
 	}
 }

@@ -26,11 +26,11 @@ func TestUISnapshotMoveActivityAndDialog(t *testing.T) {
 	file := diffmodel.RenderReviewFile(workspace+"/internal/router/old.txt.new", workspace+"/internal/router/old.txt", "same\n", "same\n")
 	text := presentation.ReceiptText(workspace, receiptEvidence(legacycall.History{ReviewFiles: retainedReviewFiles([]diffmodel.ReviewFile{file})}))
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.Painter.Theme = diffrender.DarkTheme
-	u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: text, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "move"}}}})
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
+	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: text, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "move"}}}})
 	var rows []string
 	for _, block := range activityui.Disclosure(nil).Blocks(activitypresentation.Operations(text)) {
-		rows = append(rows, u.view.Painter.Block(block, 100)...)
+		rows = append(rows, u.shell.Transcript.Painter.Block(block, 100)...)
 	}
 	uisnapshot.Assert(t, "testdata/snapshots/move-paths-activity.txt", strings.Join(rows, "\n")+"\n")
 	c := liveDiffChangesPane(t, 100, 24, nil)
@@ -38,7 +38,7 @@ func TestUISnapshotMoveActivityAndDialog(t *testing.T) {
 	u.review.Projection.Data = reviewFixtureSnapshot(t, presentation.Attempt{AttemptIdentity: presentation.AttemptIdentity{Key: presentation.AttemptKey{Workspace: workspace, Call: "move"}, Correlation: "move\x000"}, Operation: activitydetail.Operation{Thread: "main", Item: "move"}, Chunks: []presentation.Chunk{{Workspace: workspace, Review: file}}})
 	publishFixtureReview(t, u)
 	terminalTest(u).Auxiliary = c
-	if !terminalTest(u).openActivityEdit(u.view, 1, pathdisplay.Move(workspace, file.BeforePath, file.AfterPath)) {
+	if !terminalTest(u).openActivityEdit(u.shell.Transcript, 1, pathdisplay.Move(workspace, file.BeforePath, file.AfterPath)) {
 		t.Fatal("compressed move endpoint did not open exact captured dialog")
 	}
 	uisnapshot.Assert(t, "testdata/snapshots/move-paths-dialog.txt", drawOutputDialog(terminalTest(u))+"\n")
@@ -97,9 +97,9 @@ func TestUISnapshotHostMoveDialogSyntax(t *testing.T) {
 	item := binding.ThreadItem{Status: "completed", Changes: []binding.FileChange{change}}
 	pages := activitypresentation.HostEditPages(item.Observation(), "/w", "item/completed")
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.source.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "move", EditPages: pages}}}}
-	if !terminalTest(u).openActivityEdit(u.view, 1, "internal/{old.go=>new.go}") {
+	if !terminalTest(u).openActivityEdit(u.shell.Transcript, 1, "internal/{old.go=>new.go}") {
 		t.Fatal("compressed host move did not open its exact page")
 	}
 	frame := drawOutputDialog(terminalTest(u))

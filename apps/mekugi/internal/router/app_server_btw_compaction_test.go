@@ -173,7 +173,7 @@ func TestAppServerBTWCompactionBeforeStartAckDoesNotResend(t *testing.T) {
 
 func TestUISnapshotBTWCompactionRequired(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	setSideTest(u, &sessioncontrol.Side{SideAnswer: &conversationmodel.SideAnswer{Question: "Why did this fail?", Status: conversationmodel.SideCompactionRequired, Alert: true}})
 	for _, test := range []struct {
 		name  string

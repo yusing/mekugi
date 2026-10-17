@@ -59,9 +59,7 @@ type appServerUI struct {
 	terminalViews terminalsession.Views
 	preparePane   func(*scope.Store)
 	reviewSource  *changecapture.Service
-	mainView      terminalsession.Main
 	*composer.Editor
-	prompts  terminalsession.Prompts
 	feedback noticepresentation.Model
 	history  *history.Service
 	segments *reports.Service
@@ -90,9 +88,7 @@ type appServerUI struct {
 	commandSegmentWrites  chan commandSegmentWrite           // Completed replay writes, consumed only by the UI.
 	commandSegmentPending int
 	restoredSegments      map[string]*reports.Report // Turn-local, validated and adopted history.
-	view                  *activityui.View
 	source                *sessionpresentation.ActivitySource
-	agents                *activityui.View
 	childSource           *sessionpresentation.ActivitySource
 	controlObservations   *sessioncontrol.Observations
 	usage                 *accounting.Service
@@ -186,7 +182,8 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 	if err != nil {
 		return nil, err
 	}
-	u := &appServerUI{terminalViews: terminalViews, reviewSource: reviewSource, presentationState: views, conversationState: conversation, activity: activity, observations: observations, history: service, segments: segments, Client: control, view: activityui.NewView(), agents: terminalViews.NewThreadView(), controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, changeSource: integration.changeSource, snapshots: integration.snapshots, recovered: integration.recovered, publishChanges: integration.publishChanges, captureNotice: integration.captureNotice, issues: issues, dirty: true, ctx: ctx, serviceTiers: serviceTiers, approvalMode: approvals}
+	shell, preparePane := terminalViews.NewAttachment(diffrender.EnvironmentTheme(os.Getenv("COLORFGBG")))
+	u := &appServerUI{terminalViews: terminalViews, reviewSource: reviewSource, presentationState: views, conversationState: conversation, activity: activity, observations: observations, history: service, segments: segments, Client: control, shell: shell, preparePane: preparePane, controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, changeSource: integration.changeSource, snapshots: integration.snapshots, recovered: integration.recovered, publishChanges: integration.publishChanges, captureNotice: integration.captureNotice, issues: issues, dirty: true, ctx: ctx, serviceTiers: serviceTiers, approvalMode: approvals}
 	c := u.Host
 	u.Startup.Thread = resumeThread
 	u.attachPresentation()
@@ -218,7 +215,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 		<-c.Done
 		return nil, err
 	}
-	u.ensureShell()
+
 	u.shell.Faint = faint
 	u.settlePresentation()
 	return func() error {
@@ -324,7 +321,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 							return io.EOF
 						}
 						if event := u.shell.Decoder.Feed(key, time.Now()); event.Kind != terminalsession.NoInput {
-							if err := u.applyInput(u.shell, u.frameInput(u.shell).Dispatch(&u.shell.Interaction, event)); err != nil || u.quitRequested {
+							if err := u.applyInput(u.shell, u.shell.FrameInput(u.now(), mekugiVersion()).Dispatch(&u.shell.Interaction, event)); err != nil || u.quitRequested {
 								return err
 							}
 						}
@@ -339,21 +336,21 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 						u.startSkillHistory()
 						u.applyObservedActivity()
 						u.publishPresentation(u.now())
-						if err := u.applyResumeAction(u.mainView.Resume.PageDemand()); err != nil {
+						if err := u.applyResumeAction(u.shell.Main.Resume.PageDemand()); err != nil {
 							return err
 						}
 						u.flushStreamOutput()
 						u.startCommitReads()
-						u.paneError(u.panes.save(u.shell.Shell.Preferences(&u.mainView), u.now(), false))
+						u.paneError(u.panes.save(u.shell.Shell.Preferences(u.shell.Main), u.now(), false))
 						if u.expireNotice(u.now()) || u.expireApprovals() {
 							u.dirty = true
 						}
 						now := u.now()
 						u.publishActivity()
-						if activityui.Settle(now, u.view, u.agents) {
+						if activityui.Settle(now, u.shell.Transcript, u.shell.Agents) {
 							u.dirty = true
 						}
-						for _, view := range []*activityui.View{u.view, u.agents} {
+						for _, view := range []*activityui.View{u.shell.Transcript, u.shell.Agents} {
 							if view.ExpireFlash(now) {
 								u.dirty = true
 							}
@@ -362,7 +359,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 							}
 						}
 						u.settlePresentation()
-						if u.sessionPresentation().View().Status.Animating || u.agents.HasLiveStatus() {
+						if u.sessionPresentation().View().Status.Animating || u.shell.Agents.HasLiveStatus() {
 							u.dirty = true
 						}
 						if time.Since(agePaint) >= time.Second {
@@ -374,7 +371,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 						}
 						notices := u.applyCriticalNotices()
 						u.settlePresentation()
-						if u.shell.Live.Tick(u.now()) || u.agents.RosterEasing {
+						if u.shell.Live.Tick(u.now()) || u.shell.Agents.RosterEasing {
 							u.dirty = true
 						}
 						w, h, err := term.GetSize(int(stdout.Fd()))
@@ -409,7 +406,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 			}
 			u.dirty = true
 		}
-		if saveErr := u.panes.save(u.shell.Shell.Preferences(&u.mainView), u.now(), true); saveErr != nil {
+		if saveErr := u.panes.save(u.shell.Shell.Preferences(u.shell.Main), u.now(), true); saveErr != nil {
 			fmt.Fprintln(stdout, "Pane layout or settings could not be saved:", textsanitize.Safe(saveErr.Error(), false))
 		}
 		if !exited {
@@ -727,8 +724,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				}
 			}
 			if u.panes != nil {
-				u.ensureShell()
-				u.paneError(u.panes.open(&u.shell.Shell, &u.mainView, result.Thread.Cwd, u.Thread, method == "thread/resume"))
+				u.paneError(u.panes.open(&u.shell.Shell, u.shell.Main, result.Thread.Cwd, u.Thread, method == "thread/resume"))
 			}
 			if method == "thread/resume" {
 				repair, err := result.RepairDefaultEffort(&u.Live)
@@ -739,7 +735,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				if repair != nil {
 					// Preserve saved null intent before a corrective dispatch can fail.
 					if u.panes != nil && u.panes.attachment != nil && u.Startup.Evidence.Model != "" {
-						if err := u.panes.stage(u.shell.Shell.Preferences(&u.mainView)); err != nil {
+						if err := u.panes.stage(u.shell.Shell.Preferences(u.shell.Main)); err != nil {
 							u.paneError(err)
 						} else {
 							u.panes.attachment.Recover(u.Startup.Evidence, u.now())
@@ -871,7 +867,7 @@ func (u *appServerUI) applyMainKey(next terminalsession.KeyContinuation) (bool, 
 		}
 	}()
 	focused := u.shell == nil || u.shell.Focus == 0
-	input := u.mainView.ContinueKey(next, &u.prompts, u.transcriptView(), focused)
+	input := u.shell.Main.ContinueKey(next, u.shell.Prompts, u.transcriptView(), focused)
 	for {
 		refresh = refresh || input.Regular
 		switch {
@@ -896,7 +892,7 @@ func (u *appServerUI) applyMainKey(next terminalsession.KeyContinuation) (bool, 
 			return false, nil
 		}
 		u.publishPresentation(u.now())
-		input = u.mainView.ContinueKey(*input.Next, &u.prompts, u.transcriptView(), focused)
+		input = u.shell.Main.ContinueKey(*input.Next, u.shell.Prompts, u.transcriptView(), focused)
 	}
 }
 
@@ -913,38 +909,16 @@ func (u *appServerUI) applyActivity(entries []sessionpresentation.ActivityEntry,
 	u.publishActivity()
 }
 
-func (u *appServerUI) ensureShell() {
-	u.view.Conversation = true
-	u.view.Painter.FileLink = markdownFileLinks(u.sessionPresentation().View().Info.Workspace)
-	if u.shell != nil {
-		return
-	}
-	if u.agents == nil {
-		u.agents = u.terminalViews.NewThreadView()
-	}
-	u.agents.Painter.FileLink = markdownFileLinks(u.sessionPresentation().View().Info.Workspace)
-	u.agents.ChildrenOnly = true
-	u.agents.Bare = true
-	shell := &terminalsession.Attachment{Main: &u.mainView, Prompts: &u.prompts, Transcript: u.view, Agents: u.agents, Diff: new(terminalsession.DiffScreen)}
-	shell.RosterLabel = u.terminalViews.RosterLabel()
-	shell.Theme = diffrender.EnvironmentTheme(os.Getenv("COLORFGBG"))
-	label, attachment := u.terminalViews.Attach(shell.Theme)
-	shell.AuxiliaryLabel, shell.Auxiliary, u.preparePane = label, attachment.Pane, attachment.Prepare
-
-	u.shell = shell
-}
-
 func (u *appServerUI) paint(out io.Writer, width, height int) error {
-	u.ensureShell()
 	u.shell.Width, u.shell.Height = max(1, width), max(1, height)
-	u.mainView.ContentPainted = false
+	u.shell.Main.ContentPainted = false
 	u.detailFiles.prepareOutput(&u.session, u.shell)
 	ctx := u.ctx
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	view := u.transcriptView()
-	return paintNative(u.shell, u.frameInput(u.shell), view, u.activitySource(view), ctx, out)
+	return paintNative(u.shell, u.shell.FrameInput(u.now(), mekugiVersion()), view, u.activitySource(view), ctx, out)
 }
 
 // Router-owned annotations and authenticated directed inputs supplement the

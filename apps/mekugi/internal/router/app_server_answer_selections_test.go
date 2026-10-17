@@ -28,8 +28,7 @@ func TestQuestionSelectedTextUsesComposerAttachments(t *testing.T) {
 			if sync {
 				appServerTestKeys(t, u, "1\t")
 			}
-			shell := selectionTestUI("quoted")
-			shell.main = u
+			shell := selectionTestForMain(u, "quoted")
 			selectionTestDrag(t, shell, 0, 0, 5, 0)
 			shell.selectionAction('r')
 			if u.Text != "[Selected message] " || len(u.Selections) != 1 {
@@ -77,8 +76,7 @@ func TestQuestionSecretAndOrdinarySelectionsKeepDistinctLabels(t *testing.T) {
 	})
 	for _, text := range []string{"private quote", "ordinary quote"} {
 		questionTestPaint(t, u, 70)
-		shell := selectionTestUI(text)
-		shell.main = u
+		shell := selectionTestForMain(u, text)
 		selectionTestDrag(t, shell, 0, 0, len(text)-1, 0)
 		shell.selectionAction('r')
 		appServerTestKeys(t, u, "\r")

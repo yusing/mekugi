@@ -95,7 +95,7 @@ func TestUISnapshotGrokLaunchModelPicker(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.view.Painter.Theme = diffrender.DarkTheme
+			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			body, err := modelcatalog.Build([]byte(`{"models":[{"slug":"gpt-6-sol","multi_agent_version":"v2"}]}`), modelcatalog.Selection{GrokEnabled: true, GrokUnprefixed: unprefixed})
 			if err != nil {
 				t.Fatal(err)

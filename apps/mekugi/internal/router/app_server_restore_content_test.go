@@ -3,8 +3,6 @@ package router
 import (
 	"bytes"
 
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
-
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -81,8 +79,7 @@ func TestAppServerRestoreRosterAndActivityFromObservationalHistory(t *testing.T)
 	workspace := t.TempDir()
 	u, w := newAppServerTestUI()
 	u.ctx = t.Context()
-	u.agents = activityui.NewView()
-	u.ensureShell()
+
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.startSession("main", workspace)
 	u.Startup.Thread = "main"
@@ -127,7 +124,7 @@ func TestAppServerRestoreRosterAndActivityFromObservationalHistory(t *testing.T)
 	if u.restoring != nil || u.session.KnownCaller("live") != "/root/late" || u.session.Agent("/root/reviewer").Role != "review" || u.session.Agent("/root/reviewer/explorer").Role != "explore" || u.session.Agent("/root/reviewer/explorer").Responding {
 		t.Fatalf("hydrated roster or buffered notification missing: %+v", u.session.Roster())
 	}
-	feed := ansi.Strip(strings.Join(u.testActivity(u.agents).RenderFeed(100, 80).Lines, "\n"))
+	feed := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(100, 80).Lines, "\n"))
 	for _, want := range []string{"Inspect the change.", "Check again.", "go test ./internal/router", "a.go", "I found a failure.", "Review complete.", "Partial analysis", "history only"} {
 		if !strings.Contains(feed, want) {
 			t.Fatalf("Activity missing %q: %s", want, feed)
@@ -146,8 +143,7 @@ func TestAppServerRestoreRosterAndActivityFromObservationalHistory(t *testing.T)
 func TestAppServerRestoreWrongChildIdentityContinues(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.ctx = t.Context()
-	u.agents = activityui.NewView()
-	u.ensureShell()
+
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.startSession("main", t.TempDir())
 	u.Startup.Thread = "main"
@@ -161,7 +157,7 @@ func TestAppServerRestoreWrongChildIdentityContinues(t *testing.T) {
 		t.Fatal("wrong identity prevented remaining Activity reads")
 	}
 	restoreContentReply(t, u, 3, map[string]any{"thread": map[string]any{"id": "second", "turns": []any{map[string]any{"id": "t", "status": "completed", "items": []any{map[string]any{"id": "answer", "type": "agentMessage", "text": "Still available"}}}}}})
-	if u.restoring != nil || u.session.KnownCaller("wrong") != "" || u.childSource.Coverage != "History incomplete" || !strings.Contains(strings.Join(u.testActivity(u.agents).RenderFeed(90, 50).Lines, "\n"), "Still available") {
+	if u.restoring != nil || u.session.KnownCaller("wrong") != "" || u.childSource.Coverage != "History incomplete" || !strings.Contains(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(90, 50).Lines, "\n"), "Still available") {
 		t.Fatal("partial failure leaked identity or suppressed later history")
 	}
 }
@@ -169,8 +165,7 @@ func TestAppServerRestoreWrongChildIdentityContinues(t *testing.T) {
 func TestAppServerRestoreChildReadErrorContinues(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.ctx = t.Context()
-	u.agents = activityui.NewView()
-	u.ensureShell()
+
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.startSession("main", t.TempDir())
 	u.Startup.Thread = "main"
@@ -185,7 +180,7 @@ func TestAppServerRestoreChildReadErrorContinues(t *testing.T) {
 		t.Fatalf("read error stopped remaining history: %+v", requests)
 	}
 	restoreContentReply(t, u, 3, map[string]any{"thread": map[string]any{"id": "second", "turns": []any{map[string]any{"id": "t", "status": "completed", "items": []any{map[string]any{"id": "answer", "type": "agentMessage", "text": "Recovered answer"}}}}}})
-	if u.restoring != nil || u.childSource.Coverage != "History incomplete" || !strings.Contains(strings.Join(u.testActivity(u.agents).RenderFeed(90, 50).Lines, "\n"), "Recovered answer") {
+	if u.restoring != nil || u.childSource.Coverage != "History incomplete" || !strings.Contains(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(90, 50).Lines, "\n"), "Recovered answer") {
 		t.Fatal("error hid partial notice or remaining Activity")
 	}
 }
@@ -251,7 +246,7 @@ func TestAppServerRestoreCollaborationRequiresCompletedStatus(t *testing.T) {
 
 func TestAppServerRestoreListPageBudget(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.agents = activityui.NewView()
+
 	u.startSession("main", t.TempDir())
 	if err := u.restorePaneContent(binding.ThreadInfo{ID: "main"}); err != nil {
 		t.Fatal(err)

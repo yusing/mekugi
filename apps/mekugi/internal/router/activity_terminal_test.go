@@ -14,7 +14,7 @@ import (
 func TestActivityRendererConsumesOnlyDeliveredFacts(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.applyActivity([]sessionpresentation.ActivityEntry{{Seq: 1, Agent: "/root", Kind: "error", Text: "delivered"}}, nil)
-	render := func() string { return strings.Join(u.view.RenderFeed(80, 20).Lines, "\n") }
+	render := func() string { return strings.Join(u.shell.Transcript.RenderFeed(80, 20).Lines, "\n") }
 	if !strings.Contains(render(), "delivered") {
 		t.Fatal("application did not deliver its admitted source")
 	}

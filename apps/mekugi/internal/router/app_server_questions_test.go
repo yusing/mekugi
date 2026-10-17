@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
@@ -68,7 +67,7 @@ func questionTestPaint(t *testing.T, u *appServerUI, width int) string {
 		u.startSession(u.Thread, u.cwd)
 	}
 	if terminalTest(u) == nil {
-		u.ensureShell()
+
 		t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	}
 	if err := u.testPaint(io.Discard, width+2, 31); err != nil {
@@ -305,7 +304,7 @@ func TestNativeQuestionsUseComposedAttachment(t *testing.T) {
 		t.Fatal("native question did not reach the composed owner")
 	}
 	u.startSession("main", "/workspace")
-	u.ensureShell()
+
 	if &u.conversation().Questions != questions || u.questionCount() != 1 || editor != &u.conversation().Editor || u.Text != "pre-start draft" {
 		t.Fatal("first host identity replaced pending question state")
 	}
@@ -374,7 +373,7 @@ func TestNativeQuestionSupersedeBannerAndRejectedSend(t *testing.T) {
 
 func TestNativeQuestionResumeOnlyUnanswered(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.agents = activityui.NewView()
+
 	u.startSession("main", t.TempDir())
 	id, err := json.Marshal([]any{"request_user_input_async", "answered-item", 0})
 	if err != nil {
@@ -470,7 +469,7 @@ func TestNativeQuestionsOpenNextCallWithoutShortcut(t *testing.T) {
 	if u.activeQuestionCall() == nil || u.activeQuestionCall().Item != "second" {
 		t.Fatal("next call needs a shortcut")
 	}
-	if u.prompts.Ready() {
+	if u.shell.Prompts.Ready() {
 		t.Fatal("new question accepts an answer before being painted")
 	}
 	if got := questionTestPaint(t, u, 70); !strings.Contains(got, "Second question?") {
@@ -536,7 +535,7 @@ func TestNativeQuestionAnswerWordNavigation(t *testing.T) {
 					questionTestSync(t, u, "words", false)
 				}
 				questionTestPaint(t, u, 80)
-				shell := &terminalUI{main: u, Attachment: &terminalsession.Attachment{}}
+				shell := terminalTest(u)
 				send := func(keys string) {
 					t.Helper()
 					for _, key := range []byte(keys) {
@@ -583,7 +582,7 @@ func TestNativeQuestionAnswerBareArrowNavigation(t *testing.T) {
 				questionTestSync(t, u, "arrows", false)
 			}
 			questionTestPaint(t, u, 80)
-			u.ensureShell()
+
 			send := func(keys string) {
 				t.Helper()
 				for _, key := range []byte(keys) {
@@ -623,5 +622,5 @@ func TestUISnapshotQuestionArrowHints(t *testing.T) {
 }
 
 func testQuestionRows(u *appServerUI, width, height int) []string {
-	return conversationui.Questions(u.questions.View(u.Thread), &u.view.Painter.Painter, u.prompts.QuestionLayout(u.questions.View(u.Thread)), terminalsession.SelectionStyle(&u.view.Painter.Painter), u.Turn == "" && u.Text != "", width, height)
+	return conversationui.Questions(u.questions.View(u.Thread), &u.shell.Transcript.Painter.Painter, u.shell.Prompts.QuestionLayout(u.questions.View(u.Thread)), terminalsession.SelectionStyle(&u.shell.Transcript.Painter.Painter), u.Turn == "" && u.Text != "", width, height)
 }

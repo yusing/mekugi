@@ -8,7 +8,7 @@ import (
 
 func (u *appServerUI) holdCommand(entry sessionpresentation.ActivityEntry, frame activityui.CommandFrame) {
 	for i, source := range []*sessionpresentation.ActivitySource{u.source, u.childSource} {
-		view := []*activityui.View{u.view, u.agents}[i]
+		view := []*activityui.View{u.shell.Transcript, u.shell.Agents}[i]
 		if seq := source.EntrySeq(entry); view != nil && seq != 0 {
 			view.HoldCommand(seq, frame)
 		}
@@ -18,7 +18,7 @@ func (u *appServerUI) holdCommand(entry sessionpresentation.ActivityEntry, frame
 func (u *appServerUI) releaseCommand(entry sessionpresentation.ActivityEntry) {
 	at := u.now()
 	for i, source := range []*sessionpresentation.ActivitySource{u.source, u.childSource} {
-		view := []*activityui.View{u.view, u.agents}[i]
+		view := []*activityui.View{u.shell.Transcript, u.shell.Agents}[i]
 		if seq := source.EntrySeq(entry); view != nil && seq != 0 {
 			view.ReleaseCommand(seq, at)
 		}

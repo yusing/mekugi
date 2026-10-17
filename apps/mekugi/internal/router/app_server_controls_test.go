@@ -15,7 +15,7 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 	for _, state := range []string{"running", "starting", "idle", "queued"} {
 		t.Run(state, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
-			u.ensureShell()
+
 			switch state {
 			case "running":
 				u.Turn = "active"
@@ -25,7 +25,7 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 				u.conversation().Queued = []conversationmodel.Input{{Text: "next"}}
 			}
 			appServerTestKeys(t, u, "/lock\r")
-			if !u.mainView.InterruptLocked || u.Text != "" {
+			if !u.shell.Main.InterruptLocked || u.Text != "" {
 				t.Fatal("lock not applied locally")
 			}
 			quit, err := u.key("\x03")
@@ -46,7 +46,7 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 			}
 			appServerTestKeys(t, u, "/unlock\r")
 			quit, err = u.key("\x03")
-			if err != nil || u.mainView.InterruptLocked {
+			if err != nil || u.shell.Main.InterruptLocked {
 				t.Fatal("unlock did not restore keyboard handling")
 			}
 			if state == "running" && !strings.Contains(wire.String(), "turn/interrupt") || state == "starting" && !u.Interruption.BeforeStart || state == "idle" && !quit || state == "queued" && (len(u.conversation().Queued) != 0 || u.Text != "next") {
@@ -58,8 +58,8 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 
 func TestNativeControlsLockedDraftAndContextualEscape(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.ensureShell()
-	u.Turn, u.mainView.InterruptLocked = "active", true
+
+	u.Turn, u.shell.Main.InterruptLocked = "active", true
 	appServerTestKeys(t, u, "draft\x03")
 	if u.Text != "" {
 		t.Fatal("lock broke draft clearing")
@@ -82,22 +82,22 @@ func TestNativeControlsLockedDraftAndContextualEscape(t *testing.T) {
 func TestNativeControlsPanePersistence(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	u := newAppServerSessionTestUI(t, "/workspace")
-	u.mainView.InterruptLocked = true
+	u.shell.Main.InterruptLocked = true
 	terminalTest(u).DiffOpen = true
 	terminalTest(u).Focus = 1
 	p := testPanePreferences()
-	if err := p.open(&terminalTest(u).Shell, &u.mainView, "/workspace", "main", false); err != nil {
+	if err := p.open(&terminalTest(u).Shell, u.shell.Main, "/workspace", "main", false); err != nil {
 		t.Fatal(err)
 	}
 	terminalTest(u).Split = 60
-	if err := p.save(terminalTest(u).Shell.Preferences(&u.mainView), time.Now(), true); err != nil {
+	if err := p.save(terminalTest(u).Shell.Preferences(u.shell.Main), time.Now(), true); err != nil {
 		t.Fatal(err)
 	}
 	resumed := newAppServerSessionTestUI(t, "/workspace")
-	if err := p.open(&terminalTest(resumed).Shell, &resumed.mainView, "/workspace", "main", true); err != nil {
+	if err := p.open(&terminalTest(resumed).Shell, resumed.shell.Main, "/workspace", "main", true); err != nil {
 		t.Fatal(err)
 	}
-	if !resumed.mainView.InterruptLocked || !terminalTest(resumed).DiffOpen || terminalTest(resumed).Focus != 1 {
+	if !resumed.shell.Main.InterruptLocked || !terminalTest(resumed).DiffOpen || terminalTest(resumed).Focus != 1 {
 		t.Fatal("resume lost preferences or revived live child state")
 	}
 	var frame bytes.Buffer

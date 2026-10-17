@@ -52,7 +52,7 @@ func TestAppServerContextWindow(t *testing.T) {
 		t.Fatalf("context must follow model in composer: %q", bottom)
 	}
 	for _, width := range []int{40, 80, 160} {
-		lines := u.testActivity(u.agents).NativeRoster(width, 6, time.Now(), true)
+		lines := u.testActivity(u.shell.Agents).NativeRoster(width, 6, time.Now(), true)
 		for _, line := range lines {
 			if ansi.StringWidth(line) > width {
 				t.Fatalf("roster overflow at %d: %q", width, line)
@@ -115,7 +115,7 @@ func TestAppServerStartupRestoresContext(t *testing.T) {
 	if got := activityui.ContextWindowLabel(testActivityAgent(*child)); got != "20K/400K • 5%" {
 		t.Fatal(got)
 	}
-	roster := ansi.Strip(strings.Join(u.testActivity(u.agents).NativeRoster(160, 6, time.Now(), true), "\n"))
+	roster := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).NativeRoster(160, 6, time.Now(), true), "\n"))
 	if !strings.Contains(roster, "20K/400K • 5%") {
 		t.Fatalf("saved child context did not reach roster: %s", roster)
 	}

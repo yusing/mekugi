@@ -10,6 +10,9 @@ selected targets and intents to their owners.
 The attachment contains only terminal objects and detached publications. The
 application supplies acquisition and scope preparation separately; the terminal
 retains no application-session pointer or scope callback.
+Live startup and replay construct the terminal independently of source attachment.
+Its Main, prompt surfaces and transcript views are the actual renderer state;
+application integration does not retain parallel copies or rebind them for painting.
 
 [Session presentation](../sessionpresentation/SPEC.md) owns displayed identity and
 Main admission; [session control](../sessioncontrol/SPEC.md) issues host operations.

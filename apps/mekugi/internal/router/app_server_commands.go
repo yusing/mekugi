@@ -127,7 +127,7 @@ func (u *appServerUI) clearSessionPresentation() error {
 		return err
 	}
 	if u.panes != nil {
-		u.paneError(u.panes.save(u.shell.Shell.Preferences(&u.mainView), time.Now(), true))
+		u.paneError(u.panes.save(u.shell.Shell.Preferences(u.shell.Main), time.Now(), true))
 	}
 	u.cancelPickerScan()
 	roster := u.session.Roster()
@@ -150,7 +150,7 @@ func (u *appServerUI) clearSessionPresentation() error {
 	u.picker = composerPicker{}
 	u.exitUsage = binding.TokenUsage{}
 	u.feedback = noticepresentation.Model{}
-	u.mainView.NoticeDetails, u.mainView.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
+	u.shell.Main.NoticeDetails, u.shell.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
 	for key, run := range u.session.Commands() {
 		if run.Entry.Native.Invocation.ReleaseSegmentOutputs() {
 			u.execTrack.ReleaseOutput(key)
@@ -167,19 +167,18 @@ func (u *appServerUI) clearSessionPresentation() error {
 			u.addQuestions(c, true)
 		}
 	}
-	painter := u.view.Painter
-	u.view = activityui.NewView()
-	u.view.Painter, u.view.Conversation = painter, true
-	if u.agents != nil {
-		painter = u.agents.Painter
-		u.agents = u.terminalViews.NewThreadView()
-		u.agents.Painter = painter
-		u.agents.ChildrenOnly, u.agents.Bare = true, true
+	painter := u.shell.Transcript.Painter
+	u.shell.Transcript = activityui.NewView()
+	u.shell.Transcript.Painter, u.shell.Transcript.Conversation = painter, true
+	if u.shell.Agents != nil {
+		painter = u.shell.Agents.Painter
+		u.shell.Agents = u.terminalViews.NewThreadView()
+		u.shell.Agents.Painter = painter
+		u.shell.Agents.ChildrenOnly, u.shell.Agents.Bare = true, true
 	}
 	u.source, u.childSource = nil, nil
 	u.attachPresentation()
 	if u.shell != nil {
-		u.shell.Agents = u.agents
 		u.shell.Selection = nil
 		u.detailFiles.closeOutput(&u.session, u.shell)
 		u.shell.Focus = 0

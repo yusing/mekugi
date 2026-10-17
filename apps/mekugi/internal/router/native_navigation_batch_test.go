@@ -97,7 +97,7 @@ func TestNativeNavigationBatchDiffBadgeCells(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.sessionPresentation().Status.Text = "Ready"
 	terminalTest(u).DiffUnseen = true
-	u.testActivity(u.agents).Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/worker", Responding: true}}})
+	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "snapshot", Agents: []sessionpresentation.ActivityAgent{{Name: "/root/worker", Responding: true}}})
 	screen := navigationBatchPaint(t, u, 120, 24)
 	footer := strings.Split(screen.String(), "\n")[23]
 	start := strings.Index(footer, "2 Diff ●")
@@ -135,7 +135,7 @@ func TestNativeNavigationBatchDiffBadgeCells(t *testing.T) {
 func TestNativeNavigationBatchModalPrecedence(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	terminalTest(u).Focus = 3
-	terminalTest(u).openBlocks(u.view, []activityui.Block{{Kind: "op", Verb: "Read", Path: "file.go", Body: "dialog body"}})
+	terminalTest(u).openBlocks(u.shell.Transcript, []activityui.Block{{Kind: "op", Verb: "Read", Path: "file.go", Body: "dialog body"}})
 	navigationBatchPaint(t, u, 120, 24)
 	// The status row is outside the modal. Its click dismisses the modal,
 	// but must not also activate the underlying Main selector.
@@ -179,8 +179,8 @@ func TestNativeNavigationBatchFilterBinding(t *testing.T) {
 				if err := terminalTest(u).key('a'); err != nil {
 					t.Fatal(err)
 				}
-				if u.testActivity(u.agents).displayingChild() != wantOnly {
-					t.Fatalf("a: only=%v, want %v", u.testActivity(u.agents).displayingChild(), wantOnly)
+				if u.testActivity(u.shell.Agents).displayingChild() != wantOnly {
+					t.Fatalf("a: only=%v, want %v", u.testActivity(u.shell.Agents).displayingChild(), wantOnly)
 				}
 				wantHint := "a child"
 				if wantOnly {
@@ -193,7 +193,7 @@ func TestNativeNavigationBatchFilterBinding(t *testing.T) {
 				if err := terminalTest(u).key('o'); err != nil {
 					t.Fatal(err)
 				}
-				if u.testActivity(u.agents).displayingChild() != wantOnly {
+				if u.testActivity(u.shell.Agents).displayingChild() != wantOnly {
 					t.Fatal("retired o binding still toggles filtering")
 				}
 			}
@@ -290,7 +290,7 @@ func TestUISnapshotNativeNavigationBatchStatus(t *testing.T) {
 				u.sessionPresentation().Status.Text = "Ready"
 				terminalTest(u).DiffUnseen = true
 				terminalTest(u).Focus = 3
-				u.testActivity(u.agents).setDisplayFilter(only, u.agents.Selected)
+				u.testActivity(u.shell.Agents).setDisplayFilter(only, u.shell.Agents.Selected)
 				screen := navigationBatchPaint(t, u, width, 24)
 				footer := strings.Split(screen.String(), "\n")[23]
 				uisnapshot.Assert(t, fmt.Sprintf("testdata/snapshots/native-navigation-status-%d-only%v.txt", width, only), footer+"\n")

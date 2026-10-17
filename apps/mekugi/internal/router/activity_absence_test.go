@@ -11,8 +11,8 @@ import (
 func TestActivityAbsenceKeepsHostOutput(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.activity = nil
-	u.view.Conversation = true
-	u.testActivity(u.view).testAudience()
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
 	item := binding.ThreadItem{ID: "command", Type: "commandExecution", Command: "printf 'host output'", Status: "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	appServerTestNotify(t, u, "item/commandExecution/outputDelta", map[string]any{"threadId": "main", "turnId": "turn", "itemId": item.ID, "delta": "host output\n"})
@@ -23,13 +23,13 @@ func TestActivityAbsenceKeepsHostOutput(t *testing.T) {
 	appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.cwd, "failed")})
 	hookShown := false
 	for _, entry := range u.source.Entries {
-		for _, block := range u.view.Disclosure.Blocks(entry.Values) {
+		for _, block := range u.shell.Transcript.Disclosure.Blocks(entry.Values) {
 			if block.Output != 0 {
 				t.Fatal("absent activity retained output")
 			}
 			if block.Hook != nil {
 				hookShown = true
-				page := u.view.Painter.DialogPage(block, 80)
+				page := u.shell.Transcript.Painter.DialogPage(block, 80)
 				if !strings.Contains(page.Text, "policy checked") || strings.Contains(ansi.Strip(page.Detail), "exit") {
 					t.Fatalf("hook fallback lost output or invented a shell exit: %+v", page)
 				}
@@ -72,12 +72,12 @@ func TestActivityAbsenceUnknownExit(t *testing.T) {
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 			found := false
 			for _, entry := range u.source.Entries {
-				for _, block := range u.view.Disclosure.Blocks(entry.Values) {
+				for _, block := range u.shell.Transcript.Disclosure.Blocks(entry.Values) {
 					if block.Verb != "Run" {
 						continue
 					}
 					found = true
-					page := u.view.Painter.DialogPage(block, 80)
+					page := u.shell.Transcript.Painter.DialogPage(block, 80)
 					if !strings.Contains(page.Text, "interrupted") {
 						t.Errorf("unknown exit discarded host output: %q", page.Text)
 					}
@@ -101,8 +101,8 @@ func TestActivityAbsenceDialogRefresh(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			u.view.Conversation = true
-			u.testActivity(u.view).testAudience()
+			u.shell.Transcript.Conversation = true
+			u.testActivity(u.shell.Transcript).testAudience()
 			if absent {
 				u.activity = nil
 			}
@@ -122,7 +122,7 @@ func TestActivityAbsenceDialogRefresh(t *testing.T) {
 					break
 				}
 			}
-			if !terminalTest(u).openEntry(u.view, seq) {
+			if !terminalTest(u).openEntry(u.shell.Transcript, seq) {
 				t.Fatal("no command dialog")
 			}
 			dialog := terminalTest(u).Dialog

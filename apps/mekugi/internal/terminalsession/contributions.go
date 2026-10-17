@@ -64,3 +64,18 @@ func (v Views) Attach(theme diffrender.Theme) (label string, attachment terminal
 	}
 	return v.auxiliary.Label, v.auxiliary.Attach(theme)
 }
+
+// NewAttachment constructs the actual terminal independently of source scopes.
+// The returned preparation belongs to the application, never the renderer.
+func (v Views) NewAttachment(theme diffrender.Theme) (*Attachment, func(*scope.Store)) {
+	u := &Attachment{
+		Main: new(Main), Prompts: new(Prompts),
+		Transcript: activityview.NewView(), Agents: v.NewThreadView(), Diff: new(DiffScreen),
+	}
+	u.Transcript.Conversation = true
+	u.Agents.ChildrenOnly, u.Agents.Bare = true, true
+	u.RosterLabel, u.Theme = v.RosterLabel(), theme
+	label, attachment := v.Attach(theme)
+	u.AuxiliaryLabel, u.Auxiliary = label, attachment.Pane
+	return u, attachment.Prepare
+}

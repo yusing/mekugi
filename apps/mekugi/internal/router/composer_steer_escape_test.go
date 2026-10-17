@@ -27,7 +27,7 @@ func TestComposerEscapeExpeditesSteersInHostEventOrder(t *testing.T) {
 		for _, rejectedSteer := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/rejected=%v", order, rejectedSteer), func(t *testing.T) {
 				u, wire := newAppServerTestUI()
-				u.ensureShell()
+
 				t.Cleanup(func() { terminalTest(u).Diff.Close() })
 				appServerTestTurn(t, u, "t")
 				appServerTestKeys(t, u, "older\r")
@@ -80,7 +80,7 @@ func TestComposerEscapeCommittedSteerIsNotResent(t *testing.T) {
 	for _, unsent := range []bool{false, true} {
 		t.Run(fmt.Sprint(unsent), func(t *testing.T) {
 			u, wire := newAppServerTestUI()
-			u.ensureShell()
+
 			t.Cleanup(func() { terminalTest(u).Diff.Close() })
 			appServerTestTurn(t, u, "t")
 			appServerTestKeys(t, u, "first\r")
@@ -111,7 +111,7 @@ func TestComposerEscapeRejectedInterruptDoesNotResend(t *testing.T) {
 	for _, completionFirst := range []bool{false, true} {
 		t.Run(fmt.Sprint(completionFirst), func(t *testing.T) {
 			u, wire := newAppServerTestUI()
-			u.ensureShell()
+
 			t.Cleanup(func() { terminalTest(u).Diff.Close() })
 			appServerTestTurn(t, u, "t")
 			appServerTestKeys(t, u, "first\r")
@@ -136,7 +136,7 @@ func TestComposerEscapeRejectedInterruptDoesNotResend(t *testing.T) {
 
 func TestComposerEscapeExpeditesAttachments(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.ensureShell()
+
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	appServerTestTurn(t, u, "t")
 	u.insertImage("first.png")
@@ -164,7 +164,7 @@ func TestComposerCtrlCCancelsEscapeDelivery(t *testing.T) {
 	for _, completionFirst := range []bool{false, true} {
 		t.Run(fmt.Sprint(completionFirst), func(t *testing.T) {
 			u, wire := newAppServerTestUI()
-			u.ensureShell()
+
 			t.Cleanup(func() { terminalTest(u).Diff.Close() })
 			appServerTestTurn(t, u, "t")
 			appServerTestKeys(t, u, "first\r")
@@ -192,7 +192,7 @@ func TestComposerEscapeContextPrecedesSteerDelivery(t *testing.T) {
 	for _, context := range []string{"selection", "scrollback", "picker", "locked"} {
 		t.Run(context, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
-			u.ensureShell()
+
 			t.Cleanup(func() { terminalTest(u).Diff.Close() })
 			appServerTestTurn(t, u, "t")
 			appServerTestKeys(t, u, "first\r")
@@ -202,11 +202,11 @@ func TestComposerEscapeContextPrecedesSteerDelivery(t *testing.T) {
 			case "selection":
 				terminalTest(u).Selection = &terminalsession.SourceSelection{Selection: selectedTerminalText("selected")}
 			case "scrollback":
-				u.view.Following = false
+				u.shell.Transcript.Following = false
 			case "picker":
 				appServerTestKeys(t, u, "/")
 			case "locked":
-				u.mainView.InterruptLocked = true
+				u.shell.Main.InterruptLocked = true
 			}
 			composerShellEscape(t, u)
 			if wire.Len() != 0 || len(u.Steers()) != 1 {
@@ -218,7 +218,7 @@ func TestComposerEscapeContextPrecedesSteerDelivery(t *testing.T) {
 
 func TestComposerEscapeExpeditesOnlyLocallyWaitingSteer(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.ensureShell()
+
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	appServerTestTurn(t, u, "t")
 	u.Settings.Admit(sessioncontrol.SettingsPlan{Action: sessioncontrol.SettingsTurn})
@@ -245,9 +245,9 @@ func TestComposerEscapeExpeditesOnlyLocallyWaitingSteer(t *testing.T) {
 
 func TestUISnapshotNativeExpeditedSteer(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.ensureShell()
+
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) }
 	appServerTestTurn(t, u, "t")
 	u.sessionPresentation().Status.Started = u.now()

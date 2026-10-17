@@ -54,7 +54,7 @@ func TestUISnapshotNativeConfiguredServiceTier(t *testing.T) {
 	setTestAppServerIntegration(u, proxy)
 	u.serviceTiers = inferencegateway.NewTiers(config.ServiceTiers)
 	u.sessionPresentation().Status.Text = "Ready"
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	for _, tc := range []struct{ model, requested, want string }{
 		{"gpt-6.1-sol", "default", "priority"},
 		{"gpt-6-astra", "priority", "flex"},
@@ -108,7 +108,7 @@ func newServiceTierPickerTestUI(t *testing.T, model, tier string, overrides map[
 	u.ctx = t.Context()
 	u.model, u.serviceTier = model, tier
 	u.serviceTiers = inferencegateway.NewTiers(overrides)
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	if err := json.Unmarshal([]byte(`[{"model":"gpt-6.1-sol","serviceTiers":[{"id":"priority"},{"id":"flex"}]},{"model":"gpt-5.6-terra","serviceTiers":[{"id":"priority"},{"id":"flex"}]},{"model":"unconfigured","serviceTiers":[{"id":"priority"},{"id":"flex"}]}]`), &u.models); err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestUISnapshotNativeTierPicker(t *testing.T) {
 				u, input := newServiceTierPickerTestUI(t, tc.model, tc.hostTier, tc.overrides)
 				appServerTestKeys(t, u, "/tier\r")
 				u.settlePresentation()
-				if !u.picker.Open || u.picker.Setting != "/tier" || u.mainView.Menu.Selected != tc.selected {
+				if !u.picker.Open || u.picker.Setting != "/tier" || u.shell.Main.Menu.Selected != tc.selected {
 					t.Fatalf("picker did not select effective tier: %+v", u.picker)
 				}
 				if input.Len() != 0 || u.serviceTier != tc.hostTier || u.model != tc.model {
@@ -150,7 +150,7 @@ func TestUISnapshotNativeTierPickerModelSwitch(t *testing.T) {
 	appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "main", "threadSettings": map[string]any{"model": "unconfigured", "effort": "high", "serviceTier": "priority"}})
 	appServerTestKeys(t, u, "/tier\r")
 	u.settlePresentation()
-	if u.picker.Problem != "" || u.mainView.Menu.Selected != 1 || u.serviceTier != "priority" || u.model != "unconfigured" {
+	if u.picker.Problem != "" || u.shell.Main.Menu.Selected != 1 || u.serviceTier != "priority" || u.model != "unconfigured" {
 		t.Fatalf("model switch retained override or lost host settings: picker=%+v model=%s tier=%s", u.picker, u.model, u.serviceTier)
 	}
 	assertNativeUISnapshot(t, "native-tier-model-switch-100", u.renderPicker(100, 7))

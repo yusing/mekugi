@@ -22,13 +22,13 @@ func (u *appServerUI) drainKeys(keys <-chan byte) error {
 			}
 			u.dirty = true
 			if event := u.shell.Decoder.Feed(key, time.Now()); event.Kind != terminalsession.NoInput {
-				if err := u.applyInput(u.shell, u.frameInput(u.shell).Dispatch(&u.shell.Interaction, event)); err != nil || u.quitRequested {
+				if err := u.applyInput(u.shell, u.shell.FrameInput(u.now(), mekugiVersion()).Dispatch(&u.shell.Interaction, event)); err != nil || u.quitRequested {
 					return err
 				}
 			}
 		default:
 			if u.shell.Decoder.Escape(time.Now()) {
-				return u.applyInput(u.shell, u.frameInput(u.shell).Send(&u.shell.Interaction, "\x1b"))
+				return u.applyInput(u.shell, u.shell.FrameInput(u.now(), mekugiVersion()).Send(&u.shell.Interaction, "\x1b"))
 			}
 			return nil
 		}
@@ -38,9 +38,9 @@ func (u *appServerUI) drainKeys(keys <-chan byte) error {
 
 // prepareComposerInput admits terminal-selected prompt suspension before editing.
 func (u *appServerUI) prepareComposerInput() bool {
-	ready := u.prompts.Ready()
+	ready := u.shell.Prompts.Ready()
 	u.publishPresentation(u.now())
-	preparation := u.mainView.PrepareInput(ready)
+	preparation := u.shell.Main.PrepareInput(ready)
 	if !preparation.Editable {
 		return false
 	}
@@ -72,7 +72,7 @@ func (u *appServerUI) input(event terminalsession.Input) (bool, error) {
 		return u.applyMainKey(terminalsession.KeyEvent(event.Text))
 	case terminalsession.PasteStart, terminalsession.PasteInput, terminalsession.PasteEnd:
 		if event.Kind == terminalsession.PasteStart {
-			u.mainView.CancelPaste()
+			u.shell.Main.CancelPaste()
 			if !u.prepareComposerInput() {
 				return false, nil
 			}
@@ -81,7 +81,7 @@ func (u *appServerUI) input(event terminalsession.Input) (bool, error) {
 		if event.Kind != terminalsession.PasteInput {
 			u.publishPresentation(u.now())
 		}
-		pasted, err := u.mainView.PasteInput(event, &u.prompts)
+		pasted, err := u.shell.Main.PasteInput(event, u.shell.Prompts)
 		if err != nil {
 			u.setNotice(err.Error(), true)
 		} else if pasted != nil {

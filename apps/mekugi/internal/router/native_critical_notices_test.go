@@ -32,8 +32,8 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	u, _ := newAppServerTestUI()
 	u.issues = issues
 	setTestAppServerIntegration(u, &observationFixture{activity: activity})
-	u.view.Conversation = true
-	u.testActivity(u.view).testAudience()
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
 
 	first := u.applyCriticalNotices()
 	if first == nil || len(first.errors.Messages) != 3 {
@@ -43,7 +43,7 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	if len(u.source.Entries) != 0 || !u.feedback.Alert {
 		t.Fatal("router errors entered the transcript or missed the composer")
 	}
-	u.ensureShell()
+
 	defer terminalTest(u).Diff.Close()
 	if err := u.testPaint(io.Discard, 100, 16); err != nil {
 		t.Fatal(err)
@@ -53,7 +53,7 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	}
 	before := u.feedback.Text
 
-	rect := u.mainView.NoticeDetails
+	rect := u.shell.Main.NoticeDetails
 	if rect.W == 0 {
 		t.Fatal("router batch has no details target")
 	}
@@ -174,8 +174,8 @@ func TestFailureStorageNoticeReachesOwningNativeRootBeforeShutdown(t *testing.T)
 	owner, _ := newAppServerTestUI()
 	owner.Thread = failure.Thread
 	owner.issues = issues
-	owner.view.Conversation = true
-	owner.testActivity(owner.view).testAudience()
+	owner.shell.Transcript.Conversation = true
+	owner.testActivity(owner.shell.Transcript).testAudience()
 	delivery := owner.applyCriticalNotices()
 	if delivery == nil || len(delivery.errors.Messages) != 1 || len(owner.source.Entries) != 0 || !owner.feedback.Alert {
 		t.Fatalf("owning root did not receive the storage notice: delivery=%v entries=%d", delivery, len(owner.source.Entries))
@@ -199,7 +199,7 @@ func TestNativeCriticalNoticeComposerVisibility(t *testing.T) {
 			queueCritical(u.issues, u.Thread)
 			delivery := u.applyCriticalNotices()
 			claimedText := u.feedback.Text
-			u.ensureShell()
+
 			defer terminalTest(u).Diff.Close()
 			switch state {
 			case "status":
@@ -216,7 +216,7 @@ func TestNativeCriticalNoticeComposerVisibility(t *testing.T) {
 			_, receipt := u.testDeliveredMainFrame(t, 80, height, 0)
 			delivery.finish(receipt)
 			if state == "compact" {
-				if u.mainView.ContentPainted || len(u.issues.Notices.Pending()) != 0 {
+				if u.shell.Main.ContentPainted || len(u.issues.Notices.Pending()) != 0 {
 					t.Fatal("compact composer did not deliver independently of transcript")
 				}
 				return
@@ -246,7 +246,7 @@ func TestNativeCleanupNoticeTranscriptReplacement(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.issues.CleanupNotice("", "", "planning", "pending cleanup plan")
 			first := u.applyCriticalNotices()
-			u.ensureShell()
+
 			defer terminalTest(u).Diff.Close()
 			height := 3
 			if delivered {
@@ -289,14 +289,14 @@ func TestNativeCriticalNoticeMixedBatchDismissal(t *testing.T) {
 	u.issues.AddNotice("", "capacity", "router error")
 	u.issues.CleanupNotice("", "", "planning", "cleanup progress")
 	delivery := u.applyCriticalNotices()
-	u.ensureShell()
+
 	defer terminalTest(u).Diff.Close()
 	_, receipt := u.testDeliveredMainFrame(t, 80, 3, 0)
 	delivery.finish(receipt)
 	if pending := u.issues.Notices.Pending(); len(pending) != 1 || !strings.Contains(pending[0], "cleanup progress") {
 		t.Fatalf("mixed batch acknowledged the wrong surface: %v", pending)
 	}
-	if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%dM", u.mainView.NoticeDismiss.X+terminalTest(u).Layout.Main.X+1, u.mainView.NoticeDismiss.Y+terminalTest(u).Layout.Main.Y+1)); err != nil {
+	if err := terminalTest(u).mouse(fmt.Sprintf("\x1b[<0;%d;%dM", u.shell.Main.NoticeDismiss.X+terminalTest(u).Layout.Main.X+1, u.shell.Main.NoticeDismiss.Y+terminalTest(u).Layout.Main.Y+1)); err != nil {
 		t.Fatal(err)
 	}
 	retry := u.applyCriticalNotices()

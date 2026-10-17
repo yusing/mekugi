@@ -23,7 +23,7 @@ func TestUISnapshotNativeGroupedSkills(t *testing.T) {
 	for _, main := range []bool{true, false} {
 		t.Run(fmt.Sprintf("main=%t", main), func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			view := u.testActivity(u.view)
+			view := u.testActivity(u.shell.Transcript)
 			view.Conversation, view.Bare, view.FeedOnly = main, !main, !main
 			view.testAudience()
 			view.Clock = func() time.Time { return time.Date(2026, 10, 9, 12, 0, 0, 0, time.Local) }
@@ -45,7 +45,7 @@ func TestUISnapshotNativeGroupedSkills(t *testing.T) {
 				if restored {
 					clock := view.Clock
 					*view = *newActivityAdapter()
-					u.view, u.source = view.View, view.ActivitySource
+					u.shell.Transcript, u.source = view.View, view.ActivitySource
 					view.Clock = clock
 					view.Conversation, view.Bare, view.FeedOnly = main, !main, !main
 					view.testAudience()
@@ -125,11 +125,11 @@ func TestNativeBatchElapsedFailureAndResume(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			item := binding.ThreadItem{ID: "batch", Type: "commandExecution", Command: "sleep 1; false", Status: "failed", ExitCode: new(1), DurationMS: new(int64(191129)), AggregatedOutput: new("failed\n")}
-			view := u.testActivity(u.view)
+			view := u.testActivity(u.shell.Transcript)
 			if mode == "child" {
 				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 				u.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: []binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}}}, false)
-				view = u.testActivity(u.agents)
+				view = u.testActivity(u.shell.Agents)
 			} else if mode == "resume" {
 				u.restoreHistory([]binding.HistoryTurn{{ID: "turn", Status: "completed", Items: []binding.ThreadItem{item}}})
 			} else {
@@ -138,7 +138,7 @@ func TestNativeBatchElapsedFailureAndResume(t *testing.T) {
 			finishPacing(view)
 			found := false
 			for _, entry := range view.Entries {
-				for _, block := range u.view.Disclosure.Blocks(entry.Values) {
+				for _, block := range u.shell.Transcript.Disclosure.Blocks(entry.Values) {
 					if block.BatchExit {
 						if found || block.Duration != 191129*time.Millisecond || block.ExitCode != 1 {
 							t.Fatalf("incorrect batch timing or exit: %+v", block)
@@ -166,14 +166,14 @@ func TestNativeCapturedBatchKeepsSingleElapsedResult(t *testing.T) {
 			}
 			item := binding.ThreadItem{ID: "batch", Type: "commandExecution", Command: "printf new > a.txt; sleep 1", Status: status, ExitCode: new(exit), DurationMS: new(int64(1000)), AggregatedOutput: new("retained batch output\n")}
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
-			finishPacing(u.testActivity(u.view))
+			finishPacing(u.testActivity(u.shell.Transcript))
 			var data []*presentation.Receipt
 			for range 2 {
 				data = []*presentation.Receipt{{Thread: "main", Calls: []string{"batch"}, Text: "Edit `a.txt` +1 -1 · printf"}}
 				u.source.ApplyCapturedEdits(data)
 				count := 0
 				for _, entry := range u.source.Entries {
-					for _, block := range u.view.Disclosure.Blocks(entry.Values) {
+					for _, block := range u.shell.Transcript.Disclosure.Blocks(entry.Values) {
 						if block.BatchExit {
 							count++
 							if block.Duration != time.Second || block.ExitCode != exit || block.Output == 0 || strings.Join(u.source.RetainedOutput(block.Source, block.Output).View().Lines, "\n") != "retained batch output" {

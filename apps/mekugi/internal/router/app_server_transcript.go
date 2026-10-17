@@ -31,7 +31,7 @@ func transcriptItem(item binding.ThreadItem, thread, turn, id string) observatio
 func (u *appServerUI) transcriptUpdates(updates []observation.TextUpdate, paced bool) []sessionpresentation.ActivityEntry {
 	entries := u.session.AdmitText(updates, u.Thread)
 	if paced {
-		u.streams.QueueText(slices.Clone(updates), u.view, u.agents)
+		u.streams.QueueText(slices.Clone(updates), u.shell.Transcript, u.shell.Agents)
 	}
 	return entries
 }
@@ -45,7 +45,7 @@ func historicalTranscript(items []binding.ThreadItem, thread, turn string, main,
 }
 
 func (u *appServerUI) flushSummaryOutput() {
-	u.dirty = u.streams.AdvanceReasoning(u.now(), u.view, u.agents) || u.dirty
+	u.dirty = u.streams.AdvanceReasoning(u.now(), u.shell.Transcript, u.shell.Agents) || u.dirty
 }
 
 // observeMessageQuestions binds live and restored message admission. Playback
@@ -85,7 +85,7 @@ func (u *appServerUI) messageTranscript(text observation.TextEvent, item observa
 	deliveries := sessionpresentation.ProjectMessage(&u.session, u.source, u.childSource, u.transcript, main, sessionpresentation.ObservationInput{
 		Event: observation.Event{ThreadID: text.Item.Ref.ThreadID, Item: item}, Text: text, Main: u.Thread, Workspace: u.cwd,
 	})
-	u.streams.Deliver(deliveries, u.view, u.agents)
+	u.streams.Deliver(deliveries, u.shell.Transcript, u.shell.Agents)
 	if !main || len(deliveries) > 0 {
 		u.applyActivity(nil, nil)
 	}

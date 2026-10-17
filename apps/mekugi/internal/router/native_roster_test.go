@@ -29,19 +29,19 @@ func TestAppServerChildMetadataWithoutThreadStarted(t *testing.T) {
 		t.Fatal("child observation did not request metadata")
 	}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": child, "turnId": "t", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "go test ./...", "exitCode": 2}})
-	u.agents.Selected = sessionpresentation.Placeholder(child)
+	u.shell.Agents.Selected = sessionpresentation.Placeholder(child)
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
 		"id": "spawn", "type": "subAgentActivity", "kind": "started", "agentThreadId": child, "agentPath": "/root/checker"}})
-	if !u.Requests.Pending() || u.session.KnownCaller(child) != "/root/checker" || u.agents.Selected != "/root/checker" {
+	if !u.Requests.Pending() || u.session.KnownCaller(child) != "/root/checker" || u.shell.Agents.Selected != "/root/checker" {
 		t.Fatal("activity identity or in-flight metadata request lost")
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%s,"result":{"thread":{"id":%q,"agentNickname":"random-nickname","agentRole":"review","source":{"subAgent":{"thread_spawn":{"parent_thread_id":"main","agent_path":"/root/checker","agent_role":"review"}}}}}}`, id, child))
-	row := ansi.Strip(strings.Join(u.testActivity(u.agents).NativeRoster(140, 6, time.Now(), true), "\n"))
+	row := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).NativeRoster(140, 6, time.Now(), true), "\n"))
 	if !strings.Contains(row, "checker") || !strings.Contains(row, "● review") || !strings.Contains(row, "go test ./...") || strings.Contains(row, "01234567") {
 		t.Fatalf("metadata roster: %s", row)
 	}
-	u.testActivity(u.agents).setDisplayFilter(true, u.agents.Selected)
-	feed := ansi.Strip(strings.Join(u.testActivity(u.agents).RenderFeed(120, 30).Lines, "\n"))
+	u.testActivity(u.shell.Agents).setDisplayFilter(true, u.shell.Agents.Selected)
+	feed := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(120, 30).Lines, "\n"))
 	if !strings.Contains(feed, "exit 2") || strings.Contains(feed, "01234567") {
 		t.Fatalf("late rename lost retained activity: %s", feed)
 	}
@@ -57,7 +57,7 @@ func TestAppServerChildMetadataFailureKeepsActivity(t *testing.T) {
 	id := fmt.Sprint(resumeTestOne(t, u.Host.Input.(*appServerTestInput), "thread/read").ID)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%s,"error":{"code":-1,"message":"not available"}}`, id))
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "mcat child.go"}})
-	if u.Requests.Pending() || u.sessionPresentation().Status.Alert || !strings.Contains(ansi.Strip(u.agents.AgentState(u.testActivity(u.agents).testAgent(*u.session.Agent("/root/child")), 80, u.now())), "child.go") {
+	if u.Requests.Pending() || u.sessionPresentation().Status.Alert || !strings.Contains(ansi.Strip(u.shell.Agents.AgentState(u.testActivity(u.shell.Agents).testAgent(*u.session.Agent("/root/child")), 80, u.now())), "child.go") {
 		t.Fatal("metadata failure blocked activity or caused repeated reads")
 	}
 }
@@ -69,7 +69,7 @@ func TestNativeRosterShowsActivityDetails(t *testing.T) {
 		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
 		appServerTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "mcat " + thread + ".go"}})
 	}
-	got := ansi.Strip(strings.Join(u.testActivity(u.agents).NativeRoster(140, 6, time.Now(), true), "\n"))
+	got := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).NativeRoster(140, 6, time.Now(), true), "\n"))
 	for _, want := range []string{"main.go", "child.go", "reviewer", "● review", "Read"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("roster missing %q: %s", want, got)
@@ -77,12 +77,12 @@ func TestNativeRosterShowsActivityDetails(t *testing.T) {
 	}
 	appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "reasoning", "delta": "Checking event routing"})
 	u.flushStreamOutput()
-	got = ansi.Strip(strings.Join(u.testActivity(u.agents).NativeRoster(140, 6, time.Now(), true), "\n"))
+	got = ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).NativeRoster(140, 6, time.Now(), true), "\n"))
 	if !strings.Contains(got, "Checking event routing") {
 		t.Fatalf("summary missing: %s", got)
 	}
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "t", "status": "completed"}})
-	if got := ansi.Strip(u.agents.AgentState(u.testActivity(u.agents).testAgent(*u.session.Agent("/root/reviewer")), 80, u.now())); got != "done" {
+	if got := ansi.Strip(u.shell.Agents.AgentState(u.testActivity(u.shell.Agents).testAgent(*u.session.Agent("/root/reviewer")), 80, u.now())); got != "done" {
 		t.Fatalf("finished state: %q", got)
 	}
 }

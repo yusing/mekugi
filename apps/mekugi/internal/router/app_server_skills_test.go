@@ -20,7 +20,7 @@ import (
 // and bottom_pane/skills_toggle_view.rs (skills_toggle_basic).
 func TestUISnapshotSkillsMenuAndActions(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	appServerTestKeys(t, u, "/skills\r")
 	if u.picker.Kind != "menu" || !u.picker.Open || u.pickerHeight(80) != 8 {
 		t.Fatalf("menu state/height = %+v, %d", u.picker, u.pickerHeight(80))
@@ -33,13 +33,13 @@ func TestUISnapshotSkillsMenuAndActions(t *testing.T) {
 	appServerTestKeys(t, u, "/skills\r")
 	u.pickerKey("\x1b[B")
 	u.settlePresentation()
-	if u.mainView.Menu.Selected != 1 {
-		t.Fatalf("down selected = %d", u.mainView.Menu.Selected)
+	if u.shell.Main.Menu.Selected != 1 {
+		t.Fatalf("down selected = %d", u.shell.Main.Menu.Selected)
 	}
 	u.pickerKey("\x1b[A")
 	u.settlePresentation()
-	if u.mainView.Menu.Selected != 0 {
-		t.Fatalf("up selected = %d", u.mainView.Menu.Selected)
+	if u.shell.Main.Menu.Selected != 0 {
+		t.Fatalf("up selected = %d", u.shell.Main.Menu.Selected)
 	}
 	appServerTestKeys(t, u, "\r")
 	if !u.picker.Open || u.picker.Kind != "" || u.picker.Target.Kind != '$' || u.Text != "$" {
@@ -49,7 +49,7 @@ func TestUISnapshotSkillsMenuAndActions(t *testing.T) {
 
 func TestUISnapshotSkillsManageFilteringAndSave(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.cwd = "/work"
 	u.picker.Kind, u.picker.Open = "manage", true
 	u.picker.Skills = []completion.Choice{
@@ -71,7 +71,7 @@ func TestUISnapshotSkillsManageFilteringAndSave(t *testing.T) {
 	u.picker.Query = ""
 	u.picker.FilterSkills("", u.picker.Kind == "manage")
 	u.settlePresentation()
-	u.mainView.Menu.Selected = 1
+	u.shell.Main.Menu.Selected = 1
 	u.pickerKey(" ")
 	if !strings.Contains(w.String(), `"method":"skills/config/write"`) || !strings.Contains(w.String(), `"path":"/tmp/skills/changelog_writer.toml"`) || !strings.Contains(w.String(), `"enabled":true`) {
 		t.Fatalf("save request = %q", w.String())
@@ -91,7 +91,7 @@ func TestUISnapshotSkillsManageFilteringAndSave(t *testing.T) {
 
 func TestUISnapshotSkillsManagerViewportAndPaste(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.cwd = "/work"
 	u.picker.Kind, u.picker.Open = "manage", true
 	u.picker.SkillsLoaded, u.picker.SkillsCwd = true, "/work"
@@ -100,7 +100,7 @@ func TestUISnapshotSkillsManagerViewportAndPaste(t *testing.T) {
 	}
 	u.refreshPicker()
 	u.settlePresentation()
-	u.mainView.Menu.Selected = 14
+	u.shell.Main.Menu.Selected = 14
 	rows := u.renderPicker(60, u.pickerHeight(60))
 	t.Run("viewport", func(t *testing.T) {
 		uisnapshot.Assert(t, "testdata/snapshots/skills_manager_viewport.txt", strings.Join(rows, "\n")+"\n")
@@ -130,7 +130,7 @@ func TestUISnapshotSkillsColumnsMeasureOnlyVisibleRows(t *testing.T) {
 	for _, modal := range []string{"", "manage"} {
 		t.Run("modal="+modal, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.view.Painter.Theme = diffrender.DarkTheme
+			u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 			u.picker.Kind, u.picker.Target.Kind, u.picker.Open = sessionpresentation.MenuKind(modal), '$', true
 			for i := range 9 {
 				u.picker.Choices = append(u.picker.Choices, completion.Choice{
@@ -149,10 +149,10 @@ func TestUISnapshotSkillsColumnsMeasureOnlyVisibleRows(t *testing.T) {
 				t.Fatalf("off-screen name changed visible alignment:\nbefore:\n%s\nafter:\n%s", ansi.Strip(before), ansi.Strip(after))
 			}
 			u.settlePresentation()
-			u.mainView.Menu.Selected = 8
+			u.shell.Main.Menu.Selected = 8
 			u.renderPicker(48, height)
 			u.settlePresentation()
-			u.mainView.Menu.Selected = 0
+			u.shell.Main.Menu.Selected = 0
 			if after := strings.Join(u.renderPicker(48, height), "\n"); after != before {
 				t.Fatal("scrolling back retained off-screen column width")
 			}

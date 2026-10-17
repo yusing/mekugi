@@ -12,7 +12,7 @@ import (
 
 func TestNativeUIRunningChildRemovalReleasesDock(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.ensureShell()
+
 	defer terminalTest(u).Diff.Close()
 	workspace := t.TempDir()
 	broker := newLivePreview(t.Context())

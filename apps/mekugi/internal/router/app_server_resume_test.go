@@ -19,7 +19,7 @@ func TestAppServerResumeStartup(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.Thread, u.Startup.Thread = "", "saved"
 	u.Startup.Config = map[string]any{"model": "override", "model_provider": "routed"}
-	u.agents = activityui.NewView()
+
 	appServerTestRequest(t, u, "0", "initialize")
 	appServerTestMessage(t, u, `{"id":0,"result":{}}`)
 	appServerTestMessage(t, u, `{"id":1,"result":{"thread":{"id":"saved"}}}`)
@@ -96,10 +96,10 @@ func TestAppServerResumeHistoryDoesNotReviveEffects(t *testing.T) {
 		{ID: "edit", Type: "fileChange", Changes: []binding.FileChange{{Path: "a.go", Diff: "+changed"}}},
 		{ID: "spawn", Type: "collabAgentToolCall", Tool: "spawnAgent", ReceiverThreadIDs: []string{"child"}},
 	}}})
-	if u.Turn != "" || len(u.session.Roster()) != 1 || u.session.Roster()[0].Responding || len(u.source.Entries) != 2 || u.testActivity(u.view).blocks(0)[0].ExitCode != 2 {
+	if u.Turn != "" || len(u.session.Roster()) != 1 || u.session.Roster()[0].Responding || len(u.source.Entries) != 2 || u.testActivity(u.shell.Transcript).blocks(0)[0].ExitCode != 2 {
 		t.Fatalf("history revived lifecycle or lost tools: %+v", u.session)
 	}
-	if !terminalTest(u).openActivityEdit(u.view, u.source.Entries[1].Source.Seq, "a.go") {
+	if !terminalTest(u).openActivityEdit(u.shell.Transcript, u.source.Entries[1].Source.Seq, "a.go") {
 		t.Fatal("restored completed host edit lost diff navigation")
 	}
 	terminalTest(u).outputKey("\x1b")

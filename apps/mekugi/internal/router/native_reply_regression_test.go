@@ -20,9 +20,9 @@ import (
 
 func TestUISnapshotNativeMainQuotedReplyBoundary(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.Conversation = true
-	u.testActivity(u.view).testAudience()
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn",
 		"item": map[string]any{"id": "prompt", "type": "userMessage", "content": []map[string]string{{"type": "text", "text": "Show me how the new transcript search instruction looks like"}}}})
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn",
@@ -31,7 +31,7 @@ func TestUISnapshotNativeMainQuotedReplyBoundary(t *testing.T) {
 		u.source.Entries[i].Source.Observed = time.Date(2026, 10, 6, 11, 50, 6+i*6, 0, time.Local)
 	}
 	for _, width := range []int{100, 32} {
-		feed := u.testActivity(u.view).RenderFeed(width, 60)
+		feed := u.testActivity(u.shell.Transcript).RenderFeed(width, 60)
 		assertNativeUISnapshot(t, fmt.Sprintf("main-quoted-reply-boundary-%d", width), feed.Lines)
 	}
 }
@@ -153,9 +153,9 @@ func TestNativeMainAnswerBindsOwnTurnPromptAcrossUpdates(t *testing.T) {
 	if answerCount != 1 {
 		t.Fatalf("delta/completion did not share one answer identity: %d", answerCount)
 	}
-	u.view.Conversation = true
-	u.testActivity(u.view).testAudience()
-	feed := u.testActivity(u.view).RenderFeed(90, 40)
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
+	feed := u.testActivity(u.shell.Transcript).RenderFeed(90, 40)
 	if !strings.Contains(ansi.Strip(strings.Join(feed.Lines, "\n")), "↩ re: your message") {
 		t.Fatal("answer has no visible reply link")
 	}
@@ -219,8 +219,8 @@ func TestNativeDirectedMessageDisplayBudget(t *testing.T) {
 
 func TestNativeMainRepliesQuoteTheirMessageOnce(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.Conversation = true
-	u.testActivity(u.view).testAudience()
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn",
 		"item": map[string]any{"id": "prompt", "type": "userMessage", "content": []map[string]string{{"type": "text", "text": "Fix the build"}}}})
 	reply := func(id, text string) {
@@ -229,7 +229,7 @@ func TestNativeMainRepliesQuoteTheirMessageOnce(t *testing.T) {
 	}
 	quotes := func() int {
 		t.Helper()
-		return strings.Count(ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(90, 60).Lines, "\n")), "↩ re: your message")
+		return strings.Count(ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 60).Lines, "\n")), "↩ re: your message")
 	}
 	reply("first", "Looking at the Makefile.")
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "make build"}})
@@ -239,9 +239,9 @@ func TestNativeMainRepliesQuoteTheirMessageOnce(t *testing.T) {
 		t.Fatalf("replies separated only by Main's own tools quoted the message %d times", got)
 	}
 	// Another message between replies makes the next one quote it again.
-	u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: "Blocked on a request"}}})
+	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.source.LastSeq + 1, Agent: "Session", Kind: "text", Text: "Blocked on a request"}}})
 	reply("third", "Continuing.")
 	if got := quotes(); got != 2 {
-		t.Fatalf("reply after another message quoted %d times; want 2\n%s", got, ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(90, 60).Lines, "\n")))
+		t.Fatalf("reply after another message quoted %d times; want 2\n%s", got, ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 60).Lines, "\n")))
 	}
 }

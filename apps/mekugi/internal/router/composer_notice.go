@@ -12,14 +12,14 @@ import (
 // Successful feedback is transient; actionable errors remain until editing.
 func (u *appServerUI) setNotice(text string, alert bool) {
 	u.feedback.Set(text, alert, u.now())
-	u.mainView.NoticeDetails, u.mainView.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
+	u.shell.Main.NoticeDetails, u.shell.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
 }
 
 func (u *appServerUI) expireNotice(now time.Time) bool {
 	if !u.feedback.Expire(now) {
 		return false
 	}
-	u.mainView.NoticeDetails, u.mainView.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
+	u.shell.Main.NoticeDetails, u.shell.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
 	return true
 }
 
@@ -54,7 +54,7 @@ func (u *appServerUI) applyCriticalNotices() (delivery *nativeCriticalNoticeDeli
 		u.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: u.source.LastSeq + 1, Agent: "Main", Kind: "progress", Text: message.Text, Observed: u.now()}}})
 	}
 	if len(claim.Errors.Messages) > 0 {
-		u.mainView.NoticeDetails, u.mainView.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
+		u.shell.Main.NoticeDetails, u.shell.Main.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
 	}
 	u.dirty = true
 	return delivery

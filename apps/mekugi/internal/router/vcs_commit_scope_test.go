@@ -102,7 +102,7 @@ func TestVCSCommitEnrichmentKeepsSegmentDirectory(t *testing.T) {
 	if feed := mainFeed(u, 100); strings.Count(feed, "first.go") != 1 || strings.Count(feed, "second.go") != 1 {
 		t.Fatalf("rendered commits lost distinct files:\n%s", feed)
 	}
-	if !terminalTest(u).openEntry(u.view, record.Source.Seq) || len(terminalTest(u).Dialog.Pages) != 4 {
+	if !terminalTest(u).openEntry(u.shell.Transcript, record.Source.Seq) || len(terminalTest(u).Dialog.Pages) != 4 {
 		t.Fatal("grouped invocation lost its original dialog pages")
 	}
 	for i, name := range []string{"first", "second"} {

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	"github.com/yusing/mekugi/modules/changehistory/presentation"
 
@@ -195,10 +196,10 @@ func TestAppServerSedStartsAsEditBeforeReceipt(t *testing.T) {
 	for _, thread := range []string{"main", "child"} {
 		t.Run(thread, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			view := u.testActivity(u.view)
+			view := u.testActivity(u.shell.Transcript)
 			if thread == "child" {
 				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": thread, "agentNickname": "worker"}})
-				view = u.testActivity(u.agents)
+				view = u.testActivity(u.shell.Agents)
 			}
 			item := binding.ThreadItem{ID: "sed-call", Type: "commandExecution", Command: command,
 				CommandActions: []binding.CommandAction{{Type: "unknown", Command: command}}}
@@ -229,9 +230,9 @@ func TestAppServerEditIntentLiveAndRestored(t *testing.T) {
 			if thread == "child" {
 				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 			}
-			view := u.testActivity(u.view)
+			view := u.testActivity(u.shell.Transcript)
 			if thread == "child" {
-				view = u.testActivity(u.agents)
+				view = u.testActivity(u.shell.Agents)
 			}
 			for _, method := range []string{"item/started", "item/completed"} {
 				current := item
@@ -241,8 +242,8 @@ func TestAppServerEditIntentLiveAndRestored(t *testing.T) {
 				appServerTestNotify(t, u, method, map[string]any{"threadId": thread, "turnId": "t", "item": current})
 				assertCapturedCommand(t, view, thread, "cmd", "Move", 0)
 				if method == "item/completed" {
-					finishPacing(u.testActivity(u.view), u.testActivity(u.agents))
-					if got := mainFeed(appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), view: view.View, source: view.ActivitySource}), 100); !strings.Contains(got, "shell batch · exit 2") {
+					finishPacing(u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents))
+					if got := mainFeed(appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), shell: &terminalsession.Attachment{Transcript: view.View}, source: view.ActivitySource}), 100); !strings.Contains(got, "shell batch · exit 2") {
 						t.Fatalf("batch failure missing: %s", got)
 					}
 				}
@@ -261,7 +262,7 @@ func TestAppServerEditIntentLiveAndRestored(t *testing.T) {
 			if thread == "main" {
 				restored := newAppServerSessionTestUI(t, t.TempDir())
 				restored.restoreHistory([]binding.HistoryTurn{{ID: "t", Status: "completed", Items: []binding.ThreadItem{item}}})
-				assertCapturedCommand(t, restored.testActivity(restored.view), "main", "cmd", "Move", 0)
+				assertCapturedCommand(t, restored.testActivity(restored.shell.Transcript), "main", "cmd", "Move", 0)
 			}
 		})
 	}

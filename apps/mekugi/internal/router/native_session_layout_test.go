@@ -49,7 +49,7 @@ func TestNativeUISessionLiveToggle(t *testing.T) {
 		t.Fatal("local toggle entered the transcript")
 	}
 	other, _ := newAppServerTestUI()
-	other.ensureShell()
+
 	defer terminalTest(other).Diff.Close()
 	if terminalTest(other).LiveHidden {
 		t.Fatal("new session inherited preference")
@@ -76,11 +76,11 @@ func TestNativeUILiveToggleDuringModelList(t *testing.T) {
 
 func TestUISnapshotNativeLiveToggle(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.sessionPresentation().Status.Text, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
-	u.view.Clock = u.clock
-	u.ensureShell()
+	u.shell.Transcript.Clock = u.clock
+
 	defer terminalTest(u).Diff.Close()
 	screen := vt.NewEmulator(100, 28)
 	defer screen.Close()
@@ -101,7 +101,7 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 	for _, caller := range []string{"/root", "/root/worker"} {
 		for _, width := range []int{80, 120} {
 			u, _ := newAppServerTestUI()
-			u.ensureShell()
+
 			defer terminalTest(u).Diff.Close()
 			u.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root", Responding: true}, {Name: "/root/worker", Responding: true}}
 			screen := vt.NewEmulator(width, 40)
@@ -118,14 +118,14 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			u.preview(projectStockPatchPreview(t.Context(), workspace, preview), false)
 			revealNativeDock(terminalTest(u))
 			if caller != "/root" {
-				u.testActivity(u.agents).setDisplayFilter(true, caller)
+				u.testActivity(u.shell.Agents).setDisplayFilter(true, caller)
 			}
 			if !strings.Contains(paint(), "VISIBLE_EDIT") {
 				t.Fatal("default dock missing")
 			}
-			u.testActivity(u.agents).setDisplayFilter(false, u.agents.Selected)
+			u.testActivity(u.shell.Agents).setDisplayFilter(false, u.shell.Agents.Selected)
 			appServerTestKeys(t, u, "/live\r")
-			u.testActivity(u.agents).setDisplayFilter(caller != "/root", u.agents.Selected)
+			u.testActivity(u.shell.Agents).setDisplayFilter(caller != "/root", u.shell.Agents.Selected)
 			frame := paint()
 			if strings.Contains(frame, "VISIBLE_EDIT") || terminalTest(u).Layout.Live.H != 0 || len(terminalTest(u).Live.Order) != 1 {
 				t.Fatal("hidden dock lost state or reserved space")
@@ -135,9 +135,9 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			if r.H == 0 || !strings.Contains(lines[r.Y-1], "┘") || strings.TrimSpace(lines[r.Y+r.H]) != "" {
 				t.Fatalf("roster must immediately follow the pane border with padding only below:\n%s", frame)
 			}
-			u.testActivity(u.agents).setDisplayFilter(false, u.agents.Selected)
+			u.testActivity(u.shell.Agents).setDisplayFilter(false, u.shell.Agents.Selected)
 			appServerTestKeys(t, u, "/live\r")
-			u.testActivity(u.agents).setDisplayFilter(caller != "/root", u.agents.Selected)
+			u.testActivity(u.shell.Agents).setDisplayFilter(caller != "/root", u.shell.Agents.Selected)
 			if !strings.Contains(paint(), "VISIBLE_EDIT") {
 				t.Fatal("current edit not restored")
 			}
@@ -158,7 +158,7 @@ func TestNativeUIComposerGap(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.Text = "draft"
 	rows, _ := u.testMainFrame(80, 24, 0)
-	border := u.mainView.ComposerRect.Y - 1
+	border := u.shell.Main.ComposerRect.Y - 1
 	if len(rows) != 24 || strings.TrimSpace(ansi.Strip(rows[border-1])) != "" {
 		t.Fatalf("composer not separated: %q", rows)
 	}

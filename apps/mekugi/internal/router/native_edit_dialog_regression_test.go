@@ -35,7 +35,7 @@ func editDialogRegressionCases() []editDialogRegressionCase {
 func openRegressionEditDialog(t *testing.T, tc editDialogRegressionCase, captured bool) (*terminalUI, string) {
 	t.Helper()
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	const path = "answer.go"
 	want := tc.host
 	if captured {
@@ -59,7 +59,7 @@ func openRegressionEditDialog(t *testing.T, tc editDialogRegressionCase, capture
 		item := binding.ThreadItem{Type: "fileChange", Status: "completed", Changes: []binding.FileChange{change}}
 		u.source.Entries = []sessionpresentation.ActivityRecord{{Source: sessionpresentation.ActivityEntry{Seq: 1, Native: &sessionpresentation.NativeItem{Thread: "main", Item: "patch", EditPages: activitypresentation.HostEditPages(item.Observation(), u.cwd, "item/completed")}}}}
 	}
-	if !terminalTest(u).openActivityEdit(u.view, 1, path) {
+	if !terminalTest(u).openActivityEdit(u.shell.Transcript, 1, path) {
 		t.Fatal("edit dialog did not open")
 	}
 	return terminalTest(u), want

@@ -79,7 +79,7 @@ func TestLiveActivityNativeItemsShareStateAndRendering(t *testing.T) {
 	}
 	// Main is the same activity viewport, not another row cache or renderer.
 	u, _ := newAppServerTestUI()
-	u.view, u.source = v.View, v.ActivitySource
+	u.shell.Transcript, u.source = v.View, v.ActivitySource
 	var frame bytes.Buffer
 	if err := u.testPaint(&frame, 100, 25); err != nil {
 		t.Fatal(err)
@@ -92,7 +92,7 @@ func TestLiveActivityNativeItemsShareStateAndRendering(t *testing.T) {
 
 func TestLiveActivityMainQuestionBranchLink(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	v := u.testActivity(u.view)
+	v := u.testActivity(u.shell.Transcript)
 	question := "The original request"
 	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "You", Kind: "text", Text: question, Observed: time.Now(), Native: &sessionpresentation.NativeItem{Thread: "root", Turn: "turn", Item: "prompt"}}}})
 	v.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 2, Agent: "Main", Kind: "text", Text: strings.Repeat("Working through the request.\n", 20)}}})
@@ -139,35 +139,35 @@ func TestLiveActivityMainQuestionBranchLink(t *testing.T) {
 
 func TestAppServerActivityExcludesMain(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.ensureShell()
-	u.testActivity(u.agents).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
+
+	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root", Kind: "text", Text: "MAIN_ONLY"},
 		{Seq: 2, Agent: "/root/reviewer", Kind: "text", Text: "CHILD_ONLY"},
 	}, Agents: []sessionpresentation.ActivityAgent{{Name: "/root"}, {Name: "/root/reviewer"}}})
-	feed := strings.Join(u.testActivity(u.agents).RenderFeed(80, 20).Lines, "\n")
-	if strings.Contains(feed, "MAIN_ONLY") || !strings.Contains(feed, "CHILD_ONLY") || len(u.testActivity(u.agents).testRoster()) != 2 {
+	feed := strings.Join(u.testActivity(u.shell.Agents).RenderFeed(80, 20).Lines, "\n")
+	if strings.Contains(feed, "MAIN_ONLY") || !strings.Contains(feed, "CHILD_ONLY") || len(u.testActivity(u.shell.Agents).testRoster()) != 2 {
 		t.Fatal("Activity duplicated Main or removed its roster entry")
 	}
 }
 
 func TestAppServerMainRosterSummary(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.ensureShell()
+
 	u.sessionPresentation().Status.Text = "Working"
 	terminalTest(u).Focus = 3 // Narrow layout displays only the roster, not Main.
 	if err := u.testPaint(&bytes.Buffer{}, 80, 40); err != nil {
 		t.Fatal(err)
 	}
 	root := sessionpresentation.ActivityAgent{Name: "/root"}
-	if got, _ := u.testActivity(u.agents).testCurrent(root, time.Now()); ansi.Strip(got) != "Working" {
+	if got, _ := u.testActivity(u.shell.Agents).testCurrent(root, time.Now()); ansi.Strip(got) != "Working" {
 		t.Fatalf("Main status missing: %q", got)
 	}
-	applyTranscriptFixture(u.testActivity(u.view), true, "", "main", "main", "turn", "answer", "item/agentMessage/delta", "Checking the roster", binding.ThreadItem{})
-	if got, _ := u.testActivity(u.agents).testCurrent(root, time.Now()); ansi.Strip(got) != "Checking the roster" {
+	applyTranscriptFixture(u.testActivity(u.shell.Transcript), true, "", "main", "main", "turn", "answer", "item/agentMessage/delta", "Checking the roster", binding.ThreadItem{})
+	if got, _ := u.testActivity(u.shell.Agents).testCurrent(root, time.Now()); ansi.Strip(got) != "Checking the roster" {
 		t.Fatalf("Main streaming summary missing: %q", got)
 	}
-	applyTranscriptFixture(u.testActivity(u.view), true, "", "main", "main", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "Roster fixed"})
-	if got, _ := u.testActivity(u.agents).testCurrent(root, time.Now()); ansi.Strip(got) != "Roster fixed" {
+	applyTranscriptFixture(u.testActivity(u.shell.Transcript), true, "", "main", "main", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "Roster fixed"})
+	if got, _ := u.testActivity(u.shell.Agents).testCurrent(root, time.Now()); ansi.Strip(got) != "Roster fixed" {
 		t.Fatalf("Main completed summary stale: %q", got)
 	}
 	if len(u.childSource.Entries) != 0 {
@@ -177,38 +177,38 @@ func TestAppServerMainRosterSummary(t *testing.T) {
 
 func TestAppServerActivityReasoningSummaries(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.ensureShell()
+
 	legacy := newActivityAdapter()
 	for seq, text := range []string{"Initial public summary", "Updated public summary"} {
 		event := sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: uint64(seq + 1), Agent: "/root/reviewer", Kind: "reasoning", CallID: "summary-1", Text: text}}}
-		u.testActivity(u.agents).Apply(event)
+		u.testActivity(u.shell.Agents).Apply(event)
 		legacy.Apply(event)
-		u.testActivity(u.view).Apply(event)
+		u.testActivity(u.shell.Transcript).Apply(event)
 	}
-	feed := ansi.Strip(strings.Join(u.testActivity(u.agents).RenderFeed(80, 20).Lines, "\n"))
-	status, _ := u.testActivity(u.agents).testCurrent(sessionpresentation.ActivityAgent{Name: "/root/reviewer"}, time.Now())
+	feed := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(80, 20).Lines, "\n"))
+	status, _ := u.testActivity(u.shell.Agents).testCurrent(sessionpresentation.ActivityAgent{Name: "/root/reviewer"}, time.Now())
 	if !strings.Contains(feed, "Updated public summary") || !strings.Contains(status, "Updated public summary") || len(u.childSource.Entries) != 1 {
 		t.Fatal("summary must remain in Activity and update status")
 	}
 	u.childSource.Agents = []sessionpresentation.ActivityAgent{{Name: "/root/reviewer", Responding: true}}
-	live := strings.Join(u.testActivity(u.agents).RenderFeed(80, 20).Lines, "\n")
+	live := strings.Join(u.testActivity(u.shell.Agents).RenderFeed(80, 20).Lines, "\n")
 	if !strings.Contains(ansi.Strip(live), "Updated public summary") {
 		t.Fatal("reasoning summary is missing from Activity")
 	}
 	u.childSource.Agents[0].Responding = false
-	if idle := strings.Join(u.testActivity(u.agents).RenderFeed(80, 20).Lines, "\n"); !strings.Contains(idle, "Updated public summary") {
+	if idle := strings.Join(u.testActivity(u.shell.Agents).RenderFeed(80, 20).Lines, "\n"); !strings.Contains(idle, "Updated public summary") {
 		t.Fatal("reasoning transcript disappeared after completion")
 	}
-	u.testActivity(u.agents).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
+	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{
 		{Seq: 3, Agent: "/root/reviewer", Kind: "reasoning", CallID: "summary-2", Text: "Later public summary"},
 		{Seq: 4, Agent: "/root", Kind: "reasoning", CallID: "main-summary", Text: "Main only summary"},
 	}})
-	retained := ansi.Strip(strings.Join(u.testActivity(u.agents).RenderFeed(80, 30).Lines, "\n"))
+	retained := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(80, 30).Lines, "\n"))
 	if !strings.Contains(retained, "Updated public summary") || !strings.Contains(retained, "Later public summary") || strings.Contains(retained, "Main only summary") {
 		t.Fatalf("Activity lost earlier reasoning or included Main: %q", retained)
 	}
-	u.testActivity(u.agents).setDisplayFilter(true, "/root/reviewer")
-	detail := strings.Join(u.testActivity(u.agents).RenderFeed(80, 20).Lines, "\n")
+	u.testActivity(u.shell.Agents).setDisplayFilter(true, "/root/reviewer")
+	detail := strings.Join(u.testActivity(u.shell.Agents).RenderFeed(80, 20).Lines, "\n")
 	if !strings.Contains(detail, "Updated public summary") || strings.Contains(detail, "Reasoning summary") {
 		t.Fatal("detailed summary must remain visible, not a labelled card")
 	}
@@ -219,17 +219,17 @@ func TestAppServerActivityReasoningSummaries(t *testing.T) {
 
 func TestAppServerCommunicationBothAudiences(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.ensureShell()
+
 	assignment := "Check the original question link."
 	u.applyActivity([]sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root/reviewer", Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root", To: "/root/reviewer", Text: assignment}},
 		{Seq: 2, Agent: "/root/reviewer", Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root/reviewer", To: "/root", Text: "I checked the link."}},
 		{Seq: 3, Agent: "/root/reviewer", Kind: "final", Text: "The question link is correct."},
 	}, nil)
-	u.view.Conversation = true
-	u.testActivity(u.view).testAudience()
-	main := ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(90, 40).Lines, "\n"))
-	agents := ansi.Strip(strings.Join(u.testActivity(u.agents).RenderFeed(90, 40).Lines, "\n"))
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
+	main := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 40).Lines, "\n"))
+	agents := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(90, 40).Lines, "\n"))
 	for _, body := range []string{assignment, "I checked the link.", "The question link is correct."} {
 		if !strings.Contains(main, body) || !strings.Contains(agents, body) {
 			t.Fatalf("communication missing from one audience: %q", body)
@@ -242,11 +242,11 @@ func TestAppServerCommunicationBothAudiences(t *testing.T) {
 
 func TestAppServerOutgoingMessageHeader(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.ensureShell()
-	u.view.Conversation = true
-	u.testActivity(u.view).testAudience()
+
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
 	u.applyActivity([]sessionpresentation.ActivityEntry{{Seq: 1, Agent: "/root/reviewer", Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root", To: "/root/reviewer", Text: "Check the answer link."}}}, nil)
-	feed := u.testActivity(u.view).RenderFeed(90, 20)
+	feed := u.testActivity(u.shell.Transcript).RenderFeed(90, 20)
 	if len(feed.Lines) != 2 || !strings.HasPrefix(ansi.Strip(feed.Lines[0]), "→ reviewer") || ansi.Strip(feed.Lines[1]) != "│ Check the answer link." {
 		t.Fatalf("outgoing recipient must head Main's message, above its body: %q", feed.Lines)
 	}
@@ -262,16 +262,16 @@ func TestAppServerOutgoingMessageHeader(t *testing.T) {
 
 func TestAppServerActivityGroupsAgentRun(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.ensureShell()
+
 	start := time.Date(2026, 9, 26, 12, 30, 10, 0, time.Local)
 	u.applyActivity([]sessionpresentation.ActivityEntry{
 		{Seq: 1, Agent: "/root/reviewer", Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root", To: "/root/reviewer", Text: "Check the link."}, Observed: start},
 		{Seq: 2, Agent: "/root/reviewer", Kind: "reply", Message: &sessionpresentation.ActivityMessage{From: "/root/reviewer", To: "/root", Text: "Link checked."}, Observed: start.Add(10 * time.Second)},
 		{Seq: 3, Agent: "/root/reviewer", Kind: "text", Text: "Checking the next item.", Observed: start.Add(20 * time.Second)},
 	}, nil)
-	u.testActivity(u.agents).setDisplayFilter(true, "/root/reviewer")
+	u.testActivity(u.shell.Agents).setDisplayFilter(true, "/root/reviewer")
 	var plain []string
-	for _, line := range u.testActivity(u.agents).RenderFeed(90, 40).Lines {
+	for _, line := range u.testActivity(u.shell.Agents).RenderFeed(90, 40).Lines {
 		plain = append(plain, strings.TrimRight(ansi.Strip(line), " "))
 	}
 	// Narrative events retain their individual timestamps and message direction.
@@ -309,7 +309,7 @@ func TestCodexReasoningSummaryPresentation(t *testing.T) {
 
 func TestAppServerNativeAssignmentQuestionLink(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.ensureShell()
+
 	assignment := "Check the original question link."
 	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"model": "gpt-6-astra", "input": []any{nativeAssignmentTestMessage("/root/reviewer", "NEW_TASK", assignment)}}))
 	if err != nil {
@@ -320,10 +320,10 @@ func TestAppServerNativeAssignmentQuestionLink(t *testing.T) {
 			Assignment: &sessionpresentation.ActivityAssignment{ID: "task-1", From: "/root", To: "/root/reviewer", Text: assignment}},
 		{Seq: 2, Agent: "/root/reviewer", Kind: "final", Text: "The question link is correct."},
 	}, nil)
-	u.view.Conversation = true
-	u.testActivity(u.view).testAudience()
-	main := ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(90, 40).Lines, "\n"))
-	agents := ansi.Strip(strings.Join(u.testActivity(u.agents).RenderFeed(90, 40).Lines, "\n"))
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
+	main := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 40).Lines, "\n"))
+	agents := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(90, 40).Lines, "\n"))
 	if !strings.Contains(main, assignment) || !strings.Contains(agents, assignment) || !strings.Contains(main, "├─✓ finished") || strings.Contains(main, "↩ re:") {
 		t.Fatalf("native NEW_TASK answer was not threaded under its assignment:\n%s\n%s", main, agents)
 	}
@@ -382,7 +382,7 @@ func TestLiveActivityConversationKeepsFullTextAndViewport(t *testing.T) {
 		t.Fatal("Main inherited compact answer clipping")
 	}
 	u, _ := newAppServerTestUI()
-	u.view, u.source = v.View, v.ActivitySource
+	u.shell.Transcript, u.source = v.View, v.ActivitySource
 	if err := u.testPaint(&bytes.Buffer{}, 80, 15); err != nil {
 		t.Fatal(err)
 	}
@@ -402,7 +402,7 @@ func TestLiveActivityConversationKeepsFullTextAndViewport(t *testing.T) {
 
 func TestLiveActivityMainShortTerminalKeepsNewestLine(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	applyTranscriptFixture(u.testActivity(u.view), true, "", "root", "root", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "earlier paragraph\n\nLATEST_VISIBLE_LINE"})
+	applyTranscriptFixture(u.testActivity(u.shell.Transcript), true, "", "root", "root", "turn", "answer", "item/completed", "", binding.ThreadItem{Type: "agentMessage", Text: "earlier paragraph\n\nLATEST_VISIBLE_LINE"})
 	var frame bytes.Buffer
 	if err := u.testPaint(&frame, 80, 6); err != nil {
 		t.Fatal(err)
@@ -463,24 +463,24 @@ func TestAppServerPacesBatchedOperations(t *testing.T) {
 		{"type": "listFiles", "path": "."}, {"type": "search", "query": "needle"}, {"type": "read", "path": "a.go"}}}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	frame := func() string {
-		return ansi.Strip(strings.Join(u.testActivity(u.view).Render(100, 20, time.Now()), "\n"))
+		return ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).Render(100, 20, time.Now()), "\n"))
 	}
 	if got := frame(); !strings.Contains(got, "List") || strings.Contains(got, "needle") || strings.Contains(got, "a.go") {
 		t.Fatalf("batch did not start with its first operation:\n%s", got)
 	}
 	now := time.Now()
-	if u.testActivity(u.view).testPace(now) {
+	if u.testActivity(u.shell.Transcript).testPace(now) {
 		t.Fatal("paced before the step elapsed")
 	}
-	if !u.testActivity(u.view).testPace(now.Add(activityui.PaceStep)) {
+	if !u.testActivity(u.shell.Transcript).testPace(now.Add(activityui.PaceStep)) {
 		t.Fatal("second operation did not reveal after one step")
 	}
 	if got := frame(); !strings.Contains(got, "needle") || strings.Contains(got, "a.go") {
 		t.Fatalf("second step revealed the wrong operations:\n%s", got)
 	}
-	u.testActivity(u.view).testPace(now.Add(3 * activityui.PaceStep))
-	if got := frame(); !strings.Contains(got, "a.go") || len(u.view.Paced) != 0 {
-		t.Fatalf("batch did not finish revealing (paced=%v):\n%s", u.view.Paced, got)
+	u.testActivity(u.shell.Transcript).testPace(now.Add(3 * activityui.PaceStep))
+	if got := frame(); !strings.Contains(got, "a.go") || len(u.shell.Transcript.Paced) != 0 {
+		t.Fatalf("batch did not finish revealing (paced=%v):\n%s", u.shell.Transcript.Paced, got)
 	}
 
 	// Restored history shows at once.

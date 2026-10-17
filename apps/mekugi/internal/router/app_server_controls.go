@@ -8,9 +8,9 @@ import (
 func (u *appServerUI) controlsCommand(text string) (bool, error) {
 	switch text {
 	case "/lock", "/unlock":
-		u.mainView.InterruptLocked = text == "/lock"
+		u.shell.Main.InterruptLocked = text == "/lock"
 		u.deleteDraftRange(0, len(u.Text))
-		if u.mainView.InterruptLocked {
+		if u.shell.Main.InterruptLocked {
 			u.lockNotice()
 		} else {
 			u.setNotice("Unlocked · Esc and Ctrl-C can interrupt", false)
@@ -27,7 +27,7 @@ func (u *appServerUI) lockNotice() {
 // Only keyboard cancellation is guarded. Host lifecycle and already-admitted
 // interrupts retain their authority, and contextual Escape/copy still work.
 func (u *appServerUI) keyboardInterrupt() error {
-	if u.mainView.InterruptLocked {
+	if u.shell.Main.InterruptLocked {
 		u.lockNotice()
 		return nil
 	}

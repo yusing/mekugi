@@ -93,10 +93,10 @@ func TestNativeUIPreview(t *testing.T) {
 					return err
 				}
 				p.serve()
-				flashExpired := p.ui.view.ExpireFlash(now)
-				settled := settleActivity(now, p.ui.testActivity(p.ui.view), p.ui.testActivity(p.ui.agents))
-				settled = p.ui.testActivity(p.ui.view).testPace(now) || settled
-				settled = p.ui.testActivity(p.ui.agents).testPace(now) || settled
+				flashExpired := p.ui.shell.Transcript.ExpireFlash(now)
+				settled := settleActivity(now, p.ui.testActivity(p.ui.shell.Transcript), p.ui.testActivity(p.ui.shell.Agents))
+				settled = p.ui.testActivity(p.ui.shell.Transcript).testPace(now) || settled
+				settled = p.ui.testActivity(p.ui.shell.Agents).testPace(now) || settled
 				settled = p.ui.dirty || settled // Includes keys drained by this tick.
 				p.ui.dirty = false
 				p.ui.flushStreamOutput() // Rolls output bursts, as each real frame does.
@@ -120,7 +120,7 @@ func TestNativeUIPreview(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || p.ui.publishPresentation(p.ui.now()).Status.Animating || p.ui.agents.HasLiveStatus() || flashExpired || settled || noticeExpired || terminalTest(p.ui).Live.Tick(now) {
+				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || p.ui.publishPresentation(p.ui.now()).Status.Animating || p.ui.shell.Agents.HasLiveStatus() || flashExpired || settled || noticeExpired || terminalTest(p.ui).Live.Tick(now) {
 					if err := paint(); err != nil {
 						return err
 					}
@@ -166,7 +166,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		defer screen.Close()
 		terminalTest(p.ui).Frame.Rows = nil // A new screen needs every row.
 		rollCommandOutput(p.ui)
-		finishPacing(p.ui.testActivity(p.ui.view), p.ui.testActivity(p.ui.agents))
+		finishPacing(p.ui.testActivity(p.ui.shell.Transcript), p.ui.testActivity(p.ui.shell.Agents))
 		if err := p.ui.testPaint(screen, 160, 48); err != nil {
 			t.Fatal(err)
 		}
@@ -187,16 +187,16 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	for range 12 {
 		p.advance()
 	}
-	p.ui.testActivity(p.ui.agents).setDisplayFilter(true, "/root/explorer")
+	p.ui.testActivity(p.ui.shell.Agents).setDisplayFilter(true, "/root/explorer")
 	render("grok thinking", "• Thinking…")
 	p.until("explorer thought")
 	render("grok thought readable", "• Thought")
 	retained := false
 	for _, record := range p.ui.childSource.Entries {
-		blocks := p.ui.agents.Disclosure.Blocks(record.Values)
+		blocks := p.ui.shell.Agents.Disclosure.Blocks(record.Values)
 		for _, block := range blocks {
 			if block.Kind == "summary" && block.Body == nativePreviewGrokReasoning {
-				retained = p.ui.agents.Painter.DialogPage(block, 120).Text == nativePreviewGrokReasoning
+				retained = p.ui.shell.Agents.Painter.DialogPage(block, 120).Text == nativePreviewGrokReasoning
 			}
 		}
 	}
@@ -204,7 +204,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		t.Fatal("collapsed reasoning lost its complete dialog body")
 	}
 	p.until("three agents edit at once")
-	p.ui.testActivity(p.ui.agents).setDisplayFilter(false, p.ui.agents.Selected)
+	p.ui.testActivity(p.ui.shell.Agents).setDisplayFilter(false, p.ui.shell.Agents.Selected)
 	terminalTest(p.ui).LiveHidden = false
 	frame := render("caller-local live previews", "LIVE ·", "3 Agents", "2 Diff ●")
 	if strings.Contains(frame, "3 Activity ─") && strings.Contains(frame, "no captured edits yet") {
@@ -212,11 +212,11 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	}
 	agents := func() string {
 		rollCommandOutput(p.ui)
-		finishPacing(p.ui.testActivity(p.ui.agents))
-		return ansi.Strip(strings.Join(p.ui.testActivity(p.ui.agents).RenderFeed(120, 80).Lines, "\n"))
+		finishPacing(p.ui.testActivity(p.ui.shell.Agents))
+		return ansi.Strip(strings.Join(p.ui.testActivity(p.ui.shell.Agents).RenderFeed(120, 80).Lines, "\n"))
 	}
 	terminalTest(p.ui).LiveHidden = true
-	p.ui.agents.LivePreviews = nil
+	p.ui.shell.Agents.LivePreviews = nil
 	p.until("tester applies")
 	// Hold the real rerun process at its first output boundary until the live
 	// frame has been inspected. A zero-delay script can otherwise finish before
@@ -249,7 +249,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		t.Fatalf("passed test run lacks its settled state:\n%s", got)
 	}
 	nextEvent(t, p.ui, p.ui.childSource.Entries[len(p.ui.childSource.Entries)-1].Source.Native.Thread)
-	settleActivity(time.Now().Add(activityui.OutputDebounce), p.ui.testActivity(p.ui.agents))
+	settleActivity(time.Now().Add(activityui.OutputDebounce), p.ui.testActivity(p.ui.shell.Agents))
 	if got := agents(); strings.Contains(got, "┆ ok ") || !strings.Contains(got, "┆ … +6 lines") {
 		t.Fatalf("passed test run output did not collapse:\n%s", got)
 	}
@@ -384,7 +384,7 @@ func TestNativeUIPreviewSessionControlsRendered(t *testing.T) {
 		screen := vt.NewEmulator(100, 28)
 		defer screen.Close()
 		terminalTest(p.ui).Frame.Rows = nil
-		finishPacing(p.ui.testActivity(p.ui.view), p.ui.testActivity(p.ui.agents))
+		finishPacing(p.ui.testActivity(p.ui.shell.Transcript), p.ui.testActivity(p.ui.shell.Agents))
 		if err := p.ui.testPaint(screen, 100, 28); err != nil {
 			t.Fatal(err)
 		}
@@ -504,7 +504,6 @@ func newNativePreview(t *testing.T) *nativePreview {
 	if err := json.Unmarshal([]byte(`[{"model":"gpt-6-luna","defaultReasoningEffort":"medium","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"medium"},{"reasoningEffort":"high"}],"serviceTiers":[{"id":"priority"}]}]`), &u.models); err != nil {
 		t.Fatal(err)
 	}
-	u.ensureShell()
 
 	u.reviewSource = store.captured
 	u.terminalViews = testTerminalViews(u.reviewSource)
@@ -525,7 +524,7 @@ func newNativePreview(t *testing.T) *nativePreview {
 		scope.Workspaces[workspace][thread] = true
 	}
 	u.applyReview(t.Context(), sessionreview.Event{Kind: "scope", Scope: &scope})
-	u.testActivity(u.agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.Roster()})
+	u.testActivity(u.shell.Agents).Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.session.Roster()})
 	u.sessionPresentation().Status.Text = "Ready"
 	p.populate()
 	return p
@@ -1362,7 +1361,7 @@ func TestNativeUIPreviewSessionReplyIdentity(t *testing.T) {
 	defer p.close()
 	for p.advance() {
 	}
-	main := p.ui.testActivity(p.ui.view)
+	main := p.ui.testActivity(p.ui.shell.Transcript)
 	main.Conversation = true
 	main.testAudience()
 	feed := main.RenderFeed(100, 100)
@@ -1405,9 +1404,9 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 			if len(terminalTest(u).Live.Order) != 0 {
 				t.Fatal("completed live batch did not restore the transcript")
 			}
-			view, item := u.testActivity(u.view), "patch-main"
+			view, item := u.testActivity(u.shell.Transcript), "patch-main"
 			if activity {
-				view, item = u.testActivity(u.agents), "patch-tester"
+				view, item = u.testActivity(u.shell.Agents), "patch-tester"
 				view.setDisplayFilter(true, "/root/tester")
 			}
 			terminalTest(u).DiffOpen = activity

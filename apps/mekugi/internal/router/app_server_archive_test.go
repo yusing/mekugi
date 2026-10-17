@@ -18,13 +18,14 @@ func TestUISnapshotAppServerArchive(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
+			u.shell.Transcript.Conversation = false
 			u.source.Audience = 0 // The modal fixture retains the unconnected feed header.
 			if running {
 				u.Turn = "turn"
 			}
 			appServerTestKeys(t, u, "/arch\r")
 			u.settlePresentation()
-			if u.picker.Kind != "archive" || u.mainView.Menu.Selected != 0 || wire.Len() != 0 {
+			if u.picker.Kind != "archive" || u.shell.Main.Menu.Selected != 0 || wire.Len() != 0 {
 				t.Fatal("archive must first ask for confirmation, defaulting to No")
 			}
 			for _, width := range []int{40, 80} {
@@ -58,7 +59,7 @@ func TestUISnapshotAppServerArchive(t *testing.T) {
 func TestAppServerArchiveCancelAndUnavailable(t *testing.T) {
 	for _, cancel := range []string{"\r", "\x03", "\x1b"} {
 		u, wire := newAppServerTestUI()
-		u.ensureShell()
+
 		for _, key := range []byte("/archive\r\x1b[200~clipboard text\x1b[201~") {
 			if err := terminalTest(u).key(key); err != nil {
 				t.Fatal(err)

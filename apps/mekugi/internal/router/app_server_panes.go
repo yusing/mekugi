@@ -85,12 +85,12 @@ func (u *appServerUI) retainAppliedSettings() {
 	}
 	scope := preferences.Scope{Workspace: u.cwd, Thread: u.Thread}
 	if u.panes.attachment.Scope() != scope {
-		if err := u.panes.open(&u.shell.Shell, &u.mainView, u.cwd, u.Thread, false); err != nil {
+		if err := u.panes.open(&u.shell.Shell, u.shell.Main, u.cwd, u.Thread, false); err != nil {
 			u.paneError(err)
 			return
 		}
 	}
-	if err := u.panes.stage(u.shell.Shell.Preferences(&u.mainView)); err != nil {
+	if err := u.panes.stage(u.shell.Shell.Preferences(u.shell.Main)); err != nil {
 		u.paneError(err)
 		return
 	}

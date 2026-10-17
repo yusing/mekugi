@@ -5,8 +5,6 @@ package router
 import (
 	"context"
 
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
@@ -55,8 +53,7 @@ func TestAppServerChildMetadataNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), history: testHistory(), Host: client, view: activityui.NewView(), agents: activityui.NewView(), Requests: sessioncontrol.NewRequests[appServerRequest](client), ctx: ctx})
-	u.ensureShell()
+	u := appServerTestFeatures(&appServerUI{activity: new(activitymodel.Service), history: testHistory(), Host: client, Requests: sessioncontrol.NewRequests[appServerRequest](client), ctx: ctx})
 
 	defer terminalTest(u).Diff.Close()
 	if err := u.Request("initialize", nil); err != nil {
@@ -90,7 +87,7 @@ func TestAppServerChildMetadataNativeCodexE2E(t *testing.T) {
 				}
 				for _, entry := range u.childSource.Entries {
 					if entry.Source.Agent == path && entry.Source.Kind == "tool" && strings.Contains(entry.Source.Text, "printf CHILD_METADATA_TOOL") {
-						for _, view := range []*activityAdapter{u.testActivity(u.view), u.testActivity(u.agents)} {
+						for _, view := range []*activityAdapter{u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents)} {
 							found := false
 							for _, summary := range view.Entries {
 								found = found || summary.Source.Kind == "reasoning" && summary.Source.Text == "Checking the native fixture."

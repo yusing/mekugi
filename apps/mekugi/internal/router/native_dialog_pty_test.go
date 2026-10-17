@@ -40,7 +40,7 @@ func TestNativeDialogPTYCloseAndResize(t *testing.T) {
 		}
 	}()
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.testActivity(u.view).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Underlying conversation"}}})
+	u.testActivity(u.shell.Transcript).Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Underlying conversation"}}})
 	screen := vt.NewEmulator(120, 32)
 	defer screen.Close()
 	paint := func(width, height int) string {
@@ -64,7 +64,7 @@ func TestNativeDialogPTYCloseAndResize(t *testing.T) {
 	}
 	paint(120, 32)
 	pages := []activityui.Block{{Kind: "op", Verb: "Run", Code: "mchanges amber1", Tail: strings.Split("amber1\n--- a.go\n+++ a.go\n@@ -1 +1 @@\n-var answer = 41\n+var answer = 42", "\n")}}
-	terminalTest(u).openBlocks(u.view, pages)
+	terminalTest(u).openBlocks(u.shell.Transcript, pages)
 	for _, size := range [][2]int{{120, 32}, {48, 20}, {160, 40}} {
 		frame := paint(size[0], size[1])
 		if !strings.Contains(frame, "[×]") || !strings.Contains(frame, "+var answer = 42") {

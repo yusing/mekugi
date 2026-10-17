@@ -41,8 +41,8 @@ func TestAppServerPublicSummaryNotifications(t *testing.T) {
 		}
 		reasoningTestNotify(t, u, "item/reasoning/textDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": "same-id", "delta": "PRIVATE"})
 	}
-	main := ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(90, 40).Lines, "\n"))
-	child := ansi.Strip(strings.Join(u.testActivity(u.agents).RenderFeed(90, 40).Lines, "\n"))
+	main := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 40).Lines, "\n"))
+	child := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(90, 40).Lines, "\n"))
 	if !strings.Contains(main, "Public main summary.") || strings.Contains(main, "Public child") || !strings.Contains(child, "Public child summary.") || strings.Contains(child, "Public main") {
 		t.Fatalf("summary routing: main=%q, child=%q", main, child)
 	}
@@ -52,15 +52,15 @@ func TestAppServerPublicSummaryNotifications(t *testing.T) {
 			"id": "same-id", "type": "reasoning", "summary": []string{"**Complete**\n\nFinal public " + thread + "."}, "content": []string{"PRIVATE"}}})
 		reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t", "status": "completed"}})
 	}
-	u.testActivity(u.agents).setDisplayFilter(false, "/root/worker")
-	main = ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(90, 40).Lines, "\n"))
-	child = ansi.Strip(strings.Join(u.testActivity(u.agents).RenderFeed(90, 40).Lines, "\n"))
+	u.testActivity(u.shell.Agents).setDisplayFilter(false, "/root/worker")
+	main = ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 40).Lines, "\n"))
+	child = ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(90, 40).Lines, "\n"))
 	if strings.Count(main, "• Complete") != 1 || strings.Count(child, "• Complete") != 1 || !strings.Contains(main, "Final public main.") || !strings.Contains(child, "Final public child.") || strings.Contains(main+child, "PRIVATE") || strings.Contains(main+child, "Public main summary") {
 		t.Fatalf("completed summaries: main=%q, child=%q", main, child)
 	}
 	// A reused item ID in a new turn must not replace earlier summaries.
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "next", "itemId": "same-id", "delta": "Next public summary."})
-	main = ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(90, 40).Lines, "\n"))
+	main = ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(90, 40).Lines, "\n"))
 	if !strings.Contains(main, "• Complete") || !strings.Contains(main, "Next public summary.") || u.source.Entries[0].Source.Text != "**Complete**\n\nFinal public main." {
 		t.Fatalf("turn identity lost: %q", main)
 	}
@@ -72,7 +72,7 @@ func TestAppServerOldTurnCompletionPreservesCurrentTranscript(t *testing.T) {
 	activity.Attach("main")
 	activity.Observe("child", "main", "/root/worker", true)
 	setTestAppServerIntegration(u, &observationFixture{activity: activity})
-	u.testActivity(u.agents).setDisplayFilter(false, "/root/worker")
+	u.testActivity(u.shell.Agents).setDisplayFilter(false, "/root/worker")
 	wait := binding.ThreadItem{ID: "old-wait", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress"}
 	reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "old", "item": wait})
 	activity.BeginResponse("child", true, at.Add(-3*time.Second))
@@ -80,7 +80,7 @@ func TestAppServerOldTurnCompletionPreservesCurrentTranscript(t *testing.T) {
 	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "current"}})
 	oldEnd := map[string]any{"threadId": "child", "turn": map[string]any{"id": "old", "status": "completed"}}
 	reasoningTestNotify(t, u, "turn/completed", oldEnd)
-	if got := ansi.Strip(strings.Join(u.testActivity(u.agents).RenderFeed(90, 40).Lines, "\n")); !strings.Contains(got, "Thinking") {
+	if got := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(90, 40).Lines, "\n")); !strings.Contains(got, "Thinking") {
 		t.Fatalf("old completion removed current provider placeholder: %q", got)
 	}
 	if old := u.childSource.Entries[0].Source; old.Text != "Wait ended" || old.Native.Phase != "turn/completed" {
@@ -107,7 +107,7 @@ func TestAppServerOldTurnCompletionPreservesCurrentTranscript(t *testing.T) {
 	activity.BeginResponse("child", true, time.Now())
 	u.applyObservedActivity()
 	reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "without-start", "status": "interrupted"}})
-	if got := ansi.Strip(strings.Join(u.testActivity(u.agents).RenderFeed(90, 40).Lines, "\n")); strings.Contains(got, "Thinking") {
+	if got := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(90, 40).Lines, "\n")); strings.Contains(got, "Thinking") {
 		t.Fatalf("completion without a start left provider thinking: %q", got)
 	}
 }
@@ -116,7 +116,7 @@ func TestAppServerClosedTurnRejectsLateStreaming(t *testing.T) {
 	for _, thread := range []string{"main", "child"} {
 		t.Run(thread, func(t *testing.T) {
 			u, _ := newActiveWorkTestUI(t)
-			u.testActivity(u.agents).setDisplayFilter(false, "/root/worker")
+			u.testActivity(u.shell.Agents).setDisplayFilter(false, "/root/worker")
 			delta := map[string]any{"threadId": thread, "turnId": "without-start", "itemId": "summary", "delta": "Initial"}
 			reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", delta)
 			key := [2]string{thread, "without-start"}
@@ -131,9 +131,9 @@ func TestAppServerClosedTurnRejectsLateStreaming(t *testing.T) {
 			if u.session.Transcript(key[0], key[1]).Turn != nil || u.session.Agent(u.session.Caller(thread)).Responding || u.Turn == "without-start" {
 				t.Fatal("late observations revived a closed turn")
 			}
-			view := u.testActivity(u.view)
+			view := u.testActivity(u.shell.Transcript)
 			if thread == "child" {
-				view = u.testActivity(u.agents)
+				view = u.testActivity(u.shell.Agents)
 			}
 			if got := ansi.Strip(strings.Join(view.RenderFeed(90, 40).Lines, "\n")); !strings.Contains(got, "Initial") || strings.Contains(got, "leaked") {
 				t.Fatalf("closed-turn content changed: %q", got)
@@ -144,7 +144,7 @@ func TestAppServerClosedTurnRejectsLateStreaming(t *testing.T) {
 
 func TestAppServerClosedCompletionKeepsCurrentTurnSelection(t *testing.T) {
 	u, _ := newActiveWorkTestUI(t)
-	u.testActivity(u.agents).setDisplayFilter(false, "/root/worker")
+	u.testActivity(u.shell.Agents).setDisplayFilter(false, "/root/worker")
 	reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "old", "status": "completed"}})
 	activity := sessioncontrol.NewAudience(nil)
 	activity.Attach("main")
@@ -157,7 +157,7 @@ func TestAppServerClosedCompletionKeepsCurrentTurnSelection(t *testing.T) {
 	for _, item := range []binding.ThreadItem{{ID: "late-summary", Type: "reasoning", Summary: []string{"Older summary"}}, {ID: "late-answer", Type: "agentMessage", Text: "Older answer"}} {
 		reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "old", "item": item})
 	}
-	if got := ansi.Strip(strings.Join(u.testActivity(u.agents).RenderFeed(90, 40).Lines, "\n")); !strings.Contains(got, "Thinking") || !strings.Contains(got, "Older summary") || !strings.Contains(got, "Older answer") {
+	if got := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(90, 40).Lines, "\n")); !strings.Contains(got, "Thinking") || !strings.Contains(got, "Older summary") || !strings.Contains(got, "Older answer") {
 		t.Fatalf("late completion lost content or consumed current thinking: %q", got)
 	}
 	if u.session.Transcript("child", "old").Turn != nil {
@@ -184,8 +184,8 @@ func TestAppServerRestorePublicSummaries(t *testing.T) {
 	u.restoreHistory(turns)
 	u.registerThread(binding.ThreadInfo{ID: "child", AgentNickname: "worker"})
 	u.restoreActivityThread(binding.ThreadInfo{ID: "child", Turns: turns}, false)
-	u.testActivity(u.agents).setDisplayFilter(false, "/root/worker")
-	for _, view := range []*activityAdapter{u.testActivity(u.view), u.testActivity(u.agents)} {
+	u.testActivity(u.shell.Agents).setDisplayFilter(false, "/root/worker")
+	for _, view := range []*activityAdapter{u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents)} {
 		feed := view.RenderFeed(90, 40)
 		got := ansi.Strip(strings.Join(feed.Lines, "\n"))
 		if !strings.Contains(got, "• Public restored summary.") || strings.Count(got, "Public restored summary.") != 1 || strings.Contains(got, "PRIVATE") {
@@ -199,8 +199,8 @@ func TestAppServerRestorePublicSummaries(t *testing.T) {
 	// A new turn must not restart the restored summary animation.
 	agent := *u.session.Agent("/root/worker")
 	agent.Responding = true
-	first, _ := u.testActivity(u.agents).testCurrent(agent, time.Unix(0, 0))
-	second, _ := u.testActivity(u.agents).testCurrent(agent, time.Unix(1, 0))
+	first, _ := u.testActivity(u.shell.Agents).testCurrent(agent, time.Unix(0, 0))
+	second, _ := u.testActivity(u.shell.Agents).testCurrent(agent, time.Unix(1, 0))
 	if first != second {
 		t.Fatal("restored reasoning animated in a later turn")
 	}
@@ -217,7 +217,7 @@ func TestAppServerComposerKeepsWorkingDuringReasoning(t *testing.T) {
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "r", "delta": "**Checking layout**"})
 	for _, dock := range []int{0, 3} {
 		frame, dockRect := u.testMainFrame(70, 12, dock)
-		border := u.mainView.ComposerRect.Y - 1
+		border := u.shell.Main.ComposerRect.Y - 1
 		if len(frame) != 12 || !strings.Contains(ansi.Strip(frame[border]), "◐ Working") || strings.Contains(ansi.Strip(frame[border]), "Checking layout") || dockRect.Y+dockRect.H != border-1 || frame[border-1] != "" {
 			t.Fatalf("reasoning replaced Working: dock=%d frame=%q", dock, frame)
 		}
@@ -227,7 +227,7 @@ func TestAppServerComposerKeepsWorkingDuringReasoning(t *testing.T) {
 		if len(frame) != size[1] {
 			t.Fatalf("height overflow: %q", frame)
 		}
-		for _, row := range frame[u.mainView.ComposerRect.Y:] {
+		for _, row := range frame[u.shell.Main.ComposerRect.Y:] {
 			if ansi.StringWidth(row) > size[0] {
 				t.Fatalf("width overflow: %q", row)
 			}
@@ -335,9 +335,9 @@ func TestAppServerProviderThinking(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "t"}})
-	u.testActivity(u.agents).setDisplayFilter(false, "/root/worker")
+	u.testActivity(u.shell.Agents).setDisplayFilter(false, "/root/worker")
 	feed := func() string {
-		return ansi.Strip(strings.Join(u.testActivity(u.agents).RenderFeed(90, 40).Lines, "\n"))
+		return ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(90, 40).Lines, "\n"))
 	}
 	for _, delta := range []string{"First ", "thought.\n\nSecond.\n\nThird.\n\nFourth."} {
 		reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "r1", "delta": delta})
@@ -363,7 +363,7 @@ func TestAppServerProviderThinking(t *testing.T) {
 func TestAppServerThinkingFolds(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-	u.testActivity(u.agents).setDisplayFilter(false, "/root/worker")
+	u.testActivity(u.shell.Agents).setDisplayFilter(false, "/root/worker")
 	body := "**Reviewing**\n\nAlpha.\n\nBravo.\n\nCharlie.\n\nDelta."
 	for _, thread := range []string{"main", "child"} {
 		reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
@@ -371,8 +371,8 @@ func TestAppServerThinkingFolds(t *testing.T) {
 		reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{body}}})
 		nextEvent(t, u, thread)
 	}
-	settleActivity(time.Now().Add(time.Minute), u.testActivity(u.view), u.testActivity(u.agents))
-	for name, view := range map[string]*activityAdapter{"Main": u.testActivity(u.view), "Activity": u.testActivity(u.agents)} {
+	settleActivity(time.Now().Add(time.Minute), u.testActivity(u.shell.Transcript), u.testActivity(u.shell.Agents))
+	for name, view := range map[string]*activityAdapter{"Main": u.testActivity(u.shell.Transcript), "Activity": u.testActivity(u.shell.Agents)} {
 		t.Run(name, func(t *testing.T) {
 			render := func() activityui.Feed { return view.RenderFeed(90, 40) }
 			plain := func(feed activityui.Feed) string { return ansi.Strip(strings.Join(feed.Lines, "\n")) }
@@ -418,14 +418,14 @@ func TestThinkingElapsedNamesWholeSecondsOnly(t *testing.T) {
 // output first, or the turn's end, removes the empty block.
 func TestAppServerThinkingFromRequestStart(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.Conversation = true
-	u.testActivity(u.view).testAudience()
+	u.shell.Transcript.Conversation = true
+	u.testActivity(u.shell.Transcript).testAudience()
 	activity := sessioncontrol.NewAudience(nil)
 	activity.Attach("main")
 	activity.Observe("child", "main", "/root/worker", true)
 	setTestAppServerIntegration(u, &observationFixture{activity: activity})
 	reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-	u.testActivity(u.agents).setDisplayFilter(false, "/root/worker")
+	u.testActivity(u.shell.Agents).setDisplayFilter(false, "/root/worker")
 	feed := func(view *activityAdapter) string {
 		return ansi.Strip(strings.Join(view.RenderFeed(90, 40).Lines, "\n"))
 	}
@@ -447,46 +447,46 @@ func TestAppServerThinkingFromRequestStart(t *testing.T) {
 	// Main and child each show the block while waiting for the first delta.
 	start("main", 3*time.Second)
 	start("child", 3*time.Second)
-	for name, view := range map[string]*activityAdapter{"Main": u.testActivity(u.view), "Activity": u.testActivity(u.agents)} {
+	for name, view := range map[string]*activityAdapter{"Main": u.testActivity(u.shell.Transcript), "Activity": u.testActivity(u.shell.Agents)} {
 		if got := feed(view); !strings.Contains(got, "• Thinking…") {
 			t.Fatalf("%s shows no thinking before the first delta: %q", name, got)
 		}
 	}
 	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "t"}})
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "r1", "delta": "Planning."})
-	if got := feed(u.testActivity(u.agents)); thinkingRows(u.testActivity(u.agents)) != 1 || strings.Contains(got, "Thinking…") || !strings.Contains(got, "• Planning.") {
-		t.Fatalf("first delta did not take over the block: %d rows, %q", thinkingRows(u.testActivity(u.agents)), got)
+	if got := feed(u.testActivity(u.shell.Agents)); thinkingRows(u.testActivity(u.shell.Agents)) != 1 || strings.Contains(got, "Thinking…") || !strings.Contains(got, "• Planning.") {
+		t.Fatalf("first delta did not take over the block: %d rows, %q", thinkingRows(u.testActivity(u.shell.Agents)), got)
 	}
 	reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "r1", "type": "reasoning", "summary": []string{"Planning."}}})
-	if got := feed(u.testActivity(u.agents)); thinkingRows(u.testActivity(u.agents)) != 1 || !strings.Contains(got, "• Planning for 3s") {
+	if got := feed(u.testActivity(u.shell.Agents)); thinkingRows(u.testActivity(u.shell.Agents)) != 1 || !strings.Contains(got, "• Planning for 3s") {
 		t.Fatalf("thinking not timed from the request start: %q", got)
 	}
 
 	// A request that answers without reasoning leaves no empty block.
 	start("child", 0)
 	reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "ls"}})
-	if got := feed(u.testActivity(u.agents)); thinkingRows(u.testActivity(u.agents)) != 1 || strings.Contains(got, "Thinking…") {
+	if got := feed(u.testActivity(u.shell.Agents)); thinkingRows(u.testActivity(u.shell.Agents)) != 1 || strings.Contains(got, "Thinking…") {
 		t.Fatalf("empty thinking block kept after other output: %q", got)
 	}
 	// The previous request's late command completion keeps the next block.
 	start("child", 0)
 	reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "ls", "status": "completed"}})
-	if got := feed(u.testActivity(u.agents)); !strings.Contains(got, "• Thinking…") {
+	if got := feed(u.testActivity(u.shell.Agents)); !strings.Contains(got, "• Thinking…") {
 		t.Fatalf("late command completion removed the next request's block: %q", got)
 	}
 	reasoningTestNotify(t, u, "item/agentMessage/delta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "a1", "delta": "Done."})
-	if got := feed(u.testActivity(u.agents)); strings.Contains(got, "Thinking…") {
+	if got := feed(u.testActivity(u.shell.Agents)); strings.Contains(got, "Thinking…") {
 		t.Fatalf("empty thinking block kept after an answer delta: %q", got)
 	}
 	// Main's answer, handled by the transcript, also removes its block.
 	reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "m", "item": map[string]any{"id": "a2", "type": "agentMessage", "text": ""}})
-	if got := feed(u.testActivity(u.view)); thinkingRows(u.testActivity(u.view)) != 0 || strings.Contains(got, "Thinking…") {
+	if got := feed(u.testActivity(u.shell.Transcript)); thinkingRows(u.testActivity(u.shell.Transcript)) != 0 || strings.Contains(got, "Thinking…") {
 		t.Fatalf("empty thinking block kept after Main's answer: %q", got)
 	}
 	// Main's pending block ends with its turn.
 	start("main", 0)
 	reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "m", "status": "completed"}})
-	if got := feed(u.testActivity(u.view)); thinkingRows(u.testActivity(u.view)) != 0 || strings.Contains(got, "Thinking…") || strings.Contains(got, "Thought") {
+	if got := feed(u.testActivity(u.shell.Transcript)); thinkingRows(u.testActivity(u.shell.Transcript)) != 0 || strings.Contains(got, "Thinking…") || strings.Contains(got, "Thought") {
 		t.Fatalf("turn end kept an empty thinking block: %q", got)
 	}
 
@@ -512,10 +512,10 @@ func TestAppServerDuplicateSummaryCompletionKeepsNextThinking(t *testing.T) {
 				activity.Attach("main")
 				activity.Observe("child", "main", "/root/worker", true)
 				setTestAppServerIntegration(u, &observationFixture{activity: activity})
-				u.testActivity(u.agents).setDisplayFilter(false, "/root/worker")
-				view := u.testActivity(u.view)
+				u.testActivity(u.shell.Agents).setDisplayFilter(false, "/root/worker")
+				view := u.testActivity(u.shell.Transcript)
 				if thread == "child" {
-					view = u.testActivity(u.agents)
+					view = u.testActivity(u.shell.Agents)
 				}
 				start := func() {
 					activity.BeginResponse(thread, true, *at)
@@ -571,13 +571,13 @@ func TestAppServerStartedSummarySettlesWithoutDelta(t *testing.T) {
 		t.Run(map[bool]string{false: "completed", true: "interrupted"}[interrupted], func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-			u.testActivity(u.agents).setDisplayFilter(false, "/root/worker")
+			u.testActivity(u.shell.Agents).setDisplayFilter(false, "/root/worker")
 			for _, thread := range []string{"main", "child"} {
 				reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
 				reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{"**Checking**\n\nStarted public body."}}})
-				view := u.testActivity(u.view)
+				view := u.testActivity(u.shell.Transcript)
 				if thread == "child" {
-					view = u.testActivity(u.agents)
+					view = u.testActivity(u.shell.Agents)
 				}
 				if got := ansi.Strip(strings.Join(view.RenderFeed(90, 40).Lines, "\n")); strings.Contains(got, "Thinking…") || !strings.Contains(got, "• Checking") || !strings.Contains(got, "Started public body.") {
 					t.Fatalf("started summary is not streaming: %s", got)
@@ -608,13 +608,13 @@ func TestUISnapshotAppServerReasoningStartsBeforeSummary(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			at := time.Date(2026, 9, 30, 8, 38, 54, 904000000, time.Local)
 			u.clock = func() time.Time { return at }
-			u.view.Clock, u.agents.Clock = u.clock, u.clock
-			u.view.Painter.Theme, u.agents.Painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
+			u.shell.Transcript.Clock, u.shell.Agents.Clock = u.clock, u.clock
+			u.shell.Transcript.Painter.Theme, u.shell.Agents.Painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
 			reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-			u.testActivity(u.agents).setDisplayFilter(false, "/root/worker")
-			view := u.testActivity(u.view)
+			u.testActivity(u.shell.Agents).setDisplayFilter(false, "/root/worker")
+			view := u.testActivity(u.shell.Transcript)
 			if thread == "child" {
-				view = u.testActivity(u.agents)
+				view = u.testActivity(u.shell.Agents)
 			}
 			reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
 			reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{}}})
@@ -648,13 +648,13 @@ func TestUISnapshotAppServerReasoningLifecycle(t *testing.T) {
 				u := newAppServerSessionTestUI(t, t.TempDir())
 				at := time.Date(2026, 9, 30, 8, 0, 0, 0, time.Local)
 				u.clock = func() time.Time { return at }
-				u.view.Clock, u.agents.Clock = u.clock, u.clock
-				u.view.Painter.Theme, u.agents.Painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
+				u.shell.Transcript.Clock, u.shell.Agents.Clock = u.clock, u.clock
+				u.shell.Transcript.Painter.Theme, u.shell.Agents.Painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
 				reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-				u.testActivity(u.agents).setDisplayFilter(false, "/root/worker")
-				view := u.testActivity(u.view)
+				u.testActivity(u.shell.Agents).setDisplayFilter(false, "/root/worker")
+				view := u.testActivity(u.shell.Transcript)
 				if thread == "child" {
-					view = u.testActivity(u.agents)
+					view = u.testActivity(u.shell.Agents)
 				}
 				reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
 				reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning"}})
@@ -691,7 +691,7 @@ func TestAppServerEmptyStartedReasoningDoesNotLeaveThought(t *testing.T) {
 		} else {
 			reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{}}})
 		}
-		got := ansi.Strip(strings.Join(u.testActivity(u.view).RenderFeed(80, 40).Lines, "\n"))
+		got := ansi.Strip(strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(80, 40).Lines, "\n"))
 		if strings.Contains(got, "Thinking") || strings.Contains(got, "Thought") || strings.Contains(got, "PRIVATE") {
 			t.Fatalf("empty reasoning left visible or unfinished state: %s", got)
 		}

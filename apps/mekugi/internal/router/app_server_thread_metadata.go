@@ -40,5 +40,5 @@ func (u *appServerUI) renameThreadActivity(old, name string) {
 	for _, source := range []*sessionpresentation.ActivitySource{u.source, u.childSource} {
 		source.RenameCaller(old, name)
 	}
-	terminalsession.RenameSelection(old, name, u.view, u.agents)
+	terminalsession.RenameSelection(old, name, u.shell.Transcript, u.shell.Agents)
 }

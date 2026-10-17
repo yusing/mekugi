@@ -3,8 +3,6 @@ package router
 import (
 	"bytes"
 
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
-
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
@@ -72,7 +70,7 @@ func rolloutFailedCell(at int, call, message string) []map[string]any {
 func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 	workspace := t.TempDir()
 	u := newAppServerSessionTestUI(t, workspace)
-	u.agents = terminalTest(u).Agents
+	u.shell.Agents = terminalTest(u).Agents
 	activity := sessioncontrol.NewAudience(nil)
 	setTestAppServerIntegration(u, &observationFixture{activity: activity})
 	u.Startup.Thread = "main"
@@ -192,7 +190,7 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 	if !slices.Equal(pane, wantPane) {
 		t.Fatalf("Activity history:\n%s\nwant:\n%s", strings.Join(pane, "\n"), strings.Join(wantPane, "\n"))
 	}
-	feed := ansi.Strip(strings.Join(u.testActivity(u.agents).RenderFeed(100, 80).Lines, "\n"))
+	feed := ansi.Strip(strings.Join(u.testActivity(u.shell.Agents).RenderFeed(100, 80).Lines, "\n"))
 	for _, text := range []string{"Inspect the change.", "Keep going.", "I found a failure.", "ReferenceError"} {
 		if !strings.Contains(feed, text) {
 			t.Fatalf("Activity missing %q: %s", text, feed)
@@ -238,7 +236,7 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 func TestAppServerResumeDefersHistoryButKeepsActiveTurn(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.Thread, u.Startup.Thread = "", "saved"
-	u.agents = activityui.NewView()
+
 	appServerTestRequest(t, u, "1", "thread/resume")
 	appServerTestMessage(t, u, `{"id":1,"result":{"thread":{"id":"saved","turns":[{"id":"active","status":"inProgress","items":[{"type":"userMessage","id":"q","content":[{"type":"text","text":"Still running"}]}]}]}}}`)
 	if u.Turn != "active" || !u.session.Agent("/root").Responding || len(u.source.Entries) != 0 {

@@ -2,7 +2,6 @@ package router
 
 import (
 	"github.com/yusing/mekugi/backends/codex/binding"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	json "encoding/json/v2"
 	"fmt"
@@ -29,7 +28,7 @@ func resumeSettingsRollout(t *testing.T, records ...string) binding.ThreadInfo {
 
 func TestUISnapshotNativeResumeSettingsUnavailable(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	u.Thread, u.Startup.Thread = "", "saved"
 	if err := u.openSession(); err != nil {
@@ -44,7 +43,7 @@ func TestUISnapshotNativeResumeSettingsUnavailable(t *testing.T) {
 
 func TestUISnapshotNativeResumeSwitchSettingsUnavailable(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
-	u.view.Painter.Theme = diffrender.DarkTheme
+	u.shell.Transcript.Painter.Theme = diffrender.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	appServerTestKeys(t, u, "/resume saved\r")
 	resume := resumeTestPrepared(t, u, w)
@@ -138,7 +137,7 @@ func TestAppServerResumeClearsSavedReasoningDefault(t *testing.T) {
 		t.Run("launch="+effort, func(t *testing.T) {
 			u, w := newAppServerTestUI()
 			u.Thread, u.Startup.Thread, u.ResumeEffort = "", "saved", true
-			u.agents = activityui.NewView()
+
 			appServerTestRequest(t, u, "1", "thread/resume")
 			savedEffort := "null"
 			if effort != "" {

@@ -55,15 +55,9 @@ func (p *uiReplayPlayback) reset() {
 	u.childSource = sessionpresentation.NewActivitySource(sessionpresentation.ChildAudience)
 	u.source.Model, u.childSource.Model = &state.Main, &state.Children
 	u.childSource.Coverage = ""
-	u.view, u.agents = activityui.NewView(), p.terminalViews.NewThreadView()
-	u.view.Conversation = true
-	u.agents.ChildrenOnly, u.agents.Bare = true, true
+	u.shell, _ = p.terminalViews.NewAttachment(diffrender.EnvironmentTheme(os.Getenv("COLORFGBG")))
+	u.view, u.agents = u.shell.Transcript, u.shell.Agents
 	u.view.Clock, u.agents.Clock = func() time.Time { return p.At }, func() time.Time { return p.At }
-	u.shell = &terminalsession.Attachment{Main: new(terminalsession.Main), Prompts: new(terminalsession.Prompts), Transcript: u.view, Agents: u.agents, Diff: new(terminalsession.DiffScreen)}
-	u.shell.RosterLabel = p.terminalViews.RosterLabel()
-	u.shell.Theme = diffrender.EnvironmentTheme(os.Getenv("COLORFGBG"))
-	label, attachment := p.terminalViews.Attach(u.shell.Theme)
-	u.shell.AuxiliaryLabel, u.shell.Auxiliary = label, attachment.Pane
 	if previous != nil {
 		u.fileReadSlot = previous.fileReadSlot
 		u.shell.Focus, u.shell.DiffOpen = previous.shell.Focus, previous.shell.DiffOpen

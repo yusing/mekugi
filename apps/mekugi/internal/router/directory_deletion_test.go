@@ -59,7 +59,7 @@ func TestUISnapshotDirectoryDeletion(t *testing.T) {
 			u.review.Projection.Data = data
 			publishFixtureReview(t, u)
 			u.applyCapturedEdits()
-			u.testActivity(u.view).testPace(u.view.Now().Add(time.Second))
+			u.testActivity(u.shell.Transcript).testPace(u.shell.Transcript.Now().Add(time.Second))
 			var seq uint64
 			for _, entry := range u.source.Entries {
 				if entry.Source.Native != nil && entry.Source.Native.Item == "delete-call" {
@@ -70,10 +70,10 @@ func TestUISnapshotDirectoryDeletion(t *testing.T) {
 			if contentGap {
 				wantPages++
 			}
-			if opened := terminalTest(u).openActivityEdit(u.view, seq, "removed/"); !opened || len(terminalTest(u).Dialog.Pages) != wantPages {
+			if opened := terminalTest(u).openActivityEdit(u.shell.Transcript, seq, "removed/"); !opened || len(terminalTest(u).Dialog.Pages) != wantPages {
 				t.Fatalf("directory pages: opened=%v seq=%d want=%d", opened, seq, wantPages)
 			}
-			uisnapshot.Assert(t, "testdata/snapshots/"+name+".txt", strings.Join(u.testActivity(u.view).RenderFeed(100, 30).Lines, "\n")+"\n")
+			uisnapshot.Assert(t, "testdata/snapshots/"+name+".txt", strings.Join(u.testActivity(u.shell.Transcript).RenderFeed(100, 30).Lines, "\n")+"\n")
 		})
 	}
 }

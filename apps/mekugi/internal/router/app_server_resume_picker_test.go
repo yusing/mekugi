@@ -11,7 +11,6 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 
@@ -82,7 +81,7 @@ func resumeTestSettle(t *testing.T, u *appServerUI, w *appServerTestInput) []str
 
 func resumeTestFrame(t *testing.T, u *appServerUI, width, height int) string {
 	t.Helper()
-	u.ensureShell()
+
 	rows, _ := u.testMainFrame(width, height, 0)
 	return ansi.Strip(strings.Join(rows, "\n"))
 }
@@ -99,7 +98,7 @@ func resumeTestKeys(t *testing.T, u *appServerUI, keys ...string) {
 func newResumeSessionTestUI(t *testing.T) (*appServerUI, *appServerTestInput) {
 	u, w := newAppServerTestUI()
 	u.ctx = t.Context()
-	u.ensureShell()
+
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.startSession("main", "/work")
 	return u, w
@@ -108,7 +107,7 @@ func newResumeSessionTestUI(t *testing.T) (*appServerUI, *appServerTestInput) {
 func TestAppServerResumePickerStartup(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.Thread, u.Startup.Thread, u.Startup.Workspace = "", sessioncontrol.ResumePicker, "/work"
-	u.agents = activityui.NewView()
+
 	appServerTestRequest(t, u, "0", "initialize")
 	appServerTestMessage(t, u, `{"id":0,"result":{}}`)
 	requests := resumeTestRequests(t, w)
@@ -234,7 +233,7 @@ func TestAppServerResumePickerSearchFilterAndPages(t *testing.T) {
 func TestAppServerResumeSwitchesSession(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
 	outputs := u.activity.Outputs(u.session.Scope())
-	u.ensureShell()
+
 	feed := u.source.Model
 	appServerTestUserMessage(t, u, "old-user", "", "old transcript")
 	appServerTestKeys(t, u, "/resume\r")
@@ -305,7 +304,7 @@ func TestAppServerResumeSwitchesSession(t *testing.T) {
 func TestAppServerResumeSwitchFailureKeepsSession(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
 	outputs := u.activity.Outputs(u.session.Scope())
-	u.ensureShell()
+
 	feed := u.source.Model
 	appServerTestUserMessage(t, u, "old-user", "", "keep this")
 	appServerTestKeys(t, u, "/resume missing\r")
@@ -433,11 +432,11 @@ func TestAppServerResumeSwitchWaitsForDiffResync(t *testing.T) {
 	liveDiffScopeCapture(t, store, workspace, "saved", "saved-call", filepath.Join(workspace, "saved.go"), "a", "b")
 	u, w := newAppServerTestUI()
 	u.ctx = t.Context()
-	u.agents = activityui.NewView()
+
 	auto := newLivePreview(t.Context())
 	defer auto.Close()
 	auto.Enable()
-	u.ensureShell()
+
 	t.Cleanup(func() { terminalTest(u).Diff.Close() })
 	u.review = testReview(auto)
 	setSavedReviewStore(terminalTest(u), store)
@@ -502,15 +501,15 @@ func TestAppServerResumePickerFailedPageStopsPaging(t *testing.T) {
 
 func (u *appServerUI) resumePickerKey(key string) error {
 	u.settlePresentation()
-	return u.applyResumeAction(u.mainView.Resume.Key(key))
+	return u.applyResumeAction(u.shell.Main.Resume.Key(key))
 }
 func (u *appServerUI) fillResumePicker() error {
 	u.settlePresentation()
-	return u.applyResumeAction(u.mainView.Resume.PageDemand())
+	return u.applyResumeAction(u.shell.Main.Resume.PageDemand())
 }
 func (u *appServerUI) resumePickerFrame(width, height int) []string {
 	u.settlePresentation()
-	return u.mainView.Resume.Render(&u.view.Painter.Painter, width, height, terminalsession.SelectionStyle(&u.view.Painter.Painter))
+	return u.shell.Main.Resume.Render(&u.shell.Transcript.Painter.Painter, width, height, terminalsession.SelectionStyle(&u.shell.Transcript.Painter.Painter))
 }
 
 func TestResumePickerRechecksIdleBeforeSwitch(t *testing.T) {

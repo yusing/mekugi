@@ -48,7 +48,7 @@ func TestNonTerminalCurrentPublicationWithoutPaint(t *testing.T) {
 		t.Fatal("host turn did not publish")
 	}
 	questionTestSync(t, u, "prompt", false)
-	if read().Questions.Call == nil || u.prompts.Ready() {
+	if read().Questions.Call == nil || u.shell.Prompts.Ready() {
 		t.Fatal("prompt was not published independently of its display receipt")
 	}
 	appServerTestKeys(t, u, "ordinary typing")

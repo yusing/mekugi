@@ -20,7 +20,7 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
 	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.Local)
 	u.clock = func() time.Time { return now }
-	u.view.Clock, u.agents.Clock = u.clock, u.clock
+	u.shell.Transcript.Clock, u.shell.Agents.Clock = u.clock, u.clock
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "reader"}})
 	u.Text = "retained draft"
 	for _, settings := range []struct{ thread, model, effort, tier string }{
@@ -58,7 +58,7 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	}
 	click := func(agent string) {
 		t.Helper()
-		for _, hit := range u.agents.Hits {
+		for _, hit := range u.shell.Agents.Hits {
 			if hit.Agent == agent && !hit.Skills {
 				r := terminalTest(u).Layout.Roster
 				for _, suffix := range []string{"M", "m"} {
@@ -81,7 +81,7 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	}
 	keys("\x022")
 	paint("native-thread-child-split")
-	if terminalTest(u).Layout.Diff.W == 0 || !u.testActivity(u.agents).displayingChild() {
+	if terminalTest(u).Layout.Diff.W == 0 || !u.testActivity(u.shell.Agents).displayingChild() {
 		t.Fatal("opening Diff lost the displayed child")
 	}
 	keys("\x022")
@@ -106,7 +106,7 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	}
 	click("/root")
 	frame = paint("native-thread-return-main")
-	if u.testActivity(u.agents).displayingChild() || !strings.Contains(frame, "main result") || strings.Contains(frame, "Input: Main") || u.Text != "retained draft" {
+	if u.testActivity(u.shell.Agents).displayingChild() || !strings.Contains(frame, "main result") || strings.Contains(frame, "Input: Main") || u.Text != "retained draft" {
 		t.Fatal("returning to Main lost its transcript or draft")
 	}
 	keys("\x021\r")
@@ -119,13 +119,13 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 func TestNativeChildReferenceReturnsToMain(t *testing.T) {
 	u := selectionTestUI("child answer")
 	u.Agents = activityui.NewView()
-	u.main.agents = u.Agents
+	u.main.shell.Agents = u.Agents
 	u.main.sessionPresentation()
 	u.main.Text = "draft "
-	u.main.testActivity(u.main.agents).setDisplayFilter(true, "/root/reader")
+	u.main.testActivity(u.main.shell.Agents).setDisplayFilter(true, "/root/reader")
 	u.main.publishPresentation(u.main.now())
-	u.main.agents.FeedLeft, u.main.agents.FeedTop = 1, 1
-	u.main.agents.FeedRight, u.main.agents.FeedRows = 40, 1
+	u.main.shell.Agents.FeedLeft, u.main.shell.Agents.FeedTop = 1, 1
+	u.main.shell.Agents.FeedRight, u.main.shell.Agents.FeedRows = 40, 1
 	selectionTestDrag(t, u, 0, 0, 4, 0)
 	u.selectionAction('r')
 	if u.main.composerReadOnly() || !strings.HasPrefix(u.main.Text, "draft ") || len(u.main.Selections) != 1 || u.Focus != 0 {
@@ -136,8 +136,8 @@ func TestNativeChildReferenceReturnsToMain(t *testing.T) {
 func TestNativeChildComposerSettingsEvidence(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
 	u.model, u.reasoningEffort, u.serviceTier = "parent-model", "high", "priority"
-	u.ensureShell()
-	u.testActivity(u.agents).setDisplayFilter(true, "/root/reader")
+
+	u.testActivity(u.shell.Agents).setDisplayFilter(true, "/root/reader")
 	caption := func() string {
 		rows, _ := u.testMainFrame(120, 20, 0)
 		return ansi.Strip(rows[len(rows)-1])
@@ -169,7 +169,7 @@ func TestNativeChildComposerSettingsEvidence(t *testing.T) {
 		t.Fatalf("child caption ignored its confirmed thread tier: %s", got)
 	}
 	u.session.Collaboration((binding.ThreadItem{Tool: "spawnAgent", SenderThreadID: "main", ReceiverThreadIDs: []string{"spawned"}, Model: "spawn-model", ReasoningEffort: "high"}).Observation(), "spawn", u.now(), activitypresentation.ObservedCollaboration)
-	u.testActivity(u.agents).displayThread(u.session.KnownCaller("spawned"))
+	u.testActivity(u.shell.Agents).displayThread(u.session.KnownCaller("spawned"))
 	if got := caption(); !strings.Contains(got, "spawn-model (high)") || strings.Contains(got, "priority") {
 		t.Fatalf("spawn metadata was not scoped to the selected child: %s", got)
 	}
@@ -180,7 +180,7 @@ func TestNativeChildComposerSettingsEvidence(t *testing.T) {
 
 func TestUISnapshotNativeTinyDiffToggle(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
-	u.ensureShell()
+
 	screen := vt.NewEmulator(80, 6)
 	defer screen.Close()
 	for _, key := range []byte("\x022") {

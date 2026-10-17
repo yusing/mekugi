@@ -222,7 +222,7 @@ func (u *appServerUI) endApproval(a *sessioncontrol.Approval, outcome string) {
 	}
 	u.approvals.Remove(a.Approval)
 	delete(u.approvals.handles, a.Approval)
-	u.prompts.ForgetApproval(a.ID)
+	u.shell.Prompts.ForgetApproval(a.ID)
 	if wasOpen {
 		u.openApprovals()
 	}
@@ -347,12 +347,12 @@ func (u *appServerUI) openApprovals() bool {
 	}
 	u.hideQuestions()
 	if a := u.pendingApprovals()[0]; a.DenialChoice() >= 0 {
-		u.mainView.PromptColumn = u.mainView.CursorColumn
+		u.shell.Main.PromptColumn = u.shell.Main.CursorColumn
 		u.promptEditor.Open(u.Editor, a.Editor)
-		u.mainView.CursorColumn = u.prompts.ApprovalLayout(a.ID).Column
+		u.shell.Main.CursorColumn = u.shell.Prompts.ApprovalLayout(a.ID).Column
 	}
 	u.approvals.Show()
-	u.prompts.Reopen()
+	u.shell.Prompts.Reopen()
 	u.focusPrompt()
 	return true
 }
@@ -360,9 +360,9 @@ func (u *appServerUI) openApprovals() bool {
 func (u *appServerUI) hideApprovals() {
 	if u.approvals.Open && len(u.pendingApprovals()) > 0 {
 		if a := u.pendingApprovals()[0]; a.DenialChoice() >= 0 {
-			u.prompts.ApprovalLayout(a.ID).Column = u.mainView.CursorColumn
+			u.shell.Prompts.ApprovalLayout(a.ID).Column = u.shell.Main.CursorColumn
 			a.Editor = u.promptEditor.Close(u.Editor)
-			u.mainView.CursorColumn = u.mainView.PromptColumn
+			u.shell.Main.CursorColumn = u.shell.Main.PromptColumn
 		}
 	}
 	u.approvals.Hide()
