@@ -3,6 +3,8 @@ package router
 import (
 	"iter"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -12,9 +14,11 @@ import (
 // resumes interpretation; no application key or pointer switch remains here.
 func (main *appServerUI) applyInput(u *terminalsession.Attachment, effects iter.Seq[terminalsession.InputEffect]) error {
 	if main != nil {
-		main.publishPresentation(presentationTime(main.clock))
+		publishPresentation(&main.attached, main.shell, &main.Client, &main.picker, &main.Editor, &main.childHistoryState, preferences.Applied{Model: main.model, Effort: main.reasoningEffort, Tier: main.serviceTier}, main.serviceTiers, main.title, main.backendVersion, main.restoring != nil, main.side, presentationTime(main.clock))
 		publishActivity(&main.attached, main.shell)
-		defer main.settlePresentation()
+		defer func() {
+			settlePresentation(&main.attached, main.shell, &main.Client, &main.picker, &main.Editor, &main.childHistoryState, preferences.Applied{Model: main.model, Effort: main.reasoningEffort, Tier: main.serviceTier}, main.serviceTiers, main.title, main.backendVersion, main.restoring != nil, main.side, main.clock, &main.questions, &main.approvals, main.statusPanel != nil || main.resumePicker != nil)
+		}()
 	}
 	for effect := range effects {
 		more, err := main.applyEffect(u, effect)
@@ -22,7 +26,7 @@ func (main *appServerUI) applyInput(u *terminalsession.Attachment, effects iter.
 			return err
 		}
 		if main != nil {
-			main.publishPresentation(presentationTime(main.clock))
+			publishPresentation(&main.attached, main.shell, &main.Client, &main.picker, &main.Editor, &main.childHistoryState, preferences.Applied{Model: main.model, Effort: main.reasoningEffort, Tier: main.serviceTier}, main.serviceTiers, main.title, main.backendVersion, main.restoring != nil, main.side, presentationTime(main.clock))
 		}
 	}
 	return nil
@@ -51,7 +55,7 @@ func (main *appServerUI) applyEffect(u *terminalsession.Attachment, effect termi
 			return false, nil
 		}
 		if !effect.PendingPrompt.ApprovalsFirst || !openApprovals(&m.approvals, &m.questions, m.attached.conversation, m.shell, &m.picker, &m.Editor, m.Thread) {
-			m.openQuestions()
+			openQuestions(&m.attached, m.shell, &m.picker, &m.Editor, &m.questions, &m.approvals, m.Thread)
 		}
 	case effect.Panel != nil:
 		m.applyPanelAction(*effect.Panel)
@@ -84,11 +88,11 @@ func (main *appServerUI) applyEffect(u *terminalsession.Attachment, effect termi
 		}
 		return false, m.loadOlderActivity(*effect.History)
 	case effect.Display != nil:
-		m.displaySession(*effect.Display)
+		displaySession(&m.attached, m.shell, &m.Client, &m.picker, &m.Editor, &m.childHistoryState, preferences.Applied{Model: m.model, Effort: m.reasoningEffort, Tier: m.serviceTier}, m.serviceTiers, m.title, m.backendVersion, m.restoring != nil, m.side, m.clock, &m.questions, &m.approvals, m.statusPanel != nil || m.resumePicker != nil, *effect.Display)
 	case effect.Roster != nil:
 		intent := effect.Roster
 		target := m.attached.presentation.ActivityTarget(intent.Caller, m.attached.childSource)
-		if m.displaySession(sessionpresentation.DisplayIntent{Version: sessionpresentation.Version{Attachment: intent.Attachment, Revision: intent.Revision}, Thread: target}) && target.Caller != "/root" {
+		if displaySession(&m.attached, m.shell, &m.Client, &m.picker, &m.Editor, &m.childHistoryState, preferences.Applied{Model: m.model, Effort: m.reasoningEffort, Tier: m.serviceTier}, m.serviceTiers, m.title, m.backendVersion, m.restoring != nil, m.side, m.clock, &m.questions, &m.approvals, m.statusPanel != nil || m.resumePicker != nil, sessionpresentation.DisplayIntent{Version: sessionpresentation.Version{Attachment: intent.Attachment, Revision: intent.Revision}, Thread: target}) && target.Caller != "/root" {
 			u.Agents.Selected = target.Caller
 		}
 	case effect.Details != nil:

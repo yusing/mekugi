@@ -4,6 +4,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	json "encoding/json/v2"
 	"slices"
@@ -121,7 +122,7 @@ func (u *appServerUI) resumePickerResponse(m appserver.Message) error {
 		rows = append(rows, row)
 	}
 	p.Append(rows, result.NextCursor)
-	u.publishPresentation(presentationTime(u.clock))
+	publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 	return u.applyResumeAction(u.shell.Main.Resume.PageDemand())
 }
 
@@ -171,7 +172,9 @@ func (u *appServerUI) applyResumeAction(action sessionpresentation.ResumeAction)
 	if action.Kind == sessionpresentation.ResumeNoAction {
 		return nil
 	}
-	defer u.settlePresentation()
+	defer func() {
+		settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	}()
 	if err := u.attached.presentation.AdmitResume(action); err != nil {
 		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 		return nil
@@ -180,7 +183,7 @@ func (u *appServerUI) applyResumeAction(action sessionpresentation.ResumeAction)
 	switch action.Kind {
 	case sessionpresentation.ResumeSearch:
 		p.Query = action.Query
-		u.publishPresentation(presentationTime(u.clock))
+		publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 		return u.applyResumeAction(u.shell.Main.Resume.PageDemand())
 	case sessionpresentation.ResumeToggleWorkspace:
 		if p.Workspace != "" {

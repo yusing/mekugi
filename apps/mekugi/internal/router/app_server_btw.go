@@ -3,6 +3,8 @@ package router
 import (
 	"strings"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -34,7 +36,7 @@ func (u *appServerUI) submitBTW() error {
 	b := u.side
 	// Remove the command through the composer so attachment offsets stay valid.
 	prefix := strings.Index(u.Text, "/btw") + len("/btw")
-	u.deleteDraftRange(0, prefix)
+	deleteDraftRange(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, 0, prefix)
 	b.Begin(question, prepareDraft(&u.picker, u.shell, u.attached.cwd, u.skillEnvironment, u.Editor.Take()))
 	b.Busy = true
 	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "", false)
@@ -89,7 +91,9 @@ func (u *appServerUI) closeBTW() error {
 }
 
 func (u *appServerUI) applyCloseSide(in sessionpresentation.CloseSideIntent) error {
-	defer u.settlePresentation()
+	defer func() {
+		settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	}()
 	if err := u.attached.presentation.AdmitCloseSide(in); err != nil {
 		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
 		return nil

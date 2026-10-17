@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
 )
 
@@ -105,7 +107,7 @@ func TestAppServerTerminalTitleQueuedQuestionAnswerIsNotActionRequired(t *testin
 	if got := out.String(); got != "\x1b]0;Mekugi [ ! ] Action Required project\a" {
 		t.Fatalf("unanswered title = %q", got)
 	}
-	u.openQuestions()
+	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "1\r")
 	if u.questions.Count(u.Thread) != 0 || u.questions.calls()[0].Resolved || !u.questions.calls()[0].Sent {
@@ -114,7 +116,7 @@ func TestAppServerTerminalTitleQueuedQuestionAnswerIsNotActionRequired(t *testin
 	if rows := testQuestionRows(u, 80, 10); len(rows) != 0 {
 		t.Fatalf("answered question still has a dock: %q", rows)
 	}
-	if preview := strings.Join(conversationui.Pending(u.publishPresentation(presentationTime(u.clock)).Pending, 80), "\n"); !strings.Contains(preview, "Answering 1 question(s)") {
+	if preview := strings.Join(conversationui.Pending(publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Pending, 80), "\n"); !strings.Contains(preview, "Answering 1 question(s)") {
 		t.Fatalf("uncommitted answer has no pending preview: %q", preview)
 	}
 	out.Reset()

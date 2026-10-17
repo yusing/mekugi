@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -40,7 +42,7 @@ func (u *appServerUI) applyMenuResult(result terminalsession.MenuResult) bool {
 	}
 	accepted := u.applyMenuAction(result.Action)
 	u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
-	u.settlePresentation()
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	return result.Handled && !(accepted && result.Submit)
 }
 func (u *appServerUI) applyMenuAction(action sessionpresentation.MenuAction) bool {
@@ -92,7 +94,7 @@ func (u *appServerUI) applyMenuAction(action sessionpresentation.MenuAction) boo
 			}
 			p.Kind, p.Open, p.Choices, p.CopyTexts = "", false, nil, nil
 		default:
-			return u.acceptCompletion(choice)
+			return acceptCompletion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, u.ctx, u.skillEnvironment, choice)
 		}
 		return true
 	}

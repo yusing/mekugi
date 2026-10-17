@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/yusing/mekugi/libraries/terminalui"
 
 	"github.com/charmbracelet/x/ansi"
@@ -193,7 +195,7 @@ func TestAppServerShellComposer(t *testing.T) {
 	if !strings.Contains(ansi.Strip(text), "Shell Mode") || !strings.Contains(text, terminalui.Red+"╭") || !strings.Contains(text, terminalui.Red+"│") {
 		t.Fatalf("shell notice/frame missing: %q", text)
 	}
-	u.deleteDraftRange(0, 1)
+	deleteDraftRange(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, 0, 1)
 	if u.attached.conversation.ShellMode() {
 		t.Fatal("removing bang did not leave shell mode")
 	}

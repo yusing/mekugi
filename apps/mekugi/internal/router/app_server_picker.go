@@ -11,6 +11,10 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/contracts/scope"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -290,18 +294,18 @@ func (p *composerPicker) pickerMessage(attached *attachedPresentation, terminal 
 	return true
 }
 
-func (u *appServerUI) acceptCompletion(choice completion.Choice) bool {
-	p := &u.picker
+func acceptCompletion(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, parent context.Context, environment []string, choice completion.Choice) bool {
+	p := picker
 	target := p.Target
-	if u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode()) != target {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), sessionpresentation.ErrStaleIntent.Error(), true)
-		u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
+	if picker.completionTarget((*editor).Draft, attached.conversation.ShellMode()) != target {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), sessionpresentation.ErrStaleIntent.Error(), true)
+		picker.refreshPicker(attached, terminal, clock, control.Requests, (*editor), parent, environment)
 		return false
 	}
 	if target.Kind == '/' {
-		u.deleteDraftRange(target.Start, target.End)
-		u.InsertText(choice.Name + " ")
-		u.Run, p.Open = composer.NoRun, false
+		deleteDraftRange(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, owned, target.Start, target.End)
+		(*editor).InsertText(choice.Name + " ")
+		(*editor).Run, p.Open = composer.NoRun, false
 		// Enter continues through the existing local command dispatcher.
 		return true
 	}
@@ -318,33 +322,33 @@ func (u *appServerUI) acceptCompletion(choice completion.Choice) bool {
 	if target.Kind == '@' {
 		path := choice.Path
 		if !filepath.IsAbs(path) {
-			path = filepath.Join(u.attached.cwd, path)
+			path = filepath.Join(attached.cwd, path)
 		}
 		if imageFile(path) {
 			imagePath = path
-			text = fmt.Sprintf("[Image %d]", len(u.Images)+1)
+			text = fmt.Sprintf("[Image %d]", len((*editor).Images)+1)
 		}
 	}
 	// One undo step restores the original token, not a half-completed edit.
-	u.deleteDraftRange(target.Start, target.End)
-	u.InsertText(text)
+	deleteDraftRange(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, owned, target.Start, target.End)
+	(*editor).InsertText(text)
 	if imagePath != "" {
-		u.Images = append(u.Images, composer.Token{Start: target.Start, End: target.Start + len(text), Path: imagePath})
-		u.RenumberImages()
+		(*editor).Images = append((*editor).Images, composer.Token{Start: target.Start, End: target.Start + len(text), Path: imagePath})
+		(*editor).RenumberImages()
 	}
 	if target.Kind == '@' && imagePath == "" {
-		u.Files = append(u.Files, composer.Token{Start: target.Start, End: target.Start + len(text), Path: choice.Path})
-		slices.SortFunc(u.Files, func(a, b composer.Token) int { return a.Start - b.Start })
+		(*editor).Files = append((*editor).Files, composer.Token{Start: target.Start, End: target.Start + len(text), Path: choice.Path})
+		slices.SortFunc((*editor).Files, func(a, b composer.Token) int { return a.Start - b.Start })
 	}
 	if target.Kind == '$' {
-		u.Skills = append(u.Skills, composer.Token{Start: target.Start, End: target.Start + len(text), Name: choice.Name, Path: choice.Path})
+		(*editor).Skills = append((*editor).Skills, composer.Token{Start: target.Start, End: target.Start + len(text), Name: choice.Name, Path: choice.Path})
 	}
-	if u.Cursor() == len(u.Text) || u.Text[u.Cursor()] != ' ' {
-		u.InsertText(" ")
+	if (*editor).Cursor() == len((*editor).Text) || (*editor).Text[(*editor).Cursor()] != ' ' {
+		(*editor).InsertText(" ")
 	} else {
-		u.CursorBack--
+		(*editor).CursorBack--
 	}
-	u.Run, p.Open = composer.NoRun, false
+	(*editor).Run, p.Open = composer.NoRun, false
 	return true
 }
 

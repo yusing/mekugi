@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -94,7 +96,7 @@ func (u *appServerUI) showStatus() error {
 	u.statusPanel = report
 	report.Render(statusNotice("Loading account…"))
 	u.dirty = true
-	u.deleteDraftRange(0, len(u.Text))
+	deleteDraftRange(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, 0, len(u.Text))
 	return requestStatus(u.Requests, &u.dirty, "account/read", map[string]any{"refreshToken": false}, report)
 }
 

@@ -3,6 +3,8 @@ package router
 import (
 	"bytes"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -390,15 +392,15 @@ func TestComposerPickerDoesNotMarkCoveredTranscriptPainted(t *testing.T) {
 
 // These fixtures publish the source transition before consuming terminal state.
 func (u *appServerUI) pickerKey(key string) bool {
-	u.settlePresentation()
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	return u.applyMenuResult(u.shell.Main.Menu.Key(key))
 }
 func (u *appServerUI) pickerHeight(width int) int {
-	u.settlePresentation()
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	return u.shell.Main.Menu.Height(width)
 }
 func (u *appServerUI) renderPicker(width, height int) []string {
-	u.settlePresentation()
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	return u.shell.Main.Menu.Render(&u.shell.Transcript.Painter.Painter, terminalsession.SelectionStyle(&u.shell.Transcript.Painter.Painter), width, height)
 }
 
@@ -407,7 +409,7 @@ func TestComposerCompletionAttachmentLifetime(t *testing.T) {
 	previous := u.attached.conversation
 	u.picker.Catalog([]completion.Choice{{Name: "skill", Path: "/work/SKILL.md"}}, "/work", true, "")
 	u.picker.CopyTexts = []string{"retained response"}
-	u.attachPresentation()
+	attachPresentation(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread, &u.review, &u.commits, u.ctx, u.retained, u.changeSource, u.activity != nil)
 	if !u.attached.conversation.Completion.SkillsLoaded || len(u.attached.conversation.Completion.CopyTexts) != 1 {
 		t.Fatal("attachment binding discarded Conversation completion values")
 	}

@@ -8,6 +8,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
@@ -25,7 +27,7 @@ func TestPasteAdmissionPreservesOriginalDestination(t *testing.T) {
 				u.picker.openMenu("manage")
 			case "prompt":
 				questionTestSync(t, u, "replacement", false)
-				u.openQuestions()
+				openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 			}
 			appServerTestKeys(t, u, "\x1b[201~")
 			want := ""
@@ -70,7 +72,7 @@ func TestPromptInputRejectsRetiredDock(t *testing.T) {
 		t.Fatal("question did not produce targeted input")
 	}
 	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
-	u.publishPresentation(presentationTime(u.clock))
+	publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 	if handled, err := u.applyPromptInput(*input); !handled || err != nil || !u.attached.feedback.Alert || u.Text != "" || wire.Len() != 0 {
 		t.Fatalf("retired prompt input escaped admission: handled=%v err=%v draft=%q", handled, err, u.Text)
 	}

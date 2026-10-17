@@ -3,6 +3,8 @@ package router
 import (
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -42,7 +44,7 @@ func (d *nativeCriticalNoticeDelivery) finish(receipt terminalsession.NoticeRece
 
 func (u *appServerUI) applyCriticalNotices() (delivery *nativeCriticalNoticeDelivery) {
 	defer func() {
-		view := u.publishPresentation(presentationTime(u.clock))
+		view := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 		if delivery != nil {
 			delivery.attachment, delivery.feedback = view.Version.Attachment, u.attached.feedback.Revision
 		}

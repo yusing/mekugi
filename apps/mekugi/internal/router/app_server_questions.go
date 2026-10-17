@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -65,17 +67,17 @@ func discardQuestionEditors(prompts *terminalsession.Prompts, c *sessioncontrol.
 	}
 }
 
-func (u *appServerUI) openQuestions() {
-	if c := u.questions.Next(); c != nil {
-		openQuestionCall(&u.questions, &u.approvals, u.attached.conversation, u.shell, &u.picker, &u.Editor, u.Thread, u.questions.handles[c])
+func openQuestions(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, main string) {
+	if c := questions.Next(); c != nil {
+		openQuestionCall(questions, approvals, attached.conversation, terminal, picker, editor, main, questions.handles[c])
 	}
 }
 
 // Only an empty, idle composer yields to pending live questions. Explicitly
 // hiding the dock and history restoration leave manual reopening available.
-func (u *appServerUI) autoOpenQuestions() {
-	if u.questions.ShouldOpen(composerVacant(u.Editor, u.shell, &u.picker, u.attached.presentation, u.statusPanel != nil || u.resumePicker != nil || u.approvals.Open)) {
-		u.openQuestions()
+func autoOpenQuestions(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, main string, overlay bool) {
+	if questions.ShouldOpen(composerVacant((*editor), terminal, picker, attached.presentation, overlay || approvals.Open)) {
+		openQuestions(attached, terminal, picker, editor, questions, approvals, main)
 	}
 }
 
@@ -165,7 +167,7 @@ func (u *appServerUI) bindQuestion(c *sessioncontrol.Question, replay bool) {
 	}
 	renderQuestionRecord(&u.attached, u.Turn, presentationTime(u.clock), c)
 	if !replay {
-		u.autoOpenQuestions()
+		autoOpenQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread, u.statusPanel != nil || u.resumePicker != nil)
 	}
 }
 
@@ -293,7 +295,7 @@ func (u *appServerUI) applyQuestionInput(input terminalsession.PromptInput) (boo
 	case conversationui.PromptNext:
 		moveQuestion(&u.questions, u.attached.conversation, u.shell, &u.Editor, u.Thread, 1)
 	case conversationui.PromptAttach:
-		view := u.publishPresentation(presentationTime(u.clock))
+		view := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 		_, err := u.applyComposerCommand(sessionpresentation.ComposerIntent{Version: view.Version, Target: view.EditorTarget(), Operation: sessionpresentation.AttachClipboard})
 		return true, err
 	case conversationui.PromptSubmit:
@@ -325,7 +327,9 @@ func (u *appServerUI) applyQuestionInput(input terminalsession.PromptInput) (boo
 	return true, nil
 }
 func (u *appServerUI) answerQuestion(intent sessionpresentation.AnswerIntent) bool {
-	defer u.settlePresentation()
+	defer func() {
+		settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	}()
 	q, err := u.attached.presentation.AnswerQuestion(intent, u.questions.Questions)
 	if err != nil {
 		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
@@ -338,7 +342,9 @@ func (u *appServerUI) answerQuestion(intent sessionpresentation.AnswerIntent) bo
 }
 
 func (u *appServerUI) submitQuestions(intent sessionpresentation.QuestionSubmitIntent) error {
-	defer u.settlePresentation()
+	defer func() {
+		settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	}()
 	record, err := u.attached.presentation.SubmitQuestions(intent, u.questions.Questions)
 	if err != nil {
 		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
@@ -348,7 +354,7 @@ func (u *appServerUI) submitQuestions(intent sessionpresentation.QuestionSubmitI
 	defer func() {
 		pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
 		u.questions.AutoOpen = true
-		u.autoOpenQuestions()
+		autoOpenQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread, u.statusPanel != nil || u.resumePicker != nil)
 	}()
 	if c.Sudo != nil {
 		return u.submitSudoPassword(c)

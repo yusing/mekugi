@@ -3,13 +3,14 @@ package router
 import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
 func (u *appServerUI) controlsCommand(text string) (bool, error) {
 	switch text {
 	case "/lock", "/unlock":
 		u.shell.Main.InterruptLocked = text == "/lock"
-		u.deleteDraftRange(0, len(u.Text))
+		deleteDraftRange(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, 0, len(u.Text))
 		if u.shell.Main.InterruptLocked {
 			u.lockNotice()
 		} else {
@@ -31,6 +32,6 @@ func (u *appServerUI) keyboardInterrupt() error {
 		u.lockNotice()
 		return nil
 	}
-	view := u.publishPresentation(presentationTime(u.clock))
+	view := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 	return u.interruptSession(sessionpresentation.InterruptIntent{Version: view.Version, Target: view.Interrupt, Mode: sessioncontrol.RestoreWaiting})
 }

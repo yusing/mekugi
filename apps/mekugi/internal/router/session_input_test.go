@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 )
@@ -15,7 +17,7 @@ func TestNonTerminalCurrentPublicationWithoutPaint(t *testing.T) {
 	edit := func(text string) {
 		t.Helper()
 		v := read()
-		if !u.editInput(sessionpresentation.DraftEditIntent{Version: v.Version, Revision: v.Draft.Revision, End: len(v.Draft.Draft.Text), Text: text}) {
+		if !editInput(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, sessionpresentation.DraftEditIntent{Version: v.Version, Revision: v.Draft.Revision, End: len(v.Draft.Draft.Text), Text: text}) {
 			t.Fatal(u.attached.feedback.Text)
 		}
 		if next := read(); next.Draft.Draft.Text != text || next.Version == v.Version {
@@ -59,14 +61,14 @@ func TestNonTerminalCurrentPublicationWithoutPaint(t *testing.T) {
 
 func editOrdinaryInput(t *testing.T, u *appServerUI, text string) {
 	t.Helper()
-	v := u.publishPresentation(presentationTime(u.clock))
-	if !v.Draft.Available || !u.editInput(sessionpresentation.DraftEditIntent{Version: v.Version, Revision: v.Draft.Revision, End: len(v.Draft.Draft.Text), Text: text}) {
+	v := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
+	if !v.Draft.Available || !editInput(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, sessionpresentation.DraftEditIntent{Version: v.Version, Revision: v.Draft.Revision, End: len(v.Draft.Draft.Text), Text: text}) {
 		t.Fatalf("ordinary edit rejected: %s", u.attached.feedback.Text)
 	}
 }
 
 func ordinarySubmitIntent(u *appServerUI, mode sessioncontrol.InputMode) sessionpresentation.SubmitIntent {
-	v := u.publishPresentation(presentationTime(u.clock))
+	v := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 	return sessionpresentation.SubmitIntent{Version: v.Version, Revision: v.Draft.Revision, Mode: mode}
 }
 
@@ -102,7 +104,7 @@ func TestNonTerminalInputDispositionAndHostRequests(t *testing.T) {
 					t.Fatalf("wrong submission target: %+v", r)
 				}
 			}
-			v := u.publishPresentation(presentationTime(u.clock))
+			v := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 			if wire.Len() != 0 || v.Draft.Draft.Text != "" || len(u.attached.conversation.Queued) != tc.queued || len(u.attached.conversation.Unsent) != tc.unsent {
 				t.Fatalf("wrong disposition: draft=%q queued=%d unsent=%d wire=%s", v.Draft.Draft.Text, len(u.attached.conversation.Queued), len(u.attached.conversation.Unsent), wire.String())
 			}
@@ -119,7 +121,7 @@ func TestNonTerminalInputRevisionAndRejection(t *testing.T) {
 	stale := ordinarySubmitIntent(u, sessioncontrol.SendInput)
 	editOrdinaryInput(t, u, "new draft")
 	editOrdinaryInput(t, u, "same text")
-	if err := u.submitInput(stale); err != nil || wire.Len() != 0 || u.publishPresentation(presentationTime(u.clock)).Draft.Draft.Text != "same text" {
+	if err := u.submitInput(stale); err != nil || wire.Len() != 0 || publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Draft.Draft.Text != "same text" {
 		t.Fatal("identical replacement revived a retired draft target")
 	}
 	if err := u.submitInput(ordinarySubmitIntent(u, sessioncontrol.SendInput)); err != nil {
@@ -128,7 +130,7 @@ func TestNonTerminalInputRevisionAndRejection(t *testing.T) {
 	r := appServerOneRequest(t, wire, "turn/start", "same text")
 	editOrdinaryInput(t, u, "newer typing")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, r.ID))
-	if got := u.publishPresentation(presentationTime(u.clock)).Draft.Draft.Text; got != "same text\nnewer typing" {
+	if got := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Draft.Draft.Text; got != "same text\nnewer typing" {
 		t.Fatalf("rejection lost ordering: %q", got)
 	}
 }
@@ -138,23 +140,47 @@ func TestNonTerminalOrdinaryInputRejectsPromptAndReadOnlyViews(t *testing.T) {
 	editOrdinaryInput(t, u, "keep draft")
 	intent := ordinarySubmitIntent(u, sessioncontrol.SendInput)
 	questionTestSync(t, u, "secret", true)
-	u.openQuestions()
-	if v := u.publishPresentation(presentationTime(u.clock)); v.Draft.Available || v.Draft.Draft.Text != "" {
+	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
+	if v := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)); v.Draft.Available || v.Draft.Draft.Text != "" {
 		t.Fatal("prompt editor leaked into ordinary publication")
 	}
 	if err := u.submitInput(intent); err != nil || wire.Len() != 0 || u.questions.Current() == nil {
 		t.Fatal("ordinary submit took a prompt editor")
 	}
 	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
-	v := u.publishPresentation(presentationTime(u.clock))
+	v := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 	if err := u.attached.presentation.Display(sessionpresentation.DisplayIntent{Version: v.Version, Thread: sessionpresentation.Thread{ID: "child", Caller: "/root/child"}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := u.submitInput(ordinarySubmitIntent(u, sessioncontrol.SendInput)); err != nil || wire.Len() != 0 || u.publishPresentation(presentationTime(u.clock)).Draft.Draft.Text != "keep draft" {
+	if err := u.submitInput(ordinarySubmitIntent(u, sessioncontrol.SendInput)); err != nil || wire.Len() != 0 || publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Draft.Draft.Text != "keep draft" {
 		t.Fatal("child display submitted Main input")
 	}
 	u.attached.presentation.Attach(sessionpresentation.Thread{ID: u.Thread, Caller: "/root"}, true)
 	if err := u.submitInput(ordinarySubmitIntent(u, sessioncontrol.SendInput)); err != nil || wire.Len() != 0 {
 		t.Fatal("replay submitted input")
+	}
+}
+
+func TestDraftDeletionSettlesNewSecretEditorBeforeReturning(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.Text = "kept draft"
+	questionTestSync(t, u, "pending-secret", true)
+	if u.questions.Current() != nil {
+		t.Fatal("pending question captured a nonempty draft")
+	}
+	before := u.attached.presentation.View().Version
+	deleteDraftRange(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState,
+		preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier},
+		u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock,
+		&u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, 0, len(u.Text))
+	view := u.attached.presentation.View()
+	if u.Editor != &u.shell.Prompts.Secret || u.questions.Current() == nil {
+		t.Fatal("deletion returned before the pending secret editor opened")
+	}
+	if view.Version == before || view.Questions.Call == nil || view.Questions.Call.ID != u.questions.activeCall().ID {
+		t.Fatal("nested settlement did not publish the newly active prompt")
+	}
+	if u.shell.Prompts.Ready() {
+		t.Fatal("publication acknowledged an unpainted prompt")
 	}
 }

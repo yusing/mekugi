@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
@@ -60,7 +62,7 @@ func TestTerminalSourceSelectionDirectionsAndActions(t *testing.T) {
 						u.main.shell.Agents = u.Agents
 						u.main.testActivity(u.Agents).setDisplayFilter(true, "/root/worker")
 					}
-					u.main.publishPresentation(presentationTime(u.main.clock))
+					publishPresentation(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, &u.main.childHistoryState, preferences.Applied{Model: u.main.model, Effort: u.main.reasoningEffort, Tier: u.main.serviceTier}, u.main.serviceTiers, u.main.title, u.main.backendVersion, u.main.restoring != nil, u.main.side, presentationTime(u.main.clock))
 					if x < 0 {
 						t.Fatal("no cell")
 					}
@@ -175,7 +177,7 @@ func TestAppServerBTWShimmerElapsed(t *testing.T) {
 	a := u.btwRows(80, 8)[0]
 	now = now.Add(100 * time.Millisecond)
 	b := u.btwRows(80, 8)[0]
-	if a == b || ansi.Strip(a) != ansi.Strip(b) || !strings.Contains(ansi.Strip(a), "Answering · 1m15s") || !u.publishPresentation(presentationTime(u.clock)).Status.Animating {
+	if a == b || ansi.Strip(a) != ansi.Strip(b) || !strings.Contains(ansi.Strip(a), "Answering · 1m15s") || !publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Status.Animating {
 		t.Fatalf("status=%q / %q", a, b)
 	}
 	u.side.Busy = false

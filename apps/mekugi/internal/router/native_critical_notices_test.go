@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	"github.com/charmbracelet/x/ansi"
@@ -316,7 +318,7 @@ func TestNativeNoticeReceiptKeepsPaintedIdentity(t *testing.T) {
 	_, receipt := u.testDeliveredMainFrame(t, 80, 12, 0)
 	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "later feedback", true)
 	u.statusPanel = newStatusReport(u.attached.presentation, u.replayDebugDirectory)
-	u.settlePresentation()
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	delivery.finish(receipt)
 	if len(u.issues.Notices.Pending()) != 0 {
 		t.Fatal("later UI state invalidated an already delivered notice")
@@ -329,7 +331,7 @@ func TestNativeNoticeChildFrameCannotAcknowledgeMainProgress(t *testing.T) {
 	delivery := u.applyCriticalNotices()
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 	view := u.attached.presentation.View()
-	if !u.displaySession(sessionpresentation.DisplayIntent{Version: view.Version, Thread: sessionpresentation.Thread{ID: "child", Caller: "/root/worker"}}) {
+	if !displaySession(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, sessionpresentation.DisplayIntent{Version: view.Version, Thread: sessionpresentation.Thread{ID: "child", Caller: "/root/worker"}}) {
 		t.Fatal(u.attached.feedback.Text)
 	}
 	if err := u.testPaint(io.Discard, 100, 24); err != nil {
@@ -340,7 +342,7 @@ func TestNativeNoticeChildFrameCannotAcknowledgeMainProgress(t *testing.T) {
 		t.Fatal("child transcript acknowledged hidden Main progress")
 	}
 	view = u.attached.presentation.View()
-	if !u.displaySession(sessionpresentation.DisplayIntent{Version: view.Version, Thread: view.Main}) {
+	if !displaySession(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, sessionpresentation.DisplayIntent{Version: view.Version, Thread: view.Main}) {
 		t.Fatal(u.attached.feedback.Text)
 	}
 	retry := u.applyCriticalNotices()

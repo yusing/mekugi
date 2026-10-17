@@ -173,7 +173,7 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 		}
 	}
 	if len(fields) == 1 {
-		u.deleteDraftRange(0, len(u.Text))
+		deleteDraftRange(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, 0, len(u.Text))
 		u.picker.showSettingsPicker(u.modelsLoading, command, choices, current)
 		return true, nil
 	}

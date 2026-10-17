@@ -178,7 +178,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 	u := &appServerUI{attached: attached, terminalViews: terminalViews, reviewSource: reviewSource, presentationState: views, conversationState: conversation, activity: activity, observations: observations, history: service, segments: segments, Client: control, shell: shell, preparePane: preparePane, controlObservations: integration.controlObservations, usage: integration.usage, audience: integration.audience, review: integration.review, execWindows: integration.execWindows, nativeTrace: integration.nativeTrace, retained: integration.retained, changeSource: integration.changeSource, snapshots: integration.snapshots, recovered: integration.recovered, publishChanges: integration.publishChanges, captureNotice: integration.captureNotice, issues: issues, dirty: true, ctx: ctx, serviceTiers: serviceTiers, approvalMode: approvals}
 	c := u.Host
 	u.Startup.Thread = resumeThread
-	u.attachPresentation()
+	attachPresentation(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread, &u.review, &u.commits, u.ctx, u.retained, u.changeSource, u.activity != nil)
 	u.attached.presentation.Status.Set("Connecting…", false)
 	u.guardHookCheck.hash = guardHash
 	if generator != nil {
@@ -209,7 +209,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 	}
 
 	u.shell.Faint = faint
-	u.settlePresentation()
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	return func() error {
 		u.review.Loader = sessionreview.NewLoader(ctx, u.review.Projection)
 		defer u.review.Loader.Close()
@@ -327,7 +327,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 						u.dirty = refreshSessionMetrics(u.statusPanel, u.sessionCapture, presentationTime(u.clock), false) || u.dirty
 						u.startSkillHistory()
 						u.applyObservedActivity()
-						u.publishPresentation(presentationTime(u.clock))
+						publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 						if err := u.applyResumeAction(u.shell.Main.Resume.PageDemand()); err != nil {
 							return err
 						}
@@ -350,7 +350,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 								u.dirty = true
 							}
 						}
-						u.settlePresentation()
+						settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 						if u.attached.presentation.View().Status.Animating || u.shell.Agents.HasLiveStatus() {
 							u.dirty = true
 						}
@@ -362,7 +362,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 							return err
 						}
 						notices := u.applyCriticalNotices()
-						u.settlePresentation()
+						settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 						if u.shell.Live.Tick(presentationTime(u.clock)) || u.shell.Agents.RosterEasing {
 							u.dirty = true
 						}
@@ -383,7 +383,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 						u.notifications.writeTerminalTitle(&u.attached.feedback, u.shell, u.clock, u.attached.cwd, u.Thread, u.questions.Questions, u.approvals.Approvals, u.Turn != "" || u.Starting(), presentationTime(u.clock))
 						continue
 					}
-					u.settlePresentation()
+					settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 					u.notifications.writeTerminalTitle(&u.attached.feedback, u.shell, u.clock, u.attached.cwd, u.Thread, u.questions.Questions, u.approvals.Approvals, u.Turn != "" || u.Starting(), presentationTime(u.clock))
 				}
 			})
@@ -455,7 +455,9 @@ type appServerRequest struct {
 }
 
 func (u *appServerUI) message(m appserver.Message) (err error) {
-	defer u.settlePresentation()
+	defer func() {
+		settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	}()
 	u.issues.ObserveTurnCompletion(m.Method, m.Params)
 	observeShellMessage(&u.shellEdits, &u.attached, u.shell, u.clock, m)
 	var response sessioncontrol.Request[appServerRequest]
@@ -716,7 +718,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				return err
 			}
 			u.Thread = result.Thread.ID
-			u.attachPresentation()
+			attachPresentation(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread, &u.review, &u.commits, u.ctx, u.retained, u.changeSource, u.activity != nil)
 			u.attached.presentation.Status.SetText("Ready")
 			u.title = result.Thread.Name
 			u.titleGenerator.register(result.Thread)
@@ -902,15 +904,17 @@ func (u *appServerUI) observedEvent(method string, p binding.Notification) error
 
 // applyMainKey settles typed Main effects before resuming terminal interpretation.
 func (u *appServerUI) applyMainKey(next terminalsession.KeyContinuation) (bool, error) {
-	defer u.settlePresentation()
-	if !u.prepareComposerInput() {
+	defer func() {
+		settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	}()
+	if !prepareComposerInput(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals) {
 		return false, nil
 	}
 	// Acquisition stays application-owned; interpretation consumes its publication.
 	if u.picker.Open && u.picker.Kind == "" && u.picker.completionTarget(u.Draft, u.attached.conversation.ShellMode()) != u.picker.Target {
 		u.picker.refreshPicker(&u.attached, u.shell, u.clock, u.Requests, u.Editor, u.ctx, u.skillEnvironment)
 	}
-	u.publishPresentation(presentationTime(u.clock))
+	publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 	refresh := false
 	defer func() {
 		if refresh {
@@ -942,7 +946,7 @@ func (u *appServerUI) applyMainKey(next terminalsession.KeyContinuation) (bool, 
 		if input.Next == nil {
 			return false, nil
 		}
-		u.publishPresentation(presentationTime(u.clock))
+		publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 		input = u.shell.Main.ContinueKey(*input.Next, u.shell.Prompts, transcriptView(u.attached.presentation, u.shell), focused)
 	}
 }

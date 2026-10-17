@@ -3,6 +3,7 @@ package router
 import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/modules/conversation/completion"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
 const archiveConfirmChoice uint64 = 2
@@ -15,7 +16,7 @@ func (u *appServerUI) showArchivePicker() {
 		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Wait for the session to be ready", false)
 		return
 	}
-	u.deleteDraftRange(0, len(u.Text))
+	deleteDraftRange(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, 0, len(u.Text))
 	u.picker.cancelScan()
 	p := &u.picker
 	u.picker.openMenu("archive")

@@ -3,6 +3,8 @@ package router
 import (
 	"encoding/base64"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	terminalsession "github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	json "encoding/json/v2"
@@ -90,7 +92,7 @@ func sessionMetricsFixture(t *testing.T) transportcapture.MetricsSnapshot {
 
 func sessionMetricField(t *testing.T, u *appServerUI, group, label, want string) {
 	t.Helper()
-	u.settlePresentation()
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	for _, field := range u.shell.Main.Panel.Fields {
 		if field.Group == group && field.Label == label {
 			if field.Value != want {
@@ -110,7 +112,7 @@ func TestAppServerSessionMetricsLocalNavigation(t *testing.T) {
 		t.Fatal("session command did not open a local dialog")
 	}
 	*u.statusPanel.Metrics = sessionMetricsFixture(t)
-	u.settlePresentation()
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	sessionMetricField(t, u, "Requests", "Attempts", "3")
 	sessionMetricField(t, u, "Usage", "Average output", "1.2 tok/s")
 	sessionMetricField(t, u, "Usage", "Measured duration", "10.000 s")
@@ -203,7 +205,7 @@ func TestAppServerSessionMetricsRefreshAndBounds(t *testing.T) {
 		u.shell.Transcript.Painter.Theme = theme
 		for tab := range 3 {
 			u.shell.Main.Panel.Tab = tab
-			u.settlePresentation()
+			settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 			for _, size := range [][2]int{{90, 25}, {30, 15}, {12, 8}, {1, 1}, {0, 0}} {
 				for _, row := range u.statusPanelFrame(size[0], size[1]) {
 					if ansi.StringWidth(row) > size[0] {
@@ -254,7 +256,7 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 			u.attached.cwd = "/workspace"
 			u.replayDebugDirectory = tc.debug
 			u.showSessionMetrics()
-			u.settlePresentation()
+			settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 			m := u.statusPanel.Metrics
 			u.shell.Main.Panel.Tab = tc.tab
 			if !tc.missing {
@@ -275,7 +277,7 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 			if tc.empty {
 				m.Exchanges = nil
 			}
-			u.settlePresentation()
+			settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 			u.shell.Main.Panel.Top = tc.top
 			assertNativeUISnapshot(t, "native-session-"+tc.name, u.statusPanelFrame(tc.width, tc.height))
 		})

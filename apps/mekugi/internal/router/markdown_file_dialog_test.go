@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/charmbracelet/x/ansi"
@@ -41,7 +43,7 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 	fileURL := (&url.URL{Scheme: "file", Path: path}).String()
 	main, _ := newAppServerTestUI()
 	main.attached.cwd = workspace
-	main.settlePresentation()
+	settlePresentation(&main.attached, main.shell, &main.Client, &main.picker, &main.Editor, &main.childHistoryState, preferences.Applied{Model: main.model, Effort: main.reasoningEffort, Tier: main.serviceTier}, main.serviceTiers, main.title, main.backendVersion, main.restoring != nil, main.side, main.clock, &main.questions, &main.approvals, main.statusPanel != nil || main.resumePicker != nil)
 	painter := activityui.Painter{FileLink: markdownFileLinks(main.attached.cwd)}
 	for _, target := range []string{"src/source #1?%.go", path + ":26", fileURL + ":26", "src/source #1?%.go:26-27", fileURL + ":26-27", "`" + path + ":26`"} {
 		t.Run(target, func(t *testing.T) {
@@ -52,7 +54,7 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 			}
 			u := selectionTestUI(row)
 			u.main.attached.cwd = workspace
-			u.main.publishPresentation(presentationTime(u.main.clock))
+			publishPresentation(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, &u.main.childHistoryState, preferences.Applied{Model: u.main.model, Effort: u.main.reasoningEffort, Tier: u.main.serviceTier}, u.main.serviceTiers, u.main.title, u.main.backendVersion, u.main.restoring != nil, u.main.side, presentationTime(u.main.clock))
 			u.Frame.Source = selectionTestSource(u.main)
 			u.selectionMouse(0, 1, 0, false)
 			u.selectionMouse(0, 1, 0, true)
@@ -77,7 +79,7 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 			}
 			u = selectionTestUI(row)
 			u.main.attached.cwd = workspace
-			u.main.publishPresentation(presentationTime(u.main.clock))
+			publishPresentation(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, &u.main.childHistoryState, preferences.Applied{Model: u.main.model, Effort: u.main.reasoningEffort, Tier: u.main.serviceTier}, u.main.serviceTiers, u.main.title, u.main.backendVersion, u.main.restoring != nil, u.main.side, presentationTime(u.main.clock))
 			u.Frame.Source = selectionTestSource(u.main)
 			selectionTestDrag(t, u, 0, 0, 5, 0)
 			if u.Dialog != nil || u.Frame.Clipboard != "" || u.Selection.Text() != "source" {
@@ -97,11 +99,11 @@ func TestMarkdownSelectionClickRetainsWorkspace(t *testing.T) {
 			painter := activityui.Painter{FileLink: markdownFileLinks(workspace)}
 			u := selectionTestUI(painter.Inline("[source](source.go)"))
 			u.main.attached.cwd = workspace
-			u.main.publishPresentation(presentationTime(u.main.clock))
+			publishPresentation(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, &u.main.childHistoryState, preferences.Applied{Model: u.main.model, Effort: u.main.reasoningEffort, Tier: u.main.serviceTier}, u.main.serviceTiers, u.main.title, u.main.backendVersion, u.main.restoring != nil, u.main.side, presentationTime(u.main.clock))
 			u.Frame.Source = selectionTestSource(u.main)
 			if change == "workspace before press" {
 				u.main.attached.cwd = t.TempDir()
-				u.main.publishPresentation(presentationTime(u.main.clock))
+				publishPresentation(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, &u.main.childHistoryState, preferences.Applied{Model: u.main.model, Effort: u.main.reasoningEffort, Tier: u.main.serviceTier}, u.main.serviceTiers, u.main.title, u.main.backendVersion, u.main.restoring != nil, u.main.side, presentationTime(u.main.clock))
 			}
 			u.selectionMouse(0, 1, 0, false)
 			if change == "workspace" {
@@ -109,7 +111,7 @@ func TestMarkdownSelectionClickRetainsWorkspace(t *testing.T) {
 			} else {
 				setNotice(&u.main.attached.feedback, u.main.shell, presentationTime(u.main.clock), "unrelated status", false)
 			}
-			u.main.publishPresentation(presentationTime(u.main.clock))
+			publishPresentation(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, &u.main.childHistoryState, preferences.Applied{Model: u.main.model, Effort: u.main.reasoningEffort, Tier: u.main.serviceTier}, u.main.serviceTiers, u.main.title, u.main.backendVersion, u.main.restoring != nil, u.main.side, presentationTime(u.main.clock))
 			u.selectionMouse(0, 1, 0, true)
 			if change != "status" {
 				if u.Dialog != nil || u.main.fileReads != nil || !u.main.attached.feedback.Alert {
@@ -132,7 +134,7 @@ func TestUISnapshotMarkdownFileLinks(t *testing.T) {
 	u, _ := newAppServerTestUI()
 
 	u.attached.cwd = t.TempDir()
-	u.settlePresentation()
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	if err := os.WriteFile(filepath.Join(u.attached.cwd, "sample.go"), []byte("package sample\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +151,7 @@ func TestUISnapshotMarkdownFileLinks(t *testing.T) {
 	if !strings.Contains(u.shell.Transcript.Painter.Inline("sample.go"), "\x1b]8;") {
 		t.Fatal("painting consulted unpublished workspace metadata")
 	}
-	u.settlePresentation()
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	if strings.Contains(u.shell.Transcript.Painter.Inline("sample.go"), "\x1b]8;") {
 		t.Fatal("relative path became clickable without workspace metadata")
 	}
@@ -195,7 +197,7 @@ func TestMarkdownFileDialogViews(t *testing.T) {
 	}
 	main, _ := newAppServerTestUI()
 	main.attached.cwd = workspace
-	main.settlePresentation()
+	settlePresentation(&main.attached, main.shell, &main.Client, &main.picker, &main.Editor, &main.childHistoryState, preferences.Applied{Model: main.model, Effort: main.reasoningEffort, Tier: main.serviceTier}, main.serviceTiers, main.title, main.backendVersion, main.restoring != nil, main.side, main.clock, &main.questions, &main.approvals, main.statusPanel != nil || main.resumePicker != nil)
 	u := terminalTest(main)
 	u.Width, u.Height = 80, 18
 	u.main.detailFiles.openMarkdownFile(&u.main.attached.session, u.main.attached.presentation, u.main.attached.cwd, activitySource(&u.main.attached, u.main.shell, main.shell.Transcript), u.Attachment, main.shell.Transcript, path+":30-31")
@@ -245,7 +247,7 @@ func TestUISnapshotMarkdownFileViews(t *testing.T) {
 	}
 	main, _ := newAppServerTestUI()
 	main.attached.cwd = workspace
-	main.settlePresentation()
+	settlePresentation(&main.attached, main.shell, &main.Client, &main.picker, &main.Editor, &main.childHistoryState, preferences.Applied{Model: main.model, Effort: main.reasoningEffort, Tier: main.serviceTier}, main.serviceTiers, main.title, main.backendVersion, main.restoring != nil, main.side, main.clock, &main.questions, &main.approvals, main.statusPanel != nil || main.resumePicker != nil)
 	main.shell.Transcript.Painter.Theme = diffrender.TerminalTheme
 	u := terminalTest(main)
 	u.Width, u.Height = 80, 24
@@ -267,7 +269,7 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 	}
 	main, _ := newAppServerTestUI()
 	main.attached.cwd = workspace
-	main.settlePresentation()
+	settlePresentation(&main.attached, main.shell, &main.Client, &main.picker, &main.Editor, &main.childHistoryState, preferences.Applied{Model: main.model, Effort: main.reasoningEffort, Tier: main.serviceTier}, main.serviceTiers, main.title, main.backendVersion, main.restoring != nil, main.side, main.clock, &main.questions, &main.approvals, main.statusPanel != nil || main.resumePicker != nil)
 	u := terminalTest(main)
 	u.Width, u.Height = 80, 18
 	u.openBlocks(main.shell.Transcript, []activityui.Block{{Body: "Open sample.go:1 or [remote](https://example.com)."}})
@@ -362,7 +364,7 @@ func TestUISnapshotMarkdownFileDialog(t *testing.T) {
 			}
 			main, _ := newAppServerTestUI()
 			main.attached.cwd = workspace
-			main.settlePresentation()
+			settlePresentation(&main.attached, main.shell, &main.Client, &main.picker, &main.Editor, &main.childHistoryState, preferences.Applied{Model: main.model, Effort: main.reasoningEffort, Tier: main.serviceTier}, main.serviceTiers, main.title, main.backendVersion, main.restoring != nil, main.side, main.clock, &main.questions, &main.approvals, main.statusPanel != nil || main.resumePicker != nil)
 			main.shell.Transcript.Painter.Theme = test.theme
 			u := terminalTest(main)
 			u.Width, u.Height = 80, 18

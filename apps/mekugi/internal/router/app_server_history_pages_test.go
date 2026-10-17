@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/binding"
 
@@ -245,7 +247,7 @@ func TestUISnapshotNativeAnchoredHistory(t *testing.T) {
 			u.shell.Agents.Clock = u.clock
 			u.shell.Transcript.Clock = u.clock
 			terminalTest(u).Width, terminalTest(u).Height = 100, 24
-			u.settlePresentation()
+			settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 			if err := terminalTest(u).paintNative(t.Context(), io.Discard); err != nil {
 				t.Fatal(err)
 			}
@@ -473,11 +475,11 @@ func TestAppServerAnchoredHistoryMetadataRetryPreservesCompletedLiveTiming(t *te
 }
 
 func historyLoadIntent(u *appServerUI) sessionpresentation.HistoryIntent {
-	v := u.publishPresentation(presentationTime(u.clock))
+	v := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 	return sessionpresentation.HistoryIntent{Version: v.Version, Thread: v.History.Target}
 }
 
 func historyCancelIntent(u *appServerUI) sessionpresentation.HistoryIntent {
-	v := u.publishPresentation(presentationTime(u.clock))
+	v := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 	return sessionpresentation.HistoryIntent{Version: v.Version, Thread: v.Loading}
 }

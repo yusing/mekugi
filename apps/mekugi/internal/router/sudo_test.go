@@ -209,7 +209,7 @@ func TestSudoSecretEditorAndSessionSwitch(t *testing.T) {
 	if !strings.Contains(input.String(), "turn/start") {
 		t.Fatal("old-session password blocked new-session input")
 	}
-	u.openQuestions()
+	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 	questionTestPaint(t, u, 80)
 	if u.Text != "fixture-secret" {
 		t.Fatal("session switch lost the password draft")

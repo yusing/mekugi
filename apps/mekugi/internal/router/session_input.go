@@ -2,6 +2,11 @@ package router
 
 import (
 	"strings"
+	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/contracts/scope"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -10,20 +15,24 @@ import (
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
-func (u *appServerUI) editInput(intent sessionpresentation.DraftEditIntent) bool {
-	defer u.settlePresentation()
-	if err := u.attached.presentation.EditDraft(intent, u.attached.conversation); err != nil {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
+func editInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, intent sessionpresentation.DraftEditIntent) bool {
+	defer func() {
+		settlePresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay)
+	}()
+	if err := attached.presentation.EditDraft(intent, attached.conversation); err != nil {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return false
 	}
-	u.shell.Main.CursorColumn = nil
-	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "", false)
-	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
+	terminal.Main.CursorColumn = nil
+	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
+	pruneDraftImages(owned, (*editor), attached.conversation, questions, approvals, terminal.Prompts, side)
 	return true
 }
 
 func (u *appServerUI) submitInput(intent sessionpresentation.SubmitIntent) error {
-	defer u.settlePresentation()
+	defer func() {
+		settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	}()
 	draft, plan, err := u.attached.presentation.TakeInput(intent, &u.Live, u.attached.conversation, u.restoring != nil)
 	if err != nil {
 		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
@@ -106,7 +115,7 @@ func (u *appServerUI) applyComposerCommand(intent sessionpresentation.ComposerIn
 		// As in Codex, Ctrl-C first clears the draft (undoable with Ctrl+Z),
 		// then cancels queued compaction, interrupts the active turn, or quits.
 		if u.Text != "" {
-			u.deleteDraftRange(0, len(u.Text))
+			deleteDraftRange(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, 0, len(u.Text))
 			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Draft cleared · Ctrl+Z restores · Ctrl-C again quits", false)
 			if u.Turn != "" || u.Starting() || u.InputPending() {
 				setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Draft cleared · Ctrl+Z restores · Ctrl-C again interrupts", false)
@@ -171,7 +180,7 @@ func (u *appServerUI) applyComposerCommand(intent sessionpresentation.ComposerIn
 			return false, nil
 		}
 		if text == "/skills" {
-			u.deleteDraftRange(0, len(u.Text))
+			deleteDraftRange(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, 0, len(u.Text))
 			u.picker.openMenu("menu")
 			u.picker.Choices = []completion.Choice{{Name: "list"}, {Name: "manage"}}
 			return false, nil

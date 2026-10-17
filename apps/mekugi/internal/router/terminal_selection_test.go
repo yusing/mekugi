@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -239,7 +241,7 @@ func TestTerminalUISelectionActions(t *testing.T) {
 				if key == "question" {
 					u.main.questions.Active = &prompt.Call{ID: "selection-question", Thread: u.main.Thread, Questions: []prompt.Question{{}}}
 				}
-				u.main.publishPresentation(presentationTime(u.main.clock))
+				publishPresentation(&u.main.attached, u.main.shell, &u.main.Client, &u.main.picker, &u.main.Editor, &u.main.childHistoryState, preferences.Applied{Model: u.main.model, Effort: u.main.reasoningEffort, Tier: u.main.serviceTier}, u.main.serviceTiers, u.main.title, u.main.backendVersion, u.main.restoring != nil, u.main.side, presentationTime(u.main.clock))
 				selected := selectionTestSnapshot(u)
 				action := key
 				if strings.Contains(key, "click") || key == "separator" {

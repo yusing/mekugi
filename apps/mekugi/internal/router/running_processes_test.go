@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -64,7 +66,7 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 	// A yielded command can outlive the turn that started it. Only its host
 	// completion removes it, including when the UI still has output to roll.
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t", "status": "completed"}})
-	if runningProcessCount(&u.attached.session) != 2 || !u.publishPresentation(presentationTime(u.clock)).Status.Animating {
+	if runningProcessCount(&u.attached.session) != 2 || !publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock)).Status.Animating {
 		t.Fatal("yielded command stopped counting or animating")
 	}
 	if u.attached.session.Transcript("main", "t").Turn != nil || !u.attached.session.Commands()[[3]string{"main", "t", "cmd"}].Entry.Native.Invocation.Snapshot().Running {

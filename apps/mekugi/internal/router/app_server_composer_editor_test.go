@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -25,7 +27,7 @@ import (
 )
 
 func editorTestIntent(u *appServerUI) sessionpresentation.ComposerIntent {
-	v := u.publishPresentation(presentationTime(u.clock))
+	v := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 	return sessionpresentation.ComposerIntent{Version: v.Version, Target: v.EditorTarget(), Operation: sessionpresentation.EditExternally}
 }
 
@@ -34,7 +36,7 @@ func TestComposerEditorResultKeepsOriginalTarget(t *testing.T) {
 	u.Editor.Replace(composer.Draft{Text: "original"})
 	intent := editorTestIntent(u)
 	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "unrelated progress", false)
-	u.publishPresentation(presentationTime(u.clock))
+	publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 	if err := u.applyEditorDraft(intent, "edited"); err != nil || u.Text != "edited" {
 		t.Fatalf("unrelated publication discarded an editor result: %q, %v", u.Text, err)
 	}
@@ -44,7 +46,7 @@ func TestComposerEditorResultKeepsOriginalTarget(t *testing.T) {
 		t.Fatalf("returned editor retargeted: %q, %v", u.Text, err)
 	}
 	questionTestSync(t, u, "replacement-editor", false)
-	u.openQuestions()
+	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 	if err := u.applyEditorDraft(intent, "old editor result"); err == nil || u.Text != "" {
 		t.Fatalf("returned editor reached a prompt: %q, %v", u.Text, err)
 	}

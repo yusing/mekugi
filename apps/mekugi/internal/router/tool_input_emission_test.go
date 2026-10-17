@@ -32,7 +32,7 @@ func TestQuestionAnswerWaitsForToolInput(t *testing.T) {
 			item := map[string]any{"id": "emitting", "type": kind, "name": "unobserved", "call_id": "call", "status": "in_progress"}
 			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": item})
 			questionTestAsync(t, u, "question", "Who receives it?")
-			u.openQuestions()
+			openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 			questionTestPaint(t, u, 70)
 			appServerTestKeys(t, u, "1\r")
 			if requests := appServerTurnRequests(t, wire); len(requests) != 0 || len(u.attached.conversation.Unsent) != 1 {
@@ -76,7 +76,7 @@ func TestToolInputEmissionDoesNotBlockNormalPromptsOrOtherSessions(t *testing.T)
 			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": map[string]any{"id": "emitting", "type": "custom_tool_call"}})
 			if tc.answer {
 				questionTestAsync(t, u, "question", "Who receives it?")
-				u.openQuestions()
+				openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 				questionTestPaint(t, u, 70)
 			}
 			appServerTestKeys(t, u, "1\r")
@@ -94,7 +94,7 @@ func TestNormalPromptBypassesDeferredQuestionAnswer(t *testing.T) {
 	defer transform.Close()
 	emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": map[string]any{"id": "emitting", "type": "custom_tool_call"}})
 	questionTestAsync(t, u, "question", "Who receives it?")
-	u.openQuestions()
+	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "1\r")
 	appServerTestKeys(t, u, "Stop and change direction\r")

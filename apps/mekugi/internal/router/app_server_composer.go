@@ -3,6 +3,10 @@ package router
 import (
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/contracts/scope"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -16,17 +20,17 @@ func insertDraft(attached *attachedPresentation, editor *composer.Editor, termin
 	pruneDraftImages(owned, editor, attached.conversation, questions, approvals, terminal.Prompts, side)
 }
 
-func (u *appServerUI) deleteDraftRange(start, end int) {
+func deleteDraftRange(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, owned map[string]bool, start, end int) {
 	if start == end {
-		u.Run = composer.NoRun
+		(*editor).Run = composer.NoRun
 		return
 	}
-	if u.questions.Current() != nil || u.approvals.Open {
-		removeDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, start, end, composer.NoRun)
+	if questions.Current() != nil || approvals.Open {
+		removeDraft(attached, (*editor), terminal, clock, owned, questions, approvals, side, start, end, composer.NoRun)
 		return
 	}
-	view := u.publishPresentation(presentationTime(u.clock))
-	u.editInput(sessionpresentation.DraftEditIntent{Version: view.Version, Revision: view.Draft.Revision, Start: start, End: end})
+	view := publishPresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, presentationTime(clock))
+	editInput(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay, owned, sessionpresentation.DraftEditIntent{Version: view.Version, Revision: view.Draft.Revision, Start: start, End: end})
 }
 
 func removeDraft(attached *attachedPresentation, editor *composer.Editor, terminal *terminalsession.Attachment, clock func() time.Time, owned map[string]bool, questions *nativeQuestionDock, approvals *nativeApprovalDock, side *sessioncontrol.Side, start, end int, run composer.Run) {

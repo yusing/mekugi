@@ -2,7 +2,17 @@ package router
 
 import (
 	"cmp"
+	"context"
 	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/contracts/scope"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/conversation/composer"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 
@@ -14,28 +24,28 @@ import (
 
 // publishPresentation settles detached facts at a semantic transition boundary.
 // Reading Model.View does not run this projection or bind an attachment.
-func (u *appServerUI) publishPresentation(now time.Time) sessionpresentation.View {
-	m := u.attached.presentation
+func publishPresentation(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, now time.Time) sessionpresentation.View {
+	m := attached.presentation
 	view := m.View()
 	var caption sessionpresentation.Caption
 	if view.Displayed.ID == view.Main.ID {
-		caption.Model, caption.Effort, caption.Tier = u.model, u.reasoningEffort, u.serviceTiers.Effective(u.model, u.serviceTier, u.Thread)
+		caption.Model, caption.Effort, caption.Tier = settings.Model, settings.Effort, tiers.Effective(settings.Model, settings.Tier, control.Thread)
 	}
-	caption = sessionCaption(&u.attached.session, m, caption, u.serviceTiers)
-	info := sessionpresentation.MainInfo{Workspace: u.attached.cwd, Title: cmp.Or(u.Names.Pending(u.Thread), u.title), BackendVersion: u.backendVersion, Skills: u.attached.source.ActiveSkills()["Main"]}
-	if approval := u.approvals.View(); approval.Count > 0 {
-		if caller := u.attached.session.KnownCaller(approval.Approval.Thread); caller != "/root" {
+	caption = sessionCaption(&attached.session, m, caption, tiers)
+	info := sessionpresentation.MainInfo{Workspace: attached.cwd, Title: cmp.Or(control.Names.Pending(control.Thread), title), BackendVersion: backend, Skills: attached.source.ActiveSkills()["Main"]}
+	if approval := attached.conversation.Approvals.View(); approval.Count > 0 {
+		if caller := attached.session.KnownCaller(approval.Approval.Thread); caller != "/root" {
 			info.ApprovalCaller = caller
 		}
 	}
 	view = m.Publish(sessionpresentation.MainInputs{
 		Info: info,
-		Menu: u.picker.menuView(u.attached.cwd, u.Text, &u.Live), Control: &u.Live, Feedback: &u.attached.feedback, Conversation: u.attached.conversation, Restoring: u.restoring != nil,
-		SideRunning: u.side != nil && (u.side.Busy || u.side.Starting), Processes: runningProcessCount(&u.attached.session), History: historyViews(&u.attached, &u.childHistoryState),
+		Menu: picker.menuView(attached.cwd, (*editor).Text, &control.Live), Control: &control.Live, Feedback: &attached.feedback, Conversation: attached.conversation, Restoring: restoring,
+		SideRunning: side != nil && (side.Busy || side.Starting), Processes: runningProcessCount(&attached.session), History: historyViews(attached, childKey),
 	}, caption, now)
-	u.shell.Prompts.Update(view)
-	u.shell.Main.Update(view)
-	for _, terminal := range []*activityui.View{u.shell.Transcript, u.shell.Agents} {
+	terminal.Prompts.Update(view)
+	terminal.Main.Update(view)
+	for _, terminal := range []*activityui.View{terminal.Transcript, terminal.Agents} {
 		if terminal != nil {
 			terminal.Painter.FileLink = markdownFileLinks(view.Info.Workspace)
 		}
@@ -43,39 +53,41 @@ func (u *appServerUI) publishPresentation(now time.Time) sessionpresentation.Vie
 	return view
 }
 
-func (u *appServerUI) attachPresentation() {
-	u.review = attachReview(u.ctx, u.review, u.retained, u.changeSource)
-	u.attached.bindSources()
-	u.commits = attachCommitReader(&u.attached.session, u.commits, u.ctx, u.activity != nil)
-	conversation := u.attached.conversation
-	if u.Editor != &u.shell.Prompts.Secret {
-		u.Editor = &conversation.Editor
+func attachPresentation(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, main string, review **sessionreview.Review, commits **activitypresentation.CommitReader, parent context.Context, retained changes.Scope, changeSource changes.Service, activityPresent bool) {
+	(*review) = attachReview(parent, (*review), retained, changeSource)
+	attached.bindSources()
+	(*commits) = attachCommitReader(&attached.session, (*commits), parent, activityPresent)
+	conversation := attached.conversation
+	if (*editor) != &terminal.Prompts.Secret {
+		(*editor) = &conversation.Editor
 	}
-	u.picker.State, u.picker.MenuState = &conversation.Completion, u.attached.presentation.Menu()
-	u.questions.Questions, u.approvals.Approvals = &conversation.Questions, &conversation.Approvals
-	m := u.attached.presentation
-	m.Attach(sessionpresentation.Thread{ID: cmp.Or(u.Thread, "/root"), Caller: "/root"}, false)
+	picker.State, picker.MenuState = &conversation.Completion, attached.presentation.Menu()
+	questions.Questions, approvals.Approvals = &conversation.Questions, &conversation.Approvals
+	m := attached.presentation
+	m.Attach(sessionpresentation.Thread{ID: cmp.Or(main, "/root"), Caller: "/root"}, false)
 }
 
 // settlePresentation runs before another intent can observe this session.
 // Opening a prompt does not mark it painted or acknowledge a notice.
-func (u *appServerUI) settlePresentation() {
-	u.autoOpenApprovals()
-	u.autoOpenQuestions()
-	u.publishPresentation(presentationTime(u.clock))
-	publishActivity(&u.attached, u.shell)
+func settlePresentation(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool) {
+	autoOpenApprovals(attached, terminal, picker, editor, questions, approvals, control.Thread, overlay)
+	autoOpenQuestions(attached, terminal, picker, editor, questions, approvals, control.Thread, overlay)
+	publishPresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, presentationTime(clock))
+	publishActivity(attached, terminal)
 }
 
 // displaySession accepts detached targets without consulting terminal state.
-func (u *appServerUI) displaySession(intent sessionpresentation.DisplayIntent) bool {
-	defer u.settlePresentation()
-	m := u.attached.presentation
-	if intent.Thread != m.View().Main && u.attached.session.KnownCaller(intent.Thread.ID) != intent.Thread.Caller {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), sessionpresentation.ErrStaleIntent.Error(), true)
+func displaySession(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side *sessioncontrol.Side, clock func() time.Time, questions *nativeQuestionDock, approvals *nativeApprovalDock, overlay bool, intent sessionpresentation.DisplayIntent) bool {
+	defer func() {
+		settlePresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, side, clock, questions, approvals, overlay)
+	}()
+	m := attached.presentation
+	if intent.Thread != m.View().Main && attached.session.KnownCaller(intent.Thread.ID) != intent.Thread.Caller {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), sessionpresentation.ErrStaleIntent.Error(), true)
 		return false
 	}
 	if err := m.Display(intent); err != nil {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return false
 	}
 	return true

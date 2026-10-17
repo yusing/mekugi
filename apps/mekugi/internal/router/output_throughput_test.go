@@ -12,6 +12,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/charmbracelet/x/ansi"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
@@ -332,7 +334,7 @@ func TestOutputThroughputPresentationSelectionAndIsolation(t *testing.T) {
 			if mode == "without usage" {
 				u.presentationState = new(sessionpresentation.Service)
 				u.attached.presentation = u.presentationState.Session(u.attached.session.Scope())
-				u.attachPresentation()
+				attachPresentation(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread, &u.review, &u.commits, u.ctx, u.retained, u.changeSource, u.activity != nil)
 			}
 			if mode == "without activity" {
 				u.activity = nil
@@ -341,7 +343,7 @@ func TestOutputThroughputPresentationSelectionAndIsolation(t *testing.T) {
 			u.model = "main-model"
 			rate := inference.OutputThroughput{OutputTokens: 40, DurationNanos: uint64(time.Second), MeasuredRequests: 1}
 			u.attached.session.Agent("/root").OutputThroughput = rate
-			before := u.publishPresentation(presentationTime(u.clock))
+			before := publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 			frame, _ := u.testMainFrame(120, 12, 0)
 			if text := ansi.Strip(strings.Join(frame, "\n")); !strings.Contains(text, "main-model") || strings.Contains(text, "40.0 tok/s") != (mode != "without usage") {
 				t.Fatalf("Main contribution: %s", text)

@@ -185,7 +185,7 @@ func TestNativeQuestionAsyncBatchAndExternalCommit(t *testing.T) {
 	if slices.ContainsFunc(u.attached.source.Entries, func(entry sessionpresentation.ActivityRecord) bool { return entry.Source.Kind == "final" }) {
 		t.Fatal("async question entered final-answer bookkeeping")
 	}
-	u.openQuestions()
+	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "1\r2\r")
 	if strings.Count(input.String(), binding.QuestionReplyStart) != 1 {
@@ -221,14 +221,14 @@ func TestNativeQuestionParkedEditorMidTypingAndSecret(t *testing.T) {
 		t.Fatalf("keystroke leaked into question: %q", u.Text)
 	}
 	before := u.Editor.Park()
-	u.openQuestions()
+	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 	questionTestPaint(t, u, 60)
 	appServerTestKeys(t, u, "3private")
 	u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
 	if !reflect.DeepEqual(u.Editor.Park(), before) {
 		t.Fatalf("parked draft not restored: %q", u.Text)
 	}
-	u.openQuestions()
+	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 	questionTestPaint(t, u, 60)
 	if u.Text != "private" {
 		t.Fatalf("answer draft lost on reopen: %q", u.Text)
@@ -260,7 +260,7 @@ func TestNativeQuestionExternalReplyParksActiveAnswerBeforeCommit(t *testing.T) 
 					map[string]any{"question": "First?", "isSecret": secret}, map[string]any{"question": "Second?"},
 				},
 			}})
-			u.openQuestions()
+			openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 			insertDraft(&u.attached, u.Editor, u.shell, u.clock, u.ownedImages, &u.questions, &u.approvals, u.side, "active answer")
 			commit := func(index int) {
 				text := binding.EncodeQuestionReplies([]binding.QuestionReply{{Answer: "external", QuestionItemID: binding.AsyncQuestionIdentity("call", index)}})
@@ -272,14 +272,14 @@ func TestNativeQuestionExternalReplyParksActiveAnswerBeforeCommit(t *testing.T) 
 			if u.questions.activeCall() != nil || u.Text != "Main draft" || len(u.InputHistory) != 0 {
 				t.Fatal("external reply did not restore Main before commitment")
 			}
-			u.openQuestions()
+			openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 			if u.Text != "active answer" {
 				t.Fatal("reply to another question lost the active answer")
 			}
 			commit(0)
 			commit(0) // Duplicate delivery cannot remember or revive the draft.
 			u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
-			u.openQuestions()
+			openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 			if u.questions.activeCall() != nil || u.Text != "Main draft" || !u.questions.calls()[0].Resolved {
 				t.Fatal("resolved answer was revived or replaced Main")
 			}
@@ -328,7 +328,7 @@ func TestNativeQuestionSupersedeBannerAndRejectedSend(t *testing.T) {
 		u.Turn = "turn"
 		u.Text = "kept main draft"
 		questionTestAsync(t, u, "pending", "Who receives it?")
-		u.openQuestions()
+		openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 		questionTestPaint(t, u, 70)
 		appServerTestKeys(t, u, "3Customers only\r")
 		if !strings.Contains(input.String(), "turn/steer") {
@@ -341,7 +341,7 @@ func TestNativeQuestionSupersedeBannerAndRejectedSend(t *testing.T) {
 		if u.Text != "kept main draft" {
 			t.Fatalf("main draft changed: %q", u.Text)
 		}
-		u.openQuestions()
+		openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 		questionTestPaint(t, u, 70)
 		if u.Text != "Customers only" {
 			t.Fatalf("answer draft changed: %q", u.Text)
@@ -409,7 +409,7 @@ func TestNativeQuestionGapsQueueAndLiteralAnswers(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.Turn = "turn"
 	questionTestAsync(t, u, "gaps", "First?", "Last?")
-	u.openQuestions()
+	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 	questionTestPaint(t, u, 60)
 	appServerTestKeys(t, u, "\x1b[C1\r")
 	if !u.questions.Confirm || w.Len() != 0 {
@@ -428,7 +428,7 @@ func TestNativeQuestionGapsQueueAndLiteralAnswers(t *testing.T) {
 	if len(v.attached.conversation.Queued) != 1 || wire.Len() != 0 {
 		t.Fatal("hidden sync steered instead of queueing")
 	}
-	v.openQuestions()
+	openQuestions(&v.attached, v.shell, &v.picker, &v.Editor, &v.questions, &v.approvals, v.Thread)
 	questionTestPaint(t, v, 60)
 	appServerTestKeys(t, v, "\x1b[200~! @file $skill /quit\x1b[201~")
 	if v.attached.conversation.ShellMode() || v.picker.Open || len(v.Files) != 0 || v.Text != "! @file $skill /quit" {
@@ -495,7 +495,7 @@ func TestNativeQuestionsWaitForEmptyComposerAndRespectHide(t *testing.T) {
 	if u.questions.activeCall() != nil {
 		t.Fatal("paint undid explicit hide")
 	}
-	u.openQuestions()
+	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 	if u.questions.activeCall() == nil {
 		t.Fatal("manual reopening failed")
 	}

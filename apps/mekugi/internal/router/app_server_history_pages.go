@@ -3,6 +3,8 @@ package router
 import (
 	"cmp"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	"github.com/yusing/mekugi/modules/usage/accounting"
@@ -214,7 +216,9 @@ func historyViews(attached *attachedPresentation, key *scope.Key[*appServerChild
 }
 
 func (u *appServerUI) loadOlderActivity(intent sessionpresentation.HistoryIntent) error {
-	defer u.settlePresentation()
+	defer func() {
+		settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	}()
 	if u.restoring != nil {
 		return nil
 	}
@@ -239,7 +243,9 @@ func (u *appServerUI) loadOlderActivity(intent sessionpresentation.HistoryIntent
 }
 
 func (u *appServerUI) cancelOlderActivity(intent sessionpresentation.HistoryIntent) error {
-	defer u.settlePresentation()
+	defer func() {
+		settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	}()
 	h := childHistory(&u.attached.session, &u.childHistoryState, intent.Thread)
 	if intent.Thread == "" {
 		return nil

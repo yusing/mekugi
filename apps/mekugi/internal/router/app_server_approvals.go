@@ -4,6 +4,8 @@ import (
 	"encoding/json/jsontext"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
@@ -71,7 +73,7 @@ func (u *appServerUI) addApproval(a *sessioncontrol.Approval) {
 	if a.RequestID == nil {
 		u.notifications.notify(&u.attached.feedback, u.shell, u.clock, "approval-requested", "Approval requested")
 	}
-	u.autoOpenApprovals()
+	autoOpenApprovals(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread, u.statusPanel != nil || u.resumePicker != nil)
 }
 
 func (u *appServerUI) addGuardApproval(request *sessioncontrol.ShellApprovalRequest) {
@@ -305,7 +307,9 @@ func approvalRecord(attached *attachedPresentation, approvals *nativeApprovalDoc
 }
 
 func (u *appServerUI) decideApproval(intent sessionpresentation.ApprovalIntent) error {
-	defer u.settlePresentation()
+	defer func() {
+		settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+	}()
 	record, choice, err := u.attached.presentation.Approval(intent, u.approvals.Approvals)
 	if err != nil {
 		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
@@ -340,9 +344,9 @@ func (u *appServerUI) applyApproval(a *sessioncontrol.Approval, choice prompt.Ch
 
 // autoOpenApprovals takes over an empty, idle composer. Explicitly hiding the
 // dock leaves it closed until reopened or another approval arrives.
-func (u *appServerUI) autoOpenApprovals() {
-	if u.approvals.ShouldOpen(composerVacant(u.Editor, u.shell, &u.picker, u.attached.presentation, u.statusPanel != nil || u.resumePicker != nil || u.approvals.Open), u.questions.Active != nil) {
-		openApprovals(&u.approvals, &u.questions, u.attached.conversation, u.shell, &u.picker, &u.Editor, u.Thread)
+func autoOpenApprovals(attached *attachedPresentation, terminal *terminalsession.Attachment, picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, main string, overlay bool) {
+	if approvals.ShouldOpen(composerVacant((*editor), terminal, picker, attached.presentation, overlay || approvals.Open), questions.Active != nil) {
+		openApprovals(approvals, questions, attached.conversation, terminal, picker, editor, main)
 	}
 }
 

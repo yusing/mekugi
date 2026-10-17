@@ -3,6 +3,8 @@ package router
 import (
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -244,9 +246,9 @@ func TestComposerSelectionReviewEdges(t *testing.T) {
 		u, _ := newAppServerTestUI()
 		u.insertSelection("message", "main quote", "")
 		questionTestAsync(t, u, "parked", "Which scope?")
-		u.openQuestions()
+		openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 		u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
-		u.deleteDraftRange(0, len(u.Text))
+		deleteDraftRange(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, 0, len(u.Text))
 		u.insertSelection("message", "replacement quote", "")
 		if u.Text != "[Selected message] " {
 			t.Fatalf("inactive parked editor reserved a label: %q", u.Text)

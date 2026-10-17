@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -120,7 +122,7 @@ func TestNativeUIPreview(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || p.ui.publishPresentation(presentationTime(p.ui.clock)).Status.Animating || p.ui.shell.Agents.HasLiveStatus() || flashExpired || settled || noticeExpired || terminalTest(p.ui).Live.Tick(now) {
+				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || publishPresentation(&p.ui.attached, p.ui.shell, &p.ui.Client, &p.ui.picker, &p.ui.Editor, &p.ui.childHistoryState, preferences.Applied{Model: p.ui.model, Effort: p.ui.reasoningEffort, Tier: p.ui.serviceTier}, p.ui.serviceTiers, p.ui.title, p.ui.backendVersion, p.ui.restoring != nil, p.ui.side, presentationTime(p.ui.clock)).Status.Animating || p.ui.shell.Agents.HasLiveStatus() || flashExpired || settled || noticeExpired || terminalTest(p.ui).Live.Tick(now) {
 					if err := paint(); err != nil {
 						return err
 					}
@@ -1485,13 +1487,13 @@ func TestNativeUIPreviewQuestions(t *testing.T) {
 	defer p.close()
 	p.ui.Text = "Keep my draft"
 	p.until("sync question")
-	p.ui.openQuestions()
+	openQuestions(&p.ui.attached, p.ui.shell, &p.ui.picker, &p.ui.Editor, &p.ui.questions, &p.ui.approvals, p.ui.Thread)
 	rows, _ := p.ui.testMainFrame(72, 28, 0)
 	t.Logf("question dock:\n%s", ansi.Strip(strings.Join(rows, "\n")))
 	questionTestPaint(t, p.ui, 72)
 	appServerTestKeys(t, p.ui, "1\r")
 	p.serve()
-	p.ui.openQuestions()
+	openQuestions(&p.ui.attached, p.ui.shell, &p.ui.picker, &p.ui.Editor, &p.ui.questions, &p.ui.approvals, p.ui.Thread)
 	questionTestPaint(t, p.ui, 72)
 	appServerTestKeys(t, p.ui, "2\r")
 	p.serve()

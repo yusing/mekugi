@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
 
@@ -26,7 +28,7 @@ func (u *appServerUI) titleCommand(text string) bool {
 		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Wait for the session to be ready", false)
 		return true
 	}
-	u.deleteDraftRange(0, len(u.Text))
+	deleteDraftRange(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, 0, len(u.Text))
 	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "", false)
 	renameSessionTitle(&u.Client, u.titleGenerator, &u.attached.feedback, u.shell, u.clock, &u.dirty, name)
 	return true

@@ -39,7 +39,7 @@ func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 	u.Turn = "turn"
 	appServerTestKeys(t, u, "main draft")
 	questionTestAsync(t, u, "photos", "First image?", "Second image?")
-	u.openQuestions()
+	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 	questionTestPaint(t, u, 70)
 	first, second := answerImageFixture(t), answerImageFixture(t)
 	appServerTestKeys(t, u, "\x1b[200~"+first+"\x1b[201~")
@@ -140,7 +140,7 @@ func TestQuestionImageLifetimeAcrossNavigationAndRetry(t *testing.T) {
 	appServerTestKeys(t, u, "1\r")
 	request := resumeTestOne(t, wire, "turn/steer")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, request.ID))
-	u.openQuestions()
+	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 	questionTestPaint(t, u, 70)
 	if len(u.Images) != 1 || u.Images[0].Path != path || len(u.Selections) != 1 || u.Selections[0].Text != "retry quote" {
 		t.Fatalf("retry lost image: %q %+v", u.Text, u.Images)
@@ -181,7 +181,7 @@ func TestQuestionSecretDraftKeepsImageWithoutExposingModelState(t *testing.T) {
 	if call.Questions[0].Editor.Snapshot.Text != "" || len(call.Questions[0].Answer) != 0 || len(call.View().Questions[0].Answer) != 0 {
 		t.Fatal("secret draft exposed through model")
 	}
-	u.openQuestions()
+	openQuestions(&u.attached, u.shell, &u.picker, &u.Editor, &u.questions, &u.approvals, u.Thread)
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "\r")
 	if !strings.Contains(wire.String(), "user_note: [Image 1]") || len(u.attached.conversation.Unsent) != 1 || len(u.attached.conversation.Unsent[0].Images) != 1 {

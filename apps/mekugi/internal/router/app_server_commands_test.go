@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 )
@@ -75,7 +77,7 @@ func TestComposerCommandSmallFrame(t *testing.T) {
 				t.Fatalf("row exceeds width %d: %q", width, row)
 			}
 		}
-		u.settlePresentation()
+		settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 		if u.shell.Main.Menu.Top > u.shell.Main.Menu.Selected || u.shell.Main.Menu.Top+u.shell.Main.Menu.RowCount <= u.shell.Main.Menu.Selected {
 			t.Fatal("selection outside visible viewport")
 		}
@@ -87,7 +89,7 @@ func TestComposerCommandMouseSelection(t *testing.T) {
 	shell := terminalTest(u)
 	appServerTestKeys(t, u, "/sk")
 	u.renderPicker(80, 4)
-	u.settlePresentation()
+	settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
 	u.shell.Main.Menu.Rect = terminalsession.Rect{0, 0, 80, 4}
 	if err := shell.mouse("\x1b[<0;2;2M"); err != nil {
 		t.Fatal(err)
