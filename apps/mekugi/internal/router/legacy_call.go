@@ -141,3 +141,118 @@ func legacyDirectories(values map[string]legacycall.DirectoryStamp) map[string]c
 	}
 	return result
 }
+
+// Typed neutral publication and cache conversion; live-only fields stay local.
+// Source: apps/mekugi/internal/router/legacy_call.go:14:143@d002a0dc, inverse conversion.
+func retainedBaseline(v resolvedStockBaseline) legacycall.Baseline {
+	return legacycall.Baseline{
+		Root:      v.Root,
+		Shell:     v.Shell,
+		Files:     legacySlice(v.Files, retainedFile),
+		Omitted:   legacySlice(v.Omitted, func(v changecapture.Omission) legacycall.Omission { return legacycall.Omission(v) }),
+		Inventory: legacyPointer(v.Inventory, retainedInventory),
+	}
+}
+
+func retainedFile(v changecapture.File) legacycall.File {
+	return legacycall.File{
+		Origin:      v.Origin,
+		AlsoManaged: v.AlsoManaged,
+		Path:        v.Path,
+		Kind:        string(v.Kind),
+		Content:     v.Content,
+		Size:        v.Size,
+		Hash:        v.Hash,
+		Link:        v.Link,
+		Stamp:       v.Stamp,
+		Error:       v.Error,
+		CopyOf:      v.CopyOf,
+	}
+}
+
+func retainedHistory(v mekugiHistory) legacycall.History {
+	return legacycall.History{
+		ToolName:             v.ToolName,
+		PluginID:             v.PluginID,
+		Script:               v.Script,
+		Root:                 v.Root,
+		ExecutingThread:      v.ExecutingThread,
+		Caller:               v.Caller,
+		Source:               v.Source,
+		ChangeID:             v.ChangeID,
+		ReviewFiles:          legacySlice(v.ReviewFiles, func(v diffmodel.ReviewFile) legacycall.ReviewFile { return legacycall.ReviewFile(v) }),
+		NativePatches:        legacySlice(v.NativePatches, retainedNativePatch),
+		ResolvedBaseline:     legacyPointer(v.ResolvedBaseline, retainedBaseline),
+		ExecObservation:      legacyPointer(v.ExecObservation, retainedObservation),
+		ExecOutcome:          legacyPointer(v.ExecOutcome, func(v changecapture.Outcome) legacycall.Outcome { return legacycall.Outcome(v) }),
+		HostResults:          legacySlice(v.HostResults, func(v binding.ToolResult) legacycall.HostResult { return legacycall.HostResult(v) }),
+		CommandSegments:      v.CommandSegments,
+		CarrierName:          v.CarrierName,
+		CarrierKind:          string(v.CarrierKind),
+		CarrierPayload:       v.CarrierPayload,
+		Report:               v.Report,
+		OutputWarning:        v.OutputWarning,
+		TranslationError:     v.TranslationError,
+		CorrelationID:        v.CorrelationID,
+		Attempt:              v.Attempt,
+		UpstreamItem:         v.UpstreamItem,
+		ReplayCarrier:        v.ReplayCarrier,
+		CommentaryMessageIDs: v.CommentaryMessageIDs,
+		AlreadySatisfied:     v.AlreadySatisfied,
+	}
+}
+
+func retainedInventory(v changecapture.Inventory) legacycall.Inventory {
+	return legacycall.Inventory{
+		Version:      v.Version,
+		Directories:  retainedDirectories(v.Directories),
+		Root:         v.Root,
+		Entries:      v.Entries,
+		Blobs:        v.Blobs,
+		Files:        legacySlice(v.Files, retainedFile),
+		Repositories: v.Repositories,
+		Pruned:       v.Pruned,
+		Omitted:      legacySlice(v.Omitted, func(v changecapture.Omission) legacycall.Omission { return legacycall.Omission(v) }),
+	}
+}
+
+func retainedNativePatch(v changecapture.PatchObservation) legacycall.NativePatch {
+	return legacycall.NativePatch{
+		Input: v.Input,
+		Files: legacySlice(v.Files, func(v changecapture.PatchFile) legacycall.NativeFile { return legacycall.NativeFile(v) }),
+	}
+}
+
+func retainedObservation(v changecapture.Observation) legacycall.Observation {
+	return legacycall.Observation{
+		Commands:       legacySlice(v.Commands, func(v commandanalysis.Command) legacycall.Command { return legacycall.Command(v) }),
+		CommandClasses: v.CommandClasses,
+		Class:          v.Class,
+		Labels:         v.Labels,
+		Reason:         v.Reason,
+		Files:          legacySlice(v.Files, retainedFile),
+		Omitted:        legacySlice(v.Omitted, func(v changecapture.Omission) legacycall.Omission { return legacycall.Omission(v) }),
+		Listings:       legacySlice(v.Listings, func(v changecapture.Listing) legacycall.Listing { return legacycall.Listing(v) }),
+		CodeMode:       v.CodeMode,
+		Roots:          v.Roots,
+		WindowStart:    v.WindowStart,
+		Programs:       legacySlice(v.Programs, func(v execscope.Program) legacycall.Program { return legacycall.Program(v) }),
+		Group:          v.Group,
+		Excluded:       v.Excluded,
+		RepeatedPaths:  v.RepeatedPaths,
+		LiteralClass:   v.LiteralClass,
+		Inventory:      legacyPointer(v.Inventory, retainedInventory),
+		Tree:           v.Tree,
+	}
+}
+
+func retainedDirectories(values map[string]changecapture.DirectoryStamp) map[string]legacycall.DirectoryStamp {
+	if values == nil {
+		return nil
+	}
+	result := make(map[string]legacycall.DirectoryStamp, len(values))
+	for key, value := range values {
+		result[key] = legacycall.DirectoryStamp(value)
+	}
+	return result
+}

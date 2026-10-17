@@ -83,7 +83,7 @@ func TestToolInputEmissionClearsOnItemDoneOrResponseClose(t *testing.T) {
 			defer transform.Close()
 			item := map[string]any{"id": "emitting", "type": "custom_tool_call", "status": "incomplete"}
 			emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.added", "item": item})
-			if !proxy.emittingToolInput("/workspace", "main") {
+			if !proxy.control.EmittingToolInput("/workspace", "main") {
 				t.Fatal("emission was not observed")
 			}
 			if closeResponse {
@@ -91,7 +91,7 @@ func TestToolInputEmissionClearsOnItemDoneOrResponseClose(t *testing.T) {
 			} else {
 				emissionTestEvent(t, transform, map[string]any{"type": "response.output_item.done", "item": item})
 			}
-			if proxy.emittingToolInput("/workspace", "main") {
+			if proxy.control.EmittingToolInput("/workspace", "main") {
 				t.Fatal("ended response still blocks answers")
 			}
 		})

@@ -162,14 +162,13 @@ func TestDuplicateOutputEvidenceConsumersReadOriginal(t *testing.T) {
 	if !strings.Contains(string(items[3]["output"]), "same as") {
 		t.Fatal("failure body was not projected")
 	}
-	proxy.activity.mu.Lock()
-	defer proxy.activity.mu.Unlock()
+	proxy.activity.attachNativePane("thread")
 	found := false
-	for _, event := range proxy.activity.events {
-		if event.callID == "failed" && event.kind == "error" {
+	for _, event := range proxy.activity.takeNativeActivity("thread") {
+		if event.CallID == "failed" && event.Kind == "error" {
 			found = true
-			if event.errorDetail != "exec script failed: "+strings.TrimPrefix(failure, "Script error:\n") {
-				t.Fatalf("failure observer saw projected content: %q", event.errorDetail)
+			if event.ErrorDetail != "exec script failed: "+strings.TrimPrefix(failure, "Script error:\n") {
+				t.Fatalf("failure observer saw projected content: %q", event.ErrorDetail)
 			}
 		}
 	}
@@ -514,14 +513,15 @@ func TestDuplicateOutputSummary(t *testing.T) {
 	trace.result("thread", "nested", "completed", map[string]any{"exit_code": 0})
 	trace.end("thread", "runtime")
 	duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
+	proxy.activity.attachNativePane("thread")
 	found := false
-	for _, event := range proxy.activity.events {
-		if event.kind == "output_dedupe" && event.callID == "nested" && event.text == "repeated" {
+	for _, event := range proxy.activity.takeNativeActivity("thread") {
+		if event.Kind == "output_dedupe" && event.CallID == "nested" && event.Text == "repeated" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("missing native suffix receipt: %+v", proxy.activity.events)
+		t.Fatal("missing native suffix receipt")
 	}
 
 }

@@ -113,8 +113,8 @@ func (p *mekugiProxy) releaseIdleStorageSession(ctx context.Context, thread stri
 	if !ok || generation != p.storageTurns[thread] {
 		return
 	}
-	for session, active := range p.activeSessions {
-		if active != 0 && strings.HasSuffix(session, "\x00"+thread) {
+	for _, session := range p.calls.PinnedSessions() {
+		if strings.HasSuffix(session, "\x00"+thread) {
 			return
 		}
 	}
@@ -136,6 +136,12 @@ func (s *mekugiReplayStore) retainFiles(names ...string) error {
 }
 
 func storagePublicationError(err error) error {
+	if conflict, ok := errors.AsType[*history.HostConflict](err); ok {
+		if conflict.Field == "" {
+			return criticalDiagnostic(err, "replay_translation_conflict", "a completed tool call conflicted with its retained replay translation", true)
+		}
+		return criticalDiagnostic(err, "replay_item_conflict", "a completed tool call changed a retained replay item field", true)
+	}
 	if capacity, ok := errors.AsType[*history.CapacityError](err); ok {
 		return criticalDiagnostic(err, "storage_capacity", capacity.Error(), false)
 	}
@@ -181,11 +187,6 @@ func (s *mekugiReplayStore) retainInput(ctx context.Context, workspace string, r
 		return storagePublicationError(retention.Err)
 	}
 	return changeError(err)
-}
-
-func storageCapacityError(resource string, required, limit int64, action string) error {
-	message := fmt.Sprintf("Mekugi %s needs %d bytes; limit is %d bytes. %s", resource, required, limit, action)
-	return criticalDiagnostic(errors.New(message), "storage_capacity", message, false)
 }
 
 // Only pressure queued for background maintenance is eligible for a persistence

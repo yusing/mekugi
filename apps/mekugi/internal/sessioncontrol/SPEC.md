@@ -110,6 +110,18 @@ a completed turn. Interruption/unsubscription targets only that side thread;
 its notifications never become Main observations. Closing the dock drops its
 visible exchange, not pending host correlation.
 
+Invocation-local observations bridge provider generation and interactive control.
+Question answers wait for matching tool-input generation to finish; ordinary
+steers remain available. Generation completion is independent of host execution,
+preview availability and command completion. Request cleanup removes only its own
+generation observations. Side-thread membership survives pending cleanup, never
+resume or replay.
+
+Successful approval-answer delivery publishes its explanatory feedback before a
+subsequent provider request can read it. Failed delivery publishes no feedback;
+turn completion retires only that turn's feedback. These observations carry no
+execution authority and do not replace the host request ledger.
+
 ## Thread names
 
 Manual names entered before host identity wait for the admitted thread. Once

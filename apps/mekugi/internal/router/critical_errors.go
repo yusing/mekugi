@@ -304,16 +304,12 @@ func (c *CriticalErrors) takeNative(root string, activity *subagentActivity) *no
 	var descendants map[string]string
 	if activity != nil {
 		activity.mu.Lock()
-		if activity.threads[root] != nil && activity.rootLocked(root) != root {
+		audience, valid := activity.audienceLocked(root)
+		if !valid {
 			activity.mu.Unlock()
 			return nil
 		}
-		descendants = make(map[string]string)
-		for thread, node := range activity.threads {
-			if activity.rootLocked(thread) == root {
-				descendants[thread] = node.name
-			}
-		}
+		descendants = audience.Threads
 		activity.mu.Unlock()
 	}
 	return c.Notices.Claim(root, descendants)

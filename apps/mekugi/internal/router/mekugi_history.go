@@ -21,11 +21,7 @@ import (
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
-)
-
-const (
-	maxMekugiHistorySessionBytes = 32 << 20
-	maxMekugiHistoryGlobalBytes  = 128 << 20
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 // mekugiHistory owns the version-1 replay fields and a request-local view.
@@ -66,7 +62,6 @@ type mekugiHistory struct {
 	CommentaryMessageIDs []string
 	AlreadySatisfied     bool
 
-	bytes      int
 	confirmed  bool
 	nativeCell *nativetrace.Cell
 	// sequence orders a request-visible view (or the bounded memory cache).
@@ -103,201 +98,27 @@ func (h mekugiHistory) confirmsReport(raw json.RawMessage) bool {
 	return state == "Script completed" && body == h.Report
 }
 
-type mekugiHistorySession struct {
-	calls map[string]mekugiHistory
-	bytes int
-	// nextSequence is the order to assign the session's next retained call.
-	nextSequence uint64
-	lastUsed     uint64
-}
-
+// Admission shares the execution-lifetime lock with turn-lease release.
 func (p *mekugiProxy) activateSession(sessionID string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.closed {
 		return errors.New("mekugi response proxy is closed")
 	}
-	p.activeSessions[sessionID]++
-	if session := p.sessions[sessionID]; session != nil {
-		p.touchSession(session)
-	}
+	p.calls.Pin(sessionID)
 	return nil
 }
+func (p *mekugiProxy) deactivateSession(sessionID string) { p.calls.Unpin(sessionID) }
 
-func (p *mekugiProxy) deactivateSession(sessionID string) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.activeSessions[sessionID] <= 1 {
-		delete(p.activeSessions, sessionID)
-		return
-	}
-	p.activeSessions[sessionID]--
-}
-
-func (p *mekugiProxy) touchSession(session *mekugiHistorySession) {
-	p.sessionSequence++
-	session.lastUsed = p.sessionSequence
-}
-
-func (p *mekugiProxy) rememberBatch(sessionID string, histories map[string]mekugiHistory) error {
-	if len(histories) == 0 {
-		return nil
-	}
-	prepared := make(map[string]mekugiHistory, len(histories))
-	for callID, history := range histories {
-		encodedItem, err := responses.MarshalJSON(history.UpstreamItem)
-		if err != nil {
-			return fmt.Errorf("encode mekugi history item: %w", err)
-		}
-		history.bytes = len(sessionID) + len(callID) + len(history.ToolName) + len(history.PluginID) + len(history.Script) + len(history.Root) + len(history.CarrierKind) + len(history.CarrierName) + len(history.CarrierPayload) + len(history.Report) + len(history.OutputWarning) + len(history.TranslationError) + len(history.CorrelationID) + len(encodedItem)
-		for _, patch := range history.NativePatches {
-			history.bytes += len(patch.Input)
-			for _, file := range patch.Files {
-				history.bytes += len(file.BeforePath) + len(file.AfterPath) + len(file.Before) + len(file.Error)
-			}
-		}
-		if history.ResolvedBaseline != nil {
-			history.bytes += len(responses.MustMarshalJSON(history.ResolvedBaseline))
-		}
-		history.bytes += len(history.ChangeID) + len(history.ExecutingThread) + len(history.Caller) + len(history.Source)
-		for _, file := range history.ReviewFiles {
-			history.bytes += len(file.BeforePath) + len(file.AfterPath) + len(file.Diff)
-		}
-		for _, messageID := range history.CommentaryMessageIDs {
-			history.bytes += len(messageID)
-		}
-		prepared[callID] = history
-	}
-	if len(prepared) > maxSessionTurns {
-		return errors.New("mekugi history batch exceeds call capacity")
-	}
-
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	existing := p.sessions[sessionID]
-	calls := make(map[string]mekugiHistory, len(prepared))
-	nextSequence := uint64(0)
-	oldSessionBytes := 0
-	sessionBytes := 0
-	if existing != nil {
-		calls = maps.Clone(existing.calls)
-		nextSequence = existing.nextSequence
-		oldSessionBytes = existing.bytes
-		sessionBytes = existing.bytes
-	}
-	callIDs := slices.Collect(maps.Keys(prepared))
-	slices.SortFunc(callIDs, func(first, second string) int {
-		if order := cmp.Compare(prepared[first].sequence, prepared[second].sequence); order != 0 {
-			return order
-		}
-		return strings.Compare(first, second)
+func orderedCalls(histories map[string]mekugiHistory) []history.Call {
+	ids := slices.SortedFunc(maps.Keys(histories), func(a, b string) int {
+		return cmp.Or(cmp.Compare(histories[a].sequence, histories[b].sequence), strings.Compare(a, b))
 	})
-	protected := make(map[string]bool, len(prepared))
-	for _, callID := range callIDs {
-		history := prepared[callID]
-		if previous, ok := calls[callID]; ok {
-			sessionBytes -= previous.bytes
-			history.sequence = previous.sequence
-		} else {
-			nextSequence++
-			history.sequence = nextSequence
-		}
-		sessionBytes += history.bytes
-		calls[callID] = history
-		protected[callID] = true
+	calls := make([]history.Call, 0, len(ids))
+	for _, id := range ids {
+		calls = append(calls, history.Call{ID: id, History: retainedHistory(histories[id])})
 	}
-
-	for len(calls) > maxSessionTurns || sessionBytes > maxMekugiHistorySessionBytes {
-		oldest, ok := oldestHistoryCall(calls, protected)
-		if !ok {
-			if len(calls) > maxSessionTurns {
-				return errors.New("mekugi history call capacity reached")
-			}
-			return errors.New("mekugi history byte capacity reached")
-		}
-		sessionBytes -= calls[oldest].bytes
-		delete(calls, oldest)
-	}
-
-	totalBytes := p.historyBytes - oldSessionBytes + sessionBytes
-	sessionCount := len(p.sessions)
-	if existing == nil {
-		sessionCount++
-	}
-	type sessionCandidate struct {
-		id       string
-		lastUsed uint64
-	}
-	candidates := make([]sessionCandidate, 0, len(p.sessions))
-	for id, session := range p.sessions {
-		if id == sessionID || p.activeSessions[id] != 0 {
-			continue
-		}
-		candidates = append(candidates, sessionCandidate{id: id, lastUsed: session.lastUsed})
-	}
-	slices.SortFunc(candidates, func(first, second sessionCandidate) int {
-		if order := cmp.Compare(first.lastUsed, second.lastUsed); order != 0 {
-			return order
-		}
-		return strings.Compare(first.id, second.id)
-	})
-
-	evicted := make([]string, 0)
-	for sessionCount > maxSessionHistories || totalBytes > maxMekugiHistoryGlobalBytes {
-		if len(evicted) == len(candidates) {
-			if sessionCount > maxSessionHistories {
-				return errors.New("mekugi history session capacity reached")
-			}
-			return errors.New("mekugi history byte capacity reached")
-		}
-		id := candidates[len(evicted)].id
-		evicted = append(evicted, id)
-		sessionCount--
-		totalBytes -= p.sessions[id].bytes
-	}
-	for _, id := range evicted {
-		delete(p.sessions, id)
-	}
-
-	if existing == nil {
-		existing = &mekugiHistorySession{}
-		p.sessions[sessionID] = existing
-	}
-	existing.calls = calls
-	existing.bytes = sessionBytes
-	existing.nextSequence = nextSequence
-	p.touchSession(existing)
-	p.historyBytes = totalBytes
-	return nil
-}
-
-func oldestHistoryCall(histories map[string]mekugiHistory, protected map[string]bool) (string, bool) {
-	oldestID := ""
-	var oldest mekugiHistory
-	found := false
-	for callID, history := range histories {
-		if protected[callID] {
-			continue
-		}
-		if !found || history.sequence < oldest.sequence || history.sequence == oldest.sequence && callID < oldestID {
-			oldestID = callID
-			oldest = history
-			found = true
-		}
-	}
-	return oldestID, found
-}
-
-func (p *mekugiProxy) history(sessionID, callID string) (mekugiHistory, bool) {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	session := p.sessions[sessionID]
-	if session == nil {
-		return mekugiHistory{}, false
-	}
-	history, ok := session.calls[callID]
-	return history, ok
+	return calls
 }
 
 // reconcileVisibleInput constructs recovery ancestry from the validated request,
@@ -319,7 +140,7 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *codexr
 		return visible, nil
 	}
 	changed := false
-	commentaryIDs := p.commentaryMessageIDs(sessionID)
+	commentaryIDs := p.calls.CommentaryIDs(sessionID)
 	filtered := make([]map[string]json.RawMessage, 0, len(items))
 	for _, item := range items {
 		if responses.StringField(item, "type") == "message" {
@@ -397,7 +218,9 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *codexr
 					return nil, err
 				}
 			} else {
-				history, known = p.history(sessionID, callID)
+				var retained legacycall.History
+				retained, known = p.calls.Lookup(sessionID, callID)
+				history = legacyHistory(retained)
 			}
 			if !known {
 				continue
@@ -582,7 +405,7 @@ func (t *mekugiResponseTransform) commitHistory() error {
 	if err := t.proxy.replayStore.putAfterMaintenance(t.ctx, t.directory, t.local); err != nil {
 		return criticalDiagnostic(err, "replay_history_commit", "Mekugi could not persist completed response history", true)
 	}
-	if err := t.proxy.rememberBatch(t.historySessionID, t.local); err != nil && t.proxy.replayStore == nil {
+	if err := t.proxy.calls.Remember(t.historySessionID, orderedCalls(t.local)); err != nil && t.proxy.replayStore == nil {
 		return criticalDiagnostic(err, "replay_history_commit", "Mekugi could not retain completed response history", true)
 	}
 	t.historyCommitted = true
@@ -597,7 +420,7 @@ func (t *mekugiResponseTransform) commitLocalCall(callID string) error {
 	if err := t.proxy.replayStore.putAfterMaintenance(t.ctx, t.directory, map[string]mekugiHistory{callID: history}); err != nil {
 		return criticalDiagnostic(err, "replay_call_commit", "Mekugi could not persist a completed tool call", true)
 	}
-	if err := t.proxy.rememberBatch(t.historySessionID, map[string]mekugiHistory{callID: history}); err != nil && t.proxy.replayStore == nil {
+	if err := t.proxy.calls.Remember(t.historySessionID, orderedCalls(map[string]mekugiHistory{callID: history})); err != nil && t.proxy.replayStore == nil {
 		return criticalDiagnostic(err, "replay_call_commit", "Mekugi could not retain a completed tool call", true)
 	}
 	return nil

@@ -190,7 +190,7 @@ func (u *appServerUI) readRestoredRollouts() {
 				activity.markRestored(info.ID, event.entry)
 			}
 			p := &restoredPlacement{entry: event.entry, turn: event.turn, anchor: event.anchor, at: event.at}
-			p.entry.Observed, p.entry.Text = event.at, clipNativeActivityMessage(event.entry.Text)
+			p.entry.Observed, p.entry.Text = event.at, activitypresentation.ClipSupplementMessage(event.entry.Text)
 			owner := paneActivityAgent(event.entry)
 			if owner == "/root" {
 				p.entry, _ = mainActivityEntry(p.entry)

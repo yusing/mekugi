@@ -32,6 +32,16 @@ or substantive child output. Authenticated recipient-input observations suppleme
 assignment and directed-message bodies as display data, without waiting for a root
 provider response. Source identity deduplicates live and restored observations.
 
+Supplemental observations use invocation-scoped queues and thread-scoped source
+deduplication, independent of attached feed replacement. The application supplies
+authenticated ancestry and audience snapshots. Queued observations retain their
+source thread until delivery, so unresolved ancestry can become known and invalidated
+ancestry cannot leak into another root. Queue expiry uses arrival time without
+changing an older authored timestamp. Capacity loss produces an auxiliary notice.
+Thinking-request starts and unreturned-output notes share this boundary; they do
+not reconstruct a provider-derived roster lifecycle. Conversation can consume
+these observations without optional Activity output retention or roster placement.
+
 Activity projects admitted collaboration completions into ordered spawn,
 assignment and directed-message facts. Live and replay completions with a completed
 or unspecified outcome retain delivery; restored history requires an explicit

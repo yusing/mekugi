@@ -123,7 +123,7 @@ func (u *appServerUI) flushInput() error {
 	case len(u.conversation().Unsent) > 0:
 		// Answers must not preempt an unfinished tool input. Once input is
 		// complete, steer normally, even if the host command is still running.
-		if steer && u.conversation().Unsent[0].Question != nil && u.proxy.emittingToolInput(u.session.cwd, u.Thread) {
+		if steer && u.conversation().Unsent[0].Question != nil && u.proxy != nil && u.proxy.control.EmittingToolInput(u.session.cwd, u.Thread) {
 			// Explicit prompts retain instant interruption even when an answer
 			// ahead of them is waiting for generation to finish.
 			if !u.conversation().AdvancePrompt() {

@@ -120,6 +120,17 @@ Commentary keeps its independent budget. New feature records use their owner's
 codec rather than extending the historical mixed envelopes. Cross-owner ordering
 follows the [publication contract](../../docs/contracts/record-publication.md#cross-owner-publication).
 
+The invocation's bounded call cache uses the same neutral historical facts.
+Ordered batch admission is atomic, protects the arriving calls, and evicts older
+eligible entries without evicting pinned sessions. Request-local confirmation,
+native process references and preview watches never enter the cache. Cache pins
+also let application coordination preserve leases across concurrent requests.
+
+Host-record publication preserves original translation facts while merging
+completed status, provider passthrough metadata and generated-commentary identities.
+Other conflicting payload changes fail. Capture consumers decide whether a new
+record needs an order; this owner allocates and preserves it under publication.
+
 Hook records bind exact workspace and thread identity, preserve recorded output
 and outcomes, and disclose dropped earlier observations. Read-only attachment
 neither creates storage nor revives unfinished hooks. The live hook schema belongs

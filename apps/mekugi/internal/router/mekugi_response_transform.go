@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strings"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
@@ -59,9 +58,6 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		t.finalAnswer.observe(payload)
 		return [][]byte{payload}, nil
 	}
-	if envelope.Delta != "" && t.threadID != "" && strings.HasSuffix(string(envelope.Type), ".delta") {
-		t.proxy.activity.streamOutput(t.threadID, len(envelope.Delta))
-	}
 	t.finalAnswer.observe(payload)
 	switch {
 	case envelope.Type == responseevents.OutputItemAdded:
@@ -70,7 +66,9 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 			return [][]byte{payload}, nil //nolint:nilerr // Unrelated output items pass through unchanged.
 		}
 		if item.Type == "function_call" || item.Type == "custom_tool_call" {
-			t.setToolInputEmission(item.ID, true)
+			if t.proxy != nil {
+				t.proxy.control.SetToolInput(&t.generation, t.directory, t.threadID, item.ID, true)
+			}
 		}
 		name := item.Name
 		if t.codeModeToolName != "" && name == t.codeModeToolName {
@@ -93,7 +91,9 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		return [][]byte{payload}, nil
 
 	case envelope.Type == responseevents.CustomInputDone:
-		t.setToolInputEmission(envelope.ItemID, false)
+		if t.proxy != nil {
+			t.proxy.control.SetToolInput(&t.generation, t.directory, t.threadID, envelope.ItemID, false)
+		}
 		if addedFields, stockCall := t.nativeExecCalls[envelope.ItemID]; stockCall {
 			if responseevents.StringField(addedFields, "type") == "custom_tool_call" {
 				addedCallID := responseevents.StringField(addedFields, "call_id")
@@ -127,7 +127,9 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		return [][]byte{payload}, nil
 
 	case envelope.Type == responseevents.FunctionArgumentsDone:
-		t.setToolInputEmission(envelope.ItemID, false)
+		if t.proxy != nil {
+			t.proxy.control.SetToolInput(&t.generation, t.directory, t.threadID, envelope.ItemID, false)
+		}
 		return [][]byte{payload}, nil
 
 	case envelope.Type == responseevents.OutputItemDone:
@@ -136,7 +138,9 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 			return [][]byte{payload}, nil //nolint:nilerr // Malformed unrelated output remains the upstream's responsibility.
 		}
 		t.storageToolHandoff = t.storageToolHandoff || blocksTokenUsage(item.Fields)
-		t.setToolInputEmission(item.ID, false)
+		if t.proxy != nil {
+			t.proxy.control.SetToolInput(&t.generation, t.directory, t.threadID, item.ID, false)
+		}
 		if _, delivered := t.local[item.CallID]; item.Status == "incomplete" && !delivered {
 			t.endPreview(item.ID)
 			// Item completion can report interrupted generation, not complete input.

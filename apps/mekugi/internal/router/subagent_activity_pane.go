@@ -1,17 +1,15 @@
 package router
 
 import (
-	"slices"
 	"time"
+
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/contracts/inference"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
-
-// The only activity frontend is the UI.
-type activityPane struct{ root string }
 
 type activityPaneEntry struct {
 	Seq         uint64
@@ -67,7 +65,7 @@ type activityPaneEvent struct {
 func (a *subagentActivity) releasePane() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.pane = nil
+	a.supplements.Detach()
 }
 
 // Main already knows its app-server thread before the first provider request.
@@ -77,141 +75,65 @@ func (a *subagentActivity) attachNativePane(root string) {
 	a.observe(root, "", "/root", false)
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.pane = &activityPane{root: root}
+	a.supplements.Attach(root)
 }
 
-// beginResponse and endResponse track open provider responses for the roster.
-// A new response clears an earlier final-answer marker. A thinking response
-// comes from a provider that streams untitled reasoning; the UI shows
-// its thinking block from this request start, before the first delta.
-func (a *subagentActivity) beginResponse(thread string, thinking bool) {
-	if a == nil {
+// A thinking response starts Conversation's pre-delta block. Host observations,
+// not provider rounds, own the roster lifecycle.
+func (a *subagentActivity) beginResponse(thread string, thinking bool, at time.Time) {
+	if a == nil || !thinking {
 		return
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if node := a.threads[thread]; node != nil && !node.conflicted && !a.closed {
-		node.responding++
-		node.turns++
-		node.final = false
-		if thinking && a.pane != nil && len(a.starts) < maxActivityRequestStarts {
-			a.starts = append(a.starts, activityRequestStart{thread: thread, at: time.Now()})
-		}
+		a.supplements.StartRequest(thread, at)
 	}
 }
 
-const maxActivityRequestStarts = 64
-
-// takeRequestStarts drains the thinking request starts under root.
 func (a *subagentActivity) takeRequestStarts(root string) []activityRequestStart {
 	if a == nil {
 		return nil
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.closed || a.pane == nil || a.pane.root != root {
+	if a.closed {
 		return nil
 	}
-	// Starts outside the pane's root have no audience and are dropped.
-	starts := slices.DeleteFunc(a.starts, func(start activityRequestStart) bool { return a.rootLocked(start.thread) != root })
-	a.starts = nil
+	audience, _ := a.audienceLocked(root)
+	var starts []activityRequestStart
+	for _, start := range a.supplements.TakeStarts(audience) {
+		starts = append(starts, activityRequestStart{thread: start.Thread, at: start.At})
+	}
 	return starts
 }
 
-const maxActivityUnreturned = 256
-
-// noteUnreturned records nested commands whose cell returned nothing.
 func (a *subagentActivity) noteUnreturned(thread string, calls []string) {
 	if a == nil {
 		return
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.closed || a.pane == nil {
-		return
-	}
-	for _, call := range calls {
-		if len(a.unreturned) < maxActivityUnreturned {
-			a.unreturned = append(a.unreturned, activityToolRef{thread: thread, call: call})
-		}
+	if !a.closed {
+		a.supplements.NoteUnreturned(thread, calls)
 	}
 }
 
-// takeUnreturned drains the unreturned command notes under root.
 func (a *subagentActivity) takeUnreturned(root string) []activityToolRef {
 	if a == nil {
 		return nil
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.closed || a.pane == nil || a.pane.root != root {
+	if a.closed {
 		return nil
 	}
-	refs := slices.DeleteFunc(a.unreturned, func(ref activityToolRef) bool { return a.rootLocked(ref.thread) != root })
-	a.unreturned = nil
+	audience, _ := a.audienceLocked(root)
+	var refs []activityToolRef
+	for _, ref := range a.supplements.TakeUnreturned(audience) {
+		refs = append(refs, activityToolRef{thread: ref.Thread, call: ref.Call})
+	}
 	return refs
-}
-
-func (a *subagentActivity) endResponse(thread string) {
-	if a == nil {
-		return
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if node := a.threads[thread]; node != nil && node.responding > 0 && !a.closed {
-		node.responding--
-		node.lastResponse = time.Now()
-		// A response that ended without usage leaves no estimate behind.
-		if node.responding == 0 {
-			node.streamed = 0
-		}
-	}
-}
-
-// syncUsage drops the streamed estimate once the canonical usage report
-// includes the response.
-func (a *subagentActivity) syncUsage(thread string) {
-	if a == nil {
-		return
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if node := a.threads[thread]; node != nil && !node.conflicted && !a.closed {
-		node.streamed = 0
-	}
-}
-
-// streamOutput adds visible streamed delta bytes to an agent's output estimate.
-// The pane picks it up on its next tick rather than waking per delta.
-func (a *subagentActivity) streamOutput(thread string, bytes int) {
-	if a == nil || bytes == 0 {
-		return
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if node := a.threads[thread]; node != nil && !node.conflicted && !a.closed {
-		node.streamed += uint64(bytes)
-	}
-}
-
-// markFinal records the observed plaintext FINAL_ANSWER marker under its root.
-// App-server delivers the substantive completion body.
-func (a *subagentActivity) markFinal(recipientThread string, final subagentFinal) {
-	if a == nil {
-		return
-	}
-	a.mu.Lock()
-	root := a.rootLocked(recipientThread)
-	if a.closed || root == "" {
-		a.mu.Unlock()
-		return
-	}
-	for thread, node := range a.threads {
-		if node.child && !node.conflicted && node.name == final.sender && a.rootLocked(thread) == root {
-			node.final = true
-		}
-	}
-	a.mu.Unlock()
 }
 
 func (a *subagentActivity) childThread(root, name string) string {
@@ -225,38 +147,38 @@ func (a *subagentActivity) childThread(root, name string) string {
 	return ""
 }
 
-func nativeObservedActivity(kind string) bool {
-	return kind == "output_dedupe" || kind == "error" || kind == "reply" || kind == "start" || kind == "assignment"
-}
-
-// takeNativeActivity drains router-owned annotations and authenticated input
-// messages that V2 app-server does not expose. Lifecycle stays app-server owned.
+// Native observations supply the lifecycle; this adapter delivers supplemental
+// facts admitted by the same current application authority.
 func (a *subagentActivity) takeNativeActivity(root string) []activityPaneEntry {
 	if a == nil {
 		return nil
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.closed || a.pane == nil || a.pane.root != root {
+	if a.closed {
 		return nil
 	}
-	a.expireLocked(time.Now())
+	audience, _ := a.audienceLocked(root)
 	var entries []activityPaneEntry
-	kept := a.events[:0]
-	for _, event := range a.events {
-		node := a.threads[event.thread]
-		if !nativeObservedActivity(event.kind) || node == nil || node.conflicted || a.rootLocked(event.thread) != root {
-			kept = append(kept, event)
-			continue
+	for _, event := range a.supplements.Take(audience, time.Now()) {
+		entry := activityPaneEntry{Agent: audience.Threads[event.Thread], Kind: event.Kind, Text: event.Text, CallID: event.CallID, Observed: event.Observed}
+		if event.Kind == "error" {
+			entry.ErrorDetail, entry.Text = event.Text, activityui.ErrorPreview(event.Text)
 		}
-		entries = append(entries, activityPaneEntry{Agent: node.name, Kind: event.kind, Text: event.raw, ErrorDetail: event.errorDetail, CallID: event.callID, Observed: event.observed,
-			assignment: event.assignment, message: event.message, start: event.start})
-		if event.kind == "output_dedupe" {
-			entries[len(entries)-1].native = &liveActivityNativeItem{thread: event.thread}
+		if a := event.Assignment; a != nil {
+			entry.assignment = &activityAssignment{id: a.ID, from: a.From, to: a.To, text: a.Text, created: a.Created}
 		}
+		if m := event.Message; m != nil {
+			entry.message = &activityMessage{from: m.From, to: m.To, text: m.Text}
+		}
+		if s := event.Start; s != nil {
+			entry.start = &activityStart{model: s.Model, effort: s.Effort, tier: s.Tier}
+		}
+		if event.Kind == "output_dedupe" {
+			entry.native = &liveActivityNativeItem{thread: event.Thread}
+		}
+		entries = append(entries, entry)
 	}
-	clear(a.events[len(kept):])
-	a.events = kept
 	return entries
 }
 

@@ -24,31 +24,6 @@ type appServerBTW struct {
 	copyAnswer   []string
 }
 
-func (p *mekugiProxy) setBTWThread(thread string, active bool) {
-	if p == nil {
-		return
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if !active {
-		delete(p.btwThreads, thread)
-		return
-	}
-	if p.btwThreads == nil {
-		p.btwThreads = make(map[string]bool)
-	}
-	p.btwThreads[thread] = true
-}
-
-func (p *mekugiProxy) isBTWThread(thread string) bool {
-	if p == nil {
-		return false
-	}
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.btwThreads[thread]
-}
-
 func (u *appServerUI) submitBTW() error {
 	text := strings.TrimSpace(u.Text)
 	question := strings.TrimSpace(strings.TrimPrefix(text, "/btw"))
@@ -198,8 +173,8 @@ func (u *appServerUI) btwMessage(m appserver.Message, method string, b *appServe
 		if method == "thread/unsubscribe" {
 			if m.Error != nil {
 				u.setNotice("Could not unload side conversation: "+m.Error.Message, true)
-			} else {
-				u.proxy.setBTWThread(b.Thread, false)
+			} else if u.proxy != nil {
+				u.proxy.control.SetSideThread(b.Thread, false)
 			}
 			return true, nil
 		}
@@ -232,7 +207,9 @@ func (u *appServerUI) btwMessage(m appserver.Message, method string, b *appServe
 			b.Thread = result.Thread.ID
 			// Register before turn/start, so even pre-sampling compaction is
 			// rejected before the provider request can run.
-			u.proxy.setBTWThread(b.Thread, true)
+			if u.proxy != nil {
+				u.proxy.control.SetSideThread(b.Thread, true)
+			}
 			u.requests.TrackSide(b.Thread, appServerRequest{side: b})
 		case "turn/start":
 			if result.Turn.ID == "" {
@@ -267,7 +244,9 @@ func (u *appServerUI) btwMessage(m appserver.Message, method string, b *appServe
 	}
 	u.dirty = true
 	if m.Method == "thread/closed" {
-		u.proxy.setBTWThread(thread, false)
+		if u.proxy != nil {
+			u.proxy.control.SetSideThread(thread, false)
+		}
 		u.requests.CloseSide(thread)
 		if !b.Closed {
 			b.Thread, b.Turn, b.Busy, b.Starting = "", "", false, false

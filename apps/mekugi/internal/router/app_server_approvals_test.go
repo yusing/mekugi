@@ -121,7 +121,7 @@ func TestNonTerminalApprovalDecisionsPreserveIdentityAndReason(t *testing.T) {
 	if got := wire.String(); !strings.Contains(got, `"id":"first"`) || !strings.Contains(got, `"decision":"decline"`) {
 		t.Fatalf("wrong response identity or offered payload: %s", got)
 	}
-	feedback := strings.Join(u.proxy.approvalFeedback[[2]string{"main", "turn"}], "\n")
+	feedback := u.proxy.control.Feedback("main", "turn")
 	if !strings.Contains(feedback, "explicit reason") || strings.Contains(feedback, "editor content") {
 		t.Fatalf("reason was reconstructed from terminal state: %s", feedback)
 	}
@@ -450,7 +450,7 @@ func TestNativeApprovalDenialProjectsFeedbackInSameTurn(t *testing.T) {
 			}
 			for _, scope := range [][2]string{{thread, "other"}, {"other", "turn"}, {thread, "turn"}, {thread, "turn"}} {
 				request := &codexresponses.Request{Fields: map[string]jsontext.Value{"input": jsontext.Value(`[{"type":"custom_tool_call_output","call_id":"call","output":"exec command rejected by user"}]`)}}
-				if err := u.proxy.projectApprovalFeedback(request, scope[0], scope[1]); err != nil {
+				if err := request.AppendApprovalFeedback(u.proxy.control.Feedback(scope[0], scope[1])); err != nil {
 					t.Fatal(err)
 				}
 				got := string(request.Fields["input"])
@@ -460,7 +460,7 @@ func TestNativeApprovalDenialProjectsFeedbackInSameTurn(t *testing.T) {
 				}
 			}
 			questionTestMessage(t, u, nil, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "turn", "status": "completed"}})
-			if len(u.proxy.approvalFeedback) != 0 {
+			if u.proxy.control.Feedback(thread, "turn") != "" {
 				t.Fatal("completed-turn feedback retained")
 			}
 		})
@@ -496,7 +496,7 @@ func TestNativeApprovalQuestionEditorOwnership(t *testing.T) {
 	}
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "\r")
-	feedback := strings.Join(u.proxy.approvalFeedback[[2]string{"main", "turn"}], "\n")
+	feedback := u.proxy.control.Feedback("main", "turn")
 	if !strings.Contains(feedback, "wait for review") || strings.Contains(feedback, "answer to question") {
 		t.Fatalf("wrong denial reason: %s", feedback)
 	}
@@ -546,7 +546,7 @@ func TestNativeApprovalFeedbackWebSocketContinuation(t *testing.T) {
 	defer cancel()
 	proxy := newManagedMekugiProxy(t)
 	const feedback = "user denied this command with a reason: keep the existing result"
-	if err := proxy.answerWithApprovalFeedback("thread-1", "turn", feedback, func() error { return nil }); err != nil {
+	if err := proxy.control.AnswerWithFeedback("thread-1", "turn", feedback, func() error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 	headers := codexAuthHeaders()

@@ -9,6 +9,7 @@ import (
 	segments "github.com/yusing/mekugi/modules/commandsegments/segments"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	"github.com/yusing/mekugi/providers/grok"
 	"github.com/yusing/mekugi/providers/opencode"
@@ -18,6 +19,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 
 	"github.com/yusing/mekugi/contracts/inference"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -30,6 +32,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 
@@ -51,40 +54,30 @@ type mekugiProxy struct {
 	skillsManager    bool
 	execWindows      *execWindowRegistry
 	nativeTrace      *nativetrace.Reader
-	approvalMu       sync.Mutex
-	approvalFeedback map[[2]string][]string // Live thread/turn feedback; no host steering.
-
-	mu                 sync.RWMutex
-	toolInputEmissions map[*mekugiResponseTransform]map[string]bool // Live generation only, never command execution or replay.
-	contextUsage       map[string]hostContextUsage                  // Latest host context observation, never inherited.
-	btwThreads         map[string]bool                              // Live ephemeral UI threads; never inherited or replayed.
-	replayStore        *mekugiReplayStore
-	sessions           map[string]*mekugiHistorySession
-	noticeSink         func(string, string, string, string)
-	storageTurns       map[string]uint64
-	storageSequence    uint64
-	storageLeases      map[string]func()
-	activeSessions     map[string]int
-	historyBytes       int
-	sessionSequence    uint64
-	closed             bool
+	control          sessioncontrol.Observations
+	mu               sync.RWMutex
+	calls            *history.CallCache
+	replayStore      *mekugiReplayStore
+	noticeSink       func(string, string, string, string)
+	storageTurns     map[string]uint64
+	storageSequence  uint64
+	storageLeases    map[string]func()
+	closed           bool
 }
 
-func newMekugiProxy(registry *frontends.Registry, projections []binding.InputProjection, usage *accounting.Service) *mekugiProxy {
+func newMekugiProxy(registry *frontends.Registry, projections []binding.InputProjection, usage *accounting.Service, service *history.Service) *mekugiProxy {
 	if registry == nil {
 		return nil
 	}
 	activity := newSubagentActivity()
-	activity.usage = usage
 	proxy := &mekugiProxy{
 		registry:         registry,
+		calls:            service.Calls(),
 		review:           newSavedReview(context.Background(), nil),
 		inputProjections: slices.Clone(projections),
-		usage:            activity.usage,
+		usage:            usage,
 		activity:         activity,
 		execWindows:      &execWindowRegistry{},
-		sessions:         make(map[string]*mekugiHistorySession),
-		activeSessions:   make(map[string]int),
 	}
 	activity.notice = func(category, message string) { proxy.notice("", "", category, message) }
 	return proxy
@@ -112,9 +105,7 @@ func (p *mekugiProxy) Close() error {
 		release()
 	}
 	clear(p.storageLeases)
-	clear(p.sessions)
-	clear(p.activeSessions)
-	p.historyBytes = 0
+	p.calls.Clear()
 	p.activity.close()
 	return cleanupErr
 }
@@ -133,6 +124,7 @@ type mekugiTranslationState struct {
 }
 
 type mekugiResponseTransform struct {
+	generation       sessioncontrol.Generation
 	toolTrace        toolObservationTrace
 	ctx              context.Context
 	proxy            *mekugiProxy
@@ -156,7 +148,6 @@ type mekugiResponseTransform struct {
 	commentaryAuthor string
 
 	subagentTurn            bool
-	activityResponding      bool // Counted in the agents-pane roster until Close.
 	liveDiffCompletionReady bool
 	storageCompletionReady  bool
 	storageToolHandoff      bool
@@ -173,13 +164,11 @@ func (t *mekugiResponseTransform) Close() {
 	if t == nil {
 		return
 	}
-	t.clearToolInputEmissions()
+	if t.proxy != nil {
+		t.proxy.control.EndGeneration(&t.generation)
+	}
 	for itemID := range t.previews {
 		t.endPreview(itemID)
-	}
-	if t.activityResponding {
-		t.activityResponding = false
-		t.proxy.activity.endResponse(t.threadID)
 	}
 	if t.sessionActive {
 		t.proxy.deactivateSession(t.historySessionID)
@@ -197,9 +186,6 @@ func (t *mekugiResponseTransform) observeResponseUsage(counts inference.Usage) {
 	}
 	t.usageTracker.Observe(counts)
 	t.usageObserved = true
-	if t.proxy != nil && t.threadID != "" {
-		t.proxy.activity.syncUsage(t.threadID)
-	}
 }
 
 func validateMekugiCompactionRequest(request *codexresponses.Request, metadata codexTurnMetadata) error {
@@ -414,12 +400,9 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 		// across routing-session changes, and forwards it only to the observed root.
 		p.activity.collectSubagentStart(activityThreadID, request, metadata.AgentName)
 	}
-	for _, final := range envelopes.finals {
-		p.activity.markFinal(activityThreadID, final)
-	}
 	if activityThreadID != "" {
 		model := request.Model()
-		p.activity.beginResponse(activityThreadID, grok.IsModel(model) || opencode.IsModel(model))
+		p.activity.beginResponse(activityThreadID, grok.IsModel(model) || opencode.IsModel(model), time.Now())
 	}
 	transform := &mekugiResponseTransform{
 		ctx:              ctx,
@@ -442,7 +425,6 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 		local:                     make(map[string]mekugiHistory),
 		commentaryAuthor:          metadata.commentaryAuthor(),
 		subagentTurn:              metadata.SubagentKind != "",
-		activityResponding:        activityThreadID != "",
 		usageTracker:              p.usage.Observation(threadID, metadata.ThreadID, request.Model(), codexresponses.UsageServiceTier(request.Fields["service_tier"])),
 		codeModeToolName:          codeModeToolName,
 		sessionShell:              requestSessionShell(request.Fields["input"]),
@@ -453,7 +435,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 	p.observeCodeModeFailures(activityThreadID, codeModeToolName, request, visible)
 	// Continuation advice is appended to the output the model will see.
 	projectExecutionContinuations(request, tools, codeModeToolName, visible)
-	if err := p.projectApprovalFeedback(request, threadID, metadata.TurnID); err != nil {
+	if err := request.AppendApprovalFeedback(p.control.Feedback(threadID, metadata.TurnID)); err != nil {
 		transform.Close()
 		return nil, err
 	}
@@ -499,44 +481,3 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 
 // Publish the native denial and its feedback together. A provider continuation
 // cannot observe the denial without the user reply already being available.
-func (p *mekugiProxy) answerWithApprovalFeedback(thread, turn, text string, answer func() error) error {
-	if p == nil {
-		return errors.New("native denial feedback requires the provider proxy")
-	}
-	p.approvalMu.Lock()
-	defer p.approvalMu.Unlock()
-	if err := answer(); err != nil {
-		return err
-	}
-	if p.approvalFeedback == nil {
-		p.approvalFeedback = make(map[[2]string][]string)
-	}
-	key := [2]string{thread, turn}
-	p.approvalFeedback[key] = append(p.approvalFeedback[key], text)
-	return nil
-}
-
-func (p *mekugiProxy) clearApprovalFeedback(thread, turn string) {
-	if p == nil {
-		return
-	}
-	p.approvalMu.Lock()
-	defer p.approvalMu.Unlock()
-	delete(p.approvalFeedback, [2]string{thread, turn})
-}
-
-func (p *mekugiProxy) projectApprovalFeedback(request *codexresponses.Request, thread, turn string) error {
-	p.approvalMu.Lock()
-	defer p.approvalMu.Unlock()
-	feedback := p.approvalFeedback[[2]string{thread, turn}]
-	if len(feedback) == 0 {
-		return nil
-	}
-	var input []jsonv1.RawMessage
-	if err := json.Unmarshal(request.Fields["input"], &input); err != nil {
-		return fmt.Errorf("read input for denial feedback: %w", err)
-	}
-	input = append(input, responseevents.MustMarshalJSON(map[string]any{"type": "message", "role": "user", "content": []map[string]any{{"type": "input_text", "text": strings.Join(feedback, "\n\n")}}}))
-	request.Fields["input"] = responseevents.MustMarshalJSON(input)
-	return nil
-}

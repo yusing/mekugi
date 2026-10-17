@@ -26,7 +26,7 @@ func TestMekugiReplayStoreRestartAndConflict(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := mekugiHistory{Script: "original", CarrierPayload: "delivered", CarrierName: "exec", ReplayCarrier: true, bytes: 123, confirmed: true, sequence: 9}
+	h := mekugiHistory{Script: "original", CarrierPayload: "delivered", CarrierName: "exec", ReplayCarrier: true, confirmed: true, sequence: 9}
 	if err := s.put(t.Context(), "/workspace", map[string]mekugiHistory{"call": h}); err != nil {
 		t.Fatal(err)
 	}
@@ -35,13 +35,13 @@ func TestMekugiReplayStoreRestartAndConflict(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, ok, err := s.lookup(t.Context(), "/workspace", "call")
-	if err != nil || !ok || got.Script != h.Script || got.bytes != 0 || got.confirmed || got.sequence != 0 {
+	if err != nil || !ok || got.Script != h.Script || got.confirmed || got.sequence != 0 {
 		t.Fatalf("lookup: %#v %v %v", got, ok, err)
 	}
 	if _, ok, err := s.lookup(t.Context(), "/other", "call"); err != nil || ok {
 		t.Fatalf("workspace leak: %v %v", ok, err)
 	}
-	h.bytes, h.confirmed, h.sequence = 456, false, 10
+	h.confirmed, h.sequence = false, 10
 	if err := s.put(t.Context(), "/workspace", map[string]mekugiHistory{"call": h}); err != nil {
 		t.Fatalf("request-local state created a durable conflict: %v", err)
 	}
@@ -420,7 +420,14 @@ func TestMekugiReplayStoreStructuredFieldWhitespaceRetry(t *testing.T) {
 func TestReplayItemConflictReportsSafeCause(t *testing.T) {
 	old := mekugiHistory{UpstreamItem: map[string]json.RawMessage{"input": responses.MustMarshalJSON("private old script")}}
 	next := mekugiHistory{UpstreamItem: map[string]json.RawMessage{"input": responses.MustMarshalJSON("private new script")}}
-	_, err := mergeReplayHistory(old, next)
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.put(t.Context(), "/w", map[string]mekugiHistory{"call": old}); err != nil {
+		t.Fatal(err)
+	}
+	err = store.put(t.Context(), "/w", map[string]mekugiHistory{"call": next})
 	if err == nil {
 		t.Fatal("accepted changed tool input")
 	}

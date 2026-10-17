@@ -106,25 +106,6 @@ func TestNativeActivityAssignmentsPreserveOriginalTime(t *testing.T) {
 	}
 }
 
-func TestNativeActivityRetentionUsesQueueTime(t *testing.T) {
-	a := newSubagentActivity()
-	a.observe("child", "main", "/root/reviewer", true)
-	original := time.Unix(1700000000, 0)
-	a.collectEvent(activityEvent{thread: "child", source: "old-assignment", kind: "assignment", text: "Historical task", observed: original})
-	if len(a.events) != 1 {
-		t.Fatal("event not queued")
-	}
-	queued := a.events[0].queued
-	a.expireLocked(queued.Add(activityEventTTL - time.Nanosecond))
-	if len(a.events) != 1 || !a.events[0].observed.Equal(original) {
-		t.Fatal("retention used original message time")
-	}
-	a.expireLocked(queued.Add(activityEventTTL))
-	if len(a.events) != 0 {
-		t.Fatal("queue did not expire")
-	}
-}
-
 // Consecutive child results stay separate and link to their latest assignment.
 func TestNativeActivityChildResultsStaySeparateAndLinked(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())

@@ -15,33 +15,9 @@ func restoreContextUsage(agent *activityPaneAgent, info binding.ThreadInfo) {
 	}
 }
 
-type hostContextUsage struct {
-	tokens, window uint64
-}
-
-// Live and restored host usage share reminder and subslice-reset policy.
-func (p *mekugiProxy) observeContextSliceUsage(thread string, known bool, used, window uint64) {
-	if p == nil || thread == "" {
-		return
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if !known {
-		delete(p.contextUsage, thread)
-		return
-	}
-	if p.contextUsage == nil {
-		p.contextUsage = make(map[string]hostContextUsage)
-	}
-	p.contextUsage[thread] = hostContextUsage{tokens: used, window: window}
-}
-
 func (u *appServerUI) restoreContextUsage(agent *activityPaneAgent, info binding.ThreadInfo) {
 	if info.ID == u.Thread {
 		u.session.compactionRollout = binding.ThreadInfo{ID: info.ID, Path: info.Path, Cwd: info.Cwd}
 	}
 	restoreContextUsage(agent, info)
-	if agent != nil {
-		u.proxy.observeContextSliceUsage(info.ID, agent.ContextKnown, agent.ContextTokens, agent.ContextWindow)
-	}
 }

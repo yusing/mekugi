@@ -11,9 +11,6 @@ import (
 
 const (
 	sessionIDHeader = "session-id"
-
-	maxSessionHistories = 256
-	maxSessionTurns     = 128
 )
 
 func routingSessionID(headers http.Header, request codexresponses.Request) string {

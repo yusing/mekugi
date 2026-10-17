@@ -85,7 +85,6 @@ func TestOutputThroughputProviderRequestJSONAndSSE(t *testing.T) {
 						proxy = newManagedMekugiProxy(t)
 						if mode == "module-absent" {
 							proxy.usage = nil
-							proxy.activity.usage = nil
 						}
 					}
 					headers := serverMetadataHeaders(t, "turn", nil)

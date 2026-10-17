@@ -331,7 +331,7 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 						}
 						u.dirty = true
 					case <-tick.C:
-						if len(u.conversation().Unsent) > 0 && u.conversation().Unsent[0].Question != nil && !u.proxy.emittingToolInput(u.session.cwd, u.Thread) {
+						if len(u.conversation().Unsent) > 0 && u.conversation().Unsent[0].Question != nil && (u.proxy == nil || !u.proxy.control.EmittingToolInput(u.session.cwd, u.Thread)) {
 							if err := u.flushInput(); err != nil {
 								return err
 							}

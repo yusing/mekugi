@@ -8,6 +8,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/charmbracelet/x/ansi"
@@ -199,11 +201,11 @@ func TestNativeDirectedMessageDisplayBudget(t *testing.T) {
 			if reply.Text == "" || !utf8.ValidString(reply.Text) {
 				t.Fatal("native body was dropped or corrupted")
 			}
-			if size < maxNativeActivityMessageBytes {
+			if size < activitypresentation.SupplementMessageBytes {
 				if !strings.Contains(reply.Text, text) {
 					t.Fatal("inline publication limit truncated native message")
 				}
-			} else if len(reply.Text) > maxNativeActivityMessageBytes || !strings.Contains(reply.Text, "message clipped at the native Activity") {
+			} else if len(reply.Text) > activitypresentation.SupplementMessageBytes || !strings.Contains(reply.Text, "message clipped at the native Activity") {
 				t.Fatal("native display bound is unmarked or exceeded")
 			}
 		})

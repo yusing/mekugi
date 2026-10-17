@@ -11,6 +11,7 @@ import (
 
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -187,7 +188,9 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 					u.endApproval(a, "Turn ended before an answer")
 				}
 			}
-			u.proxy.clearApprovalFeedback(p.ThreadID, p.Turn.ID)
+			if u.proxy != nil {
+				u.proxy.control.ClearFeedback(p.ThreadID, p.Turn.ID)
+			}
 		}
 		return false, nil
 	case "item/started", "item/completed":
@@ -373,7 +376,11 @@ func (u *appServerUI) applyApproval(a *nativeApproval, choice prompt.Choice, rea
 	} else {
 		answer := func() error { return u.requests.Respond(a.request, a.responses[choice.ID]) }
 		if choice.Deny && (u.proxy != nil || reason != "") {
-			if err := u.proxy.answerWithApprovalFeedback(a.Thread, a.Turn, "Command: "+a.Subject+"\n"+feedback, answer); err != nil {
+			var observations *sessioncontrol.Observations
+			if u.proxy != nil {
+				observations = &u.proxy.control
+			}
+			if err := observations.AnswerWithFeedback(a.Thread, a.Turn, "Command: "+a.Subject+"\n"+feedback, answer); err != nil {
 				return err
 			}
 		} else if err := answer(); err != nil {

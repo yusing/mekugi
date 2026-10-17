@@ -1,21 +1,16 @@
 package router
 
 import (
-	"bytes"
 	"cmp"
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"maps"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/recordtransactions"
 	"github.com/yusing/mekugi/libraries/legacycall"
-	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/libraries/persistence"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
@@ -52,26 +47,6 @@ type replayRecord struct {
 	Snapshots    *legacycall.Snapshots `json:",omitempty"`
 }
 
-// Keep request-local state out of immutable replay comparisons as well as JSON.
-func durableHistory(h mekugiHistory) mekugiHistory {
-	h.bytes, h.confirmed, h.sequence = 0, false, 0
-	h.nativeCell = nil
-	if len(h.NativePatches) == 0 {
-		h.NativePatches = nil // Empty omitted slices read back as nil.
-	}
-	if h.ResolvedBaseline != nil {
-		baseline := *h.ResolvedBaseline
-		baseline.Files = slices.Clone(baseline.Files)
-		for i := range baseline.Files {
-			baseline.Files[i].WatchStamp = ""
-		}
-		baseline.Inventory = baseline.Inventory.Durable()
-		h.ResolvedBaseline = &baseline
-	}
-	h.ExecObservation = h.ExecObservation.Durable()
-	return h
-}
-
 func openReplayStore(ctx context.Context, service *history.Service, captured *changecapture.Service, directory string) (*mekugiReplayStore, error) {
 	publication, err := service.Open(ctx, directory)
 	if err != nil {
@@ -104,34 +79,24 @@ func (s *mekugiReplayStore) locked(ctx context.Context, fn func(*mekugiReplaySto
 	})
 }
 func (s *mekugiReplayStore) read(workspace, callID string, commentary bool) (replayRecord, bool, error) {
-	record, found, err := legacycall.Read(s.directory, workspace, callID, commentary, maxReplayRecordBytes)
+	record, found, err := s.publication.ReadHostCall(workspace, callID, commentary)
 	if err != nil || !found {
 		return replayRecord{}, found, err
 	}
 	return replayRecord{Version: record.Version, Workspace: record.Workspace, CallID: record.CallID, Commentary: record.Commentary, CaptureOrder: record.CaptureOrder, History: legacyHistory(record.History)}, true, nil
 }
-func (s *mekugiReplayStore) lookup(ctx context.Context, workspace, callID string) (h mekugiHistory, found bool, err error) {
+func (s *mekugiReplayStore) lookup(ctx context.Context, workspace, callID string) (mekugiHistory, bool, error) {
 	if s == nil {
-		return h, false, nil
+		return mekugiHistory{}, false, nil
 	}
-	err = s.locked(ctx, func(s *mekugiReplayStore) error {
-		r, ok, e := s.read(workspace, callID, false)
-		h = r.History
-		found = ok
-		return e
-	})
-	return
+	value, found, err := s.publication.LookupHostCall(ctx, workspace, callID)
+	return legacyHistory(value), found, err
 }
-func (s *mekugiReplayStore) hasCommentary(ctx context.Context, workspace, id string) (found bool, err error) {
+func (s *mekugiReplayStore) hasCommentary(ctx context.Context, workspace, id string) (bool, error) {
 	if s == nil {
 		return false, nil
 	}
-	err = s.locked(ctx, func(s *mekugiReplayStore) error {
-		_, ok, e := s.read(workspace, id, true)
-		found = ok
-		return e
-	})
-	return
+	return s.publication.HasCommentary(ctx, workspace, id)
 }
 func (s *mekugiReplayStore) put(ctx context.Context, workspace string, histories map[string]mekugiHistory) error {
 	if s == nil {
@@ -147,7 +112,7 @@ func (s *mekugiReplayStore) put(ctx context.Context, workspace string, histories
 		for _, id := range slices.SortedFunc(maps.Keys(histories), func(a, b string) int {
 			return cmp.Or(cmp.Compare(histories[a].sequence, histories[b].sequence), strings.Compare(a, b))
 		}) {
-			if err := writer.write(replayRecord{Version: 1, Workspace: workspace, CallID: id, History: durableHistory(histories[id])}); err != nil {
+			if err := writer.write(replayRecord{Version: 1, Workspace: workspace, CallID: id, History: histories[id]}); err != nil {
 				return err
 			}
 		}
@@ -159,97 +124,18 @@ func (s *mekugiReplayStore) put(ctx context.Context, workspace string, histories
 	return changeError(err)
 }
 
-// Upstream completion may add fields or finalize status after an SSE item is
-// already durable, including opaque provider passthrough metadata. It cannot
-// alter the original model payload or translation.
-func mergeReplayHistory(old, next mekugiHistory) (mekugiHistory, error) {
-	// Older retained timestamps can carry an offset even when the current
-	// file-clock capture is UTC. Compare their durable instants, not locations.
-	old, next = durableHistory(old), durableHistory(next)
-	oldItem, nextItem := old.UpstreamItem, next.UpstreamItem
-	oldIDs, nextIDs := old.CommentaryMessageIDs, next.CommentaryMessageIDs
-	old.UpstreamItem = nil
-	next.UpstreamItem = nil
-	old.CommentaryMessageIDs = nil
-	next.CommentaryMessageIDs = nil
-	if !reflect.DeepEqual(old, next) {
-		return next, criticalDiagnostic(errors.New("conflicting durable replay translation"),
-			"replay_translation_conflict", "a completed tool call conflicted with its retained replay translation", true)
-	}
-	merged := make(map[string]json.RawMessage, len(oldItem)+len(nextItem))
-	maps.Copy(merged, oldItem)
-	for k, v := range nextItem {
-		previous, exists := merged[k]
-		// Persistence compacts RawMessage whitespace. Compare that spelling,
-		// preserving string escapes and object order rather than decoding values.
-		var compact bytes.Buffer
-		if err := json.Compact(&compact, v); err != nil {
-			return next, fmt.Errorf("invalid durable replay item field %q: %w", k, err)
-		}
-		v = bytes.Clone(compact.Bytes())
-		if exists {
-			compact.Reset()
-			if err := json.Compact(&compact, previous); err != nil {
-				return next, fmt.Errorf("invalid retained replay item field %q: %w", k, err)
-			}
-			previous = compact.Bytes()
-			// The provider enriches this opaque metadata between input.done and
-			// output_item.done. Preserve its latest spelling for replay without
-			// relaxing checks on tool identity, input, or other item fields.
-			metadata := k == "internal_chat_message_metadata_passthrough"
-			finalized := k == "status" && string(previous) == `"in_progress"` &&
-				(string(v) == `"completed"` || string(v) == `"incomplete"`)
-			if !bytes.Equal(previous, v) && !metadata && !finalized {
-				return next, criticalDiagnostic(fmt.Errorf("conflicting durable replay item field %q", k),
-					"replay_item_conflict", "a completed tool call changed a retained replay item field", true)
-			}
-		}
-		merged[k] = v
-	}
-	if len(merged) > 0 {
-		next.UpstreamItem = merged
-	}
-	next.CommentaryMessageIDs = slices.Clone(oldIDs)
-	for _, id := range nextIDs {
-		if !slices.Contains(next.CommentaryMessageIDs, id) {
-			next.CommentaryMessageIDs = append(next.CommentaryMessageIDs, id)
-		}
-	}
-	return next, nil
-}
-func (s *mekugiReplayStore) write(r replayRecord) (err error) {
-	previous, exists, err := s.read(r.Workspace, r.CallID, r.Commentary)
-	if err != nil {
-		return err
-	}
-	if exists {
-		r.CaptureOrder = previous.CaptureOrder
-		r.History, err = mergeReplayHistory(previous.History, r.History)
-		if err != nil {
-			return err
-		}
-		if reflect.DeepEqual(previous, r) {
-			return nil
-		}
-	}
+// The application classifies capture eligibility; Session History owns merging,
+// ordering and publication of the neutral retained envelope.
+func (s *mekugiReplayStore) write(r replayRecord) error {
 	failed := r.History.ExecOutcome != nil && r.History.ExecOutcome.Status == changecapture.StatusFailed && r.History.ExecOutcome.SharedWith == ""
-	if !exists && !r.Commentary && (r.History.ChangeID != "" && len(r.History.ReviewFiles) > 0 || failed) {
-		r.CaptureOrder, err = s.transaction.ReserveCaptureOrder()
-		if err != nil {
-			return err
-		}
+	ordered := r.History.ChangeID != "" && len(r.History.ReviewFiles) > 0 || failed
+	record := legacycall.Record{Version: r.Version, Workspace: r.Workspace, CallID: r.CallID, Commentary: r.Commentary, CaptureOrder: r.CaptureOrder, History: retainedHistory(r.History), Snapshots: r.Snapshots}
+	err := s.transaction.PublishHostCall(s.session.Thread, s.retentionLimits(), record, ordered)
+	var publication *history.PublicationError
+	var conflict *history.HostConflict
+	var capacity *history.CapacityError
+	if errors.As(err, &publication) || errors.As(err, &conflict) || errors.As(err, &capacity) {
+		return storagePublicationError(err)
 	}
-	data, err := responses.MarshalJSON(r)
-	if err != nil {
-		return err
-	}
-	if len(data) > maxReplayRecordBytes {
-		return storageCapacityError("replay record", int64(len(data)), maxReplayRecordBytes, "Split the tool call or reduce its retained output before retrying.")
-	}
-	name := legacycall.Name(r.Workspace, r.CallID, r.Commentary)
-	prefix := "call-"
-	if r.Commentary {
-		prefix = "commentary-"
-	}
-	return s.writeManagedFile(name, prefix+"pending-", data)
+	return err
 }

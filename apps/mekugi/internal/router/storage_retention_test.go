@@ -575,7 +575,7 @@ func TestStoragePreparationProtectsLeaseFromPreviousTerminal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := &mekugiProxy{replayStore: store, activeSessions: make(map[string]int)}
+	p := &mekugiProxy{replayStore: store, calls: testHistory().Calls()}
 	key := "/w\x00thread"
 	if err := p.activateSession(key); err != nil {
 		t.Fatal(err)

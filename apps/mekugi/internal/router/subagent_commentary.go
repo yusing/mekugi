@@ -47,14 +47,12 @@ func subagentStart(model, effort, tier string) *activityStart {
 
 type subagentInputEnvelopes struct {
 	replies []subagentReply
-	finals  []subagentFinal
 }
 
 type subagentReply struct {
 	source  string
 	message activityMessage
 }
-type subagentFinal struct{ sender, source, text string }
 
 func prepareSubagentInputEnvelopes(fields map[string]json.RawMessage, recipient string) (envelopes subagentInputEnvelopes) {
 	var items []map[string]json.RawMessage
@@ -87,11 +85,6 @@ func prepareSubagentInputEnvelopes(fields map[string]json.RawMessage, recipient 
 			continue
 		}
 		if final {
-			envelopes.finals = append(envelopes.finals, subagentFinal{
-				sender: sender,
-				source: subagentCommentaryMessageID("final\x00" + responses.StringField(item, "id") + "\x00" + sender + "\x00" + text),
-				text:   text,
-			})
 			continue
 		}
 		id := subagentCommentaryMessageID("response\x00" + responses.StringField(item, "id") + "\x00" + sender + "\x00" + text)

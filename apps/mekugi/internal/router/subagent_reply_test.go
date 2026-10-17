@@ -22,8 +22,7 @@ func TestReceivedRepliesRemainNativeAndKeepFullBodies(t *testing.T) {
 		t.Fatal("native envelopes changed")
 	}
 	if len(got.replies) != 2 || got.replies[0].message != (activityMessage{from: "/root/a", to: "/root/b", text: body}) ||
-		got.replies[0].source == "" || got.replies[1].message.text != "Next reply." ||
-		len(got.finals) != 1 || got.finals[0].text != body {
+		got.replies[0].source == "" || got.replies[1].message.text != "Next reply." {
 		t.Fatalf("native replies and finals = %+v", got)
 	}
 }

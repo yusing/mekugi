@@ -1,0 +1,217 @@
+package presentation
+
+import (
+	"crypto/sha256"
+	"fmt"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/yusing/mekugi/contracts/scope"
+)
+
+const SupplementMessageBytes = 64 << 10
+
+type SupplementAssignment struct {
+	ID, From, To, Text string
+	Created            time.Time
+}
+type SupplementMessage struct{ From, To, Text string }
+type SupplementStart struct{ Model, Effort, Tier string }
+type Supplement struct {
+	Thread, Source, Kind, Text, CallID string
+	Observed                           time.Time
+	Assignment                         *SupplementAssignment
+	Message                            *SupplementMessage
+	Start                              *SupplementStart
+}
+type RequestStart struct {
+	Thread string
+	At     time.Time
+}
+type Unreturned struct{ Thread, Call string }
+
+// Audience is a detached application-authenticated routing snapshot, not a roster.
+type Audience struct {
+	Root    string
+	Threads map[string]string
+}
+
+type queuedSupplement struct {
+	Supplement
+	queued time.Time
+}
+type supplementThread struct{ seen map[string]struct{} }
+
+// Supplements owns invocation-scoped auxiliary observations. Its application
+// serializes access together with the supplied thread scopes and authority facts.
+// Source: apps/mekugi/internal/router/subagent_activity{,_pane}.go@d002a0dc.
+type Supplements struct {
+	threads    scope.Key[supplementThread]
+	root       string
+	events     []queuedSupplement
+	starts     []RequestStart
+	unreturned []Unreturned
+	restored   map[string]int
+}
+
+var invocationSupplements scope.Key[Supplements]
+
+func RequestSupplements(invocation *scope.Store) *Supplements {
+	return invocationSupplements.Value(invocation)
+}
+
+func (s *Supplements) Attach(root string) { s.root = root }
+func (s *Supplements) Detach()            { s.root = "" }
+func (s *Supplements) Clear() {
+	s.root = ""
+	s.events, s.starts, s.unreturned, s.restored = nil, nil, nil, nil
+}
+
+func supplementID(source string) string {
+	digest := sha256.Sum256([]byte(source))
+	return fmt.Sprintf("msg_mekugi_commentary_%x", digest[:12])
+}
+
+// Collect returns true only when capacity omitted an otherwise eligible update.
+// Callers admit native identity before supplying its scope. Source recognition
+// never grants execution or filesystem authority.
+func (s *Supplements) Collect(thread *scope.Store, event Supplement, now time.Time) bool {
+	if event.Source == "" || len(event.Source) > 16<<10 || strings.TrimSpace(event.Text) == "" && event.Message == nil && event.Start == nil {
+		return false
+	}
+	switch event.Kind {
+	case "output_dedupe", "error", "reply", "start", "assignment":
+	default:
+		return false
+	}
+	state := s.threads.Value(thread)
+	if state.seen == nil {
+		state.seen = make(map[string]struct{})
+	}
+	event.Source = supplementID(event.Source)
+	if _, exists := state.seen[event.Source]; exists {
+		return false
+	}
+	if key := restoredSupplementKey(event); key != "" && s.restored[key] > 0 {
+		s.restored[key]--
+		state.seen[event.Source] = struct{}{}
+		return false
+	}
+	if event.Kind != "error" {
+		event.Text = ClipSupplementMessage(event.Text)
+	}
+	if event.Message != nil {
+		message := *event.Message
+		message.Text = ClipSupplementMessage(message.Text)
+		event.Message = &message
+	}
+	s.expire(now)
+	count := 0
+	for _, queued := range s.events {
+		if queued.Thread == event.Thread {
+			count++
+		}
+	}
+	if len(s.events) >= 1024 || count >= 64 {
+		return true
+	}
+	state.seen[event.Source] = struct{}{}
+	if event.Kind == "start" && event.Assignment != nil && event.Assignment.ID != "" {
+		state.seen[supplementID(event.Assignment.ID)] = struct{}{}
+	}
+	if event.Observed.IsZero() {
+		event.Observed = now
+	}
+	s.events = append(s.events, queuedSupplement{Supplement: event, queued: now})
+	return false
+}
+
+// ClipSupplementMessage shares the live and restored annotation display bound.
+func ClipSupplementMessage(text string) string {
+	if len(text) <= SupplementMessageBytes {
+		return text
+	}
+	const clipped = "\n… (message clipped at the native Activity 64 KiB display limit)"
+	return strings.ToValidUTF8(text[:SupplementMessageBytes-len(clipped)], "") + clipped
+}
+
+func restoredSupplementKey(event Supplement) string {
+	switch {
+	case event.Kind == "start":
+		return "start\x00" + event.Thread
+	case event.Kind == "assignment" && event.Assignment != nil:
+		return "assignment\x00" + event.Assignment.From + "\x00" + event.Assignment.To + "\x00" + event.Assignment.Text
+	case event.Kind == "reply" && event.Message != nil:
+		return "reply\x00" + event.Message.From + "\x00" + event.Message.To + "\x00" + event.Message.Text
+	}
+	return ""
+}
+
+func (s *Supplements) Restore(event Supplement) {
+	if s.restored == nil {
+		s.restored = make(map[string]int)
+	}
+	if event.Kind == "start" {
+		s.restored[restoredSupplementKey(event)]++
+		event.Kind = "assignment"
+	}
+	if key := restoredSupplementKey(event); key != "" {
+		s.restored[key]++
+	}
+}
+
+func (s *Supplements) expire(now time.Time) {
+	s.events = slices.DeleteFunc(s.events, func(event queuedSupplement) bool { return now.Sub(event.queued) >= time.Hour })
+}
+
+func (s *Supplements) Take(audience Audience, now time.Time) []Supplement {
+	if s.root == "" || s.root != audience.Root {
+		return nil
+	}
+	s.expire(now)
+	var result []Supplement
+	kept := s.events[:0]
+	for _, event := range s.events {
+		if _, admitted := audience.Threads[event.Thread]; !admitted {
+			kept = append(kept, event)
+			continue
+		}
+		result = append(result, event.Supplement)
+	}
+	clear(s.events[len(kept):])
+	s.events = kept
+	return result
+}
+
+func (s *Supplements) StartRequest(thread string, at time.Time) {
+	if s.root != "" && len(s.starts) < 64 {
+		s.starts = append(s.starts, RequestStart{Thread: thread, At: at})
+	}
+}
+func (s *Supplements) TakeStarts(audience Audience) []RequestStart {
+	if s.root == "" || s.root != audience.Root {
+		return nil
+	}
+	starts := slices.DeleteFunc(s.starts, func(start RequestStart) bool { _, admitted := audience.Threads[start.Thread]; return !admitted })
+	s.starts = nil
+	return starts
+}
+func (s *Supplements) NoteUnreturned(thread string, calls []string) {
+	if s.root == "" {
+		return
+	}
+	for _, call := range calls {
+		if len(s.unreturned) < 256 {
+			s.unreturned = append(s.unreturned, Unreturned{Thread: thread, Call: call})
+		}
+	}
+}
+func (s *Supplements) TakeUnreturned(audience Audience) []Unreturned {
+	if s.root == "" || s.root != audience.Root {
+		return nil
+	}
+	refs := slices.DeleteFunc(s.unreturned, func(ref Unreturned) bool { _, admitted := audience.Threads[ref.Thread]; return !admitted })
+	s.unreturned = nil
+	return refs
+}

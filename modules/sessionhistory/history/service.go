@@ -13,7 +13,12 @@ import (
 
 // Service owns the composed retained-record catalog for an invocation.
 // Store handles share process-independent coordination at their retained path.
-type Service struct{ kinds []recordkind.Spec }
+type Service struct {
+	kinds []recordkind.Spec
+	calls CallCache
+}
+
+func (s *Service) Calls() *CallCache { return &s.calls }
 
 func NewService(kinds []recordkind.Spec) (*Service, error) {
 	seen := make(map[string]bool)

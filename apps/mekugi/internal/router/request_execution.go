@@ -163,7 +163,7 @@ func (a *requestAttempt) prepare() error {
 		if err := validateMekugiCompactionRequest(&a.request, a.metadata); err != nil {
 			return err
 		}
-		if a.executor.mekugiCalls.isBTWThread(a.threadID) {
+		if a.executor.mekugiCalls.control.IsSideThread(a.threadID) {
 			return inferencegateway.IncompatibleRequest("btw_compaction_required", conversationmodel.SideCompactionRequired)
 		}
 	}

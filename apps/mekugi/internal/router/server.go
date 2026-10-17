@@ -262,7 +262,7 @@ func RunSession(terminalViews terminalsession.Views, views *sessionpresentation.
 		if !options.DeduplicateOutput {
 			projections = nil
 		}
-		mekugiCalls = newMekugiProxy(registry, projections, usage)
+		mekugiCalls = newMekugiProxy(registry, projections, usage, service)
 		if titleGenerator != nil {
 			titleGenerator.usage = mekugiCalls.usage
 		}
