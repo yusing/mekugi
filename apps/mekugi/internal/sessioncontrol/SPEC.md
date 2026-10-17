@@ -19,6 +19,10 @@ issues its observational reads without changing execution or input identity.
 
 ## Interactive operations
 
+Semantic interruption validates the observed thread, turn and pending-start identity
+before changing control state. Restoration and expedition are explicit dispositions;
+keyboard locks and contextual dismissal stay with the renderer.
+
 Terminal keys and contextual dismissal belong to
 [terminal session](../terminalsession/SPEC.md#composer-controls).
 

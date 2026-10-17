@@ -48,7 +48,7 @@ func TestNativeDisplaySwitchKeepsHistoryObservation(t *testing.T) {
 	historyTurnsReply(t, u)
 	restoreContentReply(t, u, 4, map[string]any{"data": []any{historyItem("last", "saved", 109000)}, "nextCursor": "older"})
 	u.agents.displayThread("/root/worker")
-	if err := u.loadOlderActivity(); err != nil {
+	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
 	}
 	id := u.historyLoading().state.RequestID()

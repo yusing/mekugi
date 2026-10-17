@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -73,7 +74,7 @@ func TestAppServerAnchoredHistoryPages(t *testing.T) {
 	if got := strings.Join(entryTexts(u.agents), ","); got != "middle commentary,latest answer" {
 		t.Fatal(got)
 	}
-	if err := u.loadOlderActivity(); err != nil {
+	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
 	}
 	requests = restoreContentRequests(t, wire)
@@ -92,7 +93,7 @@ func TestAppServerAnchoredHistoryPages(t *testing.T) {
 			t.Fatalf("incorrect older state: %+v", entry)
 		}
 	}
-	if err := u.loadOlderActivity(); err != nil {
+	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
 	}
 	requests = restoreContentRequests(t, wire)
@@ -100,7 +101,7 @@ func TestAppServerAnchoredHistoryPages(t *testing.T) {
 		t.Fatalf("old turn not loaded independently: %+v", requests[6])
 	}
 	restoreContentReply(t, u, 6, map[string]any{"data": []any{}})
-	if u.historyTarget() != nil || !u.session.agent("/root/worker").Final {
+	if historyLoadIntent(u).Thread != "" || !u.session.agent("/root/worker").Final {
 		t.Fatal("older failure replaced latest status or left false partial state")
 	}
 	if len(u.agents.Entries) != 4 || u.agents.Entries[0].Source.Kind != "error" {
@@ -114,7 +115,7 @@ func TestAppServerAnchoredHistoryErrorsAndCancellation(t *testing.T) {
 			u, wire := newPagedHistoryUI(t)
 			historyTurnsReply(t, u)
 			restoreContentReply(t, u, 4, map[string]any{"data": []any{historyItem("middle", "saved", 105000)}, "nextCursor": "older"})
-			if err := u.loadOlderActivity(); err != nil {
+			if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
 				t.Fatal(err)
 			}
 			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "live", "status": "inProgress"}})
@@ -143,7 +144,7 @@ func TestAppServerAnchoredHistoryErrorsAndCancellation(t *testing.T) {
 			if u.historyLoading() != nil || !u.session.agent("/root/worker").Responding || strings.Contains(strings.Join(entryTexts(u.agents), ","), "leak") || strings.Contains(strings.Join(entryTexts(u.agents), ","), "late response") {
 				t.Fatal("failure/cancel lost live status or admitted stale data")
 			}
-			if err := u.loadOlderActivity(); err != nil {
+			if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
 				t.Fatal(err)
 			}
 			if len(restoreContentRequests(t, wire)) != 7 {
@@ -170,7 +171,7 @@ func TestAppServerAnchoredHistoryDeferredEvidence(t *testing.T) {
 	if len(h.placements) != 2 || len(u.agents.Entries) != 3 {
 		t.Fatalf("older rollout evidence shown early or lost: %+v", u.agents.Entries)
 	}
-	if err := u.loadOlderActivity(); err != nil {
+	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
 	}
 	restoreContentReply(t, u, 5, map[string]any{"data": []any{historyItem("first", "first", 101000)}})
@@ -226,7 +227,7 @@ func TestUISnapshotNativeAnchoredHistory(t *testing.T) {
 			u.shell.Focus = 0
 			u.agents.setDisplayFilter(true, "/root/worker")
 			if state != "partial" {
-				if err := u.loadOlderActivity(); err != nil {
+				if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -273,7 +274,7 @@ func TestAppServerAnchoredHistoryEmptyPageAndLiveCompletion(t *testing.T) {
 	u, wire := newPagedHistoryUI(t)
 	historyTurnsReply(t, u)
 	restoreContentReply(t, u, 4, map[string]any{"data": []any{}, "nextCursor": "empty-continuation"})
-	if err := u.loadOlderActivity(); err != nil {
+	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
 	}
 	requests := restoreContentRequests(t, wire)
@@ -298,7 +299,7 @@ func TestAppServerAnchoredHistoryBufferSaturation(t *testing.T) {
 	u, _ := newPagedHistoryUI(t)
 	historyTurnsReply(t, u)
 	restoreContentReply(t, u, 4, map[string]any{"data": []any{historyItem("last", "saved", 109000)}, "nextCursor": "older"})
-	if err := u.loadOlderActivity(); err != nil {
+	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
 	}
 	for i := range 257 {
@@ -326,7 +327,7 @@ func TestAppServerAnchoredHistoryRetainsPausedViewportAndLinks(t *testing.T) {
 	stable := u.agents.Entries[0].Source.Seq
 	beforeRow := u.agents.QuestionRows[stable]
 	beforeOffset := u.agents.Offset
-	if err := u.loadOlderActivity(); err != nil {
+	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
 	}
 	restoreContentReply(t, u, 5, map[string]any{"data": []any{historyItem("first", "older\ncommentary", 101000)}})
@@ -404,10 +405,10 @@ func TestAppServerAnchoredHistoryInitialFailureRetryKeepsEvidence(t *testing.T) 
 		}
 		return n
 	}
-	if count() != 1 || u.restoring != nil || u.historyTarget() == nil || u.agents.HistoryHint != "History unavailable · Ctrl-B o retry" {
+	if count() != 1 || u.restoring != nil || historyLoadIntent(u).Thread == "" || u.agents.HistoryHint != "History unavailable · Ctrl-B o retry" {
 		t.Fatal("failed initial read lost evidence or its retry state")
 	}
-	if err := u.loadOlderActivity(); err != nil {
+	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
 	}
 	restoreContentReply(t, u, 5, map[string]any{"data": []any{historyItem("last", "latest answer", 109000)}})
@@ -429,20 +430,20 @@ func TestAppServerAnchoredHistoryCancelledMetadataRetry(t *testing.T) {
 		t.Run(fmt.Sprint(saturation), func(t *testing.T) {
 			u, _ := newPagedHistoryUI(t)
 			restoreContentError(t, u, 3)
-			if err := u.loadOlderActivity(); err != nil {
+			if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
 				t.Fatal(err)
 			}
 			if saturation {
 				for i := range 257 {
 					appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "live", "item": map[string]any{"id": fmt.Sprint(i), "type": "agentMessage", "text": "live"}})
 				}
-			} else if err := u.cancelOlderActivity(); err != nil {
+			} else if err := u.cancelOlderActivity(historyCancelIntent(u)); err != nil {
 				t.Fatal(err)
 			}
-			if u.historyTarget() == nil || u.historyLoading() != nil {
+			if historyLoadIntent(u).Thread == "" || u.historyLoading() != nil {
 				t.Fatal("metadata cancellation removed recovery eligibility")
 			}
-			if err := u.loadOlderActivity(); err != nil {
+			if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
 				t.Fatal(err)
 			}
 			restoreContentReply(t, u, 5, map[string]any{"data": []any{map[string]any{"id": "t", "status": "completed", "startedAt": 100, "completedAt": 110}}})
@@ -462,7 +463,7 @@ func TestAppServerAnchoredHistoryMetadataRetryPreservesCompletedLiveTiming(t *te
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "live", "status": "inProgress"}})
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "live", "status": "completed"}})
 	live := *u.session.agent("/root/worker")
-	if err := u.loadOlderActivity(); err != nil {
+	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
 	}
 	restoreContentReply(t, u, 5, map[string]any{"data": []any{map[string]any{"id": "old", "status": "completed", "startedAt": 90, "completedAt": 95}}})
@@ -471,4 +472,14 @@ func TestAppServerAnchoredHistoryMetadataRetryPreservesCompletedLiveTiming(t *te
 	if after.Started != live.Started || after.LastResponse != live.LastResponse || after.Final != live.Final || after.Responding {
 		t.Fatalf("stale metadata overwrote completed live evidence: before=%+v after=%+v", live, after)
 	}
+}
+
+func historyLoadIntent(u *appServerUI) sessionpresentation.HistoryIntent {
+	v := u.mainPresentation(u.now())
+	return sessionpresentation.HistoryIntent{Version: v.Version, Thread: v.History.Target}
+}
+
+func historyCancelIntent(u *appServerUI) sessionpresentation.HistoryIntent {
+	v := u.mainPresentation(u.now())
+	return sessionpresentation.HistoryIntent{Version: v.Version, Thread: v.Loading}
 }

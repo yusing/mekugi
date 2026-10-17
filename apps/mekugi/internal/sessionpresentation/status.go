@@ -76,6 +76,7 @@ type MainInputs struct {
 	Conversation           *conversationmodel.Session
 	Restoring, SideRunning bool
 	Processes              int
+	History                []HistoryView
 }
 
 type Caption struct {
@@ -95,6 +96,8 @@ func (m *Model) Publish(in MainInputs, caption Caption, now time.Time) View {
 	v.Questions = in.Conversation.Questions.View(in.Control.Thread)
 	v.Approvals = in.Conversation.Approvals.View()
 	v.Pending = pendingInput(in.Control, in.Conversation)
+	v.History = m.HistoryView(in.History)
+	v.Interrupt = in.Control.InterruptTarget()
 	s := &v.Status
 	state, control := m.Status, in.Control
 	s.Session = Label{Text: state.Text, Alert: state.Alert, Failure: state.failure, FailureKnown: state.failureKnown,

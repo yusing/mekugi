@@ -31,7 +31,12 @@ remains the input, question and approval destination. Child display makes the
 composer read-only; returning to Main restores its existing draft.
 [Replay](../../../../modules/sessionreplay/SPEC.md) is read-only even while Main is
 displayed. Display and pagination intents name their view version and target
-identity, so stale actions cannot affect a replacement session. View values are
+identity, so stale actions cannot affect a replacement session. History targets and
+loading state are published with the session view; consumers do not reconstruct
+eligible children from terminal roster state. Interruption names Main’s observed
+turn or pending start and explicitly chooses restoration or expedition of
+uncommitted steers. The same admission applies to every consumer, and replay
+rejects host operations. View values are
 detached data without terminal or backend types. A highlighted roster row is not
 the displayed thread. Metadata can rename a caller without changing its identity.
 

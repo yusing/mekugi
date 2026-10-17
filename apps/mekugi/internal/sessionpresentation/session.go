@@ -5,6 +5,7 @@ package sessionpresentation
 import (
 	"errors"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/contracts/presentation"
 	"github.com/yusing/mekugi/contracts/scope"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -41,6 +42,8 @@ type View struct {
 	Questions prompt.QuestionDockView
 	Approvals prompt.ApprovalDockView
 	Pending   conversationmodel.PendingView
+	History   HistoryDock
+	Interrupt sessioncontrol.InterruptTarget
 }
 
 type DisplayIntent struct {
@@ -54,6 +57,7 @@ type HistoryIntent struct {
 }
 
 var ErrStaleIntent = errors.New("The displayed session changed; select the target again.")
+var ErrReplayIntent = errors.New("Replay is read-only.")
 
 // Service owns entry keys and attachment identity. The application owns stores.
 type Service struct {
@@ -149,10 +153,13 @@ func (m *Model) StartHistory(h *History, thread string) PageRequest {
 }
 
 func (m *Model) LoadHistory(intent HistoryIntent, h *History) (PageRequest, error) {
-	if intent.Version != m.view.Version || intent.Thread != h.thread {
+	if intent.Version != m.view.Version || h == nil || intent.Thread != h.thread {
 		return PageRequest{}, ErrStaleIntent
 	}
-	if m.replay || m.view.Loading != "" || !h.Available() {
+	if m.replay {
+		return PageRequest{}, ErrReplayIntent
+	}
+	if m.view.Loading != "" || !h.Available() {
 		return PageRequest{}, nil
 	}
 	m.view.Loading = h.thread
@@ -172,8 +179,11 @@ func (m *Model) FinishHistory(h *History) bool {
 }
 
 func (m *Model) CancelHistory(intent HistoryIntent, h *History) (string, error) {
-	if intent.Version != m.view.Version || intent.Thread != h.thread {
+	if intent.Version != m.view.Version || h == nil || intent.Thread != h.thread {
 		return "", ErrStaleIntent
+	}
+	if m.replay {
+		return "", ErrReplayIntent
 	}
 	if m.view.Loading != h.thread || h.initial {
 		return "", nil

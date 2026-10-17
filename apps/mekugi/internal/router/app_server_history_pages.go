@@ -193,25 +193,21 @@ func (u *appServerUI) finishChildHistory() error {
 	return nil
 }
 
-func (u *appServerUI) historyTarget() *appServerChildHistory {
-	model := u.sessionPresentation()
-	if h := u.childHistory(model.PreferredHistory()); h != nil && h.state.Available() {
-		return h
-	}
-	view := model.View()
-	if view.Displayed.ID != view.Main.ID {
-		return nil
-	}
+// historyViews projects the existing scoped owners in admitted roster order.
+// It retains no parallel pagination or transcript state.
+func (u *appServerUI) historyViews() []sessionpresentation.HistoryView {
+	loading := u.sessionPresentation().View().Loading
+	var views []sessionpresentation.HistoryView
 	for _, agent := range u.session.agents {
 		for thread, name := range u.session.paths {
 			if name == agent.Name {
-				if h := u.childHistory(thread); h != nil && h.state.Available() {
-					return h
+				if h := u.childHistory(thread); h != nil {
+					views = append(views, h.state.View(loading))
 				}
 			}
 		}
 	}
-	return nil
+	return views
 }
 
 func (u *appServerUI) updateHistoryHint() {
@@ -221,7 +217,7 @@ func (u *appServerUI) updateHistoryHint() {
 	u.agents.HistoryHint = ""
 	if h := u.historyLoading(); h != nil && !h.state.View(h.info.ID).Initial {
 		u.agents.HistoryHint = "Loading older · Esc cancels"
-	} else if h := u.historyTarget(); h != nil {
+	} else if h := u.childHistory(u.sessionPresentation().HistoryView(u.historyViews()).Target); h != nil {
 		u.agents.HistoryHint = "Older history · Ctrl-B o load"
 		if h.state.View("").Status == sessionpresentation.Failed {
 			u.agents.HistoryHint = "History unavailable · Ctrl-B o retry"
@@ -229,16 +225,20 @@ func (u *appServerUI) updateHistoryHint() {
 	}
 }
 
-func (u *appServerUI) loadOlderActivity() error {
+func (u *appServerUI) loadOlderActivity(intent sessionpresentation.HistoryIntent) error {
 	if u.restoring != nil {
 		return nil
 	}
-	h := u.historyTarget()
-	if h == nil {
+	h := u.childHistory(intent.Thread)
+	if intent.Thread == "" {
 		return nil
 	}
 	model := u.sessionPresentation()
-	request, err := model.LoadHistory(sessionpresentation.HistoryIntent{Version: model.View().Version, Thread: h.info.ID}, h.state)
+	var state *sessionpresentation.History
+	if h != nil {
+		state = h.state
+	}
+	request, err := model.LoadHistory(intent, state)
 	if err != nil {
 		u.setNotice(err.Error(), true)
 		return nil
@@ -249,15 +249,22 @@ func (u *appServerUI) loadOlderActivity() error {
 	return u.requestChildHistory(request)
 }
 
-func (u *appServerUI) cancelOlderActivity() error {
-	h := u.historyLoading()
-	if h == nil || h.state.View(h.info.ID).Initial {
+func (u *appServerUI) cancelOlderActivity(intent sessionpresentation.HistoryIntent) error {
+	h := u.childHistory(intent.Thread)
+	if intent.Thread == "" {
 		return nil
 	}
 	model := u.sessionPresentation()
-	id, err := model.CancelHistory(sessionpresentation.HistoryIntent{Version: model.View().Version, Thread: h.info.ID}, h.state)
+	var state *sessionpresentation.History
+	if h != nil {
+		state = h.state
+	}
+	id, err := model.CancelHistory(intent, state)
 	if err != nil {
 		u.setNotice(err.Error(), true)
+		return nil
+	}
+	if id == "" {
 		return nil
 	}
 	u.requests.Forget(id) // Cancel observation, never host execution.
@@ -282,7 +289,7 @@ func (u *appServerUI) holdOlderHistoryEvent(m appserver.Message) (bool, error) {
 		h.pending = append(h.pending, m)
 		return true, nil
 	case sessionpresentation.CancelRead:
-		if err := u.cancelOlderActivity(); err != nil {
+		if err := u.cancelOlderActivity(sessionpresentation.HistoryIntent{Version: u.sessionPresentation().View().Version, Thread: h.info.ID}); err != nil {
 			return true, err
 		}
 	}

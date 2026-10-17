@@ -147,7 +147,7 @@ func TestAppServerHookPagedChildWithoutTurns(t *testing.T) {
 	entry := u.session.hookEntry("child", observation, false)
 	h.placements = append(h.placements, &restoredPlacement{entry: entry, at: observation.At})
 	restoreContentReply(t, u, 3, map[string]any{"data": []any{}})
-	if len(u.agents.Entries) != 1 || u.agents.Entries[0].Source.Kind != "hook" || len(h.placements) != 0 || u.historyTarget() != nil {
+	if len(u.agents.Entries) != 1 || u.agents.Entries[0].Source.Kind != "hook" || len(h.placements) != 0 || historyLoadIntent(u).Thread != "" {
 		t.Fatalf("empty paginated history lost a hook or left false older history: entries=%d placements=%d", len(u.agents.Entries), len(h.placements))
 	}
 }

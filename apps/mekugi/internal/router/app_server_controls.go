@@ -1,5 +1,10 @@
 package router
 
+import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+)
+
 func (u *appServerUI) controlsCommand(text string) (bool, error) {
 	switch text {
 	case "/lock", "/unlock":
@@ -26,8 +31,8 @@ func (u *appServerUI) keyboardInterrupt() error {
 		u.lockNotice()
 		return nil
 	}
-	u.SendSteersAfterInterrupt = false
-	return u.interruptTurn()
+	view := u.mainPresentation(u.now())
+	return u.interruptSession(sessionpresentation.InterruptIntent{Version: view.Version, Target: view.Interrupt, Mode: sessioncontrol.RestoreWaiting})
 }
 
 // Escape expedites pending steers like Codex: interrupt, then submit the
@@ -37,14 +42,6 @@ func (u *appServerUI) keyboardEscape() error {
 		u.lockNotice()
 		return nil
 	}
-	// Completion can arrive before either acknowledgement. A repeated Escape
-	// must not restore the waiting input or interrupt its replacement turn.
-	if !u.PrepareEscape(len(u.conversation().Unsent) > 0 && u.conversation().Unsent[0].Text != "/compact") {
-		return nil
-	}
-	err := u.interruptTurn()
-	if err != nil {
-		u.SendSteersAfterInterrupt = false
-	}
-	return err
+	view := u.mainPresentation(u.now())
+	return u.interruptSession(sessionpresentation.InterruptIntent{Version: view.Version, Target: view.Interrupt, Mode: sessioncontrol.ExpediteSteers})
 }

@@ -125,7 +125,7 @@ func TestAppServerTranscriptOlderHistoryPreservesLiveReasoning(t *testing.T) {
 	if liveSeq == 0 {
 		t.Fatal("live reasoning was not presented")
 	}
-	if err := u.loadOlderActivity(); err != nil {
+	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
 	}
 	restoreContentReply(t, u, 5, map[string]any{"data": []any{map[string]any{

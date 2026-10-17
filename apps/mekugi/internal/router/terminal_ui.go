@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -108,7 +109,8 @@ func (u *terminalUI) key(key byte) error {
 		case '3':
 			u.selectNativePane(3)
 		case 'o':
-			return u.main.loadOlderActivity()
+			view := u.main.mainPresentation(u.main.now())
+			return u.main.loadOlderActivity(sessionpresentation.HistoryIntent{Version: view.Version, Thread: view.History.Target})
 		case 'q':
 			if u.main != nil && u.main.composerReadOnly() {
 				u.selectNativePane(0)
@@ -210,7 +212,8 @@ func (u *terminalUI) send(s string) error {
 		return nil
 	}
 	if s == "\x1b" && u.main != nil && u.main.historyLoading() != nil {
-		return u.main.cancelOlderActivity()
+		view := u.main.mainPresentation(u.main.now())
+		return u.main.cancelOlderActivity(sessionpresentation.HistoryIntent{Version: view.Version, Thread: view.Loading})
 	}
 	if u.main != nil && u.Focus == 0 && u.main.composerReadOnly() {
 		transcript := u.main.transcriptView()

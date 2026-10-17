@@ -170,7 +170,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	if u.session.agent("/root/worker").Started.Unix() != 100 || u.session.agent("/root/worker").LastResponse.Unix() != 110 {
 		t.Fatal("host turn timing lost")
 	}
-	if err := u.loadOlderActivity(); err != nil {
+	if err := u.loadOlderActivity(historyLoadIntent(u)); err != nil {
 		t.Fatal(err)
 	}
 	drainHistoryLoader(t, u)
