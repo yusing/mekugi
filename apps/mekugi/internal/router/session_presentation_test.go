@@ -1,6 +1,7 @@
 package router
 
 import (
+	"errors"
 	"io"
 	"reflect"
 	"testing"
@@ -44,7 +45,7 @@ func TestSessionPaintDoesNotRefreshPublication(t *testing.T) {
 	appServerTestTurn(t, u, "turn")
 	questionTestSync(t, u, "request", false)
 	before := u.sessionPresentation().View()
-	if before.Questions.Call == nil || u.questions.painted {
+	if before.Questions.Call == nil || u.prompts.Ready() {
 		t.Fatal("prompt publication did not precede its display receipt")
 	}
 	now = now.Add(time.Second)
@@ -56,7 +57,7 @@ func TestSessionPaintDoesNotRefreshPublication(t *testing.T) {
 			t.Fatal("paint refreshed the publication or changed its version")
 		}
 	}
-	if !u.questions.painted {
+	if !u.prompts.Ready() {
 		t.Fatal("successful visible delivery did not acknowledge the prompt")
 	}
 }
@@ -130,5 +131,24 @@ func (v *activityAdapter) applyDisplayIntent() {
 			v.Selected = intent.Thread.Caller
 		}
 		v.publishActivity()
+	}
+}
+
+func TestPromptFailedFrameDoesNotAcknowledgeOpening(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	appServerTestTurn(t, u, "turn")
+	questionTestSync(t, u, "request", false)
+	failure := errors.New("terminal write failed")
+	if err := u.paint(serverErrorWriter{err: failure}, 100, 24); !errors.Is(err, failure) {
+		t.Fatalf("write failure: %v", err)
+	}
+	if u.prompts.Ready() {
+		t.Fatal("failed frame readied prompt")
+	}
+	if err := u.paint(io.Discard, 100, 24); err != nil {
+		t.Fatal(err)
+	}
+	if !u.prompts.Ready() {
+		t.Fatal("successful retry did not ready prompt")
 	}
 }

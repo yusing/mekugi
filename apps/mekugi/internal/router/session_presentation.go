@@ -29,10 +29,12 @@ func (u *appServerUI) publishPresentation(now time.Time) sessionpresentation.Vie
 		caption.ContextKnown, caption.ContextTokens, caption.ContextWindow = agent.ContextKnown, agent.ContextTokens, agent.ContextWindow
 		caption.Items = m.StatusItems(presentationcontract.Thread{ID: view.Displayed.ID, OutputThroughput: agent.OutputThroughput}, presentationcontract.ComposerCaption)
 	}
-	return m.Publish(sessionpresentation.MainInputs{
+	view = m.Publish(sessionpresentation.MainInputs{
 		Control: &u.Live, Feedback: &u.feedback, Conversation: u.conversation(), Restoring: u.restoring != nil,
 		SideRunning: u.side != nil && (u.side.Busy || u.side.Starting), Processes: u.runningProcessCount(), History: u.historyViews(),
 	}, caption, now)
+	u.prompts.Update(view)
+	return view
 }
 
 func (u *appServerUI) sessionPresentation() *sessionpresentation.Model {

@@ -11,6 +11,7 @@ import (
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+	"github.com/yusing/mekugi/modules/conversation/prompt"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -483,7 +484,7 @@ func TestNativeApprovalQuestionEditorOwnership(t *testing.T) {
 	u.ensureShell()
 	defer u.shell.diffScreen.Close()
 	u.shell.Layout.Main = terminalsession.Rect{0, 0, 80, 28}
-	if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", u.questions.rect.X+1, u.questions.rect.Y+1)); err != nil {
+	if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", u.prompts.Rect.X+1, u.prompts.Rect.Y+1)); err != nil {
 		t.Fatal(err)
 	}
 	if u.approvals.Open || u.currentQuestion() == nil || u.Text != "" {
@@ -792,5 +793,16 @@ func TestUISnapshotNativeAutoApprovalStates(t *testing.T) {
 				uisnapshot.AssertTerminal(t, "testdata/snapshots/approval-auto-"+status+".txt", append(u.testActivity(u.agents).RenderFeed(48, 30).Lines, "plain after approval"), 48)
 			}
 		})
+	}
+}
+
+func TestNativeApprovalWithoutOfferedChoicesStaysBlocked(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	u.Turn = "turn"
+	u.addApproval(&sessioncontrol.Approval{Approval: &prompt.Approval{ID: "unknown", Title: "Unsupported host decision"}})
+	questionTestPaint(t, u, 80)
+	appServerTestKeys(t, u, "\x1b[A\x1b[B\r")
+	if len(u.pendingApprovals()) != 1 || wire.Len() != 0 {
+		t.Fatal("blocked approval changed or issued a response")
 	}
 }

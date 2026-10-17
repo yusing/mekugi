@@ -154,6 +154,7 @@ func (u *appServerUI) transcriptView() *activityui.View {
 // optional saved Diff on the right, a caller-local live dock, the fitted roster
 // below, and a status bar for the focused pane.
 func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
+	promptReceipt := u.main.prompts.Update(u.main.sessionPresentation().View())
 	u.main.mainView.PromptRect = terminalsession.Rect{}
 	width, height := max(1, u.width), max(1, u.height)
 	now := u.main.now()
@@ -243,13 +244,9 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	}
 	visible := u.Shell.PromptVisible(u.main.mainView.PromptRect, u.output != nil, selected)
 	if visible {
-		if u.main.activeQuestionCall() != nil {
-			u.main.questions.painted = true
-		}
-		if u.main.approvals.Open {
-			u.main.approvals.painted = true
-		}
+		u.main.prompts.Delivered(promptReceipt)
 	}
+
 	return nil
 }
 

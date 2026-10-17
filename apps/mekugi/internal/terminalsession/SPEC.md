@@ -25,6 +25,12 @@ The outer compositor receives prepared pane rows and header/status facts. It own
 frame decoration, status-tab targets and final pane geometry. Prompt visibility
 is calculated against that geometry and active overlays; only successful terminal
 delivery makes a visible prompt ready for input.
+Prompt layouts, preferred columns, masked secret editors and readiness belong to
+the terminal. Layouts use stable call, question and approval identities rather
+than model pointers. Delivery receipts identify the attachment and dock opening;
+an old frame cannot ready a replacement, while ordinary publication updates keep
+an already visible dock ready. Prompt keys consume detached values and return
+targeted actions for application admission.
 The [attachment owner](../sessionpresentation/SPEC.md#attachment-lifetime) retires
 module state. Backward replay retains terminal focus and Diff visibility.
 Descriptor-selected roster and auxiliary views define available placements.

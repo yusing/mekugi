@@ -28,10 +28,8 @@ type nativeApprovalDock struct {
 	*prompt.Approvals
 	handles map[*prompt.Approval]*sessioncontrol.Approval
 	unbound []*sessioncontrol.Approval
-	painted bool
 	patches map[string][]string
 	grants  sessioncontrol.ApprovalGrants
-	layouts map[*prompt.Approval]*conversationui.ApprovalLayout
 }
 
 func (u *appServerUI) pendingApprovals() []*sessioncontrol.Approval {
@@ -40,16 +38,6 @@ func (u *appServerUI) pendingApprovals() []*sessioncontrol.Approval {
 		result = append(result, u.approvals.handles[a])
 	}
 	return result
-}
-
-func (d *nativeApprovalDock) layout(a *sessioncontrol.Approval) *conversationui.ApprovalLayout {
-	if d.layouts == nil {
-		d.layouts = make(map[*prompt.Approval]*conversationui.ApprovalLayout)
-	}
-	if d.layouts[a.Approval] == nil {
-		d.layouts[a.Approval] = new(conversationui.ApprovalLayout)
-	}
-	return d.layouts[a.Approval]
 }
 
 func (u *appServerUI) approvalAgent(thread string) string {
@@ -241,7 +229,7 @@ func (u *appServerUI) endApproval(a *sessioncontrol.Approval, outcome string) {
 	}
 	u.approvals.Remove(a.Approval)
 	delete(u.approvals.handles, a.Approval)
-	delete(u.approvals.layouts, a.Approval)
+	u.prompts.ForgetApproval(a.ID)
 	if wasOpen {
 		u.openApprovals()
 	}
@@ -368,10 +356,10 @@ func (u *appServerUI) openApprovals() bool {
 	if a := u.pendingApprovals()[0]; a.DenialChoice() >= 0 {
 		u.mainView.PromptColumn = u.mainView.CursorColumn
 		u.promptEditor.Open(u.Editor, a.Editor)
-		u.mainView.CursorColumn = u.approvals.layout(a).Column
+		u.mainView.CursorColumn = u.prompts.ApprovalLayout(a.ID).Column
 	}
 	u.approvals.Show()
-	u.approvals.painted = false
+	u.prompts.Reopen()
 	u.focusPrompt()
 	return true
 }
@@ -379,7 +367,7 @@ func (u *appServerUI) openApprovals() bool {
 func (u *appServerUI) hideApprovals() {
 	if u.approvals.Open && len(u.pendingApprovals()) > 0 {
 		if a := u.pendingApprovals()[0]; a.DenialChoice() >= 0 {
-			u.approvals.layout(a).Column = u.mainView.CursorColumn
+			u.prompts.ApprovalLayout(a.ID).Column = u.mainView.CursorColumn
 			a.Editor = u.promptEditor.Close(u.Editor)
 			u.mainView.CursorColumn = u.mainView.PromptColumn
 		}
@@ -392,7 +380,13 @@ func (u *appServerUI) approvalKey(key string) (bool, error) {
 		return false, nil
 	}
 	a := u.approvals.handles[u.approvals.Pending[0]]
-	switch u.approvals.layout(a).Key(a.Approval, key, u.Text == "") {
+	view := u.sessionPresentation().View()
+	keyInput := u.prompts.ApprovalLayout(view.Approvals.Approval.ID).Key(view.Approvals.Approval, key, u.Text == "")
+	if err := u.sessionPresentation().ApprovalInput(sessionpresentation.ApprovalInputIntent{Version: view.Version, ApprovalInput: keyInput.Approval}, u.approvals.Approvals); err != nil {
+		u.setNotice(err.Error(), true)
+		return true, nil
+	}
+	switch keyInput.Action {
 	case conversationui.PromptPass:
 		return false, nil
 	case conversationui.PromptHide:

@@ -14,6 +14,29 @@ type DraftView struct {
 	Available bool
 }
 
+// PromptDraftView contains only the active editor, never parked histories or secrets.
+type PromptDraftView struct {
+	Call, Question, Request string
+	Draft                   composer.Draft
+	Revision                uint64
+}
+
+func (m *Session) PromptDraftView() PromptDraftView {
+	var v PromptDraftView
+	if call := m.Questions.Active; call != nil {
+		v.Call, v.Question = call.ID, call.View().Questions[m.Questions.Index].ID
+		if m.Questions.Current().IsSecret {
+			return v
+		}
+	} else if m.Approvals.Open && len(m.Approvals.Pending) > 0 {
+		v.Request = m.Approvals.Pending[0].ID
+	} else {
+		return v
+	}
+	v.Draft, v.Revision = m.Editor.Draft.Editable(), m.Editor.Revision()
+	return v
+}
+
 func (m *Session) ordinaryEditor() bool { return m.Questions.Active == nil && !m.Approvals.Open }
 
 func (m *Session) DraftView() DraftView {

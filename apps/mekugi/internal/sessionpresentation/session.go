@@ -44,6 +44,7 @@ type View struct {
 	Approvals   prompt.ApprovalDockView
 	Pending     conversationmodel.PendingView
 	Draft       conversationmodel.DraftView
+	PromptDraft conversationmodel.PromptDraftView
 	Admission   InputAdmission
 	History     HistoryDock
 	Interrupt   sessioncontrol.InterruptTarget
@@ -138,6 +139,7 @@ func cloneView(v View) View {
 	v.Pending.Waiting = slices.Clone(v.Pending.Waiting)
 	v.Pending.Queued = slices.Clone(v.Pending.Queued)
 	v.Draft.Draft = v.Draft.Draft.Clone()
+	v.PromptDraft.Draft = v.PromptDraft.Draft.Clone()
 	v.History.Entries = slices.Clone(v.History.Entries)
 	return v
 }

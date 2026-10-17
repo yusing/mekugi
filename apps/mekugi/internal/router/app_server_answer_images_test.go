@@ -187,7 +187,7 @@ func TestQuestionSecretDraftKeepsImageWithoutExposingModelState(t *testing.T) {
 	if !strings.Contains(wire.String(), "user_note: [Image 1]") || len(u.conversation().Unsent) != 1 || len(u.conversation().Unsent[0].Images) != 1 {
 		t.Fatal("secret answer image companion lost")
 	}
-	if len(call.secrets) != 0 || len(call.secretAnswers) != 0 || len(call.Questions[0].Answer) != 0 {
+	if len(u.prompts.SecretState(call.ID).Editors) != 0 || len(u.prompts.SecretState(call.ID).Answers) != 0 || len(call.Questions[0].Answer) != 0 {
 		t.Fatal("submitted secret retained")
 	}
 }

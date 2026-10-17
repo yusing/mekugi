@@ -80,7 +80,7 @@ func (u *appServerUI) observeMessageQuestions(text observation.TextEvent, item o
 	}
 	changes := u.questions.ObserveMessage(in)
 	if changes.Added != nil {
-		u.bindQuestion(&nativeQuestionCall{Question: &sessioncontrol.Question{Call: changes.Added}}, history)
+		u.bindQuestion(&sessioncontrol.Question{Call: changes.Added}, history)
 	}
 	for _, change := range changes.Changed {
 		for _, draft := range change.Discarded {

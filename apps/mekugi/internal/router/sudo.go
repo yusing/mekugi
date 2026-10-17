@@ -11,14 +11,14 @@ import (
 
 func (u *appServerUI) openSudoPassword(a *sessioncontrol.Approval) {
 	id := fmt.Sprintf("sudo-password/%p", a.Guard)
-	c := &nativeQuestionCall{Question: &sessioncontrol.Question{Call: &prompt.Call{ID: id, Thread: a.Thread, Turn: a.Turn, Item: id, Local: true,
+	c := &sessioncontrol.Question{Call: &prompt.Call{ID: id, Thread: a.Thread, Turn: a.Turn, Item: id, Local: true,
 		Questions: []prompt.Question{{ID: "password", Header: "Sudo password", IsSecret: true,
-			Question: "Enter your sudo password:\n" + a.Subject + "\nCtrl-] skips and denies authentication."}}}, Sudo: a.Guard}}
+			Question: "Enter your sudo password:\n" + a.Subject + "\nCtrl-] skips and denies authentication."}}}, Sudo: a.Guard}
 	u.addQuestions(c, false)
 }
 
-func (u *appServerUI) submitSudoPassword(c *nativeQuestionCall) error {
-	outcome, delivered, err := c.AnswerPassword(c.secretAnswers)
+func (u *appServerUI) submitSudoPassword(c *sessioncontrol.Question) error {
+	outcome, delivered, err := c.AnswerPassword(u.prompts.SecretState(c.ID).Answers)
 	if err != nil {
 		u.setNotice(err.Error(), true)
 		return nil

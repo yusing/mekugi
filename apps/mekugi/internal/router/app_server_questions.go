@@ -8,7 +8,6 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/terminalui"
@@ -25,84 +24,46 @@ import (
 	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
 )
 
-type nativeQuestionCall struct {
-	*sessioncontrol.Question
-	// Secret state remains invocation-local and is never part of a neutral view.
-	secrets       map[int]questionEditor
-	secretAnswers map[int][]string
-}
-
-type questionEditor struct {
-	composer.State
-	column *int
-}
 type nativeQuestionDock struct {
 	*prompt.Questions
-	handles map[*prompt.Call]*nativeQuestionCall
-	layout  map[*prompt.Question]*conversationui.QuestionLayout
-	rect    terminalsession.Rect
-	painted bool
+	handles map[*prompt.Call]*sessioncontrol.Question
 }
 
-func (u *appServerUI) questionCalls() []*nativeQuestionCall {
-	calls := make([]*nativeQuestionCall, 0, len(u.questions.Calls))
+func (u *appServerUI) questionCalls() []*sessioncontrol.Question {
+	calls := make([]*sessioncontrol.Question, 0, len(u.questions.Calls))
 	for _, c := range u.questions.Calls {
 		calls = append(calls, u.questions.handles[c])
 	}
 	return calls
 }
-func (u *appServerUI) activeQuestionCall() *nativeQuestionCall {
+func (u *appServerUI) activeQuestionCall() *sessioncontrol.Question {
 	return u.questions.handles[u.questions.Active]
 }
-func (u *appServerUI) questionLayout(q *prompt.Question) *conversationui.QuestionLayout {
-	if q == nil {
-		return nil
-	}
-	if u.questions.layout == nil {
-		u.questions.layout = make(map[*prompt.Question]*conversationui.QuestionLayout)
-	}
-	if u.questions.layout[q] == nil {
-		u.questions.layout[q] = &conversationui.QuestionLayout{}
-	}
-	return u.questions.layout[q]
-}
 func (u *appServerUI) parkQuestion(q *prompt.Question) {
-	e := u.saveQuestionEditor()
+	state := u.Editor.Park()
+	u.prompts.QuestionLayout(u.questions.View(u.Thread)).Column = u.mainView.CursorColumn
 	if q.IsSecret {
-		c := u.activeQuestionCall()
-		if c.secrets == nil {
-			c.secrets = make(map[int]questionEditor)
-		}
-		c.secrets[u.questions.Index] = e
+		u.prompts.Secrets(u.questions.Active.ID).Editors[u.questions.Index] = state
 	} else {
-		q.Editor = e.State
-		u.questionLayout(q).Column = e.column
+		q.Editor = state
 	}
 }
 func (u *appServerUI) resumeQuestion(q *prompt.Question) {
 	u.Editor = &u.conversation().Editor
-	u.secretEditor = composer.Editor{}
+	u.prompts.Secret = composer.Editor{}
+	state := q.Editor
 	if q.IsSecret {
-		u.Editor = &u.secretEditor
-		u.loadQuestionEditor(u.activeQuestionCall().secrets[u.questions.Index])
-		return
+		u.Editor = &u.prompts.Secret
+		state = u.prompts.SecretState(u.questions.Active.ID).Editors[u.questions.Index]
 	}
-	u.loadQuestionEditor(questionEditor{q.Editor, u.questionLayout(q).Column})
+	u.Editor.Resume(state)
+	u.mainView.CursorColumn = u.prompts.QuestionLayout(u.questions.View(u.Thread)).Column
 }
-func (u *appServerUI) discardQuestionEditors(c *nativeQuestionCall) {
-	clear(c.secrets)
-	clear(c.secretAnswers)
+func (u *appServerUI) discardQuestionEditors(c *sessioncontrol.Question) {
+	u.prompts.ForgetCall(c.ID)
 	for i := range c.Questions {
 		c.Questions[i].Editor = composer.State{}
-		delete(u.questions.layout, &c.Questions[i])
 	}
-}
-func (u *appServerUI) saveQuestionEditor() questionEditor {
-	return questionEditor{u.Editor.Park(), u.mainView.CursorColumn}
-}
-func (u *appServerUI) loadQuestionEditor(e questionEditor) {
-	u.Editor.Resume(e.State)
-	u.mainView.CursorColumn = e.column
 }
 func (u *appServerUI) currentQuestion() *prompt.Question { return u.questions.Current() }
 func (u *appServerUI) questionCount() int                { return u.questions.Count(u.Thread) }
@@ -131,12 +92,12 @@ func (u *appServerUI) composerVacant() bool {
 	}
 	return u.shell == nil || u.shell.Focus == 0 && !u.shell.input.Pasting() && !u.shell.input.Pending()
 }
-func (u *appServerUI) openQuestionCall(c *nativeQuestionCall) {
+func (u *appServerUI) openQuestionCall(c *sessioncontrol.Question) {
 	if u.questions.Active != nil {
 		return
 	}
 	u.hideApprovals()
-	u.questions.painted = false
+	u.prompts.Reopen()
 	u.mainView.PromptColumn = u.mainView.CursorColumn
 	u.promptEditor.Open(u.Editor, composer.State{})
 	if !u.questions.Open(c.Call) {
@@ -157,7 +118,7 @@ func (u *appServerUI) hideQuestions() {
 	if q := u.currentQuestion(); q != nil {
 		u.parkQuestion(q)
 		u.Editor = &u.conversation().Editor
-		u.secretEditor = composer.Editor{}
+		u.prompts.Secret = composer.Editor{}
 		u.promptEditor.Close(u.Editor)
 		u.mainView.CursorColumn = u.mainView.PromptColumn
 		u.questions.Hide()
@@ -168,7 +129,7 @@ func (u *appServerUI) moveQuestion(step int) {
 	u.questions.Move(step)
 	u.resumeQuestion(u.currentQuestion())
 }
-func (u *appServerUI) addQuestions(c *nativeQuestionCall, replay bool) {
+func (u *appServerUI) addQuestions(c *sessioncontrol.Question, replay bool) {
 	if c.Thread != u.Thread && !c.Local || !u.questions.Add(c.Call, replay) {
 		return
 	}
@@ -176,9 +137,9 @@ func (u *appServerUI) addQuestions(c *nativeQuestionCall, replay bool) {
 }
 
 // bindQuestion attaches live handles and terminal effects after neutral admission.
-func (u *appServerUI) bindQuestion(c *nativeQuestionCall, replay bool) {
+func (u *appServerUI) bindQuestion(c *sessioncontrol.Question, replay bool) {
 	if u.questions.handles == nil {
-		u.questions.handles = make(map[*prompt.Call]*nativeQuestionCall)
+		u.questions.handles = make(map[*prompt.Call]*sessioncontrol.Question)
 	}
 	u.questions.handles[c.Call] = c
 	if !replay && !c.Local {
@@ -204,7 +165,7 @@ func (u *appServerUI) questionMessage(m appserver.Message) (bool, error) {
 			return false, nil
 		}
 		call := conversationbinding.Questions(p.ThreadID, p.TurnID, p.ItemID, m.ID, p.Questions)
-		u.addQuestions(&nativeQuestionCall{Question: &sessioncontrol.Question{Call: &call, RequestID: slices.Clone(m.ID)}}, false)
+		u.addQuestions(&sessioncontrol.Question{Call: &call, RequestID: slices.Clone(m.ID)}, false)
 		return true, nil
 	}
 	if m.Method == "serverRequest/resolved" {
@@ -228,7 +189,7 @@ func (u *appServerUI) saveUnsentAnswer(d composer.Draft) {
 		u.setNotice("unsent answer saved to input history", false)
 	}
 }
-func (u *appServerUI) resolveQuestionCall(c *nativeQuestionCall, outcome string) {
+func (u *appServerUI) resolveQuestionCall(c *sessioncontrol.Question, outcome string) {
 	if c.Resolved {
 		return
 	}
@@ -255,7 +216,7 @@ func (u *appServerUI) resolveQuestionCall(c *nativeQuestionCall, outcome string)
 
 // Synchronous answers have no user-message envelope. Retain their committed
 // response as the same hidden chronological anchor used by async answers.
-func (u *appServerUI) recordSyncQuestionAnswer(c *nativeQuestionCall) {
+func (u *appServerUI) recordSyncQuestionAnswer(c *sessioncontrol.Question) {
 	var answers []string
 	for _, q := range c.Questions {
 		if q.Outcome != "answered" {
@@ -303,11 +264,18 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 		return false, nil
 	}
 	c := u.activeQuestionCall()
-	action := u.questionLayout(q).Key(u.questions.Questions, key, u.Text == "")
+	view := u.sessionPresentation().View()
+	keyInput := u.prompts.QuestionLayout(view.Questions).Key(view.Questions, key, u.Text == "")
+	if err := u.sessionPresentation().QuestionInput(sessionpresentation.QuestionInputIntent{Version: view.Version, QuestionInput: keyInput.Question}, u.questions.Questions); err != nil {
+		u.setNotice(err.Error(), true)
+		return true, nil
+	}
+	action := keyInput.Action
 	switch action {
 	case conversationui.PromptPass:
 		return false, nil
 	case conversationui.PromptHide:
+		u.questions.AutoOpen = false
 		u.hideQuestions()
 	case conversationui.PromptCursor:
 		u.moveDraft(key)
@@ -327,10 +295,7 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 				return true, nil
 			}
 			q.Done, q.Skipped = answer.Done, answer.Skipped
-			if c.secretAnswers == nil {
-				c.secretAnswers = make(map[int][]string)
-			}
-			c.secretAnswers[u.questions.Index] = answer.Answer
+			u.prompts.Secrets(c.ID).Answers[u.questions.Index] = answer.Answer
 		} else {
 			view := u.sessionPresentation().View()
 			if !u.answerQuestion(sessionpresentation.AnswerIntent{Version: view.Version, AnswerInput: prompt.AnswerInput{
@@ -377,17 +342,17 @@ func (u *appServerUI) submitQuestions(intent sessionpresentation.QuestionSubmitI
 	if c.Sudo != nil {
 		return u.submitSudoPassword(c)
 	}
-	attached := questionAnswerAttachments(c.Call, c.secrets, c.secretAnswers)
+	attached := questionAnswerAttachments(c.Call, u.prompts.SecretState(c.ID).Editors, u.prompts.SecretState(c.ID).Answers)
 	if len(c.RequestID) > 0 {
-		if err := c.Answer(u.requests, c.secretAnswers); err != nil {
+		if err := c.Answer(u.requests, u.prompts.SecretState(c.ID).Answers); err != nil {
 			return err
 		}
 		if u.questions.Active == c.Call {
 			u.hideQuestions()
 		}
 		c.Submitted()
-		clear(c.secrets)
-		clear(c.secretAnswers)
+		clear(u.prompts.SecretState(c.ID).Editors)
+		clear(u.prompts.SecretState(c.ID).Answers)
 		u.renderQuestionRecord(c)
 		if len(attached.AnswerImages) > 0 || len(attached.Attachments) > 0 {
 			d := conversationmodel.Input{Draft: attached}
@@ -422,7 +387,7 @@ func (u *appServerUI) submitQuestions(intent sessionpresentation.QuestionSubmitI
 
 // Answers use composer attachment snapshots. Keep the async reply envelope
 // intact while the host processes accompanying images and quoted selections.
-func questionAnswerAttachments(c *prompt.Call, secrets map[int]questionEditor, secretAnswers map[int][]string) composer.Draft {
+func questionAnswerAttachments(c *prompt.Call, secrets map[int]composer.State, secretAnswers map[int][]string) composer.Draft {
 	var paths []string
 	var drafts []composer.Draft
 	for i := range c.Questions {
@@ -492,7 +457,7 @@ func pendingQuestionReplies(parts []conversationmodel.Input) []conversationmodel
 	}
 	return pending
 }
-func (u *appServerUI) renderQuestionRecord(c *nativeQuestionCall) {
+func (u *appServerUI) renderQuestionRecord(c *sessioncontrol.Question) {
 	if c.Sudo != nil {
 		return
 	}

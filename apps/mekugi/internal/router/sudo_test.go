@@ -196,7 +196,7 @@ func TestSudoSecretEditorAndSessionSwitch(t *testing.T) {
 		t.Fatalf("secret editor dispatch: %v", err)
 	}
 	u.hideQuestions()
-	if u.secretEditor.Text != "" || u.Editor != &u.conversation().Editor {
+	if u.prompts.Secret.Text != "" || u.Editor != &u.conversation().Editor {
 		t.Fatal("hiding authentication did not return to the ordinary editor")
 	}
 	if err := u.clearSessionPresentation(); err != nil {

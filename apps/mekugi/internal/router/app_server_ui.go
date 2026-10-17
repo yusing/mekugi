@@ -60,10 +60,10 @@ type appServerUI struct {
 	reviewSource  *changecapture.Service
 	mainView      terminalsession.Main
 	*composer.Editor
-	secretEditor composer.Editor
-	feedback     noticepresentation.Model
-	history      *history.Service
-	segments     *reports.Service
+	prompts  terminalsession.Prompts
+	feedback noticepresentation.Model
+	history  *history.Service
+	segments *reports.Service
 	sessioncontrol.Live
 	conversationState      *conversationmodel.Service
 	startup                sessioncontrol.Startup
@@ -1120,7 +1120,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalsess
 	width, height = max(1, width), max(1, height)
 	u.picker.rect = terminalsession.Rect{}
 	u.mainView.NoticeDetails, u.mainView.NoticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
-	u.questions.rect = terminalsession.Rect{}
+	u.prompts.Rect = terminalsession.Rect{}
 	if !readOnly && u.statusPanel != nil {
 		return u.statusPanelFrame(width, height), terminalsession.Rect{}
 	}
@@ -1131,16 +1131,23 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalsess
 		return u.skillsModalFrame(width, height), terminalsession.Rect{}
 	}
 	in := terminalsession.MainInput{
-		Session: presentation, Draft: u.Draft, Now: u.now(), ReadOnly: readOnly,
+		Session: presentation, Draft: presentation.Draft.Draft, Now: u.now(), ReadOnly: readOnly,
 		Focused: u.shell == nil || u.shell.Focus == 0, Empty: len(u.activitySource(transcript).Entries) == 0,
 		Picker: u.pickerVisible(), Welcome: u.welcome(), Selection: u.pickerSelection(), TurnIdle: u.Turn == "",
 	}
-	if q := u.currentQuestion(); q != nil {
-		in.Question, in.Secret, in.QuestionLayout = true, q.IsSecret, u.questionLayout(q)
+	if call := presentation.Questions.Call; call != nil {
+		in.Question, in.Secret, in.QuestionLayout = true, call.Questions[presentation.Questions.Index].Secret, u.prompts.QuestionLayout(presentation.Questions)
+		in.Draft = presentation.PromptDraft.Draft
+		if in.Secret {
+			in.Draft = u.prompts.Secret.Draft
+		}
 	}
 	if presentation.Approvals.Count > 0 {
-		in.ApprovalLayout = u.approvals.layout(u.approvals.handles[u.approvals.Pending[0]])
+		in.ApprovalLayout = u.prompts.ApprovalLayout(presentation.Approvals.Approval.ID)
 		in.ApprovalAgent = u.approvalAgent(presentation.Approvals.Approval.Thread)
+		if presentation.Approvals.Open {
+			in.Draft = presentation.PromptDraft.Draft
+		}
 	}
 	if b := u.btw; b != nil && presentation.Side != nil {
 		in.Side = &terminalsession.SideInput{View: *presentation.Side, Running: presentation.SideRunning, Scroll: b.scroll}
@@ -1168,7 +1175,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalsess
 		copy(frame.Rows[frame.Feed.Y:], rows)
 	}
 	transcript.FeedTop += frame.Feed.Y
-	u.questions.rect = frame.Questions
+	u.prompts.Rect = frame.Questions
 	if b := u.btw; b != nil {
 		b.rect = frame.SideRect
 		if !readOnly && frame.Side.Rows != nil {

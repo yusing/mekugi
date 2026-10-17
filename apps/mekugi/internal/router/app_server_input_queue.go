@@ -31,7 +31,7 @@ func (u *appServerUI) conversation() *conversationmodel.Session {
 
 func (u *appServerUI) bindConversation() {
 	m := u.conversation()
-	if u.Editor != &u.secretEditor {
+	if u.Editor != &u.prompts.Secret {
 		u.Editor = &m.Editor
 	}
 	u.promptEditor = &m.PromptEditor
@@ -73,7 +73,7 @@ func (u *appServerUI) applyInputRestoration(restored conversationmodel.InputRest
 			u.mainView.PromptColumn = nil
 		}
 		if u.approvals.Open {
-			u.approvals.painted = false
+			u.prompts.Reopen()
 			u.focusPrompt()
 		}
 	} else if restored.Changed {

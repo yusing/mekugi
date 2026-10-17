@@ -219,12 +219,12 @@ func TestNativeQuestionParkedEditorMidTypingAndSecret(t *testing.T) {
 	if u.Text != "draft7" {
 		t.Fatalf("keystroke leaked into question: %q", u.Text)
 	}
-	before := u.saveQuestionEditor()
+	before := u.Editor.Park()
 	u.openQuestions()
 	questionTestPaint(t, u, 60)
 	appServerTestKeys(t, u, "3private")
 	u.hideQuestions()
-	if !reflect.DeepEqual(u.saveQuestionEditor(), before) {
+	if !reflect.DeepEqual(u.Editor.Park(), before) {
 		t.Fatalf("parked draft not restored: %q", u.Text)
 	}
 	u.openQuestions()
@@ -468,7 +468,7 @@ func TestNativeQuestionsOpenNextCallWithoutShortcut(t *testing.T) {
 	if u.activeQuestionCall() == nil || u.activeQuestionCall().Item != "second" {
 		t.Fatal("next call needs a shortcut")
 	}
-	if u.questions.painted {
+	if u.prompts.Ready() {
 		t.Fatal("new question accepts an answer before being painted")
 	}
 	if got := questionTestPaint(t, u, 70); !strings.Contains(got, "Second question?") {
@@ -621,5 +621,5 @@ func TestUISnapshotQuestionArrowHints(t *testing.T) {
 }
 
 func testQuestionRows(u *appServerUI, width, height int) []string {
-	return conversationui.Questions(u.questions.View(u.Thread), &u.view.Painter.Painter, u.questionLayout(u.currentQuestion()), u.pickerSelection(), u.Turn == "" && u.Text != "", width, height)
+	return conversationui.Questions(u.questions.View(u.Thread), &u.view.Painter.Painter, u.prompts.QuestionLayout(u.questions.View(u.Thread)), u.pickerSelection(), u.Turn == "" && u.Text != "", width, height)
 }

@@ -51,7 +51,7 @@ func (u *appServerUI) pruneDraftImages() {
 	}
 	stacks := [][]composer.Undo{u.UndoDrafts, u.RedoDrafts}
 	for _, call := range u.questionCalls() {
-		for _, e := range call.secrets {
+		for _, e := range u.prompts.SecretState(call.ID).Editors {
 			stacks = append(stacks, e.UndoDrafts, e.RedoDrafts, []composer.Undo{e.Snapshot})
 		}
 		for _, question := range call.Questions {

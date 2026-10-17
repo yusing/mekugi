@@ -28,6 +28,10 @@ any host response; stale identities and replay produce feedback without answerin
 Ordinary question answers and call submissions use the same version and replay
 admission before resolving Conversation identities. Submission of a hidden call
 preserves an unrelated open editor. Secret editing remains renderer-local.
+Prompt choice, note and editing actions carry the same view version and stable
+target identities. Admission precedes changing the Conversation record; replay
+and stale targets leave it unchanged. Ordinary editor publications are detached
+from parked editor history. Secret editor contents never enter publication.
 
 Session control
 remains the operation authority; Conversation, Notifications and Usage retain their

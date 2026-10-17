@@ -380,7 +380,7 @@ func (u *terminalUI) mouse(s string) error {
 		}
 		return u.main.resumePickerMouse(button&^28, y-u.Layout.Main.Y)
 	}
-	if u.main != nil && u.main.questions.rect.Contains(x-u.Layout.Main.X, y-u.Layout.Main.Y) {
+	if u.main != nil && u.main.prompts.Rect.Contains(x-u.Layout.Main.X, y-u.Layout.Main.Y) {
 		if !release && button&^28 == 0 {
 			u.main.openQuestions()
 		}

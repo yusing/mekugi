@@ -35,10 +35,10 @@ func (u *appServerUI) prepareComposerInput() bool {
 	if u.composerReadOnly() {
 		return false
 	}
-	if u.activeQuestionCall() != nil && !u.questions.painted {
+	if u.activeQuestionCall() != nil && !u.prompts.Ready() {
 		u.hideQuestions()
 	}
-	if u.approvals.Open && !u.approvals.painted {
+	if u.approvals.Open && !u.prompts.Ready() {
 		u.hideApprovals()
 	}
 	return true

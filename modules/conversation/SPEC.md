@@ -47,6 +47,10 @@ The current ordinary draft publishes a detached snapshot and monotonic content
 revision. Edits, replacement, undo, restore and taking the draft advance that
 revision; restoring identical text does not revive an earlier submission target.
 Question and approval editors are excluded from ordinary-draft publication.
+Their active non-secret draft has a separate detached publication naming its call,
+question or approval and content revision. Parked history and secret buffers remain
+private to their owners. Prompt key interpretation returns targeted actions;
+Conversation applies admitted choice, note and editing changes.
 
 Undo groups a typed word, a repeated deletion run, a paste, an attachment, a clear
 or an editor save. It retains at most 100 edits and resets on submission. Local

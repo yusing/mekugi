@@ -1,6 +1,7 @@
 package terminalview_test
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -15,14 +16,25 @@ func TestQuestionKeyViewAndDraftIsolation(t *testing.T) {
 	questions.Add(call, false)
 	questions.Open(questions.Next())
 	var layout terminalview.QuestionLayout
-	if layout.Key(&questions, "\t", true) != terminalview.PromptHandled || !questions.Current().Note {
+	key := func(text string, empty bool) terminalview.PromptAction {
+		view := questions.View("main")
+		result := layout.Key(view, text, empty)
+		if !reflect.DeepEqual(view, questions.View("main")) {
+			t.Fatal("key interpretation mutated source")
+		}
+		if !questions.ApplyInput(result.Question) {
+			t.Fatal("targeted question edit rejected")
+		}
+		return result.Action
+	}
+	if key("\t", true) != terminalview.PromptHandled || !questions.Current().Note {
 		t.Fatal("synchronous option note not selected")
 	}
-	if layout.Key(&questions, "\x1b[C", true) != terminalview.PromptCursor {
+	if key("\x1b[C", true) != terminalview.PromptCursor {
 		t.Fatal("note navigation moved the question")
 	}
-	layout.Key(&questions, "\x1b", true)
-	if questions.Current().Note || layout.Key(&questions, "\x1b[C", true) != terminalview.PromptNext {
+	key("\x1b", true)
+	if questions.Current().Note || key("\x1b[C", true) != terminalview.PromptNext {
 		t.Fatal("note dismissal did not restore question navigation")
 	}
 	questions.Move(1)
@@ -40,19 +52,33 @@ func TestQuestionKeyViewAndDraftIsolation(t *testing.T) {
 }
 
 func TestApprovalKeyKeepsHostEffectsWithCaller(t *testing.T) {
-	approval := &prompt.Approval{Choices: []prompt.Choice{{Label: "Once"}, {Label: "Session"}, {Label: "Decline", Deny: true}}}
+	approval := &prompt.Approval{Choices: []prompt.Choice{{ID: 0, Label: "Once"}, {ID: 1, Label: "Session"}, {ID: 2, Label: "Decline", Deny: true}}}
 	var layout terminalview.ApprovalLayout
-	if layout.Key(approval, "x", true) != terminalview.PromptPass || approval.Selected != 2 {
+	var approvals prompt.Approvals
+	approvals.Add(approval)
+	approvals.Show()
+	key := func(text string, empty bool) terminalview.PromptAction {
+		view := approval.View()
+		result := layout.Key(view, text, empty)
+		if !reflect.DeepEqual(view, approval.View()) {
+			t.Fatal("key interpretation mutated source")
+		}
+		if !approvals.ApplyInput(result.Approval) {
+			t.Fatal("targeted approval edit rejected")
+		}
+		return result.Action
+	}
+	if key("x", true) != terminalview.PromptPass || approval.Selected != 2 {
 		t.Fatal("typed reason did not select denial")
 	}
-	if layout.Key(approval, "1", false) != terminalview.PromptPass || approval.Selected != 2 {
+	if key("1", false) != terminalview.PromptPass || approval.Selected != 2 {
 		t.Fatal("digit in reason changed the offered choice")
 	}
-	if layout.Key(approval, "2", true) != terminalview.PromptHandled || approval.Selected != 1 || layout.Key(approval, "\r", true) != terminalview.PromptSubmit {
+	if key("2", true) != terminalview.PromptHandled || approval.Selected != 1 || key("\r", true) != terminalview.PromptSubmit {
 		t.Fatal("session approval intent lost its selected scope")
 	}
 	approval.Choices = []prompt.Choice{{Label: "Accept"}, {Label: "Cancel"}}
-	if layout.Key(approval, "x", true) != terminalview.PromptHandled || layout.Key(approval, "\x03", true) != terminalview.PromptPass || layout.Key(approval, "\x02", true) != terminalview.PromptPass {
+	if key("x", true) != terminalview.PromptHandled || key("\x03", true) != terminalview.PromptPass || key("\x02", true) != terminalview.PromptPass {
 		t.Fatal("non-reason approval edited Main or swallowed session controls")
 	}
 }

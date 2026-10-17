@@ -22,7 +22,7 @@ func (u *appServerUI) insertSelection(description, text, source string) {
 		for i, question := range call.Questions {
 			draft := question.Editor.Snapshot.Draft
 			if question.IsSecret {
-				draft = call.secrets[i].Snapshot.Draft
+				draft = u.prompts.SecretState(call.ID).Editors[i].Snapshot.Draft
 			}
 			pending = append(pending, conversationmodel.Input{Draft: draft})
 		}
