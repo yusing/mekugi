@@ -47,7 +47,7 @@ func (main *appServerUI) applyEffect(u *terminalsession.Attachment, effect termi
 		m.quitRequested = m.quitRequested || quit
 		return false, err
 	case effect.Prompt != nil:
-		handled, err := m.applyPromptInput(*effect.Prompt)
+		handled, err := applyPromptInput(&m.attached, m.shell, &m.Client, &m.picker, &m.Editor, &m.questions, &m.approvals, m.clock, &m.childHistoryState, preferences.Applied{Model: m.model, Effort: m.reasoningEffort, Tier: m.serviceTier}, m.serviceTiers, m.title, m.backendVersion, m.restoring != nil, &m.side, m.statusPanel != nil || m.resumePicker != nil, &m.ownedImages, m.skillEnvironment, &m.guardHookCheck, m.controlObservations, m.ctx, m.review, &m.pendingEditReceipts, m.notifications, *effect.Prompt)
 		return !handled, err
 	case effect.PendingPrompt != nil:
 		if effect.PendingPrompt.Version != m.attached.presentation.View().Version {
@@ -65,7 +65,7 @@ func (main *appServerUI) applyEffect(u *terminalsession.Attachment, effect termi
 	case effect.Menu != nil:
 		return !applyMenuResult(&m.attached, m.shell, &m.Client, &m.picker, &m.Editor, &m.childHistoryState, preferences.Applied{Model: m.model, Effort: m.reasoningEffort, Tier: m.serviceTier}, &m.serviceTiers, m.title, m.backendVersion, m.restoring != nil, m.side, m.clock, &m.questions, &m.approvals, m.statusPanel != nil || m.resumePicker != nil, m.ownedImages, m.panes, &m.dirty, m.ctx, m.skillEnvironment, *effect.Menu), nil
 	case effect.Side != nil:
-		return false, m.applyCloseSide(*effect.Side)
+		return false, applyCloseSide(&m.attached, m.shell, &m.Client, &m.picker, &m.Editor, &m.questions, &m.approvals, m.clock, &m.childHistoryState, preferences.Applied{Model: m.model, Effort: m.reasoningEffort, Tier: m.serviceTier}, m.serviceTiers, m.title, m.backendVersion, m.restoring != nil, &m.side, m.statusPanel != nil || m.resumePicker != nil, &m.ownedImages, *effect.Side)
 	case effect.Dialog != nil:
 		main.outputIntent(u, *effect.Dialog)
 	case effect.Reference != nil:
@@ -126,9 +126,9 @@ func (main *appServerUI) applyEffect(u *terminalsession.Attachment, effect termi
 	case effect.Clipboard != nil:
 		setNotice(&m.attached.feedback, m.shell, presentationTime(m.clock), effect.Clipboard.Text, effect.Clipboard.Alert)
 	case effect.Interrupt != nil:
-		return false, m.interruptSession(*effect.Interrupt)
+		return false, interruptSession(&m.attached, m.shell, &m.Client, &m.picker, &m.Editor, &m.questions, &m.approvals, m.clock, &m.childHistoryState, preferences.Applied{Model: m.model, Effort: m.reasoningEffort, Tier: m.serviceTier}, m.serviceTiers, m.title, m.backendVersion, m.restoring != nil, &m.side, m.statusPanel != nil || m.resumePicker != nil, m.review, &m.pendingEditReceipts, *effect.Interrupt)
 	case effect.Locked:
-		m.lockNotice()
+		lockNotice(&m.attached, m.shell, m.clock)
 	case effect.EditorPath != "":
 		return false, &openFileEditor{path: effect.EditorPath}
 	}

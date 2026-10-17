@@ -93,23 +93,23 @@ func TestAppServerWaitTargetsCallerTurnAndItemIsolation(t *testing.T) {
 	waitTargetTestAgent(t, u, "idle", "/root/alpha/idle", false)
 	waitTargetTestAgent(t, u, "sibling", "/root/alphabeta", true)
 	item := binding.ThreadItem{Type: "collabAgentToolCall", Tool: "wait"}
-	_, root, _ := u.itemProgress(item.Observation(), "main", "t", "w", "item/started", true)
-	_, child, _ := u.itemProgress(item.Observation(), "a", "t", "w", "item/started", true)
+	_, root, _ := itemProgress(&u.attached, u.shell, u.retainedSession, u.clock, item.Observation(), "main", "t", "w", "item/started", true)
+	_, child, _ := itemProgress(&u.attached, u.shell, u.retainedSession, u.clock, item.Observation(), "a", "t", "w", "item/started", true)
 	if !slices.Equal(child.WaitTargets, []activitypresentation.WaitTarget{{Name: "/root/alpha/nested"}}) {
 		t.Fatalf("child borrowed self, idle, or sibling targets: %+v", child)
 	}
 	appServerTestNotify(t, u, "thread/status/changed", map[string]any{"threadId": "nested", "status": map[string]any{"type": "idle"}})
 	waitTargetTestAgent(t, u, "later", "/root/alpha/later", true)
 	for _, key := range [][2]string{{"next", "w"}, {"t", "other"}} {
-		_, got, _ := u.itemProgress(item.Observation(), "a", key[0], key[1], "item/started", true)
+		_, got, _ := itemProgress(&u.attached, u.shell, u.retainedSession, u.clock, item.Observation(), "a", key[0], key[1], "item/started", true)
 		if !slices.Equal(got.WaitTargets, []activitypresentation.WaitTarget{{Name: "/root/alpha/later"}}) {
 			t.Fatalf("new key reused old targets: %+v", got)
 		}
 	}
-	if _, got, _ := u.itemProgress(item.Observation(), "a", "t", "w", "item/completed", true); !slices.Equal(got.WaitTargets, child.WaitTargets) {
+	if _, got, _ := itemProgress(&u.attached, u.shell, u.retainedSession, u.clock, item.Observation(), "a", "t", "w", "item/completed", true); !slices.Equal(got.WaitTargets, child.WaitTargets) {
 		t.Fatalf("child snapshot overwritten: %+v", got)
 	}
-	if _, got, _ := u.itemProgress(item.Observation(), "main", "t", "w", "item/completed", true); !slices.Equal(got.WaitTargets, root.WaitTargets) {
+	if _, got, _ := itemProgress(&u.attached, u.shell, u.retainedSession, u.clock, item.Observation(), "main", "t", "w", "item/completed", true); !slices.Equal(got.WaitTargets, root.WaitTargets) {
 		t.Fatalf("caller snapshots collided: %+v", got)
 	}
 }
@@ -120,9 +120,9 @@ func TestAppServerWaitTargetsExplicitStatusMapping(t *testing.T) {
 	waitTargetTestAgent(t, u, "a", "/root/alpha", false)
 	waitTargetTestAgent(t, u, "other", "/root/other", true)
 	item := binding.ThreadItem{Type: "collabAgentToolCall", Tool: "wait", ReceiverThreadIDs: []string{"a", "unregistered"}}
-	u.itemProgress(item.Observation(), "main", "t", "w", "item/started", true)
+	itemProgress(&u.attached, u.shell, u.retainedSession, u.clock, item.Observation(), "main", "t", "w", "item/started", true)
 	item.AgentsStates = map[string]binding.AgentState{"a": {Status: "running"}, "unregistered": {Status: "completed"}}
-	text, _, _ := u.itemProgress(item.Observation(), "main", "t", "w", "item/completed", true)
+	text, _, _ := itemProgress(&u.attached, u.shell, u.retainedSession, u.clock, item.Observation(), "main", "t", "w", "item/completed", true)
 	if text != "Finished waiting · alpha: Still running, unregistered: completed" {
 		t.Fatalf("explicit targets/statuses changed: %q", text)
 	}
@@ -246,7 +246,7 @@ func TestAppServerWaitTargetsManagedRetention(t *testing.T) {
 			t.Fatal(err)
 		}
 		item := binding.ThreadItem{Type: "collabAgentToolCall", Tool: "wait", ReceiverThreadIDs: []string{"target"}}
-		u.itemProgress(item.Observation(), thread, "turn", "wait", "item/started", true)
+		itemProgress(&u.attached, u.shell, u.retainedSession, u.clock, item.Observation(), thread, "turn", "wait", "item/started", true)
 		path := waitTargetsPath(u.retainedSession, u.attached.cwd, [3]string{thread, "turn", "wait"})
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("wait record was not retained: %v", err)

@@ -391,7 +391,7 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": firstItem})
 	deadline := time.Now().Add(3 * time.Second)
 	for hub.Tracking([3]string{"main", "turn", "first"}) {
-		u.flushStreamOutput()
+		flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
 		if time.Now().After(deadline) {
 			t.Fatal("Activity did not retire the first report")
 		}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -251,7 +252,7 @@ func TestAppServerSessionTitleEmptyAndCommandBoundaries(t *testing.T) {
 	if u.attached.feedback.Text != "Usage: /title <title>" || u.Text != "/title " || wire.Len() != 0 {
 		t.Fatalf("empty title: draft=%q notice=%q wire=%q", u.Text, u.attached.feedback.Text, wire.String())
 	}
-	if u.titleCommand("/titles wrong") || u.titleCommand("prompt /title wrong") {
+	if titleCommand(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, &u.side, u.statusPanel != nil || u.resumePicker != nil, &u.ownedImages, u.titleGenerator, &u.dirty, "/titles wrong") || titleCommand(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, &u.side, u.statusPanel != nil || u.resumePicker != nil, &u.ownedImages, u.titleGenerator, &u.dirty, "prompt /title wrong") {
 		t.Fatal("non-command interpreted as a rename")
 	}
 	appServerTestKeys(t, u, "\x03\x1b[200~/title\t  修復\n標題  \x1b[201~\r")

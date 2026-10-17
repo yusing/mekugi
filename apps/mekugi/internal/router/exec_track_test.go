@@ -671,7 +671,7 @@ func awaitMain(t *testing.T, u *appServerUI, want string) string {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		u.flushStreamOutput()
+		flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
 		u.dirty = startCommitReads(&u.attached, u.commits) || u.dirty
 
 		u.testActivity(u.shell.Transcript).testPace(time.Now())
@@ -747,7 +747,7 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 	// Drive the UI until it finalizes this invocation before draining writes.
 	deadline := time.Now().Add(2 * time.Second)
 	for u.execTrack.Tracking([3]string{"main", "t", item.ID}) {
-		u.flushStreamOutput()
+		flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
 		if time.Now().After(deadline) {
 			t.Fatal("tracked command did not finalize")
 		}

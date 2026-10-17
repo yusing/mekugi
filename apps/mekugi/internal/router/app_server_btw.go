@@ -2,6 +2,12 @@ package router
 
 import (
 	"strings"
+	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/contracts/scope"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
@@ -10,93 +16,93 @@ import (
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 )
 
-func (u *appServerUI) submitBTW() error {
-	text := strings.TrimSpace(u.Text)
+func submitBTW(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side **sessioncontrol.Side, overlay bool, owned *map[string]bool, environment []string) error {
+	text := strings.TrimSpace((*editor).Text)
 	question := strings.TrimSpace(strings.TrimPrefix(text, "/btw"))
 	if question == "" {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Use /btw QUESTION · repeat /btw for a follow-up · Esc closes", false)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Use /btw QUESTION · repeat /btw for a follow-up · Esc closes", false)
 		return nil
 	}
-	if u.Thread == "" || u.restoring != nil || u.Replacement.Pending() {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Wait for the conversation to load before asking a side question", false)
+	if control.Thread == "" || restoring || control.Replacement.Pending() {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Wait for the conversation to load before asking a side question", false)
 		return nil
 	}
-	if u.side != nil && (u.side.Busy || u.side.Starting) {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Side answer still running · wait for it or Esc to close", false)
+	if (*side) != nil && ((*side).Busy || (*side).Starting) {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Side answer still running · wait for it or Esc to close", false)
 		return nil
 	}
-	if u.side != nil && u.side.Status == conversationmodel.SideCompactionRequired {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), conversationmodel.SideCompactionRequired, true)
+	if (*side) != nil && (*side).Status == conversationmodel.SideCompactionRequired {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), conversationmodel.SideCompactionRequired, true)
 		return nil
 	}
-	if u.side == nil {
-		u.attached.conversation.Side = new(conversationmodel.SideAnswer)
-		u.side = &sessioncontrol.Side{SideAnswer: u.attached.conversation.Side}
+	if (*side) == nil {
+		attached.conversation.Side = new(conversationmodel.SideAnswer)
+		(*side) = &sessioncontrol.Side{SideAnswer: attached.conversation.Side}
 	}
-	b := u.side
+	b := (*side)
 	// Remove the command through the composer so attachment offsets stay valid.
-	prefix := strings.Index(u.Text, "/btw") + len("/btw")
-	deleteDraftRange(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, 0, prefix)
-	b.Begin(question, prepareDraft(&u.picker, u.shell, u.attached.cwd, u.skillEnvironment, u.Editor.Take()))
+	prefix := strings.Index((*editor).Text, "/btw") + len("/btw")
+	deleteDraftRange(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, (*side), clock, questions, approvals, overlay, (*owned), 0, prefix)
+	b.Begin(question, prepareDraft(picker, terminal, attached.cwd, environment, (*editor).Take()))
 	b.Busy = true
-	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "", false)
-	return u.flushBTW()
+	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
+	return flushBTW(attached, terminal, control, picker, questions, approvals, clock, settings, side, owned, environment)
 }
 
-func (u *appServerUI) flushBTW() error {
-	b := u.side
-	if !b.Ready(u.Replacement.Pending()) {
+func flushBTW(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, side **sessioncontrol.Side, owned *map[string]bool, environment []string) error {
+	b := (*side)
+	if !b.Ready(control.Replacement.Pending()) {
 		return nil
 	}
 	parts := []conversationmodel.Input{b.Pending}
-	if u.picker.waitForSkillBindings(&u.attached, u.shell, u.clock, u.Requests, parts) {
+	if picker.waitForSkillBindings(attached, terminal, clock, control.Requests, parts) {
 		return nil
 	}
-	u.picker.bindSkills(u.attached.cwd, &parts[0], true)
-	snapshotDraftSkills(u.attached.cwd, u.skillEnvironment, &parts[0])
+	picker.bindSkills(attached.cwd, &parts[0], true)
+	snapshotDraftSkills(attached.cwd, environment, &parts[0])
 	b.Pending = parts[0]
-	update, err := u.Requests.StartSide(b, sessioncontrol.SideMain{
-		Thread: u.Thread, Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier,
-		Blocked: u.Starting() || u.InputPending() || u.Settings.Pending(), Replacing: u.Replacement.Pending(),
-	}, presentationTime(u.clock))
+	update, err := control.Requests.StartSide(b, sessioncontrol.SideMain{
+		Thread: control.Thread, Model: settings.Model, Effort: settings.Effort, Tier: settings.Tier,
+		Blocked: control.Starting() || control.InputPending() || control.Settings.Pending(), Replacing: control.Replacement.Pending(),
+	}, presentationTime(clock))
 	if update.TurnRequested {
 		for _, image := range b.Pending.Images {
-			delete(u.ownedImages, image.Path)
+			delete((*owned), image.Path)
 		}
 	}
-	u.applySideUpdate(update)
+	applySideUpdate(attached, terminal, control, picker, questions, approvals, clock, update)
 	return err
 }
 
-func (u *appServerUI) applySideUpdate(update sessioncontrol.SideUpdate) {
+func applySideUpdate(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, update sessioncontrol.SideUpdate) {
 	if update.Restore.Text != "" {
-		restoreDrafts(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, u.Turn, u.clock, update.Restore)
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Side question restored ahead of draft · edit before resending", true)
+		restoreDrafts(attached, terminal, questions, approvals, picker, control.Turn, clock, update.Restore)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Side question restored ahead of draft · edit before resending", true)
 	}
 	if update.Notice != "" {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), update.Notice, true)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), update.Notice, true)
 	}
 }
 
-func (u *appServerUI) closeBTW() error {
-	b := u.side
+func closeBTW(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, side **sessioncontrol.Side, owned *map[string]bool) error {
+	b := (*side)
 	if b == nil {
 		return nil
 	}
-	u.side = nil
+	(*side) = nil
 	b.Close()
-	u.attached.conversation.Side = nil
-	pruneDraftImages(u.ownedImages, u.Editor, u.attached.conversation, &u.questions, &u.approvals, u.shell.Prompts, u.side)
-	return u.Requests.ReleaseSide(b)
+	attached.conversation.Side = nil
+	pruneDraftImages((*owned), (*editor), attached.conversation, questions, approvals, terminal.Prompts, (*side))
+	return control.Requests.ReleaseSide(b)
 }
 
-func (u *appServerUI) applyCloseSide(in sessionpresentation.CloseSideIntent) error {
+func applyCloseSide(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side **sessioncontrol.Side, overlay bool, owned *map[string]bool, in sessionpresentation.CloseSideIntent) error {
 	defer func() {
-		settlePresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil)
+		settlePresentation(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, (*side), clock, questions, approvals, overlay)
 	}()
-	if err := u.attached.presentation.AdmitCloseSide(in); err != nil {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), err.Error(), true)
+	if err := attached.presentation.AdmitCloseSide(in); err != nil {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), err.Error(), true)
 		return nil
 	}
-	return u.closeBTW()
+	return closeBTW(attached, terminal, control, editor, questions, approvals, side, owned)
 }

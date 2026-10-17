@@ -57,7 +57,7 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 			request := &codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": input}}
 			for range 2 {
 				observeActivityRequest(t, proxy, thread, map[bool]string{false:"/root",true:"/root/worker"}[thread!="main"], request)
-				u.applyObservedActivity()
+				applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, &u.dirty, u.restoring, u.audience)
 			}
 			if !bytes.Equal(original, request.Fields["input"]) {
 				t.Fatal("stock host evidence changed")

@@ -184,7 +184,7 @@ func (u *appServerUI) readRestoredRollouts() {
 	for _, info := range infos {
 		agent := u.attached.session.Caller(info.ID)
 		rollout := readRestoredRollout(info, agent)
-		rollout.events = append(rollout.events, u.restoredHookEvents(info)...)
+		rollout.events = append(rollout.events, restoredHookEvents(&u.attached, u.activity, u.retainedSession, u.restoring, info)...)
 		r.itemAt[info.ID] = rollout.itemAt
 		for _, event := range rollout.events {
 			if event.repeated {
@@ -384,7 +384,7 @@ func (u *appServerUI) restoreActivityItem(info binding.ThreadInfo, turn binding.
 	entry := sessionpresentation.ActivityEntry{Seq: s.Activity().NextSequence(), Agent: name, Observed: observed, CallID: item.ID,
 		Native: &sessionpresentation.NativeItem{Thread: info.ID, Turn: turn.ID, Item: item.ID, Phase: "item/completed", Status: item.Status, SearchResults: sessionpresentation.SearchResults(facts)}}
 	progressPhase := appServerHistoryProgressPhase(facts, turn.Status)
-	if text, wait, handled := u.itemProgress(facts, info.ID, turn.ID, item.ID, progressPhase, false); handled {
+	if text, wait, handled := itemProgress(&u.attached, u.shell, u.retainedSession, u.clock, facts, info.ID, turn.ID, item.ID, progressPhase, false); handled {
 		if text != "" {
 			entry.Kind, entry.Text = "progress", text
 			entry.Native.Wait = wait

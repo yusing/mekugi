@@ -2,6 +2,21 @@ package router
 
 import (
 	"cmp"
+	"context"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/backends/codex/nativetrace"
+	"github.com/yusing/mekugi/contracts/scope"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+	"github.com/yusing/mekugi/modules/commandsegments/reports"
+	commandsegments "github.com/yusing/mekugi/modules/commandsegments/segments"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/modules/usage/accounting"
 
@@ -43,46 +58,46 @@ func restoreThreadSettings(session *sessionpresentation.Attachment, info binding
 }
 
 // sessionEvent owns live enrichment and effects around shared presentation.
-func (u *appServerUI) sessionEvent(method string, p binding.Notification) (bool, error) {
-	s := &u.attached.session
-	if s.KnownCaller(u.Thread) == "" {
+func sessionEvent(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], streams *terminalsession.Streams, childKey *scope.Key[*appServerChildHistory], tracker *commandsegments.Observer, activity *activitymodel.Service, usage *accounting.Service, trace *nativetrace.Reader, windows *executionobservation.Windows, reviewOwner *sessionreview.Review, approvals *nativeApprovalDock, receipts *[]*changepresentation.Receipt, retainedSession history.Session, exitUsage *binding.TokenUsage, clock func() time.Time, method string, p binding.Notification) (bool, error) {
+	s := &attached.session
+	if s.KnownCaller(control.Thread) == "" {
 		return false, nil
 	}
 	if method == "hook/started" || method == "hook/completed" {
-		return true, u.hookEvent(method, p)
+		return true, hookEvent(attached, terminal, control, childKey, activity, reviewOwner, approvals, receipts, retainedSession, clock, method, p)
 	}
 	if method == "item/started" {
-		observeShellItem(&u.Shell, u.Thread, p.ThreadID, p.Item)
+		observeShellItem(&control.Shell, control.Thread, p.ThreadID, p.Item)
 	}
 	if command := p.Command; command != nil {
 		key := command.Key
 		if method == "item/completed" {
-			u.execTrack.Completed(key)
+			tracker.Completed(key)
 		}
 		switch {
 		case method == "item/started":
 			if script, ok := shellinstrumentation.CommandScript(command.Command); ok {
-				u.execTrack.Start(key, script)
+				tracker.Start(key, script)
 			}
-		case method == "item/completed" && (u.attached.session.Commands()[key] == nil || !u.execTrack.Tracking(key)):
-			u.execTrack.Forget(key)
+		case method == "item/completed" && (attached.session.Commands()[key] == nil || !tracker.Tracking(key)):
+			tracker.Forget(key)
 		}
 	}
 
-	if h := childHistory(&u.attached.session, &u.childHistoryState, p.ThreadID); h != nil {
+	if h := childHistory(&attached.session, childKey, p.ThreadID); h != nil {
 		h.state.ObserveLive()
 	}
-	if p.ThreadID != "" && p.ThreadID != u.Thread {
-		if err := requestThreadMetadata(u.Requests, &u.attached.session, p.ThreadID); err != nil {
+	if p.ThreadID != "" && p.ThreadID != control.Thread {
+		if err := requestThreadMetadata(control.Requests, &attached.session, p.ThreadID); err != nil {
 			return true, err
 		}
 	}
 
 	key := [3]string{p.ThreadID, p.TurnID, cmp.Or(p.ItemID, p.Item.ID)}
-	event := p.Observation(method, presentationTime(u.clock))
-	facts := sessionpresentation.ObservationInput{Event: event, Text: binding.RetainedTranscript(event), Main: u.Thread, Selected: u.Turn, Workspace: u.attached.cwd, Tracked: u.execTrack.Tracking(key), Wait: u.readWaitEvidence(event.Item, key)}
-	if p.Item.Type == "commandExecution" && u.nativeTrace != nil {
-		if ms, known := u.nativeTrace.CommandTimeout(p.ThreadID, key[2]); known {
+	event := p.Observation(method, presentationTime(clock))
+	facts := sessionpresentation.ObservationInput{Event: event, Text: binding.RetainedTranscript(event), Main: control.Thread, Selected: control.Turn, Workspace: attached.cwd, Tracked: tracker.Tracking(key), Wait: readWaitEvidence(attached, terminal, retainedSession, clock, event.Item, key)}
+	if p.Item.Type == "commandExecution" && trace != nil {
+		if ms, known := trace.CommandTimeout(p.ThreadID, key[2]); known {
 			facts.CommandTimeout = strconv.FormatUint(ms/1000, 10)
 			if fraction := ms % 1000; fraction != 0 {
 				facts.CommandTimeout += "." + strings.TrimRight(fmt.Sprintf("%03d", fraction), "0")
@@ -91,35 +106,35 @@ func (u *appServerUI) sessionEvent(method string, p binding.Notification) (bool,
 		}
 	}
 	if method == "turn/completed" {
-		endTurnPreviews(u.execWindows, u.review, u.attached.cwd, u.shell, presentationTime(u.clock), p.ThreadID, p.Turn.ID)
+		endTurnPreviews(windows, reviewOwner, attached.cwd, terminal, presentationTime(clock), p.ThreadID, p.Turn.ID)
 	}
-	result := sessionpresentation.ReduceObservation(s, u.attached.presentation, u.attached.source, u.attached.childSource, u.attached.transcript, &u.attached.waits, u.activity.Outputs(s.Scope()), facts)
-	if result.Started && u.review != nil {
-		u.review.Preview().SetTurn(p.ThreadID, p.Turn.ID, true)
+	result := sessionpresentation.ReduceObservation(s, attached.presentation, attached.source, attached.childSource, attached.transcript, &attached.waits, activity.Outputs(s.Scope()), facts)
+	if result.Started && reviewOwner != nil {
+		reviewOwner.Preview().SetTurn(p.ThreadID, p.Turn.ID, true)
 	}
-	if method == "thread/started" && p.Thread.ID != "" && p.Thread.ID != u.Thread {
-		restoreThreadSettings(&u.attached.session, p.Thread)
+	if method == "thread/started" && p.Thread.ID != "" && p.Thread.ID != control.Thread {
+		restoreThreadSettings(&attached.session, p.Thread)
 	}
 	if method == "thread/tokenUsage/updated" || method == "turn/completed" {
-		if method == "thread/tokenUsage/updated" && p.ThreadID == u.Thread {
-			u.exitUsage = p.TokenUsage.Total
+		if method == "thread/tokenUsage/updated" && p.ThreadID == control.Thread {
+			(*exitUsage) = p.TokenUsage.Total
 		}
-		observeCost(u.usage, p.ThreadID, s.Agent(s.Caller(p.ThreadID)))
+		observeCost(usage, p.ThreadID, s.Agent(s.Caller(p.ThreadID)))
 	}
-	if p.Item.Type == "subAgentActivity" && p.Item.AgentThreadID != "" && p.Item.AgentThreadID != u.Thread {
-		if err := requestThreadMetadata(u.Requests, &u.attached.session, p.Item.AgentThreadID); err != nil {
+	if p.Item.Type == "subAgentActivity" && p.Item.AgentThreadID != "" && p.Item.AgentThreadID != control.Thread {
+		if err := requestThreadMetadata(control.Requests, &attached.session, p.Item.AgentThreadID); err != nil {
 			return true, err
 		}
 	}
-	u.retainWaitProgress(key, result.Wait)
-	if u.usage != nil {
+	retainWaitProgress(attached, terminal, retainedSession, clock, key, result.Wait)
+	if usage != nil {
 		for _, thread := range result.Spawned {
-			u.usage.MarkNew(thread)
+			usage.MarkNew(thread)
 		}
 	}
 	if result.Publish {
-		u.streams.Deliver(result.Deliveries, u.shell.Transcript, u.shell.Agents)
-		applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, nil, nil)
+		streams.Deliver(result.Deliveries, terminal.Transcript, terminal.Agents)
+		applyActivity(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, nil, nil)
 	}
 	return result.Handled, nil
 }
@@ -127,17 +142,17 @@ func (u *appServerUI) sessionEvent(method string, p binding.Notification) (bool,
 // flushStreamOutput advances terminal frames and admits changed segment facts.
 // Reveal-only updates never replace neutral command records. Late output cannot
 // reopen a completed invocation.
-func (u *appServerUI) flushStreamOutput() {
-	u.dirty = u.streams.AdvanceReasoning(presentationTime(u.clock), u.shell.Transcript, u.shell.Agents) || u.dirty
-	s := &u.attached.session
+func flushStreamOutput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], streams *terminalsession.Streams, tracker *commandsegments.Observer, reviewOwner *sessionreview.Review, approvals *nativeApprovalDock, receipts *[]*changepresentation.Receipt, clock func() time.Time, parent context.Context, retained changes.Scope, segments *reports.Service, writes *chan commandSegmentWrite, pending *int, issues *requestexecution.Failures, dirty *bool) {
+	(*dirty) = streams.AdvanceReasoning(presentationTime(clock), terminal.Transcript, terminal.Agents) || (*dirty)
+	s := &attached.session
 	var entries []sessionpresentation.ActivityEntry
 	handled := make(map[[3]string]bool)
-	for key, run := range u.attached.session.Commands() {
-		tracked, trackedCommand := u.flushTrackedCommand(key, run)
+	for key, run := range attached.session.Commands() {
+		tracked, trackedCommand := flushTrackedCommand(attached, terminal, streams, tracker, clock, parent, retained, segments, writes, pending, issues, dirty, key, run)
 		entries = append(entries, tracked...)
 		handled[key] = trackedCommand
 	}
-	u.dirty = u.streams.AdvanceCommands(presentationTime(u.clock), handled, u.shell.Transcript, u.shell.Agents) || u.dirty
+	(*dirty) = streams.AdvanceCommands(presentationTime(clock), handled, terminal.Transcript, terminal.Agents) || (*dirty)
 
 	if len(entries) == 0 {
 		return
@@ -146,8 +161,8 @@ func (u *appServerUI) flushStreamOutput() {
 	for i := range entries {
 		entries[i].Seq = s.Activity().NextSequence()
 	}
-	applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, entries, nil)
-	u.dirty = true
+	applyActivity(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, entries, nil)
+	(*dirty) = true
 }
 
 // observeCost reads all consumption metrics from the same canonical owner.

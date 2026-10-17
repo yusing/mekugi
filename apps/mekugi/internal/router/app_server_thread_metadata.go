@@ -1,10 +1,14 @@
 package router
 
 import (
+	"time"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
@@ -17,7 +21,7 @@ func requestThreadMetadata(requests *sessioncontrol.Requests[appServerRequest], 
 	return requests.ReadThreadMetadata("main", thread, known, appServerRequest{metadata: thread})
 }
 
-func (u *appServerUI) applyThreadMetadata(m appserver.Message, thread string) bool {
+func applyThreadMetadata(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], reviewOwner *sessionreview.Review, approvals *nativeApprovalDock, receipts *[]*changepresentation.Receipt, clock func() time.Time, m appserver.Message, thread string) bool {
 	if thread == "" {
 		return false
 	}
@@ -28,10 +32,10 @@ func (u *appServerUI) applyThreadMetadata(m appserver.Message, thread string) bo
 	if err != nil {
 		return true
 	} // Metadata cannot block observed activity.
-	old := u.attached.session.Caller(thread)
-	registerThread(&u.attached.session, info)
-	renameThreadActivity(&u.attached, u.shell, old, u.attached.session.KnownCaller(thread))
-	applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, nil, u.attached.session.Roster())
+	old := attached.session.Caller(thread)
+	registerThread(&attached.session, info)
+	renameThreadActivity(attached, terminal, old, attached.session.KnownCaller(thread))
+	applyActivity(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, nil, attached.session.Roster())
 	return true
 }
 

@@ -17,6 +17,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
 
@@ -122,7 +123,7 @@ func TestAppServerBTWCompactionRestoresAttachmentsOnce(t *testing.T) {
 			if u.side.Busy || u.side.Pending.Text != "" || u.side.Status != conversationmodel.SideCompactionRequired || u.Turn != "main-turn" || u.attached.presentation.Status.Text != "Working" {
 				t.Fatalf("failure state = %+v Main=%s/%s", u.side, u.Turn, u.attached.presentation.Status.Text)
 			}
-			if err := u.submitBTW(); err != nil {
+			if err := submitBTW(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, &u.side, u.statusPanel != nil || u.resumePicker != nil, &u.ownedImages, u.skillEnvironment); err != nil {
 				t.Fatal(err)
 			}
 			if w.Len() != 0 || u.Text != before {
@@ -137,7 +138,7 @@ func TestAppServerBTWCompactionCloseRecreateIgnoresLateFailure(t *testing.T) {
 	setTestAppServerIntegration(u, newManagedMekugiProxy(t))
 	btwTestStart(t, u, w)
 	old := u.side
-	if err := u.closeBTW(); err != nil {
+	if err := closeBTW(&u.attached, u.shell, &u.Client, &u.Editor, &u.questions, &u.approvals, &u.side, &u.ownedImages); err != nil {
 		t.Fatal(err)
 	}
 	interrupt := btwTestRequest(t, w, "turn/interrupt", "side")

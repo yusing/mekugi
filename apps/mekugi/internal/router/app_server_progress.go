@@ -1,9 +1,13 @@
 package router
 
 import (
+	"time"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/contracts/observation"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 // History can retain an unfinished item in a stopped turn. The owning turn
@@ -18,32 +22,32 @@ func appServerHistoryProgressPhase(item observation.Item, turnStatus string) str
 	return "item/completed"
 }
 
-func (u *appServerUI) readWaitEvidence(item observation.Item, key [3]string) sessionpresentation.WaitEvidence {
-	s := &u.attached.session
+func readWaitEvidence(attached *attachedPresentation, terminal *terminalsession.Attachment, retainedSession history.Session, clock func() time.Time, item observation.Item, key [3]string) sessionpresentation.WaitEvidence {
+	s := &attached.session
 	var evidence sessionpresentation.WaitEvidence
-	if item.Type != "collabAgentToolCall" || item.Tool != "wait" || key[0] == "" || key[1] == "" || key[2] == "" || u.retainedSession.Store == nil || u.attached.waits.HasSnapshot(s.Transcript(key[0], key[1]).Turn, key[2]) {
+	if item.Type != "collabAgentToolCall" || item.Tool != "wait" || key[0] == "" || key[1] == "" || key[2] == "" || retainedSession.Store == nil || attached.waits.HasSnapshot(s.Transcript(key[0], key[1]).Turn, key[2]) {
 		return evidence
 	}
 	var err error
-	evidence.Targets, evidence.Found, err = readWaitTargets(u.retainedSession, u.attached.cwd, key)
+	evidence.Targets, evidence.Found, err = readWaitTargets(retainedSession, attached.cwd, key)
 	if err != nil {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Wait targets could not be restored: "+err.Error(), true)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Wait targets could not be restored: "+err.Error(), true)
 	}
 	return evidence
 }
 
-func (u *appServerUI) retainWaitProgress(key [3]string, progress *activitypresentation.WaitProgress) {
+func retainWaitProgress(attached *attachedPresentation, terminal *terminalsession.Attachment, retainedSession history.Session, clock func() time.Time, key [3]string, progress *activitypresentation.WaitProgress) {
 	if progress != nil && progress.Retain {
-		if err := writeWaitTargets(u.retainedSession, u.attached.cwd, key, progress.Snapshot); err != nil {
-			setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Wait targets could not be retained: "+err.Error(), true)
+		if err := writeWaitTargets(retainedSession, attached.cwd, key, progress.Snapshot); err != nil {
+			setNotice(&attached.feedback, terminal, presentationTime(clock), "Wait targets could not be retained: "+err.Error(), true)
 		}
 	}
 }
 
 // itemProgress retains the live/history storage boundary around shared projection.
-func (u *appServerUI) itemProgress(item observation.Item, thread, turn, id, phase string, observed bool) (string, *activitypresentation.Value, bool) {
+func itemProgress(attached *attachedPresentation, terminal *terminalsession.Attachment, retainedSession history.Session, clock func() time.Time, item observation.Item, thread, turn, id, phase string, observed bool) (string, *activitypresentation.Value, bool) {
 	key := [3]string{thread, turn, id}
-	text, wait, handled, progress := u.attached.session.ProjectProgress(&u.attached.waits, item, thread, turn, id, phase, observed, u.readWaitEvidence(item, key))
-	u.retainWaitProgress(key, progress)
+	text, wait, handled, progress := attached.session.ProjectProgress(&attached.waits, item, thread, turn, id, phase, observed, readWaitEvidence(attached, terminal, retainedSession, clock, item, key))
+	retainWaitProgress(attached, terminal, retainedSession, clock, key, progress)
 	return text, wait, handled
 }

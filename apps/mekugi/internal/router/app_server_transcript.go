@@ -4,6 +4,10 @@ import (
 	"slices"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
@@ -50,42 +54,42 @@ func historicalTranscript(items []binding.ThreadItem, thread, turn string, main,
 // uses the same Conversation reducer without response handles. Parking precedes
 // the model transition so external replies cannot discard an active draft before
 // it reaches the question's editor.
-func (u *appServerUI) observeMessageQuestions(text observation.TextEvent, item observation.Item, history bool) bool {
+func observeMessageQuestions(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], approvals *nativeApprovalDock, clock func() time.Time, questions *nativeQuestionDock, editor **composer.Editor, picker *composerPicker, overlay bool, notifications *nativeNotifications, text observation.TextEvent, item observation.Item, history bool) bool {
 	var userText string
 	if item.Type == "userMessage" {
 		userText, _, _ = sessionpresentation.UserText(item.Content)
 	}
-	in := conversationbinding.MessageQuestions(text, item, userText, text.Item.Ref.ThreadID == u.Thread, history)
-	if u.questions.NeedsParking(in) {
-		u.Editor = hideQuestionEditor(&u.questions, u.attached.conversation, u.shell, u.Editor, u.Thread)
+	in := conversationbinding.MessageQuestions(text, item, userText, text.Item.Ref.ThreadID == control.Thread, history)
+	if questions.NeedsParking(in) {
+		(*editor) = hideQuestionEditor(questions, attached.conversation, terminal, (*editor), control.Thread)
 	}
-	changes := u.questions.ObserveMessage(in)
+	changes := questions.ObserveMessage(in)
 	if changes.Added != nil {
-		bindQuestion(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.statusPanel != nil || u.resumePicker != nil, u.notifications, &sessioncontrol.Question{Call: changes.Added}, history)
+		bindQuestion(attached, terminal, control, picker, editor, questions, approvals, clock, overlay, notifications, &sessioncontrol.Question{Call: changes.Added}, history)
 	}
 	for _, change := range changes.Changed {
 		for _, draft := range change.Discarded {
-			saveUnsentAnswer(&u.attached, u.shell, u.clock, draft)
+			saveUnsentAnswer(attached, terminal, clock, draft)
 		}
-		c := u.questions.handles[change.Call]
+		c := questions.handles[change.Call]
 		if change.Superseded {
-			discardQuestionEditors(u.shell.Prompts, c)
+			discardQuestionEditors(terminal.Prompts, c)
 		}
-		renderQuestionRecord(&u.attached, u.Turn, presentationTime(u.clock), c)
+		renderQuestionRecord(attached, control.Turn, presentationTime(clock), c)
 	}
 	return changes.Suppress
 }
 
-func (u *appServerUI) messageTranscript(text observation.TextEvent, item observation.Item, main bool) bool {
-	if u.observeMessageQuestions(text, item, false) {
+func messageTranscript(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], streams *terminalsession.Streams, reviewOwner *sessionreview.Review, approvals *nativeApprovalDock, receipts *[]*changepresentation.Receipt, clock func() time.Time, questions *nativeQuestionDock, editor **composer.Editor, picker *composerPicker, overlay bool, notifications *nativeNotifications, text observation.TextEvent, item observation.Item, main bool) bool {
+	if observeMessageQuestions(attached, terminal, control, approvals, clock, questions, editor, picker, overlay, notifications, text, item, false) {
 		return true
 	}
-	deliveries := sessionpresentation.ProjectMessage(&u.attached.session, u.attached.source, u.attached.childSource, u.attached.transcript, main, sessionpresentation.ObservationInput{
-		Event: observation.Event{ThreadID: text.Item.Ref.ThreadID, Item: item}, Text: text, Main: u.Thread, Workspace: u.attached.cwd,
+	deliveries := sessionpresentation.ProjectMessage(&attached.session, attached.source, attached.childSource, attached.transcript, main, sessionpresentation.ObservationInput{
+		Event: observation.Event{ThreadID: text.Item.Ref.ThreadID, Item: item}, Text: text, Main: control.Thread, Workspace: attached.cwd,
 	})
-	u.streams.Deliver(deliveries, u.shell.Transcript, u.shell.Agents)
+	streams.Deliver(deliveries, terminal.Transcript, terminal.Agents)
 	if !main || len(deliveries) > 0 {
-		applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, nil, nil)
+		applyActivity(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, nil, nil)
 	}
 	return false
 }

@@ -250,7 +250,7 @@ func TestOutputDialogNativeMergeKeepsRetainedOutputIdentity(t *testing.T) {
 		t.Fatal("started command has no retained output")
 	}
 	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "cmd", "delta": "streamed\n"})
-	u.flushStreamOutput()
+	flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
 	if got := u.attached.source.RetainedOutput(u.testActivity(u.shell.Transcript).blocks(0)[len(u.testActivity(u.shell.Transcript).blocks(0))-1].Source, u.testActivity(u.shell.Transcript).blocks(0)[len(u.testActivity(u.shell.Transcript).blocks(0))-1].Output); got != retained {
 		t.Fatal("delta changed retained output identity")
 	}

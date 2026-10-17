@@ -94,7 +94,7 @@ func TestVCSCommitEnrichmentRequiresProvenSegmentDirectory(t *testing.T) {
 			entry := sessionpresentation.ActivityEntry{Kind: "tool", Native: &sessionpresentation.NativeItem{Thread: key[0], Turn: key[1], Item: key[2], Command: item.Command}}
 			entry.Native.Invocation = u.attached.session.Commands()[key].Entry.Native.Invocation
 			entry.Native.Invocation.Complete(activitypresentation.CommandCompletion{Source: sessionpresentation.CommandSource(item.Command, item.Cwd), Aggregate: item.AggregatedOutput, Exit: item.ExitCode})
-			live, valid := u.reconcileTrackedCommand(key, entry, item.Observation())
+			live, valid := reconcileTrackedCommand(&u.attached, &u.streams, u.execTrack, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty, key, entry, item.Observation())
 			if !valid {
 				t.Fatal("completed report was not admitted")
 			}

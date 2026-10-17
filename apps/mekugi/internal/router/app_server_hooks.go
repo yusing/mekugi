@@ -5,6 +5,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/contracts/scope"
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionpresentation"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -42,25 +48,25 @@ func hookOutput(run appserver.HookRun) (string, bool) {
 	return text, hasError
 }
 
-func (u *appServerUI) hookEvent(method string, event binding.Notification) error {
+func hookEvent(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], childKey *scope.Key[*appServerChildHistory], activity *activitymodel.Service, reviewOwner *sessionreview.Review, approvals *nativeApprovalDock, receipts *[]*changepresentation.Receipt, retainedSession history.Session, clock func() time.Time, method string, event binding.Notification) error {
 	if event.ThreadID == "" || event.Run == nil || event.Run.ID == "" {
 		return fmt.Errorf("%s: missing hook thread or run identity", method)
 	}
-	s := &u.attached.session
-	if event.ThreadID != u.Thread {
-		if err := requestThreadMetadata(u.Requests, &u.attached.session, event.ThreadID); err != nil {
+	s := &attached.session
+	if event.ThreadID != control.Thread {
+		if err := requestThreadMetadata(control.Requests, &attached.session, event.ThreadID); err != nil {
 			return err
 		}
 	}
-	if h := childHistory(&u.attached.session, &u.childHistoryState, event.ThreadID); h != nil {
+	if h := childHistory(&attached.session, childKey, event.ThreadID); h != nil {
 		h.state.ObserveLive()
 	}
 	run := *event.Run
 	completed := method == "hook/completed"
 	var previousOutput *activitymodel.Output
-	view := u.attached.childSource
-	if event.ThreadID == u.Thread {
-		view = u.attached.source
+	view := attached.childSource
+	if event.ThreadID == control.Thread {
+		view = attached.source
 	}
 	// Use the existing item reconciliation to ignore duplicate starts and late
 	// starts after completion. Hook identity is thread + run, independently of turn.
@@ -73,17 +79,17 @@ func (u *appServerUI) hookEvent(method string, event binding.Notification) error
 		}
 	}
 	output, hasError := hookOutput(run)
-	observation := history.HookObservation{Turn: event.TurnID, Run: history.HookRun(run), At: presentationTime(u.clock), Output: output, HasError: hasError, Completed: completed}
+	observation := history.HookObservation{Turn: event.TurnID, Run: history.HookRun(run), At: presentationTime(clock), Output: output, HasError: hasError, Completed: completed}
 	observation.Run.Entries = nil
-	if err := retainHook(u.retainedSession, u.attached.cwd, event.ThreadID, observation); err != nil {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Hook observation could not be retained: "+err.Error(), true)
+	if err := retainHook(retainedSession, attached.cwd, event.ThreadID, observation); err != nil {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Hook observation could not be retained: "+err.Error(), true)
 	}
-	entry := hookEntry(&u.attached.session, u.activity, u.attached.cwd, event.ThreadID, observation, true)
+	entry := hookEntry(&attached.session, activity, attached.cwd, event.ThreadID, observation, true)
 	if previousOutput != nil {
 		previousOutput.Release()
 	}
 	entry.Seq = s.Activity().NextSequence()
-	applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, []sessionpresentation.ActivityEntry{entry}, s.Roster())
+	applyActivity(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, []sessionpresentation.ActivityEntry{entry}, s.Roster())
 	return nil
 }
 

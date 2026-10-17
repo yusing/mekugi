@@ -1,7 +1,16 @@
 package router
 
 import (
+	"context"
 	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+	"github.com/yusing/mekugi/contracts/scope"
+	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/executionobservation"
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -20,23 +29,23 @@ type appServerShellEdits struct {
 	running map[[2]string]*executionobservation.ShellOperation
 }
 
-func (u *appServerUI) captureShellEdit(command string) *executionobservation.ShellOperation {
-	if u.retained.Store == nil {
+func captureShellEdit(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], parent context.Context, reviewOwner *sessionreview.Review, shellEdits *appServerShellEdits, retained changes.Scope, retainedSession history.Session, changeSource changes.Service, snapshots *changecapture.Workspaces, recovered *recovery.Service, publishChanges func([]changes.Update), windows *executionobservation.Windows, audience *sessioncontrol.Audience, captureNotice func(string, string, string, string), reviewSource *changecapture.Service, preparePane func(*scope.Store), command string) *executionobservation.ShellOperation {
+	if retained.Store == nil {
 		return nil
 	}
-	ctx := u.retainedSession.Context
+	ctx := retainedSession.Context
 	if ctx == nil {
-		ctx = u.ctx
+		ctx = parent
 	}
-	edit := executionobservation.PrepareShell(ctx, u.retained, u.changeSource, u.snapshots, u.recovered, u.publishChanges, u.execWindows, u.audience, u.captureNotice, executionobservation.ShellInput{
-		Thread: u.Thread, Turn: u.Turn, Namespace: u.retainedSession.Namespace,
-		Workspace: u.attached.cwd, Caller: u.attached.session.Caller(u.Thread), Command: command, Shell: u.shellEdits.shell,
+	edit := executionobservation.PrepareShell(ctx, retained, changeSource, snapshots, recovered, publishChanges, windows, audience, captureNotice, executionobservation.ShellInput{
+		Thread: control.Thread, Turn: control.Turn, Namespace: retainedSession.Namespace,
+		Workspace: attached.cwd, Caller: attached.session.Caller(control.Thread), Command: command, Shell: shellEdits.shell,
 	})
 	if edit == nil {
 		return nil
 	}
-	restoreDiffThread(&u.attached, u.shell, u.review, u.reviewSource, u.preparePane, binding.ThreadInfo{ID: u.Thread, Cwd: u.attached.cwd}, true)
-	edit.Begin(u.review)
+	restoreDiffThread(attached, terminal, reviewOwner, reviewSource, preparePane, binding.ThreadInfo{ID: control.Thread, Cwd: attached.cwd}, true)
+	edit.Begin(reviewOwner)
 	return edit
 }
 

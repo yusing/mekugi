@@ -236,7 +236,7 @@ func applyRestoredMain(source *sessionpresentation.ActivitySource, placements []
 func (u *appServerUI) restoreHistoryItem(turn binding.HistoryTurn, item binding.ThreadItem) {
 	facts := item.Observation()
 	text := observation.TextEvent{Kind: observation.ItemCompleted, Item: transcriptItem(item, u.Thread, turn.ID, item.ID)}
-	if u.observeMessageQuestions(text, facts, true) {
+	if observeMessageQuestions(&u.attached, u.shell, &u.Client, &u.approvals, u.clock, &u.questions, &u.Editor, &u.picker, u.statusPanel != nil || u.resumePicker != nil, u.notifications, text, facts, true) {
 		return
 	}
 	if item.Type == "userMessage" {
@@ -270,7 +270,7 @@ func (u *appServerUI) restoreHistoryItem(turn binding.HistoryTurn, item binding.
 		method = "item/started"
 	}
 	progressPhase := appServerHistoryProgressPhase(facts, turn.Status)
-	if text, wait, progress := u.itemProgress(facts, u.Thread, turn.ID, item.ID, progressPhase, false); progress {
+	if text, wait, progress := itemProgress(&u.attached, u.shell, u.retainedSession, u.clock, facts, u.Thread, turn.ID, item.ID, progressPhase, false); progress {
 		if text != "" {
 			u.attached.source.Apply(sessionpresentation.ActivityEvent{Kind: "entries", Entries: []sessionpresentation.ActivityEntry{{
 				Seq: u.attached.source.LastSeq + 1, Agent: "Main", Kind: "progress", Text: text, Observed: time.Now(),

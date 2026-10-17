@@ -1,7 +1,16 @@
 package router
 
 import (
+	"context"
 	"fmt"
+	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+	"github.com/yusing/mekugi/modules/conversation/composer"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
@@ -36,25 +45,25 @@ func (check *approvalHookCheck) check(control *sessioncontrol.Client[appServerRe
 	return false, nil
 }
 
-func (u *appServerUI) guardHookResponse(message appserver.Message) error {
-	thread := u.guardHookCheck.pendingThread
-	u.guardHookCheck.pendingThread = ""
-	if thread != u.Thread {
-		return flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, u.ctx, u.restoring != nil, u.controlObservations, u.review, &u.pendingEditReceipts)
+func guardHookResponse(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, tiers *inferencegateway.Tiers, restoring bool, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, message appserver.Message) error {
+	thread := hook.pendingThread
+	hook.pendingThread = ""
+	if thread != control.Thread {
+		return flushInput(attached, terminal, control, picker, questions, approvals, clock, settings.Model, tiers, environment, (*owned), hook, editor, parent, restoring, observations, reviewOwner, receipts)
 	}
 	var err error
 	if message.Error != nil {
 		err = fmt.Errorf("read approval hook: %s", message.Error.Message)
 	} else {
-		err = shellhook.Validate(message.Result, u.attached.cwd, u.guardHookCheck.hash)
+		err = shellhook.Validate(message.Result, attached.cwd, hook.hash)
 	}
 	if err != nil {
-		restoreDrafts(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, u.Turn, u.clock, append(u.attached.conversation.Unsent, u.attached.conversation.Queued...)...)
-		u.attached.conversation.Unsent, u.attached.conversation.Queued = nil, nil
-		u.attached.presentation.Status.SetText("Ready")
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Shell guard: "+err.Error(), true)
+		restoreDrafts(attached, terminal, questions, approvals, picker, control.Turn, clock, append(attached.conversation.Unsent, attached.conversation.Queued...)...)
+		attached.conversation.Unsent, attached.conversation.Queued = nil, nil
+		attached.presentation.Status.SetText("Ready")
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Shell guard: "+err.Error(), true)
 		return nil
 	}
-	u.guardHookCheck.readyThread = thread
-	return flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, u.ctx, u.restoring != nil, u.controlObservations, u.review, &u.pendingEditReceipts)
+	hook.readyThread = thread
+	return flushInput(attached, terminal, control, picker, questions, approvals, clock, settings.Model, tiers, environment, (*owned), hook, editor, parent, restoring, observations, reviewOwner, receipts)
 }

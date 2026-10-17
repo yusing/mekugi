@@ -40,7 +40,7 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 			if len(view.Entries) != 1 || len(view.RenderFeed(80, 40).Lines) != 0 {
 				t.Fatal("summary position was not reserved invisibly before its first frame")
 			}
-			u.flushStreamOutput()
+			flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
 			snapshot("first-frame")
 			if len(view.Entries) != 1 || len(view.blocks(0)) != 1 || view.blocks(0)[0].Body == strings.TrimSpace(body) {
 				t.Fatal("burst jumped directly to its full body")
@@ -50,7 +50,7 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 			if !view.blocks(0)[0].Live {
 				t.Fatal("completion was not held behind the summary backlog")
 			}
-			u.flushStreamOutput()
+			flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
 			snapshot("rolling")
 			rollCommandOutput(u)
 			snapshot("done")
@@ -102,19 +102,19 @@ func TestAppServerEmptyReasoningStartsDoNotCreateRows(t *testing.T) {
 		for _, id := range []string{"raw-one", "raw-two"} {
 			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": id, "type": "reasoning"}})
 		}
-		u.flushStreamOutput()
+		flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
 		if len(u.attached.source.Entries) != 0 || len(u.attached.childSource.Entries) != 0 {
 			t.Fatal("empty reasoning starts created visible placeholders")
 		}
 		appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t", "status": "interrupted"}})
-		u.flushStreamOutput()
+		flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
 		if len(u.attached.source.Entries) != 0 || len(u.attached.childSource.Entries) != 0 {
 			t.Fatal("empty reasoning left live state behind")
 		}
 		for _, id := range []string{"raw-one", "raw-two"} {
 			appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": id, "delta": "Late public summary."})
 		}
-		u.flushStreamOutput()
+		flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
 		if len(u.attached.source.Entries) != 0 || len(u.attached.childSource.Entries) != 0 {
 			t.Fatal("late delta reopened interrupted empty reasoning")
 		}

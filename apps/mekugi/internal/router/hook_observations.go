@@ -3,6 +3,7 @@ package router
 import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
 	"github.com/yusing/mekugi/backends/codex/binding"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	json "encoding/json/v2"
 	"errors"
@@ -49,26 +50,26 @@ func retainHook(retained history.Session, workspace string, thread string, obser
 	})
 }
 
-func (u *appServerUI) restoredHookEvents(info binding.ThreadInfo) []restoredRolloutEvent {
-	store := u.retainedSession.Store
-	r, err := store.ReadHookObservations(u.attached.cwd, info.ID)
+func restoredHookEvents(attached *attachedPresentation, activity *activitymodel.Service, retainedSession history.Session, restoring *appServerActivityRestore, info binding.ThreadInfo) []restoredRolloutEvent {
+	store := retainedSession.Store
+	r, err := store.ReadHookObservations(attached.cwd, info.ID)
 	if err != nil {
-		restoreHistoryNotice(&u.attached, u.restoring, "Hook observations for "+info.ID+" unavailable: "+err.Error(), true)
+		restoreHistoryNotice(attached, restoring, "Hook observations for "+info.ID+" unavailable: "+err.Error(), true)
 		return nil
 	}
 	if r.Dropped > 0 {
-		restoreHistoryNotice(&u.attached, u.restoring, fmt.Sprintf("%s: %d earlier hook observations were not retained", info.ID, r.Dropped), true)
+		restoreHistoryNotice(attached, restoring, fmt.Sprintf("%s: %d earlier hook observations were not retained", info.ID, r.Dropped), true)
 	}
 	if store != nil && len(r.Runs) > 0 {
-		if err := store.Transaction(u.retainedSession.Context, u.retainedSession.Writes, func(tx *history.Transaction) error {
-			return requestexecution.StoragePublicationError(tx.Retain(u.retainedSession.Thread, u.retainedSession.Limits, history.HookObservationsName(u.attached.cwd, info.ID)))
+		if err := store.Transaction(retainedSession.Context, retainedSession.Writes, func(tx *history.Transaction) error {
+			return requestexecution.StoragePublicationError(tx.Retain(retainedSession.Thread, retainedSession.Limits, history.HookObservationsName(attached.cwd, info.ID)))
 		}); err != nil {
-			restoreHistoryNotice(&u.attached, u.restoring, "Hook observations for "+info.ID+" could not be retained: "+err.Error(), true)
+			restoreHistoryNotice(attached, restoring, "Hook observations for "+info.ID+" could not be retained: "+err.Error(), true)
 		}
 	}
 	var events []restoredRolloutEvent
 	for _, observation := range r.Runs {
-		entry := hookEntry(&u.attached.session, u.activity, u.attached.cwd, info.ID, observation, false)
+		entry := hookEntry(&attached.session, activity, attached.cwd, info.ID, observation, false)
 		// Position by time, including thread-scoped hooks outside any turn.
 		events = append(events, restoredRolloutEvent{at: observation.At, entry: entry})
 	}

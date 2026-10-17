@@ -326,12 +326,12 @@ func startAppServerUI(terminalViews terminalsession.Views, reviewSource *changec
 						}
 						u.dirty = refreshSessionMetrics(u.statusPanel, u.sessionCapture, presentationTime(u.clock), false) || u.dirty
 						u.startSkillHistory()
-						u.applyObservedActivity()
+						applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, &u.dirty, u.restoring, u.audience)
 						publishPresentation(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, presentationTime(u.clock))
 						if err := u.applyResumeAction(u.shell.Main.Resume.PageDemand()); err != nil {
 							return err
 						}
-						u.flushStreamOutput()
+						flushStreamOutput(&u.attached, u.shell, &u.Client, &u.streams, u.execTrack, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, u.ctx, u.retained, u.segments, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty)
 						u.dirty = startCommitReads(&u.attached, u.commits) || u.dirty
 						u.dirty = paneError(u.attached.source, u.panes.save(u.shell.Shell.Preferences(u.shell.Main), presentationTime(u.clock), false)) || u.dirty
 						if expireNotice(&u.attached.feedback, u.shell, presentationTime(u.clock)) || expireApprovals(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, u.notifications, u.review, &u.pendingEditReceipts) {
@@ -474,12 +474,12 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	// Side-thread traffic never reaches Main's lifecycle, questions or roster.
 	if update, err := u.Requests.ObserveSide(m, response, u.Thread, u.controlObservations); update.Handled {
 		u.dirty = true
-		u.applySideUpdate(update)
+		applySideUpdate(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, update)
 		if err != nil {
 			return err
 		}
 		if update.Flush {
-			return u.flushBTW()
+			return flushBTW(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, &u.side, &u.ownedImages, u.skillEnvironment)
 		}
 		return nil
 	}
@@ -493,7 +493,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			err = flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, u.ctx, u.restoring != nil, u.controlObservations, u.review, &u.pendingEditReceipts)
 		}
 		if err == nil {
-			err = u.flushBTW()
+			err = flushBTW(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, &u.side, &u.ownedImages, u.skillEnvironment)
 		}
 	}()
 	if m.Method == "skills/changed" {
@@ -504,7 +504,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	}
 	// Input observations precede the output items that answer them. Drain
 	// before a completion, not just on the next paint tick, so links bind once.
-	u.applyObservedActivity()
+	applyObservedActivity(&u.attached, u.shell, &u.Client, &u.streams, u.usage, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, &u.dirty, u.restoring, u.audience)
 	if held, err := u.holdOlderHistoryEvent(m); held || err != nil {
 		return err
 	}
@@ -566,18 +566,18 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		if handled, err := settingsMessage(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, &u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, u.panes, &u.dirty, &u.model, &u.reasoningEffort, &u.serviceTier, &u.models, &u.modelsLoading, &u.reasoningKey, &u.statusConfig, method, m); handled || err != nil {
 			return err
 		}
-		if method == "thread/read" && u.applyThreadMetadata(m, response.Owner.metadata) {
+		if method == "thread/read" && applyThreadMetadata(&u.attached, u.shell, &u.Client, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, m, response.Owner.metadata) {
 			return nil
 		}
 		if method == "thread/list" || method == "thread/read" {
 			return u.restoreActivityResponse(method, m)
 		}
 		if method == "turn/start" || method == "turn/steer" {
-			u.submissionResponse(method, m.Error)
+			submissionResponse(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, method, m.Error)
 			return nil
 		}
 		if method == "thread/shellCommand" {
-			u.shellResponse(m.Error)
+			shellResponse(&u.attached, u.shell, &u.Client, &u.Editor, u.clock, &u.shellEdits, m.Error)
 			return nil
 		}
 		if method == "environment/info" {
@@ -606,7 +606,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			return nil
 		}
 		if method == "approval/hooks" {
-			return u.guardHookResponse(m)
+			return guardHookResponse(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.restoring != nil, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations, u.ctx, u.review, &u.pendingEditReceipts, m)
 		}
 		if method == "thread/start" && u.Replacement.Pending() && m.Error != nil {
 			u.Replacement.Finish()
@@ -846,7 +846,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 // host facts. Offline transcript observations bypass it through their reducer.
 func (u *appServerUI) observedEvent(method string, p binding.Notification) error {
 	text := binding.RetainedTranscript(p.Observation(method, presentationTime(u.clock)))
-	if handled, err := u.sessionEvent(method, p); handled || err != nil {
+	if handled, err := sessionEvent(&u.attached, u.shell, &u.Client, &u.streams, &u.childHistoryState, u.execTrack, u.activity, u.usage, u.nativeTrace, u.execWindows, u.review, &u.approvals, &u.pendingEditReceipts, u.retainedSession, &u.exitUsage, u.clock, method, p); handled || err != nil {
 		return err
 	}
 
@@ -876,7 +876,7 @@ func (u *appServerUI) observedEvent(method string, p binding.Notification) error
 				failure = &p.Turn.Error.Message
 			}
 			u.attached.presentation.Status.Complete(p.Turn.Status, failure, presentationTime(u.clock))
-			u.settleInput(p.Turn.ID, p.Turn.Status == "interrupted")
+			settleInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, p.Turn.ID, p.Turn.Status == "interrupted")
 			if p.Turn.Status == "completed" && u.questions.Count(u.Thread) == 0 {
 				u.notifications.notify(&u.attached.feedback, u.shell, u.clock, "agent-turn-complete", "Agent turn complete")
 			}
@@ -897,7 +897,7 @@ func (u *appServerUI) observedEvent(method string, p binding.Notification) error
 		if p.ThreadID == u.Thread && p.Item.Type == "userMessage" && method == "item/completed" {
 			commitSteer(&u.attached, &u.Live, p.Item)
 		}
-		u.messageTranscript(text, p.Item.Observation(), true)
+		messageTranscript(&u.attached, u.shell, &u.Client, &u.streams, u.review, &u.approvals, &u.pendingEditReceipts, u.clock, &u.questions, &u.Editor, &u.picker, u.statusPanel != nil || u.resumePicker != nil, u.notifications, text, p.Item.Observation(), true)
 	}
 	return nil
 }
@@ -927,7 +927,7 @@ func (u *appServerUI) applyMainKey(next terminalsession.KeyContinuation) (bool, 
 		refresh = refresh || input.Regular
 		switch {
 		case input.Prompt != nil:
-			if handled, err := u.applyPromptInput(*input.Prompt); handled || err != nil {
+			if handled, err := applyPromptInput(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, &u.side, u.statusPanel != nil || u.resumePicker != nil, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations, u.ctx, u.review, &u.pendingEditReceipts, u.notifications, *input.Prompt); handled || err != nil {
 				return false, err
 			}
 		case input.Panel != nil:
@@ -990,41 +990,41 @@ func paintSession(attached *attachedPresentation, terminal *terminalsession.Atta
 
 // Router-owned annotations and authenticated directed inputs supplement the
 // native event stream without becoming assistant speech or execution events.
-func (u *appServerUI) applyObservedActivity() {
-	if u.restoring != nil && !u.restoring.state.View().Rendered {
+func applyObservedActivity(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], streams *terminalsession.Streams, usage *accounting.Service, reviewOwner *sessionreview.Review, approvals *nativeApprovalDock, receipts *[]*changepresentation.Receipt, clock func() time.Time, dirty *bool, restoring *appServerActivityRestore, audience *sessioncontrol.Audience) {
+	if restoring != nil && !restoring.state.View().Rendered {
 		return
 	}
 	// Provider rounds can start within one host turn, before another usage
 	// notification. Refresh from the owner so a prior round's TPS is not stale.
 	usageChanged := false
-	for _, observed := range u.attached.session.Roster() {
-		if agent := u.attached.session.Agent(observed.Name); agent != nil {
+	for _, observed := range attached.session.Roster() {
+		if agent := attached.session.Agent(observed.Name); agent != nil {
 			before := *agent
-			observeCost(u.usage, observed.Thread, agent)
+			observeCost(usage, observed.Thread, agent)
 			usageChanged = usageChanged || before != *agent
 		}
 	}
 	if usageChanged {
-		u.attached.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: u.attached.session.Roster()})
-		u.dirty = true
+		attached.childSource.Apply(sessionpresentation.ActivityEvent{Kind: "agents", Agents: attached.session.Roster()})
+		(*dirty) = true
 	}
-	if u.audience == nil {
+	if audience == nil {
 		return
 	}
-	entries := takeNativeActivity(u.audience, u.Thread)
-	for _, start := range u.audience.TakeStarts(u.Thread) {
-		entries = append(entries, transcriptUpdates(&u.attached, u.shell, &u.streams, u.Thread, providerStarted(&u.attached, start.Thread, start.At), false)...)
+	entries := takeNativeActivity(audience, control.Thread)
+	for _, start := range audience.TakeStarts(control.Thread) {
+		entries = append(entries, transcriptUpdates(attached, terminal, streams, control.Thread, providerStarted(attached, start.Thread, start.At), false)...)
 	}
 	for i := range entries {
-		entries[i].Seq = u.attached.session.Activity().NextSequence()
+		entries[i].Seq = attached.session.Activity().NextSequence()
 	}
 	if len(entries) != 0 {
-		applyActivity(&u.attached, &u.approvals, u.shell, u.review, &u.pendingEditReceipts, u.Thread, u.clock, entries, nil)
-		u.dirty = true
+		applyActivity(attached, approvals, terminal, reviewOwner, receipts, control.Thread, clock, entries, nil)
+		(*dirty) = true
 	}
-	for _, ref := range u.audience.TakeUnreturned(u.Thread) {
-		if main, activity := u.attached.source.MarkUnreturned(ref.Thread, ref.Call), u.attached.childSource.MarkUnreturned(ref.Thread, ref.Call); main || activity {
-			u.dirty = true
+	for _, ref := range audience.TakeUnreturned(control.Thread) {
+		if main, activity := attached.source.MarkUnreturned(ref.Thread, ref.Call), attached.childSource.MarkUnreturned(ref.Thread, ref.Call); main || activity {
+			(*dirty) = true
 		}
 	}
 }

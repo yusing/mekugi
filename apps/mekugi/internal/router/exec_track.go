@@ -1,8 +1,13 @@
 package router
 
 import (
+	"context"
 	"slices"
 	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/requestexecution"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/commandsegments/reports"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	commandsegments "github.com/yusing/mekugi/modules/commandsegments/segments"
@@ -62,26 +67,26 @@ func commandReportView(observer *commandsegments.Observer, streams *terminalsess
 // flushTrackedCommand re-sends a tracked command whose segments changed, and
 // completes it once its report ends. It reports false for an untracked
 // command, which keeps the host's single output stream.
-func (u *appServerUI) flushTrackedCommand(key [3]string, run *sessionpresentation.CommandOperation) ([]sessionpresentation.ActivityEntry, bool) {
-	s := &u.attached.session
+func flushTrackedCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, streams *terminalsession.Streams, tracker *commandsegments.Observer, clock func() time.Time, parent context.Context, retained changes.Scope, segments *reports.Service, writes *chan commandSegmentWrite, pending *int, issues *requestexecution.Failures, dirty *bool, key [3]string, run *sessionpresentation.CommandOperation) ([]sessionpresentation.ActivityEntry, bool) {
+	s := &attached.session
 	if run.Completion != nil {
-		view, _ := commandReportView(u.execTrack, &u.streams, key, run, false, run.Entry.Native.CommandCwd)
-		if !view.ended && presentationTime(u.clock).Sub(run.CompletedAt) < execTrackCompletionWait {
+		view, _ := commandReportView(tracker, streams, key, run, false, run.Entry.Native.CommandCwd)
+		if !view.ended && presentationTime(clock).Sub(run.CompletedAt) < execTrackCompletionWait {
 			return nil, true
 		}
-		enriched, valid := u.reconcileTrackedCommand(key, *run.Completion, run.Completed)
-		for _, adapter := range []*sessionpresentation.ActivitySource{u.attached.source, u.attached.childSource} {
+		enriched, valid := reconcileTrackedCommand(attached, streams, tracker, parent, retained, segments, writes, pending, issues, dirty, key, *run.Completion, run.Completed)
+		for _, adapter := range []*sessionpresentation.ActivitySource{attached.source, attached.childSource} {
 			adapter.SettleCommandReport(enriched, valid)
 		}
-		releaseCommand(&u.attached, u.shell, presentationTime(u.clock), run.Entry)
-		delete(u.attached.session.Commands(), key)
-		delete(u.streams.Commands, key)
-		u.execTrack.Forget(key)
-		u.dirty = true
+		releaseCommand(attached, terminal, presentationTime(clock), run.Entry)
+		delete(attached.session.Commands(), key)
+		delete(streams.Commands, key)
+		tracker.Forget(key)
+		(*dirty) = true
 		return nil, true
 	}
-	view, changed := commandReportView(u.execTrack, &u.streams, key, run, false, run.Entry.Native.CommandCwd)
-	if !u.execTrack.Tracking(key) {
+	view, changed := commandReportView(tracker, streams, key, run, false, run.Entry.Native.CommandCwd)
+	if !tracker.Tracking(key) {
 		return nil, false
 	}
 	entry := run.Entry
@@ -92,7 +97,7 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *sessionpresentatio
 		// The report ended early, as when the helper declined after the
 		// match; the host's combined output applies from here on.
 		if changed {
-			u.streams.Commands[key].Output.Invalidate()
+			streams.Commands[key].Output.Invalidate()
 		}
 		if view.semantic {
 			return []sessionpresentation.ActivityEntry{entry}, false
@@ -103,15 +108,15 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *sessionpresentatio
 	var frame activityui.OutputFrame
 	if !view.output {
 		var advanced bool
-		frame, advanced = u.streams.Commands[key].Output.Advance()
+		frame, advanced = streams.Commands[key].Output.Advance()
 		changed = changed || advanced
 	}
 	if !changed {
 		return nil, true
 	}
 	native.Segments = view.segments
-	holdCommand(&u.attached, u.shell, entry, activityui.CommandFrame{Output: frame, Segments: view.frames})
-	u.dirty = true
+	holdCommand(attached, terminal, entry, activityui.CommandFrame{Output: frame, Segments: view.frames})
+	(*dirty) = true
 	if !view.semantic {
 		return nil, true
 	}
@@ -125,15 +130,15 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *sessionpresentatio
 // reconcileTrackedCommand admits segment outcomes when the report ended with
 // the host's own exit status. Otherwise the report is incomplete, and the
 // already-published host aggregate remains authoritative.
-func (u *appServerUI) reconcileTrackedCommand(key [3]string, entry sessionpresentation.ActivityEntry, item observation.Item) (sessionpresentation.ActivityEntry, bool) {
-	run := u.attached.session.Commands()[key]
-	view, _ := commandReportView(u.execTrack, &u.streams, key, run, true, sessionpresentation.CommandDirectory(item, u.attached.cwd))
+func reconcileTrackedCommand(attached *attachedPresentation, streams *terminalsession.Streams, tracker *commandsegments.Observer, parent context.Context, retained changes.Scope, segments *reports.Service, writes *chan commandSegmentWrite, pending *int, issues *requestexecution.Failures, dirty *bool, key [3]string, entry sessionpresentation.ActivityEntry, item observation.Item) (sessionpresentation.ActivityEntry, bool) {
+	run := attached.session.Commands()[key]
+	view, _ := commandReportView(tracker, streams, key, run, true, sessionpresentation.CommandDirectory(item, attached.cwd))
 	if !run.Entry.Native.Invocation.ReportMatchesHost() || len(view.segments) == 0 {
 		return entry, false
 	}
 	native := *entry.Native
 	native.Segments, native.SegmentsPending = view.segments, false
-	retainCommandSegments(u.ctx, u.retained, u.segments, &u.attached, &u.commandSegmentWrites, &u.commandSegmentPending, u.issues, &u.dirty, entry, item, view)
+	retainCommandSegments(parent, retained, segments, attached, writes, pending, issues, dirty, entry, item, view)
 	for i := range native.Segments {
 		// A commit reads its object from the directory the host ran it in.
 		if segment := &native.Segments[i]; segment.Raw != "" && segment.Changes == nil {

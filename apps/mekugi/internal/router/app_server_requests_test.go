@@ -1,6 +1,10 @@
 package router
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+)
 
 func TestAppServerReplacementRetiresOnlyMainRequests(t *testing.T) {
 	u, wire := newAppServerTestUI()
@@ -10,7 +14,7 @@ func TestAppServerReplacementRetiresOnlyMainRequests(t *testing.T) {
 	side := btwTestRequest(t, wire, "thread/fork", "main")
 	appServerTestKeys(t, u, "/status\r")
 	status := btwTestRequest(t, wire, "account/read", "")
-	if err := u.sessionCommand("/clear"); err != nil {
+	if err := sessionCommand(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.questions, &u.approvals, u.clock, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.restoring != nil, &u.ownedImages, u.skillEnvironment, &u.guardHookCheck, u.controlObservations, u.ctx, u.review, &u.pendingEditReceipts, u.statusConfig.Provider, u.approvalMode, "/clear"); err != nil {
 		t.Fatal(err)
 	}
 	clear := btwTestRequest(t, wire, "thread/start", "")

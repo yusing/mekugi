@@ -5,6 +5,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	"github.com/yusing/mekugi/contracts/scope"
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -15,22 +19,22 @@ import (
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
-func (u *appServerUI) titleCommand(text string) bool {
+func titleCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, childKey *scope.Key[*appServerChildHistory], settings preferences.Applied, tiers *inferencegateway.Tiers, title string, backend string, restoring bool, side **sessioncontrol.Side, overlay bool, owned *map[string]bool, generator *sessionNaming, dirty *bool, text string) bool {
 	if fields := strings.Fields(text); len(fields) == 0 || fields[0] != "/title" {
 		return false
 	}
 	name := strings.TrimSpace(strings.TrimPrefix(text, "/title"))
 	if name == "" {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Usage: /title <title>", false)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Usage: /title <title>", false)
 		return true
 	}
-	if u.Replacement.Pending() {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Wait for the session to be ready", false)
+	if control.Replacement.Pending() {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Wait for the session to be ready", false)
 		return true
 	}
-	deleteDraftRange(&u.attached, u.shell, &u.Client, &u.picker, &u.Editor, &u.childHistoryState, preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier}, u.serviceTiers, u.title, u.backendVersion, u.restoring != nil, u.side, u.clock, &u.questions, &u.approvals, u.statusPanel != nil || u.resumePicker != nil, u.ownedImages, 0, len(u.Text))
-	setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "", false)
-	renameSessionTitle(&u.Client, u.titleGenerator, &u.attached.feedback, u.shell, u.clock, &u.dirty, name)
+	deleteDraftRange(attached, terminal, control, picker, editor, childKey, settings, tiers, title, backend, restoring, (*side), clock, questions, approvals, overlay, (*owned), 0, len((*editor).Text))
+	setNotice(&attached.feedback, terminal, presentationTime(clock), "", false)
+	renameSessionTitle(control, generator, &attached.feedback, terminal, clock, dirty, name)
 	return true
 }
 

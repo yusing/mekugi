@@ -72,10 +72,10 @@ func applyInputRestoration(attached *attachedPresentation, terminal *terminalses
 
 // editQueued returns all locally waiting input to the composer as one stack.
 // Already-sent steers remain host-owned until committed or interrupted.
-func (u *appServerUI) editQueued() {
-	parts := u.attached.conversation.TakeWaiting()
-	u.Compaction.CancelQueued(true)
-	restoreDrafts(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, u.Turn, u.clock, parts...)
+func editQueued(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time) {
+	parts := attached.conversation.TakeWaiting()
+	control.Compaction.CancelQueued(true)
+	restoreDrafts(attached, terminal, questions, approvals, picker, control.Turn, clock, parts...)
 }
 
 // flushInput sends stacked input once nothing blocks it: unsent steers into
@@ -172,12 +172,12 @@ func sendConversationInput(attached *attachedPresentation, terminal *terminalses
 	return nil
 }
 
-func (u *appServerUI) submissionResponse(method string, failure *appserver.Error) {
+func submissionResponse(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, method string, failure *appserver.Error) {
 	message := ""
 	if failure != nil {
 		message = failure.Message
 	}
-	applyInputEffects(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, u.Turn, u.clock, u.attached.presentation.AcknowledgeInput(&u.Live, u.attached.conversation, method, message, failure != nil))
+	applyInputEffects(attached, terminal, questions, approvals, picker, control.Turn, clock, attached.presentation.AcknowledgeInput(&control.Live, attached.conversation, method, message, failure != nil))
 }
 
 func applyInputEffects(attached *attachedPresentation, terminal *terminalsession.Attachment, questions *nativeQuestionDock, approvals *nativeApprovalDock, picker *composerPicker, turn string, clock func() time.Time, effects sessionpresentation.InputEffects) {
@@ -196,8 +196,8 @@ func commitSteer(attached *attachedPresentation, control *sessioncontrol.Live, i
 	attached.presentation.CommitInput(control, attached.conversation, item.ClientID, text)
 }
 
-func (u *appServerUI) settleInput(turn string, interrupted bool) {
-	for _, effects := range u.attached.presentation.SettleInput(&u.Live, u.attached.conversation, turn, interrupted) {
-		applyInputEffects(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, u.Turn, u.clock, effects)
+func settleInput(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, turn string, interrupted bool) {
+	for _, effects := range attached.presentation.SettleInput(&control.Live, attached.conversation, turn, interrupted) {
+		applyInputEffects(attached, terminal, questions, approvals, picker, control.Turn, clock, effects)
 	}
 }

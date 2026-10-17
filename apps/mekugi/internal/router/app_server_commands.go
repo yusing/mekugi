@@ -2,6 +2,12 @@ package router
 
 import (
 	"context"
+	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+	changepresentation "github.com/yusing/mekugi/modules/changehistory/presentation"
+	"github.com/yusing/mekugi/modules/conversation/composer"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessionreview"
@@ -45,54 +51,54 @@ var nativeCommands = []completion.Choice{
 // Clear starts a fresh host thread.
 // Compact uses its native RPC after acknowledged interruption, never a
 // turn/steer text payload. Tab can explicitly queue it instead.
-func (u *appServerUI) sessionCommand(command string) error {
-	if u.Thread == "" || u.restoring != nil || u.Replacement.Pending() {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Wait for the session to be ready", false)
+func sessionCommand(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, tiers *inferencegateway.Tiers, restoring bool, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, provider string, approvalMode bool, command string) error {
+	if control.Thread == "" || restoring || control.Replacement.Pending() {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Wait for the session to be ready", false)
 		return nil
 	}
 	if command == "/compact" {
-		return u.submitCompact(false)
+		return submitCompact(attached, terminal, control, picker, editor, questions, approvals, clock, settings, tiers, restoring, owned, environment, hook, observations, parent, reviewOwner, receipts, false)
 	}
-	if sessionBusy(&u.Live, u.attached.conversation) {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "/clear is disabled while a task is in progress", true)
+	if sessionBusy(&control.Live, attached.conversation) {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "/clear is disabled while a task is in progress", true)
 		return nil
 	}
-	prepareDraft(&u.picker, u.shell, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
-	u.Replacement.Clear()
-	u.attached.presentation.Status.SetText("Starting new session…")
-	params := sessioncontrol.ThreadPermissions(map[string]any{"sessionStartSource": "clear"}, u.approvalMode)
-	if u.attached.cwd != "" {
-		params["cwd"] = u.attached.cwd
+	prepareDraft(picker, terminal, attached.cwd, environment, (*editor).Take())
+	control.Replacement.Clear()
+	attached.presentation.Status.SetText("Starting new session…")
+	params := sessioncontrol.ThreadPermissions(map[string]any{"sessionStartSource": "clear"}, approvalMode)
+	if attached.cwd != "" {
+		params["cwd"] = attached.cwd
 	}
-	if u.model != "" {
-		params["model"] = u.model
+	if settings.Model != "" {
+		params["model"] = settings.Model
 	}
-	if u.statusConfig.Provider != "" {
-		params["modelProvider"] = u.statusConfig.Provider
+	if provider != "" {
+		params["modelProvider"] = provider
 	}
-	if u.reasoningEffort != "" {
-		params["config"] = map[string]any{"model_reasoning_effort": u.reasoningEffort}
+	if settings.Effort != "" {
+		params["config"] = map[string]any{"model_reasoning_effort": settings.Effort}
 	}
-	if u.serviceTier != "" {
-		params["serviceTier"] = u.serviceTier
+	if settings.Tier != "" {
+		params["serviceTier"] = settings.Tier
 	}
-	if err := u.Request("thread/start", params); err != nil {
-		u.Replacement.Finish()
+	if err := control.Request("thread/start", params); err != nil {
+		control.Replacement.Finish()
 		return err
 	}
 	return nil
 }
 
-func (u *appServerUI) submitCompact(queue bool) error {
-	if u.Thread == "" || u.restoring != nil || u.Replacement.Pending() {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Wait for the session to be ready", false)
+func submitCompact(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, editor **composer.Editor, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time, settings preferences.Applied, tiers *inferencegateway.Tiers, restoring bool, owned *map[string]bool, environment []string, hook *approvalHookCheck, observations *sessioncontrol.Observations, parent context.Context, reviewOwner *sessionreview.Review, receipts *[]*changepresentation.Receipt, queue bool) error {
+	if control.Thread == "" || restoring || control.Replacement.Pending() {
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Wait for the session to be ready", false)
 		return nil
 	}
-	draft := prepareDraft(&u.picker, u.shell, u.attached.cwd, u.skillEnvironment, u.Editor.Take())
+	draft := prepareDraft(picker, terminal, attached.cwd, environment, (*editor).Take())
 	draft.Text = "/compact"
-	draft.Compact = conversationmodel.CompactIntent{WaitForIdle: queue, Continue: u.Turn != "" || u.Starting()}
-	u.attached.conversation.Unsent = append(u.attached.conversation.Unsent, draft)
-	return flushInput(&u.attached, u.shell, &u.Client, &u.picker, &u.questions, &u.approvals, u.clock, u.model, u.serviceTiers, u.skillEnvironment, u.ownedImages, &u.guardHookCheck, &u.Editor, u.ctx, u.restoring != nil, u.controlObservations, u.review, &u.pendingEditReceipts)
+	draft.Compact = conversationmodel.CompactIntent{WaitForIdle: queue, Continue: control.Turn != "" || control.Starting()}
+	attached.conversation.Unsent = append(attached.conversation.Unsent, draft)
+	return flushInput(attached, terminal, control, picker, questions, approvals, clock, settings.Model, tiers, environment, (*owned), hook, editor, parent, restoring, observations, reviewOwner, receipts)
 }
 
 // sessionBusy reports work that leaving the current thread would strand.
@@ -102,19 +108,19 @@ func sessionBusy(control *sessioncontrol.Live, conversation *conversationmodel.S
 
 // A queued compact is a local action, not Main's running turn. Return waiting
 // input for retry without interrupting that turn or an in-flight submission.
-func (u *appServerUI) cancelQueuedCompact() bool {
+func cancelQueuedCompact(attached *attachedPresentation, terminal *terminalsession.Attachment, control *sessioncontrol.Client[appServerRequest], picker *composerPicker, questions *nativeQuestionDock, approvals *nativeApprovalDock, clock func() time.Time) bool {
 	isCompact := func(d conversationmodel.Input) bool { return d.Text == "/compact" }
-	hasQueued := slices.ContainsFunc(u.attached.conversation.Unsent, isCompact) || slices.ContainsFunc(u.attached.conversation.Queued, isCompact)
-	cancelled, interruptionIssued := u.Compaction.CancelQueued(hasQueued)
+	hasQueued := slices.ContainsFunc(attached.conversation.Unsent, isCompact) || slices.ContainsFunc(attached.conversation.Queued, isCompact)
+	cancelled, interruptionIssued := control.Compaction.CancelQueued(hasQueued)
 	if !cancelled {
 		return false
 	}
-	restoreDrafts(&u.attached, u.shell, &u.questions, &u.approvals, &u.picker, u.Turn, u.clock, slices.Concat(u.attached.conversation.Unsent, u.attached.conversation.Queued)...)
-	u.attached.conversation.Unsent, u.attached.conversation.Queued = nil, nil
+	restoreDrafts(attached, terminal, questions, approvals, picker, control.Turn, clock, slices.Concat(attached.conversation.Unsent, attached.conversation.Queued)...)
+	attached.conversation.Unsent, attached.conversation.Queued = nil, nil
 	if interruptionIssued {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Compaction cancelled · input restored · interruption already requested", false)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Compaction cancelled · input restored · interruption already requested", false)
 	} else {
-		setNotice(&u.attached.feedback, u.shell, presentationTime(u.clock), "Queued compaction cancelled · input restored · Main continues", false)
+		setNotice(&attached.feedback, terminal, presentationTime(clock), "Queued compaction cancelled · input restored · Main continues", false)
 	}
 	return true
 }
